@@ -4,7 +4,7 @@ const OFFLINE_URL = "/";
 self.addEventListener("install", (e) => {
   e.waitUntil(
     caches.open(CACHE_NAME).then((cache) =>
-      cache.addAll(["/", "/src/main.jsx", "/favicon.svg", "/manifest.json"])
+      cache.addAll(["/", "/favicon.svg", "/manifest.json"])
     )
   );
 });
