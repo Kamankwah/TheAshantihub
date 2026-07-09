@@ -14,6 +14,7 @@ from .serializers import (
     BusinessOwnerKYCDetailSerializer,
     BusinessOwnerKYCSerializer,
     BusinessOwnerRegistrationSerializer,
+    BusinessOwnerProfileUpdateSerializer,
     CustomerRegistrationSerializer,
     PayoutDetailSerializer,
     StaffActivateSerializer,
@@ -122,6 +123,15 @@ class IsBusinessOwner(BasePermission):
 
 class PayoutDetailUpdateView(generics.UpdateAPIView):
     serializer_class = PayoutDetailSerializer
+    permission_classes = [IsBusinessOwner]
+    http_method_names = ["patch"]
+
+    def get_object(self):
+        return self.request.user.profile
+
+
+class BusinessOwnerProfileUpdateView(generics.UpdateAPIView):
+    serializer_class = BusinessOwnerProfileUpdateSerializer
     permission_classes = [IsBusinessOwner]
     http_method_names = ["patch"]
 

@@ -216,3 +216,45 @@ class PayoutDetailSerializer(serializers.ModelSerializer):
         instance.payout_verification_status = "pending"
         instance.save()
         return instance
+
+
+class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BusinessOwnerProfile
+        fields = [
+            "ghana_card_number", "ghana_card_front_image", "ghana_card_back_image",
+            "gps_address", "business_contact_phone", "is_formal",
+            "business_reg_certificate", "tin",
+        ]
+        extra_kwargs = {field: {"required": False} for field in fields}
+
+    def validate(self, data):
+        owner = self.instance.business_owner
+        if owner.kyc_status == BusinessOwner.VERIFIED:
+            raise serializers.ValidationError(
+                {"kyc_status": "Cannot edit a verified KYC profile."}
+            )
+
+        is_formal = data.get("is_formal", self.instance.is_formal)
+        if is_formal:
+            cert = data.get("business_reg_certificate", self.instance.business_reg_certificate)
+            tin = data.get("tin", self.instance.tin)
+            if not cert:
+                raise serializers.ValidationError(
+                    {"business_reg_certificate": "Required for formally registered businesses."}
+                )
+            if not tin:
+                raise serializers.ValidationError({"tin": "Required for formally registered businesses."})
+        return data
+
+    def update(self, instance, validated_data):
+        owner = instance.business_owner
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+        instance.save()
+
+        if owner.kyc_status == BusinessOwner.REJECTED:
+            owner.kyc_status = BusinessOwner.PENDING
+            owner.kyc_rejection_reason = None
+            owner.save(update_fields=["kyc_status", "kyc_rejection_reason"])
+        return instance
