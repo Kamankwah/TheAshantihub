@@ -14,6 +14,7 @@ ALLOWED_HOSTS = ["*"]
 
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
+    # Required transitively: rest_framework_simplejwt.tokens imports AbstractBaseUser at module load time
     "django.contrib.auth",
     "django.contrib.staticfiles",
     "rest_framework",

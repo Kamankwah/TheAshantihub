@@ -1,5 +1,4 @@
 from rest_framework import authentication, exceptions, status
-from rest_framework.response import Response
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import AccessToken
 
