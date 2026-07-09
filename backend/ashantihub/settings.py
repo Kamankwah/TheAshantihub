@@ -11,7 +11,6 @@ DEBUG = env("DJANGO_DEBUG")
 ALLOWED_HOSTS = ["*"]
 
 INSTALLED_APPS = [
-    "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.staticfiles",
     "rest_framework",
@@ -63,6 +62,13 @@ REST_FRAMEWORK = {
         "accounts.authentication.MultiAccountJWTAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [],
+    # DRF's request.user falls back to this class when no authenticator
+    # succeeds. The default value is "django.contrib.auth.models.AnonymousUser",
+    # which requires django.contrib.auth in INSTALLED_APPS just to import.
+    # This project uses custom Customer/BusinessOwner/StaffUser account models
+    # (not django.contrib.auth.models.User), so contrib.auth is intentionally
+    # not installed. Setting this to None avoids importing AnonymousUser.
+    "UNAUTHENTICATED_USER": None,
 }
 
 SIMPLE_JWT = {

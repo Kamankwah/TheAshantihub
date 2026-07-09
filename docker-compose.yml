@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: ashantihub
       POSTGRES_PASSWORD: ashantihub_dev
     ports:
-      - "5433:5432"
+      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
   web:
