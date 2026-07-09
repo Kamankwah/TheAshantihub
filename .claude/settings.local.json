@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npm install *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "mcp__claude_ai_Vercel__deploy_to_vercel",
+      "mcp__claude_ai_Vercel__list_teams",
+      "mcp__claude_ai_Vercel__get_project",
+      "Bash(dig +short theashantihub.com A)",
+      "Bash(dig +short www.theashantihub.com CNAME)",
+      "Bash(dig +short theashantihub.com NS)",
+      "Bash(curl -s -o /dev/null -w \"http_code=%{http_code}\\\\n\" -I https://theashantihub.com --max-time 15)",
+      "Bash(curl -s -o /dev/null -w \"http_code=%{http_code}\\\\n\" -I https://www.theashantihub.com --max-time 15)",
+      "Bash(curl -sI https://theashantihub.com --max-time 15)",
+      "Bash(pandoc --version)",
+      "Bash(google-chrome *)"
+    ]
+  },
+  "enabledPlugins": {
+    "code-review@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true,
+    "playwright@claude-plugins-official": true,
+    "skill-creator@claude-plugins-official": true
+  }
+}
