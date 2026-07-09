@@ -15,9 +15,16 @@
       "Bash(curl -s -o /dev/null -w \"http_code=%{http_code}\\\\n\" -I https://www.theashantihub.com --max-time 15)",
       "Bash(curl -sI https://theashantihub.com --max-time 15)",
       "Bash(pandoc --version)",
-      "Bash(google-chrome *)"
+      "Bash(google-chrome *)",
+      "Read(//home/righteoushack/.claude/**)",
+      "Read(//home/righteoushack/**)"
     ]
   },
+  "enabledMcpjsonServers": [
+    "magic",
+    "postgres",
+    "semgrep"
+  ],
   "enabledPlugins": {
     "code-review@claude-plugins-official": true,
     "superpowers@claude-plugins-official": true,
