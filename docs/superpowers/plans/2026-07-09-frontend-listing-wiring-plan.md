@@ -6,10 +6,11 @@
 
 **Architecture:** A small `apiClient.js` fetch helper backs four custom hooks (`useCategories`, `useZones`, `useListings`, `useListing`) built on `@tanstack/react-query`. `Card` and `MapView` are updated in place to read the real API response shape. `App.jsx`'s render logic swaps `CATEGORIES`/`LISTINGS` reads for these hooks, adding loading/error/empty states and a "Load more" pagination control. One small backend addition (pagination on the public listings endpoint) is included since the design spec calls for it.
 
-**Tech Stack:** `@tanstack/react-query` (data fetching/caching), `vitest` + `@testing-library/react` + `@testing-library/jest-dom` (test framework, matches the existing Vite build tool), `msw` (network-level API mocking in tests). Backend: Django REST Framework's built-in `PageNumberPagination` (already available, no new dependency).
+**Tech Stack:** `react`/`react-dom` bumped to 19 (Task 2 — pulled forward from `docs/FRONTEND_MODERNIZATION.md`'s separate React-19-upgrade item, which should be marked done rather than repeated once this lands), `@tanstack/react-query` (data fetching/caching), `vitest` + `@testing-library/react` (v16+, React-19-compatible) + `@testing-library/jest-dom` (test framework, matches the existing Vite build tool), `msw` (network-level API mocking in tests). Backend: Django REST Framework's built-in `PageNumberPagination` (already available, no new dependency).
 
 ## Global Constraints
 
+- `react`/`react-dom` are bumped from 18.2.0 to 19.0.0 as part of Task 2 (Step 1) — every dependency added afterward (`@tanstack/react-query`, `@testing-library/react`) must be a version with React 19 support, and every later task's `package.json` "Find" block must match the post-bump state, not the original 18.2.0 lines.
 - Business-owner-facing UI (create/edit/submit listing) is explicitly out of scope — this plan only touches the public browsing experience.
 - `Favourites` stays local-only client state — untouched by this plan.
 - Pagination (`PageNumberPagination`, page size 20) is added ONLY to `PublicListingListView` — not as a global DRF default. `categories/`, `zones/`, the owner listing endpoints, and the moderation queue stay unpaginated.
@@ -192,10 +193,16 @@ git commit -m "feat: paginate the public listings endpoint (page size 20)"
 - Consumes: nothing from prior tasks.
 - Produces: `npm run test` runs Vitest. `mocks/handlers.js` exports an (initially empty) array of MSW `http` handlers that later tasks append to. `mocks/server.js` exports a `setupServer(...handlers)` instance whose lifecycle (`listen`/`resetHandlers`/`close`) is wired into `test/setup.js`, so every later test file gets working MSW interception for free just by importing nothing extra.
 
-- [ ] **Step 1: Add dependencies to `package.json`**
+- [ ] **Step 1: Bump `react`/`react-dom` to 19 and add test-framework dependencies to `package.json`**
+
+React is bumped to 19 here (pulled forward from `docs/FRONTEND_MODERNIZATION.md`'s separate, not-yet-started React-19-upgrade item — once this plan lands, that document's upgrade step is already done and should be marked as such rather than repeated). `@testing-library/react` is pinned to a version with React 19 support (v14 only supports React 18).
 
 Find:
 ```json
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
     "vite": "^5.1.4"
@@ -204,9 +211,13 @@ Find:
 
 Replace with:
 ```json
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.4.2",
-    "@testing-library/react": "^14.2.1",
+    "@testing-library/react": "^16.0.1",
     "@vitejs/plugin-react": "^4.2.1",
     "jsdom": "^24.0.0",
     "msw": "^2.2.3",
@@ -412,20 +423,20 @@ Expected: `Test Files  2 passed (2)`, `Tests  4 passed (4)` (2 from the smoke te
 
 - [ ] **Step 6: Add `@tanstack/react-query` to `package.json`**
 
-Find:
+Find (note: `react`/`react-dom` are already at `^19.0.0` here, from Task 2's Step 1 bump):
 ```json
   "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
 ```
 
 Replace with:
 ```json
   "dependencies": {
-    "@tanstack/react-query": "^5.28.4",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "@tanstack/react-query": "^5.59.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
 ```
 
