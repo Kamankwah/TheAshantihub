@@ -6,7 +6,7 @@
 
 ## 1. Background & scope
 
-`App.jsx` currently renders the entire marketplace from two hardcoded constants: `CATEGORIES` (15 fixed categories) and `LISTINGS` (mock business entries keyed by category). The `listings` backend now provides real endpoints for both. This spec replaces the mock-data reads with live API calls for the **public browsing experience only** — category tabs, listing cards, search/filter, map view, listing detail.
+`App.jsx` currently renders the entire marketplace from two hardcoded constants: `CATEGORIES` (15 fixed categories) and `LISTINGS` (mock business entries keyed by category). The `listings` backend now provides real endpoints for both. This spec replaces the mock-data reads with live API calls for the **public browsing experience only** — category tabs, listing cards, search/filter, map view, listing detail. It also introduces this repo's first test framework (§6), scoped to the new code this spec adds — not a retroactive backfill of the existing untested frontend.
 
 **Out of scope for this spec** (deliberately deferred):
 - Any business-owner-facing UI (create/edit/submit listing, photo upload) — the frontend has no real authentication today (`user`/`authModal` are local-only stubs per `CLAUDE.md`), and building owner-facing screens without real login first would mean building throwaway UI. That work waits on a frontend-auth sub-project.
@@ -46,7 +46,13 @@ The backend's final review flagged that list endpoints have no pagination. This 
 
 ## 6. Testing considerations
 
-This repo has no test framework (`CLAUDE.md`: no Jest/Vitest, no test script, no lint/typecheck setup) — this has been true since the prototype stage and this spec doesn't change it. Verification is manual, per the existing project convention: `npm run dev`, exercise the golden path (browse each category, filter by zone/price, search, view a listing's detail, map view, paginate past page 1) and edge cases (a category with zero published listings, a slow/failed network via devtools throttling, a stale/deleted listing ID) in a browser.
+**This spec now also introduces the project's first test framework** (a scope addition made during brainstorming, after the rest of this spec was already drafted): `Vitest` + `React Testing Library`, with `MSW` (Mock Service Worker) for intercepting the hooks' `fetch()` calls realistically in tests. This is a deliberate, scoped addition — not a retroactive test-coverage backfill of the existing untested `App.jsx` monolith (out of scope here, same as the rest of that file).
+
+- **Dependencies added:** `vitest`, `@testing-library/react`, `@testing-library/jest-dom`, `msw` (dev dependencies only).
+- **Config:** a `vitest.config.js` (or a `test` block added to the existing `vite.config.js`) using `jsdom` as the test environment; an `npm run test` script added to `package.json`.
+- **What gets tests:** the new data-fetching hooks (`useCategories`, `useZones`, `useListings`, `useListing`) — success responses, error responses, and pagination (`fetchNextPage` for `useListings`) — via MSW handlers returning realistic backend-shaped JSON. `Card`/`MapView`'s updated field-reading logic gets rendering tests (given a real-shaped listing object, does it display the right price/photo/category). The loading/error/empty-state rendering described in §4 gets covered by the same component tests, driven by MSW handlers returning success/error/empty responses.
+- **What does NOT get tests in this pass:** anything pre-existing in `App.jsx` unrelated to this sub-project's new code (favourites, WhatsApp deep links, currency conversion, auth-stub modals, etc.) — those stay verified manually as before, per `CLAUDE.md`'s existing convention. This spec establishes the framework and pattern; broader backfill is a separate, explicit future decision, not an implicit side effect of this work.
+- **Manual verification still applies** for everything not covered by the new automated tests: `npm run dev`, exercise the golden path (browse each category, filter by zone/price, search, view a listing's detail, map view, paginate past page 1) and edge cases (a category with zero published listings, a slow/failed network via devtools throttling, a stale/deleted listing ID) in a browser.
 
 ## 7. Open questions
 
