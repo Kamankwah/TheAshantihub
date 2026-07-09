@@ -43,16 +43,24 @@ class ListingPhotoDeleteView(APIView):
         return Response(status=204)
 
 
-class CategoryListView(generics.ListAPIView):
+class CategoryListView(generics.ListCreateAPIView):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
-    permission_classes = [AllowAny]
+
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [HasRolePermission("categories.manage")]
+        return [AllowAny()]
 
 
-class ZoneListView(generics.ListAPIView):
+class ZoneListView(generics.ListCreateAPIView):
     queryset = Zone.objects.all()
     serializer_class = ZoneSerializer
-    permission_classes = [AllowAny]
+
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [HasRolePermission("zones.manage")]
+        return [AllowAny()]
 
 
 class PublicListingListView(generics.ListAPIView):
