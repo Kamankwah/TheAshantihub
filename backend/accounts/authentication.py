@@ -2,12 +2,13 @@ from rest_framework import authentication, exceptions, status
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import AccessToken
 
-from .models import Customer, StaffUser
+from .models import BusinessOwner, Customer, StaffUser
 from .mixins import AnonymousUser
 
 ACCOUNT_MODELS = {
     "customer": Customer,
     "staff": StaffUser,
+    "business_owner": BusinessOwner,
 }
 
 
