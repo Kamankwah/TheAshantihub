@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.authentication import issue_token
-from accounts.models import Role, StaffUser
+from accounts.models import Permission, Role, StaffUser
 
 
 class StaffInviteTests(TestCase):
@@ -116,3 +116,52 @@ class StaffInviteTests(TestCase):
         invited.refresh_from_db()
         self.assertNotEqual(invited.invite_token, "old-token-789")
         self.assertGreater(invited.invite_expires_at, timezone.now())
+
+    def test_non_super_admin_cannot_invite_super_admin(self):
+        # admin doesn't have staff.manage by default; grant it explicitly for
+        # this test to prove that having staff.manage alone is not enough to
+        # mint a super_admin account.
+        admin_role = Role.objects.get(name="admin")
+        staff_manage = Permission.objects.get(codename="staff.manage")
+        admin_role.permissions.add(staff_manage)
+
+        admin_staff = StaffUser.objects.create(
+            full_name="Adwoa Admin",
+            email="adwoa-admin@example.com",
+            password_hash="x",
+            role=admin_role,
+        )
+        token = issue_token(admin_staff, "staff")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        response = self.client.post(
+            "/api/accounts/staff/invite/",
+            {
+                "full_name": "Wannabe Super",
+                "email": "wannabe-super@example.com",
+                "role": "super_admin",
+            },
+            format="json",
+        )
+        self.assertIn(response.status_code, (400, 403))
+        self.assertFalse(
+            StaffUser.objects.filter(email="wannabe-super@example.com").exists()
+        )
+        self.assertFalse(StaffUser.objects.filter(role__name="super_admin").exclude(
+            pk=self.super_admin.pk
+        ).exists())
+
+    def test_resend_invite_rejected_for_already_activated_staff(self):
+        activated = StaffUser.objects.create(
+            full_name="Already Active",
+            email="already-active@example.com",
+            password_hash="a-real-password-hash",
+            role=Role.objects.get(name="support"),
+            invited_by=self.super_admin,
+            invite_token=None,
+            invite_expires_at=None,
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
+        response = self.client.post(f"/api/accounts/staff/{activated.id}/resend-invite/")
+        self.assertEqual(response.status_code, 400)
+        activated.refresh_from_db()
+        self.assertIsNone(activated.invite_token)

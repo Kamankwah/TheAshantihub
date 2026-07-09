@@ -40,6 +40,12 @@ class StaffInviteSerializer(serializers.ModelSerializer):
         model = StaffUser
         fields = ["id", "full_name", "email", "phone", "role"]
 
+    def validate_role(self, value):
+        requester = self.context["request"].user
+        if value.name == Role.SUPER_ADMIN and requester.role.name != Role.SUPER_ADMIN:
+            raise serializers.ValidationError("Only a super_admin can invite another super_admin.")
+        return value
+
     def create(self, validated_data):
         # password_hash stays unusable until /staff/activate/ sets a real password.
         validated_data["password_hash"] = make_password(get_random_string(32))

@@ -1,4 +1,6 @@
-from rest_framework import generics
+from django.utils import timezone
+from django.utils.crypto import get_random_string
+from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -7,6 +9,7 @@ from rest_framework.views import APIView
 from .models import StaffUser
 from .permissions import HasRolePermission
 from .serializers import (
+    INVITE_TOKEN_LIFETIME,
     CustomerRegistrationSerializer,
     StaffActivateSerializer,
     StaffInviteSerializer,
@@ -48,12 +51,12 @@ class StaffResendInviteView(APIView):
         return [HasRolePermission("staff.manage")]
 
     def post(self, request, pk):
-        from django.utils import timezone
-        from django.utils.crypto import get_random_string
-
-        from .serializers import INVITE_TOKEN_LIFETIME
-
         staff = generics.get_object_or_404(StaffUser, pk=pk)
+        if staff.invite_token is None:
+            return Response(
+                {"detail": "Cannot resend invite for an already-activated account."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         staff.invite_token = get_random_string(43)
         staff.invite_expires_at = timezone.now() + INVITE_TOKEN_LIFETIME
         staff.save(update_fields=["invite_token", "invite_expires_at"])
