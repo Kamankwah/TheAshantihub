@@ -11,6 +11,7 @@ from .models import BusinessOwner, StaffUser
 from .permissions import HasRolePermission
 from .serializers import (
     INVITE_TOKEN_LIFETIME,
+    BusinessOwnerKYCDetailSerializer,
     BusinessOwnerKYCSerializer,
     BusinessOwnerRegistrationSerializer,
     CustomerRegistrationSerializer,
@@ -76,6 +77,14 @@ class StaffResendInviteView(APIView):
 class KYCPendingQueueView(generics.ListAPIView):
     serializer_class = BusinessOwnerKYCSerializer
     queryset = BusinessOwner.objects.filter(kyc_status=BusinessOwner.PENDING).order_by("created_at")
+
+    def get_permissions(self):
+        return [HasRolePermission("kyc.approve")]
+
+
+class KYCDetailView(generics.RetrieveAPIView):
+    queryset = BusinessOwner.objects.all()
+    serializer_class = BusinessOwnerKYCDetailSerializer
 
     def get_permissions(self):
         return [HasRolePermission("kyc.approve")]

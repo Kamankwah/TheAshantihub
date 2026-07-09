@@ -167,6 +167,24 @@ class BusinessOwnerKYCSerializer(serializers.ModelSerializer):
         fields = ["id", "full_name", "login_phone", "kyc_status", "created_at"]
 
 
+class BusinessOwnerProfileKYCDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BusinessOwnerProfile
+        fields = [
+            "ghana_card_number", "ghana_card_front_image", "ghana_card_back_image",
+            "gps_address", "business_contact_phone", "is_formal",
+            "business_reg_certificate", "tin",
+        ]
+
+
+class BusinessOwnerKYCDetailSerializer(serializers.ModelSerializer):
+    profile = BusinessOwnerProfileKYCDetailSerializer(read_only=True)
+
+    class Meta:
+        model = BusinessOwner
+        fields = ["id", "full_name", "login_phone", "email", "kyc_status", "kyc_rejection_reason", "created_at", "profile"]
+
+
 class PayoutDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = BusinessOwnerProfile

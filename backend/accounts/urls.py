@@ -19,6 +19,7 @@ urlpatterns = [
     ),
     path("business-owners/me/payout/", views.PayoutDetailUpdateView.as_view(), name="payout-update"),
     path("kyc/pending/", views.KYCPendingQueueView.as_view(), name="kyc-pending"),
+    path("kyc/<int:pk>/", views.KYCDetailView.as_view(), name="kyc-detail"),
     path("kyc/<int:pk>/approve/", views.KYCApproveView.as_view(), name="kyc-approve"),
     path("kyc/<int:pk>/reject/", views.KYCRejectView.as_view(), name="kyc-reject"),
 ]
