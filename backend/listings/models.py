@@ -54,3 +54,15 @@ class Listing(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class ListingPhoto(models.Model):
+    listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="photos")
+    image = models.ImageField(upload_to="listing_photos/gallery/")
+    order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order"]
+
+    def __str__(self):
+        return f"Photo {self.order} for {self.listing.name}"
