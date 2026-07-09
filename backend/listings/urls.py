@@ -9,4 +9,8 @@ urlpatterns = [
         views.ListingPhotoDeleteView.as_view(),
         name="listing-photo-delete",
     ),
+    path("categories/", views.CategoryListView.as_view(), name="category-list"),
+    path("zones/", views.ZoneListView.as_view(), name="zone-list"),
+    path("", views.PublicListingListView.as_view(), name="listing-list"),
+    path("<int:pk>/", views.PublicListingDetailView.as_view(), name="listing-detail"),
 ]
