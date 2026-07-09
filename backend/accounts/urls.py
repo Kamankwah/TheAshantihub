@@ -5,4 +5,11 @@ from . import views
 urlpatterns = [
     path("me/", views.me, name="accounts-me"),
     path("customers/register/", views.CustomerRegisterView.as_view(), name="customer-register"),
+    path("staff/invite/", views.StaffInviteView.as_view(), name="staff-invite"),
+    path("staff/activate/", views.StaffActivateView.as_view(), name="staff-activate"),
+    path(
+        "staff/<int:pk>/resend-invite/",
+        views.StaffResendInviteView.as_view(),
+        name="staff-resend-invite",
+    ),
 ]

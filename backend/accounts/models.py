@@ -42,3 +42,20 @@ class Customer(AuthenticatableAccountMixin, models.Model):
 
     def __str__(self):
         return self.full_name
+
+
+class StaffUser(AuthenticatableAccountMixin, models.Model):
+    full_name = models.CharField(max_length=150)
+    email = models.EmailField(unique=True)
+    phone = models.CharField(max_length=20, null=True, blank=True)
+    password_hash = models.CharField(max_length=255)
+    role = models.ForeignKey(Role, on_delete=models.PROTECT, related_name="staff_members")
+    invited_by = models.ForeignKey(
+        "self", on_delete=models.SET_NULL, null=True, blank=True, related_name="invited"
+    )
+    invite_token = models.CharField(max_length=64, unique=True, null=True, blank=True)
+    invite_expires_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.full_name} ({self.role.name})"
