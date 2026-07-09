@@ -77,6 +77,14 @@ class ListingModerationTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
+    def test_reject_requires_non_blank_reason_even_if_explicitly_null(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.admin_token}")
+        response = self.client.post(
+            f"/api/listings/moderation/{self.listing_verified_owner.id}/reject/",
+            {"reason": None}, format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
     def test_accountant_cannot_moderate_listings(self):
         accountant = StaffUser.objects.create(
             full_name="Accountant Person", email="acc-listing@example.com", password_hash="x",

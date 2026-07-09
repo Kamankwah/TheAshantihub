@@ -153,7 +153,7 @@ class ModerationRejectView(APIView):
         return [HasRolePermission("listings.moderate")]
 
     def post(self, request, pk):
-        reason = request.data.get("reason", "").strip()
+        reason = (request.data.get("reason") or "").strip()
         if not reason:
             return Response({"reason": "A rejection reason is required."}, status=400)
         listing = generics.get_object_or_404(Listing, pk=pk)
