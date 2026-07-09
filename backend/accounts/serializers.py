@@ -165,3 +165,36 @@ class BusinessOwnerKYCSerializer(serializers.ModelSerializer):
     class Meta:
         model = BusinessOwner
         fields = ["id", "full_name", "login_phone", "kyc_status", "created_at"]
+
+
+class PayoutDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BusinessOwnerProfile
+        fields = [
+            "payout_bank_name", "payout_bank_account_number", "payout_bank_account_name",
+            "payout_momo_network", "payout_momo_number", "payout_momo_name",
+            "default_payout_method",
+        ]
+        extra_kwargs = {field: {"required": False} for field in fields}
+
+    def validate(self, data):
+        method = data.get("default_payout_method", self.instance.default_payout_method if self.instance else None)
+        bank_number = data.get("payout_bank_account_number", getattr(self.instance, "payout_bank_account_number", None))
+        momo_number = data.get("payout_momo_number", getattr(self.instance, "payout_momo_number", None))
+
+        if method == BusinessOwnerProfile.BANK and not bank_number:
+            raise serializers.ValidationError(
+                {"default_payout_method": "Bank details must be provided to set bank as the default payout method."}
+            )
+        if method == BusinessOwnerProfile.MOMO and not momo_number:
+            raise serializers.ValidationError(
+                {"default_payout_method": "Mobile money details must be provided to set momo as the default payout method."}
+            )
+        return data
+
+    def update(self, instance, validated_data):
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+        instance.payout_verification_status = "pending"
+        instance.save()
+        return instance
