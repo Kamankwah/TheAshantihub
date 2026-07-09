@@ -35,3 +35,13 @@ class CustomerRegistrationTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn("phone", response.json())
+
+    def test_registration_requires_phone_or_email(self):
+        payload = {
+            "full_name": "John Doe",
+            "password": "correct-horse-battery-staple",
+        }
+        response = self.client.post(
+            "/api/accounts/customers/register/", payload, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
