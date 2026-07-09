@@ -3,11 +3,14 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.views import IsBusinessOwner
+
 from .models import Category, Listing, ListingPhoto, Zone
 from .permissions import IsListingOwner
 from .serializers import (
     CategorySerializer,
     ListingPhotoSerializer,
+    OwnerListingSerializer,
     PublicListingSerializer,
     ZoneSerializer,
 )
@@ -82,3 +85,29 @@ class PublicListingDetailView(generics.RetrieveAPIView):
     queryset = Listing.objects.filter(status=Listing.PUBLISHED)
     serializer_class = PublicListingSerializer
     permission_classes = [AllowAny]
+
+
+class OwnerListingCreateListView(generics.ListCreateAPIView):
+    serializer_class = OwnerListingSerializer
+    permission_classes = [IsAuthenticated, IsBusinessOwner]
+
+    def get_queryset(self):
+        return Listing.objects.filter(business_owner=self.request.user)
+
+
+class OwnerListingUpdateView(generics.UpdateAPIView):
+    queryset = Listing.objects.all()
+    serializer_class = OwnerListingSerializer
+    permission_classes = [IsAuthenticated, IsListingOwner]
+    http_method_names = ["patch"]
+
+
+class ListingSubmitView(APIView):
+    permission_classes = [IsAuthenticated, IsListingOwner]
+
+    def post(self, request, pk):
+        listing = generics.get_object_or_404(Listing, pk=pk)
+        self.check_object_permissions(request, listing)
+        listing.status = Listing.PENDING_REVIEW
+        listing.save(update_fields=["status"])
+        return Response({"id": listing.id, "status": listing.status})
