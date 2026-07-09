@@ -3,6 +3,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.models import BusinessOwner
+from accounts.permissions import HasRolePermission
 from accounts.views import IsBusinessOwner
 
 from .models import Category, Listing, ListingPhoto, Zone
@@ -10,6 +12,7 @@ from .permissions import IsListingOwner
 from .serializers import (
     CategorySerializer,
     ListingPhotoSerializer,
+    ModerationListingSerializer,
     OwnerListingSerializer,
     PublicListingSerializer,
     ZoneSerializer,
@@ -110,4 +113,51 @@ class ListingSubmitView(APIView):
         self.check_object_permissions(request, listing)
         listing.status = Listing.PENDING_REVIEW
         listing.save(update_fields=["status"])
+        return Response({"id": listing.id, "status": listing.status})
+
+
+class ModerationPendingQueueView(generics.ListAPIView):
+    serializer_class = ModerationListingSerializer
+    queryset = Listing.objects.filter(status=Listing.PENDING_REVIEW).order_by("created_at")
+
+    def get_permissions(self):
+        return [HasRolePermission("listings.moderate")]
+
+
+class ModerationListingDetailView(generics.RetrieveAPIView):
+    queryset = Listing.objects.all()
+    serializer_class = ModerationListingSerializer
+
+    def get_permissions(self):
+        return [HasRolePermission("listings.moderate")]
+
+
+class ModerationApproveView(APIView):
+    def get_permissions(self):
+        return [HasRolePermission("listings.moderate")]
+
+    def post(self, request, pk):
+        listing = generics.get_object_or_404(Listing, pk=pk)
+        if listing.business_owner.kyc_status != BusinessOwner.VERIFIED:
+            return Response(
+                {"detail": "Cannot publish a listing whose owner is not KYC-verified."}, status=400
+            )
+        listing.status = Listing.PUBLISHED
+        listing.rejection_reason = None
+        listing.save(update_fields=["status", "rejection_reason"])
+        return Response({"id": listing.id, "status": listing.status})
+
+
+class ModerationRejectView(APIView):
+    def get_permissions(self):
+        return [HasRolePermission("listings.moderate")]
+
+    def post(self, request, pk):
+        reason = request.data.get("reason", "").strip()
+        if not reason:
+            return Response({"reason": "A rejection reason is required."}, status=400)
+        listing = generics.get_object_or_404(Listing, pk=pk)
+        listing.status = Listing.REJECTED
+        listing.rejection_reason = reason
+        listing.save(update_fields=["status", "rejection_reason"])
         return Response({"id": listing.id, "status": listing.status})

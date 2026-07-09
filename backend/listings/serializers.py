@@ -57,3 +57,17 @@ class OwnerListingSerializer(serializers.ModelSerializer):
         if not validated_data.get("contact_phone"):
             validated_data["contact_phone"] = owner.profile.business_contact_phone
         return Listing.objects.create(business_owner=owner, **validated_data)
+
+
+class ModerationListingSerializer(serializers.ModelSerializer):
+    category = CategorySerializer(read_only=True)
+    zone = ZoneSerializer(read_only=True)
+    photos = ListingPhotoSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Listing
+        fields = [
+            "id", "business_owner", "name", "description", "category", "zone", "price_amount",
+            "price_unit", "tag", "contact_phone", "lat", "lng", "main_photo", "photos",
+            "status", "rejection_reason", "created_at",
+        ]
