@@ -2034,6 +2034,353 @@ git commit -m "feat: add business owner payout detail update endpoint"
 
 ---
 
+## Addendum: Tasks 10-11 (added post-final-review)
+
+The final whole-branch review (after Tasks 1-9 were each individually implemented and reviewed) found that this plan, while matching itself internally, under-delivered against `docs/superpowers/specs/2026-07-09-roles-registration-kyc-design.md` §5 ("KYC verification workflow"): the design spec requires (a) staff to be able to see the actual Ghana Card images / GPS address / registration docs before approving or rejecting, and (b) a rejected owner to be able to edit their profile and resubmit (resetting `kyc_status` back to `pending`). Neither endpoint existed anywhere in Tasks 1-9. These two tasks close that gap. They follow the same file structure and conventions as Tasks 1-9.
+
+### Task 10: KYC detail view endpoint
+
+**Files:**
+- Modify: `backend/accounts/serializers.py`
+- Modify: `backend/accounts/views.py`
+- Modify: `backend/accounts/urls.py`
+- Test: `backend/accounts/tests/test_kyc_detail.py`
+
+**Interfaces:**
+- Consumes: `BusinessOwner`/`BusinessOwnerProfile` (Task 6), `HasRolePermission` (Task 5).
+- Produces: `GET /api/accounts/kyc/<id>/` (requires `kyc.approve`) → 200 with the owner's identity/KYC fields (not payout fields — those are a separate concern per the design spec) so a reviewer can actually inspect the submission before calling `/approve/` or `/reject/`.
+
+- [ ] **Step 1: Write the failing test — `backend/accounts/tests/test_kyc_detail.py`**
+
+```python
+from django.test import TestCase
+from rest_framework.test import APIClient
+
+from accounts.authentication import issue_token
+from accounts.models import BusinessOwner, BusinessOwnerProfile, Role, StaffUser
+
+
+class KYCDetailViewTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = StaffUser.objects.create(
+            full_name="Admin Person", email="admin-detail@example.com", password_hash="x",
+            role=Role.objects.get(name="admin"),
+        )
+        self.admin_token = issue_token(self.admin, "staff")
+
+        self.owner = BusinessOwner.objects.create(
+            full_name="Kwabena Trader", login_phone="+233207001122", password_hash="x",
+        )
+        self.profile = BusinessOwnerProfile.objects.create(
+            business_owner=self.owner,
+            ghana_card_number="GHA-123123123-1",
+            gps_address="AK-039-5040",
+            business_contact_phone="+233207001122",
+            is_formal=False,
+            default_payout_method="momo",
+            payout_momo_network="MTN",
+            payout_momo_number="+233207001122",
+            payout_momo_name="Kwabena Trader",
+        )
+
+    def test_admin_can_view_kyc_detail(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.admin_token}")
+        response = self.client.get(f"/api/accounts/kyc/{self.owner.id}/")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["id"], self.owner.id)
+        self.assertEqual(body["profile"]["ghana_card_number"], "GHA-123123123-1")
+        self.assertEqual(body["profile"]["gps_address"], "AK-039-5040")
+        self.assertFalse(body["profile"]["is_formal"])
+        self.assertIsNone(body["profile"]["business_reg_certificate"])
+        self.assertNotIn("password_hash", body)
+        self.assertNotIn("payout_bank_account_number", body["profile"])
+
+    def test_accountant_cannot_view_kyc_detail(self):
+        accountant = StaffUser.objects.create(
+            full_name="Accountant Detail", email="acc-detail@example.com", password_hash="x",
+            role=Role.objects.get(name="accountant"),
+        )
+        token = issue_token(accountant, "staff")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        response = self.client.get(f"/api/accounts/kyc/{self.owner.id}/")
+        self.assertEqual(response.status_code, 403)
+
+    def test_detail_reflects_rejection_reason_after_reject(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.admin_token}")
+        self.client.post(
+            f"/api/accounts/kyc/{self.owner.id}/reject/",
+            {"reason": "Ghana Card image is blurry"},
+            format="json",
+        )
+        response = self.client.get(f"/api/accounts/kyc/{self.owner.id}/")
+        self.assertEqual(response.json()["kyc_rejection_reason"], "Ghana Card image is blurry")
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `docker compose run --rm web python manage.py test accounts.tests.test_kyc_detail`
+Expected: FAIL — 404, endpoint doesn't exist.
+
+- [ ] **Step 3: Add `BusinessOwnerProfileKYCDetailSerializer` and `BusinessOwnerKYCDetailSerializer` to `backend/accounts/serializers.py`**
+
+```python
+class BusinessOwnerProfileKYCDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BusinessOwnerProfile
+        fields = [
+            "ghana_card_number", "ghana_card_front_image", "ghana_card_back_image",
+            "gps_address", "business_contact_phone", "is_formal",
+            "business_reg_certificate", "tin",
+        ]
+
+
+class BusinessOwnerKYCDetailSerializer(serializers.ModelSerializer):
+    profile = BusinessOwnerProfileKYCDetailSerializer(read_only=True)
+
+    class Meta:
+        model = BusinessOwner
+        fields = ["id", "full_name", "login_phone", "email", "kyc_status", "kyc_rejection_reason", "created_at", "profile"]
+```
+
+Deliberately excludes all `payout_*` fields — payout-destination verification is a separate concern from identity KYC per the design spec, and stays scoped to the accountant-facing payout review (not built yet; out of scope here, same as it was out of scope for Tasks 6-9).
+
+- [ ] **Step 4: Add `KYCDetailView` to `backend/accounts/views.py`**
+
+```python
+class KYCDetailView(generics.RetrieveAPIView):
+    queryset = BusinessOwner.objects.all()
+    serializer_class = BusinessOwnerKYCDetailSerializer
+
+    def get_permissions(self):
+        return [HasRolePermission("kyc.approve")]
+```
+
+- [ ] **Step 5: Add the route to `backend/accounts/urls.py`**
+
+Add `path("kyc/<int:pk>/", views.KYCDetailView.as_view(), name="kyc-detail")` to the EXISTING `urlpatterns` list — do not replace the list. As of Task 9, `urls.py` has 10 routes; this adds an 11th. Verify all 10 survive.
+
+- [ ] **Step 6: Run test to verify it passes, then the full suite**
+
+Run: `docker compose run --rm web python manage.py test accounts.tests.test_kyc_detail`
+Expected: `Ran 3 tests in ...s OK`
+
+Run: `docker compose run --rm web python manage.py test accounts core`
+Expected: all tests pass (34 + 3 = 37).
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add backend/accounts/
+git commit -m "feat: add KYC detail view so staff can inspect documents before approving"
+```
+
+---
+
+### Task 11: Business owner profile edit / resubmission endpoint
+
+**Files:**
+- Modify: `backend/accounts/serializers.py`
+- Modify: `backend/accounts/views.py`
+- Modify: `backend/accounts/urls.py`
+- Test: `backend/accounts/tests/test_business_owner_profile_update.py`
+
+**Interfaces:**
+- Consumes: `BusinessOwner`/`BusinessOwnerProfile` (Task 6), `IsBusinessOwner` (Task 9).
+- Produces: `PATCH /api/accounts/business-owners/me/profile/` (requires an authenticated `business_owner`) → updates KYC/identity profile fields (not payout fields — that's Task 9's endpoint, a separate concern). If the owner's `kyc_status` is currently `rejected`, a successful edit resets it to `pending` and clears `kyc_rejection_reason` (resubmission, per design spec §5). If `kyc_status` is `pending`, the edit is applied with no status change. If `kyc_status` is `verified`, the edit is rejected (400) — the design spec states verification is staff-controlled thereafter with no self-service transition *out* of `verified` either, and re-opening a verified identity via self-service isn't specified, so this task treats it as not-yet-supported rather than inventing new unspecified behavior.
+
+- [ ] **Step 1: Write the failing test — `backend/accounts/tests/test_business_owner_profile_update.py`**
+
+```python
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
+from rest_framework.test import APIClient
+
+from accounts.authentication import issue_token
+from accounts.models import BusinessOwner, BusinessOwnerProfile, Customer
+
+import tempfile
+
+TEST_MEDIA_ROOT = tempfile.mkdtemp()
+
+
+@override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
+class BusinessOwnerProfileUpdateTests(TestCase):
+    def _make_owner(self, kyc_status, **profile_overrides):
+        owner = BusinessOwner.objects.create(
+            full_name="Adjoa Seller", login_phone="+233208889900", password_hash="x",
+            kyc_status=kyc_status,
+            kyc_rejection_reason="Blurry Ghana Card" if kyc_status == BusinessOwner.REJECTED else None,
+        )
+        defaults = dict(
+            business_owner=owner,
+            ghana_card_number="GHA-777888999-0",
+            gps_address="AK-039-5050",
+            business_contact_phone="+233208889900",
+            is_formal=False,
+            default_payout_method="momo",
+            payout_momo_network="MTN",
+            payout_momo_number="+233208889900",
+            payout_momo_name="Adjoa Seller",
+        )
+        defaults.update(profile_overrides)
+        BusinessOwnerProfile.objects.create(**defaults)
+        return owner
+
+    def _token(self, owner):
+        return issue_token(owner, "business_owner")
+
+    def test_rejected_owner_can_edit_and_resubmits_to_pending(self):
+        owner = self._make_owner(BusinessOwner.REJECTED)
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._token(owner)}")
+        response = self.client.patch(
+            "/api/accounts/business-owners/me/profile/",
+            {"gps_address": "AK-039-9999"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        owner.refresh_from_db()
+        owner.profile.refresh_from_db()
+        self.assertEqual(owner.kyc_status, BusinessOwner.PENDING)
+        self.assertIsNone(owner.kyc_rejection_reason)
+        self.assertEqual(owner.profile.gps_address, "AK-039-9999")
+
+    def test_pending_owner_can_edit_without_status_change(self):
+        owner = self._make_owner(BusinessOwner.PENDING)
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._token(owner)}")
+        response = self.client.patch(
+            "/api/accounts/business-owners/me/profile/",
+            {"gps_address": "AK-039-1111"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        owner.refresh_from_db()
+        self.assertEqual(owner.kyc_status, BusinessOwner.PENDING)
+
+    def test_verified_owner_cannot_edit(self):
+        owner = self._make_owner(BusinessOwner.VERIFIED)
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._token(owner)}")
+        response = self.client.patch(
+            "/api/accounts/business-owners/me/profile/",
+            {"gps_address": "AK-039-2222"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_toggling_is_formal_true_without_documents_is_rejected(self):
+        owner = self._make_owner(BusinessOwner.REJECTED)
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._token(owner)}")
+        response = self.client.patch(
+            "/api/accounts/business-owners/me/profile/",
+            {"is_formal": "true"},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("business_reg_certificate", response.json())
+
+    def test_customer_cannot_access_endpoint(self):
+        customer = Customer.objects.create(full_name="Ama", phone="+233200002222", password_hash="x")
+        token = issue_token(customer, "customer")
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        response = self.client.patch(
+            "/api/accounts/business-owners/me/profile/", {"gps_address": "x"}, format="json"
+        )
+        self.assertEqual(response.status_code, 403)
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `docker compose run --rm web python manage.py test accounts.tests.test_business_owner_profile_update`
+Expected: FAIL — 404, endpoint doesn't exist.
+
+- [ ] **Step 3: Add `BusinessOwnerProfileUpdateSerializer` to `backend/accounts/serializers.py`**
+
+```python
+class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BusinessOwnerProfile
+        fields = [
+            "ghana_card_number", "ghana_card_front_image", "ghana_card_back_image",
+            "gps_address", "business_contact_phone", "is_formal",
+            "business_reg_certificate", "tin",
+        ]
+        extra_kwargs = {field: {"required": False} for field in fields}
+
+    def validate(self, data):
+        owner = self.instance.business_owner
+        if owner.kyc_status == BusinessOwner.VERIFIED:
+            raise serializers.ValidationError(
+                {"kyc_status": "Cannot edit a verified KYC profile."}
+            )
+
+        is_formal = data.get("is_formal", self.instance.is_formal)
+        if is_formal:
+            cert = data.get("business_reg_certificate", self.instance.business_reg_certificate)
+            tin = data.get("tin", self.instance.tin)
+            if not cert:
+                raise serializers.ValidationError(
+                    {"business_reg_certificate": "Required for formally registered businesses."}
+                )
+            if not tin:
+                raise serializers.ValidationError({"tin": "Required for formally registered businesses."})
+        return data
+
+    def update(self, instance, validated_data):
+        owner = instance.business_owner
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+        instance.save()
+
+        if owner.kyc_status == BusinessOwner.REJECTED:
+            owner.kyc_status = BusinessOwner.PENDING
+            owner.kyc_rejection_reason = None
+            owner.save(update_fields=["kyc_status", "kyc_rejection_reason"])
+        return instance
+```
+
+Note `BusinessOwner` must be imported in `serializers.py` if not already (it is, from Task 7).
+
+- [ ] **Step 4: Add `BusinessOwnerProfileUpdateView` to `backend/accounts/views.py`**
+
+```python
+class BusinessOwnerProfileUpdateView(generics.UpdateAPIView):
+    serializer_class = BusinessOwnerProfileUpdateSerializer
+    permission_classes = [IsBusinessOwner]
+    http_method_names = ["patch"]
+
+    def get_object(self):
+        return self.request.user.profile
+```
+
+Reuses `IsBusinessOwner` from Task 9 — do not redefine it.
+
+- [ ] **Step 5: Add the route to `backend/accounts/urls.py`**
+
+Add `path("business-owners/me/profile/", views.BusinessOwnerProfileUpdateView.as_view(), name="business-owner-profile-update")` to the EXISTING `urlpatterns` list — additive, not a replacement. This is the 12th route (after Task 10 adds the 11th).
+
+- [ ] **Step 6: Run test to verify it passes, then the full suite**
+
+Run: `docker compose run --rm web python manage.py test accounts.tests.test_business_owner_profile_update`
+Expected: `Ran 5 tests in ...s OK`
+
+Run: `docker compose run --rm web python manage.py test accounts core`
+Expected: all tests pass (37 + 5 = 42).
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add backend/accounts/
+git commit -m "feat: add business owner profile edit/resubmission endpoint"
+```
+
+---
+
 ## Notes for the next sub-project (escrow)
 
 The escrow payment model spec (sub-project 2 of 5) will read `BusinessOwnerProfile.default_payout_method`, `.payout_verification_status`, and `BusinessOwner.kyc_status` to decide whether a payout can be released — no changes to this plan's models should be needed, only additive fields/tables in that spec.
