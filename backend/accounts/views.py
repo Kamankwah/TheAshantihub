@@ -2,6 +2,7 @@ from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -10,6 +11,7 @@ from .models import StaffUser
 from .permissions import HasRolePermission
 from .serializers import (
     INVITE_TOKEN_LIFETIME,
+    BusinessOwnerRegistrationSerializer,
     CustomerRegistrationSerializer,
     StaffActivateSerializer,
     StaffInviteSerializer,
@@ -44,6 +46,12 @@ class StaffActivateView(generics.GenericAPIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response({"status": "activated"})
+
+
+class BusinessOwnerRegisterView(generics.CreateAPIView):
+    serializer_class = BusinessOwnerRegistrationSerializer
+    permission_classes = [AllowAny]
+    parser_classes = [MultiPartParser, FormParser]
 
 
 class StaffResendInviteView(APIView):

@@ -12,4 +12,9 @@ urlpatterns = [
         views.StaffResendInviteView.as_view(),
         name="staff-resend-invite",
     ),
+    path(
+        "business-owners/register/",
+        views.BusinessOwnerRegisterView.as_view(),
+        name="business-owner-register",
+    ),
 ]
