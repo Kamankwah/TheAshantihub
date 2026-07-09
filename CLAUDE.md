@@ -45,3 +45,17 @@ The "WhatsApp-first" contact pattern is central to the product: most business in
 ## Styling
 
 No CSS framework or CSS files are used — all styling is inline `style={{...}}` objects on JSX elements, using a shared color constant object `C` (Ghanaian/Ashanti-themed palette: gold, kente colors, Ghana flag colors) defined at the top of `App.jsx`. Reuse `C` rather than hardcoding new colors.
+
+## Planning & specs
+
+`docs/` holds forward-looking architecture/implementation specs beyond this file's as-is description. Check these before starting work in their area — they carry decisions already made, not just background:
+
+- `docs/PROJECT_SCOPE.md` — full phased roadmap (backend, auth, Hubtel payments, AI messaging, credit scoring, DevOps hardening)
+- `docs/HUBTEL_INTEGRATION.md` — Hubtel payment integration technical spec
+- `docs/MOBILE_APP_SCOPE.md` — React Native (iOS + Android) mobile app scope
+- `docs/TOOLING_SETUP.md` — project agents/skills/plugins/MCP server setup
+- `docs/FRONTEND_MODERNIZATION.md` — Hero/Navbar redesign, componentization plan, React 19 upgrade path
+- `docs/PWA_STAFF_DASHBOARD.md` — PWA spec for staff-facing dashboards
+- `docs/IMPLEMENTATION_INSTRUCTIONS.md` — master index tying the above together, with sequencing and what's not done yet
+
+These are specs, not implemented state — this file's "Architecture"/"Styling" sections above still describe what's actually in `App.jsx` today. Update them when code from these specs actually lands.

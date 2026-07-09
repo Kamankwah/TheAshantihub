@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "magic": {
+      "command": "npx",
+      "args": ["-y", "@21st-dev/magic@latest"],
+      "env": {
+        "API_KEY": "YOUR_21ST_DEV_API_KEY_HERE"
+      }
+    },
+    "postgres": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-server-pg",
+        "--connection-string",
+        "postgresql://REPLACE_WITH_PHASE1_DB_USER:REPLACE_WITH_PHASE1_DB_PASSWORD@localhost:5432/ashantihub"
+      ]
+    },
+    "semgrep": {
+      "command": "uvx",
+      "args": ["semgrep-mcp"]
+    }
+  }
+}
