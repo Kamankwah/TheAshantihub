@@ -17,4 +17,7 @@ urlpatterns = [
         views.BusinessOwnerRegisterView.as_view(),
         name="business-owner-register",
     ),
+    path("kyc/pending/", views.KYCPendingQueueView.as_view(), name="kyc-pending"),
+    path("kyc/<int:pk>/approve/", views.KYCApproveView.as_view(), name="kyc-approve"),
+    path("kyc/<int:pk>/reject/", views.KYCRejectView.as_view(), name="kyc-reject"),
 ]

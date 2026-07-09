@@ -7,10 +7,11 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import StaffUser
+from .models import BusinessOwner, StaffUser
 from .permissions import HasRolePermission
 from .serializers import (
     INVITE_TOKEN_LIFETIME,
+    BusinessOwnerKYCSerializer,
     BusinessOwnerRegistrationSerializer,
     CustomerRegistrationSerializer,
     StaffActivateSerializer,
@@ -69,3 +70,36 @@ class StaffResendInviteView(APIView):
         staff.invite_expires_at = timezone.now() + INVITE_TOKEN_LIFETIME
         staff.save(update_fields=["invite_token", "invite_expires_at"])
         return Response({"status": "invite resent"})
+
+
+class KYCPendingQueueView(generics.ListAPIView):
+    serializer_class = BusinessOwnerKYCSerializer
+    queryset = BusinessOwner.objects.filter(kyc_status=BusinessOwner.PENDING).order_by("created_at")
+
+    def get_permissions(self):
+        return [HasRolePermission("kyc.approve")]
+
+
+class KYCApproveView(APIView):
+    def get_permissions(self):
+        return [HasRolePermission("kyc.approve")]
+
+    def post(self, request, pk):
+        owner = generics.get_object_or_404(BusinessOwner, pk=pk)
+        owner.kyc_status = BusinessOwner.VERIFIED
+        owner.kyc_rejection_reason = None
+        owner.save(update_fields=["kyc_status", "kyc_rejection_reason"])
+        return Response({"id": owner.id, "kyc_status": owner.kyc_status})
+
+
+class KYCRejectView(APIView):
+    def get_permissions(self):
+        return [HasRolePermission("kyc.approve")]
+
+    def post(self, request, pk):
+        reason = request.data.get("reason", "")
+        owner = generics.get_object_or_404(BusinessOwner, pk=pk)
+        owner.kyc_status = BusinessOwner.REJECTED
+        owner.kyc_rejection_reason = reason
+        owner.save(update_fields=["kyc_status", "kyc_rejection_reason"])
+        return Response({"id": owner.id, "kyc_status": owner.kyc_status})

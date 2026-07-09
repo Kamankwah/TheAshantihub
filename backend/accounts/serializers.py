@@ -159,3 +159,9 @@ class BusinessOwnerRegistrationSerializer(serializers.ModelSerializer):
             "login_phone": instance.login_phone,
             "kyc_status": instance.kyc_status,
         }
+
+
+class BusinessOwnerKYCSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BusinessOwner
+        fields = ["id", "full_name", "login_phone", "kyc_status", "created_at"]
