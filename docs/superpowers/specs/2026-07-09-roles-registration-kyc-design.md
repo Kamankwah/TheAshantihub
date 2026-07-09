@@ -1,7 +1,7 @@
 # Design: Staff/Customer/Business Account Model, Registration & KYC
 
 **Date:** 2026-07-09
-**Status:** Approved, not yet implemented
+**Status:** Approved, implemented
 **Sub-project:** 1 of 5 in the dashboards/RBAC/escrow initiative (see `docs/IMPLEMENTATION_INSTRUCTIONS.md` for the full sequence)
 
 ## 1. Background & scope
