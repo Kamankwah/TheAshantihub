@@ -119,6 +119,10 @@ class ListingSubmitView(APIView):
     def post(self, request, pk):
         listing = generics.get_object_or_404(Listing, pk=pk)
         self.check_object_permissions(request, listing)
+        if listing.status not in (Listing.DRAFT, Listing.REJECTED):
+            return Response(
+                {"status": "Only draft or rejected listings can be submitted for review."}, status=400
+            )
         listing.status = Listing.PENDING_REVIEW
         listing.save(update_fields=["status"])
         return Response({"id": listing.id, "status": listing.status})

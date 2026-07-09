@@ -96,6 +96,28 @@ class ListingCRUDTests(TestCase):
         listing.refresh_from_db()
         self.assertEqual(listing.status, Listing.PENDING_REVIEW)
 
+    def test_cannot_submit_a_published_listing(self):
+        listing = Listing.objects.create(
+            business_owner=self.owner, category=self.hotels, zone=self.manhyia,
+            name="Live Listing", description="D.", contact_phone="+233207445566",
+            status=Listing.PUBLISHED,
+        )
+        self._auth(self.owner)
+        response = self.client.post(f"/api/listings/mine/{listing.id}/submit/")
+        self.assertEqual(response.status_code, 400)
+        listing.refresh_from_db()
+        self.assertEqual(listing.status, Listing.PUBLISHED)
+
+    def test_customer_cannot_edit_any_listing(self):
+        listing = Listing.objects.create(
+            business_owner=self.owner, category=self.hotels, zone=self.manhyia,
+            name="Old Name", description="D.", contact_phone="+233207445566",
+        )
+        customer = Customer.objects.create(full_name="Ama", phone="+233200007777", password_hash="x")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(customer, 'customer')}")
+        response = self.client.patch(f"/api/listings/mine/{listing.id}/", {"name": "Hijacked"}, format="json")
+        self.assertEqual(response.status_code, 403)
+
     def test_customer_cannot_create_a_listing(self):
         customer = Customer.objects.create(full_name="Ama", phone="+233200008888", password_hash="x")
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(customer, 'customer')}")

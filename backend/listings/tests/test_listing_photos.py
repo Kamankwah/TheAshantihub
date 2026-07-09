@@ -63,6 +63,14 @@ class ListingPhotoTests(TestCase):
         self.assertEqual(response.status_code, 204)
         self.assertFalse(ListingPhoto.objects.filter(id=photo.id).exists())
 
+    def test_other_owner_cannot_delete_a_photo(self):
+        photo = ListingPhoto.objects.create(listing=self.listing, image=_image(), order=1)
+        other_token = issue_token(self.other_owner, "business_owner")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {other_token}")
+        response = self.client.delete(f"/api/listings/mine/{self.listing.id}/photos/{photo.id}/")
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(ListingPhoto.objects.filter(id=photo.id).exists())
+
     def test_customer_cannot_add_a_photo(self):
         customer = Customer.objects.create(full_name="Ama", phone="+233200009999", password_hash="x")
         token = issue_token(customer, "customer")
