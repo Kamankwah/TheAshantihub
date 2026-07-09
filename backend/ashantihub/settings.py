@@ -21,6 +21,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "core",
     "accounts",
+    "listings",
 ]
 
 MIDDLEWARE = [
