@@ -1,4 +1,5 @@
 from rest_framework import filters, generics
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -63,9 +64,14 @@ class ZoneListView(generics.ListCreateAPIView):
         return [AllowAny()]
 
 
+class ListingPagination(PageNumberPagination):
+    page_size = 20
+
+
 class PublicListingListView(generics.ListAPIView):
     serializer_class = PublicListingSerializer
     permission_classes = [AllowAny]
+    pagination_class = ListingPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["name", "description"]
     ordering_fields = ["price_amount", "created_at"]

@@ -44,35 +44,49 @@ class PublicBrowsingTests(TestCase):
 
     def test_listings_endpoint_only_returns_published(self):
         response = self.client.get("/api/listings/")
-        ids = [item["id"] for item in response.json()]
+        ids = [item["id"] for item in response.json()["results"]]
         self.assertIn(self.published_hotel.id, ids)
         self.assertIn(self.published_food.id, ids)
         self.assertNotIn(self.draft_listing.id, ids)
 
     def test_filter_by_category(self):
         response = self.client.get("/api/listings/?category=hotels")
-        ids = [item["id"] for item in response.json()]
+        ids = [item["id"] for item in response.json()["results"]]
         self.assertEqual(ids, [self.published_hotel.id])
 
     def test_filter_by_zone(self):
         response = self.client.get("/api/listings/?zone=Adum")
-        ids = [item["id"] for item in response.json()]
+        ids = [item["id"] for item in response.json()["results"]]
         self.assertEqual(ids, [self.published_food.id])
 
     def test_search_by_name(self):
         response = self.client.get("/api/listings/?search=Royal")
-        ids = [item["id"] for item in response.json()]
+        ids = [item["id"] for item in response.json()["results"]]
         self.assertEqual(ids, [self.published_hotel.id])
 
     def test_price_range_filter(self):
         response = self.client.get("/api/listings/?min_price=100&max_price=500")
-        ids = [item["id"] for item in response.json()]
+        ids = [item["id"] for item in response.json()["results"]]
         self.assertEqual(ids, [self.published_hotel.id])
 
     def test_ordering_by_price(self):
         response = self.client.get("/api/listings/?ordering=price_amount")
-        ids = [item["id"] for item in response.json()]
+        ids = [item["id"] for item in response.json()["results"]]
         self.assertEqual(ids, [self.published_food.id, self.published_hotel.id])
+
+    def test_listings_endpoint_is_paginated(self):
+        for i in range(25):
+            Listing.objects.create(
+                business_owner=self.owner, category=self.hotels, zone=self.manhyia,
+                name=f"Extra Lodge {i}", description="Filler.",
+                contact_phone="+233207334455", status=Listing.PUBLISHED,
+            )
+        response = self.client.get("/api/listings/")
+        body = response.json()
+        self.assertEqual(body["count"], 27)  # 25 new + published_hotel + published_food
+        self.assertEqual(len(body["results"]), 20)
+        self.assertIsNotNone(body["next"])
+        self.assertIsNone(body["previous"])
 
     def test_draft_listing_detail_returns_404_for_public(self):
         response = self.client.get(f"/api/listings/{self.draft_listing.id}/")
