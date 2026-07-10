@@ -100,3 +100,37 @@ class BusinessOwnerRegistrationTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn("ghana_card_front_image", response.json())
+
+    def test_disallowed_image_format_is_rejected_on_registration(self):
+        # A real, valid image Pillow will happily open — but in a format
+        # validate_image_content_type disallows (only jpeg/png are allowed).
+        # This proves the validator itself runs on this endpoint, since DRF's
+        # own ImageField check would accept this file just fine.
+        buf = io.BytesIO()
+        Image.new("RGB", (1, 1)).save(buf, format="GIF")
+        buf.seek(0)
+        payload = {
+            **self.base_payload,
+            "is_formal": "false",
+            "ghana_card_front_image": SimpleUploadedFile("front.gif", buf.read(), content_type="image/gif"),
+        }
+        response = self.client.post(
+            "/api/accounts/business-owners/register/", payload, format="multipart"
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("ghana_card_front_image", response.json())
+
+    def test_spoofed_business_reg_certificate_is_rejected_on_registration(self):
+        payload = {
+            **self.base_payload,
+            "is_formal": "true",
+            "tin": "C0012345678",
+            "business_reg_certificate": SimpleUploadedFile(
+                "cert.pdf", b"MZ\x90\x00\x03\x00\x00\x00fake-executable-bytes", content_type="application/pdf"
+            ),
+        }
+        response = self.client.post(
+            "/api/accounts/business-owners/register/", payload, format="multipart"
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("business_reg_certificate", response.json())

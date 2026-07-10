@@ -6,6 +6,7 @@ from django.utils.crypto import get_random_string
 from rest_framework import serializers
 
 from .models import BusinessOwner, BusinessOwnerProfile, Customer, Role, StaffUser
+from .validators import validate_document_content_type, validate_image_content_type
 
 
 class CustomerRegistrationSerializer(serializers.ModelSerializer):
@@ -80,12 +81,14 @@ class StaffActivateSerializer(serializers.Serializer):
 class BusinessOwnerRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
     ghana_card_number = serializers.CharField()
-    ghana_card_front_image = serializers.ImageField()
-    ghana_card_back_image = serializers.ImageField()
+    ghana_card_front_image = serializers.ImageField(validators=[validate_image_content_type])
+    ghana_card_back_image = serializers.ImageField(validators=[validate_image_content_type])
     gps_address = serializers.CharField()
     business_contact_phone = serializers.CharField()
     is_formal = serializers.BooleanField(default=False)
-    business_reg_certificate = serializers.FileField(required=False, allow_null=True)
+    business_reg_certificate = serializers.FileField(
+        required=False, allow_null=True, validators=[validate_document_content_type]
+    )
     tin = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     payout_bank_name = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     payout_bank_account_number = serializers.CharField(required=False, allow_null=True, allow_blank=True)
