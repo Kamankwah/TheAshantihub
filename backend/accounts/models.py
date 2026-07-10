@@ -1,6 +1,7 @@
 from django.db import models
 
 from .mixins import AuthenticatableAccountMixin
+from .validators import validate_document_content_type, validate_image_content_type
 
 
 class Permission(models.Model):
@@ -92,14 +93,19 @@ class BusinessOwnerProfile(models.Model):
         BusinessOwner, on_delete=models.CASCADE, related_name="profile"
     )
     ghana_card_number = models.CharField(max_length=30, unique=True)
-    ghana_card_front_image = models.ImageField(upload_to="ghana_cards/")
-    ghana_card_back_image = models.ImageField(upload_to="ghana_cards/")
+    ghana_card_front_image = models.ImageField(
+        upload_to="ghana_cards/", validators=[validate_image_content_type]
+    )
+    ghana_card_back_image = models.ImageField(
+        upload_to="ghana_cards/", validators=[validate_image_content_type]
+    )
     gps_address = models.CharField(max_length=20)
     business_contact_phone = models.CharField(max_length=20)
 
     is_formal = models.BooleanField(default=False)
     business_reg_certificate = models.FileField(
-        upload_to="business_reg_certificates/", null=True, blank=True
+        upload_to="business_reg_certificates/", null=True, blank=True,
+        validators=[validate_document_content_type],
     )
     tin = models.CharField(max_length=30, null=True, blank=True)
 

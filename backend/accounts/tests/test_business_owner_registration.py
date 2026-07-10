@@ -20,6 +20,13 @@ def _image(name="card.jpg"):
     return SimpleUploadedFile(name, buf.getvalue(), content_type="image/jpeg")
 
 
+def _pdf(name="cert.pdf"):
+    # validate_document_content_type sniffs real bytes via python-magic, so the
+    # fixture must be genuine PDF bytes rather than an arbitrary placeholder.
+    pdf_bytes = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF"
+    return SimpleUploadedFile(name, pdf_bytes, content_type="application/pdf")
+
+
 @override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
 class BusinessOwnerRegistrationTests(TestCase):
     def setUp(self):
@@ -65,9 +72,7 @@ class BusinessOwnerRegistrationTests(TestCase):
             **self.base_payload,
             "is_formal": "true",
             "tin": "C0012345678",
-            "business_reg_certificate": SimpleUploadedFile(
-                "cert.pdf", b"fake-pdf-bytes", content_type="application/pdf"
-            ),
+            "business_reg_certificate": _pdf(),
         }
         response = self.client.post(
             "/api/accounts/business-owners/register/", payload, format="multipart"
@@ -81,3 +86,17 @@ class BusinessOwnerRegistrationTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn("default_payout_method", response.json())
+
+    def test_spoofed_ghana_card_image_is_rejected(self):
+        payload = {
+            **self.base_payload,
+            "is_formal": "false",
+            "ghana_card_front_image": SimpleUploadedFile(
+                "fake.jpg", b"MZ\x90\x00\x03\x00\x00\x00fake-executable-bytes", content_type="image/jpeg"
+            ),
+        }
+        response = self.client.post(
+            "/api/accounts/business-owners/register/", payload, format="multipart"
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("ghana_card_front_image", response.json())
