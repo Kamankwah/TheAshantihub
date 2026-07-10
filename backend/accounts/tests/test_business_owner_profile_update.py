@@ -6,6 +6,8 @@ from accounts.authentication import issue_token
 from accounts.models import BusinessOwner, BusinessOwnerProfile, Customer
 
 import tempfile
+import io
+from PIL import Image
 
 TEST_MEDIA_ROOT = tempfile.mkdtemp()
 
@@ -97,3 +99,21 @@ class BusinessOwnerProfileUpdateTests(TestCase):
             "/api/accounts/business-owners/me/profile/", {"gps_address": "x"}, format="json"
         )
         self.assertEqual(response.status_code, 403)
+
+    def test_disallowed_ghana_card_image_format_is_rejected(self):
+        owner = self._make_owner(BusinessOwner.REJECTED)
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._token(owner)}")
+
+        buf = io.BytesIO()
+        Image.new("RGB", (1, 1)).save(buf, format="GIF")
+        buf.seek(0)
+
+        response = self.client.patch(
+            "/api/accounts/business-owners/me/profile/",
+            {"ghana_card_front_image": SimpleUploadedFile("front.gif", buf.read(), content_type="image/gif")},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("ghana_card_front_image", response.json())
+        self.assertIn("Unsupported file type", response.json()["ghana_card_front_image"][0])
