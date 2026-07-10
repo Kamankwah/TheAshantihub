@@ -77,7 +77,7 @@ class PublicListingListView(generics.ListAPIView):
     ordering_fields = ["price_amount", "created_at"]
 
     def get_queryset(self):
-        queryset = Listing.objects.filter(status=Listing.PUBLISHED)
+        queryset = Listing.objects.filter(status=Listing.PUBLISHED).order_by("-created_at")
 
         category_slug = self.request.query_params.get("category")
         if category_slug:

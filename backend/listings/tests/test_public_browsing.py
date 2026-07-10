@@ -96,3 +96,13 @@ class PublicBrowsingTests(TestCase):
         response = self.client.get(f"/api/listings/{self.published_hotel.id}/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["name"], "Royal Lodge")
+
+    def test_default_ordering_is_deterministic_and_newest_first(self):
+        newer_listing = Listing.objects.create(
+            business_owner=self.owner, category=self.hotels, zone=self.manhyia,
+            name="Newest Lodge", description="Just published.",
+            contact_phone="+233207334455", status=Listing.PUBLISHED,
+        )
+        response = self.client.get("/api/listings/")
+        ids = [item["id"] for item in response.json()["results"]]
+        self.assertEqual(ids[0], newer_listing.id)
