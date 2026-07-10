@@ -1,3 +1,4 @@
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
@@ -22,6 +23,7 @@ def _image(name="card.jpg"):
 @override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
 class BusinessOwnerRegistrationTests(TestCase):
     def setUp(self):
+        cache.clear()
         self.client = APIClient()
         self.base_payload = {
             "full_name": "Abena Boateng",

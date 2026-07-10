@@ -1,6 +1,7 @@
 import datetime
 
 from django.contrib.auth.hashers import check_password
+from django.core.cache import cache
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -11,6 +12,7 @@ from accounts.models import Permission, Role, StaffUser
 
 class StaffInviteTests(TestCase):
     def setUp(self):
+        cache.clear()
         self.client = APIClient()
         self.super_admin = StaffUser.objects.create(
             full_name="Kwame Super",
