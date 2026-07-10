@@ -1,0 +1,57 @@
+import { render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import { Card } from './App.jsx'
+
+const REAL_SHAPED_LISTING = {
+  id: 1,
+  name: 'Royal Ashanti Lodge',
+  description: 'Luxury rooms with kente-draped interiors.',
+  category: { slug: 'hotels', icon: '🏨', label: 'Hotels', color: '#000080' },
+  zone: { name: 'Manhyia' },
+  price_amount: '450.00',
+  price_unit: '/night',
+  tag: 'Featured',
+  contact_phone: '+233244000001',
+  lat: '6.688500',
+  lng: '-1.624400',
+  main_photo: 'http://localhost:8000/media/listing_photos/main/lodge.jpg',
+  photos: [],
+  created_at: '2026-07-09T00:00:00Z',
+}
+
+describe('Card with real API shape', () => {
+  it('renders the listing name, price, and zone from the real shape', () => {
+    render(
+      <Card
+        item={REAL_SHAPED_LISTING}
+        accentColor="#000080"
+        onWhatsApp={vi.fn()}
+        user={null}
+        favourites={[]}
+        onFavourite={vi.fn()}
+        currency="GHS"
+        onMessage={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('Royal Ashanti Lodge')).toBeInTheDocument()
+    expect(screen.getByText(/450/)).toBeInTheDocument()
+    expect(screen.getByText(/Manhyia/)).toBeInTheDocument()
+  })
+
+  it('renders the main_photo as an image when present', () => {
+    render(
+      <Card
+        item={REAL_SHAPED_LISTING}
+        accentColor="#000080"
+        onWhatsApp={vi.fn()}
+        user={null}
+        favourites={[]}
+        onFavourite={vi.fn()}
+        currency="GHS"
+        onMessage={vi.fn()}
+      />,
+    )
+    const img = screen.getByRole('img', { name: /Royal Ashanti Lodge/i })
+    expect(img).toHaveAttribute('src', REAL_SHAPED_LISTING.main_photo)
+  })
+})

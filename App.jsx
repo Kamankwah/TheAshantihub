@@ -1883,16 +1883,17 @@ function MoMoModal({item,user,onClose}) {
 }
 
 // ─── Business Card ─────────────────────────────────────────────────────────────
-function Card({item,accentColor,onWhatsApp,user,favourites,onFavourite,currency,onMessage}) {
+export function Card({item,accentColor,onWhatsApp,user,favourites,onFavourite,currency,onMessage}) {
   const [showReviews,setShowReviews]=useState(false);
   const [showPay,setShowPay]=useState(false);
   const [photoIdx,setPhotoIdx]=useState(0);
   const isFav = favourites.includes(item.id);
 
   const displayPrice = () => {
-    if(!item.priceNum||currency==="GHS")return item.price;
+    const amount = parseFloat(item.price_amount)||0;
+    if(currency==="GHS")return `GHS ${item.price_amount}${item.price_unit||""}`;
     const rate = CURRENCIES[currency];
-    return `${currency} ${(item.priceNum*rate).toFixed(0)}${item.price.includes("–")?"–"+(item.priceNum*2*rate).toFixed(0):""}`;
+    return `${currency} ${(amount*rate).toFixed(0)}${item.price_unit||""}`;
   };
 
   return <>
@@ -1903,24 +1904,25 @@ function Card({item,accentColor,onWhatsApp,user,favourites,onFavourite,currency,
       onMouseLeave={e=>e.currentTarget.style.transform=""}>
       {/* Photo strip */}
       <div style={{height:140,position:"relative",overflow:"hidden",background:`linear-gradient(135deg,${accentColor}22,${accentColor}44)`}}>
-        {/* Real photo if available, fallback to emoji */}
-        {item.realPhoto ? (
-          <img src={item.realPhoto} alt={item.name}
+        {/* Real photo if available, fallback to category emoji */}
+        {item.main_photo ? (
+          <img src={item.main_photo} alt={item.name}
             style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}
             onError={e=>{e.target.style.display="none";e.target.nextSibling.style.display="flex";}}
           />
         ) : null}
         {/* Emoji fallback */}
-        <div style={{display:item.realPhoto?"none":"flex",width:"100%",height:"100%",alignItems:"center",justifyContent:"center",fontSize:"3rem",position:"absolute",inset:0}}>
-          {item.photos?.[photoIdx]||item.img}
+        <div style={{display:item.main_photo?"none":"flex",width:"100%",height:"100%",alignItems:"center",justifyContent:"center",fontSize:"3rem",position:"absolute",inset:0}}>
+          {item.category?.icon}
         </div>
         {/* Gradient overlay on photos */}
-        {item.realPhoto&&<div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom,transparent 40%,rgba(0,0,0,0.4))"}}/>}
-        {/* Photo dots */}
+        {item.main_photo&&<div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom,transparent 40%,rgba(0,0,0,0.4))"}}/>}
+        {/* Photo thumbnails */}
         {item.photos?.length>1&&(
           <div style={{position:"absolute",bottom:6,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4,zIndex:2}}>
-            {item.photos.map((_,i)=>(
-              <div key={i} onClick={()=>setPhotoIdx(i)} style={{width:6,height:6,borderRadius:"50%",background:photoIdx===i?"white":"rgba(255,255,255,0.5)",cursor:"pointer"}}/>
+            {item.photos.map((p,i)=>(
+              <img key={p.id} src={p.image} alt="" onClick={()=>setPhotoIdx(i)}
+                style={{width:16,height:16,borderRadius:"50%",objectFit:"cover",border:photoIdx===i?"2px solid white":"1px solid rgba(255,255,255,0.6)",cursor:"pointer"}}/>
             ))}
           </div>
         )}
@@ -1928,7 +1930,7 @@ function Card({item,accentColor,onWhatsApp,user,favourites,onFavourite,currency,
         <button onClick={()=>onFavourite(item.id)} style={{position:"absolute",top:8,left:8,background:"rgba(255,255,255,0.9)",border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.9rem",zIndex:2}}>
           {isFav?"❤️":"🤍"}
         </button>
-        <button onClick={()=>{if(navigator.share)navigator.share({title:item.name,text:item.desc,url:window.location.href});else navigator.clipboard?.writeText(`Check out ${item.name} on AshantiHub!`);}}
+        <button onClick={()=>{if(navigator.share)navigator.share({title:item.name,text:item.description,url:window.location.href});else navigator.clipboard?.writeText(`Check out ${item.name} on AshantiHub!`);}}
           style={{position:"absolute",bottom:8,right:8,background:"rgba(255,255,255,0.9)",border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.8rem",zIndex:2}}>
           📤
         </button>
@@ -1941,8 +1943,8 @@ function Card({item,accentColor,onWhatsApp,user,favourites,onFavourite,currency,
             ({item.reviews} reviews)
           </button>
         </div>
-        <div style={{fontSize:"0.68rem",color:"#888",marginBottom:4}}>📍 {item.zone}</div>
-        <div style={{color:"#555",fontSize:"0.75rem",marginBottom:10,lineHeight:1.4}}>{item.desc}</div>
+        <div style={{fontSize:"0.68rem",color:"#888",marginBottom:4}}>📍 {item.zone?.name}</div>
+        <div style={{color:"#555",fontSize:"0.75rem",marginBottom:10,lineHeight:1.4}}>{item.description}</div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6,flexWrap:"wrap"}}>
           <span style={{fontWeight:800,color:accentColor,fontSize:"0.8rem"}}>{displayPrice()}</span>
           <div style={{display:"flex",gap:5}}>
@@ -1950,7 +1952,7 @@ function Card({item,accentColor,onWhatsApp,user,favourites,onFavourite,currency,
               style={{background:`${C.kente3}15`,color:C.kente3,border:`1px solid ${C.kente3}33`,borderRadius:20,padding:"5px 10px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
               💬 Message
             </button>
-            <WABtn phone={item.phone} name={item.name} style={{fontSize:"0.68rem",padding:"5px 10px"}}/>
+            <WABtn phone={item.contact_phone} name={item.name} style={{fontSize:"0.68rem",padding:"5px 10px"}}/>
             <button onClick={()=>setShowPay(true)} style={{background:accentColor,color:"white",border:"none",borderRadius:20,padding:"5px 10px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>
               💳 Pay
             </button>
