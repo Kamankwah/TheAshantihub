@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useCategories } from "./hooks/useCategories.js";
 import { useZones } from "./hooks/useZones.js";
 import { useListings } from "./hooks/useListings.js";
+import { useListing } from "./hooks/useListing.js";
 
 // ─── Colors ──────────────────────────────────────────────────────────────────
 const C = {
@@ -2832,6 +2833,44 @@ function PWAInstallBanner({ onDismiss }) {
   );
 }
 
+// ─── Favourite drawer row ──────────────────────────────────────────────────────
+// Fetches a single favourited listing by id via `useListing`. Kept as its own
+// top-level component (rather than a `.map()` calling `useListing` inline inside
+// `FavsDrawer`) because `favourites` is a variable-length array: calling a hook a
+// variable number of times per render would violate the Rules of Hooks. Each
+// `FavDrawerItem` instance calls exactly one hook every render, so the number of
+// instances can change freely across renders without breaking hook-call-count
+// consistency within any single instance.
+function FavDrawerItem({id,onRemove}) {
+  const {data:item,isLoading,isError} = useListing(id);
+
+  if(isLoading){
+    return <div style={{padding:"10px 14px",borderBottom:"1px solid #f9f9f9",display:"flex",gap:10,alignItems:"center"}}>
+      <div style={{width:24,height:24,borderRadius:"50%",background:"#eee"}}/>
+      <div style={{flex:1}}>
+        <div style={{height:10,width:"60%",background:"#eee",borderRadius:4,marginBottom:6}}/>
+        <div style={{height:8,width:"35%",background:"#f0f0f0",borderRadius:4}}/>
+      </div>
+    </div>;
+  }
+
+  if(isError||!item){
+    return <div style={{padding:"10px 14px",borderBottom:"1px solid #f9f9f9",display:"flex",gap:10,alignItems:"center"}}>
+      <div style={{flex:1,fontSize:"0.7rem",color:"#aaa",fontStyle:"italic"}}>No longer available</div>
+      <button onClick={()=>onRemove(id)} style={{background:"none",border:"none",cursor:"pointer",color:C.kente1,fontSize:"1rem"}}>✕</button>
+    </div>;
+  }
+
+  return <div style={{padding:"10px 14px",borderBottom:"1px solid #f9f9f9",display:"flex",gap:10,alignItems:"center"}}>
+    <span style={{fontSize:"1.5rem"}}>{item.category?.icon}</span>
+    <div style={{flex:1}}>
+      <div style={{fontWeight:700,fontSize:"0.78rem"}}>{item.name}</div>
+      <div style={{fontSize:"0.65rem",color:"#888"}}>GHS {item.price_amount}{item.price_unit||""}</div>
+    </div>
+    <button onClick={()=>onRemove(id)} style={{background:"none",border:"none",cursor:"pointer",color:C.kente1,fontSize:"1rem"}}>✕</button>
+  </div>;
+}
+
 // ─── Listings loading skeleton ────────────────────────────────────────────────
 function ListingsSkeleton() {
   return <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(245px,1fr))",gap:14}}>
@@ -2991,25 +3030,16 @@ export default function AshantiHub() {
     </div>
   );
 
-  // Favourites drawer — only shows favourited items that are within the currently-loaded
-  // `listings` page(s), since there's no complete client-side listing set (or a Favourite
-  // backend model) to look the full details up from anymore.
+  // Favourites drawer — renders every favourited id regardless of which category/page
+  // is currently loaded, fetching each one individually via `FavDrawerItem`/`useListing`
+  // (there's no complete client-side listing set to look the full details up from
+  // anymore, and no Favourite backend model to batch-fetch them from either).
   const FavsDrawer=()=>{
-    const favItems=listings.filter(i=>favourites.includes(i.id));
     return <div style={{position:"fixed",inset:0,zIndex:999}} onClick={()=>setShowFavs(false)}>
       <div style={{position:"absolute",top:65,right:16,background:"white",borderRadius:16,width:300,maxHeight:400,overflowY:"auto",boxShadow:"0 8px 40px rgba(0,0,0,0.2)"}} onClick={e=>e.stopPropagation()}>
-        <div style={{padding:"14px 16px",borderBottom:"1px solid #f0f0f0",fontWeight:800,color:C.darkBrown,fontSize:"0.85rem"}}>❤️ Saved Businesses ({favItems.length})</div>
-        {favItems.length===0&&<div style={{padding:"20px",textAlign:"center",color:"#aaa",fontSize:"0.78rem"}}>No saved businesses yet.<br/>Tap ❤️ on any listing to save it.</div>}
-        {favItems.map(item=>(
-          <div key={item.id} style={{padding:"10px 14px",borderBottom:"1px solid #f9f9f9",display:"flex",gap:10,alignItems:"center"}}>
-            <span style={{fontSize:"1.5rem"}}>{item.category?.icon}</span>
-            <div style={{flex:1}}>
-              <div style={{fontWeight:700,fontSize:"0.78rem"}}>{item.name}</div>
-              <div style={{fontSize:"0.65rem",color:"#888"}}>GHS {item.price_amount}{item.price_unit||""}</div>
-            </div>
-            <button onClick={()=>toggleFav(item.id)} style={{background:"none",border:"none",cursor:"pointer",color:C.kente1,fontSize:"1rem"}}>✕</button>
-          </div>
-        ))}
+        <div style={{padding:"14px 16px",borderBottom:"1px solid #f0f0f0",fontWeight:800,color:C.darkBrown,fontSize:"0.85rem"}}>❤️ Saved Businesses ({favourites.length})</div>
+        {favourites.length===0&&<div style={{padding:"20px",textAlign:"center",color:"#aaa",fontSize:"0.78rem"}}>No saved businesses yet.<br/>Tap ❤️ on any listing to save it.</div>}
+        {favourites.map(id=><FavDrawerItem key={id} id={id} onRemove={toggleFav}/>)}
       </div>
     </div>;
   };
