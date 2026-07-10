@@ -1,4 +1,7 @@
 import { useState, useEffect, useRef } from "react";
+import { useCategories } from "./hooks/useCategories.js";
+import { useZones } from "./hooks/useZones.js";
+import { useListings } from "./hooks/useListings.js";
 
 // ─── Colors ──────────────────────────────────────────────────────────────────
 const C = {
@@ -1241,104 +1244,6 @@ function PaymentDashboard({ onClose }) {
   );
 }
 
-const CATEGORIES = [
-  {id:"hotels",icon:"🏨",label:"Hotels",color:C.kente3},
-  {id:"tours",icon:"🗺️",label:"Tours",color:C.kente2},
-  {id:"food",icon:"🍲",label:"Food",color:C.kente1},
-  {id:"crafts",icon:"🧵",label:"Crafts",color:C.deepGold},
-  {id:"transport",icon:"🚕",label:"Transport",color:C.orange},
-  {id:"pharmacy",icon:"💊",label:"Pharmacy",color:"#2E8B57"},
-  {id:"shops",icon:"🛍️",label:"Shops",color:"#6A0572"},
-  {id:"funeral",icon:"🕊️",label:"Funeral Services",color:"#4A4A6A"},
-  {id:"suame",icon:"🔧",label:"Suame Magazine",color:"#8B4513"},
-  {id:"grocery",icon:"🛒",label:"Grocery Concierge",color:"#2E86AB"},
-  {id:"wedding",icon:"💍",label:"Wedding Planners",color:"#C2185B"},
-  {id:"petrol",icon:"⛽",label:"Petrol Stations",color:"#F57F17"},
-  {id:"pubs",icon:"🍺",label:"Pubs & Bars",color:"#4527A0"},
-  {id:"lifestyle",icon:"💅",label:"Lifestyle",color:"#E91E8C"},
-  {id:"health",icon:"🏥",label:"Health & Wellness",color:"#00897B"},
-];
-
-const LISTINGS = {
-  hotels:[
-    {id:1,name:"Royal Ashanti Lodge",rating:4.8,reviews:124,price:"GHS 450/night",priceNum:450,desc:"Luxury rooms with kente-draped interiors, rooftop pool and palace views.",tag:"Featured",img:"🏰",phone:"233244000001",lat:6.6885,lng:-1.6244,zone:"Manhyia",photos:["🏰","🛏️","🏊","🍽️"],realPhoto:"https://dynamic-media-cdn.tripadvisor.com/media/photo-o/2b/4a/94/b4/oak-plaza-suites-kumasi.jpg"},
-    {id:2,name:"Kumasi Heritage Inn",rating:4.5,reviews:89,price:"GHS 280/night",priceNum:280,desc:"Boutique guesthouse 5 min walk to Manhyia Palace.",tag:"Popular",img:"🛏️",phone:"233244000002",lat:6.6900,lng:-1.6200,zone:"Adum",photos:["🛏️","🏠","🌿"],realPhoto:"https://cf.bstatic.com/xdata/images/hotel/max1024x768/kumasi-heritage-ghana.jpg"},
-    {id:3,name:"Prempeh Suites",rating:4.3,reviews:56,price:"GHS 200/night",priceNum:200,desc:"Comfortable, affordable rooms with traditional Ashanti decor.",tag:"Budget",img:"🏠",phone:"233244000003",lat:6.6870,lng:-1.6180,zone:"Bantama",photos:["🏠","🛏️"]},
-  ],
-  tours:[
-    {id:1,name:"Manhyia Palace Experience",rating:4.9,reviews:201,price:"GHS 80/person",priceNum:80,desc:"Guided tour of the palace museum with live cultural storytelling.",tag:"Best Seller",img:"👑",phone:"233244000004",lat:6.6935,lng:-1.6155,zone:"Manhyia",photos:["👑","🥁","🎭"],realPhoto:"https://heroesofadventure.com/wp-content/uploads/2022/07/manhyia-palace-kumasi-ghana.jpg"},
-    {id:2,name:"Ashanti Heritage Walk",rating:4.7,reviews:98,price:"GHS 60/person",priceNum:60,desc:"2-hour walking tour through Kumasi's historic neighbourhoods.",tag:"Popular",img:"🚶",phone:"233244000005",lat:6.6900,lng:-1.6200,zone:"Central",photos:["🚶","🏛️"]},
-    {id:3,name:"Kejetia Market Tour",rating:4.5,reviews:77,price:"GHS 45/person",priceNum:45,desc:"Navigate West Africa's largest market with a local expert guide.",tag:"Adventure",img:"🛒",phone:"233244000006",lat:6.6960,lng:-1.6230,zone:"Kejetia",photos:["🛒","🎨","🧵"],realPhoto:"https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=800"},
-  ],
-  food:[
-    {id:1,name:"Afia's Kitchen",rating:4.8,reviews:189,price:"GHS 25–60",priceNum:25,desc:"Authentic fufu, light soup and groundnut soup in a traditional setting.",tag:"Local Favourite",img:"🍛",phone:"233244000007",lat:6.6880,lng:-1.6215,zone:"Adum",photos:["🍛","🍲","🥘"]},
-    {id:2,name:"Golden Stool Restaurant",rating:4.6,reviews:112,price:"GHS 40–120",priceNum:40,desc:"Fine dining with Ashanti-inspired cuisine and live highlife music.",tag:"Fine Dining",img:"✨",phone:"233244000008",lat:6.6895,lng:-1.6190,zone:"Nhyiaeso",photos:["✨","🍽️","🎵"]},
-    {id:3,name:"Mama Ama's Chop Bar",rating:4.4,reviews:67,price:"GHS 15–35",priceNum:15,desc:"Street-style waakye, banku and tilapia — the real Kumasi experience.",tag:"Street Food",img:"🐟",phone:"233244000009",lat:6.6920,lng:-1.6250,zone:"Kejetia",photos:["🐟","🍚"]},
-  ],
-  crafts:[
-    {id:1,name:"Kente Palace Weavers",rating:4.9,reviews:156,price:"GHS 150–2,000",priceNum:150,desc:"Authentic hand-woven kente cloth from master weavers in Bonwire.",tag:"Authentic",img:"🧶",phone:"233244000010",lat:6.6850,lng:-1.6100,zone:"Bonwire",photos:["🧶","🎨","👗"],realPhoto:"https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Kente_weaving_ghana.jpg/1200px-Kente_weaving_ghana.jpg"},
-    {id:2,name:"Adinkra Arts & Crafts",rating:4.7,reviews:88,price:"GHS 30–500",priceNum:30,desc:"Adinkra-stamped fabrics, jewellery and wooden carvings.",tag:"Handmade",img:"🎨",phone:"233244000011",lat:6.6890,lng:-1.6220,zone:"Adum",photos:["🎨","🪵","💍"]},
-    {id:3,name:"Ashanti Gold Jewellers",rating:4.8,reviews:103,price:"GHS 200–5,000",priceNum:200,desc:"Traditional gold and brass jewellery crafted by Ashanti goldsmiths.",tag:"Premium",img:"💛",phone:"233244000012",lat:6.6875,lng:-1.6195,zone:"Manhyia",photos:["💛","💍","⚜️"]},
-  ],
-  transport:[
-    // ── Airlines & Airport ──────────────────────────────────────────────
-    {id:1,name:"Africa World Airlines — Accra to Kumasi",rating:4.6,reviews:1240,price:"From GHS 580/person",priceNum:580,desc:"The most frequent domestic airline between Accra (KIA) and Kumasi (KMS). Up to 7 flights daily. 40-minute flight. Book at awAirlines.com or call ahead.",tag:"Most Frequent",img:"✈️",phone:"233302217400",lat:6.7149,lng:-1.5908,zone:"KMS Airport",photos:["✈️","🛫"],realPhoto:null,category:"airline"},
-    {id:2,name:"PassionAir — Accra to Kumasi",rating:4.5,reviews:887,price:"From GHS 520/person",priceNum:520,desc:"Affordable domestic flights from Accra Kotoka to Kumasi Prempeh I Airport. Up to 6 flights daily. Check-in 45 mins before departure.",tag:"Budget Friendly",img:"🛩️",phone:"233302218000",lat:6.7149,lng:-1.5908,zone:"KMS Airport",photos:["🛩️","🛫"],realPhoto:null,category:"airline"},
-    {id:3,name:"KMS Airport Express Transfer",rating:4.8,reviews:312,price:"GHS 80–150",priceNum:80,desc:"Pre-book your airport pickup or drop-off from Kumasi Airport (KMS) to any hotel or location in Kumasi. Air-conditioned vehicles. Flight tracking included.",tag:"Pre-Book",img:"🚐",phone:"233244000015",lat:6.7149,lng:-1.5908,zone:"KMS Airport",photos:["🚐","🚗"],realPhoto:null,category:"transfer"},
-    {id:4,name:"Accra to Kumasi Road Transfer (VIP Bus)",rating:4.4,reviews:567,price:"GHS 85–120/seat",priceNum:85,desc:"VIP and executive bus service from Accra (37, Circle or Tema) to Kumasi central. 4–5 hour journey. Companies: VIP Jeoun, STC, OA Travel & Tours.",tag:"Road Option",img:"🚌",phone:"233302221244",lat:6.6885,lng:-1.6244,zone:"Citywide",photos:["🚌"],realPhoto:null,category:"bus"},
-    // ── Ground Transport ─────────────────────────────────────────────────
-    {id:5,name:"Kumasi Royal Rides",rating:4.7,reviews:204,price:"GHS 30–150",priceNum:30,desc:"Comfortable AC taxis and minivans for city tours and airport transfers.",tag:"Reliable",img:"🚗",phone:"233244000013",lat:6.6900,lng:-1.6200,zone:"Citywide",photos:["🚗","🚐"],category:"taxi"},
-    {id:6,name:"AshantiGo Tuk-Tuks",rating:4.5,reviews:88,price:"GHS 10–40",priceNum:10,desc:"Quick tuk-tuk rides around central Kumasi and the palace area.",tag:"Fun",img:"🛺",phone:"233244000014",lat:6.6935,lng:-1.6155,zone:"Manhyia",photos:["🛺"],category:"tuk-tuk"},
-    {id:7,name:"Heritage Shuttle",rating:4.6,reviews:66,price:"GHS 20/seat",priceNum:20,desc:"Scheduled shuttle between major tourist spots every 2 hours.",tag:"Scheduled",img:"🚌",phone:"233244000015",lat:6.6910,lng:-1.6210,zone:"Citywide",photos:["🚌"],category:"shuttle"},
-  ],
-  pharmacy:[
-    {id:1,name:"Manhyia Pharmacy",rating:4.8,reviews:144,price:"Open 24hrs",priceNum:0,desc:"24-hour pharmacy near Manhyia Palace with prescription and OTC medicines.",tag:"24/7",img:"💊",phone:"233244000016",lat:6.6930,lng:-1.6150,zone:"Manhyia",photos:["💊","🏥"]},
-    {id:2,name:"Ashanti MedPlus",rating:4.6,reviews:98,price:"8am–10pm",priceNum:0,desc:"Wide range of medicines, health products and trained pharmacists.",tag:"Trusted",img:"🏥",phone:"233244000017",lat:6.6885,lng:-1.6220,zone:"Adum",photos:["🏥","💊"]},
-    {id:3,name:"Kumasi HealthCare Pharmacy",rating:4.5,reviews:77,price:"7am–9pm",priceNum:0,desc:"Affordable generic and branded medicines with free consultations.",tag:"Affordable",img:"❤️",phone:"233244000018",lat:6.6875,lng:-1.6180,zone:"Bantama",photos:["❤️","💊"]},
-  ],
-  shops:[
-    {id:1,name:"Kumasi Supermart",rating:4.6,reviews:133,price:"GHS varies",priceNum:0,desc:"Supermarket with local and imported goods, snacks, drinks and household items.",tag:"One-Stop",img:"🛒",phone:"233244000019",lat:6.6895,lng:-1.6215,zone:"Adum",photos:["🛒","🏪"]},
-    {id:2,name:"Osei's Electronics",rating:4.4,reviews:88,price:"GHS varies",priceNum:0,desc:"Mobile phones, accessories, repairs and electronics at competitive prices.",tag:"Tech",img:"📱",phone:"233244000020",lat:6.6910,lng:-1.6230,zone:"Kejetia",photos:["📱","💻"]},
-    {id:3,name:"Ama Fashion House",rating:4.7,reviews:99,price:"GHS 80–600",priceNum:80,desc:"Bespoke African print clothing, tailoring and ready-to-wear collections.",tag:"Fashion",img:"👗",phone:"233244000021",lat:6.6880,lng:-1.6200,zone:"Nhyiaeso",photos:["👗","🧵","👜"]},
-  ],
-  funeral:[
-    {id:1,name:"Ashanti Homegoing Planners",rating:4.9,reviews:67,price:"GHS 2,000–20,000",priceNum:2000,desc:"Full-service funeral organizers from announcement to burial.",tag:"Full Service",img:"🕊️",phone:"233244000022",lat:6.6860,lng:-1.6180,zone:"Asokwa",photos:["🕊️","💐"]},
-    {id:2,name:"Royal Casket Gallery",rating:4.8,reviews:54,price:"GHS 800–15,000",priceNum:800,desc:"Premium and custom-made caskets including Ghanaian fantasy coffins.",tag:"Custom Caskets",img:"⚰️",phone:"233244000023",lat:6.6870,lng:-1.6165,zone:"Asokwa",photos:["⚰️"]},
-    {id:3,name:"Odo Catering & Events",rating:4.7,reviews:88,price:"GHS 50/head",priceNum:50,desc:"Funeral catering for 50 to 5,000 guests. Full event setup.",tag:"Catering",img:"🍽️",phone:"233244000024",lat:6.6890,lng:-1.6195,zone:"Nhyiaeso",photos:["🍽️","🎪"]},
-  ],
-  suame:[
-    {id:1,name:"Kofi Auto Works",rating:4.8,reviews:177,price:"GHS 50–2,000",priceNum:50,desc:"Expert vehicle repairs, engine overhauls and diagnostics.",tag:"Auto Repair",img:"🚗",phone:"233244000028",lat:6.7050,lng:-1.6100,zone:"Suame",photos:["🚗","🔧"]},
-    {id:2,name:"Mensah Fabrication & Welding",rating:4.7,reviews:88,price:"GHS 100–5,000",priceNum:100,desc:"Custom metal fabrication, welding and structural steel work.",tag:"Fabrication",img:"⚙️",phone:"233244000029",lat:6.7040,lng:-1.6110,zone:"Suame",photos:["⚙️","🔩"]},
-    {id:3,name:"Suame Spare Parts Depot",rating:4.6,reviews:201,price:"GHS 20–3,000",priceNum:20,desc:"Largest spare parts supplier in Kumasi for all vehicle makes.",tag:"Spare Parts",img:"🔩",phone:"233244000030",lat:6.7060,lng:-1.6090,zone:"Suame",photos:["🔩","⚙️"]},
-  ],
-  wedding:[
-    {id:1,name:"Ashanti Royal Weddings",rating:4.9,reviews:78,price:"GHS 5,000–50,000",priceNum:5000,desc:"Full-service wedding planners specialising in traditional Ashanti and white weddings.",tag:"Full Package",img:"👑",phone:"233244000034",lat:6.6890,lng:-1.6210,zone:"Nhyiaeso",photos:["👑","💐","🎊"]},
-    {id:2,name:"Golden Knot Events",rating:4.8,reviews:65,price:"GHS 3,000–30,000",priceNum:3000,desc:"Elegant wedding coordination, catering, florals and photography.",tag:"Popular",img:"💐",phone:"233244000035",lat:6.6880,lng:-1.6195,zone:"Adum",photos:["💐","🎪","📸"]},
-    {id:3,name:"Kumasi Wedding Photography",rating:4.8,reviews:111,price:"GHS 1,500–6,000",priceNum:1500,desc:"Professional photography, videography, drone coverage and same-day highlights.",tag:"Photography",img:"📸",phone:"233244000037",lat:6.6895,lng:-1.6205,zone:"Nhyiaeso",photos:["📸","🎥"]},
-  ],
-  petrol:[
-    {id:1,name:"GOIL Manhyia Station",rating:4.7,reviews:234,price:"Market Rate",priceNum:0,desc:"24-hour GOIL fuel station near Manhyia Palace. Petrol, diesel, LPG. ATM on site.",tag:"24/7",img:"⛽",phone:"233244000040",lat:6.6928,lng:-1.6148,zone:"Manhyia",photos:["⛽","🏪"]},
-    {id:2,name:"Shell Adum",rating:4.6,reviews:188,price:"Market Rate",priceNum:0,desc:"Shell fuel station in Adum central. Premium petrol, diesel and car wash.",tag:"Premium",img:"🐚",phone:"233244000041",lat:6.6885,lng:-1.6215,zone:"Adum",photos:["🐚","⛽"]},
-    {id:3,name:"TotalEnergies Kejetia",rating:4.5,reviews:155,price:"Market Rate",priceNum:0,desc:"TotalEnergies forecourt near Kejetia. Fuel, LPG refill, lubricants.",tag:"Central",img:"🔵",phone:"233244000042",lat:6.6960,lng:-1.6235,zone:"Kejetia",photos:["🔵","⛽"]},
-  ],
-  pubs:[
-    {id:1,name:"Golden Stool Sports Bar",rating:4.8,reviews:199,price:"GHS 15–80",priceNum:15,desc:"Premier sports bar. Live EPL, AFCON, Champions League. Ice-cold Club beer.",tag:"Sports Bar",img:"⚽",phone:"233244000045",lat:6.6892,lng:-1.6198,zone:"Adum",photos:["⚽","🍺","📺"]},
-    {id:2,name:"Manhyia Rooftop Bar",rating:4.9,reviews:144,price:"GHS 30–150",priceNum:30,desc:"Stunning rooftop bar with views over Kumasi. Craft cocktails and imported spirits.",tag:"Rooftop",img:"🌇",phone:"233244000047",lat:6.6930,lng:-1.6155,zone:"Manhyia",photos:["🌇","🍹","✨"]},
-    {id:3,name:"Ashanti Brewhouse",rating:4.6,reviews:88,price:"GHS 20–70",priceNum:20,desc:"Craft beer pub with locally brewed Ashanti ales. Pub quiz nights.",tag:"Craft Beer",img:"🍺",phone:"233244000049",lat:6.6878,lng:-1.6190,zone:"Bantama",photos:["🍺","🎮"]},
-  ],
-  lifestyle:[
-    {id:1,name:"Ashanti Glow Spa & Salon",rating:4.9,reviews:167,price:"GHS 80–600",priceNum:80,desc:"Premium spa with massages, facials, manicures using local shea butter.",tag:"Top Rated",img:"💆",phone:"233244000051",lat:6.6888,lng:-1.6210,zone:"Nhyiaeso",photos:["💆","💅","✨"]},
-    {id:2,name:"Ama's Hair & Beauty Studio",rating:4.8,reviews:133,price:"GHS 60–400",priceNum:60,desc:"Full-service ladies salon — braiding, weaves, natural hair, locs and makeup.",tag:"Hair & Beauty",img:"💇",phone:"233244000053",lat:6.6882,lng:-1.6195,zone:"Adum",photos:["💇","💄","👗"]},
-    {id:3,name:"Manhyia Nail Bar",rating:4.7,reviews:99,price:"GHS 40–200",priceNum:40,desc:"Nail art studio with gel, acrylic, dip powder and traditional designs.",tag:"Nail Art",img:"💅",phone:"233244000054",lat:6.6935,lng:-1.6158,zone:"Manhyia",photos:["💅","✨"]},
-  ],
-  health:[
-    {id:1,name:"Ashanti Specialist Clinic",rating:4.8,reviews:188,price:"GHS 150–500",priceNum:150,desc:"Private clinic — cardiology, orthopaedics, ENT, dermatology and GP.",tag:"Specialist",img:"👨‍⚕️",phone:"233244000058",lat:6.6878,lng:-1.6212,zone:"Adum",photos:["👨‍⚕️","🏥","🔬"]},
-    {id:2,name:"KumasiMed Diagnostic Centre",rating:4.7,reviews:122,price:"GHS 80–800",priceNum:80,desc:"Ultrasound, X-ray, MRI, blood tests and ECG. Same-day results.",tag:"Diagnostics",img:"🔬",phone:"233244000059",lat:6.6885,lng:-1.6200,zone:"Nhyiaeso",photos:["🔬","💉"]},
-    {id:3,name:"Kumasi FitLife Gym",rating:4.7,reviews:144,price:"GHS 80–200/mo",priceNum:80,desc:"Modern gym with weights, cardio, group classes and personal training.",tag:"Gym",img:"💪",phone:"233244000063",lat:6.6895,lng:-1.6188,zone:"Bantama",photos:["💪","🏋️","🧘"]},
-  ],
-  grocery:[],
-};
-
 const MOCK_REVIEWS = {
   1:[
     {id:1,author:"Emma Thompson",country:"🇬🇧",rating:5,text:"Absolutely stunning hotel. The kente decor is breathtaking and staff were incredibly welcoming.",date:"2026-05-28",helpful:12},
@@ -1362,24 +1267,6 @@ const KUMASI_PHOTOS = {
   kumasi: "https://www.ghanatravel.com/wp-content/uploads/kumasi-aerial-ashanti.jpg",
 };
 
-// Category hero images
-const CAT_IMAGES = {
-  hotels: KUMASI_PHOTOS.hotel,
-  tours: KUMASI_PHOTOS.manhyiaPalace,
-  food: KUMASI_PHOTOS.chopBar,
-  crafts: KUMASI_PHOTOS.kenteWeaving,
-  suame: KUMASI_PHOTOS.suame,
-  funeral: null,
-  wedding: null,
-  transport: null,
-  pharmacy: null,
-  shops: null,
-  pubs: null,
-  lifestyle: null,
-  health: null,
-  petrol: null,
-  grocery: null,
-};
 const iStyle = { width:"100%",padding:"11px 14px",borderRadius:10,border:"1.5px solid #ddd",fontSize:"0.88rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box" };
 const lStyle = { fontSize:"0.78rem",fontWeight:700,color:C.darkBrown,marginBottom:5,display:"block" };
 const btnP = (on=true) => ({ background:on?C.gold:"#ddd",color:on?C.darkBrown:"#aaa",border:"none",borderRadius:30,padding:"12px",fontWeight:900,fontSize:"0.88rem",cursor:on?"pointer":"default",fontFamily:"inherit",width:"100%" });
@@ -2006,10 +1893,10 @@ export function MapView({listings}) {
         📍 Kumasi, Ghana
       </div>
     </div>
-    {/* Legend */}
+    {/* Legend — derived from the categories actually present among the plotted pins (no more global CATEGORIES lookup) */}
     <div style={{padding:"10px 16px",display:"flex",gap:12,flexWrap:"wrap",borderTop:"1px solid #f0f0f0"}}>
-      {CATEGORIES.slice(0,7).map(cat=>(
-        <div key={cat.id} style={{display:"flex",alignItems:"center",gap:4,fontSize:"0.65rem",color:"#555"}}>
+      {Array.from(new Map(filtered.map(i=>[i.category?.slug, i.category]).filter(([slug])=>slug)).values()).slice(0,7).map(cat=>(
+        <div key={cat.slug} style={{display:"flex",alignItems:"center",gap:4,fontSize:"0.65rem",color:"#555"}}>
           <div style={{width:10,height:10,borderRadius:"50%",background:cat.color}}/>
           {cat.label}
         </div>
@@ -2945,9 +2832,23 @@ function PWAInstallBanner({ onDismiss }) {
   );
 }
 
+// ─── Listings loading skeleton ────────────────────────────────────────────────
+function ListingsSkeleton() {
+  return <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(245px,1fr))",gap:14}}>
+    {Array.from({length:6}).map((_,i)=>(
+      <div key={i} style={{background:"white",borderRadius:16,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.10)"}}>
+        <div style={{height:140,background:"#eee"}}/>
+        <div style={{padding:"12px 14px"}}>
+          <div style={{height:14,width:"70%",background:"#eee",borderRadius:4,marginBottom:8}}/>
+          <div style={{height:10,width:"40%",background:"#f0f0f0",borderRadius:4,marginBottom:8}}/>
+          <div style={{height:10,width:"90%",background:"#f0f0f0",borderRadius:4}}/>
+        </div>
+      </div>
+    ))}
+  </div>;
+}
+
 export default function AshantiHub() {
-  const [activeCat,setActiveCat]=useState("hotels");
-  const [search,setSearch]=useState("");
   const [page,setPage]=useState("home");
   const [authModal,setAuthModal]=useState(null);
   const [user,setUser]=useState(null);
@@ -2964,10 +2865,22 @@ export default function AshantiHub() {
   const [showNotifs,setShowNotifs]=useState(false);
   const [currency,setCurrency]=useState("GHS");
   const [lang,setLang]=useState("en");
-  const [sortBy,setSortBy]=useState("rating");
-  const [filterZone,setFilterZone]=useState("All Zones");
-  const [filterMinRating,setFilterMinRating]=useState(0);
   const [showFilters,setShowFilters]=useState(false);
+
+  // ── Live marketplace data (categories/zones/listings) ─────────────────────
+  const [filters, setFilters] = useState({ category: "hotels" });
+  const { data: categories, isLoading: categoriesLoading } = useCategories();
+  const { data: zones, isLoading: zonesLoading } = useZones();
+  const {
+    data: listingsData,
+    isLoading: listingsLoading,
+    isFetching: listingsFetching,
+    isError: listingsError,
+    fetchNextPage,
+    hasNextPage,
+    refetch: refetchListings,
+  } = useListings(filters);
+  const listings = listingsData ? listingsData.pages.flatMap((page) => page.results) : [];
   const [cookieConsent,setCookieConsent]=useState(false);
   const [cookieDismissed,setCookieDismissed]=useState(false);
   const [whatsappPrompt,setWhatsappPrompt]=useState(null);
@@ -2996,119 +2909,17 @@ export default function AshantiHub() {
   const [showSearchResults,setShowSearchResults]=useState(false);
   const [searchFocused,setSearchFocused]=useState(false);
 
-  // ── Smart Search Engine ────────────────────────────────────────────────────
+  // Static "popular searches" quick-fill suggestions shown when the search box is focused and empty.
+  // (The old cross-category smart-search engine that scored against the in-memory `LISTINGS` mock
+  // across every category at once has been removed — full-text search now happens server-side via
+  // `filters.search`, scoped to whichever category tab is active, since there's no full listing set
+  // held client-side anymore to search across.)
   const SEARCH_SUGGESTIONS = [
     "fufu restaurant","hotel near palace","kente cloth","car repair suame",
     "24 hour pharmacy","wedding planner","funeral organizer","cheap transport",
     "rooftop bar","fresh groceries","dental clinic","gym","tuk-tuk",
     "tour guide","adinkra crafts","petrol station","open now","highly rated",
   ];
-
-  const SEARCH_KEYWORDS = {
-    food:["fufu","chop","banku","waakye","rice","tilapia","soup","restaurant","eat","food","aduane","kenkey"],
-    hotels:["hotel","lodge","room","stay","accommodation","guesthouse","bed","night","sleep"],
-    tours:["tour","guide","visit","palace","manhyia","heritage","walk","history","cultural"],
-    crafts:["kente","adinkra","craft","weave","fabric","jewellery","gold","souvenir","cloth","nwonwa"],
-    transport:["taxi","tuk-tuk","ride","transport","driver","car","airport","pickup","shuttle","airline","flight","fly","accra","kumasi airport","kms","awa","passionair","africa world","bus","vip","transfer"],
-    pharmacy:["medicine","pharmacy","drug","prescription","24","sick","health","tablet","paracetamol"],
-    funeral:["funeral","casket","burial","mortuary","homegoing","coffin","catering","mourning"],
-    wedding:["wedding","bride","groom","marry","ceremony","reception","ring","bridal","marriage"],
-    suame:["repair","mechanic","suame","auto","car","engine","spare","parts","fabricate","weld"],
-    pubs:["bar","pub","drink","beer","cocktail","sports","nightclub","highlife","music","party"],
-    lifestyle:["spa","salon","hair","nail","beauty","massage","tattoo","fashion","style"],
-    health:["doctor","clinic","hospital","dentist","physio","gym","fitness","eye","diagnostic"],
-    petrol:["petrol","fuel","diesel","station","lpg","gas","oil"],
-    shops:["shop","supermarket","electronics","fashion","buy","market","store"],
-    grocery:["grocery","food","market","kejetia","plantain","tomato","chicken","delivery","fresh"],
-  };
-
-  const ZONE_KEYWORDS = {
-    "Manhyia":["manhyia","palace","near palace","ashanti"],
-    "Adum":["adum","central","town","city centre"],
-    "Kejetia":["kejetia","market","central market"],
-    "Suame":["suame","magazine","workshop","industrial"],
-    "Asokwa":["asokwa","south"],
-    "Nhyiaeso":["nhyiaeso","residential"],
-    "Bantama":["bantama","north"],
-    "Bonwire":["bonwire","kente village"],
-  };
-
-  const smartSearch = (query) => {
-    if(!query||query.length<2) return [];
-    const q = query.toLowerCase().trim();
-    const results = [];
-
-    // Search all categories
-    Object.entries(LISTINGS).forEach(([catId, items]) => {
-      const cat = CATEGORIES.find(c=>c.id===catId);
-      if(!cat) return;
-
-      items.forEach(item => {
-        let score = 0;
-        const nameMatch = item.name.toLowerCase().includes(q);
-        const descMatch = item.desc?.toLowerCase().includes(q);
-        const tagMatch = item.tag?.toLowerCase().includes(q);
-        const zoneMatch = item.zone?.toLowerCase().includes(q);
-
-        if(nameMatch) score += 10;
-        if(descMatch) score += 5;
-        if(tagMatch) score += 4;
-        if(zoneMatch) score += 3;
-
-        // Keyword matching for category keywords
-        const catKeywords = SEARCH_KEYWORDS[catId] || [];
-        catKeywords.forEach(kw => { if(q.includes(kw)||kw.includes(q)) score += 3; });
-
-        // Zone keyword matching
-        Object.entries(ZONE_KEYWORDS).forEach(([zone, keywords]) => {
-          if(keywords.some(kw=>q.includes(kw))) {
-            if(item.zone===zone) score += 4;
-          }
-        });
-
-        // Price range search e.g. "GHS 50"
-        if(q.includes("cheap")||q.includes("budget")||q.includes("affordable")) {
-          if(item.priceNum>0&&item.priceNum<=50) score += 4;
-          if(item.tag?.toLowerCase().includes("budget")) score += 3;
-        }
-
-        // Rating filter e.g. "highly rated" "best"
-        if(q.includes("best")||q.includes("top")||q.includes("highly rated")) {
-          if(item.rating>=4.8) score += 5;
-        }
-
-        // Open 24hrs search
-        if(q.includes("24")||q.includes("open now")||q.includes("always open")) {
-          if(item.tag?.includes("24")||item.desc?.includes("24")||item.price?.includes("24")) score += 5;
-        }
-
-        // Featured/popular tags
-        if(q.includes("popular")||q.includes("featured")||q.includes("recommended")) {
-          if(["Featured","Popular","Best Seller","Top Rated"].includes(item.tag)) score += 3;
-        }
-
-        if(score > 0) results.push({ ...item, score, catId, catLabel:cat.label, catIcon:cat.icon, catColor:cat.color });
-      });
-    });
-
-    return results
-      .sort((a,b) => b.score-a.score || b.rating-a.rating)
-      .slice(0,12);
-  };
-
-  const searchResults = smartSearch(search);
-  const hasSearchResults = search.length >= 2;
-
-  const getFiltered=()=>{
-    let items=(LISTINGS[activeCat]||[]);
-    if(search)items=items.filter(i=>i.name.toLowerCase().includes(search.toLowerCase())||i.desc.toLowerCase().includes(search.toLowerCase()));
-    if(filterZone!=="All Zones")items=items.filter(i=>i.zone===filterZone);
-    if(filterMinRating>0)items=items.filter(i=>i.rating>=filterMinRating);
-    if(sortBy==="rating")items=[...items].sort((a,b)=>b.rating-a.rating);
-    if(sortBy==="price")items=[...items].sort((a,b)=>a.priceNum-b.priceNum);
-    if(sortBy==="reviews")items=[...items].sort((a,b)=>b.reviews-a.reviews);
-    return items;
-  };
 
   if(isAdmin) return <AdminDashboard onExit={()=>setIsAdmin(false)}/>;
   if(showBizDash) return <BusinessDashboard onExit={()=>setShowBizDash(false)}/>;
@@ -3117,7 +2928,7 @@ export default function AshantiHub() {
   if(isLoading) return <LoadingScreen/>;
   if(show404) return <NotFoundPage onHome={()=>{ setShow404(false); setPage("home"); }}/>;
 
-  const activeCatObj=CATEGORIES.find(c=>c.id===activeCat);
+  const activeCatObj=categories?.find(c=>c.slug===filters.category);
 
   const Header=()=>(
     <div style={{background:`linear-gradient(135deg,${C.darkBrown} 0%,${C.black} 50%,${C.kente3} 100%)`,padding:"0 16px",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 20px rgba(0,0,0,0.4)"}}>
@@ -3180,19 +2991,21 @@ export default function AshantiHub() {
     </div>
   );
 
-  // Favourites drawer
+  // Favourites drawer — only shows favourited items that are within the currently-loaded
+  // `listings` page(s), since there's no complete client-side listing set (or a Favourite
+  // backend model) to look the full details up from anymore.
   const FavsDrawer=()=>{
-    const favItems=Object.values(LISTINGS).flat().filter(i=>favourites.includes(i.id));
+    const favItems=listings.filter(i=>favourites.includes(i.id));
     return <div style={{position:"fixed",inset:0,zIndex:999}} onClick={()=>setShowFavs(false)}>
       <div style={{position:"absolute",top:65,right:16,background:"white",borderRadius:16,width:300,maxHeight:400,overflowY:"auto",boxShadow:"0 8px 40px rgba(0,0,0,0.2)"}} onClick={e=>e.stopPropagation()}>
         <div style={{padding:"14px 16px",borderBottom:"1px solid #f0f0f0",fontWeight:800,color:C.darkBrown,fontSize:"0.85rem"}}>❤️ Saved Businesses ({favItems.length})</div>
         {favItems.length===0&&<div style={{padding:"20px",textAlign:"center",color:"#aaa",fontSize:"0.78rem"}}>No saved businesses yet.<br/>Tap ❤️ on any listing to save it.</div>}
         {favItems.map(item=>(
           <div key={item.id} style={{padding:"10px 14px",borderBottom:"1px solid #f9f9f9",display:"flex",gap:10,alignItems:"center"}}>
-            <span style={{fontSize:"1.5rem"}}>{item.img}</span>
+            <span style={{fontSize:"1.5rem"}}>{item.category?.icon}</span>
             <div style={{flex:1}}>
               <div style={{fontWeight:700,fontSize:"0.78rem"}}>{item.name}</div>
-              <div style={{fontSize:"0.65rem",color:"#888"}}>{item.price} • ⭐{item.rating}</div>
+              <div style={{fontSize:"0.65rem",color:"#888"}}>GHS {item.price_amount}{item.price_unit||""}</div>
             </div>
             <button onClick={()=>toggleFav(item.id)} style={{background:"none",border:"none",cursor:"pointer",color:C.kente1,fontSize:"1rem"}}>✕</button>
           </div>
@@ -3235,100 +3048,38 @@ export default function AshantiHub() {
                 <span style={{color:C.lightGold,fontSize:"0.78rem"}}>👋 Akwaaba, <strong style={{color:C.gold}}>{user.fullName?.split(" ")[0]}</strong>!</span>
                 <button onClick={()=>setShowReferral(true)} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"3px 10px",fontSize:"0.62rem",fontWeight:800,cursor:"pointer"}}>🎁 Refer & Earn</button>
               </div>}
-              {/* Smart Search */}
+              {/* Search — filters.search flows straight into useListings, scoped to the active category */}
               <div style={{position:"relative",maxWidth:480,margin:"0 auto"}}>
                 <div style={{display:"flex",borderRadius:30,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.3)"}}>
                   <input
-                    value={search}
-                    onChange={e=>{setSearch(e.target.value);setShowSearchResults(true);}}
+                    value={filters.search||""}
+                    onChange={e=>{setFilters(f=>({...f,search:e.target.value}));setShowSearchResults(true);}}
                     onFocus={()=>{setSearchFocused(true);setShowSearchResults(true);}}
                     onBlur={()=>setTimeout(()=>{setSearchFocused(false);setShowSearchResults(false);},200)}
                     placeholder={T.search}
                     style={{flex:1,padding:"13px 18px",border:"none",fontSize:"0.85rem",background:"white",outline:"none",fontFamily:"inherit"}}/>
-                  {search&&<button onClick={()=>{setSearch("");setShowSearchResults(false);}} style={{background:"white",border:"none",padding:"0 8px",cursor:"pointer",color:"#aaa",fontSize:"1.1rem"}}>✕</button>}
+                  {filters.search&&<button onClick={()=>{setFilters(f=>({...f,search:""}));setShowSearchResults(false);}} style={{background:"white",border:"none",padding:"0 8px",cursor:"pointer",color:"#aaa",fontSize:"1.1rem"}}>✕</button>}
                   <button onClick={()=>setShowFilters(f=>!f)} style={{background:"#f5f5f5",border:"none",padding:"13px 14px",cursor:"pointer",fontSize:"0.85rem"}} title="Filters">⚙️</button>
                   <button style={{background:C.gold,color:C.black,border:"none",padding:"13px 18px",fontWeight:900,cursor:"pointer"}}>🔍</button>
                 </div>
 
-                {/* Search Dropdown */}
-                {showSearchResults&&(searchFocused||search)&&(
+                {/* Search Dropdown — popular-suggestion quick-fill only when the box is empty; once
+                    there's a query, results come live from the grid below via filters.search, so the
+                    dropdown just gets out of the way (the old cross-category preview here required
+                    the full in-memory LISTINGS set, which no longer exists client-side). */}
+                {showSearchResults&&searchFocused&&!filters.search&&(
                   <div style={{position:"absolute",top:"calc(100% + 8px)",left:0,right:0,background:"white",borderRadius:16,boxShadow:"0 8px 40px rgba(0,0,0,0.2)",zIndex:500,overflow:"hidden",maxHeight:420,overflowY:"auto"}}>
-
-                    {/* No query — show suggestions */}
-                    {!search&&(
-                      <div style={{padding:"12px"}}>
-                        <div style={{fontSize:"0.68rem",color:"#aaa",fontWeight:700,padding:"4px 8px 8px"}}>🔥 POPULAR SEARCHES</div>
-                        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                          {SEARCH_SUGGESTIONS.map(s=>(
-                            <button key={s} onClick={()=>{setSearch(s);setShowSearchResults(true);}}
-                              style={{background:`${C.gold}15`,color:C.darkBrown,border:`1px solid ${C.gold}33`,borderRadius:20,padding:"5px 12px",fontSize:"0.72rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                              🔍 {s}
-                            </button>
-                          ))}
-                        </div>
+                    <div style={{padding:"12px"}}>
+                      <div style={{fontSize:"0.68rem",color:"#aaa",fontWeight:700,padding:"4px 8px 8px"}}>🔥 POPULAR SEARCHES</div>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                        {SEARCH_SUGGESTIONS.map(s=>(
+                          <button key={s} onClick={()=>{setFilters(f=>({...f,search:s}));setShowSearchResults(false);}}
+                            style={{background:`${C.gold}15`,color:C.darkBrown,border:`1px solid ${C.gold}33`,borderRadius:20,padding:"5px 12px",fontSize:"0.72rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                            🔍 {s}
+                          </button>
+                        ))}
                       </div>
-                    )}
-
-                    {/* Has query — show results */}
-                    {search.length>=2&&(
-                      <>
-                        {searchResults.length===0?(
-                          <div style={{padding:"24px",textAlign:"center",color:"#aaa"}}>
-                            <div style={{fontSize:"1.8rem",marginBottom:6}}>🔍</div>
-                            <div style={{fontSize:"0.78rem"}}>No results for "<strong>{search}</strong>"</div>
-                            <div style={{fontSize:"0.7rem",marginTop:4}}>Try: fufu, hotel, kente, repair, pharmacy...</div>
-                          </div>
-                        ):(
-                          <>
-                            <div style={{padding:"10px 14px 6px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid #f0f0f0"}}>
-                              <span style={{fontSize:"0.7rem",color:"#888",fontWeight:700}}>{searchResults.length} results across all categories</span>
-                              <button onClick={()=>setShowSearchResults(false)} style={{background:"none",border:"none",color:"#aaa",cursor:"pointer",fontSize:"0.8rem"}}>✕</button>
-                            </div>
-
-                            {/* Group by category */}
-                            {Object.entries(
-                              searchResults.reduce((acc,item)=>{
-                                const key=`${item.catIcon} ${item.catLabel}`;
-                                if(!acc[key]) acc[key]={color:item.catColor,catId:item.catId,items:[]};
-                                acc[key].items.push(item);
-                                return acc;
-                              },{})
-                            ).map(([catName,{color,catId,items}])=>(
-                              <div key={catName}>
-                                <div style={{padding:"8px 14px 4px",fontSize:"0.65rem",fontWeight:800,color,background:`${color}08`,letterSpacing:0.5}}>
-                                  {catName}
-                                </div>
-                                {items.map(item=>(
-                                  <div key={item.id}
-                                    onClick={()=>{setActiveCat(catId);setSearch(item.name);setShowSearchResults(false);}}
-                                    style={{display:"flex",gap:12,padding:"10px 14px",cursor:"pointer",borderBottom:"1px solid #f9f9f9",alignItems:"center"}}
-                                    onMouseEnter={e=>e.currentTarget.style.background="#f9f9f9"}
-                                    onMouseLeave={e=>e.currentTarget.style.background=""}>
-                                    <div style={{width:36,height:36,borderRadius:10,background:`${color}15`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.2rem",flexShrink:0}}>{item.img}</div>
-                                    <div style={{flex:1,minWidth:0}}>
-                                      <div style={{fontWeight:700,fontSize:"0.78rem",color:C.darkBrown,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.name}</div>
-                                      <div style={{fontSize:"0.65rem",color:"#888",display:"flex",gap:8,alignItems:"center",marginTop:1}}>
-                                        <span>⭐{item.rating}</span>
-                                        <span>📍{item.zone}</span>
-                                        <span style={{color:color,fontWeight:700}}>{item.price}</span>
-                                      </div>
-                                    </div>
-                                    <div style={{fontSize:"0.62rem",background:`${color}15`,color,borderRadius:20,padding:"2px 7px",fontWeight:700,flexShrink:0}}>{item.tag}</div>
-                                  </div>
-                                ))}
-                              </div>
-                            ))}
-
-                            <div style={{padding:"10px 14px",background:`${C.gold}08`,borderTop:"1px solid #f0f0f0",textAlign:"center"}}>
-                              <button onClick={()=>{setShowSearchResults(false);setActiveCat("hotels");}}
-                                style={{background:"none",border:"none",color:C.deepGold,fontSize:"0.72rem",fontWeight:700,cursor:"pointer"}}>
-                                See all results across categories →
-                              </button>
-                            </div>
-                          </>
-                        )}
-                      </>
-                    )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -3365,68 +3116,50 @@ export default function AshantiHub() {
             </span>
           </div>
 
-          {/* Filters panel */}
+          {/* Filters panel — all four inputs write straight into `filters`, which is useListings'
+              query key. "Min Rating" was dropped: the real Listing model has no rating field, so it
+              could never do anything meaningful; a Min/Max Price range (which the backend and
+              useListings already support via min_price/max_price) replaces it. */}
           {showFilters&&(
             <div style={{background:"white",borderBottom:"1px solid #f0f0f0",padding:"14px 16px"}}>
               <div style={{maxWidth:960,margin:"0 auto",display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div>
                   <label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,marginBottom:3,display:"block"}}>Sort By</label>
-                  <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{padding:"6px 10px",borderRadius:10,border:"1.5px solid #ddd",fontSize:"0.74rem",background:"white",fontFamily:"inherit"}}>
-                    <option value="rating">⭐ Top Rated</option>
-                    <option value="price">💰 Lowest Price</option>
-                    <option value="reviews">💬 Most Reviewed</option>
+                  <select value={filters.ordering||""} onChange={e=>setFilters(f=>({...f,ordering:e.target.value||undefined}))} style={{padding:"6px 10px",borderRadius:10,border:"1.5px solid #ddd",fontSize:"0.74rem",background:"white",fontFamily:"inherit"}}>
+                    <option value="">🆕 Newest</option>
+                    <option value="price_amount">💰 Lowest Price</option>
+                    <option value="-price_amount">💰 Highest Price</option>
                   </select>
                 </div>
                 <div>
                   <label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,marginBottom:3,display:"block"}}>Zone</label>
-                  <select value={filterZone} onChange={e=>setFilterZone(e.target.value)} style={{padding:"6px 10px",borderRadius:10,border:"1.5px solid #ddd",fontSize:"0.74rem",background:"white",fontFamily:"inherit"}}>
-                    {KUMASI_ZONES.map(z=><option key={z}>{z}</option>)}
+                  <select value={filters.zone||""} onChange={e=>setFilters(f=>({...f,zone:e.target.value||undefined}))} style={{padding:"6px 10px",borderRadius:10,border:"1.5px solid #ddd",fontSize:"0.74rem",background:"white",fontFamily:"inherit"}}>
+                    <option value="">All Zones</option>
+                    {(zones||[]).map(z=><option key={z.id} value={z.name}>{z.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,marginBottom:3,display:"block"}}>Min Rating</label>
-                  <select value={filterMinRating} onChange={e=>setFilterMinRating(Number(e.target.value))} style={{padding:"6px 10px",borderRadius:10,border:"1.5px solid #ddd",fontSize:"0.74rem",background:"white",fontFamily:"inherit"}}>
-                    <option value={0}>Any Rating</option>
-                    {[4,4.5,4.8].map(r=><option key={r} value={r}>⭐ {r}+</option>)}
-                  </select>
+                  <label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,marginBottom:3,display:"block"}}>Min Price (GHS)</label>
+                  <input type="number" min="0" placeholder="Any" value={filters.minPrice??""} onChange={e=>setFilters(f=>({...f,minPrice:e.target.value===""?undefined:Number(e.target.value)}))} style={{width:80,padding:"6px 10px",borderRadius:10,border:"1.5px solid #ddd",fontSize:"0.74rem",background:"white",fontFamily:"inherit"}}/>
                 </div>
-                <button onClick={()=>{setSortBy("rating");setFilterZone("All Zones");setFilterMinRating(0);}} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"6px 14px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",marginTop:14}}>
+                <div>
+                  <label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,marginBottom:3,display:"block"}}>Max Price (GHS)</label>
+                  <input type="number" min="0" placeholder="Any" value={filters.maxPrice??""} onChange={e=>setFilters(f=>({...f,maxPrice:e.target.value===""?undefined:Number(e.target.value)}))} style={{width:80,padding:"6px 10px",borderRadius:10,border:"1.5px solid #ddd",fontSize:"0.74rem",background:"white",fontFamily:"inherit"}}/>
+                </div>
+                <button onClick={()=>setFilters(f=>({category:f.category,search:f.search}))} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"6px 14px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",marginTop:14}}>
                   ✕ Clear Filters
                 </button>
               </div>
             </div>
           )}
 
-          {/* Category tabs */}
+          {/* Category tabs — the old cross-category smart-search results banner that lived here has
+              been removed along with the smart-search engine (see note above); the search box's
+              results now just show up in the grid below, scoped to the active category tab. */}
           <div style={{maxWidth:960,margin:"0 auto",padding:"16px 14px 0"}}>
-
-            {/* Cross-category results banner */}
-            {hasSearchResults&&searchResults.length>0&&(
-              <div style={{background:"white",borderRadius:14,padding:"12px 16px",marginBottom:14,boxShadow:"0 2px 12px rgba(0,0,0,0.08)",border:`1.5px solid ${C.gold}33`}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                  <div style={{fontWeight:800,color:C.darkBrown,fontSize:"0.85rem"}}>
-                    🔍 "{search}" — <span style={{color:C.kente2}}>{searchResults.length} results</span> across all categories
-                  </div>
-                  <button onClick={()=>setSearch("")} style={{background:"none",border:"none",color:"#aaa",cursor:"pointer",fontSize:"0.78rem",fontWeight:600}}>Clear ✕</button>
-                </div>
-                {/* Category breakdown pills */}
-                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  {Object.entries(searchResults.reduce((acc,item)=>{acc[item.catId]=(acc[item.catId]||0)+1;return acc;},{})).map(([catId,count])=>{
-                    const cat=CATEGORIES.find(c=>c.id===catId);
-                    return cat&&(
-                      <button key={catId} onClick={()=>setActiveCat(catId)}
-                        style={{background:`${cat.color}15`,color:cat.color,border:`1px solid ${cat.color}33`,borderRadius:20,padding:"4px 11px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>
-                        {cat.icon} {cat.label} ({count})
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
             <div style={{display:"flex",gap:7,overflowX:"auto",paddingBottom:4,scrollbarWidth:"none"}}>
-              {CATEGORIES.map(cat=>(
-                <button key={cat.id} onClick={()=>setActiveCat(cat.id)} style={{background:activeCat===cat.id?cat.color:"white",color:activeCat===cat.id?"white":C.black,border:`2px solid ${cat.color}`,borderRadius:30,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",boxShadow:activeCat===cat.id?`0 4px 12px ${cat.color}55`:"none",transition:"all 0.2s"}}>
+              {(categories||[]).map(cat=>(
+                <button key={cat.id} onClick={()=>setFilters(f=>({...f,category:cat.slug}))} style={{background:filters.category===cat.slug?cat.color:"white",color:filters.category===cat.slug?"white":C.black,border:`2px solid ${cat.color}`,borderRadius:30,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",boxShadow:filters.category===cat.slug?`0 4px 12px ${cat.color}55`:"none",transition:"all 0.2s"}}>
                   {cat.icon} {cat.label}
                 </button>
               ))}
@@ -3435,8 +3168,8 @@ export default function AshantiHub() {
 
           {/* Map or List */}
           <div style={{maxWidth:960,margin:"0 auto",padding:"16px 14px 40px"}}>
-            {showMap&&<MapView allListings={LISTINGS} activeCategory={activeCat}/>}
-            {activeCat==="grocery"?(
+            {showMap&&<MapView listings={listings}/>}
+            {filters.category==="grocery"?(
               <div style={{background:"white",borderRadius:16,padding:"24px",textAlign:"center",boxShadow:"0 2px 12px rgba(0,0,0,0.07)"}}>
                 <div style={{fontSize:"2.5rem",marginBottom:10}}>🛒</div>
                 <div style={{fontWeight:900,color:C.darkBrown,marginBottom:6}}>Grocery Concierge</div>
@@ -3455,7 +3188,7 @@ export default function AshantiHub() {
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
                   <h2 style={{margin:0,color:C.darkBrown,fontSize:"0.95rem",fontWeight:900}}>
                     {activeCatObj?.icon} {activeCatObj?.label}
-                    <span style={{color:"#999",fontWeight:400,fontSize:"0.72rem",marginLeft:6}}>{getFiltered().length} results</span>
+                    <span style={{color:"#999",fontWeight:400,fontSize:"0.72rem",marginLeft:6}}>{listings.length} results</span>
                   </h2>
                   <div style={{display:"flex",gap:6,alignItems:"center"}}>
                     <span style={{background:`${activeCatObj?.color}15`,border:`1px solid ${activeCatObj?.color}44`,borderRadius:20,padding:"3px 9px",fontSize:"0.65rem",color:activeCatObj?.color,fontWeight:700}}>📍 Kumasi</span>
@@ -3463,7 +3196,7 @@ export default function AshantiHub() {
                 </div>
 
                 {/* Airport info banner — shows only on transport tab */}
-                {activeCat==="transport"&&(
+                {filters.category==="transport"&&(
                   <div style={{background:`linear-gradient(135deg,#003087,#001a5e)`,borderRadius:16,padding:"16px 18px",marginBottom:16,color:"white"}}>
                     <div style={{fontWeight:900,color:C.ghGold,marginBottom:8,fontSize:"0.88rem"}}>✈️ Getting to Kumasi — Airport Guide</div>
                     <div style={{fontSize:"0.74rem",opacity:0.9,lineHeight:1.7,marginBottom:10}}>
@@ -3488,15 +3221,30 @@ export default function AshantiHub() {
                     </div>
                   </div>
                 )}
-                {getFiltered().length>0?(
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(245px,1fr))",gap:14}}>
-                    {getFiltered().map(item=><Card key={item.id} item={item} accentColor={activeCatObj?.color} onWhatsApp={handleWA} user={user} favourites={favourites} onFavourite={toggleFav} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);if(!user)setAuthModal("signup");}}/>)}
+                {listingsLoading ? (
+                  <ListingsSkeleton/>
+                ) : listingsError ? (
+                  <div style={{textAlign:"center",padding:"30px"}}>
+                    Something went wrong loading listings.{" "}
+                    <button onClick={()=>refetchListings()} style={{background:"none",border:`1px solid ${C.kente1}`,color:C.kente1,borderRadius:20,padding:"4px 12px",fontSize:"0.75rem",fontWeight:700,cursor:"pointer"}}>Retry</button>
                   </div>
-                ):(
+                ) : listings.length===0 ? (
                   <div style={{textAlign:"center",padding:"40px",color:"#aaa"}}>
                     <div style={{fontSize:"2rem",marginBottom:8}}>🔍</div>
                     <div>No results found. Try adjusting your filters.</div>
                   </div>
+                ) : (
+                  <>
+                    {listingsFetching&&<div style={{height:3,background:C.gold,marginBottom:10,borderRadius:2}}/>}
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(245px,1fr))",gap:14}}>
+                      {listings.map(item=><Card key={item.id} item={item} accentColor={activeCatObj?.color} onWhatsApp={handleWA} user={user} favourites={favourites} onFavourite={toggleFav} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);if(!user)setAuthModal("signup");}}/>)}
+                    </div>
+                    {hasNextPage&&(
+                      <div style={{textAlign:"center",marginTop:18}}>
+                        <button onClick={()=>fetchNextPage()} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"9px 24px",fontWeight:900,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>Load more</button>
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             )}
