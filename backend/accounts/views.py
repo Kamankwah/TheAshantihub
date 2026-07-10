@@ -32,6 +32,7 @@ def me(request):
 class CustomerRegisterView(generics.CreateAPIView):
     serializer_class = CustomerRegistrationSerializer
     permission_classes = [AllowAny]
+    throttle_scope = "customer_register"
 
 
 class StaffInviteView(generics.CreateAPIView):
@@ -44,6 +45,7 @@ class StaffInviteView(generics.CreateAPIView):
 class StaffActivateView(generics.GenericAPIView):
     serializer_class = StaffActivateSerializer
     permission_classes = [AllowAny]
+    throttle_scope = "staff_activate"
 
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
@@ -56,6 +58,7 @@ class BusinessOwnerRegisterView(generics.CreateAPIView):
     serializer_class = BusinessOwnerRegistrationSerializer
     permission_classes = [AllowAny]
     parser_classes = [MultiPartParser, FormParser]
+    throttle_scope = "business_owner_register"
 
 
 class StaffResendInviteView(APIView):

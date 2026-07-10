@@ -72,6 +72,12 @@ REST_FRAMEWORK = {
     # Django's auth.models.AnonymousUser for DRF's IsAuthenticated checks.
     "UNAUTHENTICATED_USER": AnonymousUser,
     "EXCEPTION_HANDLER": "accounts.authentication.exception_handler",
+    "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.ScopedRateThrottle"],
+    "DEFAULT_THROTTLE_RATES": {
+        "customer_register": "5/min",
+        "business_owner_register": "5/min",
+        "staff_activate": "5/min",
+    },
 }
 
 SIMPLE_JWT = {

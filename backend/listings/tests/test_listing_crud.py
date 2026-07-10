@@ -1,11 +1,19 @@
-from django.test import TestCase
+import io
+import tempfile
+
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
+from PIL import Image
 
 from accounts.authentication import issue_token
 from accounts.models import BusinessOwner, BusinessOwnerProfile, Customer
 from listings.models import Category, Listing, Zone
 
+TEST_MEDIA_ROOT = tempfile.mkdtemp()
 
+
+@override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
 class ListingCRUDTests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -40,6 +48,34 @@ class ListingCRUDTests(TestCase):
         self.assertEqual(listing.contact_phone, "+233207445566")
         self.assertEqual(listing.status, Listing.DRAFT)
         self.assertEqual(listing.business_owner, self.owner)
+
+    def test_create_listing_with_disallowed_main_photo_format_is_rejected(self):
+        # A real, valid image Pillow will happily open — but in a format
+        # validate_image_content_type disallows (only jpeg/png are allowed).
+        # This proves the model-level validator wired on Listing.main_photo
+        # actually runs through OwnerListingSerializer on this endpoint,
+        # rather than relying on code-reading alone (per this plan's prior
+        # experience, DRF's own ImageField/Pillow check would accept a valid
+        # GIF just fine, so only validate_image_content_type explains a 400
+        # here with this exact message).
+        buf = io.BytesIO()
+        Image.new("RGB", (1, 1)).save(buf, format="GIF")
+        buf.seek(0)
+        self._auth(self.owner)
+        response = self.client.post(
+            "/api/listings/mine/",
+            {
+                "category": self.hotels.id,
+                "zone": self.manhyia.id,
+                "name": "New Lodge",
+                "description": "Desc.",
+                "main_photo": SimpleUploadedFile("photo.gif", buf.read(), content_type="image/gif"),
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("main_photo", response.json())
+        self.assertIn("Unsupported file type: expected an image, got image/gif.", response.json()["main_photo"][0])
 
     def test_list_mine_returns_only_own_listings_any_status(self):
         Listing.objects.create(

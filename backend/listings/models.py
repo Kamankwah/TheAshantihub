@@ -1,6 +1,7 @@
 from django.db import models
 
 from accounts.models import BusinessOwner
+from accounts.validators import validate_image_content_type
 
 
 class Category(models.Model):
@@ -44,7 +45,10 @@ class Listing(models.Model):
     contact_phone = models.CharField(max_length=20)
     lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     lng = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-    main_photo = models.ImageField(upload_to="listing_photos/main/", null=True, blank=True)
+    main_photo = models.ImageField(
+        upload_to="listing_photos/main/", null=True, blank=True,
+        validators=[validate_image_content_type],
+    )
 
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=DRAFT)
     rejection_reason = models.CharField(max_length=500, null=True, blank=True)
@@ -58,7 +62,9 @@ class Listing(models.Model):
 
 class ListingPhoto(models.Model):
     listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="photos")
-    image = models.ImageField(upload_to="listing_photos/gallery/")
+    image = models.ImageField(
+        upload_to="listing_photos/gallery/", validators=[validate_image_content_type]
+    )
     order = models.PositiveSmallIntegerField(default=0)
 
     class Meta:

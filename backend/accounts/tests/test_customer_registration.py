@@ -1,4 +1,5 @@
 from django.contrib.auth.hashers import check_password
+from django.core.cache import cache
 from django.test import TestCase
 from rest_framework.test import APIClient
 
@@ -7,6 +8,7 @@ from accounts.models import Customer
 
 class CustomerRegistrationTests(TestCase):
     def setUp(self):
+        cache.clear()
         self.client = APIClient()
         self.valid_payload = {
             "full_name": "Kofi Mensah",
