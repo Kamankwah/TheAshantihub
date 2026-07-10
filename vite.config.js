@@ -6,5 +6,10 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
-  }
+  },
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./test/setup.js'],
+    globals: true,
+  },
 })
