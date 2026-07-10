@@ -80,3 +80,43 @@ class ListingPhotoTests(TestCase):
             {"image": _image(), "order": 1}, format="multipart",
         )
         self.assertEqual(response.status_code, 403)
+
+    def test_spoofed_photo_upload_is_rejected(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
+        response = self.client.post(
+            f"/api/listings/mine/{self.listing.id}/photos/",
+            {
+                "image": SimpleUploadedFile(
+                    "fake.jpg", b"MZ\x90\x00\x03\x00\x00\x00fake-executable-bytes", content_type="image/jpeg"
+                ),
+                "order": 1,
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("image", response.json())
+
+    def test_disallowed_image_format_is_rejected(self):
+        # A real, valid image Pillow will happily open — but in a format
+        # validate_image_content_type disallows (only jpeg/png are allowed).
+        # This proves the new model-level validator itself runs on this
+        # endpoint: DRF's own ImageField check (which the spoofed-executable
+        # test above also satisfies on its own, via Pillow rejecting the
+        # corrupt bytes before any validators=[...] ever run) would accept
+        # this file just fine, so only validate_image_content_type can be
+        # the reason this request is rejected.
+        buf = io.BytesIO()
+        Image.new("RGB", (1, 1)).save(buf, format="GIF")
+        buf.seek(0)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
+        response = self.client.post(
+            f"/api/listings/mine/{self.listing.id}/photos/",
+            {
+                "image": SimpleUploadedFile("photo.gif", buf.read(), content_type="image/gif"),
+                "order": 1,
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("image", response.json())
+        self.assertIn("Unsupported file type", response.json()["image"][0])
