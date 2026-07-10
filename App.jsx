@@ -1825,12 +1825,17 @@ export function Card({item,accentColor,onWhatsApp,user,favourites,onFavourite,cu
       </div>
       <div style={{padding:"12px 14px"}}>
         <div style={{fontWeight:700,fontSize:"0.9rem",color:C.black,marginBottom:2}}>{item.name}</div>
-        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
-          <Stars rating={item.rating}/>
-          <button onClick={()=>setShowReviews(true)} style={{background:"none",border:"none",color:accentColor,fontSize:"0.68rem",cursor:"pointer",fontWeight:600,padding:0}}>
-            ({item.reviews} reviews)
-          </button>
-        </div>
+        {/* Reviews are out of scope until a future sub-project builds them; the real Listing
+            model has no rating/reviews field, so this whole slot is hidden rather than
+            rendering broken placeholders (empty stars, "( reviews)") for every real listing. */}
+        {item.rating!=null&&(
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+            <Stars rating={item.rating}/>
+            <button onClick={()=>setShowReviews(true)} style={{background:"none",border:"none",color:accentColor,fontSize:"0.68rem",cursor:"pointer",fontWeight:600,padding:0}}>
+              ({item.reviews} reviews)
+            </button>
+          </div>
+        )}
         <div style={{fontSize:"0.68rem",color:"#888",marginBottom:4}}>📍 {item.zone?.name}</div>
         <div style={{color:"#555",fontSize:"0.75rem",marginBottom:10,lineHeight:1.4}}>{item.description}</div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6,flexWrap:"wrap"}}>
@@ -2908,6 +2913,39 @@ export default function AshantiHub() {
 
   // ── Live marketplace data (categories/zones/listings) ─────────────────────
   const [filters, setFilters] = useState({ category: "hotels" });
+
+  // Free-text search + price inputs are debounced before they hit `filters` (useListings' query
+  // key), so a user typing a search term or a price doesn't fire one backend request per keystroke.
+  // Local state updates instantly (input stays responsive); the debounced effect below writes into
+  // `filters` ~300ms after the user stops typing. Category tabs / zone dropdown are discrete
+  // click/select events and are NOT debounced — they write straight into `filters`.
+  const [searchInput, setSearchInput] = useState("");
+  const [minPriceInput, setMinPriceInput] = useState("");
+  const [maxPriceInput, setMaxPriceInput] = useState("");
+
+  useEffect(()=>{
+    const t=setTimeout(()=>{
+      setFilters(f=>(f.search===searchInput?f:{...f,search:searchInput||undefined}));
+    },300);
+    return ()=>clearTimeout(t);
+  },[searchInput]);
+
+  useEffect(()=>{
+    const t=setTimeout(()=>{
+      const val = minPriceInput===""?undefined:Number(minPriceInput);
+      setFilters(f=>(f.minPrice===val?f:{...f,minPrice:val}));
+    },300);
+    return ()=>clearTimeout(t);
+  },[minPriceInput]);
+
+  useEffect(()=>{
+    const t=setTimeout(()=>{
+      const val = maxPriceInput===""?undefined:Number(maxPriceInput);
+      setFilters(f=>(f.maxPrice===val?f:{...f,maxPrice:val}));
+    },300);
+    return ()=>clearTimeout(t);
+  },[maxPriceInput]);
+
   const { data: categories, isLoading: categoriesLoading } = useCategories();
   const { data: zones, isLoading: zonesLoading } = useZones();
   const {
@@ -3078,17 +3116,18 @@ export default function AshantiHub() {
                 <span style={{color:C.lightGold,fontSize:"0.78rem"}}>👋 Akwaaba, <strong style={{color:C.gold}}>{user.fullName?.split(" ")[0]}</strong>!</span>
                 <button onClick={()=>setShowReferral(true)} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"3px 10px",fontSize:"0.62rem",fontWeight:800,cursor:"pointer"}}>🎁 Refer & Earn</button>
               </div>}
-              {/* Search — filters.search flows straight into useListings, scoped to the active category */}
+              {/* Search — typed input is debounced (~300ms) before it flows into filters.search,
+                  which is what useListings actually queries, scoped to the active category */}
               <div style={{position:"relative",maxWidth:480,margin:"0 auto"}}>
                 <div style={{display:"flex",borderRadius:30,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.3)"}}>
                   <input
-                    value={filters.search||""}
-                    onChange={e=>{setFilters(f=>({...f,search:e.target.value}));setShowSearchResults(true);}}
+                    value={searchInput}
+                    onChange={e=>{setSearchInput(e.target.value);setShowSearchResults(true);}}
                     onFocus={()=>{setSearchFocused(true);setShowSearchResults(true);}}
                     onBlur={()=>setTimeout(()=>{setSearchFocused(false);setShowSearchResults(false);},200)}
                     placeholder={T.search}
                     style={{flex:1,padding:"13px 18px",border:"none",fontSize:"0.85rem",background:"white",outline:"none",fontFamily:"inherit"}}/>
-                  {filters.search&&<button onClick={()=>{setFilters(f=>({...f,search:""}));setShowSearchResults(false);}} style={{background:"white",border:"none",padding:"0 8px",cursor:"pointer",color:"#aaa",fontSize:"1.1rem"}}>✕</button>}
+                  {searchInput&&<button onClick={()=>{setSearchInput("");setFilters(f=>({...f,search:undefined}));setShowSearchResults(false);}} style={{background:"white",border:"none",padding:"0 8px",cursor:"pointer",color:"#aaa",fontSize:"1.1rem"}}>✕</button>}
                   <button onClick={()=>setShowFilters(f=>!f)} style={{background:"#f5f5f5",border:"none",padding:"13px 14px",cursor:"pointer",fontSize:"0.85rem"}} title="Filters">⚙️</button>
                   <button style={{background:C.gold,color:C.black,border:"none",padding:"13px 18px",fontWeight:900,cursor:"pointer"}}>🔍</button>
                 </div>
@@ -3096,14 +3135,16 @@ export default function AshantiHub() {
                 {/* Search Dropdown — popular-suggestion quick-fill only when the box is empty; once
                     there's a query, results come live from the grid below via filters.search, so the
                     dropdown just gets out of the way (the old cross-category preview here required
-                    the full in-memory LISTINGS set, which no longer exists client-side). */}
-                {showSearchResults&&searchFocused&&!filters.search&&(
+                    the full in-memory LISTINGS set, which no longer exists client-side). Checked
+                    against searchInput (not the debounced filters.search) so the dropdown reacts
+                    instantly to typing rather than lagging behind the debounce. */}
+                {showSearchResults&&searchFocused&&!searchInput&&(
                   <div style={{position:"absolute",top:"calc(100% + 8px)",left:0,right:0,background:"white",borderRadius:16,boxShadow:"0 8px 40px rgba(0,0,0,0.2)",zIndex:500,overflow:"hidden",maxHeight:420,overflowY:"auto"}}>
                     <div style={{padding:"12px"}}>
                       <div style={{fontSize:"0.68rem",color:"#aaa",fontWeight:700,padding:"4px 8px 8px"}}>🔥 POPULAR SEARCHES</div>
                       <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
                         {SEARCH_SUGGESTIONS.map(s=>(
-                          <button key={s} onClick={()=>{setFilters(f=>({...f,search:s}));setShowSearchResults(false);}}
+                          <button key={s} onClick={()=>{setSearchInput(s);setFilters(f=>({...f,search:s}));setShowSearchResults(false);}}
                             style={{background:`${C.gold}15`,color:C.darkBrown,border:`1px solid ${C.gold}33`,borderRadius:20,padding:"5px 12px",fontSize:"0.72rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
                             🔍 {s}
                           </button>
@@ -3146,10 +3187,13 @@ export default function AshantiHub() {
             </span>
           </div>
 
-          {/* Filters panel — all four inputs write straight into `filters`, which is useListings'
-              query key. "Min Rating" was dropped: the real Listing model has no rating field, so it
-              could never do anything meaningful; a Min/Max Price range (which the backend and
-              useListings already support via min_price/max_price) replaces it. */}
+          {/* Filters panel — Sort/Zone are discrete selects and write straight into `filters`,
+              which is useListings' query key. Min/Max Price are free-text number inputs, so (like
+              search above) they're debounced ~300ms before landing in `filters` — see
+              minPriceInput/maxPriceInput state. "Min Rating" was dropped: the real Listing model
+              has no rating field, so it could never do anything meaningful; a Min/Max Price range
+              (which the backend and useListings already support via min_price/max_price) replaces
+              it. */}
           {showFilters&&(
             <div style={{background:"white",borderBottom:"1px solid #f0f0f0",padding:"14px 16px"}}>
               <div style={{maxWidth:960,margin:"0 auto",display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
@@ -3170,13 +3214,13 @@ export default function AshantiHub() {
                 </div>
                 <div>
                   <label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,marginBottom:3,display:"block"}}>Min Price (GHS)</label>
-                  <input type="number" min="0" placeholder="Any" value={filters.minPrice??""} onChange={e=>setFilters(f=>({...f,minPrice:e.target.value===""?undefined:Number(e.target.value)}))} style={{width:80,padding:"6px 10px",borderRadius:10,border:"1.5px solid #ddd",fontSize:"0.74rem",background:"white",fontFamily:"inherit"}}/>
+                  <input type="number" min="0" placeholder="Any" value={minPriceInput} onChange={e=>setMinPriceInput(e.target.value)} style={{width:80,padding:"6px 10px",borderRadius:10,border:"1.5px solid #ddd",fontSize:"0.74rem",background:"white",fontFamily:"inherit"}}/>
                 </div>
                 <div>
                   <label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,marginBottom:3,display:"block"}}>Max Price (GHS)</label>
-                  <input type="number" min="0" placeholder="Any" value={filters.maxPrice??""} onChange={e=>setFilters(f=>({...f,maxPrice:e.target.value===""?undefined:Number(e.target.value)}))} style={{width:80,padding:"6px 10px",borderRadius:10,border:"1.5px solid #ddd",fontSize:"0.74rem",background:"white",fontFamily:"inherit"}}/>
+                  <input type="number" min="0" placeholder="Any" value={maxPriceInput} onChange={e=>setMaxPriceInput(e.target.value)} style={{width:80,padding:"6px 10px",borderRadius:10,border:"1.5px solid #ddd",fontSize:"0.74rem",background:"white",fontFamily:"inherit"}}/>
                 </div>
-                <button onClick={()=>setFilters(f=>({category:f.category,search:f.search}))} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"6px 14px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",marginTop:14}}>
+                <button onClick={()=>{setFilters(f=>({category:f.category,search:f.search}));setMinPriceInput("");setMaxPriceInput("");}} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"6px 14px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",marginTop:14}}>
                   ✕ Clear Filters
                 </button>
               </div>
