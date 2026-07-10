@@ -4,23 +4,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-- `npm install` — install dependencies
-- `npm run dev` — start the Vite dev server
-- `npm run build` — production build (this is what Vercel runs via `vercel.json`, output to `dist/`)
-- `npm run preview` — serve the built `dist/` output locally
+All frontend commands run from the `frontend/` directory:
 
-There is no lint, typecheck, or test setup in this project (no test files, no ESLint/Prettier config, no test script in `package.json`). Verify changes by running `npm run build` and/or `npm run dev` and exercising the UI in a browser.
+- `cd frontend && npm install` — install dependencies
+- `cd frontend && npm run dev` — start the Vite dev server
+- `cd frontend && npm run build` — production build (this is what Vercel runs via `frontend/vercel.json`, output to `frontend/dist/`)
+- `cd frontend && npm run preview` — serve the built `dist/` output locally
+- `cd frontend && npm run test` — run the Vitest suite
+
+Backend commands (Django/DRF, under `backend/`) run via `docker compose` from the repo root — see `docker-compose.yml`.
 
 ## Project structure
 
-This is a flat-layout Vite + React app — there is no `src/` directory. Source files live at the repo root:
+The repo is a monorepo with two self-contained top-level directories:
 
-- `index.html` — Vite entry HTML, loads `/main.jsx` as a module script and mounts to `#root`.
-- `main.jsx` — React root bootstrap (`ReactDOM.createRoot` + `<App />`).
-- `App.jsx` — the entire application (~3,600 lines). Everything — components, mock data, business logic — lives in this single file.
-- `sw.js` — a service worker (not currently registered anywhere in `main.jsx`/`App.jsx`, so it's inert dead code unless registration is added).
-- `manifest.json` — PWA manifest, referenced from `index.html`.
-- `vercel.json` — Vercel build/routing config: SPA rewrite (`/(.*) → /index.html`) plus security headers.
+- `backend/` — Django/DRF/Postgres backend (see `backend/` for its own structure: `accounts/`, `listings/`, `core/` apps).
+- `frontend/` — the Vite + React app. Still a flat layout within `frontend/` — no `src/` subdirectory:
+  - `frontend/index.html` — Vite entry HTML, loads `/main.jsx` as a module script and mounts to `#root`.
+  - `frontend/main.jsx` — React root bootstrap (`ReactDOM.createRoot` + `<App />`, wrapped in `QueryClientProvider`).
+  - `frontend/App.jsx` — the bulk of the application (~3,600+ lines). Most components, mock data, and business logic still live in this single file.
+  - `frontend/apiClient.js` — shared `fetch` helper for calling the backend API.
+  - `frontend/hooks/` — `@tanstack/react-query` data-fetching hooks (`useCategories`, `useZones`, `useListings`, `useListing`).
+  - `frontend/mocks/`, `frontend/test/` — MSW request handlers and Vitest setup for the test suite.
+  - `frontend/sw.js` — a service worker (not currently registered anywhere in `main.jsx`/`App.jsx`, so it's inert dead code unless registration is added).
+  - `frontend/manifest.json` — PWA manifest, referenced from `index.html`.
+  - `frontend/vercel.json` — Vercel build/routing config. **Vercel's dashboard "Root Directory" setting must be `frontend` for this to be picked up.**
 
 ## Architecture
 

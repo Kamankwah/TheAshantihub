@@ -11,7 +11,8 @@
 This is the foundational sub-project of five: it must land before the escrow payment model (needs the payout fields defined here) and before the three role-specific dashboards (need the account/permission model defined here). Those are separate specs.
 
 **Out of scope for this spec** (covered by later specs in the sequence):
-- Escrow hold/release/dispute logic (only the payout *fields* are defined here)
+
+- Escrow hold/release/dispute logic (only the payout _fields_ are defined here)
 - Staff/Customer/Business dashboard UI content and layout
 - Real Hubtel payout wiring (this spec only stores payout destination data)
 
@@ -79,6 +80,7 @@ Role <-M2M-> Permission     # seeded per §4 below
 ```
 
 **Constraints:**
+
 - `BusinessOwnerProfile.business_reg_certificate` and `.tin` are required at the database/serializer validation level when `is_formal = true`, and must be null/omitted when `is_formal = false`.
 - At least one of the bank fields or the momo fields must be populated; `default_payout_method` must match a populated set (can't default to `bank` with no bank fields filled).
 - `BusinessOwner.kyc_status` starts at `pending` on registration and is staff-controlled thereafter (no self-service transition to `verified`).
@@ -86,12 +88,15 @@ Role <-M2M-> Permission     # seeded per §4 below
 ## 3. Registration flows
 
 ### 3.1 Customer
+
 Minimal-friction, no KYC:
+
 1. Full name
 2. Phone (OTP) or email + password
 3. Account is active immediately — no approval step.
 
 ### 3.2 Business owner
+
 1. Account basics: full name, login phone/email, password.
 2. Business details form:
    - "Is your business formally registered with the Registrar General's Department?" toggle
@@ -104,7 +109,9 @@ Minimal-friction, no KYC:
 4. Submission sets `kyc_status = pending`. Owner can log in immediately and edit their profile/listing draft, but see §5 for what's gated.
 
 ### 3.3 Staff
+
 No public registration form. A `super_admin` creates the account from the (future) Staff Dashboard's "Manage Staff" screen:
+
 1. `super_admin` enters email/phone + selects a `Role`.
 2. System sends an invite link.
 3. Invitee sets their own password via the link to activate the account.
@@ -113,13 +120,13 @@ No public registration form. A `super_admin` creates the account from the (futur
 
 Proper `Role` ↔ `Permission` many-to-many, seeded with this default matrix (adjustable later by a `super_admin` without a code deploy, since it's data, not hardcoded logic):
 
-| Role | Permissions |
-| --- | --- |
-| `super_admin` | All permissions, including staff account management (create/invite/deactivate/reassign roles) |
-| `admin` | Approve/reject business KYC, moderate listings, view all users — no escrow release, no staff management |
-| `accountant` | Escrow ledger (read), payout hold/release actions, dispute financial resolution, transaction reports — no KYC approval |
-| `marketing` | Promotions/featured listings, analytics/reports, category management — no financial or KYC access |
-| `support` | Messaging/ticket queue, dispute intake and flagging (escalates financial disputes to `accountant`/`admin`) — read-only on user profiles |
+| Role          | Permissions                                                                                                                             |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `super_admin` | All permissions, including staff account management (create/invite/deactivate/reassign roles)                                           |
+| `admin`       | Approve/reject business KYC, moderate listings, view all users — no escrow release, no staff management                                 |
+| `accountant`  | Escrow ledger (read), payout hold/release actions, dispute financial resolution, transaction reports — no KYC approval                  |
+| `marketing`   | Promotions/featured listings, analytics/reports, category management — no financial or KYC access                                       |
+| `support`     | Messaging/ticket queue, dispute intake and flagging (escalates financial disputes to `accountant`/`admin`) — read-only on user profiles |
 
 Every staff-facing API endpoint checks the caller's `Role`'s permission set server-side (not just hidden in the UI).
 
@@ -153,6 +160,7 @@ No change to Day 2 (OTP/email auth flows) or Day 5 (messaging/reviews) beyond no
 ## 8. Testing considerations
 
 Per `docs/IMPLEMENTATION_INSTRUCTIONS.md` §3 (testing strategy — currently zero tests in the repo), when backend work begins this area should get Django test coverage for:
+
 - `is_formal` conditional validation (cert/TIN required iff true)
 - KYC status transitions (pending → verified/rejected → resubmission → pending)
 - Payout detail change resetting only `payout_verification_status`, not `kyc_status`
