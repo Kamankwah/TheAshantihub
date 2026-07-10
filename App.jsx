@@ -1964,10 +1964,8 @@ export function Card({item,accentColor,onWhatsApp,user,favourites,onFavourite,cu
 }
 
 // ─── Map View ─────────────────────────────────────────────────────────────────
-function MapView({allListings,activeCategory}) {
-  const items = Object.values(allListings).flat().filter(i=>i.lat);
-  const cat = CATEGORIES.find(c=>c.id===activeCategory);
-  const filtered = activeCategory==="all"?items:(LISTINGS[activeCategory]||[]).filter(i=>i.lat);
+export function MapView({listings}) {
+  const filtered = listings.filter(i=>i.lat && i.lng);
 
   return <div style={{background:"white",borderRadius:16,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.1)",marginBottom:20}}>
     <div style={{background:`linear-gradient(135deg,${C.darkBrown},${C.kente3})`,padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -1989,14 +1987,15 @@ function MapView({allListings,activeCategory}) {
       </svg>
       {/* Business pins */}
       {filtered.slice(0,12).map((item,i)=>{
-        const x = 40 + ((item.lng+1.63)*2000)%480;
-        const y = 20 + ((item.lat-6.68)*3000)%220;
-        const catColor = CATEGORIES.find(c=>LISTINGS[c.id]?.some(l=>l.id===item.id))?.color||C.gold;
+        const x = 40 + ((parseFloat(item.lng)+1.63)*2000)%480;
+        const y = 20 + ((parseFloat(item.lat)-6.68)*3000)%220;
+        const catColor = item.category?.color||C.gold;
         return <div key={item.id} style={{position:"absolute",left:`${Math.min(Math.max(x,20),460)}px`,top:`${Math.min(Math.max(y,10),240)}px`,zIndex:10}}>
           <div style={{background:catColor,color:"white",borderRadius:"50% 50% 50% 0",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.75rem",boxShadow:"0 2px 8px rgba(0,0,0,0.3)",transform:"rotate(-45deg)",cursor:"pointer"}}
             title={item.name}>
-            <span style={{transform:"rotate(45deg)"}}>{item.img}</span>
+            <span style={{transform:"rotate(45deg)"}}>{item.category?.icon}</span>
           </div>
+          <span style={{position:"absolute",width:1,height:1,padding:0,margin:-1,overflow:"hidden",clip:"rect(0,0,0,0)",whiteSpace:"nowrap",border:0}}>{item.name}</span>
         </div>;
       })}
       {/* Manhyia Palace marker */}
