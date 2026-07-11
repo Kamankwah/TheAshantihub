@@ -47,3 +47,14 @@ class CustomerRegistrationTests(TestCase):
             "/api/accounts/customers/register/", payload, format="json"
         )
         self.assertEqual(response.status_code, 400)
+
+    def test_registration_response_includes_a_working_token(self):
+        response = self.client.post(
+            "/api/accounts/customers/register/", self.valid_payload, format="json"
+        )
+        self.assertEqual(response.status_code, 201)
+        token = response.json()["token"]
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        me_response = self.client.get("/api/accounts/me/")
+        self.assertEqual(me_response.status_code, 200)
+        self.assertEqual(me_response.json()["account_type"], "customer")

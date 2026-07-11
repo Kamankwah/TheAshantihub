@@ -30,13 +30,23 @@ from .serializers import (
 @permission_classes([IsAuthenticated])
 def me(request):
     token = request.auth
-    return Response({"account_type": token["account_type"], "id": request.user.id})
+    return Response({
+        "account_type": token["account_type"],
+        "id": request.user.id,
+        "full_name": request.user.full_name,
+    })
 
 
 class CustomerRegisterView(generics.CreateAPIView):
     serializer_class = CustomerRegistrationSerializer
     permission_classes = [AllowAny]
     throttle_scope = "customer_register"
+
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        customer = Customer.objects.get(pk=response.data["id"])
+        response.data["token"] = issue_token(customer, "customer")
+        return response
 
 
 class StaffInviteView(generics.CreateAPIView):
@@ -54,8 +64,8 @@ class StaffActivateView(generics.GenericAPIView):
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response({"status": "activated"})
+        staff = serializer.save()
+        return Response({"status": "activated", "token": issue_token(staff, "staff")})
 
 
 class BusinessOwnerRegisterView(generics.CreateAPIView):
@@ -63,6 +73,12 @@ class BusinessOwnerRegisterView(generics.CreateAPIView):
     permission_classes = [AllowAny]
     parser_classes = [MultiPartParser, FormParser]
     throttle_scope = "business_owner_register"
+
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        owner = BusinessOwner.objects.get(pk=response.data["id"])
+        response.data["token"] = issue_token(owner, "business_owner")
+        return response
 
 
 class StaffResendInviteView(APIView):
