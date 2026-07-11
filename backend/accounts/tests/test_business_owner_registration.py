@@ -134,3 +134,14 @@ class BusinessOwnerRegistrationTests(TestCase):
         )
         self.assertEqual(response.status_code, 400, response.content)
         self.assertIn("business_reg_certificate", response.json())
+
+    def test_registration_response_includes_a_working_token(self):
+        response = self.client.post(
+            "/api/accounts/business-owners/register/", self.base_payload, format="multipart"
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        token = response.json()["token"]
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        me_response = self.client.get("/api/accounts/me/")
+        self.assertEqual(me_response.status_code, 200)
+        self.assertEqual(me_response.json()["account_type"], "business_owner")

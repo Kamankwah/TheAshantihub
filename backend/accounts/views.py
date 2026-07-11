@@ -7,18 +7,22 @@ from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import BusinessOwner, StaffUser
+from .authentication import issue_token
+from .models import BusinessOwner, Customer, StaffUser
 from .permissions import HasRolePermission
 from .serializers import (
     INVITE_TOKEN_LIFETIME,
     BusinessOwnerKYCDetailSerializer,
     BusinessOwnerKYCSerializer,
+    BusinessOwnerLoginSerializer,
     BusinessOwnerRegistrationSerializer,
     BusinessOwnerProfileUpdateSerializer,
+    CustomerLoginSerializer,
     CustomerRegistrationSerializer,
     PayoutDetailSerializer,
     StaffActivateSerializer,
     StaffInviteSerializer,
+    StaffLoginSerializer,
 )
 
 
@@ -26,13 +30,23 @@ from .serializers import (
 @permission_classes([IsAuthenticated])
 def me(request):
     token = request.auth
-    return Response({"account_type": token["account_type"], "id": request.user.id})
+    return Response({
+        "account_type": token["account_type"],
+        "id": request.user.id,
+        "full_name": request.user.full_name,
+    })
 
 
 class CustomerRegisterView(generics.CreateAPIView):
     serializer_class = CustomerRegistrationSerializer
     permission_classes = [AllowAny]
     throttle_scope = "customer_register"
+
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        customer = Customer.objects.get(pk=response.data["id"])
+        response.data["token"] = issue_token(customer, "customer")
+        return response
 
 
 class StaffInviteView(generics.CreateAPIView):
@@ -50,8 +64,8 @@ class StaffActivateView(generics.GenericAPIView):
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response({"status": "activated"})
+        staff = serializer.save()
+        return Response({"status": "activated", "token": issue_token(staff, "staff")})
 
 
 class BusinessOwnerRegisterView(generics.CreateAPIView):
@@ -59,6 +73,12 @@ class BusinessOwnerRegisterView(generics.CreateAPIView):
     permission_classes = [AllowAny]
     parser_classes = [MultiPartParser, FormParser]
     throttle_scope = "business_owner_register"
+
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        owner = BusinessOwner.objects.get(pk=response.data["id"])
+        response.data["token"] = issue_token(owner, "business_owner")
+        return response
 
 
 class StaffResendInviteView(APIView):
@@ -76,6 +96,57 @@ class StaffResendInviteView(APIView):
         staff.invite_expires_at = timezone.now() + INVITE_TOKEN_LIFETIME
         staff.save(update_fields=["invite_token", "invite_expires_at"])
         return Response({"status": "invite resent"})
+
+
+class CustomerLoginView(generics.GenericAPIView):
+    serializer_class = CustomerLoginSerializer
+    permission_classes = [AllowAny]
+    throttle_scope = "login"
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        account = serializer.account
+        return Response({
+            "token": issue_token(account, "customer"),
+            "account_type": "customer",
+            "id": account.id,
+            "full_name": account.full_name,
+        })
+
+
+class BusinessOwnerLoginView(generics.GenericAPIView):
+    serializer_class = BusinessOwnerLoginSerializer
+    permission_classes = [AllowAny]
+    throttle_scope = "login"
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        account = serializer.account
+        return Response({
+            "token": issue_token(account, "business_owner"),
+            "account_type": "business_owner",
+            "id": account.id,
+            "full_name": account.full_name,
+        })
+
+
+class StaffLoginView(generics.GenericAPIView):
+    serializer_class = StaffLoginSerializer
+    permission_classes = [AllowAny]
+    throttle_scope = "login"
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        account = serializer.account
+        return Response({
+            "token": issue_token(account, "staff"),
+            "account_type": "staff",
+            "id": account.id,
+            "full_name": account.full_name,
+        })
 
 
 class KYCPendingQueueView(generics.ListAPIView):

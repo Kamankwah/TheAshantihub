@@ -25,7 +25,8 @@ class MultiAccountAuthenticationTests(TestCase):
         response = self.client.get("/api/accounts/me/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
-            response.json(), {"account_type": "customer", "id": self.customer.id}
+            response.json(),
+            {"account_type": "customer", "id": self.customer.id, "full_name": "Ama Owusu"},
         )
 
     def test_invalid_token_is_rejected(self):
