@@ -312,3 +312,15 @@ class StaffLoginSerializer(serializers.Serializer):
             raise serializers.ValidationError("Invalid credentials")
         self.account = account
         return attrs
+
+
+class CustomerListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Customer
+        fields = ["id", "full_name", "phone", "email", "created_at"]
+
+
+class BusinessOwnerListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BusinessOwner
+        fields = ["id", "full_name", "login_phone", "email", "kyc_status", "created_at"]
