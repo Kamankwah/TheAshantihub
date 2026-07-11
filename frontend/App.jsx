@@ -4,6 +4,13 @@ import { useZones } from "./hooks/useZones.js";
 import { useListings } from "./hooks/useListings.js";
 import { useListing } from "./hooks/useListing.js";
 import { useAuth } from "./hooks/useAuth.js";
+import { useTheme } from "./hooks/useTheme.js";
+import { useKYCQueue } from "./hooks/useKYCQueue.js";
+import { useModerationQueue } from "./hooks/useModerationQueue.js";
+import { useCustomers } from "./hooks/useCustomers.js";
+import { useBusinessOwners } from "./hooks/useBusinessOwners.js";
+import { useStaffRoster } from "./hooks/useStaffRoster.js";
+import { apiPost } from "./apiClient.js";
 
 // ─── Colors ──────────────────────────────────────────────────────────────────
 const C = {
@@ -2491,6 +2498,109 @@ function AdminDashboard({ onExit }) {
       </div>
     </div>
   );
+}
+
+const DASHBOARD_THEME = {
+  light: { pageBg:"#f0f2f5", sidebarBg:C.cream, sidebarText:C.darkBrown, cardBg:"#ffffff", text:C.darkBrown, textMuted:"#666", border:"#e0e0e0" },
+  dark:  { pageBg:"#14161c", sidebarBg:"#0d0e12", sidebarText:C.cream, cardBg:"#1c1f26", text:C.cream, textMuted:"#9aa0aa", border:"#2a2d35" },
+};
+
+const ROLE_COLORS = { super_admin:C.gold, admin:C.kente3, accountant:C.kente1, marketing:C.kente2, support:C.ghGreen };
+
+function ComingSoonPanel({theme,feature}) {
+  return <div style={{background:theme.cardBg,borderRadius:16,padding:"40px 24px",textAlign:"center",border:`1px solid ${theme.border}`}}>
+    <div style={{fontSize:"2rem",marginBottom:10}}>🚧</div>
+    <div style={{color:theme.text,fontWeight:800,fontSize:"0.9rem",marginBottom:4}}>Coming soon</div>
+    <div style={{color:theme.textMuted,fontSize:"0.78rem"}}>{feature} isn't built yet.</div>
+  </div>;
+}
+
+function StaffOverviewPanel({auth,theme,roleColor}) {
+  const permissions = auth.user?.permissions||[];
+  return <div>
+    <h2 style={{color:theme.text,fontWeight:900,margin:"0 0 6px",fontSize:"1.1rem"}}>Akwaaba, {auth.user?.full_name?.split(" ")[0]}!</h2>
+    <div style={{color:theme.textMuted,fontSize:"0.8rem",marginBottom:20}}>
+      You're signed in as <span style={{color:roleColor,fontWeight:800,textTransform:"capitalize"}}>{auth.user?.role?.replace("_"," ")}</span>.
+    </div>
+    <div style={{background:theme.cardBg,borderRadius:16,padding:"18px",border:`1px solid ${theme.border}`}}>
+      <div style={{color:theme.text,fontWeight:800,fontSize:"0.82rem",marginBottom:10}}>Your permissions</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+        {permissions.map(p=>(
+          <span key={p} style={{background:`${roleColor}18`,color:roleColor,borderRadius:20,padding:"3px 10px",fontSize:"0.68rem",fontWeight:700}}>{p}</span>
+        ))}
+      </div>
+    </div>
+  </div>;
+}
+
+export function StaffDashboard({auth,onExit}) {
+  const {theme,toggleTheme} = useTheme();
+  const t = DASHBOARD_THEME[theme];
+  const [activeTab,setActiveTab] = useState("overview");
+  const [sidebarCollapsed,setSidebarCollapsed] = useState(false);
+  const role = auth.user?.role;
+  const roleColor = ROLE_COLORS[role]||C.gold;
+
+  const NAV_ITEMS = [
+    {id:"overview",icon:"📊",label:"Overview",show:true},
+    {id:"kyc",icon:"🪪",label:"KYC Queue",show:auth.hasPermission("kyc.approve")},
+    {id:"moderation",icon:"📋",label:"Listings Moderation",show:auth.hasPermission("listings.moderate")},
+    {id:"users",icon:"👥",label:"Users",show:auth.hasPermission("users.view")},
+    {id:"categories-zones",icon:"🗂️",label:"Categories & Zones",show:auth.hasPermission("categories.manage")||auth.hasPermission("zones.manage")},
+    {id:"staff",icon:"🛡️",label:"Staff Management",show:auth.hasPermission("staff.manage")},
+    {id:"escrow",icon:"💰",label:"Escrow Ledger",show:auth.hasPermission("escrow.view")||auth.hasPermission("escrow.release")},
+    {id:"disputes",icon:"⚖️",label:"Disputes",show:auth.hasPermission("disputes.resolve_financial")||auth.hasPermission("disputes.flag")},
+    {id:"transactions",icon:"📈",label:"Transactions Report",show:auth.hasPermission("transactions.report")},
+    {id:"promotions",icon:"🎯",label:"Promotions",show:auth.hasPermission("promotions.manage")},
+    {id:"analytics",icon:"📊",label:"Analytics",show:auth.hasPermission("analytics.view")},
+    {id:"messaging",icon:"💬",label:"Messaging / Tickets",show:auth.hasPermission("messaging.manage")},
+  ].filter(item=>item.show);
+
+  return <div style={{fontFamily:"'Georgia',serif",background:t.pageBg,minHeight:"100vh",display:"flex"}}>
+    <div style={{width:sidebarCollapsed?60:220,background:t.sidebarBg,borderLeft:`4px solid ${roleColor}`,transition:"width 0.2s",flexShrink:0,position:"sticky",top:0,height:"100vh",overflowY:"auto"}}>
+      <div style={{padding:"16px 12px",display:"flex",alignItems:"center",gap:8}}>
+        <Flag w={28} h={19}/>
+        {!sidebarCollapsed&&<div style={{color:t.sidebarText,fontWeight:900,fontSize:"0.85rem"}}>AshantiHub Staff</div>}
+      </div>
+      <button onClick={()=>setSidebarCollapsed(s=>!s)} style={{background:"none",border:"none",color:t.textMuted,cursor:"pointer",padding:"4px 12px",fontSize:"0.7rem",fontFamily:"inherit"}}>{sidebarCollapsed?"→":"← Collapse"}</button>
+      <nav>
+        {NAV_ITEMS.map(item=>(
+          <button key={item.id} onClick={()=>setActiveTab(item.id)} style={{display:"flex",alignItems:"center",gap:10,width:"100%",background:activeTab===item.id?`${roleColor}22`:"none",border:"none",borderLeft:activeTab===item.id?`3px solid ${roleColor}`:"3px solid transparent",color:t.sidebarText,padding:"10px 12px",fontSize:"0.78rem",fontWeight:activeTab===item.id?800:600,cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>
+            <span>{item.icon}</span>{!sidebarCollapsed&&<span>{item.label}</span>}
+          </button>
+        ))}
+      </nav>
+    </div>
+
+    <div style={{flex:1,minWidth:0}}>
+      <div style={{background:t.cardBg,borderBottom:`1px solid ${t.border}`,padding:"0 20px",display:"flex",alignItems:"center",justifyContent:"space-between",height:56,position:"sticky",top:0,zIndex:10}}>
+        <div style={{color:t.text,fontWeight:800,fontSize:"0.9rem"}}>{NAV_ITEMS.find(i=>i.id===activeTab)?.label}</div>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <button onClick={toggleTheme} title="Toggle theme" style={{background:"none",border:`1px solid ${t.border}`,borderRadius:20,padding:"4px 10px",cursor:"pointer",fontSize:"0.8rem"}}>{theme==="dark"?"☀️":"🌙"}</button>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{background:roleColor,color:"white",borderRadius:20,padding:"2px 8px",fontSize:"0.62rem",fontWeight:800,textTransform:"capitalize"}}>{role?.replace("_"," ")}</span>
+            <span style={{color:t.text,fontSize:"0.78rem",fontWeight:700}}>{auth.user?.full_name}</span>
+          </div>
+          <button onClick={onExit} style={{background:"none",border:`1px solid ${t.border}`,color:t.textMuted,borderRadius:20,padding:"4px 12px",fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>← Exit</button>
+        </div>
+      </div>
+
+      <div style={{padding:"22px 20px 60px"}}>
+        {activeTab==="overview"&&<StaffOverviewPanel auth={auth} theme={t} roleColor={roleColor}/>}
+        {activeTab==="kyc"&&<ComingSoonPanel theme={t} feature="KYC Queue"/>}
+        {activeTab==="moderation"&&<ComingSoonPanel theme={t} feature="Listings Moderation"/>}
+        {activeTab==="users"&&<ComingSoonPanel theme={t} feature="Users"/>}
+        {activeTab==="categories-zones"&&<ComingSoonPanel theme={t} feature="Categories & Zones"/>}
+        {activeTab==="staff"&&<ComingSoonPanel theme={t} feature="Staff Management"/>}
+        {activeTab==="escrow"&&<ComingSoonPanel theme={t} feature="Escrow Ledger"/>}
+        {activeTab==="disputes"&&<ComingSoonPanel theme={t} feature="Disputes"/>}
+        {activeTab==="transactions"&&<ComingSoonPanel theme={t} feature="Transactions Report"/>}
+        {activeTab==="promotions"&&<ComingSoonPanel theme={t} feature="Promotions"/>}
+        {activeTab==="analytics"&&<ComingSoonPanel theme={t} feature="Analytics"/>}
+        {activeTab==="messaging"&&<ComingSoonPanel theme={t} feature="Messaging / Tickets"/>}
+      </div>
+    </div>
+  </div>;
 }
 
 // ─── Business Dashboard ───────────────────────────────────────────────────────
