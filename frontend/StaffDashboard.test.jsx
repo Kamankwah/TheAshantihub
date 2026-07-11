@@ -1,6 +1,18 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { StaffDashboard } from './App.jsx'
+import { server } from './mocks/server.js'
+
+// StaffDashboard's KYC/moderation panels use react-query hooks. In the real
+// app the QueryClientProvider lives above App in main.jsx; these two tests
+// render StaffDashboard in isolation, so they need their own client — same
+// pattern as hooks/__tests__/useKYCQueue.test.jsx and useModerationQueue.test.jsx.
+function renderWithQueryClient(ui) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
+}
 
 function makeAuth(overrides = {}) {
   return {
@@ -62,5 +74,38 @@ describe('StaffDashboard', () => {
     expect(toggle.textContent).toBe('🌙')
     fireEvent.click(toggle)
     expect(toggle.textContent).toBe('☀️')
+  })
+
+  it('renders the KYC queue and approves an entry', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/accounts/kyc/pending/', () => {
+        return HttpResponse.json([{ id: 7, full_name: 'Kwame Business', login_phone: '+233201112233', created_at: '2026-07-01T00:00:00Z' }])
+      }),
+    )
+    let approveCalled = false
+    server.use(
+      http.post('http://localhost:8000/api/accounts/kyc/7/approve/', () => {
+        approveCalled = true
+        return HttpResponse.json({ id: 7, kyc_status: 'verified' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'kyc.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('KYC Queue'))
+    await screen.findByText('Kwame Business')
+    fireEvent.click(screen.getByText('✓ Approve'))
+    await waitFor(() => expect(approveCalled).toBe(true))
+  })
+
+  it('renders the listings moderation queue', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/listings/moderation/pending/', () => {
+        return HttpResponse.json([{ id: 3, name: 'Royal Ashanti Lodge', category: { label: 'Hotels' }, zone: { name: 'Manhyia' }, price_amount: '450.00', contact_phone: '+233244000001' }])
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'listings.moderate' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Listings Moderation'))
+    await screen.findByText('Royal Ashanti Lodge')
   })
 })

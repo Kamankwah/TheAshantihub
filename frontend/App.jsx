@@ -2533,6 +2533,78 @@ function StaffOverviewPanel({auth,theme,roleColor}) {
   </div>;
 }
 
+function KYCQueuePanel({theme}) {
+  const {data,isLoading,isError,refetch} = useKYCQueue();
+  const [rejectingId,setRejectingId] = useState(null);
+  const [rejectReason,setRejectReason] = useState("");
+
+  const approve = async (id) => { await apiPost(`/api/accounts/kyc/${id}/approve/`,{}); refetch(); };
+  const reject = async (id) => { await apiPost(`/api/accounts/kyc/${id}/reject/`,{reason:rejectReason}); setRejectingId(null); setRejectReason(""); refetch(); };
+
+  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
+  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the KYC queue.</div>;
+  const items = data||[];
+
+  return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
+    <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Pending KYC submissions ({items.length})</div>
+    {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No pending submissions.</div>}
+    {items.map(o=>(
+      <div key={o.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <div>
+            <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>{o.full_name}</div>
+            <div style={{color:theme.textMuted,fontSize:"0.68rem"}}>{o.login_phone} • submitted {o.created_at?.slice(0,10)}</div>
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>approve(o.id)} style={{background:"#22c55e",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✓ Approve</button>
+            <button onClick={()=>setRejectingId(o.id)} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✕ Reject</button>
+          </div>
+        </div>
+        {rejectingId===o.id&&<div style={{marginTop:8,display:"flex",gap:6}}>
+          <input value={rejectReason} onChange={e=>setRejectReason(e.target.value)} placeholder="Rejection reason" style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+          <button onClick={()=>reject(o.id)} disabled={!rejectReason} style={{background:"#dc2626",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:rejectReason?"pointer":"default"}}>Confirm reject</button>
+        </div>}
+      </div>
+    ))}
+  </div>;
+}
+
+function ListingsModerationPanel({theme}) {
+  const {data,isLoading,isError,refetch} = useModerationQueue();
+  const [rejectingId,setRejectingId] = useState(null);
+  const [rejectReason,setRejectReason] = useState("");
+
+  const approve = async (id) => { await apiPost(`/api/listings/moderation/${id}/approve/`,{}); refetch(); };
+  const reject = async (id) => { await apiPost(`/api/listings/moderation/${id}/reject/`,{reason:rejectReason}); setRejectingId(null); setRejectReason(""); refetch(); };
+
+  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
+  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the moderation queue.</div>;
+  const items = data||[];
+
+  return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
+    <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Pending listings ({items.length})</div>
+    {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No pending listings.</div>}
+    {items.map(l=>(
+      <div key={l.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <div>
+            <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>{l.name}</div>
+            <div style={{color:theme.textMuted,fontSize:"0.68rem"}}>{l.category?.label} • {l.zone?.name} • GHS {l.price_amount} • {l.contact_phone}</div>
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>approve(l.id)} style={{background:"#22c55e",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✓ Approve</button>
+            <button onClick={()=>setRejectingId(l.id)} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✕ Reject</button>
+          </div>
+        </div>
+        {rejectingId===l.id&&<div style={{marginTop:8,display:"flex",gap:6}}>
+          <input value={rejectReason} onChange={e=>setRejectReason(e.target.value)} placeholder="Rejection reason" style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+          <button onClick={()=>reject(l.id)} disabled={!rejectReason} style={{background:"#dc2626",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:rejectReason?"pointer":"default"}}>Confirm reject</button>
+        </div>}
+      </div>
+    ))}
+  </div>;
+}
+
 export function StaffDashboard({auth,onExit}) {
   const {theme,toggleTheme} = useTheme();
   const t = DASHBOARD_THEME[theme];
@@ -2587,8 +2659,8 @@ export function StaffDashboard({auth,onExit}) {
 
       <div style={{padding:"22px 20px 60px"}}>
         {activeTab==="overview"&&<StaffOverviewPanel auth={auth} theme={t} roleColor={roleColor}/>}
-        {activeTab==="kyc"&&<ComingSoonPanel theme={t} feature="KYC Queue"/>}
-        {activeTab==="moderation"&&<ComingSoonPanel theme={t} feature="Listings Moderation"/>}
+        {activeTab==="kyc"&&<KYCQueuePanel theme={t}/>}
+        {activeTab==="moderation"&&<ListingsModerationPanel theme={t}/>}
         {activeTab==="users"&&<ComingSoonPanel theme={t} feature="Users"/>}
         {activeTab==="categories-zones"&&<ComingSoonPanel theme={t} feature="Categories & Zones"/>}
         {activeTab==="staff"&&<ComingSoonPanel theme={t} feature="Staff Management"/>}
