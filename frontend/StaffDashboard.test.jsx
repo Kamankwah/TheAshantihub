@@ -155,4 +155,25 @@ describe('StaffDashboard', () => {
     fireEvent.click(screen.getByText('Add zone'))
     await waitFor(() => expect(created).toBe(true))
   })
+
+  it('renders the staff roster and invites a new staff member', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/accounts/staff/', () => {
+        return HttpResponse.json({ count: 1, next: null, previous: null, results: [{ id: 1, full_name: 'Akosua Support', email: 'akosua@example.com', role: 'support', status: 'active' }] })
+      }),
+    )
+    let invited = false
+    server.use(
+      http.post('http://localhost:8000/api/accounts/staff/invite/', () => { invited = true; return HttpResponse.json({ id: 2 }, { status: 201 }) }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'staff.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Staff Management'))
+    await screen.findByText('Akosua Support')
+    fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'New Hire' } })
+    fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: 'newhire@example.com' } })
+    fireEvent.change(screen.getByPlaceholderText('Role'), { target: { value: 'admin' } })
+    fireEvent.click(screen.getByText('Send invite'))
+    await waitFor(() => expect(invited).toBe(true))
+  })
 })

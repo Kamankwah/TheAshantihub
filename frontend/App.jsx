@@ -2677,6 +2677,49 @@ function CategoriesZonesPanel({theme,auth}) {
   </div>;
 }
 
+const STATUS_COLORS = {active:"#22c55e",invited:"#f59e0b",invite_expired:"#dc2626"};
+
+function StaffManagementPanel({theme}) {
+  const {data,isLoading,isError,refetch} = useStaffRoster();
+  const [inviteName,setInviteName] = useState("");
+  const [inviteEmail,setInviteEmail] = useState("");
+  const [inviteRole,setInviteRole] = useState("");
+
+  const sendInvite = async () => {
+    if(!inviteName||!inviteEmail||!inviteRole) return;
+    await apiPost("/api/accounts/staff/invite/",{full_name:inviteName,email:inviteEmail,role:inviteRole});
+    setInviteName(""); setInviteEmail(""); setInviteRole("");
+    refetch();
+  };
+
+  return <div>
+    <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`,marginBottom:16}}>
+      <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:12}}>Invite a staff member</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        <input value={inviteName} onChange={e=>setInviteName(e.target.value)} placeholder="Full name" style={{flex:1,minWidth:120,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+        <input value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)} placeholder="Email" style={{flex:1,minWidth:120,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+        <input value={inviteRole} onChange={e=>setInviteRole(e.target.value)} placeholder="Role" style={{width:120,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+        <button onClick={sendInvite} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>Send invite</button>
+      </div>
+    </div>
+
+    {isLoading&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>}
+    {isError&&<div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the staff roster.</div>}
+    {data&&<div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
+      <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:10}}>{data.count} staff members</div>
+      {data.results.map(s=>(
+        <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${theme.border}`}}>
+          <div>
+            <div style={{color:theme.text,fontWeight:700,fontSize:"0.8rem"}}>{s.full_name}</div>
+            <div style={{color:theme.textMuted,fontSize:"0.68rem"}}>{s.email} • {s.role}</div>
+          </div>
+          <span style={{background:`${STATUS_COLORS[s.status]}22`,color:STATUS_COLORS[s.status],borderRadius:20,padding:"2px 8px",fontSize:"0.62rem",fontWeight:700}}>{s.status}</span>
+        </div>
+      ))}
+    </div>}
+  </div>;
+}
+
 export function StaffDashboard({auth,onExit}) {
   const {theme,toggleTheme} = useTheme();
   const t = DASHBOARD_THEME[theme];
@@ -2735,7 +2778,7 @@ export function StaffDashboard({auth,onExit}) {
         {activeTab==="moderation"&&<ListingsModerationPanel theme={t}/>}
         {activeTab==="users"&&<UsersPanel theme={t}/>}
         {activeTab==="categories-zones"&&<CategoriesZonesPanel theme={t} auth={auth}/>}
-        {activeTab==="staff"&&<ComingSoonPanel theme={t} feature="Staff Management"/>}
+        {activeTab==="staff"&&<StaffManagementPanel theme={t}/>}
         {activeTab==="escrow"&&<ComingSoonPanel theme={t} feature="Escrow Ledger"/>}
         {activeTab==="disputes"&&<ComingSoonPanel theme={t} feature="Disputes"/>}
         {activeTab==="transactions"&&<ComingSoonPanel theme={t} feature="Transactions Report"/>}
