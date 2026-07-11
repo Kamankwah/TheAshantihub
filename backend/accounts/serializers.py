@@ -1,6 +1,7 @@
 import datetime
 
-from django.contrib.auth.hashers import make_password
+from django.contrib.auth.hashers import check_password, make_password
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import serializers
@@ -261,3 +262,43 @@ class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
             owner.kyc_rejection_reason = None
             owner.save(update_fields=["kyc_status", "kyc_rejection_reason"])
         return instance
+
+
+class CustomerLoginSerializer(serializers.Serializer):
+    identifier = serializers.CharField()
+    password = serializers.CharField()
+
+    def validate(self, attrs):
+        account = Customer.objects.filter(
+            Q(phone=attrs["identifier"]) | Q(email=attrs["identifier"])
+        ).first()
+        if account is None or not check_password(attrs["password"], account.password_hash):
+            raise serializers.ValidationError("Invalid credentials")
+        self.account = account
+        return attrs
+
+
+class BusinessOwnerLoginSerializer(serializers.Serializer):
+    identifier = serializers.CharField()
+    password = serializers.CharField()
+
+    def validate(self, attrs):
+        account = BusinessOwner.objects.filter(
+            Q(login_phone=attrs["identifier"]) | Q(email=attrs["identifier"])
+        ).first()
+        if account is None or not check_password(attrs["password"], account.password_hash):
+            raise serializers.ValidationError("Invalid credentials")
+        self.account = account
+        return attrs
+
+
+class StaffLoginSerializer(serializers.Serializer):
+    identifier = serializers.CharField()
+    password = serializers.CharField()
+
+    def validate(self, attrs):
+        account = StaffUser.objects.filter(email=attrs["identifier"]).first()
+        if account is None or not check_password(attrs["password"], account.password_hash):
+            raise serializers.ValidationError("Invalid credentials")
+        self.account = account
+        return attrs

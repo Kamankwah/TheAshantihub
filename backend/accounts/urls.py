@@ -12,6 +12,9 @@ urlpatterns = [
         views.StaffResendInviteView.as_view(),
         name="staff-resend-invite",
     ),
+    path("customers/login/", views.CustomerLoginView.as_view(), name="customer-login"),
+    path("business-owners/login/", views.BusinessOwnerLoginView.as_view(), name="business-owner-login"),
+    path("staff/login/", views.StaffLoginView.as_view(), name="staff-login"),
     path(
         "business-owners/register/",
         views.BusinessOwnerRegisterView.as_view(),
