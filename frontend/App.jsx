@@ -3,6 +3,7 @@ import { useCategories } from "./hooks/useCategories.js";
 import { useZones } from "./hooks/useZones.js";
 import { useListings } from "./hooks/useListings.js";
 import { useListing } from "./hooks/useListing.js";
+import { useAuth } from "./hooks/useAuth.js";
 
 // ─── Colors ──────────────────────────────────────────────────────────────────
 const C = {
@@ -3045,7 +3046,8 @@ function ListingsSkeleton() {
 export default function AshantiHub() {
   const [page,setPage]=useState("home");
   const [authModal,setAuthModal]=useState(null);
-  const [user,setUser]=useState(null);
+  const auth=useAuth();
+  const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id} : null;
   const [legalDoc,setLegalDoc]=useState(null);
   const [showBizDash,setShowBizDash]=useState(false);
   const [isAdmin,setIsAdmin]=useState(false);
@@ -3129,7 +3131,15 @@ export default function AshantiHub() {
     return()=>window.removeEventListener("openLegal",handler);
   },[]);
 
-  const handleLogoClick=()=>{const n=adminClicks+1;setAdminClicks(n);if(n>=5){setIsAdmin(true);setAdminClicks(0);}};
+  const handleLogoClick=()=>{
+    const n=adminClicks+1;
+    setAdminClicks(n);
+    if(n>=5){
+      setAdminClicks(0);
+      if(auth.user?.account_type==="staff"){setIsAdmin(true);}
+      else{setAuthModal("staff-login");}
+    }
+  };
   const toggleFav=(id)=>setFavourites(f=>f.includes(id)?f.filter(x=>x!==id):[...f,id]);
   const handleWA=(item)=>{if(!user){setWhatsappPrompt(item);setAuthModal("signup");return;}const msg=encodeURIComponent(`Hello! I found ${item.name} on AshantiHub and I'd like to enquire.`);window.open(`https://wa.me/${item.phone}?text=${msg}`,"_blank");};
 
@@ -3207,6 +3217,7 @@ export default function AshantiHub() {
             <button onClick={()=>setPage("profile")} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"5px 10px",fontSize:"0.68rem",fontWeight:900,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
               <span style={{background:C.darkBrown,color:C.gold,borderRadius:"50%",width:16,height:16,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:"0.6rem",fontWeight:900}}>{user.fullName?.[0]?.toUpperCase()||"U"}</span>
               {user.fullName?.split(" ")[0]}
+              <span onClick={(e)=>{e.stopPropagation();auth.logout();}} style={{marginLeft:6,opacity:0.7,cursor:"pointer",fontSize:"0.68rem"}} title="Sign out">⏻</span>
             </button>
           ):(
             <button onClick={()=>setAuthModal("signup")} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"5px 10px",fontSize:"0.68rem",fontWeight:900,cursor:"pointer"}}>{T.signup.split(" ")[0]} Up</button>
@@ -3236,6 +3247,7 @@ export default function AshantiHub() {
     <div style={{fontFamily:"'Georgia',serif",background:C.cream,minHeight:"100vh"}}>
       {!cookieDismissed&&<CookieBanner onAccept={()=>{setCookieConsent(true);setCookieDismissed(true);Analytics.track("cookie_accepted");}} onDecline={()=>{setCookieDismissed(true);Analytics.track("cookie_declined");}}/>}
       <OfflineBanner/>
+      {authModal&&<AuthModal authState={authModal} auth={auth} onClose={()=>setAuthModal(null)} onSuccess={(result)=>{setAuthModal(null);if(result.account_type==="staff"){setIsAdmin(true);}}}/>}
       {showMessaging&&<MessagingCenter user={user} onClose={()=>{setShowMessaging(false);setMessagingBusiness(null);}} initialBusiness={messagingBusiness}/>}
       {showNotifs&&<NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
       {showFavs&&<FavsDrawer/>}
