@@ -120,4 +120,18 @@ describe('hasPermission', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false))
     expect(result.current.hasPermission('messaging.manage')).toBe(false)
   })
+
+  it('returns false for a customer user that has no permissions field', async () => {
+    server.use(
+      http.post('http://localhost:8000/api/accounts/customers/login/', () => {
+        return HttpResponse.json({ token: 't', account_type: 'customer', id: 1, full_name: 'Ama' })
+      }),
+    )
+    const { result } = renderHook(() => useAuth())
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    await act(async () => {
+      await result.current.login('customer', '+233241234567', 'secret')
+    })
+    expect(result.current.hasPermission('messaging.manage')).toBe(false)
+  })
 })
