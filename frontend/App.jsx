@@ -2633,6 +2633,50 @@ function UsersPanel({theme}) {
   </div>;
 }
 
+function CategoriesZonesPanel({theme,auth}) {
+  const categories = useCategories();
+  const zones = useZones();
+  const [newCategoryLabel,setNewCategoryLabel] = useState("");
+  const [newZoneName,setNewZoneName] = useState("");
+
+  const addCategory = async () => {
+    if(!newCategoryLabel) return;
+    const slug = newCategoryLabel.toLowerCase().replace(/\s+/g,"-");
+    await apiPost("/api/listings/categories/",{slug,icon:"🆕",label:newCategoryLabel,color:"#888888"});
+    setNewCategoryLabel("");
+    categories.refetch();
+  };
+  const addZone = async () => {
+    if(!newZoneName) return;
+    await apiPost("/api/listings/zones/",{name:newZoneName});
+    setNewZoneName("");
+    zones.refetch();
+  };
+
+  return <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:16}}>
+    <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
+      <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:12}}>Categories</div>
+      {(categories.data||[]).map(c=>(
+        <div key={c.id} style={{padding:"6px 0",color:theme.text,fontSize:"0.8rem"}}>{c.icon} {c.label}</div>
+      ))}
+      {auth.hasPermission("categories.manage")&&<div style={{marginTop:12,display:"flex",gap:6}}>
+        <input value={newCategoryLabel} onChange={e=>setNewCategoryLabel(e.target.value)} placeholder="New category label" style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+        <button onClick={addCategory} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>Add category</button>
+      </div>}
+    </div>
+    <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
+      <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:12}}>Zones</div>
+      {(zones.data||[]).map(z=>(
+        <div key={z.id} style={{padding:"6px 0",color:theme.text,fontSize:"0.8rem"}}>{z.name}</div>
+      ))}
+      {auth.hasPermission("zones.manage")&&<div style={{marginTop:12,display:"flex",gap:6}}>
+        <input value={newZoneName} onChange={e=>setNewZoneName(e.target.value)} placeholder="New zone name" style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+        <button onClick={addZone} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>Add zone</button>
+      </div>}
+    </div>
+  </div>;
+}
+
 export function StaffDashboard({auth,onExit}) {
   const {theme,toggleTheme} = useTheme();
   const t = DASHBOARD_THEME[theme];
@@ -2690,7 +2734,7 @@ export function StaffDashboard({auth,onExit}) {
         {activeTab==="kyc"&&<KYCQueuePanel theme={t}/>}
         {activeTab==="moderation"&&<ListingsModerationPanel theme={t}/>}
         {activeTab==="users"&&<UsersPanel theme={t}/>}
-        {activeTab==="categories-zones"&&<ComingSoonPanel theme={t} feature="Categories & Zones"/>}
+        {activeTab==="categories-zones"&&<CategoriesZonesPanel theme={t} auth={auth}/>}
         {activeTab==="staff"&&<ComingSoonPanel theme={t} feature="Staff Management"/>}
         {activeTab==="escrow"&&<ComingSoonPanel theme={t} feature="Escrow Ledger"/>}
         {activeTab==="disputes"&&<ComingSoonPanel theme={t} feature="Disputes"/>}

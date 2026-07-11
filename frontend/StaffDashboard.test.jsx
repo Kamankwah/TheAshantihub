@@ -125,4 +125,34 @@ describe('StaffDashboard', () => {
     fireEvent.click(screen.getByText('Business Owners'))
     await screen.findByText('Kwame Business')
   })
+
+  it('shows only zone creation for a session with zones.manage but not categories.manage', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/listings/categories/', () => HttpResponse.json([{ id: 1, slug: 'hotels', icon: '🏨', label: 'Hotels', color: '#000080' }])),
+      http.get('http://localhost:8000/api/listings/zones/', () => HttpResponse.json([{ id: 1, name: 'Manhyia' }])),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'zones.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Categories & Zones'))
+    await screen.findByText('Manhyia')
+    expect(screen.getByPlaceholderText('New zone name')).toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('New category label')).not.toBeInTheDocument()
+  })
+
+  it('creates a new zone', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/listings/categories/', () => HttpResponse.json([])),
+      http.get('http://localhost:8000/api/listings/zones/', () => HttpResponse.json([])),
+    )
+    let created = false
+    server.use(
+      http.post('http://localhost:8000/api/listings/zones/', () => { created = true; return HttpResponse.json({ id: 2, name: 'Adum' }, { status: 201 }) }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'zones.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Categories & Zones'))
+    fireEvent.change(await screen.findByPlaceholderText('New zone name'), { target: { value: 'Adum' } })
+    fireEvent.click(screen.getByText('Add zone'))
+    await waitFor(() => expect(created).toBe(true))
+  })
 })
