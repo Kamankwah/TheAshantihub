@@ -108,4 +108,21 @@ describe('StaffDashboard', () => {
     fireEvent.click(screen.getByText('Listings Moderation'))
     await screen.findByText('Royal Ashanti Lodge')
   })
+
+  it('renders the Users panel with a Customers/Business Owners tab switch', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/accounts/customers/', () => {
+        return HttpResponse.json({ count: 1, next: null, previous: null, results: [{ id: 1, full_name: 'Ama Owusu', phone: '+233241234567', email: 'ama@example.com' }] })
+      }),
+      http.get('http://localhost:8000/api/accounts/business-owners/', () => {
+        return HttpResponse.json({ count: 1, next: null, previous: null, results: [{ id: 2, full_name: 'Kwame Business', login_phone: '+233201112233', kyc_status: 'pending' }] })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'users.view' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Users'))
+    await screen.findByText('Ama Owusu')
+    fireEvent.click(screen.getByText('Business Owners'))
+    await screen.findByText('Kwame Business')
+  })
 })
