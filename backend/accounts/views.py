@@ -30,11 +30,15 @@ from .serializers import (
 @permission_classes([IsAuthenticated])
 def me(request):
     token = request.auth
-    return Response({
+    data = {
         "account_type": token["account_type"],
         "id": request.user.id,
         "full_name": request.user.full_name,
-    })
+    }
+    if isinstance(request.user, StaffUser):
+        data["role"] = request.user.role.name
+        data["permissions"] = list(request.user.role.permissions.values_list("codename", flat=True))
+    return Response(data)
 
 
 class CustomerRegisterView(generics.CreateAPIView):
@@ -146,6 +150,8 @@ class StaffLoginView(generics.GenericAPIView):
             "account_type": "staff",
             "id": account.id,
             "full_name": account.full_name,
+            "role": account.role.name,
+            "permissions": list(account.role.permissions.values_list("codename", flat=True)),
         })
 
 
