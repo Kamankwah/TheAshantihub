@@ -172,8 +172,59 @@ describe('StaffDashboard', () => {
     await screen.findByText('Akosua Support')
     fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'New Hire' } })
     fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: 'newhire@example.com' } })
-    fireEvent.change(screen.getByPlaceholderText('Role'), { target: { value: 'admin' } })
+    fireEvent.change(screen.getByDisplayValue('Role'), { target: { value: 'admin' } })
     fireEvent.click(screen.getByText('Send invite'))
     await waitFor(() => expect(invited).toBe(true))
+  })
+
+  it('constrains the invite Role field to the five valid role names', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/accounts/staff/', () => {
+        return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'staff.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Staff Management'))
+    const roleSelect = await screen.findByDisplayValue('Role')
+    expect(roleSelect.tagName).toBe('SELECT')
+    const optionValues = Array.from(roleSelect.querySelectorAll('option')).map((o) => o.value)
+    expect(optionValues).toEqual(['', 'super_admin', 'admin', 'accountant', 'marketing', 'support'])
+  })
+
+  it('shows an inline error when approving a KYC submission fails', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/accounts/kyc/pending/', () => {
+        return HttpResponse.json([{ id: 8, full_name: 'Yaw Trader', login_phone: '+233201112244', created_at: '2026-07-01T00:00:00Z' }])
+      }),
+      http.post('http://localhost:8000/api/accounts/kyc/8/approve/', () => {
+        return HttpResponse.json({ detail: 'Server error' }, { status: 500 })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'kyc.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('KYC Queue'))
+    await screen.findByText('Yaw Trader')
+    fireEvent.click(screen.getByText('✓ Approve'))
+    await screen.findByText('Could not approve this submission. Please try again.')
+  })
+
+  it('shows an inline error when sending a staff invite fails', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/accounts/staff/', () => {
+        return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+      }),
+      http.post('http://localhost:8000/api/accounts/staff/invite/', () => {
+        return HttpResponse.json({ role: ['Not a valid choice.'] }, { status: 400 })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'staff.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Staff Management'))
+    fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'New Hire' } })
+    fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: 'newhire@example.com' } })
+    fireEvent.change(await screen.findByDisplayValue('Role'), { target: { value: 'admin' } })
+    fireEvent.click(screen.getByText('Send invite'))
+    await screen.findByText('Could not send the invite. Check the details and try again.')
   })
 })

@@ -2198,9 +2198,18 @@ function KYCQueuePanel({theme}) {
   const {data,isLoading,isError,refetch} = useKYCQueue();
   const [rejectingId,setRejectingId] = useState(null);
   const [rejectReason,setRejectReason] = useState("");
+  const [actionError,setActionError] = useState(null);
 
-  const approve = async (id) => { await apiPost(`/api/accounts/kyc/${id}/approve/`,{}); refetch(); };
-  const reject = async (id) => { await apiPost(`/api/accounts/kyc/${id}/reject/`,{reason:rejectReason}); setRejectingId(null); setRejectReason(""); refetch(); };
+  const approve = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/accounts/kyc/${id}/approve/`,{}); refetch(); }
+    catch (err) { setActionError("Could not approve this submission. Please try again."); }
+  };
+  const reject = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/accounts/kyc/${id}/reject/`,{reason:rejectReason}); setRejectingId(null); setRejectReason(""); refetch(); }
+    catch (err) { setActionError("Could not reject this submission. Please try again."); }
+  };
 
   if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
   if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the KYC queue.</div>;
@@ -2208,6 +2217,7 @@ function KYCQueuePanel({theme}) {
 
   return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
     <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Pending KYC submissions ({items.length})</div>
+    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
     {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No pending submissions.</div>}
     {items.map(o=>(
       <div key={o.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
@@ -2234,9 +2244,18 @@ function ListingsModerationPanel({theme}) {
   const {data,isLoading,isError,refetch} = useModerationQueue();
   const [rejectingId,setRejectingId] = useState(null);
   const [rejectReason,setRejectReason] = useState("");
+  const [actionError,setActionError] = useState(null);
 
-  const approve = async (id) => { await apiPost(`/api/listings/moderation/${id}/approve/`,{}); refetch(); };
-  const reject = async (id) => { await apiPost(`/api/listings/moderation/${id}/reject/`,{reason:rejectReason}); setRejectingId(null); setRejectReason(""); refetch(); };
+  const approve = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/listings/moderation/${id}/approve/`,{}); refetch(); }
+    catch (err) { setActionError("Could not approve this listing."); }
+  };
+  const reject = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/listings/moderation/${id}/reject/`,{reason:rejectReason}); setRejectingId(null); setRejectReason(""); refetch(); }
+    catch (err) { setActionError("Could not reject this listing."); }
+  };
 
   if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
   if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the moderation queue.</div>;
@@ -2244,6 +2263,7 @@ function ListingsModerationPanel({theme}) {
 
   return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
     <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Pending listings ({items.length})</div>
+    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
     {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No pending listings.</div>}
     {items.map(l=>(
       <div key={l.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
@@ -2299,22 +2319,31 @@ function CategoriesZonesPanel({theme,auth}) {
   const zones = useZones();
   const [newCategoryLabel,setNewCategoryLabel] = useState("");
   const [newZoneName,setNewZoneName] = useState("");
+  const [actionError,setActionError] = useState(null);
 
   const addCategory = async () => {
     if(!newCategoryLabel) return;
-    const slug = newCategoryLabel.toLowerCase().replace(/\s+/g,"-");
-    await apiPost("/api/listings/categories/",{slug,icon:"🆕",label:newCategoryLabel,color:"#888888"});
-    setNewCategoryLabel("");
-    categories.refetch();
+    setActionError(null);
+    try {
+      const slug = newCategoryLabel.toLowerCase().replace(/\s+/g,"-");
+      await apiPost("/api/listings/categories/",{slug,icon:"🆕",label:newCategoryLabel,color:"#888888"});
+      setNewCategoryLabel("");
+      categories.refetch();
+    } catch (err) { setActionError("Could not add this category."); }
   };
   const addZone = async () => {
     if(!newZoneName) return;
-    await apiPost("/api/listings/zones/",{name:newZoneName});
-    setNewZoneName("");
-    zones.refetch();
+    setActionError(null);
+    try {
+      await apiPost("/api/listings/zones/",{name:newZoneName});
+      setNewZoneName("");
+      zones.refetch();
+    } catch (err) { setActionError("Could not add this zone."); }
   };
 
-  return <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:16}}>
+  return <div>
+    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:16}}>
     <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
       <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:12}}>Categories</div>
       {(categories.data||[]).map(c=>(
@@ -2335,6 +2364,7 @@ function CategoriesZonesPanel({theme,auth}) {
         <button onClick={addZone} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>Add zone</button>
       </div>}
     </div>
+    </div>
   </div>;
 }
 
@@ -2345,21 +2375,33 @@ function StaffManagementPanel({theme}) {
   const [inviteName,setInviteName] = useState("");
   const [inviteEmail,setInviteEmail] = useState("");
   const [inviteRole,setInviteRole] = useState("");
+  const [actionError,setActionError] = useState(null);
 
   const sendInvite = async () => {
     if(!inviteName||!inviteEmail||!inviteRole) return;
-    await apiPost("/api/accounts/staff/invite/",{full_name:inviteName,email:inviteEmail,role:inviteRole});
-    setInviteName(""); setInviteEmail(""); setInviteRole("");
-    refetch();
+    setActionError(null);
+    try {
+      await apiPost("/api/accounts/staff/invite/",{full_name:inviteName,email:inviteEmail,role:inviteRole});
+      setInviteName(""); setInviteEmail(""); setInviteRole("");
+      refetch();
+    } catch (err) { setActionError("Could not send the invite. Check the details and try again."); }
   };
 
   return <div>
     <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`,marginBottom:16}}>
       <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:12}}>Invite a staff member</div>
+      {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
         <input value={inviteName} onChange={e=>setInviteName(e.target.value)} placeholder="Full name" style={{flex:1,minWidth:120,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
         <input value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)} placeholder="Email" style={{flex:1,minWidth:120,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
-        <input value={inviteRole} onChange={e=>setInviteRole(e.target.value)} placeholder="Role" style={{width:120,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+        <select value={inviteRole} onChange={e=>setInviteRole(e.target.value)} style={{width:120,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}>
+          <option value="">Role</option>
+          <option value="super_admin">Super Admin</option>
+          <option value="admin">Admin</option>
+          <option value="accountant">Accountant</option>
+          <option value="marketing">Marketing</option>
+          <option value="support">Support</option>
+        </select>
         <button onClick={sendInvite} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>Send invite</button>
       </div>
     </div>
