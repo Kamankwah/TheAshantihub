@@ -277,7 +277,8 @@ class CustomerLoginSerializer(serializers.Serializer):
             Q(phone=attrs["identifier"]) | Q(email=attrs["identifier"])
         ).first()
         password_hash = account.password_hash if account else DUMMY_PASSWORD_HASH
-        if account is None or not check_password(attrs["password"], password_hash):
+        password_valid = check_password(attrs["password"], password_hash)
+        if account is None or not password_valid:
             raise serializers.ValidationError("Invalid credentials")
         self.account = account
         return attrs
@@ -292,7 +293,8 @@ class BusinessOwnerLoginSerializer(serializers.Serializer):
             Q(login_phone=attrs["identifier"]) | Q(email=attrs["identifier"])
         ).first()
         password_hash = account.password_hash if account else DUMMY_PASSWORD_HASH
-        if account is None or not check_password(attrs["password"], password_hash):
+        password_valid = check_password(attrs["password"], password_hash)
+        if account is None or not password_valid:
             raise serializers.ValidationError("Invalid credentials")
         self.account = account
         return attrs
@@ -305,7 +307,8 @@ class StaffLoginSerializer(serializers.Serializer):
     def validate(self, attrs):
         account = StaffUser.objects.filter(email=attrs["identifier"]).first()
         password_hash = account.password_hash if account else DUMMY_PASSWORD_HASH
-        if account is None or not check_password(attrs["password"], password_hash):
+        password_valid = check_password(attrs["password"], password_hash)
+        if account is None or not password_valid:
             raise serializers.ValidationError("Invalid credentials")
         self.account = account
         return attrs
