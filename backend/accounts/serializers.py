@@ -324,3 +324,19 @@ class BusinessOwnerListSerializer(serializers.ModelSerializer):
     class Meta:
         model = BusinessOwner
         fields = ["id", "full_name", "login_phone", "email", "kyc_status", "created_at"]
+
+
+class StaffListSerializer(serializers.ModelSerializer):
+    role = serializers.CharField(source="role.name", read_only=True)
+    status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = StaffUser
+        fields = ["id", "full_name", "email", "phone", "role", "status", "created_at"]
+
+    def get_status(self, obj):
+        if obj.invite_token is None:
+            return "active"
+        if obj.invite_expires_at and obj.invite_expires_at < timezone.now():
+            return "invite_expired"
+        return "invited"

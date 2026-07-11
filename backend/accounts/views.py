@@ -25,6 +25,7 @@ from .serializers import (
     PayoutDetailSerializer,
     StaffActivateSerializer,
     StaffInviteSerializer,
+    StaffListSerializer,
     StaffLoginSerializer,
 )
 
@@ -219,6 +220,15 @@ class BusinessOwnerListView(generics.ListAPIView):
 
     def get_permissions(self):
         return [HasRolePermission("users.view")]
+
+
+class StaffListView(generics.ListAPIView):
+    serializer_class = StaffListSerializer
+    queryset = StaffUser.objects.all().order_by("-created_at")
+    pagination_class = AccountsPagination
+
+    def get_permissions(self):
+        return [HasRolePermission("staff.manage")]
 
 
 class IsBusinessOwner(BasePermission):
