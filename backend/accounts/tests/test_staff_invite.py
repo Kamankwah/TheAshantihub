@@ -167,3 +167,25 @@ class StaffInviteTests(TestCase):
         self.assertEqual(response.status_code, 400)
         activated.refresh_from_db()
         self.assertIsNone(activated.invite_token)
+
+    def test_activation_response_includes_a_working_token(self):
+        StaffUser.objects.create(
+            full_name="Token Hire",
+            email="tokenhire@example.com",
+            password_hash="unusable",
+            role=Role.objects.get(name="support"),
+            invited_by=self.super_admin,
+            invite_token="token-hire-abc",
+            invite_expires_at=timezone.now() + datetime.timedelta(days=7),
+        )
+        response = self.client.post(
+            "/api/accounts/staff/activate/",
+            {"token": "token-hire-abc", "password": "correct-horse-battery-staple"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        token = response.json()["token"]
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        me_response = self.client.get("/api/accounts/me/")
+        self.assertEqual(me_response.status_code, 200)
+        self.assertEqual(me_response.json()["account_type"], "staff")

@@ -8,17 +8,18 @@
       }
     },
     "postgres": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "mcp-server-pg",
-        "--connection-string",
-        "postgresql://REPLACE_WITH_PHASE1_DB_USER:REPLACE_WITH_PHASE1_DB_PASSWORD@localhost:5432/ashantihub"
-      ]
+      "command": "uvx",
+      "args": ["--python", "3.12", "postgres-mcp", "--access-mode=unrestricted"],
+      "env": {
+        "DATABASE_URI": "postgresql://ashantihub:ashantihub_dev@localhost:5432/ashantihub"
+      }
     },
     "semgrep": {
       "command": "uvx",
-      "args": ["semgrep-mcp"]
+      "args": ["--python", "3.12", "semgrep-mcp"],
+      "env": {
+        "SEMGREP_MCP_DISABLE_TRACING": "true"
+      }
     }
   }
 }

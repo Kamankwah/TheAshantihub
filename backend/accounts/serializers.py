@@ -1,12 +1,17 @@
 import datetime
 
-from django.contrib.auth.hashers import make_password
+from django.contrib.auth.hashers import check_password, make_password
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import serializers
 
 from .models import BusinessOwner, BusinessOwnerProfile, Customer, Role, StaffUser
 from .validators import validate_document_content_type, validate_image_content_type
+
+# Used to pay the same check_password() cost when no account is found, so that
+# login timing does not leak whether an identifier exists (see login serializers below).
+DUMMY_PASSWORD_HASH = make_password("dummy-password-for-constant-time-login-checks")
 
 
 class CustomerRegistrationSerializer(serializers.ModelSerializer):
@@ -261,3 +266,49 @@ class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
             owner.kyc_rejection_reason = None
             owner.save(update_fields=["kyc_status", "kyc_rejection_reason"])
         return instance
+
+
+class CustomerLoginSerializer(serializers.Serializer):
+    identifier = serializers.CharField()
+    password = serializers.CharField()
+
+    def validate(self, attrs):
+        account = Customer.objects.filter(
+            Q(phone=attrs["identifier"]) | Q(email=attrs["identifier"])
+        ).first()
+        password_hash = account.password_hash if account else DUMMY_PASSWORD_HASH
+        password_valid = check_password(attrs["password"], password_hash)
+        if account is None or not password_valid:
+            raise serializers.ValidationError("Invalid credentials")
+        self.account = account
+        return attrs
+
+
+class BusinessOwnerLoginSerializer(serializers.Serializer):
+    identifier = serializers.CharField()
+    password = serializers.CharField()
+
+    def validate(self, attrs):
+        account = BusinessOwner.objects.filter(
+            Q(login_phone=attrs["identifier"]) | Q(email=attrs["identifier"])
+        ).first()
+        password_hash = account.password_hash if account else DUMMY_PASSWORD_HASH
+        password_valid = check_password(attrs["password"], password_hash)
+        if account is None or not password_valid:
+            raise serializers.ValidationError("Invalid credentials")
+        self.account = account
+        return attrs
+
+
+class StaffLoginSerializer(serializers.Serializer):
+    identifier = serializers.CharField()
+    password = serializers.CharField()
+
+    def validate(self, attrs):
+        account = StaffUser.objects.filter(email=attrs["identifier"]).first()
+        password_hash = account.password_hash if account else DUMMY_PASSWORD_HASH
+        password_valid = check_password(attrs["password"], password_hash)
+        if account is None or not password_valid:
+            raise serializers.ValidationError("Invalid credentials")
+        self.account = account
+        return attrs

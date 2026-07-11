@@ -77,6 +77,7 @@ REST_FRAMEWORK = {
         "customer_register": "5/min",
         "business_owner_register": "5/min",
         "staff_activate": "5/min",
+        "login": "5/min",
     },
 }
 

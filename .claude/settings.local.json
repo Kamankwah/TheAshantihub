@@ -17,7 +17,27 @@
       "Bash(pandoc --version)",
       "Bash(google-chrome *)",
       "Read(//home/righteoushack/.claude/**)",
-      "Read(//home/righteoushack/**)"
+      "Read(//home/righteoushack/**)",
+      "Bash(env)",
+      "Bash(git -C \"/mnt/c/Users/skuun/OneDrive/Documents/TheAshantihub/.claude/worktrees/listing-model-marketplace\" status)",
+      "Bash(git -C \"/mnt/c/Users/skuun/OneDrive/Documents/TheAshantihub/.worktrees/roles-registration-kyc\" status)",
+      "Bash(git log *)",
+      "mcp__claude_ai_Vercel__get_deployment_build_logs",
+      "Bash(git -C /mnt/c/Users/skuun/OneDrive/Documents/TheAshantihub/.worktrees/roles-registration-kyc status)",
+      "Bash(git -C /mnt/c/Users/skuun/OneDrive/Documents/TheAshantihub/.worktrees/roles-registration-kyc log --oneline -5)",
+      "Bash(git -C /mnt/c/Users/skuun/OneDrive/Documents/TheAshantihub/.claude/worktrees/listing-model-marketplace status)",
+      "Bash(git fetch *)",
+      "Bash(git check-ignore *)",
+      "Bash(echo \"exit:$?\")",
+      "Bash(git fsck *)",
+      "Bash(git -C .worktrees/roles-registration-kyc reflog -10)",
+      "Bash(git -C .claude/worktrees/listing-model-marketplace reflog -10)",
+      "Bash(git push *)",
+      "Bash(claude mcp *)",
+      "Bash(git -C .claude/worktrees/listing-model-marketplace status)",
+      "Bash(git -C .claude/worktrees/listing-model-marketplace log --oneline righteoushack..HEAD)",
+      "Bash(git -C .worktrees/roles-registration-kyc status)",
+      "Bash(git -C .worktrees/roles-registration-kyc log --oneline righteoushack..HEAD)"
     ]
   },
   "enabledMcpjsonServers": [
