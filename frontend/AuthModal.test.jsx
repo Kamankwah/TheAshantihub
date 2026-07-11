@@ -87,4 +87,38 @@ describe('AuthModal', () => {
     fireEvent.click(screen.getByTestId('auth-modal-backdrop'))
     expect(onClose).toHaveBeenCalled()
   })
+
+  it('blocks business-owner signup via native validation when the default momo payout method has no momo number', async () => {
+    const auth = makeAuth()
+    render(<AuthModal authState="signup" auth={auth} onClose={vi.fn()} onSuccess={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: "I'm a Business Owner" }))
+
+    fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Abena Owusu' } })
+    fireEvent.change(screen.getByPlaceholderText('Login phone (+233...)'), { target: { value: '+233201112233' } })
+    fireEvent.change(screen.getByPlaceholderText('Password (min 8 characters)'), { target: { value: 'secretpass' } })
+    fireEvent.change(screen.getByPlaceholderText('Ghana Card number'), { target: { value: 'GHA-000000000-0' } })
+    fireEvent.change(screen.getByPlaceholderText('GPS address (e.g. AK-123-4567)'), { target: { value: 'AK-123-4567' } })
+    fireEvent.change(screen.getByPlaceholderText('Business contact phone (public)'), { target: { value: '+233201112233' } })
+
+    // default_payout_method defaults to "momo" and payout_momo_number is left blank.
+    const momoInput = screen.getByPlaceholderText('Mobile money number')
+    expect(momoInput).toHaveAttribute('required')
+    expect(momoInput.validity.valid).toBe(false)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Submit for Verification' }))
+
+    expect(auth.registerBusinessOwner).not.toHaveBeenCalled()
+  })
+
+  it('shows an error and does not call auth.registerCustomer when both phone and email are left blank', async () => {
+    const auth = makeAuth()
+    render(<AuthModal authState="signup" auth={auth} onClose={vi.fn()} onSuccess={vi.fn()} />)
+
+    fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Kofi Mensah' } })
+    fireEvent.change(screen.getByPlaceholderText('Password (min 8 characters)'), { target: { value: 'secretpass' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create Free Account' }))
+
+    await waitFor(() => expect(screen.getByText('Please provide a phone number or email address.')).toBeInTheDocument())
+    expect(auth.registerCustomer).not.toHaveBeenCalled()
+  })
 })

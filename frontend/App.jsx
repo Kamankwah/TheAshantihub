@@ -2003,6 +2003,10 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
   const handleCustomerSignup=async(e)=>{
     e.preventDefault();
     setError(null);
+    if(!phone && !email){
+      setError("Please provide a phone number or email address.");
+      return;
+    }
     setSubmitting(true);
     try {
       const result=await auth.registerCustomer({full_name:fullName,phone:phone||undefined,email:email||undefined,password});
@@ -2090,7 +2094,7 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
             <input value={bizFields.tin} onChange={e=>setBizFields(f=>({...f,tin:e.target.value}))} placeholder="TIN" required style={authInputStyle}/>
           </>}
           <div style={{fontSize:"0.72rem",fontWeight:800,color:C.darkBrown,margin:"10px 0 4px"}}>Payout details (bank and/or mobile money)</div>
-          <input value={bizFields.payout_momo_number} onChange={e=>setBizFields(f=>({...f,payout_momo_number:e.target.value}))} placeholder="Mobile money number" style={authInputStyle}/>
+          <input value={bizFields.payout_momo_number} onChange={e=>setBizFields(f=>({...f,payout_momo_number:e.target.value}))} placeholder="Mobile money number" required={bizFields.default_payout_method==="momo"} style={authInputStyle}/>
           <input value={bizFields.payout_momo_name} onChange={e=>setBizFields(f=>({...f,payout_momo_name:e.target.value}))} placeholder="Mobile money account name" style={authInputStyle}/>
           <select value={bizFields.payout_momo_network} onChange={e=>setBizFields(f=>({...f,payout_momo_network:e.target.value}))} style={authInputStyle}>
             <option value="">Mobile money network</option>
@@ -2098,7 +2102,7 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
             <option value="Vodafone">Vodafone</option>
             <option value="AirtelTigo">AirtelTigo</option>
           </select>
-          <input value={bizFields.payout_bank_account_number} onChange={e=>setBizFields(f=>({...f,payout_bank_account_number:e.target.value}))} placeholder="Bank account number" style={authInputStyle}/>
+          <input value={bizFields.payout_bank_account_number} onChange={e=>setBizFields(f=>({...f,payout_bank_account_number:e.target.value}))} placeholder="Bank account number" required={bizFields.default_payout_method==="bank"} style={authInputStyle}/>
           <input value={bizFields.payout_bank_account_name} onChange={e=>setBizFields(f=>({...f,payout_bank_account_name:e.target.value}))} placeholder="Bank account name" style={authInputStyle}/>
           <input value={bizFields.payout_bank_name} onChange={e=>setBizFields(f=>({...f,payout_bank_name:e.target.value}))} placeholder="Bank name" style={authInputStyle}/>
           <select value={bizFields.default_payout_method} onChange={e=>setBizFields(f=>({...f,default_payout_method:e.target.value}))} style={authInputStyle}>

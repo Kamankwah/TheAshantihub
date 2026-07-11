@@ -9,6 +9,10 @@ from rest_framework import serializers
 from .models import BusinessOwner, BusinessOwnerProfile, Customer, Role, StaffUser
 from .validators import validate_document_content_type, validate_image_content_type
 
+# Used to pay the same check_password() cost when no account is found, so that
+# login timing does not leak whether an identifier exists (see login serializers below).
+DUMMY_PASSWORD_HASH = make_password("dummy-password-for-constant-time-login-checks")
+
 
 class CustomerRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
@@ -272,7 +276,8 @@ class CustomerLoginSerializer(serializers.Serializer):
         account = Customer.objects.filter(
             Q(phone=attrs["identifier"]) | Q(email=attrs["identifier"])
         ).first()
-        if account is None or not check_password(attrs["password"], account.password_hash):
+        password_hash = account.password_hash if account else DUMMY_PASSWORD_HASH
+        if account is None or not check_password(attrs["password"], password_hash):
             raise serializers.ValidationError("Invalid credentials")
         self.account = account
         return attrs
@@ -286,7 +291,8 @@ class BusinessOwnerLoginSerializer(serializers.Serializer):
         account = BusinessOwner.objects.filter(
             Q(login_phone=attrs["identifier"]) | Q(email=attrs["identifier"])
         ).first()
-        if account is None or not check_password(attrs["password"], account.password_hash):
+        password_hash = account.password_hash if account else DUMMY_PASSWORD_HASH
+        if account is None or not check_password(attrs["password"], password_hash):
             raise serializers.ValidationError("Invalid credentials")
         self.account = account
         return attrs
@@ -298,7 +304,8 @@ class StaffLoginSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         account = StaffUser.objects.filter(email=attrs["identifier"]).first()
-        if account is None or not check_password(attrs["password"], account.password_hash):
+        password_hash = account.password_hash if account else DUMMY_PASSWORD_HASH
+        if account is None or not check_password(attrs["password"], password_hash):
             raise serializers.ValidationError("Invalid credentials")
         self.account = account
         return attrs
