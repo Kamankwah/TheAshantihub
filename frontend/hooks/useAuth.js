@@ -58,5 +58,10 @@ export function useAuth() {
     return auth
   }, [])
 
-  return { user, isLoading, login, logout, registerCustomer, registerBusinessOwner }
+  const hasPermission = useCallback(
+    (codename) => user?.permissions?.includes(codename) ?? false,
+    [user],
+  )
+
+  return { user, isLoading, login, logout, registerCustomer, registerBusinessOwner, hasPermission }
 }
