@@ -2,6 +2,7 @@ from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
@@ -14,14 +15,17 @@ from .serializers import (
     INVITE_TOKEN_LIFETIME,
     BusinessOwnerKYCDetailSerializer,
     BusinessOwnerKYCSerializer,
+    BusinessOwnerListSerializer,
     BusinessOwnerLoginSerializer,
     BusinessOwnerRegistrationSerializer,
     BusinessOwnerProfileUpdateSerializer,
+    CustomerListSerializer,
     CustomerLoginSerializer,
     CustomerRegistrationSerializer,
     PayoutDetailSerializer,
     StaffActivateSerializer,
     StaffInviteSerializer,
+    StaffListSerializer,
     StaffLoginSerializer,
 )
 
@@ -30,11 +34,15 @@ from .serializers import (
 @permission_classes([IsAuthenticated])
 def me(request):
     token = request.auth
-    return Response({
+    data = {
         "account_type": token["account_type"],
         "id": request.user.id,
         "full_name": request.user.full_name,
-    })
+    }
+    if isinstance(request.user, StaffUser):
+        data["role"] = request.user.role.name
+        data["permissions"] = list(request.user.role.permissions.values_list("codename", flat=True))
+    return Response(data)
 
 
 class CustomerRegisterView(generics.CreateAPIView):
@@ -146,6 +154,8 @@ class StaffLoginView(generics.GenericAPIView):
             "account_type": "staff",
             "id": account.id,
             "full_name": account.full_name,
+            "role": account.role.name,
+            "permissions": list(account.role.permissions.values_list("codename", flat=True)),
         })
 
 
@@ -188,6 +198,37 @@ class KYCRejectView(APIView):
         owner.kyc_rejection_reason = reason
         owner.save(update_fields=["kyc_status", "kyc_rejection_reason"])
         return Response({"id": owner.id, "kyc_status": owner.kyc_status})
+
+
+class AccountsPagination(PageNumberPagination):
+    page_size = 20
+
+
+class CustomerListView(generics.ListAPIView):
+    serializer_class = CustomerListSerializer
+    queryset = Customer.objects.all().order_by("-created_at")
+    pagination_class = AccountsPagination
+
+    def get_permissions(self):
+        return [HasRolePermission("users.view")]
+
+
+class BusinessOwnerListView(generics.ListAPIView):
+    serializer_class = BusinessOwnerListSerializer
+    queryset = BusinessOwner.objects.all().order_by("-created_at")
+    pagination_class = AccountsPagination
+
+    def get_permissions(self):
+        return [HasRolePermission("users.view")]
+
+
+class StaffListView(generics.ListAPIView):
+    serializer_class = StaffListSerializer
+    queryset = StaffUser.objects.all().order_by("-created_at")
+    pagination_class = AccountsPagination
+
+    def get_permissions(self):
+        return [HasRolePermission("staff.manage")]
 
 
 class IsBusinessOwner(BasePermission):

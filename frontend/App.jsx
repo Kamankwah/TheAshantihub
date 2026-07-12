@@ -4,6 +4,13 @@ import { useZones } from "./hooks/useZones.js";
 import { useListings } from "./hooks/useListings.js";
 import { useListing } from "./hooks/useListing.js";
 import { useAuth } from "./hooks/useAuth.js";
+import { useTheme } from "./hooks/useTheme.js";
+import { useKYCQueue } from "./hooks/useKYCQueue.js";
+import { useModerationQueue } from "./hooks/useModerationQueue.js";
+import { useCustomers } from "./hooks/useCustomers.js";
+import { useBusinessOwners } from "./hooks/useBusinessOwners.js";
+import { useStaffRoster } from "./hooks/useStaffRoster.js";
+import { apiPost } from "./apiClient.js";
 
 // ─── Colors ──────────────────────────────────────────────────────────────────
 const C = {
@@ -2154,343 +2161,336 @@ const TRANSLATIONS = {
 };
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
-// ─── Mock Data for Admin ──────────────────────────────────────────────────────
-const mockCustomers = [
-  {id:1,name:"James Osei",email:"james@gmail.com",phone:"0244111001",nationality:"Ghanaian",city:"Accra",country:"Ghana",purpose:"Business",visitDate:"2026-06-10",newsletter:true,smsUpdates:true,joined:"2026-05-20",spent:340},
-  {id:2,name:"Emma Thompson",email:"emma@outlook.com",phone:"0244111002",nationality:"British",city:"London",country:"UK",purpose:"Tourism / Holiday",visitDate:"2026-06-15",newsletter:true,smsUpdates:false,joined:"2026-05-22",spent:820},
-  {id:3,name:"Kwame Asante",email:"kwame@yahoo.com",phone:"0244111003",nationality:"Ghanaian",city:"Kumasi",country:"Ghana",purpose:"Cultural Visit",visitDate:"2026-06-08",newsletter:false,smsUpdates:true,joined:"2026-05-25",spent:150},
-  {id:4,name:"Hans Mueller",email:"hans@web.de",phone:"0244111004",nationality:"German",city:"Berlin",country:"Germany",purpose:"Attending Festival",visitDate:"2026-06-22",newsletter:true,smsUpdates:true,joined:"2026-05-28",spent:1240},
-  {id:5,name:"Abena Mensah",email:"abena@gmail.com",phone:"0244111005",nationality:"Ghanaian",city:"Takoradi",country:"Ghana",purpose:"Family Visit",visitDate:"2026-06-12",newsletter:true,smsUpdates:true,joined:"2026-05-30",spent:280},
-  {id:6,name:"Sophie Dubois",email:"sophie@free.fr",phone:"0244111008",nationality:"French",city:"Paris",country:"France",purpose:"Tourism / Holiday",visitDate:"2026-06-25",newsletter:true,smsUpdates:true,joined:"2026-06-03",spent:970},
-];
+const DASHBOARD_THEME = {
+  light: { pageBg:"#f0f2f5", sidebarBg:C.cream, sidebarText:C.darkBrown, cardBg:"#ffffff", text:C.darkBrown, textMuted:"#666", border:"#e0e0e0" },
+  dark:  { pageBg:"#14161c", sidebarBg:"#0d0e12", sidebarText:C.cream, cardBg:"#1c1f26", text:C.cream, textMuted:"#9aa0aa", border:"#2a2d35" },
+};
 
-const mockBusinesses = [
-  {id:1,name:"Royal Ashanti Lodge",category:"Hotels",owner:"Nana Prempeh",phone:"233244000001",location:"Manhyia",status:"Active",joined:"2026-04-01",revenue:4500},
-  {id:2,name:"Afia's Kitchen",category:"Food",owner:"Afia Mensah",phone:"233244000007",location:"Adum",status:"Active",joined:"2026-04-05",revenue:1200},
-  {id:3,name:"Kente Palace Weavers",category:"Crafts",owner:"Kweku Asare",phone:"233244000010",location:"Bonwire",status:"Active",joined:"2026-04-10",revenue:3200},
-  {id:4,name:"Kofi Auto Works",category:"Suame Magazine",owner:"Kofi Agyei",phone:"233244000028",location:"Suame",status:"Pending",joined:"2026-05-15",revenue:0},
-  {id:5,name:"Golden Knot Events",category:"Wedding Planners",owner:"Akua Boateng",phone:"233244000035",location:"Nhyiaeso",status:"Pending",joined:"2026-06-01",revenue:0},
-  {id:6,name:"Manhyia Rooftop Bar",category:"Pubs & Bars",owner:"Kwame Frimpong",phone:"233244000047",location:"Manhyia",status:"Active",joined:"2026-05-01",revenue:2800},
-];
+const ROLE_COLORS = { super_admin:C.gold, admin:C.kente3, accountant:C.kente1, marketing:C.kente2, support:C.ghGreen };
 
-const mockOrders = [
-  {id:"ORD001",customer:"Emma Thompson",type:"Grocery Concierge",items:"Plantain, Tomatoes, Chicken, Rice",total:185,status:"Delivered",date:"2026-06-03",payment:"MoMo"},
-  {id:"ORD002",customer:"Hans Mueller",type:"Tour Booking",items:"Manhyia Palace Experience ×2",total:160,status:"Confirmed",date:"2026-06-04",payment:"MoMo"},
-  {id:"ORD003",customer:"James Osei",type:"Grocery Concierge",items:"Eggs, Palm Oil, Onions, Fish",total:98,status:"In Progress",date:"2026-06-04",payment:"Cash"},
-  {id:"ORD004",customer:"Sophie Dubois",type:"Hotel Booking",items:"Royal Ashanti Lodge – 3 nights",total:1350,status:"Confirmed",date:"2026-06-02",payment:"Card"},
-  {id:"ORD005",customer:"Abena Mensah",type:"Tour Booking",items:"Ashanti Heritage Walk ×3",total:180,status:"Pending",date:"2026-06-04",payment:"MoMo"},
-];
+function ComingSoonPanel({theme,feature}) {
+  return <div style={{background:theme.cardBg,borderRadius:16,padding:"40px 24px",textAlign:"center",border:`1px solid ${theme.border}`}}>
+    <div style={{fontSize:"2rem",marginBottom:10}}>🚧</div>
+    <div style={{color:theme.text,fontWeight:800,fontSize:"0.9rem",marginBottom:4}}>Coming soon</div>
+    <div style={{color:theme.textMuted,fontSize:"0.78rem"}}>{feature} isn't built yet.</div>
+  </div>;
+}
 
-const mockRiders = [
-  {id:1,name:"Kweku Mensah",phone:"0244501001",whatsapp:"0244501001",zone:"Manhyia / Adum",type:"Motorbike",status:"Available",deliveries:87,rating:4.9,earnings:1740,todayDeliveries:4},
-  {id:2,name:"Abena Asare",phone:"0244501002",whatsapp:"0244501002",zone:"Kejetia / Asafo",type:"Bicycle",status:"On Delivery",deliveries:64,rating:4.7,earnings:1280,todayDeliveries:3},
-  {id:3,name:"Yaw Boateng",phone:"0244501003",whatsapp:"0244501003",zone:"Suame / Buokrom",type:"Motorbike",status:"Available",deliveries:112,rating:4.8,earnings:2240,todayDeliveries:6},
-  {id:4,name:"Kofi Darko",phone:"0244501005",whatsapp:"0244501005",zone:"Adum / Bantama",type:"Tuk-Tuk",status:"Available",deliveries:95,rating:4.8,earnings:1900,todayDeliveries:5},
-];
-
-const mockPartners = [
-  {id:1,name:"Bolt Food Ghana",type:"Corporate",coverage:"All Kumasi",categories:["Food"],contactName:"Ali Zaryab",contact:"0244600001",status:"Active",rateModel:"25% commission",joined:"2026-04-01"},
-  {id:2,name:"Result Logistics",type:"Local",coverage:"Asafo / Central",categories:["Grocery","Pharmacy"],contactName:"Kwame Result",contact:"0244600002",status:"Active",rateModel:"GHS 15–30 flat",joined:"2026-04-15"},
-  {id:3,name:"DHL Kumasi",type:"International",coverage:"International",categories:["Crafts"],contactName:"DHL Business Team",contact:"0244600003",status:"Active",rateModel:"DHL rates +10%",joined:"2026-05-10"},
-];
-
-const mockDeliveryOrders = [
-  {id:"DEL001",rider:"Kweku Mensah",customer:"Emma Thompson",category:"Grocery",items:"Plantain, Tomatoes",pickup:"Kejetia Market",dropoff:"Royal Ashanti Lodge",distance:"2.3km",fee:20,status:"Delivered",time:"10:34 AM",payment:"MoMo"},
-  {id:"DEL002",rider:"Yaw Boateng",customer:"Hans Mueller",category:"Pharmacy",items:"Paracetamol, Vitamin C",pickup:"Manhyia Pharmacy",dropoff:"Heritage Inn",distance:"1.1km",fee:15,status:"In Transit",time:"12:05 PM",payment:"Cash"},
-  {id:"DEL003",rider:"Kofi Darko",customer:"Sophie Dubois",category:"Crafts",items:"Kente cloth x2",pickup:"Kente Palace Weavers",dropoff:"Prempeh Suites",distance:"4.2km",fee:30,status:"Pending",time:"1:20 PM",payment:"MoMo"},
-];
-
-function AdminDashboard({ onExit }) {
-  const [adminTab, setAdminTab] = useState("overview");
-  const [searchCustomer, setSearchCustomer] = useState("");
-  const [selectedNationality, setSelectedNationality] = useState("All");
-  const [selectedStatus, setSelectedStatus] = useState("All");
-
-  const totalRevenue = mockBusinesses.reduce((s,b)=>s+b.revenue,0);
-  const activeBusinesses = mockBusinesses.filter(b=>b.status==="Active").length;
-  const pendingBusinesses = mockBusinesses.filter(b=>b.status==="Pending").length;
-  const nationalities = ["All",...new Set(mockCustomers.map(c=>c.nationality))];
-  const nationalityBreakdown = mockCustomers.reduce((acc,c)=>{acc[c.nationality]=(acc[c.nationality]||0)+1;return acc;},{});
-  const purposeBreakdown = mockCustomers.reduce((acc,c)=>{acc[c.purpose]=(acc[c.purpose]||0)+1;return acc;},{});
-  const statusColor = {Active:"#22c55e",Pending:"#f59e0b",Suspended:"#ef4444"};
-  const orderStatusColor = {Delivered:"#22c55e",Confirmed:C.kente3,"In Progress":"#f59e0b",Pending:"#aaa"};
-  const deliveryStatusColor = {Delivered:"#22c55e","In Transit":"#f59e0b",Pending:C.kente3};
-  const riderStatusColor = {Available:"#22c55e","On Delivery":"#f59e0b",Offline:"#aaa"};
-
-  const filteredCustomers = mockCustomers.filter(c=>
-    (selectedNationality==="All"||c.nationality===selectedNationality)&&
-    (c.name.toLowerCase().includes(searchCustomer.toLowerCase())||c.email.toLowerCase().includes(searchCustomer.toLowerCase()))
-  );
-  const filteredBusinesses = mockBusinesses.filter(b=>
-    selectedStatus==="All"||b.status===selectedStatus
-  );
-
-  const StatCard = ({icon,label,value,sub,color}) => (
-    <div style={{background:"white",borderRadius:14,padding:"16px",boxShadow:"0 2px 12px rgba(0,0,0,0.07)",borderLeft:`4px solid ${color}`}}>
-      <div style={{fontSize:"1.4rem",marginBottom:4}}>{icon}</div>
-      <div style={{fontWeight:900,fontSize:"1.3rem",color:C.darkBrown}}>{value}</div>
-      <div style={{fontSize:"0.72rem",fontWeight:700,color:"#555"}}>{label}</div>
-      {sub&&<div style={{fontSize:"0.62rem",color,fontWeight:600}}>{sub}</div>}
+function StaffOverviewPanel({auth,theme,roleColor}) {
+  const permissions = auth.user?.permissions||[];
+  return <div>
+    <h2 style={{color:theme.text,fontWeight:900,margin:"0 0 6px",fontSize:"1.1rem"}}>Akwaaba, {auth.user?.full_name?.split(" ")[0]}!</h2>
+    <div style={{color:theme.textMuted,fontSize:"0.8rem",marginBottom:20}}>
+      You're signed in as <span style={{color:roleColor,fontWeight:800,textTransform:"capitalize"}}>{auth.user?.role?.replace("_"," ")}</span>.
     </div>
-  );
+    <div style={{background:theme.cardBg,borderRadius:16,padding:"18px",border:`1px solid ${theme.border}`}}>
+      <div style={{color:theme.text,fontWeight:800,fontSize:"0.82rem",marginBottom:10}}>Your permissions</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+        {permissions.map(p=>(
+          <span key={p} style={{background:`${roleColor}18`,color:roleColor,borderRadius:20,padding:"3px 10px",fontSize:"0.68rem",fontWeight:700}}>{p}</span>
+        ))}
+      </div>
+    </div>
+  </div>;
+}
 
-  const tabs = [
-    {id:"overview",icon:"📊",label:"Overview"},
-    {id:"customers",icon:"👥",label:"Customers"},
-    {id:"businesses",icon:"🏪",label:"Businesses"},
-    {id:"orders",icon:"📦",label:"Orders"},
-    {id:"delivery",icon:"🚴",label:"Delivery"},
-    {id:"credit",icon:"🏅",label:"Credit"},
-    {id:"analytics",icon:"📈",label:"Analytics"},
-  ];
+function KYCQueuePanel({theme}) {
+  const {data,isLoading,isError,refetch} = useKYCQueue();
+  const [rejectingId,setRejectingId] = useState(null);
+  const [rejectReason,setRejectReason] = useState("");
+  const [actionError,setActionError] = useState(null);
 
-  return (
-    <div style={{fontFamily:"'Georgia',serif",background:"#f0f2f5",minHeight:"100vh"}}>
-      <div style={{background:C.black,padding:"0 16px",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 20px rgba(0,0,0,0.5)"}}>
-        <div style={{maxWidth:1100,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:56}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <Flag w={40} h={27}/>
-            <div style={{color:C.gold,fontWeight:900,fontSize:"0.95rem"}}>AshantiHub <span style={{color:"#666",fontSize:"0.7rem",fontWeight:400}}>Admin</span></div>
+  const approve = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/accounts/kyc/${id}/approve/`,{}); refetch(); }
+    catch (err) { setActionError("Could not approve this submission. Please try again."); }
+  };
+  const reject = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/accounts/kyc/${id}/reject/`,{reason:rejectReason}); setRejectingId(null); setRejectReason(""); refetch(); }
+    catch (err) { setActionError("Could not reject this submission. Please try again."); }
+  };
+
+  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
+  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the KYC queue.</div>;
+  const items = data||[];
+
+  return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
+    <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Pending KYC submissions ({items.length})</div>
+    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
+    {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No pending submissions.</div>}
+    {items.map(o=>(
+      <div key={o.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <div>
+            <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>{o.full_name}</div>
+            <div style={{color:theme.textMuted,fontSize:"0.68rem"}}>{o.login_phone} • submitted {o.created_at?.slice(0,10)}</div>
           </div>
-          <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            <div style={{background:"#22c55e22",color:"#22c55e",borderRadius:20,padding:"3px 10px",fontSize:"0.65rem",fontWeight:700}}>🟢 Live</div>
-            <button onClick={onExit} style={{background:"none",border:"1px solid #444",color:"#aaa",borderRadius:20,padding:"4px 12px",fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>← Exit</button>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>approve(o.id)} style={{background:"#22c55e",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✓ Approve</button>
+            <button onClick={()=>setRejectingId(o.id)} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✕ Reject</button>
           </div>
+        </div>
+        {rejectingId===o.id&&<div style={{marginTop:8,display:"flex",gap:6}}>
+          <input value={rejectReason} onChange={e=>setRejectReason(e.target.value)} placeholder="Rejection reason" style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+          <button onClick={()=>reject(o.id)} disabled={!rejectReason} style={{background:"#dc2626",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:rejectReason?"pointer":"default"}}>Confirm reject</button>
+        </div>}
+      </div>
+    ))}
+  </div>;
+}
+
+function ListingsModerationPanel({theme}) {
+  const {data,isLoading,isError,refetch} = useModerationQueue();
+  const [rejectingId,setRejectingId] = useState(null);
+  const [rejectReason,setRejectReason] = useState("");
+  const [actionError,setActionError] = useState(null);
+
+  const approve = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/listings/moderation/${id}/approve/`,{}); refetch(); }
+    catch (err) { setActionError("Could not approve this listing."); }
+  };
+  const reject = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/listings/moderation/${id}/reject/`,{reason:rejectReason}); setRejectingId(null); setRejectReason(""); refetch(); }
+    catch (err) { setActionError("Could not reject this listing."); }
+  };
+
+  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
+  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the moderation queue.</div>;
+  const items = data||[];
+
+  return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
+    <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Pending listings ({items.length})</div>
+    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
+    {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No pending listings.</div>}
+    {items.map(l=>(
+      <div key={l.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <div>
+            <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>{l.name}</div>
+            <div style={{color:theme.textMuted,fontSize:"0.68rem"}}>{l.category?.label} • {l.zone?.name} • GHS {l.price_amount} • {l.contact_phone}</div>
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>approve(l.id)} style={{background:"#22c55e",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✓ Approve</button>
+            <button onClick={()=>setRejectingId(l.id)} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✕ Reject</button>
+          </div>
+        </div>
+        {rejectingId===l.id&&<div style={{marginTop:8,display:"flex",gap:6}}>
+          <input value={rejectReason} onChange={e=>setRejectReason(e.target.value)} placeholder="Rejection reason" style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+          <button onClick={()=>reject(l.id)} disabled={!rejectReason} style={{background:"#dc2626",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:rejectReason?"pointer":"default"}}>Confirm reject</button>
+        </div>}
+      </div>
+    ))}
+  </div>;
+}
+
+function UsersPanel({theme}) {
+  const [subTab,setSubTab] = useState("customers");
+  const customers = useCustomers();
+  const owners = useBusinessOwners();
+  const active = subTab==="customers"?customers:owners;
+
+  return <div>
+    <div style={{display:"flex",gap:8,marginBottom:14}}>
+      <button onClick={()=>setSubTab("customers")} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:700,fontSize:"0.75rem",background:subTab==="customers"?C.gold:theme.border,color:subTab==="customers"?C.darkBrown:theme.textMuted,fontFamily:"inherit"}}>Customers</button>
+      <button onClick={()=>setSubTab("owners")} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:700,fontSize:"0.75rem",background:subTab==="owners"?C.gold:theme.border,color:subTab==="owners"?C.darkBrown:theme.textMuted,fontFamily:"inherit"}}>Business Owners</button>
+    </div>
+    {active.isLoading&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>}
+    {active.isError&&<div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load this list.</div>}
+    {active.data&&<div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
+      <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:4}}>{active.data.count} total</div>
+      {active.data.count>20&&<div style={{color:theme.textMuted,fontSize:"0.68rem",marginBottom:10}}>Showing first 20 of {active.data.count}.</div>}
+      {active.data.results.map(u=>(
+        <div key={u.id} style={{padding:"10px 0",borderBottom:`1px solid ${theme.border}`}}>
+          <div style={{color:theme.text,fontWeight:700,fontSize:"0.8rem"}}>{u.full_name}</div>
+          <div style={{color:theme.textMuted,fontSize:"0.68rem"}}>
+            {subTab==="customers"?`${u.phone||"—"} • ${u.email||"—"}`:`${u.login_phone} • KYC: ${u.kyc_status}`}
+          </div>
+        </div>
+      ))}
+    </div>}
+  </div>;
+}
+
+function CategoriesZonesPanel({theme,auth}) {
+  const categories = useCategories();
+  const zones = useZones();
+  const [newCategoryLabel,setNewCategoryLabel] = useState("");
+  const [newZoneName,setNewZoneName] = useState("");
+  const [actionError,setActionError] = useState(null);
+
+  const addCategory = async () => {
+    if(!newCategoryLabel) return;
+    setActionError(null);
+    try {
+      const slug = newCategoryLabel.toLowerCase().replace(/\s+/g,"-");
+      await apiPost("/api/listings/categories/",{slug,icon:"🆕",label:newCategoryLabel,color:"#888888"});
+      setNewCategoryLabel("");
+      categories.refetch();
+    } catch (err) { setActionError("Could not add this category."); }
+  };
+  const addZone = async () => {
+    if(!newZoneName) return;
+    setActionError(null);
+    try {
+      await apiPost("/api/listings/zones/",{name:newZoneName});
+      setNewZoneName("");
+      zones.refetch();
+    } catch (err) { setActionError("Could not add this zone."); }
+  };
+
+  return <div>
+    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:16}}>
+    <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
+      <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:12}}>Categories</div>
+      {(categories.data||[]).map(c=>(
+        <div key={c.id} style={{padding:"6px 0",color:theme.text,fontSize:"0.8rem"}}>{c.icon} {c.label}</div>
+      ))}
+      {auth.hasPermission("categories.manage")&&<div style={{marginTop:12,display:"flex",gap:6}}>
+        <input value={newCategoryLabel} onChange={e=>setNewCategoryLabel(e.target.value)} placeholder="New category label" style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+        <button onClick={addCategory} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>Add category</button>
+      </div>}
+    </div>
+    <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
+      <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:12}}>Zones</div>
+      {(zones.data||[]).map(z=>(
+        <div key={z.id} style={{padding:"6px 0",color:theme.text,fontSize:"0.8rem"}}>{z.name}</div>
+      ))}
+      {auth.hasPermission("zones.manage")&&<div style={{marginTop:12,display:"flex",gap:6}}>
+        <input value={newZoneName} onChange={e=>setNewZoneName(e.target.value)} placeholder="New zone name" style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+        <button onClick={addZone} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>Add zone</button>
+      </div>}
+    </div>
+    </div>
+  </div>;
+}
+
+const STATUS_COLORS = {active:"#22c55e",invited:"#f59e0b",invite_expired:"#dc2626"};
+
+function StaffManagementPanel({theme}) {
+  const {data,isLoading,isError,refetch} = useStaffRoster();
+  const [inviteName,setInviteName] = useState("");
+  const [inviteEmail,setInviteEmail] = useState("");
+  const [inviteRole,setInviteRole] = useState("");
+  const [actionError,setActionError] = useState(null);
+
+  const sendInvite = async () => {
+    if(!inviteName||!inviteEmail||!inviteRole) return;
+    setActionError(null);
+    try {
+      await apiPost("/api/accounts/staff/invite/",{full_name:inviteName,email:inviteEmail,role:inviteRole});
+      setInviteName(""); setInviteEmail(""); setInviteRole("");
+      refetch();
+    } catch (err) { setActionError("Could not send the invite. Check the details and try again."); }
+  };
+
+  return <div>
+    <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`,marginBottom:16}}>
+      <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:12}}>Invite a staff member</div>
+      {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        <input value={inviteName} onChange={e=>setInviteName(e.target.value)} placeholder="Full name" style={{flex:1,minWidth:120,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+        <input value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)} placeholder="Email" style={{flex:1,minWidth:120,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+        <select value={inviteRole} onChange={e=>setInviteRole(e.target.value)} style={{width:120,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}>
+          <option value="">Role</option>
+          <option value="super_admin">Super Admin</option>
+          <option value="admin">Admin</option>
+          <option value="accountant">Accountant</option>
+          <option value="marketing">Marketing</option>
+          <option value="support">Support</option>
+        </select>
+        <button onClick={sendInvite} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>Send invite</button>
+      </div>
+    </div>
+
+    {isLoading&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>}
+    {isError&&<div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the staff roster.</div>}
+    {data&&<div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
+      <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:10}}>{data.count} staff members</div>
+      {data.results.map(s=>(
+        <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${theme.border}`}}>
+          <div>
+            <div style={{color:theme.text,fontWeight:700,fontSize:"0.8rem"}}>{s.full_name}</div>
+            <div style={{color:theme.textMuted,fontSize:"0.68rem"}}>{s.email} • {s.role}</div>
+          </div>
+          <span style={{background:`${STATUS_COLORS[s.status]}22`,color:STATUS_COLORS[s.status],borderRadius:20,padding:"2px 8px",fontSize:"0.62rem",fontWeight:700}}>{s.status}</span>
+        </div>
+      ))}
+    </div>}
+  </div>;
+}
+
+export function StaffDashboard({auth,onExit}) {
+  const {theme,toggleTheme} = useTheme();
+  const t = DASHBOARD_THEME[theme];
+  const [activeTab,setActiveTab] = useState("overview");
+  const [sidebarCollapsed,setSidebarCollapsed] = useState(false);
+  const role = auth.user?.role;
+  const roleColor = ROLE_COLORS[role]||C.gold;
+
+  const NAV_ITEMS = [
+    {id:"overview",icon:"📊",label:"Overview",show:true},
+    {id:"kyc",icon:"🪪",label:"KYC Queue",show:auth.hasPermission("kyc.approve")},
+    {id:"moderation",icon:"📋",label:"Listings Moderation",show:auth.hasPermission("listings.moderate")},
+    {id:"users",icon:"👥",label:"Users",show:auth.hasPermission("users.view")},
+    {id:"categories-zones",icon:"🗂️",label:"Categories & Zones",show:auth.hasPermission("categories.manage")||auth.hasPermission("zones.manage")},
+    {id:"staff",icon:"🛡️",label:"Staff Management",show:auth.hasPermission("staff.manage")},
+    {id:"escrow",icon:"💰",label:"Escrow Ledger",show:auth.hasPermission("escrow.view")||auth.hasPermission("escrow.release")},
+    {id:"disputes",icon:"⚖️",label:"Disputes",show:auth.hasPermission("disputes.resolve_financial")||auth.hasPermission("disputes.flag")},
+    {id:"transactions",icon:"📈",label:"Transactions Report",show:auth.hasPermission("transactions.report")},
+    {id:"promotions",icon:"🎯",label:"Promotions",show:auth.hasPermission("promotions.manage")},
+    {id:"analytics",icon:"📊",label:"Analytics",show:auth.hasPermission("analytics.view")},
+    {id:"messaging",icon:"💬",label:"Messaging / Tickets",show:auth.hasPermission("messaging.manage")},
+  ].filter(item=>item.show);
+
+  return <div style={{fontFamily:"'Georgia',serif",background:t.pageBg,minHeight:"100vh",display:"flex"}}>
+    <div style={{width:sidebarCollapsed?60:220,background:t.sidebarBg,borderLeft:`4px solid ${roleColor}`,transition:"width 0.2s",flexShrink:0,position:"sticky",top:0,height:"100vh",overflowY:"auto"}}>
+      <div style={{padding:"16px 12px",display:"flex",alignItems:"center",gap:8}}>
+        <Flag w={28} h={19}/>
+        {!sidebarCollapsed&&<div style={{color:t.sidebarText,fontWeight:900,fontSize:"0.85rem"}}>AshantiHub Staff</div>}
+      </div>
+      <button onClick={()=>setSidebarCollapsed(s=>!s)} style={{background:"none",border:"none",color:t.textMuted,cursor:"pointer",padding:"4px 12px",fontSize:"0.7rem",fontFamily:"inherit"}}>{sidebarCollapsed?"→":"← Collapse"}</button>
+      <nav>
+        {NAV_ITEMS.map(item=>(
+          <button key={item.id} onClick={()=>setActiveTab(item.id)} style={{display:"flex",alignItems:"center",gap:10,width:"100%",background:activeTab===item.id?`${roleColor}22`:"none",border:"none",borderLeft:activeTab===item.id?`3px solid ${roleColor}`:"3px solid transparent",color:t.sidebarText,padding:"10px 12px",fontSize:"0.78rem",fontWeight:activeTab===item.id?800:600,cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>
+            <span>{item.icon}</span>{!sidebarCollapsed&&<span>{item.label}</span>}
+          </button>
+        ))}
+      </nav>
+    </div>
+
+    <div style={{flex:1,minWidth:0}}>
+      <div style={{background:t.cardBg,borderBottom:`1px solid ${t.border}`,padding:"0 20px",display:"flex",alignItems:"center",justifyContent:"space-between",height:56,position:"sticky",top:0,zIndex:10}}>
+        <div style={{color:t.text,fontWeight:800,fontSize:"0.9rem"}}>{NAV_ITEMS.find(i=>i.id===activeTab)?.label}</div>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <button onClick={toggleTheme} title="Toggle theme" style={{background:"none",border:`1px solid ${t.border}`,borderRadius:20,padding:"4px 10px",cursor:"pointer",fontSize:"0.8rem"}}>{theme==="dark"?"☀️":"🌙"}</button>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{background:roleColor,color:"white",borderRadius:20,padding:"2px 8px",fontSize:"0.62rem",fontWeight:800,textTransform:"capitalize"}}>{role?.replace("_"," ")}</span>
+            <span style={{color:t.text,fontSize:"0.78rem",fontWeight:700}}>{auth.user?.full_name}</span>
+          </div>
+          <button onClick={onExit} style={{background:"none",border:`1px solid ${t.border}`,color:t.textMuted,borderRadius:20,padding:"4px 12px",fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>← Exit</button>
         </div>
       </div>
 
-      <div style={{background:"white",borderBottom:"1px solid #e0e0e0",padding:"0 16px"}}>
-        <div style={{maxWidth:1100,margin:"0 auto",display:"flex",overflowX:"auto"}}>
-          {tabs.map(t=>(
-            <button key={t.id} onClick={()=>setAdminTab(t.id)} style={{background:"none",border:"none",borderBottom:adminTab===t.id?`3px solid ${C.gold}`:"3px solid transparent",color:adminTab===t.id?C.darkBrown:"#888",padding:"12px 16px",fontSize:"0.75rem",fontWeight:adminTab===t.id?800:600,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"inherit"}}>
-              {t.icon} {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div style={{maxWidth:1100,margin:"0 auto",padding:"22px 16px 60px"}}>
-
-        {adminTab==="overview"&&(
-          <>
-            <h2 style={{color:C.darkBrown,fontWeight:900,margin:"0 0 18px",fontSize:"1rem"}}>📊 Platform Overview</h2>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12,marginBottom:24}}>
-              <StatCard icon="👥" label="Total Customers" value={mockCustomers.length} sub="+3 this week" color={C.kente3}/>
-              <StatCard icon="🏪" label="Active Businesses" value={activeBusinesses} sub={`${pendingBusinesses} pending`} color={C.kente2}/>
-              <StatCard icon="📦" label="Total Orders" value={mockOrders.length} sub="Today: 2 new" color={C.orange}/>
-              <StatCard icon="💰" label="Revenue" value={`GHS ${totalRevenue.toLocaleString()}`} sub="Listing fees" color={C.gold}/>
-              <StatCard icon="🚴" label="Active Riders" value={mockRiders.filter(r=>r.status!=="Offline").length} sub="On the road" color="#C2185B"/>
-              <StatCard icon="🌍" label="Nationalities" value={Object.keys(nationalityBreakdown).length} sub="Countries" color="#4527A0"/>
-            </div>
-            <div style={{background:"white",borderRadius:16,padding:"18px",boxShadow:"0 2px 12px rgba(0,0,0,0.07)",marginBottom:16}}>
-              <div style={{fontWeight:800,color:C.darkBrown,marginBottom:12,fontSize:"0.88rem"}}>📦 Recent Orders</div>
-              {mockOrders.map(o=>(
-                <div key={o.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid #f8f8f8",flexWrap:"wrap",gap:8}}>
-                  <div><div style={{fontWeight:700,fontSize:"0.78rem"}}>{o.customer} — {o.type}</div><div style={{fontSize:"0.65rem",color:"#888"}}>{o.date} • {o.payment}</div></div>
-                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                    <span style={{fontWeight:800,color:C.kente2}}>GHS {o.total}</span>
-                    <span style={{background:`${orderStatusColor[o.status]}22`,color:orderStatusColor[o.status],borderRadius:20,padding:"2px 8px",fontSize:"0.62rem",fontWeight:700}}>{o.status}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div style={{background:"white",borderRadius:16,padding:"18px",boxShadow:"0 2px 12px rgba(0,0,0,0.07)"}}>
-              <div style={{fontWeight:800,color:C.darkBrown,marginBottom:12,fontSize:"0.88rem"}}>⏳ Pending Approvals</div>
-              {mockBusinesses.filter(b=>b.status==="Pending").map(b=>(
-                <div key={b.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid #f0f0f0",gap:10,flexWrap:"wrap"}}>
-                  <div><div style={{fontWeight:700,fontSize:"0.82rem"}}>{b.name}</div><div style={{fontSize:"0.68rem",color:"#888"}}>{b.category} • {b.location} • {b.owner}</div></div>
-                  <div style={{display:"flex",gap:6}}>
-                    <button style={{background:"#22c55e",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✓ Approve</button>
-                    <button style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✕ Reject</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        {adminTab==="customers"&&(
-          <>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
-              <h2 style={{color:C.darkBrown,fontWeight:900,margin:0,fontSize:"1rem"}}>👥 Customer Database</h2>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                <input value={searchCustomer} onChange={e=>setSearchCustomer(e.target.value)} placeholder="Search customers..." style={{padding:"7px 12px",borderRadius:20,border:"1.5px solid #ddd",fontSize:"0.75rem",outline:"none",fontFamily:"inherit"}}/>
-                <select value={selectedNationality} onChange={e=>setSelectedNationality(e.target.value)} style={{padding:"7px 12px",borderRadius:20,border:"1.5px solid #ddd",fontSize:"0.75rem",background:"white",fontFamily:"inherit"}}>
-                  {nationalities.map(n=><option key={n}>{n}</option>)}
-                </select>
-                <button style={{background:C.kente2,color:"white",border:"none",borderRadius:20,padding:"7px 14px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer"}}>📥 Export CSV</button>
-              </div>
-            </div>
-            <div style={{background:"white",borderRadius:16,padding:"18px",boxShadow:"0 2px 12px rgba(0,0,0,0.07)",overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.72rem"}}>
-                <thead><tr style={{borderBottom:"2px solid #f0f0f0"}}>
-                  {["Name","Email","Nationality","From","Purpose","Visit Date","Newsletter","Spent"].map(h=>(
-                    <th key={h} style={{textAlign:"left",padding:"8px 10px",color:"#888",fontWeight:700,whiteSpace:"nowrap"}}>{h}</th>
-                  ))}
-                </tr></thead>
-                <tbody>
-                  {filteredCustomers.map(c=>(
-                    <tr key={c.id} style={{borderBottom:"1px solid #f8f8f8"}}>
-                      <td style={{padding:"9px 10px",fontWeight:700}}>{c.name}</td>
-                      <td style={{padding:"9px 10px",color:"#555"}}>{c.email}</td>
-                      <td style={{padding:"9px 10px"}}><span style={{background:`${C.kente3}15`,color:C.kente3,borderRadius:20,padding:"2px 7px",fontWeight:700,fontSize:"0.65rem"}}>{c.nationality}</span></td>
-                      <td style={{padding:"9px 10px",color:"#555",whiteSpace:"nowrap"}}>{c.city}, {c.country}</td>
-                      <td style={{padding:"9px 10px",color:"#555"}}>{c.purpose}</td>
-                      <td style={{padding:"9px 10px",color:"#555"}}>{c.visitDate}</td>
-                      <td style={{padding:"9px 10px",textAlign:"center"}}>{c.newsletter?"✅":"❌"}</td>
-                      <td style={{padding:"9px 10px",fontWeight:800,color:C.kente2}}>GHS {c.spent}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-
-        {adminTab==="businesses"&&(
-          <>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
-              <h2 style={{color:C.darkBrown,fontWeight:900,margin:0,fontSize:"1rem"}}>🏪 Business Listings</h2>
-              <select value={selectedStatus} onChange={e=>setSelectedStatus(e.target.value)} style={{padding:"7px 12px",borderRadius:20,border:"1.5px solid #ddd",fontSize:"0.75rem",background:"white",fontFamily:"inherit"}}>
-                {["All","Active","Pending","Suspended"].map(s=><option key={s}>{s}</option>)}
-              </select>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
-              {filteredBusinesses.map(b=>(
-                <div key={b.id} style={{background:"white",borderRadius:16,padding:"16px",boxShadow:"0 2px 12px rgba(0,0,0,0.07)",borderTop:`3px solid ${statusColor[b.status]}`}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-                    <div style={{fontWeight:800,fontSize:"0.85rem",color:C.darkBrown}}>{b.name}</div>
-                    <span style={{background:`${statusColor[b.status]}20`,color:statusColor[b.status],borderRadius:20,padding:"2px 8px",fontSize:"0.62rem",fontWeight:800}}>{b.status}</span>
-                  </div>
-                  <div style={{fontSize:"0.72rem",color:"#666",lineHeight:1.8}}>
-                    <div>📂 {b.category}</div><div>👤 {b.owner}</div><div>📍 {b.location}</div>
-                    <div>💰 <strong style={{color:C.kente2}}>GHS {b.revenue.toLocaleString()}</strong></div>
-                  </div>
-                  {b.status==="Pending"&&(
-                    <div style={{display:"flex",gap:6,marginTop:10}}>
-                      <button style={{flex:1,background:"#22c55e",color:"white",border:"none",borderRadius:20,padding:"6px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✓ Approve</button>
-                      <button style={{flex:1,background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"6px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✕ Reject</button>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        {adminTab==="orders"&&(
-          <>
-            <h2 style={{color:C.darkBrown,fontWeight:900,margin:"0 0 16px",fontSize:"1rem"}}>📦 Orders</h2>
-            <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              {mockOrders.map(o=>(
-                <div key={o.id} style={{background:"white",borderRadius:14,padding:"16px",boxShadow:"0 2px 12px rgba(0,0,0,0.07)",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
-                  <div>
-                    <div style={{fontWeight:700,fontSize:"0.82rem"}}>{o.customer} — {o.type}</div>
-                    <div style={{fontSize:"0.68rem",color:"#888"}}>{o.items} • {o.date} • {o.payment}</div>
-                  </div>
-                  <div style={{display:"flex",gap:10,alignItems:"center"}}>
-                    <span style={{fontWeight:900,color:C.kente2}}>GHS {o.total}</span>
-                    <span style={{background:`${orderStatusColor[o.status]}22`,color:orderStatusColor[o.status],borderRadius:20,padding:"3px 10px",fontSize:"0.65rem",fontWeight:800}}>{o.status}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        {adminTab==="delivery"&&(
-          <>
-            <h2 style={{color:C.darkBrown,fontWeight:900,margin:"0 0 16px",fontSize:"1rem"}}>🚴 Delivery Management</h2>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:12,marginBottom:20}}>
-              {[{icon:"🚴",label:"Active Riders",value:mockRiders.filter(r=>r.status!=="Offline").length,color:C.kente2},{icon:"📦",label:"Deliveries Today",value:mockDeliveryOrders.filter(d=>d.status==="Delivered").length,color:C.gold},{icon:"⏳",label:"In Transit",value:mockDeliveryOrders.filter(d=>d.status==="In Transit").length,color:"#f59e0b"},{icon:"🤝",label:"Partners",value:mockPartners.length,color:"#4527A0"}].map(s=>(
-                <div key={s.label} style={{background:"white",borderRadius:12,padding:"14px",boxShadow:"0 2px 12px rgba(0,0,0,0.07)",borderLeft:`4px solid ${s.color}`}}>
-                  <div style={{fontSize:"1.2rem",marginBottom:3}}>{s.icon}</div>
-                  <div style={{fontWeight:900,fontSize:"1.2rem",color:C.darkBrown}}>{s.value}</div>
-                  <div style={{fontSize:"0.65rem",fontWeight:700,color:"#555"}}>{s.label}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{background:"white",borderRadius:16,padding:"18px",boxShadow:"0 2px 12px rgba(0,0,0,0.07)",marginBottom:16}}>
-              <div style={{fontWeight:800,color:C.darkBrown,marginBottom:12,fontSize:"0.85rem"}}>🏍️ Rider Fleet</div>
-              {mockRiders.map(r=>(
-                <div key={r.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid #f5f5f5",flexWrap:"wrap",gap:8}}>
-                  <div style={{display:"flex",gap:10,alignItems:"center"}}>
-                    <div style={{width:36,height:36,borderRadius:"50%",background:`${riderStatusColor[r.status]}20`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1rem"}}>{r.type==="Motorbike"?"🏍️":r.type==="Bicycle"?"🚲":"🛺"}</div>
-                    <div><div style={{fontWeight:700,fontSize:"0.78rem"}}>{r.name}</div><div style={{fontSize:"0.65rem",color:"#888"}}>{r.zone} • {r.deliveries} deliveries • ⭐{r.rating}</div></div>
-                  </div>
-                  <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                    <span style={{background:`${riderStatusColor[r.status]}20`,color:riderStatusColor[r.status],borderRadius:20,padding:"2px 8px",fontSize:"0.62rem",fontWeight:800}}>● {r.status}</span>
-                    <span style={{background:`${C.kente2}15`,color:C.kente2,borderRadius:20,padding:"2px 8px",fontSize:"0.62rem",fontWeight:700}}>GHS {r.earnings}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div style={{background:"white",borderRadius:16,padding:"18px",boxShadow:"0 2px 12px rgba(0,0,0,0.07)"}}>
-              <div style={{fontWeight:800,color:C.darkBrown,marginBottom:12,fontSize:"0.85rem"}}>📦 Today's Deliveries</div>
-              {mockDeliveryOrders.map(d=>(
-                <div key={d.id} style={{padding:"10px 0",borderBottom:"1px solid #f5f5f5"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-                    <span style={{fontWeight:700,fontSize:"0.78rem"}}>{d.id} — {d.customer}</span>
-                    <span style={{background:`${deliveryStatusColor[d.status]}20`,color:deliveryStatusColor[d.status],borderRadius:20,padding:"2px 8px",fontSize:"0.62rem",fontWeight:800}}>{d.status}</span>
-                  </div>
-                  <div style={{fontSize:"0.65rem",color:"#888"}}>📍 {d.pickup} → {d.dropoff} • {d.distance} • GHS {d.fee}</div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        {adminTab==="credit"&&<CreditDashboard onClose={()=>setAdminTab("overview")} user={null}/>}
-
-        {adminTab==="analytics"&&(
-          <>
-            <h2 style={{color:C.darkBrown,fontWeight:900,margin:"0 0 18px",fontSize:"1rem"}}>📈 Analytics</h2>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
-              <div style={{background:"white",borderRadius:16,padding:"18px",boxShadow:"0 2px 12px rgba(0,0,0,0.07)"}}>
-                <div style={{fontWeight:800,color:C.darkBrown,marginBottom:12,fontSize:"0.85rem"}}>🌍 Visitors by Nationality</div>
-                {Object.entries(nationalityBreakdown).sort((a,b)=>b[1]-a[1]).map(([nat,count])=>(
-                  <div key={nat} style={{marginBottom:8}}>
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:"0.72rem",marginBottom:3}}>
-                      <span style={{fontWeight:600}}>{nat}</span>
-                      <span style={{fontWeight:800,color:C.kente3}}>{count}</span>
-                    </div>
-                    <div style={{height:7,background:"#f0f0f0",borderRadius:10,overflow:"hidden"}}>
-                      <div style={{height:"100%",width:`${(count/mockCustomers.length)*100}%`,background:C.kente3,borderRadius:10}}/>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div style={{background:"white",borderRadius:16,padding:"18px",boxShadow:"0 2px 12px rgba(0,0,0,0.07)"}}>
-                <div style={{fontWeight:800,color:C.darkBrown,marginBottom:12,fontSize:"0.85rem"}}>🎯 Purpose of Visit</div>
-                {Object.entries(purposeBreakdown).sort((a,b)=>b[1]-a[1]).map(([purpose,count])=>(
-                  <div key={purpose} style={{marginBottom:8}}>
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:"0.72rem",marginBottom:3}}>
-                      <span style={{fontWeight:600}}>{purpose}</span>
-                      <span style={{fontWeight:800,color:C.kente1}}>{count}</span>
-                    </div>
-                    <div style={{height:7,background:"#f0f0f0",borderRadius:10,overflow:"hidden"}}>
-                      <div style={{height:"100%",width:`${(count/mockCustomers.length)*100}%`,background:C.kente1,borderRadius:10}}/>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div style={{background:`linear-gradient(135deg,${C.darkBrown},${C.kente3})`,borderRadius:16,padding:"20px",color:"white"}}>
-              <div style={{fontWeight:800,color:C.gold,marginBottom:12,fontSize:"0.85rem"}}>💡 Key Insights</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:10}}>
-                {[{icon:"🇬🇧",text:"British visitors spend the most — avg GHS 895"},{icon:"🎪",text:"Festival visitors up 40% — target Akwasidae"},{icon:"📱",text:"87% opted in for WhatsApp updates"},{icon:"💍",text:"Wedding & Funeral have highest order value"}].map((insight,i)=>(
-                  <div key={i} style={{background:"rgba(255,255,255,0.08)",borderRadius:10,padding:"10px 12px",fontSize:"0.72rem",lineHeight:1.5}}>
-                    <span style={{fontSize:"1.1rem",marginRight:6}}>{insight.icon}</span>{insight.text}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </>
-        )}
-
+      <div style={{padding:"22px 20px 60px"}}>
+        {activeTab==="overview"&&<StaffOverviewPanel auth={auth} theme={t} roleColor={roleColor}/>}
+        {activeTab==="kyc"&&<KYCQueuePanel theme={t}/>}
+        {activeTab==="moderation"&&<ListingsModerationPanel theme={t}/>}
+        {activeTab==="users"&&<UsersPanel theme={t}/>}
+        {activeTab==="categories-zones"&&<CategoriesZonesPanel theme={t} auth={auth}/>}
+        {activeTab==="staff"&&<StaffManagementPanel theme={t}/>}
+        {activeTab==="escrow"&&<ComingSoonPanel theme={t} feature="Escrow Ledger"/>}
+        {activeTab==="disputes"&&<ComingSoonPanel theme={t} feature="Disputes"/>}
+        {activeTab==="transactions"&&<ComingSoonPanel theme={t} feature="Transactions Report"/>}
+        {activeTab==="promotions"&&<ComingSoonPanel theme={t} feature="Promotions"/>}
+        {activeTab==="analytics"&&<ComingSoonPanel theme={t} feature="Analytics"/>}
+        {activeTab==="messaging"&&<ComingSoonPanel theme={t} feature="Messaging / Tickets"/>}
       </div>
     </div>
-  );
+  </div>;
 }
 
 // ─── Business Dashboard ───────────────────────────────────────────────────────
@@ -3162,7 +3162,7 @@ export default function AshantiHub() {
     "tour guide","adinkra crafts","petrol station","open now","highly rated",
   ];
 
-  if(isAdmin) return <AdminDashboard onExit={()=>setIsAdmin(false)}/>;
+  if(isAdmin) return <StaffDashboard auth={auth} onExit={()=>setIsAdmin(false)}/>;
   if(showBizDash) return <BusinessDashboard onExit={()=>setShowBizDash(false)}/>;
   if(showPayments) return <PaymentDashboard onClose={()=>setShowPayments(false)}/>;
   if(showCredit) return <CreditDashboard onClose={()=>setShowCredit(false)} user={user}/>;

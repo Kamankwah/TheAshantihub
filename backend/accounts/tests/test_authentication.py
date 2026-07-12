@@ -33,3 +33,20 @@ class MultiAccountAuthenticationTests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION="Bearer not-a-real-token")
         response = self.client.get("/api/accounts/me/")
         self.assertEqual(response.status_code, 401)
+
+    def test_me_endpoint_includes_role_and_permissions_for_staff(self):
+        from accounts.models import Role, StaffUser
+
+        staff = StaffUser.objects.create(
+            full_name="Akosua Support",
+            email="akosua-me-test@example.com",
+            password_hash="unused-in-this-test",
+            role=Role.objects.get(name=Role.SUPPORT),
+        )
+        token = issue_token(staff, "staff")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        response = self.client.get("/api/accounts/me/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["role"], "support")
+        self.assertCountEqual(data["permissions"], ["messaging.manage", "disputes.flag", "users.view"])
