@@ -125,3 +125,34 @@ class LoginTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 429)
+
+    def test_staff_login_response_includes_role_and_permissions(self):
+        response = self.client.post(
+            "/api/accounts/staff/login/",
+            {"identifier": "support@example.com", "password": "correct-horse-battery-staple"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["role"], "support")
+        self.assertCountEqual(data["permissions"], ["messaging.manage", "disputes.flag", "users.view"])
+
+    def test_customer_login_response_has_no_role_or_permissions_keys(self):
+        response = self.client.post(
+            "/api/accounts/customers/login/",
+            {"identifier": "+233241234567", "password": "correct-horse-battery-staple"},
+            format="json",
+        )
+        data = response.json()
+        self.assertNotIn("role", data)
+        self.assertNotIn("permissions", data)
+
+    def test_business_owner_login_response_has_no_role_or_permissions_keys(self):
+        response = self.client.post(
+            "/api/accounts/business-owners/login/",
+            {"identifier": "+233201112233", "password": "correct-horse-battery-staple"},
+            format="json",
+        )
+        data = response.json()
+        self.assertNotIn("role", data)
+        self.assertNotIn("permissions", data)

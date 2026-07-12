@@ -30,4 +30,7 @@ urlpatterns = [
     path("kyc/<int:pk>/", views.KYCDetailView.as_view(), name="kyc-detail"),
     path("kyc/<int:pk>/approve/", views.KYCApproveView.as_view(), name="kyc-approve"),
     path("kyc/<int:pk>/reject/", views.KYCRejectView.as_view(), name="kyc-reject"),
+    path("customers/", views.CustomerListView.as_view(), name="customer-list"),
+    path("business-owners/", views.BusinessOwnerListView.as_view(), name="business-owner-list"),
+    path("staff/", views.StaffListView.as_view(), name="staff-list"),
 ]
