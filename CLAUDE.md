@@ -32,11 +32,12 @@ The repo is a monorepo with two self-contained top-level directories:
 
 ## Architecture
 
-`App.jsx` is a monolith: dozens of components are defined as top-level `function` declarations before the single `export default function AshantiHub()` at the bottom of the file, which is the actual app root. There is no React Router or any routing library — navigation is done entirely with local `useState` in `AshantiHub`:
+`App.jsx` is a monolith: dozens of components are defined as top-level `function` declarations before the single `export default function AshantiHub()` at the bottom of the file, which is the actual app root. There is no React Router or any routing library — navigation is done entirely with local `useState` in `AshantiHub`, with one narrow, deliberate exception for `/staff` (see below).
 
 - `page` (`"home" | "events" | "about"`) switches sections within the main return via `page==="..."` conditionals.
-- Several boolean flags (`isAdmin`, `showBizDash`, `showPayments`, `showCredit`) act like full-screen "routes": each one, if true, causes an **early return** of a different full-page component (`AdminDashboard`, `BusinessDashboard`, `PaymentDashboard`, `CreditDashboard`) instead of rendering the normal marketplace UI. `isAdmin` is toggled by a hidden gesture (`handleLogoClick` — 5 clicks on the logo).
+- Several boolean flags (`isAdmin`, `showBizDash`, `showPayments`, `showCredit`) act like full-screen "routes": each one, if true, causes an **early return** of a different full-page component (`StaffDashboard`, `BusinessDashboard`, `PaymentDashboard`, `CreditDashboard`) instead of rendering the normal marketplace UI. `isAdmin` is toggled by a hidden gesture (`handleLogoClick` — 5 clicks on the logo), or by visiting `/staff` directly (see below).
 - Other flags (`showMessaging`, `showNotifs`, `showReferral`, `showMap`, cookie banner) render as overlays/modals on top of the normal page rather than replacing it.
+- **`/staff` URL exception:** per `docs/PWA_STAFF_DASHBOARD.md` §4 Option B, `AshantiHub` uses raw `window.location.pathname`/`window.history.pushState` (no router library, no dependency added) so staff can land directly on `/staff` instead of only via the 5-click gesture. On mount, once the session-restore fetch (`auth.isLoading`) settles, if `pathname === "/staff"` it either sets `isAdmin` true (staff already logged in) or opens the staff login modal (`setAuthModal("staff-login")`). A second effect watches `[isAdmin]` and keeps the URL in sync — `pushState("/staff")` when it becomes true (gesture, direct visit, or post-login `onSuccess`), `pushState("/")` when `StaffDashboard`'s `onExit` sets it back to false. No other route in the app is URL-addressable; `frontend/vercel.json`'s catch-all SPA rewrite already serves `/staff` correctly with no config changes.
 
 Data is all hardcoded in-file, no backend/API calls exist:
 

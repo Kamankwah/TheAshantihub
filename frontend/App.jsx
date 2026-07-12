@@ -3135,6 +3135,56 @@ export default function AshantiHub() {
     return()=>window.removeEventListener("openLegal",handler);
   },[]);
 
+  // ── `/staff` deep link ──────────────────────────────────────────────────
+  // Minimal client-side "route", not a router: staff should be able to land
+  // directly on theashantihub.com/staff instead of only via the hidden
+  // 5-click-logo gesture (handleLogoClick below). See docs/PWA_STAFF_DASHBOARD.md §4
+  // Option B — deliberately scoped to this one path, no routing library.
+  //
+  // We wait for the session-restore fetch (auth.isLoading) to settle before
+  // deciding, so a logged-in staff member refreshing on /staff isn't briefly
+  // (and incorrectly) sent to the staff-login modal while auth.user is still null.
+  const staffUrlHandled=useRef(false);
+  useEffect(()=>{
+    if(staffUrlHandled.current) return;
+    if(auth.isLoading) return;
+    staffUrlHandled.current=true;
+    if(window.location.pathname==="/staff"){
+      if(auth.user?.account_type==="staff"){setIsAdmin(true);}
+      else{setAuthModal("staff-login");}
+    }
+  },[auth.isLoading,auth.user]);
+
+  // Keep the URL in sync with isAdmin regardless of how it was set (gesture,
+  // direct /staff visit, or staff login success below) rather than scattering
+  // pushState calls at every isAdmin-setting call site.
+  //
+  // The `else` branch only resets the URL once the deep-link check above has
+  // already run (staffUrlHandled.current). Without that guard, this effect
+  // and the mount-time deep-link effect both fire on the very first commit —
+  // isAdmin is still its initial `false` at that point, so an unguarded
+  // `else` would immediately pushState "/staff" back to "/" before the
+  // deep-link effect (which depends on the still-resolving auth.isLoading)
+  // ever gets a chance to observe the original "/staff" pathname, silently
+  // defeating every direct /staff visit.
+  useEffect(()=>{
+    if(isAdmin){
+      if(window.location.pathname!=="/staff") window.history.pushState(null,"","/staff");
+    }else if(staffUrlHandled.current){
+      if(window.location.pathname==="/staff") window.history.pushState(null,"","/");
+    }
+  },[isAdmin]);
+
+  // Keep isAdmin in sync with browser back/forward navigation once /staff is
+  // a real history entry (the pushState calls above only push forward).
+  useEffect(()=>{
+    const handlePopState=()=>{
+      setIsAdmin(window.location.pathname==="/staff" && auth.user?.account_type==="staff");
+    };
+    window.addEventListener("popstate",handlePopState);
+    return()=>window.removeEventListener("popstate",handlePopState);
+  },[auth.user]);
+
   const handleLogoClick=()=>{
     const n=adminClicks+1;
     setAdminClicks(n);
