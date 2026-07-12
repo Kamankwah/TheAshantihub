@@ -38,6 +38,8 @@ The app currently has **zero URL routing** — no `react-router`, no `window.his
 
 **Recommendation:** Option B is the better product outcome (a real "Staff Dashboard" app icon, not "install the marketplace and then find the hidden staff menu"), but it has a real prerequisite — introducing routing — that should be called out and agreed to explicitly before implementation starts, since it's a bigger architectural change than the PWA wrapper itself. This decision should be confirmed with the user at the start of the implementation session, not assumed here.
 
+**Status update:** the minimal `/staff` entry point half of Option B has now landed — `AshantiHub` (`frontend/App.jsx`) checks `window.location.pathname` on mount and uses `window.history.pushState` to keep the URL in sync with the `isAdmin` "route" (see `CLAUDE.md` "Architecture" for the exact mechanism). This is a narrow, deliberate exception scoped to this one path — no router library was added, and no other screen in the app is URL-addressable. What's still open from this section: the second manifest + `start_url` scoped to `/staff` (the PWA-installability half of Option B) has not been built yet — the service-worker registration fix in §2 and the icon set in §3 are also still outstanding prerequisites for that.
+
 ## 5. Offline / staff-specific needs
 
 - Cache the **last-seen** transaction list (`PaymentDashboard`) and credit-score data (`CreditDashboard`) for spotty-connectivity use — staff should be able to see the last known state even if the network drops, clearly marked as "last synced at …" rather than presented as live.
@@ -48,7 +50,7 @@ The app currently has **zero URL routing** — no `react-router`, no `window.his
 
 1. Fix service worker registration (`vite-plugin-pwa` migration) + icon set — this benefits the whole app, not just staff, and should land regardless of the Option A/B decision.
 2. Resolve the Option A vs. B scoping decision with the user.
-3. If B: introduce minimal routing (scoped narrowly to enabling `/staff` as an entry point — not a full app-wide router rewrite, which is its own separate, larger decision).
+3. If B: introduce minimal routing (scoped narrowly to enabling `/staff` as an entry point — not a full app-wide router rewrite, which is its own separate, larger decision). **Done** — see the status update in §4; the manifest/`start_url` half of Option B is still outstanding.
 4. Build the offline caching behavior for `PaymentDashboard`/`CreditDashboard`.
 
 This work has no hard dependency on `docs/HUBTEL_INTEGRATION.md` or `docs/FRONTEND_MODERNIZATION.md` landing first, but sequencing after the React 19 bump (`docs/FRONTEND_MODERNIZATION.md` §6) avoids doing PWA/service-worker verification twice against two different React versions.
