@@ -3158,13 +3158,32 @@ export default function AshantiHub() {
   // Keep the URL in sync with isAdmin regardless of how it was set (gesture,
   // direct /staff visit, or staff login success below) rather than scattering
   // pushState calls at every isAdmin-setting call site.
+  //
+  // The `else` branch only resets the URL once the deep-link check above has
+  // already run (staffUrlHandled.current). Without that guard, this effect
+  // and the mount-time deep-link effect both fire on the very first commit —
+  // isAdmin is still its initial `false` at that point, so an unguarded
+  // `else` would immediately pushState "/staff" back to "/" before the
+  // deep-link effect (which depends on the still-resolving auth.isLoading)
+  // ever gets a chance to observe the original "/staff" pathname, silently
+  // defeating every direct /staff visit.
   useEffect(()=>{
     if(isAdmin){
       if(window.location.pathname!=="/staff") window.history.pushState(null,"","/staff");
-    }else{
+    }else if(staffUrlHandled.current){
       if(window.location.pathname==="/staff") window.history.pushState(null,"","/");
     }
   },[isAdmin]);
+
+  // Keep isAdmin in sync with browser back/forward navigation once /staff is
+  // a real history entry (the pushState calls above only push forward).
+  useEffect(()=>{
+    const handlePopState=()=>{
+      setIsAdmin(window.location.pathname==="/staff" && auth.user?.account_type==="staff");
+    };
+    window.addEventListener("popstate",handlePopState);
+    return()=>window.removeEventListener("popstate",handlePopState);
+  },[auth.user]);
 
   const handleLogoClick=()=>{
     const n=adminClicks+1;
