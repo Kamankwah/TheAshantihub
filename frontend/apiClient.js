@@ -48,6 +48,15 @@ export async function apiPost(path, body) {
   return handleResponse(response, path)
 }
 
+export async function apiPatch(path, body) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(body),
+  })
+  return handleResponse(response, path)
+}
+
 export async function apiPostForm(path, formData) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
