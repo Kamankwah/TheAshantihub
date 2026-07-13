@@ -10,16 +10,17 @@ import { useModerationQueue } from "./hooks/useModerationQueue.js";
 import { useCustomers } from "./hooks/useCustomers.js";
 import { useBusinessOwners } from "./hooks/useBusinessOwners.js";
 import { useStaffRoster } from "./hooks/useStaffRoster.js";
-import { apiPost } from "./apiClient.js";
-
-// ─── Colors ──────────────────────────────────────────────────────────────────
-const C = {
-  gold:"#D4A017", deepGold:"#B8860B", darkBrown:"#2C1810",
-  lightGold:"#F5DEB3", cream:"#FDF6E3", black:"#1A1A1A",
-  kente1:"#CC0000", kente2:"#006400", kente3:"#000080",
-  ghRed:"#CE1126", ghGold:"#FCD116", ghGreen:"#006B3F",
-  whatsapp:"#25D366", orange:"#E8621A",
-};
+import { useMyListings } from "./hooks/useMyListings.js";
+import { useBusinessProfile } from "./hooks/useBusinessProfile.js";
+import { useSubscriptionPlans } from "./hooks/useSubscriptionPlans.js";
+import { useMySubscription } from "./hooks/useMySubscription.js";
+import { useMyTransactions } from "./hooks/useMyTransactions.js";
+import { useMyCreditScore } from "./hooks/useMyCreditScore.js";
+import { apiPost, apiPatch } from "./apiClient.js";
+import { C } from "./theme.js";
+import Flag from "./components/Flag.jsx";
+import Navbar from "./components/Navbar.jsx";
+import Hero from "./components/Hero.jsx";
 
 // ─── Credit Scoring System ────────────────────────────────────────────────────
 const LENDING_PARTNERS = [
@@ -69,6 +70,27 @@ function getScoreGrade(score) {
   return { grade:"D", label:"Very Poor", color:C.kente1 };
 }
 
+// Mirrors the "Score Bands & Loan Access" table below — a client-side-only
+// mapping from score to an illustrative max loan amount. The backend's naive
+// scoring stub (backend/credit/scoring.py) does not compute a max loan value.
+function maxLoanForScore(score) {
+  if(score >= 800) return 50000;
+  if(score >= 700) return 25000;
+  if(score >= 600) return 10000;
+  if(score >= 500) return 5000;
+  return 0;
+}
+
+// Labels/icons for the real factor keys returned by GET /api/credit/scores/me/
+// (backend/credit/scoring.py) — replaces the old mock SCORE_FACTORS shape for
+// the real per-owner factor breakdown.
+const CREDIT_FACTOR_META = {
+  listings_published: { icon:"🏷️", label:"Published Listings", desc:"Number of your listings that are live on AshantiHub (up to 10 counted)" },
+  account_tenure_months: { icon:"📅", label:"Account Tenure", desc:"How long your business has been on AshantiHub (up to 24 months counted)" },
+  kyc_verified: { icon:"🪪", label:"KYC Verified", desc:"Whether your Ghana Card / business KYC has been verified by AshantiHub staff" },
+  payout_verified: { icon:"🏦", label:"Payout Details Verified", desc:"Whether your MoMo/bank payout details have been verified" },
+};
+
 function ScoreGauge({ score }) {
   const pct = (score / 1000) * 100;
   const color = getScoreColor(score);
@@ -102,29 +124,29 @@ function ScoreGauge({ score }) {
 
 function CreditDashboard({ onClose, user }) {
   const [creditTab, setCreditTab] = useState("overview");
-  const [selectedBiz, setSelectedBiz] = useState(MOCK_CREDIT_BUSINESSES[0]);
-  const [showLoanApp, setShowLoanApp] = useState(false);
   const [selectedPartner, setSelectedPartner] = useState(null);
   const [loanAmount, setLoanAmount] = useState("");
   const [loanPurpose, setLoanPurpose] = useState("");
   const [loanSubmitted, setLoanSubmitted] = useState(false);
-  const [filterEligible, setFilterEligible] = useState(false);
 
-  const eligibleCount = MOCK_CREDIT_BUSINESSES.filter(b=>b.loanEligible).length;
-  const avgScore = Math.round(MOCK_CREDIT_BUSINESSES.reduce((s,b)=>s+b.score,0)/MOCK_CREDIT_BUSINESSES.length);
-  const totalLoanPool = MOCK_CREDIT_BUSINESSES.filter(b=>b.loanEligible).reduce((s,b)=>s+b.maxLoan,0);
+  // Real, single-business-owner data. The backend (GET /api/credit/scores/me/)
+  // only exposes the current business owner's own score — there is no
+  // aggregate/multi-business endpoint on the client, so (unlike the old mock
+  // MOCK_CREDIT_BUSINESSES-driven UI) this dashboard shows one score, not a
+  // browsable list/dropdown of businesses.
+  const { data: scoreData, isLoading, isError, refetch } = useMyCreditScore();
+  const score = scoreData?.score ?? null;
+  const maxLoan = score != null ? maxLoanForScore(score) : 0;
+  const loanEligible = scoreData?.loan_eligible ?? false;
+  const matchedPartners = score != null ? LENDING_PARTNERS.filter(p => p.minScore <= score) : [];
 
   const tabs = [
     { id:"overview", icon:"📊", label:"Credit Overview" },
-    { id:"scores", icon:"🏅", label:"Business Scores" },
+    { id:"score", icon:"🏅", label:"My Score" },
     { id:"partners", icon:"🤝", label:"Lending Partners" },
     { id:"apply", icon:"📋", label:"Loan Application" },
     { id:"insights", icon:"💡", label:"Insights" },
   ];
-
-  const filteredBizzes = filterEligible
-    ? MOCK_CREDIT_BUSINESSES.filter(b=>b.loanEligible)
-    : MOCK_CREDIT_BUSINESSES;
 
   return (
     <div style={{ fontFamily:"'Georgia',serif", background:"#f4f5f7", minHeight:"100vh" }}>
@@ -161,6 +183,20 @@ function CreditDashboard({ onClose, user }) {
 
       <div style={{ maxWidth:960, margin:"0 auto", padding:"22px 16px 60px" }}>
 
+        {isLoading && (
+          <div style={{ color:"#888", fontSize:"0.85rem", textAlign:"center", padding:"60px 0" }}>Loading your AshantiHub Credit Score…</div>
+        )}
+
+        {isError && (
+          <div style={{ background:"white", borderRadius:16, padding:"30px 24px", textAlign:"center", boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }}>
+            <div style={{ color:"#dc2626", fontWeight:700, fontSize:"0.85rem", marginBottom:14 }}>Could not load your AshantiHub Credit Score. Make sure you're signed in as a business owner.</div>
+            <button onClick={()=>refetch()} style={{ background:C.gold, color:C.darkBrown, border:"none", borderRadius:20, padding:"8px 18px", fontWeight:800, cursor:"pointer", fontFamily:"inherit" }}>Retry</button>
+          </div>
+        )}
+
+        {!isLoading && !isError && scoreData && (
+          <>
+
         {/* ── OVERVIEW ── */}
         {creditTab === "overview" && (
           <>
@@ -168,14 +204,14 @@ function CreditDashboard({ onClose, user }) {
             <div style={{ background:`linear-gradient(135deg,${C.darkBrown},${C.kente3})`, borderRadius:18, padding:"24px", marginBottom:22, color:"white" }}>
               <div style={{ fontWeight:900, fontSize:"1.1rem", color:C.gold, marginBottom:6 }}>🏅 AshantiHub Credit Score System</div>
               <div style={{ fontSize:"0.82rem", opacity:0.9, lineHeight:1.7, marginBottom:14 }}>
-                Every business on AshantiHub earns a <strong style={{ color:C.gold }}>Credit Score (0–1000)</strong> based on their platform activity. This score unlocks access to business loans from our banking and microfinance partners — with no collateral required.
+                Every business on AshantiHub earns a <strong style={{ color:C.gold }}>Credit Score (300–1000)</strong> based on their platform activity. This score unlocks access to business loans from our banking and microfinance partners — with no collateral required.
               </div>
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))", gap:10 }}>
                 {[
-                  { icon:"🏪", label:"Businesses Scored", value:MOCK_CREDIT_BUSINESSES.length },
-                  { icon:"✅", label:"Loan Eligible", value:eligibleCount },
-                  { icon:"📈", label:"Average Score", value:avgScore },
-                  { icon:"💰", label:"Total Loan Pool", value:`GHS ${totalLoanPool.toLocaleString()}` },
+                  { icon:"🏅", label:"Your Score", value:score },
+                  { icon:"📊", label:"Grade", value:`${scoreData.grade} — ${scoreData.grade_label}` },
+                  { icon: loanEligible?"✅":"❌", label:"Loan Status", value: loanEligible?"Eligible":"Not yet eligible" },
+                  { icon:"💰", label:"Max Loan", value: maxLoan>0?`GHS ${maxLoan.toLocaleString()}`:"—" },
                 ].map(s => (
                   <div key={s.label} style={{ background:"rgba(255,255,255,0.1)", borderRadius:12, padding:"12px", textAlign:"center" }}>
                     <div style={{ fontSize:"1.4rem", marginBottom:4 }}>{s.icon}</div>
@@ -188,23 +224,26 @@ function CreditDashboard({ onClose, user }) {
 
             {/* How scoring works */}
             <div style={{ background:"white", borderRadius:16, padding:"20px", boxShadow:"0 2px 12px rgba(0,0,0,0.07)", marginBottom:20 }}>
-              <div style={{ fontWeight:800, color:C.darkBrown, marginBottom:16, fontSize:"0.92rem" }}>⚙️ How the Credit Score is Calculated</div>
+              <div style={{ fontWeight:800, color:C.darkBrown, marginBottom:16, fontSize:"0.92rem" }}>⚙️ How Your Credit Score is Calculated</div>
               <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                {SCORE_FACTORS.map(f => (
-                  <div key={f.key} style={{ display:"flex", gap:12, alignItems:"center", padding:"10px", background:"#f9f9f9", borderRadius:12 }}>
-                    <div style={{ fontSize:"1.4rem", width:36, textAlign:"center" }}>{f.icon}</div>
-                    <div style={{ flex:1 }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                        <span style={{ fontWeight:700, fontSize:"0.8rem", color:C.darkBrown }}>{f.label}</span>
-                        <span style={{ fontWeight:900, color:C.gold, fontSize:"0.78rem" }}>{f.weight}% weight</span>
-                      </div>
-                      <div style={{ fontSize:"0.68rem", color:"#888", marginBottom:4 }}>{f.desc}</div>
-                      <div style={{ height:6, background:"#e0e0e0", borderRadius:10, overflow:"hidden" }}>
-                        <div style={{ height:"100%", width:`${f.weight*5}%`, background:`linear-gradient(90deg,${C.gold},${C.kente2})`, borderRadius:10 }}/>
+                {Object.entries(scoreData.factors||{}).map(([key,f]) => {
+                  const meta = CREDIT_FACTOR_META[key] || { icon:"📌", label:key, desc:"" };
+                  return (
+                    <div key={key} style={{ display:"flex", gap:12, alignItems:"center", padding:"10px", background:"#f9f9f9", borderRadius:12 }}>
+                      <div style={{ fontSize:"1.4rem", width:36, textAlign:"center" }}>{meta.icon}</div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                          <span style={{ fontWeight:700, fontSize:"0.8rem", color:C.darkBrown }}>{meta.label}</span>
+                          <span style={{ fontWeight:900, color:C.gold, fontSize:"0.78rem" }}>{Math.round(f.weight*100)}% weight</span>
+                        </div>
+                        <div style={{ fontSize:"0.68rem", color:"#888", marginBottom:4 }}>{meta.desc}</div>
+                        <div style={{ height:6, background:"#e0e0e0", borderRadius:10, overflow:"hidden" }}>
+                          <div style={{ height:"100%", width:`${f.score_pct}%`, background:`linear-gradient(90deg,${C.gold},${C.kente2})`, borderRadius:10 }}/>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -217,7 +256,7 @@ function CreditDashboard({ onClose, user }) {
                   { range:"700–799", grade:"B+ / A-", label:"Good", color:C.kente2, maxLoan:"Up to GHS 25,000", partners:"4–5 partners" },
                   { range:"600–699", grade:"B / B-", label:"Average", color:C.gold, maxLoan:"Up to GHS 10,000", partners:"2–3 partners" },
                   { range:"500–599", grade:"C / C+", label:"Below Average", color:C.orange, maxLoan:"Up to GHS 5,000", partners:"1–2 partners" },
-                  { range:"0–499", grade:"D", label:"Not Eligible", color:C.kente1, maxLoan:"Not eligible yet", partners:"Build score first" },
+                  { range:"300–499", grade:"D", label:"Not Eligible", color:C.kente1, maxLoan:"Not eligible yet", partners:"Build score first" },
                 ].map(b => (
                   <div key={b.range} style={{ display:"flex", gap:10, alignItems:"center", padding:"10px 12px", borderRadius:12, background:`${b.color}08`, border:`1px solid ${b.color}22` }}>
                     <div style={{ width:50, height:50, borderRadius:"50%", background:`${b.color}20`, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, color:b.color, fontSize:"0.82rem", flexShrink:0 }}>{b.grade}</div>
@@ -235,130 +274,53 @@ function CreditDashboard({ onClose, user }) {
           </>
         )}
 
-        {/* ── BUSINESS SCORES ── */}
-        {creditTab === "scores" && (
-          <>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
-              <h2 style={{ margin:0, color:C.darkBrown, fontWeight:900, fontSize:"1.05rem" }}>🏅 Business Credit Scores</h2>
-              <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:"0.74rem", fontWeight:600, cursor:"pointer" }}>
-                  <div onClick={()=>setFilterEligible(f=>!f)} style={{ width:36, height:20, borderRadius:10, background:filterEligible?C.kente2:"#ccc", position:"relative", cursor:"pointer", transition:"background 0.3s" }}>
-                    <div style={{ position:"absolute", top:2, left:filterEligible?18:2, width:16, height:16, borderRadius:"50%", background:"white", transition:"left 0.3s" }}/>
-                  </div>
-                  Eligible only
-                </label>
-                <button style={{ background:C.kente2, color:"white", border:"none", borderRadius:20, padding:"7px 14px", fontSize:"0.72rem", fontWeight:700, cursor:"pointer" }}>📥 Export</button>
+        {/* ── MY SCORE ── */}
+        {creditTab === "score" && (
+          <div style={{ background:"white", borderRadius:16, padding:"22px", boxShadow:"0 4px 20px rgba(0,0,0,0.1)", border:`2px solid ${C.gold}33` }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:20, flexWrap:"wrap", gap:14 }}>
+              <div>
+                <div style={{ fontWeight:900, fontSize:"1.05rem", color:C.darkBrown, marginBottom:4 }}>{user?.fullName || "Your Business"}</div>
+                <div style={{ fontSize:"0.74rem", color:"#888" }}>
+                  AshantiHub Credit Score{scoreData.computed_at ? ` • computed ${new Date(scoreData.computed_at).toLocaleDateString("en-GH")}` : ""}
+                </div>
               </div>
+              <ScoreGauge score={score}/>
             </div>
 
-            {/* Score cards */}
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))", gap:14, marginBottom:20 }}>
-              {filteredBizzes.map(biz => {
-                const { grade, label, color } = getScoreGrade(biz.score);
+            {/* Score breakdown */}
+            <div style={{ fontWeight:800, color:C.darkBrown, marginBottom:12, fontSize:"0.85rem" }}>📊 Score Breakdown</div>
+            <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:18 }}>
+              {Object.entries(scoreData.factors||{}).map(([key,f]) => {
+                const meta = CREDIT_FACTOR_META[key] || { icon:"📌", label:key };
+                const displayValue = typeof f.value === "boolean" ? (f.value ? "Verified" : "Not verified") : f.value;
                 return (
-                  <div key={biz.id} onClick={()=>setSelectedBiz(biz)}
-                    style={{ background:"white", borderRadius:16, padding:"18px", boxShadow:"0 2px 12px rgba(0,0,0,0.07)", cursor:"pointer", border:`2px solid ${selectedBiz?.id===biz.id?C.gold:"transparent"}`, transition:"all 0.2s" }}
-                    onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"}
-                    onMouseLeave={e=>e.currentTarget.style.transform=""}>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:12 }}>
-                      <div>
-                        <div style={{ fontWeight:800, fontSize:"0.88rem", color:C.darkBrown }}>{biz.name}</div>
-                        <div style={{ fontSize:"0.68rem", color:"#888", marginTop:2 }}>{biz.category} • {biz.monthsOnPlatform} months on platform</div>
+                  <div key={key} style={{ display:"flex", gap:10, alignItems:"center" }}>
+                    <span style={{ fontSize:"1rem", width:24 }}>{meta.icon}</span>
+                    <div style={{ flex:1 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3, fontSize:"0.72rem" }}>
+                        <span style={{ fontWeight:600, color:C.darkBrown }}>{meta.label}</span>
+                        <span style={{ color:"#888" }}>{String(displayValue)} <span style={{ color:"#aaa" }}>({Math.round(f.weight*100)}% weight)</span></span>
                       </div>
-                      <div style={{ textAlign:"center" }}>
-                        <div style={{ fontWeight:900, fontSize:"1.4rem", color:getScoreColor(biz.score) }}>{biz.score}</div>
-                        <div style={{ fontSize:"0.6rem", color, fontWeight:700 }}>{grade}</div>
+                      <div style={{ height:6, background:"#f0f0f0", borderRadius:10, overflow:"hidden" }}>
+                        <div style={{ height:"100%", width:`${f.score_pct}%`, background:getScoreColor(score), borderRadius:10 }}/>
                       </div>
                     </div>
-
-                    {/* Mini score bar */}
-                    <div style={{ height:8, background:"#f0f0f0", borderRadius:10, overflow:"hidden", marginBottom:10 }}>
-                      <div style={{ height:"100%", width:`${(biz.score/1000)*100}%`, background:`linear-gradient(90deg,${C.kente1},${C.gold},${C.kente2})`, borderRadius:10 }}/>
-                    </div>
-
-                    {/* Key metrics */}
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6, marginBottom:10 }}>
-                      {[
-                        ["⭐", biz.rating, "Rating"],
-                        ["💬", biz.reviews, "Reviews"],
-                        ["📱", `${biz.responseRate}%`, "Response"],
-                        ["📦", biz.bookings, "Bookings"],
-                        ["💰", `${biz.paymentHistory}%`, "Payments"],
-                        ["🕐", biz.monthsOnPlatform+"mo", "Tenure"],
-                      ].map(([icon,val,lbl])=>(
-                        <div key={lbl} style={{ background:"#f9f9f9", borderRadius:8, padding:"6px", textAlign:"center" }}>
-                          <div style={{ fontSize:"0.75rem" }}>{icon}</div>
-                          <div style={{ fontWeight:800, fontSize:"0.72rem", color:C.darkBrown }}>{val}</div>
-                          <div style={{ fontSize:"0.55rem", color:"#aaa" }}>{lbl}</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {biz.loanEligible ? (
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                        <span style={{ background:"#22c55e20", color:"#22c55e", borderRadius:20, padding:"3px 10px", fontSize:"0.65rem", fontWeight:800 }}>✅ Loan Eligible</span>
-                        <span style={{ fontWeight:800, color:C.kente2, fontSize:"0.78rem" }}>Up to GHS {biz.maxLoan.toLocaleString()}</span>
-                      </div>
-                    ) : (
-                      <div style={{ background:"#fee2e2", borderRadius:10, padding:"6px 10px", fontSize:"0.65rem", color:"#dc2626", fontWeight:600 }}>
-                        ❌ Score too low — keep improving to unlock loans
-                      </div>
-                    )}
                   </div>
                 );
               })}
             </div>
 
-            {/* Selected business detail */}
-            {selectedBiz && (
-              <div style={{ background:"white", borderRadius:16, padding:"22px", boxShadow:"0 4px 20px rgba(0,0,0,0.1)", border:`2px solid ${C.gold}33` }}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:20, flexWrap:"wrap", gap:14 }}>
-                  <div>
-                    <div style={{ fontWeight:900, fontSize:"1.05rem", color:C.darkBrown, marginBottom:4 }}>{selectedBiz.name}</div>
-                    <div style={{ fontSize:"0.74rem", color:"#888" }}>{selectedBiz.category} • Active for {selectedBiz.monthsOnPlatform} months</div>
-                  </div>
-                  <ScoreGauge score={selectedBiz.score}/>
-                </div>
-
-                {/* Score breakdown */}
-                <div style={{ fontWeight:800, color:C.darkBrown, marginBottom:12, fontSize:"0.85rem" }}>📊 Score Breakdown</div>
-                <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:18 }}>
-                  {SCORE_FACTORS.map(f => {
-                    const rawVal = selectedBiz[f.key];
-                    let normalized = 0;
-                    if(f.key==="rating") normalized = ((rawVal-3)/2)*100;
-                    else if(f.key==="reviews") normalized = Math.min((rawVal/200)*100,100);
-                    else if(f.key==="responseRate") normalized = rawVal;
-                    else if(f.key==="monthsOnPlatform") normalized = Math.min((rawVal/24)*100,100);
-                    else if(f.key==="priceUpdates") normalized = Math.min((rawVal/30)*100,100);
-                    else if(f.key==="paymentHistory") normalized = rawVal;
-                    const contribution = Math.round((normalized/100)*(f.weight/100)*1000);
-                    return (
-                      <div key={f.key} style={{ display:"flex", gap:10, alignItems:"center" }}>
-                        <span style={{ fontSize:"1rem", width:24 }}>{f.icon}</span>
-                        <div style={{ flex:1 }}>
-                          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3, fontSize:"0.72rem" }}>
-                            <span style={{ fontWeight:600, color:C.darkBrown }}>{f.label}</span>
-                            <span style={{ color:"#888" }}>{rawVal}{f.key==="responseRate"||f.key==="paymentHistory"?"%":""} → <strong style={{ color:C.kente2 }}>+{contribution} pts</strong></span>
-                          </div>
-                          <div style={{ height:6, background:"#f0f0f0", borderRadius:10, overflow:"hidden" }}>
-                            <div style={{ height:"100%", width:`${normalized}%`, background:getScoreColor(selectedBiz.score), borderRadius:10 }}/>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {selectedBiz.loanEligible && (
-                  <button onClick={()=>{ setCreditTab("apply"); }}
-                    style={{ width:"100%", background:C.kente2, color:"white", border:"none", borderRadius:20, padding:"12px", fontWeight:900, cursor:"pointer", fontFamily:"inherit", fontSize:"0.88rem" }}>
-                    💰 Apply for a Business Loan →
-                  </button>
-                )}
+            {loanEligible ? (
+              <button onClick={()=>{ setCreditTab("apply"); }}
+                style={{ width:"100%", background:C.kente2, color:"white", border:"none", borderRadius:20, padding:"12px", fontWeight:900, cursor:"pointer", fontFamily:"inherit", fontSize:"0.88rem" }}>
+                💰 Apply for a Business Loan →
+              </button>
+            ) : (
+              <div style={{ background:"#fee2e2", borderRadius:10, padding:"10px 14px", fontSize:"0.7rem", color:"#dc2626", fontWeight:600, textAlign:"center" }}>
+                ❌ Score too low — keep improving to unlock loans. See the Insights tab for tips.
               </div>
             )}
-          </>
+          </div>
         )}
 
         {/* ── LENDING PARTNERS ── */}
@@ -429,7 +391,23 @@ function CreditDashboard({ onClose, user }) {
         {creditTab === "apply" && (
           <>
             <h2 style={{ margin:"0 0 16px", color:C.darkBrown, fontWeight:900, fontSize:"1.05rem" }}>📋 Loan Application</h2>
-            {loanSubmitted ? (
+            {!loanEligible && !loanSubmitted && (
+              <div style={{ background:"white", borderRadius:18, padding:"40px 24px", textAlign:"center", boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }}>
+                <div style={{ fontSize:"2.6rem", marginBottom:12 }}>🔒</div>
+                <div style={{ fontWeight:900, color:C.darkBrown, fontSize:"1rem", marginBottom:8 }}>Not loan-eligible yet</div>
+                <div style={{ color:"#555", fontSize:"0.82rem", lineHeight:1.7, marginBottom:18, maxWidth:420, marginLeft:"auto", marginRight:"auto" }}>
+                  Your current AshantiHub Credit Score is <strong>{score}</strong>. You need a score of at least <strong>600</strong> to apply for a loan through our lending partners.
+                </div>
+                <button onClick={()=>setCreditTab("insights")}
+                  style={{ background:C.gold, color:C.darkBrown, border:"none", borderRadius:30, padding:"10px 22px", fontWeight:900, cursor:"pointer", fontFamily:"inherit" }}>
+                  See how to improve your score →
+                </button>
+              </div>
+            )}
+            {/* loanSubmitted alone (not loanEligible && loanSubmitted) — once submitted, keep
+                showing the confirmation even if a later score refetch (e.g. on window focus)
+                drops loanEligible below 600, rather than leaving this tab blank. */}
+            {loanSubmitted && (
               <div style={{ background:"white", borderRadius:18, padding:"40px 24px", textAlign:"center", boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }}>
                 <div style={{ fontSize:"3.5rem", marginBottom:14 }}>🎉</div>
                 <div style={{ fontWeight:900, color:C.kente2, fontSize:"1.1rem", marginBottom:8 }}>Application Submitted!</div>
@@ -440,8 +418,8 @@ function CreditDashboard({ onClose, user }) {
                   <div style={{ fontWeight:800, color:C.deepGold, marginBottom:8, fontSize:"0.82rem" }}>📋 Application Reference</div>
                   {[
                     ["Reference", `AH-LOAN-${Date.now().toString().slice(-6)}`],
-                    ["Business", selectedBiz?.name],
-                    ["Credit Score", selectedBiz?.score],
+                    ["Business", user?.fullName || "Your Business"],
+                    ["Credit Score", score],
                     ["Amount Requested", `GHS ${Number(loanAmount).toLocaleString()}`],
                     ["Partner", selectedPartner?.name || "Multiple Partners"],
                     ["Purpose", loanPurpose],
@@ -458,38 +436,28 @@ function CreditDashboard({ onClose, user }) {
                     style={{ background:C.gold, color:C.darkBrown, border:"none", borderRadius:30, padding:"10px 22px", fontWeight:900, cursor:"pointer", fontFamily:"inherit" }}>
                     Apply for Another Loan
                   </button>
-                  <button onClick={()=>setCreditTab("scores")}
+                  <button onClick={()=>setCreditTab("score")}
                     style={{ background:"#f0f0f0", color:"#666", border:"none", borderRadius:30, padding:"10px 22px", fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
-                    Back to Scores
+                    Back to My Score
                   </button>
                 </div>
               </div>
-            ) : (
+            )}
+            {loanEligible && !loanSubmitted && (
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, alignItems:"start" }}>
                 {/* Application form */}
                 <div style={{ background:"white", borderRadius:16, padding:"22px", boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }}>
                   <div style={{ fontWeight:800, color:C.darkBrown, marginBottom:16, fontSize:"0.92rem" }}>📝 Your Application</div>
 
-                  {/* Business selector */}
-                  <div style={{ marginBottom:14 }}>
-                    <label style={{ fontSize:"0.76rem", fontWeight:700, color:C.darkBrown, marginBottom:6, display:"block" }}>Select Business</label>
-                    <select value={selectedBiz?.id} onChange={e=>setSelectedBiz(MOCK_CREDIT_BUSINESSES.find(b=>b.id===Number(e.target.value)))}
-                      style={{ width:"100%", padding:"11px 14px", borderRadius:10, border:"1.5px solid #ddd", fontSize:"0.85rem", background:"white", fontFamily:"inherit", outline:"none" }}>
-                      {MOCK_CREDIT_BUSINESSES.filter(b=>b.loanEligible).map(b=>(
-                        <option key={b.id} value={b.id}>{b.name} — Score: {b.score}</option>
-                      ))}
-                    </select>
-                  </div>
-
                   {/* Loan amount */}
                   <div style={{ marginBottom:14 }}>
                     <label style={{ fontSize:"0.76rem", fontWeight:700, color:C.darkBrown, marginBottom:6, display:"block" }}>Loan Amount (GHS) *</label>
                     <input type="number" value={loanAmount} onChange={e=>setLoanAmount(e.target.value)}
-                      placeholder={`Max: GHS ${selectedBiz?.maxLoan?.toLocaleString()}`}
-                      max={selectedBiz?.maxLoan}
-                      style={{ width:"100%", padding:"11px 14px", borderRadius:10, border:`1.5px solid ${loanAmount&&Number(loanAmount)>selectedBiz?.maxLoan?"#ef4444":"#ddd"}`, fontSize:"0.85rem", fontFamily:"inherit", outline:"none", boxSizing:"border-box" }}/>
-                    {loanAmount && Number(loanAmount) > selectedBiz?.maxLoan && (
-                      <div style={{ fontSize:"0.68rem", color:"#ef4444", marginTop:3 }}>Exceeds your maximum eligible amount of GHS {selectedBiz?.maxLoan?.toLocaleString()}</div>
+                      placeholder={`Max: GHS ${maxLoan.toLocaleString()}`}
+                      max={maxLoan}
+                      style={{ width:"100%", padding:"11px 14px", borderRadius:10, border:`1.5px solid ${loanAmount&&Number(loanAmount)>maxLoan?"#ef4444":"#ddd"}`, fontSize:"0.85rem", fontFamily:"inherit", outline:"none", boxSizing:"border-box" }}/>
+                    {loanAmount && Number(loanAmount) > maxLoan && (
+                      <div style={{ fontSize:"0.68rem", color:"#ef4444", marginTop:3 }}>Exceeds your maximum eligible amount of GHS {maxLoan.toLocaleString()}</div>
                     )}
                   </div>
 
@@ -505,19 +473,19 @@ function CreditDashboard({ onClose, user }) {
 
                   {/* Preferred partner */}
                   <div style={{ marginBottom:16 }}>
-                    <label style={{ fontSize:"0.76rex", fontWeight:700, color:C.darkBrown, marginBottom:6, display:"block" }}>Preferred Lender</label>
+                    <label style={{ fontSize:"0.76rem", fontWeight:700, color:C.darkBrown, marginBottom:6, display:"block" }}>Preferred Lender</label>
                     <select value={selectedPartner?.id||""} onChange={e=>setSelectedPartner(LENDING_PARTNERS.find(p=>p.id===Number(e.target.value))||null)}
                       style={{ width:"100%", padding:"11px 14px", borderRadius:10, border:"1.5px solid #ddd", fontSize:"0.85rem", background:"white", fontFamily:"inherit", outline:"none" }}>
                       <option value="">Best match for my score</option>
-                      {LENDING_PARTNERS.filter(p=>p.minScore<=( selectedBiz?.score||0)).map(p=>(
+                      {matchedPartners.map(p=>(
                         <option key={p.id} value={p.id}>{p.name} — {p.maxLoan}</option>
                       ))}
                     </select>
                   </div>
 
                   <button
-                    onClick={()=>{ if(loanAmount&&loanPurpose&&Number(loanAmount)<=selectedBiz?.maxLoan) setLoanSubmitted(true); }}
-                    style={{ width:"100%", background:loanAmount&&loanPurpose&&Number(loanAmount)<=selectedBiz?.maxLoan?C.kente2:"#ddd", color:"white", border:"none", borderRadius:20, padding:"12px", fontWeight:900, cursor:loanAmount&&loanPurpose?"pointer":"default", fontFamily:"inherit", fontSize:"0.88rem" }}>
+                    onClick={()=>{ if(loanAmount&&loanPurpose&&Number(loanAmount)<=maxLoan) setLoanSubmitted(true); }}
+                    style={{ width:"100%", background:loanAmount&&loanPurpose&&Number(loanAmount)<=maxLoan?C.kente2:"#ddd", color:"white", border:"none", borderRadius:20, padding:"12px", fontWeight:900, cursor:loanAmount&&loanPurpose?"pointer":"default", fontFamily:"inherit", fontSize:"0.88rem" }}>
                     🚀 Submit Application
                   </button>
                   <div style={{ fontSize:"0.65rem", color:"#aaa", marginTop:8, textAlign:"center" }}>Your AshantiHub Credit Score is shared with the lender. No collateral required for eligible businesses.</div>
@@ -526,22 +494,20 @@ function CreditDashboard({ onClose, user }) {
                 {/* Score summary & partner match */}
                 <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
                   {/* Your score card */}
-                  {selectedBiz && (
-                    <div style={{ background:`linear-gradient(135deg,${C.darkBrown},${C.kente3})`, borderRadius:16, padding:"20px", color:"white" }}>
-                      <div style={{ fontWeight:800, color:C.gold, marginBottom:12, fontSize:"0.85rem" }}>Your Credit Score</div>
-                      <ScoreGauge score={selectedBiz.score}/>
-                      <div style={{ marginTop:14, fontSize:"0.74rem", lineHeight:1.8, opacity:0.9 }}>
-                        <div>✅ Loan eligible up to <strong style={{ color:C.gold }}>GHS {selectedBiz.maxLoan.toLocaleString()}</strong></div>
-                        <div>🤝 Eligible for <strong style={{ color:C.gold }}>{LENDING_PARTNERS.filter(p=>p.minScore<=selectedBiz.score).length} of {LENDING_PARTNERS.length}</strong> partners</div>
-                        <div>📈 Score improves with more reviews and activity</div>
-                      </div>
+                  <div style={{ background:`linear-gradient(135deg,${C.darkBrown},${C.kente3})`, borderRadius:16, padding:"20px", color:"white" }}>
+                    <div style={{ fontWeight:800, color:C.gold, marginBottom:12, fontSize:"0.85rem" }}>Your Credit Score</div>
+                    <ScoreGauge score={score}/>
+                    <div style={{ marginTop:14, fontSize:"0.74rem", lineHeight:1.8, opacity:0.9 }}>
+                      <div>✅ Loan eligible up to <strong style={{ color:C.gold }}>GHS {maxLoan.toLocaleString()}</strong></div>
+                      <div>🤝 Eligible for <strong style={{ color:C.gold }}>{matchedPartners.length} of {LENDING_PARTNERS.length}</strong> partners</div>
+                      <div>📈 Score improves with more listings, tenure and verification</div>
                     </div>
-                  )}
+                  </div>
 
                   {/* Matched partners */}
                   <div style={{ background:"white", borderRadius:16, padding:"18px", boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }}>
                     <div style={{ fontWeight:800, color:C.darkBrown, marginBottom:12, fontSize:"0.85rem" }}>🤝 Your Matched Partners</div>
-                    {LENDING_PARTNERS.filter(p=>p.minScore<=(selectedBiz?.score||0)).map(p=>(
+                    {matchedPartners.map(p=>(
                       <div key={p.id} style={{ display:"flex", gap:10, alignItems:"center", padding:"8px 0", borderBottom:"1px solid #f5f5f5" }}>
                         <div style={{ width:32, height:32, borderRadius:8, background:`${p.color}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1rem" }}>{p.logo}</div>
                         <div style={{ flex:1 }}>
@@ -551,7 +517,7 @@ function CreditDashboard({ onClose, user }) {
                         <span style={{ background:"#22c55e20", color:"#22c55e", borderRadius:20, padding:"2px 7px", fontSize:"0.6rem", fontWeight:700 }}>✓ Match</span>
                       </div>
                     ))}
-                    {LENDING_PARTNERS.filter(p=>p.minScore<=(selectedBiz?.score||0)).length===0 && (
+                    {matchedPartners.length===0 && (
                       <div style={{ color:"#aaa", fontSize:"0.76rem", textAlign:"center", padding:"10px" }}>Improve your score to unlock lenders</div>
                     )}
                   </div>
@@ -570,12 +536,10 @@ function CreditDashboard({ onClose, user }) {
             <div style={{ background:"white", borderRadius:16, padding:"20px", boxShadow:"0 2px 12px rgba(0,0,0,0.07)", marginBottom:20 }}>
               <div style={{ fontWeight:800, color:C.darkBrown, marginBottom:14, fontSize:"0.88rem" }}>📈 How to Improve Your Credit Score</div>
               {[
-                { icon:"⭐", tip:"Get more customer reviews", impact:"+50–100 pts", action:"Ask every customer to leave a review after their WhatsApp enquiry", color:"#f59e0b" },
-                { icon:"📱", tip:"Respond to all WhatsApp enquiries", impact:"+30–80 pts", action:"Aim for 95%+ response rate. Reply within 2 hours.", color:C.whatsapp },
-                { icon:"🏷️", tip:"Update your prices regularly", impact:"+20–40 pts", action:"Log into your Business Dashboard and update prices at least twice a month", color:C.kente3 },
-                { icon:"💰", tip:"Pay listing fees on time", impact:"+40–60 pts", action:"Set a monthly MoMo reminder to pay your listing fee before the due date", color:C.kente2 },
-                { icon:"📅", tip:"Stay active longer", impact:"+10 pts/month", action:"The longer your business is on AshantiHub, the higher your tenure score", color:C.gold },
-                { icon:"📦", tip:"Convert enquiries to bookings", impact:"+20–50 pts", action:"Follow up on every WhatsApp enquiry. A higher booking rate boosts your score", color:C.orange },
+                { icon:"🏷️", tip:"Publish more listings", impact:"up to 25% of score", action:"Get listings approved and published — this factor counts up to 10 published listings.", color:C.kente3 },
+                { icon:"📅", tip:"Stay active longer", impact:"up to 20% of score", action:"The longer your business account exists on AshantiHub, the higher your tenure score (counted up to 24 months).", color:C.gold },
+                { icon:"🪪", tip:"Complete KYC verification", impact:"up to 30% of score", action:"Submit your Ghana Card and business details for KYC review and get verified by AshantiHub staff.", color:"#7B2FBE" },
+                { icon:"🏦", tip:"Verify your payout details", impact:"up to 25% of score", action:"Add and verify your MoMo/bank payout details in your Business Dashboard profile.", color:C.kente2 },
               ].map(item => (
                 <div key={item.tip} style={{ display:"flex", gap:12, padding:"12px 0", borderBottom:"1px solid #f5f5f5", alignItems:"flex-start" }}>
                   <div style={{ width:40, height:40, borderRadius:10, background:`${item.color}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1.2rem", flexShrink:0 }}>{item.icon}</div>
@@ -613,6 +577,9 @@ function CreditDashboard({ onClose, user }) {
           </>
         )}
 
+          </>
+        )}
+
       </div>
     </div>
   );
@@ -625,26 +592,12 @@ const MOMO_NETWORKS = [
   { id:"airteltigo", name:"AirtelTigo Money", color:"#E87722", textColor:"white", logo:"🟠", ussd:"*500#", fee:"1.5%" },
 ];
 
-const SUBSCRIPTION_PLANS = [
-  { id:"basic", name:"Basic", monthlyPrice:20, annualPrice:200, color:"#6b7280", features:["1 listing","WhatsApp connect","Basic analytics","Email support"] },
-  { id:"standard", name:"Standard", monthlyPrice:100, annualPrice:1000, color:"#D4A017", features:["5 listings","Featured placement","Full analytics","Priority support","Price alerts"], recommended:true },
-  { id:"premium", name:"Premium", monthlyPrice:200, annualPrice:2000, color:"#CC0000", features:["Unlimited listings","Top search","Advanced analytics","Account manager","WhatsApp broadcast"] },
-];
-
-const MOCK_TRANSACTIONS = [
-  { id:"TXN001", ref:"MTN240601001", business:"Royal Ashanti Lodge", amount:200, plan:"Standard", network:"MTN MoMo", date:"2026-06-01", status:"Success", type:"subscription" },
-  { id:"TXN002", ref:"VOD240601002", business:"Afia's Kitchen", amount:20, plan:"Basic", network:"Vodafone Cash", date:"2026-06-01", status:"Success", type:"subscription" },
-  { id:"TXN003", ref:"MTN240602003", business:"Kente Palace Weavers", amount:1000, plan:"Standard Annual", network:"MTN MoMo", date:"2026-06-02", status:"Success", type:"annual" },
-  { id:"TXN004", ref:"MTN240603004", business:"Ashanti Homegoing Planners", amount:200, plan:"Premium", network:"MTN MoMo", date:"2026-06-03", status:"Pending", type:"subscription" },
-  { id:"TXN005", ref:"AIR240603005", business:"Kumasi Royal Rides", amount:20, plan:"Basic", network:"AirtelTigo", date:"2026-06-03", status:"Failed", type:"subscription" },
-  { id:"TXN006", ref:"VOD240604006", business:"Manhyia Rooftop Bar", amount:200, plan:"Premium", network:"Vodafone Cash", date:"2026-06-04", status:"Success", type:"subscription" },
-];
-
-const MOCK_INVOICES = [
-  { id:"INV-2026-001", business:"Royal Ashanti Lodge", plan:"Standard", amount:200, vat:26, total:226, date:"2026-06-01", due:"2026-07-01", status:"Paid", email:"royal@lodge.com" },
-  { id:"INV-2026-002", business:"Afia's Kitchen", plan:"Basic", amount:20, vat:2.6, total:22.6, date:"2026-06-01", due:"2026-07-01", status:"Paid", email:"afia@kitchen.com" },
-  { id:"INV-2026-003", business:"Kumasi Royal Rides", plan:"Basic", amount:20, vat:2.6, total:22.6, date:"2026-06-03", due:"2026-07-03", status:"Overdue", email:"kumasi@rides.com" },
-];
+// SUBSCRIPTION_PLANS / MOCK_TRANSACTIONS / MOCK_INVOICES (mock data + the
+// InvoiceModal component that rendered MOCK_INVOICES) were removed here —
+// PaymentDashboard and BusinessDashboard's Subscription tab now read real
+// data via useSubscriptionPlans/useMyTransactions/useMySubscription. There is
+// no backend Invoice model (only Subscription + Transaction), so the old
+// Invoices tab was dropped rather than left as dead mock UI.
 
 // ─── MoMo Payment Component ───────────────────────────────────────────────────
 function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose }) {
@@ -658,18 +611,23 @@ function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose }) {
 
   useEffect(() => {
     if (step === 3 && !success) {
+      let successTimeout;
       const timer = setInterval(() => {
         setCountdown(c => {
           if (c <= 1) {
             clearInterval(timer);
             setSuccess(true);
-            setTimeout(() => onSuccess && onSuccess(txnRef), 1000);
+            // Cancelled below on unmount/step-change — without this, closing the
+            // modal in this 1s window still let onSuccess fire afterward, now
+            // triggering real transaction/subscription writes (previously
+            // harmless, since it only called a mock success handler).
+            successTimeout = setTimeout(() => onSuccess && onSuccess(txnRef), 1000);
             return 0;
           }
           return c - 1;
         });
       }, 100);
-      return () => clearInterval(timer);
+      return () => { clearInterval(timer); clearTimeout(successTimeout); };
     }
   }, [step, success]);
 
@@ -838,132 +796,66 @@ function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose }) {
   );
 }
 
-// ─── Invoice Generator ────────────────────────────────────────────────────────
-function InvoiceModal({ invoice, onClose }) {
-  return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", zIndex:2000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
-      onClick={e => { if(e.target===e.currentTarget) onClose(); }}>
-      <div style={{ background:"white", borderRadius:20, width:"100%", maxWidth:480, boxShadow:"0 20px 60px rgba(0,0,0,0.3)", overflow:"hidden" }}>
-        {/* Invoice Header */}
-        <div style={{ background:`linear-gradient(135deg,${C.darkBrown},${C.black})`, padding:"22px 24px", position:"relative" }}>
-          <button onClick={onClose} style={{ position:"absolute", top:14, right:16, background:"none", border:"none", color:"white", fontSize:"1.3rem", cursor:"pointer", opacity:0.7 }}>✕</button>
-          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-            <Flag w={44} h={30}/>
-            <div>
-              <div style={{ color:C.gold, fontWeight:900, fontSize:"1rem" }}>AshantiHub Ltd</div>
-              <div style={{ color:"#aaa", fontSize:"0.65rem" }}>Kumasi, Ashanti Region, Ghana</div>
-            </div>
-          </div>
-          <div style={{ marginTop:14, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-            <div style={{ color:"white", fontWeight:900, fontSize:"1.2rem" }}>TAX INVOICE</div>
-            <div style={{ background:invoice.status==="Paid"?"#22c55e":invoice.status==="Overdue"?"#ef4444":"#f59e0b", color:"white", borderRadius:20, padding:"4px 12px", fontSize:"0.7rem", fontWeight:800 }}>{invoice.status}</div>
-          </div>
-        </div>
-
-        <div style={{ padding:"22px 24px" }}>
-          {/* Invoice details */}
-          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:20, flexWrap:"wrap", gap:10 }}>
-            <div>
-              <div style={{ fontSize:"0.68rem", color:"#888", marginBottom:2 }}>INVOICE NUMBER</div>
-              <div style={{ fontWeight:800, color:C.darkBrown }}>{invoice.id}</div>
-            </div>
-            <div style={{ textAlign:"right" }}>
-              <div style={{ fontSize:"0.68rem", color:"#888", marginBottom:2 }}>INVOICE DATE</div>
-              <div style={{ fontWeight:700 }}>{invoice.date}</div>
-            </div>
-            <div>
-              <div style={{ fontSize:"0.68rem", color:"#888", marginBottom:2 }}>DUE DATE</div>
-              <div style={{ fontWeight:700, color:invoice.status==="Overdue"?"#ef4444":C.darkBrown }}>{invoice.due}</div>
-            </div>
-          </div>
-
-          {/* Business details */}
-          <div style={{ background:"#f9f9f9", borderRadius:12, padding:"12px 14px", marginBottom:16 }}>
-            <div style={{ fontSize:"0.68rem", color:"#888", marginBottom:4 }}>BILLED TO</div>
-            <div style={{ fontWeight:800, color:C.darkBrown }}>{invoice.business}</div>
-            <div style={{ fontSize:"0.74rem", color:"#555" }}>{invoice.email}</div>
-          </div>
-
-          {/* Line items */}
-          <div style={{ marginBottom:16 }}>
-            <div style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:"2px solid #f0f0f0", fontSize:"0.72rem", fontWeight:700, color:"#888" }}>
-              <span>DESCRIPTION</span><span>AMOUNT</span>
-            </div>
-            <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderBottom:"1px solid #f5f5f5", fontSize:"0.78rem" }}>
-              <span>AshantiHub {invoice.plan} Plan — Monthly Listing Fee</span>
-              <span style={{ fontWeight:700 }}>GHS {invoice.amount.toFixed(2)}</span>
-            </div>
-            <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", fontSize:"0.74rem", color:"#888" }}>
-              <span>VAT (12.5%)</span>
-              <span>GHS {invoice.vat.toFixed(2)}</span>
-            </div>
-            <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0", borderTop:"2px solid #f0f0f0", fontWeight:900, fontSize:"0.88rem", color:C.darkBrown }}>
-              <span>TOTAL DUE</span>
-              <span style={{ color:C.kente2, fontSize:"1rem" }}>GHS {invoice.total.toFixed(2)}</span>
-            </div>
-          </div>
-
-          {/* Payment instructions */}
-          <div style={{ background:`${C.gold}12`, border:`1.5px solid ${C.gold}33`, borderRadius:12, padding:"12px 14px", marginBottom:16, fontSize:"0.72rem", lineHeight:1.8 }}>
-            <div style={{ fontWeight:800, color:C.deepGold, marginBottom:4 }}>💰 Payment Instructions</div>
-            <div>Send payment via <strong>MTN MoMo, Vodafone Cash or AirtelTigo Money</strong> to:</div>
-            <div style={{ fontWeight:900, color:C.darkBrown, fontSize:"0.85rem", margin:"4px 0" }}>0244 000 000 — AshantiHub Ltd</div>
-            <div style={{ color:"#888" }}>Reference: {invoice.id} | Due: {invoice.due}</div>
-          </div>
-
-          {/* Footer */}
-          <div style={{ textAlign:"center", fontSize:"0.65rem", color:"#aaa", marginBottom:14 }}>
-            AshantiHub Ltd • Kumasi, Ashanti Region, Ghana • legal@ashantihub.com<br/>
-            Registered under Ghana Companies Act 2019 • GRA TIN: GH-XXXX-XXXX
-          </div>
-
-          <div style={{ display:"flex", gap:8 }}>
-            <button onClick={() => window.print()} style={{ flex:1, background:"#f0f0f0", color:"#666", border:"none", borderRadius:20, padding:"10px", fontWeight:700, cursor:"pointer", fontFamily:"inherit", fontSize:"0.78rem" }}>
-              🖨️ Print / Save PDF
-            </button>
-            {invoice.status !== "Paid" && (
-              <button style={{ flex:2, background:C.kente2, color:"white", border:"none", borderRadius:20, padding:"10px", fontWeight:900, cursor:"pointer", fontFamily:"inherit", fontSize:"0.82rem" }}>
-                💰 Pay Now via MoMo
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Payment Dashboard (Admin) ─────────────────────────────────────────────────
+// ─── Payment Dashboard (Business Owner's own payment history) ─────────────────
 function PaymentDashboard({ onClose }) {
   const [payTab, setPayTab] = useState("overview");
-  const [showInvoice, setShowInvoice] = useState(null);
   const [showPayModal, setShowPayModal] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [billingCycle, setBillingCycle] = useState("monthly");
+  const [actionError, setActionError] = useState(null);
 
-  const totalRevenue = MOCK_TRANSACTIONS.filter(t=>t.status==="Success").reduce((s,t)=>s+t.amount,0);
-  const pendingRevenue = MOCK_TRANSACTIONS.filter(t=>t.status==="Pending").reduce((s,t)=>s+t.amount,0);
-  const failedTxns = MOCK_TRANSACTIONS.filter(t=>t.status==="Failed").length;
+  // Real data. The Transaction model (backend/billing/models.py) only tracks
+  // amount/purpose/status/reference/created_at for the signed-in business
+  // owner's own payments — it has no per-business/network breakdown, so the
+  // old MOCK_TRANSACTIONS-driven "Revenue by Network" / "Active Subscribers"
+  // / multi-business follow-up list are dropped rather than faked.
+  const { data: transactions, isLoading: txLoading, isError: txError, refetch: refetchTx } = useMyTransactions();
+  const { data: subPlans, isLoading: plansLoading, isError: plansError } = useSubscriptionPlans();
 
-  const statusColor = { Success:"#22c55e", Pending:"#f59e0b", Failed:"#ef4444" };
+  const txList = transactions || [];
+  const totalRevenue = txList.filter(t=>t.status==="success").reduce((s,t)=>s+Number(t.amount),0);
+  const pendingRevenue = txList.filter(t=>t.status==="pending").reduce((s,t)=>s+Number(t.amount),0);
+  const failedTxns = txList.filter(t=>t.status==="failed").length;
+  const successTxns = txList.filter(t=>t.status==="success").length;
+  const needsFollowUp = txList.filter(t=>t.status!=="success");
+
+  const statusColor = { success:"#22c55e", pending:"#f59e0b", failed:"#ef4444" };
+  const statusLabel = { success:"Success", pending:"Pending", failed:"Failed" };
 
   const tabs = [
     { id:"overview", icon:"💰", label:"Overview" },
     { id:"transactions", icon:"📋", label:"Transactions" },
-    { id:"invoices", icon:"🧾", label:"Invoices" },
     { id:"subscribe", icon:"⭐", label:"Subscribe" },
     { id:"reminders", icon:"🔔", label:"Reminders" },
   ];
 
+  const recordSubscriptionPayment = async (ref) => {
+    setShowPayModal(false);
+    if(!selectedPlan) return;
+    setActionError(null);
+    const amount = billingCycle==="monthly" ? Number(selectedPlan.monthly_price) : Number(selectedPlan.annual_price);
+    try {
+      await apiPost("/api/billing/transactions/mine/", {
+        amount: amount.toFixed(2),
+        purpose: `AshantiHub ${selectedPlan.name} Plan — ${billingCycle==="monthly"?"Monthly":"Annual"}`,
+        reference: ref,
+        status: "success",
+      });
+      await apiPost("/api/billing/subscriptions/me/", { plan: selectedPlan.tier, billing_cycle: billingCycle });
+      refetchTx();
+    } catch (err) {
+      setActionError("Payment was confirmed but we couldn't record it on your account. Please contact support with reference " + ref + ".");
+    }
+  };
+
   return (
     <div style={{ fontFamily:"'Georgia',serif", background:"#f4f5f7", minHeight:"100vh" }}>
-      {showInvoice && <InvoiceModal invoice={showInvoice} onClose={()=>setShowInvoice(null)}/>}
       {showPayModal && selectedPlan && (
         <MoMoPayment
-          amount={billingCycle==="monthly"?selectedPlan.monthlyPrice:selectedPlan.annualPrice}
+          amount={billingCycle==="monthly"?Number(selectedPlan.monthly_price):Number(selectedPlan.annual_price)}
           purpose={`AshantiHub ${selectedPlan.name} Plan — ${billingCycle==="monthly"?"Monthly":"Annual"}`}
           businessName="Your Business"
-          onSuccess={(ref)=>{ setShowPayModal(false); alert(`Payment confirmed! Ref: ${ref}`); }}
+          onSuccess={recordSubscriptionPayment}
           onClose={()=>setShowPayModal(false)}
         />
       )}
@@ -1000,63 +892,51 @@ function PaymentDashboard({ onClose }) {
 
       <div style={{ maxWidth:960, margin:"0 auto", padding:"22px 16px 60px" }}>
 
+        {actionError && <div style={{ background:"#fee2e2", color:"#dc2626", borderRadius:12, padding:"10px 14px", fontSize:"0.78rem", marginBottom:16 }}>{actionError}</div>}
+
         {/* ── OVERVIEW ── */}
         {payTab === "overview" && (
           <>
             <h2 style={{ margin:"0 0 20px", color:C.darkBrown, fontWeight:900, fontSize:"1.05rem" }}>💰 Payment Overview</h2>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:14, marginBottom:24 }}>
-              {[
-                { icon:"💚", label:"Total Revenue", value:`GHS ${totalRevenue.toLocaleString()}`, sub:"This month", color:"#22c55e" },
-                { icon:"⏳", label:"Pending", value:`GHS ${pendingRevenue}`, sub:"Awaiting confirmation", color:"#f59e0b" },
-                { icon:"❌", label:"Failed Payments", value:failedTxns, sub:"Need follow-up", color:"#ef4444" },
-                { icon:"🏪", label:"Active Subscribers", value:MOCK_TRANSACTIONS.filter(t=>t.status==="Success").length, sub:"Paying businesses", color:C.kente3 },
-                { icon:"📈", label:"MRR", value:`GHS ${(totalRevenue).toLocaleString()}`, sub:"Monthly Recurring Revenue", color:C.gold },
-              ].map(s => (
-                <div key={s.label} style={{ background:"white", borderRadius:14, padding:"16px", boxShadow:"0 2px 12px rgba(0,0,0,0.07)", borderLeft:`4px solid ${s.color}` }}>
-                  <div style={{ fontSize:"1.3rem", marginBottom:4 }}>{s.icon}</div>
-                  <div style={{ fontWeight:900, fontSize:"1.2rem", color:C.darkBrown }}>{s.value}</div>
-                  <div style={{ fontSize:"0.7rem", fontWeight:700, color:"#555" }}>{s.label}</div>
-                  <div style={{ fontSize:"0.62rem", color:s.color, fontWeight:600 }}>{s.sub}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Revenue by network */}
-            <div style={{ background:"white", borderRadius:16, padding:"20px", boxShadow:"0 2px 12px rgba(0,0,0,0.07)", marginBottom:20 }}>
-              <div style={{ fontWeight:800, color:C.darkBrown, marginBottom:14, fontSize:"0.88rem" }}>📊 Revenue by Network</div>
-              {MOMO_NETWORKS.map(n => {
-                const netTotal = MOCK_TRANSACTIONS.filter(t=>t.status==="Success"&&t.network.includes(n.name.split(" ")[0])).reduce((s,t)=>s+t.amount,0);
-                const pct = totalRevenue > 0 ? (netTotal/totalRevenue)*100 : 0;
-                return (
-                  <div key={n.id} style={{ marginBottom:12 }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", fontSize:"0.76rem", marginBottom:4 }}>
-                      <span style={{ fontWeight:700 }}>{n.logo} {n.name}</span>
-                      <span style={{ fontWeight:800, color:C.kente2 }}>GHS {netTotal} ({pct.toFixed(0)}%)</span>
+            {txLoading && <div style={{ color:"#888", fontSize:"0.82rem", padding:"20px 0" }}>Loading your payment history…</div>}
+            {txError && <div style={{ color:"#dc2626", fontSize:"0.82rem", padding:"20px 0" }}>Could not load your payment history. Make sure you're signed in as a business owner.</div>}
+            {!txLoading && !txError && (
+              <>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:14, marginBottom:24 }}>
+                  {[
+                    { icon:"💚", label:"Total Paid", value:`GHS ${totalRevenue.toLocaleString()}`, sub:"All-time successful payments", color:"#22c55e" },
+                    { icon:"⏳", label:"Pending", value:`GHS ${pendingRevenue.toLocaleString()}`, sub:"Awaiting confirmation", color:"#f59e0b" },
+                    { icon:"❌", label:"Failed Payments", value:failedTxns, sub:"Need follow-up", color:"#ef4444" },
+                    { icon:"✅", label:"Successful Payments", value:successTxns, sub:"Completed transactions", color:C.kente3 },
+                  ].map(s => (
+                    <div key={s.label} style={{ background:"white", borderRadius:14, padding:"16px", boxShadow:"0 2px 12px rgba(0,0,0,0.07)", borderLeft:`4px solid ${s.color}` }}>
+                      <div style={{ fontSize:"1.3rem", marginBottom:4 }}>{s.icon}</div>
+                      <div style={{ fontWeight:900, fontSize:"1.2rem", color:C.darkBrown }}>{s.value}</div>
+                      <div style={{ fontSize:"0.7rem", fontWeight:700, color:"#555" }}>{s.label}</div>
+                      <div style={{ fontSize:"0.62rem", color:s.color, fontWeight:600 }}>{s.sub}</div>
                     </div>
-                    <div style={{ height:8, background:"#f0f0f0", borderRadius:10, overflow:"hidden" }}>
-                      <div style={{ height:"100%", width:`${pct}%`, background:n.color, borderRadius:10 }}/>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Recent transactions */}
-            <div style={{ background:"white", borderRadius:16, padding:"20px", boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }}>
-              <div style={{ fontWeight:800, color:C.darkBrown, marginBottom:14, fontSize:"0.88rem" }}>🕐 Recent Transactions</div>
-              {MOCK_TRANSACTIONS.slice(0,4).map(t => (
-                <div key={t.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderBottom:"1px solid #f5f5f5", flexWrap:"wrap", gap:8 }}>
-                  <div>
-                    <div style={{ fontWeight:700, fontSize:"0.8rem" }}>{t.business}</div>
-                    <div style={{ fontSize:"0.68rem", color:"#888" }}>{t.network} • {t.date} • Ref: {t.ref}</div>
-                  </div>
-                  <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                    <span style={{ fontWeight:900, color:C.kente2 }}>GHS {t.amount}</span>
-                    <span style={{ background:`${statusColor[t.status]}20`, color:statusColor[t.status], borderRadius:20, padding:"2px 8px", fontSize:"0.62rem", fontWeight:800 }}>{t.status}</span>
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+
+                {/* Recent transactions */}
+                <div style={{ background:"white", borderRadius:16, padding:"20px", boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }}>
+                  <div style={{ fontWeight:800, color:C.darkBrown, marginBottom:14, fontSize:"0.88rem" }}>🕐 Recent Transactions</div>
+                  {txList.length===0 && <div style={{ color:"#aaa", fontSize:"0.78rem" }}>No payments yet.</div>}
+                  {txList.slice(0,4).map(t => (
+                    <div key={t.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderBottom:"1px solid #f5f5f5", flexWrap:"wrap", gap:8 }}>
+                      <div>
+                        <div style={{ fontWeight:700, fontSize:"0.8rem" }}>{t.purpose}</div>
+                        <div style={{ fontSize:"0.68rem", color:"#888" }}>{t.created_at?.slice(0,10)} • Ref: {t.reference}</div>
+                      </div>
+                      <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                        <span style={{ fontWeight:900, color:C.kente2 }}>GHS {Number(t.amount).toLocaleString()}</span>
+                        <span style={{ background:`${statusColor[t.status]}20`, color:statusColor[t.status], borderRadius:20, padding:"2px 8px", fontSize:"0.62rem", fontWeight:800 }}>{statusLabel[t.status]||t.status}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </>
         )}
 
@@ -1064,69 +944,40 @@ function PaymentDashboard({ onClose }) {
         {payTab === "transactions" && (
           <>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
-              <h2 style={{ margin:0, color:C.darkBrown, fontWeight:900, fontSize:"1.05rem" }}>📋 All Transactions</h2>
-              <button style={{ background:C.kente2, color:"white", border:"none", borderRadius:20, padding:"8px 16px", fontSize:"0.74rem", fontWeight:700, cursor:"pointer" }}>📥 Export CSV</button>
+              <h2 style={{ margin:0, color:C.darkBrown, fontWeight:900, fontSize:"1.05rem" }}>📋 Your Transactions</h2>
             </div>
-            <div style={{ background:"white", borderRadius:16, padding:"20px", boxShadow:"0 2px 12px rgba(0,0,0,0.07)", overflowX:"auto" }}>
-              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"0.74rem" }}>
-                <thead>
-                  <tr style={{ borderBottom:"2px solid #f0f0f0" }}>
-                    {["TXN ID","Reference","Business","Plan","Amount","Network","Date","Status"].map(h=>(
-                      <th key={h} style={{ textAlign:"left", padding:"8px 10px", color:"#888", fontWeight:700, whiteSpace:"nowrap" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {MOCK_TRANSACTIONS.map(t => (
-                    <tr key={t.id} style={{ borderBottom:"1px solid #f8f8f8" }}
-                      onMouseEnter={e=>e.currentTarget.style.background="#fafafa"}
-                      onMouseLeave={e=>e.currentTarget.style.background=""}>
-                      <td style={{ padding:"10px", fontWeight:700, color:C.deepGold }}>{t.id}</td>
-                      <td style={{ padding:"10px", color:"#555", fontSize:"0.68rem" }}>{t.ref}</td>
-                      <td style={{ padding:"10px", fontWeight:600 }}>{t.business}</td>
-                      <td style={{ padding:"10px", color:"#555" }}>{t.plan}</td>
-                      <td style={{ padding:"10px", fontWeight:800, color:C.kente2 }}>GHS {t.amount}</td>
-                      <td style={{ padding:"10px", color:"#555" }}>{t.network}</td>
-                      <td style={{ padding:"10px", color:"#aaa" }}>{t.date}</td>
-                      <td style={{ padding:"10px" }}>
-                        <span style={{ background:`${statusColor[t.status]}20`, color:statusColor[t.status], borderRadius:20, padding:"3px 9px", fontSize:"0.62rem", fontWeight:800 }}>{t.status}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-
-        {/* ── INVOICES ── */}
-        {payTab === "invoices" && (
-          <>
-            <h2 style={{ margin:"0 0 16px", color:C.darkBrown, fontWeight:900, fontSize:"1.05rem" }}>🧾 Invoices</h2>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))", gap:14 }}>
-              {MOCK_INVOICES.map(inv => (
-                <div key={inv.id} style={{ background:"white", borderRadius:16, padding:"18px", boxShadow:"0 2px 12px rgba(0,0,0,0.07)", borderTop:`3px solid ${inv.status==="Paid"?"#22c55e":inv.status==="Overdue"?"#ef4444":"#f59e0b"}` }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
-                    <div>
-                      <div style={{ fontWeight:800, fontSize:"0.85rem", color:C.darkBrown }}>{inv.id}</div>
-                      <div style={{ fontSize:"0.7rem", color:"#888", marginTop:2 }}>{inv.business}</div>
-                    </div>
-                    <span style={{ background:inv.status==="Paid"?"#22c55e20":inv.status==="Overdue"?"#fee2e2":"#fef9c3", color:inv.status==="Paid"?"#22c55e":inv.status==="Overdue"?"#ef4444":"#b45309", borderRadius:20, padding:"3px 10px", fontSize:"0.62rem", fontWeight:800 }}>{inv.status}</span>
-                  </div>
-                  <div style={{ fontSize:"0.74rem", color:"#555", lineHeight:1.8, marginBottom:12 }}>
-                    <div>📋 {inv.plan} Plan</div>
-                    <div>📅 Due: {inv.due}</div>
-                    <div>💰 Total: <strong style={{ color:C.kente2 }}>GHS {inv.total.toFixed(2)}</strong> <span style={{ color:"#aaa", fontSize:"0.65rem" }}>(incl. VAT)</span></div>
-                  </div>
-                  <div style={{ display:"flex", gap:6 }}>
-                    <button onClick={()=>setShowInvoice(inv)} style={{ flex:1, background:`${C.gold}22`, color:C.deepGold, border:"none", borderRadius:20, padding:"7px", fontSize:"0.7rem", fontWeight:700, cursor:"pointer" }}>🧾 View Invoice</button>
-                    {inv.status !== "Paid" && (
-                      <button style={{ flex:1, background:C.kente2, color:"white", border:"none", borderRadius:20, padding:"7px", fontSize:"0.7rem", fontWeight:700, cursor:"pointer" }}>💰 Pay Now</button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+            {txLoading && <div style={{ color:"#888", fontSize:"0.82rem", padding:"20px 0" }}>Loading your payment history…</div>}
+            {txError && <div style={{ color:"#dc2626", fontSize:"0.82rem", padding:"20px 0" }}>Could not load your payment history. Make sure you're signed in as a business owner.</div>}
+            {!txLoading && !txError && (
+              <div style={{ background:"white", borderRadius:16, padding:"20px", boxShadow:"0 2px 12px rgba(0,0,0,0.07)", overflowX:"auto" }}>
+                {txList.length===0 ? <div style={{ color:"#aaa", fontSize:"0.78rem" }}>No payments yet.</div> : (
+                  <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"0.74rem" }}>
+                    <thead>
+                      <tr style={{ borderBottom:"2px solid #f0f0f0" }}>
+                        {["Reference","Purpose","Amount","Date","Status"].map(h=>(
+                          <th key={h} style={{ textAlign:"left", padding:"8px 10px", color:"#888", fontWeight:700, whiteSpace:"nowrap" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {txList.map(t => (
+                        <tr key={t.id} style={{ borderBottom:"1px solid #f8f8f8" }}
+                          onMouseEnter={e=>e.currentTarget.style.background="#fafafa"}
+                          onMouseLeave={e=>e.currentTarget.style.background=""}>
+                          <td style={{ padding:"10px", fontWeight:700, color:C.deepGold, fontSize:"0.68rem" }}>{t.reference}</td>
+                          <td style={{ padding:"10px", fontWeight:600 }}>{t.purpose}</td>
+                          <td style={{ padding:"10px", fontWeight:800, color:C.kente2 }}>GHS {Number(t.amount).toLocaleString()}</td>
+                          <td style={{ padding:"10px", color:"#aaa" }}>{t.created_at?.slice(0,10)}</td>
+                          <td style={{ padding:"10px" }}>
+                            <span style={{ background:`${statusColor[t.status]}20`, color:statusColor[t.status], borderRadius:20, padding:"3px 9px", fontSize:"0.62rem", fontWeight:800 }}>{statusLabel[t.status]||t.status}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
           </>
         )}
 
@@ -1151,33 +1002,34 @@ function PaymentDashboard({ onClose }) {
                 ))}
               </div>
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))", gap:14 }}>
-              {SUBSCRIPTION_PLANS.map(plan => (
-                <div key={plan.id} style={{ background:"white", borderRadius:18, padding:"22px", boxShadow:"0 2px 16px rgba(0,0,0,0.09)", border:`2px solid ${plan.recommended?C.gold:"transparent"}`, position:"relative" }}>
-                  {plan.recommended && <div style={{ position:"absolute", top:-10, left:"50%", transform:"translateX(-50%)", background:C.gold, color:C.darkBrown, borderRadius:20, padding:"3px 14px", fontSize:"0.62rem", fontWeight:900, whiteSpace:"nowrap" }}>⭐ MOST POPULAR</div>}
-                  <div style={{ fontWeight:900, color:plan.color, fontSize:"1rem", marginBottom:4 }}>{plan.name}</div>
-                  <div style={{ fontWeight:900, fontSize:"1.8rem", color:C.darkBrown, marginBottom:2 }}>
-                    GHS {billingCycle==="monthly"?plan.monthlyPrice:plan.annualPrice}
-                    <span style={{ fontSize:"0.72rem", fontWeight:400, color:"#aaa" }}>/{billingCycle==="monthly"?"month":"year"}</span>
+            {plansLoading && <div style={{ color:"#888", fontSize:"0.82rem", textAlign:"center", padding:"20px 0" }}>Loading plans…</div>}
+            {plansError && <div style={{ color:"#dc2626", fontSize:"0.82rem", textAlign:"center", padding:"20px 0" }}>Could not load subscription plans.</div>}
+            {!plansLoading && !plansError && (
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))", gap:14 }}>
+                {(subPlans||[]).map(plan => (
+                  <div key={plan.id} style={{ background:"white", borderRadius:18, padding:"22px", boxShadow:"0 2px 16px rgba(0,0,0,0.09)", border:`2px solid ${plan.is_recommended?C.gold:"transparent"}`, position:"relative" }}>
+                    {plan.is_recommended && <div style={{ position:"absolute", top:-10, left:"50%", transform:"translateX(-50%)", background:C.gold, color:C.darkBrown, borderRadius:20, padding:"3px 14px", fontSize:"0.62rem", fontWeight:900, whiteSpace:"nowrap" }}>⭐ MOST POPULAR</div>}
+                    <div style={{ fontWeight:900, color:C.darkBrown, fontSize:"1rem", marginBottom:4 }}>{plan.name}</div>
+                    <div style={{ fontWeight:900, fontSize:"1.8rem", color:C.darkBrown, marginBottom:2 }}>
+                      GHS {billingCycle==="monthly"?Number(plan.monthly_price).toLocaleString():Number(plan.annual_price).toLocaleString()}
+                      <span style={{ fontSize:"0.72rem", fontWeight:400, color:"#aaa" }}>/{billingCycle==="monthly"?"month":"year"}</span>
+                    </div>
+                    <div style={{ borderTop:"1px solid #f0f0f0", paddingTop:12, marginBottom:16 }}>
+                      {(plan.features||[]).map(f => (
+                        <div key={f} style={{ fontSize:"0.72rem", color:"#444", marginBottom:5, display:"flex", gap:6 }}>
+                          <span style={{ color:C.kente2 }}>✓</span>{f}
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => { setSelectedPlan(plan); setShowPayModal(true); }}
+                      style={{ width:"100%", background:plan.is_recommended?C.gold:"#f0f0f0", color:plan.is_recommended?C.darkBrown:"#666", border:"none", borderRadius:20, padding:"11px", fontWeight:900, cursor:"pointer", fontFamily:"inherit", fontSize:"0.82rem" }}>
+                      💰 Pay with MoMo
+                    </button>
                   </div>
-                  {billingCycle==="annual" && (
-                    <div style={{ fontSize:"0.68rem", color:C.kente2, fontWeight:700, marginBottom:8 }}>🎁 Save GHS {plan.monthlyPrice*2} vs monthly</div>
-                  )}
-                  <div style={{ borderTop:"1px solid #f0f0f0", paddingTop:12, marginBottom:16 }}>
-                    {plan.features.map(f => (
-                      <div key={f} style={{ fontSize:"0.72rem", color:"#444", marginBottom:5, display:"flex", gap:6 }}>
-                        <span style={{ color:C.kente2 }}>✓</span>{f}
-                      </div>
-                    ))}
-                  </div>
-                  <button
-                    onClick={() => { setSelectedPlan(plan); setShowPayModal(true); }}
-                    style={{ width:"100%", background:plan.recommended?C.gold:"#f0f0f0", color:plan.recommended?C.darkBrown:"#666", border:"none", borderRadius:20, padding:"11px", fontWeight:900, cursor:"pointer", fontFamily:"inherit", fontSize:"0.82rem" }}>
-                    💰 Pay with MoMo
-                  </button>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
             <div style={{ background:`${C.whatsapp}12`, border:`1.5px solid ${C.whatsapp}33`, borderRadius:14, padding:"14px 18px", marginTop:20 }}>
               <div style={{ fontWeight:800, color:"#1a5c2e", marginBottom:4, fontSize:"0.82rem" }}>💰 Accepted Payment Methods</div>
               <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
@@ -1198,7 +1050,7 @@ function PaymentDashboard({ onClose }) {
         {payTab === "reminders" && (
           <>
             <h2 style={{ margin:"0 0 6px", color:C.darkBrown, fontWeight:900, fontSize:"1.05rem" }}>🔔 Payment Reminders</h2>
-            <p style={{ color:"#888", fontSize:"0.78rem", margin:"0 0 20px" }}>Automated WhatsApp reminders sent to businesses before and after payment due dates</p>
+            <p style={{ color:"#888", fontSize:"0.78rem", margin:"0 0 20px" }}>Automated WhatsApp reminders sent before and after your payment due dates</p>
 
             {/* Reminder schedule */}
             <div style={{ background:"white", borderRadius:16, padding:"20px", boxShadow:"0 2px 12px rgba(0,0,0,0.07)", marginBottom:20 }}>
@@ -1225,22 +1077,19 @@ function PaymentDashboard({ onClose }) {
               ))}
             </div>
 
-            {/* Businesses needing follow-up */}
+            {/* Your payments needing follow-up */}
             <div style={{ background:"white", borderRadius:16, padding:"20px", boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }}>
-              <div style={{ fontWeight:800, color:C.darkBrown, marginBottom:14, fontSize:"0.88rem" }}>⚠️ Businesses Needing Follow-up</div>
-              {MOCK_TRANSACTIONS.filter(t=>t.status!=="Success").map(t => (
+              <div style={{ fontWeight:800, color:C.darkBrown, marginBottom:14, fontSize:"0.88rem" }}>⚠️ Your Payments Needing Follow-up</div>
+              {!txLoading && !txError && needsFollowUp.length===0 && <div style={{ color:"#aaa", fontSize:"0.78rem" }}>Nothing needs follow-up — you're all caught up.</div>}
+              {needsFollowUp.map(t => (
                 <div key={t.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderBottom:"1px solid #f5f5f5", flexWrap:"wrap", gap:8 }}>
                   <div>
-                    <div style={{ fontWeight:700, fontSize:"0.8rem" }}>{t.business}</div>
-                    <div style={{ fontSize:"0.68rem", color:"#888" }}>{t.plan} — GHS {t.amount} — {t.status}</div>
+                    <div style={{ fontWeight:700, fontSize:"0.8rem" }}>{t.purpose}</div>
+                    <div style={{ fontSize:"0.68rem", color:"#888" }}>GHS {Number(t.amount).toLocaleString()} — {statusLabel[t.status]||t.status}</div>
                   </div>
-                  <div style={{ display:"flex", gap:6 }}>
-                    <a href={`https://wa.me/233244000001?text=${encodeURIComponent(`Hello! Your AshantiHub listing payment of GHS ${t.amount} is ${t.status}. Please send payment to MTN MoMo 0244 000 000 to keep your listing active. Reference: ${t.id}`)}`}
-                      target="_blank" rel="noopener noreferrer"
-                      style={{ background:C.whatsapp, color:"white", borderRadius:20, padding:"5px 12px", fontSize:"0.68rem", fontWeight:700, textDecoration:"none" }}>
-                      📱 Send Reminder
-                    </a>
-                    <span style={{ background:`${statusColor[t.status]}20`, color:statusColor[t.status], borderRadius:20, padding:"5px 10px", fontSize:"0.65rem", fontWeight:800 }}>{t.status}</span>
+                  <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                    <button onClick={()=>setPayTab("subscribe")} style={{ background:C.kente2, color:"white", border:"none", borderRadius:20, padding:"5px 12px", fontSize:"0.68rem", fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>💰 Pay Now</button>
+                    <span style={{ background:`${statusColor[t.status]}20`, color:statusColor[t.status], borderRadius:20, padding:"5px 10px", fontSize:"0.65rem", fontWeight:800 }}>{statusLabel[t.status]||t.status}</span>
                   </div>
                 </div>
               ))}
@@ -1279,22 +1128,6 @@ const KUMASI_PHOTOS = {
 const iStyle = { width:"100%",padding:"11px 14px",borderRadius:10,border:"1.5px solid #ddd",fontSize:"0.88rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box" };
 const lStyle = { fontSize:"0.78rem",fontWeight:700,color:C.darkBrown,marginBottom:5,display:"block" };
 const btnP = (on=true) => ({ background:on?C.gold:"#ddd",color:on?C.darkBrown:"#aaa",border:"none",borderRadius:30,padding:"12px",fontWeight:900,fontSize:"0.88rem",cursor:on?"pointer":"default",fontFamily:"inherit",width:"100%" });
-
-function Flag({w=50,h=33}) {
-  return <svg width={w} height={h} viewBox="0 0 54 36" style={{borderRadius:4,boxShadow:"0 2px 8px rgba(0,0,0,0.4)",border:"1px solid #ffffff33",display:"block"}}>
-    <rect x="0" y="0" width="54" height="12" fill="#D4A017"/>
-    <rect x="0" y="12" width="54" height="12" fill="#1A1A1A"/>
-    <rect x="0" y="24" width="54" height="12" fill="#006400"/>
-    <rect x="0" y="11" width="54" height="1.5" fill="white" opacity="0.6"/>
-    <rect x="0" y="23.5" width="54" height="1.5" fill="white" opacity="0.6"/>
-    <g transform="translate(27,18)">
-      <rect x="-8" y="-4.5" width="16" height="3" rx="1.5" fill="#D4A017"/>
-      <rect x="-5" y="-1.5" width="3" height="4" rx="1" fill="#D4A017"/>
-      <rect x="2" y="-1.5" width="3" height="4" rx="1" fill="#D4A017"/>
-      <rect x="-7" y="2.5" width="14" height="2.5" rx="1.2" fill="#D4A017"/>
-    </g>
-  </svg>;
-}
 
 function Stars({rating,size="0.85rem"}) {
   return <span style={{color:C.gold,fontSize:size}}>
@@ -2494,31 +2327,89 @@ export function StaffDashboard({auth,onExit}) {
 }
 
 // ─── Business Dashboard ───────────────────────────────────────────────────────
-const mockBusinessProfile = {name:"Royal Ashanti Lodge",category:"Hotels & Accommodation",owner:"Nana Prempeh",phone:"0244000001",whatsapp:"0244000001",location:"Near Manhyia Palace, Adum",status:"Active",description:"Luxury rooms with kente-draped interiors, rooftop pool and palace views.",joined:"2026-04-01",trialEnds:"2026-07-01",enquiries:42,bookings:18,views:310,rating:4.8,reviews:24};
-const mockBusinessListings = [
-  {id:1,name:"Standard Room",price:"GHS 450",unit:"per night",available:true,lastUpdated:"2026-06-01",tag:"Most Booked"},
-  {id:2,name:"Deluxe Suite",price:"GHS 750",unit:"per night",available:true,lastUpdated:"2026-05-28",tag:"Featured"},
-  {id:3,name:"Presidential Suite",price:"GHS 1,200",unit:"per night",available:false,lastUpdated:"2026-05-15",tag:"Premium"},
-];
 const mockEnquiries = [
   {id:1,customer:"Emma Thompson",country:"🇬🇧 UK",message:"I'd like to book 3 nights from June 15. Do you have availability?",time:"2 hours ago",status:"New"},
   {id:2,customer:"Hans Mueller",country:"🇩🇪 Germany",message:"What is your rate for the Akwasidae Festival weekend?",time:"5 hours ago",status:"Replied"},
   {id:3,customer:"Sophie Dubois",country:"🇫🇷 France",message:"Do you offer airport pickup from KIA?",time:"2 days ago",status:"New"},
 ];
+// mockEnquiries / the Enquiries tab below are intentionally left on mock data —
+// real-time+AI messaging is a separate, larger Phase-2 initiative
+// (docs/PROJECT_SCOPE.md) and explicitly out of scope for this data-wiring pass.
 
-function BusinessDashboard({ onExit }) {
+const LISTING_STATUS_META = {
+  draft: { label:"Draft", color:"#6b7280" },
+  pending_review: { label:"Pending Review", color:"#f59e0b" },
+  published: { label:"Published", color:"#22c55e" },
+  rejected: { label:"Rejected", color:"#ef4444" },
+};
+
+function BusinessDashboard({ onExit, user }) {
   const [bizTab, setBizTab] = useState("overview");
-  const [listings, setListings] = useState(mockBusinessListings);
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [saved, setSaved] = useState(false);
+  const [actionError, setActionError] = useState(null);
   const [billingCycle, setBillingCycle] = useState("monthly");
   const [showPayModal, setShowPayModal] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
 
-  const saveEdit = (id) => {
-    setListings(ls=>ls.map(l=>l.id===id?{...l,...editForm,lastUpdated:new Date().toISOString().split("T")[0]}:l));
-    setEditingId(null); setSaved(true); setTimeout(()=>setSaved(false),2500);
+  const { data: listings, isLoading: listingsLoading, isError: listingsError, refetch: refetchListings } = useMyListings();
+  const { data: profile, isLoading: profileLoading, isError: profileError } = useBusinessProfile();
+  const { data: subPlans, isLoading: plansLoading, isError: plansError } = useSubscriptionPlans();
+  const { data: subscription, isLoading: subLoading, isError: subError, refetch: refetchSubscription } = useMySubscription();
+
+  const listingList = listings || [];
+  const publishedCount = listingList.filter(l=>l.status==="published").length;
+  const pendingCount = listingList.filter(l=>l.status==="pending_review").length;
+  const draftCount = listingList.filter(l=>l.status==="draft").length;
+
+  const showToast = () => { setSaved(true); setTimeout(()=>setSaved(false),2500); };
+
+  const saveEdit = async (id) => {
+    setActionError(null);
+    try {
+      await apiPatch(`/api/listings/mine/${id}/`, {
+        name: editForm.name,
+        price_amount: editForm.price_amount,
+        price_unit: editForm.price_unit,
+      });
+      setEditingId(null);
+      showToast();
+      refetchListings();
+    } catch (err) {
+      setActionError("Could not save this listing. It may already be published, or a field may be invalid.");
+    }
+  };
+
+  const submitForReview = async (id) => {
+    setActionError(null);
+    try {
+      await apiPost(`/api/listings/mine/${id}/submit/`, {});
+      showToast();
+      refetchListings();
+    } catch (err) {
+      setActionError("Could not submit this listing for review.");
+    }
+  };
+
+  const recordSubscriptionPayment = async (ref) => {
+    setShowPayModal(false);
+    if(!selectedPlan) return;
+    setActionError(null);
+    const amount = billingCycle==="monthly" ? Number(selectedPlan.monthly_price) : Number(selectedPlan.annual_price);
+    try {
+      await apiPost("/api/billing/transactions/mine/", {
+        amount: amount.toFixed(2),
+        purpose: `AshantiHub ${selectedPlan.name} Plan — ${billingCycle==="monthly"?"Monthly":"Annual"}`,
+        reference: ref,
+        status: "success",
+      });
+      await apiPost("/api/billing/subscriptions/me/", { plan: selectedPlan.tier, billing_cycle: billingCycle });
+      showToast();
+      refetchSubscription();
+    } catch (err) {
+      setActionError("Payment was confirmed but we couldn't record it on your account. Please contact support with reference " + ref + ".");
+    }
   };
 
   const daysSince = (date) => Math.floor((new Date()-new Date(date))/86400000);
@@ -2535,7 +2426,7 @@ function BusinessDashboard({ onExit }) {
   return (
     <div style={{fontFamily:"'Georgia',serif",background:"#f4f5f7",minHeight:"100vh"}}>
       {showPayModal&&selectedPlan&&(
-        <MoMoPayment amount={billingCycle==="monthly"?selectedPlan.monthlyPrice:selectedPlan.annualPrice} purpose={`AshantiHub ${selectedPlan.name} Plan`} businessName={mockBusinessProfile.name} onSuccess={()=>setShowPayModal(false)} onClose={()=>setShowPayModal(false)}/>
+        <MoMoPayment amount={billingCycle==="monthly"?Number(selectedPlan.monthly_price):Number(selectedPlan.annual_price)} purpose={`AshantiHub ${selectedPlan.name} Plan`} businessName={user?.fullName||"Your Business"} onSuccess={recordSubscriptionPayment} onClose={()=>setShowPayModal(false)}/>
       )}
       <div style={{background:`linear-gradient(135deg,${C.darkBrown},${C.black})`,padding:"0 16px",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 20px rgba(0,0,0,0.4)"}}>
         <div style={{position:"absolute",top:0,left:0,right:0,height:4,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
@@ -2545,8 +2436,7 @@ function BusinessDashboard({ onExit }) {
             <div><div style={{color:C.gold,fontWeight:900,fontSize:"0.92rem"}}>AshantiHub</div><div style={{color:"#aaa",fontSize:"0.6rem"}}>Business Dashboard</div></div>
           </div>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            <div style={{color:"white",fontWeight:700,fontSize:"0.75rem"}}>{mockBusinessProfile.name}</div>
-            <div style={{background:"#22c55e22",color:"#22c55e",borderRadius:20,padding:"3px 8px",fontSize:"0.62rem",fontWeight:700}}>● Active</div>
+            <div style={{color:"white",fontWeight:700,fontSize:"0.75rem"}}>{user?.fullName||"Your Business"}</div>
             <button onClick={onExit} style={{background:"none",border:"1px solid #444",color:"#aaa",borderRadius:20,padding:"4px 12px",fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>← Exit</button>
           </div>
         </div>
@@ -2566,18 +2456,32 @@ function BusinessDashboard({ onExit }) {
 
       <div style={{maxWidth:960,margin:"0 auto",padding:"20px 16px 60px"}}>
 
+        {actionError&&<div style={{background:"#fee2e2",color:"#dc2626",borderRadius:12,padding:"10px 14px",fontSize:"0.78rem",marginBottom:16}}>{actionError}</div>}
+
         {bizTab==="overview"&&(
           <>
             <div style={{background:`linear-gradient(135deg,${C.darkBrown},${C.kente3})`,borderRadius:16,padding:"20px",marginBottom:18,color:"white",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
               <div>
-                <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem",marginBottom:4}}>Akwaaba, {mockBusinessProfile.owner.split(" ")[0]}! 👋</div>
-                <div style={{fontSize:"0.76rem",opacity:0.85}}>{mockBusinessProfile.name} • {mockBusinessProfile.location}</div>
-                <div style={{marginTop:8,fontSize:"0.68rem",opacity:0.8}}>📅 Free trial ends: {mockBusinessProfile.trialEnds} • ⭐ {mockBusinessProfile.rating}/5</div>
+                <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem",marginBottom:4}}>Akwaaba, {user?.fullName?.split(" ")[0]||"there"}! 👋</div>
+                <div style={{fontSize:"0.76rem",opacity:0.85}}>
+                  {profileLoading ? "Loading your business details…" : profileError ? "Complete your KYC profile to see your business details here." : (profile?.gps_address ? `📍 ${profile.gps_address}` : "No location on file yet")}
+                  {profile?.business_contact_phone ? ` • ${profile.business_contact_phone}` : ""}
+                </div>
+                <div style={{marginTop:8,fontSize:"0.68rem",opacity:0.8}}>
+                  {subLoading ? "Loading subscription…" : subError ? "" : subscription?.id
+                    ? `💳 ${subscription.plan?.name} plan • ${subscription.status} • renews ${subscription.current_period_end?.slice(0,10)}`
+                    : "💳 No active subscription yet — see the Subscription tab"}
+                </div>
               </div>
               <button onClick={()=>setBizTab("listings")} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"9px 18px",fontWeight:900,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>Update Prices →</button>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:12,marginBottom:18}}>
-              {[{icon:"👁️",label:"Profile Views",value:mockBusinessProfile.views,color:C.kente3},{icon:"💬",label:"Enquiries",value:mockBusinessProfile.enquiries,color:C.kente2},{icon:"📅",label:"Bookings",value:mockBusinessProfile.bookings,color:C.gold},{icon:"⭐",label:"Avg Rating",value:mockBusinessProfile.rating,color:C.orange}].map(s=>(
+              {[
+                {icon:"✅",label:"Published Listings",value:publishedCount,color:C.kente2},
+                {icon:"⏳",label:"Pending Review",value:pendingCount,color:C.gold},
+                {icon:"📝",label:"Drafts",value:draftCount,color:C.kente3},
+                {icon:"💬",label:"Enquiries",value:mockEnquiries.length,color:C.orange},
+              ].map(s=>(
                 <div key={s.label} style={{background:"white",borderRadius:12,padding:"14px",boxShadow:"0 2px 12px rgba(0,0,0,0.07)",borderLeft:`4px solid ${s.color}`}}>
                   <div style={{fontSize:"1.2rem",marginBottom:3}}>{s.icon}</div>
                   <div style={{fontWeight:900,fontSize:"1.2rem",color:C.darkBrown}}>{s.value}</div>
@@ -2607,18 +2511,31 @@ function BusinessDashboard({ onExit }) {
               <h2 style={{margin:0,color:C.darkBrown,fontWeight:900,fontSize:"0.98rem"}}>🏷️ Listings & Prices</h2>
               <a href="https://wa.me/233244000000?text=UPDATE%3A%20" target="_blank" rel="noopener noreferrer" style={{background:C.whatsapp,color:"white",borderRadius:20,padding:"6px 14px",fontSize:"0.7rem",fontWeight:700,textDecoration:"none"}}>📱 WhatsApp Update</a>
             </div>
+            {listingsLoading&&<div style={{color:"#888",fontSize:"0.8rem"}}>Loading your listings…</div>}
+            {listingsError&&<div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load your listings. Make sure you're signed in as a business owner.</div>}
+            {!listingsLoading&&!listingsError&&listingList.length===0&&(
+              <div style={{background:"white",borderRadius:14,padding:"24px",textAlign:"center",color:"#888",fontSize:"0.82rem"}}>You don't have any listings yet.</div>
+            )}
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              {listings.map(item=>(
+              {listingList.map(item=>{
+                const statusMeta = LISTING_STATUS_META[item.status]||{label:item.status,color:"#888"};
+                const canEdit = item.status!=="published";
+                return (
                 <div key={item.id} style={{background:"white",borderRadius:14,padding:"14px 16px",boxShadow:"0 2px 12px rgba(0,0,0,0.07)",border:editingId===item.id?`2px solid ${C.gold}`:"2px solid transparent"}}>
                   {editingId===item.id?(
                     <div>
                       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-                        {[["Name","name",""],["Price","price","GHS"],["Unit","unit",""]].map(([l,k,p])=>(
-                          <div key={k}><label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,display:"block",marginBottom:3}}>{l}</label>
-                          {k==="unit"?<select value={editForm[k]||""} onChange={e=>setEditForm(f=>({...f,[k]:e.target.value}))} style={{width:"100%",padding:"8px",borderRadius:8,border:"1.5px solid #ddd",fontSize:"0.8rem",background:"white",fontFamily:"inherit"}}>
-                            {["per night","per person","per day","per item","per service"].map(u=><option key={u}>{u}</option>)}
-                          </select>:<input value={editForm[k]||""} onChange={e=>setEditForm(f=>({...f,[k]:e.target.value}))} style={{width:"100%",padding:"8px",borderRadius:8,border:"1.5px solid #ddd",fontSize:"0.8rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>}</div>
-                        ))}
+                        <div><label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,display:"block",marginBottom:3}}>Name</label>
+                          <input value={editForm.name||""} onChange={e=>setEditForm(f=>({...f,name:e.target.value}))} style={{width:"100%",padding:"8px",borderRadius:8,border:"1.5px solid #ddd",fontSize:"0.8rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+                        </div>
+                        <div><label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,display:"block",marginBottom:3}}>Price (GHS)</label>
+                          <input type="number" value={editForm.price_amount||""} onChange={e=>setEditForm(f=>({...f,price_amount:e.target.value}))} style={{width:"100%",padding:"8px",borderRadius:8,border:"1.5px solid #ddd",fontSize:"0.8rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+                        </div>
+                        <div><label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,display:"block",marginBottom:3}}>Unit</label>
+                          <select value={editForm.price_unit||""} onChange={e=>setEditForm(f=>({...f,price_unit:e.target.value}))} style={{width:"100%",padding:"8px",borderRadius:8,border:"1.5px solid #ddd",fontSize:"0.8rem",background:"white",fontFamily:"inherit"}}>
+                            {["per night","per person","per day","per item","per service"].map(u=><option key={u} value={u}>{u}</option>)}
+                          </select>
+                        </div>
                       </div>
                       <div style={{display:"flex",gap:6}}>
                         <button onClick={()=>setEditingId(null)} style={{flex:1,background:"#f0f0f0",color:"#666",border:"none",borderRadius:20,padding:"8px",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
@@ -2628,18 +2545,19 @@ function BusinessDashboard({ onExit }) {
                   ):(
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
                       <div>
-                        <div style={{fontWeight:800,fontSize:"0.85rem",color:C.darkBrown}}>{item.name} <span style={{background:`${C.gold}22`,color:C.deepGold,borderRadius:20,padding:"2px 7px",fontSize:"0.6rem",fontWeight:700}}>{item.tag}</span></div>
-                        <div style={{fontWeight:900,color:C.kente2,fontSize:"0.95rem",marginTop:2}}>{item.price} <span style={{color:"#aaa",fontWeight:400,fontSize:"0.72rem"}}>{item.unit}</span></div>
-                        <div style={{fontSize:"0.62rem",color:freshnessColor(item.lastUpdated),fontWeight:700,marginTop:2}}>🕐 {freshnessLabel(item.lastUpdated)}</div>
+                        <div style={{fontWeight:800,fontSize:"0.85rem",color:C.darkBrown}}>{item.name} <span style={{background:`${statusMeta.color}22`,color:statusMeta.color,borderRadius:20,padding:"2px 7px",fontSize:"0.6rem",fontWeight:700}}>{statusMeta.label}</span></div>
+                        <div style={{fontWeight:900,color:C.kente2,fontSize:"0.95rem",marginTop:2}}>{item.price_amount!=null?`GHS ${item.price_amount}`:"No price set"} <span style={{color:"#aaa",fontWeight:400,fontSize:"0.72rem"}}>{item.price_unit}</span></div>
+                        {item.updated_at&&<div style={{fontSize:"0.62rem",color:freshnessColor(item.updated_at),fontWeight:700,marginTop:2}}>🕐 {freshnessLabel(item.updated_at)}</div>}
+                        {item.status==="rejected"&&item.rejection_reason&&<div style={{fontSize:"0.65rem",color:"#dc2626",marginTop:3}}>Rejected: {item.rejection_reason}</div>}
                       </div>
                       <div style={{display:"flex",gap:6}}>
-                        <button onClick={()=>{setEditingId(item.id);setEditForm({name:item.name,price:item.price,unit:item.unit});}} style={{background:`${C.gold}22`,color:C.deepGold,border:"none",borderRadius:20,padding:"6px 12px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>✏️ Edit</button>
-                        <button onClick={()=>{setListings(ls=>ls.map(l=>l.id===item.id?{...l,available:!l.available}:l));setSaved(true);setTimeout(()=>setSaved(false),2000);}} style={{background:item.available?"#fee2e2":"#dcfce7",color:item.available?"#ef4444":"#22c55e",border:"none",borderRadius:20,padding:"6px 12px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>{item.available?"Unavailable":"Available"}</button>
+                        {canEdit&&<button onClick={()=>{setEditingId(item.id);setEditForm({name:item.name,price_amount:item.price_amount,price_unit:item.price_unit});}} style={{background:`${C.gold}22`,color:C.deepGold,border:"none",borderRadius:20,padding:"6px 12px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>✏️ Edit</button>}
+                        {(item.status==="draft"||item.status==="rejected")&&<button onClick={()=>submitForReview(item.id)} style={{background:C.kente2,color:"white",border:"none",borderRadius:20,padding:"6px 12px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>📤 Submit for Review</button>}
                       </div>
                     </div>
                   )}
                 </div>
-              ))}
+              );})}
             </div>
           </>
         )}
@@ -2657,7 +2575,7 @@ function BusinessDashboard({ onExit }) {
                   </div>
                 </div>
                 <div style={{background:"#f9f9f9",borderRadius:8,padding:"9px 12px",fontSize:"0.74rem",color:"#444",lineHeight:1.5,marginBottom:10}}>"{e.message}"</div>
-                <a href={`https://wa.me/233244000000?text=${encodeURIComponent(`Hello ${e.customer.split(" ")[0]}, thank you for your enquiry about ${mockBusinessProfile.name} on AshantiHub!`)}`} target="_blank" rel="noopener noreferrer" style={{display:"inline-flex",alignItems:"center",gap:5,background:C.whatsapp,color:"white",borderRadius:20,padding:"6px 14px",fontSize:"0.7rem",fontWeight:700,textDecoration:"none"}}>📱 Reply on WhatsApp</a>
+                <a href={`https://wa.me/233244000000?text=${encodeURIComponent(`Hello ${e.customer.split(" ")[0]}, thank you for your enquiry on AshantiHub!`)}`} target="_blank" rel="noopener noreferrer" style={{display:"inline-flex",alignItems:"center",gap:5,background:C.whatsapp,color:"white",borderRadius:20,padding:"6px 14px",fontSize:"0.7rem",fontWeight:700,textDecoration:"none"}}>📱 Reply on WhatsApp</a>
               </div>
             ))}
           </>
@@ -2666,10 +2584,21 @@ function BusinessDashboard({ onExit }) {
         {bizTab==="subscription"&&(
           <>
             <h2 style={{margin:"0 0 14px",color:C.darkBrown,fontWeight:900,fontSize:"0.98rem"}}>💳 Subscription</h2>
-            <div style={{background:`linear-gradient(135deg,${C.kente2},#003d22)`,borderRadius:14,padding:"18px",color:"white",marginBottom:16}}>
-              <div style={{fontWeight:900,fontSize:"1rem",color:C.gold,marginBottom:4}}>🎁 Free Trial Active</div>
-              <div style={{fontSize:"0.78rem",opacity:0.9}}>Trial ends <strong>{mockBusinessProfile.trialEnds}</strong>. No charges until then.</div>
-            </div>
+            {subLoading&&<div style={{color:"#888",fontSize:"0.8rem",marginBottom:16}}>Loading your subscription…</div>}
+            {subError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:16}}>Could not load your subscription. Make sure you're signed in as a business owner.</div>}
+            {!subLoading&&!subError&&(
+              subscription?.id?(
+                <div style={{background:`linear-gradient(135deg,${C.kente2},#003d22)`,borderRadius:14,padding:"18px",color:"white",marginBottom:16}}>
+                  <div style={{fontWeight:900,fontSize:"1rem",color:C.gold,marginBottom:4}}>💳 {subscription.plan?.name} Plan — {subscription.status}</div>
+                  <div style={{fontSize:"0.78rem",opacity:0.9}}>Billing: {subscription.billing_cycle} • Renews <strong>{subscription.current_period_end?.slice(0,10)}</strong></div>
+                </div>
+              ):(
+                <div style={{background:`linear-gradient(135deg,${C.kente2},#003d22)`,borderRadius:14,padding:"18px",color:"white",marginBottom:16}}>
+                  <div style={{fontWeight:900,fontSize:"1rem",color:C.gold,marginBottom:4}}>🎁 No Active Subscription</div>
+                  <div style={{fontSize:"0.78rem",opacity:0.9}}>Choose a plan below to activate your listings.</div>
+                </div>
+              )
+            )}
             <div style={{display:"inline-flex",background:"#f0f0f0",borderRadius:30,padding:3,gap:3,marginBottom:16}}>
               {["monthly","annual"].map(c=>(
                 <button key={c} onClick={()=>setBillingCycle(c)} style={{background:billingCycle===c?"white":"transparent",border:"none",borderRadius:28,padding:"6px 16px",fontWeight:billingCycle===c?800:600,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",color:billingCycle===c?C.darkBrown:"#888"}}>
@@ -2677,17 +2606,21 @@ function BusinessDashboard({ onExit }) {
                 </button>
               ))}
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:12}}>
-              {SUBSCRIPTION_PLANS.map(plan=>(
-                <div key={plan.id} style={{background:"white",borderRadius:14,padding:"18px",boxShadow:"0 2px 14px rgba(0,0,0,0.08)",border:`2px solid ${plan.recommended?C.gold:"transparent"}`,position:"relative"}}>
-                  {plan.recommended&&<div style={{position:"absolute",top:-9,left:"50%",transform:"translateX(-50%)",background:C.gold,color:C.darkBrown,borderRadius:20,padding:"2px 12px",fontSize:"0.58rem",fontWeight:900,whiteSpace:"nowrap"}}>⭐ MOST POPULAR</div>}
-                  <div style={{fontWeight:900,color:plan.color,marginBottom:2}}>{plan.name}</div>
-                  <div style={{fontWeight:900,fontSize:"1.5rem",color:C.darkBrown,marginBottom:10}}>GHS {billingCycle==="monthly"?plan.monthlyPrice:plan.annualPrice}<span style={{fontSize:"0.7rem",fontWeight:400,color:"#aaa"}}>/{billingCycle==="monthly"?"mo":"yr"}</span></div>
-                  {plan.features.map(f=><div key={f} style={{fontSize:"0.7rem",color:"#444",marginBottom:4}}>✓ {f}</div>)}
-                  <button onClick={()=>{setSelectedPlan(plan);setShowPayModal(true);}} style={{width:"100%",marginTop:12,background:plan.recommended?C.gold:"#f0f0f0",color:plan.recommended?C.darkBrown:"#666",border:"none",borderRadius:20,padding:"9px",fontWeight:900,cursor:"pointer",fontFamily:"inherit",fontSize:"0.78rem"}}>💰 Pay with MoMo</button>
-                </div>
-              ))}
-            </div>
+            {plansLoading&&<div style={{color:"#888",fontSize:"0.8rem"}}>Loading plans…</div>}
+            {plansError&&<div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load subscription plans.</div>}
+            {!plansLoading&&!plansError&&(
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:12}}>
+                {(subPlans||[]).map(plan=>(
+                  <div key={plan.id} style={{background:"white",borderRadius:14,padding:"18px",boxShadow:"0 2px 14px rgba(0,0,0,0.08)",border:`2px solid ${plan.is_recommended?C.gold:"transparent"}`,position:"relative"}}>
+                    {plan.is_recommended&&<div style={{position:"absolute",top:-9,left:"50%",transform:"translateX(-50%)",background:C.gold,color:C.darkBrown,borderRadius:20,padding:"2px 12px",fontSize:"0.58rem",fontWeight:900,whiteSpace:"nowrap"}}>⭐ MOST POPULAR</div>}
+                    <div style={{fontWeight:900,color:C.darkBrown,marginBottom:2}}>{plan.name}</div>
+                    <div style={{fontWeight:900,fontSize:"1.5rem",color:C.darkBrown,marginBottom:10}}>GHS {billingCycle==="monthly"?Number(plan.monthly_price).toLocaleString():Number(plan.annual_price).toLocaleString()}<span style={{fontSize:"0.7rem",fontWeight:400,color:"#aaa"}}>/{billingCycle==="monthly"?"mo":"yr"}</span></div>
+                    {(plan.features||[]).map(f=><div key={f} style={{fontSize:"0.7rem",color:"#444",marginBottom:4}}>✓ {f}</div>)}
+                    <button onClick={()=>{setSelectedPlan(plan);setShowPayModal(true);}} style={{width:"100%",marginTop:12,background:plan.is_recommended?C.gold:"#f0f0f0",color:plan.is_recommended?C.darkBrown:"#666",border:"none",borderRadius:20,padding:"9px",fontWeight:900,cursor:"pointer",fontFamily:"inherit",fontSize:"0.78rem"}}>💰 Pay with MoMo</button>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
 
@@ -3135,6 +3068,56 @@ export default function AshantiHub() {
     return()=>window.removeEventListener("openLegal",handler);
   },[]);
 
+  // ── `/staff` deep link ──────────────────────────────────────────────────
+  // Minimal client-side "route", not a router: staff should be able to land
+  // directly on theashantihub.com/staff instead of only via the hidden
+  // 5-click-logo gesture (handleLogoClick below). See docs/PWA_STAFF_DASHBOARD.md §4
+  // Option B — deliberately scoped to this one path, no routing library.
+  //
+  // We wait for the session-restore fetch (auth.isLoading) to settle before
+  // deciding, so a logged-in staff member refreshing on /staff isn't briefly
+  // (and incorrectly) sent to the staff-login modal while auth.user is still null.
+  const staffUrlHandled=useRef(false);
+  useEffect(()=>{
+    if(staffUrlHandled.current) return;
+    if(auth.isLoading) return;
+    staffUrlHandled.current=true;
+    if(window.location.pathname==="/staff"){
+      if(auth.user?.account_type==="staff"){setIsAdmin(true);}
+      else{setAuthModal("staff-login");}
+    }
+  },[auth.isLoading,auth.user]);
+
+  // Keep the URL in sync with isAdmin regardless of how it was set (gesture,
+  // direct /staff visit, or staff login success below) rather than scattering
+  // pushState calls at every isAdmin-setting call site.
+  //
+  // The `else` branch only resets the URL once the deep-link check above has
+  // already run (staffUrlHandled.current). Without that guard, this effect
+  // and the mount-time deep-link effect both fire on the very first commit —
+  // isAdmin is still its initial `false` at that point, so an unguarded
+  // `else` would immediately pushState "/staff" back to "/" before the
+  // deep-link effect (which depends on the still-resolving auth.isLoading)
+  // ever gets a chance to observe the original "/staff" pathname, silently
+  // defeating every direct /staff visit.
+  useEffect(()=>{
+    if(isAdmin){
+      if(window.location.pathname!=="/staff") window.history.pushState(null,"","/staff");
+    }else if(staffUrlHandled.current){
+      if(window.location.pathname==="/staff") window.history.pushState(null,"","/");
+    }
+  },[isAdmin]);
+
+  // Keep isAdmin in sync with browser back/forward navigation once /staff is
+  // a real history entry (the pushState calls above only push forward).
+  useEffect(()=>{
+    const handlePopState=()=>{
+      setIsAdmin(window.location.pathname==="/staff" && auth.user?.account_type==="staff");
+    };
+    window.addEventListener("popstate",handlePopState);
+    return()=>window.removeEventListener("popstate",handlePopState);
+  },[auth.user]);
+
   const handleLogoClick=()=>{
     const n=adminClicks+1;
     setAdminClicks(n);
@@ -3150,20 +3133,11 @@ export default function AshantiHub() {
   const [showSearchResults,setShowSearchResults]=useState(false);
   const [searchFocused,setSearchFocused]=useState(false);
 
-  // Static "popular searches" quick-fill suggestions shown when the search box is focused and empty.
-  // (The old cross-category smart-search engine that scored against the in-memory `LISTINGS` mock
-  // across every category at once has been removed — full-text search now happens server-side via
-  // `filters.search`, scoped to whichever category tab is active, since there's no full listing set
-  // held client-side anymore to search across.)
-  const SEARCH_SUGGESTIONS = [
-    "fufu restaurant","hotel near palace","kente cloth","car repair suame",
-    "24 hour pharmacy","wedding planner","funeral organizer","cheap transport",
-    "rooftop bar","fresh groceries","dental clinic","gym","tuk-tuk",
-    "tour guide","adinkra crafts","petrol station","open now","highly rated",
-  ];
+  // Popular-search quick-fill suggestions now live in components/Hero.jsx
+  // (the only place that renders them) — see SEARCH_SUGGESTIONS there.
 
   if(isAdmin) return <StaffDashboard auth={auth} onExit={()=>setIsAdmin(false)}/>;
-  if(showBizDash) return <BusinessDashboard onExit={()=>setShowBizDash(false)}/>;
+  if(showBizDash) return <BusinessDashboard onExit={()=>setShowBizDash(false)} user={user}/>;
   if(showPayments) return <PaymentDashboard onClose={()=>setShowPayments(false)}/>;
   if(showCredit) return <CreditDashboard onClose={()=>setShowCredit(false)} user={user}/>;
   if(isLoading) return <LoadingScreen/>;
@@ -3171,67 +3145,10 @@ export default function AshantiHub() {
 
   const activeCatObj=categories?.find(c=>c.slug===filters.category);
 
-  const Header=()=>(
-    <div style={{background:`linear-gradient(135deg,${C.darkBrown} 0%,${C.black} 50%,${C.kente3} 100%)`,padding:"0 16px",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 20px rgba(0,0,0,0.4)"}}>
-      <div style={{position:"absolute",top:0,left:0,right:0,height:4,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
-      <div style={{maxWidth:960,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:60,paddingTop:4}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={handleLogoClick}>
-          <Flag w={44} h={30}/>
-          <span style={{fontSize:"1.3rem"}}>👑</span>
-          <div>
-            <div style={{color:C.gold,fontWeight:900,fontSize:"1rem",letterSpacing:1,lineHeight:1}}>AshantiHub</div>
-            <div style={{color:C.lightGold,fontSize:"0.52rem",letterSpacing:2,opacity:0.8}}>THE MARKETPLACE OF ASHANTI</div>
-          </div>
-        </div>
-        <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
-          {/* Language */}
-          <button onClick={()=>setLang(l=>l==="en"?"tw":"en")} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.2)",borderRadius:20,padding:"4px 8px",fontSize:"0.62rem",fontWeight:700,cursor:"pointer"}}>
-            {lang==="en"?"🇬🇭 Twi":"🇬🇧 EN"}
-          </button>
-          {/* Currency */}
-          <select value={currency} onChange={e=>setCurrency(e.target.value)} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.2)",borderRadius:20,padding:"4px 8px",fontSize:"0.62rem",cursor:"pointer",outline:"none",fontFamily:"inherit"}}>
-            <option value="GHS">GHS 🇬🇭</option>
-            <option value="USD">USD 🇺🇸</option>
-            <option value="GBP">GBP 🇬🇧</option>
-            <option value="EUR">EUR 🇪🇺</option>
-          </select>
-          {/* Nav */}
-          {["home","events","about"].map(p=>(
-            <button key={p} onClick={()=>setPage(p)} style={{background:page===p?C.gold:"transparent",color:page===p?C.black:C.lightGold,border:`1px solid ${page===p?C.gold:"#ffffff33"}`,borderRadius:20,padding:"4px 9px",fontSize:"0.62rem",fontWeight:700,cursor:"pointer"}}>
-              {p==="home"?"🏠":p==="events"?"🥁":"ℹ️"} {p[0].toUpperCase()+p.slice(1)}
-            </button>
-          ))}
-          {/* Notifications */}
-          <button onClick={()=>setShowNotifs(n=>!n)} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.2)",borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.85rem",position:"relative"}}>
-            🔔
-            {user&&<span style={{position:"absolute",top:-2,right:-2,background:C.kente1,borderRadius:"50%",width:8,height:8}}/>}
-          </button>
-          {/* Messages */}
-          <button onClick={()=>{setShowMessaging(true);if(!user)setAuthModal("signup");}} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.2)",borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.85rem",position:"relative"}}>
-            💬
-            {MOCK_CONVERSATIONS.reduce((s,c)=>s+c.unread,0)>0&&<span style={{position:"absolute",top:-3,right:-3,background:C.kente1,borderRadius:"50%",width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.52rem",fontWeight:900,color:"white"}}>{MOCK_CONVERSATIONS.reduce((s,c)=>s+c.unread,0)}</span>}
-          </button>
-          {/* Favourites */}
-          <button onClick={()=>setShowFavs(f=>!f)} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.2)",borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.85rem",position:"relative"}}>
-            ❤️
-            {favourites.length>0&&<span style={{position:"absolute",top:-4,right:-4,background:C.kente1,borderRadius:"50%",width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.55rem",fontWeight:900,color:"white"}}>{favourites.length}</span>}
-          </button>
-          {/* User */}
-          {user?(
-            <button onClick={()=>setPage("profile")} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"5px 10px",fontSize:"0.68rem",fontWeight:900,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
-              <span style={{background:C.darkBrown,color:C.gold,borderRadius:"50%",width:16,height:16,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:"0.6rem",fontWeight:900}}>{user.fullName?.[0]?.toUpperCase()||"U"}</span>
-              {user.fullName?.split(" ")[0]}
-              <span onClick={(e)=>{e.stopPropagation();auth.logout();}} style={{marginLeft:6,opacity:0.7,cursor:"pointer",fontSize:"0.68rem"}} title="Sign out">⏻</span>
-            </button>
-          ):(
-            <button onClick={()=>setAuthModal("signup")} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"5px 10px",fontSize:"0.68rem",fontWeight:900,cursor:"pointer"}}>{T.signup.split(" ")[0]} Up</button>
-          )}
-          <button onClick={()=>setShowBizDash(true)} style={{background:"transparent",color:C.lightGold,border:"1px solid #ffffff33",borderRadius:20,padding:"4px 9px",fontSize:"0.62rem",fontWeight:700,cursor:"pointer"}}>🏪 Biz</button>
-          <button onClick={()=>setShowPayments(true)} style={{background:"transparent",color:C.lightGold,border:"1px solid #ffffff33",borderRadius:20,padding:"4px 9px",fontSize:"0.62rem",fontWeight:700,cursor:"pointer"}}>💳 Pay</button>
-        </div>
-      </div>
-    </div>
-  );
+  // Unread-messages badge count for Navbar — MOCK_CONVERSATIONS is mock
+  // messaging data (Phase-2 messaging is out of scope, see App.jsx notes
+  // near MessagingCenter), so this stays computed here rather than moving.
+  const unreadMessages = MOCK_CONVERSATIONS.reduce((s, c) => s + c.unread, 0);
 
   // Favourites drawer — renders every favourited id regardless of which category/page
   // is currently loaded, fetching each one individually via `FavDrawerItem`/`useListing`
@@ -3256,84 +3173,44 @@ export default function AshantiHub() {
       {showNotifs&&<NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
       {showFavs&&<FavsDrawer/>}
       {showReferral&&<ReferralModal user={user} onClose={()=>setShowReferral(false)}/>}
-      <Header/>
+      <Navbar
+        page={page} setPage={setPage}
+        lang={lang} setLang={setLang}
+        currency={currency} setCurrency={setCurrency}
+        user={user} auth={auth}
+        handleLogoClick={handleLogoClick}
+        setAuthModal={setAuthModal}
+        setShowNotifs={setShowNotifs}
+        setShowMessaging={setShowMessaging}
+        setShowFavs={setShowFavs}
+        favourites={favourites}
+        unreadMessages={unreadMessages}
+        setShowBizDash={setShowBizDash}
+        setShowPayments={setShowPayments}
+        T={T}
+      />
 
       {page==="home"&&(
         <>
-          {/* Hero */}
-          <div style={{padding:"40px 20px 36px",textAlign:"center",position:"relative",overflow:"hidden",minHeight:280}}>
-            {/* Real Manhyia Palace photo */}
-            <div style={{position:"absolute",inset:0,backgroundImage:`url(${KUMASI_PHOTOS.manhyiaPalace})`,backgroundSize:"cover",backgroundPosition:"center top"}}/>
-            {/* Dark gradient overlay */}
-            <div style={{position:"absolute",inset:0,background:`linear-gradient(160deg,rgba(204,0,0,0.85),rgba(44,24,16,0.9),rgba(0,0,128,0.85))`}}/>
-            <div style={{position:"absolute",inset:0,opacity:0.04,backgroundImage:`repeating-linear-gradient(45deg,${C.gold} 0px,${C.gold} 2px,transparent 2px,transparent 20px),repeating-linear-gradient(-45deg,${C.gold} 0px,${C.gold} 2px,transparent 2px,transparent 20px)`}}/>
-            <div style={{position:"absolute",bottom:0,left:0,right:0,height:5,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
-            <div style={{position:"relative"}}>
-              <div style={{fontSize:"2rem",marginBottom:8}}>👑</div>
-              <h1 style={{color:"white",fontSize:"clamp(1.3rem,4vw,2rem)",fontWeight:900,margin:"0 0 8px"}}>{T.welcome.split("—")[0]}<span style={{color:C.gold}}>—</span>{T.welcome.split("—")[1]}</h1>
-              <p style={{color:C.lightGold,fontSize:"0.82rem",margin:"0 auto 20px",maxWidth:460,lineHeight:1.6,opacity:0.9}}>{T.tagline}</p>
-              {!user&&(
-                <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:16,flexWrap:"wrap"}}>
-                  <button onClick={()=>setAuthModal("signup")} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"9px 20px",fontWeight:900,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>✨ {T.signup}</button>
-                  <button onClick={()=>setAuthModal("login")} style={{background:"rgba(255,255,255,0.15)",color:"white",border:"1.5px solid rgba(255,255,255,0.4)",borderRadius:30,padding:"9px 20px",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>{T.login}</button>
-                </div>
-              )}
-              {user&&<div style={{background:"rgba(255,255,255,0.12)",borderRadius:30,padding:"6px 16px",display:"inline-flex",gap:10,alignItems:"center",marginBottom:16}}>
-                <span style={{color:C.lightGold,fontSize:"0.78rem"}}>👋 Akwaaba, <strong style={{color:C.gold}}>{user.fullName?.split(" ")[0]}</strong>!</span>
-                <button onClick={()=>setShowReferral(true)} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"3px 10px",fontSize:"0.62rem",fontWeight:800,cursor:"pointer"}}>🎁 Refer & Earn</button>
-              </div>}
-              {/* Search — typed input is debounced (~300ms) before it flows into filters.search,
-                  which is what useListings actually queries, scoped to the active category */}
-              <div style={{position:"relative",maxWidth:480,margin:"0 auto"}}>
-                <div style={{display:"flex",borderRadius:30,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.3)"}}>
-                  <input
-                    value={searchInput}
-                    onChange={e=>{setSearchInput(e.target.value);setShowSearchResults(true);}}
-                    onFocus={()=>{setSearchFocused(true);setShowSearchResults(true);}}
-                    onBlur={()=>setTimeout(()=>{setSearchFocused(false);setShowSearchResults(false);},200)}
-                    placeholder={T.search}
-                    style={{flex:1,padding:"13px 18px",border:"none",fontSize:"0.85rem",background:"white",outline:"none",fontFamily:"inherit"}}/>
-                  {searchInput&&<button onClick={()=>{setSearchInput("");setFilters(f=>({...f,search:undefined}));setShowSearchResults(false);}} style={{background:"white",border:"none",padding:"0 8px",cursor:"pointer",color:"#aaa",fontSize:"1.1rem"}}>✕</button>}
-                  <button onClick={()=>setShowFilters(f=>!f)} style={{background:"#f5f5f5",border:"none",padding:"13px 14px",cursor:"pointer",fontSize:"0.85rem"}} title="Filters">⚙️</button>
-                  <button style={{background:C.gold,color:C.black,border:"none",padding:"13px 18px",fontWeight:900,cursor:"pointer"}}>🔍</button>
-                </div>
-
-                {/* Search Dropdown — popular-suggestion quick-fill only when the box is empty; once
-                    there's a query, results come live from the grid below via filters.search, so the
-                    dropdown just gets out of the way (the old cross-category preview here required
-                    the full in-memory LISTINGS set, which no longer exists client-side). Checked
-                    against searchInput (not the debounced filters.search) so the dropdown reacts
-                    instantly to typing rather than lagging behind the debounce. */}
-                {showSearchResults&&searchFocused&&!searchInput&&(
-                  <div style={{position:"absolute",top:"calc(100% + 8px)",left:0,right:0,background:"white",borderRadius:16,boxShadow:"0 8px 40px rgba(0,0,0,0.2)",zIndex:500,overflow:"hidden",maxHeight:420,overflowY:"auto"}}>
-                    <div style={{padding:"12px"}}>
-                      <div style={{fontSize:"0.68rem",color:"#aaa",fontWeight:700,padding:"4px 8px 8px"}}>🔥 POPULAR SEARCHES</div>
-                      <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                        {SEARCH_SUGGESTIONS.map(s=>(
-                          <button key={s} onClick={()=>{setSearchInput(s);setFilters(f=>({...f,search:s}));setShowSearchResults(false);}}
-                            style={{background:`${C.gold}15`,color:C.darkBrown,border:`1px solid ${C.gold}33`,borderRadius:20,padding:"5px 12px",fontSize:"0.72rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                            🔍 {s}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-              {/* Quick action buttons */}
-              <div style={{display:"flex",gap:8,justifyContent:"center",marginTop:12,flexWrap:"wrap"}}>
-                <button onClick={()=>setShowMap(m=>!m)} style={{background:"rgba(255,255,255,0.15)",color:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"5px 12px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>
-                  {showMap?"📋 List View":"🗺️ Map View"}
-                </button>
-                <button onClick={()=>setShowFavs(true)} style={{background:"rgba(255,255,255,0.15)",color:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"5px 12px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>
-                  ❤️ Saved ({favourites.length})
-                </button>
-                {user&&<button onClick={()=>setShowReferral(true)} style={{background:"rgba(255,255,255,0.15)",color:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"5px 12px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>
-                  🎁 Refer & Earn GHS 10
-                </button>}
-              </div>
-            </div>
-          </div>
+          <Hero
+            T={T}
+            user={user}
+            setAuthModal={setAuthModal}
+            setShowReferral={setShowReferral}
+            searchInput={searchInput}
+            setSearchInput={setSearchInput}
+            showSearchResults={showSearchResults}
+            setShowSearchResults={setShowSearchResults}
+            searchFocused={searchFocused}
+            setSearchFocused={setSearchFocused}
+            setFilters={setFilters}
+            setShowFilters={setShowFilters}
+            showMap={showMap}
+            setShowMap={setShowMap}
+            setShowFavs={setShowFavs}
+            favourites={favourites}
+            photos={KUMASI_PHOTOS}
+          />
 
           {/* Stats */}
           <div style={{background:C.gold,padding:"10px 16px",display:"flex",justifyContent:"center",gap:"clamp(12px,4vw,50px)",flexWrap:"wrap"}}>
