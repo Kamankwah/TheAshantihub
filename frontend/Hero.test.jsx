@@ -3,11 +3,8 @@ import { describe, expect, it, vi } from 'vitest'
 import Hero from './components/Hero.jsx'
 
 const T = {
-  welcome: 'Discover Kumasi — All in One Place',
-  tagline: 'Hotels, tours, food, crafts, transport & more — The Marketplace of Ashanti.',
   signup: 'Create Free Account',
   login: 'Sign In',
-  search: 'Search businesses...',
 }
 
 function renderHero(props = {}) {
@@ -16,19 +13,6 @@ function renderHero(props = {}) {
       T={T}
       user={null}
       setAuthModal={vi.fn()}
-      setShowReferral={vi.fn()}
-      searchInput=""
-      setSearchInput={vi.fn()}
-      showSearchResults={false}
-      setShowSearchResults={vi.fn()}
-      searchFocused={false}
-      setSearchFocused={vi.fn()}
-      setFilters={vi.fn()}
-      setShowFilters={vi.fn()}
-      showMap={false}
-      setShowMap={vi.fn()}
-      setShowFavs={vi.fn()}
-      favourites={[]}
       setPage={vi.fn()}
       {...props}
     />,
@@ -36,53 +20,58 @@ function renderHero(props = {}) {
 }
 
 describe('Hero', () => {
-  it('renders the welcome heading, tagline and search input', () => {
+  it('renders the opening Ghana-stats heading and national stats', () => {
     renderHero()
-    expect(screen.getByText(/Discover Kumasi/)).toBeInTheDocument()
-    expect(screen.getByText(T.tagline)).toBeInTheDocument()
-    expect(screen.getByPlaceholderText(T.search)).toBeInTheDocument()
+    expect(screen.getByText(/A Nation Wired/)).toBeInTheDocument()
+    expect(screen.getByText('100K+')).toBeInTheDocument()
+    expect(screen.getByText('Annual Visitors')).toBeInTheDocument()
   })
 
-  it('shows sign-up/login CTAs when logged out', () => {
+  it('renders all four section badges for the scroll narrative', () => {
+    renderHero()
+    expect(screen.getByText('GHANA RISING')).toBeInTheDocument()
+    expect(screen.getByText('THE ASHANTI REGION')).toBeInTheDocument()
+    expect(screen.getByText('CULTURE & FESTIVALS')).toBeInTheDocument()
+    expect(screen.getByText('BUILT FOR ASHANTI, BY ASHANTI')).toBeInTheDocument()
+  })
+
+  it('the opening section\'s CTA navigates to the Business page', () => {
+    const setPage = vi.fn()
+    renderHero({ setPage })
+    fireEvent.click(screen.getByText('Explore Businesses in Ashanti →'))
+    expect(setPage).toHaveBeenCalledWith('business')
+  })
+
+  it('the business section\'s CTA navigates to the Business page', () => {
+    const setPage = vi.fn()
+    renderHero({ setPage })
+    fireEvent.click(screen.getByText('View Businesses in Ashanti Region →'))
+    expect(setPage).toHaveBeenCalledWith('business')
+  })
+
+  it('the events section\'s CTA navigates to the Events page', () => {
+    const setPage = vi.fn()
+    renderHero({ setPage })
+    fireEvent.click(screen.getByText('View Events in Ashanti Region →'))
+    expect(setPage).toHaveBeenCalledWith('events')
+  })
+
+  it('shows sign-up/login CTAs in the closing section when logged out', () => {
     renderHero()
     expect(screen.getByText(T.login)).toBeInTheDocument()
-    expect(screen.getAllByText(`✨ ${T.signup}`).length).toBeGreaterThan(0)
+    expect(screen.getByText(T.signup)).toBeInTheDocument()
   })
 
-  it('shows an Akwaaba greeting instead of the CTAs when logged in', () => {
+  it('shows an Akwaaba greeting instead of auth CTAs when logged in', () => {
     renderHero({ user: { fullName: 'Kojo Mensah' } })
     expect(screen.getByText(/Akwaaba/)).toBeInTheDocument()
     expect(screen.queryByText(T.login)).not.toBeInTheDocument()
   })
 
-  it('typing in the search box calls setSearchInput and setShowSearchResults', () => {
-    const setSearchInput = vi.fn()
-    const setShowSearchResults = vi.fn()
-    renderHero({ setSearchInput, setShowSearchResults })
-    fireEvent.change(screen.getByPlaceholderText(T.search), { target: { value: 'kente' } })
-    expect(setSearchInput).toHaveBeenCalledWith('kente')
-    expect(setShowSearchResults).toHaveBeenCalledWith(true)
-  })
-
-  it('renders all four section badges for the scroll narrative', () => {
-    renderHero()
-    expect(screen.getByText('WELCOME TO ASHANTI')).toBeInTheDocument()
-    expect(screen.getByText('GHANA RISING')).toBeInTheDocument()
-    expect(screen.getByText('THE ASHANTI REGION')).toBeInTheDocument()
-    expect(screen.getByText('BUILT FOR ASHANTI, BY ASHANTI')).toBeInTheDocument()
-  })
-
-  it('clicking "Register Your Business" in the join section calls setPage', () => {
-    const setPage = vi.fn()
-    renderHero({ setPage })
-    fireEvent.click(screen.getByText('Register Your Business'))
-    expect(setPage).toHaveBeenCalledWith('register')
-  })
-
-  it('toggles map view via the quick-action button', () => {
-    const setShowMap = vi.fn()
-    renderHero({ setShowMap })
-    fireEvent.click(screen.getByText(/Map View/))
-    expect(setShowMap).toHaveBeenCalled()
+  it('clicking sign up in the closing section calls setAuthModal', () => {
+    const setAuthModal = vi.fn()
+    renderHero({ setAuthModal })
+    fireEvent.click(screen.getByText(T.signup))
+    expect(setAuthModal).toHaveBeenCalledWith('signup')
   })
 })

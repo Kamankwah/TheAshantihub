@@ -22,6 +22,7 @@ import Flag from "./components/Flag.jsx";
 import Navbar from "./components/Navbar.jsx";
 import Hero from "./components/Hero.jsx";
 import ChatLauncher from "./components/ChatLauncher.jsx";
+import Footer from "./components/Footer.jsx";
 
 // ─── Credit Scoring System ────────────────────────────────────────────────────
 const LENDING_PARTNERS = [
@@ -1988,10 +1989,18 @@ function NotificationsPanel({user,onClose}) {
   </div>;
 }
 
+// Popular-search quick-fill suggestions for the Business page's search bar.
+const SEARCH_SUGGESTIONS = [
+  "fufu restaurant", "hotel near palace", "kente cloth", "car repair suame",
+  "24 hour pharmacy", "wedding planner", "funeral organizer", "cheap transport",
+  "rooftop bar", "fresh groceries", "dental clinic", "gym", "tuk-tuk",
+  "tour guide", "adinkra crafts", "petrol station", "open now", "highly rated",
+];
+
 // ─── Language Toggle ──────────────────────────────────────────────────────────
 const TRANSLATIONS = {
-  en:{search:"Search businesses...",welcome:"Discover Kumasi — All in One Place",tagline:"Hotels, tours, food, crafts, transport & more — The Marketplace of Ashanti.",signup:"Create Free Account",login:"Sign In",register:"Register Your Business",categories:"Categories",bookNow:"Book",pay:"Pay"},
-  tw:{search:"Hwehwɛ adwuma...",welcome:"Hu Kumasi — Baako mu",tagline:"Ahemfie, akwantuo, aduane, nwonwa, kwan & bio — Ashanti Dwamfo.",signup:"Yɛ Account Foforo",login:"Wo ho hyɛ mu",register:"Kyerɛ Wo Adwuma",categories:"Nkyereɛ",bookNow:"Bɔ",pay:"Tua"},
+  en:{search:"Search businesses...",signup:"Create Free Account",login:"Sign In",register:"Register Your Business",categories:"Categories",bookNow:"Book",pay:"Pay"},
+  tw:{search:"Hwehwɛ adwuma...",signup:"Yɛ Account Foforo",login:"Wo ho hyɛ mu",register:"Kyerɛ Wo Adwuma",categories:"Nkyereɛ",bookNow:"Bɔ",pay:"Tua"},
 };
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
@@ -3134,9 +3143,6 @@ export default function AshantiHub() {
   const [showSearchResults,setShowSearchResults]=useState(false);
   const [searchFocused,setSearchFocused]=useState(false);
 
-  // Popular-search quick-fill suggestions now live in components/Hero.jsx
-  // (the only place that renders them) — see SEARCH_SUGGESTIONS there.
-
   if(isAdmin) return <StaffDashboard auth={auth} onExit={()=>setIsAdmin(false)}/>;
   if(showBizDash) return <BusinessDashboard onExit={()=>setShowBizDash(false)} user={user}/>;
   if(showPayments) return <PaymentDashboard onClose={()=>setShowPayments(false)}/>;
@@ -3177,17 +3183,10 @@ export default function AshantiHub() {
       <Navbar
         page={page} setPage={setPage}
         lang={lang} setLang={setLang}
-        currency={currency} setCurrency={setCurrency}
         user={user} auth={auth}
         handleLogoClick={handleLogoClick}
         setAuthModal={setAuthModal}
         setShowNotifs={setShowNotifs}
-        setShowMessaging={setShowMessaging}
-        setShowFavs={setShowFavs}
-        favourites={favourites}
-        unreadMessages={unreadMessages}
-        setShowBizDash={setShowBizDash}
-        setShowPayments={setShowPayments}
         T={T}
       />
 
@@ -3197,28 +3196,76 @@ export default function AshantiHub() {
             T={T}
             user={user}
             setAuthModal={setAuthModal}
-            setShowReferral={setShowReferral}
-            searchInput={searchInput}
-            setSearchInput={setSearchInput}
-            showSearchResults={showSearchResults}
-            setShowSearchResults={setShowSearchResults}
-            searchFocused={searchFocused}
-            setSearchFocused={setSearchFocused}
-            setFilters={setFilters}
-            setShowFilters={setShowFilters}
-            showMap={showMap}
-            setShowMap={setShowMap}
-            setShowFavs={setShowFavs}
-            favourites={favourites}
             setPage={setPage}
           />
 
-          {/* WhatsApp notice — dark-themed to continue directly off the Hero */}
+          {/* Referral CTA */}
+          {user&&(
+            <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:"22px 20px",textAlign:"center"}}>
+              <div style={{fontSize:"1.5rem",marginBottom:6}}>🎁</div>
+              <div style={{color:C.gold,fontWeight:900,marginBottom:4,fontSize:"0.95rem"}}>Refer friends & earn GHS 10 each</div>
+              <div style={{color:"white",fontSize:"0.75rem",marginBottom:12,opacity:0.85}}>Share AshantiHub and earn mobile money credit for every friend who signs up.</div>
+              <button onClick={()=>setShowReferral(true)} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"9px 22px",fontWeight:900,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>Get My Referral Code →</button>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Business page — the marketplace browsing experience (search, category
+          tabs, filters, listings grid) that used to live directly on the home
+          page, relocated here per the redesign brief so "Business" in the nav
+          is where customers browse businesses. The business owner's own
+          private BusinessDashboard is a click away via the button below,
+          rather than what this nav item opens directly. */}
+      {page==="business"&&(
+        <>
+          {/* WhatsApp notice */}
           <div style={{background:C.void,borderBottom:`1.5px solid ${C.whatsapp}30`,padding:"10px 16px",textAlign:"center"}}>
             <span style={{fontSize:"0.72rem",color:C.lightGold,fontWeight:600}}>
               📱 Every business is WhatsApp-connected
               {!user&&<span> — <span onClick={()=>setAuthModal("signup")} style={{color:C.gold,cursor:"pointer",fontWeight:800,textDecoration:"underline"}}>Sign up free</span> to message businesses instantly</span>}
             </span>
+          </div>
+
+          {/* Search bar */}
+          <div style={{background:C.darkBrown,padding:"16px",position:"relative"}}>
+            <div style={{maxWidth:960,margin:"0 auto",position:"relative"}}>
+              <div style={{display:"flex",borderRadius:30,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.35)"}}>
+                <input
+                  value={searchInput}
+                  onChange={(e) => { setSearchInput(e.target.value); setShowSearchResults(true); }}
+                  onFocus={() => { setSearchFocused(true); setShowSearchResults(true); }}
+                  onBlur={() => setTimeout(() => { setSearchFocused(false); setShowSearchResults(false); }, 200)}
+                  placeholder={T.search}
+                  style={{ flex: 1, padding: "13px 18px", border: "none", fontSize: "0.85rem", background: "white", outline: "none", fontFamily: "inherit" }} />
+                {searchInput && <button onClick={() => { setSearchInput(""); setFilters((f) => ({ ...f, search: undefined })); setShowSearchResults(false); }} style={{ background: "white", border: "none", padding: "0 8px", cursor: "pointer", color: "#aaa", fontSize: "1.1rem" }}>✕</button>}
+                <button onClick={() => setShowFilters((f) => !f)} style={{ background: "#f5f5f5", border: "none", padding: "13px 14px", cursor: "pointer", fontSize: "0.85rem" }} title="Filters">⚙️</button>
+                <button style={{ background: C.gold, color: C.black, border: "none", padding: "13px 18px", fontWeight: 900, cursor: "pointer" }}>🔍</button>
+              </div>
+              <div style={{marginTop:10,display:"flex",gap:8,flexWrap:"wrap"}}>
+                <button onClick={() => setShowMap((m) => !m)} style={{ background: "rgba(255,255,255,0.12)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 20, padding: "6px 14px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>
+                  {showMap ? "📋 List View" : "🗺️ Map View"}
+                </button>
+                <button onClick={() => setShowFavs(true)} style={{ background: "rgba(255,255,255,0.12)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 20, padding: "6px 14px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>
+                  ❤️ Saved ({favourites.length})
+                </button>
+              </div>
+              {showSearchResults && searchFocused && !searchInput && (
+                <div style={{ position: "absolute", top: "calc(100% + 8px)", left: 0, right: 0, background: "white", borderRadius: 16, boxShadow: "0 8px 40px rgba(0,0,0,0.3)", zIndex: 500, overflow: "hidden", maxHeight: 340, overflowY: "auto" }}>
+                  <div style={{ padding: "12px" }}>
+                    <div style={{ fontSize: "0.68rem", color: "#aaa", fontWeight: 700, padding: "4px 8px 8px" }}>🔥 POPULAR SEARCHES</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {SEARCH_SUGGESTIONS.map((sugg) => (
+                        <button key={sugg} onClick={() => { setSearchInput(sugg); setFilters((f) => ({ ...f, search: sugg })); setShowSearchResults(false); }}
+                          style={{ background: `${C.gold}15`, color: C.darkBrown, border: `1px solid ${C.gold}33`, borderRadius: 20, padding: "5px 12px", fontSize: "0.72rem", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                          🔍 {sugg}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Filters panel — Sort/Zone are discrete selects and write straight into `filters`,
@@ -3227,10 +3274,20 @@ export default function AshantiHub() {
               minPriceInput/maxPriceInput state. "Min Rating" was dropped: the real Listing model
               has no rating field, so it could never do anything meaningful; a Min/Max Price range
               (which the backend and useListings already support via min_price/max_price) replaces
-              it. */}
+              it. Currency now lives here too — it moved off the Navbar per the redesign brief, and
+              this is the one place its effect (Card pricing) is actually visible. */}
           {showFilters&&(
             <div style={{background:C.darkBrown,borderBottom:`1px solid ${C.gold}33`,padding:"14px 16px"}}>
               <div style={{maxWidth:960,margin:"0 auto",display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
+                <div>
+                  <label style={{fontSize:"0.68rem",fontWeight:700,color:C.lightGold,marginBottom:3,display:"block"}}>Currency</label>
+                  <select value={currency} onChange={e=>setCurrency(e.target.value)} style={{padding:"6px 10px",borderRadius:10,border:"1.5px solid rgba(255,255,255,0.25)",fontSize:"0.74rem",background:"rgba(255,255,255,0.08)",color:"white",fontFamily:"inherit"}}>
+                    <option value="GHS">GHS 🇬🇭</option>
+                    <option value="USD">USD 🇺🇸</option>
+                    <option value="GBP">GBP 🇬🇧</option>
+                    <option value="EUR">EUR 🇪🇺</option>
+                  </select>
+                </div>
                 <div>
                   <label style={{fontSize:"0.68rem",fontWeight:700,color:C.lightGold,marginBottom:3,display:"block"}}>Sort By</label>
                   <select value={filters.ordering||""} onChange={e=>setFilters(f=>({...f,ordering:e.target.value||undefined}))} style={{padding:"6px 10px",borderRadius:10,border:"1.5px solid rgba(255,255,255,0.25)",fontSize:"0.74rem",background:"rgba(255,255,255,0.08)",color:"white",fontFamily:"inherit"}}>
@@ -3370,19 +3427,10 @@ export default function AshantiHub() {
             <p style={{color:C.lightGold,fontSize:"0.78rem",margin:"0 0 14px",opacity:0.85}}>First 3 months FREE. WhatsApp-connected listings.</p>
             <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
               <button onClick={()=>setPage("register")} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"10px 22px",fontWeight:900,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>Register Your Business →</button>
-              <button onClick={()=>setShowBizDash(true)} style={{background:"transparent",color:C.lightGold,border:"1.5px solid #ffffff44",borderRadius:30,padding:"10px 22px",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>🏪 Business Dashboard</button>
+              <button onClick={()=>setShowBizDash(true)} style={{background:"transparent",color:C.lightGold,border:"1.5px solid #ffffff44",borderRadius:30,padding:"10px 22px",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>🏪 Go to my Business Dashboard</button>
+              <button onClick={()=>setShowPayments(true)} style={{background:"transparent",color:C.lightGold,border:"1.5px solid #ffffff44",borderRadius:30,padding:"10px 22px",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>💳 Payments</button>
             </div>
           </div>
-
-          {/* Referral CTA */}
-          {user&&(
-            <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:"22px 20px",textAlign:"center"}}>
-              <div style={{fontSize:"1.5rem",marginBottom:6}}>🎁</div>
-              <div style={{color:C.gold,fontWeight:900,marginBottom:4,fontSize:"0.95rem"}}>Refer friends & earn GHS 10 each</div>
-              <div style={{color:"white",fontSize:"0.75rem",marginBottom:12,opacity:0.85}}>Share AshantiHub and earn mobile money credit for every friend who signs up.</div>
-              <button onClick={()=>setShowReferral(true)} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"9px 22px",fontWeight:900,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>Get My Referral Code →</button>
-            </div>
-          )}
         </>
       )}
 
@@ -3483,25 +3531,8 @@ export default function AshantiHub() {
         </div>
       )}
 
-      {/* Footer */}
-      <div style={{background:C.black,color:C.lightGold,textAlign:"center",padding:"20px",fontSize:"0.7rem",position:"relative",overflow:"hidden"}}>
-        <div style={{position:"absolute",top:0,left:0,right:0,height:5,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
-        <div style={{paddingTop:8}}>
-          <div style={{marginBottom:4}}>
-            <span style={{color:C.ghRed}}>★</span><span style={{color:C.ghGold}}>★</span><span style={{color:C.ghGreen}}>★</span>
-            {"  "}<strong style={{color:C.gold}}>AshantiHub</strong>{"  "}
-            <span style={{color:C.ghGreen}}>★</span><span style={{color:C.ghGold}}>★</span><span style={{color:C.ghRed}}>★</span>
-          </div>
-          <div style={{fontSize:"0.65rem",color:C.gold,fontWeight:600,marginBottom:4}}>The Marketplace of Ashanti 👑 • The Pride of Ghana 🇬🇭</div>
-          <div style={{opacity:0.6,marginBottom:10,fontSize:"0.62rem"}}>Kumasi, Ashanti Region, Ghana • info@ashantihub.com</div>
-          <div style={{display:"flex",justifyContent:"center",gap:12,flexWrap:"wrap",marginBottom:8}}>
-            {[["terms","Terms & Conditions"],["privacy","Privacy Policy"],["business","Business Agreement"]].map(([doc,label])=>(
-              <span key={doc} onClick={()=>setLegalDoc(doc)} style={{color:C.gold,cursor:"pointer",textDecoration:"underline",fontWeight:600,fontSize:"0.65rem"}}>{label}</span>
-            ))}
-          </div>
-          <div style={{opacity:0.4,fontSize:"0.58rem"}}>© 2026 AshantiHub Ltd. All Rights Reserved • Registered under Ghana Companies Act 2019 • Data Protection Commission Registered</div>
-        </div>
-      </div>
+      {/* Footer — every page except the redesigned full-viewport home landing page */}
+      {page!=="home"&&<Footer setLegalDoc={setLegalDoc}/>}
 
       {/* Floating chat launcher — opens the existing (mock, Phase-2) MessagingCenter */}
       <ChatLauncher

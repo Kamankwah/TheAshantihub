@@ -11,19 +11,11 @@ function renderNavbar(props = {}) {
       setPage={vi.fn()}
       lang="en"
       setLang={vi.fn()}
-      currency="GHS"
-      setCurrency={vi.fn()}
       user={null}
       auth={{ logout: vi.fn() }}
       handleLogoClick={vi.fn()}
       setAuthModal={vi.fn()}
       setShowNotifs={vi.fn()}
-      setShowMessaging={vi.fn()}
-      setShowFavs={vi.fn()}
-      favourites={[]}
-      unreadMessages={0}
-      setShowBizDash={vi.fn()}
-      setShowPayments={vi.fn()}
       T={T}
       {...props}
     />,
@@ -41,11 +33,11 @@ describe('Navbar', () => {
     expect(screen.getAllByText(/Contact/).length).toBeGreaterThan(0)
   })
 
-  it('renders a Business nav item that opens the business dashboard', () => {
-    const setShowBizDash = vi.fn()
-    renderNavbar({ setShowBizDash })
+  it('navigates to the business page when Business is clicked', () => {
+    const setPage = vi.fn()
+    renderNavbar({ setPage })
     fireEvent.click(screen.getAllByText(/Business/)[0])
-    expect(setShowBizDash).toHaveBeenCalledWith(true)
+    expect(setPage).toHaveBeenCalledWith('business')
   })
 
   it('shows sign in/create account affordances when logged out, and the user name when logged in', () => {
@@ -56,24 +48,13 @@ describe('Navbar', () => {
     rerender(
       <Navbar
         page="home" setPage={vi.fn()} lang="en" setLang={vi.fn()}
-        currency="GHS" setCurrency={vi.fn()}
         user={{ fullName: 'Ama Boateng' }}
         auth={{ logout: vi.fn() }}
         handleLogoClick={vi.fn()} setAuthModal={vi.fn()}
-        setShowNotifs={vi.fn()} setShowMessaging={vi.fn()}
-        setShowFavs={vi.fn()} favourites={[]} unreadMessages={0}
-        setShowBizDash={vi.fn()} setShowPayments={vi.fn()} T={T}
+        setShowNotifs={vi.fn()} T={T}
       />,
     )
     expect(screen.getAllByText(/Ama/).length).toBeGreaterThan(0)
-  })
-
-  it('shows the unread-messages badge count inside the "More" popover when there are unread messages', () => {
-    renderNavbar({ unreadMessages: 3 })
-    // Messages moved into the desktop "More" popover as part of the hybrid
-    // navbar redesign — open it before asserting the badge is there.
-    fireEvent.click(screen.getByText('⋯ More'))
-    expect(screen.getAllByText('3').length).toBeGreaterThan(0)
   })
 
   it('toggles the mobile dropdown menu via the hamburger button', () => {
@@ -84,10 +65,12 @@ describe('Navbar', () => {
     expect(screen.getByLabelText('Close menu')).toHaveAttribute('aria-expanded', 'true')
   })
 
-  it('calls handleLogoClick when the logo is clicked (5-click staff gesture)', () => {
+  it('calls handleLogoClick and navigates home when the logo is clicked', () => {
     const handleLogoClick = vi.fn()
-    renderNavbar({ handleLogoClick })
+    const setPage = vi.fn()
+    renderNavbar({ handleLogoClick, setPage })
     fireEvent.click(screen.getByText('AshantiHub'))
     expect(handleLogoClick).toHaveBeenCalledTimes(1)
+    expect(setPage).toHaveBeenCalledWith('home')
   })
 })
