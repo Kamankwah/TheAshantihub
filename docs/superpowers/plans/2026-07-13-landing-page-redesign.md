@@ -1063,7 +1063,10 @@ describe('Hero', () => {
   it('shows sign-up/login CTAs when logged out', () => {
     renderHero()
     expect(screen.getByText(T.login)).toBeInTheDocument()
-    expect(screen.getByText(`✨ ${T.signup}`)).toBeInTheDocument()
+    // getAllByText, not getByText: the welcome section's CTA and the join
+    // section's CTA both render "✨ Create Free Account" (legitimate — they're
+    // independent scroll stops on one page, both mounted simultaneously).
+    expect(screen.getAllByText(`✨ ${T.signup}`).length).toBeGreaterThan(0)
   })
 
   it('shows an Akwaaba greeting instead of the CTAs when logged in', () => {
