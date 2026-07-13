@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { C } from "../theme.js";
 
 // ─── Hero ──────────────────────────────────────────────────────────────────
@@ -61,7 +61,7 @@ export default function Hero({
   favourites,
   photos,
 }) {
-  const slides = Object.entries(photos || {});
+  const slides = useMemo(() => Object.entries(photos || {}), [photos]);
   const [slide, setSlide] = useState(0);
   const reducedMotion = usePrefersReducedMotion();
   const intervalRef = useRef(null);
@@ -81,21 +81,31 @@ export default function Hero({
   return (
     <div style={{ padding: "40px 20px 36px", textAlign: "center", position: "relative", overflow: "hidden", minHeight: 280 }}>
       {/* Carousel background slides — crossfade via opacity transition; Ken-Burns
-          drift via the heroKenBurns keyframe, skipped when reducedMotion */}
-      {slides.map(([key, url], i) => (
-        <div
-          key={key}
-          aria-hidden={i !== slide}
-          style={{
-            position: "absolute", inset: 0,
-            backgroundImage: `url(${url})`, backgroundSize: "cover", backgroundPosition: "center top",
-            opacity: i === slide ? 1 : 0,
-            transition: `opacity ${CROSSFADE_MS}ms ease-in-out`,
-            animation: i === slide && !reducedMotion ? "heroKenBurns 9s ease-in-out infinite alternate" : "none",
-            willChange: "opacity, transform",
-          }}
-        />
-      ))}
+          drift via the heroKenBurns keyframe, skipped when reducedMotion.
+          Only the active slide plus its immediate neighbors get a real
+          backgroundImage (bounded to 3 loaded images regardless of slide
+          count) — the neighbors so advancing/going back never shows a blank
+          frame while an image fetches for the first time, everything else
+          left unset since it's opacity:0 and invisible anyway. */}
+      {slides.map(([key, url], i) => {
+        const isNear = i === slide
+          || i === (slide + 1) % slides.length
+          || i === (slide - 1 + slides.length) % slides.length;
+        return (
+          <div
+            key={key}
+            aria-hidden={i !== slide}
+            style={{
+              position: "absolute", inset: 0,
+              ...(isNear ? { backgroundImage: `url(${url})`, backgroundSize: "cover", backgroundPosition: "center top" } : null),
+              opacity: i === slide ? 1 : 0,
+              transition: `opacity ${CROSSFADE_MS}ms ease-in-out`,
+              animation: i === slide && !reducedMotion ? "heroKenBurns 9s ease-in-out infinite alternate" : "none",
+              willChange: i === slide ? "opacity, transform" : "auto",
+            }}
+          />
+        );
+      })}
 
       {/* Dark kente-gradient overlay — unchanged */}
       <div style={{ position: "absolute", inset: 0, background: `linear-gradient(160deg,rgba(204,0,0,0.85),rgba(44,24,16,0.9),rgba(0,0,128,0.85))` }} />
