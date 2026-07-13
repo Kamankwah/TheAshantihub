@@ -7,7 +7,6 @@ from django.utils.crypto import get_random_string
 from rest_framework import serializers
 
 from .models import BusinessOwner, BusinessOwnerProfile, Customer, Role, StaffUser
-from .validators import validate_document_content_type, validate_image_content_type
 
 # Used to pay the same check_password() cost when no account is found, so that
 # login timing does not leak whether an identifier exists (see login serializers below).

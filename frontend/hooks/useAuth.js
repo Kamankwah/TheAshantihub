@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { apiFetch, apiPatch, apiPatchForm, apiPost, apiPostForm, getStoredAuth, setStoredAuth } from '../apiClient.js'
+import { apiFetch, apiPatch, apiPatchForm, apiPost, getStoredAuth, setStoredAuth } from '../apiClient.js'
 
 const LOGIN_PATHS = {
   customer: '/api/accounts/customers/login/',
@@ -29,9 +29,16 @@ export function useAuth() {
   const login = useCallback(async (accountType, identifier, password) => {
     const data = await apiPost(LOGIN_PATHS[accountType], { identifier, password })
     setStoredAuth(data)
-    const me = await apiFetch('/api/accounts/me/')
-    const merged = { ...data, ...me }
-    setStoredAuth(merged)
+    let merged = data
+    try {
+      const me = await apiFetch('/api/accounts/me/')
+      merged = { ...data, ...me }
+      setStoredAuth(merged)
+    } catch {
+      // /me/ failed after a successful login — keep the user logged in with
+      // what the login response gave us; the next page load's session-restore
+      // effect will retry /me/ and fill in the rest.
+    }
     setUser(merged)
     return merged
   }, [])
@@ -78,7 +85,12 @@ export function useAuth() {
 
   const refreshUser = useCallback(async () => {
     const me = await apiFetch('/api/accounts/me/')
-    setUser((current) => (current ? { ...current, ...me } : current))
+    setUser((current) => {
+      if (!current) return current
+      const merged = { ...current, ...me }
+      setStoredAuth(merged)
+      return merged
+    })
     return me
   }, [])
 

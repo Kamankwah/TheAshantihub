@@ -3,7 +3,6 @@ from django.utils.crypto import get_random_string
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.pagination import PageNumberPagination
-from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView

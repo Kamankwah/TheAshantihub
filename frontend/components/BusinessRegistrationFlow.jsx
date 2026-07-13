@@ -105,8 +105,10 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
       const fresh = await auth.refreshUser();
       if (fresh.registration_step === "complete") {
         setShowBizDash(true);
-      } else {
+      } else if (["business_info", "payment_info", "terms"].includes(fresh.registration_step)) {
         setStep(fresh.registration_step);
+      } else {
+        setError("Something went wrong determining your next step. Please refresh the page and try again.");
       }
     } catch (err) {
       setError("Could not save your business information. Please check your details.");
@@ -132,8 +134,10 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
       const fresh = await auth.refreshUser();
       if (fresh.registration_step === "complete") {
         setShowBizDash(true);
-      } else {
+      } else if (["business_info", "payment_info", "terms"].includes(fresh.registration_step)) {
         setStep(fresh.registration_step);
+      } else {
+        setError("Something went wrong determining your next step. Please refresh the page and try again.");
       }
     } catch (err) {
       setError("Could not save your payment details. Please check your details.");
@@ -149,6 +153,7 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
     try {
       await auth.acceptBusinessTerms();
       await auth.refreshUser();
+      setPage("home");
       setShowBizDash(true);
     } catch (err) {
       setError("Could not record your acceptance. Please try again.");

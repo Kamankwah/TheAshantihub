@@ -1807,7 +1807,6 @@ function ReferralModal({user,onClose}) {
 }
 
 const authInputStyle={width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:10,border:"1.5px solid #ddd",marginBottom:10,fontSize:"0.82rem",fontFamily:"inherit"};
-const authLabelStyle={display:"block",fontSize:"0.72rem",fontWeight:700,color:C.darkBrown,marginBottom:10};
 const authSubmitStyle={width:"100%",background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"12px",fontWeight:900,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit",marginTop:4};
 
 export function AuthModal({authState,auth,onClose,onSuccess}) {

@@ -102,13 +102,15 @@ describe('BusinessRegistrationFlow', () => {
   it('accepting terms calls acceptBusinessTerms, refreshUser, and opens the dashboard', async () => {
     const auth = makeAuth()
     const setShowBizDash = vi.fn()
-    render(<BusinessRegistrationFlow user={{fullName:'Abena'}} auth={auth} initialStep="terms" setPage={vi.fn()} setShowBizDash={setShowBizDash} />)
+    const setPage = vi.fn()
+    render(<BusinessRegistrationFlow user={{fullName:'Abena'}} auth={auth} initialStep="terms" setPage={setPage} setShowBizDash={setShowBizDash} />)
 
     fireEvent.click(screen.getByLabelText(/I have read and agree/i))
     fireEvent.click(screen.getByRole('button', { name: 'Submit for Verification' }))
 
     await waitFor(() => expect(auth.acceptBusinessTerms).toHaveBeenCalled())
     await waitFor(() => expect(auth.refreshUser).toHaveBeenCalled())
+    await waitFor(() => expect(setPage).toHaveBeenCalledWith('home'))
     await waitFor(() => expect(setShowBizDash).toHaveBeenCalledWith(true))
   })
 
