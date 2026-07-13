@@ -1,6 +1,6 @@
 # Frontend Modernization Spec — Hero, Navbar, Componentization
 
-**Status:** Spec only — no `App.jsx` changes made yet. This is the plan for the next session that actually touches frontend code.
+**Status:** §2–5 implemented (React 19 bump in §6 was already the installed version by the time this landed, so no separate action was needed there) — see `docs/superpowers/specs/2026-07-12-frontend-modernization-design.md` / `.../plans/2026-07-12-frontend-modernization-plan.md` for what actually shipped.
 
 **Owner agent:** `.claude/agents/frontend-engineer.md`
 
