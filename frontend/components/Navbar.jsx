@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { C } from "../theme.js";
 import Flag from "./Flag.jsx";
 
@@ -7,13 +7,24 @@ import Flag from "./Flag.jsx";
 // `AshantiHub` (App.jsx). App.jsx continues to own all the state this
 // component acts on/reflects — everything below is a prop.
 //
-// Adds a hamburger/mobile menu for narrow viewports: below `NAV_BREAKPOINT`
-// the desktop action row (`.ah-navbar-actions`) is hidden in favour of a
-// hamburger toggle (`.ah-navbar-hamburger`) that reveals a stacked dropdown
-// of the same actions. This follows the same "local <style> tag" convention
-// the app already uses for one-off @keyframes (see LoadingScreen), just
-// extended to a @media query — no CSS modules/framework introduced.
+// Layout, redesigned per the "hybrid" navbar decision: the core wayfinding
+// row (Home / Events / About / Contact, language, notifications, sign
+// in/create account) stays visible at all times on desktop. Everything else
+// the app already offered (currency, messages, favourites, Biz Dashboard,
+// Payments) moves into a "More" popover on desktop so the primary bar stays
+// uncluttered — nothing was removed, it's one tap further away.
+//
+// Below `NAV_BREAKPOINT` both groups collapse into the existing
+// hamburger/mobile dropdown (unchanged behavior from the prior extraction),
+// since there's no room for a separate popover on small screens anyway.
 const NAV_BREAKPOINT = 760;
+
+const NAV_PAGES = [
+  { id: "home", icon: "🏠" },
+  { id: "events", icon: "🥁" },
+  { id: "about", icon: "ℹ️" },
+  { id: "contact", icon: "✉️" },
+];
 
 export default function Navbar({
   page, setPage,
@@ -32,44 +43,38 @@ export default function Navbar({
   T,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef(null);
 
-  // Wraps an action so picking it from the mobile dropdown also closes the
-  // dropdown; harmless no-op when triggered from the always-open desktop row.
-  const act = (fn) => (...args) => { fn(...args); setMenuOpen(false); };
+  // Wraps an action so picking it from the mobile dropdown / desktop "More"
+  // popover also closes it; harmless no-op when triggered from the
+  // always-open desktop core row.
+  const act = (fn) => (...args) => { fn(...args); setMenuOpen(false); setMoreOpen(false); };
 
-  const Actions = () => (
+  // Close the desktop "More" popover on outside click.
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onClick = (e) => { if (moreRef.current && !moreRef.current.contains(e.target)) setMoreOpen(false); };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [moreOpen]);
+
+  const CoreActions = () => (
     <>
       {/* Language */}
       <button onClick={act(() => setLang(l => l === "en" ? "tw" : "en"))} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.2)",borderRadius:20,padding:"4px 8px",fontSize:"0.62rem",fontWeight:700,cursor:"pointer"}}>
         {lang === "en" ? "🇬🇭 Twi" : "🇬🇧 EN"}
       </button>
-      {/* Currency */}
-      <select value={currency} onChange={e => { setCurrency(e.target.value); setMenuOpen(false); }} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.2)",borderRadius:20,padding:"4px 8px",fontSize:"0.62rem",cursor:"pointer",outline:"none",fontFamily:"inherit"}}>
-        <option value="GHS">GHS 🇬🇭</option>
-        <option value="USD">USD 🇺🇸</option>
-        <option value="GBP">GBP 🇬🇧</option>
-        <option value="EUR">EUR 🇪🇺</option>
-      </select>
       {/* Nav */}
-      {["home", "events", "about"].map(p => (
-        <button key={p} onClick={act(() => setPage(p))} style={{background:page===p?C.gold:"transparent",color:page===p?C.black:C.lightGold,border:`1px solid ${page===p?C.gold:"#ffffff33"}`,borderRadius:20,padding:"4px 9px",fontSize:"0.62rem",fontWeight:700,cursor:"pointer"}}>
-          {p === "home" ? "🏠" : p === "events" ? "🥁" : "ℹ️"} {p[0].toUpperCase() + p.slice(1)}
+      {NAV_PAGES.map(({ id, icon }) => (
+        <button key={id} onClick={act(() => setPage(id))} style={{background:page===id?C.gold:"transparent",color:page===id?C.black:C.lightGold,border:`1px solid ${page===id?C.gold:"#ffffff33"}`,borderRadius:20,padding:"4px 9px",fontSize:"0.62rem",fontWeight:700,cursor:"pointer"}}>
+          {icon} {id[0].toUpperCase() + id.slice(1)}
         </button>
       ))}
       {/* Notifications */}
       <button onClick={act(() => setShowNotifs(n => !n))} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.2)",borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.85rem",position:"relative"}}>
         🔔
         {user && <span style={{position:"absolute",top:-2,right:-2,background:C.kente1,borderRadius:"50%",width:8,height:8}}/>}
-      </button>
-      {/* Messages */}
-      <button onClick={act(() => { setShowMessaging(true); if (!user) setAuthModal("signup"); })} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.2)",borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.85rem",position:"relative"}}>
-        💬
-        {unreadMessages > 0 && <span style={{position:"absolute",top:-3,right:-3,background:C.kente1,borderRadius:"50%",width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.52rem",fontWeight:900,color:"white"}}>{unreadMessages}</span>}
-      </button>
-      {/* Favourites */}
-      <button onClick={act(() => setShowFavs(f => !f))} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.2)",borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.85rem",position:"relative"}}>
-        ❤️
-        {favourites.length > 0 && <span style={{position:"absolute",top:-4,right:-4,background:C.kente1,borderRadius:"50%",width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.55rem",fontWeight:900,color:"white"}}>{favourites.length}</span>}
       </button>
       {/* User */}
       {user ? (
@@ -79,10 +84,35 @@ export default function Navbar({
           <span onClick={(e) => { e.stopPropagation(); auth.logout(); setMenuOpen(false); }} style={{marginLeft:6,opacity:0.7,cursor:"pointer",fontSize:"0.68rem"}} title="Sign out">⏻</span>
         </button>
       ) : (
-        <button onClick={act(() => setAuthModal("signup"))} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"5px 10px",fontSize:"0.68rem",fontWeight:900,cursor:"pointer"}}>{T.signup.split(" ")[0]} Up</button>
+        <>
+          <button onClick={act(() => setAuthModal("login"))} style={{background:"transparent",color:C.lightGold,border:"1px solid #ffffff33",borderRadius:20,padding:"5px 12px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>{T.login}</button>
+          <button onClick={act(() => setAuthModal("signup"))} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.68rem",fontWeight:900,cursor:"pointer"}}>{T.signup}</button>
+        </>
       )}
-      <button onClick={act(() => setShowBizDash(true))} style={{background:"transparent",color:C.lightGold,border:"1px solid #ffffff33",borderRadius:20,padding:"4px 9px",fontSize:"0.62rem",fontWeight:700,cursor:"pointer"}}>🏪 Biz</button>
-      <button onClick={act(() => setShowPayments(true))} style={{background:"transparent",color:C.lightGold,border:"1px solid #ffffff33",borderRadius:20,padding:"4px 9px",fontSize:"0.62rem",fontWeight:700,cursor:"pointer"}}>💳 Pay</button>
+    </>
+  );
+
+  const MoreActions = ({ stacked = false }) => (
+    <>
+      {/* Currency */}
+      <select value={currency} onChange={e => { setCurrency(e.target.value); setMenuOpen(false); setMoreOpen(false); }} style={{background:stacked?"rgba(255,255,255,0.1)":"#fff",color:stacked?"white":C.darkBrown,border:`1px solid ${stacked?"rgba(255,255,255,0.2)":"#ddd"}`,borderRadius:20,padding:"4px 8px",fontSize:"0.7rem",cursor:"pointer",outline:"none",fontFamily:"inherit",width:stacked?"auto":"100%"}}>
+        <option value="GHS">GHS 🇬🇭</option>
+        <option value="USD">USD 🇺🇸</option>
+        <option value="GBP">GBP 🇬🇧</option>
+        <option value="EUR">EUR 🇪🇺</option>
+      </select>
+      {/* Messages */}
+      <button onClick={act(() => { setShowMessaging(true); if (!user) setAuthModal("signup"); })} style={moreBtnStyle(stacked)}>
+        💬 <span>Messages</span>
+        {unreadMessages > 0 && <span style={pillStyle}>{unreadMessages}</span>}
+      </button>
+      {/* Favourites */}
+      <button onClick={act(() => setShowFavs(f => !f))} style={moreBtnStyle(stacked)}>
+        ❤️ <span>Saved</span>
+        {favourites.length > 0 && <span style={pillStyle}>{favourites.length}</span>}
+      </button>
+      <button onClick={act(() => setShowBizDash(true))} style={moreBtnStyle(stacked)}>🏪 <span>Biz Dashboard</span></button>
+      <button onClick={act(() => setShowPayments(true))} style={moreBtnStyle(stacked)}>💳 <span>Payments</span></button>
     </>
   );
 
@@ -101,7 +131,17 @@ export default function Navbar({
 
         {/* Desktop action row — hidden below NAV_BREAKPOINT via the <style> block below */}
         <div className="ah-navbar-actions" style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
-          <Actions/>
+          <CoreActions/>
+          <div ref={moreRef} style={{position:"relative"}}>
+            <button onClick={() => setMoreOpen(o => !o)} aria-expanded={moreOpen} style={{background:"transparent",color:C.lightGold,border:"1px solid #ffffff33",borderRadius:20,padding:"4px 9px",fontSize:"0.62rem",fontWeight:700,cursor:"pointer"}}>
+              ⋯ More
+            </button>
+            {moreOpen && (
+              <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,background:"white",borderRadius:14,boxShadow:"0 10px 40px rgba(0,0,0,0.25)",padding:10,display:"flex",flexDirection:"column",gap:8,minWidth:190,zIndex:200}}>
+                <MoreActions/>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Hamburger toggle — only shown below NAV_BREAKPOINT */}
@@ -116,10 +156,12 @@ export default function Navbar({
         </button>
       </div>
 
-      {/* Mobile dropdown menu — mirrors the desktop action row, stacked vertically */}
+      {/* Mobile dropdown menu — everything stacked vertically, core first then the "more" group */}
       {menuOpen && (
         <div className="ah-navbar-mobile-menu" style={{maxWidth:960,margin:"0 auto",display:"flex",flexWrap:"wrap",gap:8,alignItems:"center",padding:"10px 0 16px",borderTop:"1px solid rgba(255,255,255,0.12)"}}>
-          <Actions/>
+          <CoreActions/>
+          <div style={{width:"100%",borderTop:"1px dashed rgba(255,255,255,0.15)",margin:"4px 0"}}/>
+          <MoreActions stacked/>
         </div>
       )}
 
@@ -135,3 +177,34 @@ export default function Navbar({
     </div>
   );
 }
+
+const moreBtnStyle = (stacked) => ({
+  background: stacked ? "rgba(255,255,255,0.1)" : "#f6f6f6",
+  color: stacked ? "white" : C.darkBrown,
+  border: `1px solid ${stacked ? "rgba(255,255,255,0.2)" : "#e5e5e5"}`,
+  borderRadius: 20,
+  padding: "6px 10px",
+  fontSize: "0.72rem",
+  fontWeight: 700,
+  cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  position: "relative",
+  width: stacked ? "auto" : "100%",
+  justifyContent: stacked ? "center" : "flex-start",
+});
+
+const pillStyle = {
+  background: C.kente1,
+  color: "white",
+  borderRadius: "50%",
+  minWidth: 16,
+  height: 16,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: "0.55rem",
+  fontWeight: 900,
+  padding: "0 3px",
+};

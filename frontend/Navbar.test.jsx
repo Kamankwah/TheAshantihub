@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import Navbar from './components/Navbar.jsx'
 
-const T = { signup: 'Create Free Account' }
+const T = { signup: 'Create Free Account', login: 'Sign In' }
 
 function renderNavbar(props = {}) {
   return render(
@@ -37,11 +37,13 @@ describe('Navbar', () => {
     expect(screen.getAllByText(/Home/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/Events/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/About/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Contact/).length).toBeGreaterThan(0)
   })
 
-  it('shows a sign-up affordance when logged out, and the user name when logged in', () => {
+  it('shows sign in/create account affordances when logged out, and the user name when logged in', () => {
     const { rerender } = renderNavbar()
-    expect(screen.getAllByText(/Up$/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(T.login).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(T.signup).length).toBeGreaterThan(0)
 
     rerender(
       <Navbar
@@ -58,8 +60,11 @@ describe('Navbar', () => {
     expect(screen.getAllByText(/Ama/).length).toBeGreaterThan(0)
   })
 
-  it('shows the unread-messages badge count when there are unread messages', () => {
+  it('shows the unread-messages badge count inside the "More" popover when there are unread messages', () => {
     renderNavbar({ unreadMessages: 3 })
+    // Messages moved into the desktop "More" popover as part of the hybrid
+    // navbar redesign — open it before asserting the badge is there.
+    fireEvent.click(screen.getByText('⋯ More'))
     expect(screen.getAllByText('3').length).toBeGreaterThan(0)
   })
 

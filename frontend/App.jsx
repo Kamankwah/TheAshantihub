@@ -21,6 +21,7 @@ import { C } from "./theme.js";
 import Flag from "./components/Flag.jsx";
 import Navbar from "./components/Navbar.jsx";
 import Hero from "./components/Hero.jsx";
+import RegionalStory from "./components/RegionalStory.jsx";
 
 // ─── Credit Scoring System ────────────────────────────────────────────────────
 const LENDING_PARTNERS = [
@@ -3212,6 +3213,8 @@ export default function AshantiHub() {
             photos={KUMASI_PHOTOS}
           />
 
+          <RegionalStory T={T} user={user} setAuthModal={setAuthModal} setPage={setPage} />
+
           {/* Stats */}
           <div style={{background:C.gold,padding:"10px 16px",display:"flex",justifyContent:"center",gap:"clamp(12px,4vw,50px)",flexWrap:"wrap"}}>
             {[["100K+","Annual Visitors"],["15","Categories"],["65+","Businesses"],["4","Currencies"]].map(([n,l])=>(
@@ -3454,6 +3457,38 @@ export default function AshantiHub() {
           <div style={{textAlign:"center",marginTop:8,display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
             {!user&&<button onClick={()=>setAuthModal("signup")} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"10px 22px",fontWeight:900,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>Create Free Account</button>}
             <button onClick={()=>setPage("register")} style={{background:C.kente2,color:"white",border:"none",borderRadius:30,padding:"10px 22px",fontWeight:900,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>Register Business</button>
+          </div>
+        </div>
+      )}
+
+      {/* Contact page */}
+      {page==="contact"&&(
+        <div style={{maxWidth:640,margin:"0 auto",padding:"24px 20px"}}>
+          <div style={{borderRadius:18,overflow:"hidden",marginBottom:20,position:"relative",padding:"28px 24px",background:`linear-gradient(135deg,${C.darkBrown},${C.kente3})`}}>
+            <div style={{position:"absolute",top:0,left:0,right:0,height:4,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
+            <div style={{color:C.gold,fontWeight:900,fontSize:"1.3rem",marginBottom:6}}>👑 Get In Touch</div>
+            <div style={{color:"white",fontSize:"0.82rem",opacity:0.9,lineHeight:1.6}}>Questions about a listing, a partnership, or your business account? We're based in Kumasi and we reply fast — WhatsApp is the quickest way to reach us.</div>
+          </div>
+
+          <div style={{display:"grid",gap:12,marginBottom:20}}>
+            {[
+              {icon:"📍",title:"Location",body:"Kumasi, Ashanti Region, Ghana"},
+              {icon:"✉️",title:"Email",body:"info@ashantihub.com"},
+              {icon:"🕑",title:"Support Hours",body:"Mon–Sat, 8:00am – 8:00pm GMT"},
+            ].map((c,i)=>(
+              <div key={i} style={{background:"white",borderRadius:16,padding:"14px 18px",boxShadow:"0 2px 12px rgba(0,0,0,0.07)",display:"flex",gap:14,alignItems:"center"}}>
+                <div style={{fontSize:"1.4rem"}}>{c.icon}</div>
+                <div>
+                  <div style={{fontWeight:800,color:C.darkBrown,fontSize:"0.82rem"}}>{c.title}</div>
+                  <div style={{color:"#555",fontSize:"0.78rem"}}>{c.body}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{textAlign:"center",display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
+            <WABtn phone="233244000000" name="AshantiHub Support" style={{fontSize:"0.8rem",padding:"10px 20px"}}/>
+            {!user&&<button onClick={()=>setAuthModal("signup")} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"10px 22px",fontWeight:900,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>Create Free Account</button>}
           </div>
         </div>
       )}
