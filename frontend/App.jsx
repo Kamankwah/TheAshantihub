@@ -17,15 +17,10 @@ import { useMySubscription } from "./hooks/useMySubscription.js";
 import { useMyTransactions } from "./hooks/useMyTransactions.js";
 import { useMyCreditScore } from "./hooks/useMyCreditScore.js";
 import { apiPost, apiPatch } from "./apiClient.js";
-
-// ─── Colors ──────────────────────────────────────────────────────────────────
-const C = {
-  gold:"#D4A017", deepGold:"#B8860B", darkBrown:"#2C1810",
-  lightGold:"#F5DEB3", cream:"#FDF6E3", black:"#1A1A1A",
-  kente1:"#CC0000", kente2:"#006400", kente3:"#000080",
-  ghRed:"#CE1126", ghGold:"#FCD116", ghGreen:"#006B3F",
-  whatsapp:"#25D366", orange:"#E8621A",
-};
+import { C } from "./theme.js";
+import Flag from "./components/Flag.jsx";
+import Navbar from "./components/Navbar.jsx";
+import Hero from "./components/Hero.jsx";
 
 // ─── Credit Scoring System ────────────────────────────────────────────────────
 const LENDING_PARTNERS = [
@@ -1133,22 +1128,6 @@ const KUMASI_PHOTOS = {
 const iStyle = { width:"100%",padding:"11px 14px",borderRadius:10,border:"1.5px solid #ddd",fontSize:"0.88rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box" };
 const lStyle = { fontSize:"0.78rem",fontWeight:700,color:C.darkBrown,marginBottom:5,display:"block" };
 const btnP = (on=true) => ({ background:on?C.gold:"#ddd",color:on?C.darkBrown:"#aaa",border:"none",borderRadius:30,padding:"12px",fontWeight:900,fontSize:"0.88rem",cursor:on?"pointer":"default",fontFamily:"inherit",width:"100%" });
-
-function Flag({w=50,h=33}) {
-  return <svg width={w} height={h} viewBox="0 0 54 36" style={{borderRadius:4,boxShadow:"0 2px 8px rgba(0,0,0,0.4)",border:"1px solid #ffffff33",display:"block"}}>
-    <rect x="0" y="0" width="54" height="12" fill="#D4A017"/>
-    <rect x="0" y="12" width="54" height="12" fill="#1A1A1A"/>
-    <rect x="0" y="24" width="54" height="12" fill="#006400"/>
-    <rect x="0" y="11" width="54" height="1.5" fill="white" opacity="0.6"/>
-    <rect x="0" y="23.5" width="54" height="1.5" fill="white" opacity="0.6"/>
-    <g transform="translate(27,18)">
-      <rect x="-8" y="-4.5" width="16" height="3" rx="1.5" fill="#D4A017"/>
-      <rect x="-5" y="-1.5" width="3" height="4" rx="1" fill="#D4A017"/>
-      <rect x="2" y="-1.5" width="3" height="4" rx="1" fill="#D4A017"/>
-      <rect x="-7" y="2.5" width="14" height="2.5" rx="1.2" fill="#D4A017"/>
-    </g>
-  </svg>;
-}
 
 function Stars({rating,size="0.85rem"}) {
   return <span style={{color:C.gold,fontSize:size}}>
@@ -3154,17 +3133,8 @@ export default function AshantiHub() {
   const [showSearchResults,setShowSearchResults]=useState(false);
   const [searchFocused,setSearchFocused]=useState(false);
 
-  // Static "popular searches" quick-fill suggestions shown when the search box is focused and empty.
-  // (The old cross-category smart-search engine that scored against the in-memory `LISTINGS` mock
-  // across every category at once has been removed — full-text search now happens server-side via
-  // `filters.search`, scoped to whichever category tab is active, since there's no full listing set
-  // held client-side anymore to search across.)
-  const SEARCH_SUGGESTIONS = [
-    "fufu restaurant","hotel near palace","kente cloth","car repair suame",
-    "24 hour pharmacy","wedding planner","funeral organizer","cheap transport",
-    "rooftop bar","fresh groceries","dental clinic","gym","tuk-tuk",
-    "tour guide","adinkra crafts","petrol station","open now","highly rated",
-  ];
+  // Popular-search quick-fill suggestions now live in components/Hero.jsx
+  // (the only place that renders them) — see SEARCH_SUGGESTIONS there.
 
   if(isAdmin) return <StaffDashboard auth={auth} onExit={()=>setIsAdmin(false)}/>;
   if(showBizDash) return <BusinessDashboard onExit={()=>setShowBizDash(false)} user={user}/>;
@@ -3175,67 +3145,10 @@ export default function AshantiHub() {
 
   const activeCatObj=categories?.find(c=>c.slug===filters.category);
 
-  const Header=()=>(
-    <div style={{background:`linear-gradient(135deg,${C.darkBrown} 0%,${C.black} 50%,${C.kente3} 100%)`,padding:"0 16px",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 20px rgba(0,0,0,0.4)"}}>
-      <div style={{position:"absolute",top:0,left:0,right:0,height:4,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
-      <div style={{maxWidth:960,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:60,paddingTop:4}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={handleLogoClick}>
-          <Flag w={44} h={30}/>
-          <span style={{fontSize:"1.3rem"}}>👑</span>
-          <div>
-            <div style={{color:C.gold,fontWeight:900,fontSize:"1rem",letterSpacing:1,lineHeight:1}}>AshantiHub</div>
-            <div style={{color:C.lightGold,fontSize:"0.52rem",letterSpacing:2,opacity:0.8}}>THE MARKETPLACE OF ASHANTI</div>
-          </div>
-        </div>
-        <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
-          {/* Language */}
-          <button onClick={()=>setLang(l=>l==="en"?"tw":"en")} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.2)",borderRadius:20,padding:"4px 8px",fontSize:"0.62rem",fontWeight:700,cursor:"pointer"}}>
-            {lang==="en"?"🇬🇭 Twi":"🇬🇧 EN"}
-          </button>
-          {/* Currency */}
-          <select value={currency} onChange={e=>setCurrency(e.target.value)} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.2)",borderRadius:20,padding:"4px 8px",fontSize:"0.62rem",cursor:"pointer",outline:"none",fontFamily:"inherit"}}>
-            <option value="GHS">GHS 🇬🇭</option>
-            <option value="USD">USD 🇺🇸</option>
-            <option value="GBP">GBP 🇬🇧</option>
-            <option value="EUR">EUR 🇪🇺</option>
-          </select>
-          {/* Nav */}
-          {["home","events","about"].map(p=>(
-            <button key={p} onClick={()=>setPage(p)} style={{background:page===p?C.gold:"transparent",color:page===p?C.black:C.lightGold,border:`1px solid ${page===p?C.gold:"#ffffff33"}`,borderRadius:20,padding:"4px 9px",fontSize:"0.62rem",fontWeight:700,cursor:"pointer"}}>
-              {p==="home"?"🏠":p==="events"?"🥁":"ℹ️"} {p[0].toUpperCase()+p.slice(1)}
-            </button>
-          ))}
-          {/* Notifications */}
-          <button onClick={()=>setShowNotifs(n=>!n)} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.2)",borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.85rem",position:"relative"}}>
-            🔔
-            {user&&<span style={{position:"absolute",top:-2,right:-2,background:C.kente1,borderRadius:"50%",width:8,height:8}}/>}
-          </button>
-          {/* Messages */}
-          <button onClick={()=>{setShowMessaging(true);if(!user)setAuthModal("signup");}} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.2)",borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.85rem",position:"relative"}}>
-            💬
-            {MOCK_CONVERSATIONS.reduce((s,c)=>s+c.unread,0)>0&&<span style={{position:"absolute",top:-3,right:-3,background:C.kente1,borderRadius:"50%",width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.52rem",fontWeight:900,color:"white"}}>{MOCK_CONVERSATIONS.reduce((s,c)=>s+c.unread,0)}</span>}
-          </button>
-          {/* Favourites */}
-          <button onClick={()=>setShowFavs(f=>!f)} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.2)",borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.85rem",position:"relative"}}>
-            ❤️
-            {favourites.length>0&&<span style={{position:"absolute",top:-4,right:-4,background:C.kente1,borderRadius:"50%",width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.55rem",fontWeight:900,color:"white"}}>{favourites.length}</span>}
-          </button>
-          {/* User */}
-          {user?(
-            <button onClick={()=>setPage("profile")} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"5px 10px",fontSize:"0.68rem",fontWeight:900,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
-              <span style={{background:C.darkBrown,color:C.gold,borderRadius:"50%",width:16,height:16,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:"0.6rem",fontWeight:900}}>{user.fullName?.[0]?.toUpperCase()||"U"}</span>
-              {user.fullName?.split(" ")[0]}
-              <span onClick={(e)=>{e.stopPropagation();auth.logout();}} style={{marginLeft:6,opacity:0.7,cursor:"pointer",fontSize:"0.68rem"}} title="Sign out">⏻</span>
-            </button>
-          ):(
-            <button onClick={()=>setAuthModal("signup")} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"5px 10px",fontSize:"0.68rem",fontWeight:900,cursor:"pointer"}}>{T.signup.split(" ")[0]} Up</button>
-          )}
-          <button onClick={()=>setShowBizDash(true)} style={{background:"transparent",color:C.lightGold,border:"1px solid #ffffff33",borderRadius:20,padding:"4px 9px",fontSize:"0.62rem",fontWeight:700,cursor:"pointer"}}>🏪 Biz</button>
-          <button onClick={()=>setShowPayments(true)} style={{background:"transparent",color:C.lightGold,border:"1px solid #ffffff33",borderRadius:20,padding:"4px 9px",fontSize:"0.62rem",fontWeight:700,cursor:"pointer"}}>💳 Pay</button>
-        </div>
-      </div>
-    </div>
-  );
+  // Unread-messages badge count for Navbar — MOCK_CONVERSATIONS is mock
+  // messaging data (Phase-2 messaging is out of scope, see App.jsx notes
+  // near MessagingCenter), so this stays computed here rather than moving.
+  const unreadMessages = MOCK_CONVERSATIONS.reduce((s, c) => s + c.unread, 0);
 
   // Favourites drawer — renders every favourited id regardless of which category/page
   // is currently loaded, fetching each one individually via `FavDrawerItem`/`useListing`
@@ -3260,84 +3173,44 @@ export default function AshantiHub() {
       {showNotifs&&<NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
       {showFavs&&<FavsDrawer/>}
       {showReferral&&<ReferralModal user={user} onClose={()=>setShowReferral(false)}/>}
-      <Header/>
+      <Navbar
+        page={page} setPage={setPage}
+        lang={lang} setLang={setLang}
+        currency={currency} setCurrency={setCurrency}
+        user={user} auth={auth}
+        handleLogoClick={handleLogoClick}
+        setAuthModal={setAuthModal}
+        setShowNotifs={setShowNotifs}
+        setShowMessaging={setShowMessaging}
+        setShowFavs={setShowFavs}
+        favourites={favourites}
+        unreadMessages={unreadMessages}
+        setShowBizDash={setShowBizDash}
+        setShowPayments={setShowPayments}
+        T={T}
+      />
 
       {page==="home"&&(
         <>
-          {/* Hero */}
-          <div style={{padding:"40px 20px 36px",textAlign:"center",position:"relative",overflow:"hidden",minHeight:280}}>
-            {/* Real Manhyia Palace photo */}
-            <div style={{position:"absolute",inset:0,backgroundImage:`url(${KUMASI_PHOTOS.manhyiaPalace})`,backgroundSize:"cover",backgroundPosition:"center top"}}/>
-            {/* Dark gradient overlay */}
-            <div style={{position:"absolute",inset:0,background:`linear-gradient(160deg,rgba(204,0,0,0.85),rgba(44,24,16,0.9),rgba(0,0,128,0.85))`}}/>
-            <div style={{position:"absolute",inset:0,opacity:0.04,backgroundImage:`repeating-linear-gradient(45deg,${C.gold} 0px,${C.gold} 2px,transparent 2px,transparent 20px),repeating-linear-gradient(-45deg,${C.gold} 0px,${C.gold} 2px,transparent 2px,transparent 20px)`}}/>
-            <div style={{position:"absolute",bottom:0,left:0,right:0,height:5,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
-            <div style={{position:"relative"}}>
-              <div style={{fontSize:"2rem",marginBottom:8}}>👑</div>
-              <h1 style={{color:"white",fontSize:"clamp(1.3rem,4vw,2rem)",fontWeight:900,margin:"0 0 8px"}}>{T.welcome.split("—")[0]}<span style={{color:C.gold}}>—</span>{T.welcome.split("—")[1]}</h1>
-              <p style={{color:C.lightGold,fontSize:"0.82rem",margin:"0 auto 20px",maxWidth:460,lineHeight:1.6,opacity:0.9}}>{T.tagline}</p>
-              {!user&&(
-                <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:16,flexWrap:"wrap"}}>
-                  <button onClick={()=>setAuthModal("signup")} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"9px 20px",fontWeight:900,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>✨ {T.signup}</button>
-                  <button onClick={()=>setAuthModal("login")} style={{background:"rgba(255,255,255,0.15)",color:"white",border:"1.5px solid rgba(255,255,255,0.4)",borderRadius:30,padding:"9px 20px",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>{T.login}</button>
-                </div>
-              )}
-              {user&&<div style={{background:"rgba(255,255,255,0.12)",borderRadius:30,padding:"6px 16px",display:"inline-flex",gap:10,alignItems:"center",marginBottom:16}}>
-                <span style={{color:C.lightGold,fontSize:"0.78rem"}}>👋 Akwaaba, <strong style={{color:C.gold}}>{user.fullName?.split(" ")[0]}</strong>!</span>
-                <button onClick={()=>setShowReferral(true)} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"3px 10px",fontSize:"0.62rem",fontWeight:800,cursor:"pointer"}}>🎁 Refer & Earn</button>
-              </div>}
-              {/* Search — typed input is debounced (~300ms) before it flows into filters.search,
-                  which is what useListings actually queries, scoped to the active category */}
-              <div style={{position:"relative",maxWidth:480,margin:"0 auto"}}>
-                <div style={{display:"flex",borderRadius:30,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.3)"}}>
-                  <input
-                    value={searchInput}
-                    onChange={e=>{setSearchInput(e.target.value);setShowSearchResults(true);}}
-                    onFocus={()=>{setSearchFocused(true);setShowSearchResults(true);}}
-                    onBlur={()=>setTimeout(()=>{setSearchFocused(false);setShowSearchResults(false);},200)}
-                    placeholder={T.search}
-                    style={{flex:1,padding:"13px 18px",border:"none",fontSize:"0.85rem",background:"white",outline:"none",fontFamily:"inherit"}}/>
-                  {searchInput&&<button onClick={()=>{setSearchInput("");setFilters(f=>({...f,search:undefined}));setShowSearchResults(false);}} style={{background:"white",border:"none",padding:"0 8px",cursor:"pointer",color:"#aaa",fontSize:"1.1rem"}}>✕</button>}
-                  <button onClick={()=>setShowFilters(f=>!f)} style={{background:"#f5f5f5",border:"none",padding:"13px 14px",cursor:"pointer",fontSize:"0.85rem"}} title="Filters">⚙️</button>
-                  <button style={{background:C.gold,color:C.black,border:"none",padding:"13px 18px",fontWeight:900,cursor:"pointer"}}>🔍</button>
-                </div>
-
-                {/* Search Dropdown — popular-suggestion quick-fill only when the box is empty; once
-                    there's a query, results come live from the grid below via filters.search, so the
-                    dropdown just gets out of the way (the old cross-category preview here required
-                    the full in-memory LISTINGS set, which no longer exists client-side). Checked
-                    against searchInput (not the debounced filters.search) so the dropdown reacts
-                    instantly to typing rather than lagging behind the debounce. */}
-                {showSearchResults&&searchFocused&&!searchInput&&(
-                  <div style={{position:"absolute",top:"calc(100% + 8px)",left:0,right:0,background:"white",borderRadius:16,boxShadow:"0 8px 40px rgba(0,0,0,0.2)",zIndex:500,overflow:"hidden",maxHeight:420,overflowY:"auto"}}>
-                    <div style={{padding:"12px"}}>
-                      <div style={{fontSize:"0.68rem",color:"#aaa",fontWeight:700,padding:"4px 8px 8px"}}>🔥 POPULAR SEARCHES</div>
-                      <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                        {SEARCH_SUGGESTIONS.map(s=>(
-                          <button key={s} onClick={()=>{setSearchInput(s);setFilters(f=>({...f,search:s}));setShowSearchResults(false);}}
-                            style={{background:`${C.gold}15`,color:C.darkBrown,border:`1px solid ${C.gold}33`,borderRadius:20,padding:"5px 12px",fontSize:"0.72rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                            🔍 {s}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-              {/* Quick action buttons */}
-              <div style={{display:"flex",gap:8,justifyContent:"center",marginTop:12,flexWrap:"wrap"}}>
-                <button onClick={()=>setShowMap(m=>!m)} style={{background:"rgba(255,255,255,0.15)",color:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"5px 12px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>
-                  {showMap?"📋 List View":"🗺️ Map View"}
-                </button>
-                <button onClick={()=>setShowFavs(true)} style={{background:"rgba(255,255,255,0.15)",color:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"5px 12px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>
-                  ❤️ Saved ({favourites.length})
-                </button>
-                {user&&<button onClick={()=>setShowReferral(true)} style={{background:"rgba(255,255,255,0.15)",color:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"5px 12px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>
-                  🎁 Refer & Earn GHS 10
-                </button>}
-              </div>
-            </div>
-          </div>
+          <Hero
+            T={T}
+            user={user}
+            setAuthModal={setAuthModal}
+            setShowReferral={setShowReferral}
+            searchInput={searchInput}
+            setSearchInput={setSearchInput}
+            showSearchResults={showSearchResults}
+            setShowSearchResults={setShowSearchResults}
+            searchFocused={searchFocused}
+            setSearchFocused={setSearchFocused}
+            setFilters={setFilters}
+            setShowFilters={setShowFilters}
+            showMap={showMap}
+            setShowMap={setShowMap}
+            setShowFavs={setShowFavs}
+            favourites={favourites}
+            photos={KUMASI_PHOTOS}
+          />
 
           {/* Stats */}
           <div style={{background:C.gold,padding:"10px 16px",display:"flex",justifyContent:"center",gap:"clamp(12px,4vw,50px)",flexWrap:"wrap"}}>
