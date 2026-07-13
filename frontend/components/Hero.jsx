@@ -1,19 +1,25 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { C } from "../theme.js";
+import GhanaCurrentMap from "./GhanaCurrentMap.jsx";
+import AshantiGlowMap from "./AshantiGlowMap.jsx";
+import usePrefersReducedMotion from "../hooks/usePrefersReducedMotion.js";
 
 // ─── Hero ──────────────────────────────────────────────────────────────────
-// Extracted from the inline hero JSX that used to live directly inside
-// `AshantiHub`'s "home" page branch (App.jsx). App.jsx still owns all the
-// state referenced here (search input, filters, favourites, etc.) — this
-// component only receives it as props.
+// The home page's full-viewport marketing narrative — replaces the old
+// static-carousel Hero plus the separate scroll-pinned RegionalStory with
+// one four-section, scroll-pinned experience:
+//   0. Welcome — GhanaCurrentMap backdrop, headline, search bar, signup CTA
+//      (absorbs the old Hero's functional search/CTA/quick-actions)
+//   1. Ghana Rising — still GhanaCurrentMap, folds in the old flat stats bar
+//      as feature stats
+//   2. Ashanti/Kumasi — hands off to AshantiGlowMap, platform features
+//   3. Join — both maps' visual language closes out, join CTA
 //
-// Adds a multi-slide carousel over the `photos` prop (App.jsx's
-// `KUMASI_PHOTOS`), replacing the old single static background image, while
-// preserving the kente-gradient overlay, Ghana-flag-stripe bottom bar,
-// search bar and quick-action buttons exactly as they were.
-
-const AUTO_ADVANCE_MS = 5500;
-const CROSSFADE_MS = 1200;
+// Structurally this is the same from-scratch ScrollGlobe adaptation as the
+// RegionalStory it replaces (position:sticky visual panel inside a tall
+// N*100vh wrapper, scroll-position section detection via
+// getBoundingClientRect) — proven to build and pass tests in commit 63ab5e4.
+// No Tailwind/shadcn — plain inline styles + one local <style> block.
 
 const SEARCH_SUGGESTIONS = [
   "fufu restaurant", "hotel near palace", "kente cloth", "car repair suame",
@@ -22,24 +28,50 @@ const SEARCH_SUGGESTIONS = [
   "tour guide", "adinkra crafts", "petrol station", "open now", "highly rated",
 ];
 
-function usePrefersReducedMotion() {
-  const [reduced, setReduced] = useState(() =>
-    typeof window !== "undefined" && window.matchMedia
-      ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
-      : false
-  );
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const handler = (e) => setReduced(e.matches);
-    if (mq.addEventListener) mq.addEventListener("change", handler);
-    else mq.addListener(handler); // Safari <14 fallback
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener("change", handler);
-      else mq.removeListener(handler);
-    };
-  }, []);
-  return reduced;
+function buildSections(T) {
+  const [welcomeTitle, welcomeSubtitle] = (T.welcome || "").split("—").map((s) => s?.trim());
+  return [
+    {
+      id: "welcome",
+      badge: "Welcome to Ashanti",
+      title: welcomeTitle || T.welcome,
+      subtitle: welcomeSubtitle,
+      description: T.tagline,
+      align: "left",
+      hero: true,
+    },
+    {
+      id: "ghana",
+      badge: "Ghana Rising",
+      title: "A Nation Wired",
+      subtitle: "for Growth",
+      description: "From the coast to the north, Ghana's economy is humming — gold, cocoa, tourism and a fast-growing digital sector all running through the same network of towns, roads and traders. Every node on this map is a business, a market, a livelihood.",
+      align: "center",
+      stats: [["100K+", "Annual Visitors"], ["15", "Categories"], ["65+", "Businesses"], ["4", "Currencies"]],
+    },
+    {
+      id: "kumasi",
+      badge: "The Ashanti Region",
+      title: "Where Gold",
+      subtitle: "Still Runs Deep",
+      description: "At the heart of that network sits Ashanti — historic seat of the Ashanti Kingdom, home to Kumasi's markets and Bonwire's kente looms. AshantiHub connects that momentum to the people driving it, all one WhatsApp message away.",
+      align: "left",
+      features: [
+        { title: "65+ Businesses, One Marketplace", description: "Hotels, chop bars, tour guides, kente weavers, transport and more." },
+        { title: "WhatsApp-First", description: "Message any business directly — no forms, no friction." },
+        { title: "Verified & Secure", description: "Every listing checked against Ghana Card, every account protected." },
+      ],
+    },
+    {
+      id: "join",
+      badge: "Built For Ashanti, By Ashanti",
+      title: "Join the",
+      subtitle: "Growth",
+      description: "Whether you're visiting Kumasi or running a business here, AshantiHub is how the region's growth reaches you — and how you reach it back.",
+      align: "center",
+      actions: true,
+    },
+  ];
 }
 
 export default function Hero({
@@ -59,154 +91,234 @@ export default function Hero({
   setShowMap,
   setShowFavs,
   favourites,
-  photos,
+  setPage,
 }) {
-  const slides = useMemo(() => Object.entries(photos || {}), [photos]);
-  const [slide, setSlide] = useState(0);
   const reducedMotion = usePrefersReducedMotion();
-  const intervalRef = useRef(null);
+  const sections = useMemo(() => buildSections(T), [T]);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const sectionRefs = useRef([]);
+  const rafId = useRef(null);
 
-  // Auto-advance — paused entirely when the user prefers reduced motion.
+  const updateActive = useCallback(() => {
+    const viewportCenter = window.innerHeight / 2;
+    let nearest = 0;
+    let minDistance = Infinity;
+    sectionRefs.current.forEach((el, i) => {
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const center = rect.top + rect.height / 2;
+      const distance = Math.abs(center - viewportCenter);
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearest = i;
+      }
+    });
+    setActiveIndex(nearest);
+  }, []);
+
   useEffect(() => {
-    if (reducedMotion || slides.length <= 1) return;
-    intervalRef.current = setInterval(() => {
-      setSlide((s) => (s + 1) % slides.length);
-    }, AUTO_ADVANCE_MS);
-    return () => clearInterval(intervalRef.current);
-  }, [reducedMotion, slides.length]);
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      rafId.current = requestAnimationFrame(() => {
+        updateActive();
+        ticking = false;
+      });
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    updateActive();
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (rafId.current) cancelAnimationFrame(rafId.current);
+    };
+  }, [updateActive]);
 
-  const goPrev = () => setSlide((s) => (s - 1 + slides.length) % slides.length);
-  const goNext = () => setSlide((s) => (s + 1) % slides.length);
+  const scrollTo = (i) => {
+    sectionRefs.current[i]?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center" });
+  };
+
+  const showingGhana = activeIndex < 2;
 
   return (
-    <div style={{ padding: "40px 20px 36px", textAlign: "center", position: "relative", overflow: "hidden", minHeight: 280 }}>
-      {/* Carousel background slides — crossfade via opacity transition; Ken-Burns
-          drift via the heroKenBurns keyframe, skipped when reducedMotion.
-          Only the active slide plus its immediate neighbors get a real
-          backgroundImage (bounded to 3 loaded images regardless of slide
-          count) — the neighbors so advancing/going back never shows a blank
-          frame while an image fetches for the first time, everything else
-          left unset since it's opacity:0 and invisible anyway. */}
-      {slides.map(([key, url], i) => {
-        const isNear = i === slide
-          || i === (slide + 1) % slides.length
-          || i === (slide - 1 + slides.length) % slides.length;
-        return (
-          <div
-            key={key}
-            aria-hidden={i !== slide}
-            style={{
-              position: "absolute", inset: 0,
-              ...(isNear ? { backgroundImage: `url(${url})`, backgroundSize: "cover", backgroundPosition: "center top" } : null),
-              opacity: i === slide ? 1 : 0,
-              transition: `opacity ${CROSSFADE_MS}ms ease-in-out`,
-              animation: i === slide && !reducedMotion ? "heroKenBurns 9s ease-in-out infinite alternate" : "none",
-              willChange: i === slide ? "opacity, transform" : "auto",
-            }}
-          />
-        );
-      })}
-
-      {/* Dark kente-gradient overlay — unchanged */}
-      <div style={{ position: "absolute", inset: 0, background: `linear-gradient(160deg,rgba(204,0,0,0.85),rgba(44,24,16,0.9),rgba(0,0,128,0.85))` }} />
-      <div style={{ position: "absolute", inset: 0, opacity: 0.04, backgroundImage: `repeating-linear-gradient(45deg,${C.gold} 0px,${C.gold} 2px,transparent 2px,transparent 20px),repeating-linear-gradient(-45deg,${C.gold} 0px,${C.gold} 2px,transparent 2px,transparent 20px)` }} />
-      {/* Ghana-flag-stripe bottom bar — unchanged */}
-      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 5, background: `linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)` }} />
-
-      {/* Manual carousel controls */}
-      {slides.length > 1 && (
-        <>
-          <button
-            onClick={goPrev}
-            aria-label="Previous slide"
-            style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", zIndex: 2, background: "rgba(0,0,0,0.35)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: "50%", width: 32, height: 32, cursor: "pointer", fontSize: "1rem", lineHeight: 1 }}
-          >‹</button>
-          <button
-            onClick={goNext}
-            aria-label="Next slide"
-            style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", zIndex: 2, background: "rgba(0,0,0,0.35)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: "50%", width: 32, height: 32, cursor: "pointer", fontSize: "1rem", lineHeight: 1 }}
-          >›</button>
-          <div style={{ position: "absolute", bottom: 12, left: 0, right: 0, display: "flex", justifyContent: "center", gap: 6, zIndex: 2 }}>
-            {slides.map(([key], i) => (
-              <button
-                key={key}
-                onClick={() => setSlide(i)}
-                aria-label={`Go to slide ${i + 1}`}
-                aria-current={i === slide}
-                style={{ width: i === slide ? 18 : 7, height: 7, borderRadius: 4, border: "none", background: i === slide ? C.gold : "rgba(255,255,255,0.5)", cursor: "pointer", padding: 0, transition: "width 0.3s ease" }}
-              />
-            ))}
-          </div>
-        </>
-      )}
-
-      <div style={{ position: "relative", zIndex: 1 }}>
-        <div style={{ fontSize: "2rem", marginBottom: 8 }}>👑</div>
-        <h1 style={{ color: "white", fontSize: "clamp(1.3rem,4vw,2rem)", fontWeight: 900, margin: "0 0 8px" }}>{T.welcome.split("—")[0]}<span style={{ color: C.gold }}>—</span>{T.welcome.split("—")[1]}</h1>
-        <p style={{ color: C.lightGold, fontSize: "0.82rem", margin: "0 auto 20px", maxWidth: 460, lineHeight: 1.6, opacity: 0.9 }}>{T.tagline}</p>
-        {!user && (
-          <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 16, flexWrap: "wrap" }}>
-            <button onClick={() => setAuthModal("signup")} style={{ background: C.gold, color: C.darkBrown, border: "none", borderRadius: 30, padding: "9px 20px", fontWeight: 900, fontSize: "0.82rem", cursor: "pointer", fontFamily: "inherit" }}>✨ {T.signup}</button>
-            <button onClick={() => setAuthModal("login")} style={{ background: "rgba(255,255,255,0.15)", color: "white", border: "1.5px solid rgba(255,255,255,0.4)", borderRadius: 30, padding: "9px 20px", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", fontFamily: "inherit" }}>{T.login}</button>
-          </div>
-        )}
-        {user && <div style={{ background: "rgba(255,255,255,0.12)", borderRadius: 30, padding: "6px 16px", display: "inline-flex", gap: 10, alignItems: "center", marginBottom: 16 }}>
-          <span style={{ color: C.lightGold, fontSize: "0.78rem" }}>👋 Akwaaba, <strong style={{ color: C.gold }}>{user.fullName?.split(" ")[0]}</strong>!</span>
-          <button onClick={() => setShowReferral(true)} style={{ background: C.gold, color: C.darkBrown, border: "none", borderRadius: 20, padding: "3px 10px", fontSize: "0.62rem", fontWeight: 800, cursor: "pointer" }}>🎁 Refer & Earn</button>
-        </div>}
-        {/* Search — typed input is debounced (~300ms) before it flows into filters.search,
-            which is what useListings actually queries, scoped to the active category */}
-        <div style={{ position: "relative", maxWidth: 480, margin: "0 auto" }}>
-          <div style={{ display: "flex", borderRadius: 30, overflow: "hidden", boxShadow: "0 4px 20px rgba(0,0,0,0.3)" }}>
-            <input
-              value={searchInput}
-              onChange={e => { setSearchInput(e.target.value); setShowSearchResults(true); }}
-              onFocus={() => { setSearchFocused(true); setShowSearchResults(true); }}
-              onBlur={() => setTimeout(() => { setSearchFocused(false); setShowSearchResults(false); }, 200)}
-              placeholder={T.search}
-              style={{ flex: 1, padding: "13px 18px", border: "none", fontSize: "0.85rem", background: "white", outline: "none", fontFamily: "inherit" }} />
-            {searchInput && <button onClick={() => { setSearchInput(""); setFilters(f => ({ ...f, search: undefined })); setShowSearchResults(false); }} style={{ background: "white", border: "none", padding: "0 8px", cursor: "pointer", color: "#aaa", fontSize: "1.1rem" }}>✕</button>}
-            <button onClick={() => setShowFilters(f => !f)} style={{ background: "#f5f5f5", border: "none", padding: "13px 14px", cursor: "pointer", fontSize: "0.85rem" }} title="Filters">⚙️</button>
-            <button style={{ background: C.gold, color: C.black, border: "none", padding: "13px 18px", fontWeight: 900, cursor: "pointer" }}>🔍</button>
-          </div>
-
-          {/* Search Dropdown — popular-suggestion quick-fill only when the box is empty; once
-              there's a query, results come live from the grid below via filters.search, so the
-              dropdown just gets out of the way. Checked against searchInput (not the debounced
-              filters.search) so the dropdown reacts instantly to typing rather than lagging
-              behind the debounce. */}
-          {showSearchResults && searchFocused && !searchInput && (
-            <div style={{ position: "absolute", top: "calc(100% + 8px)", left: 0, right: 0, background: "white", borderRadius: 16, boxShadow: "0 8px 40px rgba(0,0,0,0.2)", zIndex: 500, overflow: "hidden", maxHeight: 420, overflowY: "auto" }}>
-              <div style={{ padding: "12px" }}>
-                <div style={{ fontSize: "0.68rem", color: "#aaa", fontWeight: 700, padding: "4px 8px 8px" }}>🔥 POPULAR SEARCHES</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {SEARCH_SUGGESTIONS.map(s => (
-                    <button key={s} onClick={() => { setSearchInput(s); setFilters(f => ({ ...f, search: s })); setShowSearchResults(false); }}
-                      style={{ background: `${C.gold}15`, color: C.darkBrown, border: `1px solid ${C.gold}33`, borderRadius: 20, padding: "5px 12px", fontSize: "0.72rem", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
-                      🔍 {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
+    <div style={{ position: "relative", height: `${sections.length * 100}vh`, background: `linear-gradient(180deg, ${C.void} 0%, ${C.darkBrown} 55%, ${C.void} 100%)` }}>
+      {/* Pinned visual — the two animated maps handing off to each other as the
+          scroll narrative moves from "Ghana" to "Ashanti/Kumasi" */}
+      <div style={{ position: "sticky", top: 0, height: "100vh", overflow: "hidden", zIndex: 0 }}>
+        <div style={{ position: "absolute", inset: 0, opacity: showingGhana ? 1 : 0, transition: "opacity 900ms ease" }}>
+          <GhanaCurrentMap reducedMotion={reducedMotion} />
         </div>
-        {/* Quick action buttons */}
-        <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 12, flexWrap: "wrap" }}>
-          <button onClick={() => setShowMap(m => !m)} style={{ background: "rgba(255,255,255,0.15)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 20, padding: "5px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>
-            {showMap ? "📋 List View" : "🗺️ Map View"}
-          </button>
-          <button onClick={() => setShowFavs(true)} style={{ background: "rgba(255,255,255,0.15)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 20, padding: "5px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>
-            ❤️ Saved ({favourites.length})
-          </button>
-          {user && <button onClick={() => setShowReferral(true)} style={{ background: "rgba(255,255,255,0.15)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 20, padding: "5px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>
-            🎁 Refer & Earn GHS 10
-          </button>}
+        <div style={{ position: "absolute", inset: 0, opacity: showingGhana ? 0 : 1, transition: "opacity 900ms ease" }}>
+          <AshantiGlowMap reducedMotion={reducedMotion} />
         </div>
+        {/* Dark scrim for text legibility over the maps */}
+        <div style={{ position: "absolute", inset: 0, background: `radial-gradient(ellipse at center, transparent 0%, ${C.void}99 75%)` }} />
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, background: `linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)` }} />
+        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 4, background: `linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)` }} />
       </div>
 
+      {/* Side dot nav — desktop only */}
+      <div className="ah-hero-dotnav" style={{ display: "none", position: "fixed", right: 24, top: "50%", transform: "translateY(-50%)", zIndex: 3, flexDirection: "column", gap: 14 }}>
+        {sections.map((s, i) => (
+          <button
+            key={s.id}
+            onClick={() => scrollTo(i)}
+            aria-label={`Go to ${s.badge}`}
+            style={{
+              width: activeIndex === i ? 11 : 8,
+              height: activeIndex === i ? 11 : 8,
+              borderRadius: "50%",
+              border: `2px solid ${C.gold}`,
+              background: activeIndex === i ? C.gold : "transparent",
+              cursor: "pointer",
+              padding: 0,
+              transition: "all 0.3s ease",
+            }}
+          />
+        ))}
+      </div>
+
+      {sections.map((s, i) => (
+        <div
+          key={s.id}
+          ref={(el) => (sectionRefs.current[i] = el)}
+          style={{
+            position: "absolute",
+            top: `${i * 100}vh`,
+            left: 0,
+            right: 0,
+            height: "100vh",
+            zIndex: 2,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: s.align === "center" ? "center" : "flex-start",
+            padding: "0 clamp(20px, 6vw, 90px)",
+            textAlign: s.align === "center" ? "center" : "left",
+          }}
+        >
+          <div style={{ maxWidth: s.hero ? 560 : 480, width: "100%", background: "rgba(22,14,8,0.55)", backdropFilter: "blur(6px)", borderRadius: 20, padding: "26px 28px", border: `1px solid ${C.gold}33` }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: `${C.gold}22`, border: `1px solid ${C.gold}55`, color: C.lightGold, borderRadius: 20, padding: "4px 12px", fontSize: "0.66rem", fontWeight: 800, letterSpacing: 1, marginBottom: 14 }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.gold, animation: reducedMotion ? "none" : "heroPulseDot 1.6s ease-in-out infinite" }} />
+              {s.badge.toUpperCase()}
+            </div>
+            <h1 style={{ color: "white", fontWeight: 900, lineHeight: 1.1, margin: "0 0 14px", fontSize: "clamp(1.9rem, 4.5vw, 3.1rem)", fontFamily: "Georgia, serif" }}>
+              {s.title}{s.subtitle ? " " : ""}
+              {s.subtitle && <span style={{ color: C.gold }}>{s.subtitle}</span>}
+            </h1>
+            <p style={{ color: C.lightGold, opacity: 0.9, fontSize: "0.95rem", lineHeight: 1.7, margin: "0 0 18px" }}>{s.description}</p>
+
+            {s.hero && (
+              <>
+                {!user ? (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 }}>
+                    <button onClick={() => setAuthModal("signup")} style={{ background: C.gold, color: C.darkBrown, border: "none", borderRadius: 30, padding: "11px 22px", fontWeight: 900, fontSize: "0.85rem", cursor: "pointer", fontFamily: "inherit" }}>✨ {T.signup}</button>
+                    <button onClick={() => setAuthModal("login")} style={{ background: "rgba(255,255,255,0.12)", color: "white", border: "1.5px solid rgba(255,255,255,0.35)", borderRadius: 30, padding: "11px 22px", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", fontFamily: "inherit" }}>{T.login}</button>
+                  </div>
+                ) : (
+                  <div style={{ background: "rgba(255,255,255,0.12)", borderRadius: 30, padding: "6px 16px", display: "inline-flex", gap: 10, alignItems: "center", marginBottom: 18 }}>
+                    <span style={{ color: C.lightGold, fontSize: "0.78rem" }}>👋 Akwaaba, <strong style={{ color: C.gold }}>{user.fullName?.split(" ")[0]}</strong>!</span>
+                    <button onClick={() => setShowReferral(true)} style={{ background: C.gold, color: C.darkBrown, border: "none", borderRadius: 20, padding: "3px 10px", fontSize: "0.62rem", fontWeight: 800, cursor: "pointer" }}>🎁 Refer & Earn</button>
+                  </div>
+                )}
+
+                <div style={{ position: "relative" }}>
+                  <div style={{ display: "flex", borderRadius: 30, overflow: "hidden", boxShadow: "0 4px 20px rgba(0,0,0,0.35)" }}>
+                    <input
+                      value={searchInput}
+                      onChange={(e) => { setSearchInput(e.target.value); setShowSearchResults(true); }}
+                      onFocus={() => { setSearchFocused(true); setShowSearchResults(true); }}
+                      onBlur={() => setTimeout(() => { setSearchFocused(false); setShowSearchResults(false); }, 200)}
+                      placeholder={T.search}
+                      style={{ flex: 1, padding: "13px 18px", border: "none", fontSize: "0.85rem", background: "white", outline: "none", fontFamily: "inherit" }} />
+                    {searchInput && <button onClick={() => { setSearchInput(""); setFilters((f) => ({ ...f, search: undefined })); setShowSearchResults(false); }} style={{ background: "white", border: "none", padding: "0 8px", cursor: "pointer", color: "#aaa", fontSize: "1.1rem" }}>✕</button>}
+                    <button onClick={() => setShowFilters((f) => !f)} style={{ background: "#f5f5f5", border: "none", padding: "13px 14px", cursor: "pointer", fontSize: "0.85rem" }} title="Filters">⚙️</button>
+                    <button style={{ background: C.gold, color: C.black, border: "none", padding: "13px 18px", fontWeight: 900, cursor: "pointer" }}>🔍</button>
+                  </div>
+
+                  {showSearchResults && searchFocused && !searchInput && (
+                    <div style={{ position: "absolute", top: "calc(100% + 8px)", left: 0, right: 0, background: "white", borderRadius: 16, boxShadow: "0 8px 40px rgba(0,0,0,0.3)", zIndex: 500, overflow: "hidden", maxHeight: 340, overflowY: "auto" }}>
+                      <div style={{ padding: "12px" }}>
+                        <div style={{ fontSize: "0.68rem", color: "#aaa", fontWeight: 700, padding: "4px 8px 8px" }}>🔥 POPULAR SEARCHES</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {SEARCH_SUGGESTIONS.map((sugg) => (
+                            <button key={sugg} onClick={() => { setSearchInput(sugg); setFilters((f) => ({ ...f, search: sugg })); setShowSearchResults(false); }}
+                              style={{ background: `${C.gold}15`, color: C.darkBrown, border: `1px solid ${C.gold}33`, borderRadius: 20, padding: "5px 12px", fontSize: "0.72rem", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                              🔍 {sugg}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+                  <button onClick={() => setShowMap((m) => !m)} style={{ background: "rgba(255,255,255,0.12)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 20, padding: "6px 14px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>
+                    {showMap ? "📋 List View" : "🗺️ Map View"}
+                  </button>
+                  <button onClick={() => setShowFavs(true)} style={{ background: "rgba(255,255,255,0.12)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 20, padding: "6px 14px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>
+                    ❤️ Saved ({favourites.length})
+                  </button>
+                  {user && (
+                    <button onClick={() => setShowReferral(true)} style={{ background: "rgba(255,255,255,0.12)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 20, padding: "6px 14px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>
+                      🎁 Refer & Earn GHS 10
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ marginTop: 20, fontSize: "0.68rem", color: C.lightGold, opacity: 0.65, display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ animation: reducedMotion ? "none" : "heroScrollHint 1.8s ease-in-out infinite" }}>↓</span> Scroll to explore
+                </div>
+              </>
+            )}
+
+            {s.stats && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(110px,1fr))", gap: 12, marginBottom: 18 }}>
+                {s.stats.map(([n, l]) => (
+                  <div key={l} style={{ textAlign: "center", background: "rgba(255,255,255,0.06)", borderRadius: 12, padding: "10px 6px" }}>
+                    <div style={{ fontWeight: 900, fontSize: "1.3rem", color: C.gold }}>{n}</div>
+                    <div style={{ fontSize: "0.62rem", color: C.lightGold, opacity: 0.85 }}>{l}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {s.features && (
+              <div style={{ display: "grid", gap: 10, marginBottom: 18 }}>
+                {s.features.map((f) => (
+                  <div key={f.title} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.gold, marginTop: 6, flexShrink: 0 }} />
+                    <div>
+                      <div style={{ color: "white", fontWeight: 800, fontSize: "0.82rem" }}>{f.title}</div>
+                      <div style={{ color: C.lightGold, opacity: 0.85, fontSize: "0.76rem" }}>{f.description}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {s.actions && (
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+                {!user && (
+                  <button onClick={() => setAuthModal("signup")} style={{ background: C.gold, color: C.darkBrown, border: "none", borderRadius: 30, padding: "11px 22px", fontWeight: 900, fontSize: "0.85rem", cursor: "pointer", fontFamily: "inherit" }}>
+                    ✨ Create Free Account
+                  </button>
+                )}
+                <button onClick={() => setPage("register")} style={{ background: "transparent", color: "white", border: `1.5px solid ${C.gold}88`, borderRadius: 30, padding: "11px 22px", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", fontFamily: "inherit" }}>
+                  Register Your Business
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+
       <style>{`
-        @keyframes heroKenBurns { from { transform: scale(1); } to { transform: scale(1.08); } }
+        @keyframes heroPulseDot { 0%, 100% { opacity: 0.4; transform: scale(0.85); } 50% { opacity: 1; transform: scale(1.15); } }
+        @keyframes heroScrollHint { 0%, 100% { transform: translateY(0); opacity: 0.65; } 50% { transform: translateY(5px); opacity: 1; } }
+        @media (min-width: 761px) {
+          .ah-hero-dotnav { display: flex !important; }
+        }
       `}</style>
     </div>
   );
