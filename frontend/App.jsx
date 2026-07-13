@@ -1818,14 +1818,6 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
   const [fullName,setFullName]=useState("");
   const [phone,setPhone]=useState("");
   const [email,setEmail]=useState("");
-  const [bizFields,setBizFields]=useState({
-    ghana_card_number:"",ghana_card_front_image:null,ghana_card_back_image:null,
-    gps_address:"",business_contact_phone:"",is_formal:false,
-    business_reg_certificate:null,tin:"",
-    payout_bank_name:"",payout_bank_account_number:"",payout_bank_account_name:"",
-    payout_momo_network:"",payout_momo_number:"",payout_momo_name:"",
-    default_payout_method:"momo",
-  });
   const [error,setError]=useState(null);
   const [submitting,setSubmitting]=useState(false);
 
@@ -1861,20 +1853,6 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
     }
   };
 
-  const handleBusinessSignup=async(e)=>{
-    e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
-      const result=await auth.registerBusinessOwner({full_name:fullName,login_phone:phone,email:email||undefined,password,...bizFields});
-      onSuccess(result);
-    } catch (err) {
-      setError("Could not create your business account. Please check your details.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   return <div data-testid="auth-modal-backdrop" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
     <div style={{background:"white",borderRadius:22,width:"100%",maxWidth:440,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
       <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,borderRadius:"22px 22px 0 0",padding:"20px 24px",position:"relative"}}>
@@ -1885,11 +1863,6 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
         {!lockedAccountType && <div style={{display:"flex",gap:8,marginBottom:16}}>
           <button type="button" onClick={()=>setMode("login")} style={{flex:1,padding:"8px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:800,fontSize:"0.78rem",background:mode==="login"?C.gold:"#eee",color:mode==="login"?C.darkBrown:"#666"}}>Sign In</button>
           <button type="button" onClick={()=>setMode("signup")} style={{flex:1,padding:"8px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:800,fontSize:"0.78rem",background:mode==="signup"?C.gold:"#eee",color:mode==="signup"?C.darkBrown:"#666"}}>Sign Up</button>
-        </div>}
-
-        {mode==="signup" && !lockedAccountType && <div style={{display:"flex",gap:8,marginBottom:16}}>
-          <button type="button" onClick={()=>setAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="customer"?C.gold:"white",color:C.darkBrown}}>I'm a Customer</button>
-          <button type="button" onClick={()=>setAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="business_owner"?C.gold:"white",color:C.darkBrown}}>I'm a Business Owner</button>
         </div>}
 
         {error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
@@ -1904,55 +1877,12 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
           <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Signing in…":"Sign In"}</button>
         </form>}
 
-        {mode==="signup" && accountType==="customer" && <form onSubmit={handleCustomerSignup}>
+        {mode==="signup" && <form onSubmit={handleCustomerSignup}>
           <input value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Full name" required style={authInputStyle}/>
           <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone (+233...)" style={authInputStyle}/>
           <input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="Email" style={authInputStyle}/>
           <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" required minLength={8} style={authInputStyle}/>
           <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Creating account…":"Create Free Account"}</button>
-        </form>}
-
-        {mode==="signup" && accountType==="business_owner" && <form onSubmit={handleBusinessSignup}>
-          <input value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Full name" required style={authInputStyle}/>
-          <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Login phone (+233...)" required style={authInputStyle}/>
-          <input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="Email" style={authInputStyle}/>
-          <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" required minLength={8} style={authInputStyle}/>
-          <input value={bizFields.ghana_card_number} onChange={e=>setBizFields(f=>({...f,ghana_card_number:e.target.value}))} placeholder="Ghana Card number" required style={authInputStyle}/>
-          <label style={authLabelStyle}>Ghana Card — front
-            <input type="file" accept="image/*" required onChange={e=>setBizFields(f=>({...f,ghana_card_front_image:e.target.files[0]}))} style={authInputStyle}/>
-          </label>
-          <label style={authLabelStyle}>Ghana Card — back
-            <input type="file" accept="image/*" required onChange={e=>setBizFields(f=>({...f,ghana_card_back_image:e.target.files[0]}))} style={authInputStyle}/>
-          </label>
-          <input value={bizFields.gps_address} onChange={e=>setBizFields(f=>({...f,gps_address:e.target.value}))} placeholder="GPS address (e.g. AK-123-4567)" required style={authInputStyle}/>
-          <input value={bizFields.business_contact_phone} onChange={e=>setBizFields(f=>({...f,business_contact_phone:e.target.value}))} placeholder="Business contact phone (public)" required style={authInputStyle}/>
-          <label style={{...authLabelStyle,display:"flex",alignItems:"center",gap:8}}>
-            <input type="checkbox" checked={bizFields.is_formal} onChange={e=>setBizFields(f=>({...f,is_formal:e.target.checked}))}/>
-            My business is formally registered with the Registrar General's Department
-          </label>
-          {bizFields.is_formal && <>
-            <label style={authLabelStyle}>Business registration certificate
-              <input type="file" accept="application/pdf,image/*" required onChange={e=>setBizFields(f=>({...f,business_reg_certificate:e.target.files[0]}))} style={authInputStyle}/>
-            </label>
-            <input value={bizFields.tin} onChange={e=>setBizFields(f=>({...f,tin:e.target.value}))} placeholder="TIN" required style={authInputStyle}/>
-          </>}
-          <div style={{fontSize:"0.72rem",fontWeight:800,color:C.darkBrown,margin:"10px 0 4px"}}>Payout details (bank and/or mobile money)</div>
-          <input value={bizFields.payout_momo_number} onChange={e=>setBizFields(f=>({...f,payout_momo_number:e.target.value}))} placeholder="Mobile money number" required={bizFields.default_payout_method==="momo"} style={authInputStyle}/>
-          <input value={bizFields.payout_momo_name} onChange={e=>setBizFields(f=>({...f,payout_momo_name:e.target.value}))} placeholder="Mobile money account name" style={authInputStyle}/>
-          <select value={bizFields.payout_momo_network} onChange={e=>setBizFields(f=>({...f,payout_momo_network:e.target.value}))} style={authInputStyle}>
-            <option value="">Mobile money network</option>
-            <option value="MTN">MTN</option>
-            <option value="Vodafone">Vodafone</option>
-            <option value="AirtelTigo">AirtelTigo</option>
-          </select>
-          <input value={bizFields.payout_bank_account_number} onChange={e=>setBizFields(f=>({...f,payout_bank_account_number:e.target.value}))} placeholder="Bank account number" required={bizFields.default_payout_method==="bank"} style={authInputStyle}/>
-          <input value={bizFields.payout_bank_account_name} onChange={e=>setBizFields(f=>({...f,payout_bank_account_name:e.target.value}))} placeholder="Bank account name" style={authInputStyle}/>
-          <input value={bizFields.payout_bank_name} onChange={e=>setBizFields(f=>({...f,payout_bank_name:e.target.value}))} placeholder="Bank name" style={authInputStyle}/>
-          <select value={bizFields.default_payout_method} onChange={e=>setBizFields(f=>({...f,default_payout_method:e.target.value}))} style={authInputStyle}>
-            <option value="momo">Default payout: Mobile Money</option>
-            <option value="bank">Default payout: Bank</option>
-          </select>
-          <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Submitting…":"Submit for Verification"}</button>
         </form>}
       </div>
     </div>
