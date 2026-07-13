@@ -409,7 +409,10 @@ function CreditDashboard({ onClose, user }) {
                 </button>
               </div>
             )}
-            {loanEligible && loanSubmitted && (
+            {/* loanSubmitted alone (not loanEligible && loanSubmitted) — once submitted, keep
+                showing the confirmation even if a later score refetch (e.g. on window focus)
+                drops loanEligible below 600, rather than leaving this tab blank. */}
+            {loanSubmitted && (
               <div style={{ background:"white", borderRadius:18, padding:"40px 24px", textAlign:"center", boxShadow:"0 2px 12px rgba(0,0,0,0.07)" }}>
                 <div style={{ fontSize:"3.5rem", marginBottom:14 }}>🎉</div>
                 <div style={{ fontWeight:900, color:C.kente2, fontSize:"1.1rem", marginBottom:8 }}>Application Submitted!</div>
@@ -613,18 +616,23 @@ function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose }) {
 
   useEffect(() => {
     if (step === 3 && !success) {
+      let successTimeout;
       const timer = setInterval(() => {
         setCountdown(c => {
           if (c <= 1) {
             clearInterval(timer);
             setSuccess(true);
-            setTimeout(() => onSuccess && onSuccess(txnRef), 1000);
+            // Cancelled below on unmount/step-change — without this, closing the
+            // modal in this 1s window still let onSuccess fire afterward, now
+            // triggering real transaction/subscription writes (previously
+            // harmless, since it only called a mock success handler).
+            successTimeout = setTimeout(() => onSuccess && onSuccess(txnRef), 1000);
             return 0;
           }
           return c - 1;
         });
       }, 100);
-      return () => clearInterval(timer);
+      return () => { clearInterval(timer); clearTimeout(successTimeout); };
     }
   }, [step, success]);
 
@@ -841,7 +849,7 @@ function PaymentDashboard({ onClose }) {
       await apiPost("/api/billing/subscriptions/me/", { plan: selectedPlan.tier, billing_cycle: billingCycle });
       refetchTx();
     } catch (err) {
-      setActionError("Payment was confirmed but we couldn't save your subscription record. Please contact support with reference " + ref + ".");
+      setActionError("Payment was confirmed but we couldn't record it on your account. Please contact support with reference " + ref + ".");
     }
   };
 
@@ -2421,7 +2429,7 @@ function BusinessDashboard({ onExit, user }) {
       showToast();
       refetchSubscription();
     } catch (err) {
-      setActionError("Payment was confirmed but we couldn't save your subscription record. Please contact support with reference " + ref + ".");
+      setActionError("Payment was confirmed but we couldn't record it on your account. Please contact support with reference " + ref + ".");
     }
   };
 
