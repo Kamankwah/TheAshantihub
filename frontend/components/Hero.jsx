@@ -155,30 +155,32 @@ export default function Hero({
         <div style={{ position: "absolute", inset: 0, background: `radial-gradient(ellipse at center, transparent 0%, ${C.void}99 75%)` }} />
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, background: `linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)` }} />
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 4, background: `linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)` }} />
+
+        {/* Side dot nav — desktop only */}
+        <div className="ah-hero-dotnav" style={{ display: "none", position: "absolute", right: 24, top: "50%", transform: "translateY(-50%)", zIndex: 3, flexDirection: "column", gap: 14 }}>
+          {sections.map((s, i) => (
+            <button
+              key={s.id}
+              onClick={() => scrollTo(i)}
+              aria-label={`Go to ${s.badge}`}
+              style={{
+                width: activeIndex === i ? 11 : 8,
+                height: activeIndex === i ? 11 : 8,
+                borderRadius: "50%",
+                border: `2px solid ${C.gold}`,
+                background: activeIndex === i ? C.gold : "transparent",
+                cursor: "pointer",
+                padding: 0,
+                transition: "all 0.3s ease",
+              }}
+            />
+          ))}
+        </div>
       </div>
 
-      {/* Side dot nav — desktop only */}
-      <div className="ah-hero-dotnav" style={{ display: "none", position: "fixed", right: 24, top: "50%", transform: "translateY(-50%)", zIndex: 3, flexDirection: "column", gap: 14 }}>
-        {sections.map((s, i) => (
-          <button
-            key={s.id}
-            onClick={() => scrollTo(i)}
-            aria-label={`Go to ${s.badge}`}
-            style={{
-              width: activeIndex === i ? 11 : 8,
-              height: activeIndex === i ? 11 : 8,
-              borderRadius: "50%",
-              border: `2px solid ${C.gold}`,
-              background: activeIndex === i ? C.gold : "transparent",
-              cursor: "pointer",
-              padding: 0,
-              transition: "all 0.3s ease",
-            }}
-          />
-        ))}
-      </div>
-
-      {sections.map((s, i) => (
+      {sections.map((s, i) => {
+        const HeadingTag = s.hero ? "h1" : "h2";
+        return (
         <div
           key={s.id}
           ref={(el) => (sectionRefs.current[i] = el)}
@@ -201,10 +203,10 @@ export default function Hero({
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.gold, animation: reducedMotion ? "none" : "heroPulseDot 1.6s ease-in-out infinite" }} />
               {s.badge.toUpperCase()}
             </div>
-            <h1 style={{ color: "white", fontWeight: 900, lineHeight: 1.1, margin: "0 0 14px", fontSize: "clamp(1.9rem, 4.5vw, 3.1rem)", fontFamily: "Georgia, serif" }}>
+            <HeadingTag style={{ color: "white", fontWeight: 900, lineHeight: 1.1, margin: "0 0 14px", fontSize: "clamp(1.9rem, 4.5vw, 3.1rem)", fontFamily: "Georgia, serif" }}>
               {s.title}{s.subtitle ? " " : ""}
               {s.subtitle && <span style={{ color: C.gold }}>{s.subtitle}</span>}
-            </h1>
+            </HeadingTag>
             <p style={{ color: C.lightGold, opacity: 0.9, fontSize: "0.95rem", lineHeight: 1.7, margin: "0 0 18px" }}>{s.description}</p>
 
             {s.hero && (
@@ -301,7 +303,7 @@ export default function Hero({
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
                 {!user && (
                   <button onClick={() => setAuthModal("signup")} style={{ background: C.gold, color: C.darkBrown, border: "none", borderRadius: 30, padding: "11px 22px", fontWeight: 900, fontSize: "0.85rem", cursor: "pointer", fontFamily: "inherit" }}>
-                    ✨ Create Free Account
+                    ✨ {T.signup}
                   </button>
                 )}
                 <button onClick={() => setPage("register")} style={{ background: "transparent", color: "white", border: `1.5px solid ${C.gold}88`, borderRadius: 30, padding: "11px 22px", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", fontFamily: "inherit" }}>
@@ -311,7 +313,8 @@ export default function Hero({
             )}
           </div>
         </div>
-      ))}
+        );
+      })}
 
       <style>{`
         @keyframes heroPulseDot { 0%, 100% { opacity: 0.4; transform: scale(0.85); } 50% { opacity: 1; transform: scale(1.15); } }
