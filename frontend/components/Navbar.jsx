@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { C } from "../theme.js";
 import logoIcon from "../assets/logo/logo-icon.png";
 
@@ -11,6 +11,11 @@ import logoIcon from "../assets/logo/logo-icon.png";
 // ChatLauncher, Saved/Payments no longer have a navbar entry point.
 // Transparent glass look over the home Hero; per-nav-item hover shows a gold
 // glow border (no ambient whole-bar hover effect) via .ah-nav-item:hover.
+//
+// Signed-in state: Sign In/Create Account are fully replaced by a "My
+// Dashboard"/"My Account" button plus a round avatar button that opens a
+// profile menu (Business Dashboard/Payments for business owners, My
+// Account for customers, Sign Out for both) — see ProfileMenu below.
 const NAV_BREAKPOINT = 760;
 const SOLIDIFY_SCROLL_Y = 60;
 
@@ -29,12 +34,19 @@ export default function Navbar({
   handleLogoClick,
   setAuthModal,
   setShowNotifs,
+  setShowBizDash,
+  setShowPayments,
+  setShowAccount,
   T,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useRef(null);
 
-  const act = (fn) => (...args) => { fn(...args); setMenuOpen(false); };
+  const isBusiness = user?.accountType === "business_owner";
+  const act = (fn) => (...args) => { fn(...args); setMenuOpen(false); setProfileOpen(false); };
+  const goToDashboard = () => (isBusiness ? setShowBizDash(true) : setShowAccount(true));
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > SOLIDIFY_SCROLL_Y);
@@ -42,6 +54,13 @@ export default function Navbar({
     onScroll();
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  useEffect(() => {
+    if (!profileOpen) return;
+    const onClick = (e) => { if (profileRef.current && !profileRef.current.contains(e.target)) setProfileOpen(false); };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [profileOpen]);
 
   const transparent = page === "home" && !scrolled;
 
@@ -91,11 +110,53 @@ export default function Navbar({
         {user && <span style={{position:"absolute",top:-2,right:-2,background:C.kente1,borderRadius:"50%",width:9,height:9}}/>}
       </button>
       {user ? (
-        <button onClick={act(() => setPage("profile"))} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:24,padding:"8px 14px",fontSize:"0.82rem",fontWeight:900,cursor:"pointer",display:"flex",alignItems:"center",gap:6,width:stacked?"100%":"auto",justifyContent:stacked?"flex-start":"center"}}>
-          <span style={{background:C.darkBrown,color:C.gold,borderRadius:"50%",width:20,height:20,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:"0.68rem",fontWeight:900,flexShrink:0}}>{user.fullName?.[0]?.toUpperCase() || "U"}</span>
-          {user.fullName?.split(" ")[0]}
-          <span onClick={(e) => { e.stopPropagation(); auth.logout(); setMenuOpen(false); }} style={{marginLeft:4,opacity:0.7,cursor:"pointer",fontSize:"0.8rem"}} title="Sign out">⏻</span>
-        </button>
+        stacked ? (
+          <>
+            <div style={{display:"flex",alignItems:"center",gap:10,padding:"6px 2px 2px"}}>
+              <span style={{background:C.gold,color:C.darkBrown,borderRadius:"50%",width:36,height:36,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:"0.9rem",fontWeight:900,flexShrink:0}}>{user.fullName?.[0]?.toUpperCase() || "U"}</span>
+              <div>
+                <div style={{color:"white",fontWeight:800,fontSize:"0.85rem"}}>{user.fullName}</div>
+                <div style={{color:C.lightGold,fontSize:"0.66rem",opacity:0.8}}>{isBusiness ? "Business Owner" : "Customer"}</div>
+              </div>
+            </div>
+            <button onClick={act(goToDashboard)} style={{...utilityBtnStyle,width:"100%",justifyContent:"flex-start"}}>{isBusiness ? "🏪 My Dashboard" : "👤 My Account"}</button>
+            {isBusiness && <button onClick={act(() => setShowPayments(true))} style={{...utilityBtnStyle,width:"100%",justifyContent:"flex-start"}}>💳 Payments</button>}
+            <button onClick={act(() => auth.logout())} style={{...utilityBtnStyle,width:"100%",justifyContent:"flex-start",borderColor:`${C.kente1}66`,color:"#ffb4b4"}}>⏻ Sign Out</button>
+          </>
+        ) : (
+          <>
+            <button onClick={act(goToDashboard)} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:24,padding:"8px 16px",fontSize:"0.82rem",fontWeight:900,cursor:"pointer"}}>
+              {isBusiness ? "🏪 My Dashboard" : "👤 My Account"}
+            </button>
+            <div ref={profileRef} style={{position:"relative"}}>
+              <button
+                onClick={() => setProfileOpen(o => !o)}
+                aria-label="Account menu"
+                aria-expanded={profileOpen}
+                style={{background:C.darkBrown,color:C.gold,border:`1.5px solid ${C.gold}88`,borderRadius:"50%",width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.9rem",fontWeight:900,flexShrink:0}}
+              >
+                {user.fullName?.[0]?.toUpperCase() || "U"}
+              </button>
+              {profileOpen && (
+                <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,background:"white",borderRadius:14,boxShadow:"0 10px 40px rgba(0,0,0,0.25)",padding:10,display:"flex",flexDirection:"column",gap:6,minWidth:210,zIndex:200}}>
+                  <div style={{padding:"4px 8px 8px",borderBottom:"1px solid #f0f0f0",marginBottom:2}}>
+                    <div style={{fontWeight:800,color:C.darkBrown,fontSize:"0.82rem"}}>{user.fullName}</div>
+                    <div style={{color:"#999",fontSize:"0.68rem"}}>{isBusiness ? "Business Owner" : "Customer"}</div>
+                  </div>
+                  {isBusiness ? (
+                    <>
+                      <button onClick={act(() => setShowBizDash(true))} style={menuItemStyle}>🏪 Business Dashboard</button>
+                      <button onClick={act(() => setShowPayments(true))} style={menuItemStyle}>💳 Payments</button>
+                    </>
+                  ) : (
+                    <button onClick={act(() => setShowAccount(true))} style={menuItemStyle}>👤 My Account</button>
+                  )}
+                  <button onClick={act(() => auth.logout())} style={{...menuItemStyle,color:"#dc2626"}}>⏻ Sign Out</button>
+                </div>
+              )}
+            </div>
+          </>
+        )
       ) : (
         <>
           <button onClick={act(() => setAuthModal("login"))} style={{background:"transparent",color:"white",border:"1.5px solid rgba(255,255,255,0.4)",borderRadius:24,padding:"8px 16px",fontSize:"0.82rem",fontWeight:700,cursor:"pointer",width:stacked?"100%":"auto"}}>{T.login}</button>
@@ -165,3 +226,30 @@ export default function Navbar({
     </div>
   );
 }
+
+const utilityBtnStyle = {
+  background: "rgba(255,255,255,0.1)",
+  color: "white",
+  border: "1px solid rgba(255,255,255,0.25)",
+  borderRadius: 24,
+  padding: "8px 14px",
+  fontSize: "0.8rem",
+  fontWeight: 700,
+  cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+};
+
+const menuItemStyle = {
+  background: "#f6f6f6",
+  color: C.darkBrown,
+  border: "1px solid #e5e5e5",
+  borderRadius: 12,
+  padding: "8px 12px",
+  fontSize: "0.78rem",
+  fontWeight: 700,
+  cursor: "pointer",
+  textAlign: "left",
+  fontFamily: "inherit",
+};

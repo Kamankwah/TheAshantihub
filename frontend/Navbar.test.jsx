@@ -16,6 +16,9 @@ function renderNavbar(props = {}) {
       handleLogoClick={vi.fn()}
       setAuthModal={vi.fn()}
       setShowNotifs={vi.fn()}
+      setShowBizDash={vi.fn()}
+      setShowPayments={vi.fn()}
+      setShowAccount={vi.fn()}
       T={T}
       {...props}
     />,
@@ -40,7 +43,7 @@ describe('Navbar', () => {
     expect(setPage).toHaveBeenCalledWith('business')
   })
 
-  it('shows sign in/create account affordances when logged out, and the user name when logged in', () => {
+  it('shows sign in/create account when logged out, and hides them completely when logged in', () => {
     const { rerender } = renderNavbar()
     expect(screen.getAllByText(T.login).length).toBeGreaterThan(0)
     expect(screen.getAllByText(T.signup).length).toBeGreaterThan(0)
@@ -48,13 +51,47 @@ describe('Navbar', () => {
     rerender(
       <Navbar
         page="home" setPage={vi.fn()} lang="en" setLang={vi.fn()}
-        user={{ fullName: 'Ama Boateng' }}
+        user={{ fullName: 'Ama Boateng', accountType: 'customer' }}
         auth={{ logout: vi.fn() }}
         handleLogoClick={vi.fn()} setAuthModal={vi.fn()}
-        setShowNotifs={vi.fn()} T={T}
+        setShowNotifs={vi.fn()} setShowBizDash={vi.fn()} setShowPayments={vi.fn()} setShowAccount={vi.fn()}
+        T={T}
       />,
     )
-    expect(screen.getAllByText(/Ama/).length).toBeGreaterThan(0)
+    expect(screen.queryByText(T.login)).not.toBeInTheDocument()
+    expect(screen.queryByText(T.signup)).not.toBeInTheDocument()
+  })
+
+  it('customer: shows a My Account button that opens the account panel', () => {
+    const setShowAccount = vi.fn()
+    renderNavbar({ user: { fullName: 'Ama Boateng', accountType: 'customer' }, setShowAccount })
+    fireEvent.click(screen.getByText('👤 My Account'))
+    expect(setShowAccount).toHaveBeenCalledWith(true)
+  })
+
+  it('business owner: shows a My Dashboard button that opens the business dashboard', () => {
+    const setShowBizDash = vi.fn()
+    renderNavbar({ user: { fullName: 'Kojo Mensah', accountType: 'business_owner' }, setShowBizDash })
+    fireEvent.click(screen.getByText('🏪 My Dashboard'))
+    expect(setShowBizDash).toHaveBeenCalledWith(true)
+  })
+
+  it('opens the profile menu from the round avatar button, showing the user\'s name and a Sign Out action', () => {
+    const logout = vi.fn()
+    renderNavbar({ user: { fullName: 'Ama Boateng', accountType: 'customer' }, auth: { logout } })
+    fireEvent.click(screen.getByLabelText('Account menu'))
+    expect(screen.getByText('Ama Boateng')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('⏻ Sign Out'))
+    expect(logout).toHaveBeenCalledTimes(1)
+  })
+
+  it('business owner profile menu offers Business Dashboard and Payments', () => {
+    const setShowPayments = vi.fn()
+    renderNavbar({ user: { fullName: 'Kojo Mensah', accountType: 'business_owner' }, setShowPayments })
+    fireEvent.click(screen.getByLabelText('Account menu'))
+    expect(screen.getByText('🏪 Business Dashboard')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('💳 Payments'))
+    expect(setShowPayments).toHaveBeenCalledWith(true)
   })
 
   it('toggles the mobile dropdown menu via the hamburger button', () => {

@@ -23,6 +23,7 @@ import Navbar from "./components/Navbar.jsx";
 import Hero from "./components/Hero.jsx";
 import ChatLauncher from "./components/ChatLauncher.jsx";
 import Footer from "./components/Footer.jsx";
+import AccountPanel from "./components/AccountPanel.jsx";
 
 // ─── Credit Scoring System ────────────────────────────────────────────────────
 const LENDING_PARTNERS = [
@@ -3003,6 +3004,7 @@ export default function AshantiHub() {
   const [adminClicks,setAdminClicks]=useState(0);
   const [favourites,setFavourites]=useState([]);
   const [showFavs,setShowFavs]=useState(false);
+  const [showAccount,setShowAccount]=useState(false);
   const [showMap,setShowMap]=useState(false);
   const [showReferral,setShowReferral]=useState(false);
   const [showNotifs,setShowNotifs]=useState(false);
@@ -3180,6 +3182,13 @@ export default function AshantiHub() {
       {showNotifs&&<NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
       {showFavs&&<FavsDrawer/>}
       {showReferral&&<ReferralModal user={user} onClose={()=>setShowReferral(false)}/>}
+      {showAccount&&user&&<AccountPanel
+        user={user}
+        favourites={favourites}
+        onClose={()=>setShowAccount(false)}
+        onOpenSaved={()=>{setShowAccount(false);setShowFavs(true);}}
+        onOpenMessages={()=>{setShowAccount(false);setShowMessaging(true);}}
+      />}
       <Navbar
         page={page} setPage={setPage}
         lang={lang} setLang={setLang}
@@ -3187,6 +3196,9 @@ export default function AshantiHub() {
         handleLogoClick={handleLogoClick}
         setAuthModal={setAuthModal}
         setShowNotifs={setShowNotifs}
+        setShowBizDash={setShowBizDash}
+        setShowPayments={setShowPayments}
+        setShowAccount={setShowAccount}
         T={T}
       />
 
