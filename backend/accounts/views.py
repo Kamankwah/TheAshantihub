@@ -3,7 +3,6 @@ from django.utils.crypto import get_random_string
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.pagination import PageNumberPagination
-from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -42,6 +41,10 @@ def me(request):
     if isinstance(request.user, StaffUser):
         data["role"] = request.user.role.name
         data["permissions"] = list(request.user.role.permissions.values_list("codename", flat=True))
+    if isinstance(request.user, BusinessOwner):
+        data["kyc_status"] = request.user.kyc_status
+        data["kyc_rejection_reason"] = request.user.kyc_rejection_reason
+        data["registration_step"] = request.user.compute_registration_step()
     return Response(data)
 
 
@@ -79,7 +82,6 @@ class StaffActivateView(generics.GenericAPIView):
 class BusinessOwnerRegisterView(generics.CreateAPIView):
     serializer_class = BusinessOwnerRegistrationSerializer
     permission_classes = [AllowAny]
-    parser_classes = [MultiPartParser, FormParser]
     throttle_scope = "business_owner_register"
 
     def create(self, request, *args, **kwargs):
@@ -245,10 +247,26 @@ class PayoutDetailUpdateView(generics.UpdateAPIView):
         return self.request.user.profile
 
 
-class BusinessOwnerProfileUpdateView(generics.UpdateAPIView):
+class BusinessOwnerProfileUpdateView(generics.RetrieveUpdateAPIView):
     serializer_class = BusinessOwnerProfileUpdateSerializer
     permission_classes = [IsBusinessOwner]
-    http_method_names = ["patch"]
+    http_method_names = ["get", "patch"]
 
     def get_object(self):
         return self.request.user.profile
+
+
+class TermsAcceptView(APIView):
+    permission_classes = [IsBusinessOwner]
+
+    def post(self, request):
+        owner = request.user
+        if owner.compute_registration_step() != "terms":
+            return Response(
+                {"registration_step": "Business and payment information must be complete before accepting terms."},
+                status=400,
+            )
+        profile = owner.profile
+        profile.terms_accepted_at = timezone.now()
+        profile.save(update_fields=["terms_accepted_at"])
+        return Response({"registration_step": owner.compute_registration_step()})

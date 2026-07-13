@@ -117,3 +117,25 @@ class BusinessOwnerProfileUpdateTests(TestCase):
         self.assertEqual(response.status_code, 400, response.content)
         self.assertIn("ghana_card_front_image", response.json())
         self.assertIn("Unsupported file type", response.json()["ghana_card_front_image"][0])
+
+    def test_spoofed_ghana_card_image_is_rejected(self):
+        owner = self._make_owner(BusinessOwner.REJECTED)
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._token(owner)}")
+        response = self.client.patch(
+            "/api/accounts/business-owners/me/profile/",
+            {"ghana_card_front_image": SimpleUploadedFile(
+                "fake.jpg", b"MZ\x90\x00\x03\x00\x00\x00fake-executable-bytes", content_type="image/jpeg"
+            )},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("ghana_card_front_image", response.json())
+
+    def test_owner_can_fetch_their_own_profile(self):
+        owner = self._make_owner(BusinessOwner.PENDING)
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._token(owner)}")
+        response = self.client.get("/api/accounts/business-owners/me/profile/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["ghana_card_number"], "GHA-777888999-0")

@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { server } from './mocks/server.js'
-import { apiFetch, getStoredAuth, setStoredAuth, apiPost, apiPostForm, apiPatch } from './apiClient.js'
+import { apiFetch, getStoredAuth, setStoredAuth, apiPost, apiPostForm, apiPatch, apiPatchForm } from './apiClient.js'
 
 describe('apiFetch', () => {
   it('returns parsed JSON on success', async () => {
@@ -127,5 +127,21 @@ describe('apiPatch', () => {
       }),
     )
     await expect(apiPatch('/api/listings/mine/1/', { name: 'x' })).rejects.toThrow()
+  })
+})
+
+describe('apiPatchForm', () => {
+  it('sends a PATCH request with the given FormData', async () => {
+    server.use(
+      http.patch('http://localhost:8000/api/accounts/business-owners/me/profile/', async ({ request }) => {
+        const formData = await request.formData()
+        expect(formData.get('gps_address')).toBe('AK-039-5028')
+        return HttpResponse.json({ gps_address: 'AK-039-5028' })
+      }),
+    )
+    const formData = new FormData()
+    formData.append('gps_address', 'AK-039-5028')
+    const data = await apiPatchForm('/api/accounts/business-owners/me/profile/', formData)
+    expect(data).toEqual({ gps_address: 'AK-039-5028' })
   })
 })

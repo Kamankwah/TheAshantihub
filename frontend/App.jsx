@@ -24,6 +24,7 @@ import Hero from "./components/Hero.jsx";
 import ChatLauncher from "./components/ChatLauncher.jsx";
 import Footer from "./components/Footer.jsx";
 import AccountPanel from "./components/AccountPanel.jsx";
+import BusinessRegistrationFlow from "./components/BusinessRegistrationFlow.jsx";
 
 // ─── Credit Scoring System ────────────────────────────────────────────────────
 const LENDING_PARTNERS = [
@@ -1806,7 +1807,6 @@ function ReferralModal({user,onClose}) {
 }
 
 const authInputStyle={width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:10,border:"1.5px solid #ddd",marginBottom:10,fontSize:"0.82rem",fontFamily:"inherit"};
-const authLabelStyle={display:"block",fontSize:"0.72rem",fontWeight:700,color:C.darkBrown,marginBottom:10};
 const authSubmitStyle={width:"100%",background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"12px",fontWeight:900,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit",marginTop:4};
 
 export function AuthModal({authState,auth,onClose,onSuccess}) {
@@ -1818,14 +1818,6 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
   const [fullName,setFullName]=useState("");
   const [phone,setPhone]=useState("");
   const [email,setEmail]=useState("");
-  const [bizFields,setBizFields]=useState({
-    ghana_card_number:"",ghana_card_front_image:null,ghana_card_back_image:null,
-    gps_address:"",business_contact_phone:"",is_formal:false,
-    business_reg_certificate:null,tin:"",
-    payout_bank_name:"",payout_bank_account_number:"",payout_bank_account_name:"",
-    payout_momo_network:"",payout_momo_number:"",payout_momo_name:"",
-    default_payout_method:"momo",
-  });
   const [error,setError]=useState(null);
   const [submitting,setSubmitting]=useState(false);
 
@@ -1861,20 +1853,6 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
     }
   };
 
-  const handleBusinessSignup=async(e)=>{
-    e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
-      const result=await auth.registerBusinessOwner({full_name:fullName,login_phone:phone,email:email||undefined,password,...bizFields});
-      onSuccess(result);
-    } catch (err) {
-      setError("Could not create your business account. Please check your details.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   return <div data-testid="auth-modal-backdrop" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
     <div style={{background:"white",borderRadius:22,width:"100%",maxWidth:440,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
       <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,borderRadius:"22px 22px 0 0",padding:"20px 24px",position:"relative"}}>
@@ -1885,11 +1863,6 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
         {!lockedAccountType && <div style={{display:"flex",gap:8,marginBottom:16}}>
           <button type="button" onClick={()=>setMode("login")} style={{flex:1,padding:"8px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:800,fontSize:"0.78rem",background:mode==="login"?C.gold:"#eee",color:mode==="login"?C.darkBrown:"#666"}}>Sign In</button>
           <button type="button" onClick={()=>setMode("signup")} style={{flex:1,padding:"8px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:800,fontSize:"0.78rem",background:mode==="signup"?C.gold:"#eee",color:mode==="signup"?C.darkBrown:"#666"}}>Sign Up</button>
-        </div>}
-
-        {mode==="signup" && !lockedAccountType && <div style={{display:"flex",gap:8,marginBottom:16}}>
-          <button type="button" onClick={()=>setAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="customer"?C.gold:"white",color:C.darkBrown}}>I'm a Customer</button>
-          <button type="button" onClick={()=>setAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="business_owner"?C.gold:"white",color:C.darkBrown}}>I'm a Business Owner</button>
         </div>}
 
         {error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
@@ -1904,55 +1877,12 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
           <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Signing in…":"Sign In"}</button>
         </form>}
 
-        {mode==="signup" && accountType==="customer" && <form onSubmit={handleCustomerSignup}>
+        {mode==="signup" && <form onSubmit={handleCustomerSignup}>
           <input value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Full name" required style={authInputStyle}/>
           <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone (+233...)" style={authInputStyle}/>
           <input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="Email" style={authInputStyle}/>
           <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" required minLength={8} style={authInputStyle}/>
           <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Creating account…":"Create Free Account"}</button>
-        </form>}
-
-        {mode==="signup" && accountType==="business_owner" && <form onSubmit={handleBusinessSignup}>
-          <input value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Full name" required style={authInputStyle}/>
-          <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Login phone (+233...)" required style={authInputStyle}/>
-          <input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="Email" style={authInputStyle}/>
-          <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" required minLength={8} style={authInputStyle}/>
-          <input value={bizFields.ghana_card_number} onChange={e=>setBizFields(f=>({...f,ghana_card_number:e.target.value}))} placeholder="Ghana Card number" required style={authInputStyle}/>
-          <label style={authLabelStyle}>Ghana Card — front
-            <input type="file" accept="image/*" required onChange={e=>setBizFields(f=>({...f,ghana_card_front_image:e.target.files[0]}))} style={authInputStyle}/>
-          </label>
-          <label style={authLabelStyle}>Ghana Card — back
-            <input type="file" accept="image/*" required onChange={e=>setBizFields(f=>({...f,ghana_card_back_image:e.target.files[0]}))} style={authInputStyle}/>
-          </label>
-          <input value={bizFields.gps_address} onChange={e=>setBizFields(f=>({...f,gps_address:e.target.value}))} placeholder="GPS address (e.g. AK-123-4567)" required style={authInputStyle}/>
-          <input value={bizFields.business_contact_phone} onChange={e=>setBizFields(f=>({...f,business_contact_phone:e.target.value}))} placeholder="Business contact phone (public)" required style={authInputStyle}/>
-          <label style={{...authLabelStyle,display:"flex",alignItems:"center",gap:8}}>
-            <input type="checkbox" checked={bizFields.is_formal} onChange={e=>setBizFields(f=>({...f,is_formal:e.target.checked}))}/>
-            My business is formally registered with the Registrar General's Department
-          </label>
-          {bizFields.is_formal && <>
-            <label style={authLabelStyle}>Business registration certificate
-              <input type="file" accept="application/pdf,image/*" required onChange={e=>setBizFields(f=>({...f,business_reg_certificate:e.target.files[0]}))} style={authInputStyle}/>
-            </label>
-            <input value={bizFields.tin} onChange={e=>setBizFields(f=>({...f,tin:e.target.value}))} placeholder="TIN" required style={authInputStyle}/>
-          </>}
-          <div style={{fontSize:"0.72rem",fontWeight:800,color:C.darkBrown,margin:"10px 0 4px"}}>Payout details (bank and/or mobile money)</div>
-          <input value={bizFields.payout_momo_number} onChange={e=>setBizFields(f=>({...f,payout_momo_number:e.target.value}))} placeholder="Mobile money number" required={bizFields.default_payout_method==="momo"} style={authInputStyle}/>
-          <input value={bizFields.payout_momo_name} onChange={e=>setBizFields(f=>({...f,payout_momo_name:e.target.value}))} placeholder="Mobile money account name" style={authInputStyle}/>
-          <select value={bizFields.payout_momo_network} onChange={e=>setBizFields(f=>({...f,payout_momo_network:e.target.value}))} style={authInputStyle}>
-            <option value="">Mobile money network</option>
-            <option value="MTN">MTN</option>
-            <option value="Vodafone">Vodafone</option>
-            <option value="AirtelTigo">AirtelTigo</option>
-          </select>
-          <input value={bizFields.payout_bank_account_number} onChange={e=>setBizFields(f=>({...f,payout_bank_account_number:e.target.value}))} placeholder="Bank account number" required={bizFields.default_payout_method==="bank"} style={authInputStyle}/>
-          <input value={bizFields.payout_bank_account_name} onChange={e=>setBizFields(f=>({...f,payout_bank_account_name:e.target.value}))} placeholder="Bank account name" style={authInputStyle}/>
-          <input value={bizFields.payout_bank_name} onChange={e=>setBizFields(f=>({...f,payout_bank_name:e.target.value}))} placeholder="Bank name" style={authInputStyle}/>
-          <select value={bizFields.default_payout_method} onChange={e=>setBizFields(f=>({...f,default_payout_method:e.target.value}))} style={authInputStyle}>
-            <option value="momo">Default payout: Mobile Money</option>
-            <option value="bank">Default payout: Bank</option>
-          </select>
-          <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Submitting…":"Submit for Verification"}</button>
         </form>}
       </div>
     </div>
@@ -2354,7 +2284,7 @@ const LISTING_STATUS_META = {
   rejected: { label:"Rejected", color:"#ef4444" },
 };
 
-function BusinessDashboard({ onExit, user }) {
+export function BusinessDashboard({ onExit, user, auth }) {
   const [bizTab, setBizTab] = useState("overview");
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
@@ -2363,11 +2293,21 @@ function BusinessDashboard({ onExit, user }) {
   const [billingCycle, setBillingCycle] = useState("monthly");
   const [showPayModal, setShowPayModal] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
+  const [resubmitting, setResubmitting] = useState(false);
+  const isVerified = user?.kycStatus === "verified";
+  const isRejected = user?.kycStatus === "rejected";
 
   const { data: listings, isLoading: listingsLoading, isError: listingsError, refetch: refetchListings } = useMyListings();
   const { data: profile, isLoading: profileLoading, isError: profileError } = useBusinessProfile();
   const { data: subPlans, isLoading: plansLoading, isError: plansError } = useSubscriptionPlans();
   const { data: subscription, isLoading: subLoading, isError: subError, refetch: refetchSubscription } = useMySubscription();
+
+  if (resubmitting) {
+    return <BusinessRegistrationFlow
+      user={user} auth={auth} initialStep="business_info" prefill={profile}
+      setPage={()=>setResubmitting(false)} setShowBizDash={()=>setResubmitting(false)}
+    />;
+  }
 
   const listingList = listings || [];
   const publishedCount = listingList.filter(l=>l.status==="published").length;
@@ -2456,7 +2396,7 @@ function BusinessDashboard({ onExit, user }) {
       <div style={{background:"white",borderBottom:"1px solid #e8e8e8",padding:"0 16px",overflowX:"auto"}}>
         <div style={{maxWidth:960,margin:"0 auto",display:"flex"}}>
           {tabs.map(t=>(
-            <button key={t.id} onClick={()=>setBizTab(t.id)} style={{background:"none",border:"none",borderBottom:bizTab===t.id?`3px solid ${C.gold}`:"3px solid transparent",color:bizTab===t.id?C.darkBrown:"#888",padding:"12px 16px",fontSize:"0.75rem",fontWeight:bizTab===t.id?800:600,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"inherit"}}>
+            <button key={t.id} disabled={!isVerified} onClick={()=>isVerified&&setBizTab(t.id)} style={{background:"none",border:"none",borderBottom:bizTab===t.id?`3px solid ${C.gold}`:"3px solid transparent",color:!isVerified?"#ccc":bizTab===t.id?C.darkBrown:"#888",padding:"12px 16px",fontSize:"0.75rem",fontWeight:bizTab===t.id?800:600,cursor:isVerified?"pointer":"not-allowed",whiteSpace:"nowrap",fontFamily:"inherit"}}>
               {t.icon} {t.label}
             </button>
           ))}
@@ -2468,6 +2408,26 @@ function BusinessDashboard({ onExit, user }) {
       <div style={{maxWidth:960,margin:"0 auto",padding:"20px 16px 60px"}}>
 
         {actionError&&<div style={{background:"#fee2e2",color:"#dc2626",borderRadius:12,padding:"10px 14px",fontSize:"0.78rem",marginBottom:16}}>{actionError}</div>}
+
+        {!isVerified ? (
+          <div style={{background:"white",borderRadius:16,padding:"28px 24px",textAlign:"center",boxShadow:"0 2px 12px rgba(0,0,0,0.07)"}}>
+            {isRejected ? (
+              <>
+                <div style={{fontSize:"2rem",marginBottom:10}}>⚠️</div>
+                <div style={{fontWeight:900,color:"#dc2626",fontSize:"1.05rem",marginBottom:8}}>Your application needs changes</div>
+                <div style={{color:"#555",fontSize:"0.85rem",lineHeight:1.6,marginBottom:18,maxWidth:420,marginLeft:"auto",marginRight:"auto"}}>{user?.kycRejectionReason || "Our team found an issue with your submission."}</div>
+                <button onClick={()=>setResubmitting(true)} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"11px 24px",fontWeight:900,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>Fix and Resubmit</button>
+              </>
+            ) : (
+              <>
+                <div style={{fontSize:"2rem",marginBottom:10}}>⏳</div>
+                <div style={{fontWeight:900,color:C.darkBrown,fontSize:"1.05rem",marginBottom:8}}>Your application is under review</div>
+                <div style={{color:"#555",fontSize:"0.85rem",lineHeight:1.6}}>Our team is verifying your Ghana Card and business details. This usually takes 1-2 business days — you'll be able to manage listings, enquiries and your subscription here as soon as you're approved.</div>
+              </>
+            )}
+          </div>
+        ) : (
+          <>
 
         {bizTab==="overview"&&(
           <>
@@ -2632,6 +2592,9 @@ function BusinessDashboard({ onExit, user }) {
                 ))}
               </div>
             )}
+          </>
+        )}
+
           </>
         )}
 
@@ -2995,7 +2958,7 @@ export default function AshantiHub() {
   const [page,setPage]=useState("home");
   const [authModal,setAuthModal]=useState(null);
   const auth=useAuth();
-  const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id} : null;
+  const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id,registrationStep:auth.user.registration_step,kycStatus:auth.user.kyc_status,kycRejectionReason:auth.user.kyc_rejection_reason} : null;
   const [legalDoc,setLegalDoc]=useState(null);
   const [showBizDash,setShowBizDash]=useState(false);
   const [isAdmin,setIsAdmin]=useState(false);
@@ -3145,8 +3108,12 @@ export default function AshantiHub() {
   const [showSearchResults,setShowSearchResults]=useState(false);
   const [searchFocused,setSearchFocused]=useState(false);
 
+  const showRegistrationFlow = (page==="register" && !user) ||
+    (user?.accountType==="business_owner" && user.registrationStep && user.registrationStep!=="complete");
+  if(showRegistrationFlow) return <BusinessRegistrationFlow user={user} auth={auth} initialStep={user?.registrationStep} setPage={setPage} setShowBizDash={setShowBizDash}/>;
+
   if(isAdmin) return <StaffDashboard auth={auth} onExit={()=>setIsAdmin(false)}/>;
-  if(showBizDash) return <BusinessDashboard onExit={()=>setShowBizDash(false)} user={user}/>;
+  if(showBizDash) return <BusinessDashboard onExit={()=>setShowBizDash(false)} user={user} auth={auth}/>;
   if(showPayments) return <PaymentDashboard onClose={()=>setShowPayments(false)}/>;
   if(showCredit) return <CreditDashboard onClose={()=>setShowCredit(false)} user={user}/>;
   if(isLoading) return <LoadingScreen/>;
