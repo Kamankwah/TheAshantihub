@@ -24,13 +24,13 @@ import usePrefersReducedMotion from "../hooks/usePrefersReducedMotion.js";
 function buildSections() {
   return [
     {
-      id: "ghana",
-      badge: "Ghana Rising",
-      title: "A Nation Wired",
+      id: "ashanti",
+      badge: "Ashanti Rising",
+      title: "A Kingdom Wired",
       subtitle: "for Growth",
-      description: "From the coast to the north, Ghana's economy is humming — gold, cocoa, tourism and a fast-growing digital sector all running through the same network of towns, roads and traders. Every node on this map is a business, a market, a livelihood.",
+      description: "From deep cultural heritage to a modern economy, Ashanti is humming — gold, cocoa, tourism and a fast-growing digital sector all running through the same network of towns, roads and traders. Every node on this map is a business, a market, a livelihood.",
       hero: true,
-      stats: [["100K+", "Annual Visitors"], ["15", "Categories"], ["65+", "Businesses"], ["4", "Currencies"]],
+      stats: [["100K+", "Annual Visitors"], ["15", "Categories"], ["65+", "Businesses"]],
       actionLabel: "Explore Businesses in Ashanti →",
       actionTarget: "business",
     },
