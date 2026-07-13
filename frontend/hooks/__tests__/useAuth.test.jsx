@@ -53,6 +53,29 @@ describe('useAuth', () => {
     expect(result.current.user).toEqual({ token: 'abc123', account_type: 'customer', id: 1, full_name: 'Ama' })
   })
 
+  it('login merges /me/ into the stored user, populating registration_step for a business owner', async () => {
+    server.use(
+      http.post('http://localhost:8000/api/accounts/business-owners/login/', () => {
+        return HttpResponse.json({ token: 'biztoken', account_type: 'business_owner', id: 9, full_name: 'Abena Boateng' })
+      }),
+      http.get('http://localhost:8000/api/accounts/me/', () => {
+        return HttpResponse.json({
+          account_type: 'business_owner', id: 9, full_name: 'Abena Boateng',
+          kyc_status: 'pending', kyc_rejection_reason: null, registration_step: 'business_info',
+        })
+      }),
+    )
+    const { result } = renderHook(() => useAuth())
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    await act(async () => {
+      await result.current.login('business_owner', '+233245551122', 'secret')
+    })
+    expect(result.current.user).toEqual({
+      token: 'biztoken', account_type: 'business_owner', id: 9, full_name: 'Abena Boateng',
+      kyc_status: 'pending', kyc_rejection_reason: null, registration_step: 'business_info',
+    })
+  })
+
   it('logout clears the user', async () => {
     server.use(
       http.post('http://localhost:8000/api/accounts/customers/login/', () => {
