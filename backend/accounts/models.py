@@ -92,15 +92,15 @@ class BusinessOwnerProfile(models.Model):
     business_owner = models.OneToOneField(
         BusinessOwner, on_delete=models.CASCADE, related_name="profile"
     )
-    ghana_card_number = models.CharField(max_length=30, unique=True)
+    ghana_card_number = models.CharField(max_length=30, unique=True, null=True, blank=True)
     ghana_card_front_image = models.ImageField(
-        upload_to="ghana_cards/", validators=[validate_image_content_type]
+        upload_to="ghana_cards/", validators=[validate_image_content_type], null=True, blank=True
     )
     ghana_card_back_image = models.ImageField(
-        upload_to="ghana_cards/", validators=[validate_image_content_type]
+        upload_to="ghana_cards/", validators=[validate_image_content_type], null=True, blank=True
     )
-    gps_address = models.CharField(max_length=20)
-    business_contact_phone = models.CharField(max_length=20)
+    gps_address = models.CharField(max_length=20, null=True, blank=True)
+    business_contact_phone = models.CharField(max_length=20, null=True, blank=True)
 
     is_formal = models.BooleanField(default=False)
     business_reg_certificate = models.FileField(
@@ -115,12 +115,15 @@ class BusinessOwnerProfile(models.Model):
     payout_momo_network = models.CharField(max_length=20, null=True, blank=True)
     payout_momo_number = models.CharField(max_length=20, null=True, blank=True)
     payout_momo_name = models.CharField(max_length=150, null=True, blank=True)
-    default_payout_method = models.CharField(max_length=10, choices=PAYOUT_METHOD_CHOICES)
+    default_payout_method = models.CharField(
+        max_length=10, choices=PAYOUT_METHOD_CHOICES, null=True, blank=True
+    )
     payout_verification_status = models.CharField(
         max_length=10,
         choices=[("pending", "Pending"), ("verified", "Verified")],
         default="pending",
     )
+    terms_accepted_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"Profile for {self.business_owner.full_name}"

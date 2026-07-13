@@ -45,3 +45,10 @@ class BusinessOwnerModelTests(TestCase):
                 payout_momo_number="+233201234568",
                 payout_momo_name="Kojo Trader",
             )
+
+    def test_profile_can_be_created_with_no_kyc_or_payout_data(self):
+        owner = self._make_owner(login_phone="+233209998879", email="kojo3@example.com")
+        profile = BusinessOwnerProfile.objects.create(business_owner=owner)
+        self.assertIsNone(profile.ghana_card_number)
+        self.assertIsNone(profile.default_payout_method)
+        self.assertIsNone(profile.terms_accepted_at)
