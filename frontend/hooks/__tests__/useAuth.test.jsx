@@ -41,6 +41,9 @@ describe('useAuth', () => {
       http.post('http://localhost:8000/api/accounts/customers/login/', () => {
         return HttpResponse.json({ token: 'abc123', account_type: 'customer', id: 1, full_name: 'Ama' })
       }),
+      http.get('http://localhost:8000/api/accounts/me/', () => {
+        return HttpResponse.json({ account_type: 'customer', id: 1, full_name: 'Ama' })
+      }),
     )
     const { result } = renderHook(() => useAuth())
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -54,6 +57,9 @@ describe('useAuth', () => {
     server.use(
       http.post('http://localhost:8000/api/accounts/customers/login/', () => {
         return HttpResponse.json({ token: 'abc123', account_type: 'customer', id: 1, full_name: 'Ama' })
+      }),
+      http.get('http://localhost:8000/api/accounts/me/', () => {
+        return HttpResponse.json({ account_type: 'customer', id: 1, full_name: 'Ama' })
       }),
     )
     const { result } = renderHook(() => useAuth())
@@ -171,6 +177,12 @@ describe('hasPermission', () => {
           role: 'support', permissions: ['messaging.manage', 'disputes.flag', 'users.view'],
         })
       }),
+      http.get('http://localhost:8000/api/accounts/me/', () => {
+        return HttpResponse.json({
+          account_type: 'staff', id: 1, full_name: 'Akosua Support',
+          role: 'support', permissions: ['messaging.manage', 'disputes.flag', 'users.view'],
+        })
+      }),
     )
     const { result } = renderHook(() => useAuth())
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -191,6 +203,9 @@ describe('hasPermission', () => {
     server.use(
       http.post('http://localhost:8000/api/accounts/customers/login/', () => {
         return HttpResponse.json({ token: 't', account_type: 'customer', id: 1, full_name: 'Ama' })
+      }),
+      http.get('http://localhost:8000/api/accounts/me/', () => {
+        return HttpResponse.json({ account_type: 'customer', id: 1, full_name: 'Ama' })
       }),
     )
     const { result } = renderHook(() => useAuth())

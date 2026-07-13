@@ -29,8 +29,11 @@ export function useAuth() {
   const login = useCallback(async (accountType, identifier, password) => {
     const data = await apiPost(LOGIN_PATHS[accountType], { identifier, password })
     setStoredAuth(data)
-    setUser(data)
-    return data
+    const me = await apiFetch('/api/accounts/me/')
+    const merged = { ...data, ...me }
+    setStoredAuth(merged)
+    setUser(merged)
+    return merged
   }, [])
 
   const logout = useCallback(() => {
