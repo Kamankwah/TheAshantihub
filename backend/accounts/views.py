@@ -255,3 +255,19 @@ class BusinessOwnerProfileUpdateView(generics.UpdateAPIView):
 
     def get_object(self):
         return self.request.user.profile
+
+
+class TermsAcceptView(APIView):
+    permission_classes = [IsBusinessOwner]
+
+    def post(self, request):
+        owner = request.user
+        if owner.compute_registration_step() != "terms":
+            return Response(
+                {"registration_step": "Business and payment information must be complete before accepting terms."},
+                status=400,
+            )
+        profile = owner.profile
+        profile.terms_accepted_at = timezone.now()
+        profile.save(update_fields=["terms_accepted_at"])
+        return Response({"registration_step": owner.compute_registration_step()})
