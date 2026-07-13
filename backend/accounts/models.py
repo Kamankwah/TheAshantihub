@@ -86,7 +86,10 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
     def compute_registration_step(self):
         if self.kyc_status in (self.VERIFIED, self.REJECTED):
             return "complete"
-        profile = self.profile
+        try:
+            profile = self.profile
+        except BusinessOwnerProfile.DoesNotExist:
+            return "business_info"
         if not (profile.ghana_card_number and profile.gps_address
                 and profile.business_contact_phone
                 and profile.ghana_card_front_image

@@ -114,3 +114,9 @@ class ComputeRegistrationStepTests(TestCase):
     def test_rejected_owner_is_complete_regardless_of_profile_state(self):
         owner = self._make_owner_with_profile(kyc_status=BusinessOwner.REJECTED)
         self.assertEqual(owner.compute_registration_step(), "complete")
+
+    def test_owner_with_no_profile_needs_business_info(self):
+        owner = BusinessOwner.objects.create(
+            full_name="No Profile Trader", login_phone="+233209990009", password_hash="x",
+        )
+        self.assertEqual(owner.compute_registration_step(), "business_info")
