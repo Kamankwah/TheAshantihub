@@ -42,6 +42,10 @@ def me(request):
     if isinstance(request.user, StaffUser):
         data["role"] = request.user.role.name
         data["permissions"] = list(request.user.role.permissions.values_list("codename", flat=True))
+    if isinstance(request.user, BusinessOwner):
+        data["kyc_status"] = request.user.kyc_status
+        data["kyc_rejection_reason"] = request.user.kyc_rejection_reason
+        data["registration_step"] = request.user.compute_registration_step()
     return Response(data)
 
 
