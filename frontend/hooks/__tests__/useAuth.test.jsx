@@ -79,11 +79,11 @@ describe('useAuth', () => {
     expect(result.current.user).toEqual({ token: 'newtoken', account_type: 'customer', id: 5, full_name: 'Kofi Mensah' })
   })
 
-  it('registerBusinessOwner posts as multipart/form-data and stores the returned token', async () => {
+  it('registerBusinessOwner posts as JSON and stores a business_info registration step', async () => {
     server.use(
       http.post('http://localhost:8000/api/accounts/business-owners/register/', async ({ request }) => {
-        const formData = await request.formData()
-        expect(formData.get('full_name')).toBe('Abena Boateng')
+        const body = await request.json()
+        expect(body).toEqual({ full_name: 'Abena Boateng', login_phone: '+233245551122', password: 'secretpass' })
         return HttpResponse.json({ id: 9, full_name: 'Abena Boateng', login_phone: '+233245551122', kyc_status: 'pending', token: 'biztoken' }, { status: 201 })
       }),
     )
@@ -92,7 +92,73 @@ describe('useAuth', () => {
     await act(async () => {
       await result.current.registerBusinessOwner({ full_name: 'Abena Boateng', login_phone: '+233245551122', password: 'secretpass' })
     })
-    expect(result.current.user).toEqual({ token: 'biztoken', account_type: 'business_owner', id: 9, full_name: 'Abena Boateng' })
+    expect(result.current.user).toEqual({
+      token: 'biztoken', account_type: 'business_owner', id: 9, full_name: 'Abena Boateng',
+      kyc_status: 'pending', registration_step: 'business_info',
+    })
+  })
+
+  it('submitBusinessInfo patches business-owners/me/profile/ as multipart/form-data', async () => {
+    server.use(
+      http.patch('http://localhost:8000/api/accounts/business-owners/me/profile/', async ({ request }) => {
+        const formData = await request.formData()
+        expect(formData.get('gps_address')).toBe('AK-039-5028')
+        return HttpResponse.json({ gps_address: 'AK-039-5028' })
+      }),
+    )
+    const { result } = renderHook(() => useAuth())
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    await act(async () => {
+      await result.current.submitBusinessInfo({ gps_address: 'AK-039-5028' })
+    })
+  })
+
+  it('submitPayoutInfo patches business-owners/me/payout/ as JSON', async () => {
+    server.use(
+      http.patch('http://localhost:8000/api/accounts/business-owners/me/payout/', async ({ request }) => {
+        const body = await request.json()
+        expect(body).toEqual({ default_payout_method: 'momo', payout_momo_number: '+233201112233' })
+        return HttpResponse.json({ default_payout_method: 'momo' })
+      }),
+    )
+    const { result } = renderHook(() => useAuth())
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    await act(async () => {
+      await result.current.submitPayoutInfo({ default_payout_method: 'momo', payout_momo_number: '+233201112233' })
+    })
+  })
+
+  it('acceptBusinessTerms posts to business-owners/me/terms/ and returns the registration step', async () => {
+    server.use(
+      http.post('http://localhost:8000/api/accounts/business-owners/me/terms/', () => {
+        return HttpResponse.json({ registration_step: 'complete' })
+      }),
+    )
+    const { result } = renderHook(() => useAuth())
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    let response
+    await act(async () => {
+      response = await result.current.acceptBusinessTerms()
+    })
+    expect(response).toEqual({ registration_step: 'complete' })
+  })
+
+  it('refreshUser re-fetches /me/ and merges the result into the current user', async () => {
+    setStoredAuth({ token: 'biztoken', account_type: 'business_owner', id: 9, full_name: 'Abena Boateng' })
+    server.use(
+      http.get('http://localhost:8000/api/accounts/me/', () => {
+        return HttpResponse.json({
+          account_type: 'business_owner', id: 9, full_name: 'Abena Boateng',
+          kyc_status: 'pending', kyc_rejection_reason: null, registration_step: 'complete',
+        })
+      }),
+    )
+    const { result } = renderHook(() => useAuth())
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    await act(async () => {
+      await result.current.refreshUser()
+    })
+    expect(result.current.user.registration_step).toBe('complete')
   })
 })
 

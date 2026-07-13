@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { apiFetch, apiPost, apiPostForm, getStoredAuth, setStoredAuth } from '../apiClient.js'
+import { apiFetch, apiPatch, apiPatchForm, apiPost, apiPostForm, getStoredAuth, setStoredAuth } from '../apiClient.js'
 
 const LOGIN_PATHS = {
   customer: '/api/accounts/customers/login/',
@@ -47,15 +47,36 @@ export function useAuth() {
   }, [])
 
   const registerBusinessOwner = useCallback(async (fields) => {
+    const data = await apiPost('/api/accounts/business-owners/register/', fields)
+    const auth = {
+      token: data.token, account_type: 'business_owner', id: data.id, full_name: data.full_name,
+      kyc_status: data.kyc_status, registration_step: 'business_info',
+    }
+    setStoredAuth(auth)
+    setUser(auth)
+    return auth
+  }, [])
+
+  const submitBusinessInfo = useCallback(async (fields) => {
     const formData = new FormData()
     Object.entries(fields).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== '') formData.append(key, value)
     })
-    const data = await apiPostForm('/api/accounts/business-owners/register/', formData)
-    const auth = { token: data.token, account_type: 'business_owner', id: data.id, full_name: data.full_name }
-    setStoredAuth(auth)
-    setUser(auth)
-    return auth
+    return apiPatchForm('/api/accounts/business-owners/me/profile/', formData)
+  }, [])
+
+  const submitPayoutInfo = useCallback(async (fields) => {
+    return apiPatch('/api/accounts/business-owners/me/payout/', fields)
+  }, [])
+
+  const acceptBusinessTerms = useCallback(async () => {
+    return apiPost('/api/accounts/business-owners/me/terms/', {})
+  }, [])
+
+  const refreshUser = useCallback(async () => {
+    const me = await apiFetch('/api/accounts/me/')
+    setUser((current) => (current ? { ...current, ...me } : current))
+    return me
   }, [])
 
   const hasPermission = useCallback(
@@ -63,5 +84,9 @@ export function useAuth() {
     [user],
   )
 
-  return { user, isLoading, login, logout, registerCustomer, registerBusinessOwner, hasPermission }
+  return {
+    user, isLoading, login, logout, registerCustomer, registerBusinessOwner,
+    submitBusinessInfo, submitPayoutInfo, acceptBusinessTerms, refreshUser,
+    hasPermission,
+  }
 }
