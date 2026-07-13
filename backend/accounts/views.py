@@ -79,7 +79,6 @@ class StaffActivateView(generics.GenericAPIView):
 class BusinessOwnerRegisterView(generics.CreateAPIView):
     serializer_class = BusinessOwnerRegistrationSerializer
     permission_classes = [AllowAny]
-    parser_classes = [MultiPartParser, FormParser]
     throttle_scope = "business_owner_register"
 
     def create(self, request, *args, **kwargs):
