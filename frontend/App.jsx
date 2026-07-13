@@ -2285,7 +2285,7 @@ const LISTING_STATUS_META = {
   rejected: { label:"Rejected", color:"#ef4444" },
 };
 
-function BusinessDashboard({ onExit, user }) {
+export function BusinessDashboard({ onExit, user, auth }) {
   const [bizTab, setBizTab] = useState("overview");
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
@@ -2294,11 +2294,21 @@ function BusinessDashboard({ onExit, user }) {
   const [billingCycle, setBillingCycle] = useState("monthly");
   const [showPayModal, setShowPayModal] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
+  const [resubmitting, setResubmitting] = useState(false);
+  const isVerified = user?.kycStatus === "verified";
+  const isRejected = user?.kycStatus === "rejected";
 
   const { data: listings, isLoading: listingsLoading, isError: listingsError, refetch: refetchListings } = useMyListings();
   const { data: profile, isLoading: profileLoading, isError: profileError } = useBusinessProfile();
   const { data: subPlans, isLoading: plansLoading, isError: plansError } = useSubscriptionPlans();
   const { data: subscription, isLoading: subLoading, isError: subError, refetch: refetchSubscription } = useMySubscription();
+
+  if (resubmitting) {
+    return <BusinessRegistrationFlow
+      user={user} auth={auth} initialStep="business_info" prefill={profile}
+      setPage={()=>setResubmitting(false)} setShowBizDash={()=>setResubmitting(false)}
+    />;
+  }
 
   const listingList = listings || [];
   const publishedCount = listingList.filter(l=>l.status==="published").length;
@@ -2387,7 +2397,7 @@ function BusinessDashboard({ onExit, user }) {
       <div style={{background:"white",borderBottom:"1px solid #e8e8e8",padding:"0 16px",overflowX:"auto"}}>
         <div style={{maxWidth:960,margin:"0 auto",display:"flex"}}>
           {tabs.map(t=>(
-            <button key={t.id} onClick={()=>setBizTab(t.id)} style={{background:"none",border:"none",borderBottom:bizTab===t.id?`3px solid ${C.gold}`:"3px solid transparent",color:bizTab===t.id?C.darkBrown:"#888",padding:"12px 16px",fontSize:"0.75rem",fontWeight:bizTab===t.id?800:600,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"inherit"}}>
+            <button key={t.id} disabled={!isVerified} onClick={()=>isVerified&&setBizTab(t.id)} style={{background:"none",border:"none",borderBottom:bizTab===t.id?`3px solid ${C.gold}`:"3px solid transparent",color:!isVerified?"#ccc":bizTab===t.id?C.darkBrown:"#888",padding:"12px 16px",fontSize:"0.75rem",fontWeight:bizTab===t.id?800:600,cursor:isVerified?"pointer":"not-allowed",whiteSpace:"nowrap",fontFamily:"inherit"}}>
               {t.icon} {t.label}
             </button>
           ))}
@@ -2399,6 +2409,26 @@ function BusinessDashboard({ onExit, user }) {
       <div style={{maxWidth:960,margin:"0 auto",padding:"20px 16px 60px"}}>
 
         {actionError&&<div style={{background:"#fee2e2",color:"#dc2626",borderRadius:12,padding:"10px 14px",fontSize:"0.78rem",marginBottom:16}}>{actionError}</div>}
+
+        {!isVerified ? (
+          <div style={{background:"white",borderRadius:16,padding:"28px 24px",textAlign:"center",boxShadow:"0 2px 12px rgba(0,0,0,0.07)"}}>
+            {isRejected ? (
+              <>
+                <div style={{fontSize:"2rem",marginBottom:10}}>⚠️</div>
+                <div style={{fontWeight:900,color:"#dc2626",fontSize:"1.05rem",marginBottom:8}}>Your application needs changes</div>
+                <div style={{color:"#555",fontSize:"0.85rem",lineHeight:1.6,marginBottom:18,maxWidth:420,marginLeft:"auto",marginRight:"auto"}}>{user?.kycRejectionReason || "Our team found an issue with your submission."}</div>
+                <button onClick={()=>setResubmitting(true)} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"11px 24px",fontWeight:900,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>Fix and Resubmit</button>
+              </>
+            ) : (
+              <>
+                <div style={{fontSize:"2rem",marginBottom:10}}>⏳</div>
+                <div style={{fontWeight:900,color:C.darkBrown,fontSize:"1.05rem",marginBottom:8}}>Your application is under review</div>
+                <div style={{color:"#555",fontSize:"0.85rem",lineHeight:1.6}}>Our team is verifying your Ghana Card and business details. This usually takes 1-2 business days — you'll be able to manage listings, enquiries and your subscription here as soon as you're approved.</div>
+              </>
+            )}
+          </div>
+        ) : (
+          <>
 
         {bizTab==="overview"&&(
           <>
@@ -2563,6 +2593,9 @@ function BusinessDashboard({ onExit, user }) {
                 ))}
               </div>
             )}
+          </>
+        )}
+
           </>
         )}
 
@@ -3081,7 +3114,7 @@ export default function AshantiHub() {
   if(showRegistrationFlow) return <BusinessRegistrationFlow user={user} auth={auth} initialStep={user?.registrationStep} setPage={setPage} setShowBizDash={setShowBizDash}/>;
 
   if(isAdmin) return <StaffDashboard auth={auth} onExit={()=>setIsAdmin(false)}/>;
-  if(showBizDash) return <BusinessDashboard onExit={()=>setShowBizDash(false)} user={user}/>;
+  if(showBizDash) return <BusinessDashboard onExit={()=>setShowBizDash(false)} user={user} auth={auth}/>;
   if(showPayments) return <PaymentDashboard onClose={()=>setShowPayments(false)}/>;
   if(showCredit) return <CreditDashboard onClose={()=>setShowCredit(false)} user={user}/>;
   if(isLoading) return <LoadingScreen/>;
