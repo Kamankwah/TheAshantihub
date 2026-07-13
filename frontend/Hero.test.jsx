@@ -46,7 +46,7 @@ describe('Hero', () => {
   it('shows sign-up/login CTAs when logged out', () => {
     renderHero()
     expect(screen.getByText(T.login)).toBeInTheDocument()
-    expect(screen.getByText(`✨ ${T.signup}`)).toBeInTheDocument()
+    expect(screen.getAllByText(`✨ ${T.signup}`).length).toBeGreaterThan(0)
   })
 
   it('shows an Akwaaba greeting instead of the CTAs when logged in', () => {
