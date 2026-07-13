@@ -49,7 +49,7 @@ describe('BusinessRegistrationFlow', () => {
     uploadFile(/Ghana Card — back/i)
     fireEvent.change(screen.getByPlaceholderText('GPS address (e.g. AK-123-4567)'), { target: { value: 'AK-123-4567' } })
     fireEvent.change(screen.getByPlaceholderText('Business contact phone (public)'), { target: { value: '+233201112233' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    fireEvent.submit(screen.getByRole('button', { name: 'Continue' }).closest('form'))
 
     await waitFor(() => expect(auth.submitBusinessInfo).toHaveBeenCalledWith(
       expect.objectContaining({ ghana_card_number: 'GHA-000000000-0', gps_address: 'AK-123-4567' })
@@ -67,7 +67,7 @@ describe('BusinessRegistrationFlow', () => {
     uploadFile(/Ghana Card — back/i)
     fireEvent.change(screen.getByPlaceholderText('GPS address (e.g. AK-123-4567)'), { target: { value: 'AK-123-4567' } })
     fireEvent.change(screen.getByPlaceholderText('Business contact phone (public)'), { target: { value: '+233201112233' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    fireEvent.submit(screen.getByRole('button', { name: 'Continue' }).closest('form'))
 
     await waitFor(() => expect(setShowBizDash).toHaveBeenCalledWith(true))
   })
@@ -89,7 +89,7 @@ describe('BusinessRegistrationFlow', () => {
     await waitFor(() => expect(auth.submitPayoutInfo).toHaveBeenCalledWith(
       expect.objectContaining({ default_payout_method: 'momo', payout_momo_number: '+233201112233' })
     ))
-    await waitFor(() => expect(screen.getByText(/Business Agreement/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Business Agreement' })).toBeInTheDocument())
   })
 
   it('terms step requires the checkbox before Submit for Verification is enabled', () => {
