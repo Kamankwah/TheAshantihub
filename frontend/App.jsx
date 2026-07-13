@@ -21,7 +21,7 @@ import { C } from "./theme.js";
 import Flag from "./components/Flag.jsx";
 import Navbar from "./components/Navbar.jsx";
 import Hero from "./components/Hero.jsx";
-import RegionalStory from "./components/RegionalStory.jsx";
+import ChatLauncher from "./components/ChatLauncher.jsx";
 
 // ─── Credit Scoring System ────────────────────────────────────────────────────
 const LENDING_PARTNERS = [
@@ -1629,7 +1629,7 @@ export function Card({item,accentColor,onWhatsApp,user,favourites,onFavourite,cu
   return <>
     {showReviews&&<ReviewsModal item={item} user={user} onClose={()=>setShowReviews(false)} onSubmit={()=>{}}/>}
     {showPay&&<MoMoModal item={item} user={user} onClose={()=>setShowPay(false)}/>}
-    <div style={{background:"white",borderRadius:16,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.10)",border:`2px solid ${accentColor}22`,transition:"transform 0.2s"}}
+    <div style={{background:"rgba(255,255,255,0.04)",backdropFilter:"blur(6px)",borderRadius:16,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.3)",border:`1.5px solid ${accentColor}55`,transition:"transform 0.2s"}}
       onMouseEnter={e=>e.currentTarget.style.transform="translateY(-4px)"}
       onMouseLeave={e=>e.currentTarget.style.transform=""}>
       {/* Photo strip */}
@@ -1666,7 +1666,7 @@ export function Card({item,accentColor,onWhatsApp,user,favourites,onFavourite,cu
         </button>
       </div>
       <div style={{padding:"12px 14px"}}>
-        <div style={{fontWeight:700,fontSize:"0.9rem",color:C.black,marginBottom:2}}>{item.name}</div>
+        <div style={{fontWeight:700,fontSize:"0.9rem",color:"white",marginBottom:2}}>{item.name}</div>
         {/* Reviews are out of scope until a future sub-project builds them; the real Listing
             model has no rating/reviews field, so this whole slot is hidden rather than
             rendering broken placeholders (empty stars, "( reviews)") for every real listing. */}
@@ -1678,8 +1678,8 @@ export function Card({item,accentColor,onWhatsApp,user,favourites,onFavourite,cu
             </button>
           </div>
         )}
-        <div style={{fontSize:"0.68rem",color:"#888",marginBottom:4}}>📍 {item.zone?.name}</div>
-        <div style={{color:"#555",fontSize:"0.75rem",marginBottom:10,lineHeight:1.4}}>{item.description}</div>
+        <div style={{fontSize:"0.68rem",color:"rgba(255,255,255,0.6)",marginBottom:4}}>📍 {item.zone?.name}</div>
+        <div style={{color:"rgba(255,255,255,0.75)",fontSize:"0.75rem",marginBottom:10,lineHeight:1.4}}>{item.description}</div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6,flexWrap:"wrap"}}>
           <span style={{fontWeight:800,color:accentColor,fontSize:"0.8rem"}}>{displayPrice()}</span>
           <div style={{display:"flex",gap:5}}>
@@ -1702,7 +1702,7 @@ export function Card({item,accentColor,onWhatsApp,user,favourites,onFavourite,cu
 export function MapView({listings}) {
   const filtered = listings.filter(i=>i.lat && i.lng);
 
-  return <div style={{background:"white",borderRadius:16,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.1)",marginBottom:20}}>
+  return <div style={{background:"rgba(255,255,255,0.04)",backdropFilter:"blur(6px)",borderRadius:16,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.3)",marginBottom:20,border:`1px solid ${C.gold}33`}}>
     <div style={{background:`linear-gradient(135deg,${C.darkBrown},${C.kente3})`,padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
       <div style={{color:C.gold,fontWeight:800,fontSize:"0.88rem"}}>🗺️ Businesses on Map — Kumasi</div>
       <span style={{color:"white",fontSize:"0.7rem",opacity:0.8}}>{filtered.length} locations</span>
@@ -3210,26 +3210,14 @@ export default function AshantiHub() {
             setShowMap={setShowMap}
             setShowFavs={setShowFavs}
             favourites={favourites}
-            photos={KUMASI_PHOTOS}
+            setPage={setPage}
           />
 
-          <RegionalStory T={T} user={user} setAuthModal={setAuthModal} setPage={setPage} />
-
-          {/* Stats */}
-          <div style={{background:C.gold,padding:"10px 16px",display:"flex",justifyContent:"center",gap:"clamp(12px,4vw,50px)",flexWrap:"wrap"}}>
-            {[["100K+","Annual Visitors"],["15","Categories"],["65+","Businesses"],["4","Currencies"]].map(([n,l])=>(
-              <div key={l} style={{textAlign:"center"}}>
-                <div style={{fontWeight:900,fontSize:"1rem",color:C.darkBrown}}>{n}</div>
-                <div style={{fontSize:"0.58rem",color:C.darkBrown,opacity:0.8}}>{l}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* WhatsApp notice */}
-          <div style={{background:`${C.whatsapp}12`,borderBottom:`1.5px solid ${C.whatsapp}30`,padding:"8px 16px",textAlign:"center"}}>
-            <span style={{fontSize:"0.72rem",color:"#1a5c2e",fontWeight:600}}>
+          {/* WhatsApp notice — dark-themed to continue directly off the Hero */}
+          <div style={{background:C.void,borderBottom:`1.5px solid ${C.whatsapp}30`,padding:"10px 16px",textAlign:"center"}}>
+            <span style={{fontSize:"0.72rem",color:C.lightGold,fontWeight:600}}>
               📱 Every business is WhatsApp-connected
-              {!user&&<span> — <span onClick={()=>setAuthModal("signup")} style={{color:C.kente2,cursor:"pointer",fontWeight:800,textDecoration:"underline"}}>Sign up free</span> to message businesses instantly</span>}
+              {!user&&<span> — <span onClick={()=>setAuthModal("signup")} style={{color:C.gold,cursor:"pointer",fontWeight:800,textDecoration:"underline"}}>Sign up free</span> to message businesses instantly</span>}
             </span>
           </div>
 
@@ -3241,30 +3229,30 @@ export default function AshantiHub() {
               (which the backend and useListings already support via min_price/max_price) replaces
               it. */}
           {showFilters&&(
-            <div style={{background:"white",borderBottom:"1px solid #f0f0f0",padding:"14px 16px"}}>
+            <div style={{background:C.darkBrown,borderBottom:`1px solid ${C.gold}33`,padding:"14px 16px"}}>
               <div style={{maxWidth:960,margin:"0 auto",display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div>
-                  <label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,marginBottom:3,display:"block"}}>Sort By</label>
-                  <select value={filters.ordering||""} onChange={e=>setFilters(f=>({...f,ordering:e.target.value||undefined}))} style={{padding:"6px 10px",borderRadius:10,border:"1.5px solid #ddd",fontSize:"0.74rem",background:"white",fontFamily:"inherit"}}>
+                  <label style={{fontSize:"0.68rem",fontWeight:700,color:C.lightGold,marginBottom:3,display:"block"}}>Sort By</label>
+                  <select value={filters.ordering||""} onChange={e=>setFilters(f=>({...f,ordering:e.target.value||undefined}))} style={{padding:"6px 10px",borderRadius:10,border:"1.5px solid rgba(255,255,255,0.25)",fontSize:"0.74rem",background:"rgba(255,255,255,0.08)",color:"white",fontFamily:"inherit"}}>
                     <option value="">🆕 Newest</option>
                     <option value="price_amount">💰 Lowest Price</option>
                     <option value="-price_amount">💰 Highest Price</option>
                   </select>
                 </div>
                 <div>
-                  <label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,marginBottom:3,display:"block"}}>Zone</label>
-                  <select value={filters.zone||""} onChange={e=>setFilters(f=>({...f,zone:e.target.value||undefined}))} style={{padding:"6px 10px",borderRadius:10,border:"1.5px solid #ddd",fontSize:"0.74rem",background:"white",fontFamily:"inherit"}}>
+                  <label style={{fontSize:"0.68rem",fontWeight:700,color:C.lightGold,marginBottom:3,display:"block"}}>Zone</label>
+                  <select value={filters.zone||""} onChange={e=>setFilters(f=>({...f,zone:e.target.value||undefined}))} style={{padding:"6px 10px",borderRadius:10,border:"1.5px solid rgba(255,255,255,0.25)",fontSize:"0.74rem",background:"rgba(255,255,255,0.08)",color:"white",fontFamily:"inherit"}}>
                     <option value="">All Zones</option>
                     {(zones||[]).map(z=><option key={z.id} value={z.name}>{z.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,marginBottom:3,display:"block"}}>Min Price (GHS)</label>
-                  <input type="number" min="0" placeholder="Any" value={minPriceInput} onChange={e=>setMinPriceInput(e.target.value)} style={{width:80,padding:"6px 10px",borderRadius:10,border:"1.5px solid #ddd",fontSize:"0.74rem",background:"white",fontFamily:"inherit"}}/>
+                  <label style={{fontSize:"0.68rem",fontWeight:700,color:C.lightGold,marginBottom:3,display:"block"}}>Min Price (GHS)</label>
+                  <input type="number" min="0" placeholder="Any" value={minPriceInput} onChange={e=>setMinPriceInput(e.target.value)} style={{width:80,padding:"6px 10px",borderRadius:10,border:"1.5px solid rgba(255,255,255,0.25)",fontSize:"0.74rem",background:"rgba(255,255,255,0.08)",color:"white",fontFamily:"inherit"}}/>
                 </div>
                 <div>
-                  <label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,marginBottom:3,display:"block"}}>Max Price (GHS)</label>
-                  <input type="number" min="0" placeholder="Any" value={maxPriceInput} onChange={e=>setMaxPriceInput(e.target.value)} style={{width:80,padding:"6px 10px",borderRadius:10,border:"1.5px solid #ddd",fontSize:"0.74rem",background:"white",fontFamily:"inherit"}}/>
+                  <label style={{fontSize:"0.68rem",fontWeight:700,color:C.lightGold,marginBottom:3,display:"block"}}>Max Price (GHS)</label>
+                  <input type="number" min="0" placeholder="Any" value={maxPriceInput} onChange={e=>setMaxPriceInput(e.target.value)} style={{width:80,padding:"6px 10px",borderRadius:10,border:"1.5px solid rgba(255,255,255,0.25)",fontSize:"0.74rem",background:"rgba(255,255,255,0.08)",color:"white",fontFamily:"inherit"}}/>
                 </div>
                 <button onClick={()=>{setFilters(f=>({category:f.category,search:f.search}));setMinPriceInput("");setMaxPriceInput("");}} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"6px 14px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",marginTop:14}}>
                   ✕ Clear Filters
@@ -3273,13 +3261,14 @@ export default function AshantiHub() {
             </div>
           )}
 
+          <div style={{background:C.void,paddingBottom:1}}>
           {/* Category tabs — the old cross-category smart-search results banner that lived here has
               been removed along with the smart-search engine (see note above); the search box's
               results now just show up in the grid below, scoped to the active category tab. */}
           <div style={{maxWidth:960,margin:"0 auto",padding:"16px 14px 0"}}>
             <div style={{display:"flex",gap:7,overflowX:"auto",paddingBottom:4,scrollbarWidth:"none"}}>
               {(categories||[]).map(cat=>(
-                <button key={cat.id} onClick={()=>setFilters(f=>({...f,category:cat.slug}))} style={{background:filters.category===cat.slug?cat.color:"white",color:filters.category===cat.slug?"white":C.black,border:`2px solid ${cat.color}`,borderRadius:30,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",boxShadow:filters.category===cat.slug?`0 4px 12px ${cat.color}55`:"none",transition:"all 0.2s"}}>
+                <button key={cat.id} onClick={()=>setFilters(f=>({...f,category:cat.slug}))} style={{background:filters.category===cat.slug?cat.color:"rgba(255,255,255,0.06)",color:"white",border:`2px solid ${cat.color}`,borderRadius:30,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",boxShadow:filters.category===cat.slug?`0 4px 12px ${cat.color}55`:"none",transition:"all 0.2s"}}>
                   {cat.icon} {cat.label}
                 </button>
               ))}
@@ -3369,12 +3358,13 @@ export default function AshantiHub() {
               </>
             )}
           </div>
+          </div>
 
           {/* Ghana flag divider */}
           <div style={{height:10,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
 
           {/* CTA */}
-          <div style={{background:C.darkBrown,padding:"28px 20px",textAlign:"center"}}>
+          <div style={{background:C.void,padding:"28px 20px",textAlign:"center"}}>
             <div style={{fontSize:"1.8rem",marginBottom:6}}>🏪</div>
             <h3 style={{color:C.gold,margin:"0 0 6px",fontSize:"1rem"}}>Own a Business in Ashanti?</h3>
             <p style={{color:C.lightGold,fontSize:"0.78rem",margin:"0 0 14px",opacity:0.85}}>First 3 months FREE. WhatsApp-connected listings.</p>
@@ -3512,6 +3502,13 @@ export default function AshantiHub() {
           <div style={{opacity:0.4,fontSize:"0.58rem"}}>© 2026 AshantiHub Ltd. All Rights Reserved • Registered under Ghana Companies Act 2019 • Data Protection Commission Registered</div>
         </div>
       </div>
+
+      {/* Floating chat launcher — opens the existing (mock, Phase-2) MessagingCenter */}
+      <ChatLauncher
+        unreadMessages={unreadMessages}
+        onOpen={() => { setShowMessaging(true); if (!user) setAuthModal("signup"); }}
+        bottom={(cookieDismissed ? 24 : 100) + 64}
+      />
 
       {/* Floating WhatsApp */}
       <div onClick={()=>user?window.open("https://wa.me/233244000000","_blank"):setAuthModal("signup")}

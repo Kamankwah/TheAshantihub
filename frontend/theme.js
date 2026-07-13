@@ -10,4 +10,5 @@ export const C = {
   ghRed:"#CE1126", ghGold:"#FCD116", ghGreen:"#006B3F",
   whatsapp:"#25D366", orange:"#E8621A",
   pureBlack:"#000000", white:"#ffffff",
+  void:"#160E08",
 };

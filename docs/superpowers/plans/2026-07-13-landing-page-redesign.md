@@ -14,7 +14,7 @@
 - No new npm dependencies.
 - Reuse `C` colors; add new tokens to `theme.js` rather than hardcoding new hex values in components.
 - `frontend/components/*` receive all app state as props from `App.jsx` (`AshantiHub`) — they must not introduce their own top-level state beyond purely local UI state.
-- Respect `prefers-reduced-motion` in every animated component (existing convention in `Hero.jsx`, `RegionalStory.jsx`, `GhanaCurrentMap.jsx`, `AshantiGlowMap.jsx`).
+- Respect `prefers-reduced-motion` in every animated component (existing convention in `Hero.jsx`, `RegionalStory.jsx`, `GhanaCurrentMap.jsx`, `AshantiGlowMap.jsx`) — via the shared `usePrefersReducedMotion` hook (Task 3), not a per-file copy.
 - `Card` and `MapView` (defined in `App.jsx`) are each used at exactly one call site (verified via grep) — safe to restyle directly without affecting other screens.
 - Existing behavior-focused tests (`Card.test.jsx`, `MapView.test.jsx`) assert only text content, image `src`/accessible name, and pin presence — not colors. Restyling must not change any text, `alt`, `aria-label`, or conditional-rendering logic those tests rely on.
 - Business owner dashboards (`BusinessDashboard`, `PaymentDashboard`, `CreditDashboard`), `StaffDashboard`, `/staff` URL handling, and the Events/About/Contact pages are **out of scope** — untouched.
@@ -28,6 +28,7 @@
 | `frontend/theme.js` | Modify | Add `C.void` (new near-black token for the dark hero background) |
 | `frontend/assets/logo/logo_icon.png`, `logo_main.png` | Add (binary) | Original crest + full lockup logo art (already produced, see Task 1) |
 | `frontend/assets/logo/logo-icon.png`, `logo-main.png` | Add (binary) | Web-sized (240px / 1200px) exports of the above for actual `import` use |
+| `frontend/hooks/usePrefersReducedMotion.js` | Create | Shared `prefers-reduced-motion` hook — used by `Hero.jsx` and `ChatLauncher.jsx` instead of each carrying its own copy |
 | `frontend/components/Hero.jsx` | Replace entirely | Merged full-viewport scroll-narrative hero (welcome+search → Ghana growth+stats → Ashanti/Kumasi+features → join CTA) |
 | `frontend/components/RegionalStory.jsx` | Delete | Folded into the new `Hero.jsx` |
 | `frontend/components/Navbar.jsx` | Replace entirely | Real logo, glass-over-hero on `page==="home"`, "Business" promoted into the core nav row |
@@ -36,6 +37,7 @@
 | `frontend/Hero.test.jsx` | Replace entirely | Tests for the new merged Hero's actual behavior (old carousel tests no longer apply) |
 | `frontend/Navbar.test.jsx` | Modify | Add "Business" nav assertions |
 | `frontend/ChatLauncher.test.jsx` | Create | Click → `onOpen` called; unread badge renders |
+| `frontend/hooks/__tests__/usePrefersReducedMotion.test.jsx` | Create | Initial value + change-event behavior of the shared hook |
 
 ---
 
@@ -98,7 +100,7 @@ git commit -m "assets: add AshantiHub crest logo (source + web-sized exports)"
 - Modify: `frontend/theme.js`
 
 **Interfaces:**
-- Produces: `C.void` (string, `"#160E08"`) — a warm near-black, consumed by Task 3's `Hero.jsx` as the scroll-wrapper background.
+- Produces: `C.void` (string, `"#160E08"`) — a warm near-black, consumed by Task 4's `Hero.jsx` as the scroll-wrapper background.
 
 - [ ] **Step 1: Add the token**
 
@@ -138,20 +140,134 @@ git commit -m "style: add C.void near-black token for the dark hero background"
 
 ---
 
-### Task 3: Merged `Hero.jsx`
+### Task 3: Shared `usePrefersReducedMotion` hook
+
+**Files:**
+- Create: `frontend/hooks/usePrefersReducedMotion.js`
+- Test: `frontend/hooks/__tests__/usePrefersReducedMotion.test.jsx`
+
+**Interfaces:**
+- Produces: `export default function usePrefersReducedMotion(): boolean` — reads `window.matchMedia("(prefers-reduced-motion: reduce)")` on mount and subscribes to its `change` event. Consumed by Task 4's `Hero.jsx` and Task 6's `ChatLauncher.jsx` (both import it instead of each defining their own copy — this file is the single source, replacing what would otherwise be verbatim-duplicated in both).
+
+This extracts a hook that previously existed as an identical, independently-defined copy inside both the old `Hero.jsx` and `RegionalStory.jsx`. Rather than repeating that duplication across the new `Hero.jsx` and the new `ChatLauncher.jsx`, both now import this shared module.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `frontend/hooks/__tests__/usePrefersReducedMotion.test.jsx`:
+
+```jsx
+import { act, renderHook } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import usePrefersReducedMotion from '../usePrefersReducedMotion.js'
+
+function mockMatchMedia(initialMatches) {
+  const listeners = []
+  window.matchMedia = vi.fn().mockImplementation((query) => ({
+    matches: initialMatches,
+    media: query,
+    addEventListener: (_event, cb) => listeners.push(cb),
+    removeEventListener: vi.fn(),
+    addListener: (cb) => listeners.push(cb),
+    removeListener: vi.fn(),
+  }))
+  return {
+    fire: (newMatches) => act(() => listeners.forEach((cb) => cb({ matches: newMatches }))),
+  }
+}
+
+describe('usePrefersReducedMotion', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('returns true when the media query initially matches', () => {
+    mockMatchMedia(true)
+    const { result } = renderHook(() => usePrefersReducedMotion())
+    expect(result.current).toBe(true)
+  })
+
+  it('returns false when the media query does not match', () => {
+    mockMatchMedia(false)
+    const { result } = renderHook(() => usePrefersReducedMotion())
+    expect(result.current).toBe(false)
+  })
+
+  it('updates when the media query change event fires', () => {
+    const { fire } = mockMatchMedia(false)
+    const { result } = renderHook(() => usePrefersReducedMotion())
+    expect(result.current).toBe(false)
+    fire(true)
+    expect(result.current).toBe(true)
+  })
+})
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `cd frontend && npx vitest run hooks/__tests__/usePrefersReducedMotion.test.jsx`
+Expected: FAIL — `../usePrefersReducedMotion.js` does not exist yet.
+
+- [ ] **Step 3: Write `usePrefersReducedMotion.js`**
+
+Create `frontend/hooks/usePrefersReducedMotion.js`:
+
+```js
+import { useEffect, useState } from "react";
+
+// ─── usePrefersReducedMotion ────────────────────────────────────────────────
+// Shared `prefers-reduced-motion` listener — Hero.jsx and ChatLauncher.jsx
+// both import this rather than each defining their own copy (the old
+// Hero.jsx and RegionalStory.jsx each had one; this replaces both with a
+// single source).
+export default function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia
+      ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      : false
+  );
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const handler = (e) => setReduced(e.matches);
+    if (mq.addEventListener) mq.addEventListener("change", handler);
+    else mq.addListener(handler);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", handler);
+      else mq.removeListener(handler);
+    };
+  }, []);
+  return reduced;
+}
+```
+
+- [ ] **Step 4: Run the test to verify it passes**
+
+Run: `cd frontend && npx vitest run hooks/__tests__/usePrefersReducedMotion.test.jsx`
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add frontend/hooks/usePrefersReducedMotion.js frontend/hooks/__tests__/usePrefersReducedMotion.test.jsx
+git commit -m "feat: extract shared usePrefersReducedMotion hook"
+```
+
+---
+
+### Task 4: Merged `Hero.jsx`
 
 **Files:**
 - Create (overwrite): `frontend/components/Hero.jsx`
 - Delete: `frontend/components/RegionalStory.jsx`
-- Test: `frontend/Hero.test.jsx` (Task 6)
+- Test: `frontend/Hero.test.jsx` (Task 7)
 
 **Interfaces:**
-- Consumes: `C` (`../theme.js`), `GhanaCurrentMap`/`AshantiGlowMap` (`./GhanaCurrentMap.jsx`, `./AshantiGlowMap.jsx`) — both already exist and are untouched.
+- Consumes: `C` (`../theme.js`), `GhanaCurrentMap`/`AshantiGlowMap` (`./GhanaCurrentMap.jsx`, `./AshantiGlowMap.jsx` — both already exist and are untouched), `usePrefersReducedMotion` default export (`../hooks/usePrefersReducedMotion.js`, Task 3).
 - Produces: `export default function Hero({ T, user, setAuthModal, setShowReferral, searchInput, setSearchInput, showSearchResults, setShowSearchResults, searchFocused, setSearchFocused, setFilters, setShowFilters, showMap, setShowMap, setShowFavs, favourites, setPage })` — note this drops the old `photos` prop (the carousel is gone, replaced by the two maps) and adds `setPage` (needed for the "Register Your Business" CTA, previously only on `RegionalStory`).
 
 - [ ] **Step 1: Write the failing test file first**
 
-This is Task 6's `frontend/Hero.test.jsx` — write it now (before the implementation) so Step 3 below has something to run against. See Task 6 for the full file; do that task's Step 1 here, then return to this task's Step 2.
+This is Task 7's `frontend/Hero.test.jsx` — write it now (before the implementation) so Step 3 below has something to run against. See Task 7 for the full file; do that task's Step 1 here, then return to this task's Step 2.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -171,6 +287,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { C } from "../theme.js";
 import GhanaCurrentMap from "./GhanaCurrentMap.jsx";
 import AshantiGlowMap from "./AshantiGlowMap.jsx";
+import usePrefersReducedMotion from "../hooks/usePrefersReducedMotion.js";
 
 // ─── Hero ──────────────────────────────────────────────────────────────────
 // The home page's full-viewport marketing narrative — replaces the old
@@ -195,26 +312,6 @@ const SEARCH_SUGGESTIONS = [
   "rooftop bar", "fresh groceries", "dental clinic", "gym", "tuk-tuk",
   "tour guide", "adinkra crafts", "petrol station", "open now", "highly rated",
 ];
-
-function usePrefersReducedMotion() {
-  const [reduced, setReduced] = useState(() =>
-    typeof window !== "undefined" && window.matchMedia
-      ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
-      : false
-  );
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const handler = (e) => setReduced(e.matches);
-    if (mq.addEventListener) mq.addEventListener("change", handler);
-    else mq.addListener(handler);
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener("change", handler);
-      else mq.removeListener(handler);
-    };
-  }, []);
-  return reduced;
-}
 
 function buildSections(T) {
   const [welcomeTitle, welcomeSubtitle] = (T.welcome || "").split("—").map((s) => s?.trim());
@@ -516,7 +613,7 @@ export default function Hero({
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `cd frontend && npx vitest run Hero.test.jsx`
-Expected: PASS (all assertions from Task 6's file)
+Expected: PASS (all assertions from Task 7's file)
 
 - [ ] **Step 5: Commit**
 
@@ -528,7 +625,7 @@ git commit -m "feat: merge Hero+RegionalStory into one full-viewport scroll-narr
 
 ---
 
-### Task 4: Rewrite `Navbar.jsx`
+### Task 5: Rewrite `Navbar.jsx`
 
 **Files:**
 - Create (overwrite): `frontend/components/Navbar.jsx`
@@ -801,7 +898,7 @@ git commit -m "feat: rewrite Navbar with real logo, glass-over-hero look, promot
 
 ---
 
-### Task 5: `ChatLauncher.jsx`
+### Task 6: `ChatLauncher.jsx`
 
 **Files:**
 - Create: `frontend/components/ChatLauncher.jsx`
@@ -809,7 +906,7 @@ git commit -m "feat: rewrite Navbar with real logo, glass-over-hero look, promot
 
 **Interfaces:**
 - Produces: `export default function ChatLauncher({ unreadMessages = 0, onOpen, bottom = 24 })`.
-- Consumes: `C` (`../theme.js`).
+- Consumes: `C` (`../theme.js`), `usePrefersReducedMotion` default export (`../hooks/usePrefersReducedMotion.js`, Task 3).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -848,33 +945,13 @@ Expected: FAIL — `./components/ChatLauncher.jsx` does not exist yet.
 - [ ] **Step 3: Write `ChatLauncher.jsx`**
 
 ```jsx
-import { useEffect, useState } from "react";
 import { C } from "../theme.js";
+import usePrefersReducedMotion from "../hooks/usePrefersReducedMotion.js";
 
 // ─── ChatLauncher ──────────────────────────────────────────────────────────
 // Floating chat-bubble button opening the existing (still mock, Phase-2)
 // MessagingCenter — App.jsx passes setShowMessaging as onOpen. Sits above
 // the pre-existing floating WhatsApp button (see App.jsx `bottom` prop).
-
-function usePrefersReducedMotion() {
-  const [reduced, setReduced] = useState(() =>
-    typeof window !== "undefined" && window.matchMedia
-      ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
-      : false
-  );
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const handler = (e) => setReduced(e.matches);
-    if (mq.addEventListener) mq.addEventListener("change", handler);
-    else mq.addListener(handler);
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener("change", handler);
-      else mq.removeListener(handler);
-    };
-  }, []);
-  return reduced;
-}
 
 export default function ChatLauncher({ unreadMessages = 0, onOpen, bottom = 24 }) {
   const reducedMotion = usePrefersReducedMotion();
@@ -925,15 +1002,15 @@ git commit -m "feat: add floating ChatLauncher opening the existing MessagingCen
 
 ---
 
-### Task 6: `Hero.test.jsx` rewrite
+### Task 7: `Hero.test.jsx` rewrite
 
 **Files:**
 - Create (overwrite): `frontend/Hero.test.jsx`
 
-This is written as part of Task 3 Step 1 (TDD — test before implementation), documented as its own task here for reference/review purposes.
+This is written as part of Task 4 Step 1 (TDD — test before implementation), documented as its own task here for reference/review purposes.
 
 **Interfaces:**
-- Consumes: `Hero` default export from `./components/Hero.jsx` (Task 3).
+- Consumes: `Hero` default export from `./components/Hero.jsx` (Task 4).
 
 Full file content:
 
@@ -986,7 +1063,10 @@ describe('Hero', () => {
   it('shows sign-up/login CTAs when logged out', () => {
     renderHero()
     expect(screen.getByText(T.login)).toBeInTheDocument()
-    expect(screen.getByText(`✨ ${T.signup}`)).toBeInTheDocument()
+    // getAllByText, not getByText: the welcome section's CTA and the join
+    // section's CTA both render "✨ Create Free Account" (legitimate — they're
+    // independent scroll stops on one page, both mounted simultaneously).
+    expect(screen.getAllByText(`✨ ${T.signup}`).length).toBeGreaterThan(0)
   })
 
   it('shows an Akwaaba greeting instead of the CTAs when logged in', () => {
@@ -1028,22 +1108,22 @@ describe('Hero', () => {
 })
 ```
 
-(No further steps — see Task 3 for the run/implement/pass cycle this test file drives.)
+(No further steps — see Task 4 for the run/implement/pass cycle this test file drives.)
 
 ---
 
-### Task 7: Restyle the functional marketplace section + wire everything into `App.jsx`
+### Task 8: Restyle the functional marketplace section + wire everything into `App.jsx`
 
 **Files:**
 - Modify: `frontend/App.jsx` (multiple targeted regions, listed below)
 
 **Interfaces:**
-- Consumes: `Hero` (Task 3, new prop signature — drops `photos`, adds `setPage`), `Navbar` (Task 4, unchanged signature), `ChatLauncher` (Task 5).
+- Consumes: `Hero` (Task 4, new prop signature — drops `photos`, adds `setPage`), `Navbar` (Task 5, unchanged signature), `ChatLauncher` (Task 6).
 - Constraint: `Card` and `MapView` text content, `alt` text, and `aria-label`s must stay byte-identical to what `Card.test.jsx`/`MapView.test.jsx` assert — only `style={{...}}` values change.
 
 - [ ] **Step 1: Update the `Hero` call site and drop the flat stats bar + `RegionalStory` call**
 
-Find (around line 3194-3226 in the current file — line numbers will have shifted after Tasks 1-6's commits, search for this text instead):
+Find (around line 3194-3226 in the current file — line numbers will have shifted after Tasks 1-7's commits, search for this text instead):
 
 ```jsx
       {page==="home"&&(
@@ -1123,7 +1203,7 @@ Replace with:
           </div>
 ```
 
-The old flat stats bar's four numbers now live inside `Hero`'s "Ghana Rising" section (`s.stats`, Task 3) — not duplicated here.
+The old flat stats bar's four numbers now live inside `Hero`'s "Ghana Rising" section (`s.stats`, Task 4) — not duplicated here.
 
 - [ ] **Step 2: Dark-restyle the filters panel, category tabs, and listings container**
 
@@ -1177,7 +1257,7 @@ Wrap both (category tabs + map/list section) in a shared dark background by chan
 Within the category tabs, the inactive-tab button style currently reads `background:filters.category===cat.slug?cat.color:"white"`. Change the inactive-state background to `"rgba(255,255,255,0.06)"` and its text color from `C.black` to `"white"` (active-state stays `cat.color`/`"white"` as before):
 
 ```jsx
-                <button key={cat.id} onClick={()=>setFilters(f=>({...f,category:cat.slug}))} style={{background:filters.category===cat.slug?cat.color:"rgba(255,255,255,0.06)",color:filters.category===cat.slug?"white":"white",border:`2px solid ${cat.color}`,borderRadius:30,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",boxShadow:filters.category===cat.slug?`0 4px 12px ${cat.color}55`:"none",transition:"all 0.2s"}}>
+                <button key={cat.id} onClick={()=>setFilters(f=>({...f,category:cat.slug}))} style={{background:filters.category===cat.slug?cat.color:"rgba(255,255,255,0.06)",color:"white",border:`2px solid ${cat.color}`,borderRadius:30,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",boxShadow:filters.category===cat.slug?`0 4px 12px ${cat.color}55`:"none",transition:"all 0.2s"}}>
                   {cat.icon} {cat.label}
                 </button>
 ```
@@ -1292,7 +1372,7 @@ Insert immediately before it:
 - [ ] **Step 7: Run the full test suite**
 
 Run: `cd frontend && npm run test`
-Expected: All test files PASS, including `Hero.test.jsx`, `Navbar.test.jsx`, `ChatLauncher.test.jsx`, `Card.test.jsx`, `MapView.test.jsx`, and the pre-existing hook/smoke/StaffDashboard/AuthModal tests (unaffected by these changes).
+Expected: All test files PASS, including `Hero.test.jsx`, `Navbar.test.jsx`, `ChatLauncher.test.jsx`, `usePrefersReducedMotion.test.jsx`, `Card.test.jsx`, `MapView.test.jsx`, and the pre-existing hook/smoke/StaffDashboard/AuthModal tests (unaffected by these changes).
 
 - [ ] **Step 8: Run the production build**
 
@@ -1320,15 +1400,16 @@ git commit -m "feat: dark-restyle marketplace section, mount ChatLauncher, wire 
 ## Self-Review
 
 **Spec coverage:**
-- Full-screen landing page → Task 3 (`Hero.jsx`, 4×100vh sections). ✅
-- Same visual pattern as `landingpage_example.txt`'s ScrollGlobe, project colors, animated Ghana/Ashanti maps → Task 3 reuses `GhanaCurrentMap`/`AshantiGlowMap` verbatim, all colors from `C`. ✅
-- Navbar redesign (the actual `Navbar_example.txt` turned out to be a duplicate of the landing page file — user chose "design it freely") → Task 4. ✅
-- Real logo asset → Task 1 + Task 4 Step 3 (`logo-icon.png` import). ✅
-- Business added to nav (Home, Business, Events, About, Contact) → Task 4 (`NAV_ITEMS`). ✅
-- Modern/interactive, messaging bot → Task 5 (`ChatLauncher` → `MessagingCenter`). ✅
-- Whole home page redesigned including marketplace functionality, functionality preserved → Task 7 (style-only changes, all handlers/props untouched, verified against existing `Card.test.jsx`/`MapView.test.jsx`). ✅
-- Bold & immersive dark mood → Task 2 (`C.void`) + used throughout Tasks 3/4/7. ✅
+- Full-screen landing page → Task 4 (`Hero.jsx`, 4×100vh sections). ✅
+- Same visual pattern as `landingpage_example.txt`'s ScrollGlobe, project colors, animated Ghana/Ashanti maps → Task 4 reuses `GhanaCurrentMap`/`AshantiGlowMap` verbatim, all colors from `C`. ✅
+- Navbar redesign (the actual `Navbar_example.txt` turned out to be a duplicate of the landing page file — user chose "design it freely") → Task 5. ✅
+- Real logo asset → Task 1 + Task 5 Step 3 (`logo-icon.png` import). ✅
+- Business added to nav (Home, Business, Events, About, Contact) → Task 5 (`NAV_ITEMS`). ✅
+- Modern/interactive, messaging bot → Task 6 (`ChatLauncher` → `MessagingCenter`). ✅
+- Whole home page redesigned including marketplace functionality, functionality preserved → Task 8 (style-only changes, all handlers/props untouched, verified against existing `Card.test.jsx`/`MapView.test.jsx`). ✅
+- Bold & immersive dark mood → Task 2 (`C.void`) + used throughout Tasks 4/5/8. ✅
+- `prefers-reduced-motion` shared, not duplicated per file (raised as a pre-flight finding, human chose extraction) → Task 3, consumed by Tasks 4 and 6. ✅
 
 **Placeholder scan:** No "TBD"/"handle appropriately"/"similar to Task N" — every step has literal code or an exact search string plus its exact replacement.
 
-**Type/interface consistency:** `Hero` prop list in Task 3's implementation matches Task 6's test render call and Task 7's call site exactly (`T, user, setAuthModal, setShowReferral, searchInput, setSearchInput, showSearchResults, setShowSearchResults, searchFocused, setSearchFocused, setFilters, setShowFilters, showMap, setShowMap, setShowFavs, favourites, setPage`). `ChatLauncher`'s `{ unreadMessages, onOpen, bottom }` matches between Task 5's implementation, its test, and Task 7's call site. `Navbar`'s prop list is unchanged from the current codebase (verified against `Navbar.test.jsx`'s existing `renderNavbar` helper), so no other `App.jsx` call-site changes are needed for Task 4.
+**Type/interface consistency:** `Hero` prop list in Task 4's implementation matches Task 7's test render call and Task 8's call site exactly (`T, user, setAuthModal, setShowReferral, searchInput, setSearchInput, showSearchResults, setShowSearchResults, searchFocused, setSearchFocused, setFilters, setShowFilters, showMap, setShowMap, setShowFavs, favourites, setPage`). `ChatLauncher`'s `{ unreadMessages, onOpen, bottom }` matches between Task 6's implementation, its test, and Task 8's call site. `usePrefersReducedMotion()` (Task 3, no arguments, returns boolean) matches its two consumers in Tasks 4 and 6 exactly. `Navbar`'s prop list is unchanged from the current codebase (verified against `Navbar.test.jsx`'s existing `renderNavbar` helper), so no other `App.jsx` call-site changes are needed for Task 5.

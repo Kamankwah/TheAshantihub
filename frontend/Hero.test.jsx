@@ -10,12 +10,6 @@ const T = {
   search: 'Search businesses...',
 }
 
-const PHOTOS = {
-  manhyiaPalace: 'https://example.com/manhyia.jpg',
-  kejetiaMarket: 'https://example.com/kejetia.jpg',
-  akwasidae: 'https://example.com/akwasidae.jpg',
-}
-
 function renderHero(props = {}) {
   return render(
     <Hero
@@ -35,7 +29,7 @@ function renderHero(props = {}) {
       setShowMap={vi.fn()}
       setShowFavs={vi.fn()}
       favourites={[]}
-      photos={PHOTOS}
+      setPage={vi.fn()}
       {...props}
     />,
   )
@@ -49,39 +43,46 @@ describe('Hero', () => {
     expect(screen.getByPlaceholderText(T.search)).toBeInTheDocument()
   })
 
-  it('renders carousel prev/next controls and slide dots for a multi-photo set', () => {
-    renderHero()
-    expect(screen.getByLabelText('Previous slide')).toBeInTheDocument()
-    expect(screen.getByLabelText('Next slide')).toBeInTheDocument()
-    expect(screen.getByLabelText('Go to slide 1')).toBeInTheDocument()
-    expect(screen.getByLabelText('Go to slide 3')).toBeInTheDocument()
-  })
-
-  it('omits carousel controls entirely for a single-photo set', () => {
-    renderHero({ photos: { manhyiaPalace: 'https://example.com/manhyia.jpg' } })
-    expect(screen.queryByLabelText('Previous slide')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Next slide')).not.toBeInTheDocument()
-  })
-
-  it('advances the active slide when the next control is clicked', () => {
-    renderHero()
-    const first = screen.getByLabelText('Go to slide 1')
-    expect(first).toHaveAttribute('aria-current', 'true')
-    fireEvent.click(screen.getByLabelText('Next slide'))
-    const second = screen.getByLabelText('Go to slide 2')
-    expect(second).toHaveAttribute('aria-current', 'true')
-    expect(first).toHaveAttribute('aria-current', 'false')
-  })
-
   it('shows sign-up/login CTAs when logged out', () => {
     renderHero()
     expect(screen.getByText(T.login)).toBeInTheDocument()
-    expect(screen.getByText(`✨ ${T.signup}`)).toBeInTheDocument()
+    expect(screen.getAllByText(`✨ ${T.signup}`).length).toBeGreaterThan(0)
   })
 
   it('shows an Akwaaba greeting instead of the CTAs when logged in', () => {
     renderHero({ user: { fullName: 'Kojo Mensah' } })
     expect(screen.getByText(/Akwaaba/)).toBeInTheDocument()
     expect(screen.queryByText(T.login)).not.toBeInTheDocument()
+  })
+
+  it('typing in the search box calls setSearchInput and setShowSearchResults', () => {
+    const setSearchInput = vi.fn()
+    const setShowSearchResults = vi.fn()
+    renderHero({ setSearchInput, setShowSearchResults })
+    fireEvent.change(screen.getByPlaceholderText(T.search), { target: { value: 'kente' } })
+    expect(setSearchInput).toHaveBeenCalledWith('kente')
+    expect(setShowSearchResults).toHaveBeenCalledWith(true)
+  })
+
+  it('renders all four section badges for the scroll narrative', () => {
+    renderHero()
+    expect(screen.getByText('WELCOME TO ASHANTI')).toBeInTheDocument()
+    expect(screen.getByText('GHANA RISING')).toBeInTheDocument()
+    expect(screen.getByText('THE ASHANTI REGION')).toBeInTheDocument()
+    expect(screen.getByText('BUILT FOR ASHANTI, BY ASHANTI')).toBeInTheDocument()
+  })
+
+  it('clicking "Register Your Business" in the join section calls setPage', () => {
+    const setPage = vi.fn()
+    renderHero({ setPage })
+    fireEvent.click(screen.getByText('Register Your Business'))
+    expect(setPage).toHaveBeenCalledWith('register')
+  })
+
+  it('toggles map view via the quick-action button', () => {
+    const setShowMap = vi.fn()
+    renderHero({ setShowMap })
+    fireEvent.click(screen.getByText(/Map View/))
+    expect(setShowMap).toHaveBeenCalled()
   })
 })
