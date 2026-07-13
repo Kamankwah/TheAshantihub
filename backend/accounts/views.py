@@ -248,10 +248,10 @@ class PayoutDetailUpdateView(generics.UpdateAPIView):
         return self.request.user.profile
 
 
-class BusinessOwnerProfileUpdateView(generics.UpdateAPIView):
+class BusinessOwnerProfileUpdateView(generics.RetrieveUpdateAPIView):
     serializer_class = BusinessOwnerProfileUpdateSerializer
     permission_classes = [IsBusinessOwner]
-    http_method_names = ["patch"]
+    http_method_names = ["get", "patch"]
 
     def get_object(self):
         return self.request.user.profile
