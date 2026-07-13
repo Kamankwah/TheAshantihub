@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { server } from './mocks/server.js'
-import { apiFetch, getStoredAuth, setStoredAuth, apiPost, apiPostForm } from './apiClient.js'
+import { apiFetch, getStoredAuth, setStoredAuth, apiPost, apiPostForm, apiPatch } from './apiClient.js'
 
 describe('apiFetch', () => {
   it('returns parsed JSON on success', async () => {
@@ -104,5 +104,28 @@ describe('apiPostForm', () => {
     formData.append('full_name', 'Abena Boateng')
     const data = await apiPostForm('/api/accounts/business-owners/register/', formData)
     expect(data).toEqual({ id: 1, token: 'abc123' })
+  })
+})
+
+describe('apiPatch', () => {
+  it('sends a JSON body via PATCH and returns the parsed response', async () => {
+    server.use(
+      http.patch('http://localhost:8000/api/listings/mine/1/', async ({ request }) => {
+        const body = await request.json()
+        expect(body).toEqual({ name: 'Updated Room', price_amount: '500.00' })
+        return HttpResponse.json({ id: 1, name: 'Updated Room', price_amount: '500.00' })
+      }),
+    )
+    const data = await apiPatch('/api/listings/mine/1/', { name: 'Updated Room', price_amount: '500.00' })
+    expect(data).toEqual({ id: 1, name: 'Updated Room', price_amount: '500.00' })
+  })
+
+  it('throws on a non-2xx response', async () => {
+    server.use(
+      http.patch('http://localhost:8000/api/listings/mine/1/', () => {
+        return HttpResponse.json({ status: 'Cannot edit a published listing.' }, { status: 400 })
+      }),
+    )
+    await expect(apiPatch('/api/listings/mine/1/', { name: 'x' })).rejects.toThrow()
   })
 })
