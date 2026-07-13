@@ -24,6 +24,7 @@ import Hero from "./components/Hero.jsx";
 import ChatLauncher from "./components/ChatLauncher.jsx";
 import Footer from "./components/Footer.jsx";
 import AccountPanel from "./components/AccountPanel.jsx";
+import BusinessRegistrationFlow from "./components/BusinessRegistrationFlow.jsx";
 
 // ─── Credit Scoring System ────────────────────────────────────────────────────
 const LENDING_PARTNERS = [
@@ -2925,7 +2926,7 @@ export default function AshantiHub() {
   const [page,setPage]=useState("home");
   const [authModal,setAuthModal]=useState(null);
   const auth=useAuth();
-  const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id} : null;
+  const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id,registrationStep:auth.user.registration_step,kycStatus:auth.user.kyc_status,kycRejectionReason:auth.user.kyc_rejection_reason} : null;
   const [legalDoc,setLegalDoc]=useState(null);
   const [showBizDash,setShowBizDash]=useState(false);
   const [isAdmin,setIsAdmin]=useState(false);
@@ -3074,6 +3075,10 @@ export default function AshantiHub() {
 
   const [showSearchResults,setShowSearchResults]=useState(false);
   const [searchFocused,setSearchFocused]=useState(false);
+
+  const showRegistrationFlow = (page==="register" && !user) ||
+    (user?.accountType==="business_owner" && user.registrationStep && user.registrationStep!=="complete");
+  if(showRegistrationFlow) return <BusinessRegistrationFlow user={user} auth={auth} initialStep={user?.registrationStep} setPage={setPage} setShowBizDash={setShowBizDash}/>;
 
   if(isAdmin) return <StaffDashboard auth={auth} onExit={()=>setIsAdmin(false)}/>;
   if(showBizDash) return <BusinessDashboard onExit={()=>setShowBizDash(false)} user={user}/>;
