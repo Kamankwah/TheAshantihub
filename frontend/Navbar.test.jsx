@@ -35,9 +35,17 @@ describe('Navbar', () => {
     renderNavbar()
     expect(screen.getByText('AshantiHub')).toBeInTheDocument()
     expect(screen.getAllByText(/Home/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Business/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/Events/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/About/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/Contact/).length).toBeGreaterThan(0)
+  })
+
+  it('renders a Business nav item that opens the business dashboard', () => {
+    const setShowBizDash = vi.fn()
+    renderNavbar({ setShowBizDash })
+    fireEvent.click(screen.getAllByText(/Business/)[0])
+    expect(setShowBizDash).toHaveBeenCalledWith(true)
   })
 
   it('shows sign in/create account affordances when logged out, and the user name when logged in', () => {
