@@ -83,6 +83,29 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
     def __str__(self):
         return self.full_name
 
+    def compute_registration_step(self):
+        if self.kyc_status in (self.VERIFIED, self.REJECTED):
+            return "complete"
+        profile = self.profile
+        if not (profile.ghana_card_number and profile.gps_address
+                and profile.business_contact_phone
+                and profile.ghana_card_front_image
+                and profile.ghana_card_back_image):
+            return "business_info"
+        if profile.is_formal and not (profile.business_reg_certificate and profile.tin):
+            return "business_info"
+        if not profile.default_payout_method:
+            return "payment_info"
+        if (profile.default_payout_method == BusinessOwnerProfile.MOMO
+                and not profile.payout_momo_number):
+            return "payment_info"
+        if (profile.default_payout_method == BusinessOwnerProfile.BANK
+                and not profile.payout_bank_account_number):
+            return "payment_info"
+        if not profile.terms_accepted_at:
+            return "terms"
+        return "complete"
+
 
 class BusinessOwnerProfile(models.Model):
     BANK = "bank"
