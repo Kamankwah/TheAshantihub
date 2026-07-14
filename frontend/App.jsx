@@ -30,7 +30,7 @@ import HeroCarousel from "./components/HeroCarousel.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 import ListingDetailPage from "./components/ListingDetailPage.jsx";
 import ChatLauncher from "./components/ChatLauncher.jsx";
-import Footer from "./components/Footer.jsx";
+import { Footer2 } from "./components/ui/footer-2.tsx";
 import AccountPanel from "./components/AccountPanel.jsx";
 import BusinessRegistrationFlow from "./components/BusinessRegistrationFlow.jsx";
 import CartDrawer from "./components/CartDrawer.jsx";
@@ -4053,7 +4053,7 @@ export default function AshantiHub() {
       )}
 
       {/* Footer — every page except the redesigned full-viewport home landing page */}
-      {page!=="home"&&<Footer setLegalDoc={setLegalDoc}/>}
+      {page!=="home"&&<Footer2 setPage={setPage} setShowBizDash={setShowBizDash} setLegalDoc={setLegalDoc}/>}
 
       {/* Floating chat launcher — opens the existing (mock, Phase-2) MessagingCenter */}
       <ChatLauncher

@@ -16,7 +16,16 @@
    intentionally removed below; shadcn/Tailwind's base tokens are instead
    scoped under a `.shadcn-scope` wrapper class that new components (the
    Phase C footer, Phase H CTA band, etc.) opt into explicitly, so legacy
-   surfaces are never touched by this stylesheet. */
+   surfaces are never touched by this stylesheet.
+
+   The `:root`/`.dark` variable VALUES below are NOT shadcn's generic neutral
+   "Nova" preset — they're remapped to AshantiHub's actual brand palette
+   (frontend/theme.js's `C` object: gold/darkBrown/cream/kente/Ghana-flag
+   colors), so new Tailwind-built surfaces read as part of the same product
+   instead of a generic gray SaaS block dropped into a Ghanaian-themed app.
+   Keep these in sync with `C` by hand if that palette ever changes — there's
+   no automated bridge between the two systems in this incremental-adoption
+   pass. */
 
 @theme inline {
     --font-heading: var(--font-sans);
@@ -62,72 +71,79 @@
 }
 
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+    /* Light mode — mirrors the legacy app's default (non-dark) look:
+       cream page background, dark-brown text, gold as the brand/primary
+       accent. Values pulled 1:1 from theme.js's `C` object. */
+    --background: #FDF6E3; /* C.cream */
+    --foreground: #2C1810; /* C.darkBrown */
+    --card: #ffffff; /* C.white — footer/CTA cards read as a lifted surface */
+    --card-foreground: #2C1810; /* C.darkBrown */
+    --popover: #ffffff; /* C.white */
+    --popover-foreground: #2C1810; /* C.darkBrown */
+    --primary: #D4A017; /* C.gold */
+    --primary-foreground: #2C1810; /* C.darkBrown — matches every existing gold-button+dark-brown-text pairing elsewhere in the app */
+    --secondary: #F5DEB3; /* C.lightGold */
+    --secondary-foreground: #2C1810; /* C.darkBrown */
+    --muted: #F5DEB3; /* C.lightGold */
+    --muted-foreground: #6b5643; /* deepGold-family neutral, muted body text on cream/lightGold */
+    --accent: #B8860B; /* C.deepGold */
+    --accent-foreground: #FDF6E3; /* C.cream */
+    --destructive: #CC0000; /* C.kente1 — matches the app's existing red "remove/destructive" accents */
+    --border: #D4A01733; /* C.gold at low opacity */
+    --input: #D4A01733; /* C.gold at low opacity */
+    --ring: #D4A017; /* C.gold */
+    --chart-1: #D4A017; /* C.gold */
+    --chart-2: #CC0000; /* C.kente1 */
+    --chart-3: #006400; /* C.kente2 */
+    --chart-4: #000080; /* C.kente3 */
+    --chart-5: #B8860B; /* C.deepGold */
+    --radius: 0.75rem;
+    --sidebar: #FDF6E3; /* C.cream */
+    --sidebar-foreground: #2C1810; /* C.darkBrown */
+    --sidebar-primary: #D4A017; /* C.gold */
+    --sidebar-primary-foreground: #2C1810; /* C.darkBrown */
+    --sidebar-accent: #F5DEB3; /* C.lightGold */
+    --sidebar-accent-foreground: #2C1810; /* C.darkBrown */
+    --sidebar-border: #D4A01733; /* C.gold at low opacity */
+    --sidebar-ring: #D4A017; /* C.gold */
 }
 
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+    /* Dark mode — mirrors the legacy app's dark surfaces (C.void/C.darkBrown)
+       with the same gold primary accent, so toggling the Navbar theme switch
+       (Phase E) keeps these new surfaces visually consistent with the rest
+       of the product in both modes. */
+    --background: #160E08; /* C.void */
+    --foreground: #F5DEB3; /* C.lightGold */
+    --card: #2C1810; /* C.darkBrown */
+    --card-foreground: #F5DEB3; /* C.lightGold */
+    --popover: #2C1810; /* C.darkBrown */
+    --popover-foreground: #F5DEB3; /* C.lightGold */
+    --primary: #D4A017; /* C.gold */
+    --primary-foreground: #2C1810; /* C.darkBrown */
+    --secondary: #3d281a; /* darkBrown, lightened */
+    --secondary-foreground: #F5DEB3; /* C.lightGold */
+    --muted: #3d281a;
+    --muted-foreground: #c9b48f; /* lightGold, dimmed */
+    --accent: #B8860B; /* C.deepGold */
+    --accent-foreground: #FDF6E3; /* C.cream */
+    --destructive: #e03a3a; /* C.kente1, lightened for AA contrast on a dark card */
+    --border: #D4A01740; /* C.gold at low opacity */
+    --input: #D4A01740; /* C.gold at low opacity */
+    --ring: #D4A017; /* C.gold */
+    --chart-1: #D4A017;
+    --chart-2: #e03a3a;
+    --chart-3: #2f9e2f;
+    --chart-4: #3a3ae0;
+    --chart-5: #B8860B;
+    --sidebar: #160E08; /* C.void */
+    --sidebar-foreground: #F5DEB3; /* C.lightGold */
+    --sidebar-primary: #D4A017; /* C.gold */
+    --sidebar-primary-foreground: #2C1810; /* C.darkBrown */
+    --sidebar-accent: #3d281a;
+    --sidebar-accent-foreground: #F5DEB3; /* C.lightGold */
+    --sidebar-border: #D4A01740; /* C.gold at low opacity */
+    --sidebar-ring: #D4A017; /* C.gold */
 }
 
 /* Scoped, not global — see the comment above. Wrap any new shadcn/Tailwind
