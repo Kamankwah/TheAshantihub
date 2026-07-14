@@ -38,6 +38,7 @@ describe('StaffDashboard', () => {
     expect(screen.getByText('Users')).toBeInTheDocument()
     expect(screen.queryByText('KYC Queue')).not.toBeInTheDocument()
     expect(screen.queryByText('Staff Management')).not.toBeInTheDocument()
+    expect(screen.queryByText('Site Settings')).not.toBeInTheDocument()
   })
 
   it('a super_admin-shaped session sees every nav item', () => {
@@ -46,11 +47,12 @@ describe('StaffDashboard', () => {
         'kyc.approve', 'listings.moderate', 'hero_media.approve', 'users.view', 'escrow.view', 'escrow.release',
         'disputes.resolve_financial', 'transactions.report', 'promotions.manage', 'analytics.view',
         'categories.manage', 'messaging.manage', 'disputes.flag', 'staff.manage', 'zones.manage',
+        'site_settings.manage',
       ] },
       hasPermission: () => true,
     })
     render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
-    ;['KYC Queue', 'Listings Moderation', 'Hero Approval', 'Users', 'Categories & Zones', 'Staff Management',
+    ;['KYC Queue', 'Listings Moderation', 'Hero Approval', 'Users', 'Categories & Zones', 'Site Settings', 'Staff Management',
       'Escrow Ledger', 'Disputes', 'Transactions Report', 'Promotions', 'Analytics', 'Messaging / Tickets']
       .forEach((label) => expect(screen.getByText(label)).toBeInTheDocument())
   })
@@ -300,5 +302,84 @@ describe('StaffDashboard', () => {
     fireEvent.change(await screen.findByDisplayValue('Role'), { target: { value: 'admin' } })
     fireEvent.click(screen.getByText('Send invite'))
     await screen.findByText('Could not send the invite. Check the details and try again.')
+  })
+
+  it('only shows the Site Settings nav item for a session with site_settings.manage', () => {
+    const auth = makeAuth({ hasPermission: (c) => c === 'site_settings.manage' })
+    render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    expect(screen.getByText('Site Settings')).toBeInTheDocument()
+  })
+
+  it('renders the Site Settings form seeded with the current values', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/core/site-settings/', () => {
+        return HttpResponse.json({
+          contact_email: 'hello@ashantihub.com',
+          contact_phone: '+233201112233',
+          contact_address: 'Adum, Kumasi',
+          facebook_url: 'https://facebook.com/ashantihub',
+          instagram_url: '',
+          linkedin_url: '',
+          twitter_url: '',
+        })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'site_settings.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Site Settings'))
+    expect(await screen.findByDisplayValue('hello@ashantihub.com')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('+233201112233')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Adum, Kumasi')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('https://facebook.com/ashantihub')).toBeInTheDocument()
+  })
+
+  it('saves Site Settings and shows a confirmation on success', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/core/site-settings/', () => {
+        return HttpResponse.json({
+          contact_email: '', contact_phone: '', contact_address: '',
+          facebook_url: '', instagram_url: '', linkedin_url: '', twitter_url: '',
+        })
+      }),
+    )
+    let patchBody = null
+    server.use(
+      http.patch('http://localhost:8000/api/core/site-settings/', async ({ request }) => {
+        patchBody = await request.json()
+        return HttpResponse.json({ ...patchBody })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'site_settings.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Site Settings'))
+    await screen.findByPlaceholderText('hello@ashantihub.com')
+    fireEvent.change(screen.getByPlaceholderText('hello@ashantihub.com'), { target: { value: 'new@ashantihub.com' } })
+    fireEvent.change(screen.getByPlaceholderText('https://facebook.com/ashantihub'), { target: { value: 'https://facebook.com/newpage' } })
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(patchBody).toMatchObject({
+      contact_email: 'new@ashantihub.com',
+      facebook_url: 'https://facebook.com/newpage',
+    }))
+    await screen.findByText('✓ Saved!')
+  })
+
+  it('shows an inline error when saving Site Settings fails', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/core/site-settings/', () => {
+        return HttpResponse.json({
+          contact_email: '', contact_phone: '', contact_address: '',
+          facebook_url: '', instagram_url: '', linkedin_url: '', twitter_url: '',
+        })
+      }),
+      http.patch('http://localhost:8000/api/core/site-settings/', () => {
+        return HttpResponse.json({ detail: 'Server error' }, { status: 500 })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'site_settings.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Site Settings'))
+    await screen.findByPlaceholderText('hello@ashantihub.com')
+    fireEvent.click(screen.getByText('Save'))
+    await screen.findByText('Could not save site settings. Please try again.')
   })
 })

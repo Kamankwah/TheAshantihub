@@ -16,6 +16,23 @@ export const handlers = [
   http.get('http://localhost:8000/api/listings/:id/related/', () => {
     return HttpResponse.json([])
   }),
+  // Site settings / footer content (docs/UI_MODERNIZATION_ROADMAP.md Phase B)
+  // — default handlers, overridden per-test via server.use() where a
+  // specific settings state/response is needed.
+  http.get('http://localhost:8000/api/core/site-settings/', () => {
+    return HttpResponse.json({
+      contact_email: '', contact_phone: '', contact_address: '',
+      facebook_url: '', instagram_url: '', linkedin_url: '', twitter_url: '',
+    })
+  }),
+  http.patch('http://localhost:8000/api/core/site-settings/', async ({ request }) => {
+    const body = await request.json()
+    return HttpResponse.json({
+      contact_email: '', contact_phone: '', contact_address: '',
+      facebook_url: '', instagram_url: '', linkedin_url: '', twitter_url: '',
+      ...body,
+    })
+  }),
   // Cart & checkout (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4) — default
   // handlers, overridden per-test via server.use() where a specific cart
   // state/response is needed.

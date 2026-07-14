@@ -20,6 +20,7 @@ import { useMySubscription } from "./hooks/useMySubscription.js";
 import { useMyTransactions } from "./hooks/useMyTransactions.js";
 import { useMyCreditScore } from "./hooks/useMyCreditScore.js";
 import { useCart } from "./hooks/useCart.js";
+import { useSiteSettings } from "./hooks/useSiteSettings.js";
 import { apiPost, apiPatch } from "./apiClient.js";
 import { C, CURRENCIES } from "./theme.js";
 import Flag from "./components/Flag.jsx";
@@ -2246,6 +2247,67 @@ function CategoriesZonesPanel({theme,auth}) {
   </div>;
 }
 
+const SITE_SETTINGS_FIELDS = [
+  {key:"contact_email",label:"Contact email",placeholder:"hello@ashantihub.com"},
+  {key:"contact_phone",label:"Contact phone",placeholder:"+233 20 111 2233"},
+  {key:"contact_address",label:"Contact address",placeholder:"Adum, Kumasi"},
+  {key:"facebook_url",label:"Facebook URL",placeholder:"https://facebook.com/ashantihub"},
+  {key:"instagram_url",label:"Instagram URL",placeholder:"https://instagram.com/ashantihub"},
+  {key:"linkedin_url",label:"LinkedIn URL",placeholder:"https://linkedin.com/company/ashantihub"},
+  {key:"twitter_url",label:"Twitter / X URL",placeholder:"https://x.com/ashantihub"},
+];
+
+function SiteSettingsForm({theme,initial,onSaved}) {
+  // `initial` is only passed once the GET has resolved (see SiteSettingsPanel
+  // below), so this lazy useState seed is race-free — no useEffect re-seeding
+  // needed, and no risk of clobbering in-flight edits.
+  const [form,setForm] = useState(() => ({...initial}));
+  const [actionError,setActionError] = useState(null);
+  const [saved,setSaved] = useState(false);
+
+  const showToast = () => { setSaved(true); setTimeout(()=>setSaved(false),2500); };
+
+  const setField = (key,value) => setForm(f=>({...f,[key]:value}));
+
+  const save = async () => {
+    setActionError(null);
+    try {
+      await apiPatch("/api/core/site-settings/", {...form});
+      showToast();
+      onSaved();
+    } catch (err) {
+      setActionError("Could not save site settings. Please try again.");
+    }
+  };
+
+  return <div>
+    {saved&&<div style={{position:"fixed",top:70,right:20,background:"#22c55e",color:"white",borderRadius:12,padding:"10px 18px",fontSize:"0.8rem",fontWeight:700,zIndex:999}}>✓ Saved!</div>}
+    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
+    <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`,maxWidth:520}}>
+      <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:12}}>Footer contact & social links</div>
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {SITE_SETTINGS_FIELDS.map(f=>(
+          <label key={f.key} style={{display:"flex",flexDirection:"column",gap:4}}>
+            <span style={{color:theme.textMuted,fontSize:"0.68rem",fontWeight:700}}>{f.label}</span>
+            <input value={form[f.key]} onChange={e=>setField(f.key,e.target.value)} placeholder={f.placeholder} style={{padding:"8px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.78rem",fontFamily:"inherit",background:theme.pageBg,color:theme.text}}/>
+          </label>
+        ))}
+      </div>
+      <button onClick={save} style={{marginTop:16,background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"8px 20px",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>Save</button>
+    </div>
+  </div>;
+}
+
+function SiteSettingsPanel({theme}) {
+  const settings = useSiteSettings();
+
+  return <div>
+    {settings.isLoading&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>}
+    {settings.isError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>Could not load site settings.</div>}
+    {settings.data&&<SiteSettingsForm theme={theme} initial={settings.data} onSaved={settings.refetch}/>}
+  </div>;
+}
+
 const STATUS_COLORS = {active:"#22c55e",invited:"#f59e0b",invite_expired:"#dc2626"};
 
 function StaffManagementPanel({theme}) {
@@ -2316,6 +2378,7 @@ export function StaffDashboard({auth,onExit}) {
     {id:"hero",icon:"🌟",label:"Hero Approval",show:auth.hasPermission("hero_media.approve")},
     {id:"users",icon:"👥",label:"Users",show:auth.hasPermission("users.view")},
     {id:"categories-zones",icon:"🗂️",label:"Categories & Zones",show:auth.hasPermission("categories.manage")||auth.hasPermission("zones.manage")},
+    {id:"site-settings",icon:"🧭",label:"Site Settings",show:auth.hasPermission("site_settings.manage")},
     {id:"staff",icon:"🛡️",label:"Staff Management",show:auth.hasPermission("staff.manage")},
     {id:"escrow",icon:"💰",label:"Escrow Ledger",show:auth.hasPermission("escrow.view")||auth.hasPermission("escrow.release")},
     {id:"disputes",icon:"⚖️",label:"Disputes",show:auth.hasPermission("disputes.resolve_financial")||auth.hasPermission("disputes.flag")},
@@ -2361,6 +2424,7 @@ export function StaffDashboard({auth,onExit}) {
         {activeTab==="hero"&&<HeroApprovalPanel theme={t}/>}
         {activeTab==="users"&&<UsersPanel theme={t}/>}
         {activeTab==="categories-zones"&&<CategoriesZonesPanel theme={t} auth={auth}/>}
+        {activeTab==="site-settings"&&<SiteSettingsPanel theme={t}/>}
         {activeTab==="staff"&&<StaffManagementPanel theme={t}/>}
         {activeTab==="escrow"&&<ComingSoonPanel theme={t} feature="Escrow Ledger"/>}
         {activeTab==="disputes"&&<ComingSoonPanel theme={t} feature="Disputes"/>}
