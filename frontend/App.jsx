@@ -3,6 +3,7 @@ import { useCategories } from "./hooks/useCategories.js";
 import { useZones } from "./hooks/useZones.js";
 import { useListings } from "./hooks/useListings.js";
 import { useListing } from "./hooks/useListing.js";
+import { useEvents } from "./hooks/useEvents.js";
 import { useAuth } from "./hooks/useAuth.js";
 import { useTheme } from "./hooks/useTheme.js";
 import { useKYCQueue } from "./hooks/useKYCQueue.js";
@@ -32,6 +33,10 @@ import Footer from "./components/Footer.jsx";
 import AccountPanel from "./components/AccountPanel.jsx";
 import BusinessRegistrationFlow from "./components/BusinessRegistrationFlow.jsx";
 import CartDrawer from "./components/CartDrawer.jsx";
+import EventHeroCarousel from "./components/EventHeroCarousel.jsx";
+import EventCard from "./components/EventCard.jsx";
+import EventDetailPage from "./components/EventDetailPage.jsx";
+import EventSubmissionPanel from "./components/EventSubmissionPanel.jsx";
 
 // ─── Credit Scoring System ────────────────────────────────────────────────────
 const LENDING_PARTNERS = [
@@ -3315,6 +3320,39 @@ export default function AshantiHub() {
   } = useListings(filters);
   const listings = listingsData ? listingsData.pages.flatMap((page) => page.results) : [];
 
+  // ── Events tab (docs/BUSINESS_EVENTS_ROADMAP.md Phase 6) ──────────────────
+  // Same filters-state/debounced-search/PDP-swap conventions as the Business
+  // tab above, kept as its own independent state rather than reusing
+  // `filters`/`selectedListingId` — the two tabs' underlying data (Listing
+  // vs Event) and filter shapes (Event has no price/kind/verified) are
+  // different enough that sharing state would just mean constantly stripping
+  // Business-only fields back out.
+  const [eventFilters, setEventFilters] = useState({});
+  const [selectedEventId, setSelectedEventId] = useState(null);
+  const [eventSearchInput, setEventSearchInput] = useState("");
+  const [showEventFilters, setShowEventFilters] = useState(false);
+  const [showEventSubmit, setShowEventSubmit] = useState(false);
+
+  useEffect(()=>{
+    const t=setTimeout(()=>{
+      setEventFilters(f=>(f.search===eventSearchInput?f:{...f,search:eventSearchInput||undefined}));
+    },300);
+    return ()=>clearTimeout(t);
+  },[eventSearchInput]);
+
+  const {
+    data: eventsData,
+    isLoading: eventsLoading,
+    isFetching: eventsFetching,
+    isError: eventsError,
+    fetchNextPage: fetchNextEventsPage,
+    hasNextPage: hasNextEventsPage,
+    refetch: refetchEvents,
+  } = useEvents(eventFilters);
+  const events = eventsData ? eventsData.pages.flatMap((page) => page.results) : [];
+  const eventCategories = (categories||[]).filter(c=>c.kind==="event");
+  const activeEventCatObj = eventCategories.find(c=>c.slug===eventFilters.category);
+
   // Cart (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4) — customer-only. Fetched
   // here (rather than only inside CartDrawer) so the Navbar's cart-icon badge
   // count is available regardless of which page/overlay is showing, same as
@@ -3760,37 +3798,130 @@ export default function AshantiHub() {
         </>
       )}
 
-      {/* Events page */}
+      {/* Events page — a full Events tab rebuilt on the Business tab's
+          Sidebar/grid/PDP-swap conventions (docs/BUSINESS_EVENTS_ROADMAP.md
+          Phase 6): hero carousel of live events that have uploaded media ->
+          intro banner + "Submit an Event" toggle (EventSubmissionPanel) ->
+          search bar -> category strip (Category.kind==="event") + Sidebar
+          (zone + clear only — price range/sort/verified toggle are hidden,
+          since GET /api/events/ has no price/ordering/verified concept) +
+          a teaser-card grid with infinite scroll. `selectedEventId` swaps
+          the Sidebar+grid area for EventDetailPage, same "flag swaps in a
+          component, scoped inside the page==='events' block" convention as
+          `selectedListingId`/ListingDetailPage in the Business tab above. */}
       {page==="events"&&(
-        <div style={{maxWidth:700,margin:"0 auto",padding:"24px 20px"}}>
-          {/* Events hero with real photo */}
-          <div style={{borderRadius:18,overflow:"hidden",marginBottom:20,position:"relative",height:200}}>
-            <img src={KUMASI_PHOTOS.akwasidae} alt="Akwasidae Festival Kumasi" style={{width:"100%",height:"100%",objectFit:"cover"}}
-              onError={e=>{e.target.parentNode.style.background=`linear-gradient(135deg,${C.kente1},${C.darkBrown})`;e.target.style.display="none";}}/>
-            <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(0,0,0,0.7),transparent)"}}/>
-            <div style={{position:"absolute",bottom:16,left:16,color:"white"}}>
-              <div style={{fontWeight:900,fontSize:"1.2rem"}}>🥁 Upcoming Events</div>
-              <div style={{fontSize:"0.76rem",opacity:0.85}}>Plan your visit around Kumasi's cultural calendar</div>
-            </div>
+        <>
+          <EventHeroCarousel onOpen={(id)=>setSelectedEventId(id)}/>
+
+          <div style={{background:C.void,borderBottom:`1.5px solid ${C.gold}30`,padding:"10px 16px",textAlign:"center"}}>
+            <span style={{fontSize:"0.72rem",color:C.lightGold,fontWeight:600}}>
+              🥁 Plan your visit around Kumasi's cultural calendar
+              {!user&&<span> — <span onClick={()=>setAuthModal("signup")} style={{color:C.gold,cursor:"pointer",fontWeight:800,textDecoration:"underline"}}>Sign up free</span> to submit your own event</span>}
+            </span>
           </div>
-          {[{name:"Akwasidae Festival",date:"Jun 22, 2026",desc:"The Asantehene receives homage — drumming, dancing and royal regalia.",color:C.kente1},{name:"Akwasidae Festival",date:"Aug 3, 2026",desc:"Next major gathering at Manhyia Palace.",color:C.gold},{name:"Kumasi Cultural Festival",date:"Sep 15, 2026",desc:"City-wide celebration of Ashanti arts, food, music and tradition.",color:C.kente2}].map((f,i)=>(
-            <div key={i} style={{background:"white",borderRadius:16,overflow:"hidden",boxShadow:"0 4px 16px rgba(0,0,0,0.08)",borderLeft:`5px solid ${f.color}`,marginBottom:14}}>
-              {i===0&&<img src={KUMASI_PHOTOS.akwasidae} alt={f.name} style={{width:"100%",height:120,objectFit:"cover",display:"block"}} onError={e=>e.target.style.display="none"}/>}
-              {i===0&&<div style={{height:3,background:`linear-gradient(90deg,${C.ghRed},${C.ghGold},${C.ghGreen})`}}/>}
-              <div style={{padding:16,display:"flex",gap:14,alignItems:"flex-start"}}>
-                <div style={{background:f.color,color:"white",borderRadius:12,padding:"8px 10px",textAlign:"center",minWidth:55,fontSize:"0.65rem",fontWeight:700,flexShrink:0}}>{f.date.split(" ").slice(0,2).join("\n")}</div>
-                <div>
-                  <div style={{fontWeight:800,marginBottom:4}}>{f.name}</div>
-                  <div style={{color:"#555",fontSize:"0.78rem",lineHeight:1.5,marginBottom:8}}>{f.desc}</div>
-                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                    <span style={{background:`${C.gold}22`,color:C.deepGold,fontSize:"0.65rem",fontWeight:700,padding:"2px 9px",borderRadius:20}}>📍 Manhyia Palace</span>
-                    <WABtn phone="233244000000" name="AshantiHub Events" style={{fontSize:"0.62rem",padding:"3px 9px"}}/>
-                  </div>
-                </div>
+
+          {/* Search bar */}
+          <div style={{background:C.darkBrown,padding:"16px",position:"relative"}}>
+            <div style={{maxWidth:1280,margin:"0 auto",position:"relative"}}>
+              <div style={{display:"flex",borderRadius:30,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.35)"}}>
+                <input
+                  value={eventSearchInput}
+                  onChange={(e)=>setEventSearchInput(e.target.value)}
+                  placeholder="Search events…"
+                  style={{flex:1,padding:"13px 18px",border:"none",fontSize:"0.85rem",background:"white",outline:"none",fontFamily:"inherit"}}/>
+                {eventSearchInput&&<button onClick={()=>{setEventSearchInput("");setEventFilters(f=>({...f,search:undefined}));}} style={{background:"white",border:"none",padding:"0 8px",cursor:"pointer",color:"#aaa",fontSize:"1.1rem"}}>✕</button>}
+                {/* Filters trigger — mobile-only, same convention as the Business tab's ⚙️ trigger (Sidebar becomes a slide-in panel there too). */}
+                <button onClick={()=>setShowEventFilters(f=>!f)} className="ah-event-filter-trigger" style={{background:"#f5f5f5",border:"none",padding:"13px 14px",cursor:"pointer",fontSize:"0.85rem"}} title="Filters">⚙️</button>
+                <button style={{background:C.gold,color:C.black,border:"none",padding:"13px 18px",fontWeight:900,cursor:"pointer"}}>🔍</button>
+              </div>
+              <div style={{marginTop:10,display:"flex",justifyContent:"flex-end"}}>
+                <button onClick={()=>setShowEventSubmit(s=>!s)} style={{background:showEventSubmit?C.gold:"rgba(255,255,255,0.12)",color:showEventSubmit?C.darkBrown:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer"}}>
+                  {showEventSubmit?"✕ Close":"📅 Submit an Event"}
+                </button>
               </div>
             </div>
-          ))}
-        </div>
+            <style>{`
+              @media (min-width: 761px) { .ah-event-filter-trigger { display: none !important; } }
+            `}</style>
+          </div>
+
+          {showEventSubmit&&(
+            <div style={{maxWidth:1280,margin:"0 auto",padding:"16px 14px 0"}}>
+              <EventSubmissionPanel user={user} categories={categories} zones={zones} PaymentComponent={MoMoPayment}/>
+            </div>
+          )}
+
+          {selectedEventId ? (
+            <EventDetailPage id={selectedEventId} onBack={()=>setSelectedEventId(null)}/>
+          ) : (
+          <div style={{background:C.void,paddingBottom:1}}>
+            {eventCategories.length>0&&(
+              <div style={{maxWidth:1280,margin:"0 auto",padding:"16px 14px 0"}}>
+                <div style={{color:C.lightGold,fontSize:"0.62rem",fontWeight:800,letterSpacing:1.5,opacity:0.65,marginBottom:5}}>CATEGORIES</div>
+                <div style={{display:"flex",gap:7,overflowX:"auto",paddingBottom:8,scrollbarWidth:"none"}}>
+                  <button onClick={()=>setEventFilters(f=>({...f,category:undefined}))} style={{background:!eventFilters.category?C.gold:"rgba(255,255,255,0.06)",color:!eventFilters.category?C.darkBrown:"white",border:`2px solid ${C.gold}`,borderRadius:30,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                    🥁 All Events
+                  </button>
+                  {eventCategories.map(cat=>(
+                    <button key={cat.id} onClick={()=>setEventFilters(f=>({...f,category:cat.slug}))} style={{background:eventFilters.category===cat.slug?cat.color:"rgba(255,255,255,0.06)",color:"white",border:`2px solid ${cat.color}`,borderRadius:30,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",boxShadow:eventFilters.category===cat.slug?`0 4px 12px ${cat.color}55`:"none",transition:"all 0.2s"}}>
+                      {cat.icon} {cat.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div style={{maxWidth:1280,margin:"0 auto",padding:"16px 14px 40px",display:"flex",gap:20,alignItems:"flex-start"}}>
+              <Sidebar
+                zones={zones}
+                filters={eventFilters}
+                setFilters={setEventFilters}
+                onClear={()=>setEventFilters(f=>({category:f.category,search:f.search}))}
+                open={showEventFilters}
+                onClose={()=>setShowEventFilters(false)}
+                showPriceRange={false}
+                showSort={false}
+                showVerifiedToggle={false}
+              />
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                  <h2 style={{margin:0,color:C.darkBrown,fontSize:"0.95rem",fontWeight:900}}>
+                    {activeEventCatObj?activeEventCatObj.icon:"🥁"} {activeEventCatObj?activeEventCatObj.label:"All Events"}
+                    <span style={{color:"#999",fontWeight:400,fontSize:"0.72rem",marginLeft:6}}>{events.length} results</span>
+                  </h2>
+                  <span style={{background:`${C.gold}15`,border:`1px solid ${C.gold}44`,borderRadius:20,padding:"3px 9px",fontSize:"0.65rem",color:C.gold,fontWeight:700}}>📍 Kumasi</span>
+                </div>
+
+                {eventsLoading ? (
+                  <ListingsSkeleton/>
+                ) : eventsError ? (
+                  <div style={{textAlign:"center",padding:"30px"}}>
+                    Something went wrong loading events.{" "}
+                    <button onClick={()=>refetchEvents()} style={{background:"none",border:`1px solid ${C.kente1}`,color:C.kente1,borderRadius:20,padding:"4px 12px",fontSize:"0.75rem",fontWeight:700,cursor:"pointer"}}>Retry</button>
+                  </div>
+                ) : events.length===0 ? (
+                  <div style={{textAlign:"center",padding:"40px",color:"#aaa"}}>
+                    <div style={{fontSize:"2rem",marginBottom:8}}>🥁</div>
+                    <div>No events found. Try adjusting your filters.</div>
+                  </div>
+                ) : (
+                  <>
+                    {eventsFetching&&<div style={{height:3,background:C.gold,marginBottom:10,borderRadius:2}}/>}
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>
+                      {events.map(item=><EventCard key={item.id} item={item} onOpen={(id)=>setSelectedEventId(id)}/>)}
+                    </div>
+                    {hasNextEventsPage&&(
+                      <div style={{textAlign:"center",marginTop:18}}>
+                        <button onClick={()=>fetchNextEventsPage()} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"9px 24px",fontWeight:900,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>Load more</button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+          )}
+        </>
       )}
 
       {/* About page */}

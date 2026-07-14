@@ -45,4 +45,13 @@ export const handlers = [
   http.get('http://localhost:8000/api/orders/', () => {
     return HttpResponse.json([])
   }),
+  // Events (docs/BUSINESS_EVENTS_ROADMAP.md Phase 6) — default handlers,
+  // overridden per-test via server.use() where a specific events state/
+  // response is needed.
+  http.get('http://localhost:8000/api/events/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
+  http.get('http://localhost:8000/api/events/mine/', () => {
+    return HttpResponse.json([])
+  }),
 ]

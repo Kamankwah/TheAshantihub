@@ -15,6 +15,15 @@ import { C } from "../theme.js";
 // than inline `display`/`transform`, so a plain (non-!important) CSS rule
 // only takes effect once the mobile media query is active — the desktop
 // layout is untouched by it.
+//
+// `showPriceRange`/`showSort`/`showVerifiedToggle` (all default `true`, so
+// the Business tab's existing usage is unaffected) let a caller drop
+// sections that don't apply to it rather than forking a parallel component —
+// the Events tab (docs/BUSINESS_EVENTS_ROADMAP.md Phase 6) reuses this same
+// Sidebar with all three set to `false`, since GET /api/events/ has no
+// price/ordering/verified concept (no per-event price, no ordering param,
+// no KYC-style "verified" notion for events) and only supports the
+// zone/clear-filters shape this component already has.
 export default function Sidebar({
   zones,
   filters,
@@ -26,6 +35,9 @@ export default function Sidebar({
   onClear,
   open,
   onClose,
+  showPriceRange = true,
+  showSort = true,
+  showVerifiedToggle = true,
 }) {
   return (
     <>
@@ -70,49 +82,59 @@ export default function Sidebar({
           ))}
         </select>
 
-        <label style={{ ...labelStyle, marginTop: 14 }}>Price Range (GHS)</label>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input
-            type="number"
-            min="0"
-            placeholder="Min"
-            aria-label="Minimum price"
-            value={minPriceInput}
-            onChange={(e) => setMinPriceInput(e.target.value)}
-            style={{ ...selectStyle, width: "50%" }}
-          />
-          <input
-            type="number"
-            min="0"
-            placeholder="Max"
-            aria-label="Maximum price"
-            value={maxPriceInput}
-            onChange={(e) => setMaxPriceInput(e.target.value)}
-            style={{ ...selectStyle, width: "50%" }}
-          />
-        </div>
+        {showPriceRange && (
+          <>
+            <label style={{ ...labelStyle, marginTop: 14 }}>Price Range (GHS)</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                type="number"
+                min="0"
+                placeholder="Min"
+                aria-label="Minimum price"
+                value={minPriceInput}
+                onChange={(e) => setMinPriceInput(e.target.value)}
+                style={{ ...selectStyle, width: "50%" }}
+              />
+              <input
+                type="number"
+                min="0"
+                placeholder="Max"
+                aria-label="Maximum price"
+                value={maxPriceInput}
+                onChange={(e) => setMaxPriceInput(e.target.value)}
+                style={{ ...selectStyle, width: "50%" }}
+              />
+            </div>
+          </>
+        )}
 
-        <label htmlFor="ah-sidebar-sort" style={{ ...labelStyle, marginTop: 14 }}>Sort By</label>
-        <select
-          id="ah-sidebar-sort"
-          value={filters.ordering || ""}
-          onChange={(e) => { const value = e.target.value; setFilters((f) => ({ ...f, ordering: value || undefined })); }}
-          style={selectStyle}
-        >
-          <option value="">Newest</option>
-          <option value="price_amount">Lowest Price</option>
-          <option value="-price_amount">Highest Price</option>
-        </select>
+        {showSort && (
+          <>
+            <label htmlFor="ah-sidebar-sort" style={{ ...labelStyle, marginTop: 14 }}>Sort By</label>
+            <select
+              id="ah-sidebar-sort"
+              value={filters.ordering || ""}
+              onChange={(e) => { const value = e.target.value; setFilters((f) => ({ ...f, ordering: value || undefined })); }}
+              style={selectStyle}
+            >
+              <option value="">Newest</option>
+              <option value="price_amount">Lowest Price</option>
+              <option value="-price_amount">Highest Price</option>
+            </select>
+          </>
+        )}
 
-        <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 16, cursor: "pointer", minHeight: 44 }}>
-          <input
-            type="checkbox"
-            checked={!!filters.verified}
-            onChange={(e) => { const checked = e.target.checked; setFilters((f) => ({ ...f, verified: checked || undefined })); }}
-            style={{ width: 18, height: 18, accentColor: C.gold, cursor: "pointer" }}
-          />
-          <span style={{ color: "white", fontSize: "0.78rem", fontWeight: 700 }}>Verified businesses only</span>
-        </label>
+        {showVerifiedToggle && (
+          <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 16, cursor: "pointer", minHeight: 44 }}>
+            <input
+              type="checkbox"
+              checked={!!filters.verified}
+              onChange={(e) => { const checked = e.target.checked; setFilters((f) => ({ ...f, verified: checked || undefined })); }}
+              style={{ width: 18, height: 18, accentColor: C.gold, cursor: "pointer" }}
+            />
+            <span style={{ color: "white", fontSize: "0.78rem", fontWeight: 700 }}>Verified businesses only</span>
+          </label>
+        )}
 
         <button
           onClick={onClear}

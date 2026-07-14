@@ -73,4 +73,13 @@ describe('Sidebar', () => {
     fireEvent.click(screen.getByLabelText('Close filters'))
     expect(onClose).toHaveBeenCalled()
   })
+
+  it('hides price range, sort and verified toggle when their show flags are false (Events tab reuse)', () => {
+    renderSidebar({ showPriceRange: false, showSort: false, showVerifiedToggle: false })
+    expect(screen.queryByLabelText('Minimum price')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Maximum price')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Sort By')).not.toBeInTheDocument()
+    expect(screen.queryByText('Verified businesses only')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Zone')).toBeInTheDocument()
+  })
 })
