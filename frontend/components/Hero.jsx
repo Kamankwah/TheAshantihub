@@ -145,18 +145,27 @@ export default function Hero({ T, user, setAuthModal, setPage }) {
 
         {/* Pinned visual panel — right-side photograph that crossfades
             between sections, each one blending from the page background on
-            its own left edge into the full photo on its right edge. */}
+            its own left edge into the full photo on its right edge, and
+            softly vignetted on all four edges so it dissolves into the page
+            everywhere rather than reading as a hard-edged rectangle. */}
         <div className="ah-hero-mapcol" style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: "50%" }}>
           {sections.map((s, i) => (
             <div key={s.id} style={{ position: "absolute", inset: 0, opacity: activeIndex === i ? 1 : 0, transition: "opacity 900ms ease" }}>
-              <img src={s.photo} alt={s.photoAlt} style={{ width: "100%", height: "100%", objectFit: "cover", filter: "saturate(1.08) contrast(1.03)" }} />
+              <img src={s.photo} alt={s.photoAlt} style={{ width: "100%", height: "100%", objectFit: "cover", filter: "saturate(1.35) contrast(1.08) brightness(1.03)" }} />
             </div>
           ))}
-          {/* The left-to-right blend itself: solid background colour at the
-              photo column's own left edge, fully transparent by its right
-              edge, so the image reads as dissolving out of the page rather
-              than sitting in a rectangle. */}
-          <div style={{ position: "absolute", inset: 0, background: `linear-gradient(90deg, ${C.void} 0%, ${C.void}dd 22%, ${C.void}66 46%, transparent 72%)`, pointerEvents: "none" }} />
+          {/* The blend itself: a soft all-edge vignette (top/bottom/right)
+              layered under a strong left-to-right sweep — solid background
+              colour at the photo column's own left edge, fully transparent
+              through its clear centre-right "window", fading back out at
+              every edge. */}
+          <div style={{
+            position: "absolute", inset: 0, pointerEvents: "none",
+            background: `
+              radial-gradient(ellipse 70% 65% at 62% 50%, transparent 45%, ${C.void}55 78%, ${C.void}e6 100%),
+              linear-gradient(90deg, ${C.void} 0%, ${C.void}dd 20%, ${C.void}55 42%, transparent 68%)
+            `,
+          }} />
         </div>
 
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, background: `linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)` }} />
