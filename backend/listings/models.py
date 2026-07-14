@@ -5,10 +5,20 @@ from accounts.validators import validate_image_content_type
 
 
 class Category(models.Model):
+    PRODUCT = "product"
+    SERVICE = "service"
+    EVENT = "event"
+    KIND_CHOICES = [
+        (PRODUCT, "Product"),
+        (SERVICE, "Service"),
+        (EVENT, "Event"),
+    ]
+
     slug = models.SlugField(max_length=50, unique=True)
     icon = models.CharField(max_length=10)
     label = models.CharField(max_length=100)
     color = models.CharField(max_length=20)
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES, default=PRODUCT)
 
     def __str__(self):
         return self.label

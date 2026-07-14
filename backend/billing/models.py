@@ -17,8 +17,16 @@ class SubscriptionPlan(models.Model):
     name = models.CharField(max_length=100)
     monthly_price = models.DecimalField(max_digits=10, decimal_places=2)
     annual_price = models.DecimalField(max_digits=10, decimal_places=2)
+    # Marketing copy only — NOT the source of truth for gating. Use the
+    # structured entitlement fields below for anything that enforces a limit.
     features = models.JSONField(default=list, blank=True)
     is_recommended = models.BooleanField(default=False)
+
+    # Structured entitlements (Phase 1 of docs/BUSINESS_EVENTS_ROADMAP.md).
+    max_active_listings = models.PositiveIntegerField(default=0)
+    # How many days an approved hero-media submission stays live for this tier.
+    hero_days = models.PositiveIntegerField(default=0)
+    boost_credits_per_month = models.PositiveIntegerField(default=0)
 
     def __str__(self):
         return self.name
