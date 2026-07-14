@@ -12,7 +12,7 @@ class ListingPhotoSerializer(serializers.ModelSerializer):
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
-        fields = ["id", "slug", "icon", "label", "color"]
+        fields = ["id", "slug", "icon", "label", "color", "kind"]
 
 
 class ZoneSerializer(serializers.ModelSerializer):

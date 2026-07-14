@@ -38,6 +38,13 @@ class PublicBrowsingTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()), 15)
 
+    def test_categories_endpoint_includes_kind(self):
+        # The frontend's Products/Services category split (Phase 3) groups
+        # categories by this field client-side, so it must be serialized.
+        response = self.client.get("/api/listings/categories/")
+        hotels = next(c for c in response.json() if c["slug"] == "hotels")
+        self.assertEqual(hotels["kind"], "service")
+
     def test_zones_endpoint_lists_all_nine(self):
         response = self.client.get("/api/listings/zones/")
         self.assertEqual(response.status_code, 200)
