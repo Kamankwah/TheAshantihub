@@ -13,11 +13,17 @@ from rest_framework.views import APIView
 
 from accounts.models import BusinessOwner
 from accounts.permissions import HasRolePermission
+from accounts.views import IsCustomer
 from billing.models import Transaction
 
-from .models import Event
-from .permissions import IsCustomerOrBusinessOwner, IsEventOwner
+from .models import Event, EventRSVP
+from .permissions import (
+    IsCustomerOrBusinessOwner,
+    IsEventOwner,
+    IsEventOwnerOrCanApproveEvents,
+)
 from .serializers import (
+    EventAttendeeSerializer,
     EventDetailSerializer,
     EventMediaSerializer,
     EventModerationSerializer,
@@ -297,3 +303,100 @@ class EventRejectView(APIView):
         event.rejection_reason = reason
         event.save(update_fields=["status", "rejection_reason"])
         return Response({"id": event.id, "status": event.status})
+
+
+class EventRSVPView(APIView):
+    """POST/DELETE /api/events/{id}/rsvp/ — Phase 7
+    (docs/BUSINESS_EVENTS_ROADMAP.md). Customer-only (not business owner —
+    RSVP is an attendee concept, distinct from IsCustomerOrBusinessOwner's
+    "either account type may submit an event" gate used elsewhere in this
+    app). Only ever targets *live* events (mirrors _live_events_queryset —
+    an event that is pending/rejected/expired/approved-but-unpaid isn't
+    something anyone should be able to RSVP to, same as it isn't visible on
+    the detail endpoint).
+
+    Private-event gating mirrors EventDetailView/EventUnlockView exactly:
+    since Phase 6 is deliberately stateless (no server-side "already
+    unlocked" session), a private event's POST body must itself carry a
+    matching `code`, checked against `event.access_code` the same way the
+    detail endpoint checks `?code=`. Wrong/missing code on a private event
+    is a 403 (this endpoint, like /unlock/ and unlike the detail endpoint,
+    is an explicit action the caller is taking, so it fails loudly rather
+    than silently degrading to a teaser).
+    """
+
+    permission_classes = [IsAuthenticated, IsCustomer]
+
+    def post(self, request, pk):
+        event = generics.get_object_or_404(_live_events_queryset(), pk=pk)
+        code = (request.data.get("code") or "").strip()
+        if event.access_level == Event.PRIVATE and code != event.access_code:
+            return Response({"detail": "Invalid or missing access code."}, status=403)
+
+        with db_transaction.atomic():
+            event = Event.objects.select_for_update().get(pk=event.pk)
+            rsvp = EventRSVP.objects.filter(event=event, customer=request.user).first()
+
+            if rsvp is not None and rsvp.status == EventRSVP.GOING:
+                # Already going — idempotent no-op success, not an error.
+                return Response(
+                    {"event": event.id, "status": rsvp.status, "going_count": event.going_count}
+                )
+
+            going_count = EventRSVP.objects.filter(event=event, status=EventRSVP.GOING).count()
+            if event.capacity is not None and going_count >= event.capacity:
+                return Response({"detail": "This event is at capacity."}, status=400)
+
+            if rsvp is None:
+                rsvp = EventRSVP.objects.create(
+                    event=event, customer=request.user, status=EventRSVP.GOING
+                )
+                created = True
+            else:
+                rsvp.status = EventRSVP.GOING
+                rsvp.save(update_fields=["status", "updated_at"])
+                created = False
+
+            event.sync_going_count()
+
+        return Response(
+            {"event": event.id, "status": rsvp.status, "going_count": event.going_count},
+            status=201 if created else 200,
+        )
+
+    def delete(self, request, pk):
+        event = generics.get_object_or_404(_live_events_queryset(), pk=pk)
+
+        with db_transaction.atomic():
+            event = Event.objects.select_for_update().get(pk=event.pk)
+            rsvp = EventRSVP.objects.filter(event=event, customer=request.user).first()
+
+            if rsvp is None or rsvp.status == EventRSVP.CANCELLED:
+                # No RSVP to cancel — no-op, not an error.
+                return Response(status=204)
+
+            rsvp.status = EventRSVP.CANCELLED
+            rsvp.save(update_fields=["status", "updated_at"])
+            event.sync_going_count()
+
+        return Response(status=204)
+
+
+class EventAttendeesListView(generics.ListAPIView):
+    """GET /api/events/{id}/rsvps/ — organizer-only (the event's own
+    submitter) or staff holding `event.approve`, paginated list of `going`
+    attendees (Phase 7). See EventAttendeeSerializer for the exposed
+    contact-info shape.
+    """
+
+    serializer_class = EventAttendeeSerializer
+    permission_classes = [IsAuthenticated, IsEventOwnerOrCanApproveEvents]
+    pagination_class = EventPagination
+
+    def get_event(self):
+        event = generics.get_object_or_404(Event, pk=self.kwargs["pk"])
+        self.check_object_permissions(self.request, event)
+        return event
+
+    def get_queryset(self):
+        return EventRSVP.objects.filter(event=self.get_event(), status=EventRSVP.GOING)

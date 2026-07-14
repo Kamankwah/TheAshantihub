@@ -124,9 +124,16 @@ class Event(models.Model):
     # once persisted.
     access_code = models.CharField(max_length=16, unique=True, blank=True, editable=False)
 
-    # Denormalized RSVP count — populated by Phase 7's EventRSVP model. Not
-    # kept in sync by anything in this app yet; just the column.
+    # Denormalized RSVP count, kept in sync by EventRSVP create/status-change/
+    # delete (see sync_going_count below) — Phase 7
+    # (docs/BUSINESS_EVENTS_ROADMAP.md). Avoids a COUNT() per event on every
+    # list/teaser read.
     going_count = models.PositiveIntegerField(default=0)
+
+    # Optional organizer-set attendance cap (Phase 7). Nullable = unlimited.
+    # RSVP creation is rejected once the `going` count hits this value — no
+    # waitlist in this phase, per the roadmap doc's explicit recommendation.
+    capacity = models.PositiveIntegerField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -175,6 +182,17 @@ class Event(models.Model):
             and self.expires_at > timezone.now()
         )
 
+    def sync_going_count(self):
+        """Recompute going_count from the current EventRSVP rows and persist
+        it. Called by the RSVP create/cancel views inside the same
+        db_transaction.atomic() block as the EventRSVP write (Phase 7 —
+        docs/BUSINESS_EVENTS_ROADMAP.md), matching this app's existing
+        convention of explicit `with db_transaction.atomic():` blocks in
+        views (e.g. EventPayView) rather than signals.
+        """
+        self.going_count = self.rsvps.filter(status=EventRSVP.GOING).count()
+        self.save(update_fields=["going_count"])
+
 
 class EventMedia(models.Model):
     """Media attached to an Event. No separate submission/approval queue —
@@ -204,3 +222,36 @@ class EventMedia(models.Model):
 
     def __str__(self):
         return f"Media {self.order} for {self.event.name}"
+
+
+class EventRSVP(models.Model):
+    """A marketplace end-user's attendance record for an Event (Phase 7 —
+    docs/BUSINESS_EVENTS_ROADMAP.md). `customer` only (not BusinessOwner) —
+    the roadmap doc scopes RSVP to "the marketplace end-user account", the
+    same `Customer` referenced by `cart.Cart`; a business owner submitting/
+    organizing an event is not itself an attendee concept in this app.
+
+    One row per (event, customer) — toggling status updates it in place
+    rather than creating duplicate rows, so RSVP history (going -> cancelled
+    -> going again) is preserved on a single row rather than accumulating.
+    """
+
+    GOING = "going"
+    CANCELLED = "cancelled"
+    STATUS_CHOICES = [
+        (GOING, "Going"),
+        (CANCELLED, "Cancelled"),
+    ]
+
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="rsvps")
+    customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name="event_rsvps")
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=GOING)
+    rsvp_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-rsvp_at"]
+        unique_together = ("event", "customer")
+
+    def __str__(self):
+        return f"{self.customer.full_name} -> {self.event.name} ({self.status})"

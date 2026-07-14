@@ -18,4 +18,6 @@ urlpatterns = [
     path("<int:pk>/unlock/", views.EventUnlockView.as_view(), name="event-unlock"),
     path("<int:pk>/media/", views.EventMediaCreateView.as_view(), name="event-media-create"),
     path("<int:pk>/pay/", views.EventPayView.as_view(), name="event-pay"),
+    path("<int:pk>/rsvp/", views.EventRSVPView.as_view(), name="event-rsvp"),
+    path("<int:pk>/rsvps/", views.EventAttendeesListView.as_view(), name="event-rsvps"),
 ]

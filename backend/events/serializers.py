@@ -3,7 +3,7 @@ from rest_framework import serializers
 from listings.models import Category
 from listings.serializers import CategorySerializer, ZoneSerializer
 
-from .models import Event, EventMedia
+from .models import Event, EventMedia, EventRSVP
 
 
 class EventMediaSerializer(serializers.ModelSerializer):
@@ -142,3 +142,22 @@ class EventSubmitSerializer(serializers.ModelSerializer):
 
 class EventUnlockSerializer(serializers.Serializer):
     code = serializers.CharField()
+
+
+class EventAttendeeSerializer(serializers.ModelSerializer):
+    """Organizer/staff-facing shape for GET /api/events/{id}/rsvps/ (Phase 7).
+    Surfaces the attendee's name + phone/email — reasonable contact info for
+    an event organizer to reach a "going" attendee, without exposing
+    anything beyond what `Customer` already models (no password_hash etc).
+    """
+
+    customer_name = serializers.CharField(source="customer.full_name", read_only=True)
+    customer_phone = serializers.CharField(source="customer.phone", read_only=True)
+    customer_email = serializers.EmailField(source="customer.email", read_only=True)
+
+    class Meta:
+        model = EventRSVP
+        fields = [
+            "id", "customer", "customer_name", "customer_phone", "customer_email",
+            "status", "rsvp_at",
+        ]
