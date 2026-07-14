@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { Card } from './App.jsx'
 
@@ -53,5 +53,45 @@ describe('Card with real API shape', () => {
     )
     const img = screen.getByRole('img', { name: /Royal Ashanti Lodge/i })
     expect(img).toHaveAttribute('src', REAL_SHAPED_LISTING.main_photo)
+  })
+
+  it('calls onOpen with the listing id when the name is clicked', () => {
+    const onOpen = vi.fn()
+    render(
+      <Card
+        item={REAL_SHAPED_LISTING}
+        accentColor="#000080"
+        onWhatsApp={vi.fn()}
+        user={null}
+        favourites={[]}
+        onFavourite={vi.fn()}
+        currency="GHS"
+        onMessage={vi.fn()}
+        onOpen={onOpen}
+      />,
+    )
+    fireEvent.click(screen.getByText('Royal Ashanti Lodge'))
+    expect(onOpen).toHaveBeenCalledWith(1)
+  })
+
+  it('does not call onOpen when the favourite button is clicked', () => {
+    const onOpen = vi.fn()
+    const onFavourite = vi.fn()
+    render(
+      <Card
+        item={REAL_SHAPED_LISTING}
+        accentColor="#000080"
+        onWhatsApp={vi.fn()}
+        user={null}
+        favourites={[]}
+        onFavourite={onFavourite}
+        currency="GHS"
+        onMessage={vi.fn()}
+        onOpen={onOpen}
+      />,
+    )
+    fireEvent.click(screen.getByText('🤍'))
+    expect(onFavourite).toHaveBeenCalledWith(1)
+    expect(onOpen).not.toHaveBeenCalled()
   })
 })

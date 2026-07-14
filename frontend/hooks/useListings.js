@@ -9,6 +9,8 @@ function buildQueryString(filters, page) {
   if (filters.minPrice != null) params.set('min_price', filters.minPrice)
   if (filters.maxPrice != null) params.set('max_price', filters.maxPrice)
   if (filters.ordering) params.set('ordering', filters.ordering)
+  if (filters.kind) params.set('kind', filters.kind)
+  if (filters.verified) params.set('verified', 'true')
   if (page) params.set('page', page)
   const query = params.toString()
   return query ? `?${query}` : ''

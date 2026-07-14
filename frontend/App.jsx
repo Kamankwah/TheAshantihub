@@ -23,6 +23,9 @@ import { C } from "./theme.js";
 import Flag from "./components/Flag.jsx";
 import Navbar from "./components/Navbar.jsx";
 import Hero from "./components/Hero.jsx";
+import HeroCarousel from "./components/HeroCarousel.jsx";
+import Sidebar from "./components/Sidebar.jsx";
+import ListingDetailPage from "./components/ListingDetailPage.jsx";
 import ChatLauncher from "./components/ChatLauncher.jsx";
 import Footer from "./components/Footer.jsx";
 import AccountPanel from "./components/AccountPanel.jsx";
@@ -1617,8 +1620,25 @@ function MoMoModal({item,user,onClose}) {
   </div>;
 }
 
+// ─── Category strip grouping (Business tab, Phase 3) ──────────────────────
+// Splits the flat `useCategories()` list into Products/Services rows by
+// `Category.kind` (docs/BUSINESS_EVENTS_ROADMAP.md Phase 1/3).
+// `kind==="event"` categories are dropped entirely — the Events tab is a
+// separate, still-static page until Phase 6. Categories with no explicit
+// `kind` (older/seed data, or the test-suite's MSW mocks) default into
+// Products, mirroring Category.kind's own backend default of "product".
+// Exported (like Card/MapView above) so it's unit-testable without having
+// to render the whole AshantiHub tree.
+export function groupCategoriesByKind(categories) {
+  const list = categories || [];
+  return {
+    productCategories: list.filter(c=>c.kind!=="event"&&c.kind!=="service"),
+    serviceCategories: list.filter(c=>c.kind==="service"),
+  };
+}
+
 // ─── Business Card ─────────────────────────────────────────────────────────────
-export function Card({item,accentColor,onWhatsApp,user,favourites,onFavourite,currency,onMessage}) {
+export function Card({item,accentColor,onWhatsApp,user,favourites,onFavourite,currency,onMessage,onOpen}) {
   const [showReviews,setShowReviews]=useState(false);
   const [showPay,setShowPay]=useState(false);
   const [photoIdx,setPhotoIdx]=useState(0);
@@ -1637,8 +1657,9 @@ export function Card({item,accentColor,onWhatsApp,user,favourites,onFavourite,cu
     <div style={{background:"rgba(255,255,255,0.04)",backdropFilter:"blur(6px)",borderRadius:16,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.3)",border:`1.5px solid ${accentColor}55`,transition:"transform 0.2s"}}
       onMouseEnter={e=>e.currentTarget.style.transform="translateY(-4px)"}
       onMouseLeave={e=>e.currentTarget.style.transform=""}>
-      {/* Photo strip */}
-      <div style={{height:140,position:"relative",overflow:"hidden",background:`linear-gradient(135deg,${accentColor}22,${accentColor}44)`}}>
+      {/* Photo strip — clicking it opens the PDP (ListingDetailPage) when onOpen is provided;
+          the favourite/share buttons inside it stopPropagation so they don't also trigger it. */}
+      <div onClick={()=>onOpen&&onOpen(item.id)} style={{height:140,position:"relative",overflow:"hidden",background:`linear-gradient(135deg,${accentColor}22,${accentColor}44)`,cursor:onOpen?"pointer":"default"}}>
         {/* Real photo if available, fallback to category emoji */}
         {item.main_photo ? (
           <img src={item.main_photo} alt={item.name}
@@ -1656,22 +1677,22 @@ export function Card({item,accentColor,onWhatsApp,user,favourites,onFavourite,cu
         {item.photos?.length>1&&(
           <div style={{position:"absolute",bottom:6,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4,zIndex:2}}>
             {item.photos.map((p,i)=>(
-              <img key={p.id} src={p.image} alt="" onClick={()=>setPhotoIdx(i)}
+              <img key={p.id} src={p.image} alt="" onClick={(e)=>{e.stopPropagation();setPhotoIdx(i);}}
                 style={{width:16,height:16,borderRadius:"50%",objectFit:"cover",border:photoIdx===i?"2px solid white":"1px solid rgba(255,255,255,0.6)",cursor:"pointer"}}/>
             ))}
           </div>
         )}
         <span style={{position:"absolute",top:8,right:8,background:accentColor,color:"white",fontSize:"0.6rem",fontWeight:700,padding:"2px 7px",borderRadius:20,zIndex:2}}>{item.tag}</span>
-        <button onClick={()=>onFavourite(item.id)} style={{position:"absolute",top:8,left:8,background:"rgba(255,255,255,0.9)",border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.9rem",zIndex:2}}>
+        <button onClick={(e)=>{e.stopPropagation();onFavourite(item.id);}} style={{position:"absolute",top:8,left:8,background:"rgba(255,255,255,0.9)",border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.9rem",zIndex:2}}>
           {isFav?"❤️":"🤍"}
         </button>
-        <button onClick={()=>{if(navigator.share)navigator.share({title:item.name,text:item.description,url:window.location.href});else navigator.clipboard?.writeText(`Check out ${item.name} on AshantiHub!`);}}
+        <button onClick={(e)=>{e.stopPropagation();if(navigator.share)navigator.share({title:item.name,text:item.description,url:window.location.href});else navigator.clipboard?.writeText(`Check out ${item.name} on AshantiHub!`);}}
           style={{position:"absolute",bottom:8,right:8,background:"rgba(255,255,255,0.9)",border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.8rem",zIndex:2}}>
           📤
         </button>
       </div>
       <div style={{padding:"12px 14px"}}>
-        <div style={{fontWeight:700,fontSize:"0.9rem",color:"white",marginBottom:2}}>{item.name}</div>
+        <div onClick={()=>onOpen&&onOpen(item.id)} style={{fontWeight:700,fontSize:"0.9rem",color:"white",marginBottom:2,cursor:onOpen?"pointer":"default"}}>{item.name}</div>
         {/* Reviews are out of scope until a future sub-project builds them; the real Listing
             model has no rating/reviews field, so this whole slot is hidden rather than
             rendering broken placeholders (empty stars, "( reviews)") for every real listing. */}
@@ -3102,7 +3123,7 @@ function FavDrawerItem({id,onRemove}) {
 
 // ─── Listings loading skeleton ────────────────────────────────────────────────
 function ListingsSkeleton() {
-  return <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(245px,1fr))",gap:14}}>
+  return <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>
     {Array.from({length:6}).map((_,i)=>(
       <div key={i} style={{background:"white",borderRadius:16,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.10)"}}>
         <div style={{height:140,background:"#eee"}}/>
@@ -3139,6 +3160,12 @@ export default function AshantiHub() {
 
   // ── Live marketplace data (categories/zones/listings) ─────────────────────
   const [filters, setFilters] = useState({ category: "hotels" });
+  // PDP (ListingDetailPage) selection — mirrors the isAdmin/showBizDash-style
+  // "flag swaps in a full component" convention, but scoped inside the
+  // page==="business" block (see the JSX below) rather than a top-level
+  // early return, so the hero carousel/banner/search/category tabs/CTA
+  // stay mounted around the PDP instead of also disappearing.
+  const [selectedListingId, setSelectedListingId] = useState(null);
 
   // Free-text search + price inputs are debounced before they hit `filters` (useListings' query
   // key), so a user typing a search term or a price doesn't fire one backend request per keystroke.
@@ -3283,6 +3310,9 @@ export default function AshantiHub() {
 
   const activeCatObj=categories?.find(c=>c.slug===filters.category);
 
+  // Category strip grouping for the Business tab — see groupCategoriesByKind above.
+  const {productCategories,serviceCategories}=groupCategoriesByKind(categories);
+
   // Unread-messages badge count for Navbar — MOCK_CONVERSATIONS is mock
   // messaging data (Phase-2 messaging is out of scope, see App.jsx notes
   // near MessagingCenter), so this stays computed here rather than moving.
@@ -3360,6 +3390,11 @@ export default function AshantiHub() {
           rather than what this nav item opens directly. */}
       {page==="business"&&(
         <>
+          {/* Hero carousel — approved/non-expired hero-media submissions
+              (docs/BUSINESS_EVENTS_ROADMAP.md Phase 2/3). Renders nothing when
+              there are none active, so it never leaves a disruptive empty gap. */}
+          <HeroCarousel/>
+
           {/* WhatsApp notice */}
           <div style={{background:C.void,borderBottom:`1.5px solid ${C.whatsapp}30`,padding:"10px 16px",textAlign:"center"}}>
             <span style={{fontSize:"0.72rem",color:C.lightGold,fontWeight:600}}>
@@ -3370,7 +3405,7 @@ export default function AshantiHub() {
 
           {/* Search bar */}
           <div style={{background:C.darkBrown,padding:"16px",position:"relative"}}>
-            <div style={{maxWidth:960,margin:"0 auto",position:"relative"}}>
+            <div style={{maxWidth:1280,margin:"0 auto",position:"relative"}}>
               <div style={{display:"flex",borderRadius:30,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.35)"}}>
                 <input
                   value={searchInput}
@@ -3380,16 +3415,25 @@ export default function AshantiHub() {
                   placeholder={T.search}
                   style={{ flex: 1, padding: "13px 18px", border: "none", fontSize: "0.85rem", background: "white", outline: "none", fontFamily: "inherit" }} />
                 {searchInput && <button onClick={() => { setSearchInput(""); setFilters((f) => ({ ...f, search: undefined })); setShowSearchResults(false); }} style={{ background: "white", border: "none", padding: "0 8px", cursor: "pointer", color: "#aaa", fontSize: "1.1rem" }}>✕</button>}
-                <button onClick={() => setShowFilters((f) => !f)} style={{ background: "#f5f5f5", border: "none", padding: "13px 14px", cursor: "pointer", fontSize: "0.85rem" }} title="Filters">⚙️</button>
+                {/* Filters trigger — on desktop the Sidebar is always visible alongside the grid, so
+                    this button is mobile-only there (hidden via the ah-filter-trigger media query
+                    below); on mobile it opens Sidebar as a slide-in panel. */}
+                <button onClick={() => setShowFilters((f) => !f)} className="ah-filter-trigger" style={{ background: "#f5f5f5", border: "none", padding: "13px 14px", cursor: "pointer", fontSize: "0.85rem" }} title="Filters">⚙️</button>
                 <button style={{ background: C.gold, color: C.black, border: "none", padding: "13px 18px", fontWeight: 900, cursor: "pointer" }}>🔍</button>
               </div>
-              <div style={{marginTop:10,display:"flex",gap:8,flexWrap:"wrap"}}>
+              <div style={{marginTop:10,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
                 <button onClick={() => setShowMap((m) => !m)} style={{ background: "rgba(255,255,255,0.12)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 20, padding: "6px 14px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>
                   {showMap ? "📋 List View" : "🗺️ Map View"}
                 </button>
                 <button onClick={() => setShowFavs(true)} style={{ background: "rgba(255,255,255,0.12)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 20, padding: "6px 14px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>
                   ❤️ Saved ({favourites.length})
                 </button>
+                <select value={currency} onChange={e=>setCurrency(e.target.value)} title="Currency" style={{ background: "rgba(255,255,255,0.12)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 20, padding: "6px 10px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                  <option value="GHS">GHS 🇬🇭</option>
+                  <option value="USD">USD 🇺🇸</option>
+                  <option value="GBP">GBP 🇬🇧</option>
+                  <option value="EUR">EUR 🇪🇺</option>
+                </select>
               </div>
               {showSearchResults && searchFocused && !searchInput && (
                 <div style={{ position: "absolute", top: "calc(100% + 8px)", left: 0, right: 0, background: "white", borderRadius: 16, boxShadow: "0 8px 40px rgba(0,0,0,0.3)", zIndex: 500, overflow: "hidden", maxHeight: 340, overflowY: "auto" }}>
@@ -3407,74 +3451,76 @@ export default function AshantiHub() {
                 </div>
               )}
             </div>
+            <style>{`
+              @media (min-width: 761px) { .ah-filter-trigger { display: none !important; } }
+            `}</style>
           </div>
 
-          {/* Filters panel — Sort/Zone are discrete selects and write straight into `filters`,
-              which is useListings' query key. Min/Max Price are free-text number inputs, so (like
-              search above) they're debounced ~300ms before landing in `filters` — see
-              minPriceInput/maxPriceInput state. "Min Rating" was dropped: the real Listing model
-              has no rating field, so it could never do anything meaningful; a Min/Max Price range
-              (which the backend and useListings already support via min_price/max_price) replaces
-              it. Currency now lives here too — it moved off the Navbar per the redesign brief, and
-              this is the one place its effect (Card pricing) is actually visible. */}
-          {showFilters&&(
-            <div style={{background:C.darkBrown,borderBottom:`1px solid ${C.gold}33`,padding:"14px 16px"}}>
-              <div style={{maxWidth:960,margin:"0 auto",display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div>
-                  <label style={{fontSize:"0.68rem",fontWeight:700,color:C.lightGold,marginBottom:3,display:"block"}}>Currency</label>
-                  <select value={currency} onChange={e=>setCurrency(e.target.value)} style={{padding:"6px 10px",borderRadius:10,border:"1.5px solid rgba(255,255,255,0.25)",fontSize:"0.74rem",background:"rgba(255,255,255,0.08)",color:"white",fontFamily:"inherit"}}>
-                    <option value="GHS">GHS 🇬🇭</option>
-                    <option value="USD">USD 🇺🇸</option>
-                    <option value="GBP">GBP 🇬🇧</option>
-                    <option value="EUR">EUR 🇪🇺</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{fontSize:"0.68rem",fontWeight:700,color:C.lightGold,marginBottom:3,display:"block"}}>Sort By</label>
-                  <select value={filters.ordering||""} onChange={e=>setFilters(f=>({...f,ordering:e.target.value||undefined}))} style={{padding:"6px 10px",borderRadius:10,border:"1.5px solid rgba(255,255,255,0.25)",fontSize:"0.74rem",background:"rgba(255,255,255,0.08)",color:"white",fontFamily:"inherit"}}>
-                    <option value="">🆕 Newest</option>
-                    <option value="price_amount">💰 Lowest Price</option>
-                    <option value="-price_amount">💰 Highest Price</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{fontSize:"0.68rem",fontWeight:700,color:C.lightGold,marginBottom:3,display:"block"}}>Zone</label>
-                  <select value={filters.zone||""} onChange={e=>setFilters(f=>({...f,zone:e.target.value||undefined}))} style={{padding:"6px 10px",borderRadius:10,border:"1.5px solid rgba(255,255,255,0.25)",fontSize:"0.74rem",background:"rgba(255,255,255,0.08)",color:"white",fontFamily:"inherit"}}>
-                    <option value="">All Zones</option>
-                    {(zones||[]).map(z=><option key={z.id} value={z.name}>{z.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{fontSize:"0.68rem",fontWeight:700,color:C.lightGold,marginBottom:3,display:"block"}}>Min Price (GHS)</label>
-                  <input type="number" min="0" placeholder="Any" value={minPriceInput} onChange={e=>setMinPriceInput(e.target.value)} style={{width:80,padding:"6px 10px",borderRadius:10,border:"1.5px solid rgba(255,255,255,0.25)",fontSize:"0.74rem",background:"rgba(255,255,255,0.08)",color:"white",fontFamily:"inherit"}}/>
-                </div>
-                <div>
-                  <label style={{fontSize:"0.68rem",fontWeight:700,color:C.lightGold,marginBottom:3,display:"block"}}>Max Price (GHS)</label>
-                  <input type="number" min="0" placeholder="Any" value={maxPriceInput} onChange={e=>setMaxPriceInput(e.target.value)} style={{width:80,padding:"6px 10px",borderRadius:10,border:"1.5px solid rgba(255,255,255,0.25)",fontSize:"0.74rem",background:"rgba(255,255,255,0.08)",color:"white",fontFamily:"inherit"}}/>
-                </div>
-                <button onClick={()=>{setFilters(f=>({category:f.category,search:f.search}));setMinPriceInput("");setMaxPriceInput("");}} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"6px 14px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",marginTop:14}}>
-                  ✕ Clear Filters
-                </button>
-              </div>
-            </div>
-          )}
-
+          {selectedListingId ? (
+            <ListingDetailPage
+              id={selectedListingId}
+              onBack={()=>setSelectedListingId(null)}
+              onWhatsApp={handleWA}
+              user={user}
+              favourites={favourites}
+              onFavourite={toggleFav}
+              currency={currency}
+              onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);if(!user)setAuthModal("signup");}}
+              onOpenListing={(otherId)=>setSelectedListingId(otherId)}
+              CardComponent={Card}
+            />
+          ) : (
           <div style={{background:C.void,paddingBottom:1}}>
-          {/* Category tabs — the old cross-category smart-search results banner that lived here has
-              been removed along with the smart-search engine (see note above); the search box's
-              results now just show up in the grid below, scoped to the active category tab. */}
-          <div style={{maxWidth:960,margin:"0 auto",padding:"16px 14px 0"}}>
-            <div style={{display:"flex",gap:7,overflowX:"auto",paddingBottom:4,scrollbarWidth:"none"}}>
-              {(categories||[]).map(cat=>(
-                <button key={cat.id} onClick={()=>setFilters(f=>({...f,category:cat.slug}))} style={{background:filters.category===cat.slug?cat.color:"rgba(255,255,255,0.06)",color:"white",border:`2px solid ${cat.color}`,borderRadius:30,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",boxShadow:filters.category===cat.slug?`0 4px 12px ${cat.color}55`:"none",transition:"all 0.2s"}}>
-                  {cat.icon} {cat.label}
-                </button>
-              ))}
-            </div>
+          {/* Category tabs — split into Products/Services rows by Category.kind
+              (docs/BUSINESS_EVENTS_ROADMAP.md Phase 3). The old cross-category
+              smart-search results banner that lived here has been removed
+              along with the smart-search engine (see note above); the search
+              box's results now just show up in the grid below, scoped to the
+              active category tab. */}
+          <div style={{maxWidth:1280,margin:"0 auto",padding:"16px 14px 0"}}>
+            {productCategories.length>0&&(
+              <>
+                <div style={{color:C.lightGold,fontSize:"0.62rem",fontWeight:800,letterSpacing:1.5,opacity:0.65,marginBottom:5}}>PRODUCTS</div>
+                <div style={{display:"flex",gap:7,overflowX:"auto",paddingBottom:8,scrollbarWidth:"none"}}>
+                  {productCategories.map(cat=>(
+                    <button key={cat.id} onClick={()=>setFilters(f=>({...f,category:cat.slug,kind:cat.kind}))} style={{background:filters.category===cat.slug?cat.color:"rgba(255,255,255,0.06)",color:"white",border:`2px solid ${cat.color}`,borderRadius:30,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",boxShadow:filters.category===cat.slug?`0 4px 12px ${cat.color}55`:"none",transition:"all 0.2s"}}>
+                      {cat.icon} {cat.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            {serviceCategories.length>0&&(
+              <>
+                <div style={{color:C.lightGold,fontSize:"0.62rem",fontWeight:800,letterSpacing:1.5,opacity:0.65,margin:"10px 0 5px"}}>SERVICES</div>
+                <div style={{display:"flex",gap:7,overflowX:"auto",paddingBottom:4,scrollbarWidth:"none"}}>
+                  {serviceCategories.map(cat=>(
+                    <button key={cat.id} onClick={()=>setFilters(f=>({...f,category:cat.slug,kind:cat.kind}))} style={{background:filters.category===cat.slug?cat.color:"rgba(255,255,255,0.06)",color:"white",border:`2px solid ${cat.color}`,borderRadius:30,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",boxShadow:filters.category===cat.slug?`0 4px 12px ${cat.color}55`:"none",transition:"all 0.2s"}}>
+                      {cat.icon} {cat.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
-          {/* Map or List */}
-          <div style={{maxWidth:960,margin:"0 auto",padding:"16px 14px 40px"}}>
+          {/* Sidebar (filters) + main content — desktop: fixed column beside the
+              grid; mobile: Sidebar becomes a slide-in panel toggled by the ⚙️
+              trigger above, matching Navbar.jsx's mobile-menu convention. */}
+          <div style={{maxWidth:1280,margin:"0 auto",padding:"16px 14px 40px",display:"flex",gap:20,alignItems:"flex-start"}}>
+            <Sidebar
+              zones={zones}
+              filters={filters}
+              setFilters={setFilters}
+              minPriceInput={minPriceInput}
+              setMinPriceInput={setMinPriceInput}
+              maxPriceInput={maxPriceInput}
+              setMaxPriceInput={setMaxPriceInput}
+              onClear={()=>{setFilters(f=>({category:f.category,kind:f.kind,search:f.search}));setMinPriceInput("");setMaxPriceInput("");}}
+              open={showFilters}
+              onClose={()=>setShowFilters(false)}
+            />
+            <div style={{flex:1,minWidth:0}}>
             {showMap&&<MapView listings={listings}/>}
             {filters.category==="grocery"?(
               <div style={{background:"white",borderRadius:16,padding:"24px",textAlign:"center",boxShadow:"0 2px 12px rgba(0,0,0,0.07)"}}>
@@ -3543,8 +3589,12 @@ export default function AshantiHub() {
                 ) : (
                   <>
                     {listingsFetching&&<div style={{height:3,background:C.gold,marginBottom:10,borderRadius:2}}/>}
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(245px,1fr))",gap:14}}>
-                      {listings.map(item=><Card key={item.id} item={item} accentColor={activeCatObj?.color} onWhatsApp={handleWA} user={user} favourites={favourites} onFavourite={toggleFav} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);if(!user)setAuthModal("signup");}}/>)}
+                    {/* Dense multi-column tile grid ("4x5" per the redesign brief — reads as 4
+                        columns on desktop, fewer on narrower viewports; not a hard-coded 20-item
+                        page). Promoted/boosted sorting-first lands in a later phase — this renders
+                        `listings` in whatever order the API returns, unsorted client-side. */}
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>
+                      {listings.map(item=><Card key={item.id} item={item} accentColor={activeCatObj?.color} onWhatsApp={handleWA} user={user} favourites={favourites} onFavourite={toggleFav} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);if(!user)setAuthModal("signup");}} onOpen={(id)=>setSelectedListingId(id)}/>)}
                     </div>
                     {hasNextPage&&(
                       <div style={{textAlign:"center",marginTop:18}}>
@@ -3555,8 +3605,10 @@ export default function AshantiHub() {
                 )}
               </>
             )}
+            </div>
           </div>
           </div>
+          )}
 
           {/* Ghana flag divider */}
           <div style={{height:10,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
