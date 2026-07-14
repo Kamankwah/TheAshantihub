@@ -148,7 +148,13 @@ to `"complete"` regardless of field state — an owner reviewed under the old
 one-shot flow (or any current dev data) is never retroactively forced
 through the new wizard just because a field the new flow added
 (`terms_accepted_at`) happens to be empty. No data migration/backfill is
-needed.
+needed. This guarantee covers `verified`/`rejected` owners only. A legacy
+owner still `pending` from the old one-shot flow (fully-populated profile,
+but no `terms_accepted_at`) will be asked to accept the new terms agreement
+on next login — a lightweight one-step prompt, not full re-registration, but
+real. If any such rows exist in production data before this feature ships,
+backfill `terms_accepted_at` for them; this codebase is pre-launch with no
+such data, so no backfill was performed here.
 
 ### API changes
 

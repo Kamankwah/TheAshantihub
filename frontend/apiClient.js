@@ -65,3 +65,12 @@ export async function apiPostForm(path, formData) {
   })
   return handleResponse(response, path)
 }
+
+export async function apiPatchForm(path, formData) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'PATCH',
+    headers: authHeaders(),
+    body: formData,
+  })
+  return handleResponse(response, path)
+}

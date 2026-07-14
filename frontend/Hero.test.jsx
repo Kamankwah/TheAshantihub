@@ -20,16 +20,16 @@ function renderHero(props = {}) {
 }
 
 describe('Hero', () => {
-  it('renders the opening Ghana-stats heading and national stats', () => {
+  it('renders the opening Ashanti-stats heading and stats', () => {
     renderHero()
-    expect(screen.getByText(/A Nation Wired/)).toBeInTheDocument()
+    expect(screen.getByText(/A Kingdom Wired/)).toBeInTheDocument()
     expect(screen.getByText('100K+')).toBeInTheDocument()
     expect(screen.getByText('Annual Visitors')).toBeInTheDocument()
   })
 
   it('renders all four section badges for the scroll narrative', () => {
     renderHero()
-    expect(screen.getByText('GHANA RISING')).toBeInTheDocument()
+    expect(screen.getByText('ASHANTI RISING')).toBeInTheDocument()
     expect(screen.getByText('THE ASHANTI REGION')).toBeInTheDocument()
     expect(screen.getByText('CULTURE & FESTIVALS')).toBeInTheDocument()
     expect(screen.getByText('BUILT FOR ASHANTI, BY ASHANTI')).toBeInTheDocument()
@@ -73,5 +73,13 @@ describe('Hero', () => {
     renderHero({ setAuthModal })
     fireEvent.click(screen.getByText(T.signup))
     expect(setAuthModal).toHaveBeenCalledWith('signup')
+  })
+
+  it('renders one photograph per section, each with descriptive alt text', () => {
+    renderHero()
+    expect(screen.getByAltText(/kente weaver/i)).toBeInTheDocument()
+    expect(screen.getByAltText(/Kejetia Market/i)).toBeInTheDocument()
+    expect(screen.getByAltText(/Akwasidae Festival/i)).toBeInTheDocument()
+    expect(screen.getByAltText(/Manhyia Palace/i)).toBeInTheDocument()
   })
 })
