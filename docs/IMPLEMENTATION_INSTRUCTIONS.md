@@ -13,6 +13,7 @@
 | `docs/FRONTEND_MODERNIZATION.md` | Hero/Navbar redesign, componentization, palette extension, React 19 upgrade | `frontend-engineer` |
 | `docs/PWA_STAFF_DASHBOARD.md` | Service worker fix, staff-scoped installable PWA | `frontend-engineer` |
 | `docs/BUSINESS_EVENTS_ROADMAP.md` | Business tab redesign (hero media approval, sidebar/grid, PDP, cart/checkout, promotion/boost) + net-new Events platform, phased | `backend-architect` + `frontend-engineer` |
+| `docs/UI_MODERNIZATION_ROADMAP.md` | TypeScript/Tailwind/shadcn tooling (incremental adoption), real client-side routing, customer-facing dark/light theme toggle, WhatsApp removal, Business tab restructuring, admin-editable footer, CTA band redesign | `frontend-engineer` + `backend-architect` |
 | `CLAUDE.md` | Baseline architecture description (kept accurate as code changes land) | n/a (meta) |
 
 ## 2. Sequencing across all docs
