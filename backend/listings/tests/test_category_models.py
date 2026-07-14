@@ -8,6 +8,11 @@ SEEDED_SLUGS = {
     "funeral", "suame", "grocery", "wedding", "petrol", "pubs", "lifestyle", "health",
 }
 
+# kind=event categories seeded by 0012_seed_event_categories.py
+# (docs/BUSINESS_EVENTS_ROADMAP.md Phase 6) — distinct slugs from the
+# kind=service "funeral"/"wedding" vendor categories above.
+EVENT_SLUGS = {"festivals", "durbar", "funeral-events", "wedding-events", "concerts"}
+
 # Expected backfilled `kind` per seeded category slug — mirrors the
 # classification performed by 0009_backfill_category_kind.py.
 SEEDED_KINDS = {
@@ -31,7 +36,14 @@ SEEDED_KINDS = {
 
 class CategoryModelTests(TestCase):
     def test_all_fifteen_categories_are_seeded(self):
-        self.assertEqual(set(Category.objects.values_list("slug", flat=True)), SEEDED_SLUGS)
+        self.assertEqual(
+            set(Category.objects.values_list("slug", flat=True)), SEEDED_SLUGS | EVENT_SLUGS
+        )
+
+    def test_event_categories_are_seeded_with_kind_event(self):
+        for slug in EVENT_SLUGS:
+            category = Category.objects.get(slug=slug)
+            self.assertEqual(category.kind, Category.EVENT)
 
     def test_hotels_category_has_expected_fields(self):
         hotels = Category.objects.get(slug="hotels")
