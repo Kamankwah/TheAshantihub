@@ -13,6 +13,7 @@ class PublicBrowsingTests(TestCase):
         )
         self.hotels = Category.objects.get(slug="hotels")
         self.food = Category.objects.get(slug="food")
+        self.grocery = Category.objects.get(slug="grocery")
         self.manhyia = Zone.objects.get(name="Manhyia")
         self.adum = Zone.objects.get(name="Adum")
 
@@ -106,3 +107,49 @@ class PublicBrowsingTests(TestCase):
         response = self.client.get("/api/listings/")
         ids = [item["id"] for item in response.json()["results"]]
         self.assertEqual(ids[0], newer_listing.id)
+
+    def test_filter_by_kind_service(self):
+        # hotels is seeded/backfilled as a "service" category, grocery as "product".
+        self.assertEqual(self.hotels.kind, Category.SERVICE)
+        self.assertEqual(self.grocery.kind, Category.PRODUCT)
+        response = self.client.get("/api/listings/?kind=service")
+        ids = [item["id"] for item in response.json()["results"]]
+        self.assertIn(self.published_hotel.id, ids)
+        self.assertIn(self.published_food.id, ids)
+
+    def test_filter_by_kind_product(self):
+        grocery_listing = Listing.objects.create(
+            business_owner=self.owner, category=self.grocery, zone=self.manhyia,
+            name="Kejetia Grocery Run", description="Same-day grocery shopping and delivery.",
+            contact_phone="+233207334455", price_amount="15.00", status=Listing.PUBLISHED,
+        )
+        response = self.client.get("/api/listings/?kind=product")
+        ids = [item["id"] for item in response.json()["results"]]
+        self.assertEqual(ids, [grocery_listing.id])
+
+    def test_filter_by_verified_true_excludes_unverified_owner_listings(self):
+        # self.owner defaults to kyc_status=pending (not verified).
+        response = self.client.get("/api/listings/?verified=true")
+        ids = [item["id"] for item in response.json()["results"]]
+        self.assertEqual(ids, [])
+
+    def test_filter_by_verified_true_includes_verified_owner_listings(self):
+        self.owner.kyc_status = BusinessOwner.VERIFIED
+        self.owner.save(update_fields=["kyc_status"])
+        response = self.client.get("/api/listings/?verified=true")
+        ids = [item["id"] for item in response.json()["results"]]
+        self.assertIn(self.published_hotel.id, ids)
+        self.assertIn(self.published_food.id, ids)
+
+    def test_filter_by_verified_1_also_accepted(self):
+        self.owner.kyc_status = BusinessOwner.VERIFIED
+        self.owner.save(update_fields=["kyc_status"])
+        response = self.client.get("/api/listings/?verified=1")
+        ids = [item["id"] for item in response.json()["results"]]
+        self.assertIn(self.published_hotel.id, ids)
+
+    def test_verified_false_or_absent_returns_all_published(self):
+        response = self.client.get("/api/listings/?verified=false")
+        ids = [item["id"] for item in response.json()["results"]]
+        self.assertIn(self.published_hotel.id, ids)
+        self.assertIn(self.published_food.id, ids)

@@ -104,6 +104,14 @@ class PublicListingListView(generics.ListAPIView):
         if max_price:
             queryset = queryset.filter(price_amount__lte=max_price)
 
+        kind = self.request.query_params.get("kind")
+        if kind:
+            queryset = queryset.filter(category__kind=kind)
+
+        verified = self.request.query_params.get("verified")
+        if verified and verified.lower() in ("true", "1"):
+            queryset = queryset.filter(business_owner__kyc_status=BusinessOwner.VERIFIED)
+
         return queryset
 
 
@@ -111,6 +119,32 @@ class PublicListingDetailView(generics.RetrieveAPIView):
     queryset = Listing.objects.filter(status=Listing.PUBLISHED)
     serializer_class = PublicListingSerializer
     permission_classes = [AllowAny]
+
+
+class RelatedListingsView(generics.ListAPIView):
+    """GET /api/listings/{id}/related/ — public, unauthenticated. Other
+    published listings sharing the anchor listing's category and/or zone,
+    excluding the anchor itself, for the PDP's related-items rail
+    (docs/BUSINESS_EVENTS_ROADMAP.md Phase 3). Not paginated — capped at a
+    fixed small count instead.
+    """
+
+    RELATED_LIMIT = 8
+
+    serializer_class = PublicListingSerializer
+    permission_classes = [AllowAny]
+    pagination_class = None
+
+    def get_queryset(self):
+        anchor = generics.get_object_or_404(
+            Listing.objects.filter(status=Listing.PUBLISHED), pk=self.kwargs["pk"]
+        )
+        return (
+            Listing.objects.filter(status=Listing.PUBLISHED)
+            .filter(Q(category=anchor.category) | Q(zone=anchor.zone))
+            .exclude(pk=anchor.pk)
+            .order_by("-created_at")[: self.RELATED_LIMIT]
+        )
 
 
 class OwnerListingCreateListView(generics.ListCreateAPIView):

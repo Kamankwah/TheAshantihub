@@ -24,4 +24,5 @@ urlpatterns = [
     path("zones/", views.ZoneListView.as_view(), name="zone-list"),
     path("", views.PublicListingListView.as_view(), name="listing-list"),
     path("<int:pk>/", views.PublicListingDetailView.as_view(), name="listing-detail"),
+    path("<int:pk>/related/", views.RelatedListingsView.as_view(), name="listing-related"),
 ]
