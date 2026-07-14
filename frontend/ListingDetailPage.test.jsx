@@ -42,6 +42,7 @@ function renderPage(props = {}) {
         onFavourite={vi.fn()}
         currency="GHS"
         onMessage={vi.fn()}
+        onAddToCart={vi.fn().mockResolvedValue(undefined)}
         CardComponent={StubCard}
         {...props}
       />
@@ -66,11 +67,37 @@ describe('ListingDetailPage', () => {
     expect(screen.getByLabelText('View photo 2')).toBeInTheDocument()
   })
 
-  it('renders a disabled Add to Cart stub', async () => {
+  it('renders an enabled Add to Cart button for a priced listing', async () => {
     server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)))
     renderPage()
     await screen.findByText('Royal Ashanti Lodge')
-    expect(screen.getByText('Add to Cart — Coming Soon')).toBeDisabled()
+    expect(screen.getByText('Add to Cart')).not.toBeDisabled()
+  })
+
+  it('disables Add to Cart when the listing has no price', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json({ ...LISTING, price_amount: null })))
+    renderPage()
+    await screen.findByText('Royal Ashanti Lodge')
+    expect(screen.getByText('No Price Set')).toBeDisabled()
+  })
+
+  it('calls onAddToCart and shows an "Added" confirmation on success', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)))
+    const onAddToCart = vi.fn().mockResolvedValue(undefined)
+    renderPage({ onAddToCart })
+    await screen.findByText('Royal Ashanti Lodge')
+    fireEvent.click(screen.getByText('Add to Cart'))
+    expect(onAddToCart).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }), 1)
+    expect(await screen.findByText('Added to Cart ✓')).toBeInTheDocument()
+  })
+
+  it('shows an error message next to the button when onAddToCart rejects', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)))
+    const onAddToCart = vi.fn().mockRejectedValue(new Error('Only customer accounts can add items to a cart.'))
+    renderPage({ onAddToCart })
+    await screen.findByText('Royal Ashanti Lodge')
+    fireEvent.click(screen.getByText('Add to Cart'))
+    expect(await screen.findByText('Only customer accounts can add items to a cart.')).toBeInTheDocument()
   })
 
   it('calls onBack when the back button is clicked', async () => {

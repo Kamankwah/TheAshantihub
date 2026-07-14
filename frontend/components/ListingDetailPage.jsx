@@ -23,9 +23,13 @@ import { useRelatedListings } from "../hooks/useRelatedListings.js";
 // `specs` field to `Listing`, render it here rather than reintroducing mock
 // data.
 //
-// "Add to Cart" is a visual stub only — Cart doesn't exist until Phase 4
-// (docs/BUSINESS_EVENTS_ROADMAP.md) — it is disabled and labelled
-// accordingly rather than faking a working add-to-cart flow.
+// "Add to Cart" (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4) calls the
+// `onAddToCart` prop — same "AshantiHub owns the mutation (auth-gating +
+// apiPost + cart refetch), this component just calls the callback and owns
+// its own local adding/added/error UI state" convention as onWhatsApp/
+// onMessage above. Disabled when the listing has no price (the backend
+// rejects POST /api/cart/items/ for a listing with no price_amount — see
+// apiClient/App.jsx's handleAddToCart) or while a request is in flight.
 //
 // `CardComponent` is passed in as a prop (rather than imported directly from
 // App.jsx) so this component under frontend/components/ doesn't create an
@@ -41,11 +45,15 @@ export default function ListingDetailPage({
   currency,
   onMessage,
   onOpenListing,
+  onAddToCart,
   CardComponent,
 }) {
   const { data: item, isLoading, isError, refetch } = useListing(id);
   const { data: related } = useRelatedListings(id);
   const [galleryIndex, setGalleryIndex] = useState(0);
+  const [addingToCart, setAddingToCart] = useState(false);
+  const [addedToCart, setAddedToCart] = useState(false);
+  const [cartError, setCartError] = useState(null);
 
   if (isLoading) {
     return (
@@ -157,28 +165,48 @@ export default function ListingDetailPage({
             </button>
           </div>
 
-          {/* Add to Cart — visual stub only. Cart lands in Phase 4
-              (docs/BUSINESS_EVENTS_ROADMAP.md); this button is intentionally
-              disabled rather than faking a working cart. */}
+          {/* Add to Cart (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4) — disabled
+              when the listing has no price (nothing for the backend to
+              charge) or while a request is in flight. onAddToCart throws on
+              failure (unauthenticated, non-customer account, or a server
+              error), caught here so the message shows next to the button
+              rather than crashing the page. */}
           <button
-            disabled
-            title="Cart is coming in a future update"
+            disabled={addingToCart || item.price_amount == null || !onAddToCart}
+            title={item.price_amount == null ? "This listing has no price set" : undefined}
+            onClick={async () => {
+              if (!onAddToCart) return;
+              setCartError(null);
+              setAddingToCart(true);
+              try {
+                await onAddToCart(item, 1);
+                setAddedToCart(true);
+                setTimeout(() => setAddedToCart(false), 2000);
+              } catch (err) {
+                setCartError(err?.message || "Could not add this item to your cart.");
+              } finally {
+                setAddingToCart(false);
+              }
+            }}
             style={{
               marginTop: 16,
               width: "100%",
               minHeight: 44,
-              background: "rgba(255,255,255,0.08)",
-              color: "rgba(255,255,255,0.45)",
-              border: "1px solid rgba(255,255,255,0.15)",
+              background: item.price_amount == null ? "rgba(255,255,255,0.08)" : addedToCart ? C.kente2 : C.gold,
+              color: item.price_amount == null ? "rgba(255,255,255,0.45)" : addedToCart ? "white" : C.darkBrown,
+              border: item.price_amount == null ? "1px solid rgba(255,255,255,0.15)" : "none",
               borderRadius: 20,
               fontSize: "0.82rem",
-              fontWeight: 700,
-              cursor: "not-allowed",
+              fontWeight: 900,
+              cursor: item.price_amount == null ? "not-allowed" : "pointer",
               fontFamily: "inherit",
             }}
           >
-            Add to Cart — Coming Soon
+            {addingToCart ? "Adding…" : addedToCart ? "Added to Cart ✓" : item.price_amount == null ? "No Price Set" : "Add to Cart"}
           </button>
+          {cartError && (
+            <div style={{ marginTop: 8, color: "#ffb4b4", fontSize: "0.72rem" }}>{cartError}</div>
+          )}
         </div>
       </div>
 

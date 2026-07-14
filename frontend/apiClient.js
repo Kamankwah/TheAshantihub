@@ -31,6 +31,8 @@ async function handleResponse(response, path) {
   if (!response.ok) {
     throw new Error(`API request to ${path} failed with status ${response.status}`)
   }
+  // 204 No Content (e.g. DELETE /api/cart/items/{id}/) has no body to parse.
+  if (response.status === 204) return null
   return response.json()
 }
 
@@ -71,6 +73,14 @@ export async function apiPatchForm(path, formData) {
     method: 'PATCH',
     headers: authHeaders(),
     body: formData,
+  })
+  return handleResponse(response, path)
+}
+
+export async function apiDelete(path) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
   })
   return handleResponse(response, path)
 }

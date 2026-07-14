@@ -19,6 +19,7 @@ function renderNavbar(props = {}) {
       setShowBizDash={vi.fn()}
       setShowPayments={vi.fn()}
       setShowAccount={vi.fn()}
+      setShowCart={vi.fn()}
       T={T}
       {...props}
     />,
@@ -109,5 +110,34 @@ describe('Navbar', () => {
     fireEvent.click(screen.getByText('AshantiHub'))
     expect(handleLogoClick).toHaveBeenCalledTimes(1)
     expect(setPage).toHaveBeenCalledWith('home')
+  })
+
+  it('hides the cart icon when logged out', () => {
+    renderNavbar()
+    expect(screen.queryByLabelText('View cart')).not.toBeInTheDocument()
+  })
+
+  it('hides the cart icon for a business owner account', () => {
+    renderNavbar({ user: { fullName: 'Kojo Mensah', accountType: 'business_owner' } })
+    expect(screen.queryByLabelText('View cart')).not.toBeInTheDocument()
+  })
+
+  it('customer: shows a cart icon that opens the cart drawer', () => {
+    const setShowCart = vi.fn()
+    renderNavbar({ user: { fullName: 'Ama Boateng', accountType: 'customer' }, setShowCart })
+    const cartBtn = screen.getByLabelText('View cart')
+    expect(cartBtn).toBeInTheDocument()
+    fireEvent.click(cartBtn)
+    expect(setShowCart).toHaveBeenCalledWith(true)
+  })
+
+  it('customer: shows a badge with the cart item count when the cart is non-empty', () => {
+    renderNavbar({ user: { fullName: 'Ama Boateng', accountType: 'customer' }, cartCount: 3 })
+    expect(screen.getByText('3')).toBeInTheDocument()
+  })
+
+  it('customer: shows no badge when the cart is empty', () => {
+    renderNavbar({ user: { fullName: 'Ama Boateng', accountType: 'customer' }, cartCount: 0 })
+    expect(screen.queryByText('0')).not.toBeInTheDocument()
   })
 })

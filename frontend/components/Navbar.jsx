@@ -16,6 +16,13 @@ import logoIcon from "../assets/logo/logo-icon.png";
 // Dashboard"/"My Account" button plus a round avatar button that opens a
 // profile menu (Business Dashboard/Payments for business owners, My
 // Account for customers, Sign Out for both) — see ProfileMenu below.
+//
+// Cart icon (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4) sits between the
+// notification bell and the auth/profile area, gated to signed-in Customer
+// accounts only (business owners have no Cart on the backend) — badge shows
+// the sum of item quantities. Opens CartDrawer via the setShowCart prop,
+// same boolean-flag-owned-by-AshantiHub convention as setShowNotifs/
+// setShowBizDash/etc.
 const NAV_BREAKPOINT = 760;
 const SOLIDIFY_SCROLL_Y = 60;
 
@@ -37,6 +44,8 @@ export default function Navbar({
   setShowBizDash,
   setShowPayments,
   setShowAccount,
+  setShowCart,
+  cartCount = 0,
   T,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -45,6 +54,11 @@ export default function Navbar({
   const profileRef = useRef(null);
 
   const isBusiness = user?.accountType === "business_owner";
+  // Cart (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4) is a Customer-only
+  // concept — the backend Cart model is one-to-one with Customer, business
+  // owners have no cart, same "gate on user?.accountType" convention as
+  // `isBusiness` above.
+  const isCustomer = user?.accountType === "customer";
   const act = (fn) => (...args) => { fn(...args); setMenuOpen(false); setProfileOpen(false); };
   const goToDashboard = () => (isBusiness ? setShowBizDash(true) : setShowAccount(true));
 
@@ -109,6 +123,20 @@ export default function Navbar({
         🔔
         {user && <span style={{position:"absolute",top:-2,right:-2,background:C.kente1,borderRadius:"50%",width:9,height:9}}/>}
       </button>
+      {isCustomer && (
+        stacked ? (
+          <button onClick={act(() => setShowCart(true))} aria-label="View cart" style={{...utilityBtnStyle,width:"100%",justifyContent:"flex-start"}}>
+            🛒 Cart{cartCount > 0 ? ` (${cartCount})` : ""}
+          </button>
+        ) : (
+          <button onClick={act(() => setShowCart(true))} aria-label="View cart" style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.25)",borderRadius:"50%",width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"1.05rem",position:"relative",flexShrink:0}}>
+            🛒
+            {cartCount > 0 && (
+              <span style={{position:"absolute",top:-6,right:-6,background:C.gold,color:C.darkBrown,borderRadius:"50%",minWidth:16,height:16,fontSize:"0.6rem",fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px"}}>{cartCount}</span>
+            )}
+          </button>
+        )
+      )}
       {user ? (
         stacked ? (
           <>

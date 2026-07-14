@@ -18,8 +18,9 @@ import { useSubscriptionPlans } from "./hooks/useSubscriptionPlans.js";
 import { useMySubscription } from "./hooks/useMySubscription.js";
 import { useMyTransactions } from "./hooks/useMyTransactions.js";
 import { useMyCreditScore } from "./hooks/useMyCreditScore.js";
+import { useCart } from "./hooks/useCart.js";
 import { apiPost, apiPatch } from "./apiClient.js";
-import { C } from "./theme.js";
+import { C, CURRENCIES } from "./theme.js";
 import Flag from "./components/Flag.jsx";
 import Navbar from "./components/Navbar.jsx";
 import Hero from "./components/Hero.jsx";
@@ -30,6 +31,7 @@ import ChatLauncher from "./components/ChatLauncher.jsx";
 import Footer from "./components/Footer.jsx";
 import AccountPanel from "./components/AccountPanel.jsx";
 import BusinessRegistrationFlow from "./components/BusinessRegistrationFlow.jsx";
+import CartDrawer from "./components/CartDrawer.jsx";
 
 // ─── Credit Scoring System ────────────────────────────────────────────────────
 const LENDING_PARTNERS = [
@@ -609,7 +611,13 @@ const MOMO_NETWORKS = [
 // Invoices tab was dropped rather than left as dead mock UI.
 
 // ─── MoMo Payment Component ───────────────────────────────────────────────────
-function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose }) {
+// Exported (like Card/MapView/groupCategoriesByKind below) so it's reusable
+// from frontend/components/* (CartDrawer's checkout step, Phase 4 —
+// docs/BUSINESS_EVENTS_ROADMAP.md) without duplicating the simulated-payment
+// UI. Passed down as a `PaymentComponent` prop rather than imported directly,
+// same "avoid an App.jsx <-> components/ circular import" convention as
+// ListingDetailPage's `CardComponent` prop.
+export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose }) {
   const [step, setStep] = useState(1);
   const [network, setNetwork] = useState(null);
   const [phone, setPhone] = useState("");
@@ -1120,7 +1128,6 @@ const MOCK_REVIEWS = {
 };
 
 const KUMASI_ZONES = ["All Zones","Manhyia","Adum","Kejetia","Asokwa","Nhyiaeso","Bantama","Suame","Bonwire","Citywide"];
-const CURRENCIES = {GHS:1, USD:0.067, GBP:0.052, EUR:0.061};
 
 // ─── Real Kumasi Photos ───────────────────────────────────────────────────────
 const KUMASI_PHOTOS = {
@@ -3150,6 +3157,7 @@ export default function AshantiHub() {
   const [adminClicks,setAdminClicks]=useState(0);
   const [favourites,setFavourites]=useState([]);
   const [showFavs,setShowFavs]=useState(false);
+  const [showCart,setShowCart]=useState(false);
   const [showAccount,setShowAccount]=useState(false);
   const [showMap,setShowMap]=useState(false);
   const [showReferral,setShowReferral]=useState(false);
@@ -3211,6 +3219,32 @@ export default function AshantiHub() {
     refetch: refetchListings,
   } = useListings(filters);
   const listings = listingsData ? listingsData.pages.flatMap((page) => page.results) : [];
+
+  // Cart (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4) — customer-only. Fetched
+  // here (rather than only inside CartDrawer) so the Navbar's cart-icon badge
+  // count is available regardless of which page/overlay is showing, same as
+  // `unreadMessages` below is computed here for ChatLauncher. `enabled` is
+  // gated to signed-in Customer accounts so anonymous visitors and business
+  // owners (who have no Cart) don't fire a doomed-to-401/403 request every
+  // render. CartDrawer itself also calls useCart() — same query key, so
+  // React Query dedupes/shares the cache rather than double-fetching.
+  const isCustomer = user?.accountType === "customer";
+  const { data: cart, refetch: refetchCart } = useCart(isCustomer);
+  const cartItemCount = cart?.items?.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
+
+  // Add-to-cart (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4) — passed down to
+  // ListingDetailPage as `onAddToCart`, same "AshantiHub owns the mutation,
+  // the component just calls the callback and owns its own local adding/
+  // added/error UI state" convention as onWhatsApp (handleWA)/onMessage
+  // above. Throws (rather than swallowing) on failure so ListingDetailPage's
+  // own try/catch can surface a specific message next to the button.
+  const handleAddToCart = async (item, quantity = 1) => {
+    if (!user) { setAuthModal("signup"); throw new Error("Please sign in as a customer to add items to your cart."); }
+    if (!isCustomer) { throw new Error("Only customer accounts can add items to a cart."); }
+    await apiPost("/api/cart/items/", { listing: item.id, quantity });
+    refetchCart();
+  };
+
   const [cookieConsent,setCookieConsent]=useState(false);
   const [cookieDismissed,setCookieDismissed]=useState(false);
   const [whatsappPrompt,setWhatsappPrompt]=useState(null);
@@ -3340,6 +3374,7 @@ export default function AshantiHub() {
       {showMessaging&&<MessagingCenter user={user} onClose={()=>{setShowMessaging(false);setMessagingBusiness(null);}} initialBusiness={messagingBusiness}/>}
       {showNotifs&&<NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
       {showFavs&&<FavsDrawer/>}
+      {showCart&&isCustomer&&<CartDrawer user={user} currency={currency} onClose={()=>setShowCart(false)} PaymentComponent={MoMoPayment}/>}
       {showReferral&&<ReferralModal user={user} onClose={()=>setShowReferral(false)}/>}
       {showAccount&&user&&<AccountPanel
         user={user}
@@ -3358,6 +3393,8 @@ export default function AshantiHub() {
         setShowBizDash={setShowBizDash}
         setShowPayments={setShowPayments}
         setShowAccount={setShowAccount}
+        setShowCart={setShowCart}
+        cartCount={cartItemCount}
         T={T}
       />
 
@@ -3467,6 +3504,7 @@ export default function AshantiHub() {
               currency={currency}
               onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);if(!user)setAuthModal("signup");}}
               onOpenListing={(otherId)=>setSelectedListingId(otherId)}
+              onAddToCart={handleAddToCart}
               CardComponent={Card}
             />
           ) : (
