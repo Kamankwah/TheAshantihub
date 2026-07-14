@@ -74,4 +74,12 @@ describe('Hero', () => {
     fireEvent.click(screen.getByText(T.signup))
     expect(setAuthModal).toHaveBeenCalledWith('signup')
   })
+
+  it('renders one photograph per section, each with descriptive alt text', () => {
+    renderHero()
+    expect(screen.getByAltText(/kente weaver/i)).toBeInTheDocument()
+    expect(screen.getByAltText(/Kejetia Market/i)).toBeInTheDocument()
+    expect(screen.getByAltText(/Akwasidae Festival/i)).toBeInTheDocument()
+    expect(screen.getByAltText(/Manhyia Palace/i)).toBeInTheDocument()
+  })
 })

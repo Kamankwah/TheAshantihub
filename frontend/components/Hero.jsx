@@ -1,21 +1,23 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { C } from "../theme.js";
-import GhanaCurrentMap from "./GhanaCurrentMap.jsx";
-import AshantiGlowMap from "./AshantiGlowMap.jsx";
 import usePrefersReducedMotion from "../hooks/usePrefersReducedMotion.js";
+import kenteWeavingPhoto from "../assets/hero/kente-weaving.jpg";
+import kejetiaMarketPhoto from "../assets/hero/kejetia-market.jpg";
+import akwasidaeFestivalPhoto from "../assets/hero/akwasidae-festival.jpg";
+import manhyiaPalacePhoto from "../assets/hero/manhyia-palace.jpg";
 
 // ─── Hero ──────────────────────────────────────────────────────────────────
 // Full-viewport, four-section scroll-pinned marketing narrative for the home
 // page. Split left/right layout per section (no floating card): big text +
-// action button on the left, a map visual pinned on the right — replacing
-// the previous centered-card-over-full-bleed-map treatment. Search, filters
-// and the marketplace grid have moved to the new Business page; this Hero is
-// purely the narrative/entry point now.
-//   0. Ghana Rising — GhanaCurrentMap (animated electric-current overlay
-//      on the user-supplied flag-mesh map), national stats
-//   1. Business — AshantiGlowMap, business features, links to Business page
-//   2. Events — AshantiGlowMap, festival highlights, links to Events page
-//   3. Discover Ashanti — AshantiGlowMap, closing sign in / create account
+// action button on the left, a real photograph pinned on the right — one per
+// section, replacing the previous animated-map visual. Each photo's own left
+// edge dissolves into the page's void background colour and resolves to the
+// full image by its right edge (a client request: "blend from left
+// (background colour) to right (shows final image)" rather than a hard-edged
+// photo rectangle) via a gradient overlay scoped to the photo column itself.
+// A faint, slowly-drifting wash of the brand's kente colours sits behind
+// everything at all times — the "living kente cloth" signature element,
+// echoing the weaving motion of the first section's own photo.
 //
 // Structurally the same position:sticky visual panel inside a tall N*100vh
 // wrapper, scroll-position section detection via getBoundingClientRect, as
@@ -33,6 +35,8 @@ function buildSections() {
       stats: [["100K+", "Annual Visitors"], ["15", "Categories"], ["65+", "Businesses"]],
       actionLabel: "Explore Businesses in Ashanti →",
       actionTarget: "business",
+      photo: kenteWeavingPhoto,
+      photoAlt: "A kente weaver's hands guiding thread on a traditional loom",
     },
     {
       id: "business",
@@ -47,6 +51,8 @@ function buildSections() {
       ],
       actionLabel: "View Businesses in Ashanti Region →",
       actionTarget: "business",
+      photo: kejetiaMarketPhoto,
+      photoAlt: "Aerial view of Kejetia Market, the trading heart of Kumasi",
     },
     {
       id: "events",
@@ -60,6 +66,8 @@ function buildSections() {
       ],
       actionLabel: "View Events in Ashanti Region →",
       actionTarget: "events",
+      photo: akwasidaeFestivalPhoto,
+      photoAlt: "Crowds of chiefs and citizens beneath ceremonial umbrellas at the Akwasidae Festival",
     },
     {
       id: "join",
@@ -68,6 +76,8 @@ function buildSections() {
       subtitle: "In One Place",
       description: "Whether you're visiting Kumasi or running a business here, AshantiHub is how the region's growth reaches you — and how you reach it back.",
       actions: true,
+      photo: manhyiaPalacePhoto,
+      photoAlt: "The facade of Manhyia Palace Museum, seat of the Ashanti Kingdom",
     },
   ];
 }
@@ -118,24 +128,37 @@ export default function Hero({ T, user, setAuthModal, setPage }) {
     sectionRefs.current[i]?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center" });
   };
 
-  const showingGhana = activeIndex === 0;
-
   return (
     <div style={{ position: "relative", height: `${sections.length * 100}vh`, background: `linear-gradient(180deg, ${C.void} 0%, ${C.darkBrown} 55%, ${C.void} 100%)` }}>
-      {/* Pinned visual panel — right-side map that hands off between the
-          animated GhanaCurrentMap (section 0) and the animated AshantiGlowMap
-          (sections 1-3) as the scroll narrative advances. */}
       <div style={{ position: "sticky", top: 0, height: "100vh", overflow: "hidden", zIndex: 0 }}>
-        <div className="ah-hero-mapcol" style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: "50%" }}>
-          <div style={{ position: "absolute", inset: 0, opacity: showingGhana ? 1 : 0, transition: "opacity 900ms ease" }}>
-            <GhanaCurrentMap reducedMotion={reducedMotion} />
-          </div>
-          <div style={{ position: "absolute", inset: 0, opacity: showingGhana ? 0 : 1, transition: "opacity 900ms ease" }}>
-            <AshantiGlowMap reducedMotion={reducedMotion} />
-          </div>
+        {/* Kente wash — a faint, slowly-drifting wash of the brand's own kente
+            colours behind everything, all the time. The one deliberate risk
+            in this pass: it's not decoration bolted onto the hero, it's the
+            same thread-and-colour motion the opening section's own photo
+            shows a weaver making by hand. */}
+        <div aria-hidden="true" style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
+          <div style={{ position: "absolute", top: "-10%", left: "-8%", width: "42vw", height: "42vw", borderRadius: "50%", background: C.kente1, opacity: 0.16, filter: "blur(90px)", animation: reducedMotion ? "none" : "kenteDrift1 34s ease-in-out infinite" }} />
+          <div style={{ position: "absolute", bottom: "-14%", left: "6%", width: "36vw", height: "36vw", borderRadius: "50%", background: C.kente2, opacity: 0.14, filter: "blur(90px)", animation: reducedMotion ? "none" : "kenteDrift2 40s ease-in-out infinite" }} />
+          <div style={{ position: "absolute", top: "18%", left: "38%", width: "30vw", height: "30vw", borderRadius: "50%", background: C.gold, opacity: 0.12, filter: "blur(100px)", animation: reducedMotion ? "none" : "kenteDrift3 28s ease-in-out infinite" }} />
+          <div style={{ position: "absolute", top: "-6%", right: "-10%", width: "38vw", height: "38vw", borderRadius: "50%", background: C.kente3, opacity: 0.16, filter: "blur(90px)", animation: reducedMotion ? "none" : "kenteDrift4 36s ease-in-out infinite" }} />
         </div>
-        {/* Dark scrim over the left (text) side for legibility */}
-        <div style={{ position: "absolute", inset: 0, background: `linear-gradient(90deg, ${C.void} 0%, ${C.void}cc 42%, transparent 68%)` }} />
+
+        {/* Pinned visual panel — right-side photograph that crossfades
+            between sections, each one blending from the page background on
+            its own left edge into the full photo on its right edge. */}
+        <div className="ah-hero-mapcol" style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: "50%" }}>
+          {sections.map((s, i) => (
+            <div key={s.id} style={{ position: "absolute", inset: 0, opacity: activeIndex === i ? 1 : 0, transition: "opacity 900ms ease" }}>
+              <img src={s.photo} alt={s.photoAlt} style={{ width: "100%", height: "100%", objectFit: "cover", filter: "saturate(1.08) contrast(1.03)" }} />
+            </div>
+          ))}
+          {/* The left-to-right blend itself: solid background colour at the
+              photo column's own left edge, fully transparent by its right
+              edge, so the image reads as dissolving out of the page rather
+              than sitting in a rectangle. */}
+          <div style={{ position: "absolute", inset: 0, background: `linear-gradient(90deg, ${C.void} 0%, ${C.void}dd 22%, ${C.void}66 46%, transparent 72%)`, pointerEvents: "none" }} />
+        </div>
+
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, background: `linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)` }} />
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 4, background: `linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)` }} />
 
@@ -252,6 +275,10 @@ export default function Hero({ T, user, setAuthModal, setPage }) {
       <style>{`
         @keyframes heroPulseDot { 0%, 100% { opacity: 0.4; transform: scale(0.85); } 50% { opacity: 1; transform: scale(1.15); } }
         @keyframes heroScrollHint { 0%, 100% { transform: translateY(0); opacity: 0.65; } 50% { transform: translateY(5px); opacity: 1; } }
+        @keyframes kenteDrift1 { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(6vw, 8vh) scale(1.12); } }
+        @keyframes kenteDrift2 { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-5vw, -6vh) scale(1.08); } }
+        @keyframes kenteDrift3 { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(4vw, -7vh) scale(1.1); } }
+        @keyframes kenteDrift4 { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-6vw, 5vh) scale(1.1); } }
         @media (min-width: 761px) {
           .ah-hero-dotnav { display: flex !important; }
         }
