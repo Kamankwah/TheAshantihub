@@ -25,4 +25,5 @@ urlpatterns = [
     path("", views.PublicListingListView.as_view(), name="listing-list"),
     path("<int:pk>/", views.PublicListingDetailView.as_view(), name="listing-detail"),
     path("<int:pk>/related/", views.RelatedListingsView.as_view(), name="listing-related"),
+    path("<int:pk>/promote/", views.ListingPromoteView.as_view(), name="listing-promote"),
 ]

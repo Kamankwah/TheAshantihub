@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, Zone
+from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, Promotion, Zone
 
 
 class ListingPhotoSerializer(serializers.ModelSerializer):
@@ -25,13 +25,23 @@ class PublicListingSerializer(serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
     zone = ZoneSerializer(read_only=True)
     photos = ListingPhotoSerializer(many=True, read_only=True)
+    # Only present (True) when the queryset annotated it — PublicListingListView
+    # (docs/BUSINESS_EVENTS_ROADMAP.md Phase 5's search-ranking annotation) does
+    # this; PublicListingDetailView/RelatedListingsView don't, so this safely
+    # defaults to False there via getattr rather than erroring on a missing
+    # attribute.
+    is_promoted = serializers.SerializerMethodField()
 
     class Meta:
         model = Listing
         fields = [
             "id", "name", "description", "category", "zone", "price_amount", "price_unit",
             "tag", "contact_phone", "lat", "lng", "main_photo", "photos", "created_at",
+            "is_promoted",
         ]
+
+    def get_is_promoted(self, obj):
+        return bool(getattr(obj, "is_promoted", False))
 
 
 class OwnerListingSerializer(serializers.ModelSerializer):
@@ -117,3 +127,37 @@ class HeroSubmitSerializer(serializers.Serializer):
 
     listing_photo = serializers.IntegerField()
     caption = serializers.CharField(max_length=140)
+
+
+class PromotionSerializer(serializers.ModelSerializer):
+    """Response shape for POST /api/listings/{id}/promote/."""
+
+    class Meta:
+        model = Promotion
+        fields = [
+            "id", "listing", "kind", "starts_at", "ends_at", "keywords", "amount_paid", "status",
+        ]
+        read_only_fields = fields
+
+
+class PromotionPurchaseSerializer(serializers.Serializer):
+    """Input shape for POST /api/listings/{id}/promote/. Ownership, listing-
+    status, and stacking checks happen in the view (ListingPromoteView), not
+    here, so they can return distinct, clearly-worded 400s rather than a
+    generic validation error — this serializer only validates shape plus the
+    boost-requires-keywords rule, which is a property of the input itself
+    rather than of existing state.
+    """
+
+    kind = serializers.ChoiceField(choices=Promotion.KIND_CHOICES)
+    days = serializers.IntegerField(min_value=1)
+    keywords = serializers.CharField(required=False, allow_blank=True, max_length=255)
+
+    def validate(self, data):
+        keywords = (data.get("keywords") or "").strip()
+        if data["kind"] == Promotion.BOOST and not keywords:
+            raise serializers.ValidationError(
+                {"keywords": "Keywords are required for a boost promotion."}
+            )
+        data["keywords"] = keywords
+        return data

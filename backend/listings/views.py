@@ -1,9 +1,12 @@
 import os
 from datetime import timedelta
+from decimal import Decimal
 
 from django.core.files.base import ContentFile
-from django.db.models import Q
+from django.db import transaction as db_transaction
+from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
+from django.utils.crypto import get_random_string
 from rest_framework import filters, generics, serializers
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -13,8 +16,9 @@ from rest_framework.views import APIView
 from accounts.models import BusinessOwner
 from accounts.permissions import HasRolePermission
 from accounts.views import IsBusinessOwner
+from billing.models import Transaction
 
-from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, Zone
+from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, Promotion, Zone
 from .permissions import IsHeroMediaOwner, IsListingOwner, IsListingPhotoOwner
 from .serializers import (
     CategorySerializer,
@@ -24,6 +28,8 @@ from .serializers import (
     ListingPhotoSerializer,
     ModerationListingSerializer,
     OwnerListingSerializer,
+    PromotionPurchaseSerializer,
+    PromotionSerializer,
     PublicListingSerializer,
     ZoneSerializer,
 )
@@ -112,7 +118,35 @@ class PublicListingListView(generics.ListAPIView):
         if verified and verified.lower() in ("true", "1"):
             queryset = queryset.filter(business_owner__kyc_status=BusinessOwner.VERIFIED)
 
-        return queryset
+        return queryset.annotate(is_promoted=Exists(self._promoted_subquery()))
+
+    def _promoted_subquery(self):
+        """Active Promotion rows that should push their listing to the front
+        of the results (docs/BUSINESS_EVENTS_ROADMAP.md Phase 5): any active
+        `featured` promotion, or an active `boost` promotion whose keywords
+        match the current `search` query param (case-insensitive substring
+        match — deliberately not a relevance-scored/tokenized match, per the
+        roadmap's "don't over-engineer" note).
+        """
+        now = timezone.now()
+        search = (self.request.query_params.get("search") or "").strip()
+
+        boost_match = Q(kind=Promotion.BOOST, keywords__icontains=search) if search else Q(pk__in=[])
+        return Promotion.objects.filter(
+            listing=OuterRef("pk"), status=Promotion.ACTIVE, starts_at__lte=now, ends_at__gte=now,
+        ).filter(Q(kind=Promotion.FEATURED) | boost_match)
+
+    def filter_queryset(self, queryset):
+        # SearchFilter/OrderingFilter (filter_backends) run inside
+        # super().filter_queryset() and, when an explicit `?ordering=` param
+        # is present, replace get_queryset()'s `.order_by("-created_at")`
+        # entirely. Re-derive whatever ordering ended up in effect (explicit
+        # or default) and prepend `-is_promoted` to it, rather than hardcoding
+        # a fresh order_by call here that would silently drop the `ordering`
+        # query param's effect.
+        queryset = super().filter_queryset(queryset)
+        existing_order = queryset.query.order_by or ("-created_at",)
+        return queryset.order_by("-is_promoted", *existing_order)
 
 
 class PublicListingDetailView(generics.RetrieveAPIView):
@@ -175,6 +209,85 @@ class ListingSubmitView(APIView):
         listing.status = Listing.PENDING_REVIEW
         listing.save(update_fields=["status"])
         return Response({"id": listing.id, "status": listing.status})
+
+
+# Simulated per-day GHS pricing for a promotion purchase (roadmap Phase 5
+# doesn't specify a figure, and no PromotionPlan/pricing model exists
+# anywhere in the codebase — mirrors how SubscriptionPlan carries its own
+# static prices rather than deriving them). `featured` is priced above
+# `boost` since it always ranks first regardless of search term, while
+# `boost` only wins for matching searches.
+PROMOTION_DAILY_RATES = {
+    Promotion.FEATURED: Decimal("5.00"),
+    Promotion.BOOST: Decimal("3.00"),
+}
+
+
+class ListingPromoteView(APIView):
+    """POST /api/listings/{id}/promote/ — a business owner pays to promote
+    one of their own listings (roadmap Phase 5), distinct from subscription
+    tier. Mirrors OrderCheckoutView/HeroExtendView's simulated-payment
+    pattern: the caller is expected to have already "paid" via the
+    frontend's MoMoModal-style simulated flow, and this endpoint persists
+    the resulting Promotion + billing.Transaction in one atomic write.
+
+    Body: {"kind": "featured"|"boost", "days": <int>, "keywords": "<string,
+    boost only>"}. Rejects (400) if the listing isn't published, or if it
+    already has an active Promotion of the same kind (no stacking two
+    simultaneous `featured` — or two `boost` — promotions on one listing).
+    """
+
+    permission_classes = [IsAuthenticated, IsListingOwner]
+
+    def post(self, request, pk):
+        listing = generics.get_object_or_404(Listing, pk=pk)
+        self.check_object_permissions(request, listing)
+
+        serializer = PromotionPurchaseSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        kind = serializer.validated_data["kind"]
+        days = serializer.validated_data["days"]
+        keywords = serializer.validated_data["keywords"]
+
+        if listing.status != Listing.PUBLISHED:
+            return Response(
+                {"detail": "Only a published listing can be promoted."}, status=400
+            )
+
+        now = timezone.now()
+        has_active_same_kind = Promotion.objects.filter(
+            listing=listing, kind=kind, status=Promotion.ACTIVE, ends_at__gte=now,
+        ).exists()
+        if has_active_same_kind:
+            return Response(
+                {
+                    "detail": (
+                        f"This listing already has an active {kind} promotion. "
+                        "Wait for it to end before purchasing another."
+                    )
+                },
+                status=400,
+            )
+
+        amount = PROMOTION_DAILY_RATES[kind] * days
+        with db_transaction.atomic():
+            promotion = Promotion.objects.create(
+                listing=listing,
+                kind=kind,
+                starts_at=now,
+                ends_at=now + timedelta(days=days),
+                keywords=keywords if kind == Promotion.BOOST else "",
+                amount_paid=amount,
+                status=Promotion.ACTIVE,
+            )
+            Transaction.objects.create(
+                business_owner=request.user,
+                amount=amount,
+                purpose=f"{kind.capitalize()} promotion for listing #{listing.id} ({days} days)",
+                status=Transaction.SUCCESS,
+                reference=f"AH-PROMO-{promotion.id}-{get_random_string(8).upper()}",
+            )
+        return Response(PromotionSerializer(promotion).data, status=201)
 
 
 class ModerationPendingQueueView(generics.ListAPIView):

@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 from accounts.models import BusinessOwner
 from accounts.validators import validate_image_content_type
@@ -139,3 +140,73 @@ class HeroMediaSubmission(models.Model):
 
     def __str__(self):
         return f"Hero submission {self.id} for {self.business_owner.full_name} ({self.status})"
+
+
+class Promotion(models.Model):
+    """A business owner's paid purchase to rank a listing higher in search
+    results (docs/BUSINESS_EVENTS_ROADMAP.md Phase 5) — distinct from
+    subscription tier. Two kinds:
+
+    - ``featured``: the listing always ranks first, regardless of search term.
+    - ``boost``: the listing ranks first only for searches matching its
+      ``keywords`` (e.g. a comma/space-separated string like "kente wedding
+      gifts") — a lighter-weight, cheaper promotion than ``featured``.
+
+    ``status`` is a small lifecycle field distinct from the ``starts_at``/
+    ``ends_at`` time window: ``active`` is the normal state for a purchased,
+    in-flight-or-live promotion; ``cancelled`` is an explicit early-stop (not
+    currently exposed via any endpoint, reserved for a future staff/owner
+    cancel action); ``expired`` is informational only — nothing in this app
+    transitions a row to it automatically, since "is this promotion
+    currently affecting ranking" is answered purely at query time via
+    ``status=active`` AND ``starts_at <= now <= ends_at`` (see
+    `is_currently_active` below and `PublicListingListView`'s ranking
+    annotation). A row whose ``ends_at`` has simply passed still reads
+    ``status=active`` unless something explicitly flips it — that's fine,
+    since nothing reads `status` alone as "is this live" without also
+    checking the timestamps. No cron/expiry job is needed for ranking to
+    correctly stop reflecting an expired promotion (unlike Phase 6's
+    `Event.expires_at`, which needs `expire_events` because expiry there
+    also drives hide/delete behavior, not just ranking order).
+    """
+
+    FEATURED = "featured"
+    BOOST = "boost"
+    KIND_CHOICES = [
+        (FEATURED, "Featured"),
+        (BOOST, "Boost"),
+    ]
+
+    ACTIVE = "active"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+    STATUS_CHOICES = [
+        (ACTIVE, "Active"),
+        (EXPIRED, "Expired"),
+        (CANCELLED, "Cancelled"),
+    ]
+
+    listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="promotions")
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES)
+    starts_at = models.DateTimeField()
+    ends_at = models.DateTimeField()
+    # Only meaningful for kind=boost — blank for kind=featured.
+    keywords = models.CharField(max_length=255, blank=True)
+    amount_paid = models.DecimalField(max_digits=10, decimal_places=2)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=ACTIVE)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-starts_at"]
+
+    def __str__(self):
+        return f"{self.get_kind_display()} promotion for {self.listing.name} ({self.status})"
+
+    @property
+    def is_currently_active(self):
+        """Whether this promotion should currently affect ranking — the same
+        condition `PublicListingListView` evaluates at query time.
+        """
+        now = timezone.now()
+        return self.status == self.ACTIVE and self.starts_at <= now <= self.ends_at
