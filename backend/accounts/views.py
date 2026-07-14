@@ -238,6 +238,11 @@ class IsBusinessOwner(BasePermission):
         return isinstance(request.user, BusinessOwner)
 
 
+class IsCustomer(BasePermission):
+    def has_permission(self, request, view):
+        return isinstance(request.user, Customer)
+
+
 class PayoutDetailUpdateView(generics.UpdateAPIView):
     serializer_class = PayoutDetailSerializer
     permission_classes = [IsBusinessOwner]

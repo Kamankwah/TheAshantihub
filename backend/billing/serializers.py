@@ -61,11 +61,22 @@ class TransactionSerializer(serializers.ModelSerializer):
 
 
 class TransactionReportSerializer(serializers.ModelSerializer):
-    business_owner_name = serializers.CharField(source="business_owner.full_name", read_only=True)
+    # SerializerMethodField rather than a dotted `source=` CharField because
+    # exactly one of business_owner/customer is set per row (see
+    # Transaction's CheckConstraint) — a dotted source would try to read
+    # `.full_name` off whichever FK is None.
+    business_owner_name = serializers.SerializerMethodField()
+    customer_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Transaction
         fields = [
-            "id", "business_owner", "business_owner_name", "amount", "purpose",
-            "status", "reference", "created_at",
+            "id", "business_owner", "business_owner_name", "customer", "customer_name",
+            "amount", "purpose", "status", "reference", "created_at",
         ]
+
+    def get_business_owner_name(self, obj):
+        return obj.business_owner.full_name if obj.business_owner_id else None
+
+    def get_customer_name(self, obj):
+        return obj.customer.full_name if obj.customer_id else None

@@ -1,6 +1,6 @@
 from django.db import models
 
-from accounts.models import BusinessOwner
+from accounts.models import BusinessOwner, Customer
 
 
 class SubscriptionPlan(models.Model):
@@ -84,8 +84,17 @@ class Transaction(models.Model):
         (FAILED, "Failed"),
     ]
 
+    # A Transaction now represents either a business-owner subscription
+    # payment OR a customer order payment (cart/orders app), never both on
+    # the same row — enforced by the CheckConstraint below. Both FKs are
+    # nullable so exactly one is set per row.
     business_owner = models.ForeignKey(
-        BusinessOwner, on_delete=models.CASCADE, related_name="transactions"
+        BusinessOwner, on_delete=models.CASCADE, related_name="transactions",
+        null=True, blank=True,
+    )
+    customer = models.ForeignKey(
+        Customer, on_delete=models.CASCADE, related_name="transactions",
+        null=True, blank=True,
     )
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     purpose = models.CharField(max_length=255)
@@ -95,6 +104,15 @@ class Transaction(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                check=(
+                    models.Q(business_owner__isnull=False, customer__isnull=True)
+                    | models.Q(business_owner__isnull=True, customer__isnull=False)
+                ),
+                name="transaction_exactly_one_of_business_owner_or_customer",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.reference} — GHS {self.amount} ({self.status})"
