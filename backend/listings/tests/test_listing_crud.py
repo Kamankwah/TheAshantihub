@@ -91,6 +91,30 @@ class ListingCRUDTests(TestCase):
         names = [item["name"] for item in response.json()]
         self.assertEqual(names, ["Mine"])
 
+    def test_list_mine_includes_gallery_photos(self):
+        from listings.models import ListingPhoto
+
+        listing = Listing.objects.create(
+            business_owner=self.owner, category=self.hotels, zone=self.manhyia,
+            name="Mine With Photos", description="D.", contact_phone="+233207445566",
+        )
+        buf = io.BytesIO()
+        Image.new("RGB", (1, 1)).save(buf, format="JPEG")
+        photo = ListingPhoto.objects.create(
+            listing=listing,
+            image=SimpleUploadedFile("gallery.jpg", buf.getvalue(), content_type="image/jpeg"),
+            order=1,
+        )
+        self._auth(self.owner)
+        response = self.client.get("/api/listings/mine/")
+        self.assertEqual(response.status_code, 200, response.content)
+        item = response.json()[0]
+        self.assertIn("photos", item)
+        self.assertEqual(len(item["photos"]), 1)
+        self.assertEqual(item["photos"][0]["id"], photo.id)
+        self.assertEqual(item["photos"][0]["order"], 1)
+        self.assertIn("image", item["photos"][0])
+
     def test_owner_can_edit_own_draft_listing(self):
         listing = Listing.objects.create(
             business_owner=self.owner, category=self.hotels, zone=self.manhyia,

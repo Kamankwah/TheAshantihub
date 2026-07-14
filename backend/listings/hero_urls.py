@@ -9,5 +9,6 @@ from . import views
 urlpatterns = [
     path("active/", views.HeroActiveListView.as_view(), name="hero-active-list"),
     path("submit/", views.HeroSubmitView.as_view(), name="hero-submit"),
+    path("mine/", views.HeroMineView.as_view(), name="hero-mine"),
     path("<int:pk>/extend/", views.HeroExtendView.as_view(), name="hero-extend"),
 ]

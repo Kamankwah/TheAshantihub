@@ -265,6 +265,48 @@ class HeroSubmitView(APIView):
         return Response(HeroMediaModerationSerializer(submission).data, status=201)
 
 
+class HeroMineView(APIView):
+    """GET /api/hero/mine/ — the calling business owner's most relevant
+    HeroMediaSubmission, so the frontend can recover submission status after
+    a page reload (rather than only learning it from the response of
+    POST /api/hero/submit/ or /extend/).
+
+    Priority: the outstanding submission (status=pending, or status=approved
+    and not yet expired) if one exists; otherwise the most recent submission
+    of any status (e.g. an expired-approved or rejected one), so a business
+    owner can still see "what happened last time"; otherwise nothing at all.
+
+    "Nothing at all" is a 200 with `{}`, not a 404 — mirrors
+    billing.SubscriptionMeView's "no subscription yet" convention: DRF's
+    JSONRenderer turns `Response(None)` into an empty (zero-length) body
+    rather than JSON `null`, which would break `response.json()` on the
+    frontend. Absence of an `id` field is the "nothing yet" signal.
+    """
+
+    permission_classes = [IsAuthenticated, IsBusinessOwner]
+
+    def get(self, request):
+        now = timezone.now()
+        submission = (
+            HeroMediaSubmission.objects.filter(business_owner=request.user)
+            .filter(
+                Q(status=HeroMediaSubmission.PENDING)
+                | Q(status=HeroMediaSubmission.APPROVED, expires_at__gt=now)
+            )
+            .order_by("-submitted_at")
+            .first()
+        )
+        if submission is None:
+            submission = (
+                HeroMediaSubmission.objects.filter(business_owner=request.user)
+                .order_by("-submitted_at")
+                .first()
+            )
+        if submission is None:
+            return Response({})
+        return Response(HeroMediaModerationSerializer(submission).data)
+
+
 class HeroPendingQueueView(generics.ListAPIView):
     """Clones ModerationPendingQueueView's shape for hero-media submissions."""
 

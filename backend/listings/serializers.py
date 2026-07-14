@@ -35,12 +35,18 @@ class PublicListingSerializer(serializers.ModelSerializer):
 
 
 class OwnerListingSerializer(serializers.ModelSerializer):
+    # Read-only nested gallery so a business owner's own listing view (used by
+    # the "Submit for Hero" flow to pick a photo) can show the gallery without
+    # a second round-trip — same shape as PublicListingSerializer/
+    # ModerationListingSerializer's `photos` field.
+    photos = ListingPhotoSerializer(many=True, read_only=True)
+
     class Meta:
         model = Listing
         fields = [
             "id", "category", "zone", "name", "description", "price_amount", "price_unit",
-            "tag", "contact_phone", "lat", "lng", "main_photo", "status", "rejection_reason",
-            "created_at", "updated_at",
+            "tag", "contact_phone", "lat", "lng", "main_photo", "photos", "status",
+            "rejection_reason", "created_at", "updated_at",
         ]
         read_only_fields = ["status", "rejection_reason", "created_at", "updated_at"]
         extra_kwargs = {"contact_phone": {"required": False}}
