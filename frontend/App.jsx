@@ -3852,7 +3852,7 @@ export default function AshantiHub() {
           )}
 
           {selectedEventId ? (
-            <EventDetailPage id={selectedEventId} onBack={()=>setSelectedEventId(null)}/>
+            <EventDetailPage id={selectedEventId} onBack={()=>setSelectedEventId(null)} user={user}/>
           ) : (
           <div style={{background:C.void,paddingBottom:1}}>
             {eventCategories.length>0&&(

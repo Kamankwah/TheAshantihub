@@ -2,6 +2,8 @@ import { useState } from "react";
 import { C } from "../theme.js";
 import { apiPost, apiPostForm } from "../apiClient.js";
 import { useMyEvents } from "../hooks/useMyEvents.js";
+import { useEventAttendees } from "../hooks/useEventAttendees.js";
+import { formatEventDate } from "./EventCard.jsx";
 
 // Mirrors events/views.py's EVENT_DAILY_RATE — no endpoint exposes this
 // value (POST /api/events/{id}/pay/ computes and charges it server-side in
@@ -54,6 +56,13 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
   const [payTargetId, setPayTargetId] = useState(null);
   const [payAmount, setPayAmount] = useState(0);
   const [payError, setPayError] = useState(null);
+
+  // Attendees view (docs/BUSINESS_EVENTS_ROADMAP.md Phase 7) — at most one
+  // event's attendee list is expanded at a time; useEventAttendees is only
+  // called (via EventAttendeesPanel below) for whichever event id this is
+  // set to, so the attendee list isn't eagerly fetched for every event in
+  // "My Events" up front.
+  const [expandedAttendeesId, setExpandedAttendeesId] = useState(null);
 
   const eventCategories = (categories || []).filter((c) => c.kind === "event");
 
@@ -290,17 +299,74 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
                 </button>
               </div>
             )}
-            {ev.status === "approved" && !ev.paid_at && (
+            <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {ev.status === "approved" && !ev.paid_at && (
+                <button
+                  onClick={() => openPay(ev)}
+                  style={{ background: C.kente2, color: "white", border: "none", borderRadius: 20, padding: "7px 16px", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}
+                >
+                  💳 Pay to publish
+                </button>
+              )}
               <button
-                onClick={() => openPay(ev)}
-                style={{ marginTop: 10, background: C.kente2, color: "white", border: "none", borderRadius: 20, padding: "7px 16px", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}
+                onClick={() => setExpandedAttendeesId((cur) => (cur === ev.id ? null : ev.id))}
+                style={{ background: "rgba(255,255,255,0.08)", color: "white", border: "1px solid rgba(255,255,255,0.22)", borderRadius: 20, padding: "7px 16px", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}
               >
-                💳 Pay to publish
+                {expandedAttendeesId === ev.id ? "▲ Hide Attendees" : "👥 Attendees"}
               </button>
-            )}
+            </div>
+            {expandedAttendeesId === ev.id && <EventAttendeesPanel eventId={ev.id} />}
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ─── EventAttendeesPanel ────────────────────────────────────────────────────
+// The organizer's "Attendees" expand for a single event (Phase 7) —
+// GET /api/events/{id}/rsvps/ via useEventAttendees, only mounted (and so
+// only fetched) while its parent's "👥 Attendees" toggle is open for that
+// event id. `data.results` is DRF's standard paginated shape
+// ({count, next, previous, results}) — this view deliberately doesn't wire
+// up "load more" pagination, matching the roadmap brief's "doesn't need to
+// be polished, just functional" instruction; an organizer with more
+// attendees than one page can still see the count via `data.count`.
+function EventAttendeesPanel({ eventId }) {
+  const { data, isLoading, isError, refetch } = useEventAttendees(eventId, { enabled: true });
+  const attendees = data?.results ?? [];
+
+  if (isLoading) {
+    return <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.74rem", marginTop: 8 }}>Loading attendees…</div>;
+  }
+  if (isError) {
+    return (
+      <div style={{ color: "#ffb4b4", fontSize: "0.74rem", marginTop: 8 }}>
+        Could not load attendees.{" "}
+        <button onClick={() => refetch()} style={{ background: "none", border: `1px solid ${C.kente1}`, color: C.kente1, borderRadius: 20, padding: "1px 8px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>
+          Retry
+        </button>
+      </div>
+    );
+  }
+  if (attendees.length === 0) {
+    return <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.74rem", marginTop: 8 }}>No one has RSVP'd yet.</div>;
+  }
+  return (
+    <div style={{ marginTop: 10, background: "rgba(255,255,255,0.03)", borderRadius: 10, padding: "8px 12px" }}>
+      <div style={{ color: C.lightGold, fontSize: "0.68rem", fontWeight: 700, marginBottom: 6 }}>
+        {data?.count ?? attendees.length} going
+      </div>
+      {attendees.map((a, i) => (
+        <div
+          key={i}
+          style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", padding: "6px 0", borderTop: i > 0 ? "1px solid rgba(255,255,255,0.08)" : "none", fontSize: "0.74rem" }}
+        >
+          <span style={{ color: "white", fontWeight: 700 }}>{a.customer_name}</span>
+          <span style={{ color: "rgba(255,255,255,0.6)" }}>{a.customer_phone}{a.customer_email ? ` · ${a.customer_email}` : ""}</span>
+          <span style={{ color: "rgba(255,255,255,0.45)" }}>{formatEventDate(a.rsvp_at)}</span>
+        </div>
+      ))}
     </div>
   );
 }

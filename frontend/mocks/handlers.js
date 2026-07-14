@@ -54,4 +54,16 @@ export const handlers = [
   http.get('http://localhost:8000/api/events/mine/', () => {
     return HttpResponse.json([])
   }),
+  // RSVP / attendees (docs/BUSINESS_EVENTS_ROADMAP.md Phase 7) — default
+  // handlers, overridden per-test via server.use() where a specific
+  // RSVP/capacity/attendee-list response is needed.
+  http.post('http://localhost:8000/api/events/:id/rsvp/', ({ params }) => {
+    return HttpResponse.json({ event: Number(params.id), status: 'going', going_count: 1 }, { status: 201 })
+  }),
+  http.delete('http://localhost:8000/api/events/:id/rsvp/', () => {
+    return new HttpResponse(null, { status: 204 })
+  }),
+  http.get('http://localhost:8000/api/events/:id/rsvps/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
 ]

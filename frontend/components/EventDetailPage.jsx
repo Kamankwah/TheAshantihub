@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { C } from "../theme.js";
 import { useEvent } from "../hooks/useEvent.js";
-import { apiPost } from "../apiClient.js";
+import { apiDelete, apiPost } from "../apiClient.js";
 import { formatEventDate } from "./EventCard.jsx";
 
 // ─── EventDetailPage ────────────────────────────────────────────────────────
@@ -27,13 +27,73 @@ import { formatEventDate } from "./EventCard.jsx";
 // A successful unlock (POST /api/events/{id}/unlock/) is kept in local
 // `unlocked` state and rendered directly — simpler than re-querying
 // useEvent with a `?code=` param, and avoids a second network round trip.
-export default function EventDetailPage({ id, onBack }) {
+//
+// ─── RSVP (docs/BUSINESS_EVENTS_ROADMAP.md Phase 7) ────────────────────────
+// `user` (same shape App.jsx builds elsewhere: {accountType, ...}) gates the
+// "I'm Going"/"Can't Go" toggle to signed-in customer accounts only — POST
+// /api/events/{id}/rsvp/ 403s for business owners server-side (RSVP is an
+// attendee concept, distinct from the "either account type may submit an
+// event" rule used for event submission), so this component mirrors that
+// role split in the UI rather than letting a business owner hit a 403.
+//
+// **No "what's my current RSVP status" read endpoint exists in this phase's
+// backend scope** — only POST/DELETE to *set* the caller's status, and GET
+// /rsvps/ which is organizer-only (the attendee list), not a per-caller
+// self-check. So `rsvpStatus` is tracked purely optimistically in local
+// state, seeded from the `status` field of the POST/DELETE response, and
+// always starts at "not going" on page load/refresh — even if the signed-in
+// user already RSVP'd in a previous session. This is a known, documented
+// limitation (not a bug) rather than a reason to invent a backend endpoint
+// that isn't part of this phase's contract.
+//
+// Because this app has no router, switching accounts (sign out then sign
+// back in as someone else) does not necessarily remount this component —
+// `AshantiHub`'s `selectedEventId` is untouched by auth state, so if the
+// user never navigates away from the currently-open event, React reuses the
+// same component instance across the account switch. Without the effect
+// below (see the `useEffect` right after this component's `useState` calls),
+// the *previous* account's optimistic `rsvpStatus`/`rsvpFull` would stay
+// visible to the newly signed-in account, which is worse than the documented
+// "always starts at not going" limitation — it would actively show the
+// wrong person's status. That effect resets on `user?.id` change (covers
+// both sign-out, where it becomes undefined, and switching to a different
+// account) so the state matches the "start fresh" contract in all cases,
+// not just a full page reload.
+//
+// For a private event, RSVP-ing reuses whatever `code` was already entered
+// to unlock the detail page above (the backend requires the same code on
+// POST /rsvp/ as on /unlock/, since Phase 6 is deliberately stateless with
+// no server-side "already unlocked" session) — never prompts for it again.
+//
+// A 400 response from POST /rsvp/ means "this event is at capacity"
+// (events/views.py's EventRSVPView is the only way this endpoint 400s) —
+// surfaced generically off the error's `status`/`body.detail` rather than
+// computed from any capacity number, since capacity isn't part of
+// EventDetailSerializer's exposed fields.
+export default function EventDetailPage({ id, onBack, user }) {
   const { data: event, isLoading, isError, refetch } = useEvent(id);
   const [unlocked, setUnlocked] = useState(null);
   const [code, setCode] = useState("");
   const [unlocking, setUnlocking] = useState(false);
   const [unlockError, setUnlockError] = useState(null);
   const [galleryIndex, setGalleryIndex] = useState(0);
+
+  const [rsvpStatus, setRsvpStatus] = useState(null); // null ("not going") | "going" | "cancelled"
+  const [rsvpBusy, setRsvpBusy] = useState(false);
+  const [rsvpError, setRsvpError] = useState(null);
+  const [rsvpFull, setRsvpFull] = useState(false);
+  const [goingCountOverride, setGoingCountOverride] = useState(null);
+
+  // See the RSVP doc-comment above the component for why this is needed:
+  // without it, switching signed-in accounts while this same event stays
+  // open would leak the previous account's optimistic RSVP state into the
+  // new one.
+  useEffect(() => {
+    setRsvpStatus(null);
+    setRsvpFull(false);
+    setRsvpError(null);
+    setGoingCountOverride(null);
+  }, [user?.id]);
 
   if (isLoading) {
     return (
@@ -56,6 +116,8 @@ export default function EventDetailPage({ id, onBack }) {
   const detail = unlocked || event;
   const isLocked = !("address" in detail);
   const accentColor = detail.category?.color || C.gold;
+  const isCustomer = user?.accountType === "customer";
+  const isBusinessOwner = user?.accountType === "business_owner";
 
   const handleUnlock = async (e) => {
     e.preventDefault();
@@ -69,6 +131,43 @@ export default function EventDetailPage({ id, onBack }) {
       setUnlockError("Incorrect code. Please check it and try again.");
     } finally {
       setUnlocking(false);
+    }
+  };
+
+  const handleRSVPGoing = async () => {
+    setRsvpError(null);
+    setRsvpFull(false);
+    setRsvpBusy(true);
+    try {
+      const body = detail.access_level === "private" ? { code: code.trim() } : {};
+      const result = await apiPost(`/api/events/${id}/rsvp/`, body);
+      setRsvpStatus(result?.status || "going");
+      if (result?.going_count != null) setGoingCountOverride(result.going_count);
+    } catch (err) {
+      if (err?.status === 400 && /capacity/i.test(err?.body?.detail || "")) {
+        setRsvpFull(true);
+      } else {
+        setRsvpError("Could not RSVP to this event right now. Please try again.");
+      }
+    } finally {
+      setRsvpBusy(false);
+    }
+  };
+
+  const handleRSVPCancel = async () => {
+    setRsvpError(null);
+    setRsvpBusy(true);
+    try {
+      await apiDelete(`/api/events/${id}/rsvp/`);
+      setRsvpStatus("cancelled");
+      setGoingCountOverride((current) => {
+        const base = current != null ? current : detail.going_count;
+        return base != null ? Math.max(0, base - 1) : base;
+      });
+    } catch (err) {
+      setRsvpError("Could not cancel your RSVP right now. Please try again.");
+    } finally {
+      setRsvpBusy(false);
     }
   };
 
@@ -112,6 +211,11 @@ export default function EventDetailPage({ id, onBack }) {
 
   const gallery = detail.media?.length > 0 ? detail.media.map((m) => m.media) : [];
   const directionsUrl = detail.lat != null && detail.lng != null ? `https://www.google.com/maps?q=${detail.lat},${detail.lng}` : null;
+  // "Live" going_count badge (Phase 7): starts at whatever the detail
+  // response reported, then reflects the caller's own RSVP/cancel
+  // immediately off that request's response — no polling/websocket, which
+  // would be over-engineering for a single-viewer detail page.
+  const displayedGoingCount = goingCountOverride != null ? goingCountOverride : detail.going_count;
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "16px 14px 40px", background: C.void, borderRadius: 20 }}>
@@ -163,9 +267,9 @@ export default function EventDetailPage({ id, onBack }) {
           {detail.address && (
             <div style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.82rem", marginBottom: 10 }}>📍 {detail.address}</div>
           )}
-          {detail.going_count != null && (
+          {displayedGoingCount != null && (
             <div style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.82rem", marginBottom: 16 }}>
-              🎉 {detail.going_count} going
+              🎉 {displayedGoingCount} going
             </div>
           )}
           {directionsUrl && (
@@ -178,6 +282,56 @@ export default function EventDetailPage({ id, onBack }) {
               🧭 Get Directions
             </a>
           )}
+
+          {/* RSVP toggle (docs/BUSINESS_EVENTS_ROADMAP.md Phase 7) — see the
+              block comment above the component for the role-gating and
+              "no self-status endpoint" rationale. */}
+          <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.12)" }}>
+            {!user ? (
+              <div style={{ color: C.lightGold, fontSize: "0.8rem" }}>Sign in to RSVP to this event.</div>
+            ) : isBusinessOwner ? (
+              <div>
+                <button
+                  disabled
+                  title="RSVP is a customer-account action"
+                  style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 20, padding: "10px 18px", fontSize: "0.8rem", fontWeight: 700, cursor: "not-allowed", minHeight: 44, fontFamily: "inherit" }}
+                >
+                  🎉 I'm Going
+                </button>
+                <div style={{ marginTop: 8, color: "rgba(255,255,255,0.5)", fontSize: "0.72rem" }}>
+                  RSVPs are for customer accounts — business accounts can submit and manage events but can't RSVP to them.
+                </div>
+              </div>
+            ) : isCustomer ? (
+              <div>
+                {rsvpFull ? (
+                  <div style={{ color: "#ffb4b4", fontSize: "0.82rem", fontWeight: 700 }}>🚫 This event is at capacity.</div>
+                ) : (
+                  <button
+                    onClick={rsvpStatus === "going" ? handleRSVPCancel : handleRSVPGoing}
+                    disabled={rsvpBusy}
+                    style={{
+                      background: rsvpStatus === "going" ? "rgba(255,255,255,0.1)" : C.gold,
+                      color: rsvpStatus === "going" ? "white" : C.darkBrown,
+                      border: rsvpStatus === "going" ? "1.5px solid rgba(255,255,255,0.3)" : "none",
+                      borderRadius: 20,
+                      padding: "10px 18px",
+                      fontSize: "0.8rem",
+                      fontWeight: 900,
+                      cursor: rsvpBusy ? "wait" : "pointer",
+                      minHeight: 44,
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    {rsvpBusy ? "…" : rsvpStatus === "going" ? "✓ Going — Can't Go?" : "🎉 I'm Going"}
+                  </button>
+                )}
+                {rsvpError && <div style={{ marginTop: 8, color: "#ffb4b4", fontSize: "0.74rem" }}>{rsvpError}</div>}
+              </div>
+            ) : (
+              <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.78rem" }}>Only customer accounts can RSVP to events.</div>
+            )}
+          </div>
         </div>
       </div>
     </div>

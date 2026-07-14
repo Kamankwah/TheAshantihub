@@ -131,3 +131,77 @@ describe('EventSubmissionPanel', () => {
     expect(screen.queryByText('💳 Pay to publish')).not.toBeInTheDocument()
   })
 })
+
+describe('EventSubmissionPanel — Attendees view (docs/BUSINESS_EVENTS_ROADMAP.md Phase 7)', () => {
+  it('does not fetch the attendee list until "Attendees" is opened', async () => {
+    let attendeesRequested = false
+    server.use(
+      http.get('http://localhost:8000/api/events/mine/', () =>
+        HttpResponse.json([{ id: 9, name: 'Kumasi Cultural Festival', status: 'approved', access_level: 'public', paid_at: '2026-07-01T00:00:00Z' }]),
+      ),
+      http.get('http://localhost:8000/api/events/9/rsvps/', () => {
+        attendeesRequested = true
+        return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+      }),
+    )
+    renderPanel()
+    await screen.findByText('Kumasi Cultural Festival')
+    expect(attendeesRequested).toBe(false)
+    expect(screen.getByText('👥 Attendees')).toBeInTheDocument()
+  })
+
+  it('fetches and lists attendees (name, contact, RSVP date) once "Attendees" is clicked, and can be collapsed again', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/events/mine/', () =>
+        HttpResponse.json([{ id: 9, name: 'Kumasi Cultural Festival', status: 'approved', access_level: 'public', paid_at: '2026-07-01T00:00:00Z' }]),
+      ),
+      http.get('http://localhost:8000/api/events/9/rsvps/', () =>
+        HttpResponse.json({
+          count: 2,
+          next: null,
+          previous: null,
+          results: [
+            { customer_name: 'Ama Owusu', customer_phone: '+233241234567', customer_email: 'ama@example.com', status: 'going', rsvp_at: '2026-07-05T00:00:00Z' },
+            { customer_name: 'Kwame Mensah', customer_phone: '+233551234567', customer_email: 'kwame@example.com', status: 'going', rsvp_at: '2026-07-06T00:00:00Z' },
+          ],
+        }),
+      ),
+    )
+    renderPanel()
+    await screen.findByText('Kumasi Cultural Festival')
+    fireEvent.click(screen.getByText('👥 Attendees'))
+    expect(await screen.findByText('Ama Owusu')).toBeInTheDocument()
+    expect(screen.getByText('Kwame Mensah')).toBeInTheDocument()
+    expect(screen.getByText(/\+233241234567/)).toBeInTheDocument()
+    expect(screen.getByText('2 going')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('▲ Hide Attendees'))
+    expect(screen.queryByText('Ama Owusu')).not.toBeInTheDocument()
+  })
+
+  it('shows an empty state when no one has RSVP\'d yet', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/events/mine/', () =>
+        HttpResponse.json([{ id: 9, name: 'Kumasi Cultural Festival', status: 'approved', access_level: 'public', paid_at: '2026-07-01T00:00:00Z' }]),
+      ),
+      http.get('http://localhost:8000/api/events/9/rsvps/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+    )
+    renderPanel()
+    await screen.findByText('Kumasi Cultural Festival')
+    fireEvent.click(screen.getByText('👥 Attendees'))
+    expect(await screen.findByText("No one has RSVP'd yet.")).toBeInTheDocument()
+  })
+
+  it('shows a retry option when the attendee list fails to load', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/events/mine/', () =>
+        HttpResponse.json([{ id: 9, name: 'Kumasi Cultural Festival', status: 'approved', access_level: 'public', paid_at: '2026-07-01T00:00:00Z' }]),
+      ),
+      http.get('http://localhost:8000/api/events/9/rsvps/', () => new HttpResponse(null, { status: 403 })),
+    )
+    renderPanel()
+    await screen.findByText('Kumasi Cultural Festival')
+    fireEvent.click(screen.getByText('👥 Attendees'))
+    expect(await screen.findByText(/Could not load attendees\./)).toBeInTheDocument()
+  })
+})

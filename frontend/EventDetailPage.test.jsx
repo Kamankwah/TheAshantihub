@@ -93,6 +93,153 @@ describe('EventDetailPage — full detail (public event)', () => {
   })
 })
 
+const CUSTOMER = { accountType: 'customer', fullName: 'Ama Owusu', id: 101 };
+const BUSINESS_OWNER = { accountType: 'business_owner', fullName: 'Kwame Biz' };
+
+describe('EventDetailPage — RSVP role gating', () => {
+  it('shows a sign-in prompt and no toggle when signed out', async () => {
+    server.use(http.get('http://localhost:8000/api/events/1/', () => HttpResponse.json(PUBLIC_DETAIL)))
+    renderPage()
+    await screen.findByText('Akwasidae Festival')
+    expect(screen.getByText('Sign in to RSVP to this event.')).toBeInTheDocument()
+    expect(screen.queryByText("🎉 I'm Going")).not.toBeInTheDocument()
+  })
+
+  it('shows a disabled toggle with an explanatory note for business-owner accounts', async () => {
+    server.use(http.get('http://localhost:8000/api/events/1/', () => HttpResponse.json(PUBLIC_DETAIL)))
+    renderPage({ user: BUSINESS_OWNER })
+    await screen.findByText('Akwasidae Festival')
+    expect(screen.getByText("🎉 I'm Going")).toBeDisabled()
+    expect(screen.getByText(/RSVPs are for customer accounts/)).toBeInTheDocument()
+  })
+
+  it('shows a live toggle for a signed-in customer', async () => {
+    server.use(http.get('http://localhost:8000/api/events/1/', () => HttpResponse.json(PUBLIC_DETAIL)))
+    renderPage({ user: CUSTOMER })
+    await screen.findByText('Akwasidae Festival')
+    expect(screen.getByText("🎉 I'm Going")).not.toBeDisabled()
+  })
+})
+
+describe('EventDetailPage — RSVP state resets when the signed-in account changes', () => {
+  it('does not leak one account\'s optimistic "going" status to a different account signing in without a remount', async () => {
+    // Regression test: this app has no router, so switching accounts while
+    // the same event stays open (AshantiHub's selectedEventId is untouched
+    // by auth state) does not necessarily remount EventDetailPage. Without
+    // resetting local RSVP state on `user?.id` change, the previous
+    // account's "going" status stayed visible to the next signed-in
+    // account — found via manual browser verification (sign in as customer
+    // A, RSVP, sign out, sign in as customer B without a page reload: B saw
+    // "✓ Going — Can't Go?" despite never having RSVP'd).
+    server.use(
+      http.get('http://localhost:8000/api/events/1/', () => HttpResponse.json(PUBLIC_DETAIL)),
+      http.post('http://localhost:8000/api/events/1/rsvp/', () => HttpResponse.json({ event: 1, status: 'going', going_count: 43 }, { status: 201 })),
+    )
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { rerender } = render(
+      <QueryClientProvider client={queryClient}>
+        <EventDetailPage id={1} onBack={vi.fn()} user={CUSTOMER} />
+      </QueryClientProvider>,
+    )
+    await screen.findByText('Akwasidae Festival')
+    fireEvent.click(screen.getByText("🎉 I'm Going"))
+    expect(await screen.findByText("✓ Going — Can't Go?")).toBeInTheDocument()
+
+    const OTHER_CUSTOMER = { accountType: 'customer', fullName: 'Kojo Mensah', id: 202 }
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <EventDetailPage id={1} onBack={vi.fn()} user={OTHER_CUSTOMER} />
+      </QueryClientProvider>,
+    )
+    expect(await screen.findByText("🎉 I'm Going")).toBeInTheDocument()
+    expect(screen.queryByText("✓ Going — Can't Go?")).not.toBeInTheDocument()
+  })
+})
+
+describe('EventDetailPage — RSVP toggle (public event, signed-in customer)', () => {
+  it('RSVPs "going" via POST and updates the live going_count badge', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/events/1/', () => HttpResponse.json(PUBLIC_DETAIL)),
+      http.post('http://localhost:8000/api/events/1/rsvp/', async ({ request }) => {
+        const body = await request.json()
+        expect(body).toEqual({})
+        return HttpResponse.json({ event: 1, status: 'going', going_count: 43 }, { status: 201 })
+      }),
+    )
+    renderPage({ user: CUSTOMER })
+    await screen.findByText('Akwasidae Festival')
+    expect(screen.getByText(/42 going/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText("🎉 I'm Going"))
+    expect(await screen.findByText("✓ Going — Can't Go?")).toBeInTheDocument()
+    expect(await screen.findByText(/43 going/)).toBeInTheDocument()
+  })
+
+  it('cancels a "going" RSVP via DELETE and decrements the going_count badge', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/events/1/', () => HttpResponse.json(PUBLIC_DETAIL)),
+      http.post('http://localhost:8000/api/events/1/rsvp/', () => HttpResponse.json({ event: 1, status: 'going', going_count: 43 }, { status: 201 })),
+      http.delete('http://localhost:8000/api/events/1/rsvp/', () => new HttpResponse(null, { status: 204 })),
+    )
+    renderPage({ user: CUSTOMER })
+    await screen.findByText('Akwasidae Festival')
+    fireEvent.click(screen.getByText("🎉 I'm Going"))
+    await screen.findByText("✓ Going — Can't Go?")
+    fireEvent.click(screen.getByText("✓ Going — Can't Go?"))
+    expect(await screen.findByText("🎉 I'm Going")).toBeInTheDocument()
+    expect(await screen.findByText(/42 going/)).toBeInTheDocument()
+  })
+
+  it('shows a capacity-full state (not the toggle) on a 400 "at capacity" response', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/events/1/', () => HttpResponse.json(PUBLIC_DETAIL)),
+      http.post('http://localhost:8000/api/events/1/rsvp/', () => HttpResponse.json({ detail: 'This event is at capacity.' }, { status: 400 })),
+    )
+    renderPage({ user: CUSTOMER })
+    await screen.findByText('Akwasidae Festival')
+    fireEvent.click(screen.getByText("🎉 I'm Going"))
+    expect(await screen.findByText('🚫 This event is at capacity.')).toBeInTheDocument()
+    expect(screen.queryByText("🎉 I'm Going")).not.toBeInTheDocument()
+  })
+
+  it('shows a generic error (not the capacity state) on an unrelated failure', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/events/1/', () => HttpResponse.json(PUBLIC_DETAIL)),
+      http.post('http://localhost:8000/api/events/1/rsvp/', () => new HttpResponse(null, { status: 500 })),
+    )
+    renderPage({ user: CUSTOMER })
+    await screen.findByText('Akwasidae Festival')
+    fireEvent.click(screen.getByText("🎉 I'm Going"))
+    expect(await screen.findByText('Could not RSVP to this event right now. Please try again.')).toBeInTheDocument()
+    expect(screen.queryByText('🚫 This event is at capacity.')).not.toBeInTheDocument()
+  })
+})
+
+describe('EventDetailPage — RSVP on a private event reuses the already-entered unlock code', () => {
+  it('sends the unlock code on the RSVP POST body without prompting for it again', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/events/2/', () => HttpResponse.json(PRIVATE_TEASER)),
+      http.post('http://localhost:8000/api/events/2/unlock/', async ({ request }) => {
+        const body = await request.json()
+        if (body.code !== 'SECRET1') return new HttpResponse(JSON.stringify({ detail: 'Invalid access code.' }), { status: 403 })
+        return HttpResponse.json({ ...PUBLIC_DETAIL, id: 2, name: 'Private Wedding Reception', access_level: 'private' })
+      }),
+      http.post('http://localhost:8000/api/events/2/rsvp/', async ({ request }) => {
+        const body = await request.json()
+        expect(body).toEqual({ code: 'SECRET1' })
+        return HttpResponse.json({ event: 2, status: 'going', going_count: 5 }, { status: 201 })
+      }),
+    )
+    renderPage({ id: 2, user: CUSTOMER })
+    await screen.findByText('This event is private — enter the code to view details.')
+    fireEvent.change(screen.getByLabelText('Access code'), { target: { value: 'SECRET1' } })
+    fireEvent.click(screen.getByText('Unlock'))
+    await screen.findByText(/drumming, dancing/)
+    expect(screen.queryByLabelText('Access code')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText("🎉 I'm Going"))
+    expect(await screen.findByText("✓ Going — Can't Go?")).toBeInTheDocument()
+  })
+})
+
 describe('EventDetailPage — locked (private, un-unlocked) event', () => {
   it('renders the locked prompt instead of description/address/directions when the response is a teaser', async () => {
     server.use(http.get('http://localhost:8000/api/events/2/', () => HttpResponse.json(PRIVATE_TEASER)))
