@@ -17,6 +17,10 @@ const REAL_SHAPED_LISTING = {
   main_photo: 'http://localhost:8000/media/listing_photos/main/lodge.jpg',
   photos: [],
   created_at: '2026-07-09T00:00:00Z',
+  // Present on every real public listing since Phase 5's promote/boost
+  // feature (docs/BUSINESS_EVENTS_ROADMAP.md) — ordering is entirely
+  // server-side, Card itself renders nothing off this flag.
+  is_promoted: false,
 }
 
 describe('Card with real API shape', () => {

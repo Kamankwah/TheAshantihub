@@ -201,3 +201,129 @@ describe('BusinessDashboard Submit for Hero', () => {
     await screen.findByText(/Live until 2026-08-08/)
   })
 })
+
+describe('BusinessDashboard Promote this listing', () => {
+  // POST /api/listings/{id}/promote/ both creates and applies the
+  // promotion in one call (docs/BUSINESS_EVENTS_ROADMAP.md Phase 5) — unlike
+  // Hero Spotlight's extend flow, there's no separate "confirm after
+  // payment" write, so these tests just assert the POST body, that the
+  // returned amount_paid opens the reused MoMo payment flow, and that a
+  // successful payment refetches the owner's listings.
+  function mockDashboardDataWithPublishedListing() {
+    server.use(
+      http.get('http://localhost:8000/api/listings/mine/', () => HttpResponse.json([
+        {
+          id: 1, name: "Ama's Lodge", status: 'published', price_amount: '450.00', price_unit: 'per night',
+          photos: [],
+        },
+      ])),
+      http.get('http://localhost:8000/api/accounts/business-owners/me/profile/', () => HttpResponse.json({
+        ghana_card_number: 'GHA-1', gps_address: 'AK-1', business_contact_phone: '+233200000000', is_formal: false,
+      })),
+      http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([])),
+      http.get('http://localhost:8000/api/billing/subscriptions/me/', () => HttpResponse.json({})),
+      http.get('http://localhost:8000/api/hero/mine/', () => HttpResponse.json({})),
+    )
+  }
+
+  it('only shows the Promote action for a published listing', async () => {
+    mockDashboardDataWithPublishedListing()
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
+    await screen.findByText("Ama's Lodge")
+    expect(screen.getByText('📣 Promote')).toBeInTheDocument()
+  })
+
+  it('purchases a Featured promotion and opens the reused MoMo payment flow with the returned amount', async () => {
+    mockDashboardDataWithPublishedListing()
+    let promoteBody = null
+    server.use(
+      http.post('http://localhost:8000/api/listings/1/promote/', async ({ request }) => {
+        promoteBody = await request.json()
+        return HttpResponse.json({
+          id: 9, listing: 1, kind: 'featured', starts_at: '2026-07-14T00:00:00Z', ends_at: '2026-07-21T00:00:00Z',
+          keywords: '', amount_paid: '35.00', status: 'active',
+        }, { status: 201 })
+      }),
+    )
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
+    fireEvent.click(await screen.findByText('📣 Promote'))
+    fireEvent.click(screen.getByText('📣 Promote 7d'))
+    await waitFor(() => expect(promoteBody).toEqual({ kind: 'featured', days: 7 }))
+    expect(screen.getByText('💰 Mobile Money Payment')).toBeInTheDocument()
+    expect(screen.getByText('GHS 35.00')).toBeInTheDocument()
+  })
+
+  it('requires keywords for a Boost promotion and sends them in the request', async () => {
+    mockDashboardDataWithPublishedListing()
+    let promoteBody = null
+    server.use(
+      http.post('http://localhost:8000/api/listings/1/promote/', async ({ request }) => {
+        promoteBody = await request.json()
+        return HttpResponse.json({
+          id: 10, listing: 1, kind: 'boost', starts_at: '2026-07-14T00:00:00Z', ends_at: '2026-07-21T00:00:00Z',
+          keywords: 'jollof, catering', amount_paid: '21.00', status: 'active',
+        }, { status: 201 })
+      }),
+    )
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
+    fireEvent.click(await screen.findByText('📣 Promote'))
+    fireEvent.change(screen.getByDisplayValue('Featured'), { target: { value: 'boost' } })
+    const promoteButton = screen.getByText('📣 Promote 7d')
+    expect(promoteButton).toBeDisabled()
+    fireEvent.change(screen.getByPlaceholderText('e.g. jollof, catering'), { target: { value: 'jollof, catering' } })
+    expect(promoteButton).not.toBeDisabled()
+    fireEvent.click(promoteButton)
+    await waitFor(() => expect(promoteBody).toEqual({ kind: 'boost', days: 7, keywords: 'jollof, catering' }))
+    expect(screen.getByText('💰 Mobile Money Payment')).toBeInTheDocument()
+  })
+
+  it('shows an inline error when the purchase fails', async () => {
+    mockDashboardDataWithPublishedListing()
+    server.use(
+      http.post('http://localhost:8000/api/listings/1/promote/', () => HttpResponse.json({ detail: 'Already active' }, { status: 400 })),
+    )
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
+    fireEvent.click(await screen.findByText('📣 Promote'))
+    fireEvent.click(screen.getByText('📣 Promote 7d'))
+    await screen.findByText('Could not create this promotion — it may already be active on this listing, or the listing isn\'t published yet.')
+  })
+
+  it('refetches listings and shows a confirmation toast after completing the simulated MoMo payment', async () => {
+    mockDashboardDataWithPublishedListing()
+    server.use(
+      http.post('http://localhost:8000/api/listings/1/promote/', () => HttpResponse.json({
+        id: 9, listing: 1, kind: 'featured', starts_at: '2026-07-14T00:00:00Z', ends_at: '2026-07-21T00:00:00Z',
+        keywords: '', amount_paid: '35.00', status: 'active',
+      }, { status: 201 })),
+    )
+    let refetchCount = 0
+    server.use(
+      http.get('http://localhost:8000/api/listings/mine/', () => {
+        refetchCount += 1
+        return HttpResponse.json([
+          { id: 1, name: "Ama's Lodge", status: 'published', price_amount: '450.00', price_unit: 'per night', photos: [] },
+        ])
+      }),
+    )
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
+    fireEvent.click(await screen.findByText('📣 Promote'))
+    fireEvent.click(screen.getByText('📣 Promote 7d'))
+    await screen.findByText('💰 Mobile Money Payment')
+    fireEvent.click(screen.getByText('MTN MoMo'))
+    fireEvent.change(screen.getByPlaceholderText('0244 000 000'), { target: { value: '0244000000' } })
+
+    const initialRefetchCount = refetchCount
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    fireEvent.click(screen.getByText(/Pay GHS/))
+    await vi.advanceTimersByTimeAsync(4100)
+    vi.useRealTimers()
+
+    await waitFor(() => expect(refetchCount).toBeGreaterThan(initialRefetchCount))
+    await screen.findByText('✓ Saved!')
+  })
+})

@@ -1980,6 +1980,21 @@ function ComingSoonPanel({theme,feature}) {
   </div>;
 }
 
+// Promotions went live as a business-owner self-serve feature in
+// docs/BUSINESS_EVENTS_ROADMAP.md Phase 5 (BusinessDashboard's Listings &
+// Prices tab — "📣 Promote"), so the old ComingSoonPanel placeholder here
+// would now be actively misleading to staff. There's no backend "list all
+// promotions" endpoint in this phase's scope (only the purchase endpoint and
+// the `is_promoted` flag on listings), so this stays a minimal informational
+// panel rather than a fabricated admin promotions-management UI.
+function PromotionsInfoPanel({theme}) {
+  return <div style={{background:theme.cardBg,borderRadius:16,padding:"40px 24px",textAlign:"center",border:`1px solid ${theme.border}`}}>
+    <div style={{fontSize:"2rem",marginBottom:10}}>📣</div>
+    <div style={{color:theme.text,fontWeight:800,fontSize:"0.9rem",marginBottom:4}}>Promotions are self-serve</div>
+    <div style={{color:theme.textMuted,fontSize:"0.78rem",maxWidth:420,margin:"0 auto"}}>Business owners now purchase Featured and Boost promotions directly from their own dashboard's Listings &amp; Prices tab. There's nothing for staff to manage here yet — a future phase may add an admin view of active promotions.</div>
+  </div>;
+}
+
 function StaffOverviewPanel({auth,theme,roleColor}) {
   const permissions = auth.user?.permissions||[];
   return <div>
@@ -2345,7 +2360,7 @@ export function StaffDashboard({auth,onExit}) {
         {activeTab==="escrow"&&<ComingSoonPanel theme={t} feature="Escrow Ledger"/>}
         {activeTab==="disputes"&&<ComingSoonPanel theme={t} feature="Disputes"/>}
         {activeTab==="transactions"&&<ComingSoonPanel theme={t} feature="Transactions Report"/>}
-        {activeTab==="promotions"&&<ComingSoonPanel theme={t} feature="Promotions"/>}
+        {activeTab==="promotions"&&<PromotionsInfoPanel theme={t}/>}
         {activeTab==="analytics"&&<ComingSoonPanel theme={t} feature="Analytics"/>}
         {activeTab==="messaging"&&<ComingSoonPanel theme={t} feature="Messaging / Tickets"/>}
       </div>
@@ -2397,6 +2412,20 @@ export function BusinessDashboard({ onExit, user, auth }) {
   const [heroActionError, setHeroActionError] = useState(null);
   const [heroExtendDays, setHeroExtendDays] = useState(7);
   const [showHeroExtendPay, setShowHeroExtendPay] = useState(false);
+  // Promotions (docs/BUSINESS_EVENTS_ROADMAP.md Phase 5). promote*/
+  // showPromotePay mirror the Hero Spotlight submit/extend state shape above
+  // — small inline-form local UI state. There's no "my promotions" list
+  // endpoint in this phase (only the purchase call), so unlike heroSubmission
+  // there's nothing to source from a query; promoteResult just holds the
+  // just-created Promotion (with its server-computed amount_paid) between the
+  // POST and the payment modal it opens.
+  const [promoteListingId, setPromoteListingId] = useState(null);
+  const [promoteKind, setPromoteKind] = useState("featured");
+  const [promoteDays, setPromoteDays] = useState(7);
+  const [promoteKeywords, setPromoteKeywords] = useState("");
+  const [promoteActionError, setPromoteActionError] = useState(null);
+  const [promoteResult, setPromoteResult] = useState(null);
+  const [showPromotePay, setShowPromotePay] = useState(false);
   const isVerified = user?.kycStatus === "verified";
   const isRejected = user?.kycStatus === "rejected";
 
@@ -2477,6 +2506,38 @@ export function BusinessDashboard({ onExit, user, auth }) {
     }
   };
 
+  // Per the backend contract (docs/BUSINESS_EVENTS_ROADMAP.md Phase 5), a
+  // single POST /api/listings/{id}/promote/ call both validates and applies
+  // the promotion, returning amount_paid — unlike the hero-extend flow above,
+  // there's no separate "confirm after payment" write. The MoMoPayment modal
+  // here is purely the established simulated-pay UI step; on success we just
+  // refetch + toast, we don't call the API again.
+  const submitPromotion = async () => {
+    if (!promoteListingId) return;
+    if (promoteKind === "boost" && !promoteKeywords.trim()) return;
+    setPromoteActionError(null);
+    try {
+      const body = { kind: promoteKind, days: promoteDays };
+      if (promoteKind === "boost") body.keywords = promoteKeywords.trim();
+      const res = await apiPost(`/api/listings/${promoteListingId}/promote/`, body);
+      setPromoteResult(res);
+      setPromoteListingId(null);
+      setShowPromotePay(true);
+    } catch (err) {
+      setPromoteActionError("Could not create this promotion — it may already be active on this listing, or the listing isn't published yet.");
+    }
+  };
+
+  const confirmPromotion = () => {
+    setShowPromotePay(false);
+    setPromoteResult(null);
+    setPromoteKind("featured");
+    setPromoteDays(7);
+    setPromoteKeywords("");
+    showToast();
+    refetchListings();
+  };
+
   const recordSubscriptionPayment = async (ref) => {
     setShowPayModal(false);
     if(!selectedPlan) return;
@@ -2515,6 +2576,9 @@ export function BusinessDashboard({ onExit, user, auth }) {
       )}
       {showHeroExtendPay&&heroSubmission?.id&&(
         <MoMoPayment amount={heroExtendDays*5} purpose={`Extend Hero Spotlight — ${heroExtendDays} day${heroExtendDays===1?"":"s"}`} businessName={user?.fullName||"Your Business"} onSuccess={extendHeroSubmission} onClose={()=>setShowHeroExtendPay(false)}/>
+      )}
+      {showPromotePay&&promoteResult&&(
+        <MoMoPayment amount={Number(promoteResult.amount_paid)} purpose={`${promoteResult.kind==="boost"?"Boost":"Featured"} promotion — ${promoteResult.kind==="boost"?promoteResult.keywords:"listing"}`} businessName={user?.fullName||"Your Business"} onSuccess={confirmPromotion} onClose={()=>setShowPromotePay(false)}/>
       )}
       <div style={{background:`linear-gradient(135deg,${C.darkBrown},${C.black})`,padding:"0 16px",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 20px rgba(0,0,0,0.4)"}}>
         <div style={{position:"absolute",top:0,left:0,right:0,height:4,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
@@ -2658,6 +2722,36 @@ export function BusinessDashboard({ onExit, user, auth }) {
               </div>
             )}
 
+            {promoteListingId&&(
+              <div style={{background:"white",borderRadius:14,padding:"14px 16px",marginBottom:14,boxShadow:"0 2px 12px rgba(0,0,0,0.07)",border:`2px solid ${C.kente1}`}}>
+                <div style={{fontWeight:800,fontSize:"0.82rem",color:C.darkBrown,marginBottom:10}}>📣 Promote "{listingList.find(l=>l.id===promoteListingId)?.name}"</div>
+                <div style={{display:"grid",gridTemplateColumns:promoteKind==="boost"?"1fr 1fr 1fr":"1fr 1fr",gap:10,marginBottom:10}}>
+                  <div>
+                    <label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,display:"block",marginBottom:3}}>Type</label>
+                    <select value={promoteKind} onChange={e=>setPromoteKind(e.target.value)} style={{width:"100%",padding:"8px",borderRadius:8,border:"1.5px solid #ddd",fontSize:"0.8rem",background:"white",fontFamily:"inherit"}}>
+                      <option value="featured">Featured</option>
+                      <option value="boost">Boost</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,display:"block",marginBottom:3}}>Days</label>
+                    <input type="number" min={1} value={promoteDays} onChange={e=>setPromoteDays(Math.max(1,Number(e.target.value)||1))} style={{width:"100%",padding:"8px",borderRadius:8,border:"1.5px solid #ddd",fontSize:"0.8rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  </div>
+                  {promoteKind==="boost"&&(
+                    <div>
+                      <label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,display:"block",marginBottom:3}}>Keywords</label>
+                      <input value={promoteKeywords} onChange={e=>setPromoteKeywords(e.target.value)} placeholder="e.g. jollof, catering" style={{width:"100%",padding:"8px",borderRadius:8,border:"1.5px solid #ddd",fontSize:"0.8rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                    </div>
+                  )}
+                </div>
+                {promoteActionError&&<div style={{color:"#dc2626",fontSize:"0.72rem",marginBottom:8}}>{promoteActionError}</div>}
+                <div style={{display:"flex",gap:6}}>
+                  <button onClick={()=>{setPromoteListingId(null);setPromoteActionError(null);}} style={{flex:1,background:"#f0f0f0",color:"#666",border:"none",borderRadius:20,padding:"8px",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                  <button onClick={submitPromotion} disabled={promoteKind==="boost"&&!promoteKeywords.trim()} style={{flex:2,background:(promoteKind==="boost"&&!promoteKeywords.trim())?"#eee":C.kente1,color:(promoteKind==="boost"&&!promoteKeywords.trim())?"#aaa":"white",border:"none",borderRadius:20,padding:"8px",fontWeight:900,cursor:(promoteKind==="boost"&&!promoteKeywords.trim())?"default":"pointer",fontFamily:"inherit"}}>📣 Promote {promoteDays}d</button>
+                </div>
+              </div>
+            )}
+
             {listingsLoading&&<div style={{color:"#888",fontSize:"0.8rem"}}>Loading your listings…</div>}
             {listingsError&&<div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load your listings. Make sure you're signed in as a business owner.</div>}
             {!listingsLoading&&!listingsError&&listingList.length===0&&(
@@ -2700,6 +2794,7 @@ export function BusinessDashboard({ onExit, user, auth }) {
                       <div style={{display:"flex",gap:6}}>
                         {canEdit&&<button onClick={()=>{setEditingId(item.id);setEditForm({name:item.name,price_amount:item.price_amount,price_unit:item.price_unit});}} style={{background:`${C.gold}22`,color:C.deepGold,border:"none",borderRadius:20,padding:"6px 12px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>✏️ Edit</button>}
                         {(item.status==="draft"||item.status==="rejected")&&<button onClick={()=>submitForReview(item.id)} style={{background:C.kente2,color:"white",border:"none",borderRadius:20,padding:"6px 12px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>📤 Submit for Review</button>}
+                        {item.status==="published"&&<button onClick={()=>{setPromoteListingId(item.id);setPromoteKind("featured");setPromoteDays(7);setPromoteKeywords("");setPromoteActionError(null);}} style={{background:`${C.kente1}22`,color:C.kente1,border:"none",borderRadius:20,padding:"6px 12px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>📣 Promote</button>}
                       </div>
                     </div>
                   )}

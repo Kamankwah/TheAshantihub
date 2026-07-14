@@ -61,6 +61,18 @@ describe('StaffDashboard', () => {
     expect(screen.getByText(/coming soon/i)).toBeInTheDocument()
   })
 
+  // Promotions went self-serve (business owners purchase Featured/Boost from
+  // their own dashboard — docs/BUSINESS_EVENTS_ROADMAP.md Phase 5), so the
+  // old ComingSoonPanel placeholder here would now be misleading. Assert the
+  // informational panel shows instead, not "coming soon".
+  it('shows a self-serve informational panel for Promotions instead of coming-soon', () => {
+    const auth = makeAuth({ hasPermission: (c) => c === 'promotions.manage' })
+    render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Promotions'))
+    expect(screen.getByText('Promotions are self-serve')).toBeInTheDocument()
+    expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument()
+  })
+
   it('calls onExit when the exit button is clicked', () => {
     const onExit = vi.fn()
     render(<StaffDashboard auth={makeAuth()} onExit={onExit} />)

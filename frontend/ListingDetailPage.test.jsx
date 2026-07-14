@@ -23,6 +23,9 @@ const LISTING = {
     { id: 2, image: 'http://localhost:8000/media/listing_photos/gallery/2.jpg', order: 1 },
   ],
   created_at: '2026-07-09T00:00:00Z',
+  // Present on every real public listing since Phase 5's promote/boost
+  // feature (docs/BUSINESS_EVENTS_ROADMAP.md).
+  is_promoted: false,
 }
 
 function StubCard({ item, onOpen }) {
