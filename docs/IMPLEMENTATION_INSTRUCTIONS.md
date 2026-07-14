@@ -12,6 +12,7 @@
 | `docs/TOOLING_SETUP.md` | Agents/skills/plugins/MCP servers for this project | n/a (meta) |
 | `docs/FRONTEND_MODERNIZATION.md` | Hero/Navbar redesign, componentization, palette extension, React 19 upgrade | `frontend-engineer` |
 | `docs/PWA_STAFF_DASHBOARD.md` | Service worker fix, staff-scoped installable PWA | `frontend-engineer` |
+| `docs/BUSINESS_EVENTS_ROADMAP.md` | Business tab redesign (hero media approval, sidebar/grid, PDP, cart/checkout, promotion/boost) + net-new Events platform, phased | `backend-architect` + `frontend-engineer` |
 | `CLAUDE.md` | Baseline architecture description (kept accurate as code changes land) | n/a (meta) |
 
 ## 2. Sequencing across all docs
@@ -37,6 +38,7 @@ Phase 2-4: real-time+AI, credit scoring v2, DevOps hardening (docs/PROJECT_SCOPE
 - PWA staff-dashboard work should sequence after the React 19 bump (`docs/FRONTEND_MODERNIZATION.md` §6) to avoid verifying service-worker behavior twice against two React versions.
 - Mobile Phase 1 (browse/auth) can start early against mock data; Mobile Phase 2 (payments) is hard-blocked on Hubtel being live in production.
 - Credit scoring v2 (Phase 3) is unblocked immediately after Phase 1 now that Hubtel data exists from day one — it no longer needs a separate payments phase to complete first.
+- `docs/BUSINESS_EVENTS_ROADMAP.md`'s six phases (Business tab redesign + Events platform) are not yet placed on this diagram — they depend on Phase 1 backend (`listings`/`accounts`/`billing` models must already exist) and are additive to, not blocking, the rest of this sequencing. Earliest reasonable start is after Phase 1 backend + frontend modernization both exist, since Phase 3 of that roadmap redesigns the same Business tab this pass's frontend modernization work leaves alone.
 
 ## 3. Cross-cutting items not owned by any single doc above
 
