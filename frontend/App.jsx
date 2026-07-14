@@ -7,10 +7,12 @@ import { useAuth } from "./hooks/useAuth.js";
 import { useTheme } from "./hooks/useTheme.js";
 import { useKYCQueue } from "./hooks/useKYCQueue.js";
 import { useModerationQueue } from "./hooks/useModerationQueue.js";
+import { useHeroModerationQueue } from "./hooks/useHeroModerationQueue.js";
 import { useCustomers } from "./hooks/useCustomers.js";
 import { useBusinessOwners } from "./hooks/useBusinessOwners.js";
 import { useStaffRoster } from "./hooks/useStaffRoster.js";
 import { useMyListings } from "./hooks/useMyListings.js";
+import { useMyHeroSubmission } from "./hooks/useMyHeroSubmission.js";
 import { useBusinessProfile } from "./hooks/useBusinessProfile.js";
 import { useSubscriptionPlans } from "./hooks/useSubscriptionPlans.js";
 import { useMySubscription } from "./hooks/useMySubscription.js";
@@ -2060,6 +2062,60 @@ function ListingsModerationPanel({theme}) {
   </div>;
 }
 
+function HeroApprovalPanel({theme}) {
+  const {data,isLoading,isError,refetch} = useHeroModerationQueue();
+  const [rejectingId,setRejectingId] = useState(null);
+  const [rejectReason,setRejectReason] = useState("");
+  const [actionError,setActionError] = useState(null);
+
+  const approve = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/listings/hero/${id}/approve/`,{}); refetch(); }
+    catch (err) { setActionError("Could not approve this submission."); }
+  };
+  const reject = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/listings/hero/${id}/reject/`,{reason:rejectReason}); setRejectingId(null); setRejectReason(""); refetch(); }
+    catch (err) { setActionError("Could not reject this submission."); }
+  };
+
+  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
+  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the hero approval queue.</div>;
+  const items = data||[];
+
+  return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
+    <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Pending hero submissions ({items.length})</div>
+    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
+    {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No pending submissions.</div>}
+    {items.map(s=>(
+      <div key={s.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}>
+          <div style={{display:"flex",gap:10}}>
+            {s.media_type==="video" ? (
+              <video src={s.media} muted style={{width:80,height:80,objectFit:"cover",borderRadius:10,background:"#000",flexShrink:0}}/>
+            ) : (
+              <img src={s.media} alt={s.caption||""} style={{width:80,height:80,objectFit:"cover",borderRadius:10,flexShrink:0}}/>
+            )}
+            <div>
+              <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>{s.business_owner_name}</div>
+              <div style={{color:theme.textMuted,fontSize:"0.72rem",margin:"3px 0",maxWidth:320}}>"{s.caption}"</div>
+              <div style={{color:theme.textMuted,fontSize:"0.65rem"}}>Submitted {s.submitted_at?.slice(0,10)}</div>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>approve(s.id)} style={{background:"#22c55e",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✓ Approve</button>
+            <button onClick={()=>setRejectingId(s.id)} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✕ Reject</button>
+          </div>
+        </div>
+        {rejectingId===s.id&&<div style={{marginTop:8,display:"flex",gap:6}}>
+          <input value={rejectReason} onChange={e=>setRejectReason(e.target.value)} placeholder="Rejection reason" style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+          <button onClick={()=>reject(s.id)} disabled={!rejectReason} style={{background:"#dc2626",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:rejectReason?"pointer":"default"}}>Confirm reject</button>
+        </div>}
+      </div>
+    ))}
+  </div>;
+}
+
 function UsersPanel({theme}) {
   const [subTab,setSubTab] = useState("customers");
   const customers = useCustomers();
@@ -2209,6 +2265,7 @@ export function StaffDashboard({auth,onExit}) {
     {id:"overview",icon:"📊",label:"Overview",show:true},
     {id:"kyc",icon:"🪪",label:"KYC Queue",show:auth.hasPermission("kyc.approve")},
     {id:"moderation",icon:"📋",label:"Listings Moderation",show:auth.hasPermission("listings.moderate")},
+    {id:"hero",icon:"🌟",label:"Hero Approval",show:auth.hasPermission("hero_media.approve")},
     {id:"users",icon:"👥",label:"Users",show:auth.hasPermission("users.view")},
     {id:"categories-zones",icon:"🗂️",label:"Categories & Zones",show:auth.hasPermission("categories.manage")||auth.hasPermission("zones.manage")},
     {id:"staff",icon:"🛡️",label:"Staff Management",show:auth.hasPermission("staff.manage")},
@@ -2253,6 +2310,7 @@ export function StaffDashboard({auth,onExit}) {
         {activeTab==="overview"&&<StaffOverviewPanel auth={auth} theme={t} roleColor={roleColor}/>}
         {activeTab==="kyc"&&<KYCQueuePanel theme={t}/>}
         {activeTab==="moderation"&&<ListingsModerationPanel theme={t}/>}
+        {activeTab==="hero"&&<HeroApprovalPanel theme={t}/>}
         {activeTab==="users"&&<UsersPanel theme={t}/>}
         {activeTab==="categories-zones"&&<CategoriesZonesPanel theme={t} auth={auth}/>}
         {activeTab==="staff"&&<StaffManagementPanel theme={t}/>}
@@ -2284,6 +2342,12 @@ const LISTING_STATUS_META = {
   rejected: { label:"Rejected", color:"#ef4444" },
 };
 
+const HERO_STATUS_META = {
+  pending: { label:"Pending Review", color:"#f59e0b" },
+  approved: { label:"Live", color:"#22c55e" },
+  rejected: { label:"Rejected", color:"#ef4444" },
+};
+
 export function BusinessDashboard({ onExit, user, auth }) {
   const [bizTab, setBizTab] = useState("overview");
   const [editingId, setEditingId] = useState(null);
@@ -2294,6 +2358,17 @@ export function BusinessDashboard({ onExit, user, auth }) {
   const [showPayModal, setShowPayModal] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [resubmitting, setResubmitting] = useState(false);
+  // Hero Spotlight (docs/BUSINESS_EVENTS_ROADMAP.md Phase 2). heroSubmitPhoto/
+  // heroCaption/heroActionError/heroExtendDays/showHeroExtendPay are local UI
+  // state for the submit/extend forms; the submission's actual status is
+  // sourced from useMyHeroSubmission() below, which survives a page reload
+  // (refetched after a successful submit/extend, same pattern as the rest of
+  // this dashboard's mutation handling).
+  const [heroSubmitPhoto, setHeroSubmitPhoto] = useState(null);
+  const [heroCaption, setHeroCaption] = useState("");
+  const [heroActionError, setHeroActionError] = useState(null);
+  const [heroExtendDays, setHeroExtendDays] = useState(7);
+  const [showHeroExtendPay, setShowHeroExtendPay] = useState(false);
   const isVerified = user?.kycStatus === "verified";
   const isRejected = user?.kycStatus === "rejected";
 
@@ -2301,6 +2376,7 @@ export function BusinessDashboard({ onExit, user, auth }) {
   const { data: profile, isLoading: profileLoading, isError: profileError } = useBusinessProfile();
   const { data: subPlans, isLoading: plansLoading, isError: plansError } = useSubscriptionPlans();
   const { data: subscription, isLoading: subLoading, isError: subError, refetch: refetchSubscription } = useMySubscription();
+  const { data: heroSubmission, refetch: refetchHeroSubmission } = useMyHeroSubmission();
 
   if (resubmitting) {
     return <BusinessRegistrationFlow
@@ -2343,6 +2419,36 @@ export function BusinessDashboard({ onExit, user, auth }) {
     }
   };
 
+  const submitHeroPhoto = async () => {
+    if(!heroSubmitPhoto||!heroCaption.trim()) return;
+    setHeroActionError(null);
+    try {
+      await apiPost("/api/hero/submit/", {
+        listing_photo: heroSubmitPhoto.id,
+        caption: heroCaption.trim(),
+      });
+      setHeroSubmitPhoto(null);
+      setHeroCaption("");
+      showToast();
+      refetchHeroSubmission();
+    } catch (err) {
+      setHeroActionError("Could not submit this photo for Hero — you may already have a pending or active submission.");
+    }
+  };
+
+  const extendHeroSubmission = async (ref) => {
+    setShowHeroExtendPay(false);
+    if(!heroSubmission?.id) return;
+    setHeroActionError(null);
+    try {
+      await apiPost(`/api/hero/${heroSubmission.id}/extend/`, { days: heroExtendDays });
+      showToast();
+      refetchHeroSubmission();
+    } catch (err) {
+      setHeroActionError("Payment was confirmed but we couldn't extend your Hero Spotlight. Please contact support with reference " + ref + ".");
+    }
+  };
+
   const recordSubscriptionPayment = async (ref) => {
     setShowPayModal(false);
     if(!selectedPlan) return;
@@ -2378,6 +2484,9 @@ export function BusinessDashboard({ onExit, user, auth }) {
     <div style={{fontFamily:"'Georgia',serif",background:"#f4f5f7",minHeight:"100vh"}}>
       {showPayModal&&selectedPlan&&(
         <MoMoPayment amount={billingCycle==="monthly"?Number(selectedPlan.monthly_price):Number(selectedPlan.annual_price)} purpose={`AshantiHub ${selectedPlan.name} Plan`} businessName={user?.fullName||"Your Business"} onSuccess={recordSubscriptionPayment} onClose={()=>setShowPayModal(false)}/>
+      )}
+      {showHeroExtendPay&&heroSubmission?.id&&(
+        <MoMoPayment amount={heroExtendDays*5} purpose={`Extend Hero Spotlight — ${heroExtendDays} day${heroExtendDays===1?"":"s"}`} businessName={user?.fullName||"Your Business"} onSuccess={extendHeroSubmission} onClose={()=>setShowHeroExtendPay(false)}/>
       )}
       <div style={{background:`linear-gradient(135deg,${C.darkBrown},${C.black})`,padding:"0 16px",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 20px rgba(0,0,0,0.4)"}}>
         <div style={{position:"absolute",top:0,left:0,right:0,height:4,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
@@ -2482,6 +2591,45 @@ export function BusinessDashboard({ onExit, user, auth }) {
               <h2 style={{margin:0,color:C.darkBrown,fontWeight:900,fontSize:"0.98rem"}}>🏷️ Listings & Prices</h2>
               <a href="https://wa.me/233244000000?text=UPDATE%3A%20" target="_blank" rel="noopener noreferrer" style={{background:C.whatsapp,color:"white",borderRadius:20,padding:"6px 14px",fontSize:"0.7rem",fontWeight:700,textDecoration:"none"}}>📱 WhatsApp Update</a>
             </div>
+
+            {heroSubmitPhoto&&(
+              <div style={{background:"white",borderRadius:14,padding:"14px 16px",marginBottom:14,boxShadow:"0 2px 12px rgba(0,0,0,0.07)",border:`2px solid ${C.gold}`}}>
+                <div style={{display:"flex",gap:12,alignItems:"flex-start",flexWrap:"wrap"}}>
+                  <img src={heroSubmitPhoto.image} alt="" style={{width:64,height:64,objectFit:"cover",borderRadius:10,flexShrink:0}}/>
+                  <div style={{flex:1,minWidth:200}}>
+                    <div style={{fontWeight:800,fontSize:"0.82rem",color:C.darkBrown,marginBottom:6}}>🌟 Submit this photo for Hero Spotlight</div>
+                    <textarea value={heroCaption} onChange={e=>setHeroCaption(e.target.value.slice(0,140))} maxLength={140} placeholder="A one-sentence caption for the hero slider…" style={{width:"100%",minHeight:56,padding:8,borderRadius:8,border:"1.5px solid #ddd",fontSize:"0.78rem",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+                    <div style={{fontSize:"0.62rem",color:"#aaa",textAlign:"right",marginBottom:8}}>{heroCaption.length}/140</div>
+                    {heroActionError&&<div style={{color:"#dc2626",fontSize:"0.72rem",marginBottom:8}}>{heroActionError}</div>}
+                    <div style={{display:"flex",gap:6}}>
+                      <button onClick={()=>{setHeroSubmitPhoto(null);setHeroCaption("");setHeroActionError(null);}} style={{flex:1,background:"#f0f0f0",color:"#666",border:"none",borderRadius:20,padding:"8px",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                      <button onClick={submitHeroPhoto} disabled={!heroCaption.trim()} style={{flex:2,background:heroCaption.trim()?C.gold:"#eee",color:heroCaption.trim()?C.darkBrown:"#aaa",border:"none",borderRadius:20,padding:"8px",fontWeight:900,cursor:heroCaption.trim()?"pointer":"default",fontFamily:"inherit"}}>✓ Submit for Hero</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {heroSubmission?.id&&!heroSubmitPhoto&&(
+              <div style={{background:"white",borderRadius:14,padding:"14px 16px",marginBottom:14,boxShadow:"0 2px 12px rgba(0,0,0,0.07)",borderLeft:`4px solid ${HERO_STATUS_META[heroSubmission.status]?.color||"#888"}`}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                  <div>
+                    <div style={{fontWeight:800,fontSize:"0.82rem",color:C.darkBrown}}>🌟 Hero Spotlight — <span style={{color:HERO_STATUS_META[heroSubmission.status]?.color}}>{HERO_STATUS_META[heroSubmission.status]?.label||heroSubmission.status}</span></div>
+                    {heroSubmission.caption&&<div style={{fontSize:"0.7rem",color:"#888",marginTop:2}}>"{heroSubmission.caption}"</div>}
+                    {heroSubmission.status==="approved"&&heroSubmission.expires_at&&<div style={{fontSize:"0.68rem",color:"#888",marginTop:2}}>Live until {heroSubmission.expires_at.slice(0,10)}</div>}
+                    {heroSubmission.status==="rejected"&&heroSubmission.rejection_reason&&<div style={{fontSize:"0.68rem",color:"#dc2626",marginTop:2}}>Rejected: {heroSubmission.rejection_reason}</div>}
+                  </div>
+                  {heroSubmission.status==="approved"&&(
+                    <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                      <input type="number" min={1} value={heroExtendDays} onChange={e=>setHeroExtendDays(Math.max(1,Number(e.target.value)||1))} style={{width:56,padding:"6px 8px",borderRadius:8,border:"1.5px solid #ddd",fontSize:"0.75rem",fontFamily:"inherit"}}/>
+                      <button onClick={()=>setShowHeroExtendPay(true)} style={{background:C.kente2,color:"white",border:"none",borderRadius:20,padding:"7px 14px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>💰 Extend {heroExtendDays}d</button>
+                    </div>
+                  )}
+                </div>
+                {heroActionError&&<div style={{color:"#dc2626",fontSize:"0.72rem",marginTop:8}}>{heroActionError}</div>}
+              </div>
+            )}
+
             {listingsLoading&&<div style={{color:"#888",fontSize:"0.8rem"}}>Loading your listings…</div>}
             {listingsError&&<div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load your listings. Make sure you're signed in as a business owner.</div>}
             {!listingsLoading&&!listingsError&&listingList.length===0&&(
@@ -2524,6 +2672,20 @@ export function BusinessDashboard({ onExit, user, auth }) {
                       <div style={{display:"flex",gap:6}}>
                         {canEdit&&<button onClick={()=>{setEditingId(item.id);setEditForm({name:item.name,price_amount:item.price_amount,price_unit:item.price_unit});}} style={{background:`${C.gold}22`,color:C.deepGold,border:"none",borderRadius:20,padding:"6px 12px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>✏️ Edit</button>}
                         {(item.status==="draft"||item.status==="rejected")&&<button onClick={()=>submitForReview(item.id)} style={{background:C.kente2,color:"white",border:"none",borderRadius:20,padding:"6px 12px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>📤 Submit for Review</button>}
+                      </div>
+                    </div>
+                  )}
+                  {/* Gallery photos — Submit for Hero. */}
+                  {item.photos.length>0&&(
+                    <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #f0f0f0"}}>
+                      <div style={{fontSize:"0.66rem",fontWeight:700,color:C.darkBrown,marginBottom:6}}>📸 Gallery</div>
+                      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                        {item.photos.map(photo=>(
+                          <div key={photo.id} style={{textAlign:"center"}}>
+                            <img src={photo.image} alt="" style={{width:56,height:56,objectFit:"cover",borderRadius:8,border:heroSubmitPhoto?.id===photo.id?`2px solid ${C.gold}`:"1px solid #eee",display:"block"}}/>
+                            <button onClick={()=>{setHeroSubmitPhoto({id:photo.id,image:photo.image,listingId:item.id});setHeroCaption("");setHeroActionError(null);}} style={{display:"block",marginTop:4,background:"none",border:"none",color:C.deepGold,fontSize:"0.6rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}}>🌟 Submit for Hero</button>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}

@@ -43,14 +43,14 @@ describe('StaffDashboard', () => {
   it('a super_admin-shaped session sees every nav item', () => {
     const auth = makeAuth({
       user: { token: 't', account_type: 'staff', id: 2, full_name: 'Kwame Super', role: 'super_admin', permissions: [
-        'kyc.approve', 'listings.moderate', 'users.view', 'escrow.view', 'escrow.release',
+        'kyc.approve', 'listings.moderate', 'hero_media.approve', 'users.view', 'escrow.view', 'escrow.release',
         'disputes.resolve_financial', 'transactions.report', 'promotions.manage', 'analytics.view',
         'categories.manage', 'messaging.manage', 'disputes.flag', 'staff.manage', 'zones.manage',
       ] },
       hasPermission: () => true,
     })
     render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
-    ;['KYC Queue', 'Listings Moderation', 'Users', 'Categories & Zones', 'Staff Management',
+    ;['KYC Queue', 'Listings Moderation', 'Hero Approval', 'Users', 'Categories & Zones', 'Staff Management',
       'Escrow Ledger', 'Disputes', 'Transactions Report', 'Promotions', 'Analytics', 'Messaging / Tickets']
       .forEach((label) => expect(screen.getByText(label)).toBeInTheDocument())
   })
@@ -107,6 +107,68 @@ describe('StaffDashboard', () => {
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('Listings Moderation'))
     await screen.findByText('Royal Ashanti Lodge')
+  })
+
+  it('renders the hero approval queue and approves a submission', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/listings/hero/pending/', () => {
+        return HttpResponse.json([{ id: 5, business_owner_name: 'Ama Trader', media: 'http://localhost:8000/media/hero_media/photo.jpg', media_type: 'image', caption: 'Best lodge in town', submitted_at: '2026-07-01T00:00:00Z' }])
+      }),
+    )
+    let approveCalled = false
+    server.use(
+      http.post('http://localhost:8000/api/listings/hero/5/approve/', () => {
+        approveCalled = true
+        return HttpResponse.json({ id: 5, status: 'approved' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'hero_media.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Hero Approval'))
+    await screen.findByText('Ama Trader')
+    expect(screen.getByText('"Best lodge in town"')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('✓ Approve'))
+    await waitFor(() => expect(approveCalled).toBe(true))
+  })
+
+  it('rejects a hero submission with a reason', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/listings/hero/pending/', () => {
+        return HttpResponse.json([{ id: 6, business_owner_name: 'Yaw Trader', media: 'http://localhost:8000/media/hero_media/photo2.jpg', media_type: 'image', caption: 'Fresh crafts', submitted_at: '2026-07-02T00:00:00Z' }])
+      }),
+    )
+    let rejectBody = null
+    server.use(
+      http.post('http://localhost:8000/api/listings/hero/6/reject/', async ({ request }) => {
+        rejectBody = await request.json()
+        return HttpResponse.json({ id: 6, status: 'rejected' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'hero_media.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Hero Approval'))
+    await screen.findByText('Yaw Trader')
+    fireEvent.click(screen.getByText('✕ Reject'))
+    fireEvent.change(screen.getByPlaceholderText('Rejection reason'), { target: { value: 'Blurry photo' } })
+    fireEvent.click(screen.getByText('Confirm reject'))
+    await waitFor(() => expect(rejectBody).toEqual({ reason: 'Blurry photo' }))
+  })
+
+  it('shows an inline error when approving a hero submission fails', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/listings/hero/pending/', () => {
+        return HttpResponse.json([{ id: 7, business_owner_name: 'Kofi Trader', media: 'http://localhost:8000/media/hero_media/photo3.jpg', media_type: 'image', caption: 'Kente for sale', submitted_at: '2026-07-03T00:00:00Z' }])
+      }),
+      http.post('http://localhost:8000/api/listings/hero/7/approve/', () => {
+        return HttpResponse.json({ detail: 'Server error' }, { status: 500 })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'hero_media.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Hero Approval'))
+    await screen.findByText('Kofi Trader')
+    fireEvent.click(screen.getByText('✓ Approve'))
+    await screen.findByText('Could not approve this submission.')
   })
 
   it('renders the Users panel with a Customers/Business Owners tab switch', async () => {
