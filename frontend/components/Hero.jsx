@@ -30,7 +30,7 @@ function buildSections() {
       badge: "Ashanti Rising",
       title: "A Kingdom Wired",
       subtitle: "for Growth",
-      description: "From deep cultural heritage to a modern economy, Ashanti is humming — gold, cocoa, tourism and a fast-growing digital sector all running through the same network of towns, roads and traders. AshantiHub connects that momentum to the people driving it, all one WhatsApp message away.",
+      description: "From deep cultural heritage to a modern economy, Ashanti is humming — gold, cocoa, tourism and a fast-growing digital sector all running through the same network of towns, roads and traders.",
       hero: true,
       stats: [["100K+", "Annual Visitors"], ["15", "Categories"], ["65+", "Businesses"]],
       actionLabel: "Explore Businesses in Ashanti →",
