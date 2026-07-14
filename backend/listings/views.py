@@ -1,4 +1,10 @@
-from rest_framework import filters, generics
+import os
+from datetime import timedelta
+
+from django.core.files.base import ContentFile
+from django.db.models import Q
+from django.utils import timezone
+from rest_framework import filters, generics, serializers
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -8,10 +14,13 @@ from accounts.models import BusinessOwner
 from accounts.permissions import HasRolePermission
 from accounts.views import IsBusinessOwner
 
-from .models import Category, Listing, ListingPhoto, Zone
-from .permissions import IsListingOwner
+from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, Zone
+from .permissions import IsHeroMediaOwner, IsListingOwner, IsListingPhotoOwner
 from .serializers import (
     CategorySerializer,
+    HeroActiveSerializer,
+    HeroMediaModerationSerializer,
+    HeroSubmitSerializer,
     ListingPhotoSerializer,
     ModerationListingSerializer,
     OwnerListingSerializer,
@@ -179,3 +188,196 @@ class ModerationRejectView(APIView):
         listing.rejection_reason = reason
         listing.save(update_fields=["status", "rejection_reason"])
         return Response({"id": listing.id, "status": listing.status})
+
+
+def _hero_days_for(business_owner):
+    """The business's current plan's hero_days entitlement, i.e. the visibility
+    window an approved hero-media submission gets. 0 if the business has no
+    active subscription — mirrors how Subscription is an optional OneToOne on
+    BusinessOwner (see billing.SubscriptionMeView's "no subscription yet"
+    handling).
+    """
+    subscription = getattr(business_owner, "subscription", None)
+    if subscription is None:
+        return 0
+    return subscription.plan.hero_days
+
+
+class HeroSubmitView(APIView):
+    """POST /api/hero/submit/ — a business owner submits one of their existing
+    ListingPhoto gallery items + a caption for hero consideration (roadmap
+    Phase 2's "Submit for Hero" action: reuses the ListingPhoto gallery
+    already on Listing rather than a fresh upload).
+
+    The image bytes are copied into HeroMediaSubmission.media (a new file),
+    not referenced/shared with the original ListingPhoto — the simplest
+    approach that keeps the two records independent (e.g. the business owner
+    deleting the original gallery photo later can't silently break an
+    in-flight or already-live hero submission).
+
+    Only one submission may be outstanding (pending, or approved-and-not-yet-
+    expired) per business at a time, per the roadmap's "just one media will
+    be showcased" rule — enforced here at creation time.
+    """
+
+    permission_classes = [IsAuthenticated, IsBusinessOwner, IsListingPhotoOwner]
+
+    def post(self, request):
+        serializer = HeroSubmitSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        listing_photo = generics.get_object_or_404(
+            ListingPhoto, pk=serializer.validated_data["listing_photo"]
+        )
+        self.check_object_permissions(request, listing_photo)
+
+        now = timezone.now()
+        has_outstanding = HeroMediaSubmission.objects.filter(business_owner=request.user).filter(
+            Q(status=HeroMediaSubmission.PENDING)
+            | Q(status=HeroMediaSubmission.APPROVED, expires_at__gt=now)
+        ).exists()
+        if has_outstanding:
+            return Response(
+                {
+                    "detail": (
+                        "You already have a pending or active hero submission. "
+                        "Only one hero submission may be outstanding at a time."
+                    )
+                },
+                status=400,
+            )
+
+        submission = HeroMediaSubmission(
+            business_owner=request.user,
+            media_type=HeroMediaSubmission.IMAGE,
+            caption=serializer.validated_data["caption"],
+        )
+        listing_photo.image.open("rb")
+        try:
+            submission.media.save(
+                os.path.basename(listing_photo.image.name),
+                ContentFile(listing_photo.image.read()),
+                save=False,
+            )
+        finally:
+            listing_photo.image.close()
+        submission.save()
+        return Response(HeroMediaModerationSerializer(submission).data, status=201)
+
+
+class HeroPendingQueueView(generics.ListAPIView):
+    """Clones ModerationPendingQueueView's shape for hero-media submissions."""
+
+    serializer_class = HeroMediaModerationSerializer
+    queryset = HeroMediaSubmission.objects.filter(status=HeroMediaSubmission.PENDING).order_by(
+        "submitted_at"
+    )
+
+    def get_permissions(self):
+        return [HasRolePermission("hero_media.approve")]
+
+
+class HeroMediaDetailView(generics.RetrieveAPIView):
+    queryset = HeroMediaSubmission.objects.all()
+    serializer_class = HeroMediaModerationSerializer
+
+    def get_permissions(self):
+        return [HasRolePermission("hero_media.approve")]
+
+
+class HeroApproveView(APIView):
+    def get_permissions(self):
+        return [HasRolePermission("hero_media.approve")]
+
+    def post(self, request, pk):
+        submission = generics.get_object_or_404(HeroMediaSubmission, pk=pk)
+        now = timezone.now()
+        hero_days = _hero_days_for(submission.business_owner)
+        submission.status = HeroMediaSubmission.APPROVED
+        submission.rejection_reason = None
+        submission.approved_at = now
+        submission.expires_at = now + timedelta(days=hero_days)
+        submission.save(
+            update_fields=["status", "rejection_reason", "approved_at", "expires_at"]
+        )
+        return Response(
+            {"id": submission.id, "status": submission.status, "expires_at": submission.expires_at}
+        )
+
+
+class HeroRejectView(APIView):
+    def get_permissions(self):
+        return [HasRolePermission("hero_media.approve")]
+
+    def post(self, request, pk):
+        reason = (request.data.get("reason") or "").strip()
+        if not reason:
+            return Response({"reason": "A rejection reason is required."}, status=400)
+        submission = generics.get_object_or_404(HeroMediaSubmission, pk=pk)
+        submission.status = HeroMediaSubmission.REJECTED
+        submission.rejection_reason = reason
+        submission.save(update_fields=["status", "rejection_reason"])
+        return Response({"id": submission.id, "status": submission.status})
+
+
+class HeroActiveListView(generics.ListAPIView):
+    """GET /api/hero/active/ — public, unauthenticated feed for the hero
+    slider: approved submissions that haven't expired yet, most-recently-
+    approved first.
+    """
+
+    serializer_class = HeroActiveSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        return HeroMediaSubmission.objects.filter(
+            status=HeroMediaSubmission.APPROVED, expires_at__gt=timezone.now()
+        ).order_by("-approved_at")
+
+
+class HeroExtendSerializer(serializers.Serializer):
+    days = serializers.IntegerField(min_value=1)
+
+
+class HeroExtendView(APIView):
+    """POST /api/hero/{id}/extend/ — simulated-payment style, mirrors
+    billing.SubscriptionMeView/TransactionMineListCreateView: the caller is
+    expected to have already "paid" via the frontend's MoMoModal-style
+    simulated flow, and this endpoint just persists the resulting state.
+    """
+
+    permission_classes = [IsAuthenticated, IsHeroMediaOwner]
+
+    def post(self, request, pk):
+        submission = generics.get_object_or_404(HeroMediaSubmission, pk=pk)
+        self.check_object_permissions(request, submission)
+
+        serializer = HeroExtendSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        days = serializer.validated_data["days"]
+
+        # An extension only tops up an already-live grant. A submission that
+        # was never approved, or one whose grant has already lapsed, must be
+        # resubmitted/re-approved rather than "revived" via extension —
+        # mirrors ListingSubmitView's DRAFT/REJECTED-only guard in spirit
+        # (a narrow, explicit allowed-state check rather than a silent no-op).
+        if submission.status != HeroMediaSubmission.APPROVED:
+            return Response(
+                {"detail": "Only an approved hero submission can be extended."}, status=400
+            )
+        if submission.expires_at is None or submission.expires_at <= timezone.now():
+            return Response(
+                {"detail": "This hero submission has already expired and cannot be extended."},
+                status=400,
+            )
+
+        submission.extended_days += days
+        submission.expires_at += timedelta(days=days)
+        submission.save(update_fields=["extended_days", "expires_at"])
+        return Response(
+            {
+                "id": submission.id,
+                "extended_days": submission.extended_days,
+                "expires_at": submission.expires_at,
+            }
+        )

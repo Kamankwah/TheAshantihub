@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Category, Listing, ListingPhoto, Zone
+from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, Zone
 
 
 class ListingPhotoSerializer(serializers.ModelSerializer):
@@ -71,3 +71,43 @@ class ModerationListingSerializer(serializers.ModelSerializer):
             "price_unit", "tag", "contact_phone", "lat", "lng", "main_photo", "photos",
             "status", "rejection_reason", "created_at",
         ]
+
+
+class HeroMediaModerationSerializer(serializers.ModelSerializer):
+    """Staff-facing shape for the hero-media approval queue/detail views —
+    mirrors ModerationListingSerializer's field selection.
+    """
+
+    business_owner_name = serializers.CharField(source="business_owner.full_name", read_only=True)
+
+    class Meta:
+        model = HeroMediaSubmission
+        fields = [
+            "id", "business_owner", "business_owner_name", "media", "media_type", "caption",
+            "status", "rejection_reason", "submitted_at", "approved_at", "expires_at",
+            "extended_days",
+        ]
+
+
+class HeroActiveSerializer(serializers.ModelSerializer):
+    """Public shape for the live hero slider — GET /api/hero/active/."""
+
+    business_name = serializers.CharField(source="business_owner.full_name", read_only=True)
+
+    class Meta:
+        model = HeroMediaSubmission
+        fields = [
+            "id", "media", "media_type", "caption", "business_name", "approved_at", "expires_at",
+        ]
+
+
+class HeroSubmitSerializer(serializers.Serializer):
+    """Input shape for POST /api/hero/submit/ — references an existing
+    ListingPhoto (by id) the business already owns, plus a caption. Ownership
+    and outstanding-submission checks happen in the view (HeroSubmitView),
+    not here, so they can return distinct 403/400 status codes rather than a
+    generic 400 validation error — this serializer only validates shape.
+    """
+
+    listing_photo = serializers.IntegerField()
+    caption = serializers.CharField(max_length=140)
