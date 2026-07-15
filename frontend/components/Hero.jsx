@@ -43,10 +43,9 @@ function buildSections() {
       badge: "The Ashanti Region",
       title: "Business Thrives",
       subtitle: "Across Ashanti",
-      description: "At the heart of that network sits Ashanti — historic seat of the Ashanti Kingdom, home to Kumasi's markets and Bonwire's kente looms. AshantiHub connects that momentum to the people driving it, all one WhatsApp message away.",
+      description: "At the heart of that network sits Ashanti — historic seat of the Ashanti Kingdom, home to Kumasi's markets and Bonwire's kente looms.",
       features: [
         { title: "65+ Businesses, One Marketplace", description: "Hotels, chop bars, tour guides, kente weavers, transport and more." },
-        { title: "WhatsApp-First", description: "Message any business directly — no forms, no friction." },
         { title: "Verified & Secure", description: "Every listing checked against Ghana Card, every account protected." },
       ],
       actionLabel: "View Businesses in Ashanti Region →",
