@@ -251,6 +251,14 @@ class StaffLoginSerializer(serializers.Serializer):
         return attrs
 
 
+class CustomerProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Customer
+        fields = ["id", "full_name", "avatar"]
+        read_only_fields = ["id"]
+        extra_kwargs = {"full_name": {"required": False}, "avatar": {"required": False}}
+
+
 class CustomerListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer

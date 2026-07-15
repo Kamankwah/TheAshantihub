@@ -26,6 +26,9 @@ import { useReviewsModerationQueue } from "./hooks/useReviewsModerationQueue.js"
 import { useContactMessagesQueue } from "./hooks/useContactMessagesQueue.js";
 import { useListingReviews } from "./hooks/useListingReviews.js";
 import { useReviewEligibility } from "./hooks/useReviewEligibility.js";
+import { useOrders } from "./hooks/useOrders.js";
+import { useMyEvents } from "./hooks/useMyEvents.js";
+import { useDeliveryQueue } from "./hooks/useDeliveryQueue.js";
 import { useEscrowLedger } from "./hooks/useEscrowLedger.js";
 import { apiPost, apiPatch } from "./apiClient.js";
 import { C, CURRENCIES } from "./theme.js";
@@ -46,11 +49,10 @@ import { AboutPage } from "./components/ui/about-page.tsx";
 import { AboutTestimonialsSection } from "./components/ui/about-testimonials-section.tsx";
 import { AboutFaqSection } from "./components/ui/about-faq-section.tsx";
 import { ContactPage } from "./components/ui/contact-page.tsx";
-import AccountPanel from "./components/AccountPanel.jsx";
 import BusinessRegistrationFlow from "./components/BusinessRegistrationFlow.jsx";
 import CartDrawer from "./components/CartDrawer.jsx";
 import EventHeroCarousel from "./components/EventHeroCarousel.jsx";
-import EventCard from "./components/EventCard.jsx";
+import EventCard, { formatEventDate } from "./components/EventCard.jsx";
 import EventDetailPage from "./components/EventDetailPage.jsx";
 import EventSubmissionPanel from "./components/EventSubmissionPanel.jsx";
 import MyTicketsDrawer from "./components/MyTicketsDrawer.jsx";
@@ -2224,6 +2226,66 @@ function ReviewsModerationPanel({theme}) {
   </div>;
 }
 
+const DELIVERY_STATUS_OPTIONS = [
+  { value: "processing", label: "Processing" },
+  { value: "shipped", label: "Shipped" },
+  { value: "out_for_delivery", label: "Out for Delivery" },
+  { value: "delivered", label: "Delivered" },
+];
+
+// Clones ReviewsModerationPanel's exact shape: useDeliveryQueue() is
+// paginated ({count, next, previous, results}), so items reads data?.results
+// (not data||[]). Only paid orders get the delivery-status <select> — a
+// pending/cancelled order has nothing to ship yet.
+function DeliveryManagementPanel({theme}) {
+  const {data,isLoading,isError,refetch} = useDeliveryQueue();
+  const [updatingId,setUpdatingId] = useState(null);
+  const [actionError,setActionError] = useState(null);
+
+  const updateStatus = async (id, delivery_status) => {
+    setActionError(null);
+    setUpdatingId(id);
+    try {
+      await apiPatch(`/api/orders/${id}/delivery-status/`,{delivery_status});
+      refetch();
+    } catch (err) {
+      setActionError("Could not update this order's delivery status.");
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
+  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the orders queue.</div>;
+  const items = data?.results||[];
+
+  return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
+    <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Orders ({data?.count??items.length})</div>
+    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
+    {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No orders yet.</div>}
+    {items.map(o=>(
+      <div key={o.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <div>
+            <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>{o.customer_name}</div>
+            <div style={{color:theme.textMuted,fontSize:"0.68rem"}}>Order #{o.id} • {o.status} • GHS {o.total_amount} • {o.placed_at?.slice(0,10)}</div>
+          </div>
+          {o.status==="paid" && (
+            <select
+              value={o.delivery_status}
+              disabled={updatingId===o.id}
+              onChange={e=>updateStatus(o.id,e.target.value)}
+              style={{padding:"5px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.72rem",fontFamily:"inherit",background:theme.cardBg,color:theme.text}}
+            >
+              {DELIVERY_STATUS_OPTIONS.map(opt=><option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            </select>
+          )}
+        </div>
+      </div>
+    ))}
+  </div>;
+}
+
 const CONTACT_STATUS_META = {
   new: { label:"New", color:"#2563eb" },
   read: { label:"Read", color:"#d97706" },
@@ -2599,6 +2661,7 @@ export function StaffDashboard({auth,onExit}) {
     {id:"moderation",icon:"📋",label:"Listings Moderation",show:auth.hasPermission("listings.moderate")},
     {id:"hero",icon:"🌟",label:"Hero Approval",show:auth.hasPermission("hero_media.approve")},
     {id:"reviews",icon:"⭐",label:"Reviews",show:auth.hasPermission("reviews.moderate")},
+    {id:"delivery",icon:"🚚",label:"Delivery Management",show:auth.hasPermission("orders.manage_delivery")},
     {id:"contact-messages",icon:"✉️",label:"Contact Messages",show:auth.hasPermission("contact_messages.manage")},
     {id:"users",icon:"👥",label:"Users",show:auth.hasPermission("users.view")},
     {id:"categories-zones",icon:"🗂️",label:"Categories & Zones",show:auth.hasPermission("categories.manage")||auth.hasPermission("zones.manage")},
@@ -2647,6 +2710,7 @@ export function StaffDashboard({auth,onExit}) {
         {activeTab==="moderation"&&<ListingsModerationPanel theme={t}/>}
         {activeTab==="hero"&&<HeroApprovalPanel theme={t}/>}
         {activeTab==="reviews"&&<ReviewsModerationPanel theme={t}/>}
+        {activeTab==="delivery"&&<DeliveryManagementPanel theme={t}/>}
         {activeTab==="contact-messages"&&<ContactMessagesPanel theme={t}/>}
         {activeTab==="users"&&<UsersPanel theme={t}/>}
         {activeTab==="categories-zones"&&<CategoriesZonesPanel theme={t} auth={auth}/>}
@@ -2660,6 +2724,255 @@ export function StaffDashboard({auth,onExit}) {
         {activeTab==="messaging"&&<ComingSoonPanel theme={t} feature="Messaging / Tickets"/>}
       </div>
     </div>
+  </div>;
+}
+
+// ─── UserPanel (customer "My Account" page) ───────────────────────────────────
+// Replaces the old placeholder AccountPanel popover (which openly admitted
+// "full profile editing isn't available yet" and had no avatar image,
+// profile-editing, or order-history UI). Routed at /my-account (see
+// showAccount/setShowAccount above) rather than an overlay, since it now has
+// enough real content (profile edit, orders, saved, messages, events) to
+// warrant a full page — same "flag swaps in a full-page early return"
+// convention as StaffDashboard/BusinessDashboard/PaymentDashboard/
+// CreditDashboard, just for a customer instead of staff/a business owner.
+// Defined here (not frontend/components/) because it reuses MessagingCenter/
+// MOCK_CONVERSATIONS/FavDrawerItem, which are all module-top-level in this
+// file — and placed next to StaffDashboard so it can reuse DASHBOARD_THEME/
+// useTheme() the same way. Deliberately skips StaffDashboard's sidebar-
+// collapse-toggle state — only 5 fixed, unfiltered nav items here, not worth
+// the extra complexity.
+const USER_NAV_ITEMS = [
+  { id: "profile", icon: "👤", label: "Profile" },
+  { id: "orders", icon: "📦", label: "Orders & Delivery" },
+  { id: "saved", icon: "❤️", label: "Saved Businesses" },
+  { id: "messages", icon: "💬", label: "Messages" },
+  { id: "events", icon: "🎉", label: "My Events" },
+  { id: "tickets", icon: "🎟️", label: "My Tickets" },
+];
+
+export function UserPanel({ user, auth, favourites, toggleFav, onExit }) {
+  const { theme, toggleTheme } = useTheme();
+  const t = DASHBOARD_THEME[theme];
+  const [activeTab, setActiveTab] = useState("profile"); // defaults to Profile so editing is immediately visible
+
+  return <div style={{fontFamily:"'Georgia',serif",background:t.pageBg,minHeight:"100vh",display:"flex"}}>
+    <div style={{width:220,background:t.sidebarBg,borderLeft:`4px solid ${C.gold}`,flexShrink:0,position:"sticky",top:0,height:"100vh",overflowY:"auto"}}>
+      <div style={{padding:"16px 12px",display:"flex",alignItems:"center",gap:8}}>
+        <Flag w={28} h={19}/>
+        <div style={{color:t.sidebarText,fontWeight:900,fontSize:"0.85rem"}}>My Account</div>
+      </div>
+      <nav>
+        {USER_NAV_ITEMS.map(item=>(
+          <button key={item.id} onClick={()=>setActiveTab(item.id)} style={{display:"flex",alignItems:"center",gap:10,width:"100%",background:activeTab===item.id?`${C.gold}22`:"none",border:"none",borderLeft:activeTab===item.id?`3px solid ${C.gold}`:"3px solid transparent",color:t.sidebarText,padding:"10px 12px",fontSize:"0.78rem",fontWeight:activeTab===item.id?800:600,cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>
+            <span>{item.icon}</span><span>{item.label}</span>
+          </button>
+        ))}
+      </nav>
+    </div>
+
+    <div style={{flex:1,minWidth:0}}>
+      <div style={{background:t.cardBg,borderBottom:`1px solid ${t.border}`,padding:"0 20px",display:"flex",alignItems:"center",justifyContent:"space-between",height:56,position:"sticky",top:0,zIndex:10}}>
+        <div style={{color:t.text,fontWeight:800,fontSize:"0.9rem"}}>{USER_NAV_ITEMS.find(i=>i.id===activeTab)?.label}</div>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <button onClick={toggleTheme} title="Toggle theme" style={{background:"none",border:`1px solid ${t.border}`,borderRadius:20,padding:"4px 10px",cursor:"pointer",fontSize:"0.8rem"}}>{theme==="dark"?"☀️":"🌙"}</button>
+          <span style={{color:t.text,fontSize:"0.78rem",fontWeight:700}}>{user?.fullName}</span>
+          <button onClick={onExit} style={{background:"none",border:`1px solid ${t.border}`,color:t.textMuted,borderRadius:20,padding:"4px 12px",fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>← Exit</button>
+        </div>
+      </div>
+
+      <div style={{padding:"22px 20px 60px"}}>
+        {activeTab==="profile"&&<ProfileTab user={user} auth={auth} theme={t}/>}
+        {activeTab==="orders"&&<OrdersDeliveryTab theme={t}/>}
+        {activeTab==="saved"&&<SavedBusinessesTab favourites={favourites} toggleFav={toggleFav} theme={t}/>}
+        {activeTab==="messages"&&<MessagingCenter user={user} onClose={()=>setActiveTab("profile")}/>}
+        {activeTab==="events"&&<MyEventsTab theme={t}/>}
+        {activeTab==="tickets"&&<MyTicketsDrawer onClose={()=>setActiveTab("profile")}/>}
+      </div>
+    </div>
+  </div>;
+}
+
+// Name + avatar only — email/phone are login identifiers with no
+// verification/OTP flow yet, so they're deliberately excluded from this
+// form (out of scope for this pass). avatarPreview derives from a
+// freshly-picked File via URL.createObjectURL, falling back to the current
+// user.avatar otherwise; the object URL is revoked on unmount/change to
+// avoid leaking it.
+function ProfileTab({ user, auth, theme }) {
+  const [fullName, setFullName] = useState(user?.fullName || "");
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState(user?.avatar || null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [actionError, setActionError] = useState(null);
+
+  useEffect(() => {
+    if (!avatarFile) { setAvatarPreview(user?.avatar || null); return; }
+    const url = URL.createObjectURL(avatarFile);
+    setAvatarPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [avatarFile, user?.avatar]);
+
+  const showToast = () => { setSaved(true); setTimeout(()=>setSaved(false),2500); };
+
+  const save = async () => {
+    setActionError(null);
+    setSaving(true);
+    try {
+      await auth.updateProfile({ full_name: fullName, avatar: avatarFile });
+      await auth.refreshUser();
+      showToast();
+    } catch (err) {
+      setActionError("Could not save your profile. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return <div>
+    {saved&&<div style={{position:"fixed",top:70,right:20,background:"#22c55e",color:"white",borderRadius:12,padding:"10px 18px",fontSize:"0.8rem",fontWeight:700,zIndex:999}}>✓ Saved!</div>}
+    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
+    <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`,maxWidth:420}}>
+      <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:18}}>
+        <div style={{width:64,height:64,borderRadius:"50%",overflow:"hidden",background:C.gold,color:C.darkBrown,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:"1.4rem",flexShrink:0}}>
+          {avatarPreview
+            ? <img src={avatarPreview} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+            : (fullName?.[0]?.toUpperCase() || "U")}
+        </div>
+        <label style={{cursor:"pointer",display:"flex",flexDirection:"column",gap:4}}>
+          <span style={{color:theme.textMuted,fontSize:"0.68rem",fontWeight:700}}>Profile photo</span>
+          <input type="file" accept="image/*" onChange={e=>setAvatarFile(e.target.files[0])} style={{fontSize:"0.72rem",color:theme.text}}/>
+        </label>
+      </div>
+      <label style={{display:"flex",flexDirection:"column",gap:4}}>
+        <span style={{color:theme.textMuted,fontSize:"0.68rem",fontWeight:700}}>Full name</span>
+        <input value={fullName} onChange={e=>setFullName(e.target.value)} style={{padding:"8px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.78rem",fontFamily:"inherit",background:theme.pageBg,color:theme.text}}/>
+      </label>
+      <button onClick={save} disabled={saving} style={{marginTop:16,background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"8px 20px",fontSize:"0.78rem",fontWeight:800,cursor:saving?"wait":"pointer",fontFamily:"inherit"}}>{saving?"Saving…":"Save"}</button>
+    </div>
+  </div>;
+}
+
+const DELIVERY_STEPS = [
+  { id: "processing", label: "Processing" },
+  { id: "shipped", label: "Shipped" },
+  { id: "out_for_delivery", label: "Out for Delivery" },
+  { id: "delivered", label: "Delivered" },
+];
+
+function DeliveryStepper({ status, theme }) {
+  const activeIndex = DELIVERY_STEPS.findIndex(s=>s.id===status);
+  return <div style={{display:"flex",alignItems:"flex-start",marginTop:12}}>
+    {DELIVERY_STEPS.map((step,i)=>(
+      <div key={step.id} style={{display:"flex",alignItems:"center",flex:i<DELIVERY_STEPS.length-1?1:"none"}}>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,minWidth:60}}>
+          <div style={{width:10,height:10,borderRadius:"50%",background:i<=activeIndex?C.gold:theme.border,flexShrink:0}}/>
+          <span style={{fontSize:"0.6rem",color:i<=activeIndex?theme.text:theme.textMuted,fontWeight:i<=activeIndex?800:600,textAlign:"center"}}>{step.label}</span>
+        </div>
+        {i<DELIVERY_STEPS.length-1&&<div style={{flex:1,height:2,background:i<activeIndex?C.gold:theme.border,margin:"5px 4px 0"}}/>}
+      </div>
+    ))}
+  </div>;
+}
+
+const ORDER_STATUS_META = {
+  pending: { label: "Pending", color: "#f59e0b" },
+  paid: { label: "Paid", color: "#22c55e" },
+  cancelled: { label: "Cancelled", color: "#dc2626" },
+};
+
+// GET /api/orders/ is NOT paginated (unlike most staff moderation-queue
+// endpoints elsewhere in App.jsx) — reads the array directly, not
+// data?.results. Read-only: no customer-side actions, the delivery stepper
+// is only rendered for a paid order (delivery_status is otherwise still
+// "processing" by default but meaningless until payment clears).
+function OrdersDeliveryTab({ theme }) {
+  const { data, isLoading, isError } = useOrders();
+  const orders = data || [];
+
+  if (isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
+  if (isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load your orders.</div>;
+  if (orders.length===0) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No orders yet.</div>;
+
+  return <div style={{display:"flex",flexDirection:"column",gap:14}}>
+    {orders.map(o=>{
+      const statusMeta = ORDER_STATUS_META[o.status]||{label:o.status,color:"#888"};
+      return (
+      <div key={o.id} style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <div style={{color:theme.text,fontWeight:800,fontSize:"0.85rem"}}>Order #{o.id}</div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{color:theme.textMuted,fontSize:"0.7rem"}}>{o.placed_at?.slice(0,10)}</span>
+            <span style={{background:`${statusMeta.color}22`,color:statusMeta.color,borderRadius:20,padding:"2px 10px",fontSize:"0.65rem",fontWeight:700}}>{statusMeta.label}</span>
+          </div>
+        </div>
+        <div style={{marginTop:10}}>
+          {(o.items||[]).map(it=>(
+            <div key={it.id} style={{display:"flex",justifyContent:"space-between",fontSize:"0.76rem",color:theme.textMuted,padding:"3px 0"}}>
+              <span>{it.listing_name} × {it.quantity}</span>
+              <span>GHS {it.line_total}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{marginTop:8,color:theme.text,fontWeight:800,fontSize:"0.8rem"}}>Total: GHS {o.total_amount}</div>
+        {o.status==="paid" && <DeliveryStepper status={o.delivery_status} theme={theme}/>}
+      </div>
+      );
+    })}
+  </div>;
+}
+
+// Reuses FavDrawerItem (also module-top-level in this file) exactly as
+// FavsDrawer does, just without the drawer's fixed-position overlay chrome —
+// a plain list in this tab's content column instead. Same empty-state copy
+// as FavsDrawer's.
+function SavedBusinessesTab({ favourites, toggleFav }) {
+  return <div>
+    {favourites.length===0 && <div style={{padding:"20px",textAlign:"center",color:"#aaa",fontSize:"0.78rem"}}>No saved businesses yet.<br/>Tap ❤️ on any listing to save it.</div>}
+    {favourites.length>0 && <div style={{background:"white",borderRadius:16,overflow:"hidden",maxWidth:420,boxShadow:"0 4px 20px rgba(0,0,0,0.08)"}}>
+      {favourites.map(id=><FavDrawerItem key={id} id={id} onRemove={toggleFav}/>)}
+    </div>}
+  </div>;
+}
+
+// Deliberately its own map, not a reuse of HERO_STATUS_META even though the
+// keys happen to match (pending/approved/rejected) — a separate, decoupled
+// concern per the approved design.
+const EVENT_STATUS_META = {
+  pending: { label: "Pending Review", color: "#f59e0b" },
+  approved: { label: "Approved", color: "#22c55e" },
+  rejected: { label: "Rejected", color: "#ef4444" },
+};
+
+// Organizer's own submitted events only (useMyEvents(), also used by
+// EventSubmissionPanel.jsx) — not an attendee/RSVP history, which has no
+// backend endpoint to read yet (see EventDetailPage.jsx's rsvpStatus note).
+// Also unpaginated — reads the array directly.
+function MyEventsTab({ theme }) {
+  const { data, isLoading, isError } = useMyEvents();
+  const events = data || [];
+
+  if (isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
+  if (isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load your events.</div>;
+
+  return <div>
+    {events.length===0 && <div style={{color:theme.textMuted,fontSize:"0.8rem",marginBottom:14}}>You haven't submitted any events yet.</div>}
+    {events.map(ev=>{
+      const meta = EVENT_STATUS_META[ev.status]||{label:ev.status,color:"#888"};
+      return (
+        <div key={ev.id} style={{background:theme.cardBg,borderRadius:16,padding:16,border:`1px solid ${theme.border}`,marginBottom:10}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+            <div style={{color:theme.text,fontWeight:800,fontSize:"0.84rem"}}>{ev.name}</div>
+            <span style={{background:`${meta.color}22`,color:meta.color,borderRadius:20,padding:"2px 10px",fontSize:"0.65rem",fontWeight:700}}>{meta.label}</span>
+          </div>
+          <div style={{color:theme.textMuted,fontSize:"0.7rem",marginTop:4}}>
+            {ev.category?.label}{ev.category?.label && ev.event_date ? " • " : ""}{formatEventDate(ev.event_date)}
+          </div>
+        </div>
+      );
+    })}
+    <div style={{color:theme.textMuted,fontSize:"0.74rem",marginTop:12,fontStyle:"italic"}}>Attending history &amp; tickets coming soon.</div>
   </div>;
 }
 
@@ -3621,11 +3934,13 @@ const DASH_PATH_TO_FLAG = {
   "/business-dashboard": "showBizDash",
   "/payments": "showPayments",
   "/credit": "showCredit",
+  "/my-account": "showAccount",
 };
 const FLAG_TO_DASH_PATH = {
   showBizDash: "/business-dashboard",
   showPayments: "/payments",
   showCredit: "/credit",
+  showAccount: "/my-account",
 };
 // /staff is a real path but not part of the page switch above — it drives
 // `isAdmin`/the staff-login modal instead (see the two effects below), so it
@@ -3666,7 +3981,7 @@ export default function AshantiHub() {
   const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch;
   const [authModal,setAuthModal]=useState(null);
   const auth=useAuth();
-  const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id,registrationStep:auth.user.registration_step,kycStatus:auth.user.kyc_status,kycRejectionReason:auth.user.kyc_rejection_reason} : null;
+  const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id,registrationStep:auth.user.registration_step,kycStatus:auth.user.kyc_status,kycRejectionReason:auth.user.kyc_rejection_reason,avatar:auth.user.avatar} : null;
   // Site-wide light/dark toggle (docs/UI_MODERNIZATION_ROADMAP.md Phase E) —
   // same useTheme() hook StaffDashboard already uses internally, but lifted
   // here so the customer-facing Navbar can offer the same control. The
@@ -3699,13 +4014,16 @@ export default function AshantiHub() {
     const path = val ? FLAG_TO_DASH_PATH.showCredit : "/";
     if (val ? !showCredit : showCredit) navigate(path);
   };
+  const showAccount = location.pathname === FLAG_TO_DASH_PATH.showAccount;
+  const setShowAccount = (val) => {
+    const path = val ? FLAG_TO_DASH_PATH.showAccount : "/";
+    if (val ? !showAccount : showAccount) navigate(path);
+  };
   const [isAdmin,setIsAdmin]=useState(false);
   const [adminClicks,setAdminClicks]=useState(0);
   const [favourites,setFavourites]=useState([]);
   const [showFavs,setShowFavs]=useState(false);
   const [showCart,setShowCart]=useState(false);
-  const [showMyTickets,setShowMyTickets]=useState(false);
-  const [showAccount,setShowAccount]=useState(false);
   const [showReferral,setShowReferral]=useState(false);
   const [showNotifs,setShowNotifs]=useState(false);
   const [currency,setCurrency]=useState("GHS");
@@ -3947,6 +4265,7 @@ export default function AshantiHub() {
   if(showBizDash) return <BusinessDashboard onExit={()=>setShowBizDash(false)} user={user} auth={auth}/>;
   if(showPayments) return <PaymentDashboard onClose={()=>setShowPayments(false)}/>;
   if(showCredit) return <CreditDashboard onClose={()=>setShowCredit(false)} user={user}/>;
+  if(showAccount) return <UserPanel onExit={()=>setShowAccount(false)} user={user} auth={auth} favourites={favourites} toggleFav={toggleFav}/>;
   if(isLoading) return <LoadingScreen/>;
   if(show404) return <NotFoundPage onHome={()=>setPage("home")}/>;
 
@@ -3983,16 +4302,7 @@ export default function AshantiHub() {
       {showNotifs&&<NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
       {showFavs&&<FavsDrawer/>}
       {showCart&&isCustomer&&<CartDrawer user={user} currency={currency} onClose={()=>setShowCart(false)} PaymentComponent={MoMoPayment}/>}
-      {showMyTickets&&isCustomer&&<MyTicketsDrawer onClose={()=>setShowMyTickets(false)}/>}
       {showReferral&&<ReferralModal user={user} onClose={()=>setShowReferral(false)}/>}
-      {showAccount&&user&&<AccountPanel
-        user={user}
-        favourites={favourites}
-        onClose={()=>setShowAccount(false)}
-        onOpenSaved={()=>{setShowAccount(false);setShowFavs(true);}}
-        onOpenMyTickets={()=>{setShowAccount(false);setShowMyTickets(true);}}
-        onOpenMessages={()=>{setShowAccount(false);setShowMessaging(true);}}
-      />}
       <Navbar
         page={page} setPage={setPage}
         lang={lang} setLang={setLang}
@@ -4060,8 +4370,8 @@ export default function AshantiHub() {
               first field (docs/UI_MODERNIZATION_ROADMAP.md Phase G; the old
               standalone top search bar, its POPULAR SEARCHES suggestions
               dropdown, Map View toggle, Saved button, and currency selector
-              are all gone — Saved businesses are reachable via AccountPanel's
-              existing "❤️ Saved Businesses" entry instead). On desktop the
+              are all gone — Saved businesses are reachable via UserPanel's
+              existing "❤️ Saved Businesses" tab instead). On desktop the
               Sidebar is always visible alongside the grid, so this bar is
               mobile-only (ah-filter-trigger-bar media query below); on mobile
               it opens Sidebar as a slide-in panel. */}

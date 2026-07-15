@@ -26,7 +26,10 @@ class MultiAccountAuthenticationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.json(),
-            {"account_type": "customer", "id": self.customer.id, "full_name": "Ama Owusu"},
+            {
+                "account_type": "customer", "id": self.customer.id, "full_name": "Ama Owusu",
+                "avatar": None,
+            },
         )
 
     def test_invalid_token_is_rejected(self):
@@ -51,5 +54,8 @@ class MultiAccountAuthenticationTests(TestCase):
         self.assertEqual(data["role"], "support")
         self.assertCountEqual(
             data["permissions"],
-            ["messaging.manage", "disputes.flag", "users.view", "reviews.moderate", "contact_messages.manage"],
+            [
+                "messaging.manage", "disputes.flag", "users.view", "reviews.moderate",
+                "orders.manage_delivery", "contact_messages.manage",
+            ],
         )

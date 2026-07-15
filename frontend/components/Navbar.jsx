@@ -12,10 +12,15 @@ import logoIcon from "../assets/logo/logo-icon.png";
 // Transparent glass look over the home Hero; per-nav-item hover shows a gold
 // glow border (no ambient whole-bar hover effect) via .ah-nav-item:hover.
 //
-// Signed-in state: Sign In/Create Account are fully replaced by a "My
-// Dashboard"/"My Account" button plus a round avatar button that opens a
-// profile menu (Business Dashboard/Payments for business owners, My
-// Account for customers, Sign Out for both) — see ProfileMenu below.
+// Signed-in state: Sign In/Create Account are fully replaced by a single
+// round avatar button (real uploaded photo when `user.avatar` is set,
+// initial-letter fallback otherwise — same treatment used by the mobile
+// stacked-menu header avatar below) that opens a profile menu (Business
+// Dashboard/Payments for business owners, My Account for customers, Sign
+// Out for both). This used to sit next to a separate "My Dashboard"/"My
+// Account" pill button that opened the same destination directly — merged
+// away as a redundant second entry point so there's exactly one signed-in
+// account control.
 //
 // Cart icon (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4) sits between the
 // notification bell and the auth/profile area, gated to signed-in Customer
@@ -146,7 +151,11 @@ export default function Navbar({
         stacked ? (
           <>
             <div style={{display:"flex",alignItems:"center",gap:10,padding:"6px 2px 2px"}}>
-              <span style={{background:C.gold,color:C.darkBrown,borderRadius:"50%",width:36,height:36,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:"0.9rem",fontWeight:900,flexShrink:0}}>{user.fullName?.[0]?.toUpperCase() || "U"}</span>
+              <span style={{background:C.gold,color:C.darkBrown,borderRadius:"50%",width:36,height:36,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:"0.9rem",fontWeight:900,flexShrink:0,overflow:"hidden"}}>
+                {user.avatar
+                  ? <img src={user.avatar} alt="" style={{width:"100%",height:"100%",borderRadius:"50%",objectFit:"cover"}}/>
+                  : (user.fullName?.[0]?.toUpperCase() || "U")}
+              </span>
               <div>
                 <div style={{color:"white",fontWeight:800,fontSize:"0.85rem"}}>{user.fullName}</div>
                 <div style={{color:C.lightGold,fontSize:"0.66rem",opacity:0.8}}>{isBusiness ? "Business Owner" : "Customer"}</div>
@@ -158,17 +167,16 @@ export default function Navbar({
           </>
         ) : (
           <>
-            <button onClick={act(goToDashboard)} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:24,padding:"8px 16px",fontSize:"0.82rem",fontWeight:900,cursor:"pointer"}}>
-              {isBusiness ? "🏪 My Dashboard" : "👤 My Account"}
-            </button>
             <div ref={profileRef} style={{position:"relative"}}>
               <button
                 onClick={() => setProfileOpen(o => !o)}
                 aria-label="Account menu"
                 aria-expanded={profileOpen}
-                style={{background:C.darkBrown,color:C.gold,border:`1.5px solid ${C.gold}88`,borderRadius:"50%",width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.9rem",fontWeight:900,flexShrink:0}}
+                style={{background:C.darkBrown,color:C.gold,border:`1.5px solid ${C.gold}88`,borderRadius:"50%",width:38,height:38,padding:0,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.9rem",fontWeight:900,flexShrink:0}}
               >
-                {user.fullName?.[0]?.toUpperCase() || "U"}
+                {user.avatar
+                  ? <img src={user.avatar} alt="" style={{width:"100%",height:"100%",borderRadius:"50%",objectFit:"cover"}}/>
+                  : (user.fullName?.[0]?.toUpperCase() || "U")}
               </button>
               {profileOpen && (
                 <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,background:"white",borderRadius:14,boxShadow:"0 10px 40px rgba(0,0,0,0.25)",padding:10,display:"flex",flexDirection:"column",gap:6,minWidth:210,zIndex:200}}>

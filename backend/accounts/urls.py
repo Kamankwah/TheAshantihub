@@ -13,6 +13,11 @@ urlpatterns = [
         name="staff-resend-invite",
     ),
     path("customers/login/", views.CustomerLoginView.as_view(), name="customer-login"),
+    path(
+        "customers/me/profile/",
+        views.CustomerProfileUpdateView.as_view(),
+        name="customer-profile-update",
+    ),
     path("business-owners/login/", views.BusinessOwnerLoginView.as_view(), name="business-owner-login"),
     path("staff/login/", views.StaffLoginView.as_view(), name="staff-login"),
     path(
