@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useLocation, useNavigate, useMatch } from "react-router-dom";
 import { useCategories } from "./hooks/useCategories.js";
 import { useZones } from "./hooks/useZones.js";
 import { useListings } from "./hooks/useListings.js";
@@ -3308,16 +3309,115 @@ function ListingsSkeleton() {
   </div>;
 }
 
+// ─── Routing (docs/UI_MODERNIZATION_ROADMAP.md Phase D) ──────────────────────
+// AshantiHub's `page` state used to be a bare useState with zero URL sync —
+// visiting a path like /business directly, or hard-reloading while on it,
+// always bounced to home because nothing ever read window.location. These
+// two maps are the single source of truth translating between the two:
+// PATH_TO_PAGE for "URL → page" (derived below via useLocation()),
+// PAGE_TO_PATH for "page → URL" (used by the setPage() wrapper below, which
+// is what actually gets handed to Navbar/Footer2/etc. as the `setPage` prop
+// so every existing `setPage("x")` call site — including Navbar.jsx, which
+// is NOT touched by this phase — keeps working unchanged).
+// `isAdmin` stays local state, not a route (see the /staff effects below —
+// it can be set by the 5-click-logo gesture or a staff login while sitting
+// on some other path, not just by URL). `showBizDash`/`showPayments`/
+// `showCredit`/`selectedListingId`/`selectedEventId` were originally scoped
+// out of the first Phase-D slice as local state too, but were brought into
+// real routing in a follow-up slice (see DASH_PATH_TO_FLAG/FLAG_TO_DASH_PATH
+// and the businessDetailMatch/eventDetailMatch useMatch()es below) so every
+// page in the app is hard-reload-safe, per an explicit scope override.
+const PATH_TO_PAGE = {
+  "/": "home",
+  "/business": "business",
+  "/events": "events",
+  "/about": "about",
+  "/contact": "contact",
+  "/register": "register",
+};
+const PAGE_TO_PATH = {
+  home: "/",
+  business: "/business",
+  events: "/events",
+  about: "/about",
+  contact: "/contact",
+  register: "/register",
+};
+// Full-page dashboard "routes" (isAdmin/showBizDash-style early returns) that
+// now have real URLs too. Same two-map convention as PATH_TO_PAGE/
+// PAGE_TO_PATH above, just keyed by the boolean flag name instead of `page`.
+const DASH_PATH_TO_FLAG = {
+  "/business-dashboard": "showBizDash",
+  "/payments": "showPayments",
+  "/credit": "showCredit",
+};
+const FLAG_TO_DASH_PATH = {
+  showBizDash: "/business-dashboard",
+  showPayments: "/payments",
+  showCredit: "/credit",
+};
+// /staff is a real path but not part of the page switch above — it drives
+// `isAdmin`/the staff-login modal instead (see the two effects below), so it
+// must not be treated as a 404 even though it has no PATH_TO_PAGE entry.
+// The three dashboard paths above are static (no :id) so they belong in this
+// same set; /business/:id and /events/:id are dynamic-segment paths handled
+// separately via useMatch() below, since a Set of exact strings can't match
+// them.
+const KNOWN_PATHS = new Set([...Object.keys(PATH_TO_PAGE), ...Object.keys(DASH_PATH_TO_FLAG), "/staff"]);
+
 export default function AshantiHub() {
-  const [page,setPage]=useState("home");
+  const location = useLocation();
+  const navigate = useNavigate();
+  // /business/:id and /events/:id are dynamic-segment paths — useMatch()
+  // (rather than hand-parsing location.pathname, and without introducing
+  // <Routes>/<Route> element matching, which would force splitting
+  // AshantiHub into route-specific components) is the idiomatic way to both
+  // detect "are we on a detail route" and extract the :id param in one shot.
+  const businessDetailMatch = useMatch("/business/:id");
+  const eventDetailMatch = useMatch("/events/:id");
+  // `page` is now derived straight from the URL rather than owned locally —
+  // hard reloading on any of these paths renders that page immediately
+  // instead of bouncing to home. Unrecognized paths (other than /staff, see
+  // above) fall back to "home" here; the real 404 page is rendered by the
+  // `show404` early return further down, which takes precedence.
+  // /business/:id and /events/:id have no PATH_TO_PAGE entry (they're not in
+  // the static map — see businessDetailMatch/eventDetailMatch above), so
+  // they're folded in here: a business/event detail URL is still page
+  // "business"/"events" so the surrounding tab chrome (hero carousel,
+  // banner, search bar, category tabs, CTA footer) stays mounted, exactly as
+  // it already does when selectedListingId/selectedEventId was local state.
+  const page = PATH_TO_PAGE[location.pathname]
+    ?? (businessDetailMatch ? "business" : eventDetailMatch ? "events" : "home");
+  const setPage = (id) => {
+    const path = PAGE_TO_PATH[id] ?? "/";
+    if (location.pathname !== path) navigate(path);
+  };
+  const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch;
   const [authModal,setAuthModal]=useState(null);
   const auth=useAuth();
   const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id,registrationStep:auth.user.registration_step,kycStatus:auth.user.kyc_status,kycRejectionReason:auth.user.kyc_rejection_reason} : null;
   const [legalDoc,setLegalDoc]=useState(null);
-  const [showBizDash,setShowBizDash]=useState(false);
+  // showBizDash/showPayments/showCredit — same "derive from the URL, wrap the
+  // setter in a navigate() closure" pattern as `page`/`setPage` above, so
+  // Navbar.jsx/BusinessRegistrationFlow.jsx/the inline CTA buttons in this
+  // file keep calling setShowBizDash(true)/setShowBizDash(false) etc.
+  // unchanged while the URL (and hard-reload-safety) comes along for free.
+  const showBizDash = location.pathname === FLAG_TO_DASH_PATH.showBizDash;
+  const setShowBizDash = (val) => {
+    const path = val ? FLAG_TO_DASH_PATH.showBizDash : "/";
+    if (val ? !showBizDash : showBizDash) navigate(path);
+  };
+  const showPayments = location.pathname === FLAG_TO_DASH_PATH.showPayments;
+  const setShowPayments = (val) => {
+    const path = val ? FLAG_TO_DASH_PATH.showPayments : "/";
+    if (val ? !showPayments : showPayments) navigate(path);
+  };
+  const showCredit = location.pathname === FLAG_TO_DASH_PATH.showCredit;
+  const setShowCredit = (val) => {
+    const path = val ? FLAG_TO_DASH_PATH.showCredit : "/";
+    if (val ? !showCredit : showCredit) navigate(path);
+  };
   const [isAdmin,setIsAdmin]=useState(false);
-  const [showPayments,setShowPayments]=useState(false);
-  const [showCredit,setShowCredit]=useState(false);
   const [adminClicks,setAdminClicks]=useState(0);
   const [favourites,setFavourites]=useState([]);
   const [showFavs,setShowFavs]=useState(false);
@@ -3336,8 +3436,17 @@ export default function AshantiHub() {
   // "flag swaps in a full component" convention, but scoped inside the
   // page==="business" block (see the JSX below) rather than a top-level
   // early return, so the hero carousel/banner/search/category tabs/CTA
-  // stay mounted around the PDP instead of also disappearing.
-  const [selectedListingId, setSelectedListingId] = useState(null);
+  // stay mounted around the PDP instead of also disappearing. Now derived
+  // from the /business/:id URL (via businessDetailMatch above) rather than
+  // local state, so a direct/hard-reloaded visit to /business/123 opens the
+  // PDP immediately; the setter is a navigate() closure so Card's
+  // onOpen={(id)=>setSelectedListingId(id)} and ListingDetailPage's own
+  // onOpenListing/onBack call sites need zero changes.
+  const selectedListingId = businessDetailMatch ? businessDetailMatch.params.id : null;
+  const setSelectedListingId = (id) => {
+    const path = id != null ? `/business/${id}` : "/business";
+    if (location.pathname !== path) navigate(path);
+  };
 
   // Free-text search + price inputs are debounced before they hit `filters` (useListings' query
   // key), so a user typing a search term or a price doesn't fire one backend request per keystroke.
@@ -3392,7 +3501,13 @@ export default function AshantiHub() {
   // different enough that sharing state would just mean constantly stripping
   // Business-only fields back out.
   const [eventFilters, setEventFilters] = useState({});
-  const [selectedEventId, setSelectedEventId] = useState(null);
+  // Same URL-derived pattern as selectedListingId above, backed by
+  // /events/:id via eventDetailMatch instead of /business/:id.
+  const selectedEventId = eventDetailMatch ? eventDetailMatch.params.id : null;
+  const setSelectedEventId = (id) => {
+    const path = id != null ? `/events/${id}` : "/events";
+    if (location.pathname !== path) navigate(path);
+  };
   const [eventSearchInput, setEventSearchInput] = useState("");
   const [showEventFilters, setShowEventFilters] = useState(false);
   const [showEventSubmit, setShowEventSubmit] = useState(false);
@@ -3448,7 +3563,6 @@ export default function AshantiHub() {
   const [showMessaging,setShowMessaging]=useState(false);
   const [messagingBusiness,setMessagingBusiness]=useState(null);
   const [isLoading,setIsLoading]=useState(true);
-  const [show404,setShow404]=useState(false);
   const T = TRANSLATIONS[lang];
 
   // Loading screen — simulate app boot
@@ -3463,55 +3577,68 @@ export default function AshantiHub() {
     return()=>window.removeEventListener("openLegal",handler);
   },[]);
 
-  // ── `/staff` deep link ──────────────────────────────────────────────────
-  // Minimal client-side "route", not a router: staff should be able to land
-  // directly on theashantihub.com/staff instead of only via the hidden
-  // 5-click-logo gesture (handleLogoClick below). See docs/PWA_STAFF_DASHBOARD.md §4
-  // Option B — deliberately scoped to this one path, no routing library.
+  // ── `/staff` route (docs/UI_MODERNIZATION_ROADMAP.md Phase D) ────────────
+  // Replaces the old hand-rolled 3-effect pushState/popstate dance with real
+  // router-based handling, now that react-router is available. `isAdmin`
+  // stays the actual state driving StaffDashboard's early return below — it
+  // is not itself derived from the URL, since it can also be set by the
+  // 5-click-logo gesture (handleLogoClick) or a successful staff login
+  // (AuthModal's onSuccess) while already sitting on some other path.
   //
-  // We wait for the session-restore fetch (auth.isLoading) to settle before
-  // deciding, so a logged-in staff member refreshing on /staff isn't briefly
-  // (and incorrectly) sent to the staff-login modal while auth.user is still null.
-  const staffUrlHandled=useRef(false);
+  // Three effects:
+  // 1. One-time deep-link prompt — if a visitor lands directly on /staff and
+  //    isn't already a logged-in staff session, open the staff-login modal.
+  //    Gated by a ref so it only ever fires once (matches the old behavior);
+  //    it waits for the session-restore fetch (auth.isLoading) to settle so
+  //    a logged-in staff member refreshing on /staff isn't briefly (and
+  //    incorrectly) sent to the login modal while auth.user is still null.
+  // 2. URL → isAdmin sync — keeps isAdmin consistent with the current path
+  //    for any navigation react-router already knows about, including
+  //    browser back/forward (no manual popstate listener needed — a
+  //    location change re-renders this component with the new
+  //    `location.pathname`, and this effect just reacts to it). Landing on
+  //    /staff already logged in as staff (direct visit or hard reload) also
+  //    flows through here once auth.isLoading settles.
+  // 3. isAdmin → URL sync — whenever isAdmin becomes true via some *other*
+  //    path (the 5-click-logo gesture, or a successful staff login while
+  //    already on /staff from effect 1's modal), navigate to /staff so the
+  //    URL reflects it; whenever it becomes false (StaffDashboard's
+  //    onExit), navigate back to "/".
+  const staffLoginPromptShown=useRef(false);
   useEffect(()=>{
-    if(staffUrlHandled.current) return;
+    if(staffLoginPromptShown.current) return;
     if(auth.isLoading) return;
-    staffUrlHandled.current=true;
-    if(window.location.pathname==="/staff"){
-      if(auth.user?.account_type==="staff"){setIsAdmin(true);}
-      else{setAuthModal("staff-login");}
-    }
-  },[auth.isLoading,auth.user]);
+    if(location.pathname!=="/staff") return;
+    staffLoginPromptShown.current=true;
+    if(auth.user?.account_type!=="staff") setAuthModal("staff-login");
+  },[auth.isLoading,auth.user,location.pathname]);
 
-  // Keep the URL in sync with isAdmin regardless of how it was set (gesture,
-  // direct /staff visit, or staff login success below) rather than scattering
-  // pushState calls at every isAdmin-setting call site.
-  //
-  // The `else` branch only resets the URL once the deep-link check above has
-  // already run (staffUrlHandled.current). Without that guard, this effect
-  // and the mount-time deep-link effect both fire on the very first commit —
-  // isAdmin is still its initial `false` at that point, so an unguarded
-  // `else` would immediately pushState "/staff" back to "/" before the
-  // deep-link effect (which depends on the still-resolving auth.isLoading)
-  // ever gets a chance to observe the original "/staff" pathname, silently
-  // defeating every direct /staff visit.
   useEffect(()=>{
+    if(auth.isLoading) return;
+    const shouldBeAdmin = location.pathname==="/staff" && auth.user?.account_type==="staff";
+    setIsAdmin((current)=> current===shouldBeAdmin ? current : shouldBeAdmin);
+  },[location.pathname,auth.user,auth.isLoading]);
+
+  // Tracks the *previous* isAdmin value so the "navigate home" branch below
+  // only fires on a genuine true→false transition (StaffDashboard's onExit),
+  // not merely because isAdmin's initial `useState(false)` value happens to
+  // be false on the very first render. Without this, a not-yet-staff visitor
+  // landing on /staff would get redirected to "/" by this effect in the same
+  // commit that effect #1 opens the login modal in, before effect #2 (URL →
+  // isAdmin sync) even has a chance to settle — silently defeating every
+  // direct /staff visit for a non-staff session, mirroring exactly the race
+  // the old hand-rolled version's `staffUrlHandled` ref guard existed to
+  // prevent. Found via manual browser verification, not caught by tests.
+  const wasAdminRef=useRef(isAdmin);
+  useEffect(()=>{
+    const wasAdmin=wasAdminRef.current;
+    wasAdminRef.current=isAdmin;
     if(isAdmin){
-      if(window.location.pathname!=="/staff") window.history.pushState(null,"","/staff");
-    }else if(staffUrlHandled.current){
-      if(window.location.pathname==="/staff") window.history.pushState(null,"","/");
+      if(location.pathname!=="/staff") navigate("/staff");
+    }else if(wasAdmin && location.pathname==="/staff"){
+      navigate("/");
     }
   },[isAdmin]);
-
-  // Keep isAdmin in sync with browser back/forward navigation once /staff is
-  // a real history entry (the pushState calls above only push forward).
-  useEffect(()=>{
-    const handlePopState=()=>{
-      setIsAdmin(window.location.pathname==="/staff" && auth.user?.account_type==="staff");
-    };
-    window.addEventListener("popstate",handlePopState);
-    return()=>window.removeEventListener("popstate",handlePopState);
-  },[auth.user]);
 
   const handleLogoClick=()=>{
     const n=adminClicks+1;
@@ -3537,7 +3664,7 @@ export default function AshantiHub() {
   if(showPayments) return <PaymentDashboard onClose={()=>setShowPayments(false)}/>;
   if(showCredit) return <CreditDashboard onClose={()=>setShowCredit(false)} user={user}/>;
   if(isLoading) return <LoadingScreen/>;
-  if(show404) return <NotFoundPage onHome={()=>{ setShow404(false); setPage("home"); }}/>;
+  if(show404) return <NotFoundPage onHome={()=>setPage("home")}/>;
 
   const activeCatObj=categories?.find(c=>c.slug===filters.category);
 

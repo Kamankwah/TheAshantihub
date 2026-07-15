@@ -1,6 +1,21 @@
 import { http, HttpResponse } from 'msw'
 
 export const handlers = [
+  // Listings search/browse (docs/UI_MODERNIZATION_ROADMAP.md Phase D) — a
+  // default empty-page handler. AshantiHub's `useListings(filters)` call
+  // fires unconditionally on mount (not gated by which page/tab is active),
+  // so any full-app render (e.g. App.routing.test.jsx) needs this to exist
+  // even when the test itself doesn't care about listings content.
+  http.get('http://localhost:8000/api/listings/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
+  // Active hero-media submissions (docs/BUSINESS_EVENTS_ROADMAP.md Phase 3)
+  // — HeroCarousel's useActiveHero() fires whenever the Business tab mounts;
+  // default to none active so it renders nothing, matching its documented
+  // empty-state behavior.
+  http.get('http://localhost:8000/api/hero/active/', () => {
+    return HttpResponse.json([])
+  }),
   http.get('http://localhost:8000/api/listings/categories/', () => {
     return HttpResponse.json([
       { id: 1, slug: 'hotels', icon: '🏨', label: 'Hotels', color: '#000080', kind: 'service' },
