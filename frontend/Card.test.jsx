@@ -29,7 +29,6 @@ describe('Card with real API shape', () => {
       <Card
         item={REAL_SHAPED_LISTING}
         accentColor="#000080"
-        onWhatsApp={vi.fn()}
         user={null}
         favourites={[]}
         onFavourite={vi.fn()}
@@ -47,7 +46,6 @@ describe('Card with real API shape', () => {
       <Card
         item={REAL_SHAPED_LISTING}
         accentColor="#000080"
-        onWhatsApp={vi.fn()}
         user={null}
         favourites={[]}
         onFavourite={vi.fn()}
@@ -65,7 +63,6 @@ describe('Card with real API shape', () => {
       <Card
         item={REAL_SHAPED_LISTING}
         accentColor="#000080"
-        onWhatsApp={vi.fn()}
         user={null}
         favourites={[]}
         onFavourite={vi.fn()}
@@ -85,7 +82,6 @@ describe('Card with real API shape', () => {
       <Card
         item={REAL_SHAPED_LISTING}
         accentColor="#000080"
-        onWhatsApp={vi.fn()}
         user={null}
         favourites={[]}
         onFavourite={onFavourite}

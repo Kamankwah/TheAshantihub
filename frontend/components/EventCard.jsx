@@ -17,9 +17,9 @@ export function formatEventDate(iso) {
 // the teaser shape from GET /api/events/ — {id, name, category, zone,
 // event_date, hero_media, is_private} — never address/lat/lng/going_count
 // (server-side gated, see events/serializers.py's EventTeaserSerializer).
-// `Card` (App.jsx) is listing-shaped (price/rating/favourite/WhatsApp/
-// share) and doesn't fit events, so this is a new, smaller sibling rather
-// than an adaptation of it.
+// `Card` (App.jsx) is listing-shaped (price/rating/favourite/Contact
+// Support/share) and doesn't fit events, so this is a new, smaller sibling
+// rather than an adaptation of it.
 //
 // Private events show a lock placeholder instead of the normal hero_media
 // preview per the roadmap brief ("Private-event tiles in the grid show a

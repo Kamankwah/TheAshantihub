@@ -47,7 +47,7 @@ describe('AshantiHub routing', () => {
     async () => {
       renderAtPath('/business')
       expect(
-        await screen.findByText(/Every business is WhatsApp-connected/i, {}, { timeout: 3000 }),
+        await screen.findByText(/business contact is handled by AshantiHub Support/i, {}, { timeout: 3000 }),
       ).toBeInTheDocument()
       expect(screen.queryByText(/Ashanti Rising/i)).not.toBeInTheDocument()
     },
@@ -61,7 +61,7 @@ describe('AshantiHub routing', () => {
       expect(
         await screen.findByText(/Plan your visit around Kumasi's cultural calendar/i, {}, { timeout: 3000 }),
       ).toBeInTheDocument()
-      expect(screen.queryByText(/Every business is WhatsApp-connected/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/business contact is handled by AshantiHub Support/i)).not.toBeInTheDocument()
     },
     8000,
   )
@@ -163,7 +163,7 @@ describe('AshantiHub routing — dashboard and detail routes', () => {
       )
       renderAtPath('/business/123')
       expect(await screen.findByText(/Ama's Lodge/i, {}, { timeout: 3000 })).toBeInTheDocument()
-      // The surrounding Business-tab chrome (WhatsApp banner) stays mounted
+      // The surrounding Business-tab chrome (support-contact banner) stays mounted
       // around the PDP, same "scoped swap" convention as before this slice.
       expect(screen.queryByText(/Ashanti Rising/i)).not.toBeInTheDocument()
     },

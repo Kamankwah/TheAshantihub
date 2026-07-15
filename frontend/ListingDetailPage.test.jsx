@@ -39,7 +39,6 @@ function renderPage(props = {}) {
       <ListingDetailPage
         id={1}
         onBack={vi.fn()}
-        onWhatsApp={vi.fn()}
         user={null}
         favourites={[]}
         onFavourite={vi.fn()}

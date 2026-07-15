@@ -23,11 +23,17 @@ import { useRelatedListings } from "../hooks/useRelatedListings.js";
 // `specs` field to `Listing`, render it here rather than reintroducing mock
 // data.
 //
+// Businesses can no longer be contacted directly (fraud-prevention —
+// docs/UI_MODERNIZATION_ROADMAP.md Phase F): there is no WhatsApp button
+// here any more, and "Message" opens MessagingCenter framed as an
+// AshantiHub Support conversation about this listing rather than a direct
+// line to the business owner.
+//
 // "Add to Cart" (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4) calls the
 // `onAddToCart` prop — same "AshantiHub owns the mutation (auth-gating +
 // apiPost + cart refetch), this component just calls the callback and owns
-// its own local adding/added/error UI state" convention as onWhatsApp/
-// onMessage above. Disabled when the listing has no price (the backend
+// its own local adding/added/error UI state" convention as onMessage above.
+// Disabled when the listing has no price (the backend
 // rejects POST /api/cart/items/ for a listing with no price_amount — see
 // apiClient/App.jsx's handleAddToCart) or while a request is in flight.
 //
@@ -38,7 +44,6 @@ import { useRelatedListings } from "../hooks/useRelatedListings.js";
 export default function ListingDetailPage({
   id,
   onBack,
-  onWhatsApp,
   user,
   favourites,
   onFavourite,
@@ -150,18 +155,16 @@ export default function ListingDetailPage({
           )}
           <p style={{ color: "rgba(255,255,255,0.8)", fontSize: "0.88rem", lineHeight: 1.7, marginBottom: 20 }}>{item.description}</p>
 
+          {/* Businesses can no longer be contacted directly (fraud-prevention —
+              docs/UI_MODERNIZATION_ROADMAP.md Phase F). This opens
+              MessagingCenter framed as an AshantiHub Support conversation
+              about this listing, not a direct line to the business. */}
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button
               onClick={() => onMessage && onMessage(item)}
               style={{ background: `${C.kente3}15`, color: C.kente3, border: `1px solid ${C.kente3}33`, borderRadius: 20, padding: "10px 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", minHeight: 44 }}
             >
-              💬 Message
-            </button>
-            <button
-              onClick={() => onWhatsApp && onWhatsApp({ phone: item.contact_phone, name: item.name })}
-              style={{ background: C.whatsapp, color: "white", border: "none", borderRadius: 20, padding: "10px 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", minHeight: 44 }}
-            >
-              📱 WhatsApp
+              🎧 Contact Support
             </button>
           </div>
 
@@ -220,7 +223,6 @@ export default function ListingDetailPage({
                 key={r.id}
                 item={r}
                 accentColor={r.category?.color || accentColor}
-                onWhatsApp={onWhatsApp}
                 user={user}
                 favourites={favourites}
                 onFavourite={onFavourite}

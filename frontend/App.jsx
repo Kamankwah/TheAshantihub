@@ -1186,39 +1186,47 @@ function CookieBanner({onAccept,onDecline}) {
 
 // ─── Reviews Modal ────────────────────────────────────────────────────────────
 // ─── In-Platform Messaging System ─────────────────────────────────────────────
+// Fraud-prevention (docs/UI_MODERNIZATION_ROADMAP.md Phase F): businesses can
+// no longer be messaged directly, in-app or via WhatsApp. Every conversation
+// here is with AshantiHub Support *about* a business/listing/event — staff
+// relay to and from the business on the customer's behalf — never a direct
+// customer<->business channel. `businessName`/`businessImg` are kept as the
+// "what this thread is about" context (shown as a "Re:" line), not as who
+// the customer is chatting with; `from` is "customer" or "support" (never
+// "business") to keep that honest in the transcript itself.
 const MOCK_CONVERSATIONS = [
   {
     id:1, businessId:1, businessName:"Royal Ashanti Lodge", businessImg:"🏰",
-    lastMessage:"Thank you for your enquiry! We have availability for your dates.", lastTime:"10:34 AM",
+    lastMessage:"Good news — Royal Ashanti Lodge has availability for your dates!", lastTime:"10:34 AM",
     unread:1, status:"online",
     messages:[
-      {id:1,from:"customer",text:"Hello! I'd like to book a Deluxe Suite for June 20–23. Do you have availability?",time:"10:20 AM",read:true},
-      {id:2,from:"business",text:"Akwaaba! Yes we have the Deluxe Suite available for those dates. The rate is GHS 750/night. Shall I reserve it for you?",time:"10:28 AM",read:true},
+      {id:1,from:"customer",text:"Hello! I'd like to book a Deluxe Suite at Royal Ashanti Lodge for June 20–23. Do they have availability?",time:"10:20 AM",read:true},
+      {id:2,from:"support",text:"Akwaaba! We've checked with Royal Ashanti Lodge — they have the Deluxe Suite available for those dates. The rate is GHS 750/night. Shall we confirm the booking for you?",time:"10:28 AM",read:true},
       {id:3,from:"customer",text:"That's perfect! Is breakfast included?",time:"10:30 AM",read:true},
-      {id:4,from:"business",text:"Thank you for your enquiry! We have availability for your dates.",time:"10:34 AM",read:false},
+      {id:4,from:"support",text:"Good news — Royal Ashanti Lodge has availability for your dates! We've confirmed breakfast is included and will send your booking reference shortly.",time:"10:34 AM",read:false},
     ]
   },
   {
     id:2, businessId:7, businessName:"Kente Palace Weavers", businessImg:"🧶",
-    lastMessage:"Your kente cloth is ready for collection!", lastTime:"Yesterday",
+    lastMessage:"Your kente cloth is ready for collection — details from Kente Palace Weavers below!", lastTime:"Yesterday",
     unread:2, status:"offline",
     messages:[
-      {id:1,from:"customer",text:"Do you ship internationally to the UK?",time:"Yesterday 2:15 PM",read:true},
-      {id:2,from:"business",text:"Yes! We ship via DHL. Delivery takes 5–7 days to UK. We can also arrange custom kente patterns.",time:"Yesterday 3:00 PM",read:true},
+      {id:1,from:"customer",text:"Do you know if Kente Palace Weavers ship internationally to the UK?",time:"Yesterday 2:15 PM",read:true},
+      {id:2,from:"support",text:"Yes! Kente Palace Weavers ship via DHL — delivery takes 5–7 days to the UK. They can also arrange custom kente patterns.",time:"Yesterday 3:00 PM",read:true},
       {id:3,from:"customer",text:"Wonderful! I'd like to order 3 yards in blue and gold royal pattern.",time:"Yesterday 3:30 PM",read:true},
-      {id:4,from:"business",text:"Your kente cloth is ready for collection!",time:"Yesterday 4:00 PM",read:false},
-      {id:5,from:"business",text:"We have also prepared a gift package for you. Total: GHS 450 + GHS 80 shipping.",time:"Yesterday 4:02 PM",read:false},
+      {id:4,from:"support",text:"We've passed that on — your kente cloth is ready for collection! Kente Palace Weavers have also prepared a gift package for you.",time:"Yesterday 4:00 PM",read:false},
+      {id:5,from:"support",text:"Total: GHS 450 + GHS 80 shipping. Let us know if you'd like us to confirm shipping on your behalf.",time:"Yesterday 4:02 PM",read:false},
     ]
   },
   {
     id:3, businessId:3, businessName:"Manhyia Palace Experience", businessImg:"👑",
-    lastMessage:"Your tour is confirmed for June 22 at 9:00 AM!", lastTime:"2 days ago",
+    lastMessage:"Your tour with Manhyia Palace Experience is confirmed for June 22 at 9:00 AM!", lastTime:"2 days ago",
     unread:0, status:"online",
     messages:[
-      {id:1,from:"customer",text:"I'd like to book the Manhyia Palace tour for 2 people on June 22.",time:"2 days ago",read:true},
-      {id:2,from:"business",text:"Akwaaba! The Akwasidae Festival tour is our most popular. GHS 80/person includes guide and entrance. Please confirm your names.",time:"2 days ago",read:true},
+      {id:1,from:"customer",text:"I'd like to book the Manhyia Palace Experience tour for 2 people on June 22.",time:"2 days ago",read:true},
+      {id:2,from:"support",text:"Akwaaba! The Akwasidae Festival tour is their most popular. GHS 80/person includes guide and entrance. Please confirm your names and we'll book it with them.",time:"2 days ago",read:true},
       {id:3,from:"customer",text:"Emma Thompson and Hans Mueller.",time:"2 days ago",read:true},
-      {id:4,from:"business",text:"Your tour is confirmed for June 22 at 9:00 AM!",time:"2 days ago",read:true},
+      {id:4,from:"support",text:"Your tour with Manhyia Palace Experience is confirmed for June 22 at 9:00 AM!",time:"2 days ago",read:true},
     ]
   },
 ];
@@ -1273,14 +1281,16 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
     setActiveConv(prev => ({...prev, messages:[...prev.messages,msg], lastMessage:newMessage, lastTime:"Just now"}));
     setNewMessage("");
     setShowQuickReplies(false);
-    // Simulate business auto-reply after 2 seconds
+    // Simulate an AshantiHub Support auto-reply after 2 seconds — staff relay
+    // to/from the business, never a direct customer<->business channel
+    // (fraud-prevention, docs/UI_MODERNIZATION_ROADMAP.md Phase F).
     setTimeout(() => {
       const autoReplies = [
-        "Thank you for your message! We will get back to you shortly. 🙏",
-        "Akwaaba! We have received your message and will respond within 30 minutes.",
-        "Thank you! A team member will assist you shortly. Meanwhile, feel free to visit our listing on AshantiHub.",
+        "Thank you for your message! We'll pass this on and get back to you shortly. 🙏",
+        "Akwaaba! We've received your message and will follow up with the business within 30 minutes.",
+        "Thank you! A support team member will assist you shortly.",
       ];
-      const reply = { id:Date.now()+1, from:"business", text:autoReplies[Math.floor(Math.random()*autoReplies.length)], time:new Date().toLocaleTimeString("en-GH",{hour:"2-digit",minute:"2-digit"}), read:false, isAuto:true };
+      const reply = { id:Date.now()+1, from:"support", text:autoReplies[Math.floor(Math.random()*autoReplies.length)], time:new Date().toLocaleTimeString("en-GH",{hour:"2-digit",minute:"2-digit"}), read:false, isAuto:true };
       setConversations(convs => convs.map(c =>
         c.id===activeConv.id ? {...c, messages:[...c.messages,reply], lastMessage:reply.text, lastTime:"Just now"} : c
       ));
@@ -1338,9 +1348,10 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
                   </div>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
-                      <span style={{fontWeight:800,fontSize:"0.78rem",color:C.darkBrown,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{conv.businessName}</span>
+                      <span style={{fontWeight:800,fontSize:"0.78rem",color:C.darkBrown,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>AshantiHub Support</span>
                       <span style={{fontSize:"0.6rem",color:"#aaa",flexShrink:0,marginLeft:4}}>{conv.lastTime}</span>
                     </div>
+                    <div style={{fontSize:"0.64rem",color:C.deepGold,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>Re: {conv.businessName}</div>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                       <span style={{fontSize:"0.68rem",color:"#888",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{conv.lastMessage}</span>
                       {conv.unread>0&&<span style={{background:C.kente2,color:"white",borderRadius:"50%",width:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.58rem",fontWeight:900,flexShrink:0,marginLeft:4}}>{conv.unread}</span>}
@@ -1374,19 +1385,13 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
                   <div style={{position:"absolute",bottom:1,right:1,width:10,height:10,borderRadius:"50%",background:activeConv.status==="online"?"#22c55e":"#aaa",border:"2px solid white"}}/>
                 </div>
                 <div style={{flex:1}}>
-                  <div style={{fontWeight:900,fontSize:"0.88rem",color:C.darkBrown}}>{activeConv.businessName}</div>
+                  <div style={{fontWeight:900,fontSize:"0.88rem",color:C.darkBrown}}>AshantiHub Support</div>
+                  <div style={{fontSize:"0.68rem",color:C.deepGold,fontWeight:700,marginBottom:1}}>Re: {activeConv.businessName}</div>
                   <div style={{fontSize:"0.65rem",color:activeConv.status==="online"?"#22c55e":"#aaa",fontWeight:600}}>
-                    {activeConv.status==="online"?"● Online now":"● Offline — usually replies within 1 hour"}
+                    {activeConv.status==="online"?"● Support team online now":"● Support team offline — usually replies within 1 hour"}
                   </div>
                 </div>
                 <div style={{display:"flex",gap:8}}>
-                  {/* WhatsApp fallback */}
-                  <a href={`https://wa.me/233244000000?text=${encodeURIComponent(`Hello ${activeConv.businessName}! I found you on AshantiHub.`)}`}
-                    target="_blank" rel="noopener noreferrer"
-                    style={{background:C.whatsapp,color:"white",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,textDecoration:"none",display:"flex",alignItems:"center",gap:4}}>
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                    WhatsApp
-                  </a>
                   <button onClick={onClose} style={{background:"#f0f0f0",border:"none",borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#666",fontSize:"0.9rem"}}>✕</button>
                 </div>
               </div>
@@ -1400,8 +1405,8 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
 
                 {activeConv.messages.map(msg=>(
                   <div key={msg.id} style={{display:"flex",justifyContent:msg.from==="customer"?"flex-end":"flex-start",alignItems:"flex-end",gap:8}}>
-                    {msg.from==="business"&&(
-                      <div style={{width:28,height:28,borderRadius:"50%",background:`${C.gold}20`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.9rem",flexShrink:0}}>{activeConv.businessImg}</div>
+                    {msg.from==="support"&&(
+                      <div style={{width:28,height:28,borderRadius:"50%",background:`${C.gold}20`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.9rem",flexShrink:0}}>🎧</div>
                     )}
                     <div style={{maxWidth:"72%"}}>
                       <div style={{
@@ -1447,7 +1452,7 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
               <div style={{padding:"12px 14px",borderTop:"1px solid #f0f0f0",background:"white"}}>
                 {!user&&(
                   <div style={{background:`${C.kente1}12`,border:`1px solid ${C.kente1}33`,borderRadius:10,padding:"8px 12px",marginBottom:10,fontSize:"0.72rem",color:C.kente1,fontWeight:600,textAlign:"center"}}>
-                    ⚠️ Sign in to send messages to businesses
+                    ⚠️ Sign in to message AshantiHub Support
                   </div>
                 )}
                 <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
@@ -1462,7 +1467,7 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
                       value={newMessage}
                       onChange={e=>setNewMessage(e.target.value)}
                       onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(user)sendMessage();}}}
-                      placeholder={user?"Type a message...":"Sign in to message businesses"}
+                      placeholder={user?"Type a message...":"Sign in to message AshantiHub Support"}
                       disabled={!user}
                       style={{flex:1,border:"none",background:"transparent",outline:"none",fontSize:"0.82rem",fontFamily:"inherit",color:C.darkBrown}}/>
                     {newMessage&&(
@@ -1477,7 +1482,7 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
                   </button>
                 </div>
                 <div style={{fontSize:"0.6rem",color:"#aaa",marginTop:6,textAlign:"center"}}>
-                  💡 Messages are stored on AshantiHub • Also chat on <span style={{color:C.whatsapp,fontWeight:700}}>WhatsApp</span>
+                  💡 Messages are stored on AshantiHub • Handled by AshantiHub Support, who relay to the business on your behalf
                 </div>
               </div>
             </>
@@ -1485,7 +1490,7 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
             <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,color:"#aaa"}}>
               <div style={{fontSize:"3rem"}}>💬</div>
               <div style={{fontWeight:700,fontSize:"0.88rem",color:C.darkBrown}}>Your Messages</div>
-              <div style={{fontSize:"0.76rem",textAlign:"center",maxWidth:240,lineHeight:1.6}}>Select a conversation or start a new one to message a Kumasi business directly</div>
+              <div style={{fontSize:"0.76rem",textAlign:"center",maxWidth:240,lineHeight:1.6}}>Select a conversation or start a new one to reach AshantiHub Support about a Kumasi business</div>
             </div>
           )}
         </div>
@@ -1652,7 +1657,7 @@ export function groupCategoriesByKind(categories) {
 }
 
 // ─── Business Card ─────────────────────────────────────────────────────────────
-export function Card({item,accentColor,onWhatsApp,user,favourites,onFavourite,currency,onMessage,onOpen}) {
+export function Card({item,accentColor,user,favourites,onFavourite,currency,onMessage,onOpen}) {
   const [showReviews,setShowReviews]=useState(false);
   const [showPay,setShowPay]=useState(false);
   const [photoIdx,setPhotoIdx]=useState(0);
@@ -1723,11 +1728,14 @@ export function Card({item,accentColor,onWhatsApp,user,favourites,onFavourite,cu
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6,flexWrap:"wrap"}}>
           <span style={{fontWeight:800,color:accentColor,fontSize:"0.8rem"}}>{displayPrice()}</span>
           <div style={{display:"flex",gap:5}}>
+            {/* Businesses can no longer be contacted directly (fraud-prevention —
+                docs/UI_MODERNIZATION_ROADMAP.md Phase F): this opens MessagingCenter
+                framed as an AshantiHub Support conversation about this listing,
+                not a direct line to the business. */}
             <button onClick={()=>{ if(onMessage) onMessage(item); }}
               style={{background:`${C.kente3}15`,color:C.kente3,border:`1px solid ${C.kente3}33`,borderRadius:20,padding:"5px 10px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
-              💬 Message
+              🎧 Contact Support
             </button>
-            <WABtn phone={item.contact_phone} name={item.name} style={{fontSize:"0.68rem",padding:"5px 10px"}}/>
             <button onClick={()=>setShowPay(true)} style={{background:accentColor,color:"white",border:"none",borderRadius:20,padding:"5px 10px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>
               💳 Pay
             </button>
@@ -2890,7 +2898,16 @@ export function BusinessDashboard({ onExit, user, auth }) {
 
         {bizTab==="enquiries"&&(
           <>
-            <h2 style={{margin:"0 0 14px",color:C.darkBrown,fontWeight:900,fontSize:"0.98rem"}}>💬 Customer Enquiries</h2>
+            <h2 style={{margin:"0 0 4px",color:C.darkBrown,fontWeight:900,fontSize:"0.98rem"}}>💬 Customer Enquiries</h2>
+            {/* Fraud-prevention (docs/UI_MODERNIZATION_ROADMAP.md Phase F):
+                business owners can no longer reply to a customer's enquiry
+                directly — every enquiry is routed through AshantiHub Support,
+                who relay between the customer and the business. The action
+                below opens a discussion with Support about the enquiry, not
+                a reply back to the customer. */}
+            <div style={{color:"#777",fontSize:"0.76rem",lineHeight:1.6,marginBottom:14}}>
+              For customer safety, enquiries are routed through AshantiHub Support rather than sent to you directly. Discuss or resolve an enquiry with Support below — Support will relay your response to the customer.
+            </div>
             {mockEnquiries.map(e=>(
               <div key={e.id} style={{background:"white",borderRadius:14,padding:"16px",boxShadow:"0 2px 12px rgba(0,0,0,0.07)",marginBottom:10,borderLeft:`4px solid ${e.status==="New"?C.kente1:C.kente2}`}}>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,flexWrap:"wrap",gap:6}}>
@@ -2901,7 +2918,7 @@ export function BusinessDashboard({ onExit, user, auth }) {
                   </div>
                 </div>
                 <div style={{background:"#f9f9f9",borderRadius:8,padding:"9px 12px",fontSize:"0.74rem",color:"#444",lineHeight:1.5,marginBottom:10}}>"{e.message}"</div>
-                <a href={`https://wa.me/233244000000?text=${encodeURIComponent(`Hello ${e.customer.split(" ")[0]}, thank you for your enquiry on AshantiHub!`)}`} target="_blank" rel="noopener noreferrer" style={{display:"inline-flex",alignItems:"center",gap:5,background:C.whatsapp,color:"white",borderRadius:20,padding:"6px 14px",fontSize:"0.7rem",fontWeight:700,textDecoration:"none"}}>📱 Reply on WhatsApp</a>
+                <a href={`https://wa.me/233244000000?text=${encodeURIComponent(`Hello AshantiHub team, I'd like to discuss an enquiry from ${e.customer.split(" ")[0]}: "${e.message}"`)}`} target="_blank" rel="noopener noreferrer" style={{display:"inline-flex",alignItems:"center",gap:5,background:C.whatsapp,color:"white",borderRadius:20,padding:"6px 14px",fontSize:"0.7rem",fontWeight:700,textDecoration:"none"}}>💬 Discuss with AshantiHub Support</a>
               </div>
             ))}
           </>
@@ -3558,8 +3575,8 @@ export default function AshantiHub() {
   // Add-to-cart (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4) — passed down to
   // ListingDetailPage as `onAddToCart`, same "AshantiHub owns the mutation,
   // the component just calls the callback and owns its own local adding/
-  // added/error UI state" convention as onWhatsApp (handleWA)/onMessage
-  // above. Throws (rather than swallowing) on failure so ListingDetailPage's
+  // added/error UI state" convention as onMessage above. Throws (rather
+  // than swallowing) on failure so ListingDetailPage's
   // own try/catch can surface a specific message next to the button.
   const handleAddToCart = async (item, quantity = 1) => {
     if (!user) { setAuthModal("signup"); throw new Error("Please sign in as a customer to add items to your cart."); }
@@ -3570,7 +3587,6 @@ export default function AshantiHub() {
 
   const [cookieConsent,setCookieConsent]=useState(false);
   const [cookieDismissed,setCookieDismissed]=useState(false);
-  const [whatsappPrompt,setWhatsappPrompt]=useState(null);
   const [showMessaging,setShowMessaging]=useState(false);
   const [messagingBusiness,setMessagingBusiness]=useState(null);
   const [isLoading,setIsLoading]=useState(true);
@@ -3661,7 +3677,13 @@ export default function AshantiHub() {
     }
   };
   const toggleFav=(id)=>setFavourites(f=>f.includes(id)?f.filter(x=>x!==id):[...f,id]);
-  const handleWA=(item)=>{if(!user){setWhatsappPrompt(item);setAuthModal("signup");return;}const msg=encodeURIComponent(`Hello! I found ${item.name} on AshantiHub and I'd like to enquire.`);window.open(`https://wa.me/${item.phone}?text=${msg}`,"_blank");};
+  // Businesses can no longer be contacted directly (fraud-prevention —
+  // docs/UI_MODERNIZATION_ROADMAP.md Phase F): the old handleWA/WABtn combo
+  // that opened a wa.me chat with *a business* is gone. AshantiHub's own
+  // WhatsApp-based concierge/support channels (grocery concierge, Contact
+  // page, floating WhatsApp button, NotFoundPage) are genuine platform
+  // support, not business contact, so they stay as inline wa.me links below.
+  const handleConciergeWA=(phone,name)=>{if(!user){setAuthModal("signup");return;}const msg=encodeURIComponent(`Hello ${name}! I'd like some help via AshantiHub.`);window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");};
 
   const [showSearchResults,setShowSearchResults]=useState(false);
   const [searchFocused,setSearchFocused]=useState(false);
@@ -3768,11 +3790,14 @@ export default function AshantiHub() {
               there are none active, so it never leaves a disruptive empty gap. */}
           <HeroCarousel/>
 
-          {/* WhatsApp notice */}
+          {/* Support-contact notice — was a "message businesses directly on
+              WhatsApp" pitch; reworded for the fraud-prevention change
+              (docs/UI_MODERNIZATION_ROADMAP.md Phase F) where all business
+              contact is routed through AshantiHub Support instead. */}
           <div style={{background:C.void,borderBottom:`1.5px solid ${C.whatsapp}30`,padding:"10px 16px",textAlign:"center"}}>
             <span style={{fontSize:"0.72rem",color:C.lightGold,fontWeight:600}}>
-              📱 Every business is WhatsApp-connected
-              {!user&&<span> — <span onClick={()=>setAuthModal("signup")} style={{color:C.gold,cursor:"pointer",fontWeight:800,textDecoration:"underline"}}>Sign up free</span> to message businesses instantly</span>}
+              🛡️ For your safety, business contact is handled by AshantiHub Support
+              {!user&&<span> — <span onClick={()=>setAuthModal("signup")} style={{color:C.gold,cursor:"pointer",fontWeight:800,textDecoration:"underline"}}>Sign up free</span> to reach Support instantly</span>}
             </span>
           </div>
 
@@ -3833,7 +3858,6 @@ export default function AshantiHub() {
             <ListingDetailPage
               id={selectedListingId}
               onBack={()=>setSelectedListingId(null)}
-              onWhatsApp={handleWA}
               user={user}
               favourites={favourites}
               onFavourite={toggleFav}
@@ -3906,7 +3930,7 @@ export default function AshantiHub() {
                     <span key={item} style={{background:`${C.kente2}15`,color:C.kente2,borderRadius:20,padding:"4px 12px",fontSize:"0.72rem",fontWeight:600}}>{item}</span>
                   ))}
                 </div>
-                <button onClick={()=>handleWA({phone:"233244999000",name:"AshantiHub Grocery Concierge"})} style={{marginTop:16,background:C.whatsapp,color:"white",border:"none",borderRadius:30,padding:"11px 24px",fontWeight:900,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
+                <button onClick={()=>handleConciergeWA("233244999000","AshantiHub Grocery Concierge")} style={{marginTop:16,background:C.whatsapp,color:"white",border:"none",borderRadius:30,padding:"11px 24px",fontWeight:900,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
                   📱 Order via WhatsApp
                 </button>
               </div>
@@ -3968,7 +3992,7 @@ export default function AshantiHub() {
                         page). Promoted/boosted sorting-first lands in a later phase — this renders
                         `listings` in whatever order the API returns, unsorted client-side. */}
                     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>
-                      {listings.map(item=><Card key={item.id} item={item} accentColor={activeCatObj?.color} onWhatsApp={handleWA} user={user} favourites={favourites} onFavourite={toggleFav} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);if(!user)setAuthModal("signup");}} onOpen={(id)=>setSelectedListingId(id)}/>)}
+                      {listings.map(item=><Card key={item.id} item={item} accentColor={activeCatObj?.color} user={user} favourites={favourites} onFavourite={toggleFav} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);if(!user)setAuthModal("signup");}} onOpen={(id)=>setSelectedListingId(id)}/>)}
                     </div>
                     {hasNextPage&&(
                       <div style={{textAlign:"center",marginTop:18}}>
@@ -3991,7 +4015,7 @@ export default function AshantiHub() {
           <div style={{background:C.void,padding:"28px 20px",textAlign:"center"}}>
             <div style={{fontSize:"1.8rem",marginBottom:6}}>🏪</div>
             <h3 style={{color:C.gold,margin:"0 0 6px",fontSize:"1rem"}}>Own a Business in Ashanti?</h3>
-            <p style={{color:C.lightGold,fontSize:"0.78rem",margin:"0 0 14px",opacity:0.85}}>First 3 months FREE. WhatsApp-connected listings.</p>
+            <p style={{color:C.lightGold,fontSize:"0.78rem",margin:"0 0 14px",opacity:0.85}}>First 3 months FREE. Support-backed listings.</p>
             <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
               <button onClick={()=>setPage("register")} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"10px 22px",fontWeight:900,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>Register Your Business →</button>
               <button onClick={()=>setShowBizDash(true)} style={{background:"transparent",color:C.lightGold,border:"1.5px solid #ffffff44",borderRadius:30,padding:"10px 22px",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>🏪 Go to my Business Dashboard</button>
