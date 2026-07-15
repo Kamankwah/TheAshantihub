@@ -23,6 +23,8 @@ import { useMyCreditScore } from "./hooks/useMyCreditScore.js";
 import { useCart } from "./hooks/useCart.js";
 import { useSiteSettings } from "./hooks/useSiteSettings.js";
 import { useReviewsModerationQueue } from "./hooks/useReviewsModerationQueue.js";
+import { useListingReviews } from "./hooks/useListingReviews.js";
+import { useReviewEligibility } from "./hooks/useReviewEligibility.js";
 import { apiPost, apiPatch } from "./apiClient.js";
 import { C, CURRENCIES } from "./theme.js";
 import Flag from "./components/Flag.jsx";
@@ -1132,14 +1134,6 @@ function PaymentDashboard({ onClose }) {
   );
 }
 
-const MOCK_REVIEWS = {
-  1:[
-    {id:1,author:"Emma Thompson",country:"🇬🇧",rating:5,text:"Absolutely stunning hotel. The kente decor is breathtaking and staff were incredibly welcoming.",date:"2026-05-28",helpful:12},
-    {id:2,author:"Hans Mueller",country:"🇩🇪",rating:4,text:"Great location near the palace. Breakfast could be improved but overall wonderful stay.",date:"2026-05-15",helpful:8},
-    {id:3,author:"Kwame Asante",country:"🇬🇭",rating:5,text:"Best hotel in Kumasi! Felt like royalty. Will definitely return for Akwasidae.",date:"2026-05-10",helpful:15},
-  ],
-};
-
 const KUMASI_ZONES = ["All Zones","Manhyia","Adum","Kejetia","Asokwa","Nhyiaeso","Bantama","Suame","Bonwire","Citywide"];
 
 // ─── Real Kumasi Photos ───────────────────────────────────────────────────────
@@ -1505,18 +1499,36 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
   );
 }
 
-function ReviewsModal({item,user,onClose,onSubmit}) {
+function ReviewsModal({item,user,onClose}) {
   const [newRating,setNewRating]=useState(0);
   const [newText,setNewText]=useState("");
   const [hover,setHover]=useState(0);
   const [submitted,setSubmitted]=useState(false);
-  const reviews = MOCK_REVIEWS[item.id] || [];
+  const [actionError,setActionError]=useState(null);
+  // GET /api/reviews/listing/{id}/ — real paginated review data (Phase 4),
+  // replacing the old MOCK_REVIEWS[item.id] lookup. avg_rating/review_count
+  // are top-level fields on this same envelope, not read off `item` anymore.
+  const reviewsQuery = useListingReviews(item.id);
+  // Only meaningfully fires for a signed-in user — useReviewEligibility's
+  // own `enabled` guard (targetType/targetId != null) naturally short-circuits
+  // it for a signed-out visitor since we pass an empty object in that case.
+  const eligibility = useReviewEligibility(user ? {targetType:"listing",targetId:item.id} : {});
+  const reviews = reviewsQuery.data?.results || [];
+  const avgRating = reviewsQuery.data?.avg_rating ?? 0;
+  const reviewCount = reviewsQuery.data?.review_count ?? 0;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if(!user){alert("Please sign in to leave a review");return;}
     if(!newRating||!newText.trim())return;
-    onSubmit({author:user.fullName,rating:newRating,text:newText,date:new Date().toISOString().split("T")[0],helpful:0});
-    setSubmitted(true);
+    setActionError(null);
+    try {
+      await apiPost("/api/reviews/",{target_type:"listing",target_id:item.id,rating:newRating,comment:newText});
+      setSubmitted(true);
+      reviewsQuery.refetch();
+      eligibility.refetch();
+    } catch(err) {
+      setActionError("Could not submit your review. Please try again.");
+    }
   };
 
   return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
@@ -1525,8 +1537,8 @@ function ReviewsModal({item,user,onClose,onSubmit}) {
         <button onClick={onClose} style={{position:"absolute",top:14,right:16,background:"none",border:"none",color:"white",fontSize:"1.4rem",cursor:"pointer",opacity:0.7}}>✕</button>
         <div style={{color:C.gold,fontWeight:900,fontSize:"1rem",marginBottom:4}}>{item.name}</div>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <Stars rating={item.rating}/>
-          <span style={{color:"white",fontSize:"0.78rem",opacity:0.8}}>{item.reviews} reviews</span>
+          <Stars rating={avgRating}/>
+          <span style={{color:"white",fontSize:"0.78rem",opacity:0.8}}>{reviewCount} reviews</span>
         </div>
       </div>
       <div style={{padding:"20px 24px"}}>
@@ -1534,16 +1546,28 @@ function ReviewsModal({item,user,onClose,onSubmit}) {
         {!submitted ? (
           <div style={{background:`${C.gold}12`,border:`1.5px solid ${C.gold}33`,borderRadius:14,padding:"16px",marginBottom:20}}>
             <div style={{fontWeight:800,color:C.darkBrown,marginBottom:10,fontSize:"0.85rem"}}>✍️ Write a Review</div>
-            <div style={{display:"flex",gap:4,marginBottom:12}}>
-              {[1,2,3,4,5].map(s=>(
-                <span key={s} onClick={()=>setNewRating(s)} onMouseEnter={()=>setHover(s)} onMouseLeave={()=>setHover(0)}
-                  style={{fontSize:"1.8rem",cursor:"pointer",color:(hover||newRating)>=s?C.gold:"#ddd",transition:"color 0.1s"}}>★</span>
-              ))}
-            </div>
-            <textarea value={newText} onChange={e=>setNewText(e.target.value)} placeholder="Share your experience..."
-              style={{...iStyle,height:80,resize:"vertical",marginBottom:10}}/>
-            <button onClick={handleSubmit} style={{...btnP(!!newRating&&newText.length>10),padding:"9px"}}>Submit Review</button>
-            {!user&&<div style={{fontSize:"0.7rem",color:"#aaa",marginTop:6,textAlign:"center"}}>Sign in to leave a review</div>}
+            {!user ? (
+              <div style={{fontSize:"0.7rem",color:"#aaa",textAlign:"center"}}>Sign in to leave a review</div>
+            ) : eligibility.isLoading ? (
+              <div style={{fontSize:"0.75rem",color:"#aaa",textAlign:"center"}}>Checking your eligibility…</div>
+            ) : eligibility.data?.eligible ? (
+              <>
+                <div style={{display:"flex",gap:4,marginBottom:12}}>
+                  {[1,2,3,4,5].map(s=>(
+                    <span key={s} onClick={()=>setNewRating(s)} onMouseEnter={()=>setHover(s)} onMouseLeave={()=>setHover(0)}
+                      style={{fontSize:"1.8rem",cursor:"pointer",color:(hover||newRating)>=s?C.gold:"#ddd",transition:"color 0.1s"}}>★</span>
+                  ))}
+                </div>
+                <textarea value={newText} onChange={e=>setNewText(e.target.value)} placeholder="Share your experience..."
+                  style={{...iStyle,height:80,resize:"vertical",marginBottom:10}}/>
+                {actionError&&<div style={{color:"#dc2626",fontSize:"0.75rem",marginBottom:8}}>{actionError}</div>}
+                <button onClick={handleSubmit} style={{...btnP(!!newRating&&newText.length>10),padding:"9px"}}>Submit Review</button>
+              </>
+            ) : eligibility.data?.already_reviewed ? (
+              <div style={{fontSize:"0.75rem",color:"#aaa",textAlign:"center"}}>You've already reviewed this.</div>
+            ) : (
+              <div style={{fontSize:"0.75rem",color:"#aaa",textAlign:"center"}}>You can review this after a completed purchase.</div>
+            )}
           </div>
         ) : (
           <div style={{background:"#f0fdf4",border:"1.5px solid #22c55e44",borderRadius:14,padding:"16px",marginBottom:20,textAlign:"center"}}>
@@ -1552,22 +1576,25 @@ function ReviewsModal({item,user,onClose,onSubmit}) {
           </div>
         )}
         {/* Existing Reviews */}
-        <div style={{fontWeight:800,color:C.darkBrown,marginBottom:12,fontSize:"0.85rem"}}>Customer Reviews ({reviews.length})</div>
-        {reviews.length===0&&<div style={{color:"#aaa",fontSize:"0.8rem",textAlign:"center",padding:"20px"}}>No reviews yet. Be the first!</div>}
+        <div style={{fontWeight:800,color:C.darkBrown,marginBottom:12,fontSize:"0.85rem"}}>Customer Reviews ({reviewCount})</div>
+        {reviewsQuery.isLoading&&<div style={{color:"#aaa",fontSize:"0.8rem",textAlign:"center",padding:"20px"}}>Loading reviews…</div>}
+        {!reviewsQuery.isLoading&&reviews.length===0&&<div style={{color:"#aaa",fontSize:"0.8rem",textAlign:"center",padding:"20px"}}>No reviews yet. Be the first!</div>}
         {reviews.map(r=>(
           <div key={r.id} style={{borderBottom:"1px solid #f0f0f0",paddingBottom:14,marginBottom:14}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <div style={{width:30,height:30,borderRadius:"50%",background:`${C.gold}22`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:C.deepGold,fontSize:"0.8rem"}}>{r.author[0]}</div>
+                <div style={{width:30,height:30,borderRadius:"50%",background:`${C.gold}22`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:C.deepGold,fontSize:"0.8rem"}}>{r.author_name?.[0]}</div>
                 <div>
-                  <div style={{fontWeight:700,fontSize:"0.8rem"}}>{r.author} {r.country}</div>
+                  <div style={{fontWeight:700,fontSize:"0.8rem"}}>{r.author_name}</div>
                   <Stars rating={r.rating} size="0.7rem"/>
                 </div>
               </div>
-              <div style={{fontSize:"0.65rem",color:"#aaa"}}>{r.date}</div>
+              <div style={{fontSize:"0.65rem",color:"#aaa",display:"flex",alignItems:"center",gap:5}}>
+                {r.created_at?.slice(0,10)}
+                {r.verified&&<span style={{background:"#22c55e22",color:"#22c55e",borderRadius:20,padding:"2px 7px",fontSize:"0.58rem",fontWeight:700}}>✓ Verified Purchase</span>}
+              </div>
             </div>
-            <div style={{fontSize:"0.78rem",color:"#444",lineHeight:1.6,marginBottom:6}}>{r.text}</div>
-            <div style={{fontSize:"0.65rem",color:"#aaa"}}>👍 {r.helpful} found this helpful</div>
+            <div style={{fontSize:"0.78rem",color:"#444",lineHeight:1.6}}>{r.comment}</div>
           </div>
         ))}
       </div>
@@ -1677,7 +1704,7 @@ export function Card({item,accentColor,user,favourites,onFavourite,currency,onMe
   };
 
   return <>
-    {showReviews&&<ReviewsModal item={item} user={user} onClose={()=>setShowReviews(false)} onSubmit={()=>{}}/>}
+    {showReviews&&<ReviewsModal item={item} user={user} onClose={()=>setShowReviews(false)}/>}
     {showPay&&<MoMoModal item={item} user={user} onClose={()=>setShowPay(false)}/>}
     <div style={{background:"rgba(255,255,255,0.04)",backdropFilter:"blur(6px)",borderRadius:16,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.3)",border:`1.5px solid ${accentColor}55`,transition:"transform 0.2s"}}
       onMouseEnter={e=>e.currentTarget.style.transform="translateY(-4px)"}
@@ -1718,14 +1745,14 @@ export function Card({item,accentColor,user,favourites,onFavourite,currency,onMe
       </div>
       <div style={{padding:"12px 14px"}}>
         <div onClick={()=>onOpen&&onOpen(item.id)} style={{fontWeight:700,fontSize:"0.9rem",color:"white",marginBottom:2,cursor:onOpen?"pointer":"default"}}>{item.name}</div>
-        {/* Reviews are out of scope until a future sub-project builds them; the real Listing
-            model has no rating/reviews field, so this whole slot is hidden rather than
-            rendering broken placeholders (empty stars, "( reviews)") for every real listing. */}
-        {item.rating!=null&&(
+        {/* Listing's public serializer now returns avg_rating/review_count directly
+            (Phase 4 of the reviews/ratings work) — a listing with zero reviews shows
+            no stars at all rather than "0.0 ★ (0 reviews)". */}
+        {item.review_count>0&&(
           <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
-            <Stars rating={item.rating}/>
+            <Stars rating={item.avg_rating}/>
             <button onClick={()=>setShowReviews(true)} style={{background:"none",border:"none",color:accentColor,fontSize:"0.68rem",cursor:"pointer",fontWeight:600,padding:0}}>
-              ({item.reviews} reviews)
+              ({item.review_count} reviews)
             </button>
           </div>
         )}

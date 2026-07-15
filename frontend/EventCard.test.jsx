@@ -48,6 +48,24 @@ describe('EventCard', () => {
   })
 })
 
+describe('EventCard rating display (Phase 4)', () => {
+  it('shows stars/rating/review count when review_count > 0', () => {
+    render(<EventCard item={{ ...PUBLIC_EVENT, avg_rating: 4.5, review_count: 8 }} onOpen={vi.fn()} />)
+    expect(screen.getByText(/\(8 reviews\)/)).toBeInTheDocument()
+    expect(screen.getByText(/4\.5/)).toBeInTheDocument()
+  })
+
+  it('hides the rating row when review_count is 0', () => {
+    render(<EventCard item={{ ...PUBLIC_EVENT, avg_rating: 0, review_count: 0 }} onOpen={vi.fn()} />)
+    expect(screen.queryByText(/reviews\)/)).not.toBeInTheDocument()
+  })
+
+  it('hides the rating row when avg_rating/review_count are absent altogether', () => {
+    render(<EventCard item={PUBLIC_EVENT} onOpen={vi.fn()} />)
+    expect(screen.queryByText(/reviews\)/)).not.toBeInTheDocument()
+  })
+})
+
 describe('formatEventDate', () => {
   it('formats an ISO date string', () => {
     expect(formatEventDate('2026-08-03T10:00:00Z')).toMatch(/Aug/)

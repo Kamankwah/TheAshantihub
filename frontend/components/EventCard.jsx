@@ -1,5 +1,16 @@
 import { C } from "../theme.js";
 
+// ─── starString ─────────────────────────────────────────────────────────────
+// EventCard can't import Stars from App.jsx — this codebase's established
+// convention is that frontend/components/* never imports from App.jsx (see
+// CLAUDE.md's "avoid an App.jsx ⇄ components/ circular import" note, e.g.
+// ListingDetailPage's CardComponent prop). A star string is a few lines, so
+// it isn't worth its own component file — just a tiny local helper.
+function starString(rating) {
+  const full = Math.floor(rating);
+  return "★".repeat(full) + "☆".repeat(5 - full);
+}
+
 // ─── formatEventDate ────────────────────────────────────────────────────────
 // Shared by EventCard's date badge and EventHeroCarousel/EventDetailPage so
 // the three don't each grow their own copy. `event_date` is an ISO datetime
@@ -68,6 +79,14 @@ export default function EventCard({ item, onOpen }) {
       </div>
       <div style={{ padding: "12px 14px" }}>
         <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "white", marginBottom: 4 }}>{item.name}</div>
+        {/* GET /api/events/ teasers now carry avg_rating/review_count (Phase 4 of the
+            reviews/ratings work) — same "hide entirely if zero" rule as Card in App.jsx,
+            not "0.0 ★ (0 reviews)" for an unreviewed event. */}
+        {item.review_count > 0 && (
+          <div style={{ fontSize: "0.68rem", color: "rgba(255,255,255,0.6)", marginBottom: 4 }}>
+            <span style={{ color: C.gold }}>{starString(item.avg_rating)}</span> {item.avg_rating} ({item.review_count} reviews)
+          </div>
+        )}
         <div style={{ fontSize: "0.68rem", color: "rgba(255,255,255,0.6)" }}>
           {item.category?.icon} {item.category?.label} · 📍 {item.zone?.name}
         </div>
