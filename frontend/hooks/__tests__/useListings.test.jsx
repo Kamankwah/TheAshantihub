@@ -74,6 +74,37 @@ describe('useListings', () => {
     expect(url.searchParams.get('ordering')).toBe('price_amount')
   })
 
+  it('includes kind and verified filter params in the request', async () => {
+    let capturedUrl
+    server.use(
+      http.get('http://localhost:8000/api/listings/', ({ request }) => {
+        capturedUrl = request.url
+        return HttpResponse.json(PAGE_ONE)
+      }),
+    )
+    const { result } = renderWithClient(() =>
+      useListings({ kind: 'product', verified: true }),
+    )
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    const url = new URL(capturedUrl)
+    expect(url.searchParams.get('kind')).toBe('product')
+    expect(url.searchParams.get('verified')).toBe('true')
+  })
+
+  it('omits verified when falsy', async () => {
+    let capturedUrl
+    server.use(
+      http.get('http://localhost:8000/api/listings/', ({ request }) => {
+        capturedUrl = request.url
+        return HttpResponse.json(PAGE_ONE)
+      }),
+    )
+    const { result } = renderWithClient(() => useListings({ verified: false }))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    const url = new URL(capturedUrl)
+    expect(url.searchParams.has('verified')).toBe(false)
+  })
+
   it('refetches when filters change (different query key)', async () => {
     let requestCount = 0
     server.use(

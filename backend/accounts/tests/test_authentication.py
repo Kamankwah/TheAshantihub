@@ -49,4 +49,7 @@ class MultiAccountAuthenticationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["role"], "support")
-        self.assertCountEqual(data["permissions"], ["messaging.manage", "disputes.flag", "users.view"])
+        self.assertCountEqual(
+            data["permissions"],
+            ["messaging.manage", "disputes.flag", "users.view", "reviews.moderate"],
+        )

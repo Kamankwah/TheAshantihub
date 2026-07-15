@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { server } from './mocks/server.js'
-import { apiFetch, getStoredAuth, setStoredAuth, apiPost, apiPostForm, apiPatch, apiPatchForm } from './apiClient.js'
+import { apiFetch, getStoredAuth, setStoredAuth, apiPost, apiPostForm, apiPatch, apiPatchForm, apiDelete } from './apiClient.js'
 
 describe('apiFetch', () => {
   it('returns parsed JSON on success', async () => {
@@ -143,5 +143,22 @@ describe('apiPatchForm', () => {
     formData.append('gps_address', 'AK-039-5028')
     const data = await apiPatchForm('/api/accounts/business-owners/me/profile/', formData)
     expect(data).toEqual({ gps_address: 'AK-039-5028' })
+  })
+})
+
+describe('apiDelete', () => {
+  it('sends a DELETE request and resolves to null on a 204 response', async () => {
+    server.use(
+      http.delete('http://localhost:8000/api/cart/items/1/', () => new HttpResponse(null, { status: 204 })),
+    )
+    const data = await apiDelete('/api/cart/items/1/')
+    expect(data).toBeNull()
+  })
+
+  it('throws on a non-2xx response', async () => {
+    server.use(
+      http.delete('http://localhost:8000/api/cart/items/1/', () => new HttpResponse(null, { status: 404 })),
+    )
+    await expect(apiDelete('/api/cart/items/1/')).rejects.toThrow()
   })
 })

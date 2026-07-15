@@ -12,3 +12,12 @@ export const C = {
   pureBlack:"#000000", white:"#ffffff",
   void:"#160E08",
 };
+
+// ─── Currency conversion ───────────────────────────────────────────────────
+// All backend amounts are GHS-only (no currency field on any model) — the
+// `currency` selector elsewhere in the app is a display-only client-side
+// conversion applied on top of a GHS source-of-truth value. Exported from
+// here (alongside `C`) for the same reason: so both App.jsx (Card's
+// displayPrice) and frontend/components/* (e.g. CartDrawer) can apply the
+// exact same conversion without a circular App.jsx <-> components/ import.
+export const CURRENCIES = {GHS:1, USD:0.067, GBP:0.052, EUR:0.061};

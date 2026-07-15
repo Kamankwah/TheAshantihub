@@ -38,19 +38,22 @@ describe('StaffDashboard', () => {
     expect(screen.getByText('Users')).toBeInTheDocument()
     expect(screen.queryByText('KYC Queue')).not.toBeInTheDocument()
     expect(screen.queryByText('Staff Management')).not.toBeInTheDocument()
+    expect(screen.queryByText('Site Settings')).not.toBeInTheDocument()
+    expect(screen.queryByText('Reviews')).not.toBeInTheDocument()
   })
 
   it('a super_admin-shaped session sees every nav item', () => {
     const auth = makeAuth({
       user: { token: 't', account_type: 'staff', id: 2, full_name: 'Kwame Super', role: 'super_admin', permissions: [
-        'kyc.approve', 'listings.moderate', 'users.view', 'escrow.view', 'escrow.release',
+        'kyc.approve', 'listings.moderate', 'hero_media.approve', 'reviews.moderate', 'users.view', 'escrow.view', 'escrow.release',
         'disputes.resolve_financial', 'transactions.report', 'promotions.manage', 'analytics.view',
         'categories.manage', 'messaging.manage', 'disputes.flag', 'staff.manage', 'zones.manage',
+        'site_settings.manage',
       ] },
       hasPermission: () => true,
     })
     render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
-    ;['KYC Queue', 'Listings Moderation', 'Users', 'Categories & Zones', 'Staff Management',
+    ;['KYC Queue', 'Listings Moderation', 'Hero Approval', 'Reviews', 'Users', 'Categories & Zones', 'Site Settings', 'Staff Management',
       'Escrow Ledger', 'Disputes', 'Transactions Report', 'Promotions', 'Analytics', 'Messaging / Tickets']
       .forEach((label) => expect(screen.getByText(label)).toBeInTheDocument())
   })
@@ -59,6 +62,18 @@ describe('StaffDashboard', () => {
     render(<StaffDashboard auth={makeAuth()} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('Messaging / Tickets'))
     expect(screen.getByText(/coming soon/i)).toBeInTheDocument()
+  })
+
+  // Promotions went self-serve (business owners purchase Featured/Boost from
+  // their own dashboard — docs/BUSINESS_EVENTS_ROADMAP.md Phase 5), so the
+  // old ComingSoonPanel placeholder here would now be misleading. Assert the
+  // informational panel shows instead, not "coming soon".
+  it('shows a self-serve informational panel for Promotions instead of coming-soon', () => {
+    const auth = makeAuth({ hasPermission: (c) => c === 'promotions.manage' })
+    render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Promotions'))
+    expect(screen.getByText('Promotions are self-serve')).toBeInTheDocument()
+    expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument()
   })
 
   it('calls onExit when the exit button is clicked', () => {
@@ -107,6 +122,68 @@ describe('StaffDashboard', () => {
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('Listings Moderation'))
     await screen.findByText('Royal Ashanti Lodge')
+  })
+
+  it('renders the hero approval queue and approves a submission', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/listings/hero/pending/', () => {
+        return HttpResponse.json([{ id: 5, business_owner_name: 'Ama Trader', media: 'http://localhost:8000/media/hero_media/photo.jpg', media_type: 'image', caption: 'Best lodge in town', submitted_at: '2026-07-01T00:00:00Z' }])
+      }),
+    )
+    let approveCalled = false
+    server.use(
+      http.post('http://localhost:8000/api/listings/hero/5/approve/', () => {
+        approveCalled = true
+        return HttpResponse.json({ id: 5, status: 'approved' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'hero_media.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Hero Approval'))
+    await screen.findByText('Ama Trader')
+    expect(screen.getByText('"Best lodge in town"')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('✓ Approve'))
+    await waitFor(() => expect(approveCalled).toBe(true))
+  })
+
+  it('rejects a hero submission with a reason', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/listings/hero/pending/', () => {
+        return HttpResponse.json([{ id: 6, business_owner_name: 'Yaw Trader', media: 'http://localhost:8000/media/hero_media/photo2.jpg', media_type: 'image', caption: 'Fresh crafts', submitted_at: '2026-07-02T00:00:00Z' }])
+      }),
+    )
+    let rejectBody = null
+    server.use(
+      http.post('http://localhost:8000/api/listings/hero/6/reject/', async ({ request }) => {
+        rejectBody = await request.json()
+        return HttpResponse.json({ id: 6, status: 'rejected' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'hero_media.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Hero Approval'))
+    await screen.findByText('Yaw Trader')
+    fireEvent.click(screen.getByText('✕ Reject'))
+    fireEvent.change(screen.getByPlaceholderText('Rejection reason'), { target: { value: 'Blurry photo' } })
+    fireEvent.click(screen.getByText('Confirm reject'))
+    await waitFor(() => expect(rejectBody).toEqual({ reason: 'Blurry photo' }))
+  })
+
+  it('shows an inline error when approving a hero submission fails', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/listings/hero/pending/', () => {
+        return HttpResponse.json([{ id: 7, business_owner_name: 'Kofi Trader', media: 'http://localhost:8000/media/hero_media/photo3.jpg', media_type: 'image', caption: 'Kente for sale', submitted_at: '2026-07-03T00:00:00Z' }])
+      }),
+      http.post('http://localhost:8000/api/listings/hero/7/approve/', () => {
+        return HttpResponse.json({ detail: 'Server error' }, { status: 500 })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'hero_media.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Hero Approval'))
+    await screen.findByText('Kofi Trader')
+    fireEvent.click(screen.getByText('✓ Approve'))
+    await screen.findByText('Could not approve this submission.')
   })
 
   it('renders the Users panel with a Customers/Business Owners tab switch', async () => {
@@ -226,5 +303,216 @@ describe('StaffDashboard', () => {
     fireEvent.change(await screen.findByDisplayValue('Role'), { target: { value: 'admin' } })
     fireEvent.click(screen.getByText('Send invite'))
     await screen.findByText('Could not send the invite. Check the details and try again.')
+  })
+
+  it('only shows the Site Settings nav item for a session with site_settings.manage', () => {
+    const auth = makeAuth({ hasPermission: (c) => c === 'site_settings.manage' })
+    render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    expect(screen.getByText('Site Settings')).toBeInTheDocument()
+  })
+
+  it('renders the Site Settings form seeded with the current values', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/core/site-settings/', () => {
+        return HttpResponse.json({
+          contact_email: 'hello@ashantihub.com',
+          contact_phone: '+233201112233',
+          contact_address: 'Adum, Kumasi',
+          facebook_url: 'https://facebook.com/ashantihub',
+          instagram_url: '',
+          linkedin_url: '',
+          twitter_url: '',
+        })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'site_settings.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Site Settings'))
+    expect(await screen.findByDisplayValue('hello@ashantihub.com')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('+233201112233')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Adum, Kumasi')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('https://facebook.com/ashantihub')).toBeInTheDocument()
+  })
+
+  it('saves Site Settings and shows a confirmation on success', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/core/site-settings/', () => {
+        return HttpResponse.json({
+          contact_email: '', contact_phone: '', contact_address: '',
+          facebook_url: '', instagram_url: '', linkedin_url: '', twitter_url: '',
+        })
+      }),
+    )
+    let patchBody = null
+    server.use(
+      http.patch('http://localhost:8000/api/core/site-settings/', async ({ request }) => {
+        patchBody = await request.json()
+        return HttpResponse.json({ ...patchBody })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'site_settings.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Site Settings'))
+    await screen.findByPlaceholderText('hello@ashantihub.com')
+    fireEvent.change(screen.getByPlaceholderText('hello@ashantihub.com'), { target: { value: 'new@ashantihub.com' } })
+    fireEvent.change(screen.getByPlaceholderText('https://facebook.com/ashantihub'), { target: { value: 'https://facebook.com/newpage' } })
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(patchBody).toMatchObject({
+      contact_email: 'new@ashantihub.com',
+      facebook_url: 'https://facebook.com/newpage',
+    }))
+    await screen.findByText('✓ Saved!')
+  })
+
+  it('shows an inline error when saving Site Settings fails', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/core/site-settings/', () => {
+        return HttpResponse.json({
+          contact_email: '', contact_phone: '', contact_address: '',
+          facebook_url: '', instagram_url: '', linkedin_url: '', twitter_url: '',
+        })
+      }),
+      http.patch('http://localhost:8000/api/core/site-settings/', () => {
+        return HttpResponse.json({ detail: 'Server error' }, { status: 500 })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'site_settings.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Site Settings'))
+    await screen.findByPlaceholderText('hello@ashantihub.com')
+    fireEvent.click(screen.getByText('Save'))
+    await screen.findByText('Could not save site settings. Please try again.')
+  })
+
+  it('renders the two new policy fields as textareas and saves them', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/core/site-settings/', () => {
+        return HttpResponse.json({
+          contact_email: '', contact_phone: '', contact_address: '',
+          facebook_url: '', instagram_url: '', linkedin_url: '', twitter_url: '',
+          warranty_returns_policy: 'Returns within 7 days.',
+          service_dispute_policy: 'Contact Support within 48 hours.',
+        })
+      }),
+    )
+    let patchBody = null
+    server.use(
+      http.patch('http://localhost:8000/api/core/site-settings/', async ({ request }) => {
+        patchBody = await request.json()
+        return HttpResponse.json({ ...patchBody })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'site_settings.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Site Settings'))
+    const returnsField = await screen.findByDisplayValue('Returns within 7 days.')
+    expect(returnsField.tagName).toBe('TEXTAREA')
+    const disputeField = screen.getByDisplayValue('Contact Support within 48 hours.')
+    expect(disputeField.tagName).toBe('TEXTAREA')
+    fireEvent.change(returnsField, { target: { value: 'Returns within 14 days.' } })
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(patchBody).toMatchObject({ warranty_returns_policy: 'Returns within 14 days.' }))
+    await screen.findByText('✓ Saved!')
+  })
+})
+
+describe('StaffDashboard Reviews moderation', () => {
+  it('only shows the Reviews nav item for a session with reviews.moderate', () => {
+    const auth = makeAuth({ hasPermission: (c) => c === 'reviews.moderate' })
+    render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    expect(screen.getByText('Reviews')).toBeInTheDocument()
+  })
+
+  it('reads the paginated moderation queue (data.results) and shows published/hidden status', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/reviews/moderation/', () => {
+        return HttpResponse.json({
+          count: 2, next: null, previous: null,
+          results: [
+            { id: 1, target_type: 'listing', rating: 5, comment: 'Great!', verified: true, author_name: 'Ama', status: 'published', created_at: '2026-07-01T00:00:00Z' },
+            { id: 2, target_type: 'event', rating: 2, comment: 'Poorly organized', verified: true, author_name: 'Kofi', status: 'hidden', hidden_reason: 'Spam', created_at: '2026-07-02T00:00:00Z' },
+          ],
+        })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'reviews.moderate' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Reviews'))
+    await screen.findByText('"Great!"')
+    expect(screen.getByText('Published')).toBeInTheDocument()
+    expect(screen.getByText('Hidden')).toBeInTheDocument()
+    expect(screen.getByText('Hidden: Spam')).toBeInTheDocument()
+  })
+
+  it('hides a published review with a reason', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/reviews/moderation/', () => {
+        return HttpResponse.json({
+          count: 1, next: null, previous: null,
+          results: [{ id: 3, target_type: 'listing', rating: 1, comment: 'Fake review', verified: false, author_name: 'Unknown', status: 'published', created_at: '2026-07-01T00:00:00Z' }],
+        })
+      }),
+    )
+    let hideBody = null
+    server.use(
+      http.post('http://localhost:8000/api/reviews/moderation/3/hide/', async ({ request }) => {
+        hideBody = await request.json()
+        return HttpResponse.json({ id: 3, status: 'hidden' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'reviews.moderate' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Reviews'))
+    await screen.findByText('"Fake review"')
+    fireEvent.click(screen.getByText('🚫 Hide'))
+    fireEvent.change(screen.getByPlaceholderText('Reason for hiding'), { target: { value: 'Not a verified purchase' } })
+    fireEvent.click(screen.getByText('Confirm hide'))
+    await waitFor(() => expect(hideBody).toEqual({ reason: 'Not a verified purchase' }))
+  })
+
+  it('unhides a hidden review', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/reviews/moderation/', () => {
+        return HttpResponse.json({
+          count: 1, next: null, previous: null,
+          results: [{ id: 4, target_type: 'seller', rating: 3, comment: 'Meh', verified: true, author_name: 'Yaw', status: 'hidden', hidden_reason: 'Reported', created_at: '2026-07-01T00:00:00Z' }],
+        })
+      }),
+    )
+    let unhideCalled = false
+    server.use(
+      http.post('http://localhost:8000/api/reviews/moderation/4/unhide/', () => {
+        unhideCalled = true
+        return HttpResponse.json({ id: 4, status: 'published' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'reviews.moderate' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Reviews'))
+    await screen.findByText('"Meh"')
+    fireEvent.click(screen.getByText('↩️ Unhide'))
+    await waitFor(() => expect(unhideCalled).toBe(true))
+  })
+
+  it('shows an inline error when hiding a review fails', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/reviews/moderation/', () => {
+        return HttpResponse.json({
+          count: 1, next: null, previous: null,
+          results: [{ id: 5, target_type: 'listing', rating: 1, comment: 'Bad', verified: false, author_name: 'X', status: 'published', created_at: '2026-07-01T00:00:00Z' }],
+        })
+      }),
+      http.post('http://localhost:8000/api/reviews/moderation/5/hide/', () => {
+        return HttpResponse.json({ detail: 'Server error' }, { status: 500 })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'reviews.moderate' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Reviews'))
+    await screen.findByText('"Bad"')
+    fireEvent.click(screen.getByText('🚫 Hide'))
+    fireEvent.change(screen.getByPlaceholderText('Reason for hiding'), { target: { value: 'spam' } })
+    fireEvent.click(screen.getByText('Confirm hide'))
+    await screen.findByText('Could not hide this review.')
   })
 })
