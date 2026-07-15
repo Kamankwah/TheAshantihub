@@ -23,11 +23,13 @@ import { useMyCreditScore } from "./hooks/useMyCreditScore.js";
 import { useCart } from "./hooks/useCart.js";
 import { useSiteSettings } from "./hooks/useSiteSettings.js";
 import { useReviewsModerationQueue } from "./hooks/useReviewsModerationQueue.js";
+import { useContactMessagesQueue } from "./hooks/useContactMessagesQueue.js";
 import { useListingReviews } from "./hooks/useListingReviews.js";
 import { useReviewEligibility } from "./hooks/useReviewEligibility.js";
 import { useOrders } from "./hooks/useOrders.js";
 import { useMyEvents } from "./hooks/useMyEvents.js";
 import { useDeliveryQueue } from "./hooks/useDeliveryQueue.js";
+import { useEscrowLedger } from "./hooks/useEscrowLedger.js";
 import { apiPost, apiPatch } from "./apiClient.js";
 import { C, CURRENCIES } from "./theme.js";
 import Flag from "./components/Flag.jsx";
@@ -43,12 +45,17 @@ import { HomeCtaBand } from "./components/ui/home-cta-band.tsx";
 import { EventsCtaBand } from "./components/ui/events-cta-band.tsx";
 import { AboutCtaBand } from "./components/ui/about-cta-band.tsx";
 import { ContactCtaBand } from "./components/ui/contact-cta-band.tsx";
+import { AboutPage } from "./components/ui/about-page.tsx";
+import { AboutTestimonialsSection } from "./components/ui/about-testimonials-section.tsx";
+import { AboutFaqSection } from "./components/ui/about-faq-section.tsx";
+import { ContactPage } from "./components/ui/contact-page.tsx";
 import BusinessRegistrationFlow from "./components/BusinessRegistrationFlow.jsx";
 import CartDrawer from "./components/CartDrawer.jsx";
 import EventHeroCarousel from "./components/EventHeroCarousel.jsx";
 import EventCard, { formatEventDate } from "./components/EventCard.jsx";
 import EventDetailPage from "./components/EventDetailPage.jsx";
 import EventSubmissionPanel from "./components/EventSubmissionPanel.jsx";
+import MyTicketsDrawer from "./components/MyTicketsDrawer.jsx";
 
 // ─── Credit Scoring System ────────────────────────────────────────────────────
 const LENDING_PARTNERS = [
@@ -1861,7 +1868,7 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
     }
   };
 
-  const handleCustomerSignup=async(e)=>{
+  const handleSignup=async(e)=>{
     e.preventDefault();
     setError(null);
     if(!phone && !email){
@@ -1870,7 +1877,9 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
     }
     setSubmitting(true);
     try {
-      const result=await auth.registerCustomer({full_name:fullName,phone:phone||undefined,email:email||undefined,password});
+      const result=accountType==="business_owner"
+        ? await auth.registerBusinessOwner({full_name:fullName,login_phone:phone||undefined,email:email||undefined,password})
+        : await auth.registerCustomer({full_name:fullName,phone:phone||undefined,email:email||undefined,password});
       onSuccess(result);
     } catch (err) {
       setError("Could not create your account. Please check your details.");
@@ -1903,12 +1912,16 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
           <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Signing in…":"Sign In"}</button>
         </form>}
 
-        {mode==="signup" && <form onSubmit={handleCustomerSignup}>
+        {mode==="signup" && <form onSubmit={handleSignup}>
+          <div style={{display:"flex",gap:8,marginBottom:12}}>
+            <button type="button" onClick={()=>setAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="customer"?C.gold:"white"}}>Customer</button>
+            <button type="button" onClick={()=>setAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="business_owner"?C.gold:"white"}}>Business Owner</button>
+          </div>
           <input value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Full name" required style={authInputStyle}/>
           <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone (+233...)" style={authInputStyle}/>
           <input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="Email" style={authInputStyle}/>
           <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" required minLength={8} style={authInputStyle}/>
-          <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Creating account…":"Create Free Account"}</button>
+          <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Creating account…":accountType==="business_owner"?"Create Business Account":"Create Free Account"}</button>
         </form>}
       </div>
     </div>
@@ -2273,6 +2286,159 @@ function DeliveryManagementPanel({theme}) {
   </div>;
 }
 
+const CONTACT_STATUS_META = {
+  new: { label:"New", color:"#2563eb" },
+  read: { label:"Read", color:"#d97706" },
+  resolved: { label:"Resolved", color:"#22c55e" },
+};
+
+function ContactMessagesPanel({theme}) {
+  // GET /api/core/contact-messages/ is paginated ({count, next, previous,
+  // results}), same convention as ReviewsModerationPanel/
+  // useReviewsModerationQueue above — `items` reads data?.results, not
+  // data||[]. Resolved is a final state (no un-resolving), so "Mark read"
+  // is hidden once a message is resolved.
+  const {data,isLoading,isError,refetch} = useContactMessagesQueue();
+  const [actionError,setActionError] = useState(null);
+
+  const markRead = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/core/contact-messages/${id}/read/`,{}); refetch(); }
+    catch (err) { setActionError("Could not mark this message as read."); }
+  };
+  const resolve = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/core/contact-messages/${id}/resolve/`,{}); refetch(); }
+    catch (err) { setActionError("Could not resolve this message."); }
+  };
+
+  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
+  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the contact messages queue.</div>;
+  const items = data?.results||[];
+
+  return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
+    <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Contact Messages ({data?.count??items.length})</div>
+    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
+    {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No contact messages yet.</div>}
+    {items.map(m=>{
+      const statusMeta = CONTACT_STATUS_META[m.status]||{label:m.status,color:"#888"};
+      return (
+      <div key={m.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,flexWrap:"wrap"}}>
+          <div>
+            <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>
+              {m.subject} <span style={{color:theme.textMuted,fontWeight:400}}>({m.category})</span>
+              <span style={{background:`${statusMeta.color}22`,color:statusMeta.color,borderRadius:20,padding:"2px 8px",fontSize:"0.6rem",fontWeight:700,marginLeft:6}}>{statusMeta.label}</span>
+            </div>
+            {m.message&&<div style={{color:theme.textMuted,fontSize:"0.75rem",margin:"4px 0",maxWidth:420}}>"{m.message}"</div>}
+            <div style={{color:theme.textMuted,fontSize:"0.65rem"}}>{m.name} • {m.email}{m.phone?` • ${m.phone}`:""} • {m.created_at?.slice(0,10)}</div>
+            {m.status==="resolved"&&m.resolved_by_name&&<div style={{color:"#22c55e",fontSize:"0.65rem",marginTop:2}}>Resolved by {m.resolved_by_name}{m.resolved_at?` on ${m.resolved_at.slice(0,10)}`:""}</div>}
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            {m.status!=="resolved"&&<button onClick={()=>markRead(m.id)} style={{background:"#fef3c7",color:"#d97706",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>Mark read</button>}
+            {m.status!=="resolved"&&<button onClick={()=>resolve(m.id)} style={{background:"#22c55e",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>Resolve</button>}
+          </div>
+        </div>
+      </div>
+      );
+    })}
+  </div>;
+}
+
+const ESCROW_STATUS_META = {
+  held: { label:"Held", color:"#f59e0b" },
+  released: { label:"Released", color:"#22c55e" },
+};
+
+// Escrow Ledger staff panel (event ticketing + escrow work). Clones
+// ReviewsModerationPanel's shape exactly — same paginated-queue/actionError/
+// refetch() convention, `data?.results` (useEscrowLedger mirrors
+// useReviewsModerationQueue's paginated shape). Release/Hold require
+// `escrow.release`; Refund requires `escrow.refund` — a stricter,
+// non-overlapping permission per events/views.py's EscrowRefundView. A
+// refunded ticket (refunded_at set) never gets Release/Hold/Refund actions
+// again regardless of permission, and Refund itself only ever shows for a
+// still-held, not-yet-delivered ticket (mirrors EscrowRefundView's own
+// validation, so a click here doesn't just round-trip into a 400).
+function EscrowLedgerPanel({theme,auth}) {
+  const {data,isLoading,isError,refetch} = useEscrowLedger();
+  const [noteById,setNoteById] = useState({});
+  const [reasonById,setReasonById] = useState({});
+  const [actionError,setActionError] = useState(null);
+
+  const canRelease = auth.hasPermission("escrow.release");
+  const canRefund = auth.hasPermission("escrow.refund");
+
+  const release = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/events/tickets/${id}/escrow/release/`,{note:noteById[id]||""}); refetch(); }
+    catch (err) { setActionError("Could not release this ticket's escrow."); }
+  };
+  const hold = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/events/tickets/${id}/escrow/hold/`,{note:noteById[id]||""}); refetch(); }
+    catch (err) { setActionError("Could not hold this ticket's escrow."); }
+  };
+  const refund = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/events/tickets/${id}/escrow/refund/`,{reason:reasonById[id]||""}); refetch(); }
+    catch (err) { setActionError("Could not refund this ticket."); }
+  };
+
+  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
+  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the escrow ledger.</div>;
+  const items = data?.results||[];
+
+  return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
+    <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Escrow Ledger ({data?.count??items.length})</div>
+    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
+    {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No tickets yet.</div>}
+    {items.map(t=>{
+      const statusMeta = ESCROW_STATUS_META[t.escrow_status]||{label:t.escrow_status,color:"#888"};
+      const isRefunded = !!t.refunded_at;
+      const isDelivered = !!t.delivered_at;
+      return (
+      <div key={t.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,flexWrap:"wrap"}}>
+          <div>
+            <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>
+              {t.event_name} — {t.ticket_type_name} <span style={{color:theme.textMuted,fontWeight:400}}>({t.code})</span>
+              {isRefunded ? (
+                <span style={{background:"#dc262622",color:"#dc2626",borderRadius:20,padding:"2px 8px",fontSize:"0.6rem",fontWeight:700,marginLeft:6}}>Refunded</span>
+              ) : (
+                <span style={{background:`${statusMeta.color}22`,color:statusMeta.color,borderRadius:20,padding:"2px 8px",fontSize:"0.6rem",fontWeight:700,marginLeft:6}}>{statusMeta.label}</span>
+              )}
+            </div>
+            <div style={{color:theme.textMuted,fontSize:"0.68rem",marginTop:2}}>
+              Buyer: {t.purchased_by_name} • GHS {t.price}
+            </div>
+            <div style={{color:theme.textMuted,fontSize:"0.65rem",marginTop:2}}>
+              Held {t.escrow_held_at?.slice(0,10)||"—"} • Released {t.escrow_released_at?.slice(0,10)||"—"} • Delivered {t.delivered_at?.slice(0,10)||"—"}
+            </div>
+            {t.escrow_override_note&&<div style={{color:theme.textMuted,fontSize:"0.65rem",marginTop:2}}>Note: {t.escrow_override_note}</div>}
+            {isRefunded&&t.refund_reason&&<div style={{color:"#dc2626",fontSize:"0.65rem",marginTop:2}}>Refund reason: {t.refund_reason}</div>}
+          </div>
+        </div>
+        {!isRefunded&&(canRelease||canRefund)&&<div style={{marginTop:8,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+          {canRelease&&t.escrow_status==="held"&&<>
+            <input value={noteById[t.id]||""} onChange={e=>setNoteById(n=>({...n,[t.id]:e.target.value}))} placeholder="Note (optional)" style={{flex:1,minWidth:120,padding:"5px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
+            <button onClick={()=>release(t.id)} style={{background:"#22c55e",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>Release</button>
+          </>}
+          {canRelease&&t.escrow_status==="released"&&<>
+            <input value={noteById[t.id]||""} onChange={e=>setNoteById(n=>({...n,[t.id]:e.target.value}))} placeholder="Note (optional)" style={{flex:1,minWidth:120,padding:"5px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
+            <button onClick={()=>hold(t.id)} style={{background:"#f59e0b",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>Hold</button>
+          </>}
+          {canRefund&&t.escrow_status==="held"&&!isDelivered&&<>
+            <input value={reasonById[t.id]||""} onChange={e=>setReasonById(n=>({...n,[t.id]:e.target.value}))} placeholder="Refund reason (optional)" style={{flex:1,minWidth:120,padding:"5px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
+            <button onClick={()=>refund(t.id)} style={{background:"#dc2626",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>Refund</button>
+          </>}
+        </div>}
+      </div>
+      );
+    })}
+  </div>;
+}
+
 function UsersPanel({theme}) {
   const [subTab,setSubTab] = useState("customers");
   const customers = useCustomers();
@@ -2363,6 +2529,10 @@ const SITE_SETTINGS_FIELDS = [
   {key:"instagram_url",label:"Instagram URL",placeholder:"https://instagram.com/ashantihub"},
   {key:"linkedin_url",label:"LinkedIn URL",placeholder:"https://linkedin.com/company/ashantihub"},
   {key:"twitter_url",label:"Twitter / X URL",placeholder:"https://x.com/ashantihub"},
+  {key:"tiktok_url",label:"TikTok URL",placeholder:"https://tiktok.com/@ashantihub"},
+  {key:"youtube_url",label:"YouTube URL",placeholder:"https://youtube.com/@ashantihub"},
+  {key:"whatsapp_number",label:"WhatsApp support number",placeholder:"233244000000 (digits only, no +)"},
+  {key:"support_hours",label:"Support hours",placeholder:"Mon–Sat, 8:00am – 8:00pm GMT"},
   {key:"warranty_returns_policy",label:"Warranty & returns policy",placeholder:"e.g. Items may be returned within 7 days if unopened...",multiline:true},
   {key:"service_dispute_policy",label:"Service satisfaction & dispute policy",placeholder:"e.g. If a service doesn't meet expectations, contact AshantiHub Support within 48 hours...",multiline:true},
 ];
@@ -2492,11 +2662,12 @@ export function StaffDashboard({auth,onExit}) {
     {id:"hero",icon:"🌟",label:"Hero Approval",show:auth.hasPermission("hero_media.approve")},
     {id:"reviews",icon:"⭐",label:"Reviews",show:auth.hasPermission("reviews.moderate")},
     {id:"delivery",icon:"🚚",label:"Delivery Management",show:auth.hasPermission("orders.manage_delivery")},
+    {id:"contact-messages",icon:"✉️",label:"Contact Messages",show:auth.hasPermission("contact_messages.manage")},
     {id:"users",icon:"👥",label:"Users",show:auth.hasPermission("users.view")},
     {id:"categories-zones",icon:"🗂️",label:"Categories & Zones",show:auth.hasPermission("categories.manage")||auth.hasPermission("zones.manage")},
     {id:"site-settings",icon:"🧭",label:"Site Settings",show:auth.hasPermission("site_settings.manage")},
     {id:"staff",icon:"🛡️",label:"Staff Management",show:auth.hasPermission("staff.manage")},
-    {id:"escrow",icon:"💰",label:"Escrow Ledger",show:auth.hasPermission("escrow.view")||auth.hasPermission("escrow.release")},
+    {id:"escrow",icon:"💰",label:"Escrow Ledger",show:auth.hasPermission("escrow.view")||auth.hasPermission("escrow.release")||auth.hasPermission("escrow.refund")},
     {id:"disputes",icon:"⚖️",label:"Disputes",show:auth.hasPermission("disputes.resolve_financial")||auth.hasPermission("disputes.flag")},
     {id:"transactions",icon:"📈",label:"Transactions Report",show:auth.hasPermission("transactions.report")},
     {id:"promotions",icon:"🎯",label:"Promotions",show:auth.hasPermission("promotions.manage")},
@@ -2540,11 +2711,12 @@ export function StaffDashboard({auth,onExit}) {
         {activeTab==="hero"&&<HeroApprovalPanel theme={t}/>}
         {activeTab==="reviews"&&<ReviewsModerationPanel theme={t}/>}
         {activeTab==="delivery"&&<DeliveryManagementPanel theme={t}/>}
+        {activeTab==="contact-messages"&&<ContactMessagesPanel theme={t}/>}
         {activeTab==="users"&&<UsersPanel theme={t}/>}
         {activeTab==="categories-zones"&&<CategoriesZonesPanel theme={t} auth={auth}/>}
         {activeTab==="site-settings"&&<SiteSettingsPanel theme={t}/>}
         {activeTab==="staff"&&<StaffManagementPanel theme={t}/>}
-        {activeTab==="escrow"&&<ComingSoonPanel theme={t} feature="Escrow Ledger"/>}
+        {activeTab==="escrow"&&<EscrowLedgerPanel theme={t} auth={auth}/>}
         {activeTab==="disputes"&&<ComingSoonPanel theme={t} feature="Disputes"/>}
         {activeTab==="transactions"&&<ComingSoonPanel theme={t} feature="Transactions Report"/>}
         {activeTab==="promotions"&&<PromotionsInfoPanel theme={t}/>}
@@ -2576,6 +2748,7 @@ const USER_NAV_ITEMS = [
   { id: "saved", icon: "❤️", label: "Saved Businesses" },
   { id: "messages", icon: "💬", label: "Messages" },
   { id: "events", icon: "🎉", label: "My Events" },
+  { id: "tickets", icon: "🎟️", label: "My Tickets" },
 ];
 
 export function UserPanel({ user, auth, favourites, toggleFav, onExit }) {
@@ -2614,6 +2787,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit }) {
         {activeTab==="saved"&&<SavedBusinessesTab favourites={favourites} toggleFav={toggleFav} theme={t}/>}
         {activeTab==="messages"&&<MessagingCenter user={user} onClose={()=>setActiveTab("profile")}/>}
         {activeTab==="events"&&<MyEventsTab theme={t}/>}
+        {activeTab==="tickets"&&<MyTicketsDrawer onClose={()=>setActiveTab("profile")}/>}
       </div>
     </div>
   </div>;
@@ -2862,12 +3036,32 @@ export function BusinessDashboard({ onExit, user, auth }) {
   const [showPromotePay, setShowPromotePay] = useState(false);
   const isVerified = user?.kycStatus === "verified";
   const isRejected = user?.kycStatus === "rejected";
+  // /business-dashboard is a path-derived "route" (see App.jsx's showBizDash
+  // docs above) that renders this component regardless of who's signed in —
+  // unlike /staff, it doesn't verify the session first. So this dashboard's
+  // own data hooks must not fire until auth has settled and the session is
+  // actually a business owner, otherwise a signed-out visit (or the brief
+  // window before auth.isLoading resolves) fires unauthenticated requests
+  // that just 401.
+  const isBusinessOwner = user?.accountType === "business_owner";
+  const dataReady = !auth.isLoading && isBusinessOwner;
 
-  const { data: listings, isLoading: listingsLoading, isError: listingsError, refetch: refetchListings } = useMyListings();
-  const { data: profile, isLoading: profileLoading, isError: profileError } = useBusinessProfile();
+  const { data: listings, isLoading: listingsLoading, isError: listingsError, refetch: refetchListings } = useMyListings(dataReady);
+  const { data: profile, isLoading: profileLoading, isError: profileError } = useBusinessProfile(dataReady);
   const { data: subPlans, isLoading: plansLoading, isError: plansError } = useSubscriptionPlans();
-  const { data: subscription, isLoading: subLoading, isError: subError, refetch: refetchSubscription } = useMySubscription();
-  const { data: heroSubmission, refetch: refetchHeroSubmission } = useMyHeroSubmission();
+  const { data: subscription, isLoading: subLoading, isError: subError, refetch: refetchSubscription } = useMySubscription(dataReady);
+  const { data: heroSubmission, refetch: refetchHeroSubmission } = useMyHeroSubmission(dataReady);
+
+  if (auth.isLoading) return <LoadingScreen/>;
+
+  if (!isBusinessOwner) {
+    return (
+      <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:20,textAlign:"center"}}>
+        <div style={{fontSize:"1.15rem",fontWeight:700,color:C.darkBrown}}>Sign in with a business owner account to view this dashboard.</div>
+        <button onClick={onExit} style={{padding:"10px 24px",borderRadius:8,border:"none",background:C.gold,color:"white",fontWeight:700,cursor:"pointer",fontSize:"0.85rem"}}>← Back to AshantiHub</button>
+      </div>
+    );
+  }
 
   if (resubmitting) {
     return <BusinessRegistrationFlow
@@ -4408,7 +4602,7 @@ export default function AshantiHub() {
           )}
 
           {selectedEventId ? (
-            <EventDetailPage id={selectedEventId} onBack={()=>setSelectedEventId(null)} user={user}/>
+            <EventDetailPage id={selectedEventId} onBack={()=>setSelectedEventId(null)} user={user} PaymentComponent={MoMoPayment}/>
           ) : (
           <div style={{background:C.void,paddingBottom:1}}>
             {eventCategories.length>0&&(
@@ -4483,32 +4677,11 @@ export default function AshantiHub() {
       )}
 
       {/* About page */}
-      {page==="about"&&(
-        <div style={{maxWidth:640,margin:"0 auto",padding:"24px 20px"}}>
-          {/* About hero with real Kejetia photo */}
-          <div style={{borderRadius:18,overflow:"hidden",marginBottom:20,position:"relative",height:180}}>
-            <img src={KUMASI_PHOTOS.kejetiaMarket} alt="Kejetia Market Kumasi" style={{width:"100%",height:"100%",objectFit:"cover"}}
-              onError={e=>{e.target.parentNode.style.background=`linear-gradient(135deg,${C.darkBrown},${C.kente3})`;e.target.style.display="none";}}/>
-            <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(44,24,16,0.85),rgba(0,0,0,0.3))"}}/>
-            <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"18px 20px",display:"flex",alignItems:"flex-end",gap:12}}>
-              <Flag w={60} h={40}/>
-              <div>
-                <div style={{color:C.gold,fontWeight:900,fontSize:"1.2rem"}}>👑 AshantiHub</div>
-                <div style={{color:"white",fontSize:"0.72rem",opacity:0.85}}>The Marketplace of Ashanti — built for Ashanti, by Ashanti</div>
-              </div>
-            </div>
-          </div>
-          {[{icon:"🎯",title:"Our Mission",body:"Connect 100,000+ annual visitors and locals with the best businesses across 15 categories — all in one WhatsApp-powered platform."},{icon:"📊",title:"Data-Driven",body:"Customer accounts give us rich data — nationality, visit purpose, dates — helping us serve businesses and visitors better."},{icon:"📱",title:"WhatsApp-First",body:"Every business connects via WhatsApp. Customers message directly in one tap. No complicated checkout."},{icon:"🔒",title:"Verified & Secure",body:"All businesses verified with Ghana Card. Customer data protected under Ghana's Data Protection Act 2012."}].map((s,i)=>(
-            <div key={i} style={{background:"white",borderRadius:16,padding:"16px 20px",marginBottom:12,boxShadow:"0 2px 12px rgba(0,0,0,0.07)",display:"flex",gap:14}}>
-              <div style={{fontSize:"1.6rem",minWidth:36,textAlign:"center"}}>{s.icon}</div>
-              <div>
-                <div style={{fontWeight:800,color:C.darkBrown,marginBottom:5}}>{s.title}</div>
-                <div style={{color:"#555",fontSize:"0.8rem",lineHeight:1.6}}>{s.body}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      {page==="about"&&(<>
+        <AboutPage/>
+        <AboutTestimonialsSection/>
+        <AboutFaqSection/>
+      </>)}
 
       {page==="about"&&(
         <AboutCtaBand user={user} onCreateAccount={()=>setAuthModal("signup")} onRegister={()=>setPage("register")}/>
@@ -4516,29 +4689,7 @@ export default function AshantiHub() {
 
       {/* Contact page */}
       {page==="contact"&&(
-        <div style={{maxWidth:640,margin:"0 auto",padding:"24px 20px"}}>
-          <div style={{borderRadius:18,overflow:"hidden",marginBottom:20,position:"relative",padding:"28px 24px",background:`linear-gradient(135deg,${C.darkBrown},${C.kente3})`}}>
-            <div style={{position:"absolute",top:0,left:0,right:0,height:4,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
-            <div style={{color:C.gold,fontWeight:900,fontSize:"1.3rem",marginBottom:6}}>👑 Get In Touch</div>
-            <div style={{color:"white",fontSize:"0.82rem",opacity:0.9,lineHeight:1.6}}>Questions about a listing, a partnership, or your business account? We're based in Kumasi and we reply fast — WhatsApp is the quickest way to reach us.</div>
-          </div>
-
-          <div style={{display:"grid",gap:12,marginBottom:20}}>
-            {[
-              {icon:"📍",title:"Location",body:"Kumasi, Ashanti Region, Ghana"},
-              {icon:"✉️",title:"Email",body:"info@ashantihub.com"},
-              {icon:"🕑",title:"Support Hours",body:"Mon–Sat, 8:00am – 8:00pm GMT"},
-            ].map((c,i)=>(
-              <div key={i} style={{background:"white",borderRadius:16,padding:"14px 18px",boxShadow:"0 2px 12px rgba(0,0,0,0.07)",display:"flex",gap:14,alignItems:"center"}}>
-                <div style={{fontSize:"1.4rem"}}>{c.icon}</div>
-                <div>
-                  <div style={{fontWeight:800,color:C.darkBrown,fontSize:"0.82rem"}}>{c.title}</div>
-                  <div style={{color:"#555",fontSize:"0.78rem"}}>{c.body}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <ContactPage user={user} onCreateAccount={()=>setAuthModal("signup")} WhatsAppButton={WABtn}/>
       )}
 
       {page==="contact"&&(

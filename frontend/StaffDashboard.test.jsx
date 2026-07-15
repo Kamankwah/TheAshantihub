@@ -600,3 +600,96 @@ describe('StaffDashboard Delivery Management', () => {
     await screen.findByText('No orders yet.')
   })
 })
+describe('StaffDashboard Contact Messages', () => {
+  it('only shows the Contact Messages nav item for a session with contact_messages.manage', () => {
+    const auth = makeAuth({ hasPermission: (c) => c === 'contact_messages.manage' })
+    render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    expect(screen.getByText('Contact Messages')).toBeInTheDocument()
+  })
+
+  it('reads the paginated contact-messages queue (data.results) and shows status', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/core/contact-messages/', () => {
+        return HttpResponse.json({
+          count: 2, next: null, previous: null,
+          results: [
+            { id: 1, category: 'support', name: 'Ama', email: 'ama@example.com', phone: '', subject: 'Order issue', message: 'My order is late', status: 'new', resolved_by_name: null, resolved_at: null, created_at: '2026-07-01T00:00:00Z' },
+            { id: 2, category: 'sales', name: 'Kofi', email: 'kofi@example.com', phone: '', subject: 'Bulk pricing', message: 'Interested in bulk pricing', status: 'resolved', resolved_by_name: 'Akosua Support', resolved_at: '2026-07-03T00:00:00Z', created_at: '2026-07-02T00:00:00Z' },
+          ],
+        })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'contact_messages.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Contact Messages'))
+    await screen.findByText('"My order is late"')
+    expect(screen.getByText('New')).toBeInTheDocument()
+    expect(screen.getByText('Resolved')).toBeInTheDocument()
+    expect(screen.getByText(/Resolved by Akosua Support/)).toBeInTheDocument()
+  })
+
+  it('marks a message as read', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/core/contact-messages/', () => {
+        return HttpResponse.json({
+          count: 1, next: null, previous: null,
+          results: [{ id: 3, category: 'general', name: 'Yaw', email: 'yaw@example.com', phone: '', subject: 'Question', message: 'How does this work?', status: 'new', resolved_by_name: null, resolved_at: null, created_at: '2026-07-01T00:00:00Z' }],
+        })
+      }),
+    )
+    let readCalled = false
+    server.use(
+      http.post('http://localhost:8000/api/core/contact-messages/3/read/', () => {
+        readCalled = true
+        return HttpResponse.json({ id: 3, status: 'read' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'contact_messages.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Contact Messages'))
+    await screen.findByText('"How does this work?"')
+    fireEvent.click(screen.getByText('Mark read'))
+    await waitFor(() => expect(readCalled).toBe(true))
+  })
+
+  it('resolves a message', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/core/contact-messages/', () => {
+        return HttpResponse.json({
+          count: 1, next: null, previous: null,
+          results: [{ id: 4, category: 'account', name: 'Abena', email: 'abena@example.com', phone: '', subject: 'Login issue', message: 'Cannot log in', status: 'read', resolved_by_name: null, resolved_at: null, created_at: '2026-07-01T00:00:00Z' }],
+        })
+      }),
+    )
+    let resolveCalled = false
+    server.use(
+      http.post('http://localhost:8000/api/core/contact-messages/4/resolve/', () => {
+        resolveCalled = true
+        return HttpResponse.json({ id: 4, status: 'resolved' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'contact_messages.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Contact Messages'))
+    await screen.findByText('"Cannot log in"')
+    fireEvent.click(screen.getByText('Resolve'))
+    await waitFor(() => expect(resolveCalled).toBe(true))
+  })
+
+  it('hides "Mark read" once a message is resolved', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/core/contact-messages/', () => {
+        return HttpResponse.json({
+          count: 1, next: null, previous: null,
+          results: [{ id: 5, category: 'general', name: 'Kwabena', email: 'kwabena@example.com', phone: '', subject: 'Resolved already', message: 'This is done', status: 'resolved', resolved_by_name: 'Akosua Support', resolved_at: '2026-07-03T00:00:00Z', created_at: '2026-07-01T00:00:00Z' }],
+        })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'contact_messages.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Contact Messages'))
+    await screen.findByText('"This is done"')
+    expect(screen.queryByText('Mark read')).not.toBeInTheDocument()
+    expect(screen.queryByText('Resolve')).not.toBeInTheDocument()
+  })
+})

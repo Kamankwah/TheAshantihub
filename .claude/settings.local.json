@@ -37,7 +37,10 @@
       "Bash(git -C .claude/worktrees/listing-model-marketplace status)",
       "Bash(git -C .claude/worktrees/listing-model-marketplace log --oneline righteoushack..HEAD)",
       "Bash(git -C .worktrees/roles-registration-kyc status)",
-      "Bash(git -C .worktrees/roles-registration-kyc log --oneline righteoushack..HEAD)"
+      "Bash(git -C .worktrees/roles-registration-kyc log --oneline righteoushack..HEAD)",
+      "Bash(curl -s -o /dev/null -w \"categories: %{http_code}\\\\n\" http://localhost:8000/api/listings/categories/)",
+      "Bash(curl -s -o /dev/null -w \"listings: %{http_code}\\\\n\" \"http://localhost:8000/api/listings/?category=hotels\")",
+      "Bash(curl -s -o /dev/null -w \"events: %{http_code}\\\\n\" http://localhost:8000/api/events/)"
     ]
   },
   "enabledMcpjsonServers": [

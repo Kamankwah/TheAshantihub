@@ -78,10 +78,12 @@ class Transaction(models.Model):
     SUCCESS = "success"
     PENDING = "pending"
     FAILED = "failed"
+    REFUNDED = "refunded"
     STATUS_CHOICES = [
         (SUCCESS, "Success"),
         (PENDING, "Pending"),
         (FAILED, "Failed"),
+        (REFUNDED, "Refunded"),
     ]
 
     # A Transaction now represents either a business-owner subscription

@@ -30,5 +30,5 @@ def unseed(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-    dependencies = [("accounts", "0012_customer_avatar")]
+    dependencies = [("accounts", "0014_customer_avatar")]
     operations = [migrations.RunPython(seed, unseed)]
