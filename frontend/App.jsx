@@ -32,6 +32,11 @@ import Sidebar from "./components/Sidebar.jsx";
 import ListingDetailPage from "./components/ListingDetailPage.jsx";
 import ChatLauncher from "./components/ChatLauncher.jsx";
 import { Footer2 } from "./components/ui/footer-2.tsx";
+import { BusinessCtaBand } from "./components/ui/business-cta-band.tsx";
+import { HomeCtaBand } from "./components/ui/home-cta-band.tsx";
+import { EventsCtaBand } from "./components/ui/events-cta-band.tsx";
+import { AboutCtaBand } from "./components/ui/about-cta-band.tsx";
+import { ContactCtaBand } from "./components/ui/contact-cta-band.tsx";
 import AccountPanel from "./components/AccountPanel.jsx";
 import BusinessRegistrationFlow from "./components/BusinessRegistrationFlow.jsx";
 import CartDrawer from "./components/CartDrawer.jsx";
@@ -3708,6 +3713,8 @@ export default function AshantiHub() {
               <button onClick={()=>setShowReferral(true)} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"9px 22px",fontWeight:900,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>Get My Referral Code →</button>
             </div>
           )}
+
+          <HomeCtaBand/>
         </>
       )}
 
@@ -3913,16 +3920,7 @@ export default function AshantiHub() {
           <div style={{height:10,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
 
           {/* CTA */}
-          <div style={{background:C.void,padding:"28px 20px",textAlign:"center"}}>
-            <div style={{fontSize:"1.8rem",marginBottom:6}}>🏪</div>
-            <h3 style={{color:C.gold,margin:"0 0 6px",fontSize:"1rem"}}>Own a Business in Ashanti?</h3>
-            <p style={{color:C.lightGold,fontSize:"0.78rem",margin:"0 0 14px",opacity:0.85}}>First 3 months FREE. Support-backed listings.</p>
-            <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
-              <button onClick={()=>setPage("register")} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"10px 22px",fontWeight:900,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>Register Your Business →</button>
-              <button onClick={()=>setShowBizDash(true)} style={{background:"transparent",color:C.lightGold,border:"1.5px solid #ffffff44",borderRadius:30,padding:"10px 22px",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>🏪 Go to my Business Dashboard</button>
-              <button onClick={()=>setShowPayments(true)} style={{background:"transparent",color:C.lightGold,border:"1.5px solid #ffffff44",borderRadius:30,padding:"10px 22px",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>💳 Payments</button>
-            </div>
-          </div>
+          <BusinessCtaBand onRegister={()=>setPage("register")}/>
         </>
       )}
 
@@ -4049,6 +4047,8 @@ export default function AshantiHub() {
             </div>
           </div>
           )}
+
+          <EventsCtaBand imageUrl={KUMASI_PHOTOS.akwasidae} onSubmitEvent={()=>setShowEventSubmit(true)}/>
         </>
       )}
 
@@ -4077,11 +4077,11 @@ export default function AshantiHub() {
               </div>
             </div>
           ))}
-          <div style={{textAlign:"center",marginTop:8,display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
-            {!user&&<button onClick={()=>setAuthModal("signup")} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"10px 22px",fontWeight:900,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>Create Free Account</button>}
-            <button onClick={()=>setPage("register")} style={{background:C.kente2,color:"white",border:"none",borderRadius:30,padding:"10px 22px",fontWeight:900,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>Register Business</button>
-          </div>
         </div>
+      )}
+
+      {page==="about"&&(
+        <AboutCtaBand user={user} onCreateAccount={()=>setAuthModal("signup")} onRegister={()=>setPage("register")}/>
       )}
 
       {/* Contact page */}
@@ -4108,12 +4108,17 @@ export default function AshantiHub() {
               </div>
             ))}
           </div>
-
-          <div style={{textAlign:"center",display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
-            <WABtn phone="233244000000" name="AshantiHub Support" style={{fontSize:"0.8rem",padding:"10px 20px"}}/>
-            {!user&&<button onClick={()=>setAuthModal("signup")} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"10px 22px",fontWeight:900,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>Create Free Account</button>}
-          </div>
         </div>
+      )}
+
+      {page==="contact"&&(
+        <ContactCtaBand
+          user={user}
+          onCreateAccount={()=>setAuthModal("signup")}
+          whatsappPhone="233244000000"
+          whatsappName="AshantiHub Support"
+          WhatsAppButton={WABtn}
+        />
       )}
 
       {/* Footer — every page except the redesigned full-viewport home landing page */}
