@@ -1,30 +1,52 @@
 import { useState, useEffect, useRef } from "react";
+import { useLocation, useNavigate, useMatch } from "react-router-dom";
 import { useCategories } from "./hooks/useCategories.js";
 import { useZones } from "./hooks/useZones.js";
 import { useListings } from "./hooks/useListings.js";
 import { useListing } from "./hooks/useListing.js";
+import { useEvents } from "./hooks/useEvents.js";
 import { useAuth } from "./hooks/useAuth.js";
 import { useTheme } from "./hooks/useTheme.js";
 import { useKYCQueue } from "./hooks/useKYCQueue.js";
 import { useModerationQueue } from "./hooks/useModerationQueue.js";
+import { useHeroModerationQueue } from "./hooks/useHeroModerationQueue.js";
 import { useCustomers } from "./hooks/useCustomers.js";
 import { useBusinessOwners } from "./hooks/useBusinessOwners.js";
 import { useStaffRoster } from "./hooks/useStaffRoster.js";
 import { useMyListings } from "./hooks/useMyListings.js";
+import { useMyHeroSubmission } from "./hooks/useMyHeroSubmission.js";
 import { useBusinessProfile } from "./hooks/useBusinessProfile.js";
 import { useSubscriptionPlans } from "./hooks/useSubscriptionPlans.js";
 import { useMySubscription } from "./hooks/useMySubscription.js";
 import { useMyTransactions } from "./hooks/useMyTransactions.js";
 import { useMyCreditScore } from "./hooks/useMyCreditScore.js";
+import { useCart } from "./hooks/useCart.js";
+import { useSiteSettings } from "./hooks/useSiteSettings.js";
+import { useReviewsModerationQueue } from "./hooks/useReviewsModerationQueue.js";
+import { useListingReviews } from "./hooks/useListingReviews.js";
+import { useReviewEligibility } from "./hooks/useReviewEligibility.js";
 import { apiPost, apiPatch } from "./apiClient.js";
-import { C } from "./theme.js";
+import { C, CURRENCIES } from "./theme.js";
 import Flag from "./components/Flag.jsx";
 import Navbar from "./components/Navbar.jsx";
 import Hero from "./components/Hero.jsx";
+import HeroCarousel from "./components/HeroCarousel.jsx";
+import Sidebar from "./components/Sidebar.jsx";
+import ListingDetailPage from "./components/ListingDetailPage.jsx";
 import ChatLauncher from "./components/ChatLauncher.jsx";
-import Footer from "./components/Footer.jsx";
+import { Footer2 } from "./components/ui/footer-2.tsx";
+import { BusinessCtaBand } from "./components/ui/business-cta-band.tsx";
+import { HomeCtaBand } from "./components/ui/home-cta-band.tsx";
+import { EventsCtaBand } from "./components/ui/events-cta-band.tsx";
+import { AboutCtaBand } from "./components/ui/about-cta-band.tsx";
+import { ContactCtaBand } from "./components/ui/contact-cta-band.tsx";
 import AccountPanel from "./components/AccountPanel.jsx";
 import BusinessRegistrationFlow from "./components/BusinessRegistrationFlow.jsx";
+import CartDrawer from "./components/CartDrawer.jsx";
+import EventHeroCarousel from "./components/EventHeroCarousel.jsx";
+import EventCard from "./components/EventCard.jsx";
+import EventDetailPage from "./components/EventDetailPage.jsx";
+import EventSubmissionPanel from "./components/EventSubmissionPanel.jsx";
 
 // ─── Credit Scoring System ────────────────────────────────────────────────────
 const LENDING_PARTNERS = [
@@ -604,7 +626,13 @@ const MOMO_NETWORKS = [
 // Invoices tab was dropped rather than left as dead mock UI.
 
 // ─── MoMo Payment Component ───────────────────────────────────────────────────
-function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose }) {
+// Exported (like Card/groupCategoriesByKind below) so it's reusable
+// from frontend/components/* (CartDrawer's checkout step, Phase 4 —
+// docs/BUSINESS_EVENTS_ROADMAP.md) without duplicating the simulated-payment
+// UI. Passed down as a `PaymentComponent` prop rather than imported directly,
+// same "avoid an App.jsx <-> components/ circular import" convention as
+// ListingDetailPage's `CardComponent` prop.
+export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose }) {
   const [step, setStep] = useState(1);
   const [network, setNetwork] = useState(null);
   const [phone, setPhone] = useState("");
@@ -1106,16 +1134,7 @@ function PaymentDashboard({ onClose }) {
   );
 }
 
-const MOCK_REVIEWS = {
-  1:[
-    {id:1,author:"Emma Thompson",country:"🇬🇧",rating:5,text:"Absolutely stunning hotel. The kente decor is breathtaking and staff were incredibly welcoming.",date:"2026-05-28",helpful:12},
-    {id:2,author:"Hans Mueller",country:"🇩🇪",rating:4,text:"Great location near the palace. Breakfast could be improved but overall wonderful stay.",date:"2026-05-15",helpful:8},
-    {id:3,author:"Kwame Asante",country:"🇬🇭",rating:5,text:"Best hotel in Kumasi! Felt like royalty. Will definitely return for Akwasidae.",date:"2026-05-10",helpful:15},
-  ],
-};
-
 const KUMASI_ZONES = ["All Zones","Manhyia","Adum","Kejetia","Asokwa","Nhyiaeso","Bantama","Suame","Bonwire","Citywide"];
-const CURRENCIES = {GHS:1, USD:0.067, GBP:0.052, EUR:0.061};
 
 // ─── Real Kumasi Photos ───────────────────────────────────────────────────────
 const KUMASI_PHOTOS = {
@@ -1167,39 +1186,47 @@ function CookieBanner({onAccept,onDecline}) {
 
 // ─── Reviews Modal ────────────────────────────────────────────────────────────
 // ─── In-Platform Messaging System ─────────────────────────────────────────────
+// Fraud-prevention (docs/UI_MODERNIZATION_ROADMAP.md Phase F): businesses can
+// no longer be messaged directly, in-app or via WhatsApp. Every conversation
+// here is with AshantiHub Support *about* a business/listing/event — staff
+// relay to and from the business on the customer's behalf — never a direct
+// customer<->business channel. `businessName`/`businessImg` are kept as the
+// "what this thread is about" context (shown as a "Re:" line), not as who
+// the customer is chatting with; `from` is "customer" or "support" (never
+// "business") to keep that honest in the transcript itself.
 const MOCK_CONVERSATIONS = [
   {
     id:1, businessId:1, businessName:"Royal Ashanti Lodge", businessImg:"🏰",
-    lastMessage:"Thank you for your enquiry! We have availability for your dates.", lastTime:"10:34 AM",
+    lastMessage:"Good news — Royal Ashanti Lodge has availability for your dates!", lastTime:"10:34 AM",
     unread:1, status:"online",
     messages:[
-      {id:1,from:"customer",text:"Hello! I'd like to book a Deluxe Suite for June 20–23. Do you have availability?",time:"10:20 AM",read:true},
-      {id:2,from:"business",text:"Akwaaba! Yes we have the Deluxe Suite available for those dates. The rate is GHS 750/night. Shall I reserve it for you?",time:"10:28 AM",read:true},
+      {id:1,from:"customer",text:"Hello! I'd like to book a Deluxe Suite at Royal Ashanti Lodge for June 20–23. Do they have availability?",time:"10:20 AM",read:true},
+      {id:2,from:"support",text:"Akwaaba! We've checked with Royal Ashanti Lodge — they have the Deluxe Suite available for those dates. The rate is GHS 750/night. Shall we confirm the booking for you?",time:"10:28 AM",read:true},
       {id:3,from:"customer",text:"That's perfect! Is breakfast included?",time:"10:30 AM",read:true},
-      {id:4,from:"business",text:"Thank you for your enquiry! We have availability for your dates.",time:"10:34 AM",read:false},
+      {id:4,from:"support",text:"Good news — Royal Ashanti Lodge has availability for your dates! We've confirmed breakfast is included and will send your booking reference shortly.",time:"10:34 AM",read:false},
     ]
   },
   {
     id:2, businessId:7, businessName:"Kente Palace Weavers", businessImg:"🧶",
-    lastMessage:"Your kente cloth is ready for collection!", lastTime:"Yesterday",
+    lastMessage:"Your kente cloth is ready for collection — details from Kente Palace Weavers below!", lastTime:"Yesterday",
     unread:2, status:"offline",
     messages:[
-      {id:1,from:"customer",text:"Do you ship internationally to the UK?",time:"Yesterday 2:15 PM",read:true},
-      {id:2,from:"business",text:"Yes! We ship via DHL. Delivery takes 5–7 days to UK. We can also arrange custom kente patterns.",time:"Yesterday 3:00 PM",read:true},
+      {id:1,from:"customer",text:"Do you know if Kente Palace Weavers ship internationally to the UK?",time:"Yesterday 2:15 PM",read:true},
+      {id:2,from:"support",text:"Yes! Kente Palace Weavers ship via DHL — delivery takes 5–7 days to the UK. They can also arrange custom kente patterns.",time:"Yesterday 3:00 PM",read:true},
       {id:3,from:"customer",text:"Wonderful! I'd like to order 3 yards in blue and gold royal pattern.",time:"Yesterday 3:30 PM",read:true},
-      {id:4,from:"business",text:"Your kente cloth is ready for collection!",time:"Yesterday 4:00 PM",read:false},
-      {id:5,from:"business",text:"We have also prepared a gift package for you. Total: GHS 450 + GHS 80 shipping.",time:"Yesterday 4:02 PM",read:false},
+      {id:4,from:"support",text:"We've passed that on — your kente cloth is ready for collection! Kente Palace Weavers have also prepared a gift package for you.",time:"Yesterday 4:00 PM",read:false},
+      {id:5,from:"support",text:"Total: GHS 450 + GHS 80 shipping. Let us know if you'd like us to confirm shipping on your behalf.",time:"Yesterday 4:02 PM",read:false},
     ]
   },
   {
     id:3, businessId:3, businessName:"Manhyia Palace Experience", businessImg:"👑",
-    lastMessage:"Your tour is confirmed for June 22 at 9:00 AM!", lastTime:"2 days ago",
+    lastMessage:"Your tour with Manhyia Palace Experience is confirmed for June 22 at 9:00 AM!", lastTime:"2 days ago",
     unread:0, status:"online",
     messages:[
-      {id:1,from:"customer",text:"I'd like to book the Manhyia Palace tour for 2 people on June 22.",time:"2 days ago",read:true},
-      {id:2,from:"business",text:"Akwaaba! The Akwasidae Festival tour is our most popular. GHS 80/person includes guide and entrance. Please confirm your names.",time:"2 days ago",read:true},
+      {id:1,from:"customer",text:"I'd like to book the Manhyia Palace Experience tour for 2 people on June 22.",time:"2 days ago",read:true},
+      {id:2,from:"support",text:"Akwaaba! The Akwasidae Festival tour is their most popular. GHS 80/person includes guide and entrance. Please confirm your names and we'll book it with them.",time:"2 days ago",read:true},
       {id:3,from:"customer",text:"Emma Thompson and Hans Mueller.",time:"2 days ago",read:true},
-      {id:4,from:"business",text:"Your tour is confirmed for June 22 at 9:00 AM!",time:"2 days ago",read:true},
+      {id:4,from:"support",text:"Your tour with Manhyia Palace Experience is confirmed for June 22 at 9:00 AM!",time:"2 days ago",read:true},
     ]
   },
 ];
@@ -1254,14 +1281,16 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
     setActiveConv(prev => ({...prev, messages:[...prev.messages,msg], lastMessage:newMessage, lastTime:"Just now"}));
     setNewMessage("");
     setShowQuickReplies(false);
-    // Simulate business auto-reply after 2 seconds
+    // Simulate an AshantiHub Support auto-reply after 2 seconds — staff relay
+    // to/from the business, never a direct customer<->business channel
+    // (fraud-prevention, docs/UI_MODERNIZATION_ROADMAP.md Phase F).
     setTimeout(() => {
       const autoReplies = [
-        "Thank you for your message! We will get back to you shortly. 🙏",
-        "Akwaaba! We have received your message and will respond within 30 minutes.",
-        "Thank you! A team member will assist you shortly. Meanwhile, feel free to visit our listing on AshantiHub.",
+        "Thank you for your message! We'll pass this on and get back to you shortly. 🙏",
+        "Akwaaba! We've received your message and will follow up with the business within 30 minutes.",
+        "Thank you! A support team member will assist you shortly.",
       ];
-      const reply = { id:Date.now()+1, from:"business", text:autoReplies[Math.floor(Math.random()*autoReplies.length)], time:new Date().toLocaleTimeString("en-GH",{hour:"2-digit",minute:"2-digit"}), read:false, isAuto:true };
+      const reply = { id:Date.now()+1, from:"support", text:autoReplies[Math.floor(Math.random()*autoReplies.length)], time:new Date().toLocaleTimeString("en-GH",{hour:"2-digit",minute:"2-digit"}), read:false, isAuto:true };
       setConversations(convs => convs.map(c =>
         c.id===activeConv.id ? {...c, messages:[...c.messages,reply], lastMessage:reply.text, lastTime:"Just now"} : c
       ));
@@ -1319,9 +1348,10 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
                   </div>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
-                      <span style={{fontWeight:800,fontSize:"0.78rem",color:C.darkBrown,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{conv.businessName}</span>
+                      <span style={{fontWeight:800,fontSize:"0.78rem",color:C.darkBrown,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>AshantiHub Support</span>
                       <span style={{fontSize:"0.6rem",color:"#aaa",flexShrink:0,marginLeft:4}}>{conv.lastTime}</span>
                     </div>
+                    <div style={{fontSize:"0.64rem",color:C.deepGold,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>Re: {conv.businessName}</div>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                       <span style={{fontSize:"0.68rem",color:"#888",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{conv.lastMessage}</span>
                       {conv.unread>0&&<span style={{background:C.kente2,color:"white",borderRadius:"50%",width:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.58rem",fontWeight:900,flexShrink:0,marginLeft:4}}>{conv.unread}</span>}
@@ -1355,19 +1385,13 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
                   <div style={{position:"absolute",bottom:1,right:1,width:10,height:10,borderRadius:"50%",background:activeConv.status==="online"?"#22c55e":"#aaa",border:"2px solid white"}}/>
                 </div>
                 <div style={{flex:1}}>
-                  <div style={{fontWeight:900,fontSize:"0.88rem",color:C.darkBrown}}>{activeConv.businessName}</div>
+                  <div style={{fontWeight:900,fontSize:"0.88rem",color:C.darkBrown}}>AshantiHub Support</div>
+                  <div style={{fontSize:"0.68rem",color:C.deepGold,fontWeight:700,marginBottom:1}}>Re: {activeConv.businessName}</div>
                   <div style={{fontSize:"0.65rem",color:activeConv.status==="online"?"#22c55e":"#aaa",fontWeight:600}}>
-                    {activeConv.status==="online"?"● Online now":"● Offline — usually replies within 1 hour"}
+                    {activeConv.status==="online"?"● Support team online now":"● Support team offline — usually replies within 1 hour"}
                   </div>
                 </div>
                 <div style={{display:"flex",gap:8}}>
-                  {/* WhatsApp fallback */}
-                  <a href={`https://wa.me/233244000000?text=${encodeURIComponent(`Hello ${activeConv.businessName}! I found you on AshantiHub.`)}`}
-                    target="_blank" rel="noopener noreferrer"
-                    style={{background:C.whatsapp,color:"white",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,textDecoration:"none",display:"flex",alignItems:"center",gap:4}}>
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                    WhatsApp
-                  </a>
                   <button onClick={onClose} style={{background:"#f0f0f0",border:"none",borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#666",fontSize:"0.9rem"}}>✕</button>
                 </div>
               </div>
@@ -1381,8 +1405,8 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
 
                 {activeConv.messages.map(msg=>(
                   <div key={msg.id} style={{display:"flex",justifyContent:msg.from==="customer"?"flex-end":"flex-start",alignItems:"flex-end",gap:8}}>
-                    {msg.from==="business"&&(
-                      <div style={{width:28,height:28,borderRadius:"50%",background:`${C.gold}20`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.9rem",flexShrink:0}}>{activeConv.businessImg}</div>
+                    {msg.from==="support"&&(
+                      <div style={{width:28,height:28,borderRadius:"50%",background:`${C.gold}20`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.9rem",flexShrink:0}}>🎧</div>
                     )}
                     <div style={{maxWidth:"72%"}}>
                       <div style={{
@@ -1428,7 +1452,7 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
               <div style={{padding:"12px 14px",borderTop:"1px solid #f0f0f0",background:"white"}}>
                 {!user&&(
                   <div style={{background:`${C.kente1}12`,border:`1px solid ${C.kente1}33`,borderRadius:10,padding:"8px 12px",marginBottom:10,fontSize:"0.72rem",color:C.kente1,fontWeight:600,textAlign:"center"}}>
-                    ⚠️ Sign in to send messages to businesses
+                    ⚠️ Sign in to message AshantiHub Support
                   </div>
                 )}
                 <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
@@ -1443,7 +1467,7 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
                       value={newMessage}
                       onChange={e=>setNewMessage(e.target.value)}
                       onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(user)sendMessage();}}}
-                      placeholder={user?"Type a message...":"Sign in to message businesses"}
+                      placeholder={user?"Type a message...":"Sign in to message AshantiHub Support"}
                       disabled={!user}
                       style={{flex:1,border:"none",background:"transparent",outline:"none",fontSize:"0.82rem",fontFamily:"inherit",color:C.darkBrown}}/>
                     {newMessage&&(
@@ -1458,7 +1482,7 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
                   </button>
                 </div>
                 <div style={{fontSize:"0.6rem",color:"#aaa",marginTop:6,textAlign:"center"}}>
-                  💡 Messages are stored on AshantiHub • Also chat on <span style={{color:C.whatsapp,fontWeight:700}}>WhatsApp</span>
+                  💡 Messages are stored on AshantiHub • Handled by AshantiHub Support, who relay to the business on your behalf
                 </div>
               </div>
             </>
@@ -1466,7 +1490,7 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
             <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,color:"#aaa"}}>
               <div style={{fontSize:"3rem"}}>💬</div>
               <div style={{fontWeight:700,fontSize:"0.88rem",color:C.darkBrown}}>Your Messages</div>
-              <div style={{fontSize:"0.76rem",textAlign:"center",maxWidth:240,lineHeight:1.6}}>Select a conversation or start a new one to message a Kumasi business directly</div>
+              <div style={{fontSize:"0.76rem",textAlign:"center",maxWidth:240,lineHeight:1.6}}>Select a conversation or start a new one to reach AshantiHub Support about a Kumasi business</div>
             </div>
           )}
         </div>
@@ -1475,18 +1499,36 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
   );
 }
 
-function ReviewsModal({item,user,onClose,onSubmit}) {
+function ReviewsModal({item,user,onClose}) {
   const [newRating,setNewRating]=useState(0);
   const [newText,setNewText]=useState("");
   const [hover,setHover]=useState(0);
   const [submitted,setSubmitted]=useState(false);
-  const reviews = MOCK_REVIEWS[item.id] || [];
+  const [actionError,setActionError]=useState(null);
+  // GET /api/reviews/listing/{id}/ — real paginated review data (Phase 4),
+  // replacing the old MOCK_REVIEWS[item.id] lookup. avg_rating/review_count
+  // are top-level fields on this same envelope, not read off `item` anymore.
+  const reviewsQuery = useListingReviews(item.id);
+  // Only meaningfully fires for a signed-in user — useReviewEligibility's
+  // own `enabled` guard (targetType/targetId != null) naturally short-circuits
+  // it for a signed-out visitor since we pass an empty object in that case.
+  const eligibility = useReviewEligibility(user ? {targetType:"listing",targetId:item.id} : {});
+  const reviews = reviewsQuery.data?.results || [];
+  const avgRating = reviewsQuery.data?.avg_rating ?? 0;
+  const reviewCount = reviewsQuery.data?.review_count ?? 0;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if(!user){alert("Please sign in to leave a review");return;}
     if(!newRating||!newText.trim())return;
-    onSubmit({author:user.fullName,rating:newRating,text:newText,date:new Date().toISOString().split("T")[0],helpful:0});
-    setSubmitted(true);
+    setActionError(null);
+    try {
+      await apiPost("/api/reviews/",{target_type:"listing",target_id:item.id,rating:newRating,comment:newText});
+      setSubmitted(true);
+      reviewsQuery.refetch();
+      eligibility.refetch();
+    } catch(err) {
+      setActionError("Could not submit your review. Please try again.");
+    }
   };
 
   return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
@@ -1495,8 +1537,8 @@ function ReviewsModal({item,user,onClose,onSubmit}) {
         <button onClick={onClose} style={{position:"absolute",top:14,right:16,background:"none",border:"none",color:"white",fontSize:"1.4rem",cursor:"pointer",opacity:0.7}}>✕</button>
         <div style={{color:C.gold,fontWeight:900,fontSize:"1rem",marginBottom:4}}>{item.name}</div>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <Stars rating={item.rating}/>
-          <span style={{color:"white",fontSize:"0.78rem",opacity:0.8}}>{item.reviews} reviews</span>
+          <Stars rating={avgRating}/>
+          <span style={{color:"white",fontSize:"0.78rem",opacity:0.8}}>{reviewCount} reviews</span>
         </div>
       </div>
       <div style={{padding:"20px 24px"}}>
@@ -1504,16 +1546,28 @@ function ReviewsModal({item,user,onClose,onSubmit}) {
         {!submitted ? (
           <div style={{background:`${C.gold}12`,border:`1.5px solid ${C.gold}33`,borderRadius:14,padding:"16px",marginBottom:20}}>
             <div style={{fontWeight:800,color:C.darkBrown,marginBottom:10,fontSize:"0.85rem"}}>✍️ Write a Review</div>
-            <div style={{display:"flex",gap:4,marginBottom:12}}>
-              {[1,2,3,4,5].map(s=>(
-                <span key={s} onClick={()=>setNewRating(s)} onMouseEnter={()=>setHover(s)} onMouseLeave={()=>setHover(0)}
-                  style={{fontSize:"1.8rem",cursor:"pointer",color:(hover||newRating)>=s?C.gold:"#ddd",transition:"color 0.1s"}}>★</span>
-              ))}
-            </div>
-            <textarea value={newText} onChange={e=>setNewText(e.target.value)} placeholder="Share your experience..."
-              style={{...iStyle,height:80,resize:"vertical",marginBottom:10}}/>
-            <button onClick={handleSubmit} style={{...btnP(!!newRating&&newText.length>10),padding:"9px"}}>Submit Review</button>
-            {!user&&<div style={{fontSize:"0.7rem",color:"#aaa",marginTop:6,textAlign:"center"}}>Sign in to leave a review</div>}
+            {!user ? (
+              <div style={{fontSize:"0.7rem",color:"#aaa",textAlign:"center"}}>Sign in to leave a review</div>
+            ) : eligibility.isLoading ? (
+              <div style={{fontSize:"0.75rem",color:"#aaa",textAlign:"center"}}>Checking your eligibility…</div>
+            ) : eligibility.data?.eligible ? (
+              <>
+                <div style={{display:"flex",gap:4,marginBottom:12}}>
+                  {[1,2,3,4,5].map(s=>(
+                    <span key={s} onClick={()=>setNewRating(s)} onMouseEnter={()=>setHover(s)} onMouseLeave={()=>setHover(0)}
+                      style={{fontSize:"1.8rem",cursor:"pointer",color:(hover||newRating)>=s?C.gold:"#ddd",transition:"color 0.1s"}}>★</span>
+                  ))}
+                </div>
+                <textarea value={newText} onChange={e=>setNewText(e.target.value)} placeholder="Share your experience..."
+                  style={{...iStyle,height:80,resize:"vertical",marginBottom:10}}/>
+                {actionError&&<div style={{color:"#dc2626",fontSize:"0.75rem",marginBottom:8}}>{actionError}</div>}
+                <button onClick={handleSubmit} style={{...btnP(!!newRating&&newText.length>10),padding:"9px"}}>Submit Review</button>
+              </>
+            ) : eligibility.data?.already_reviewed ? (
+              <div style={{fontSize:"0.75rem",color:"#aaa",textAlign:"center"}}>You've already reviewed this.</div>
+            ) : (
+              <div style={{fontSize:"0.75rem",color:"#aaa",textAlign:"center"}}>You can review this after a completed purchase.</div>
+            )}
           </div>
         ) : (
           <div style={{background:"#f0fdf4",border:"1.5px solid #22c55e44",borderRadius:14,padding:"16px",marginBottom:20,textAlign:"center"}}>
@@ -1522,22 +1576,25 @@ function ReviewsModal({item,user,onClose,onSubmit}) {
           </div>
         )}
         {/* Existing Reviews */}
-        <div style={{fontWeight:800,color:C.darkBrown,marginBottom:12,fontSize:"0.85rem"}}>Customer Reviews ({reviews.length})</div>
-        {reviews.length===0&&<div style={{color:"#aaa",fontSize:"0.8rem",textAlign:"center",padding:"20px"}}>No reviews yet. Be the first!</div>}
+        <div style={{fontWeight:800,color:C.darkBrown,marginBottom:12,fontSize:"0.85rem"}}>Customer Reviews ({reviewCount})</div>
+        {reviewsQuery.isLoading&&<div style={{color:"#aaa",fontSize:"0.8rem",textAlign:"center",padding:"20px"}}>Loading reviews…</div>}
+        {!reviewsQuery.isLoading&&reviews.length===0&&<div style={{color:"#aaa",fontSize:"0.8rem",textAlign:"center",padding:"20px"}}>No reviews yet. Be the first!</div>}
         {reviews.map(r=>(
           <div key={r.id} style={{borderBottom:"1px solid #f0f0f0",paddingBottom:14,marginBottom:14}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <div style={{width:30,height:30,borderRadius:"50%",background:`${C.gold}22`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:C.deepGold,fontSize:"0.8rem"}}>{r.author[0]}</div>
+                <div style={{width:30,height:30,borderRadius:"50%",background:`${C.gold}22`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:C.deepGold,fontSize:"0.8rem"}}>{r.author_name?.[0]}</div>
                 <div>
-                  <div style={{fontWeight:700,fontSize:"0.8rem"}}>{r.author} {r.country}</div>
+                  <div style={{fontWeight:700,fontSize:"0.8rem"}}>{r.author_name}</div>
                   <Stars rating={r.rating} size="0.7rem"/>
                 </div>
               </div>
-              <div style={{fontSize:"0.65rem",color:"#aaa"}}>{r.date}</div>
+              <div style={{fontSize:"0.65rem",color:"#aaa",display:"flex",alignItems:"center",gap:5}}>
+                {r.created_at?.slice(0,10)}
+                {r.verified&&<span style={{background:"#22c55e22",color:"#22c55e",borderRadius:20,padding:"2px 7px",fontSize:"0.58rem",fontWeight:700}}>✓ Verified Purchase</span>}
+              </div>
             </div>
-            <div style={{fontSize:"0.78rem",color:"#444",lineHeight:1.6,marginBottom:6}}>{r.text}</div>
-            <div style={{fontSize:"0.65rem",color:"#aaa"}}>👍 {r.helpful} found this helpful</div>
+            <div style={{fontSize:"0.78rem",color:"#444",lineHeight:1.6}}>{r.comment}</div>
           </div>
         ))}
       </div>
@@ -1615,8 +1672,25 @@ function MoMoModal({item,user,onClose}) {
   </div>;
 }
 
+// ─── Category strip grouping (Business tab, Phase 3) ──────────────────────
+// Splits the flat `useCategories()` list into Products/Services rows by
+// `Category.kind` (docs/BUSINESS_EVENTS_ROADMAP.md Phase 1/3).
+// `kind==="event"` categories are dropped entirely — the Events tab is a
+// separate, still-static page until Phase 6. Categories with no explicit
+// `kind` (older/seed data, or the test-suite's MSW mocks) default into
+// Products, mirroring Category.kind's own backend default of "product".
+// Exported (like Card above) so it's unit-testable without having
+// to render the whole AshantiHub tree.
+export function groupCategoriesByKind(categories) {
+  const list = categories || [];
+  return {
+    productCategories: list.filter(c=>c.kind!=="event"&&c.kind!=="service"),
+    serviceCategories: list.filter(c=>c.kind==="service"),
+  };
+}
+
 // ─── Business Card ─────────────────────────────────────────────────────────────
-export function Card({item,accentColor,onWhatsApp,user,favourites,onFavourite,currency,onMessage}) {
+export function Card({item,accentColor,user,favourites,onFavourite,currency,onMessage,onOpen}) {
   const [showReviews,setShowReviews]=useState(false);
   const [showPay,setShowPay]=useState(false);
   const [photoIdx,setPhotoIdx]=useState(0);
@@ -1630,13 +1704,14 @@ export function Card({item,accentColor,onWhatsApp,user,favourites,onFavourite,cu
   };
 
   return <>
-    {showReviews&&<ReviewsModal item={item} user={user} onClose={()=>setShowReviews(false)} onSubmit={()=>{}}/>}
+    {showReviews&&<ReviewsModal item={item} user={user} onClose={()=>setShowReviews(false)}/>}
     {showPay&&<MoMoModal item={item} user={user} onClose={()=>setShowPay(false)}/>}
     <div style={{background:"rgba(255,255,255,0.04)",backdropFilter:"blur(6px)",borderRadius:16,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.3)",border:`1.5px solid ${accentColor}55`,transition:"transform 0.2s"}}
       onMouseEnter={e=>e.currentTarget.style.transform="translateY(-4px)"}
       onMouseLeave={e=>e.currentTarget.style.transform=""}>
-      {/* Photo strip */}
-      <div style={{height:140,position:"relative",overflow:"hidden",background:`linear-gradient(135deg,${accentColor}22,${accentColor}44)`}}>
+      {/* Photo strip — clicking it opens the PDP (ListingDetailPage) when onOpen is provided;
+          the favourite/share buttons inside it stopPropagation so they don't also trigger it. */}
+      <div onClick={()=>onOpen&&onOpen(item.id)} style={{height:140,position:"relative",overflow:"hidden",background:`linear-gradient(135deg,${accentColor}22,${accentColor}44)`,cursor:onOpen?"pointer":"default"}}>
         {/* Real photo if available, fallback to category emoji */}
         {item.main_photo ? (
           <img src={item.main_photo} alt={item.name}
@@ -1654,30 +1729,30 @@ export function Card({item,accentColor,onWhatsApp,user,favourites,onFavourite,cu
         {item.photos?.length>1&&(
           <div style={{position:"absolute",bottom:6,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4,zIndex:2}}>
             {item.photos.map((p,i)=>(
-              <img key={p.id} src={p.image} alt="" onClick={()=>setPhotoIdx(i)}
+              <img key={p.id} src={p.image} alt="" onClick={(e)=>{e.stopPropagation();setPhotoIdx(i);}}
                 style={{width:16,height:16,borderRadius:"50%",objectFit:"cover",border:photoIdx===i?"2px solid white":"1px solid rgba(255,255,255,0.6)",cursor:"pointer"}}/>
             ))}
           </div>
         )}
         <span style={{position:"absolute",top:8,right:8,background:accentColor,color:"white",fontSize:"0.6rem",fontWeight:700,padding:"2px 7px",borderRadius:20,zIndex:2}}>{item.tag}</span>
-        <button onClick={()=>onFavourite(item.id)} style={{position:"absolute",top:8,left:8,background:"rgba(255,255,255,0.9)",border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.9rem",zIndex:2}}>
+        <button onClick={(e)=>{e.stopPropagation();onFavourite(item.id);}} style={{position:"absolute",top:8,left:8,background:"rgba(255,255,255,0.9)",border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.9rem",zIndex:2}}>
           {isFav?"❤️":"🤍"}
         </button>
-        <button onClick={()=>{if(navigator.share)navigator.share({title:item.name,text:item.description,url:window.location.href});else navigator.clipboard?.writeText(`Check out ${item.name} on AshantiHub!`);}}
+        <button onClick={(e)=>{e.stopPropagation();if(navigator.share)navigator.share({title:item.name,text:item.description,url:window.location.href});else navigator.clipboard?.writeText(`Check out ${item.name} on AshantiHub!`);}}
           style={{position:"absolute",bottom:8,right:8,background:"rgba(255,255,255,0.9)",border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.8rem",zIndex:2}}>
           📤
         </button>
       </div>
       <div style={{padding:"12px 14px"}}>
-        <div style={{fontWeight:700,fontSize:"0.9rem",color:"white",marginBottom:2}}>{item.name}</div>
-        {/* Reviews are out of scope until a future sub-project builds them; the real Listing
-            model has no rating/reviews field, so this whole slot is hidden rather than
-            rendering broken placeholders (empty stars, "( reviews)") for every real listing. */}
-        {item.rating!=null&&(
+        <div onClick={()=>onOpen&&onOpen(item.id)} style={{fontWeight:700,fontSize:"0.9rem",color:"white",marginBottom:2,cursor:onOpen?"pointer":"default"}}>{item.name}</div>
+        {/* Listing's public serializer now returns avg_rating/review_count directly
+            (Phase 4 of the reviews/ratings work) — a listing with zero reviews shows
+            no stars at all rather than "0.0 ★ (0 reviews)". */}
+        {item.review_count>0&&(
           <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
-            <Stars rating={item.rating}/>
+            <Stars rating={item.avg_rating}/>
             <button onClick={()=>setShowReviews(true)} style={{background:"none",border:"none",color:accentColor,fontSize:"0.68rem",cursor:"pointer",fontWeight:600,padding:0}}>
-              ({item.reviews} reviews)
+              ({item.review_count} reviews)
             </button>
           </div>
         )}
@@ -1686,11 +1761,14 @@ export function Card({item,accentColor,onWhatsApp,user,favourites,onFavourite,cu
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6,flexWrap:"wrap"}}>
           <span style={{fontWeight:800,color:accentColor,fontSize:"0.8rem"}}>{displayPrice()}</span>
           <div style={{display:"flex",gap:5}}>
+            {/* Businesses can no longer be contacted directly (fraud-prevention —
+                docs/UI_MODERNIZATION_ROADMAP.md Phase F): this opens MessagingCenter
+                framed as an AshantiHub Support conversation about this listing,
+                not a direct line to the business. */}
             <button onClick={()=>{ if(onMessage) onMessage(item); }}
               style={{background:`${C.kente3}15`,color:C.kente3,border:`1px solid ${C.kente3}33`,borderRadius:20,padding:"5px 10px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
-              💬 Message
+              🎧 Contact Support
             </button>
-            <WABtn phone={item.contact_phone} name={item.name} style={{fontSize:"0.68rem",padding:"5px 10px"}}/>
             <button onClick={()=>setShowPay(true)} style={{background:accentColor,color:"white",border:"none",borderRadius:20,padding:"5px 10px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>
               💳 Pay
             </button>
@@ -1701,60 +1779,6 @@ export function Card({item,accentColor,onWhatsApp,user,favourites,onFavourite,cu
   </>;
 }
 
-// ─── Map View ─────────────────────────────────────────────────────────────────
-export function MapView({listings}) {
-  const filtered = listings.filter(i=>i.lat && i.lng);
-
-  return <div style={{background:"rgba(255,255,255,0.04)",backdropFilter:"blur(6px)",borderRadius:16,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.3)",marginBottom:20,border:`1px solid ${C.gold}33`}}>
-    <div style={{background:`linear-gradient(135deg,${C.darkBrown},${C.kente3})`,padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-      <div style={{color:C.gold,fontWeight:800,fontSize:"0.88rem"}}>🗺️ Businesses on Map — Kumasi</div>
-      <span style={{color:"white",fontSize:"0.7rem",opacity:0.8}}>{filtered.length} locations</span>
-    </div>
-    {/* Simulated map grid */}
-    <div style={{position:"relative",height:280,background:"#e8f4e8",overflow:"hidden"}}>
-      {/* Road grid simulation */}
-      <svg style={{position:"absolute",inset:0,width:"100%",height:"100%",opacity:0.3}}>
-        {[60,120,180,240].map(y=><line key={y} x1="0" y1={y} x2="800" y2={y} stroke="#666" strokeWidth="1.5"/>)}
-        {[80,160,240,320,400,480].map(x=><line key={x} x1={x} y1="0" x2={x} y2="400" stroke="#666" strokeWidth="1.5"/>)}
-        <text x="140" y="25" fontSize="11" fill="#555" fontWeight="bold">MANHYIA</text>
-        <text x="200" y="145" fontSize="11" fill="#555" fontWeight="bold">ADUM</text>
-        <text x="60" y="200" fontSize="10" fill="#555">KEJETIA</text>
-        <text x="320" y="200" fontSize="10" fill="#555">NHYIAESO</text>
-        <text x="150" y="255" fontSize="10" fill="#555">BANTAMA</text>
-        <text x="40" y="265" fontSize="9" fill="#555">SUAME</text>
-      </svg>
-      {/* Business pins */}
-      {filtered.slice(0,12).map((item,i)=>{
-        const x = 40 + ((parseFloat(item.lng)+1.63)*2000)%480;
-        const y = 20 + ((parseFloat(item.lat)-6.68)*3000)%220;
-        const catColor = item.category?.color||C.gold;
-        return <div key={item.id} style={{position:"absolute",left:`${Math.min(Math.max(x,20),460)}px`,top:`${Math.min(Math.max(y,10),240)}px`,zIndex:10}}>
-          <div style={{background:catColor,color:"white",borderRadius:"50% 50% 50% 0",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.75rem",boxShadow:"0 2px 8px rgba(0,0,0,0.3)",transform:"rotate(-45deg)",cursor:"pointer"}}
-            title={item.name}>
-            <span style={{transform:"rotate(45deg)"}}>{item.category?.icon}</span>
-          </div>
-          <span style={{position:"absolute",width:1,height:1,padding:0,margin:-1,overflow:"hidden",clip:"rect(0,0,0,0)",whiteSpace:"nowrap",border:0}}>{item.name}</span>
-        </div>;
-      })}
-      {/* Manhyia Palace marker */}
-      <div style={{position:"absolute",left:"42%",top:"12%",zIndex:20}}>
-        <div style={{background:C.gold,color:C.darkBrown,borderRadius:8,padding:"3px 8px",fontSize:"0.65rem",fontWeight:900,boxShadow:"0 2px 8px rgba(0,0,0,0.3)",whiteSpace:"nowrap"}}>👑 Manhyia Palace</div>
-      </div>
-      <div style={{position:"absolute",bottom:8,right:8,background:"rgba(255,255,255,0.9)",borderRadius:8,padding:"4px 8px",fontSize:"0.6rem",color:"#555"}}>
-        📍 Kumasi, Ghana
-      </div>
-    </div>
-    {/* Legend — derived from the categories actually present among the plotted pins (no more global CATEGORIES lookup) */}
-    <div style={{padding:"10px 16px",display:"flex",gap:12,flexWrap:"wrap",borderTop:"1px solid #f0f0f0"}}>
-      {Array.from(new Map(filtered.map(i=>[i.category?.slug, i.category]).filter(([slug])=>slug)).values()).slice(0,7).map(cat=>(
-        <div key={cat.slug} style={{display:"flex",alignItems:"center",gap:4,fontSize:"0.65rem",color:"#555"}}>
-          <div style={{width:10,height:10,borderRadius:"50%",background:cat.color}}/>
-          {cat.label}
-        </div>
-      ))}
-    </div>
-  </div>;
-}
 
 // ─── Referral Modal ───────────────────────────────────────────────────────────
 function ReferralModal({user,onClose}) {
@@ -1920,14 +1944,6 @@ function NotificationsPanel({user,onClose}) {
   </div>;
 }
 
-// Popular-search quick-fill suggestions for the Business page's search bar.
-const SEARCH_SUGGESTIONS = [
-  "fufu restaurant", "hotel near palace", "kente cloth", "car repair suame",
-  "24 hour pharmacy", "wedding planner", "funeral organizer", "cheap transport",
-  "rooftop bar", "fresh groceries", "dental clinic", "gym", "tuk-tuk",
-  "tour guide", "adinkra crafts", "petrol station", "open now", "highly rated",
-];
-
 // ─── Language Toggle ──────────────────────────────────────────────────────────
 const TRANSLATIONS = {
   en:{search:"Search businesses...",signup:"Create Free Account",login:"Sign In",register:"Register Your Business",categories:"Categories",bookNow:"Book",pay:"Pay"},
@@ -1947,6 +1963,21 @@ function ComingSoonPanel({theme,feature}) {
     <div style={{fontSize:"2rem",marginBottom:10}}>🚧</div>
     <div style={{color:theme.text,fontWeight:800,fontSize:"0.9rem",marginBottom:4}}>Coming soon</div>
     <div style={{color:theme.textMuted,fontSize:"0.78rem"}}>{feature} isn't built yet.</div>
+  </div>;
+}
+
+// Promotions went live as a business-owner self-serve feature in
+// docs/BUSINESS_EVENTS_ROADMAP.md Phase 5 (BusinessDashboard's Listings &
+// Prices tab — "📣 Promote"), so the old ComingSoonPanel placeholder here
+// would now be actively misleading to staff. There's no backend "list all
+// promotions" endpoint in this phase's scope (only the purchase endpoint and
+// the `is_promoted` flag on listings), so this stays a minimal informational
+// panel rather than a fabricated admin promotions-management UI.
+function PromotionsInfoPanel({theme}) {
+  return <div style={{background:theme.cardBg,borderRadius:16,padding:"40px 24px",textAlign:"center",border:`1px solid ${theme.border}`}}>
+    <div style={{fontSize:"2rem",marginBottom:10}}>📣</div>
+    <div style={{color:theme.text,fontWeight:800,fontSize:"0.9rem",marginBottom:4}}>Promotions are self-serve</div>
+    <div style={{color:theme.textMuted,fontSize:"0.78rem",maxWidth:420,margin:"0 auto"}}>Business owners now purchase Featured and Boost promotions directly from their own dashboard's Listings &amp; Prices tab. There's nothing for staff to manage here yet — a future phase may add an admin view of active promotions.</div>
   </div>;
 }
 
@@ -2060,6 +2091,126 @@ function ListingsModerationPanel({theme}) {
   </div>;
 }
 
+function HeroApprovalPanel({theme}) {
+  const {data,isLoading,isError,refetch} = useHeroModerationQueue();
+  const [rejectingId,setRejectingId] = useState(null);
+  const [rejectReason,setRejectReason] = useState("");
+  const [actionError,setActionError] = useState(null);
+
+  const approve = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/listings/hero/${id}/approve/`,{}); refetch(); }
+    catch (err) { setActionError("Could not approve this submission."); }
+  };
+  const reject = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/listings/hero/${id}/reject/`,{reason:rejectReason}); setRejectingId(null); setRejectReason(""); refetch(); }
+    catch (err) { setActionError("Could not reject this submission."); }
+  };
+
+  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
+  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the hero approval queue.</div>;
+  const items = data||[];
+
+  return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
+    <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Pending hero submissions ({items.length})</div>
+    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
+    {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No pending submissions.</div>}
+    {items.map(s=>(
+      <div key={s.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}>
+          <div style={{display:"flex",gap:10}}>
+            {s.media_type==="video" ? (
+              <video src={s.media} muted style={{width:80,height:80,objectFit:"cover",borderRadius:10,background:"#000",flexShrink:0}}/>
+            ) : (
+              <img src={s.media} alt={s.caption||""} style={{width:80,height:80,objectFit:"cover",borderRadius:10,flexShrink:0}}/>
+            )}
+            <div>
+              <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>{s.business_owner_name}</div>
+              <div style={{color:theme.textMuted,fontSize:"0.72rem",margin:"3px 0",maxWidth:320}}>"{s.caption}"</div>
+              <div style={{color:theme.textMuted,fontSize:"0.65rem"}}>Submitted {s.submitted_at?.slice(0,10)}</div>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>approve(s.id)} style={{background:"#22c55e",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✓ Approve</button>
+            <button onClick={()=>setRejectingId(s.id)} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✕ Reject</button>
+          </div>
+        </div>
+        {rejectingId===s.id&&<div style={{marginTop:8,display:"flex",gap:6}}>
+          <input value={rejectReason} onChange={e=>setRejectReason(e.target.value)} placeholder="Rejection reason" style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+          <button onClick={()=>reject(s.id)} disabled={!rejectReason} style={{background:"#dc2626",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:rejectReason?"pointer":"default"}}>Confirm reject</button>
+        </div>}
+      </div>
+    ))}
+  </div>;
+}
+
+const REVIEW_STATUS_META = {
+  published: { label:"Published", color:"#22c55e" },
+  hidden: { label:"Hidden", color:"#dc2626" },
+};
+
+function ReviewsModerationPanel({theme}) {
+  // GET /api/reviews/moderation/ is paginated ({count, next, previous,
+  // results}), unlike ListingsModerationPanel/HeroApprovalPanel's plain-array
+  // endpoints — so `items` reads data?.results, not data||[]. This is also a
+  // full queue (every review regardless of status), not a pending-only one —
+  // moderation here is reactive-by-browsing, hide/unhide rather than
+  // approve/reject.
+  const {data,isLoading,isError,refetch} = useReviewsModerationQueue();
+  const [hidingId,setHidingId] = useState(null);
+  const [hideReason,setHideReason] = useState("");
+  const [actionError,setActionError] = useState(null);
+
+  const hide = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/reviews/moderation/${id}/hide/`,{reason:hideReason}); setHidingId(null); setHideReason(""); refetch(); }
+    catch (err) { setActionError("Could not hide this review."); }
+  };
+  const unhide = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/reviews/moderation/${id}/unhide/`,{}); refetch(); }
+    catch (err) { setActionError("Could not unhide this review."); }
+  };
+
+  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
+  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the reviews queue.</div>;
+  const items = data?.results||[];
+
+  return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
+    <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Reviews ({data?.count??items.length})</div>
+    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
+    {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No reviews yet.</div>}
+    {items.map(r=>{
+      const statusMeta = REVIEW_STATUS_META[r.status]||{label:r.status,color:"#888"};
+      return (
+      <div key={r.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,flexWrap:"wrap"}}>
+          <div>
+            <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>
+              {"★".repeat(r.rating)}{"☆".repeat(5-r.rating)} <span style={{color:theme.textMuted,fontWeight:400}}>({r.target_type})</span>
+              {r.verified&&<span style={{background:"#22c55e22",color:"#22c55e",borderRadius:20,padding:"2px 8px",fontSize:"0.6rem",fontWeight:700,marginLeft:6}}>✓ Verified</span>}
+              <span style={{background:`${statusMeta.color}22`,color:statusMeta.color,borderRadius:20,padding:"2px 8px",fontSize:"0.6rem",fontWeight:700,marginLeft:6}}>{statusMeta.label}</span>
+            </div>
+            {r.comment&&<div style={{color:theme.textMuted,fontSize:"0.75rem",margin:"4px 0",maxWidth:420}}>"{r.comment}"</div>}
+            <div style={{color:theme.textMuted,fontSize:"0.65rem"}}>{r.author_name} • {r.created_at?.slice(0,10)}</div>
+            {r.status==="hidden"&&r.hidden_reason&&<div style={{color:"#dc2626",fontSize:"0.65rem",marginTop:2}}>Hidden: {r.hidden_reason}</div>}
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            {r.status==="published"&&<button onClick={()=>setHidingId(r.id)} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>🚫 Hide</button>}
+            {r.status==="hidden"&&<button onClick={()=>unhide(r.id)} style={{background:"#22c55e",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>↩️ Unhide</button>}
+          </div>
+        </div>
+        {hidingId===r.id&&<div style={{marginTop:8,display:"flex",gap:6}}>
+          <input value={hideReason} onChange={e=>setHideReason(e.target.value)} placeholder="Reason for hiding" style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+          <button onClick={()=>hide(r.id)} disabled={!hideReason} style={{background:"#dc2626",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:hideReason?"pointer":"default"}}>Confirm hide</button>
+        </div>}
+      </div>
+      );
+    })}
+  </div>;
+}
+
 function UsersPanel({theme}) {
   const [subTab,setSubTab] = useState("customers");
   const customers = useCustomers();
@@ -2142,6 +2293,73 @@ function CategoriesZonesPanel({theme,auth}) {
   </div>;
 }
 
+const SITE_SETTINGS_FIELDS = [
+  {key:"contact_email",label:"Contact email",placeholder:"hello@ashantihub.com"},
+  {key:"contact_phone",label:"Contact phone",placeholder:"+233 20 111 2233"},
+  {key:"contact_address",label:"Contact address",placeholder:"Adum, Kumasi"},
+  {key:"facebook_url",label:"Facebook URL",placeholder:"https://facebook.com/ashantihub"},
+  {key:"instagram_url",label:"Instagram URL",placeholder:"https://instagram.com/ashantihub"},
+  {key:"linkedin_url",label:"LinkedIn URL",placeholder:"https://linkedin.com/company/ashantihub"},
+  {key:"twitter_url",label:"Twitter / X URL",placeholder:"https://x.com/ashantihub"},
+  {key:"warranty_returns_policy",label:"Warranty & returns policy",placeholder:"e.g. Items may be returned within 7 days if unopened...",multiline:true},
+  {key:"service_dispute_policy",label:"Service satisfaction & dispute policy",placeholder:"e.g. If a service doesn't meet expectations, contact AshantiHub Support within 48 hours...",multiline:true},
+];
+
+function SiteSettingsForm({theme,initial,onSaved}) {
+  // `initial` is only passed once the GET has resolved (see SiteSettingsPanel
+  // below), so this lazy useState seed is race-free — no useEffect re-seeding
+  // needed, and no risk of clobbering in-flight edits.
+  const [form,setForm] = useState(() => ({...initial}));
+  const [actionError,setActionError] = useState(null);
+  const [saved,setSaved] = useState(false);
+
+  const showToast = () => { setSaved(true); setTimeout(()=>setSaved(false),2500); };
+
+  const setField = (key,value) => setForm(f=>({...f,[key]:value}));
+
+  const save = async () => {
+    setActionError(null);
+    try {
+      await apiPatch("/api/core/site-settings/", {...form});
+      showToast();
+      onSaved();
+    } catch (err) {
+      setActionError("Could not save site settings. Please try again.");
+    }
+  };
+
+  return <div>
+    {saved&&<div style={{position:"fixed",top:70,right:20,background:"#22c55e",color:"white",borderRadius:12,padding:"10px 18px",fontSize:"0.8rem",fontWeight:700,zIndex:999}}>✓ Saved!</div>}
+    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
+    <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`,maxWidth:520}}>
+      <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:12}}>Footer contact & social links</div>
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {SITE_SETTINGS_FIELDS.map(f=>(
+          <label key={f.key} style={{display:"flex",flexDirection:"column",gap:4}}>
+            <span style={{color:theme.textMuted,fontSize:"0.68rem",fontWeight:700}}>{f.label}</span>
+            {f.multiline ? (
+              <textarea value={form[f.key]||""} onChange={e=>setField(f.key,e.target.value)} placeholder={f.placeholder} rows={4} style={{padding:"8px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.78rem",fontFamily:"inherit",background:theme.pageBg,color:theme.text,resize:"vertical"}}/>
+            ) : (
+              <input value={form[f.key]||""} onChange={e=>setField(f.key,e.target.value)} placeholder={f.placeholder} style={{padding:"8px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.78rem",fontFamily:"inherit",background:theme.pageBg,color:theme.text}}/>
+            )}
+          </label>
+        ))}
+      </div>
+      <button onClick={save} style={{marginTop:16,background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"8px 20px",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>Save</button>
+    </div>
+  </div>;
+}
+
+function SiteSettingsPanel({theme}) {
+  const settings = useSiteSettings();
+
+  return <div>
+    {settings.isLoading&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>}
+    {settings.isError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>Could not load site settings.</div>}
+    {settings.data&&<SiteSettingsForm theme={theme} initial={settings.data} onSaved={settings.refetch}/>}
+  </div>;
+}
+
 const STATUS_COLORS = {active:"#22c55e",invited:"#f59e0b",invite_expired:"#dc2626"};
 
 function StaffManagementPanel({theme}) {
@@ -2209,8 +2427,11 @@ export function StaffDashboard({auth,onExit}) {
     {id:"overview",icon:"📊",label:"Overview",show:true},
     {id:"kyc",icon:"🪪",label:"KYC Queue",show:auth.hasPermission("kyc.approve")},
     {id:"moderation",icon:"📋",label:"Listings Moderation",show:auth.hasPermission("listings.moderate")},
+    {id:"hero",icon:"🌟",label:"Hero Approval",show:auth.hasPermission("hero_media.approve")},
+    {id:"reviews",icon:"⭐",label:"Reviews",show:auth.hasPermission("reviews.moderate")},
     {id:"users",icon:"👥",label:"Users",show:auth.hasPermission("users.view")},
     {id:"categories-zones",icon:"🗂️",label:"Categories & Zones",show:auth.hasPermission("categories.manage")||auth.hasPermission("zones.manage")},
+    {id:"site-settings",icon:"🧭",label:"Site Settings",show:auth.hasPermission("site_settings.manage")},
     {id:"staff",icon:"🛡️",label:"Staff Management",show:auth.hasPermission("staff.manage")},
     {id:"escrow",icon:"💰",label:"Escrow Ledger",show:auth.hasPermission("escrow.view")||auth.hasPermission("escrow.release")},
     {id:"disputes",icon:"⚖️",label:"Disputes",show:auth.hasPermission("disputes.resolve_financial")||auth.hasPermission("disputes.flag")},
@@ -2253,13 +2474,16 @@ export function StaffDashboard({auth,onExit}) {
         {activeTab==="overview"&&<StaffOverviewPanel auth={auth} theme={t} roleColor={roleColor}/>}
         {activeTab==="kyc"&&<KYCQueuePanel theme={t}/>}
         {activeTab==="moderation"&&<ListingsModerationPanel theme={t}/>}
+        {activeTab==="hero"&&<HeroApprovalPanel theme={t}/>}
+        {activeTab==="reviews"&&<ReviewsModerationPanel theme={t}/>}
         {activeTab==="users"&&<UsersPanel theme={t}/>}
         {activeTab==="categories-zones"&&<CategoriesZonesPanel theme={t} auth={auth}/>}
+        {activeTab==="site-settings"&&<SiteSettingsPanel theme={t}/>}
         {activeTab==="staff"&&<StaffManagementPanel theme={t}/>}
         {activeTab==="escrow"&&<ComingSoonPanel theme={t} feature="Escrow Ledger"/>}
         {activeTab==="disputes"&&<ComingSoonPanel theme={t} feature="Disputes"/>}
         {activeTab==="transactions"&&<ComingSoonPanel theme={t} feature="Transactions Report"/>}
-        {activeTab==="promotions"&&<ComingSoonPanel theme={t} feature="Promotions"/>}
+        {activeTab==="promotions"&&<PromotionsInfoPanel theme={t}/>}
         {activeTab==="analytics"&&<ComingSoonPanel theme={t} feature="Analytics"/>}
         {activeTab==="messaging"&&<ComingSoonPanel theme={t} feature="Messaging / Tickets"/>}
       </div>
@@ -2284,6 +2508,12 @@ const LISTING_STATUS_META = {
   rejected: { label:"Rejected", color:"#ef4444" },
 };
 
+const HERO_STATUS_META = {
+  pending: { label:"Pending Review", color:"#f59e0b" },
+  approved: { label:"Live", color:"#22c55e" },
+  rejected: { label:"Rejected", color:"#ef4444" },
+};
+
 export function BusinessDashboard({ onExit, user, auth }) {
   const [bizTab, setBizTab] = useState("overview");
   const [editingId, setEditingId] = useState(null);
@@ -2294,6 +2524,31 @@ export function BusinessDashboard({ onExit, user, auth }) {
   const [showPayModal, setShowPayModal] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [resubmitting, setResubmitting] = useState(false);
+  // Hero Spotlight (docs/BUSINESS_EVENTS_ROADMAP.md Phase 2). heroSubmitPhoto/
+  // heroCaption/heroActionError/heroExtendDays/showHeroExtendPay are local UI
+  // state for the submit/extend forms; the submission's actual status is
+  // sourced from useMyHeroSubmission() below, which survives a page reload
+  // (refetched after a successful submit/extend, same pattern as the rest of
+  // this dashboard's mutation handling).
+  const [heroSubmitPhoto, setHeroSubmitPhoto] = useState(null);
+  const [heroCaption, setHeroCaption] = useState("");
+  const [heroActionError, setHeroActionError] = useState(null);
+  const [heroExtendDays, setHeroExtendDays] = useState(7);
+  const [showHeroExtendPay, setShowHeroExtendPay] = useState(false);
+  // Promotions (docs/BUSINESS_EVENTS_ROADMAP.md Phase 5). promote*/
+  // showPromotePay mirror the Hero Spotlight submit/extend state shape above
+  // — small inline-form local UI state. There's no "my promotions" list
+  // endpoint in this phase (only the purchase call), so unlike heroSubmission
+  // there's nothing to source from a query; promoteResult just holds the
+  // just-created Promotion (with its server-computed amount_paid) between the
+  // POST and the payment modal it opens.
+  const [promoteListingId, setPromoteListingId] = useState(null);
+  const [promoteKind, setPromoteKind] = useState("featured");
+  const [promoteDays, setPromoteDays] = useState(7);
+  const [promoteKeywords, setPromoteKeywords] = useState("");
+  const [promoteActionError, setPromoteActionError] = useState(null);
+  const [promoteResult, setPromoteResult] = useState(null);
+  const [showPromotePay, setShowPromotePay] = useState(false);
   const isVerified = user?.kycStatus === "verified";
   const isRejected = user?.kycStatus === "rejected";
 
@@ -2301,6 +2556,7 @@ export function BusinessDashboard({ onExit, user, auth }) {
   const { data: profile, isLoading: profileLoading, isError: profileError } = useBusinessProfile();
   const { data: subPlans, isLoading: plansLoading, isError: plansError } = useSubscriptionPlans();
   const { data: subscription, isLoading: subLoading, isError: subError, refetch: refetchSubscription } = useMySubscription();
+  const { data: heroSubmission, refetch: refetchHeroSubmission } = useMyHeroSubmission();
 
   if (resubmitting) {
     return <BusinessRegistrationFlow
@@ -2323,6 +2579,8 @@ export function BusinessDashboard({ onExit, user, auth }) {
         name: editForm.name,
         price_amount: editForm.price_amount,
         price_unit: editForm.price_unit,
+        specs: editForm.specs,
+        service_duration: editForm.service_duration,
       });
       setEditingId(null);
       showToast();
@@ -2341,6 +2599,68 @@ export function BusinessDashboard({ onExit, user, auth }) {
     } catch (err) {
       setActionError("Could not submit this listing for review.");
     }
+  };
+
+  const submitHeroPhoto = async () => {
+    if(!heroSubmitPhoto||!heroCaption.trim()) return;
+    setHeroActionError(null);
+    try {
+      await apiPost("/api/hero/submit/", {
+        listing_photo: heroSubmitPhoto.id,
+        caption: heroCaption.trim(),
+      });
+      setHeroSubmitPhoto(null);
+      setHeroCaption("");
+      showToast();
+      refetchHeroSubmission();
+    } catch (err) {
+      setHeroActionError("Could not submit this photo for Hero — you may already have a pending or active submission.");
+    }
+  };
+
+  const extendHeroSubmission = async (ref) => {
+    setShowHeroExtendPay(false);
+    if(!heroSubmission?.id) return;
+    setHeroActionError(null);
+    try {
+      await apiPost(`/api/hero/${heroSubmission.id}/extend/`, { days: heroExtendDays });
+      showToast();
+      refetchHeroSubmission();
+    } catch (err) {
+      setHeroActionError("Payment was confirmed but we couldn't extend your Hero Spotlight. Please contact support with reference " + ref + ".");
+    }
+  };
+
+  // Per the backend contract (docs/BUSINESS_EVENTS_ROADMAP.md Phase 5), a
+  // single POST /api/listings/{id}/promote/ call both validates and applies
+  // the promotion, returning amount_paid — unlike the hero-extend flow above,
+  // there's no separate "confirm after payment" write. The MoMoPayment modal
+  // here is purely the established simulated-pay UI step; on success we just
+  // refetch + toast, we don't call the API again.
+  const submitPromotion = async () => {
+    if (!promoteListingId) return;
+    if (promoteKind === "boost" && !promoteKeywords.trim()) return;
+    setPromoteActionError(null);
+    try {
+      const body = { kind: promoteKind, days: promoteDays };
+      if (promoteKind === "boost") body.keywords = promoteKeywords.trim();
+      const res = await apiPost(`/api/listings/${promoteListingId}/promote/`, body);
+      setPromoteResult(res);
+      setPromoteListingId(null);
+      setShowPromotePay(true);
+    } catch (err) {
+      setPromoteActionError("Could not create this promotion — it may already be active on this listing, or the listing isn't published yet.");
+    }
+  };
+
+  const confirmPromotion = () => {
+    setShowPromotePay(false);
+    setPromoteResult(null);
+    setPromoteKind("featured");
+    setPromoteDays(7);
+    setPromoteKeywords("");
+    showToast();
+    refetchListings();
   };
 
   const recordSubscriptionPayment = async (ref) => {
@@ -2378,6 +2698,12 @@ export function BusinessDashboard({ onExit, user, auth }) {
     <div style={{fontFamily:"'Georgia',serif",background:"#f4f5f7",minHeight:"100vh"}}>
       {showPayModal&&selectedPlan&&(
         <MoMoPayment amount={billingCycle==="monthly"?Number(selectedPlan.monthly_price):Number(selectedPlan.annual_price)} purpose={`AshantiHub ${selectedPlan.name} Plan`} businessName={user?.fullName||"Your Business"} onSuccess={recordSubscriptionPayment} onClose={()=>setShowPayModal(false)}/>
+      )}
+      {showHeroExtendPay&&heroSubmission?.id&&(
+        <MoMoPayment amount={heroExtendDays*5} purpose={`Extend Hero Spotlight — ${heroExtendDays} day${heroExtendDays===1?"":"s"}`} businessName={user?.fullName||"Your Business"} onSuccess={extendHeroSubmission} onClose={()=>setShowHeroExtendPay(false)}/>
+      )}
+      {showPromotePay&&promoteResult&&(
+        <MoMoPayment amount={Number(promoteResult.amount_paid)} purpose={`${promoteResult.kind==="boost"?"Boost":"Featured"} promotion — ${promoteResult.kind==="boost"?promoteResult.keywords:"listing"}`} businessName={user?.fullName||"Your Business"} onSuccess={confirmPromotion} onClose={()=>setShowPromotePay(false)}/>
       )}
       <div style={{background:`linear-gradient(135deg,${C.darkBrown},${C.black})`,padding:"0 16px",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 20px rgba(0,0,0,0.4)"}}>
         <div style={{position:"absolute",top:0,left:0,right:0,height:4,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
@@ -2482,6 +2808,75 @@ export function BusinessDashboard({ onExit, user, auth }) {
               <h2 style={{margin:0,color:C.darkBrown,fontWeight:900,fontSize:"0.98rem"}}>🏷️ Listings & Prices</h2>
               <a href="https://wa.me/233244000000?text=UPDATE%3A%20" target="_blank" rel="noopener noreferrer" style={{background:C.whatsapp,color:"white",borderRadius:20,padding:"6px 14px",fontSize:"0.7rem",fontWeight:700,textDecoration:"none"}}>📱 WhatsApp Update</a>
             </div>
+
+            {heroSubmitPhoto&&(
+              <div style={{background:"white",borderRadius:14,padding:"14px 16px",marginBottom:14,boxShadow:"0 2px 12px rgba(0,0,0,0.07)",border:`2px solid ${C.gold}`}}>
+                <div style={{display:"flex",gap:12,alignItems:"flex-start",flexWrap:"wrap"}}>
+                  <img src={heroSubmitPhoto.image} alt="" style={{width:64,height:64,objectFit:"cover",borderRadius:10,flexShrink:0}}/>
+                  <div style={{flex:1,minWidth:200}}>
+                    <div style={{fontWeight:800,fontSize:"0.82rem",color:C.darkBrown,marginBottom:6}}>🌟 Submit this photo for Hero Spotlight</div>
+                    <textarea value={heroCaption} onChange={e=>setHeroCaption(e.target.value.slice(0,140))} maxLength={140} placeholder="A one-sentence caption for the hero slider…" style={{width:"100%",minHeight:56,padding:8,borderRadius:8,border:"1.5px solid #ddd",fontSize:"0.78rem",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+                    <div style={{fontSize:"0.62rem",color:"#aaa",textAlign:"right",marginBottom:8}}>{heroCaption.length}/140</div>
+                    {heroActionError&&<div style={{color:"#dc2626",fontSize:"0.72rem",marginBottom:8}}>{heroActionError}</div>}
+                    <div style={{display:"flex",gap:6}}>
+                      <button onClick={()=>{setHeroSubmitPhoto(null);setHeroCaption("");setHeroActionError(null);}} style={{flex:1,background:"#f0f0f0",color:"#666",border:"none",borderRadius:20,padding:"8px",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                      <button onClick={submitHeroPhoto} disabled={!heroCaption.trim()} style={{flex:2,background:heroCaption.trim()?C.gold:"#eee",color:heroCaption.trim()?C.darkBrown:"#aaa",border:"none",borderRadius:20,padding:"8px",fontWeight:900,cursor:heroCaption.trim()?"pointer":"default",fontFamily:"inherit"}}>✓ Submit for Hero</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {heroSubmission?.id&&!heroSubmitPhoto&&(
+              <div style={{background:"white",borderRadius:14,padding:"14px 16px",marginBottom:14,boxShadow:"0 2px 12px rgba(0,0,0,0.07)",borderLeft:`4px solid ${HERO_STATUS_META[heroSubmission.status]?.color||"#888"}`}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                  <div>
+                    <div style={{fontWeight:800,fontSize:"0.82rem",color:C.darkBrown}}>🌟 Hero Spotlight — <span style={{color:HERO_STATUS_META[heroSubmission.status]?.color}}>{HERO_STATUS_META[heroSubmission.status]?.label||heroSubmission.status}</span></div>
+                    {heroSubmission.caption&&<div style={{fontSize:"0.7rem",color:"#888",marginTop:2}}>"{heroSubmission.caption}"</div>}
+                    {heroSubmission.status==="approved"&&heroSubmission.expires_at&&<div style={{fontSize:"0.68rem",color:"#888",marginTop:2}}>Live until {heroSubmission.expires_at.slice(0,10)}</div>}
+                    {heroSubmission.status==="rejected"&&heroSubmission.rejection_reason&&<div style={{fontSize:"0.68rem",color:"#dc2626",marginTop:2}}>Rejected: {heroSubmission.rejection_reason}</div>}
+                  </div>
+                  {heroSubmission.status==="approved"&&(
+                    <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                      <input type="number" min={1} value={heroExtendDays} onChange={e=>setHeroExtendDays(Math.max(1,Number(e.target.value)||1))} style={{width:56,padding:"6px 8px",borderRadius:8,border:"1.5px solid #ddd",fontSize:"0.75rem",fontFamily:"inherit"}}/>
+                      <button onClick={()=>setShowHeroExtendPay(true)} style={{background:C.kente2,color:"white",border:"none",borderRadius:20,padding:"7px 14px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>💰 Extend {heroExtendDays}d</button>
+                    </div>
+                  )}
+                </div>
+                {heroActionError&&<div style={{color:"#dc2626",fontSize:"0.72rem",marginTop:8}}>{heroActionError}</div>}
+              </div>
+            )}
+
+            {promoteListingId&&(
+              <div style={{background:"white",borderRadius:14,padding:"14px 16px",marginBottom:14,boxShadow:"0 2px 12px rgba(0,0,0,0.07)",border:`2px solid ${C.kente1}`}}>
+                <div style={{fontWeight:800,fontSize:"0.82rem",color:C.darkBrown,marginBottom:10}}>📣 Promote "{listingList.find(l=>l.id===promoteListingId)?.name}"</div>
+                <div style={{display:"grid",gridTemplateColumns:promoteKind==="boost"?"1fr 1fr 1fr":"1fr 1fr",gap:10,marginBottom:10}}>
+                  <div>
+                    <label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,display:"block",marginBottom:3}}>Type</label>
+                    <select value={promoteKind} onChange={e=>setPromoteKind(e.target.value)} style={{width:"100%",padding:"8px",borderRadius:8,border:"1.5px solid #ddd",fontSize:"0.8rem",background:"white",fontFamily:"inherit"}}>
+                      <option value="featured">Featured</option>
+                      <option value="boost">Boost</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,display:"block",marginBottom:3}}>Days</label>
+                    <input type="number" min={1} value={promoteDays} onChange={e=>setPromoteDays(Math.max(1,Number(e.target.value)||1))} style={{width:"100%",padding:"8px",borderRadius:8,border:"1.5px solid #ddd",fontSize:"0.8rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  </div>
+                  {promoteKind==="boost"&&(
+                    <div>
+                      <label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,display:"block",marginBottom:3}}>Keywords</label>
+                      <input value={promoteKeywords} onChange={e=>setPromoteKeywords(e.target.value)} placeholder="e.g. jollof, catering" style={{width:"100%",padding:"8px",borderRadius:8,border:"1.5px solid #ddd",fontSize:"0.8rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                    </div>
+                  )}
+                </div>
+                {promoteActionError&&<div style={{color:"#dc2626",fontSize:"0.72rem",marginBottom:8}}>{promoteActionError}</div>}
+                <div style={{display:"flex",gap:6}}>
+                  <button onClick={()=>{setPromoteListingId(null);setPromoteActionError(null);}} style={{flex:1,background:"#f0f0f0",color:"#666",border:"none",borderRadius:20,padding:"8px",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                  <button onClick={submitPromotion} disabled={promoteKind==="boost"&&!promoteKeywords.trim()} style={{flex:2,background:(promoteKind==="boost"&&!promoteKeywords.trim())?"#eee":C.kente1,color:(promoteKind==="boost"&&!promoteKeywords.trim())?"#aaa":"white",border:"none",borderRadius:20,padding:"8px",fontWeight:900,cursor:(promoteKind==="boost"&&!promoteKeywords.trim())?"default":"pointer",fontFamily:"inherit"}}>📣 Promote {promoteDays}d</button>
+                </div>
+              </div>
+            )}
+
             {listingsLoading&&<div style={{color:"#888",fontSize:"0.8rem"}}>Loading your listings…</div>}
             {listingsError&&<div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load your listings. Make sure you're signed in as a business owner.</div>}
             {!listingsLoading&&!listingsError&&listingList.length===0&&(
@@ -2508,6 +2903,21 @@ export function BusinessDashboard({ onExit, user, auth }) {
                           </select>
                         </div>
                       </div>
+                      <div style={{marginBottom:10}}>
+                        <label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,display:"block",marginBottom:3}}>Service duration (e.g. '1 hour', '2-3 days')</label>
+                        <input value={editForm.service_duration||""} placeholder="e.g. 2 hours" onChange={e=>setEditForm(f=>({...f,service_duration:e.target.value}))} style={{width:"100%",padding:"8px",borderRadius:8,border:"1.5px solid #ddd",fontSize:"0.8rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+                      </div>
+                      <div style={{marginBottom:10}}>
+                        <label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,display:"block",marginBottom:3}}>Specs</label>
+                        {(editForm.specs||[]).map((spec,i)=>(
+                          <div key={i} style={{display:"flex",gap:6,marginBottom:6}}>
+                            <input value={spec.label||""} placeholder="Label (e.g. Material)" onChange={e=>setEditForm(f=>({...f,specs:f.specs.map((s,si)=>si===i?{...s,label:e.target.value}:s)}))} style={{flex:1,padding:"8px",borderRadius:8,border:"1.5px solid #ddd",fontSize:"0.8rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+                            <input value={spec.value||""} placeholder="Value (e.g. Cotton)" onChange={e=>setEditForm(f=>({...f,specs:f.specs.map((s,si)=>si===i?{...s,value:e.target.value}:s)}))} style={{flex:1,padding:"8px",borderRadius:8,border:"1.5px solid #ddd",fontSize:"0.8rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+                            <button onClick={()=>setEditForm(f=>({...f,specs:f.specs.filter((_,si)=>si!==i)}))} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:8,padding:"0 10px",fontWeight:700,cursor:"pointer"}}>✕</button>
+                          </div>
+                        ))}
+                        <button onClick={()=>setEditForm(f=>({...f,specs:[...(f.specs||[]),{label:"",value:""}]}))} style={{background:"none",border:`1.5px dashed ${C.gold}`,color:C.deepGold,borderRadius:8,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Add spec</button>
+                      </div>
                       <div style={{display:"flex",gap:6}}>
                         <button onClick={()=>setEditingId(null)} style={{flex:1,background:"#f0f0f0",color:"#666",border:"none",borderRadius:20,padding:"8px",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
                         <button onClick={()=>saveEdit(item.id)} style={{flex:2,background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"8px",fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>✓ Save</button>
@@ -2522,8 +2932,23 @@ export function BusinessDashboard({ onExit, user, auth }) {
                         {item.status==="rejected"&&item.rejection_reason&&<div style={{fontSize:"0.65rem",color:"#dc2626",marginTop:3}}>Rejected: {item.rejection_reason}</div>}
                       </div>
                       <div style={{display:"flex",gap:6}}>
-                        {canEdit&&<button onClick={()=>{setEditingId(item.id);setEditForm({name:item.name,price_amount:item.price_amount,price_unit:item.price_unit});}} style={{background:`${C.gold}22`,color:C.deepGold,border:"none",borderRadius:20,padding:"6px 12px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>✏️ Edit</button>}
+                        {canEdit&&<button onClick={()=>{setEditingId(item.id);setEditForm({name:item.name,price_amount:item.price_amount,price_unit:item.price_unit,specs:item.specs||[],service_duration:item.service_duration||""});}} style={{background:`${C.gold}22`,color:C.deepGold,border:"none",borderRadius:20,padding:"6px 12px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>✏️ Edit</button>}
                         {(item.status==="draft"||item.status==="rejected")&&<button onClick={()=>submitForReview(item.id)} style={{background:C.kente2,color:"white",border:"none",borderRadius:20,padding:"6px 12px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>📤 Submit for Review</button>}
+                        {item.status==="published"&&<button onClick={()=>{setPromoteListingId(item.id);setPromoteKind("featured");setPromoteDays(7);setPromoteKeywords("");setPromoteActionError(null);}} style={{background:`${C.kente1}22`,color:C.kente1,border:"none",borderRadius:20,padding:"6px 12px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>📣 Promote</button>}
+                      </div>
+                    </div>
+                  )}
+                  {/* Gallery photos — Submit for Hero. */}
+                  {item.photos.length>0&&(
+                    <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #f0f0f0"}}>
+                      <div style={{fontSize:"0.66rem",fontWeight:700,color:C.darkBrown,marginBottom:6}}>📸 Gallery</div>
+                      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                        {item.photos.map(photo=>(
+                          <div key={photo.id} style={{textAlign:"center"}}>
+                            <img src={photo.image} alt="" style={{width:56,height:56,objectFit:"cover",borderRadius:8,border:heroSubmitPhoto?.id===photo.id?`2px solid ${C.gold}`:"1px solid #eee",display:"block"}}/>
+                            <button onClick={()=>{setHeroSubmitPhoto({id:photo.id,image:photo.image,listingId:item.id});setHeroCaption("");setHeroActionError(null);}} style={{display:"block",marginTop:4,background:"none",border:"none",color:C.deepGold,fontSize:"0.6rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}}>🌟 Submit for Hero</button>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -2535,7 +2960,16 @@ export function BusinessDashboard({ onExit, user, auth }) {
 
         {bizTab==="enquiries"&&(
           <>
-            <h2 style={{margin:"0 0 14px",color:C.darkBrown,fontWeight:900,fontSize:"0.98rem"}}>💬 Customer Enquiries</h2>
+            <h2 style={{margin:"0 0 4px",color:C.darkBrown,fontWeight:900,fontSize:"0.98rem"}}>💬 Customer Enquiries</h2>
+            {/* Fraud-prevention (docs/UI_MODERNIZATION_ROADMAP.md Phase F):
+                business owners can no longer reply to a customer's enquiry
+                directly — every enquiry is routed through AshantiHub Support,
+                who relay between the customer and the business. The action
+                below opens a discussion with Support about the enquiry, not
+                a reply back to the customer. */}
+            <div style={{color:"#777",fontSize:"0.76rem",lineHeight:1.6,marginBottom:14}}>
+              For customer safety, enquiries are routed through AshantiHub Support rather than sent to you directly. Discuss or resolve an enquiry with Support below — Support will relay your response to the customer.
+            </div>
             {mockEnquiries.map(e=>(
               <div key={e.id} style={{background:"white",borderRadius:14,padding:"16px",boxShadow:"0 2px 12px rgba(0,0,0,0.07)",marginBottom:10,borderLeft:`4px solid ${e.status==="New"?C.kente1:C.kente2}`}}>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,flexWrap:"wrap",gap:6}}>
@@ -2546,7 +2980,7 @@ export function BusinessDashboard({ onExit, user, auth }) {
                   </div>
                 </div>
                 <div style={{background:"#f9f9f9",borderRadius:8,padding:"9px 12px",fontSize:"0.74rem",color:"#444",lineHeight:1.5,marginBottom:10}}>"{e.message}"</div>
-                <a href={`https://wa.me/233244000000?text=${encodeURIComponent(`Hello ${e.customer.split(" ")[0]}, thank you for your enquiry on AshantiHub!`)}`} target="_blank" rel="noopener noreferrer" style={{display:"inline-flex",alignItems:"center",gap:5,background:C.whatsapp,color:"white",borderRadius:20,padding:"6px 14px",fontSize:"0.7rem",fontWeight:700,textDecoration:"none"}}>📱 Reply on WhatsApp</a>
+                <a href={`https://wa.me/233244000000?text=${encodeURIComponent(`Hello AshantiHub team, I'd like to discuss an enquiry from ${e.customer.split(" ")[0]}: "${e.message}"`)}`} target="_blank" rel="noopener noreferrer" style={{display:"inline-flex",alignItems:"center",gap:5,background:C.whatsapp,color:"white",borderRadius:20,padding:"6px 14px",fontSize:"0.7rem",fontWeight:700,textDecoration:"none"}}>💬 Discuss with AshantiHub Support</a>
               </div>
             ))}
           </>
@@ -2940,7 +3374,7 @@ function FavDrawerItem({id,onRemove}) {
 
 // ─── Listings loading skeleton ────────────────────────────────────────────────
 function ListingsSkeleton() {
-  return <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(245px,1fr))",gap:14}}>
+  return <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>
     {Array.from({length:6}).map((_,i)=>(
       <div key={i} style={{background:"white",borderRadius:16,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.10)"}}>
         <div style={{height:140,background:"#eee"}}/>
@@ -2954,21 +3388,131 @@ function ListingsSkeleton() {
   </div>;
 }
 
+// ─── Routing (docs/UI_MODERNIZATION_ROADMAP.md Phase D) ──────────────────────
+// AshantiHub's `page` state used to be a bare useState with zero URL sync —
+// visiting a path like /business directly, or hard-reloading while on it,
+// always bounced to home because nothing ever read window.location. These
+// two maps are the single source of truth translating between the two:
+// PATH_TO_PAGE for "URL → page" (derived below via useLocation()),
+// PAGE_TO_PATH for "page → URL" (used by the setPage() wrapper below, which
+// is what actually gets handed to Navbar/Footer2/etc. as the `setPage` prop
+// so every existing `setPage("x")` call site — including Navbar.jsx, which
+// is NOT touched by this phase — keeps working unchanged).
+// `isAdmin` stays local state, not a route (see the /staff effects below —
+// it can be set by the 5-click-logo gesture or a staff login while sitting
+// on some other path, not just by URL). `showBizDash`/`showPayments`/
+// `showCredit`/`selectedListingId`/`selectedEventId` were originally scoped
+// out of the first Phase-D slice as local state too, but were brought into
+// real routing in a follow-up slice (see DASH_PATH_TO_FLAG/FLAG_TO_DASH_PATH
+// and the businessDetailMatch/eventDetailMatch useMatch()es below) so every
+// page in the app is hard-reload-safe, per an explicit scope override.
+const PATH_TO_PAGE = {
+  "/": "home",
+  "/business": "business",
+  "/events": "events",
+  "/about": "about",
+  "/contact": "contact",
+  "/register": "register",
+};
+const PAGE_TO_PATH = {
+  home: "/",
+  business: "/business",
+  events: "/events",
+  about: "/about",
+  contact: "/contact",
+  register: "/register",
+};
+// Full-page dashboard "routes" (isAdmin/showBizDash-style early returns) that
+// now have real URLs too. Same two-map convention as PATH_TO_PAGE/
+// PAGE_TO_PATH above, just keyed by the boolean flag name instead of `page`.
+const DASH_PATH_TO_FLAG = {
+  "/business-dashboard": "showBizDash",
+  "/payments": "showPayments",
+  "/credit": "showCredit",
+};
+const FLAG_TO_DASH_PATH = {
+  showBizDash: "/business-dashboard",
+  showPayments: "/payments",
+  showCredit: "/credit",
+};
+// /staff is a real path but not part of the page switch above — it drives
+// `isAdmin`/the staff-login modal instead (see the two effects below), so it
+// must not be treated as a 404 even though it has no PATH_TO_PAGE entry.
+// The three dashboard paths above are static (no :id) so they belong in this
+// same set; /business/:id and /events/:id are dynamic-segment paths handled
+// separately via useMatch() below, since a Set of exact strings can't match
+// them.
+const KNOWN_PATHS = new Set([...Object.keys(PATH_TO_PAGE), ...Object.keys(DASH_PATH_TO_FLAG), "/staff"]);
+
 export default function AshantiHub() {
-  const [page,setPage]=useState("home");
+  const location = useLocation();
+  const navigate = useNavigate();
+  // /business/:id and /events/:id are dynamic-segment paths — useMatch()
+  // (rather than hand-parsing location.pathname, and without introducing
+  // <Routes>/<Route> element matching, which would force splitting
+  // AshantiHub into route-specific components) is the idiomatic way to both
+  // detect "are we on a detail route" and extract the :id param in one shot.
+  const businessDetailMatch = useMatch("/business/:id");
+  const eventDetailMatch = useMatch("/events/:id");
+  // `page` is now derived straight from the URL rather than owned locally —
+  // hard reloading on any of these paths renders that page immediately
+  // instead of bouncing to home. Unrecognized paths (other than /staff, see
+  // above) fall back to "home" here; the real 404 page is rendered by the
+  // `show404` early return further down, which takes precedence.
+  // /business/:id and /events/:id have no PATH_TO_PAGE entry (they're not in
+  // the static map — see businessDetailMatch/eventDetailMatch above), so
+  // they're folded in here: a business/event detail URL is still page
+  // "business"/"events" so the surrounding tab chrome (hero carousel,
+  // banner, search bar, category tabs, CTA footer) stays mounted, exactly as
+  // it already does when selectedListingId/selectedEventId was local state.
+  const page = PATH_TO_PAGE[location.pathname]
+    ?? (businessDetailMatch ? "business" : eventDetailMatch ? "events" : "home");
+  const setPage = (id) => {
+    const path = PAGE_TO_PATH[id] ?? "/";
+    if (location.pathname !== path) navigate(path);
+  };
+  const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch;
   const [authModal,setAuthModal]=useState(null);
   const auth=useAuth();
   const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id,registrationStep:auth.user.registration_step,kycStatus:auth.user.kyc_status,kycRejectionReason:auth.user.kyc_rejection_reason} : null;
+  // Site-wide light/dark toggle (docs/UI_MODERNIZATION_ROADMAP.md Phase E) —
+  // same useTheme() hook StaffDashboard already uses internally, but lifted
+  // here so the customer-facing Navbar can offer the same control. The
+  // `dark` class on <html> is what Tailwind's `dark:` variants (and the CSS
+  // variable swap in index.css's `.dark` block) key off of; this only
+  // affects Tailwind-built surfaces (currently the footer) — the legacy
+  // inline-style `C`-palette surfaces are unaffected by design.
+  const {theme,toggleTheme} = useTheme();
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+  }, [theme]);
   const [legalDoc,setLegalDoc]=useState(null);
-  const [showBizDash,setShowBizDash]=useState(false);
+  // showBizDash/showPayments/showCredit — same "derive from the URL, wrap the
+  // setter in a navigate() closure" pattern as `page`/`setPage` above, so
+  // Navbar.jsx/BusinessRegistrationFlow.jsx/the inline CTA buttons in this
+  // file keep calling setShowBizDash(true)/setShowBizDash(false) etc.
+  // unchanged while the URL (and hard-reload-safety) comes along for free.
+  const showBizDash = location.pathname === FLAG_TO_DASH_PATH.showBizDash;
+  const setShowBizDash = (val) => {
+    const path = val ? FLAG_TO_DASH_PATH.showBizDash : "/";
+    if (val ? !showBizDash : showBizDash) navigate(path);
+  };
+  const showPayments = location.pathname === FLAG_TO_DASH_PATH.showPayments;
+  const setShowPayments = (val) => {
+    const path = val ? FLAG_TO_DASH_PATH.showPayments : "/";
+    if (val ? !showPayments : showPayments) navigate(path);
+  };
+  const showCredit = location.pathname === FLAG_TO_DASH_PATH.showCredit;
+  const setShowCredit = (val) => {
+    const path = val ? FLAG_TO_DASH_PATH.showCredit : "/";
+    if (val ? !showCredit : showCredit) navigate(path);
+  };
   const [isAdmin,setIsAdmin]=useState(false);
-  const [showPayments,setShowPayments]=useState(false);
-  const [showCredit,setShowCredit]=useState(false);
   const [adminClicks,setAdminClicks]=useState(0);
   const [favourites,setFavourites]=useState([]);
   const [showFavs,setShowFavs]=useState(false);
+  const [showCart,setShowCart]=useState(false);
   const [showAccount,setShowAccount]=useState(false);
-  const [showMap,setShowMap]=useState(false);
   const [showReferral,setShowReferral]=useState(false);
   const [showNotifs,setShowNotifs]=useState(false);
   const [currency,setCurrency]=useState("GHS");
@@ -2977,6 +3521,21 @@ export default function AshantiHub() {
 
   // ── Live marketplace data (categories/zones/listings) ─────────────────────
   const [filters, setFilters] = useState({ category: "hotels" });
+  // PDP (ListingDetailPage) selection — mirrors the isAdmin/showBizDash-style
+  // "flag swaps in a full component" convention, but scoped inside the
+  // page==="business" block (see the JSX below) rather than a top-level
+  // early return, so the hero carousel/banner/search/category tabs/CTA
+  // stay mounted around the PDP instead of also disappearing. Now derived
+  // from the /business/:id URL (via businessDetailMatch above) rather than
+  // local state, so a direct/hard-reloaded visit to /business/123 opens the
+  // PDP immediately; the setter is a navigate() closure so Card's
+  // onOpen={(id)=>setSelectedListingId(id)} and ListingDetailPage's own
+  // onOpenListing/onBack call sites need zero changes.
+  const selectedListingId = businessDetailMatch ? businessDetailMatch.params.id : null;
+  const setSelectedListingId = (id) => {
+    const path = id != null ? `/business/${id}` : "/business";
+    if (location.pathname !== path) navigate(path);
+  };
 
   // Free-text search + price inputs are debounced before they hit `filters` (useListings' query
   // key), so a user typing a search term or a price doesn't fire one backend request per keystroke.
@@ -3022,13 +3581,76 @@ export default function AshantiHub() {
     refetch: refetchListings,
   } = useListings(filters);
   const listings = listingsData ? listingsData.pages.flatMap((page) => page.results) : [];
+
+  // ── Events tab (docs/BUSINESS_EVENTS_ROADMAP.md Phase 6) ──────────────────
+  // Same filters-state/debounced-search/PDP-swap conventions as the Business
+  // tab above, kept as its own independent state rather than reusing
+  // `filters`/`selectedListingId` — the two tabs' underlying data (Listing
+  // vs Event) and filter shapes (Event has no price/kind/verified) are
+  // different enough that sharing state would just mean constantly stripping
+  // Business-only fields back out.
+  const [eventFilters, setEventFilters] = useState({});
+  // Same URL-derived pattern as selectedListingId above, backed by
+  // /events/:id via eventDetailMatch instead of /business/:id.
+  const selectedEventId = eventDetailMatch ? eventDetailMatch.params.id : null;
+  const setSelectedEventId = (id) => {
+    const path = id != null ? `/events/${id}` : "/events";
+    if (location.pathname !== path) navigate(path);
+  };
+  const [eventSearchInput, setEventSearchInput] = useState("");
+  const [showEventFilters, setShowEventFilters] = useState(false);
+  const [showEventSubmit, setShowEventSubmit] = useState(false);
+
+  useEffect(()=>{
+    const t=setTimeout(()=>{
+      setEventFilters(f=>(f.search===eventSearchInput?f:{...f,search:eventSearchInput||undefined}));
+    },300);
+    return ()=>clearTimeout(t);
+  },[eventSearchInput]);
+
+  const {
+    data: eventsData,
+    isLoading: eventsLoading,
+    isFetching: eventsFetching,
+    isError: eventsError,
+    fetchNextPage: fetchNextEventsPage,
+    hasNextPage: hasNextEventsPage,
+    refetch: refetchEvents,
+  } = useEvents(eventFilters);
+  const events = eventsData ? eventsData.pages.flatMap((page) => page.results) : [];
+  const eventCategories = (categories||[]).filter(c=>c.kind==="event");
+  const activeEventCatObj = eventCategories.find(c=>c.slug===eventFilters.category);
+
+  // Cart (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4) — customer-only. Fetched
+  // here (rather than only inside CartDrawer) so the Navbar's cart-icon badge
+  // count is available regardless of which page/overlay is showing, same as
+  // `unreadMessages` below is computed here for ChatLauncher. `enabled` is
+  // gated to signed-in Customer accounts so anonymous visitors and business
+  // owners (who have no Cart) don't fire a doomed-to-401/403 request every
+  // render. CartDrawer itself also calls useCart() — same query key, so
+  // React Query dedupes/shares the cache rather than double-fetching.
+  const isCustomer = user?.accountType === "customer";
+  const { data: cart, refetch: refetchCart } = useCart(isCustomer);
+  const cartItemCount = cart?.items?.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
+
+  // Add-to-cart (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4) — passed down to
+  // ListingDetailPage as `onAddToCart`, same "AshantiHub owns the mutation,
+  // the component just calls the callback and owns its own local adding/
+  // added/error UI state" convention as onMessage above. Throws (rather
+  // than swallowing) on failure so ListingDetailPage's
+  // own try/catch can surface a specific message next to the button.
+  const handleAddToCart = async (item, quantity = 1) => {
+    if (!user) { setAuthModal("signup"); throw new Error("Please sign in as a customer to add items to your cart."); }
+    if (!isCustomer) { throw new Error("Only customer accounts can add items to a cart."); }
+    await apiPost("/api/cart/items/", { listing: item.id, quantity });
+    refetchCart();
+  };
+
   const [cookieConsent,setCookieConsent]=useState(false);
   const [cookieDismissed,setCookieDismissed]=useState(false);
-  const [whatsappPrompt,setWhatsappPrompt]=useState(null);
   const [showMessaging,setShowMessaging]=useState(false);
   const [messagingBusiness,setMessagingBusiness]=useState(null);
   const [isLoading,setIsLoading]=useState(true);
-  const [show404,setShow404]=useState(false);
   const T = TRANSLATIONS[lang];
 
   // Loading screen — simulate app boot
@@ -3043,55 +3665,68 @@ export default function AshantiHub() {
     return()=>window.removeEventListener("openLegal",handler);
   },[]);
 
-  // ── `/staff` deep link ──────────────────────────────────────────────────
-  // Minimal client-side "route", not a router: staff should be able to land
-  // directly on theashantihub.com/staff instead of only via the hidden
-  // 5-click-logo gesture (handleLogoClick below). See docs/PWA_STAFF_DASHBOARD.md §4
-  // Option B — deliberately scoped to this one path, no routing library.
+  // ── `/staff` route (docs/UI_MODERNIZATION_ROADMAP.md Phase D) ────────────
+  // Replaces the old hand-rolled 3-effect pushState/popstate dance with real
+  // router-based handling, now that react-router is available. `isAdmin`
+  // stays the actual state driving StaffDashboard's early return below — it
+  // is not itself derived from the URL, since it can also be set by the
+  // 5-click-logo gesture (handleLogoClick) or a successful staff login
+  // (AuthModal's onSuccess) while already sitting on some other path.
   //
-  // We wait for the session-restore fetch (auth.isLoading) to settle before
-  // deciding, so a logged-in staff member refreshing on /staff isn't briefly
-  // (and incorrectly) sent to the staff-login modal while auth.user is still null.
-  const staffUrlHandled=useRef(false);
+  // Three effects:
+  // 1. One-time deep-link prompt — if a visitor lands directly on /staff and
+  //    isn't already a logged-in staff session, open the staff-login modal.
+  //    Gated by a ref so it only ever fires once (matches the old behavior);
+  //    it waits for the session-restore fetch (auth.isLoading) to settle so
+  //    a logged-in staff member refreshing on /staff isn't briefly (and
+  //    incorrectly) sent to the login modal while auth.user is still null.
+  // 2. URL → isAdmin sync — keeps isAdmin consistent with the current path
+  //    for any navigation react-router already knows about, including
+  //    browser back/forward (no manual popstate listener needed — a
+  //    location change re-renders this component with the new
+  //    `location.pathname`, and this effect just reacts to it). Landing on
+  //    /staff already logged in as staff (direct visit or hard reload) also
+  //    flows through here once auth.isLoading settles.
+  // 3. isAdmin → URL sync — whenever isAdmin becomes true via some *other*
+  //    path (the 5-click-logo gesture, or a successful staff login while
+  //    already on /staff from effect 1's modal), navigate to /staff so the
+  //    URL reflects it; whenever it becomes false (StaffDashboard's
+  //    onExit), navigate back to "/".
+  const staffLoginPromptShown=useRef(false);
   useEffect(()=>{
-    if(staffUrlHandled.current) return;
+    if(staffLoginPromptShown.current) return;
     if(auth.isLoading) return;
-    staffUrlHandled.current=true;
-    if(window.location.pathname==="/staff"){
-      if(auth.user?.account_type==="staff"){setIsAdmin(true);}
-      else{setAuthModal("staff-login");}
-    }
-  },[auth.isLoading,auth.user]);
+    if(location.pathname!=="/staff") return;
+    staffLoginPromptShown.current=true;
+    if(auth.user?.account_type!=="staff") setAuthModal("staff-login");
+  },[auth.isLoading,auth.user,location.pathname]);
 
-  // Keep the URL in sync with isAdmin regardless of how it was set (gesture,
-  // direct /staff visit, or staff login success below) rather than scattering
-  // pushState calls at every isAdmin-setting call site.
-  //
-  // The `else` branch only resets the URL once the deep-link check above has
-  // already run (staffUrlHandled.current). Without that guard, this effect
-  // and the mount-time deep-link effect both fire on the very first commit —
-  // isAdmin is still its initial `false` at that point, so an unguarded
-  // `else` would immediately pushState "/staff" back to "/" before the
-  // deep-link effect (which depends on the still-resolving auth.isLoading)
-  // ever gets a chance to observe the original "/staff" pathname, silently
-  // defeating every direct /staff visit.
   useEffect(()=>{
+    if(auth.isLoading) return;
+    const shouldBeAdmin = location.pathname==="/staff" && auth.user?.account_type==="staff";
+    setIsAdmin((current)=> current===shouldBeAdmin ? current : shouldBeAdmin);
+  },[location.pathname,auth.user,auth.isLoading]);
+
+  // Tracks the *previous* isAdmin value so the "navigate home" branch below
+  // only fires on a genuine true→false transition (StaffDashboard's onExit),
+  // not merely because isAdmin's initial `useState(false)` value happens to
+  // be false on the very first render. Without this, a not-yet-staff visitor
+  // landing on /staff would get redirected to "/" by this effect in the same
+  // commit that effect #1 opens the login modal in, before effect #2 (URL →
+  // isAdmin sync) even has a chance to settle — silently defeating every
+  // direct /staff visit for a non-staff session, mirroring exactly the race
+  // the old hand-rolled version's `staffUrlHandled` ref guard existed to
+  // prevent. Found via manual browser verification, not caught by tests.
+  const wasAdminRef=useRef(isAdmin);
+  useEffect(()=>{
+    const wasAdmin=wasAdminRef.current;
+    wasAdminRef.current=isAdmin;
     if(isAdmin){
-      if(window.location.pathname!=="/staff") window.history.pushState(null,"","/staff");
-    }else if(staffUrlHandled.current){
-      if(window.location.pathname==="/staff") window.history.pushState(null,"","/");
+      if(location.pathname!=="/staff") navigate("/staff");
+    }else if(wasAdmin && location.pathname==="/staff"){
+      navigate("/");
     }
   },[isAdmin]);
-
-  // Keep isAdmin in sync with browser back/forward navigation once /staff is
-  // a real history entry (the pushState calls above only push forward).
-  useEffect(()=>{
-    const handlePopState=()=>{
-      setIsAdmin(window.location.pathname==="/staff" && auth.user?.account_type==="staff");
-    };
-    window.addEventListener("popstate",handlePopState);
-    return()=>window.removeEventListener("popstate",handlePopState);
-  },[auth.user]);
 
   const handleLogoClick=()=>{
     const n=adminClicks+1;
@@ -3103,10 +3738,13 @@ export default function AshantiHub() {
     }
   };
   const toggleFav=(id)=>setFavourites(f=>f.includes(id)?f.filter(x=>x!==id):[...f,id]);
-  const handleWA=(item)=>{if(!user){setWhatsappPrompt(item);setAuthModal("signup");return;}const msg=encodeURIComponent(`Hello! I found ${item.name} on AshantiHub and I'd like to enquire.`);window.open(`https://wa.me/${item.phone}?text=${msg}`,"_blank");};
-
-  const [showSearchResults,setShowSearchResults]=useState(false);
-  const [searchFocused,setSearchFocused]=useState(false);
+  // Businesses can no longer be contacted directly (fraud-prevention —
+  // docs/UI_MODERNIZATION_ROADMAP.md Phase F): the old handleWA/WABtn combo
+  // that opened a wa.me chat with *a business* is gone. AshantiHub's own
+  // WhatsApp-based concierge/support channels (grocery concierge, Contact
+  // page, floating WhatsApp button, NotFoundPage) are genuine platform
+  // support, not business contact, so they stay as inline wa.me links below.
+  const handleConciergeWA=(phone,name)=>{if(!user){setAuthModal("signup");return;}const msg=encodeURIComponent(`Hello ${name}! I'd like some help via AshantiHub.`);window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");};
 
   const showRegistrationFlow = (page==="register" && !user) ||
     (user?.accountType==="business_owner" && user.registrationStep && user.registrationStep!=="complete");
@@ -3117,9 +3755,12 @@ export default function AshantiHub() {
   if(showPayments) return <PaymentDashboard onClose={()=>setShowPayments(false)}/>;
   if(showCredit) return <CreditDashboard onClose={()=>setShowCredit(false)} user={user}/>;
   if(isLoading) return <LoadingScreen/>;
-  if(show404) return <NotFoundPage onHome={()=>{ setShow404(false); setPage("home"); }}/>;
+  if(show404) return <NotFoundPage onHome={()=>setPage("home")}/>;
 
   const activeCatObj=categories?.find(c=>c.slug===filters.category);
+
+  // Category strip grouping for the Business tab — see groupCategoriesByKind above.
+  const {productCategories,serviceCategories}=groupCategoriesByKind(categories);
 
   // Unread-messages badge count for Navbar — MOCK_CONVERSATIONS is mock
   // messaging data (Phase-2 messaging is out of scope, see App.jsx notes
@@ -3148,6 +3789,7 @@ export default function AshantiHub() {
       {showMessaging&&<MessagingCenter user={user} onClose={()=>{setShowMessaging(false);setMessagingBusiness(null);}} initialBusiness={messagingBusiness}/>}
       {showNotifs&&<NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
       {showFavs&&<FavsDrawer/>}
+      {showCart&&isCustomer&&<CartDrawer user={user} currency={currency} onClose={()=>setShowCart(false)} PaymentComponent={MoMoPayment}/>}
       {showReferral&&<ReferralModal user={user} onClose={()=>setShowReferral(false)}/>}
       {showAccount&&user&&<AccountPanel
         user={user}
@@ -3166,6 +3808,9 @@ export default function AshantiHub() {
         setShowBizDash={setShowBizDash}
         setShowPayments={setShowPayments}
         setShowAccount={setShowAccount}
+        setShowCart={setShowCart}
+        cartCount={cartItemCount}
+        theme={theme} toggleTheme={toggleTheme}
         T={T}
       />
 
@@ -3187,6 +3832,8 @@ export default function AshantiHub() {
               <button onClick={()=>setShowReferral(true)} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"9px 22px",fontWeight:900,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>Get My Referral Code →</button>
             </div>
           )}
+
+          <HomeCtaBand/>
         </>
       )}
 
@@ -3198,122 +3845,108 @@ export default function AshantiHub() {
           rather than what this nav item opens directly. */}
       {page==="business"&&(
         <>
-          {/* WhatsApp notice */}
+          {/* Hero carousel — approved/non-expired hero-media submissions
+              (docs/BUSINESS_EVENTS_ROADMAP.md Phase 2/3). Renders nothing when
+              there are none active, so it never leaves a disruptive empty gap. */}
+          <HeroCarousel/>
+
+          {/* Support-contact notice — was a "message businesses directly on
+              WhatsApp" pitch; reworded for the fraud-prevention change
+              (docs/UI_MODERNIZATION_ROADMAP.md Phase F) where all business
+              contact is routed through AshantiHub Support instead. */}
           <div style={{background:C.void,borderBottom:`1.5px solid ${C.whatsapp}30`,padding:"10px 16px",textAlign:"center"}}>
             <span style={{fontSize:"0.72rem",color:C.lightGold,fontWeight:600}}>
-              📱 Every business is WhatsApp-connected
-              {!user&&<span> — <span onClick={()=>setAuthModal("signup")} style={{color:C.gold,cursor:"pointer",fontWeight:800,textDecoration:"underline"}}>Sign up free</span> to message businesses instantly</span>}
+              🛡️ For your safety, business contact is handled by AshantiHub Support
+              {!user&&<span> — <span onClick={()=>setAuthModal("signup")} style={{color:C.gold,cursor:"pointer",fontWeight:800,textDecoration:"underline"}}>Sign up free</span> to reach Support instantly</span>}
             </span>
           </div>
 
-          {/* Search bar */}
-          <div style={{background:C.darkBrown,padding:"16px",position:"relative"}}>
-            <div style={{maxWidth:960,margin:"0 auto",position:"relative"}}>
-              <div style={{display:"flex",borderRadius:30,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.35)"}}>
-                <input
-                  value={searchInput}
-                  onChange={(e) => { setSearchInput(e.target.value); setShowSearchResults(true); }}
-                  onFocus={() => { setSearchFocused(true); setShowSearchResults(true); }}
-                  onBlur={() => setTimeout(() => { setSearchFocused(false); setShowSearchResults(false); }, 200)}
-                  placeholder={T.search}
-                  style={{ flex: 1, padding: "13px 18px", border: "none", fontSize: "0.85rem", background: "white", outline: "none", fontFamily: "inherit" }} />
-                {searchInput && <button onClick={() => { setSearchInput(""); setFilters((f) => ({ ...f, search: undefined })); setShowSearchResults(false); }} style={{ background: "white", border: "none", padding: "0 8px", cursor: "pointer", color: "#aaa", fontSize: "1.1rem" }}>✕</button>}
-                <button onClick={() => setShowFilters((f) => !f)} style={{ background: "#f5f5f5", border: "none", padding: "13px 14px", cursor: "pointer", fontSize: "0.85rem" }} title="Filters">⚙️</button>
-                <button style={{ background: C.gold, color: C.black, border: "none", padding: "13px 18px", fontWeight: 900, cursor: "pointer" }}>🔍</button>
-              </div>
-              <div style={{marginTop:10,display:"flex",gap:8,flexWrap:"wrap"}}>
-                <button onClick={() => setShowMap((m) => !m)} style={{ background: "rgba(255,255,255,0.12)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 20, padding: "6px 14px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>
-                  {showMap ? "📋 List View" : "🗺️ Map View"}
-                </button>
-                <button onClick={() => setShowFavs(true)} style={{ background: "rgba(255,255,255,0.12)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 20, padding: "6px 14px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>
-                  ❤️ Saved ({favourites.length})
-                </button>
-              </div>
-              {showSearchResults && searchFocused && !searchInput && (
-                <div style={{ position: "absolute", top: "calc(100% + 8px)", left: 0, right: 0, background: "white", borderRadius: 16, boxShadow: "0 8px 40px rgba(0,0,0,0.3)", zIndex: 500, overflow: "hidden", maxHeight: 340, overflowY: "auto" }}>
-                  <div style={{ padding: "12px" }}>
-                    <div style={{ fontSize: "0.68rem", color: "#aaa", fontWeight: 700, padding: "4px 8px 8px" }}>🔥 POPULAR SEARCHES</div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {SEARCH_SUGGESTIONS.map((sugg) => (
-                        <button key={sugg} onClick={() => { setSearchInput(sugg); setFilters((f) => ({ ...f, search: sugg })); setShowSearchResults(false); }}
-                          style={{ background: `${C.gold}15`, color: C.darkBrown, border: `1px solid ${C.gold}33`, borderRadius: 20, padding: "5px 12px", fontSize: "0.72rem", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
-                          🔍 {sugg}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+          {/* Mobile "open filters" bar — search now lives inside Sidebar as its
+              first field (docs/UI_MODERNIZATION_ROADMAP.md Phase G; the old
+              standalone top search bar, its POPULAR SEARCHES suggestions
+              dropdown, Map View toggle, Saved button, and currency selector
+              are all gone — Saved businesses are reachable via AccountPanel's
+              existing "❤️ Saved Businesses" entry instead). On desktop the
+              Sidebar is always visible alongside the grid, so this bar is
+              mobile-only (ah-filter-trigger-bar media query below); on mobile
+              it opens Sidebar as a slide-in panel. */}
+          <div className="ah-filter-trigger-bar" style={{background:C.darkBrown,padding:"12px 16px"}}>
+            <button onClick={() => setShowFilters((f) => !f)} style={{ background: "#f5f5f5", border: "none", borderRadius: 30, padding: "10px 20px", cursor: "pointer", fontSize: "0.8rem", fontWeight: 700, fontFamily: "inherit" }}>
+              ⚙️ Filters & Search
+            </button>
+            <style>{`
+              .ah-filter-trigger-bar { display: none; }
+              @media (max-width: 760px) { .ah-filter-trigger-bar { display: block; } }
+            `}</style>
           </div>
 
-          {/* Filters panel — Sort/Zone are discrete selects and write straight into `filters`,
-              which is useListings' query key. Min/Max Price are free-text number inputs, so (like
-              search above) they're debounced ~300ms before landing in `filters` — see
-              minPriceInput/maxPriceInput state. "Min Rating" was dropped: the real Listing model
-              has no rating field, so it could never do anything meaningful; a Min/Max Price range
-              (which the backend and useListings already support via min_price/max_price) replaces
-              it. Currency now lives here too — it moved off the Navbar per the redesign brief, and
-              this is the one place its effect (Card pricing) is actually visible. */}
-          {showFilters&&(
-            <div style={{background:C.darkBrown,borderBottom:`1px solid ${C.gold}33`,padding:"14px 16px"}}>
-              <div style={{maxWidth:960,margin:"0 auto",display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div>
-                  <label style={{fontSize:"0.68rem",fontWeight:700,color:C.lightGold,marginBottom:3,display:"block"}}>Currency</label>
-                  <select value={currency} onChange={e=>setCurrency(e.target.value)} style={{padding:"6px 10px",borderRadius:10,border:"1.5px solid rgba(255,255,255,0.25)",fontSize:"0.74rem",background:"rgba(255,255,255,0.08)",color:"white",fontFamily:"inherit"}}>
-                    <option value="GHS">GHS 🇬🇭</option>
-                    <option value="USD">USD 🇺🇸</option>
-                    <option value="GBP">GBP 🇬🇧</option>
-                    <option value="EUR">EUR 🇪🇺</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{fontSize:"0.68rem",fontWeight:700,color:C.lightGold,marginBottom:3,display:"block"}}>Sort By</label>
-                  <select value={filters.ordering||""} onChange={e=>setFilters(f=>({...f,ordering:e.target.value||undefined}))} style={{padding:"6px 10px",borderRadius:10,border:"1.5px solid rgba(255,255,255,0.25)",fontSize:"0.74rem",background:"rgba(255,255,255,0.08)",color:"white",fontFamily:"inherit"}}>
-                    <option value="">🆕 Newest</option>
-                    <option value="price_amount">💰 Lowest Price</option>
-                    <option value="-price_amount">💰 Highest Price</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{fontSize:"0.68rem",fontWeight:700,color:C.lightGold,marginBottom:3,display:"block"}}>Zone</label>
-                  <select value={filters.zone||""} onChange={e=>setFilters(f=>({...f,zone:e.target.value||undefined}))} style={{padding:"6px 10px",borderRadius:10,border:"1.5px solid rgba(255,255,255,0.25)",fontSize:"0.74rem",background:"rgba(255,255,255,0.08)",color:"white",fontFamily:"inherit"}}>
-                    <option value="">All Zones</option>
-                    {(zones||[]).map(z=><option key={z.id} value={z.name}>{z.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{fontSize:"0.68rem",fontWeight:700,color:C.lightGold,marginBottom:3,display:"block"}}>Min Price (GHS)</label>
-                  <input type="number" min="0" placeholder="Any" value={minPriceInput} onChange={e=>setMinPriceInput(e.target.value)} style={{width:80,padding:"6px 10px",borderRadius:10,border:"1.5px solid rgba(255,255,255,0.25)",fontSize:"0.74rem",background:"rgba(255,255,255,0.08)",color:"white",fontFamily:"inherit"}}/>
-                </div>
-                <div>
-                  <label style={{fontSize:"0.68rem",fontWeight:700,color:C.lightGold,marginBottom:3,display:"block"}}>Max Price (GHS)</label>
-                  <input type="number" min="0" placeholder="Any" value={maxPriceInput} onChange={e=>setMaxPriceInput(e.target.value)} style={{width:80,padding:"6px 10px",borderRadius:10,border:"1.5px solid rgba(255,255,255,0.25)",fontSize:"0.74rem",background:"rgba(255,255,255,0.08)",color:"white",fontFamily:"inherit"}}/>
-                </div>
-                <button onClick={()=>{setFilters(f=>({category:f.category,search:f.search}));setMinPriceInput("");setMaxPriceInput("");}} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"6px 14px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",marginTop:14}}>
-                  ✕ Clear Filters
-                </button>
-              </div>
-            </div>
-          )}
-
+          {selectedListingId ? (
+            <ListingDetailPage
+              id={selectedListingId}
+              onBack={()=>setSelectedListingId(null)}
+              user={user}
+              favourites={favourites}
+              onFavourite={toggleFav}
+              currency={currency}
+              onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);if(!user)setAuthModal("signup");}}
+              onOpenListing={(otherId)=>setSelectedListingId(otherId)}
+              onAddToCart={handleAddToCart}
+              CardComponent={Card}
+            />
+          ) : (
           <div style={{background:C.void,paddingBottom:1}}>
-          {/* Category tabs — the old cross-category smart-search results banner that lived here has
-              been removed along with the smart-search engine (see note above); the search box's
-              results now just show up in the grid below, scoped to the active category tab. */}
-          <div style={{maxWidth:960,margin:"0 auto",padding:"16px 14px 0"}}>
-            <div style={{display:"flex",gap:7,overflowX:"auto",paddingBottom:4,scrollbarWidth:"none"}}>
-              {(categories||[]).map(cat=>(
-                <button key={cat.id} onClick={()=>setFilters(f=>({...f,category:cat.slug}))} style={{background:filters.category===cat.slug?cat.color:"rgba(255,255,255,0.06)",color:"white",border:`2px solid ${cat.color}`,borderRadius:30,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",boxShadow:filters.category===cat.slug?`0 4px 12px ${cat.color}55`:"none",transition:"all 0.2s"}}>
-                  {cat.icon} {cat.label}
-                </button>
-              ))}
-            </div>
+          {/* Category tabs — split into Products/Services rows by Category.kind
+              (docs/BUSINESS_EVENTS_ROADMAP.md Phase 3). The old cross-category
+              smart-search results banner that lived here has been removed
+              along with the smart-search engine (see note above); the search
+              box's results now just show up in the grid below, scoped to the
+              active category tab. */}
+          <div style={{maxWidth:1280,margin:"0 auto",padding:"16px 14px 0"}}>
+            {productCategories.length>0&&(
+              <>
+                <div style={{color:C.lightGold,fontSize:"0.62rem",fontWeight:800,letterSpacing:1.5,opacity:0.65,marginBottom:5}}>PRODUCTS</div>
+                <div style={{display:"flex",gap:7,overflowX:"auto",paddingBottom:8,scrollbarWidth:"none"}}>
+                  {productCategories.map(cat=>(
+                    <button key={cat.id} onClick={()=>setFilters(f=>({...f,category:cat.slug,kind:cat.kind}))} style={{background:filters.category===cat.slug?cat.color:"rgba(255,255,255,0.06)",color:"white",border:`2px solid ${cat.color}`,borderRadius:30,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",boxShadow:filters.category===cat.slug?`0 4px 12px ${cat.color}55`:"none",transition:"all 0.2s"}}>
+                      {cat.icon} {cat.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            {serviceCategories.length>0&&(
+              <>
+                <div style={{color:C.lightGold,fontSize:"0.62rem",fontWeight:800,letterSpacing:1.5,opacity:0.65,margin:"10px 0 5px"}}>SERVICES</div>
+                <div style={{display:"flex",gap:7,overflowX:"auto",paddingBottom:4,scrollbarWidth:"none"}}>
+                  {serviceCategories.map(cat=>(
+                    <button key={cat.id} onClick={()=>setFilters(f=>({...f,category:cat.slug,kind:cat.kind}))} style={{background:filters.category===cat.slug?cat.color:"rgba(255,255,255,0.06)",color:"white",border:`2px solid ${cat.color}`,borderRadius:30,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",boxShadow:filters.category===cat.slug?`0 4px 12px ${cat.color}55`:"none",transition:"all 0.2s"}}>
+                      {cat.icon} {cat.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
-          {/* Map or List */}
-          <div style={{maxWidth:960,margin:"0 auto",padding:"16px 14px 40px"}}>
-            {showMap&&<MapView listings={listings}/>}
+          {/* Sidebar (filters) + main content — desktop: fixed column beside the
+              grid; mobile: Sidebar becomes a slide-in panel toggled by the ⚙️
+              trigger above, matching Navbar.jsx's mobile-menu convention. */}
+          <div style={{maxWidth:1280,margin:"0 auto",padding:"16px 14px 40px",display:"flex",gap:20,alignItems:"flex-start"}}>
+            <Sidebar
+              zones={zones}
+              filters={filters}
+              setFilters={setFilters}
+              minPriceInput={minPriceInput}
+              setMinPriceInput={setMinPriceInput}
+              maxPriceInput={maxPriceInput}
+              setMaxPriceInput={setMaxPriceInput}
+              onClear={()=>{setSearchInput("");setFilters(f=>({category:f.category,kind:f.kind}));setMinPriceInput("");setMaxPriceInput("");}}
+              open={showFilters}
+              onClose={()=>setShowFilters(false)}
+              search={searchInput}
+              onSearchChange={setSearchInput}
+            />
+            <div style={{flex:1,minWidth:0}}>
             {filters.category==="grocery"?(
               <div style={{background:"white",borderRadius:16,padding:"24px",textAlign:"center",boxShadow:"0 2px 12px rgba(0,0,0,0.07)"}}>
                 <div style={{fontSize:"2.5rem",marginBottom:10}}>🛒</div>
@@ -3324,7 +3957,7 @@ export default function AshantiHub() {
                     <span key={item} style={{background:`${C.kente2}15`,color:C.kente2,borderRadius:20,padding:"4px 12px",fontSize:"0.72rem",fontWeight:600}}>{item}</span>
                   ))}
                 </div>
-                <button onClick={()=>handleWA({phone:"233244999000",name:"AshantiHub Grocery Concierge"})} style={{marginTop:16,background:C.whatsapp,color:"white",border:"none",borderRadius:30,padding:"11px 24px",fontWeight:900,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
+                <button onClick={()=>handleConciergeWA("233244999000","AshantiHub Grocery Concierge")} style={{marginTop:16,background:C.whatsapp,color:"white",border:"none",borderRadius:30,padding:"11px 24px",fontWeight:900,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
                   📱 Order via WhatsApp
                 </button>
               </div>
@@ -3381,8 +4014,12 @@ export default function AshantiHub() {
                 ) : (
                   <>
                     {listingsFetching&&<div style={{height:3,background:C.gold,marginBottom:10,borderRadius:2}}/>}
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(245px,1fr))",gap:14}}>
-                      {listings.map(item=><Card key={item.id} item={item} accentColor={activeCatObj?.color} onWhatsApp={handleWA} user={user} favourites={favourites} onFavourite={toggleFav} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);if(!user)setAuthModal("signup");}}/>)}
+                    {/* Dense multi-column tile grid ("4x5" per the redesign brief — reads as 4
+                        columns on desktop, fewer on narrower viewports; not a hard-coded 20-item
+                        page). Promoted/boosted sorting-first lands in a later phase — this renders
+                        `listings` in whatever order the API returns, unsorted client-side. */}
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>
+                      {listings.map(item=><Card key={item.id} item={item} accentColor={activeCatObj?.color} user={user} favourites={favourites} onFavourite={toggleFav} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);if(!user)setAuthModal("signup");}} onOpen={(id)=>setSelectedListingId(id)}/>)}
                     </div>
                     {hasNextPage&&(
                       <div style={{textAlign:"center",marginTop:18}}>
@@ -3393,57 +4030,145 @@ export default function AshantiHub() {
                 )}
               </>
             )}
+            </div>
           </div>
           </div>
+          )}
 
           {/* Ghana flag divider */}
           <div style={{height:10,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
 
           {/* CTA */}
-          <div style={{background:C.void,padding:"28px 20px",textAlign:"center"}}>
-            <div style={{fontSize:"1.8rem",marginBottom:6}}>🏪</div>
-            <h3 style={{color:C.gold,margin:"0 0 6px",fontSize:"1rem"}}>Own a Business in Ashanti?</h3>
-            <p style={{color:C.lightGold,fontSize:"0.78rem",margin:"0 0 14px",opacity:0.85}}>First 3 months FREE. WhatsApp-connected listings.</p>
-            <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
-              <button onClick={()=>setPage("register")} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"10px 22px",fontWeight:900,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>Register Your Business →</button>
-              <button onClick={()=>setShowBizDash(true)} style={{background:"transparent",color:C.lightGold,border:"1.5px solid #ffffff44",borderRadius:30,padding:"10px 22px",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>🏪 Go to my Business Dashboard</button>
-              <button onClick={()=>setShowPayments(true)} style={{background:"transparent",color:C.lightGold,border:"1.5px solid #ffffff44",borderRadius:30,padding:"10px 22px",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>💳 Payments</button>
-            </div>
-          </div>
+          <BusinessCtaBand onRegister={()=>setPage("register")}/>
         </>
       )}
 
-      {/* Events page */}
+      {/* Events page — a full Events tab rebuilt on the Business tab's
+          Sidebar/grid/PDP-swap conventions (docs/BUSINESS_EVENTS_ROADMAP.md
+          Phase 6): hero carousel of live events that have uploaded media ->
+          intro banner + "Submit an Event" toggle (EventSubmissionPanel) ->
+          search bar -> category strip (Category.kind==="event") + Sidebar
+          (zone + clear only — price range/sort/verified toggle are hidden,
+          since GET /api/events/ has no price/ordering/verified concept) +
+          a teaser-card grid with infinite scroll. `selectedEventId` swaps
+          the Sidebar+grid area for EventDetailPage, same "flag swaps in a
+          component, scoped inside the page==='events' block" convention as
+          `selectedListingId`/ListingDetailPage in the Business tab above. */}
       {page==="events"&&(
-        <div style={{maxWidth:700,margin:"0 auto",padding:"24px 20px"}}>
-          {/* Events hero with real photo */}
-          <div style={{borderRadius:18,overflow:"hidden",marginBottom:20,position:"relative",height:200}}>
-            <img src={KUMASI_PHOTOS.akwasidae} alt="Akwasidae Festival Kumasi" style={{width:"100%",height:"100%",objectFit:"cover"}}
-              onError={e=>{e.target.parentNode.style.background=`linear-gradient(135deg,${C.kente1},${C.darkBrown})`;e.target.style.display="none";}}/>
-            <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(0,0,0,0.7),transparent)"}}/>
-            <div style={{position:"absolute",bottom:16,left:16,color:"white"}}>
-              <div style={{fontWeight:900,fontSize:"1.2rem"}}>🥁 Upcoming Events</div>
-              <div style={{fontSize:"0.76rem",opacity:0.85}}>Plan your visit around Kumasi's cultural calendar</div>
-            </div>
+        <>
+          <EventHeroCarousel onOpen={(id)=>setSelectedEventId(id)}/>
+
+          <div style={{background:C.void,borderBottom:`1.5px solid ${C.gold}30`,padding:"10px 16px",textAlign:"center"}}>
+            <span style={{fontSize:"0.72rem",color:C.lightGold,fontWeight:600}}>
+              🥁 Plan your visit around Kumasi's cultural calendar
+              {!user&&<span> — <span onClick={()=>setAuthModal("signup")} style={{color:C.gold,cursor:"pointer",fontWeight:800,textDecoration:"underline"}}>Sign up free</span> to submit your own event</span>}
+            </span>
           </div>
-          {[{name:"Akwasidae Festival",date:"Jun 22, 2026",desc:"The Asantehene receives homage — drumming, dancing and royal regalia.",color:C.kente1},{name:"Akwasidae Festival",date:"Aug 3, 2026",desc:"Next major gathering at Manhyia Palace.",color:C.gold},{name:"Kumasi Cultural Festival",date:"Sep 15, 2026",desc:"City-wide celebration of Ashanti arts, food, music and tradition.",color:C.kente2}].map((f,i)=>(
-            <div key={i} style={{background:"white",borderRadius:16,overflow:"hidden",boxShadow:"0 4px 16px rgba(0,0,0,0.08)",borderLeft:`5px solid ${f.color}`,marginBottom:14}}>
-              {i===0&&<img src={KUMASI_PHOTOS.akwasidae} alt={f.name} style={{width:"100%",height:120,objectFit:"cover",display:"block"}} onError={e=>e.target.style.display="none"}/>}
-              {i===0&&<div style={{height:3,background:`linear-gradient(90deg,${C.ghRed},${C.ghGold},${C.ghGreen})`}}/>}
-              <div style={{padding:16,display:"flex",gap:14,alignItems:"flex-start"}}>
-                <div style={{background:f.color,color:"white",borderRadius:12,padding:"8px 10px",textAlign:"center",minWidth:55,fontSize:"0.65rem",fontWeight:700,flexShrink:0}}>{f.date.split(" ").slice(0,2).join("\n")}</div>
-                <div>
-                  <div style={{fontWeight:800,marginBottom:4}}>{f.name}</div>
-                  <div style={{color:"#555",fontSize:"0.78rem",lineHeight:1.5,marginBottom:8}}>{f.desc}</div>
-                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                    <span style={{background:`${C.gold}22`,color:C.deepGold,fontSize:"0.65rem",fontWeight:700,padding:"2px 9px",borderRadius:20}}>📍 Manhyia Palace</span>
-                    <WABtn phone="233244000000" name="AshantiHub Events" style={{fontSize:"0.62rem",padding:"3px 9px"}}/>
-                  </div>
-                </div>
+
+          {/* Search bar */}
+          <div style={{background:C.darkBrown,padding:"16px",position:"relative"}}>
+            <div style={{maxWidth:1280,margin:"0 auto",position:"relative"}}>
+              <div style={{display:"flex",borderRadius:30,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.35)"}}>
+                <input
+                  value={eventSearchInput}
+                  onChange={(e)=>setEventSearchInput(e.target.value)}
+                  placeholder="Search events…"
+                  style={{flex:1,padding:"13px 18px",border:"none",fontSize:"0.85rem",background:"white",outline:"none",fontFamily:"inherit"}}/>
+                {eventSearchInput&&<button onClick={()=>{setEventSearchInput("");setEventFilters(f=>({...f,search:undefined}));}} style={{background:"white",border:"none",padding:"0 8px",cursor:"pointer",color:"#aaa",fontSize:"1.1rem"}}>✕</button>}
+                {/* Filters trigger — mobile-only, same convention as the Business tab's ⚙️ trigger (Sidebar becomes a slide-in panel there too). */}
+                <button onClick={()=>setShowEventFilters(f=>!f)} className="ah-event-filter-trigger" style={{background:"#f5f5f5",border:"none",padding:"13px 14px",cursor:"pointer",fontSize:"0.85rem"}} title="Filters">⚙️</button>
+                <button style={{background:C.gold,color:C.black,border:"none",padding:"13px 18px",fontWeight:900,cursor:"pointer"}}>🔍</button>
+              </div>
+              <div style={{marginTop:10,display:"flex",justifyContent:"flex-end"}}>
+                <button onClick={()=>setShowEventSubmit(s=>!s)} style={{background:showEventSubmit?C.gold:"rgba(255,255,255,0.12)",color:showEventSubmit?C.darkBrown:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer"}}>
+                  {showEventSubmit?"✕ Close":"📅 Submit an Event"}
+                </button>
               </div>
             </div>
-          ))}
-        </div>
+            <style>{`
+              @media (min-width: 761px) { .ah-event-filter-trigger { display: none !important; } }
+            `}</style>
+          </div>
+
+          {showEventSubmit&&(
+            <div style={{maxWidth:1280,margin:"0 auto",padding:"16px 14px 0"}}>
+              <EventSubmissionPanel user={user} categories={categories} zones={zones} PaymentComponent={MoMoPayment}/>
+            </div>
+          )}
+
+          {selectedEventId ? (
+            <EventDetailPage id={selectedEventId} onBack={()=>setSelectedEventId(null)} user={user}/>
+          ) : (
+          <div style={{background:C.void,paddingBottom:1}}>
+            {eventCategories.length>0&&(
+              <div style={{maxWidth:1280,margin:"0 auto",padding:"16px 14px 0"}}>
+                <div style={{color:C.lightGold,fontSize:"0.62rem",fontWeight:800,letterSpacing:1.5,opacity:0.65,marginBottom:5}}>CATEGORIES</div>
+                <div style={{display:"flex",gap:7,overflowX:"auto",paddingBottom:8,scrollbarWidth:"none"}}>
+                  <button onClick={()=>setEventFilters(f=>({...f,category:undefined}))} style={{background:!eventFilters.category?C.gold:"rgba(255,255,255,0.06)",color:!eventFilters.category?C.darkBrown:"white",border:`2px solid ${C.gold}`,borderRadius:30,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                    🥁 All Events
+                  </button>
+                  {eventCategories.map(cat=>(
+                    <button key={cat.id} onClick={()=>setEventFilters(f=>({...f,category:cat.slug}))} style={{background:eventFilters.category===cat.slug?cat.color:"rgba(255,255,255,0.06)",color:"white",border:`2px solid ${cat.color}`,borderRadius:30,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",boxShadow:eventFilters.category===cat.slug?`0 4px 12px ${cat.color}55`:"none",transition:"all 0.2s"}}>
+                      {cat.icon} {cat.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div style={{maxWidth:1280,margin:"0 auto",padding:"16px 14px 40px",display:"flex",gap:20,alignItems:"flex-start"}}>
+              <Sidebar
+                zones={zones}
+                filters={eventFilters}
+                setFilters={setEventFilters}
+                onClear={()=>setEventFilters(f=>({category:f.category,search:f.search}))}
+                open={showEventFilters}
+                onClose={()=>setShowEventFilters(false)}
+                showPriceRange={false}
+                showSort={false}
+                showVerifiedToggle={false}
+              />
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                  <h2 style={{margin:0,color:C.darkBrown,fontSize:"0.95rem",fontWeight:900}}>
+                    {activeEventCatObj?activeEventCatObj.icon:"🥁"} {activeEventCatObj?activeEventCatObj.label:"All Events"}
+                    <span style={{color:"#999",fontWeight:400,fontSize:"0.72rem",marginLeft:6}}>{events.length} results</span>
+                  </h2>
+                  <span style={{background:`${C.gold}15`,border:`1px solid ${C.gold}44`,borderRadius:20,padding:"3px 9px",fontSize:"0.65rem",color:C.gold,fontWeight:700}}>📍 Kumasi</span>
+                </div>
+
+                {eventsLoading ? (
+                  <ListingsSkeleton/>
+                ) : eventsError ? (
+                  <div style={{textAlign:"center",padding:"30px"}}>
+                    Something went wrong loading events.{" "}
+                    <button onClick={()=>refetchEvents()} style={{background:"none",border:`1px solid ${C.kente1}`,color:C.kente1,borderRadius:20,padding:"4px 12px",fontSize:"0.75rem",fontWeight:700,cursor:"pointer"}}>Retry</button>
+                  </div>
+                ) : events.length===0 ? (
+                  <div style={{textAlign:"center",padding:"40px",color:"#aaa"}}>
+                    <div style={{fontSize:"2rem",marginBottom:8}}>🥁</div>
+                    <div>No events found. Try adjusting your filters.</div>
+                  </div>
+                ) : (
+                  <>
+                    {eventsFetching&&<div style={{height:3,background:C.gold,marginBottom:10,borderRadius:2}}/>}
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>
+                      {events.map(item=><EventCard key={item.id} item={item} onOpen={(id)=>setSelectedEventId(id)}/>)}
+                    </div>
+                    {hasNextEventsPage&&(
+                      <div style={{textAlign:"center",marginTop:18}}>
+                        <button onClick={()=>fetchNextEventsPage()} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"9px 24px",fontWeight:900,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>Load more</button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+          )}
+
+          <EventsCtaBand imageUrl={KUMASI_PHOTOS.akwasidae} onSubmitEvent={()=>setShowEventSubmit(true)}/>
+        </>
       )}
 
       {/* About page */}
@@ -3471,11 +4196,11 @@ export default function AshantiHub() {
               </div>
             </div>
           ))}
-          <div style={{textAlign:"center",marginTop:8,display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
-            {!user&&<button onClick={()=>setAuthModal("signup")} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"10px 22px",fontWeight:900,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>Create Free Account</button>}
-            <button onClick={()=>setPage("register")} style={{background:C.kente2,color:"white",border:"none",borderRadius:30,padding:"10px 22px",fontWeight:900,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>Register Business</button>
-          </div>
         </div>
+      )}
+
+      {page==="about"&&(
+        <AboutCtaBand user={user} onCreateAccount={()=>setAuthModal("signup")} onRegister={()=>setPage("register")}/>
       )}
 
       {/* Contact page */}
@@ -3502,16 +4227,21 @@ export default function AshantiHub() {
               </div>
             ))}
           </div>
-
-          <div style={{textAlign:"center",display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
-            <WABtn phone="233244000000" name="AshantiHub Support" style={{fontSize:"0.8rem",padding:"10px 20px"}}/>
-            {!user&&<button onClick={()=>setAuthModal("signup")} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"10px 22px",fontWeight:900,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>Create Free Account</button>}
-          </div>
         </div>
       )}
 
+      {page==="contact"&&(
+        <ContactCtaBand
+          user={user}
+          onCreateAccount={()=>setAuthModal("signup")}
+          whatsappPhone="233244000000"
+          whatsappName="AshantiHub Support"
+          WhatsAppButton={WABtn}
+        />
+      )}
+
       {/* Footer — every page except the redesigned full-viewport home landing page */}
-      {page!=="home"&&<Footer setLegalDoc={setLegalDoc}/>}
+      {page!=="home"&&<Footer2 setPage={setPage} setShowBizDash={setShowBizDash} setLegalDoc={setLegalDoc}/>}
 
       {/* Floating chat launcher — opens the existing (mock, Phase-2) MessagingCenter */}
       <ChatLauncher
