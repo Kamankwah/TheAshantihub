@@ -1859,7 +1859,7 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
     }
   };
 
-  const handleCustomerSignup=async(e)=>{
+  const handleSignup=async(e)=>{
     e.preventDefault();
     setError(null);
     if(!phone && !email){
@@ -1868,7 +1868,9 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
     }
     setSubmitting(true);
     try {
-      const result=await auth.registerCustomer({full_name:fullName,phone:phone||undefined,email:email||undefined,password});
+      const result=accountType==="business_owner"
+        ? await auth.registerBusinessOwner({full_name:fullName,login_phone:phone||undefined,email:email||undefined,password})
+        : await auth.registerCustomer({full_name:fullName,phone:phone||undefined,email:email||undefined,password});
       onSuccess(result);
     } catch (err) {
       setError("Could not create your account. Please check your details.");
@@ -1901,12 +1903,16 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
           <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Signing in…":"Sign In"}</button>
         </form>}
 
-        {mode==="signup" && <form onSubmit={handleCustomerSignup}>
+        {mode==="signup" && <form onSubmit={handleSignup}>
+          <div style={{display:"flex",gap:8,marginBottom:12}}>
+            <button type="button" onClick={()=>setAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="customer"?C.gold:"white"}}>Customer</button>
+            <button type="button" onClick={()=>setAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="business_owner"?C.gold:"white"}}>Business Owner</button>
+          </div>
           <input value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Full name" required style={authInputStyle}/>
           <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone (+233...)" style={authInputStyle}/>
           <input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="Email" style={authInputStyle}/>
           <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" required minLength={8} style={authInputStyle}/>
-          <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Creating account…":"Create Free Account"}</button>
+          <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Creating account…":accountType==="business_owner"?"Create Business Account":"Create Free Account"}</button>
         </form>}
       </div>
     </div>
