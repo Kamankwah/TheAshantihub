@@ -2723,12 +2723,32 @@ export function BusinessDashboard({ onExit, user, auth }) {
   const [showPromotePay, setShowPromotePay] = useState(false);
   const isVerified = user?.kycStatus === "verified";
   const isRejected = user?.kycStatus === "rejected";
+  // /business-dashboard is a path-derived "route" (see App.jsx's showBizDash
+  // docs above) that renders this component regardless of who's signed in —
+  // unlike /staff, it doesn't verify the session first. So this dashboard's
+  // own data hooks must not fire until auth has settled and the session is
+  // actually a business owner, otherwise a signed-out visit (or the brief
+  // window before auth.isLoading resolves) fires unauthenticated requests
+  // that just 401.
+  const isBusinessOwner = user?.accountType === "business_owner";
+  const dataReady = !auth.isLoading && isBusinessOwner;
 
-  const { data: listings, isLoading: listingsLoading, isError: listingsError, refetch: refetchListings } = useMyListings();
-  const { data: profile, isLoading: profileLoading, isError: profileError } = useBusinessProfile();
+  const { data: listings, isLoading: listingsLoading, isError: listingsError, refetch: refetchListings } = useMyListings(dataReady);
+  const { data: profile, isLoading: profileLoading, isError: profileError } = useBusinessProfile(dataReady);
   const { data: subPlans, isLoading: plansLoading, isError: plansError } = useSubscriptionPlans();
-  const { data: subscription, isLoading: subLoading, isError: subError, refetch: refetchSubscription } = useMySubscription();
-  const { data: heroSubmission, refetch: refetchHeroSubmission } = useMyHeroSubmission();
+  const { data: subscription, isLoading: subLoading, isError: subError, refetch: refetchSubscription } = useMySubscription(dataReady);
+  const { data: heroSubmission, refetch: refetchHeroSubmission } = useMyHeroSubmission(dataReady);
+
+  if (auth.isLoading) return <LoadingScreen/>;
+
+  if (!isBusinessOwner) {
+    return (
+      <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:20,textAlign:"center"}}>
+        <div style={{fontSize:"1.15rem",fontWeight:700,color:C.darkBrown}}>Sign in with a business owner account to view this dashboard.</div>
+        <button onClick={onExit} style={{padding:"10px 24px",borderRadius:8,border:"none",background:C.gold,color:"white",fontWeight:700,cursor:"pointer",fontSize:"0.85rem"}}>← Back to AshantiHub</button>
+      </div>
+    );
+  }
 
   if (resubmitting) {
     return <BusinessRegistrationFlow
