@@ -101,7 +101,7 @@ def unbackfill(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("accounts", "0017_seed_subscription_plans_permissions"),
+        ("accounts", "0018_seed_subscription_plans_permissions"),
         ("listings", "0013_listing_service_duration_listing_specs"),
         ("billing", "0012_seed_new_subscription_plans"),
     ]

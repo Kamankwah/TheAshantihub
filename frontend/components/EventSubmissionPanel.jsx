@@ -3,19 +3,18 @@ import { C } from "../theme.js";
 import { apiPost, apiPostForm } from "../apiClient.js";
 import { useMyEvents } from "../hooks/useMyEvents.js";
 import { useEventAttendees } from "../hooks/useEventAttendees.js";
+import { useEventPricingTiers } from "../hooks/useEventPricingTiers.js";
 import { formatEventDate } from "./EventCard.jsx";
 import EventTicketTypesPanel from "./EventTicketTypesPanel.jsx";
 import EventCheckinPanel from "./EventCheckinPanel.jsx";
 
-// Mirrors events/views.py's EVENT_DAILY_RATE — no endpoint exposes this
-// value (POST /api/events/{id}/pay/ computes and charges it server-side in
-// one step, it isn't returned back), so it's duplicated here purely for
-// display purposes ahead of the simulated-payment step. Snapshotted into
-// local state (see openPay below) rather than derived live from a query —
-// same "Phase 4 lesson learned" convention as BusinessDashboard's
-// heroExtendDays*5 (App.jsx) — since the pay call itself only fires from
-// MoMoPayment's onSuccess, after the amount has already been shown.
-const EVENT_DAILY_RATE = 2;
+// The 5 fixed visibility-window durations (event pricing tiers work) —
+// duration set is fixed by product decision (EventPricingTier.DURATION_CHOICES
+// on the backend), only the price per duration is editable via the staff
+// Event Pricing propose/approve flow. Hardcoded here purely so the dropdown
+// below has its option list before useEventPricingTiers() resolves; the
+// price shown per option comes live from that query.
+const VISIBILITY_TIER_DAYS = [7, 15, 30, 60, 90];
 
 const initialForm = {
   category: "",
@@ -24,7 +23,7 @@ const initialForm = {
   description: "",
   address: "",
   event_date: "",
-  visibility_days: 14,
+  visibility_days: "",
   access_level: "public",
   lat: "",
   lng: "",
@@ -44,6 +43,7 @@ const initialForm = {
 // ListingDetailPage's `CardComponent`/CartDrawer's `PaymentComponent`.
 export default function EventSubmissionPanel({ user, categories, zones, PaymentComponent }) {
   const { data: myEvents, isLoading, isError, refetch } = useMyEvents();
+  const { data: pricingTiers } = useEventPricingTiers();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(initialForm);
   const [submitError, setSubmitError] = useState(null);
@@ -127,7 +127,12 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
 
   const openPay = (ev) => {
     setPayError(null);
-    setPayAmount(EVENT_DAILY_RATE * (ev.visibility_days || 0));
+    const tier = (pricingTiers || []).find((t) => t.duration_days === ev.visibility_days);
+    if (!tier) {
+      setPayError("Pricing for this event's duration isn't available — please contact support.");
+      return;
+    }
+    setPayAmount(Number(tier.live_price));
     setPayTargetId(ev.id);
   };
 
@@ -248,8 +253,18 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
               <label htmlFor="event-date" style={labelStyle}>Event Date</label>
               <input id="event-date" type="datetime-local" required value={form.event_date} onChange={setField("event_date")} style={inputStyle} />
 
-              <label htmlFor="event-visibility-days" style={labelStyle}>Visibility (days, 7–90)</label>
-              <input id="event-visibility-days" type="number" min={7} max={90} required value={form.visibility_days} onChange={setField("visibility_days")} style={inputStyle} />
+              <label htmlFor="event-visibility-days" style={labelStyle}>Visibility</label>
+              <select id="event-visibility-days" required value={form.visibility_days} onChange={setField("visibility_days")} style={inputStyle}>
+                <option value="">Select a duration</option>
+                {VISIBILITY_TIER_DAYS.map((days) => {
+                  const tier = (pricingTiers || []).find((t) => t.duration_days === days);
+                  return (
+                    <option key={days} value={days}>
+                      {days} days{tier ? ` — GHS ${tier.live_price}` : ""}
+                    </option>
+                  );
+                })}
+              </select>
 
               <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, cursor: "pointer", minHeight: 44 }}>
                 <input

@@ -53,7 +53,7 @@ describe('StaffDashboard', () => {
       hasPermission: () => true,
     })
     render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
-    ;['KYC Queue', 'Listings Moderation', 'Hero Approval', 'Reviews', 'Delivery Management', 'Users', 'Categories & Zones', 'Site Settings', 'Staff Management',
+    ;['KYC Queue', 'Listings Moderation', 'Hero Approval', 'Events Moderation', 'Event Pricing', 'Reviews', 'Delivery Management', 'Users', 'Categories & Zones', 'Site Settings', 'Staff Management',
       'Escrow Ledger', 'Disputes', 'Transactions Report', 'Promotions', 'Analytics', 'Messaging / Tickets']
       .forEach((label) => expect(screen.getByText(label)).toBeInTheDocument())
   })
@@ -694,6 +694,123 @@ describe('StaffDashboard Contact Messages', () => {
   })
 })
 
+describe('StaffDashboard Events Moderation', () => {
+  it('approves a pending event', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/events/moderation/pending/', () => {
+        return HttpResponse.json([{ id: 3, name: 'Akwasidae Festival', category: { label: 'Festivals' }, zone: { name: 'Manhyia' }, visibility_days: 15, submitted_by_customer_name: 'Ama Owusu' }])
+      }),
+    )
+    let approveCalled = false
+    server.use(
+      http.post('http://localhost:8000/api/events/moderation/3/approve/', () => {
+        approveCalled = true
+        return HttpResponse.json({ id: 3, status: 'approved' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'event.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Events Moderation'))
+    await screen.findByText('Akwasidae Festival')
+    fireEvent.click(screen.getByText('✓ Approve'))
+    await waitFor(() => expect(approveCalled).toBe(true))
+  })
+
+  it('rejects a pending event with a reason', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/events/moderation/pending/', () => {
+        return HttpResponse.json([{ id: 4, name: 'Secret Launch Party', category: { label: 'Festivals' }, zone: { name: 'Adum' }, visibility_days: 7, submitted_by_business_name: 'Kofi Trader' }])
+      }),
+    )
+    let rejectBody = null
+    server.use(
+      http.post('http://localhost:8000/api/events/moderation/4/reject/', async ({ request }) => {
+        rejectBody = await request.json()
+        return HttpResponse.json({ id: 4, status: 'rejected' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'event.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Events Moderation'))
+    await screen.findByText('Secret Launch Party')
+    fireEvent.click(screen.getByText('✕ Reject'))
+    fireEvent.change(screen.getByPlaceholderText('Rejection reason'), { target: { value: 'Missing address details' } })
+    fireEvent.click(screen.getByText('Confirm reject'))
+    await waitFor(() => expect(rejectBody).toEqual({ reason: 'Missing address details' }))
+  })
+})
+
+describe('StaffDashboard Event Pricing', () => {
+  function tiersResponse(overrides = {}) {
+    return [
+      { id: 1, duration_days: 7, live_price: '20.00', pending_price: null, proposed_by: null, proposed_by_name: null, proposed_at: null, ...overrides },
+    ]
+  }
+
+  it('an accountant can propose a new price, which stays pending until approved', async () => {
+    server.use(http.get('http://localhost:8000/api/events/pricing-tiers/manage/', () => HttpResponse.json(tiersResponse())))
+    let proposeBody = null
+    server.use(
+      http.post('http://localhost:8000/api/events/pricing-tiers/1/propose/', async ({ request }) => {
+        proposeBody = await request.json()
+        return HttpResponse.json(tiersResponse({ pending_price: '25.00', proposed_by_name: 'Accountant Person' })[0])
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'event_pricing.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Event Pricing'))
+    await screen.findByText('7 days — GHS 20.00')
+    fireEvent.change(screen.getByPlaceholderText('New price'), { target: { value: '25.00' } })
+    fireEvent.click(screen.getByText('Propose'))
+    await waitFor(() => expect(proposeBody).toEqual({ price: '25.00' }))
+    // A super_admin-only action — an accountant session never sees it.
+    expect(screen.queryByText('✓ Approve')).not.toBeInTheDocument()
+  })
+
+  it('a super_admin can approve a pending proposal', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/events/pricing-tiers/manage/', () =>
+        HttpResponse.json(tiersResponse({ pending_price: '25.00', proposed_by_name: 'Accountant Person' })),
+      ),
+    )
+    let approveCalled = false
+    server.use(
+      http.post('http://localhost:8000/api/events/pricing-tiers/1/approve/', () => {
+        approveCalled = true
+        return HttpResponse.json(tiersResponse({ live_price: '25.00' })[0])
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'event_pricing.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Event Pricing'))
+    await screen.findByText(/Pending: GHS 25.00/)
+    fireEvent.click(screen.getByText('✓ Approve'))
+    await waitFor(() => expect(approveCalled).toBe(true))
+    // A propose-only action — a super_admin-only session never sees it.
+    expect(screen.queryByText('Propose')).not.toBeInTheDocument()
+  })
+
+  it('a super_admin can reject a pending proposal', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/events/pricing-tiers/manage/', () =>
+        HttpResponse.json(tiersResponse({ pending_price: '25.00', proposed_by_name: 'Accountant Person' })),
+      ),
+    )
+    let rejectCalled = false
+    server.use(
+      http.post('http://localhost:8000/api/events/pricing-tiers/1/reject/', () => {
+        rejectCalled = true
+        return HttpResponse.json(tiersResponse()[0])
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'event_pricing.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Event Pricing'))
+    await screen.findByText(/Pending: GHS 25.00/)
+    fireEvent.click(screen.getByText('✕ Reject'))
+    await waitFor(() => expect(rejectCalled).toBe(true))
+  })
+})
 describe('StaffDashboard Subscription Plans Management', () => {
   it('only shows the Subscription Plans nav item for a session with subscription_plans.manage', () => {
     const auth = makeAuth({ hasPermission: (c) => c === 'subscription_plans.manage' })
