@@ -618,7 +618,7 @@ const MOMO_NETWORKS = [
 // Invoices tab was dropped rather than left as dead mock UI.
 
 // ─── MoMo Payment Component ───────────────────────────────────────────────────
-// Exported (like Card/MapView/groupCategoriesByKind below) so it's reusable
+// Exported (like Card/groupCategoriesByKind below) so it's reusable
 // from frontend/components/* (CartDrawer's checkout step, Phase 4 —
 // docs/BUSINESS_EVENTS_ROADMAP.md) without duplicating the simulated-payment
 // UI. Passed down as a `PaymentComponent` prop rather than imported directly,
@@ -1646,7 +1646,7 @@ function MoMoModal({item,user,onClose}) {
 // separate, still-static page until Phase 6. Categories with no explicit
 // `kind` (older/seed data, or the test-suite's MSW mocks) default into
 // Products, mirroring Category.kind's own backend default of "product".
-// Exported (like Card/MapView above) so it's unit-testable without having
+// Exported (like Card above) so it's unit-testable without having
 // to render the whole AshantiHub tree.
 export function groupCategoriesByKind(categories) {
   const list = categories || [];
@@ -1746,60 +1746,6 @@ export function Card({item,accentColor,user,favourites,onFavourite,currency,onMe
   </>;
 }
 
-// ─── Map View ─────────────────────────────────────────────────────────────────
-export function MapView({listings}) {
-  const filtered = listings.filter(i=>i.lat && i.lng);
-
-  return <div style={{background:"rgba(255,255,255,0.04)",backdropFilter:"blur(6px)",borderRadius:16,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.3)",marginBottom:20,border:`1px solid ${C.gold}33`}}>
-    <div style={{background:`linear-gradient(135deg,${C.darkBrown},${C.kente3})`,padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-      <div style={{color:C.gold,fontWeight:800,fontSize:"0.88rem"}}>🗺️ Businesses on Map — Kumasi</div>
-      <span style={{color:"white",fontSize:"0.7rem",opacity:0.8}}>{filtered.length} locations</span>
-    </div>
-    {/* Simulated map grid */}
-    <div style={{position:"relative",height:280,background:"#e8f4e8",overflow:"hidden"}}>
-      {/* Road grid simulation */}
-      <svg style={{position:"absolute",inset:0,width:"100%",height:"100%",opacity:0.3}}>
-        {[60,120,180,240].map(y=><line key={y} x1="0" y1={y} x2="800" y2={y} stroke="#666" strokeWidth="1.5"/>)}
-        {[80,160,240,320,400,480].map(x=><line key={x} x1={x} y1="0" x2={x} y2="400" stroke="#666" strokeWidth="1.5"/>)}
-        <text x="140" y="25" fontSize="11" fill="#555" fontWeight="bold">MANHYIA</text>
-        <text x="200" y="145" fontSize="11" fill="#555" fontWeight="bold">ADUM</text>
-        <text x="60" y="200" fontSize="10" fill="#555">KEJETIA</text>
-        <text x="320" y="200" fontSize="10" fill="#555">NHYIAESO</text>
-        <text x="150" y="255" fontSize="10" fill="#555">BANTAMA</text>
-        <text x="40" y="265" fontSize="9" fill="#555">SUAME</text>
-      </svg>
-      {/* Business pins */}
-      {filtered.slice(0,12).map((item,i)=>{
-        const x = 40 + ((parseFloat(item.lng)+1.63)*2000)%480;
-        const y = 20 + ((parseFloat(item.lat)-6.68)*3000)%220;
-        const catColor = item.category?.color||C.gold;
-        return <div key={item.id} style={{position:"absolute",left:`${Math.min(Math.max(x,20),460)}px`,top:`${Math.min(Math.max(y,10),240)}px`,zIndex:10}}>
-          <div style={{background:catColor,color:"white",borderRadius:"50% 50% 50% 0",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.75rem",boxShadow:"0 2px 8px rgba(0,0,0,0.3)",transform:"rotate(-45deg)",cursor:"pointer"}}
-            title={item.name}>
-            <span style={{transform:"rotate(45deg)"}}>{item.category?.icon}</span>
-          </div>
-          <span style={{position:"absolute",width:1,height:1,padding:0,margin:-1,overflow:"hidden",clip:"rect(0,0,0,0)",whiteSpace:"nowrap",border:0}}>{item.name}</span>
-        </div>;
-      })}
-      {/* Manhyia Palace marker */}
-      <div style={{position:"absolute",left:"42%",top:"12%",zIndex:20}}>
-        <div style={{background:C.gold,color:C.darkBrown,borderRadius:8,padding:"3px 8px",fontSize:"0.65rem",fontWeight:900,boxShadow:"0 2px 8px rgba(0,0,0,0.3)",whiteSpace:"nowrap"}}>👑 Manhyia Palace</div>
-      </div>
-      <div style={{position:"absolute",bottom:8,right:8,background:"rgba(255,255,255,0.9)",borderRadius:8,padding:"4px 8px",fontSize:"0.6rem",color:"#555"}}>
-        📍 Kumasi, Ghana
-      </div>
-    </div>
-    {/* Legend — derived from the categories actually present among the plotted pins (no more global CATEGORIES lookup) */}
-    <div style={{padding:"10px 16px",display:"flex",gap:12,flexWrap:"wrap",borderTop:"1px solid #f0f0f0"}}>
-      {Array.from(new Map(filtered.map(i=>[i.category?.slug, i.category]).filter(([slug])=>slug)).values()).slice(0,7).map(cat=>(
-        <div key={cat.slug} style={{display:"flex",alignItems:"center",gap:4,fontSize:"0.65rem",color:"#555"}}>
-          <div style={{width:10,height:10,borderRadius:"50%",background:cat.color}}/>
-          {cat.label}
-        </div>
-      ))}
-    </div>
-  </div>;
-}
 
 // ─── Referral Modal ───────────────────────────────────────────────────────────
 function ReferralModal({user,onClose}) {
@@ -1964,14 +1910,6 @@ function NotificationsPanel({user,onClose}) {
     </div>
   </div>;
 }
-
-// Popular-search quick-fill suggestions for the Business page's search bar.
-const SEARCH_SUGGESTIONS = [
-  "fufu restaurant", "hotel near palace", "kente cloth", "car repair suame",
-  "24 hour pharmacy", "wedding planner", "funeral organizer", "cheap transport",
-  "rooftop bar", "fresh groceries", "dental clinic", "gym", "tuk-tuk",
-  "tour guide", "adinkra crafts", "petrol station", "open now", "highly rated",
-];
 
 // ─── Language Toggle ──────────────────────────────────────────────────────────
 const TRANSLATIONS = {
@@ -3451,7 +3389,6 @@ export default function AshantiHub() {
   const [showFavs,setShowFavs]=useState(false);
   const [showCart,setShowCart]=useState(false);
   const [showAccount,setShowAccount]=useState(false);
-  const [showMap,setShowMap]=useState(false);
   const [showReferral,setShowReferral]=useState(false);
   const [showNotifs,setShowNotifs]=useState(false);
   const [currency,setCurrency]=useState("GHS");
@@ -3685,9 +3622,6 @@ export default function AshantiHub() {
   // support, not business contact, so they stay as inline wa.me links below.
   const handleConciergeWA=(phone,name)=>{if(!user){setAuthModal("signup");return;}const msg=encodeURIComponent(`Hello ${name}! I'd like some help via AshantiHub.`);window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");};
 
-  const [showSearchResults,setShowSearchResults]=useState(false);
-  const [searchFocused,setSearchFocused]=useState(false);
-
   const showRegistrationFlow = (page==="register" && !user) ||
     (user?.accountType==="business_owner" && user.registrationStep && user.registrationStep!=="complete");
   if(showRegistrationFlow) return <BusinessRegistrationFlow user={user} auth={auth} initialStep={user?.registrationStep} setPage={setPage} setShowBizDash={setShowBizDash}/>;
@@ -3801,56 +3735,22 @@ export default function AshantiHub() {
             </span>
           </div>
 
-          {/* Search bar */}
-          <div style={{background:C.darkBrown,padding:"16px",position:"relative"}}>
-            <div style={{maxWidth:1280,margin:"0 auto",position:"relative"}}>
-              <div style={{display:"flex",borderRadius:30,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.35)"}}>
-                <input
-                  value={searchInput}
-                  onChange={(e) => { setSearchInput(e.target.value); setShowSearchResults(true); }}
-                  onFocus={() => { setSearchFocused(true); setShowSearchResults(true); }}
-                  onBlur={() => setTimeout(() => { setSearchFocused(false); setShowSearchResults(false); }, 200)}
-                  placeholder={T.search}
-                  style={{ flex: 1, padding: "13px 18px", border: "none", fontSize: "0.85rem", background: "white", outline: "none", fontFamily: "inherit" }} />
-                {searchInput && <button onClick={() => { setSearchInput(""); setFilters((f) => ({ ...f, search: undefined })); setShowSearchResults(false); }} style={{ background: "white", border: "none", padding: "0 8px", cursor: "pointer", color: "#aaa", fontSize: "1.1rem" }}>✕</button>}
-                {/* Filters trigger — on desktop the Sidebar is always visible alongside the grid, so
-                    this button is mobile-only there (hidden via the ah-filter-trigger media query
-                    below); on mobile it opens Sidebar as a slide-in panel. */}
-                <button onClick={() => setShowFilters((f) => !f)} className="ah-filter-trigger" style={{ background: "#f5f5f5", border: "none", padding: "13px 14px", cursor: "pointer", fontSize: "0.85rem" }} title="Filters">⚙️</button>
-                <button style={{ background: C.gold, color: C.black, border: "none", padding: "13px 18px", fontWeight: 900, cursor: "pointer" }}>🔍</button>
-              </div>
-              <div style={{marginTop:10,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-                <button onClick={() => setShowMap((m) => !m)} style={{ background: "rgba(255,255,255,0.12)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 20, padding: "6px 14px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>
-                  {showMap ? "📋 List View" : "🗺️ Map View"}
-                </button>
-                <button onClick={() => setShowFavs(true)} style={{ background: "rgba(255,255,255,0.12)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 20, padding: "6px 14px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>
-                  ❤️ Saved ({favourites.length})
-                </button>
-                <select value={currency} onChange={e=>setCurrency(e.target.value)} title="Currency" style={{ background: "rgba(255,255,255,0.12)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 20, padding: "6px 10px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
-                  <option value="GHS">GHS 🇬🇭</option>
-                  <option value="USD">USD 🇺🇸</option>
-                  <option value="GBP">GBP 🇬🇧</option>
-                  <option value="EUR">EUR 🇪🇺</option>
-                </select>
-              </div>
-              {showSearchResults && searchFocused && !searchInput && (
-                <div style={{ position: "absolute", top: "calc(100% + 8px)", left: 0, right: 0, background: "white", borderRadius: 16, boxShadow: "0 8px 40px rgba(0,0,0,0.3)", zIndex: 500, overflow: "hidden", maxHeight: 340, overflowY: "auto" }}>
-                  <div style={{ padding: "12px" }}>
-                    <div style={{ fontSize: "0.68rem", color: "#aaa", fontWeight: 700, padding: "4px 8px 8px" }}>🔥 POPULAR SEARCHES</div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {SEARCH_SUGGESTIONS.map((sugg) => (
-                        <button key={sugg} onClick={() => { setSearchInput(sugg); setFilters((f) => ({ ...f, search: sugg })); setShowSearchResults(false); }}
-                          style={{ background: `${C.gold}15`, color: C.darkBrown, border: `1px solid ${C.gold}33`, borderRadius: 20, padding: "5px 12px", fontSize: "0.72rem", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
-                          🔍 {sugg}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+          {/* Mobile "open filters" bar — search now lives inside Sidebar as its
+              first field (docs/UI_MODERNIZATION_ROADMAP.md Phase G; the old
+              standalone top search bar, its POPULAR SEARCHES suggestions
+              dropdown, Map View toggle, Saved button, and currency selector
+              are all gone — Saved businesses are reachable via AccountPanel's
+              existing "❤️ Saved Businesses" entry instead). On desktop the
+              Sidebar is always visible alongside the grid, so this bar is
+              mobile-only (ah-filter-trigger-bar media query below); on mobile
+              it opens Sidebar as a slide-in panel. */}
+          <div className="ah-filter-trigger-bar" style={{background:C.darkBrown,padding:"12px 16px"}}>
+            <button onClick={() => setShowFilters((f) => !f)} style={{ background: "#f5f5f5", border: "none", borderRadius: 30, padding: "10px 20px", cursor: "pointer", fontSize: "0.8rem", fontWeight: 700, fontFamily: "inherit" }}>
+              ⚙️ Filters & Search
+            </button>
             <style>{`
-              @media (min-width: 761px) { .ah-filter-trigger { display: none !important; } }
+              .ah-filter-trigger-bar { display: none; }
+              @media (max-width: 760px) { .ah-filter-trigger-bar { display: block; } }
             `}</style>
           </div>
 
@@ -3914,12 +3814,13 @@ export default function AshantiHub() {
               setMinPriceInput={setMinPriceInput}
               maxPriceInput={maxPriceInput}
               setMaxPriceInput={setMaxPriceInput}
-              onClear={()=>{setFilters(f=>({category:f.category,kind:f.kind,search:f.search}));setMinPriceInput("");setMaxPriceInput("");}}
+              onClear={()=>{setSearchInput("");setFilters(f=>({category:f.category,kind:f.kind}));setMinPriceInput("");setMaxPriceInput("");}}
               open={showFilters}
               onClose={()=>setShowFilters(false)}
+              search={searchInput}
+              onSearchChange={setSearchInput}
             />
             <div style={{flex:1,minWidth:0}}>
-            {showMap&&<MapView listings={listings}/>}
             {filters.category==="grocery"?(
               <div style={{background:"white",borderRadius:16,padding:"24px",textAlign:"center",boxShadow:"0 2px 12px rgba(0,0,0,0.07)"}}>
                 <div style={{fontSize:"2.5rem",marginBottom:10}}>🛒</div>

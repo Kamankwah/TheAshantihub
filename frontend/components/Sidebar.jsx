@@ -38,6 +38,8 @@ export default function Sidebar({
   showPriceRange = true,
   showSort = true,
   showVerifiedToggle = true,
+  search,
+  onSearchChange,
 }) {
   return (
     <>
@@ -68,6 +70,26 @@ export default function Sidebar({
             ✕
           </button>
         </div>
+
+        {/* Search — moved in from the Business tab's old standalone top search
+            bar (docs/UI_MODERNIZATION_ROADMAP.md Phase G). Only rendered when
+            a caller passes `onSearchChange`, so the Events tab's Sidebar reuse
+            (which still owns its own separate search bar above the category
+            strip, untouched by this change) isn't handed an uncontrolled
+            input. */}
+        {onSearchChange && (
+          <>
+            <label htmlFor="ah-sidebar-search" style={labelStyle}>Search</label>
+            <input
+              id="ah-sidebar-search"
+              type="text"
+              value={search || ""}
+              onChange={(e) => onSearchChange(e.target.value)}
+              placeholder="Search businesses..."
+              style={{ ...selectStyle, marginBottom: 14 }}
+            />
+          </>
+        )}
 
         <label htmlFor="ah-sidebar-zone" style={labelStyle}>Zone</label>
         <select

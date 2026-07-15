@@ -82,4 +82,21 @@ describe('Sidebar', () => {
     expect(screen.queryByText('Verified businesses only')).not.toBeInTheDocument()
     expect(screen.getByLabelText('Zone')).toBeInTheDocument()
   })
+
+  it('renders a search field as the first field when onSearchChange is passed, and reflects the search value', () => {
+    renderSidebar({ search: 'kente cloth', onSearchChange: vi.fn() })
+    expect(screen.getByLabelText('Search')).toHaveValue('kente cloth')
+  })
+
+  it('calls onSearchChange when the search field is typed into', () => {
+    const onSearchChange = vi.fn()
+    renderSidebar({ search: '', onSearchChange })
+    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'fufu' } })
+    expect(onSearchChange).toHaveBeenCalledWith('fufu')
+  })
+
+  it('does not render a search field when onSearchChange is not passed (Events tab reuse)', () => {
+    renderSidebar()
+    expect(screen.queryByLabelText('Search')).not.toBeInTheDocument()
+  })
 })
