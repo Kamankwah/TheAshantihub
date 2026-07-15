@@ -4,6 +4,8 @@ import { apiPost, apiPostForm } from "../apiClient.js";
 import { useMyEvents } from "../hooks/useMyEvents.js";
 import { useEventAttendees } from "../hooks/useEventAttendees.js";
 import { formatEventDate } from "./EventCard.jsx";
+import EventTicketTypesPanel from "./EventTicketTypesPanel.jsx";
+import EventCheckinPanel from "./EventCheckinPanel.jsx";
 
 // Mirrors events/views.py's EVENT_DAILY_RATE — no endpoint exposes this
 // value (POST /api/events/{id}/pay/ computes and charges it server-side in
@@ -63,6 +65,13 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
   // set to, so the attendee list isn't eagerly fetched for every event in
   // "My Events" up front.
   const [expandedAttendeesId, setExpandedAttendeesId] = useState(null);
+  // Tickets/Check-in views (event ticketing + escrow work) — same
+  // "only fetch once its panel is expanded" convention as
+  // expandedAttendeesId above, but each kept as its own independent state so
+  // Attendees/Tickets/Check-in can all be open at once for the same event
+  // row rather than sharing one toggle.
+  const [expandedTicketsId, setExpandedTicketsId] = useState(null);
+  const [expandedCheckinId, setExpandedCheckinId] = useState(null);
 
   const eventCategories = (categories || []).filter((c) => c.kind === "event");
 
@@ -314,8 +323,22 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
               >
                 {expandedAttendeesId === ev.id ? "▲ Hide Attendees" : "👥 Attendees"}
               </button>
+              <button
+                onClick={() => setExpandedTicketsId((cur) => (cur === ev.id ? null : ev.id))}
+                style={{ background: "rgba(255,255,255,0.08)", color: "white", border: "1px solid rgba(255,255,255,0.22)", borderRadius: 20, padding: "7px 16px", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}
+              >
+                {expandedTicketsId === ev.id ? "▲ Hide Tickets" : "🎟️ Tickets"}
+              </button>
+              <button
+                onClick={() => setExpandedCheckinId((cur) => (cur === ev.id ? null : ev.id))}
+                style={{ background: "rgba(255,255,255,0.08)", color: "white", border: "1px solid rgba(255,255,255,0.22)", borderRadius: 20, padding: "7px 16px", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}
+              >
+                {expandedCheckinId === ev.id ? "▲ Hide Check-in" : "✅ Check-in"}
+              </button>
             </div>
             {expandedAttendeesId === ev.id && <EventAttendeesPanel eventId={ev.id} />}
+            {expandedTicketsId === ev.id && <EventTicketTypesPanel eventId={ev.id} />}
+            {expandedCheckinId === ev.id && <EventCheckinPanel eventId={ev.id} />}
           </div>
         ))}
       </div>
