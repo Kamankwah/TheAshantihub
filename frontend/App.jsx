@@ -22,6 +22,7 @@ import { useMyTransactions } from "./hooks/useMyTransactions.js";
 import { useMyCreditScore } from "./hooks/useMyCreditScore.js";
 import { useCart } from "./hooks/useCart.js";
 import { useSiteSettings } from "./hooks/useSiteSettings.js";
+import { useReviewsModerationQueue } from "./hooks/useReviewsModerationQueue.js";
 import { apiPost, apiPatch } from "./apiClient.js";
 import { C, CURRENCIES } from "./theme.js";
 import Flag from "./components/Flag.jsx";
@@ -2117,6 +2118,72 @@ function HeroApprovalPanel({theme}) {
   </div>;
 }
 
+const REVIEW_STATUS_META = {
+  published: { label:"Published", color:"#22c55e" },
+  hidden: { label:"Hidden", color:"#dc2626" },
+};
+
+function ReviewsModerationPanel({theme}) {
+  // GET /api/reviews/moderation/ is paginated ({count, next, previous,
+  // results}), unlike ListingsModerationPanel/HeroApprovalPanel's plain-array
+  // endpoints — so `items` reads data?.results, not data||[]. This is also a
+  // full queue (every review regardless of status), not a pending-only one —
+  // moderation here is reactive-by-browsing, hide/unhide rather than
+  // approve/reject.
+  const {data,isLoading,isError,refetch} = useReviewsModerationQueue();
+  const [hidingId,setHidingId] = useState(null);
+  const [hideReason,setHideReason] = useState("");
+  const [actionError,setActionError] = useState(null);
+
+  const hide = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/reviews/moderation/${id}/hide/`,{reason:hideReason}); setHidingId(null); setHideReason(""); refetch(); }
+    catch (err) { setActionError("Could not hide this review."); }
+  };
+  const unhide = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/reviews/moderation/${id}/unhide/`,{}); refetch(); }
+    catch (err) { setActionError("Could not unhide this review."); }
+  };
+
+  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
+  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the reviews queue.</div>;
+  const items = data?.results||[];
+
+  return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
+    <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Reviews ({data?.count??items.length})</div>
+    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
+    {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No reviews yet.</div>}
+    {items.map(r=>{
+      const statusMeta = REVIEW_STATUS_META[r.status]||{label:r.status,color:"#888"};
+      return (
+      <div key={r.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,flexWrap:"wrap"}}>
+          <div>
+            <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>
+              {"★".repeat(r.rating)}{"☆".repeat(5-r.rating)} <span style={{color:theme.textMuted,fontWeight:400}}>({r.target_type})</span>
+              {r.verified&&<span style={{background:"#22c55e22",color:"#22c55e",borderRadius:20,padding:"2px 8px",fontSize:"0.6rem",fontWeight:700,marginLeft:6}}>✓ Verified</span>}
+              <span style={{background:`${statusMeta.color}22`,color:statusMeta.color,borderRadius:20,padding:"2px 8px",fontSize:"0.6rem",fontWeight:700,marginLeft:6}}>{statusMeta.label}</span>
+            </div>
+            {r.comment&&<div style={{color:theme.textMuted,fontSize:"0.75rem",margin:"4px 0",maxWidth:420}}>"{r.comment}"</div>}
+            <div style={{color:theme.textMuted,fontSize:"0.65rem"}}>{r.author_name} • {r.created_at?.slice(0,10)}</div>
+            {r.status==="hidden"&&r.hidden_reason&&<div style={{color:"#dc2626",fontSize:"0.65rem",marginTop:2}}>Hidden: {r.hidden_reason}</div>}
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            {r.status==="published"&&<button onClick={()=>setHidingId(r.id)} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>🚫 Hide</button>}
+            {r.status==="hidden"&&<button onClick={()=>unhide(r.id)} style={{background:"#22c55e",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>↩️ Unhide</button>}
+          </div>
+        </div>
+        {hidingId===r.id&&<div style={{marginTop:8,display:"flex",gap:6}}>
+          <input value={hideReason} onChange={e=>setHideReason(e.target.value)} placeholder="Reason for hiding" style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+          <button onClick={()=>hide(r.id)} disabled={!hideReason} style={{background:"#dc2626",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:hideReason?"pointer":"default"}}>Confirm hide</button>
+        </div>}
+      </div>
+      );
+    })}
+  </div>;
+}
+
 function UsersPanel({theme}) {
   const [subTab,setSubTab] = useState("customers");
   const customers = useCustomers();
@@ -2207,6 +2274,8 @@ const SITE_SETTINGS_FIELDS = [
   {key:"instagram_url",label:"Instagram URL",placeholder:"https://instagram.com/ashantihub"},
   {key:"linkedin_url",label:"LinkedIn URL",placeholder:"https://linkedin.com/company/ashantihub"},
   {key:"twitter_url",label:"Twitter / X URL",placeholder:"https://x.com/ashantihub"},
+  {key:"warranty_returns_policy",label:"Warranty & returns policy",placeholder:"e.g. Items may be returned within 7 days if unopened...",multiline:true},
+  {key:"service_dispute_policy",label:"Service satisfaction & dispute policy",placeholder:"e.g. If a service doesn't meet expectations, contact AshantiHub Support within 48 hours...",multiline:true},
 ];
 
 function SiteSettingsForm({theme,initial,onSaved}) {
@@ -2241,7 +2310,11 @@ function SiteSettingsForm({theme,initial,onSaved}) {
         {SITE_SETTINGS_FIELDS.map(f=>(
           <label key={f.key} style={{display:"flex",flexDirection:"column",gap:4}}>
             <span style={{color:theme.textMuted,fontSize:"0.68rem",fontWeight:700}}>{f.label}</span>
-            <input value={form[f.key]} onChange={e=>setField(f.key,e.target.value)} placeholder={f.placeholder} style={{padding:"8px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.78rem",fontFamily:"inherit",background:theme.pageBg,color:theme.text}}/>
+            {f.multiline ? (
+              <textarea value={form[f.key]||""} onChange={e=>setField(f.key,e.target.value)} placeholder={f.placeholder} rows={4} style={{padding:"8px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.78rem",fontFamily:"inherit",background:theme.pageBg,color:theme.text,resize:"vertical"}}/>
+            ) : (
+              <input value={form[f.key]||""} onChange={e=>setField(f.key,e.target.value)} placeholder={f.placeholder} style={{padding:"8px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.78rem",fontFamily:"inherit",background:theme.pageBg,color:theme.text}}/>
+            )}
           </label>
         ))}
       </div>
@@ -2328,6 +2401,7 @@ export function StaffDashboard({auth,onExit}) {
     {id:"kyc",icon:"🪪",label:"KYC Queue",show:auth.hasPermission("kyc.approve")},
     {id:"moderation",icon:"📋",label:"Listings Moderation",show:auth.hasPermission("listings.moderate")},
     {id:"hero",icon:"🌟",label:"Hero Approval",show:auth.hasPermission("hero_media.approve")},
+    {id:"reviews",icon:"⭐",label:"Reviews",show:auth.hasPermission("reviews.moderate")},
     {id:"users",icon:"👥",label:"Users",show:auth.hasPermission("users.view")},
     {id:"categories-zones",icon:"🗂️",label:"Categories & Zones",show:auth.hasPermission("categories.manage")||auth.hasPermission("zones.manage")},
     {id:"site-settings",icon:"🧭",label:"Site Settings",show:auth.hasPermission("site_settings.manage")},
@@ -2374,6 +2448,7 @@ export function StaffDashboard({auth,onExit}) {
         {activeTab==="kyc"&&<KYCQueuePanel theme={t}/>}
         {activeTab==="moderation"&&<ListingsModerationPanel theme={t}/>}
         {activeTab==="hero"&&<HeroApprovalPanel theme={t}/>}
+        {activeTab==="reviews"&&<ReviewsModerationPanel theme={t}/>}
         {activeTab==="users"&&<UsersPanel theme={t}/>}
         {activeTab==="categories-zones"&&<CategoriesZonesPanel theme={t} auth={auth}/>}
         {activeTab==="site-settings"&&<SiteSettingsPanel theme={t}/>}
@@ -2477,6 +2552,8 @@ export function BusinessDashboard({ onExit, user, auth }) {
         name: editForm.name,
         price_amount: editForm.price_amount,
         price_unit: editForm.price_unit,
+        specs: editForm.specs,
+        service_duration: editForm.service_duration,
       });
       setEditingId(null);
       showToast();
@@ -2799,6 +2876,21 @@ export function BusinessDashboard({ onExit, user, auth }) {
                           </select>
                         </div>
                       </div>
+                      <div style={{marginBottom:10}}>
+                        <label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,display:"block",marginBottom:3}}>Service duration (e.g. '1 hour', '2-3 days')</label>
+                        <input value={editForm.service_duration||""} placeholder="e.g. 2 hours" onChange={e=>setEditForm(f=>({...f,service_duration:e.target.value}))} style={{width:"100%",padding:"8px",borderRadius:8,border:"1.5px solid #ddd",fontSize:"0.8rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+                      </div>
+                      <div style={{marginBottom:10}}>
+                        <label style={{fontSize:"0.68rem",fontWeight:700,color:C.darkBrown,display:"block",marginBottom:3}}>Specs</label>
+                        {(editForm.specs||[]).map((spec,i)=>(
+                          <div key={i} style={{display:"flex",gap:6,marginBottom:6}}>
+                            <input value={spec.label||""} placeholder="Label (e.g. Material)" onChange={e=>setEditForm(f=>({...f,specs:f.specs.map((s,si)=>si===i?{...s,label:e.target.value}:s)}))} style={{flex:1,padding:"8px",borderRadius:8,border:"1.5px solid #ddd",fontSize:"0.8rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+                            <input value={spec.value||""} placeholder="Value (e.g. Cotton)" onChange={e=>setEditForm(f=>({...f,specs:f.specs.map((s,si)=>si===i?{...s,value:e.target.value}:s)}))} style={{flex:1,padding:"8px",borderRadius:8,border:"1.5px solid #ddd",fontSize:"0.8rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+                            <button onClick={()=>setEditForm(f=>({...f,specs:f.specs.filter((_,si)=>si!==i)}))} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:8,padding:"0 10px",fontWeight:700,cursor:"pointer"}}>✕</button>
+                          </div>
+                        ))}
+                        <button onClick={()=>setEditForm(f=>({...f,specs:[...(f.specs||[]),{label:"",value:""}]}))} style={{background:"none",border:`1.5px dashed ${C.gold}`,color:C.deepGold,borderRadius:8,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Add spec</button>
+                      </div>
                       <div style={{display:"flex",gap:6}}>
                         <button onClick={()=>setEditingId(null)} style={{flex:1,background:"#f0f0f0",color:"#666",border:"none",borderRadius:20,padding:"8px",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
                         <button onClick={()=>saveEdit(item.id)} style={{flex:2,background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"8px",fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>✓ Save</button>
@@ -2813,7 +2905,7 @@ export function BusinessDashboard({ onExit, user, auth }) {
                         {item.status==="rejected"&&item.rejection_reason&&<div style={{fontSize:"0.65rem",color:"#dc2626",marginTop:3}}>Rejected: {item.rejection_reason}</div>}
                       </div>
                       <div style={{display:"flex",gap:6}}>
-                        {canEdit&&<button onClick={()=>{setEditingId(item.id);setEditForm({name:item.name,price_amount:item.price_amount,price_unit:item.price_unit});}} style={{background:`${C.gold}22`,color:C.deepGold,border:"none",borderRadius:20,padding:"6px 12px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>✏️ Edit</button>}
+                        {canEdit&&<button onClick={()=>{setEditingId(item.id);setEditForm({name:item.name,price_amount:item.price_amount,price_unit:item.price_unit,specs:item.specs||[],service_duration:item.service_duration||""});}} style={{background:`${C.gold}22`,color:C.deepGold,border:"none",borderRadius:20,padding:"6px 12px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>✏️ Edit</button>}
                         {(item.status==="draft"||item.status==="rejected")&&<button onClick={()=>submitForReview(item.id)} style={{background:C.kente2,color:"white",border:"none",borderRadius:20,padding:"6px 12px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>📤 Submit for Review</button>}
                         {item.status==="published"&&<button onClick={()=>{setPromoteListingId(item.id);setPromoteKind("featured");setPromoteDays(7);setPromoteKeywords("");setPromoteActionError(null);}} style={{background:`${C.kente1}22`,color:C.kente1,border:"none",borderRadius:20,padding:"6px 12px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>📣 Promote</button>}
                       </div>

@@ -39,12 +39,13 @@ describe('StaffDashboard', () => {
     expect(screen.queryByText('KYC Queue')).not.toBeInTheDocument()
     expect(screen.queryByText('Staff Management')).not.toBeInTheDocument()
     expect(screen.queryByText('Site Settings')).not.toBeInTheDocument()
+    expect(screen.queryByText('Reviews')).not.toBeInTheDocument()
   })
 
   it('a super_admin-shaped session sees every nav item', () => {
     const auth = makeAuth({
       user: { token: 't', account_type: 'staff', id: 2, full_name: 'Kwame Super', role: 'super_admin', permissions: [
-        'kyc.approve', 'listings.moderate', 'hero_media.approve', 'users.view', 'escrow.view', 'escrow.release',
+        'kyc.approve', 'listings.moderate', 'hero_media.approve', 'reviews.moderate', 'users.view', 'escrow.view', 'escrow.release',
         'disputes.resolve_financial', 'transactions.report', 'promotions.manage', 'analytics.view',
         'categories.manage', 'messaging.manage', 'disputes.flag', 'staff.manage', 'zones.manage',
         'site_settings.manage',
@@ -52,7 +53,7 @@ describe('StaffDashboard', () => {
       hasPermission: () => true,
     })
     render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
-    ;['KYC Queue', 'Listings Moderation', 'Hero Approval', 'Users', 'Categories & Zones', 'Site Settings', 'Staff Management',
+    ;['KYC Queue', 'Listings Moderation', 'Hero Approval', 'Reviews', 'Users', 'Categories & Zones', 'Site Settings', 'Staff Management',
       'Escrow Ledger', 'Disputes', 'Transactions Report', 'Promotions', 'Analytics', 'Messaging / Tickets']
       .forEach((label) => expect(screen.getByText(label)).toBeInTheDocument())
   })
@@ -381,5 +382,137 @@ describe('StaffDashboard', () => {
     await screen.findByPlaceholderText('hello@ashantihub.com')
     fireEvent.click(screen.getByText('Save'))
     await screen.findByText('Could not save site settings. Please try again.')
+  })
+
+  it('renders the two new policy fields as textareas and saves them', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/core/site-settings/', () => {
+        return HttpResponse.json({
+          contact_email: '', contact_phone: '', contact_address: '',
+          facebook_url: '', instagram_url: '', linkedin_url: '', twitter_url: '',
+          warranty_returns_policy: 'Returns within 7 days.',
+          service_dispute_policy: 'Contact Support within 48 hours.',
+        })
+      }),
+    )
+    let patchBody = null
+    server.use(
+      http.patch('http://localhost:8000/api/core/site-settings/', async ({ request }) => {
+        patchBody = await request.json()
+        return HttpResponse.json({ ...patchBody })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'site_settings.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Site Settings'))
+    const returnsField = await screen.findByDisplayValue('Returns within 7 days.')
+    expect(returnsField.tagName).toBe('TEXTAREA')
+    const disputeField = screen.getByDisplayValue('Contact Support within 48 hours.')
+    expect(disputeField.tagName).toBe('TEXTAREA')
+    fireEvent.change(returnsField, { target: { value: 'Returns within 14 days.' } })
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(patchBody).toMatchObject({ warranty_returns_policy: 'Returns within 14 days.' }))
+    await screen.findByText('✓ Saved!')
+  })
+})
+
+describe('StaffDashboard Reviews moderation', () => {
+  it('only shows the Reviews nav item for a session with reviews.moderate', () => {
+    const auth = makeAuth({ hasPermission: (c) => c === 'reviews.moderate' })
+    render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    expect(screen.getByText('Reviews')).toBeInTheDocument()
+  })
+
+  it('reads the paginated moderation queue (data.results) and shows published/hidden status', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/reviews/moderation/', () => {
+        return HttpResponse.json({
+          count: 2, next: null, previous: null,
+          results: [
+            { id: 1, target_type: 'listing', rating: 5, comment: 'Great!', verified: true, author_name: 'Ama', status: 'published', created_at: '2026-07-01T00:00:00Z' },
+            { id: 2, target_type: 'event', rating: 2, comment: 'Poorly organized', verified: true, author_name: 'Kofi', status: 'hidden', hidden_reason: 'Spam', created_at: '2026-07-02T00:00:00Z' },
+          ],
+        })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'reviews.moderate' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Reviews'))
+    await screen.findByText('"Great!"')
+    expect(screen.getByText('Published')).toBeInTheDocument()
+    expect(screen.getByText('Hidden')).toBeInTheDocument()
+    expect(screen.getByText('Hidden: Spam')).toBeInTheDocument()
+  })
+
+  it('hides a published review with a reason', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/reviews/moderation/', () => {
+        return HttpResponse.json({
+          count: 1, next: null, previous: null,
+          results: [{ id: 3, target_type: 'listing', rating: 1, comment: 'Fake review', verified: false, author_name: 'Unknown', status: 'published', created_at: '2026-07-01T00:00:00Z' }],
+        })
+      }),
+    )
+    let hideBody = null
+    server.use(
+      http.post('http://localhost:8000/api/reviews/moderation/3/hide/', async ({ request }) => {
+        hideBody = await request.json()
+        return HttpResponse.json({ id: 3, status: 'hidden' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'reviews.moderate' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Reviews'))
+    await screen.findByText('"Fake review"')
+    fireEvent.click(screen.getByText('🚫 Hide'))
+    fireEvent.change(screen.getByPlaceholderText('Reason for hiding'), { target: { value: 'Not a verified purchase' } })
+    fireEvent.click(screen.getByText('Confirm hide'))
+    await waitFor(() => expect(hideBody).toEqual({ reason: 'Not a verified purchase' }))
+  })
+
+  it('unhides a hidden review', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/reviews/moderation/', () => {
+        return HttpResponse.json({
+          count: 1, next: null, previous: null,
+          results: [{ id: 4, target_type: 'seller', rating: 3, comment: 'Meh', verified: true, author_name: 'Yaw', status: 'hidden', hidden_reason: 'Reported', created_at: '2026-07-01T00:00:00Z' }],
+        })
+      }),
+    )
+    let unhideCalled = false
+    server.use(
+      http.post('http://localhost:8000/api/reviews/moderation/4/unhide/', () => {
+        unhideCalled = true
+        return HttpResponse.json({ id: 4, status: 'published' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'reviews.moderate' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Reviews'))
+    await screen.findByText('"Meh"')
+    fireEvent.click(screen.getByText('↩️ Unhide'))
+    await waitFor(() => expect(unhideCalled).toBe(true))
+  })
+
+  it('shows an inline error when hiding a review fails', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/reviews/moderation/', () => {
+        return HttpResponse.json({
+          count: 1, next: null, previous: null,
+          results: [{ id: 5, target_type: 'listing', rating: 1, comment: 'Bad', verified: false, author_name: 'X', status: 'published', created_at: '2026-07-01T00:00:00Z' }],
+        })
+      }),
+      http.post('http://localhost:8000/api/reviews/moderation/5/hide/', () => {
+        return HttpResponse.json({ detail: 'Server error' }, { status: 500 })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'reviews.moderate' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Reviews'))
+    await screen.findByText('"Bad"')
+    fireEvent.click(screen.getByText('🚫 Hide'))
+    fireEvent.change(screen.getByPlaceholderText('Reason for hiding'), { target: { value: 'spam' } })
+    fireEvent.click(screen.getByText('Confirm hide'))
+    await screen.findByText('Could not hide this review.')
   })
 })

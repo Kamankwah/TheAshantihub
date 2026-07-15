@@ -327,3 +327,80 @@ describe('BusinessDashboard Promote this listing', () => {
     await screen.findByText('✓ Saved!')
   })
 })
+
+describe('BusinessDashboard Listings & Prices specs/service_duration editing', () => {
+  // canEdit is item.status !== "published", so these tests use a draft
+  // listing to reach the edit form.
+  function mockDashboardDataWithDraftListing({ specs = [], service_duration = '' } = {}) {
+    server.use(
+      http.get('http://localhost:8000/api/listings/mine/', () => HttpResponse.json([
+        {
+          id: 1, name: "Ama's Lodge", status: 'draft', price_amount: '450.00', price_unit: 'per night',
+          specs, service_duration, photos: [],
+        },
+      ])),
+      http.get('http://localhost:8000/api/accounts/business-owners/me/profile/', () => HttpResponse.json({
+        ghana_card_number: 'GHA-1', gps_address: 'AK-1', business_contact_phone: '+233200000000', is_formal: false,
+      })),
+      http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([])),
+      http.get('http://localhost:8000/api/billing/subscriptions/me/', () => HttpResponse.json({})),
+      http.get('http://localhost:8000/api/hero/mine/', () => HttpResponse.json({})),
+    )
+  }
+
+  it('seeds the edit form with the listing\'s existing specs and service_duration', async () => {
+    mockDashboardDataWithDraftListing({
+      specs: [{ label: 'Material', value: 'Cotton' }],
+      service_duration: '2 hours',
+    })
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
+    fireEvent.click(await screen.findByText('✏️ Edit'))
+    expect(screen.getByDisplayValue('2 hours')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Material')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Cotton')).toBeInTheDocument()
+  })
+
+  it('adds a spec row, fills service_duration, and saves with the PATCH body including both', async () => {
+    mockDashboardDataWithDraftListing()
+    let patchBody = null
+    server.use(
+      http.patch('http://localhost:8000/api/listings/mine/1/', async ({ request }) => {
+        patchBody = await request.json()
+        return HttpResponse.json({ id: 1 })
+      }),
+    )
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
+    fireEvent.click(await screen.findByText('✏️ Edit'))
+    fireEvent.change(screen.getByPlaceholderText('e.g. 2 hours'), { target: { value: '3 hours' } })
+    fireEvent.click(screen.getByText('+ Add spec'))
+    fireEvent.change(screen.getByPlaceholderText('Label (e.g. Material)'), { target: { value: 'Color' } })
+    fireEvent.change(screen.getByPlaceholderText('Value (e.g. Cotton)'), { target: { value: 'Kente Gold' } })
+    fireEvent.click(screen.getByText('✓ Save'))
+    await waitFor(() => expect(patchBody).toMatchObject({
+      name: "Ama's Lodge",
+      service_duration: '3 hours',
+      specs: [{ label: 'Color', value: 'Kente Gold' }],
+    }))
+  })
+
+  it('removes a spec row via the ✕ button', async () => {
+    mockDashboardDataWithDraftListing({ specs: [{ label: 'Material', value: 'Cotton' }] })
+    let patchBody = null
+    server.use(
+      http.patch('http://localhost:8000/api/listings/mine/1/', async ({ request }) => {
+        patchBody = await request.json()
+        return HttpResponse.json({ id: 1 })
+      }),
+    )
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
+    fireEvent.click(await screen.findByText('✏️ Edit'))
+    expect(screen.getByDisplayValue('Material')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('✕'))
+    expect(screen.queryByDisplayValue('Material')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('✓ Save'))
+    await waitFor(() => expect(patchBody).toMatchObject({ specs: [] }))
+  })
+})

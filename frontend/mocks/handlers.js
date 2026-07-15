@@ -38,6 +38,7 @@ export const handlers = [
     return HttpResponse.json({
       contact_email: '', contact_phone: '', contact_address: '',
       facebook_url: '', instagram_url: '', linkedin_url: '', twitter_url: '',
+      warranty_returns_policy: '', service_dispute_policy: '',
     })
   }),
   http.patch('http://localhost:8000/api/core/site-settings/', async ({ request }) => {
@@ -45,6 +46,7 @@ export const handlers = [
     return HttpResponse.json({
       contact_email: '', contact_phone: '', contact_address: '',
       facebook_url: '', instagram_url: '', linkedin_url: '', twitter_url: '',
+      warranty_returns_policy: '', service_dispute_policy: '',
       ...body,
     })
   }),
@@ -97,5 +99,55 @@ export const handlers = [
   }),
   http.get('http://localhost:8000/api/events/:id/rsvps/', () => {
     return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
+  // Reviews & Q&A (reviews/qa apps, frontend Phase 3) — default handlers,
+  // overridden per-test via server.use() where a specific reviews/Q&A/
+  // eligibility/moderation response is needed. Review list endpoints are all
+  // paginated with top-level avg_rating/review_count alongside the usual
+  // DRF envelope.
+  http.get('http://localhost:8000/api/reviews/listing/:id/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [], avg_rating: null, review_count: 0 })
+  }),
+  http.get('http://localhost:8000/api/reviews/event/:id/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [], avg_rating: null, review_count: 0 })
+  }),
+  http.get('http://localhost:8000/api/reviews/seller/:id/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [], avg_rating: null, review_count: 0 })
+  }),
+  http.get('http://localhost:8000/api/reviews/organizer/:kind/:id/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [], avg_rating: null, review_count: 0 })
+  }),
+  http.get('http://localhost:8000/api/reviews/eligibility/', () => {
+    return HttpResponse.json({ eligible: false, already_reviewed: false })
+  }),
+  http.post('http://localhost:8000/api/reviews/', async ({ request }) => {
+    const body = await request.json()
+    return HttpResponse.json(
+      { id: 1, rating: body.rating, comment: body.comment || '', verified: true, author_name: 'Customer', created_at: '2026-07-01T00:00:00Z' },
+      { status: 201 },
+    )
+  }),
+  http.get('http://localhost:8000/api/reviews/moderation/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
+  http.post('http://localhost:8000/api/reviews/moderation/:id/hide/', () => {
+    return HttpResponse.json({ id: 1, status: 'hidden' })
+  }),
+  http.post('http://localhost:8000/api/reviews/moderation/:id/unhide/', () => {
+    return HttpResponse.json({ id: 1, status: 'published' })
+  }),
+  http.get('http://localhost:8000/api/qa/questions/listing/:id/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
+  http.get('http://localhost:8000/api/qa/questions/event/:id/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
+  http.post('http://localhost:8000/api/qa/questions/', async ({ request }) => {
+    const body = await request.json()
+    return HttpResponse.json({ id: 1, question_text: body.question_text, answer_text: null, answered_at: null }, { status: 201 })
+  }),
+  http.post('http://localhost:8000/api/qa/questions/:id/answer/', async ({ request }) => {
+    const body = await request.json()
+    return HttpResponse.json({ id: 1, answer_text: body.answer_text, answered_at: '2026-07-01T00:00:00Z' })
   }),
 ]
