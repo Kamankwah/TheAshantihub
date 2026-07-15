@@ -64,6 +64,16 @@ class Listing(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=DRAFT)
     rejection_reason = models.CharField(max_length=500, null=True, blank=True)
 
+    # Structured (not freeform-text) spec table, per the reviews/ratings/Q&A
+    # plan's ListingDetailPage "Specs" tab (docs/PROJECT_SCOPE.md) — a list
+    # of {"label": ..., "value": ...} dicts so the frontend can render a real
+    # table rather than parsing prose. service_duration is the service-kind
+    # equivalent of a spec, kept as its own field (a single free-text value
+    # like "45 minutes" or "2-3 business days") rather than folded into specs
+    # since it's shown in its own dedicated tab for service listings.
+    specs = models.JSONField(default=list, blank=True)
+    service_duration = models.CharField(max_length=100, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -18,6 +18,15 @@ class SiteSettings(models.Model):
     linkedin_url = models.URLField(blank=True)
     twitter_url = models.URLField(blank=True)
 
+    # Static, platform-wide policy text for the reviews/ratings/Q&A plan's
+    # product/service-detail "Warranty & Returns" / "Service satisfaction &
+    # dispute" tabs (docs/PROJECT_SCOPE.md) — no per-listing fulfillment/
+    # dispute system exists to source per-item promises from, so this is one
+    # editable policy blurb per concept, same as every other SiteSettings
+    # field.
+    warranty_returns_policy = models.TextField(blank=True)
+    service_dispute_policy = models.TextField(blank=True)
+
     def save(self, *args, **kwargs):
         self.pk = 1
         # Force an upsert regardless of how save() was invoked (e.g.
