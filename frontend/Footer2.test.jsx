@@ -56,7 +56,7 @@ describe('Footer2', () => {
     expect(setShowBizDash).toHaveBeenCalledWith(true)
   })
 
-  it('renders no social icons when useSiteSettings returns all-empty URLs (the default handler)', async () => {
+  it('renders no facebook/instagram/linkedin/twitter icons when those URLs are all empty (the default handler)', async () => {
     renderFooter2()
     expect(await screen.findByText('About')).toBeInTheDocument()
     expect(screen.queryByLabelText('Facebook')).not.toBeInTheDocument()
@@ -65,12 +65,20 @@ describe('Footer2', () => {
     expect(screen.queryByLabelText('Twitter')).not.toBeInTheDocument()
   })
 
+  it('renders the TikTok/YouTube/WhatsApp icons from the default handler’s non-empty values', async () => {
+    renderFooter2()
+    expect(await screen.findByLabelText('TikTok')).toHaveAttribute('href', 'https://tiktok.com/@ashantihub')
+    expect(screen.getByLabelText('YouTube')).toHaveAttribute('href', 'https://youtube.com/@ashantihub')
+    expect(screen.getByLabelText('WhatsApp')).toHaveAttribute('href', 'https://wa.me/233244000000')
+  })
+
   it('renders only the social icons with a non-empty URL', async () => {
     server.use(
       http.get('http://localhost:8000/api/core/site-settings/', () => HttpResponse.json({
         contact_email: '', contact_phone: '', contact_address: '',
         facebook_url: 'https://facebook.com/ashantihub', instagram_url: '',
         linkedin_url: 'https://linkedin.com/company/ashantihub', twitter_url: '',
+        tiktok_url: '', youtube_url: '', whatsapp_number: '', support_hours: '',
       })),
     )
     renderFooter2()
@@ -79,6 +87,9 @@ describe('Footer2', () => {
     expect(screen.getByLabelText('LinkedIn')).toBeInTheDocument()
     expect(screen.queryByLabelText('Instagram')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Twitter')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('TikTok')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('YouTube')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('WhatsApp')).not.toBeInTheDocument()
 
     expect(screen.getByLabelText('Facebook')).toHaveAttribute('href', 'https://facebook.com/ashantihub')
     expect(screen.getByLabelText('LinkedIn')).toHaveAttribute('href', 'https://linkedin.com/company/ashantihub')

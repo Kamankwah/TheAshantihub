@@ -17,6 +17,13 @@ class SiteSettings(models.Model):
     instagram_url = models.URLField(blank=True)
     linkedin_url = models.URLField(blank=True)
     twitter_url = models.URLField(blank=True)
+    tiktok_url = models.URLField(blank=True)
+    youtube_url = models.URLField(blank=True)
+    # Digits-only, no leading "+" (e.g. "233244000000") — matches the
+    # wa.me/{phone} convention the frontend's WABtn component already uses,
+    # unlike contact_phone above which is human-formatted for display.
+    whatsapp_number = models.CharField(max_length=30, blank=True)
+    support_hours = models.CharField(max_length=100, blank=True)  # e.g. "Mon–Sat, 8:00am – 8:00pm GMT"
 
     # Static, platform-wide policy text for the reviews/ratings/Q&A plan's
     # product/service-detail "Warranty & Returns" / "Service satisfaction &
