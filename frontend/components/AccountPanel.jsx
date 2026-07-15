@@ -8,7 +8,7 @@ import { C } from "../theme.js";
 // profile-update endpoint), so this is deliberately a lightweight, honest
 // read-only panel (same overlay pattern as FavsDrawer/NotificationsPanel)
 // rather than a settings form with nothing to save to.
-export default function AccountPanel({ user, favourites, onClose, onOpenSaved, onOpenMessages }) {
+export default function AccountPanel({ user, favourites, onClose, onOpenSaved, onOpenMyTickets, onOpenMessages }) {
   const itemStyle = {
     background: "#f6f6f6", border: "1px solid #e5e5e5", borderRadius: 12,
     padding: "10px 14px", fontSize: "0.82rem", fontWeight: 700, color: C.darkBrown,
@@ -35,6 +35,9 @@ export default function AccountPanel({ user, favourites, onClose, onOpenSaved, o
           <button onClick={onOpenSaved} style={itemStyle}>
             <span>❤️ Saved Businesses</span>
             <span style={countStyle}>{favourites.length}</span>
+          </button>
+          <button onClick={onOpenMyTickets} style={itemStyle}>
+            <span>🎟️ My Tickets</span>
           </button>
           <button onClick={onOpenMessages} style={itemStyle}>
             <span>💬 Messages</span>

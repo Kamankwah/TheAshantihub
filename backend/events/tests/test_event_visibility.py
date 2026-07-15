@@ -55,7 +55,7 @@ class EventVisibilityTests(TestCase):
         self.assertEqual(item["id"], event.id)
         expected_keys = {
             "id", "name", "category", "zone", "event_date", "hero_media", "is_private",
-            "avg_rating", "review_count",
+            "avg_rating", "review_count", "has_tickets",
         }
         self.assertEqual(set(item.keys()), expected_keys)
         self.assertNotIn("address", item)
