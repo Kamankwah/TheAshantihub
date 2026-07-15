@@ -79,6 +79,19 @@ export function useAuth() {
     return apiPatch('/api/accounts/business-owners/me/payout/', fields)
   }, [])
 
+  // Customer profile self-edit (name + avatar only — email/phone are login
+  // identifiers with no verification/OTP flow yet, so they stay out of this
+  // endpoint entirely). Mirrors submitBusinessInfo's FormData-building
+  // convention exactly; callers follow up with refreshUser() the same way
+  // submitBusinessInfo callers already do (see BusinessRegistrationFlow.jsx).
+  const updateProfile = useCallback(async (fields) => {
+    const formData = new FormData()
+    Object.entries(fields).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') formData.append(key, value)
+    })
+    return apiPatchForm('/api/accounts/customers/me/profile/', formData)
+  }, [])
+
   const acceptBusinessTerms = useCallback(async () => {
     return apiPost('/api/accounts/business-owners/me/terms/', {})
   }, [])
@@ -102,6 +115,6 @@ export function useAuth() {
   return {
     user, isLoading, login, logout, registerCustomer, registerBusinessOwner,
     submitBusinessInfo, submitPayoutInfo, acceptBusinessTerms, refreshUser,
-    hasPermission,
+    updateProfile, hasPermission,
   }
 }

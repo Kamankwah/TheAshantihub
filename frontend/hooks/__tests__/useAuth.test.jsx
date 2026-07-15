@@ -142,6 +142,22 @@ describe('useAuth', () => {
     })
   })
 
+  it('updateProfile patches customers/me/profile/ as multipart/form-data', async () => {
+    server.use(
+      http.patch('http://localhost:8000/api/accounts/customers/me/profile/', async ({ request }) => {
+        const formData = await request.formData()
+        expect(formData.get('full_name')).toBe('Ama Boateng')
+        expect(formData.get('avatar')).toBeNull()
+        return HttpResponse.json({ full_name: 'Ama Boateng', avatar: null })
+      }),
+    )
+    const { result } = renderHook(() => useAuth())
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    await act(async () => {
+      await result.current.updateProfile({ full_name: 'Ama Boateng', avatar: null })
+    })
+  })
+
   it('submitPayoutInfo patches business-owners/me/payout/ as JSON', async () => {
     server.use(
       http.patch('http://localhost:8000/api/accounts/business-owners/me/payout/', async ({ request }) => {

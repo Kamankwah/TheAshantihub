@@ -137,7 +137,10 @@ class LoginTests(TestCase):
         self.assertEqual(data["role"], "support")
         self.assertCountEqual(
             data["permissions"],
-            ["messaging.manage", "disputes.flag", "users.view", "reviews.moderate"],
+            [
+                "messaging.manage", "disputes.flag", "users.view", "reviews.moderate",
+                "orders.manage_delivery",
+            ],
         )
 
     def test_customer_login_response_has_no_role_or_permissions_keys(self):

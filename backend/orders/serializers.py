@@ -16,4 +16,22 @@ class OrderSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Order
-        fields = ["id", "status", "total_amount", "placed_at", "items"]
+        fields = ["id", "status", "delivery_status", "total_amount", "placed_at", "items"]
+
+
+class StaffOrderSerializer(serializers.ModelSerializer):
+    items = OrderItemSerializer(many=True, read_only=True)
+    customer_name = serializers.CharField(source="customer.full_name", read_only=True)
+
+    class Meta:
+        model = Order
+        fields = [
+            "id", "customer", "customer_name", "status", "delivery_status",
+            "total_amount", "placed_at", "items",
+        ]
+
+
+class OrderDeliveryStatusUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Order
+        fields = ["delivery_status"]

@@ -3,16 +3,22 @@ from decimal import Decimal
 from django.db import transaction as db_transaction
 from django.utils.crypto import get_random_string
 from rest_framework import generics, status
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.permissions import HasRolePermission
 from accounts.views import IsCustomer
 from billing.models import Transaction
 from cart.models import Cart
 
 from .models import Order, OrderItem
-from .serializers import OrderSerializer
+from .serializers import (
+    OrderDeliveryStatusUpdateSerializer,
+    OrderSerializer,
+    StaffOrderSerializer,
+)
 
 
 class OrderCheckoutView(APIView):
@@ -85,3 +91,35 @@ class OrderDetailView(generics.RetrieveAPIView):
 
     def get_queryset(self):
         return Order.objects.filter(customer=self.request.user)
+
+
+class OrderStaffPagination(PageNumberPagination):
+    page_size = 20
+
+
+class OrderStaffListView(generics.ListAPIView):
+    """GET /api/orders/staff/ — all customer orders, staff-only
+    (orders.manage_delivery), for delivery-status management.
+    """
+
+    serializer_class = StaffOrderSerializer
+    queryset = Order.objects.select_related("customer").prefetch_related(
+        "items__listing"
+    ).order_by("-placed_at")
+    pagination_class = OrderStaffPagination
+
+    def get_permissions(self):
+        return [HasRolePermission("orders.manage_delivery")]
+
+
+class OrderDeliveryStatusUpdateView(generics.UpdateAPIView):
+    """PATCH /api/orders/{id}/delivery-status/ — staff-only
+    (orders.manage_delivery) update of an order's fulfillment status.
+    """
+
+    serializer_class = OrderDeliveryStatusUpdateSerializer
+    queryset = Order.objects.all()
+    http_method_names = ["patch"]
+
+    def get_permissions(self):
+        return [HasRolePermission("orders.manage_delivery")]

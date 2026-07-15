@@ -150,6 +150,16 @@ describe('AshantiHub routing — dashboard and detail routes', () => {
   )
 
   it(
+    'mounting directly at /my-account (simulating a hard reload) renders UserPanel directly',
+    async () => {
+      renderAtPath('/my-account')
+      expect(await screen.findByText('My Account', {}, { timeout: 3000 })).toBeInTheDocument()
+      expect(screen.queryByText(/Ashanti Rising/i)).not.toBeInTheDocument()
+    },
+    8000,
+  )
+
+  it(
     'mounting directly at /business/123 renders the Business tab AND opens ListingDetailPage for id 123',
     async () => {
       server.use(

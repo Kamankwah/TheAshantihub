@@ -45,7 +45,7 @@ describe('StaffDashboard', () => {
   it('a super_admin-shaped session sees every nav item', () => {
     const auth = makeAuth({
       user: { token: 't', account_type: 'staff', id: 2, full_name: 'Kwame Super', role: 'super_admin', permissions: [
-        'kyc.approve', 'listings.moderate', 'hero_media.approve', 'reviews.moderate', 'users.view', 'escrow.view', 'escrow.release',
+        'kyc.approve', 'listings.moderate', 'hero_media.approve', 'reviews.moderate', 'orders.manage_delivery', 'users.view', 'escrow.view', 'escrow.release',
         'disputes.resolve_financial', 'transactions.report', 'promotions.manage', 'analytics.view',
         'categories.manage', 'messaging.manage', 'disputes.flag', 'staff.manage', 'zones.manage',
         'site_settings.manage',
@@ -53,7 +53,7 @@ describe('StaffDashboard', () => {
       hasPermission: () => true,
     })
     render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
-    ;['KYC Queue', 'Listings Moderation', 'Hero Approval', 'Reviews', 'Users', 'Categories & Zones', 'Site Settings', 'Staff Management',
+    ;['KYC Queue', 'Listings Moderation', 'Hero Approval', 'Reviews', 'Delivery Management', 'Users', 'Categories & Zones', 'Site Settings', 'Staff Management',
       'Escrow Ledger', 'Disputes', 'Transactions Report', 'Promotions', 'Analytics', 'Messaging / Tickets']
       .forEach((label) => expect(screen.getByText(label)).toBeInTheDocument())
   })
@@ -514,5 +514,89 @@ describe('StaffDashboard Reviews moderation', () => {
     fireEvent.change(screen.getByPlaceholderText('Reason for hiding'), { target: { value: 'spam' } })
     fireEvent.click(screen.getByText('Confirm hide'))
     await screen.findByText('Could not hide this review.')
+  })
+})
+
+describe('StaffDashboard Delivery Management', () => {
+  it('only shows the Delivery Management nav item for a session with orders.manage_delivery', () => {
+    const auth = makeAuth({ hasPermission: (c) => c === 'orders.manage_delivery' })
+    render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    expect(screen.getByText('Delivery Management')).toBeInTheDocument()
+  })
+
+  it('reads the paginated orders queue (data.results) and only shows a delivery-status select for paid orders', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/orders/staff/', () => {
+        return HttpResponse.json({
+          count: 2, next: null, previous: null,
+          results: [
+            { id: 1, customer: 3, customer_name: 'Ama Boateng', status: 'paid', delivery_status: 'processing', total_amount: '150.00', placed_at: '2026-07-01T00:00:00Z', items: [] },
+            { id: 2, customer: 4, customer_name: 'Kofi Mensah', status: 'pending', delivery_status: 'processing', total_amount: '80.00', placed_at: '2026-07-02T00:00:00Z', items: [] },
+          ],
+        })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'orders.manage_delivery' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Delivery Management'))
+    await screen.findByText('Ama Boateng')
+    expect(screen.getByText('Kofi Mensah')).toBeInTheDocument()
+    expect(screen.getAllByRole('combobox').length).toBe(1)
+  })
+
+  it('updates a paid order\'s delivery status', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/orders/staff/', () => {
+        return HttpResponse.json({
+          count: 1, next: null, previous: null,
+          results: [{ id: 9, customer: 3, customer_name: 'Ama Boateng', status: 'paid', delivery_status: 'processing', total_amount: '150.00', placed_at: '2026-07-01T00:00:00Z', items: [] }],
+        })
+      }),
+    )
+    let patchBody = null
+    server.use(
+      http.patch('http://localhost:8000/api/orders/9/delivery-status/', async ({ request }) => {
+        patchBody = await request.json()
+        return HttpResponse.json({ id: 9, delivery_status: 'shipped' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'orders.manage_delivery' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Delivery Management'))
+    await screen.findByText('Ama Boateng')
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'shipped' } })
+    await waitFor(() => expect(patchBody).toEqual({ delivery_status: 'shipped' }))
+  })
+
+  it('shows an inline error when updating delivery status fails', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/orders/staff/', () => {
+        return HttpResponse.json({
+          count: 1, next: null, previous: null,
+          results: [{ id: 10, customer: 3, customer_name: 'Ama Boateng', status: 'paid', delivery_status: 'processing', total_amount: '150.00', placed_at: '2026-07-01T00:00:00Z', items: [] }],
+        })
+      }),
+      http.patch('http://localhost:8000/api/orders/10/delivery-status/', () => {
+        return HttpResponse.json({ detail: 'Server error' }, { status: 500 })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'orders.manage_delivery' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Delivery Management'))
+    await screen.findByText('Ama Boateng')
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'shipped' } })
+    await screen.findByText("Could not update this order's delivery status.")
+  })
+
+  it('shows an empty state when there are no orders', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/orders/staff/', () => {
+        return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'orders.manage_delivery' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Delivery Management'))
+    await screen.findByText('No orders yet.')
   })
 })

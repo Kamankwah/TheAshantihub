@@ -20,6 +20,7 @@ from .serializers import (
     BusinessOwnerProfileUpdateSerializer,
     CustomerListSerializer,
     CustomerLoginSerializer,
+    CustomerProfileSerializer,
     CustomerRegistrationSerializer,
     PayoutDetailSerializer,
     StaffActivateSerializer,
@@ -45,6 +46,10 @@ def me(request):
         data["kyc_status"] = request.user.kyc_status
         data["kyc_rejection_reason"] = request.user.kyc_rejection_reason
         data["registration_step"] = request.user.compute_registration_step()
+    if isinstance(request.user, Customer):
+        data["avatar"] = (
+            request.build_absolute_uri(request.user.avatar.url) if request.user.avatar else None
+        )
     return Response(data)
 
 
@@ -259,6 +264,15 @@ class BusinessOwnerProfileUpdateView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user.profile
+
+
+class CustomerProfileUpdateView(generics.RetrieveUpdateAPIView):
+    serializer_class = CustomerProfileSerializer
+    permission_classes = [IsCustomer]
+    http_method_names = ["get", "patch"]
+
+    def get_object(self):
+        return self.request.user
 
 
 class TermsAcceptView(APIView):
