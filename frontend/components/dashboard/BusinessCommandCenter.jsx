@@ -33,11 +33,33 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
   const [tab, setTab] = useState(TABS.some(t => t.id === initialTab) ? initialTab : "analytics");
   const [saved, setSaved] = useState(false);
   const [resubmitting, setResubmitting] = useState(false);
-  const { data: profile } = useBusinessProfile();
+
+  // /business-dashboard (and /payments, /credit) render this component
+  // regardless of who's signed in — unlike /staff, they don't verify the
+  // session first. So data hooks must not fire until auth has settled and
+  // the session is actually a business owner, otherwise a signed-out visit
+  // (or the brief window before auth.isLoading resolves) fires
+  // unauthenticated requests that just 401.
+  const isBusinessOwner = user?.accountType === "business_owner";
+  const dataReady = !auth.isLoading && isBusinessOwner;
+  const { data: profile } = useBusinessProfile(dataReady);
 
   const isVerified = user?.kycStatus === "verified";
   const isRejected = user?.kycStatus === "rejected";
   const showToast = () => { setSaved(true); setTimeout(() => setSaved(false), 2500); };
+
+  if (auth.isLoading) {
+    return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: D.pageBg, color: D.textDim }}>Loading…</div>;
+  }
+
+  if (!isBusinessOwner) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: 20, textAlign: "center" }}>
+        <div style={{ fontSize: "1.15rem", fontWeight: 700, color: D.text }}>Sign in with a business owner account to view this dashboard.</div>
+        <button onClick={onExit} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: D.gold, color: "#1a1205", fontWeight: 700, cursor: "pointer", fontSize: "0.85rem" }}>← Back to AshantiHub</button>
+      </div>
+    );
+  }
 
   // Rejected-KYC "fix and resubmit" flow — full replacement, like the original.
   if (resubmitting) {

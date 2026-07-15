@@ -440,7 +440,7 @@ function mockAnalyticsData() {
   )
 }
 
-const analyticsUser = { id: 7, fullName: 'Abena Owusu', kycStatus: 'verified' }
+const analyticsUser = { id: 7, fullName: 'Abena Owusu', accountType: 'business_owner', kycStatus: 'verified' }
 
 describe('BusinessDashboard Analytics tab', () => {
   it('renders the KPI row from real derived data', async () => {
