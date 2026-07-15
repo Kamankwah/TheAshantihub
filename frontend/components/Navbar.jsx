@@ -46,6 +46,8 @@ export default function Navbar({
   setShowAccount,
   setShowCart,
   cartCount = 0,
+  theme,
+  toggleTheme,
   T,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -118,6 +120,9 @@ export default function Navbar({
     <>
       <button onClick={act(() => setLang(l => l === "en" ? "tw" : "en"))} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.25)",borderRadius:24,padding:"8px 14px",fontSize:"0.8rem",fontWeight:700,cursor:"pointer",width:stacked?"100%":"auto"}}>
         {lang === "en" ? "🇬🇭 Twi" : "🇬🇧 EN"}
+      </button>
+      <button onClick={act(() => toggleTheme())} aria-label="Toggle theme" title="Toggle theme" style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.25)",borderRadius:24,padding:"8px 14px",fontSize:"0.8rem",fontWeight:700,cursor:"pointer",width:stacked?"100%":"auto"}}>
+        {theme === "dark" ? "☀️" : "🌙"}
       </button>
       <button onClick={act(() => setShowNotifs(n => !n))} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.25)",borderRadius:"50%",width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"1.05rem",position:"relative",flexShrink:0}}>
         🔔

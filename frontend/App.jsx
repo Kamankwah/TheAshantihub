@@ -3396,6 +3396,17 @@ export default function AshantiHub() {
   const [authModal,setAuthModal]=useState(null);
   const auth=useAuth();
   const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id,registrationStep:auth.user.registration_step,kycStatus:auth.user.kyc_status,kycRejectionReason:auth.user.kyc_rejection_reason} : null;
+  // Site-wide light/dark toggle (docs/UI_MODERNIZATION_ROADMAP.md Phase E) —
+  // same useTheme() hook StaffDashboard already uses internally, but lifted
+  // here so the customer-facing Navbar can offer the same control. The
+  // `dark` class on <html> is what Tailwind's `dark:` variants (and the CSS
+  // variable swap in index.css's `.dark` block) key off of; this only
+  // affects Tailwind-built surfaces (currently the footer) — the legacy
+  // inline-style `C`-palette surfaces are unaffected by design.
+  const {theme,toggleTheme} = useTheme();
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+  }, [theme]);
   const [legalDoc,setLegalDoc]=useState(null);
   // showBizDash/showPayments/showCredit — same "derive from the URL, wrap the
   // setter in a navigate() closure" pattern as `page`/`setPage` above, so
@@ -3719,6 +3730,7 @@ export default function AshantiHub() {
         setShowAccount={setShowAccount}
         setShowCart={setShowCart}
         cartCount={cartItemCount}
+        theme={theme} toggleTheme={toggleTheme}
         T={T}
       />
 

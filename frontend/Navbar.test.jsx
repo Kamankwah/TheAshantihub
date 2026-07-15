@@ -20,6 +20,8 @@ function renderNavbar(props = {}) {
       setShowPayments={vi.fn()}
       setShowAccount={vi.fn()}
       setShowCart={vi.fn()}
+      theme="light"
+      toggleTheme={vi.fn()}
       T={T}
       {...props}
     />,
@@ -139,5 +141,29 @@ describe('Navbar', () => {
   it('customer: shows no badge when the cart is empty', () => {
     renderNavbar({ user: { fullName: 'Ama Boateng', accountType: 'customer' }, cartCount: 0 })
     expect(screen.queryByText('0')).not.toBeInTheDocument()
+  })
+
+  it('shows a moon icon and calls toggleTheme when the theme toggle is clicked in light mode', () => {
+    const toggleTheme = vi.fn()
+    renderNavbar({ theme: 'light', toggleTheme })
+    const toggleBtn = screen.getByLabelText('Toggle theme')
+    expect(toggleBtn).toHaveTextContent('🌙')
+    fireEvent.click(toggleBtn)
+    expect(toggleTheme).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows a sun icon for the theme toggle in dark mode', () => {
+    renderNavbar({ theme: 'dark' })
+    expect(screen.getByLabelText('Toggle theme')).toHaveTextContent('☀️')
+  })
+
+  it('shows the theme toggle in the mobile dropdown too', () => {
+    const toggleTheme = vi.fn()
+    renderNavbar({ theme: 'light', toggleTheme })
+    fireEvent.click(screen.getByLabelText('Open menu'))
+    const toggleBtns = screen.getAllByLabelText('Toggle theme')
+    expect(toggleBtns.length).toBe(2)
+    fireEvent.click(toggleBtns[1])
+    expect(toggleTheme).toHaveBeenCalledTimes(1)
   })
 })
