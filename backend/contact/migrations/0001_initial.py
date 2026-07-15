@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('accounts', '0012_seed_contact_messages_manage_permission'),
+        ('accounts', '0013_seed_contact_messages_manage_permission'),
     ]
 
     operations = [

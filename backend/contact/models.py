@@ -11,7 +11,7 @@ class ContactMessage(models.Model):
     fields rather than a link to an account. Staff triage it via the
     `status` field (new -> read -> resolved), gated by the
     `contact_messages.manage` permission (see
-    accounts/migrations/0012_seed_contact_messages_manage_permission.py).
+    accounts/migrations/0013_seed_contact_messages_manage_permission.py).
     """
 
     GENERAL = "general"

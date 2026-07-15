@@ -1,7 +1,7 @@
 from django.db import migrations
 
 PERMISSIONS = [
-    ("contact_messages.manage", "View and resolve public contact form submissions"),
+    ("escrow.refund", "Refund a held ticket purchase before delivery"),
 ]
 
 
@@ -16,7 +16,7 @@ def seed(apps, schema_editor):
         )
         permissions.append(permission)
 
-    for role_name in ("admin", "support"):
+    for role_name in ("accountant",):
         role = Role.objects.get(name=role_name)
         role.permissions.add(*permissions)
 

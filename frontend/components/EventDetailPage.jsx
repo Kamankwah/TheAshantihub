@@ -3,6 +3,7 @@ import { C } from "../theme.js";
 import { useEvent } from "../hooks/useEvent.js";
 import { useEventReviews } from "../hooks/useEventReviews.js";
 import { useOrganizerReviews } from "../hooks/useOrganizerReviews.js";
+import { useEventTicketTypes } from "../hooks/useEventTicketTypes.js";
 import { apiDelete, apiPost } from "../apiClient.js";
 import { formatEventDate } from "./EventCard.jsx";
 import { ReviewsList, ReviewWriteForm, starString } from "./ReviewComponents.jsx";
@@ -92,7 +93,7 @@ import { ReviewsList, ReviewWriteForm, starString } from "./ReviewComponents.jsx
 // placed after the early `if (isLocked) return ...` above, so they're
 // already structurally unreachable for a locked, un-unlocked private event
 // — no redundant extra gate needed here.
-export default function EventDetailPage({ id, onBack, user }) {
+export default function EventDetailPage({ id, onBack, user, PaymentComponent }) {
   const { data: event, isLoading, isError, refetch } = useEvent(id);
   const [unlocked, setUnlocked] = useState(null);
   const [code, setCode] = useState("");
@@ -357,6 +358,11 @@ export default function EventDetailPage({ id, onBack, user }) {
         </div>
       </div>
 
+      {/* Tickets section (event ticketing + escrow work) — sits after the
+          RSVP block and before Reviews/Organizer, same "full-width block
+          below the gallery+details flex row" placement. */}
+      <EventTicketsSection eventId={id} hasTickets={detail.has_tickets} user={user} PaymentComponent={PaymentComponent} />
+
       {/* Reviews + Organizer sections (reviews/ratings/Q&A plan, Phase 6) —
           see the block comment above the component for the full rationale.
           Full-width blocks below the gallery+details flex row, same
@@ -364,6 +370,160 @@ export default function EventDetailPage({ id, onBack, user }) {
           sitting outside its two-column layout. */}
       <EventReviewsSection eventId={id} detail={detail} user={user} />
       <OrganizerRatingSection organizer={detail.organizer} user={user} />
+    </div>
+  );
+}
+
+// ─── EventTicketsSection ────────────────────────────────────────────────────
+// Event ticketing + escrow work. Self-fetches useEventTicketTypes(eventId)
+// (same "self-fetches, doesn't receive data as a prop" convention as
+// EventReviewsSection/OrganizerRatingSection above). Renders nothing at all
+// when the event has no active ticket types — either because hasTickets is
+// false (EventDetailSerializer's has_tickets field, avoids ever firing the
+// fetch for an event that was never ticketed) or because the list resolved
+// empty, mirroring OrganizerRatingSection's "hide rather than show an empty
+// state" convention.
+//
+// Buy flow follows the same **pay-first** convention as
+// EventSubmissionPanel's openPay/confirmPay (not ListingDetailPage's
+// promotions apiPost-first pattern) — PaymentComponent (App.jsx's
+// MoMoPayment) opens immediately on "Buy" with a locally snapshotted
+// amount/quantity, and the actual
+// POST /api/events/{id}/tickets/purchase/ only fires from its onSuccess.
+function EventTicketsSection({ eventId, hasTickets, user, PaymentComponent }) {
+  const ticketTypesQuery = useEventTicketTypes(hasTickets ? eventId : null);
+  const ticketTypes = ticketTypesQuery.data || [];
+
+  const [quantities, setQuantities] = useState({});
+  const [payTarget, setPayTarget] = useState(null); // {ticketType, quantity, amount}
+  const [payError, setPayError] = useState(null);
+  const [purchasedByType, setPurchasedByType] = useState({}); // ticketTypeId -> Ticket[]
+
+  const isCustomer = user?.accountType === "customer";
+
+  if (!hasTickets) return null;
+  if (!ticketTypesQuery.isLoading && !ticketTypesQuery.isError && ticketTypes.length === 0) return null;
+
+  const maxQtyFor = (tt) => (tt.quantity_remaining != null ? Math.min(tt.quantity_remaining, 10) : 10);
+
+  const setQty = (ttId, value, max) => {
+    const clamped = Math.min(Math.max(1, Number(value) || 1), max);
+    setQuantities((q) => ({ ...q, [ttId]: clamped }));
+  };
+
+  const openPay = (tt) => {
+    const qty = quantities[tt.id] || 1;
+    setPayError(null);
+    setPayTarget({ ticketType: tt, quantity: qty, amount: Number(tt.price) * qty });
+  };
+
+  const confirmPurchase = async () => {
+    if (!payTarget) return;
+    setPayError(null);
+    try {
+      const tickets = await apiPost(`/api/events/${eventId}/tickets/purchase/`, {
+        ticket_type: payTarget.ticketType.id,
+        quantity: payTarget.quantity,
+      });
+      setPurchasedByType((p) => ({ ...p, [payTarget.ticketType.id]: tickets }));
+      setPayTarget(null);
+      ticketTypesQuery.refetch();
+    } catch (err) {
+      setPayError("Payment was confirmed but we couldn't complete your ticket purchase. Please contact support.");
+    } finally {
+      setPayTarget(null);
+    }
+  };
+
+  return (
+    <div style={{ marginTop: 24, borderTop: "1px solid rgba(255,255,255,0.12)", paddingTop: 20 }}>
+      <h2 style={{ color: C.gold, fontSize: "1rem", fontWeight: 900, margin: "0 0 16px" }}>Tickets</h2>
+
+      {ticketTypesQuery.isLoading && <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.8rem" }}>Loading ticket types…</div>}
+      {ticketTypesQuery.isError && (
+        <div style={{ color: "#ffb4b4", fontSize: "0.8rem" }}>
+          Could not load ticket types.{" "}
+          <button onClick={() => ticketTypesQuery.refetch()} style={{ background: "none", border: `1px solid ${C.kente1}`, color: C.kente1, borderRadius: 20, padding: "2px 10px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>Retry</button>
+        </div>
+      )}
+      {payError && <div style={{ marginBottom: 12, color: "#ffb4b4", fontSize: "0.76rem" }}>{payError}</div>}
+
+      {ticketTypes.map((tt) => {
+        const soldOut = tt.quantity_remaining != null && tt.quantity_remaining <= 0;
+        const max = maxQtyFor(tt);
+        const qty = quantities[tt.id] || 1;
+        const purchased = purchasedByType[tt.id];
+
+        return (
+          <div key={tt.id} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 12, padding: "14px 16px", marginBottom: 12, border: `1px solid ${C.gold}22` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ color: "white", fontWeight: 800, fontSize: "0.86rem" }}>{tt.name}</div>
+                {tt.description && <div style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.76rem", marginTop: 2, maxWidth: 420 }}>{tt.description}</div>}
+                <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.72rem", marginTop: 4 }}>
+                  {soldOut ? "Sold out" : tt.quantity_remaining != null ? `${tt.quantity_remaining} remaining` : "Available"}
+                </div>
+              </div>
+              <div style={{ color: C.gold, fontWeight: 900, fontSize: "0.95rem", whiteSpace: "nowrap" }}>GHS {tt.price}</div>
+            </div>
+
+            {!soldOut && (
+              <div style={{ marginTop: 12 }}>
+                {!user ? (
+                  <div style={{ color: C.lightGold, fontSize: "0.76rem" }}>Sign in as a customer to buy tickets.</div>
+                ) : !isCustomer ? (
+                  <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.76rem" }}>Only customer accounts can buy tickets.</div>
+                ) : (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <input
+                      type="number"
+                      min={1}
+                      max={max}
+                      value={qty}
+                      onChange={(e) => setQty(tt.id, e.target.value, max)}
+                      aria-label={`Quantity for ${tt.name}`}
+                      style={{ width: 60, padding: "8px 10px", borderRadius: 10, border: "1.5px solid rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.08)", color: "white", fontFamily: "inherit", fontSize: "0.8rem" }}
+                    />
+                    <button
+                      onClick={() => openPay(tt)}
+                      style={{ background: C.gold, color: C.darkBrown, border: "none", borderRadius: 20, padding: "9px 18px", fontWeight: 900, fontSize: "0.78rem", cursor: "pointer", fontFamily: "inherit" }}
+                    >
+                      Buy
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {purchased && (
+              <div style={{ marginTop: 12, background: "rgba(255,255,255,0.06)", borderRadius: 10, padding: "10px 12px" }}>
+                <div style={{ color: C.kente2, fontWeight: 800, fontSize: "0.8rem", marginBottom: 4 }}>✅ Purchased!</div>
+                <div style={{ color: "white", fontSize: "0.78rem", marginBottom: 4 }}>
+                  Your ticket code{purchased.length > 1 ? "s" : ""}: <strong>{purchased.map((t) => t.code).join(", ")}</strong>
+                </div>
+                <div style={{ color: "rgba(255,255,255,0.7)", fontSize: "0.74rem" }}>
+                  {tt.delivery_method === "digital"
+                    ? "Show this code at check-in."
+                    : "Present this code to collect your physical ticket."}
+                </div>
+                <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.7rem", marginTop: 4 }}>
+                  You can also find all your tickets later under "My Tickets".
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {payTarget && PaymentComponent && (
+        <PaymentComponent
+          amount={payTarget.amount}
+          purpose={`${payTarget.quantity}x '${payTarget.ticketType.name}' ticket(s)`}
+          businessName={user?.fullName || ""}
+          onSuccess={confirmPurchase}
+          onClose={() => setPayTarget(null)}
+        />
+      )}
     </div>
   );
 }
