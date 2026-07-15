@@ -100,6 +100,17 @@ export const handlers = [
   http.get('http://localhost:8000/api/events/:id/rsvps/', () => {
     return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
   }),
+  // Business Command Center analytics (frontend dashboard redesign) — the
+  // Analytics tab is the default landing tab and fires the owner's transaction
+  // ledger + credit score on mount to derive its charts. Default to empty/none
+  // so any dashboard render is clean; overridden per-test via server.use()
+  // where specific analytics data is asserted.
+  http.get('http://localhost:8000/api/billing/transactions/mine/', () => {
+    return HttpResponse.json([])
+  }),
+  http.get('http://localhost:8000/api/credit/scores/me/', () => {
+    return HttpResponse.json({ score: null, grade: null, grade_label: null, loan_eligible: false, factors: {}, computed_at: null })
+  }),
   // Reviews & Q&A (reviews/qa apps, frontend Phase 3) — default handlers,
   // overridden per-test via server.use() where a specific reviews/Q&A/
   // eligibility/moderation response is needed. Review list endpoints are all

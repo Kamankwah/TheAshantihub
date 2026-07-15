@@ -158,3 +158,48 @@
     @apply border-border outline-ring/50;
   }
 }
+
+/* ── Business Command Center scope ──────────────────────────────────────────
+   Always-dark "mission-control" space palette for the business-owner dashboard
+   (frontend/components/dashboard/*). It is a self-contained full-screen surface
+   (a top-level early return in App.jsx), so it opts into its OWN token set here
+   regardless of the app's light/dark toggle — a deliberate visual break from
+   the cream marketplace, kept on-brand with the AshantiHub gold + kente accents.
+   Used as `<div className="shadcn-scope command-center">`, so recharts and any
+   shadcn descendants pick up these tokens (esp. --chart-1..5 and --primary).
+   The inline-style panels reference the mirror values in
+   components/dashboard/theme.js's `D` object — keep the two in sync by hand. */
+.command-center {
+  --background: #0a0e1a;      /* deep space navy */
+  --foreground: #e9edf8;
+  --card: #141b2d;
+  --card-foreground: #e9edf8;
+  --popover: #141b2d;
+  --popover-foreground: #e9edf8;
+  --primary: #D4A017;         /* C.gold */
+  --primary-foreground: #0a0e1a;
+  --secondary: #1b2440;
+  --secondary-foreground: #e9edf8;
+  --muted: #1b2440;
+  --muted-foreground: #9aa4bf;
+  --accent: #D4A017;
+  --accent-foreground: #0a0e1a;
+  --destructive: #f87171;
+  --border: rgba(212, 160, 23, 0.18);
+  --input: rgba(212, 160, 23, 0.18);
+  --ring: #D4A017;
+  --chart-1: #D4A017;         /* gold */
+  --chart-2: #34d399;         /* green */
+  --chart-3: #60a5fa;         /* blue */
+  --chart-4: #a78bfa;         /* purple */
+  --chart-5: #fbbf24;         /* amber */
+  color: #e9edf8;
+  min-height: 100vh;
+  /* soft radial "nebula" glow behind the glass cards */
+  background-color: #0a0e1a;
+  background-image:
+    radial-gradient(1100px 620px at 12% -8%, rgba(212, 160, 23, 0.10), transparent 60%),
+    radial-gradient(900px 560px at 100% 0%, rgba(96, 165, 250, 0.09), transparent 55%),
+    radial-gradient(760px 620px at 60% 115%, rgba(167, 139, 250, 0.07), transparent 60%);
+  background-attachment: fixed;
+}
