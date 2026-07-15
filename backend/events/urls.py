@@ -5,6 +5,27 @@ from . import views
 urlpatterns = [
     path("mine/", views.EventMineListView.as_view(), name="event-mine-list"),
     path("submit/", views.EventSubmitView.as_view(), name="event-submit"),
+    path("pricing-tiers/", views.EventPricingTierListView.as_view(), name="event-pricing-tier-list"),
+    path(
+        "pricing-tiers/manage/",
+        views.EventPricingTierManageListView.as_view(),
+        name="event-pricing-tier-manage-list",
+    ),
+    path(
+        "pricing-tiers/<int:pk>/propose/",
+        views.EventPricingTierProposeView.as_view(),
+        name="event-pricing-tier-propose",
+    ),
+    path(
+        "pricing-tiers/<int:pk>/approve/",
+        views.EventPricingTierApproveView.as_view(),
+        name="event-pricing-tier-approve",
+    ),
+    path(
+        "pricing-tiers/<int:pk>/reject/",
+        views.EventPricingTierRejectView.as_view(),
+        name="event-pricing-tier-reject",
+    ),
     path("moderation/pending/", views.EventPendingQueueView.as_view(), name="event-moderation-pending"),
     path("moderation/<int:pk>/", views.EventModerationDetailView.as_view(), name="event-moderation-detail"),
     path(

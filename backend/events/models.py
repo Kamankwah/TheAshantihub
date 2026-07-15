@@ -195,6 +195,52 @@ class Event(models.Model):
         self.save(update_fields=["going_count"])
 
 
+class EventPricingTier(models.Model):
+    """One of a fixed set of visibility-window durations an organizer can
+    choose when submitting an event, replacing the old flat
+    EVENT_DAILY_RATE-per-day constant. `live_price` is the total charge for
+    the whole window (not a per-day rate).
+
+    The set of durations is fixed by product decision — only `live_price` is
+    ever edited, via a two-step propose/approve workflow (accountant
+    proposes, super_admin approves/rejects): `pending_price` non-null means a
+    proposal is outstanding; approving copies it into `live_price` and clears
+    the pending fields, rejecting just clears them. No prior pattern for this
+    two-step workflow existed elsewhere in this codebase — this is the first.
+    """
+
+    DAYS_7 = 7
+    DAYS_15 = 15
+    DAYS_30 = 30
+    DAYS_60 = 60
+    DAYS_90 = 90
+    DURATION_CHOICES = [
+        (DAYS_7, "7 days"),
+        (DAYS_15, "15 days"),
+        (DAYS_30, "30 days"),
+        (DAYS_60, "60 days"),
+        (DAYS_90, "90 days"),
+    ]
+
+    duration_days = models.PositiveIntegerField(choices=DURATION_CHOICES, unique=True)
+    live_price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    pending_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    proposed_by = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="event_pricing_proposals",
+    )
+    proposed_at = models.DateTimeField(null=True, blank=True)
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["duration_days"]
+
+    def __str__(self):
+        return f"{self.duration_days} days — GHS {self.live_price}"
+
+
 class EventMedia(models.Model):
     """Media attached to an Event. No separate submission/approval queue —
     approval folds into the single Event-approval step (roadmap Phase 6).
