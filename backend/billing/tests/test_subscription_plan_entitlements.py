@@ -2,23 +2,22 @@ from django.test import TestCase
 
 from billing.models import SubscriptionPlan
 
-# Expected backfilled entitlement values per seeded tier — mirrors
-# 0004_backfill_subscription_plan_entitlements.py. Deviates from the roadmap's
-# suggested defaults where the seeded `features` copy explicitly contradicts
-# them (basic/standard say "1 listing"/"5 listings", not 3/10).
+# Expected seeded entitlement values per tier — mirrors
+# 0012_seed_new_subscription_plans.py. `max_active_listings=None` means
+# unlimited (product_unlimited/service).
 EXPECTED_ENTITLEMENTS = {
-    "basic": {"max_active_listings": 1, "hero_days": 7, "boost_credits_per_month": 0},
-    "standard": {"max_active_listings": 5, "hero_days": 10, "boost_credits_per_month": 2},
-    "premium": {"max_active_listings": 999, "hero_days": 15, "boost_credits_per_month": 5},
+    "product_basic": {"max_active_listings": 5, "hero_days": 7, "boost_credits_per_month": 0},
+    "product_unlimited": {"max_active_listings": None, "hero_days": 14, "boost_credits_per_month": 3},
+    "service": {"max_active_listings": None, "hero_days": 14, "boost_credits_per_month": 3},
 }
 
 
 class SubscriptionPlanEntitlementFieldTests(TestCase):
-    def test_entitlement_fields_default_to_zero(self):
+    def test_entitlement_fields_default_sensibly(self):
         # Built as an unsaved instance (tier is unique and the three seeded
         # tiers already exist) — this only checks the field defaults.
-        plan = SubscriptionPlan(tier="basic", name="Basic", monthly_price="0", annual_price="0")
-        self.assertEqual(plan.max_active_listings, 0)
+        plan = SubscriptionPlan(tier="product_basic", name="Product Basic", kind="product", monthly_price="0")
+        self.assertIsNone(plan.max_active_listings)
         self.assertEqual(plan.hero_days, 0)
         self.assertEqual(plan.boost_credits_per_month, 0)
 

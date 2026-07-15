@@ -25,11 +25,21 @@ const MOMO_NETWORKS = [
   { id: "airteltigo", name: "AirtelTigo Money", color: "#E87722", logo: "🟠" },
 ];
 
+// Subscription.cycle_months choices (backend/billing/models.py) — replaces
+// the old monthly/annual billing_cycle now that plans price by a flat
+// monthly_price * cycle_months multiple (no separate annual_price field).
+const CYCLE_OPTIONS = [
+  { months: 1, label: "1 month" },
+  { months: 3, label: "3 months" },
+  { months: 6, label: "6 months" },
+  { months: 12, label: "12 months" },
+];
+
 export default function PaymentsPanel({ user, PaymentComponent }) {
   const [payTab, setPayTab] = useState("overview");
   const [showPayModal, setShowPayModal] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
-  const [billingCycle, setBillingCycle] = useState("monthly");
+  const [cycleMonths, setCycleMonths] = useState(1);
   const [actionError, setActionError] = useState(null);
 
   // Real data. The Transaction model (backend/billing/models.py) only tracks
@@ -57,19 +67,21 @@ export default function PaymentsPanel({ user, PaymentComponent }) {
     { id:"reminders", icon:"🔔", label:"Reminders" },
   ];
 
+  const cycleLabel = CYCLE_OPTIONS.find(c => c.months === cycleMonths)?.label || `${cycleMonths} months`;
+
   const recordSubscriptionPayment = async (ref) => {
     setShowPayModal(false);
     if(!selectedPlan) return;
     setActionError(null);
-    const amount = billingCycle==="monthly" ? Number(selectedPlan.monthly_price) : Number(selectedPlan.annual_price);
+    const amount = Number(selectedPlan.monthly_price) * cycleMonths;
     try {
       await apiPost("/api/billing/transactions/mine/", {
         amount: amount.toFixed(2),
-        purpose: `AshantiHub ${selectedPlan.name} Plan — ${billingCycle==="monthly"?"Monthly":"Annual"}`,
+        purpose: `AshantiHub ${selectedPlan.name} Plan — ${cycleLabel}`,
         reference: ref,
         status: "success",
       });
-      await apiPost("/api/billing/subscriptions/me/", { plan: selectedPlan.tier, billing_cycle: billingCycle });
+      await apiPost("/api/billing/subscriptions/me/", { plan: selectedPlan.tier, cycle_months: cycleMonths });
       refetchTx();
     } catch (err) {
       setActionError("Payment was confirmed but we couldn't record it on your account. Please contact support with reference " + ref + ".");
@@ -80,8 +92,8 @@ export default function PaymentsPanel({ user, PaymentComponent }) {
     <div>
       {showPayModal && selectedPlan && (
         <PaymentComponent
-          amount={billingCycle==="monthly"?Number(selectedPlan.monthly_price):Number(selectedPlan.annual_price)}
-          purpose={`AshantiHub ${selectedPlan.name} Plan — ${billingCycle==="monthly"?"Monthly":"Annual"}`}
+          amount={Number(selectedPlan.monthly_price) * cycleMonths}
+          purpose={`AshantiHub ${selectedPlan.name} Plan — ${cycleLabel}`}
           businessName={user?.fullName||"Your Business"}
           onSuccess={recordSubscriptionPayment}
           onClose={()=>setShowPayModal(false)}
@@ -200,17 +212,17 @@ export default function PaymentsPanel({ user, PaymentComponent }) {
             <div style={{ textAlign:"center", marginBottom:24 }}>
               <h2 style={{ ...sectionTitle, margin:"0 0 6px", fontWeight:900, fontSize:"1.05rem" }}>⭐ Choose Your Plan</h2>
               <p style={{ color:D.textDim, fontSize:"0.78rem", margin:"0 0 16px" }}>List your business on AshantiHub. First 3 months FREE.</p>
-              {/* Billing toggle */}
+              {/* Billing cycle toggle */}
               <div style={{ display:"inline-flex", background:D.panelBg2, borderRadius:30, padding:3, gap:3 }}>
-                {["monthly","annual"].map(cycle => (
-                  <button key={cycle} onClick={()=>setBillingCycle(cycle)} style={{
-                    background:billingCycle===cycle?D.gold:"transparent",
+                {CYCLE_OPTIONS.map(cycle => (
+                  <button key={cycle.months} onClick={()=>setCycleMonths(cycle.months)} style={{
+                    background:cycleMonths===cycle.months?D.gold:"transparent",
                     border:"none", borderRadius:28, padding:"7px 18px",
-                    fontWeight:billingCycle===cycle?800:600, fontSize:"0.78rem",
-                    cursor:"pointer", color:billingCycle===cycle?D.pageBg:D.textDim,
-                    boxShadow:billingCycle===cycle?"0 2px 8px rgba(0,0,0,0.35)":"none"
+                    fontWeight:cycleMonths===cycle.months?800:600, fontSize:"0.78rem",
+                    cursor:"pointer", color:cycleMonths===cycle.months?D.pageBg:D.textDim,
+                    boxShadow:cycleMonths===cycle.months?"0 2px 8px rgba(0,0,0,0.35)":"none"
                   }}>
-                    {cycle==="monthly"?"Monthly":"Annual 🎁 2 months free"}
+                    {cycle.label}
                   </button>
                 ))}
               </div>
@@ -224,8 +236,8 @@ export default function PaymentsPanel({ user, PaymentComponent }) {
                     {plan.is_recommended && <div style={{ position:"absolute", top:-10, left:"50%", transform:"translateX(-50%)", background:D.gold, color:D.pageBg, borderRadius:20, padding:"3px 14px", fontSize:"0.62rem", fontWeight:900, whiteSpace:"nowrap" }}>⭐ MOST POPULAR</div>}
                     <div style={{ fontWeight:900, color:D.text, fontSize:"1rem", marginBottom:4 }}>{plan.name}</div>
                     <div style={{ fontWeight:900, fontSize:"1.8rem", color:D.text, marginBottom:2 }}>
-                      GHS {billingCycle==="monthly"?Number(plan.monthly_price).toLocaleString():Number(plan.annual_price).toLocaleString()}
-                      <span style={{ fontSize:"0.72rem", fontWeight:400, color:D.textDim }}>/{billingCycle==="monthly"?"month":"year"}</span>
+                      GHS {(Number(plan.monthly_price) * cycleMonths).toLocaleString()}
+                      <span style={{ fontSize:"0.72rem", fontWeight:400, color:D.textDim }}>/{cycleLabel}</span>
                     </div>
                     <div style={{ borderTop:`1px solid ${D.divider}`, paddingTop:12, marginBottom:16 }}>
                       {(plan.features||[]).map(f => (
@@ -253,7 +265,7 @@ export default function PaymentsPanel({ user, PaymentComponent }) {
                 ))}
               </div>
               <div style={{ fontSize:"0.7rem", color:D.textDim, marginTop:8, lineHeight:1.6 }}>
-                All payments are processed securely via Hubtel. Transaction fee of 1.5% applies. Annual plans billed once and auto-renew after 12 months.
+                All payments are processed securely via Hubtel. Transaction fee of 1.5% applies. Multi-month cycles are billed once upfront and auto-renew at the end of the cycle.
               </div>
             </div>
           </>

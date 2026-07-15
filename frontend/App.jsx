@@ -23,6 +23,8 @@ import { useMyCreditScore } from "./hooks/useMyCreditScore.js";
 import { useCart } from "./hooks/useCart.js";
 import { useSiteSettings } from "./hooks/useSiteSettings.js";
 import { useReviewsModerationQueue } from "./hooks/useReviewsModerationQueue.js";
+import { useSubscriptionPlansManageQueue } from "./hooks/useSubscriptionPlansManageQueue.js";
+import { useSubscriptionPlanPendingQueue } from "./hooks/useSubscriptionPlanPendingQueue.js";
 import { useContactMessagesQueue } from "./hooks/useContactMessagesQueue.js";
 import { useListingReviews } from "./hooks/useListingReviews.js";
 import { useReviewEligibility } from "./hooks/useReviewEligibility.js";
@@ -1359,6 +1361,232 @@ function ReviewsModerationPanel({theme}) {
   </div>;
 }
 
+const SUBSCRIPTION_PLAN_STATUS_META = {
+  pending_approval: { label:"Pending Approval", color:"#f59e0b" },
+  active: { label:"Active", color:"#22c55e" },
+  rejected: { label:"Rejected", color:"#dc2626" },
+};
+
+const EMPTY_SUBSCRIPTION_PLAN_FORM = {
+  tier:"", name:"", kind:"product", monthly_price:"",
+  max_active_listings:"", hero_days:"", boost_credits_per_month:"",
+  is_recommended:false, features:"",
+};
+
+// features is edited as a plain one-bullet-per-line textarea and converted to
+// a JSON array on submit; max_active_listings left blank means unlimited
+// (null), matching the backend contract.
+function subscriptionPlanFormToPayload(form) {
+  return {
+    tier: form.tier.trim(),
+    name: form.name.trim(),
+    kind: form.kind,
+    monthly_price: form.monthly_price,
+    max_active_listings: form.max_active_listings===""?null:Number(form.max_active_listings),
+    hero_days: form.hero_days===""?0:Number(form.hero_days),
+    boost_credits_per_month: form.boost_credits_per_month===""?0:Number(form.boost_credits_per_month),
+    is_recommended: form.is_recommended,
+    features: form.features.split("\n").map(s=>s.trim()).filter(Boolean),
+  };
+}
+
+function subscriptionPlanToForm(plan) {
+  return {
+    tier: plan.tier||"",
+    name: plan.name||"",
+    kind: plan.kind||"product",
+    monthly_price: plan.monthly_price??"",
+    max_active_listings: plan.max_active_listings==null?"":String(plan.max_active_listings),
+    hero_days: plan.hero_days??"",
+    boost_credits_per_month: plan.boost_credits_per_month??"",
+    is_recommended: !!plan.is_recommended,
+    features: (plan.features||[]).join("\n"),
+  };
+}
+
+// Shared field set for both the "create new plan" form and each plan's
+// inline "Edit" reveal in SubscriptionPlansManagePanel below — same
+// "generic field list drives the form" convention as SiteSettingsForm's
+// SITE_SETTINGS_FIELDS, just not table-driven since these fields have mixed
+// input types (text/select/number/checkbox/textarea).
+function SubscriptionPlanFormFields({theme,form,setField}) {
+  const fieldStyle = {padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"};
+  return <div style={{display:"flex",flexDirection:"column",gap:8}}>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+      <input value={form.tier} onChange={e=>setField("tier",e.target.value)} placeholder="Tier slug (e.g. product_basic)" style={{...fieldStyle,flex:1,minWidth:160}}/>
+      <input value={form.name} onChange={e=>setField("name",e.target.value)} placeholder="Plan name" style={{...fieldStyle,flex:1,minWidth:140}}/>
+      <select value={form.kind} onChange={e=>setField("kind",e.target.value)} style={{...fieldStyle,width:120}}>
+        <option value="product">Product</option>
+        <option value="service">Service</option>
+      </select>
+    </div>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+      <input type="number" min={0} step="0.01" value={form.monthly_price} onChange={e=>setField("monthly_price",e.target.value)} placeholder="Monthly price (GHS)" style={{...fieldStyle,flex:1,minWidth:120}}/>
+      <input type="number" min={0} value={form.max_active_listings} onChange={e=>setField("max_active_listings",e.target.value)} placeholder="Max active listings (blank = unlimited)" style={{...fieldStyle,flex:1,minWidth:190}}/>
+    </div>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+      <input type="number" min={0} value={form.hero_days} onChange={e=>setField("hero_days",e.target.value)} placeholder="Hero days" style={{...fieldStyle,flex:1,minWidth:100}}/>
+      <input type="number" min={0} value={form.boost_credits_per_month} onChange={e=>setField("boost_credits_per_month",e.target.value)} placeholder="Boost credits / month" style={{...fieldStyle,flex:1,minWidth:150}}/>
+    </div>
+    <label style={{display:"flex",alignItems:"center",gap:6,color:theme.textMuted,fontSize:"0.75rem"}}>
+      <input type="checkbox" checked={form.is_recommended} onChange={e=>setField("is_recommended",e.target.checked)}/> Recommended plan
+    </label>
+    <textarea value={form.features} onChange={e=>setField("features",e.target.value)} placeholder="Features, one per line" rows={3} style={{...fieldStyle,resize:"vertical"}}/>
+  </div>;
+}
+
+// Staff "subscription_plans.manage" panel (accountant + super_admin): create
+// new plans and edit any existing plan regardless of status. Clones
+// CategoriesZonesPanel's create-form + local actionError/refetch()
+// convention, plus HeroApprovalPanel's per-row inline-reveal shape for edit.
+// A plan the server resets to "pending_approval" on edit (per the backend
+// contract) is just reflected via the status badge below — no special
+// handling needed here.
+function SubscriptionPlansManagePanel({theme}) {
+  const {data,isLoading,isError,refetch} = useSubscriptionPlansManageQueue();
+  const [createForm,setCreateForm] = useState(EMPTY_SUBSCRIPTION_PLAN_FORM);
+  const [creating,setCreating] = useState(false);
+  const [editingId,setEditingId] = useState(null);
+  const [editForm,setEditForm] = useState(null);
+  const [saving,setSaving] = useState(false);
+  const [actionError,setActionError] = useState(null);
+
+  const setCreateField = (key,value) => setCreateForm(f=>({...f,[key]:value}));
+  const setEditFieldValue = (key,value) => setEditForm(f=>({...f,[key]:value}));
+
+  const createPlan = async () => {
+    setActionError(null);
+    setCreating(true);
+    try {
+      await apiPost("/api/billing/plans/manage/", subscriptionPlanFormToPayload(createForm));
+      setCreateForm(EMPTY_SUBSCRIPTION_PLAN_FORM);
+      refetch();
+    } catch (err) {
+      setActionError("Could not create this plan. Check the fields and try again.");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const startEdit = (plan) => {
+    setActionError(null);
+    setEditingId(plan.id);
+    setEditForm(subscriptionPlanToForm(plan));
+  };
+
+  const saveEdit = async () => {
+    if(!editingId||!editForm) return;
+    setActionError(null);
+    setSaving(true);
+    try {
+      await apiPatch(`/api/billing/plans/manage/${editingId}/`, subscriptionPlanFormToPayload(editForm));
+      setEditingId(null);
+      setEditForm(null);
+      refetch();
+    } catch (err) {
+      setActionError("Could not save this plan. Check the fields and try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
+  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load subscription plans.</div>;
+  const items = data||[];
+
+  return <div>
+    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
+    <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`,marginBottom:16,maxWidth:560}}>
+      <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:12}}>Create a new plan</div>
+      <SubscriptionPlanFormFields theme={theme} form={createForm} setField={setCreateField}/>
+      <button onClick={createPlan} disabled={creating||!createForm.tier||!createForm.name} style={{marginTop:12,background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"8px 20px",fontSize:"0.78rem",fontWeight:800,cursor:creating?"default":"pointer",fontFamily:"inherit"}}>{creating?"Creating…":"Create plan"}</button>
+    </div>
+
+    <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
+      <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>All plans ({items.length})</div>
+      {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No plans yet.</div>}
+      {items.map(p=>{
+        const statusMeta = SUBSCRIPTION_PLAN_STATUS_META[p.status]||{label:p.status,color:"#888"};
+        return (
+        <div key={p.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
+          {editingId===p.id ? (
+            <div>
+              <SubscriptionPlanFormFields theme={theme} form={editForm} setField={setEditFieldValue}/>
+              <div style={{display:"flex",gap:8,marginTop:10}}>
+                <button onClick={saveEdit} disabled={saving} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"6px 16px",fontSize:"0.75rem",fontWeight:800,cursor:saving?"default":"pointer",fontFamily:"inherit"}}>{saving?"Saving…":"Save"}</button>
+                <button onClick={()=>{setEditingId(null);setEditForm(null);}} style={{background:"none",border:`1px solid ${theme.border}`,color:theme.textMuted,borderRadius:20,padding:"6px 16px",fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,flexWrap:"wrap"}}>
+              <div>
+                <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>
+                  {p.name} <span style={{color:theme.textMuted,fontWeight:400}}>({p.tier})</span>
+                  {p.is_recommended&&<span style={{background:`${C.gold}33`,color:C.gold,borderRadius:20,padding:"2px 8px",fontSize:"0.6rem",fontWeight:700,marginLeft:6}}>★ Recommended</span>}
+                  <span style={{background:`${statusMeta.color}22`,color:statusMeta.color,borderRadius:20,padding:"2px 8px",fontSize:"0.6rem",fontWeight:700,marginLeft:6}}>{statusMeta.label}</span>
+                </div>
+                <div style={{color:theme.textMuted,fontSize:"0.72rem",margin:"3px 0"}}>{p.kind==="product"?"Product":"Service"} · GHS {p.monthly_price}/mo · Max listings: {p.max_active_listings??"Unlimited"} · Hero days: {p.hero_days} · Boost credits: {p.boost_credits_per_month}</div>
+                {p.status==="rejected"&&p.rejection_reason&&<div style={{color:"#dc2626",fontSize:"0.68rem",marginTop:2}}>Rejected: {p.rejection_reason}</div>}
+              </div>
+              <button onClick={()=>startEdit(p)} style={{background:"none",border:`1px solid ${theme.border}`,color:theme.text,borderRadius:20,padding:"5px 14px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✏️ Edit</button>
+            </div>
+          )}
+        </div>
+        );
+      })}
+    </div>
+  </div>;
+}
+
+// Staff "subscription_plans.approve" panel (super_admin only): approve/reject
+// pending plans. Clones HeroApprovalPanel's exact shape (list + approve +
+// reveal-a-reason-then-reject).
+function SubscriptionPlanApprovalPanel({theme}) {
+  const {data,isLoading,isError,refetch} = useSubscriptionPlanPendingQueue();
+  const [rejectingId,setRejectingId] = useState(null);
+  const [rejectReason,setRejectReason] = useState("");
+  const [actionError,setActionError] = useState(null);
+
+  const approve = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/billing/plans/${id}/approve/`,{}); refetch(); }
+    catch (err) { setActionError("Could not approve this plan."); }
+  };
+  const reject = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/billing/plans/${id}/reject/`,{reason:rejectReason}); setRejectingId(null); setRejectReason(""); refetch(); }
+    catch (err) { setActionError("Could not reject this plan."); }
+  };
+
+  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
+  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the plan approval queue.</div>;
+  const items = data||[];
+
+  return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
+    <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Pending plan approvals ({items.length})</div>
+    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
+    {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No pending plans.</div>}
+    {items.map(p=>(
+      <div key={p.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}>
+          <div>
+            <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>{p.name} <span style={{color:theme.textMuted,fontWeight:400}}>({p.tier})</span></div>
+            <div style={{color:theme.textMuted,fontSize:"0.72rem",margin:"3px 0"}}>{p.kind==="product"?"Product":"Service"} · GHS {p.monthly_price}/mo · Max listings: {p.max_active_listings??"Unlimited"} · Hero days: {p.hero_days} · Boost credits: {p.boost_credits_per_month}</div>
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>approve(p.id)} style={{background:"#22c55e",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✓ Approve</button>
+            <button onClick={()=>setRejectingId(p.id)} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✕ Reject</button>
+          </div>
+        </div>
+        {rejectingId===p.id&&<div style={{marginTop:8,display:"flex",gap:6}}>
+          <input value={rejectReason} onChange={e=>setRejectReason(e.target.value)} placeholder="Rejection reason" style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+          <button onClick={()=>reject(p.id)} disabled={!rejectReason} style={{background:"#dc2626",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:rejectReason?"pointer":"default"}}>Confirm reject</button>
+        </div>}
+      </div>
+    ))}
+  </div>;
+}
+
 const DELIVERY_STATUS_OPTIONS = [
   { value: "processing", label: "Processing" },
   { value: "shipped", label: "Shipped" },
@@ -1794,6 +2022,8 @@ export function StaffDashboard({auth,onExit}) {
     {id:"moderation",icon:"📋",label:"Listings Moderation",show:auth.hasPermission("listings.moderate")},
     {id:"hero",icon:"🌟",label:"Hero Approval",show:auth.hasPermission("hero_media.approve")},
     {id:"reviews",icon:"⭐",label:"Reviews",show:auth.hasPermission("reviews.moderate")},
+    {id:"subscription-plans",icon:"💳",label:"Subscription Plans",show:auth.hasPermission("subscription_plans.manage")},
+    {id:"subscription-plans-approval",icon:"✅",label:"Plan Approvals",show:auth.hasPermission("subscription_plans.approve")},
     {id:"delivery",icon:"🚚",label:"Delivery Management",show:auth.hasPermission("orders.manage_delivery")},
     {id:"contact-messages",icon:"✉️",label:"Contact Messages",show:auth.hasPermission("contact_messages.manage")},
     {id:"users",icon:"👥",label:"Users",show:auth.hasPermission("users.view")},
@@ -1843,6 +2073,8 @@ export function StaffDashboard({auth,onExit}) {
         {activeTab==="moderation"&&<ListingsModerationPanel theme={t}/>}
         {activeTab==="hero"&&<HeroApprovalPanel theme={t}/>}
         {activeTab==="reviews"&&<ReviewsModerationPanel theme={t}/>}
+        {activeTab==="subscription-plans"&&<SubscriptionPlansManagePanel theme={t}/>}
+        {activeTab==="subscription-plans-approval"&&<SubscriptionPlanApprovalPanel theme={t}/>}
         {activeTab==="delivery"&&<DeliveryManagementPanel theme={t}/>}
         {activeTab==="contact-messages"&&<ContactMessagesPanel theme={t}/>}
         {activeTab==="users"&&<UsersPanel theme={t}/>}

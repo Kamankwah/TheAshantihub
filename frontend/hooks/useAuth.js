@@ -79,6 +79,10 @@ export function useAuth() {
     return apiPatch('/api/accounts/business-owners/me/payout/', fields)
   }, [])
 
+  const submitPlanSelection = useCallback(async (fields) => {
+    return apiPost('/api/billing/subscriptions/start-trial/', fields)
+  }, [])
+
   // Customer profile self-edit (name + avatar only — email/phone are login
   // identifiers with no verification/OTP flow yet, so they stay out of this
   // endpoint entirely). Mirrors submitBusinessInfo's FormData-building
@@ -114,7 +118,7 @@ export function useAuth() {
 
   return {
     user, isLoading, login, logout, registerCustomer, registerBusinessOwner,
-    submitBusinessInfo, submitPayoutInfo, acceptBusinessTerms, refreshUser,
+    submitBusinessInfo, submitPayoutInfo, submitPlanSelection, acceptBusinessTerms, refreshUser,
     updateProfile, hasPermission,
   }
 }
