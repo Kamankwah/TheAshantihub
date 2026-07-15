@@ -38,6 +38,8 @@ export const handlers = [
     return HttpResponse.json({
       contact_email: '', contact_phone: '', contact_address: '',
       facebook_url: '', instagram_url: '', linkedin_url: '', twitter_url: '',
+      tiktok_url: 'https://tiktok.com/@ashantihub', youtube_url: 'https://youtube.com/@ashantihub',
+      whatsapp_number: '233244000000', support_hours: 'Mon–Sat, 8:00am – 8:00pm GMT',
       warranty_returns_policy: '', service_dispute_policy: '',
     })
   }),
@@ -46,6 +48,7 @@ export const handlers = [
     return HttpResponse.json({
       contact_email: '', contact_phone: '', contact_address: '',
       facebook_url: '', instagram_url: '', linkedin_url: '', twitter_url: '',
+      tiktok_url: '', youtube_url: '', whatsapp_number: '', support_hours: '',
       warranty_returns_policy: '', service_dispute_policy: '',
       ...body,
     })
@@ -160,5 +163,24 @@ export const handlers = [
   http.post('http://localhost:8000/api/qa/questions/:id/answer/', async ({ request }) => {
     const body = await request.json()
     return HttpResponse.json({ id: 1, answer_text: body.answer_text, answered_at: '2026-07-01T00:00:00Z' })
+  }),
+  // Public contact form + staff contact-messages queue (frontend Phase —
+  // Contact page rebuild). Default handlers, overridden per-test where a
+  // specific submit-error/queue-content response is needed.
+  http.post('http://localhost:8000/api/core/contact/', async ({ request }) => {
+    const body = await request.json()
+    return HttpResponse.json(
+      { id: 1, category: body.category, name: body.name, email: body.email, phone: body.phone || '', subject: body.subject, message: body.message, status: 'new', resolved_by_name: null, resolved_at: null, created_at: '2026-07-01T00:00:00Z' },
+      { status: 201 },
+    )
+  }),
+  http.get('http://localhost:8000/api/core/contact-messages/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
+  http.post('http://localhost:8000/api/core/contact-messages/:id/read/', () => {
+    return HttpResponse.json({ id: 1, status: 'read' })
+  }),
+  http.post('http://localhost:8000/api/core/contact-messages/:id/resolve/', () => {
+    return HttpResponse.json({ id: 1, status: 'resolved' })
   }),
 ]

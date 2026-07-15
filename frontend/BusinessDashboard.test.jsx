@@ -37,14 +37,14 @@ function makeAuth(overrides = {}) {
 describe('BusinessDashboard approval gating', () => {
   it('shows the normal tabs when verified', async () => {
     mockDashboardData()
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     await waitFor(() => expect(screen.getByText(/Akwaaba, Abena/)).toBeInTheDocument())
     expect(screen.getByRole('button', { name: /Listings & Prices/ })).not.toBeDisabled()
   })
 
   it('shows a pending-review status card with disabled tabs when pending', async () => {
     mockDashboardData()
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'pending' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'pending' }} />)
     expect(screen.getByText(/under review/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Listings & Prices/ })).toBeDisabled()
     expect(screen.queryByText(/Akwaaba, Abena/)).not.toBeInTheDocument()
@@ -52,14 +52,14 @@ describe('BusinessDashboard approval gating', () => {
 
   it('shows the rejection reason and a resubmit button when rejected', async () => {
     mockDashboardData()
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'rejected', kycRejectionReason: 'Blurry Ghana Card' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'rejected', kycRejectionReason: 'Blurry Ghana Card' }} />)
     expect(screen.getByText('Blurry Ghana Card')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Fix and Resubmit' })).toBeInTheDocument()
   })
 
   it('clicking Fix and Resubmit opens the registration flow pre-filled with the existing profile', async () => {
     mockDashboardData({ profile: { ghana_card_number: 'GHA-999', gps_address: 'AK-9', business_contact_phone: '+233209999999', is_formal: false } })
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'rejected', kycRejectionReason: 'Blurry Ghana Card' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'rejected', kycRejectionReason: 'Blurry Ghana Card' }} />)
     await waitFor(() => expect(screen.getByRole('button', { name: 'Fix and Resubmit' })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Fix and Resubmit' }))
     await waitFor(() => expect(screen.getByPlaceholderText('Ghana Card number')).toHaveValue('GHA-999'))
@@ -104,7 +104,7 @@ describe('BusinessDashboard Submit for Hero', () => {
         return HttpResponse.json(created, { status: 201 })
       }),
     )
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     fireEvent.click(await screen.findByText('🌟 Submit for Hero'))
     fireEvent.change(screen.getByPlaceholderText('A one-sentence caption for the hero slider…'), { target: { value: 'Best lodge in town' } })
@@ -119,7 +119,7 @@ describe('BusinessDashboard Submit for Hero', () => {
     server.use(
       http.post('http://localhost:8000/api/hero/submit/', () => HttpResponse.json({ detail: 'Already outstanding' }, { status: 400 })),
     )
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     fireEvent.click(await screen.findByText('🌟 Submit for Hero'))
     fireEvent.change(screen.getByPlaceholderText('A one-sentence caption for the hero slider…'), { target: { value: 'Best lodge in town' } })
@@ -131,7 +131,7 @@ describe('BusinessDashboard Submit for Hero', () => {
     mockDashboardDataWithPhotos({
       initialSubmission: { id: 30, status: 'rejected', caption: 'Old caption', rejection_reason: 'Blurry photo' },
     })
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     await screen.findByText(/Hero Spotlight/)
     expect(screen.getByText('Rejected')).toBeInTheDocument()
@@ -147,7 +147,7 @@ describe('BusinessDashboard Submit for Hero', () => {
         return HttpResponse.json(created, { status: 201 })
       }),
     )
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     fireEvent.click(await screen.findByText('🌟 Submit for Hero'))
     fireEvent.change(screen.getByPlaceholderText('A one-sentence caption for the hero slider…'), { target: { value: 'Best lodge in town' } })
@@ -180,7 +180,7 @@ describe('BusinessDashboard Submit for Hero', () => {
         return HttpResponse.json(updated)
       }),
     )
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     fireEvent.click(await screen.findByText('🌟 Submit for Hero'))
     fireEvent.change(screen.getByPlaceholderText('A one-sentence caption for the hero slider…'), { target: { value: 'Best lodge in town' } })
@@ -229,7 +229,7 @@ describe('BusinessDashboard Promote this listing', () => {
 
   it('only shows the Promote action for a published listing', async () => {
     mockDashboardDataWithPublishedListing()
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     await screen.findByText("Ama's Lodge")
     expect(screen.getByText('📣 Promote')).toBeInTheDocument()
@@ -247,7 +247,7 @@ describe('BusinessDashboard Promote this listing', () => {
         }, { status: 201 })
       }),
     )
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     fireEvent.click(await screen.findByText('📣 Promote'))
     fireEvent.click(screen.getByText('📣 Promote 7d'))
@@ -268,7 +268,7 @@ describe('BusinessDashboard Promote this listing', () => {
         }, { status: 201 })
       }),
     )
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     fireEvent.click(await screen.findByText('📣 Promote'))
     fireEvent.change(screen.getByDisplayValue('Featured'), { target: { value: 'boost' } })
@@ -286,7 +286,7 @@ describe('BusinessDashboard Promote this listing', () => {
     server.use(
       http.post('http://localhost:8000/api/listings/1/promote/', () => HttpResponse.json({ detail: 'Already active' }, { status: 400 })),
     )
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     fireEvent.click(await screen.findByText('📣 Promote'))
     fireEvent.click(screen.getByText('📣 Promote 7d'))
@@ -310,7 +310,7 @@ describe('BusinessDashboard Promote this listing', () => {
         ])
       }),
     )
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     fireEvent.click(await screen.findByText('📣 Promote'))
     fireEvent.click(screen.getByText('📣 Promote 7d'))
@@ -354,7 +354,7 @@ describe('BusinessDashboard Listings & Prices specs/service_duration editing', (
       specs: [{ label: 'Material', value: 'Cotton' }],
       service_duration: '2 hours',
     })
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     fireEvent.click(await screen.findByText('✏️ Edit'))
     expect(screen.getByDisplayValue('2 hours')).toBeInTheDocument()
@@ -371,7 +371,7 @@ describe('BusinessDashboard Listings & Prices specs/service_duration editing', (
         return HttpResponse.json({ id: 1 })
       }),
     )
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     fireEvent.click(await screen.findByText('✏️ Edit'))
     fireEvent.change(screen.getByPlaceholderText('e.g. 2 hours'), { target: { value: '3 hours' } })
@@ -395,7 +395,7 @@ describe('BusinessDashboard Listings & Prices specs/service_duration editing', (
         return HttpResponse.json({ id: 1 })
       }),
     )
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     fireEvent.click(await screen.findByText('✏️ Edit'))
     expect(screen.getByDisplayValue('Material')).toBeInTheDocument()

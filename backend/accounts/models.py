@@ -39,6 +39,10 @@ class Customer(AuthenticatableAccountMixin, models.Model):
     phone = models.CharField(max_length=20, unique=True, null=True, blank=True)
     email = models.EmailField(unique=True, null=True, blank=True)
     password_hash = models.CharField(max_length=255)
+    avatar = models.ImageField(
+        upload_to="customer_avatars/", null=True, blank=True,
+        validators=[validate_image_content_type],
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

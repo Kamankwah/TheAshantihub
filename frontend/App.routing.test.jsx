@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { BrowserRouter, MemoryRouter } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import AshantiHub from './App.jsx'
+import { setStoredAuth } from './apiClient.js'
 import { server } from './mocks/server.js'
 
 // docs/UI_MODERNIZATION_ROADMAP.md Phase D — real URL sync for `page`.
@@ -109,21 +110,52 @@ describe('AshantiHub routing', () => {
 // renderAtPath(MemoryRouter) helper.
 describe('AshantiHub routing — dashboard and detail routes', () => {
   it(
-    'mounting directly at /business-dashboard (simulating a hard reload) renders BusinessDashboard directly',
+    // Fixed alongside the /business-dashboard 401-spam bug: this route used
+    // to render BusinessDashboard (and fire its business-owner-scoped
+    // queries) for anyone, signed in or not. It now gates on an actual
+    // business-owner session, same as /staff already gated on a staff one.
+    'mounting directly at /business-dashboard while signed out shows a sign-in prompt, not the dashboard',
     async () => {
+      // useSubscriptionPlans() hits a public (AllowAny) endpoint, so unlike
+      // this dashboard's other data hooks it isn't gated on being signed in
+      // as a business owner — it still fires here, so it needs a handler.
       server.use(
+        http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([])),
+      )
+      renderAtPath('/business-dashboard')
+      expect(
+        await screen.findByText(/Sign in with a business owner account/i, {}, { timeout: 3000 }),
+      ).toBeInTheDocument()
+      expect(screen.queryByText('Business Dashboard')).not.toBeInTheDocument()
+    },
+    8000,
+  )
+
+  it(
+    'mounting directly at /business-dashboard as a signed-in business owner renders BusinessDashboard directly',
+    async () => {
+      setStoredAuth({ token: 'test-token', account_type: 'business_owner', id: 1, full_name: 'Abena' })
+      server.use(
+        http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({
+          account_type: 'business_owner', id: 1, full_name: 'Abena',
+          kyc_status: 'verified', kyc_rejection_reason: null, registration_step: 'complete',
+        })),
         http.get('http://localhost:8000/api/listings/mine/', () => HttpResponse.json([])),
         http.get('http://localhost:8000/api/accounts/business-owners/me/profile/', () => HttpResponse.json({})),
         http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([])),
         http.get('http://localhost:8000/api/billing/subscriptions/me/', () => HttpResponse.json({})),
         http.get('http://localhost:8000/api/hero/mine/', () => HttpResponse.json({})),
       )
-      renderAtPath('/business-dashboard')
-      // The three former dashboards (Business/Payments/Credit) are now one
-      // unified Business Command Center; /business-dashboard, /payments and
-      // /credit all deep-link into it (Payments/Credit as tabs). The shell
-      // header is the hard-reload-safe routing signal shared by all three.
-      expect(await screen.findByText('Business Command Center', {}, { timeout: 3000 })).toBeInTheDocument()
+      try {
+        renderAtPath('/business-dashboard')
+        // The three former dashboards (Business/Payments/Credit) are now one
+        // unified Business Command Center; /business-dashboard, /payments and
+        // /credit all deep-link into it (Payments/Credit as tabs). The shell
+        // header is the hard-reload-safe routing signal shared by all three.
+        expect(await screen.findByText('Business Command Center', {}, { timeout: 3000 })).toBeInTheDocument()
+      } finally {
+        setStoredAuth(null)
+      }
     },
     8000,
   )
@@ -149,6 +181,16 @@ describe('AshantiHub routing — dashboard and detail routes', () => {
       )
       renderAtPath('/credit')
       expect(await screen.findByText('Business Command Center', {}, { timeout: 3000 })).toBeInTheDocument()
+    },
+    8000,
+  )
+
+  it(
+    'mounting directly at /my-account (simulating a hard reload) renders UserPanel directly',
+    async () => {
+      renderAtPath('/my-account')
+      expect(await screen.findByText('My Account', {}, { timeout: 3000 })).toBeInTheDocument()
+      expect(screen.queryByText(/Ashanti Rising/i)).not.toBeInTheDocument()
     },
     8000,
   )

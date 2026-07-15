@@ -28,6 +28,21 @@ class IsEventOwner(BasePermission):
         return False
 
 
+class IsEventTicketTypeOwner(BasePermission):
+    """Object-level check for EventTicketTypeUpdateView: same logic as
+    IsEventOwner, but the object passed in is an EventTicketType, so the
+    check is against `obj.event` rather than `obj` itself.
+    """
+
+    def has_object_permission(self, request, view, obj):
+        user = request.user
+        if isinstance(user, BusinessOwner):
+            return obj.event.submitted_by_business_id == user.id
+        if isinstance(user, Customer):
+            return obj.event.submitted_by_customer_id == user.id
+        return False
+
+
 class IsEventOwnerOrCanApproveEvents(BasePermission):
     """Object-level check for GET /api/events/{id}/rsvps/ (Phase 7 —
     docs/BUSINESS_EVENTS_ROADMAP.md: "organizer/staff-only, paginated

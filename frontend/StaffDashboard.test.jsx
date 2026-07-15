@@ -45,7 +45,7 @@ describe('StaffDashboard', () => {
   it('a super_admin-shaped session sees every nav item', () => {
     const auth = makeAuth({
       user: { token: 't', account_type: 'staff', id: 2, full_name: 'Kwame Super', role: 'super_admin', permissions: [
-        'kyc.approve', 'listings.moderate', 'hero_media.approve', 'reviews.moderate', 'users.view', 'escrow.view', 'escrow.release',
+        'kyc.approve', 'listings.moderate', 'hero_media.approve', 'reviews.moderate', 'orders.manage_delivery', 'users.view', 'escrow.view', 'escrow.release',
         'disputes.resolve_financial', 'transactions.report', 'promotions.manage', 'analytics.view',
         'categories.manage', 'messaging.manage', 'disputes.flag', 'staff.manage', 'zones.manage',
         'site_settings.manage',
@@ -53,7 +53,7 @@ describe('StaffDashboard', () => {
       hasPermission: () => true,
     })
     render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
-    ;['KYC Queue', 'Listings Moderation', 'Hero Approval', 'Reviews', 'Users', 'Categories & Zones', 'Site Settings', 'Staff Management',
+    ;['KYC Queue', 'Listings Moderation', 'Hero Approval', 'Reviews', 'Delivery Management', 'Users', 'Categories & Zones', 'Site Settings', 'Staff Management',
       'Escrow Ledger', 'Disputes', 'Transactions Report', 'Promotions', 'Analytics', 'Messaging / Tickets']
       .forEach((label) => expect(screen.getByText(label)).toBeInTheDocument())
   })
@@ -514,5 +514,182 @@ describe('StaffDashboard Reviews moderation', () => {
     fireEvent.change(screen.getByPlaceholderText('Reason for hiding'), { target: { value: 'spam' } })
     fireEvent.click(screen.getByText('Confirm hide'))
     await screen.findByText('Could not hide this review.')
+  })
+})
+
+describe('StaffDashboard Delivery Management', () => {
+  it('only shows the Delivery Management nav item for a session with orders.manage_delivery', () => {
+    const auth = makeAuth({ hasPermission: (c) => c === 'orders.manage_delivery' })
+    render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    expect(screen.getByText('Delivery Management')).toBeInTheDocument()
+  })
+
+  it('reads the paginated orders queue (data.results) and only shows a delivery-status select for paid orders', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/orders/staff/', () => {
+        return HttpResponse.json({
+          count: 2, next: null, previous: null,
+          results: [
+            { id: 1, customer: 3, customer_name: 'Ama Boateng', status: 'paid', delivery_status: 'processing', total_amount: '150.00', placed_at: '2026-07-01T00:00:00Z', items: [] },
+            { id: 2, customer: 4, customer_name: 'Kofi Mensah', status: 'pending', delivery_status: 'processing', total_amount: '80.00', placed_at: '2026-07-02T00:00:00Z', items: [] },
+          ],
+        })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'orders.manage_delivery' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Delivery Management'))
+    await screen.findByText('Ama Boateng')
+    expect(screen.getByText('Kofi Mensah')).toBeInTheDocument()
+    expect(screen.getAllByRole('combobox').length).toBe(1)
+  })
+
+  it('updates a paid order\'s delivery status', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/orders/staff/', () => {
+        return HttpResponse.json({
+          count: 1, next: null, previous: null,
+          results: [{ id: 9, customer: 3, customer_name: 'Ama Boateng', status: 'paid', delivery_status: 'processing', total_amount: '150.00', placed_at: '2026-07-01T00:00:00Z', items: [] }],
+        })
+      }),
+    )
+    let patchBody = null
+    server.use(
+      http.patch('http://localhost:8000/api/orders/9/delivery-status/', async ({ request }) => {
+        patchBody = await request.json()
+        return HttpResponse.json({ id: 9, delivery_status: 'shipped' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'orders.manage_delivery' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Delivery Management'))
+    await screen.findByText('Ama Boateng')
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'shipped' } })
+    await waitFor(() => expect(patchBody).toEqual({ delivery_status: 'shipped' }))
+  })
+
+  it('shows an inline error when updating delivery status fails', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/orders/staff/', () => {
+        return HttpResponse.json({
+          count: 1, next: null, previous: null,
+          results: [{ id: 10, customer: 3, customer_name: 'Ama Boateng', status: 'paid', delivery_status: 'processing', total_amount: '150.00', placed_at: '2026-07-01T00:00:00Z', items: [] }],
+        })
+      }),
+      http.patch('http://localhost:8000/api/orders/10/delivery-status/', () => {
+        return HttpResponse.json({ detail: 'Server error' }, { status: 500 })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'orders.manage_delivery' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Delivery Management'))
+    await screen.findByText('Ama Boateng')
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'shipped' } })
+    await screen.findByText("Could not update this order's delivery status.")
+  })
+
+  it('shows an empty state when there are no orders', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/orders/staff/', () => {
+        return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'orders.manage_delivery' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Delivery Management'))
+    await screen.findByText('No orders yet.')
+  })
+})
+describe('StaffDashboard Contact Messages', () => {
+  it('only shows the Contact Messages nav item for a session with contact_messages.manage', () => {
+    const auth = makeAuth({ hasPermission: (c) => c === 'contact_messages.manage' })
+    render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    expect(screen.getByText('Contact Messages')).toBeInTheDocument()
+  })
+
+  it('reads the paginated contact-messages queue (data.results) and shows status', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/core/contact-messages/', () => {
+        return HttpResponse.json({
+          count: 2, next: null, previous: null,
+          results: [
+            { id: 1, category: 'support', name: 'Ama', email: 'ama@example.com', phone: '', subject: 'Order issue', message: 'My order is late', status: 'new', resolved_by_name: null, resolved_at: null, created_at: '2026-07-01T00:00:00Z' },
+            { id: 2, category: 'sales', name: 'Kofi', email: 'kofi@example.com', phone: '', subject: 'Bulk pricing', message: 'Interested in bulk pricing', status: 'resolved', resolved_by_name: 'Akosua Support', resolved_at: '2026-07-03T00:00:00Z', created_at: '2026-07-02T00:00:00Z' },
+          ],
+        })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'contact_messages.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Contact Messages'))
+    await screen.findByText('"My order is late"')
+    expect(screen.getByText('New')).toBeInTheDocument()
+    expect(screen.getByText('Resolved')).toBeInTheDocument()
+    expect(screen.getByText(/Resolved by Akosua Support/)).toBeInTheDocument()
+  })
+
+  it('marks a message as read', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/core/contact-messages/', () => {
+        return HttpResponse.json({
+          count: 1, next: null, previous: null,
+          results: [{ id: 3, category: 'general', name: 'Yaw', email: 'yaw@example.com', phone: '', subject: 'Question', message: 'How does this work?', status: 'new', resolved_by_name: null, resolved_at: null, created_at: '2026-07-01T00:00:00Z' }],
+        })
+      }),
+    )
+    let readCalled = false
+    server.use(
+      http.post('http://localhost:8000/api/core/contact-messages/3/read/', () => {
+        readCalled = true
+        return HttpResponse.json({ id: 3, status: 'read' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'contact_messages.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Contact Messages'))
+    await screen.findByText('"How does this work?"')
+    fireEvent.click(screen.getByText('Mark read'))
+    await waitFor(() => expect(readCalled).toBe(true))
+  })
+
+  it('resolves a message', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/core/contact-messages/', () => {
+        return HttpResponse.json({
+          count: 1, next: null, previous: null,
+          results: [{ id: 4, category: 'account', name: 'Abena', email: 'abena@example.com', phone: '', subject: 'Login issue', message: 'Cannot log in', status: 'read', resolved_by_name: null, resolved_at: null, created_at: '2026-07-01T00:00:00Z' }],
+        })
+      }),
+    )
+    let resolveCalled = false
+    server.use(
+      http.post('http://localhost:8000/api/core/contact-messages/4/resolve/', () => {
+        resolveCalled = true
+        return HttpResponse.json({ id: 4, status: 'resolved' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'contact_messages.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Contact Messages'))
+    await screen.findByText('"Cannot log in"')
+    fireEvent.click(screen.getByText('Resolve'))
+    await waitFor(() => expect(resolveCalled).toBe(true))
+  })
+
+  it('hides "Mark read" once a message is resolved', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/core/contact-messages/', () => {
+        return HttpResponse.json({
+          count: 1, next: null, previous: null,
+          results: [{ id: 5, category: 'general', name: 'Kwabena', email: 'kwabena@example.com', phone: '', subject: 'Resolved already', message: 'This is done', status: 'resolved', resolved_by_name: 'Akosua Support', resolved_at: '2026-07-03T00:00:00Z', created_at: '2026-07-01T00:00:00Z' }],
+        })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'contact_messages.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Contact Messages'))
+    await screen.findByText('"This is done"')
+    expect(screen.queryByText('Mark read')).not.toBeInTheDocument()
+    expect(screen.queryByText('Resolve')).not.toBeInTheDocument()
   })
 })

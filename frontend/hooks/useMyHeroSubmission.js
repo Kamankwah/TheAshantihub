@@ -7,9 +7,10 @@ import { apiFetch } from '../apiClient.js'
 // subscription yet" convention: "nothing yet" is a 200 with `{}`, not a 404,
 // so callers should check for the absence of an `id` field on the returned
 // data, not query error state.
-export function useMyHeroSubmission() {
+export function useMyHeroSubmission(enabled = true) {
   return useQuery({
     queryKey: ['my-hero-submission'],
     queryFn: () => apiFetch('/api/hero/mine/'),
+    enabled,
   })
 }

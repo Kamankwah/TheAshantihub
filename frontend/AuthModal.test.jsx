@@ -9,6 +9,7 @@ function makeAuth(overrides = {}) {
     login: vi.fn().mockResolvedValue({ token: 't', account_type: 'customer', id: 1, full_name: 'Ama' }),
     logout: vi.fn(),
     registerCustomer: vi.fn().mockResolvedValue({ token: 't', account_type: 'customer', id: 1, full_name: 'Kofi' }),
+    registerBusinessOwner: vi.fn().mockResolvedValue({ token: 't', account_type: 'business_owner', id: 1, full_name: 'Kofi', registration_step: 'business_info' }),
     ...overrides,
   }
 }
@@ -41,6 +42,24 @@ describe('AuthModal', () => {
     await waitFor(() => expect(auth.registerCustomer).toHaveBeenCalledWith(
       expect.objectContaining({ full_name: 'Kofi Mensah', phone: '+233201112233', password: 'secretpass' })
     ))
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled())
+  })
+
+  it('signs up as a business owner via auth.registerBusinessOwner when that account type is chosen', async () => {
+    const auth = makeAuth()
+    const onSuccess = vi.fn()
+    render(<AuthModal authState="signup" auth={auth} onClose={vi.fn()} onSuccess={onSuccess} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Business Owner' }))
+    fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'Ama Owusu' } })
+    fireEvent.change(screen.getByPlaceholderText('Phone (+233...)'), { target: { value: '+233201112233' } })
+    fireEvent.change(screen.getByPlaceholderText('Password (min 8 characters)'), { target: { value: 'secretpass' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create Business Account' }))
+
+    await waitFor(() => expect(auth.registerBusinessOwner).toHaveBeenCalledWith(
+      expect.objectContaining({ full_name: 'Ama Owusu', login_phone: '+233201112233', password: 'secretpass' })
+    ))
+    expect(auth.registerCustomer).not.toHaveBeenCalled()
     await waitFor(() => expect(onSuccess).toHaveBeenCalled())
   })
 
