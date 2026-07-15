@@ -148,7 +148,11 @@ describe('AshantiHub routing — dashboard and detail routes', () => {
       )
       try {
         renderAtPath('/business-dashboard')
-        expect(await screen.findByText('Business Dashboard', {}, { timeout: 3000 })).toBeInTheDocument()
+        // The three former dashboards (Business/Payments/Credit) are now one
+        // unified Business Command Center; /business-dashboard, /payments and
+        // /credit all deep-link into it (Payments/Credit as tabs). The shell
+        // header is the hard-reload-safe routing signal shared by all three.
+        expect(await screen.findByText('Business Command Center', {}, { timeout: 3000 })).toBeInTheDocument()
       } finally {
         setStoredAuth(null)
       }
@@ -157,26 +161,50 @@ describe('AshantiHub routing — dashboard and detail routes', () => {
   )
 
   it(
-    'mounting directly at /payments (simulating a hard reload) renders PaymentDashboard directly',
+    'mounting directly at /payments (simulating a hard reload) renders the Business Command Center',
     async () => {
+      // Same business-owner-session gate as /business-dashboard above — now
+      // that Payments/Credit are tabs of the same unified BusinessCommandCenter,
+      // they share its "don't render for a signed-out visitor" fix too.
+      setStoredAuth({ token: 'test-token', account_type: 'business_owner', id: 1, full_name: 'Abena' })
       server.use(
+        http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({
+          account_type: 'business_owner', id: 1, full_name: 'Abena',
+          kyc_status: 'verified', kyc_rejection_reason: null, registration_step: 'complete',
+        })),
+        http.get('http://localhost:8000/api/accounts/business-owners/me/profile/', () => HttpResponse.json({})),
         http.get('http://localhost:8000/api/billing/transactions/mine/', () => HttpResponse.json([])),
         http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([])),
+        http.get('http://localhost:8000/api/billing/subscriptions/me/', () => HttpResponse.json({})),
       )
-      renderAtPath('/payments')
-      expect(await screen.findByText('Payment Centre', {}, { timeout: 3000 })).toBeInTheDocument()
+      try {
+        renderAtPath('/payments')
+        expect(await screen.findByText('Business Command Center', {}, { timeout: 3000 })).toBeInTheDocument()
+      } finally {
+        setStoredAuth(null)
+      }
     },
     8000,
   )
 
   it(
-    'mounting directly at /credit (simulating a hard reload) renders CreditDashboard directly',
+    'mounting directly at /credit (simulating a hard reload) renders the Business Command Center',
     async () => {
+      setStoredAuth({ token: 'test-token', account_type: 'business_owner', id: 1, full_name: 'Abena' })
       server.use(
+        http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({
+          account_type: 'business_owner', id: 1, full_name: 'Abena',
+          kyc_status: 'verified', kyc_rejection_reason: null, registration_step: 'complete',
+        })),
+        http.get('http://localhost:8000/api/accounts/business-owners/me/profile/', () => HttpResponse.json({})),
         http.get('http://localhost:8000/api/credit/scores/me/', () => HttpResponse.json({ score: 620, loan_eligible: true })),
       )
-      renderAtPath('/credit')
-      expect(await screen.findByText('Credit & Financial Partnerships', {}, { timeout: 3000 })).toBeInTheDocument()
+      try {
+        renderAtPath('/credit')
+        expect(await screen.findByText('Business Command Center', {}, { timeout: 3000 })).toBeInTheDocument()
+      } finally {
+        setStoredAuth(null)
+      }
     },
     8000,
   )
