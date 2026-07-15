@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction as db_transaction
+from django.db.models import Avg, Count, Q
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import filters, generics
@@ -39,9 +40,24 @@ def _live_events_queryset():
     past expires_at. See Event's class docstring for why "approved" alone
     isn't sufficient (payment is what starts the visibility window under
     this app's approve-then-pay sequencing).
+
+    This is the single shared queryset backing EventListView (teaser),
+    EventDetailView, and EventUnlockView (detail/teaser) — annotated here
+    once with avg_rating/review_count (reviews/ratings/Q&A plan,
+    docs/PROJECT_SCOPE.md) rather than per-caller, sourced from published
+    Review rows. `distinct=True` on the Count guards against inflation from
+    any other join — this queryset's own filters don't join anything, but
+    EventListView additionally filters on category__slug/zone__name
+    (FK lookups, not row-multiplying) and a name/description SearchFilter,
+    so kept as a defensive measure regardless.
     """
     now = timezone.now()
-    return Event.objects.filter(status=Event.APPROVED, paid_at__isnull=False, expires_at__gt=now)
+    return Event.objects.filter(
+        status=Event.APPROVED, paid_at__isnull=False, expires_at__gt=now
+    ).annotate(
+        avg_rating=Avg("reviews__rating", filter=Q(reviews__status="published")),
+        review_count=Count("reviews", filter=Q(reviews__status="published"), distinct=True),
+    )
 
 
 class EventPagination(PageNumberPagination):

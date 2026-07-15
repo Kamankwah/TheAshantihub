@@ -53,7 +53,10 @@ class EventVisibilityTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         item = response.json()["results"][0]
         self.assertEqual(item["id"], event.id)
-        expected_keys = {"id", "name", "category", "zone", "event_date", "hero_media", "is_private"}
+        expected_keys = {
+            "id", "name", "category", "zone", "event_date", "hero_media", "is_private",
+            "avg_rating", "review_count",
+        }
         self.assertEqual(set(item.keys()), expected_keys)
         self.assertNotIn("address", item)
         self.assertNotIn("lat", item)

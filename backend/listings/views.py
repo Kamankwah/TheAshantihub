@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from django.core.files.base import ContentFile
 from django.db import transaction as db_transaction
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Avg, Count, Exists, OuterRef, Q
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import filters, generics, serializers
@@ -33,6 +33,24 @@ from .serializers import (
     PublicListingSerializer,
     ZoneSerializer,
 )
+
+
+def _with_rating_annotations(queryset):
+    """Adds avg_rating/review_count to a Listing queryset, sourced from
+    published Review rows (reviews/ratings/Q&A plan, docs/PROJECT_SCOPE.md).
+    `distinct=True` on the Count guards against inflation from any other
+    join the queryset might already have — checked directly: none of this
+    file's PublicListingSerializer-backing querysets (PublicListingListView,
+    PublicListingDetailView, RelatedListingsView) join anything else at the
+    DB level (`photos` is fetched by the serializer as its own nested query,
+    not joined into this queryset; `is_promoted` uses an EXISTS subquery, not
+    a join), so `distinct=True` isn't strictly load-bearing today — kept as a
+    defensive measure regardless, per the reviews plan's explicit ask.
+    """
+    return queryset.annotate(
+        avg_rating=Avg("reviews__rating", filter=Q(reviews__status="published")),
+        review_count=Count("reviews", filter=Q(reviews__status="published"), distinct=True),
+    )
 
 
 class ListingPhotoCreateView(generics.CreateAPIView):
@@ -118,7 +136,8 @@ class PublicListingListView(generics.ListAPIView):
         if verified and verified.lower() in ("true", "1"):
             queryset = queryset.filter(business_owner__kyc_status=BusinessOwner.VERIFIED)
 
-        return queryset.annotate(is_promoted=Exists(self._promoted_subquery()))
+        queryset = queryset.annotate(is_promoted=Exists(self._promoted_subquery()))
+        return _with_rating_annotations(queryset)
 
     def _promoted_subquery(self):
         """Active Promotion rows that should push their listing to the front
@@ -150,9 +169,11 @@ class PublicListingListView(generics.ListAPIView):
 
 
 class PublicListingDetailView(generics.RetrieveAPIView):
-    queryset = Listing.objects.filter(status=Listing.PUBLISHED)
     serializer_class = PublicListingSerializer
     permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        return _with_rating_annotations(Listing.objects.filter(status=Listing.PUBLISHED))
 
 
 class RelatedListingsView(generics.ListAPIView):
@@ -173,12 +194,13 @@ class RelatedListingsView(generics.ListAPIView):
         anchor = generics.get_object_or_404(
             Listing.objects.filter(status=Listing.PUBLISHED), pk=self.kwargs["pk"]
         )
-        return (
+        queryset = (
             Listing.objects.filter(status=Listing.PUBLISHED)
             .filter(Q(category=anchor.category) | Q(zone=anchor.zone))
             .exclude(pk=anchor.pk)
-            .order_by("-created_at")[: self.RELATED_LIMIT]
+            .order_by("-created_at")
         )
+        return _with_rating_annotations(queryset)[: self.RELATED_LIMIT]
 
 
 class OwnerListingCreateListView(generics.ListCreateAPIView):

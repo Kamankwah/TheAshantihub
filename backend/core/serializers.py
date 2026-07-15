@@ -14,4 +14,6 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
             "instagram_url",
             "linkedin_url",
             "twitter_url",
+            "warranty_returns_policy",
+            "service_dispute_policy",
         ]

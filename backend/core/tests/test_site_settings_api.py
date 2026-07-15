@@ -36,6 +36,8 @@ class SiteSettingsAPITests(TestCase):
             instagram_url="https://instagram.com/theashantihub",
             linkedin_url="https://linkedin.com/company/theashantihub",
             twitter_url="https://twitter.com/theashantihub",
+            warranty_returns_policy="Returns accepted within 7 days.",
+            service_dispute_policy="Contact support to raise a dispute.",
         )
         response = self.client.get(URL)
         self.assertEqual(response.status_code, 200)
@@ -49,6 +51,8 @@ class SiteSettingsAPITests(TestCase):
                 "instagram_url": "https://instagram.com/theashantihub",
                 "linkedin_url": "https://linkedin.com/company/theashantihub",
                 "twitter_url": "https://twitter.com/theashantihub",
+                "warranty_returns_policy": "Returns accepted within 7 days.",
+                "service_dispute_policy": "Contact support to raise a dispute.",
             },
         )
 

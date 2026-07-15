@@ -25,10 +25,25 @@ class EventTeaserSerializer(serializers.ModelSerializer):
     zone = ZoneSerializer(read_only=True)
     hero_media = serializers.SerializerMethodField()
     is_private = serializers.SerializerMethodField()
+    # Same "annotated but not always present" safety pattern as
+    # listings.serializers.PublicListingSerializer — populated by the
+    # reviews-count/avg-rating queryset annotation on _live_events_queryset
+    # (reviews/ratings/Q&A plan, docs/PROJECT_SCOPE.md).
+    avg_rating = serializers.SerializerMethodField()
+    review_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
-        fields = ["id", "name", "category", "zone", "event_date", "hero_media", "is_private"]
+        fields = [
+            "id", "name", "category", "zone", "event_date", "hero_media", "is_private",
+            "avg_rating", "review_count",
+        ]
+
+    def get_avg_rating(self, obj):
+        return getattr(obj, "avg_rating", None)
+
+    def get_review_count(self, obj):
+        return getattr(obj, "review_count", 0)
 
     def get_hero_media(self, obj):
         first = obj.media.all()[:1]
@@ -56,13 +71,42 @@ class EventDetailSerializer(serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
     zone = ZoneSerializer(read_only=True)
     media = EventMediaSerializer(many=True, read_only=True)
+    # Same "annotated but not always present" safety pattern as
+    # EventTeaserSerializer above.
+    avg_rating = serializers.SerializerMethodField()
+    review_count = serializers.SerializerMethodField()
+    # Minimal public exposure of who organized this event — reasonable and
+    # expected for a public event listing (comparable to any event platform
+    # showing its host). Deliberately NOT on EventTeaserSerializer, which
+    # keeps its existing safe-subset contract untouched.
+    organizer = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
         fields = [
             "id", "name", "description", "category", "zone", "address", "lat", "lng",
-            "event_date", "going_count", "access_level", "media",
+            "event_date", "going_count", "access_level", "media", "avg_rating",
+            "review_count", "organizer",
         ]
+
+    def get_avg_rating(self, obj):
+        return getattr(obj, "avg_rating", None)
+
+    def get_review_count(self, obj):
+        return getattr(obj, "review_count", 0)
+
+    def get_organizer(self, obj):
+        if obj.submitted_by_business_id:
+            return {
+                "kind": "business",
+                "id": obj.submitted_by_business_id,
+                "full_name": obj.submitted_by_business.full_name,
+            }
+        return {
+            "kind": "customer",
+            "id": obj.submitted_by_customer_id,
+            "full_name": obj.submitted_by_customer.full_name,
+        }
 
 
 class EventOwnerSerializer(serializers.ModelSerializer):
