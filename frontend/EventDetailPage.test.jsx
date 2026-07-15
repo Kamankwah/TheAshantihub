@@ -30,6 +30,11 @@ const PUBLIC_DETAIL = {
     { id: 1, media: 'http://localhost:8000/media/event_media/one.jpg', media_type: 'image', order: 0 },
     { id: 2, media: 'http://localhost:8000/media/event_media/two.jpg', media_type: 'image', order: 1 },
   ],
+  // Reviews/ratings/Q&A plan, Phase 2/6 — real fields on
+  // GET /api/events/{id}/ as of that plan's Phase 2.
+  avg_rating: 4,
+  review_count: 3,
+  organizer: { kind: 'business', id: 9, full_name: 'Manhyia Palace Events Ltd' },
 }
 
 // Teaser shape — what a private, locked event's detail endpoint returns
@@ -237,6 +242,99 @@ describe('EventDetailPage — RSVP on a private event reuses the already-entered
     expect(screen.queryByLabelText('Access code')).not.toBeInTheDocument()
     fireEvent.click(screen.getByText("🎉 I'm Going"))
     expect(await screen.findByText("✓ Going — Can't Go?")).toBeInTheDocument()
+  })
+})
+
+describe('EventDetailPage — Reviews section (reviews/ratings/Q&A plan, Phase 6)', () => {
+  it('shows the review aggregate and the review list', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/events/1/', () => HttpResponse.json(PUBLIC_DETAIL)),
+      http.get('http://localhost:8000/api/reviews/event/1/', () => HttpResponse.json({
+        count: 1, next: null, previous: null,
+        results: [{ id: 5, author_name: 'Yaw', rating: 4, comment: 'Great festival atmosphere.', verified: true, created_at: '2026-07-01T00:00:00Z' }],
+        avg_rating: 4, review_count: 1,
+      })),
+    )
+    renderPage()
+    await screen.findByText('Akwasidae Festival')
+    expect(await screen.findByText('Great festival atmosphere.')).toBeInTheDocument()
+    expect(screen.getByText('Yaw')).toBeInTheDocument()
+    expect(screen.getByText('(1 reviews)')).toBeInTheDocument()
+  })
+
+  it('prompts a signed-out visitor to sign in before writing a review', async () => {
+    server.use(http.get('http://localhost:8000/api/events/1/', () => HttpResponse.json(PUBLIC_DETAIL)))
+    renderPage({ user: null })
+    await screen.findByText('Akwasidae Festival')
+    expect(await screen.findByText('Sign in to leave a review')).toBeInTheDocument()
+  })
+
+  it('shows the write form for an eligible signed-in customer (a verified attendee)', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/events/1/', () => HttpResponse.json(PUBLIC_DETAIL)),
+      http.get('http://localhost:8000/api/reviews/eligibility/', () => HttpResponse.json({ eligible: true, already_reviewed: false })),
+    )
+    renderPage({ user: CUSTOMER })
+    await screen.findByText('Akwasidae Festival')
+    expect(await screen.findByPlaceholderText('Share your experience...')).toBeInTheDocument()
+  })
+})
+
+describe('EventDetailPage — Organizer section (reviews/ratings/Q&A plan, Phase 6)', () => {
+  it('renders "Organized by {full_name}" with no fabricated rating when the organizer has no reviews yet', async () => {
+    server.use(http.get('http://localhost:8000/api/events/1/', () => HttpResponse.json(PUBLIC_DETAIL)))
+    renderPage()
+    await screen.findByText('Akwasidae Festival')
+    expect(await screen.findByText('Organized by Manhyia Palace Events Ltd')).toBeInTheDocument()
+  })
+
+  it('shows the organizer rating when the organizer has reviews', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/events/1/', () => HttpResponse.json(PUBLIC_DETAIL)),
+      http.get('http://localhost:8000/api/reviews/organizer/business/9/', () => HttpResponse.json({
+        count: 1, next: null, previous: null,
+        results: [{ id: 8, author_name: 'Abena', rating: 5, comment: 'Wonderful organizer!', verified: true, created_at: '2026-07-01T00:00:00Z' }],
+        avg_rating: 4.7, review_count: 12,
+      })),
+    )
+    renderPage()
+    await screen.findByText('Akwasidae Festival')
+    expect(await screen.findByText(/⭐ 4.7 · Organized by Manhyia Palace Events Ltd · 12 organizer reviews/)).toBeInTheDocument()
+  })
+
+  it('expands to show the organizer review list and write form when clicked', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/events/1/', () => HttpResponse.json(PUBLIC_DETAIL)),
+      http.get('http://localhost:8000/api/reviews/organizer/business/9/', () => HttpResponse.json({
+        count: 1, next: null, previous: null,
+        results: [{ id: 8, author_name: 'Abena', rating: 5, comment: 'Wonderful organizer!', verified: true, created_at: '2026-07-01T00:00:00Z' }],
+        avg_rating: 4.7, review_count: 1,
+      })),
+    )
+    renderPage()
+    await screen.findByText('Akwasidae Festival')
+    fireEvent.click(await screen.findByText(/Organized by Manhyia Palace Events Ltd/))
+    expect(await screen.findByText('Wonderful organizer!')).toBeInTheDocument()
+    expect(screen.getByText('✍️ Write an Organizer Review')).toBeInTheDocument()
+  })
+
+  it('renders nothing when the event has no organizer field', async () => {
+    const { organizer, ...withoutOrganizer } = PUBLIC_DETAIL
+    server.use(http.get('http://localhost:8000/api/events/1/', () => HttpResponse.json(withoutOrganizer)))
+    renderPage()
+    await screen.findByText('Akwasidae Festival')
+    expect(screen.queryByText(/Organized by/)).not.toBeInTheDocument()
+  })
+})
+
+describe('EventDetailPage — Reviews/Organizer sections are unreachable on a locked event (regression guard)', () => {
+  it('never renders the Reviews or Organizer sections while the event stays locked', async () => {
+    server.use(http.get('http://localhost:8000/api/events/2/', () => HttpResponse.json(PRIVATE_TEASER)))
+    renderPage({ id: 2 })
+    await screen.findByText('This event is private — enter the code to view details.')
+    expect(screen.queryByText('Reviews')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Organized by/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Sign in to leave a review')).not.toBeInTheDocument()
   })
 })
 

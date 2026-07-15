@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import { C } from "../theme.js";
 import { useEvent } from "../hooks/useEvent.js";
+import { useEventReviews } from "../hooks/useEventReviews.js";
+import { useOrganizerReviews } from "../hooks/useOrganizerReviews.js";
 import { apiDelete, apiPost } from "../apiClient.js";
 import { formatEventDate } from "./EventCard.jsx";
+import { ReviewsList, ReviewWriteForm, starString } from "./ReviewComponents.jsx";
 
 // ─── EventDetailPage ────────────────────────────────────────────────────────
 // Event detail page for the Events tab (docs/BUSINESS_EVENTS_ROADMAP.md
@@ -70,6 +73,25 @@ import { formatEventDate } from "./EventCard.jsx";
 // surfaced generically off the error's `status`/`body.detail` rather than
 // computed from any capacity number, since capacity isn't part of
 // EventDetailSerializer's exposed fields.
+//
+// ─── Reviews + Organizer rating (reviews/ratings/Q&A plan, Phase 6) ────────
+// Not the full 7-tab treatment ListingDetailPage.jsx got in Phase 5 — the
+// original ask was tabs for the product/service PDP only; events just get
+// plain sections. Below the RSVP block: a Reviews section (aggregate +
+// useEventReviews(id) list + an inline eligibility-gated ReviewWriteForm
+// targeting {targetType:"event"}) and an Organizer section ("Organized by
+// {full_name}" from EventDetailSerializer's `organizer` field, an
+// avg_rating/review_count badge sourced from
+// useOrganizerReviews(organizer.kind, organizer.id) — hidden entirely when
+// review_count is 0, same "no fabricated 0.0" rule as
+// ListingDetailPage.jsx's SellerRatingBadge — expandable to the organizer's
+// review list plus a ReviewWriteForm targeting
+// {targetType:"organizer", organizerKind: organizer.kind}). Both sections
+// reuse ReviewsList/ReviewWriteForm from ./ReviewComponents.jsx rather than
+// re-implementing the write-flow state machine a third time. Both are
+// placed after the early `if (isLocked) return ...` above, so they're
+// already structurally unreachable for a locked, un-unlocked private event
+// — no redundant extra gate needed here.
 export default function EventDetailPage({ id, onBack, user }) {
   const { data: event, isLoading, isError, refetch } = useEvent(id);
   const [unlocked, setUnlocked] = useState(null);
@@ -334,6 +356,102 @@ export default function EventDetailPage({ id, onBack, user }) {
           </div>
         </div>
       </div>
+
+      {/* Reviews + Organizer sections (reviews/ratings/Q&A plan, Phase 6) —
+          see the block comment above the component for the full rationale.
+          Full-width blocks below the gallery+details flex row, same
+          convention ListingDetailPage.jsx uses for its seller-rating badge
+          sitting outside its two-column layout. */}
+      <EventReviewsSection eventId={id} detail={detail} user={user} />
+      <OrganizerRatingSection organizer={detail.organizer} user={user} />
+    </div>
+  );
+}
+
+// ─── EventReviewsSection ────────────────────────────────────────────────────
+function EventReviewsSection({ eventId, detail, user }) {
+  const reviewsQuery = useEventReviews(eventId);
+  const reviews = reviewsQuery.data?.results || [];
+  const avgRating = reviewsQuery.data?.avg_rating ?? detail.avg_rating;
+  const reviewCount = reviewsQuery.data?.review_count ?? detail.review_count ?? 0;
+
+  return (
+    <div style={{ marginTop: 24, borderTop: "1px solid rgba(255,255,255,0.12)", paddingTop: 20 }}>
+      <h2 style={{ color: C.gold, fontSize: "1rem", fontWeight: 900, margin: "0 0 16px" }}>Reviews</h2>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+        {reviewCount > 0 ? (
+          <>
+            <span style={{ color: C.gold, fontSize: "1.1rem" }}>{starString(avgRating)}</span>
+            <span style={{ color: "white", fontWeight: 800 }}>{avgRating}</span>
+            <span style={{ color: "rgba(255,255,255,0.6)", fontSize: "0.8rem" }}>({reviewCount} reviews)</span>
+          </>
+        ) : (
+          <span style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.8rem" }}>No reviews yet.</span>
+        )}
+      </div>
+      <div style={{ marginBottom: 22 }}>
+        <ReviewWriteForm targetType="event" targetId={eventId} user={user} onReviewSubmitted={() => reviewsQuery.refetch()} />
+      </div>
+      {reviewsQuery.isLoading ? (
+        <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.8rem" }}>Loading reviews…</div>
+      ) : (
+        <ReviewsList reviews={reviews} />
+      )}
+    </div>
+  );
+}
+
+// ─── OrganizerRatingSection ─────────────────────────────────────────────────
+// About the event's organizer, not the event itself — an Airbnb-host-style
+// rating, not an aggregate of the organizer's events' reviews. `organizer`
+// is EventDetailSerializer's `{kind: "business"|"customer", id, full_name}`
+// field. Hides the rating portion entirely when review_count is 0, same
+// "no fabricated 0.0" rule ListingDetailPage.jsx's SellerRatingBadge uses —
+// that's this section's reference pattern, including the expand/collapse-
+// to-reviews-plus-write-form behavior.
+function OrganizerRatingSection({ organizer, user }) {
+  const [expanded, setExpanded] = useState(false);
+  const organizerReviewsQuery = useOrganizerReviews(organizer?.kind, organizer?.id);
+
+  if (!organizer) return null;
+
+  const avgRating = organizerReviewsQuery.data?.avg_rating ?? 0;
+  const reviewCount = organizerReviewsQuery.data?.review_count ?? 0;
+  const reviews = organizerReviewsQuery.data?.results || [];
+
+  return (
+    <div style={{ marginTop: 24, borderTop: "1px solid rgba(255,255,255,0.12)", paddingTop: 20 }}>
+      <button
+        onClick={() => setExpanded((e) => !e)}
+        aria-expanded={expanded}
+        style={{ background: "none", border: "none", color: "white", fontSize: "0.82rem", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 8, fontFamily: "inherit" }}
+      >
+        {reviewCount > 0 ? (
+          <span>⭐ {avgRating} · Organized by {organizer.full_name} · {reviewCount} organizer review{reviewCount === 1 ? "" : "s"}</span>
+        ) : (
+          <span>Organized by {organizer.full_name}</span>
+        )}
+        <span style={{ color: C.gold }}>{expanded ? "▲" : "▼"}</span>
+      </button>
+      {expanded && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ marginBottom: 16 }}>
+            <ReviewWriteForm
+              targetType="organizer"
+              targetId={organizer.id}
+              organizerKind={organizer.kind}
+              user={user}
+              onReviewSubmitted={() => organizerReviewsQuery.refetch()}
+              label="Write an Organizer Review"
+            />
+          </div>
+          {organizerReviewsQuery.isLoading ? (
+            <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.8rem" }}>Loading organizer reviews…</div>
+          ) : (
+            <ReviewsList reviews={reviews} emptyLabel="No organizer reviews yet." />
+          )}
+        </div>
+      )}
     </div>
   );
 }

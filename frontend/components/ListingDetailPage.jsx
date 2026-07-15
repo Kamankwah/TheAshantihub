@@ -4,11 +4,11 @@ import { apiPost } from "../apiClient.js";
 import { useListing } from "../hooks/useListing.js";
 import { useRelatedListings } from "../hooks/useRelatedListings.js";
 import { useListingReviews } from "../hooks/useListingReviews.js";
-import { useReviewEligibility } from "../hooks/useReviewEligibility.js";
 import { useListingQuestions } from "../hooks/useListingQuestions.js";
 import { useOwnerReviews } from "../hooks/useOwnerReviews.js";
 import { useSiteSettings } from "../hooks/useSiteSettings.js";
 import ScrollSpyTabs from "./ScrollSpyTabs.jsx";
+import { ReviewsList, ReviewWriteForm, starString, textareaStyle, submitBtnStyle } from "./ReviewComponents.jsx";
 
 // ─── ListingDetailPage ──────────────────────────────────────────────────────
 // Product/service detail page (PDP) for the Business tab redesign
@@ -307,16 +307,6 @@ const SERVICE_TABS = [
   { id: "more-service", label: "More Service options" },
 ];
 
-// ─── starString ─────────────────────────────────────────────────────────────
-// This file can't import App.jsx's `Stars` component — the established
-// convention is that frontend/components/* never imports from App.jsx (see
-// CLAUDE.md's "avoid an App.jsx <-> components/ circular import" note). Same
-// small local helper EventCard.jsx already wrote for the same reason.
-function starString(rating) {
-  const full = Math.floor(rating || 0);
-  return "★".repeat(full) + "☆".repeat(Math.max(0, 5 - full));
-}
-
 // ─── OverviewSection ────────────────────────────────────────────────────────
 function OverviewSection({ description }) {
   return (
@@ -383,117 +373,6 @@ function PolicySection({ label, fieldKey }) {
         <p style={{ color: "rgba(255,255,255,0.8)", fontSize: "0.88rem", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{text}</p>
       ) : (
         <EmptyNote text="No policy has been published yet." />
-      )}
-    </div>
-  );
-}
-
-// ─── ReviewsList ────────────────────────────────────────────────────────────
-// Shared list-rendering for both the listing Reviews tab and the seller-
-// rating badge's expanded seller-review list, so this page doesn't grow two
-// separate review-list renderers.
-function ReviewsList({ reviews, emptyLabel = "No reviews yet." }) {
-  if (!reviews || reviews.length === 0) {
-    return <EmptyNote text={emptyLabel} />;
-  }
-  return (
-    <div>
-      {reviews.map((r) => (
-        <div key={r.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.1)", padding: "12px 0" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ width: 28, height: 28, borderRadius: "50%", background: `${C.gold}22`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color: C.gold, fontSize: "0.75rem", flexShrink: 0 }}>
-                {r.author_name?.[0]?.toUpperCase()}
-              </div>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: "0.78rem", color: "white" }}>{r.author_name}</div>
-                <span style={{ color: C.gold, fontSize: "0.75rem" }}>{starString(r.rating)}</span>
-              </div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.62rem", color: "rgba(255,255,255,0.5)" }}>
-              {r.created_at?.slice(0, 10)}
-              {r.verified && (
-                <span style={{ background: "#22c55e22", color: "#22c55e", borderRadius: 20, padding: "2px 7px", fontWeight: 700 }}>✓ Verified</span>
-              )}
-            </div>
-          </div>
-          {r.comment && <div style={{ fontSize: "0.8rem", color: "rgba(255,255,255,0.78)", lineHeight: 1.6 }}>{r.comment}</div>}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─── ReviewWriteForm ────────────────────────────────────────────────────────
-// The exact "eligibility-gated write form across 4 states" pattern App.jsx's
-// ReviewsModal already implements (not signed in / checking / eligible /
-// already-reviewed-or-ineligible), laid out inline in a tab section instead
-// of inside a modal shell. Reused for both the listing Reviews tab
-// (targetType "listing") and the seller-rating badge's write flow
-// (targetType "seller") — same POST /api/reviews/ endpoint, disambiguated
-// by target_type/target_id, same as ReviewsModal's own submit call.
-function ReviewWriteForm({ targetType, targetId, user, onReviewSubmitted, label = "Write a Review" }) {
-  const [newRating, setNewRating] = useState(0);
-  const [newText, setNewText] = useState("");
-  const [hover, setHover] = useState(0);
-  const [submitted, setSubmitted] = useState(false);
-  const [actionError, setActionError] = useState(null);
-  const eligibility = useReviewEligibility(user ? { targetType, targetId } : {});
-
-  const handleSubmit = async () => {
-    if (!user || !newRating || !newText.trim()) return;
-    setActionError(null);
-    try {
-      await apiPost("/api/reviews/", { target_type: targetType, target_id: targetId, rating: newRating, comment: newText });
-      setSubmitted(true);
-      eligibility.refetch();
-      onReviewSubmitted && onReviewSubmitted();
-    } catch (err) {
-      setActionError("Could not submit your review. Please try again.");
-    }
-  };
-
-  if (submitted) {
-    return (
-      <div style={{ background: "rgba(34,197,94,0.1)", border: "1.5px solid rgba(34,197,94,0.35)", borderRadius: 14, padding: 16, textAlign: "center" }}>
-        <div style={{ fontSize: "1.6rem", marginBottom: 6 }}>🎉</div>
-        <div style={{ fontWeight: 800, color: "#4ade80" }}>Review submitted! Thank you.</div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ background: `${C.gold}12`, border: `1.5px solid ${C.gold}33`, borderRadius: 14, padding: 16 }}>
-      <div style={{ fontWeight: 800, color: C.gold, marginBottom: 10, fontSize: "0.82rem" }}>✍️ {label}</div>
-      {!user ? (
-        <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.55)", textAlign: "center" }}>Sign in to leave a review</div>
-      ) : eligibility.isLoading ? (
-        <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.55)", textAlign: "center" }}>Checking your eligibility…</div>
-      ) : eligibility.data?.eligible ? (
-        <>
-          <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
-            {[1, 2, 3, 4, 5].map((s) => (
-              <span
-                key={s}
-                onClick={() => setNewRating(s)}
-                onMouseEnter={() => setHover(s)}
-                onMouseLeave={() => setHover(0)}
-                style={{ fontSize: "1.6rem", cursor: "pointer", color: (hover || newRating) >= s ? C.gold : "rgba(255,255,255,0.25)" }}
-              >
-                ★
-              </span>
-            ))}
-          </div>
-          <textarea value={newText} onChange={(e) => setNewText(e.target.value)} placeholder="Share your experience..." style={textareaStyle} />
-          {actionError && <div style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{actionError}</div>}
-          <button onClick={handleSubmit} disabled={!newRating || newText.trim().length < 10} style={submitBtnStyle(!!newRating && newText.trim().length >= 10)}>
-            Submit Review
-          </button>
-        </>
-      ) : eligibility.data?.already_reviewed ? (
-        <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.55)", textAlign: "center" }}>You've already reviewed this.</div>
-      ) : (
-        <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.55)", textAlign: "center" }}>You can review this after a completed purchase.</div>
       )}
     </div>
   );
@@ -820,34 +699,6 @@ const backBtnStyle = {
 };
 
 const sectionHeadingStyle = { color: C.gold, fontSize: "1rem", fontWeight: 900, margin: "0 0 16px" };
-
-const textareaStyle = {
-  width: "100%",
-  minHeight: 80,
-  padding: "10px 12px",
-  borderRadius: 10,
-  border: "1.5px solid rgba(255,255,255,0.25)",
-  background: "rgba(255,255,255,0.06)",
-  color: "white",
-  fontSize: "0.82rem",
-  fontFamily: "inherit",
-  resize: "vertical",
-  outline: "none",
-  boxSizing: "border-box",
-  marginBottom: 10,
-};
-
-const submitBtnStyle = (active) => ({
-  background: active ? C.gold : "rgba(255,255,255,0.12)",
-  color: active ? C.darkBrown : "rgba(255,255,255,0.4)",
-  border: "none",
-  borderRadius: 20,
-  padding: "9px 18px",
-  fontWeight: 900,
-  fontSize: "0.8rem",
-  cursor: active ? "pointer" : "default",
-  fontFamily: "inherit",
-});
 
 const cancelBtnStyle = {
   background: "rgba(255,255,255,0.08)",
