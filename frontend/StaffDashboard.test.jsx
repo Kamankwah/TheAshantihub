@@ -811,3 +811,193 @@ describe('StaffDashboard Event Pricing', () => {
     await waitFor(() => expect(rejectCalled).toBe(true))
   })
 })
+describe('StaffDashboard Subscription Plans Management', () => {
+  it('only shows the Subscription Plans nav item for a session with subscription_plans.manage', () => {
+    const auth = makeAuth({ hasPermission: (c) => c === 'subscription_plans.manage' })
+    render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    expect(screen.getByText('Subscription Plans')).toBeInTheDocument()
+    expect(screen.queryByText('Plan Approvals')).not.toBeInTheDocument()
+  })
+
+  it('renders the list of all plans regardless of status', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/billing/plans/manage/', () => {
+        return HttpResponse.json([
+          { id: 1, tier: 'product_basic', name: 'Product Basic', kind: 'product', monthly_price: '10.00', features: ['5 listings'], is_recommended: false, status: 'active', rejection_reason: null, max_active_listings: 5, hero_days: 7, boost_credits_per_month: 0 },
+          { id: 2, tier: 'product_pro', name: 'Product Pro', kind: 'product', monthly_price: '30.00', features: [], is_recommended: true, status: 'rejected', rejection_reason: 'Price too high', max_active_listings: null, hero_days: 14, boost_credits_per_month: 2 },
+        ])
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'subscription_plans.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Subscription Plans'))
+    await screen.findByText('Product Basic')
+    expect(screen.getByText('Product Pro')).toBeInTheDocument()
+    expect(screen.getByText('Active')).toBeInTheDocument()
+    expect(screen.getByText('Rejected')).toBeInTheDocument()
+    expect(screen.getByText('Rejected: Price too high')).toBeInTheDocument()
+    expect(screen.getByText('★ Recommended')).toBeInTheDocument()
+  })
+
+  it('creates a new plan', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/billing/plans/manage/', () => {
+        return HttpResponse.json([])
+      }),
+    )
+    let createBody = null
+    server.use(
+      http.post('http://localhost:8000/api/billing/plans/manage/', async ({ request }) => {
+        createBody = await request.json()
+        return HttpResponse.json({ id: 3, ...createBody, status: 'pending_approval', rejection_reason: null }, { status: 201 })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'subscription_plans.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Subscription Plans'))
+    await screen.findByText('Create a new plan')
+    fireEvent.change(screen.getByPlaceholderText('Tier slug (e.g. product_basic)'), { target: { value: 'service_starter' } })
+    fireEvent.change(screen.getByPlaceholderText('Plan name'), { target: { value: 'Service Starter' } })
+    fireEvent.change(screen.getByPlaceholderText('Monthly price (GHS)'), { target: { value: '15.00' } })
+    fireEvent.click(screen.getByText('Create plan'))
+    await waitFor(() => expect(createBody).toEqual({
+      tier: 'service_starter', name: 'Service Starter', kind: 'product', monthly_price: '15.00',
+      max_active_listings: null, hero_days: 0, boost_credits_per_month: 0, is_recommended: false, features: [],
+    }))
+  })
+
+  it("edits an existing plan's monthly price", async () => {
+    server.use(
+      http.get('http://localhost:8000/api/billing/plans/manage/', () => {
+        return HttpResponse.json([
+          { id: 4, tier: 'product_basic', name: 'Product Basic', kind: 'product', monthly_price: '10.00', features: ['5 listings'], is_recommended: false, status: 'active', rejection_reason: null, max_active_listings: 5, hero_days: 7, boost_credits_per_month: 0 },
+        ])
+      }),
+    )
+    let patchBody = null
+    server.use(
+      http.patch('http://localhost:8000/api/billing/plans/manage/4/', async ({ request }) => {
+        patchBody = await request.json()
+        return HttpResponse.json({ id: 4, ...patchBody, status: 'pending_approval', rejection_reason: null })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'subscription_plans.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Subscription Plans'))
+    await screen.findByText('Product Basic')
+    fireEvent.click(screen.getByText('✏️ Edit'))
+    const priceInputs = screen.getAllByPlaceholderText('Monthly price (GHS)')
+    fireEvent.change(priceInputs[priceInputs.length - 1], { target: { value: '12.00' } })
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(patchBody.monthly_price).toBe('12.00'))
+  })
+
+  it('shows an inline error when creating a plan fails', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/billing/plans/manage/', () => {
+        return HttpResponse.json([])
+      }),
+      http.post('http://localhost:8000/api/billing/plans/manage/', () => {
+        return HttpResponse.json({ detail: 'Server error' }, { status: 500 })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'subscription_plans.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Subscription Plans'))
+    await screen.findByText('Create a new plan')
+    fireEvent.change(screen.getByPlaceholderText('Tier slug (e.g. product_basic)'), { target: { value: 'x' } })
+    fireEvent.change(screen.getByPlaceholderText('Plan name'), { target: { value: 'X' } })
+    fireEvent.click(screen.getByText('Create plan'))
+    await screen.findByText('Could not create this plan. Check the fields and try again.')
+  })
+})
+
+describe('StaffDashboard Subscription Plan Approvals', () => {
+  it('only shows the Plan Approvals nav item for a session with subscription_plans.approve', () => {
+    const auth = makeAuth({ hasPermission: (c) => c === 'subscription_plans.approve' })
+    render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    expect(screen.getByText('Plan Approvals')).toBeInTheDocument()
+    expect(screen.queryByText('Subscription Plans')).not.toBeInTheDocument()
+  })
+
+  it('renders the pending plans queue', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/billing/plans/pending/', () => {
+        return HttpResponse.json([
+          { id: 5, tier: 'service_deluxe', name: 'Service Deluxe', kind: 'service', monthly_price: '50.00', features: [], is_recommended: false, status: 'pending_approval', rejection_reason: null, max_active_listings: null, hero_days: 30, boost_credits_per_month: 5 },
+        ])
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'subscription_plans.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Plan Approvals'))
+    await screen.findByText('Service Deluxe')
+  })
+
+  it('approves a pending plan', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/billing/plans/pending/', () => {
+        return HttpResponse.json([
+          { id: 6, tier: 'service_deluxe', name: 'Service Deluxe', kind: 'service', monthly_price: '50.00', features: [], is_recommended: false, status: 'pending_approval', rejection_reason: null, max_active_listings: null, hero_days: 30, boost_credits_per_month: 5 },
+        ])
+      }),
+    )
+    let approveCalled = false
+    server.use(
+      http.post('http://localhost:8000/api/billing/plans/6/approve/', () => {
+        approveCalled = true
+        return HttpResponse.json({ id: 6, status: 'active' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'subscription_plans.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Plan Approvals'))
+    await screen.findByText('Service Deluxe')
+    fireEvent.click(screen.getByText('✓ Approve'))
+    await waitFor(() => expect(approveCalled).toBe(true))
+  })
+
+  it('rejects a pending plan with a reason', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/billing/plans/pending/', () => {
+        return HttpResponse.json([
+          { id: 7, tier: 'service_deluxe', name: 'Service Deluxe', kind: 'service', monthly_price: '50.00', features: [], is_recommended: false, status: 'pending_approval', rejection_reason: null, max_active_listings: null, hero_days: 30, boost_credits_per_month: 5 },
+        ])
+      }),
+    )
+    let rejectBody = null
+    server.use(
+      http.post('http://localhost:8000/api/billing/plans/7/reject/', async ({ request }) => {
+        rejectBody = await request.json()
+        return HttpResponse.json({ id: 7, status: 'rejected' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'subscription_plans.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Plan Approvals'))
+    await screen.findByText('Service Deluxe')
+    fireEvent.click(screen.getByText('✕ Reject'))
+    fireEvent.change(screen.getByPlaceholderText('Rejection reason'), { target: { value: 'Price too high for market' } })
+    fireEvent.click(screen.getByText('Confirm reject'))
+    await waitFor(() => expect(rejectBody).toEqual({ reason: 'Price too high for market' }))
+  })
+
+  it('shows an inline error when approving a plan fails', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/billing/plans/pending/', () => {
+        return HttpResponse.json([
+          { id: 8, tier: 'service_deluxe', name: 'Service Deluxe', kind: 'service', monthly_price: '50.00', features: [], is_recommended: false, status: 'pending_approval', rejection_reason: null, max_active_listings: null, hero_days: 30, boost_credits_per_month: 5 },
+        ])
+      }),
+      http.post('http://localhost:8000/api/billing/plans/8/approve/', () => {
+        return HttpResponse.json({ detail: 'Server error' }, { status: 500 })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'subscription_plans.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Plan Approvals'))
+    await screen.findByText('Service Deluxe')
+    fireEvent.click(screen.getByText('✓ Approve'))
+    await screen.findByText('Could not approve this plan.')
+  })
+})

@@ -101,6 +101,8 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
             return "business_info"
         if profile.is_formal and not (profile.business_reg_certificate and profile.tin):
             return "business_info"
+        if not profile.business_kind or getattr(self, "subscription", None) is None:
+            return "plan_selection"
         if not profile.default_payout_method:
             return "payment_info"
         if (profile.default_payout_method == BusinessOwnerProfile.MOMO
@@ -131,6 +133,17 @@ class BusinessOwnerProfile(models.Model):
     )
     gps_address = models.CharField(max_length=20, null=True, blank=True)
     business_contact_phone = models.CharField(max_length=20, null=True, blank=True)
+
+    # Same string values as listings.Category.kind ("product"/"service") —
+    # a one-time choice captured at registration determining which of the
+    # billing.SubscriptionPlan tiers (product_basic/product_unlimited vs
+    # service) this business owner can pick.
+    PRODUCT = "product"
+    SERVICE = "service"
+    BUSINESS_KIND_CHOICES = [(PRODUCT, "Product"), (SERVICE, "Service")]
+    business_kind = models.CharField(
+        max_length=10, choices=BUSINESS_KIND_CHOICES, null=True, blank=True
+    )
 
     is_formal = models.BooleanField(default=False)
     business_reg_certificate = models.FileField(

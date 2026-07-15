@@ -3,6 +3,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from accounts.models import BusinessOwner, BusinessOwnerProfile
+from billing.models import Subscription, SubscriptionPlan
 
 
 class BusinessOwnerModelTests(TestCase):
@@ -64,6 +65,26 @@ class ComputeRegistrationStepTests(TestCase):
         BusinessOwnerProfile.objects.create(business_owner=owner, **profile_overrides)
         return owner
 
+    def _give_plan_selection(self, owner, kind="product"):
+        # Sets business_kind + creates an active Subscription, i.e. completes
+        # the "plan_selection" step so compute_registration_step() can move
+        # on to payment_info/terms/complete.
+        plan, _ = SubscriptionPlan.objects.get_or_create(
+            tier=f"test_{kind}_plan",
+            defaults=dict(
+                name=f"Test {kind} plan", kind=kind, monthly_price=10,
+                status=SubscriptionPlan.ACTIVE_STATUS,
+            ),
+        )
+        Subscription.objects.create(
+            business_owner=owner, plan=plan, cycle_months=1, is_trial=True,
+            status=Subscription.ACTIVE,
+            current_period_start=timezone.now(),
+            current_period_end=timezone.now() + timezone.timedelta(days=30),
+        )
+        owner.profile.business_kind = kind
+        owner.profile.save(update_fields=["business_kind"])
+
     def test_fresh_profile_needs_business_info(self):
         owner = self._make_owner_with_profile()
         self.assertEqual(owner.compute_registration_step(), "business_info")
@@ -75,11 +96,37 @@ class ComputeRegistrationStepTests(TestCase):
         )
         self.assertEqual(owner.compute_registration_step(), "business_info")
 
-    def test_business_info_complete_needs_payment_info(self):
+    def test_business_info_complete_needs_plan_selection(self):
         owner = self._make_owner_with_profile(
             ghana_card_number="GHA-2", gps_address="AK-2", business_contact_phone="+233201111112",
             ghana_card_front_image="front.jpg", ghana_card_back_image="back.jpg", is_formal=False,
         )
+        self.assertEqual(owner.compute_registration_step(), "plan_selection")
+
+    def test_plan_selection_without_business_kind_still_needs_plan_selection(self):
+        owner = self._make_owner_with_profile(
+            ghana_card_number="GHA-2b", gps_address="AK-2b", business_contact_phone="+233201111112",
+            ghana_card_front_image="front.jpg", ghana_card_back_image="back.jpg", is_formal=False,
+        )
+        # A Subscription with no business_kind set still isn't "plan_selection"-complete.
+        plan = SubscriptionPlan.objects.create(
+            tier="test_no_kind_plan", name="Test plan", kind="product",
+            monthly_price=10, status=SubscriptionPlan.ACTIVE_STATUS,
+        )
+        Subscription.objects.create(
+            business_owner=owner, plan=plan, cycle_months=1, is_trial=True,
+            status=Subscription.ACTIVE,
+            current_period_start=timezone.now(),
+            current_period_end=timezone.now() + timezone.timedelta(days=30),
+        )
+        self.assertEqual(owner.compute_registration_step(), "plan_selection")
+
+    def test_plan_selection_complete_needs_payment_info(self):
+        owner = self._make_owner_with_profile(
+            ghana_card_number="GHA-2c", gps_address="AK-2c", business_contact_phone="+233201111112",
+            ghana_card_front_image="front.jpg", ghana_card_back_image="back.jpg", is_formal=False,
+        )
+        self._give_plan_selection(owner)
         self.assertEqual(owner.compute_registration_step(), "payment_info")
 
     def test_momo_selected_without_number_still_needs_payment_info(self):
@@ -88,6 +135,7 @@ class ComputeRegistrationStepTests(TestCase):
             ghana_card_front_image="front.jpg", ghana_card_back_image="back.jpg", is_formal=False,
             default_payout_method="momo",
         )
+        self._give_plan_selection(owner)
         self.assertEqual(owner.compute_registration_step(), "payment_info")
 
     def test_payment_info_complete_needs_terms(self):
@@ -96,6 +144,7 @@ class ComputeRegistrationStepTests(TestCase):
             ghana_card_front_image="front.jpg", ghana_card_back_image="back.jpg", is_formal=False,
             default_payout_method="momo", payout_momo_number="+233201111114",
         )
+        self._give_plan_selection(owner)
         self.assertEqual(owner.compute_registration_step(), "terms")
 
     def test_terms_accepted_is_complete(self):
@@ -105,6 +154,7 @@ class ComputeRegistrationStepTests(TestCase):
             default_payout_method="momo", payout_momo_number="+233201111115",
             terms_accepted_at=timezone.now(),
         )
+        self._give_plan_selection(owner)
         self.assertEqual(owner.compute_registration_step(), "complete")
 
     def test_verified_owner_is_complete_regardless_of_profile_state(self):

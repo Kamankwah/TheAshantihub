@@ -42,7 +42,7 @@ class HeroMediaModerationTests(TestCase):
         self.owner = BusinessOwner.objects.create(
             full_name="Ama Trader", login_phone="+233207991133", password_hash="x",
         )
-        self.standard_plan = SubscriptionPlan.objects.get(tier="standard")
+        self.standard_plan = SubscriptionPlan.objects.get(tier="service")
         now = timezone.now()
         Subscription.objects.create(
             business_owner=self.owner, plan=self.standard_plan,

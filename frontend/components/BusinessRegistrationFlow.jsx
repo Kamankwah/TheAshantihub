@@ -1,28 +1,33 @@
 import { useState } from "react";
 import { C } from "../theme.js";
+import { useSubscriptionPlans } from "../hooks/useSubscriptionPlans.js";
 
 // ─── BusinessRegistrationFlow ─────────────────────────────────────────────
-// The 4-stage business-owner registration wizard: Personal Information (only
-// when no account exists yet) -> Business Information (KYC) -> Payment
-// Account Information (payout) -> Terms & Conditions. One component with
-// internal step state, not four separate AshantiHub pages — these steps are
-// a single sequential flow, matching how BusinessDashboard is one component
-// with internal tabs rather than four pages.
+// The 5-stage business-owner registration wizard: Personal Information (only
+// when no account exists yet) -> Business Information (KYC) -> Plan
+// Selection (subscription plan + free trial) -> Payment Account Information
+// (payout) -> Terms & Conditions. One component with internal step state,
+// not five separate AshantiHub pages — these steps are a single sequential
+// flow, matching how BusinessDashboard is one component with internal tabs
+// rather than several pages.
 //
-// business_info/payment_info steps call auth.refreshUser() after their own
-// submit and route to whatever registration_step the server reports next,
-// rather than always advancing to a hardcoded next step — this is what
-// makes the "Fix and Resubmit after rejection" entry point (from
+// business_info/plan_selection/payment_info steps call auth.refreshUser()
+// after their own submit and route to whatever registration_step the server
+// reports next, rather than always advancing to a hardcoded next step — this
+// is what makes the "Fix and Resubmit after rejection" entry point (from
 // BusinessDashboard, starting at business_info) correctly skip straight
 // back to the dashboard when that was the only thing missing, instead of
-// forcing payment_info/terms to be redone.
+// forcing plan_selection/payment_info/terms to be redone.
 
 const STEP_LABELS = {
-  personal_info: "1 of 4: Personal Information",
-  business_info: "2 of 4: Business Information",
-  payment_info: "3 of 4: Payment Account Information",
-  terms: "4 of 4: Terms & Conditions",
+  personal_info: "1 of 5: Personal Information",
+  business_info: "2 of 5: Business Information",
+  plan_selection: "3 of 5: Choose Your Plan",
+  payment_info: "4 of 5: Payment Account Information",
+  terms: "5 of 5: Terms & Conditions",
 };
+
+const CYCLE_OPTIONS = [1, 3, 6, 12];
 
 const inputStyle={width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:10,border:"1.5px solid #ddd",marginBottom:10,fontSize:"0.82rem",fontFamily:"inherit"};
 const labelStyle={display:"block",fontSize:"0.72rem",fontWeight:700,color:C.darkBrown,marginBottom:10};
@@ -61,7 +66,13 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
   const [businessRegCertificate, setBusinessRegCertificate] = useState(null);
   const [tin, setTin] = useState(prefill?.tin || "");
 
-  // Step 3 — Payment Account Information
+  // Step 3 — Plan Selection
+  const [businessKind, setBusinessKind] = useState(null);
+  const [selectedPlanTier, setSelectedPlanTier] = useState(null);
+  const [cycleMonths, setCycleMonths] = useState(1);
+  const plansQuery = useSubscriptionPlans();
+
+  // Step 4 — Payment Account Information
   const [payoutMomoNumber, setPayoutMomoNumber] = useState("");
   const [payoutMomoName, setPayoutMomoName] = useState("");
   const [payoutMomoNetwork, setPayoutMomoNetwork] = useState("");
@@ -70,7 +81,7 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
   const [payoutBankName, setPayoutBankName] = useState("");
   const [defaultPayoutMethod, setDefaultPayoutMethod] = useState("momo");
 
-  // Step 4 — Terms
+  // Step 5 — Terms
   const [agreed, setAgreed] = useState(false);
 
   const handlePersonalInfoSubmit = async (e) => {
@@ -105,13 +116,38 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
       const fresh = await auth.refreshUser();
       if (fresh.registration_step === "complete") {
         setShowBizDash(true);
-      } else if (["business_info", "payment_info", "terms"].includes(fresh.registration_step)) {
+      } else if (["business_info", "plan_selection", "payment_info", "terms"].includes(fresh.registration_step)) {
         setStep(fresh.registration_step);
       } else {
         setError("Something went wrong determining your next step. Please refresh the page and try again.");
       }
     } catch (err) {
       setError("Could not save your business information. Please check your details.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handlePlanSelectionSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      await auth.submitPlanSelection({
+        business_kind: businessKind,
+        plan: selectedPlanTier,
+        cycle_months: cycleMonths,
+      });
+      const fresh = await auth.refreshUser();
+      if (fresh.registration_step === "complete") {
+        setShowBizDash(true);
+      } else if (["business_info", "plan_selection", "payment_info", "terms"].includes(fresh.registration_step)) {
+        setStep(fresh.registration_step);
+      } else {
+        setError("Something went wrong determining your next step. Please refresh the page and try again.");
+      }
+    } catch (err) {
+      setError("Could not save your plan selection. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -134,7 +170,7 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
       const fresh = await auth.refreshUser();
       if (fresh.registration_step === "complete") {
         setShowBizDash(true);
-      } else if (["business_info", "payment_info", "terms"].includes(fresh.registration_step)) {
+      } else if (["business_info", "plan_selection", "payment_info", "terms"].includes(fresh.registration_step)) {
         setStep(fresh.registration_step);
       } else {
         setError("Something went wrong determining your next step. Please refresh the page and try again.");
@@ -214,6 +250,106 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
               <input value={tin} onChange={e=>setTin(e.target.value)} placeholder="TIN" required style={inputStyle}/>
             </>}
             <button type="submit" disabled={submitting} style={submitStyle}>{submitting?"Saving…":"Continue"}</button>
+          </form>
+        )}
+
+        {step==="plan_selection" && (
+          <form onSubmit={handlePlanSelectionSubmit}>
+            <h2 style={{color:C.darkBrown,fontSize:"1.05rem",margin:"0 0 14px"}}>Choose your plan</h2>
+
+            <label style={labelStyle}>What do you sell?</label>
+            <div style={{display:"flex",gap:10,marginBottom:14}}>
+              <button
+                type="button"
+                onClick={()=>{ setBusinessKind("product"); setSelectedPlanTier(null); }}
+                style={{
+                  flex:1,padding:"12px",borderRadius:12,cursor:"pointer",fontFamily:"inherit",fontWeight:800,fontSize:"0.8rem",
+                  border:businessKind==="product"?`2px solid ${C.gold}`:"1.5px solid #ddd",
+                  background:businessKind==="product"?"#fff8e6":"#fff",
+                  color:C.darkBrown,
+                }}
+              >📦 I sell products</button>
+              <button
+                type="button"
+                onClick={()=>{ setBusinessKind("service"); setSelectedPlanTier(null); }}
+                style={{
+                  flex:1,padding:"12px",borderRadius:12,cursor:"pointer",fontFamily:"inherit",fontWeight:800,fontSize:"0.8rem",
+                  border:businessKind==="service"?`2px solid ${C.gold}`:"1.5px solid #ddd",
+                  background:businessKind==="service"?"#fff8e6":"#fff",
+                  color:C.darkBrown,
+                }}
+              >🛠️ I offer services</button>
+            </div>
+
+            {businessKind && (
+              <>
+                <div style={{background:"#eafaf0",color:"#0a7d3c",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.76rem",fontWeight:700}}>
+                  🎉 Your first billing cycle is FREE — nothing is due now.
+                </div>
+
+                {plansQuery.isLoading && <div style={{fontSize:"0.8rem",color:"#777",marginBottom:14}}>Loading plans…</div>}
+                {plansQuery.isError && <div style={{fontSize:"0.8rem",color:"#b00020",marginBottom:14}}>Could not load plans. Please try again.</div>}
+
+                {plansQuery.data && (
+                  <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
+                    {plansQuery.data.filter(p=>p.kind===businessKind).map(plan=>(
+                      <div
+                        key={plan.id}
+                        onClick={()=>setSelectedPlanTier(plan.tier)}
+                        style={{
+                          padding:"12px 14px",borderRadius:12,cursor:"pointer",position:"relative",
+                          border:selectedPlanTier===plan.tier?`2px solid ${C.gold}`:"1.5px solid #ddd",
+                          background:selectedPlanTier===plan.tier?"#fff8e6":"#fff",
+                        }}
+                      >
+                        {plan.is_recommended && (
+                          <span style={{position:"absolute",top:-9,right:12,background:C.gold,color:C.darkBrown,fontSize:"0.6rem",fontWeight:900,padding:"2px 8px",borderRadius:10}}>RECOMMENDED</span>
+                        )}
+                        <div style={{fontWeight:800,color:C.darkBrown,fontSize:"0.88rem"}}>{plan.name}</div>
+                        <div style={{fontSize:"0.76rem",color:"#555",margin:"2px 0"}}>GHS {plan.monthly_price} / month</div>
+                        <div style={{fontSize:"0.72rem",color:"#777"}}>
+                          {plan.max_active_listings == null ? "Unlimited listings" : `${plan.max_active_listings} listings`}
+                          {" · "}{plan.hero_days} hero days
+                          {plan.boost_credits_per_month ? ` · ${plan.boost_credits_per_month} boost credits/mo` : ""}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {selectedPlanTier && plansQuery.data && (() => {
+                  const plan = plansQuery.data.find(p=>p.tier===selectedPlanTier);
+                  return (
+                    <>
+                      <label style={labelStyle}>Billing cycle</label>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:16}}>
+                        {CYCLE_OPTIONS.map(months=>{
+                          const total = plan ? (Number(plan.monthly_price) * months).toFixed(2) : "0.00";
+                          return (
+                            <button
+                              type="button"
+                              key={months}
+                              onClick={()=>setCycleMonths(months)}
+                              style={{
+                                padding:"10px 4px",borderRadius:10,cursor:"pointer",fontFamily:"inherit",textAlign:"center",
+                                border:cycleMonths===months?`2px solid ${C.gold}`:"1.5px solid #ddd",
+                                background:cycleMonths===months?"#fff8e6":"#fff",
+                                color:C.darkBrown,
+                              }}
+                            >
+                              <div style={{fontWeight:800,fontSize:"0.76rem"}}>{months} mo</div>
+                              <div style={{fontSize:"0.64rem",color:"#777"}}>GHS {total}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  );
+                })()}
+              </>
+            )}
+
+            <button type="submit" disabled={submitting || !businessKind || !selectedPlanTier} style={submitStyle}>{submitting?"Saving…":"Start Free Trial"}</button>
           </form>
         )}
 
