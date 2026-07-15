@@ -42,7 +42,7 @@ class EventSubmitTests(TestCase):
             "description": "Royal durbar at Manhyia Palace.",
             "address": "Manhyia Palace, Kumasi",
             "event_date": (timezone.now() + timezone.timedelta(days=30)).isoformat(),
-            "visibility_days": 14,
+            "visibility_days": 15,
         }
 
     def _auth(self, token):

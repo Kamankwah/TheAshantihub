@@ -9,6 +9,7 @@ import DeliveriesPanel from "./panels/DeliveriesPanel.jsx";
 import PaymentsPanel from "./panels/PaymentsPanel.jsx";
 import CreditPanel from "./panels/CreditPanel.jsx";
 import SubscriptionPanel from "./panels/SubscriptionPanel.jsx";
+import EventsPanel from "./panels/EventsPanel.jsx";
 
 // ─── Business Command Center ─────────────────────────────────────────────────
 // The unified, always-dark "mission-control" dashboard for a business owner.
@@ -23,6 +24,7 @@ import SubscriptionPanel from "./panels/SubscriptionPanel.jsx";
 const TABS = [
   { id: "analytics", icon: "📊", label: "Analytics" },
   { id: "listings", icon: "🏷️", label: "Listings & Prices" },
+  { id: "events", icon: "🎉", label: "Events" },
   { id: "deliveries", icon: "🚚", label: "Deliveries" },
   { id: "payments", icon: "💳", label: "Payments" },
   { id: "credit", icon: "🏅", label: "Credit" },
@@ -132,6 +134,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
           <>
             {tab === "analytics" && <AnalyticsPanel user={user} />}
             {tab === "listings" && <ListingsPanel user={user} PaymentComponent={PaymentComponent} showToast={showToast} />}
+            {tab === "events" && <EventsPanel user={user} PaymentComponent={PaymentComponent} />}
             {tab === "deliveries" && <DeliveriesPanel />}
             {tab === "payments" && <PaymentsPanel user={user} PaymentComponent={PaymentComponent} />}
             {tab === "credit" && <CreditPanel user={user} />}

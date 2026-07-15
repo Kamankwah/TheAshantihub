@@ -3,7 +3,7 @@ from rest_framework import serializers
 from listings.models import Category
 from listings.serializers import CategorySerializer, ZoneSerializer
 
-from .models import Event, EventMedia, EventRSVP, EventTicketType, Ticket
+from .models import Event, EventMedia, EventPricingTier, EventRSVP, EventTicketType, Ticket
 
 
 class EventMediaSerializer(serializers.ModelSerializer):
@@ -192,9 +192,38 @@ class EventSubmitSerializer(serializers.ModelSerializer):
         return value
 
     def validate_visibility_days(self, value):
-        if not (7 <= value <= 90):
-            raise serializers.ValidationError("visibility_days must be between 7 and 90.")
+        if not EventPricingTier.objects.filter(duration_days=value).exists():
+            raise serializers.ValidationError(
+                "visibility_days must match one of the configured pricing tiers."
+            )
         return value
+
+
+class EventPricingTierPublicSerializer(serializers.ModelSerializer):
+    """Public shape (GET /api/events/pricing-tiers/) — only the live price,
+    never the pending one (an unapproved future price isn't public)."""
+
+    class Meta:
+        model = EventPricingTier
+        fields = ["id", "duration_days", "live_price"]
+        read_only_fields = fields
+
+
+class EventPricingTierManageSerializer(serializers.ModelSerializer):
+    """Staff shape (accountant/super_admin) — includes the pending proposal,
+    if any."""
+
+    proposed_by_name = serializers.CharField(
+        source="proposed_by.full_name", read_only=True, default=None
+    )
+
+    class Meta:
+        model = EventPricingTier
+        fields = [
+            "id", "duration_days", "live_price", "pending_price",
+            "proposed_by", "proposed_by_name", "proposed_at", "updated_at",
+        ]
+        read_only_fields = fields
 
 
 class EventUnlockSerializer(serializers.Serializer):

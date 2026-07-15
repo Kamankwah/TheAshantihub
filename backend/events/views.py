@@ -13,11 +13,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import BusinessOwner, StaffUser
-from accounts.permissions import HasRolePermission
+from accounts.permissions import HasAnyRolePermission, HasRolePermission
 from accounts.views import IsCustomer
 from billing.models import Transaction
 
-from .models import Event, EventRSVP, EventTicketType, Ticket
+from .models import Event, EventPricingTier, EventRSVP, EventTicketType, Ticket
 from .permissions import (
     IsCustomerOrBusinessOwner,
     IsEventOwner,
@@ -30,6 +30,8 @@ from .serializers import (
     EventMediaSerializer,
     EventModerationSerializer,
     EventOwnerSerializer,
+    EventPricingTierManageSerializer,
+    EventPricingTierPublicSerializer,
     EventSubmitSerializer,
     EventTeaserSerializer,
     EventTicketTypeOwnerSerializer,
@@ -215,11 +217,99 @@ class EventMediaCreateView(generics.CreateAPIView):
         serializer.save(event=self.get_event())
 
 
-# Simulated per-day GHS pricing for an event's paid visibility window — no
-# EventPricing model exists (mirrors PROMOTION_DAILY_RATES in
-# listings/views.py, which is similarly a static in-file rate for a purchase
-# with no dedicated pricing model).
-EVENT_DAILY_RATE = Decimal("2.00")
+# Fallback only for an Event whose visibility_days predates the
+# EventPricingTier table (or otherwise doesn't match any configured tier) —
+# so an already-approved-but-unpaid legacy event never becomes unpayable.
+# Every new submission is validated against EventPricingTier at submit time
+# (see EventSubmitSerializer.validate_visibility_days), so this path should
+# not be hit for events created after this feature shipped.
+_LEGACY_DAILY_RATE = Decimal("2.00")
+
+
+class EventPricingTierListView(generics.ListAPIView):
+    """GET /api/events/pricing-tiers/ — public, powers the visibility_days
+    dropdown on the submission form."""
+
+    serializer_class = EventPricingTierPublicSerializer
+    permission_classes = [AllowAny]
+    pagination_class = None
+    queryset = EventPricingTier.objects.all()
+
+
+class EventPricingTierManageListView(generics.ListAPIView):
+    """GET /api/events/pricing-tiers/manage/ — staff view including any
+    pending proposal. Viewable by whoever can propose OR approve a change."""
+
+    serializer_class = EventPricingTierManageSerializer
+    pagination_class = None
+    queryset = EventPricingTier.objects.all()
+
+    def get_permissions(self):
+        return [HasAnyRolePermission("event_pricing.manage", "event_pricing.approve")]
+
+
+class EventPricingTierProposeView(APIView):
+    """POST /api/events/pricing-tiers/{id}/propose/ — body {"price": "25.00"}.
+    Accountant-only. Does not change the live price — see
+    EventPricingTierApproveView/RejectView for what commits or discards it.
+    """
+
+    def get_permissions(self):
+        return [HasRolePermission("event_pricing.manage")]
+
+    def post(self, request, pk):
+        tier = generics.get_object_or_404(EventPricingTier, pk=pk)
+        try:
+            price = Decimal(str(request.data.get("price")))
+            if price <= 0:
+                raise ValueError
+        except (TypeError, ValueError, ArithmeticError):
+            return Response({"price": "A positive price is required."}, status=400)
+
+        tier.pending_price = price
+        tier.proposed_by = request.user
+        tier.proposed_at = timezone.now()
+        tier.save(update_fields=["pending_price", "proposed_by", "proposed_at"])
+        return Response(EventPricingTierManageSerializer(tier).data)
+
+
+class EventPricingTierApproveView(APIView):
+    """POST /api/events/pricing-tiers/{id}/approve/ — super_admin-only.
+    Commits pending_price -> live_price and clears the pending fields."""
+
+    def get_permissions(self):
+        return [HasRolePermission("event_pricing.approve")]
+
+    def post(self, request, pk):
+        tier = generics.get_object_or_404(EventPricingTier, pk=pk)
+        if tier.pending_price is None:
+            return Response({"detail": "This tier has no pending proposal."}, status=400)
+
+        tier.live_price = tier.pending_price
+        tier.pending_price = None
+        tier.proposed_by = None
+        tier.proposed_at = None
+        tier.save(update_fields=["live_price", "pending_price", "proposed_by", "proposed_at"])
+        return Response(EventPricingTierManageSerializer(tier).data)
+
+
+class EventPricingTierRejectView(APIView):
+    """POST /api/events/pricing-tiers/{id}/reject/ — super_admin-only.
+    Clears the pending proposal without changing the live price."""
+
+    def get_permissions(self):
+        return [HasRolePermission("event_pricing.approve")]
+
+    def post(self, request, pk):
+        tier = generics.get_object_or_404(EventPricingTier, pk=pk)
+        if tier.pending_price is None:
+            return Response({"detail": "This tier has no pending proposal."}, status=400)
+
+        tier.pending_price = None
+        tier.proposed_by = None
+        tier.proposed_at = None
+        tier.save(update_fields=["pending_price", "proposed_by", "proposed_at"])
+        return Response(EventPricingTierManageSerializer(tier).data)
 
 
 class EventPayView(APIView):
@@ -248,7 +338,10 @@ class EventPayView(APIView):
             )
 
         now = timezone.now()
-        amount = EVENT_DAILY_RATE * event.visibility_days
+        tier = EventPricingTier.objects.filter(duration_days=event.visibility_days).first()
+        # tier.live_price is the flat total for the whole window, not a
+        # per-day rate — do not multiply by visibility_days here.
+        amount = tier.live_price if tier else _LEGACY_DAILY_RATE * event.visibility_days
 
         with db_transaction.atomic():
             event.paid_at = now

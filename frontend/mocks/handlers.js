@@ -91,6 +91,30 @@ export const handlers = [
   http.get('http://localhost:8000/api/events/mine/', () => {
     return HttpResponse.json([])
   }),
+  // Event pricing tiers (event pricing tiers work) — default handler
+  // matching the 5 seeded backend rows, overridden per-test where a
+  // different price/proposal state is needed.
+  http.get('http://localhost:8000/api/events/pricing-tiers/', () => {
+    return HttpResponse.json([
+      { id: 1, duration_days: 7, live_price: '20.00' },
+      { id: 2, duration_days: 15, live_price: '30.00' },
+      { id: 3, duration_days: 30, live_price: '50.00' },
+      { id: 4, duration_days: 60, live_price: '90.00' },
+      { id: 5, duration_days: 90, live_price: '120.00' },
+    ])
+  }),
+  http.get('http://localhost:8000/api/events/pricing-tiers/manage/', () => {
+    return HttpResponse.json([
+      { id: 1, duration_days: 7, live_price: '20.00', pending_price: null, proposed_by: null, proposed_by_name: null, proposed_at: null },
+      { id: 2, duration_days: 15, live_price: '30.00', pending_price: null, proposed_by: null, proposed_by_name: null, proposed_at: null },
+      { id: 3, duration_days: 30, live_price: '50.00', pending_price: null, proposed_by: null, proposed_by_name: null, proposed_at: null },
+      { id: 4, duration_days: 60, live_price: '90.00', pending_price: null, proposed_by: null, proposed_by_name: null, proposed_at: null },
+      { id: 5, duration_days: 90, live_price: '120.00', pending_price: null, proposed_by: null, proposed_by_name: null, proposed_at: null },
+    ])
+  }),
+  http.get('http://localhost:8000/api/events/moderation/pending/', () => {
+    return HttpResponse.json([])
+  }),
   // RSVP / attendees (docs/BUSINESS_EVENTS_ROADMAP.md Phase 7) — default
   // handlers, overridden per-test via server.use() where a specific
   // RSVP/capacity/attendee-list response is needed.

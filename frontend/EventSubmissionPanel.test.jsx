@@ -63,7 +63,7 @@ describe('EventSubmissionPanel', () => {
     fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Royal drumming.' } })
     fireEvent.change(screen.getByLabelText('Address'), { target: { value: 'Manhyia Palace' } })
     fireEvent.change(screen.getByLabelText('Event Date'), { target: { value: '2026-08-03T10:00' } })
-    fireEvent.change(screen.getByLabelText('Visibility (days, 7–90)'), { target: { value: '14' } })
+    fireEvent.change(screen.getByLabelText('Visibility'), { target: { value: '15' } })
     fireEvent.click(screen.getByText('Submit for Review'))
     expect(await screen.findByText('✅ Submitted for review')).toBeInTheDocument()
     expect(screen.getByText(/Akwasidae Festival.*is now pending approval/)).toBeInTheDocument()
@@ -83,6 +83,7 @@ describe('EventSubmissionPanel', () => {
     fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Invite only.' } })
     fireEvent.change(screen.getByLabelText('Address'), { target: { value: 'Somewhere' } })
     fireEvent.change(screen.getByLabelText('Event Date'), { target: { value: '2026-08-03T10:00' } })
+    fireEvent.change(screen.getByLabelText('Visibility'), { target: { value: '15' } })
     fireEvent.click(screen.getByLabelText('Make this a private event (code required to view details)'))
     fireEvent.click(screen.getByText('Submit for Review'))
     expect(await screen.findByText('AB12CD')).toBeInTheDocument()
@@ -106,7 +107,7 @@ describe('EventSubmissionPanel', () => {
   it('shows a "Pay to publish" action for an approved, unpaid event and pays via PaymentComponent', async () => {
     server.use(
       http.get('http://localhost:8000/api/events/mine/', () =>
-        HttpResponse.json([{ id: 7, name: 'Approved Event', status: 'approved', access_level: 'public', visibility_days: 10, paid_at: null }]),
+        HttpResponse.json([{ id: 7, name: 'Approved Event', status: 'approved', access_level: 'public', visibility_days: 7, paid_at: null }]),
       ),
       http.post('http://localhost:8000/api/events/7/pay/', () =>
         HttpResponse.json({ id: 7, name: 'Approved Event', status: 'approved', paid_at: '2026-07-14T00:00:00Z' }),
@@ -118,6 +119,28 @@ describe('EventSubmissionPanel', () => {
     expect(screen.getByText('Pay GHS 20')).toBeInTheDocument()
     fireEvent.click(screen.getByText('Confirm Payment'))
     await waitFor(() => expect(screen.queryByText('Pay GHS 20')).not.toBeInTheDocument())
+  })
+
+  it('shows an error instead of a payment prompt when the event\'s duration matches no configured pricing tier', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/events/mine/', () =>
+        HttpResponse.json([{ id: 12, name: 'Legacy Event', status: 'approved', access_level: 'public', visibility_days: 14, paid_at: null }]),
+      ),
+    )
+    renderPanel()
+    const payButton = await screen.findByText('💳 Pay to publish')
+    fireEvent.click(payButton)
+    expect(await screen.findByText(/Pricing for this event's duration isn't available/)).toBeInTheDocument()
+    expect(screen.queryByText(/Pay GHS/)).not.toBeInTheDocument()
+  })
+
+  it('lists each visibility duration with its live price in the dropdown', async () => {
+    server.use(http.get('http://localhost:8000/api/events/mine/', () => HttpResponse.json([])))
+    renderPanel()
+    fireEvent.click(screen.getByText('📅 Submit an Event'))
+    expect(await screen.findByLabelText('Visibility')).toBeInTheDocument()
+    expect(await screen.findByText('7 days — GHS 20.00')).toBeInTheDocument()
+    expect(screen.getByText('90 days — GHS 120.00')).toBeInTheDocument()
   })
 
   it('does not show "Pay to publish" once an event has already been paid for', async () => {

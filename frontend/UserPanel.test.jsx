@@ -148,12 +148,14 @@ describe('UserPanel', () => {
   })
 
   describe('My Events tab', () => {
-    it('shows the "coming soon" note and an empty state with no events', async () => {
+    // My Events now mounts the same self-contained EventSubmissionPanel used
+    // on the public Events page — a real submission form, not a read-only list.
+    it('shows the submission toggle and an empty state with no events', async () => {
       server.use(http.get('http://localhost:8000/api/events/mine/', () => HttpResponse.json([])))
       renderPanel()
       fireEvent.click(screen.getAllByText('My Events')[0])
-      await screen.findByText(/Attending history & tickets coming soon/)
-      expect(screen.getByText("You haven't submitted any events yet.")).toBeInTheDocument()
+      expect(await screen.findByText('📅 Submit an Event')).toBeInTheDocument()
+      expect(await screen.findByText("You haven't submitted any events yet.")).toBeInTheDocument()
     })
 
     it('renders a submitted event with its status pill', async () => {
@@ -165,7 +167,7 @@ describe('UserPanel', () => {
       renderPanel()
       fireEvent.click(screen.getAllByText('My Events')[0])
       await screen.findByText('Akwasidae Festival')
-      expect(screen.getByText('Approved')).toBeInTheDocument()
+      expect(screen.getByText('approved')).toBeInTheDocument()
     })
   })
 })

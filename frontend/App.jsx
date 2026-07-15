@@ -27,9 +27,10 @@ import { useContactMessagesQueue } from "./hooks/useContactMessagesQueue.js";
 import { useListingReviews } from "./hooks/useListingReviews.js";
 import { useReviewEligibility } from "./hooks/useReviewEligibility.js";
 import { useOrders } from "./hooks/useOrders.js";
-import { useMyEvents } from "./hooks/useMyEvents.js";
 import { useDeliveryQueue } from "./hooks/useDeliveryQueue.js";
 import { useEscrowLedger } from "./hooks/useEscrowLedger.js";
+import { useEventModerationQueue } from "./hooks/useEventModerationQueue.js";
+import { useEventPricingTiersAdmin } from "./hooks/useEventPricingTiersAdmin.js";
 import { apiPost, apiPatch } from "./apiClient.js";
 import { C, CURRENCIES } from "./theme.js";
 import Flag from "./components/Flag.jsx";
@@ -52,7 +53,7 @@ import { ContactPage } from "./components/ui/contact-page.tsx";
 import BusinessRegistrationFlow from "./components/BusinessRegistrationFlow.jsx";
 import CartDrawer from "./components/CartDrawer.jsx";
 import EventHeroCarousel from "./components/EventHeroCarousel.jsx";
-import EventCard, { formatEventDate } from "./components/EventCard.jsx";
+import EventCard from "./components/EventCard.jsx";
 import EventDetailPage from "./components/EventDetailPage.jsx";
 import EventSubmissionPanel from "./components/EventSubmissionPanel.jsx";
 import BusinessCommandCenter from "./components/dashboard/BusinessCommandCenter.jsx";
@@ -1293,6 +1294,110 @@ function HeroApprovalPanel({theme}) {
   </div>;
 }
 
+// Events Moderation staff panel (event pricing tiers work) — clones
+// ListingsModerationPanel's exact shape (unpaginated queue, approve with no
+// reason / reject with a required reason input, refetch() after each
+// action). Gated by the pre-existing event.approve permission, which had no
+// frontend UI at all before this.
+function EventsModerationPanel({theme}) {
+  const {data,isLoading,isError,refetch} = useEventModerationQueue();
+  const [rejectingId,setRejectingId] = useState(null);
+  const [rejectReason,setRejectReason] = useState("");
+  const [actionError,setActionError] = useState(null);
+
+  const approve = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/events/moderation/${id}/approve/`,{}); refetch(); }
+    catch (err) { setActionError("Could not approve this event."); }
+  };
+  const reject = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/events/moderation/${id}/reject/`,{reason:rejectReason}); setRejectingId(null); setRejectReason(""); refetch(); }
+    catch (err) { setActionError("Could not reject this event."); }
+  };
+
+  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
+  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the events queue.</div>;
+  const items = data||[];
+
+  return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
+    <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Pending events ({items.length})</div>
+    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
+    {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No pending events.</div>}
+    {items.map(ev=>(
+      <div key={ev.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <div>
+            <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>{ev.name}</div>
+            <div style={{color:theme.textMuted,fontSize:"0.68rem"}}>{ev.category?.label} • {ev.zone?.name} • {ev.visibility_days} days • {ev.submitted_by_business_name||ev.submitted_by_customer_name}</div>
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>approve(ev.id)} style={{background:"#22c55e",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✓ Approve</button>
+            <button onClick={()=>setRejectingId(ev.id)} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✕ Reject</button>
+          </div>
+        </div>
+        {rejectingId===ev.id&&<div style={{marginTop:8,display:"flex",gap:6}}>
+          <input value={rejectReason} onChange={e=>setRejectReason(e.target.value)} placeholder="Rejection reason" style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+          <button onClick={()=>reject(ev.id)} disabled={!rejectReason} style={{background:"#dc2626",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:rejectReason?"pointer":"default"}}>Confirm reject</button>
+        </div>}
+      </div>
+    ))}
+  </div>;
+}
+
+// Event Pricing staff panel (event pricing tiers work) — clones
+// EscrowLedgerPanel's dual-permission-gating shape: an accountant (holding
+// event_pricing.manage) can propose a new price per tier; a super_admin
+// (holding event_pricing.approve) can approve or reject any pending
+// proposal. Both roles can view the list; action UI is per-permission.
+function EventPricingPanel({theme,auth}) {
+  const {data,isLoading,isError,refetch} = useEventPricingTiersAdmin();
+  const [draftById,setDraftById] = useState({});
+  const [actionError,setActionError] = useState(null);
+
+  const canPropose = auth.hasPermission("event_pricing.manage");
+  const canApprove = auth.hasPermission("event_pricing.approve");
+
+  const propose = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/events/pricing-tiers/${id}/propose/`,{price:draftById[id]}); setDraftById(d=>({...d,[id]:""})); refetch(); }
+    catch (err) { setActionError("Could not propose this price."); }
+  };
+  const approve = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/events/pricing-tiers/${id}/approve/`,{}); refetch(); }
+    catch (err) { setActionError("Could not approve this change."); }
+  };
+  const reject = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/events/pricing-tiers/${id}/reject/`,{}); refetch(); }
+    catch (err) { setActionError("Could not reject this change."); }
+  };
+
+  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
+  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load pricing tiers.</div>;
+  const tiers = data||[];
+
+  return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
+    <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Event Pricing Tiers</div>
+    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
+    {tiers.map(t=>(
+      <div key={t.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
+        <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>{t.duration_days} days — GHS {t.live_price}</div>
+        {t.pending_price&&<div style={{color:"#f59e0b",fontSize:"0.72rem",marginTop:4}}>Pending: GHS {t.pending_price}{t.proposed_by_name?` (proposed by ${t.proposed_by_name})`:""}</div>}
+        {canPropose&&<div style={{marginTop:8,display:"flex",gap:6}}>
+          <input value={draftById[t.id]||""} onChange={e=>setDraftById(d=>({...d,[t.id]:e.target.value}))} placeholder="New price" style={{width:100,padding:"5px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
+          <button onClick={()=>propose(t.id)} disabled={!draftById[t.id]} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:draftById[t.id]?"pointer":"default"}}>Propose</button>
+        </div>}
+        {canApprove&&t.pending_price&&<div style={{marginTop:8,display:"flex",gap:6}}>
+          <button onClick={()=>approve(t.id)} style={{background:"#22c55e",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✓ Approve</button>
+          <button onClick={()=>reject(t.id)} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✕ Reject</button>
+        </div>}
+      </div>
+    ))}
+  </div>;
+}
+
 const REVIEW_STATUS_META = {
   published: { label:"Published", color:"#22c55e" },
   hidden: { label:"Hidden", color:"#dc2626" },
@@ -1793,6 +1898,8 @@ export function StaffDashboard({auth,onExit}) {
     {id:"kyc",icon:"🪪",label:"KYC Queue",show:auth.hasPermission("kyc.approve")},
     {id:"moderation",icon:"📋",label:"Listings Moderation",show:auth.hasPermission("listings.moderate")},
     {id:"hero",icon:"🌟",label:"Hero Approval",show:auth.hasPermission("hero_media.approve")},
+    {id:"events-moderation",icon:"🎉",label:"Events Moderation",show:auth.hasPermission("event.approve")},
+    {id:"event-pricing",icon:"💵",label:"Event Pricing",show:auth.hasPermission("event_pricing.manage")||auth.hasPermission("event_pricing.approve")},
     {id:"reviews",icon:"⭐",label:"Reviews",show:auth.hasPermission("reviews.moderate")},
     {id:"delivery",icon:"🚚",label:"Delivery Management",show:auth.hasPermission("orders.manage_delivery")},
     {id:"contact-messages",icon:"✉️",label:"Contact Messages",show:auth.hasPermission("contact_messages.manage")},
@@ -1842,6 +1949,8 @@ export function StaffDashboard({auth,onExit}) {
         {activeTab==="kyc"&&<KYCQueuePanel theme={t}/>}
         {activeTab==="moderation"&&<ListingsModerationPanel theme={t}/>}
         {activeTab==="hero"&&<HeroApprovalPanel theme={t}/>}
+        {activeTab==="events-moderation"&&<EventsModerationPanel theme={t}/>}
+        {activeTab==="event-pricing"&&<EventPricingPanel theme={t} auth={auth}/>}
         {activeTab==="reviews"&&<ReviewsModerationPanel theme={t}/>}
         {activeTab==="delivery"&&<DeliveryManagementPanel theme={t}/>}
         {activeTab==="contact-messages"&&<ContactMessagesPanel theme={t}/>}
@@ -1899,6 +2008,8 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit }) {
   const { theme, toggleTheme } = useTheme();
   const t = DASHBOARD_THEME[theme];
   const [activeTab, setActiveTab] = useState("profile"); // defaults to Profile so editing is immediately visible
+  const { data: categories } = useCategories();
+  const { data: zones } = useZones();
 
   return <div style={{fontFamily:"'Georgia',serif",background:t.pageBg,minHeight:"100vh",display:"flex"}}>
     <div style={{width:220,background:t.sidebarBg,borderLeft:`4px solid ${C.gold}`,flexShrink:0,position:"sticky",top:0,height:"100vh",overflowY:"auto"}}>
@@ -1930,7 +2041,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit }) {
         {activeTab==="orders"&&<OrdersDeliveryTab theme={t}/>}
         {activeTab==="saved"&&<SavedBusinessesTab favourites={favourites} toggleFav={toggleFav} theme={t}/>}
         {activeTab==="messages"&&<MessagingCenter user={user} onClose={()=>setActiveTab("profile")}/>}
-        {activeTab==="events"&&<MyEventsTab theme={t}/>}
+        {activeTab==="events"&&<MyEventsTab user={user} categories={categories} zones={zones}/>}
         {activeTab==="tickets"&&<MyTicketsDrawer onClose={()=>setActiveTab("profile")}/>}
       </div>
     </div>
@@ -2080,44 +2191,20 @@ function SavedBusinessesTab({ favourites, toggleFav }) {
   </div>;
 }
 
-// Deliberately its own map, not a reuse of HERO_STATUS_META even though the
-// keys happen to match (pending/approved/rejected) — a separate, decoupled
-// concern per the approved design.
-const EVENT_STATUS_META = {
-  pending: { label: "Pending Review", color: "#f59e0b" },
-  approved: { label: "Approved", color: "#22c55e" },
-  rejected: { label: "Rejected", color: "#ef4444" },
-};
-
-// Organizer's own submitted events only (useMyEvents(), also used by
-// EventSubmissionPanel.jsx) — not an attendee/RSVP history, which has no
-// backend endpoint to read yet (see EventDetailPage.jsx's rsvpStatus note).
-// Also unpaginated — reads the array directly.
-function MyEventsTab({ theme }) {
-  const { data, isLoading, isError } = useMyEvents();
-  const events = data || [];
-
-  if (isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
-  if (isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load your events.</div>;
-
-  return <div>
-    {events.length===0 && <div style={{color:theme.textMuted,fontSize:"0.8rem",marginBottom:14}}>You haven't submitted any events yet.</div>}
-    {events.map(ev=>{
-      const meta = EVENT_STATUS_META[ev.status]||{label:ev.status,color:"#888"};
-      return (
-        <div key={ev.id} style={{background:theme.cardBg,borderRadius:16,padding:16,border:`1px solid ${theme.border}`,marginBottom:10}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-            <div style={{color:theme.text,fontWeight:800,fontSize:"0.84rem"}}>{ev.name}</div>
-            <span style={{background:`${meta.color}22`,color:meta.color,borderRadius:20,padding:"2px 10px",fontSize:"0.65rem",fontWeight:700}}>{meta.label}</span>
-          </div>
-          <div style={{color:theme.textMuted,fontSize:"0.7rem",marginTop:4}}>
-            {ev.category?.label}{ev.category?.label && ev.event_date ? " • " : ""}{formatEventDate(ev.event_date)}
-          </div>
-        </div>
-      );
-    })}
-    <div style={{color:theme.textMuted,fontSize:"0.74rem",marginTop:12,fontStyle:"italic"}}>Attending history &amp; tickets coming soon.</div>
-  </div>;
+// Mounts the same self-contained EventSubmissionPanel used on the public
+// Events page (form + "My Events" list + ticket management), rather than
+// the read-only list this tab used to render — an organizer can now submit
+// and manage events straight from their account, not just view status.
+//
+// Known limitation: EventSubmissionPanel hardcodes an always-dark palette
+// (written for the always-dark public Events page and Business Command
+// Center), while UserPanel supports a live light/dark toggle — a customer
+// viewing this tab in light mode will see the panel's white-on-dark styling
+// rather than adapting to the toggle. Scoped as a known limitation rather
+// than fixed here; properly theming EventSubmissionPanel is a separate,
+// larger change.
+function MyEventsTab({ user, categories, zones }) {
+  return <EventSubmissionPanel user={user} categories={categories} zones={zones} PaymentComponent={MoMoPayment}/>;
 }
 
 // ─── Loading Screen ───────────────────────────────────────────────────────────
