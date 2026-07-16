@@ -114,7 +114,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast }) {
         <a href="https://wa.me/233244000000?text=UPDATE%3A%20" target="_blank" rel="noopener noreferrer" style={{ background: D.whatsapp, color: "#04210f", borderRadius: 20, padding: "6px 14px", fontSize: "0.7rem", fontWeight: 800, textDecoration: "none" }}>📱 WhatsApp Update</a>
       </div>
 
-      {actionError && <div style={{ background: "rgba(248,113,113,0.12)", color: D.red, borderRadius: 12, padding: "10px 14px", fontSize: "0.78rem", marginBottom: 14 }}>{actionError}</div>}
+      {actionError && <div style={{ background: `${D.red}1f`, color: D.red, borderRadius: 12, padding: "10px 14px", fontSize: "0.78rem", marginBottom: 14 }}>{actionError}</div>}
 
       {heroSubmitPhoto && (
         <div style={{ ...glassCard, padding: "14px 16px", marginBottom: 14, border: `2px solid ${D.cardBorderStrong}` }}>
@@ -146,7 +146,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast }) {
             {heroSubmission.status === "approved" && (
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 <input type="number" min={1} value={heroExtendDays} onChange={e => setHeroExtendDays(Math.max(1, Number(e.target.value) || 1))} style={{ ...inputStyle, width: 56, padding: "6px 8px" }} />
-                <button onClick={() => setShowHeroExtendPay(true)} style={{ background: D.kente2, color: "#04210f", border: "none", borderRadius: 20, padding: "7px 14px", fontSize: "0.7rem", fontWeight: 800, cursor: "pointer" }}>💰 Extend {heroExtendDays}d</button>
+                <button onClick={() => setShowHeroExtendPay(true)} style={{ background: D.kente2, color: "#fff", border: "none", borderRadius: 20, padding: "7px 14px", fontSize: "0.7rem", fontWeight: 800, cursor: "pointer" }}>💰 Extend {heroExtendDays}d</button>
               </div>
             )}
           </div>
@@ -179,7 +179,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast }) {
           {promoteActionError && <div style={{ color: D.red, fontSize: "0.72rem", marginBottom: 8 }}>{promoteActionError}</div>}
           <div style={{ display: "flex", gap: 6 }}>
             <button onClick={() => { setPromoteListingId(null); setPromoteActionError(null); }} style={{ flex: 1, background: D.panelBg2, color: D.textDim, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "8px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
-            <button onClick={submitPromotion} disabled={promoteKind === "boost" && !promoteKeywords.trim()} style={{ flex: 2, background: (promoteKind === "boost" && !promoteKeywords.trim()) ? D.panelBg2 : D.kente1, color: (promoteKind === "boost" && !promoteKeywords.trim()) ? D.textFaint : "#2a0606", border: "none", borderRadius: 20, padding: "8px", fontWeight: 900, cursor: (promoteKind === "boost" && !promoteKeywords.trim()) ? "default" : "pointer", fontFamily: "inherit" }}>📣 Promote {promoteDays}d</button>
+            <button onClick={submitPromotion} disabled={promoteKind === "boost" && !promoteKeywords.trim()} style={{ flex: 2, background: (promoteKind === "boost" && !promoteKeywords.trim()) ? D.panelBg2 : D.kente1, color: (promoteKind === "boost" && !promoteKeywords.trim()) ? D.textFaint : "#fff", border: "none", borderRadius: 20, padding: "8px", fontWeight: 900, cursor: (promoteKind === "boost" && !promoteKeywords.trim()) ? "default" : "pointer", fontFamily: "inherit" }}>📣 Promote {promoteDays}d</button>
           </div>
         </div>
       )}
@@ -221,7 +221,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast }) {
                       <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
                         <input value={spec.label || ""} placeholder="Label (e.g. Material)" onChange={e => setEditForm(f => ({ ...f, specs: f.specs.map((s, si) => si === i ? { ...s, label: e.target.value } : s) }))} style={inputStyle} />
                         <input value={spec.value || ""} placeholder="Value (e.g. Cotton)" onChange={e => setEditForm(f => ({ ...f, specs: f.specs.map((s, si) => si === i ? { ...s, value: e.target.value } : s) }))} style={inputStyle} />
-                        <button onClick={() => setEditForm(f => ({ ...f, specs: f.specs.filter((_, si) => si !== i) }))} style={{ background: "rgba(248,113,113,0.15)", color: D.red, border: "none", borderRadius: 8, padding: "0 10px", fontWeight: 700, cursor: "pointer" }}>✕</button>
+                        <button onClick={() => setEditForm(f => ({ ...f, specs: f.specs.filter((_, si) => si !== i) }))} style={{ background: `${D.red}26`, color: D.red, border: "none", borderRadius: 8, padding: "0 10px", fontWeight: 700, cursor: "pointer" }}>✕</button>
                       </div>
                     ))}
                     <button onClick={() => setEditForm(f => ({ ...f, specs: [...(f.specs || []), { label: "", value: "" }] }))} style={{ background: "none", border: `1.5px dashed ${D.cardBorderStrong}`, color: D.gold, borderRadius: 8, padding: "6px 12px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>+ Add spec</button>
@@ -232,17 +232,27 @@ export default function ListingsPanel({ user, PaymentComponent, showToast }) {
                   </div>
                 </div>
               ) : (
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-                  <div>
+                <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+                  <div style={{ width: 48, height: 48, borderRadius: 10, background: D.panelBg2, flexShrink: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.3rem" }}>
+                    {item.photos?.[0]?.image ? <img src={item.photos[0].image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "🏷️"}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 160 }}>
                     <div style={{ fontWeight: 800, fontSize: "0.85rem", color: D.text }}>{item.name} <span style={{ background: `${statusMeta.color}22`, color: statusMeta.color, borderRadius: 20, padding: "2px 7px", fontSize: "0.6rem", fontWeight: 700 }}>{statusMeta.label}</span></div>
                     <div style={{ fontWeight: 900, color: D.green, fontSize: "0.95rem", marginTop: 2 }}>{item.price_amount != null ? `GHS ${item.price_amount}` : "No price set"} <span style={{ color: D.textFaint, fontWeight: 400, fontSize: "0.72rem" }}>{item.price_unit}</span></div>
-                    {item.updated_at && <div style={{ fontSize: "0.62rem", color: freshnessColor(item.updated_at), fontWeight: 700, marginTop: 2 }}>🕐 {freshnessLabel(item.updated_at)}</div>}
+                    {item.updated_at && (
+                      <>
+                        <div style={{ fontSize: "0.62rem", color: freshnessColor(item.updated_at), fontWeight: 700, marginTop: 2 }}>🕐 {freshnessLabel(item.updated_at)}</div>
+                        <div style={{ marginTop: 4, height: 4, width: 120, maxWidth: "100%", background: D.panelBg2, borderRadius: 10, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${Math.max(6, 100 - Math.min(100, daysSince(item.updated_at) * 3))}%`, background: freshnessColor(item.updated_at), borderRadius: 10 }} />
+                        </div>
+                      </>
+                    )}
                     {item.status === "rejected" && item.rejection_reason && <div style={{ fontSize: "0.65rem", color: D.red, marginTop: 3 }}>Rejected: {item.rejection_reason}</div>}
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
                     {canEdit && <button onClick={() => { setEditingId(item.id); setEditForm({ name: item.name, price_amount: item.price_amount, price_unit: item.price_unit, specs: item.specs || [], service_duration: item.service_duration || "" }); }} style={{ background: D.goldSoft, color: D.gold, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>✏️ Edit</button>}
-                    {(item.status === "draft" || item.status === "rejected") && <button onClick={() => submitForReview(item.id)} style={{ background: D.kente2, color: "#04210f", border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>📤 Submit for Review</button>}
-                    {item.status === "published" && <button onClick={() => { setPromoteListingId(item.id); setPromoteKind("featured"); setPromoteDays(7); setPromoteKeywords(""); setPromoteActionError(null); }} style={{ background: "rgba(248,113,113,0.15)", color: D.kente1, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>📣 Promote</button>}
+                    {(item.status === "draft" || item.status === "rejected") && <button onClick={() => submitForReview(item.id)} style={{ background: D.kente2, color: "#fff", border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>📤 Submit for Review</button>}
+                    {item.status === "published" && <button onClick={() => { setPromoteListingId(item.id); setPromoteKind("featured"); setPromoteDays(7); setPromoteKeywords(""); setPromoteActionError(null); }} style={{ background: `${D.red}18`, color: D.kente1, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>📣 Promote</button>}
                   </div>
                 </div>
               )}
