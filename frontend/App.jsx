@@ -433,6 +433,20 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false, onR
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const hasAutoSelectedRef = useRef(false);
+  // Set when a guest attempts a send (sign-in modal opens instead); once the
+  // sign-in completes and `user` flips to an account that can hold a
+  // conversation, the effect below fires the send automatically so the
+  // guest's typed message goes out without a second press of the button.
+  const pendingSendRef = useRef(false);
+
+  useEffect(() => {
+    if (canHoldConversation && pendingSendRef.current && newMessage.trim()) {
+      pendingSendRef.current = false;
+      sendMessage();
+    }
+    if (canHoldConversation) pendingSendRef.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canHoldConversation]);
 
   // Auto-pick a starting conversation the first time the list loads —
   // preferring one already "about" the business/listing this was opened
@@ -458,8 +472,10 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false, onR
     if(!newMessage.trim()) return;
     // A guest can type freely — the sign-in ask happens only at the moment
     // they actually try to send (user-initiated, never automatic on open).
-    // Their draft stays in the input across the sign-in round-trip.
-    if(!canHoldConversation){ onRequestSignIn?.(); return; }
+    // Their draft stays in the input, and pendingSendRef makes it auto-send
+    // the moment sign-in completes (see the effect below) so they don't
+    // have to press send twice.
+    if(!canHoldConversation){ pendingSendRef.current = true; onRequestSignIn?.(); return; }
     setSending(true);
     setActionError(null);
     try {
@@ -709,7 +725,11 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false, onR
                     style={{background:showQuickReplies?`${C.gold}20`:"#f0f0f0",border:"none",borderRadius:"50%",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"1rem",flexShrink:0}}>
                     ⚡
                   </button>
-                  <div style={{flex:1,background:"#f5f5f5",borderRadius:20,padding:"8px 14px",display:"flex",alignItems:"center",gap:8}}>
+                  {/* minWidth:0 on both the pill and the input lets them
+                      shrink inside the narrow 380px widget — without it the
+                      input's intrinsic min-width pushes the send button out
+                      of the panel entirely (worse once the ✕ appears). */}
+                  <div style={{flex:1,minWidth:0,background:"#f5f5f5",borderRadius:20,padding:"8px 14px",display:"flex",alignItems:"center",gap:8}}>
                     <input
                       ref={inputRef}
                       value={newMessage}
@@ -717,7 +737,7 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false, onR
                       onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(!sending)sendMessage();}}}
                       placeholder="Type a message..."
                       disabled={sending}
-                      style={{flex:1,border:"none",background:"transparent",outline:"none",fontSize:"0.82rem",fontFamily:"inherit",color:C.darkBrown}}/>
+                      style={{flex:1,minWidth:0,border:"none",background:"transparent",outline:"none",fontSize:"0.82rem",fontFamily:"inherit",color:C.darkBrown}}/>
                     {newMessage&&(
                       <button onClick={()=>setNewMessage("")} style={{background:"none",border:"none",color:"#aaa",cursor:"pointer",fontSize:"0.9rem",padding:0}}>✕</button>
                     )}
@@ -1157,7 +1177,7 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
     }
   };
 
-  return <div data-testid="auth-modal-backdrop" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+  return <div data-testid="auth-modal-backdrop" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
     <div style={{background:"white",borderRadius:22,width:"100%",maxWidth:440,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
       <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,borderRadius:"22px 22px 0 0",padding:"20px 24px",position:"relative"}}>
         <button onClick={onClose} style={{position:"absolute",top:14,right:16,background:"none",border:"none",color:"white",fontSize:"1.4rem",cursor:"pointer",opacity:0.7}}>✕</button>
