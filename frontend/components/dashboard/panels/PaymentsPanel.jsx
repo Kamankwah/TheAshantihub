@@ -22,7 +22,7 @@ import DataTableCard from "../widgets/DataTableCard.jsx";
 // Payment Methods" chip row reads (id/name/color/logo) matter here.
 const MOMO_NETWORKS = [
   { id: "mtn", name: "MTN MoMo", color: "#FCD116", logo: "🟡" },
-  { id: "vodafone", name: "Vodafone Cash", color: "#E31837", logo: "🔴" },
+  { id: "telecel", name: "Telecel Cash", color: "#E31837", logo: "🔴" },
   { id: "airteltigo", name: "AirtelTigo Money", color: "#E87722", logo: "🟠" },
 ];
 

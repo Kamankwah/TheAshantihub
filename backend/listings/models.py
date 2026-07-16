@@ -33,6 +33,15 @@ class Zone(models.Model):
 
 
 class Listing(models.Model):
+    CONDITION_NEW = "new"
+    CONDITION_USED = "used"
+    CONDITION_REFURBISHED = "refurbished"
+    CONDITION_CHOICES = [
+        (CONDITION_NEW, "New"),
+        (CONDITION_USED, "Used"),
+        (CONDITION_REFURBISHED, "Refurbished"),
+    ]
+
     DRAFT = "draft"
     PENDING_REVIEW = "pending_review"
     PUBLISHED = "published"
@@ -73,6 +82,33 @@ class Listing(models.Model):
     # since it's shown in its own dedicated tab for service listings.
     specs = models.JSONField(default=list, blank=True)
     service_duration = models.CharField(max_length=100, blank=True)
+
+    # ── Product decision fields (comprehensive listing-creation work) ──────
+    # All nullable/blank-defaulted so pre-existing rows are unaffected; the
+    # "a product listing must consciously answer warranty/expiry/returns"
+    # rule is enforced at creation time in OwnerListingSerializer.validate(),
+    # not at the DB level (existing data stays valid).
+    has_warranty = models.BooleanField(default=False)
+    warranty_details = models.TextField(blank=True)
+    has_expiry = models.BooleanField(default=False)
+    expiry_date = models.DateField(null=True, blank=True)
+    return_policy = models.TextField(blank=True)
+    brand = models.CharField(max_length=100, blank=True)
+    condition = models.CharField(max_length=15, choices=CONDITION_CHOICES, blank=True)
+    # Freeform strings, not structured numerics — sellers describe these in
+    # their own words/units (e.g. "30cm x 20cm x 5cm", "1.2 kg"), same
+    # philosophy as price_unit/service_duration.
+    dimensions = models.CharField(max_length=100, blank=True)
+    weight = models.CharField(max_length=50, blank=True)
+    stock_quantity = models.PositiveIntegerField(null=True, blank=True)
+
+    # ── Service decision fields ─────────────────────────────────────────────
+    # Fiverr-style gig framing: what the buyer gets, what the seller needs
+    # from them, revision allowance, and turnaround — all optional freeform.
+    whats_included = models.TextField(blank=True)
+    requirements = models.TextField(blank=True)
+    revisions = models.CharField(max_length=100, blank=True)
+    delivery_time = models.CharField(max_length=100, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -89,3 +89,30 @@ class EventPayTests(TestCase):
         event = self._make_event()
         response = self.client.post(f"/api/events/{event.id}/pay/")
         self.assertEqual(response.status_code, 401)
+
+    def test_paid_event_appears_in_public_list(self):
+        """End-to-end regression for the approve -> pay -> publicly-listed
+        flow in simulated mode (punch-list item 12): an approved event must
+        be absent from GET /api/events/ before payment, and present —
+        with paid_at/expires_at echoed back to the payer — immediately after
+        POST /api/events/{id}/pay/ returns.
+        """
+        event = self._make_event()
+
+        # Approved but unpaid — not yet publicly listed.
+        response = self.client.get("/api/events/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["count"], 0)
+
+        self._auth(issue_token(self.customer, "customer"))
+        response = self.client.post(f"/api/events/{event.id}/pay/")
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertIsNotNone(body["paid_at"])
+        self.assertIsNotNone(body["expires_at"])
+
+        # Now live on the public, unauthenticated list.
+        self.client.credentials()
+        response = self.client.get("/api/events/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(event.id, [row["id"] for row in response.json()["results"]])

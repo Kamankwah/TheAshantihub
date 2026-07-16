@@ -17,7 +17,7 @@ a production environment. Until those env vars are set,
 `settings.PAYMENTS_PROVIDER` stays "simulated" and this module is never
 called at all — it ships dark and unexercised, per the launch plan's
 explicit "never block launch on Hubtel" decision. Sandbox-test all three
-MoMo networks (MTN, Vodafone Cash, AirtelTigo) per
+MoMo networks (MTN, Telecel Cash, AirtelTigo) per
 docs/HUBTEL_INTEGRATION.md §8 before any production cutover.
 """
 import hashlib

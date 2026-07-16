@@ -21,3 +21,16 @@ export const C = {
 // displayPrice) and frontend/components/* (e.g. CartDrawer) can apply the
 // exact same conversion without a circular App.jsx <-> components/ import.
 export const CURRENCIES = {GHS:1, USD:0.067, GBP:0.052, EUR:0.061};
+
+// ─── Shared <option> styling ─────────────────────────────────────────────────
+// <option> elements don't reliably inherit a usable color/background pair
+// from a translucent dark-styled <select> (the convention used by
+// EventSubmissionPanel/EventTicketTypesPanel/Sidebar): most browsers render
+// the popup list on their own (usually white) surface while the options
+// inherit the select's white text — i.e. white-on-white, unreadable. Every
+// <option> under one of those dark selects sets this explicitly so the popup
+// list is always dark-on-light. Lives here (not in any one component) for the
+// same anti-circular-import reason as C/CURRENCIES above — e.g.
+// EventSubmissionPanel already imports EventTicketTypesPanel, so neither can
+// own a constant the other needs.
+export const optionStyle = { color: C.darkBrown, background: "white" };

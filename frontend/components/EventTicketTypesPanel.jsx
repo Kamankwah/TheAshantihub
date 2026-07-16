@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { C } from "../theme.js";
+import { C, optionStyle } from "../theme.js";
 import { apiPatch, apiPost } from "../apiClient.js";
 import { useMyEventTicketTypes } from "../hooks/useMyEventTicketTypes.js";
 
@@ -129,8 +129,8 @@ export default function EventTicketTypesPanel({ eventId }) {
               <div style={{ display: "flex", gap: 6 }}>
                 <input type="number" min={0} step="0.01" value={editForm.price} onChange={setEditField("price")} placeholder="Price (GHS)" style={{ ...inputStyle, flex: 1 }} />
                 <select value={editForm.delivery_method} onChange={setEditField("delivery_method")} style={{ ...inputStyle, flex: 1 }}>
-                  <option value="digital">Digital</option>
-                  <option value="physical">Physical</option>
+                  <option value="digital" style={optionStyle}>Digital</option>
+                  <option value="physical" style={optionStyle}>Physical</option>
                 </select>
               </div>
               <input type="number" min={0} value={editForm.quantity_total} onChange={setEditField("quantity_total")} placeholder="Quantity total (blank = unlimited)" style={inputStyle} />
@@ -180,8 +180,8 @@ export default function EventTicketTypesPanel({ eventId }) {
           <div style={{ display: "flex", gap: 6 }}>
             <input required type="number" min={0} step="0.01" value={createForm.price} onChange={setCreateField("price")} placeholder="Price (GHS)" style={{ ...inputStyle, flex: 1 }} />
             <select value={createForm.delivery_method} onChange={setCreateField("delivery_method")} style={{ ...inputStyle, flex: 1 }}>
-              <option value="digital">Digital</option>
-              <option value="physical">Physical</option>
+              <option value="digital" style={optionStyle}>Digital</option>
+              <option value="physical" style={optionStyle}>Physical</option>
             </select>
           </div>
           <input type="number" min={0} value={createForm.quantity_total} onChange={setCreateField("quantity_total")} placeholder="Quantity total (blank = unlimited)" style={inputStyle} />
