@@ -3,16 +3,25 @@ from decimal import Decimal
 from django.db import transaction as db_transaction
 from django.utils.crypto import get_random_string
 from rest_framework import generics, status
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.permissions import HasRolePermission
 from accounts.views import IsCustomer
 from billing.models import Transaction
 from cart.models import Cart
+from disputes.models import Dispute
+from disputes.serializers import DisputeSerializer
 
 from .models import Order, OrderItem
-from .serializers import OrderSerializer
+from .serializers import (
+    OrderDeliveryStatusUpdateSerializer,
+    OrderDisputeCreateSerializer,
+    OrderSerializer,
+    StaffOrderSerializer,
+)
 
 
 class OrderCheckoutView(APIView):
@@ -85,3 +94,64 @@ class OrderDetailView(generics.RetrieveAPIView):
 
     def get_queryset(self):
         return Order.objects.filter(customer=self.request.user)
+
+
+class OrderStaffPagination(PageNumberPagination):
+    page_size = 20
+
+
+class OrderStaffListView(generics.ListAPIView):
+    """GET /api/orders/staff/ — all customer orders, staff-only
+    (orders.manage_delivery), for delivery-status management.
+    """
+
+    serializer_class = StaffOrderSerializer
+    queryset = Order.objects.select_related("customer").prefetch_related(
+        "items__listing"
+    ).order_by("-placed_at")
+    pagination_class = OrderStaffPagination
+
+    def get_permissions(self):
+        return [HasRolePermission("orders.manage_delivery")]
+
+
+class OrderDeliveryStatusUpdateView(generics.UpdateAPIView):
+    """PATCH /api/orders/{id}/delivery-status/ — staff-only
+    (orders.manage_delivery) update of an order's fulfillment status.
+    """
+
+    serializer_class = OrderDeliveryStatusUpdateSerializer
+    queryset = Order.objects.all()
+    http_method_names = ["patch"]
+
+    def get_permissions(self):
+        return [HasRolePermission("orders.manage_delivery")]
+
+
+class OrderDisputeCreateView(APIView):
+    """POST /api/orders/{id}/dispute/ — a signed-in customer who owns this
+    order raises a dispute against it (reason + description). 404s for
+    another customer's order (the lookup is pre-scoped to the caller, same
+    convention as OrderDetailView above) rather than leaking a 403/whether
+    the order exists at all. Creates the disputes.Dispute row directly:
+    raised_by=request.user, status=Dispute.OPEN — this is what actually
+    populates the staff dispute queue (disputes.views.DisputeListView).
+    No restriction on how many disputes a customer can raise against the
+    same order, or on the order's own status — a dispute can legitimately
+    be raised over, e.g., a pending order's stuck payment too.
+    """
+
+    permission_classes = [IsAuthenticated, IsCustomer]
+
+    def post(self, request, pk):
+        order = generics.get_object_or_404(Order, pk=pk, customer=request.user)
+        serializer = OrderDisputeCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        dispute = Dispute.objects.create(
+            order=order,
+            raised_by=request.user,
+            reason=serializer.validated_data["reason"],
+            description=serializer.validated_data["description"],
+            status=Dispute.OPEN,
+        )
+        return Response(DisputeSerializer(dispute).data, status=status.HTTP_201_CREATED)

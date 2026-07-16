@@ -65,18 +65,48 @@ describe('Navbar', () => {
     expect(screen.queryByText(T.signup)).not.toBeInTheDocument()
   })
 
-  it('customer: shows a My Account button that opens the account panel', () => {
+  it('customer: only a single avatar/menu control renders (no duplicate "My Account" pill) — "My Account" opens from inside its dropdown', () => {
     const setShowAccount = vi.fn()
     renderNavbar({ user: { fullName: 'Ama Boateng', accountType: 'customer' }, setShowAccount })
+    // The old standalone pill button used to render "👤 My Account" outside
+    // any dropdown — that's gone now, it only exists once the dropdown is open.
+    expect(screen.queryByText('👤 My Account')).not.toBeInTheDocument()
+    const accountMenus = screen.getAllByLabelText('Account menu')
+    expect(accountMenus.length).toBe(1)
+    fireEvent.click(accountMenus[0])
     fireEvent.click(screen.getByText('👤 My Account'))
     expect(setShowAccount).toHaveBeenCalledWith(true)
   })
 
-  it('business owner: shows a My Dashboard button that opens the business dashboard', () => {
+  it('business owner: only a single avatar/menu control renders (no duplicate "My Dashboard" pill) — Business Dashboard opens from inside its dropdown', () => {
     const setShowBizDash = vi.fn()
     renderNavbar({ user: { fullName: 'Kojo Mensah', accountType: 'business_owner' }, setShowBizDash })
-    fireEvent.click(screen.getByText('🏪 My Dashboard'))
+    expect(screen.queryByText('🏪 My Dashboard')).not.toBeInTheDocument()
+    expect(screen.getAllByLabelText('Account menu').length).toBe(1)
+    fireEvent.click(screen.getByLabelText('Account menu'))
+    fireEvent.click(screen.getByText('🏪 Business Dashboard'))
     expect(setShowBizDash).toHaveBeenCalledWith(true)
+  })
+
+  it('shows the initial-letter fallback avatar when the user has no avatar photo', () => {
+    renderNavbar({ user: { fullName: 'Ama Boateng', accountType: 'customer' } })
+    const avatarBtn = screen.getByLabelText('Account menu')
+    expect(avatarBtn).toHaveTextContent('A')
+    expect(avatarBtn.querySelector('img')).not.toBeInTheDocument()
+  })
+
+  it('renders the real avatar photo (instead of the initial letter) when user.avatar is set', () => {
+    renderNavbar({ user: { fullName: 'Ama Boateng', accountType: 'customer', avatar: 'https://example.com/ama.jpg' } })
+    const avatarBtn = screen.getByLabelText('Account menu')
+    const img = avatarBtn.querySelector('img')
+    expect(img).toBeInTheDocument()
+    expect(img).toHaveAttribute('src', 'https://example.com/ama.jpg')
+  })
+
+  it('renders the real avatar photo in the mobile stacked menu header too', () => {
+    const { container } = renderNavbar({ user: { fullName: 'Ama Boateng', accountType: 'customer', avatar: 'https://example.com/ama.jpg' } })
+    fireEvent.click(screen.getByLabelText('Open menu'))
+    expect(container.querySelectorAll('img[src="https://example.com/ama.jpg"]').length).toBeGreaterThan(0)
   })
 
   it('opens the profile menu from the round avatar button, showing the user\'s name and a Sign Out action', () => {

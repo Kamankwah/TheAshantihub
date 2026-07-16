@@ -3,7 +3,7 @@ from rest_framework import serializers
 from listings.models import Category
 from listings.serializers import CategorySerializer, ZoneSerializer
 
-from .models import Event, EventMedia, EventRSVP
+from .models import Event, EventMedia, EventPricingTier, EventRSVP, EventTicketType, Ticket
 
 
 class EventMediaSerializer(serializers.ModelSerializer):
@@ -31,12 +31,16 @@ class EventTeaserSerializer(serializers.ModelSerializer):
     # (reviews/ratings/Q&A plan, docs/PROJECT_SCOPE.md).
     avg_rating = serializers.SerializerMethodField()
     review_count = serializers.SerializerMethodField()
+    # Ticketing (event ticketing + escrow work) — whether this event has any
+    # active ticket type at all, so the frontend can decide whether to show
+    # a "Buy Tickets" affordance on the teaser without a separate fetch.
+    has_tickets = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
         fields = [
             "id", "name", "category", "zone", "event_date", "hero_media", "is_private",
-            "avg_rating", "review_count",
+            "avg_rating", "review_count", "has_tickets",
         ]
 
     def get_avg_rating(self, obj):
@@ -44,6 +48,9 @@ class EventTeaserSerializer(serializers.ModelSerializer):
 
     def get_review_count(self, obj):
         return getattr(obj, "review_count", 0)
+
+    def get_has_tickets(self, obj):
+        return obj.ticket_types.filter(is_active=True).exists()
 
     def get_hero_media(self, obj):
         first = obj.media.all()[:1]
@@ -80,13 +87,16 @@ class EventDetailSerializer(serializers.ModelSerializer):
     # showing its host). Deliberately NOT on EventTeaserSerializer, which
     # keeps its existing safe-subset contract untouched.
     organizer = serializers.SerializerMethodField()
+    # See EventTeaserSerializer.get_has_tickets — same field, also exposed
+    # on the full detail shape.
+    has_tickets = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
         fields = [
             "id", "name", "description", "category", "zone", "address", "lat", "lng",
             "event_date", "going_count", "access_level", "media", "avg_rating",
-            "review_count", "organizer",
+            "review_count", "organizer", "has_tickets",
         ]
 
     def get_avg_rating(self, obj):
@@ -94,6 +104,9 @@ class EventDetailSerializer(serializers.ModelSerializer):
 
     def get_review_count(self, obj):
         return getattr(obj, "review_count", 0)
+
+    def get_has_tickets(self, obj):
+        return obj.ticket_types.filter(is_active=True).exists()
 
     def get_organizer(self, obj):
         if obj.submitted_by_business_id:
@@ -179,9 +192,38 @@ class EventSubmitSerializer(serializers.ModelSerializer):
         return value
 
     def validate_visibility_days(self, value):
-        if not (7 <= value <= 90):
-            raise serializers.ValidationError("visibility_days must be between 7 and 90.")
+        if not EventPricingTier.objects.filter(duration_days=value).exists():
+            raise serializers.ValidationError(
+                "visibility_days must match one of the configured pricing tiers."
+            )
         return value
+
+
+class EventPricingTierPublicSerializer(serializers.ModelSerializer):
+    """Public shape (GET /api/events/pricing-tiers/) — only the live price,
+    never the pending one (an unapproved future price isn't public)."""
+
+    class Meta:
+        model = EventPricingTier
+        fields = ["id", "duration_days", "live_price"]
+        read_only_fields = fields
+
+
+class EventPricingTierManageSerializer(serializers.ModelSerializer):
+    """Staff shape (accountant/super_admin) — includes the pending proposal,
+    if any."""
+
+    proposed_by_name = serializers.CharField(
+        source="proposed_by.full_name", read_only=True, default=None
+    )
+
+    class Meta:
+        model = EventPricingTier
+        fields = [
+            "id", "duration_days", "live_price", "pending_price",
+            "proposed_by", "proposed_by_name", "proposed_at", "updated_at",
+        ]
+        read_only_fields = fields
 
 
 class EventUnlockSerializer(serializers.Serializer):
@@ -204,4 +246,139 @@ class EventAttendeeSerializer(serializers.ModelSerializer):
         fields = [
             "id", "customer", "customer_name", "customer_phone", "customer_email",
             "status", "rsvp_at",
+        ]
+
+
+class EventTicketTypePublicSerializer(serializers.ModelSerializer):
+    """Public shape for GET /api/events/{id}/ticket-types/ — what a buyer
+    sees before purchasing. Deliberately excludes quantity_sold/is_active
+    (organizer-only, see EventTicketTypeOwnerSerializer) in favour of a
+    single derived quantity_remaining, mirroring how EventTeaserSerializer
+    only ever exposes derived/safe fields.
+    """
+
+    quantity_remaining = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EventTicketType
+        fields = ["id", "name", "description", "price", "delivery_method", "quantity_remaining"]
+
+    def get_quantity_remaining(self, obj):
+        if obj.quantity_total is None:
+            return None
+        return max(0, obj.quantity_total - obj.quantity_sold)
+
+
+class EventTicketTypeOwnerSerializer(EventTicketTypePublicSerializer):
+    """Organizer's own view of a ticket type — adds the raw
+    quantity_total/quantity_sold/is_active/created_at on top of the public
+    fields.
+    """
+
+    class Meta(EventTicketTypePublicSerializer.Meta):
+        fields = EventTicketTypePublicSerializer.Meta.fields + [
+            "quantity_total", "quantity_sold", "is_active", "created_at",
+        ]
+
+
+class EventTicketTypeWriteSerializer(serializers.ModelSerializer):
+    """Input shape for creating/editing an EventTicketType (organizer-only,
+    see IsEventTicketTypeOwner).
+    """
+
+    class Meta:
+        model = EventTicketType
+        fields = ["name", "description", "price", "delivery_method", "quantity_total", "is_active"]
+
+    def validate_price(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("price must be greater than 0.")
+        return value
+
+    def validate(self, attrs):
+        quantity_total = attrs.get(
+            "quantity_total", getattr(self.instance, "quantity_total", None)
+        )
+        quantity_sold = getattr(self.instance, "quantity_sold", 0)
+        if quantity_total is not None and quantity_total < quantity_sold:
+            raise serializers.ValidationError(
+                {"quantity_total": "quantity_total cannot be less than quantity_sold."}
+            )
+        return attrs
+
+
+class TicketPurchaseInputSerializer(serializers.Serializer):
+    """Input shape for POST /api/events/{id}/tickets/purchase/."""
+
+    ticket_type = serializers.PrimaryKeyRelatedField(
+        queryset=EventTicketType.objects.filter(is_active=True)
+    )
+    quantity = serializers.IntegerField(min_value=1, max_value=10)
+
+
+class TicketSerializer(serializers.ModelSerializer):
+    """A purchased Ticket, from the buyer's own point of view (purchase
+    response, GET /api/events/tickets/mine/). ticket_type/event are
+    hand-built dicts rather than nested ModelSerializers, mirroring
+    EventDetailSerializer.get_organizer's exact style.
+    """
+
+    ticket_type = serializers.SerializerMethodField()
+    event = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Ticket
+        fields = [
+            "id", "code", "price", "delivery_method", "escrow_status", "delivered_at",
+            "refunded_at", "ticket_type", "event",
+        ]
+
+    def get_ticket_type(self, obj):
+        return {"id": obj.ticket_type_id, "name": obj.ticket_type.name}
+
+    def get_event(self, obj):
+        event = obj.ticket_type.event
+        return {"id": event.id, "name": event.name, "event_date": event.event_date}
+
+
+class TicketCheckinListSerializer(serializers.ModelSerializer):
+    """Organizer/staff-facing shape for GET /api/events/{id}/tickets/
+    checkin-list/ and the response of POST .../checkin/ — mirrors
+    EventAttendeeSerializer's exact field-sourcing style.
+    """
+
+    ticket_type_name = serializers.CharField(source="ticket_type.name", read_only=True)
+    purchased_by_name = serializers.CharField(source="purchased_by.full_name", read_only=True)
+    purchased_by_phone = serializers.CharField(source="purchased_by.phone", read_only=True)
+
+    class Meta:
+        model = Ticket
+        fields = [
+            "id", "code", "delivery_method", "delivered_at", "escrow_status",
+            "ticket_type_name", "purchased_by_name", "purchased_by_phone",
+        ]
+
+
+class TicketEscrowLedgerSerializer(serializers.ModelSerializer):
+    """Staff-facing (escrow.view/escrow.release/escrow.refund) shape for the
+    escrow ledger and the release/hold/refund action responses.
+    """
+
+    event_name = serializers.CharField(source="ticket_type.event.name", read_only=True)
+    ticket_type_name = serializers.CharField(source="ticket_type.name", read_only=True)
+    purchased_by_name = serializers.CharField(source="purchased_by.full_name", read_only=True)
+    released_by_staff_name = serializers.CharField(
+        source="escrow_released_by_staff.full_name", read_only=True, default=None
+    )
+    refunded_by_staff_name = serializers.CharField(
+        source="refunded_by_staff.full_name", read_only=True, default=None
+    )
+
+    class Meta:
+        model = Ticket
+        fields = [
+            "id", "code", "price", "escrow_status", "escrow_held_at", "escrow_released_at",
+            "escrow_override_note", "delivered_at", "refunded_at", "refund_reason",
+            "event_name", "ticket_type_name", "purchased_by_name",
+            "released_by_staff_name", "refunded_by_staff_name",
         ]

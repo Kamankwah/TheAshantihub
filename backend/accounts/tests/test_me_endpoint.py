@@ -1,8 +1,15 @@
-from django.test import TestCase
+import io
+import tempfile
+
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
+from PIL import Image
 from rest_framework.test import APIClient
 
 from accounts.authentication import issue_token
 from accounts.models import BusinessOwner, BusinessOwnerProfile, Customer
+
+TEST_MEDIA_ROOT = tempfile.mkdtemp()
 
 
 class MeEndpointTests(TestCase):
@@ -19,6 +26,44 @@ class MeEndpointTests(TestCase):
         self.assertEqual(body["account_type"], "customer")
         self.assertNotIn("kyc_status", body)
         self.assertNotIn("registration_step", body)
+
+    def test_customer_me_includes_email_and_phone(self):
+        customer = Customer.objects.create(
+            full_name="Ama", phone="+233200002222", email="ama@example.com", password_hash="x",
+        )
+        token = issue_token(customer, "customer")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        response = self.client.get("/api/accounts/me/")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["phone"], "+233200002222")
+        self.assertEqual(body["email"], "ama@example.com")
+
+    def test_customer_me_has_null_avatar_when_unset(self):
+        customer = Customer.objects.create(full_name="Ama", phone="+233200002222", password_hash="x")
+        token = issue_token(customer, "customer")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        response = self.client.get("/api/accounts/me/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()["avatar"])
+
+    @override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
+    def test_customer_me_has_avatar_url_when_set(self):
+        customer = Customer.objects.create(full_name="Ama", phone="+233200002222", password_hash="x")
+        buf = io.BytesIO()
+        Image.new("RGB", (1, 1)).save(buf, format="JPEG")
+        buf.seek(0)
+        customer.avatar = SimpleUploadedFile("avatar.jpg", buf.read(), content_type="image/jpeg")
+        customer.save()
+
+        token = issue_token(customer, "customer")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        response = self.client.get("/api/accounts/me/")
+        self.assertEqual(response.status_code, 200)
+        avatar_url = response.json()["avatar"]
+        self.assertIsNotNone(avatar_url)
+        self.assertIn("customer_avatars/", avatar_url)
+        self.assertTrue(avatar_url.startswith("http"))
 
     def test_fresh_business_owner_me_reports_business_info_step(self):
         owner = BusinessOwner.objects.create(

@@ -36,6 +36,10 @@ class SiteSettingsAPITests(TestCase):
             instagram_url="https://instagram.com/theashantihub",
             linkedin_url="https://linkedin.com/company/theashantihub",
             twitter_url="https://twitter.com/theashantihub",
+            tiktok_url="https://tiktok.com/@theashantihub",
+            youtube_url="https://youtube.com/@theashantihub",
+            whatsapp_number="233244000000",
+            support_hours="Mon–Sat, 8:00am – 8:00pm GMT",
             warranty_returns_policy="Returns accepted within 7 days.",
             service_dispute_policy="Contact support to raise a dispute.",
         )
@@ -51,6 +55,10 @@ class SiteSettingsAPITests(TestCase):
                 "instagram_url": "https://instagram.com/theashantihub",
                 "linkedin_url": "https://linkedin.com/company/theashantihub",
                 "twitter_url": "https://twitter.com/theashantihub",
+                "tiktok_url": "https://tiktok.com/@theashantihub",
+                "youtube_url": "https://youtube.com/@theashantihub",
+                "whatsapp_number": "233244000000",
+                "support_hours": "Mon–Sat, 8:00am – 8:00pm GMT",
                 "warranty_returns_policy": "Returns accepted within 7 days.",
                 "service_dispute_policy": "Contact support to raise a dispute.",
             },
@@ -103,6 +111,25 @@ class SiteSettingsAPITests(TestCase):
         self.assertEqual(settings.contact_phone, "+233 24 999 9999")
         self.assertEqual(settings.contact_email, "hello@theashantihub.com")
         self.assertEqual(settings.facebook_url, "https://facebook.com/theashantihub")
+
+    def test_patch_round_trips_new_social_and_support_fields(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('admin', 4)}")
+        response = self.client.patch(
+            URL,
+            {
+                "tiktok_url": "https://tiktok.com/@theashantihub",
+                "youtube_url": "https://youtube.com/@theashantihub",
+                "whatsapp_number": "233244000000",
+                "support_hours": "Mon–Sat, 8:00am – 8:00pm GMT",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        settings = SiteSettings.load()
+        self.assertEqual(settings.tiktok_url, "https://tiktok.com/@theashantihub")
+        self.assertEqual(settings.youtube_url, "https://youtube.com/@theashantihub")
+        self.assertEqual(settings.whatsapp_number, "233244000000")
+        self.assertEqual(settings.support_hours, "Mon–Sat, 8:00am – 8:00pm GMT")
 
     def test_patch_creates_row_if_missing(self):
         # The 0002 data migration seeds one row up front; delete it to

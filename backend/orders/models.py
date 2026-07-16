@@ -14,8 +14,22 @@ class Order(models.Model):
         (CANCELLED, "Cancelled"),
     ]
 
+    PROCESSING = "processing"
+    SHIPPED = "shipped"
+    OUT_FOR_DELIVERY = "out_for_delivery"
+    DELIVERED = "delivered"
+    DELIVERY_STATUS_CHOICES = [
+        (PROCESSING, "Processing"),
+        (SHIPPED, "Shipped"),
+        (OUT_FOR_DELIVERY, "Out for Delivery"),
+        (DELIVERED, "Delivered"),
+    ]
+
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name="orders")
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
+    delivery_status = models.CharField(
+        max_length=20, choices=DELIVERY_STATUS_CHOICES, default=PROCESSING
+    )
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
     placed_at = models.DateTimeField(auto_now_add=True)
 

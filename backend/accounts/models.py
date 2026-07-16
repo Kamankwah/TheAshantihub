@@ -35,10 +35,59 @@ class Role(models.Model):
 
 
 class Customer(AuthenticatableAccountMixin, models.Model):
+    FEMALE = "female"
+    MALE = "male"
+    OTHER = "other"
+    PREFER_NOT_TO_SAY = "prefer_not_to_say"
+    GENDER_CHOICES = [
+        (FEMALE, "Female"),
+        (MALE, "Male"),
+        (OTHER, "Other"),
+        (PREFER_NOT_TO_SAY, "Prefer not to say"),
+    ]
+
     full_name = models.CharField(max_length=150)
     phone = models.CharField(max_length=20, unique=True, null=True, blank=True)
     email = models.EmailField(unique=True, null=True, blank=True)
     password_hash = models.CharField(max_length=255)
+    avatar = models.ImageField(
+        upload_to="customer_avatars/", null=True, blank=True,
+        validators=[validate_image_content_type],
+    )
+
+    # Profile fields (user_account_dashboard work). `address` is a plain
+    # free-text field — distinct from BusinessOwnerProfile.gps_address, which
+    # stores a short Ghana Post digital-address code, not a full address.
+    address = models.CharField(max_length=255, null=True, blank=True)
+    gender = models.CharField(max_length=20, choices=GENDER_CHOICES, null=True, blank=True)
+    # Date of birth rather than a raw "age" field — age drifts out of date,
+    # DOB is the stable source of truth (the frontend computes/display age
+    # from it).
+    date_of_birth = models.DateField(null=True, blank=True)
+
+    # Secondary/recovery email + phone, each independently verified via a
+    # 6-digit code + expiry — same generate/validate/clear shape as
+    # StaffUser.invite_token/invite_expires_at below, adapted to a short
+    # numeric code since this is a type-in-a-code flow, not a click-a-link
+    # one. There is no real email/SMS transport anywhere in this codebase
+    # (Hubtel payments and AI messaging are likewise documented as
+    # simulated/future work) — the issuing view returns the code directly in
+    # its response rather than pretending to send it silently.
+    secondary_email = models.EmailField(null=True, blank=True)
+    secondary_email_verified = models.BooleanField(default=False)
+    secondary_email_verify_code = models.CharField(max_length=6, null=True, blank=True)
+    secondary_email_verify_expires_at = models.DateTimeField(null=True, blank=True)
+    secondary_phone = models.CharField(max_length=20, null=True, blank=True)
+    secondary_phone_verified = models.BooleanField(default=False)
+    secondary_phone_verify_code = models.CharField(max_length=6, null=True, blank=True)
+    secondary_phone_verify_expires_at = models.DateTimeField(null=True, blank=True)
+
+    # Notification preferences — real, persisted opt-in flags (no delivery
+    # mechanism exists yet to honor them, same caveat as everywhere else in
+    # this file, but the preference itself is real and saved).
+    email_notifications_enabled = models.BooleanField(default=True)
+    sms_notifications_enabled = models.BooleanField(default=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -97,6 +146,8 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
             return "business_info"
         if profile.is_formal and not (profile.business_reg_certificate and profile.tin):
             return "business_info"
+        if not profile.business_kind or getattr(self, "subscription", None) is None:
+            return "plan_selection"
         if not profile.default_payout_method:
             return "payment_info"
         if (profile.default_payout_method == BusinessOwnerProfile.MOMO
@@ -127,6 +178,17 @@ class BusinessOwnerProfile(models.Model):
     )
     gps_address = models.CharField(max_length=20, null=True, blank=True)
     business_contact_phone = models.CharField(max_length=20, null=True, blank=True)
+
+    # Same string values as listings.Category.kind ("product"/"service") —
+    # a one-time choice captured at registration determining which of the
+    # billing.SubscriptionPlan tiers (product_basic/product_unlimited vs
+    # service) this business owner can pick.
+    PRODUCT = "product"
+    SERVICE = "service"
+    BUSINESS_KIND_CHOICES = [(PRODUCT, "Product"), (SERVICE, "Service")]
+    business_kind = models.CharField(
+        max_length=10, choices=BUSINESS_KIND_CHOICES, null=True, blank=True
+    )
 
     is_formal = models.BooleanField(default=False)
     business_reg_certificate = models.FileField(

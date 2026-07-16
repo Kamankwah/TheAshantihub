@@ -1,13 +1,16 @@
 import io
 import tempfile
+from datetime import timedelta
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework.test import APIClient
 from PIL import Image
 
 from accounts.authentication import issue_token
 from accounts.models import BusinessOwner, BusinessOwnerProfile, Customer
+from billing.models import Subscription, SubscriptionPlan
 from listings.models import Category, Listing, Zone
 
 TEST_MEDIA_ROOT = tempfile.mkdtemp()
@@ -30,8 +33,21 @@ class ListingCRUDTests(TestCase):
             full_name="Ama Seller", login_phone="+233207445577", password_hash="x",
         )
         self.hotels = Category.objects.get(slug="hotels")
+        self.shops = Category.objects.get(slug="shops")
         self.manhyia = Zone.objects.get(name="Manhyia")
         self.token = issue_token(self.owner, "business_owner")
+
+        # An active, unlimited-listings subscription for the default owner —
+        # required as of the subscription-enforcement work so the many
+        # pre-existing tests in this file (which predate that work and don't
+        # otherwise set one up) keep exercising a normal, allowed create/edit
+        # rather than tripping the new "no active subscription" check.
+        self.service_plan = SubscriptionPlan.objects.get(tier="service")
+        now = timezone.now()
+        Subscription.objects.create(
+            business_owner=self.owner, plan=self.service_plan,
+            current_period_start=now, current_period_end=now + timedelta(days=30),
+        )
 
     def _auth(self, owner):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(owner, 'business_owner')}")
@@ -187,3 +203,115 @@ class ListingCRUDTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 403)
+
+    # --- Subscription-based enforcement (business-subscription follow-up) ---
+
+    def test_regression_matching_kind_within_cap_active_subscription_succeeds(self):
+        # The most important test here: confirms the new checks don't break
+        # the existing, otherwise-valid happy path.
+        self.owner.profile.business_kind = BusinessOwnerProfile.SERVICE
+        self.owner.profile.save()
+        self._auth(self.owner)
+        response = self.client.post(
+            "/api/listings/mine/",
+            {"category": self.hotels.id, "zone": self.manhyia.id, "name": "New Lodge", "description": "Desc."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+
+    def test_cannot_create_listing_with_mismatched_category_kind(self):
+        # hotels is a "service" category; owner is registered product-only.
+        self.owner.profile.business_kind = BusinessOwnerProfile.PRODUCT
+        self.owner.profile.save()
+        self._auth(self.owner)
+        response = self.client.post(
+            "/api/listings/mine/",
+            {"category": self.hotels.id, "zone": self.manhyia.id, "name": "Nope", "description": "D."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("category", response.json())
+
+    def test_cannot_edit_listing_to_mismatched_category_kind(self):
+        self.owner.profile.business_kind = BusinessOwnerProfile.PRODUCT
+        self.owner.profile.save()
+        listing = Listing.objects.create(
+            business_owner=self.owner, category=self.shops, zone=self.manhyia,
+            name="My Shop Item", description="D.", contact_phone="+233207445566",
+        )
+        self._auth(self.owner)
+        response = self.client.patch(
+            f"/api/listings/mine/{listing.id}/", {"category": self.hotels.id}, format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("category", response.json())
+
+    def test_cannot_create_listing_without_a_subscription(self):
+        no_sub_owner = BusinessOwner.objects.create(
+            full_name="No Sub Owner", login_phone="+233207445588", password_hash="x",
+        )
+        BusinessOwnerProfile.objects.create(
+            business_owner=no_sub_owner, ghana_card_number="GHA-333444555-6",
+            gps_address="AK-039-5061", business_contact_phone="+233207445588",
+            is_formal=False, default_payout_method="momo", payout_momo_network="MTN",
+            payout_momo_number="+233207445588", payout_momo_name="No Sub Owner",
+        )
+        self._auth(no_sub_owner)
+        response = self.client.post(
+            "/api/listings/mine/",
+            {"category": self.hotels.id, "zone": self.manhyia.id, "name": "Nope", "description": "D."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("subscription", response.json())
+
+    def test_cannot_create_listing_with_expired_subscription(self):
+        now = timezone.now()
+        self.owner.subscription.current_period_end = now - timedelta(days=1)
+        self.owner.subscription.save()
+        self._auth(self.owner)
+        response = self.client.post(
+            "/api/listings/mine/",
+            {"category": self.hotels.id, "zone": self.manhyia.id, "name": "Nope", "description": "D."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("subscription", response.json())
+
+    def test_cannot_create_listing_at_active_listing_cap(self):
+        basic_plan = SubscriptionPlan.objects.get(tier="product_basic")
+        self.owner.subscription.plan = basic_plan
+        self.owner.subscription.save()
+        for i in range(basic_plan.max_active_listings):
+            Listing.objects.create(
+                business_owner=self.owner, category=self.shops, zone=self.manhyia,
+                name=f"Published {i}", description="D.", contact_phone="+233207445566",
+                status=Listing.PUBLISHED,
+            )
+        self._auth(self.owner)
+        response = self.client.post(
+            "/api/listings/mine/",
+            {"category": self.shops.id, "zone": self.manhyia.id, "name": "One Too Many", "description": "D."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("max_active_listings", response.json())
+
+    def test_unlimited_plan_never_blocks_on_listing_count(self):
+        unlimited_plan = SubscriptionPlan.objects.get(tier="product_unlimited")
+        self.assertIsNone(unlimited_plan.max_active_listings)
+        self.owner.subscription.plan = unlimited_plan
+        self.owner.subscription.save()
+        for i in range(20):
+            Listing.objects.create(
+                business_owner=self.owner, category=self.shops, zone=self.manhyia,
+                name=f"Published {i}", description="D.", contact_phone="+233207445566",
+                status=Listing.PUBLISHED,
+            )
+        self._auth(self.owner)
+        response = self.client.post(
+            "/api/listings/mine/",
+            {"category": self.shops.id, "zone": self.manhyia.id, "name": "Yet Another", "description": "D."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)

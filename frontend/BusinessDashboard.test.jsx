@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { BusinessDashboard } from './App.jsx'
+import BusinessCommandCenter from './components/dashboard/BusinessCommandCenter.jsx'
 import { server } from './mocks/server.js'
 
 function renderWithQueryClient(ui) {
@@ -36,14 +37,14 @@ function makeAuth(overrides = {}) {
 describe('BusinessDashboard approval gating', () => {
   it('shows the normal tabs when verified', async () => {
     mockDashboardData()
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     await waitFor(() => expect(screen.getByText(/Akwaaba, Abena/)).toBeInTheDocument())
     expect(screen.getByRole('button', { name: /Listings & Prices/ })).not.toBeDisabled()
   })
 
   it('shows a pending-review status card with disabled tabs when pending', async () => {
     mockDashboardData()
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'pending' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'pending' }} />)
     expect(screen.getByText(/under review/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Listings & Prices/ })).toBeDisabled()
     expect(screen.queryByText(/Akwaaba, Abena/)).not.toBeInTheDocument()
@@ -51,14 +52,14 @@ describe('BusinessDashboard approval gating', () => {
 
   it('shows the rejection reason and a resubmit button when rejected', async () => {
     mockDashboardData()
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'rejected', kycRejectionReason: 'Blurry Ghana Card' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'rejected', kycRejectionReason: 'Blurry Ghana Card' }} />)
     expect(screen.getByText('Blurry Ghana Card')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Fix and Resubmit' })).toBeInTheDocument()
   })
 
   it('clicking Fix and Resubmit opens the registration flow pre-filled with the existing profile', async () => {
     mockDashboardData({ profile: { ghana_card_number: 'GHA-999', gps_address: 'AK-9', business_contact_phone: '+233209999999', is_formal: false } })
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'rejected', kycRejectionReason: 'Blurry Ghana Card' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'rejected', kycRejectionReason: 'Blurry Ghana Card' }} />)
     await waitFor(() => expect(screen.getByRole('button', { name: 'Fix and Resubmit' })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Fix and Resubmit' }))
     await waitFor(() => expect(screen.getByPlaceholderText('Ghana Card number')).toHaveValue('GHA-999'))
@@ -103,7 +104,7 @@ describe('BusinessDashboard Submit for Hero', () => {
         return HttpResponse.json(created, { status: 201 })
       }),
     )
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     fireEvent.click(await screen.findByText('🌟 Submit for Hero'))
     fireEvent.change(screen.getByPlaceholderText('A one-sentence caption for the hero slider…'), { target: { value: 'Best lodge in town' } })
@@ -118,7 +119,7 @@ describe('BusinessDashboard Submit for Hero', () => {
     server.use(
       http.post('http://localhost:8000/api/hero/submit/', () => HttpResponse.json({ detail: 'Already outstanding' }, { status: 400 })),
     )
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     fireEvent.click(await screen.findByText('🌟 Submit for Hero'))
     fireEvent.change(screen.getByPlaceholderText('A one-sentence caption for the hero slider…'), { target: { value: 'Best lodge in town' } })
@@ -130,7 +131,7 @@ describe('BusinessDashboard Submit for Hero', () => {
     mockDashboardDataWithPhotos({
       initialSubmission: { id: 30, status: 'rejected', caption: 'Old caption', rejection_reason: 'Blurry photo' },
     })
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     await screen.findByText(/Hero Spotlight/)
     expect(screen.getByText('Rejected')).toBeInTheDocument()
@@ -146,7 +147,7 @@ describe('BusinessDashboard Submit for Hero', () => {
         return HttpResponse.json(created, { status: 201 })
       }),
     )
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     fireEvent.click(await screen.findByText('🌟 Submit for Hero'))
     fireEvent.change(screen.getByPlaceholderText('A one-sentence caption for the hero slider…'), { target: { value: 'Best lodge in town' } })
@@ -179,7 +180,7 @@ describe('BusinessDashboard Submit for Hero', () => {
         return HttpResponse.json(updated)
       }),
     )
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     fireEvent.click(await screen.findByText('🌟 Submit for Hero'))
     fireEvent.change(screen.getByPlaceholderText('A one-sentence caption for the hero slider…'), { target: { value: 'Best lodge in town' } })
@@ -228,7 +229,7 @@ describe('BusinessDashboard Promote this listing', () => {
 
   it('only shows the Promote action for a published listing', async () => {
     mockDashboardDataWithPublishedListing()
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     await screen.findByText("Ama's Lodge")
     expect(screen.getByText('📣 Promote')).toBeInTheDocument()
@@ -246,7 +247,7 @@ describe('BusinessDashboard Promote this listing', () => {
         }, { status: 201 })
       }),
     )
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     fireEvent.click(await screen.findByText('📣 Promote'))
     fireEvent.click(screen.getByText('📣 Promote 7d'))
@@ -267,7 +268,7 @@ describe('BusinessDashboard Promote this listing', () => {
         }, { status: 201 })
       }),
     )
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     fireEvent.click(await screen.findByText('📣 Promote'))
     fireEvent.change(screen.getByDisplayValue('Featured'), { target: { value: 'boost' } })
@@ -285,7 +286,7 @@ describe('BusinessDashboard Promote this listing', () => {
     server.use(
       http.post('http://localhost:8000/api/listings/1/promote/', () => HttpResponse.json({ detail: 'Already active' }, { status: 400 })),
     )
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     fireEvent.click(await screen.findByText('📣 Promote'))
     fireEvent.click(screen.getByText('📣 Promote 7d'))
@@ -309,7 +310,7 @@ describe('BusinessDashboard Promote this listing', () => {
         ])
       }),
     )
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     fireEvent.click(await screen.findByText('📣 Promote'))
     fireEvent.click(screen.getByText('📣 Promote 7d'))
@@ -353,7 +354,7 @@ describe('BusinessDashboard Listings & Prices specs/service_duration editing', (
       specs: [{ label: 'Material', value: 'Cotton' }],
       service_duration: '2 hours',
     })
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     fireEvent.click(await screen.findByText('✏️ Edit'))
     expect(screen.getByDisplayValue('2 hours')).toBeInTheDocument()
@@ -370,7 +371,7 @@ describe('BusinessDashboard Listings & Prices specs/service_duration editing', (
         return HttpResponse.json({ id: 1 })
       }),
     )
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     fireEvent.click(await screen.findByText('✏️ Edit'))
     fireEvent.change(screen.getByPlaceholderText('e.g. 2 hours'), { target: { value: '3 hours' } })
@@ -394,7 +395,7 @@ describe('BusinessDashboard Listings & Prices specs/service_duration editing', (
         return HttpResponse.json({ id: 1 })
       }),
     )
-    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', kycStatus: 'verified' }} />)
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
     fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
     fireEvent.click(await screen.findByText('✏️ Edit'))
     expect(screen.getByDisplayValue('Material')).toBeInTheDocument()
@@ -402,5 +403,114 @@ describe('BusinessDashboard Listings & Prices specs/service_duration editing', (
     expect(screen.queryByDisplayValue('Material')).not.toBeInTheDocument()
     fireEvent.click(screen.getByText('✓ Save'))
     await waitFor(() => expect(patchBody).toMatchObject({ specs: [] }))
+  })
+})
+
+// ─── Command Center — new dark analytics / unified dashboard ─────────────────
+// Rich analytics fixture: listings across statuses, a spend transaction, a real
+// credit score with factors, and an active subscription with plan entitlements.
+function mockAnalyticsData() {
+  server.use(
+    http.get('http://localhost:8000/api/listings/mine/', () => HttpResponse.json([
+      { id: 1, name: 'Ama Lodge', status: 'published', price_amount: '450.00', price_unit: 'per night', photos: [] },
+      { id: 2, name: 'Kente Store', status: 'published', price_amount: '90.00', price_unit: 'per item', photos: [] },
+      { id: 3, name: 'Draft Tour', status: 'pending_review', price_amount: '60.00', price_unit: 'per person', photos: [] },
+      { id: 4, name: 'Old Draft', status: 'draft', price_amount: null, price_unit: 'per item', photos: [] },
+    ])),
+    http.get('http://localhost:8000/api/accounts/business-owners/me/profile/', () => HttpResponse.json({
+      ghana_card_number: 'GHA-1', gps_address: 'Adum, Kumasi', business_contact_phone: '+233200000000', is_formal: true,
+    })),
+    http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([])),
+    http.get('http://localhost:8000/api/billing/subscriptions/me/', () => HttpResponse.json({
+      id: 5, plan: { name: 'Growth', tier: 'growth', max_active_listings: 10, hero_days: 14, boost_credits_per_month: 5 },
+      billing_cycle: 'monthly', status: 'active', current_period_end: '2099-01-01T00:00:00Z',
+    })),
+    http.get('http://localhost:8000/api/hero/mine/', () => HttpResponse.json({})),
+    http.get('http://localhost:8000/api/billing/transactions/mine/', () => HttpResponse.json([
+      { id: 1, amount: '120.00', purpose: 'AshantiHub Growth Plan — Monthly', status: 'success', reference: 'R1', created_at: '2026-07-05T00:00:00Z' },
+    ])),
+    http.get('http://localhost:8000/api/credit/scores/me/', () => HttpResponse.json({
+      score: 720, grade: 'B+', grade_label: 'Good', loan_eligible: true,
+      factors: { listings_published: { value: 4, score_pct: 40, weight: 0.3 }, kyc_verified: { value: true, score_pct: 100, weight: 0.2 } },
+      computed_at: '2026-07-01T00:00:00Z',
+    })),
+    http.get('http://localhost:8000/api/reviews/seller/:id/', () => HttpResponse.json({
+      count: 12, next: null, previous: null, results: [], avg_rating: 4.6, review_count: 12,
+    })),
+  )
+}
+
+const analyticsUser = { id: 7, fullName: 'Abena Owusu', accountType: 'business_owner', kycStatus: 'verified' }
+
+describe('BusinessDashboard Analytics tab', () => {
+  it('renders the KPI row from real derived data', async () => {
+    mockAnalyticsData()
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={analyticsUser} />)
+    await waitFor(() => expect(screen.getByText(/Akwaaba, Abena/)).toBeInTheDocument())
+    // KPI labels
+    expect(screen.getByText('Active Listings')).toBeInTheDocument()
+    expect(screen.getByText('Business Rating')).toBeInTheDocument()
+    expect(screen.getByText('Credit Score')).toBeInTheDocument()
+    // KPI values: 2 published listings, 4.6★ rating, Growth plan
+    await waitFor(() => expect(screen.getByText('4.6★')).toBeInTheDocument())
+    expect(screen.getByText('Growth')).toBeInTheDocument()
+    // Credit score 720 appears (KPI + gauge overlay)
+    expect(screen.getAllByText('720').length).toBeGreaterThan(0)
+  })
+
+  it('renders each analytics chart frame + the listings-status legend', async () => {
+    mockAnalyticsData()
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={analyticsUser} />)
+    await waitFor(() => expect(screen.getByText(/Your AshantiHub spend/)).toBeInTheDocument())
+    expect(screen.getByText(/Listings by status/)).toBeInTheDocument()
+    expect(screen.getByText(/Credit score/)).toBeInTheDocument()
+    expect(screen.getByText(/What drives your score/)).toBeInTheDocument()
+    expect(screen.getByText(/Plan usage/)).toBeInTheDocument()
+    // donut legend, rendered outside the (jsdom-sizeless) chart once the async
+    // listings query resolves. Text is split across a colour-swatch span + text
+    // nodes, so assert on body textContent and wait for the data to land.
+    await waitFor(() => expect(document.body).toHaveTextContent('Published (2)'))
+    expect(document.body).toHaveTextContent('Pending Review (1)')
+  })
+})
+
+describe('BusinessDashboard command-center tab navigation', () => {
+  it('opens the Deliveries scaffold with an honest coming-soon state', async () => {
+    mockAnalyticsData()
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={analyticsUser} />)
+    fireEvent.click(await screen.findByRole('button', { name: /🚚 Deliveries/ }))
+    expect(await screen.findByText('Delivery tracking is coming soon')).toBeInTheDocument()
+    expect(screen.getByText('COMING SOON')).toBeInTheDocument()
+    expect(screen.getByText('Out for delivery')).toBeInTheDocument()
+  })
+
+  it('opens the Payments tab (ported PaymentDashboard content)', async () => {
+    mockAnalyticsData()
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={analyticsUser} />)
+    fireEvent.click(await screen.findByRole('button', { name: /💳 Payments/ }))
+    expect(await screen.findByText('💰 Payment Overview')).toBeInTheDocument()
+  })
+
+  it('opens the Credit tab (ported CreditDashboard content)', async () => {
+    mockAnalyticsData()
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={analyticsUser} />)
+    fireEvent.click(await screen.findByRole('button', { name: /🏅 Credit/ }))
+    expect(await screen.findByText('🏅 AshantiHub Credit Score System')).toBeInTheDocument()
+  })
+
+  it('deep-links to the Payments tab via initialTab (the /payments route)', async () => {
+    mockAnalyticsData()
+    renderWithQueryClient(
+      <BusinessCommandCenter initialTab="payments" onExit={vi.fn()} user={analyticsUser} auth={makeAuth()} PaymentComponent={() => null} />,
+    )
+    expect(await screen.findByText('💰 Payment Overview')).toBeInTheDocument()
+  })
+
+  it('deep-links to the Credit tab via initialTab (the /credit route)', async () => {
+    mockAnalyticsData()
+    renderWithQueryClient(
+      <BusinessCommandCenter initialTab="credit" onExit={vi.fn()} user={analyticsUser} auth={makeAuth()} PaymentComponent={() => null} />,
+    )
+    expect(await screen.findByText('🏅 AshantiHub Credit Score System')).toBeInTheDocument()
   })
 })

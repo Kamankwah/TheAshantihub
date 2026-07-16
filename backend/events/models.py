@@ -6,6 +6,7 @@ from django.db import models
 
 from accounts.models import BusinessOwner, Customer, StaffUser
 from accounts.validators import validate_image_content_type
+from billing.models import Transaction
 from listings.models import Category, Zone
 
 
@@ -194,6 +195,52 @@ class Event(models.Model):
         self.save(update_fields=["going_count"])
 
 
+class EventPricingTier(models.Model):
+    """One of a fixed set of visibility-window durations an organizer can
+    choose when submitting an event, replacing the old flat
+    EVENT_DAILY_RATE-per-day constant. `live_price` is the total charge for
+    the whole window (not a per-day rate).
+
+    The set of durations is fixed by product decision — only `live_price` is
+    ever edited, via a two-step propose/approve workflow (accountant
+    proposes, super_admin approves/rejects): `pending_price` non-null means a
+    proposal is outstanding; approving copies it into `live_price` and clears
+    the pending fields, rejecting just clears them. No prior pattern for this
+    two-step workflow existed elsewhere in this codebase — this is the first.
+    """
+
+    DAYS_7 = 7
+    DAYS_15 = 15
+    DAYS_30 = 30
+    DAYS_60 = 60
+    DAYS_90 = 90
+    DURATION_CHOICES = [
+        (DAYS_7, "7 days"),
+        (DAYS_15, "15 days"),
+        (DAYS_30, "30 days"),
+        (DAYS_60, "60 days"),
+        (DAYS_90, "90 days"),
+    ]
+
+    duration_days = models.PositiveIntegerField(choices=DURATION_CHOICES, unique=True)
+    live_price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    pending_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    proposed_by = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="event_pricing_proposals",
+    )
+    proposed_at = models.DateTimeField(null=True, blank=True)
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["duration_days"]
+
+    def __str__(self):
+        return f"{self.duration_days} days — GHS {self.live_price}"
+
+
 class EventMedia(models.Model):
     """Media attached to an Event. No separate submission/approval queue —
     approval folds into the single Event-approval step (roadmap Phase 6).
@@ -255,3 +302,140 @@ class EventRSVP(models.Model):
 
     def __str__(self):
         return f"{self.customer.full_name} -> {self.event.name} ({self.status})"
+
+
+class EventTicketType(models.Model):
+    """A paid ticket tier an organizer defines for their Event (event
+    ticketing + escrow work). Distinct from the free `EventRSVP` "going"
+    concept above — an event can carry ticket types on top of (or instead
+    of) plain RSVP; nothing here disables RSVP.
+
+    `quantity_total=None` means unlimited; `quantity_sold` is a denormalized
+    counter (matching Event.going_count's `sync_going_count()` pattern
+    above, though here it's incremented directly inside
+    `TicketPurchaseView`'s `select_for_update()`-locked block rather than
+    recomputed from a COUNT(), since ticket purchases are additive and the
+    lock already prevents oversell races).
+    """
+
+    DIGITAL = "digital"
+    PHYSICAL = "physical"
+    DELIVERY_METHOD_CHOICES = [
+        (DIGITAL, "Digital"),
+        (PHYSICAL, "Physical"),
+    ]
+
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="ticket_types")
+    name = models.CharField(max_length=100)
+    description = models.CharField(max_length=500, blank=True, default="")
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    delivery_method = models.CharField(
+        max_length=10, choices=DELIVERY_METHOD_CHOICES, default=DIGITAL
+    )
+    # null = unlimited.
+    quantity_total = models.PositiveIntegerField(null=True, blank=True)
+    quantity_sold = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["event", "name"], name="unique_ticket_type_name_per_event"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.name} — {self.event.name} (GHS {self.price})"
+
+
+def _generate_unique_ticket_code():
+    """Per-ticket redemption code, mirroring _generate_unique_access_code
+    above exactly (same rationale: token_hex avoids token_urlsafe's
+    non-alphanumeric alphabet). token_hex(6) (12 hex characters) rather than
+    token_hex(4) since tickets are a much higher-volume row than Events.
+    """
+    while True:
+        code = secrets.token_hex(6)
+        if not Ticket.objects.filter(code=code).exists():
+            return code
+
+
+class Ticket(models.Model):
+    """A single purchased ticket (event ticketing + escrow work). Payment for
+    a ticket is held in escrow (`escrow_status=held`) until the ticket is
+    delivered/checked in (`EventCheckinView`), at which point it is
+    auto-released — or a staff `accountant` (holding `escrow.release`/
+    `escrow.hold`/`escrow.refund`) can manually override that lifecycle as
+    an exception path (fraud, dispute, no-show, etc.).
+
+    `delivery_method`/`price` are snapshotted from the `EventTicketType` at
+    purchase time rather than FK'd live — mirrors how `cart`/`orders`
+    already snapshot listing price at time of purchase elsewhere in this
+    codebase, so a later edit to the ticket type's price/delivery method
+    never retroactively changes an already-sold ticket.
+
+    Business rules enforced in views, not here (matching this app's
+    "business rules live in views, not model methods" convention elsewhere
+    in this file): a ticket can only be refunded while
+    `escrow_status=held` and undelivered; once `refunded_at` is set, a
+    ticket can never subsequently be released or checked in.
+    """
+
+    HELD = "held"
+    RELEASED = "released"
+    ESCROW_STATUS_CHOICES = [
+        (HELD, "Held"),
+        (RELEASED, "Released"),
+    ]
+
+    ticket_type = models.ForeignKey(
+        EventTicketType, on_delete=models.PROTECT, related_name="tickets"
+    )
+    purchased_by = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name="tickets")
+    transaction = models.ForeignKey(Transaction, on_delete=models.PROTECT, related_name="tickets")
+    # Generated in save() via _generate_unique_ticket_code(), exactly
+    # mirroring Event.access_code/_generate_unique_access_code above.
+    code = models.CharField(max_length=24, unique=True, editable=False, blank=True)
+    delivery_method = models.CharField(max_length=10, choices=EventTicketType.DELIVERY_METHOD_CHOICES)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    delivered_at = models.DateTimeField(null=True, blank=True)
+    delivered_by_staff = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="ticket_checkins",
+    )
+
+    escrow_status = models.CharField(max_length=10, choices=ESCROW_STATUS_CHOICES, default=HELD)
+    escrow_held_at = models.DateTimeField(auto_now_add=True)
+    escrow_released_at = models.DateTimeField(null=True, blank=True)
+    # Null when the release happened automatically via check-in rather than
+    # a staff override (see EventCheckinView) — a non-null value here means
+    # an accountant manually intervened.
+    escrow_released_by_staff = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="escrow_overrides",
+    )
+    escrow_override_note = models.CharField(max_length=500, blank=True, default="")
+
+    refunded_at = models.DateTimeField(null=True, blank=True)
+    refunded_by_staff = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="ticket_refunds",
+    )
+    refund_reason = models.CharField(max_length=500, blank=True, default="")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.code} ({self.escrow_status})"
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            self.code = _generate_unique_ticket_code()
+        super().save(*args, **kwargs)

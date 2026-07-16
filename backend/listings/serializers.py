@@ -1,6 +1,8 @@
+from django.utils import timezone
 from rest_framework import serializers
 
 from accounts.models import BusinessOwner
+from billing.models import Subscription
 
 from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, Promotion, Zone
 
@@ -92,6 +94,56 @@ class OwnerListingSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"status": "Cannot edit a published listing."}
             )
+
+        owner = self.context["request"].user
+        profile = getattr(owner, "profile", None)
+
+        # Category-kind restriction — applies to both create and edit, since
+        # an edit can change a listing's category just as easily as a create
+        # can pick the wrong one in the first place.
+        category = data.get("category", getattr(self.instance, "category", None))
+        if (
+            profile is not None
+            and profile.business_kind
+            and category is not None
+            and category.kind
+            and category.kind != profile.business_kind
+        ):
+            raise serializers.ValidationError(
+                {"category": f"Your business is registered for {profile.business_kind} listings only."}
+            )
+
+        if self.instance is None:
+            subscription = getattr(owner, "subscription", None)
+            if (
+                subscription is None
+                or subscription.status != Subscription.ACTIVE
+                or subscription.current_period_end < timezone.now()
+            ):
+                raise serializers.ValidationError(
+                    {
+                        "subscription": (
+                            "Your subscription isn't active. Choose or renew a plan "
+                            "before adding new listings."
+                        )
+                    }
+                )
+
+            max_active_listings = subscription.plan.max_active_listings
+            if max_active_listings is not None:
+                active_count = Listing.objects.filter(
+                    business_owner=owner, status=Listing.PUBLISHED
+                ).count()
+                if active_count >= max_active_listings:
+                    raise serializers.ValidationError(
+                        {
+                            "max_active_listings": (
+                                "You've reached your plan's active-listing limit. "
+                                "Upgrade your plan to add more."
+                            )
+                        }
+                    )
+
         return data
 
     def create(self, validated_data):

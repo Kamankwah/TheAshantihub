@@ -20,7 +20,12 @@ from .serializers import (
     BusinessOwnerProfileUpdateSerializer,
     CustomerListSerializer,
     CustomerLoginSerializer,
+    CustomerProfileSerializer,
     CustomerRegistrationSerializer,
+    CustomerSecondaryEmailConfirmSerializer,
+    CustomerSecondaryEmailRequestSerializer,
+    CustomerSecondaryPhoneConfirmSerializer,
+    CustomerSecondaryPhoneRequestSerializer,
     PayoutDetailSerializer,
     StaffActivateSerializer,
     StaffInviteSerializer,
@@ -45,6 +50,12 @@ def me(request):
         data["kyc_status"] = request.user.kyc_status
         data["kyc_rejection_reason"] = request.user.kyc_rejection_reason
         data["registration_step"] = request.user.compute_registration_step()
+    if isinstance(request.user, Customer):
+        data["avatar"] = (
+            request.build_absolute_uri(request.user.avatar.url) if request.user.avatar else None
+        )
+        data["email"] = request.user.email
+        data["phone"] = request.user.phone
     return Response(data)
 
 
@@ -259,6 +270,74 @@ class BusinessOwnerProfileUpdateView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user.profile
+
+
+class CustomerProfileUpdateView(generics.RetrieveUpdateAPIView):
+    serializer_class = CustomerProfileSerializer
+    permission_classes = [IsCustomer]
+    http_method_names = ["get", "patch"]
+
+    def get_object(self):
+        return self.request.user
+
+
+# Secondary email/phone verification (user_account_dashboard work) — each is
+# a two-step request/confirm pair mirroring StaffActivateSerializer's
+# invite-token shape above, just with a 6-digit code instead of a long random
+# token. No real email/SMS transport exists anywhere in this codebase (see
+# CLAUDE.md's notes on Hubtel payments/AI messaging both being simulated), so
+# the request view returns the code directly in its response — clearly
+# labeled `demo_code` — rather than silently pretending to deliver it.
+class CustomerSecondaryEmailRequestView(generics.GenericAPIView):
+    serializer_class = CustomerSecondaryEmailRequestSerializer
+    permission_classes = [IsCustomer]
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        customer = serializer.save()
+        return Response({
+            "secondary_email": customer.secondary_email,
+            "demo_code": customer.secondary_email_verify_code,
+            "expires_in_minutes": 10,
+        })
+
+
+class CustomerSecondaryEmailConfirmView(generics.GenericAPIView):
+    serializer_class = CustomerSecondaryEmailConfirmSerializer
+    permission_classes = [IsCustomer]
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        customer = serializer.save()
+        return Response({"secondary_email": customer.secondary_email, "secondary_email_verified": True})
+
+
+class CustomerSecondaryPhoneRequestView(generics.GenericAPIView):
+    serializer_class = CustomerSecondaryPhoneRequestSerializer
+    permission_classes = [IsCustomer]
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        customer = serializer.save()
+        return Response({
+            "secondary_phone": customer.secondary_phone,
+            "demo_code": customer.secondary_phone_verify_code,
+            "expires_in_minutes": 10,
+        })
+
+
+class CustomerSecondaryPhoneConfirmView(generics.GenericAPIView):
+    serializer_class = CustomerSecondaryPhoneConfirmSerializer
+    permission_classes = [IsCustomer]
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        customer = serializer.save()
+        return Response({"secondary_phone": customer.secondary_phone, "secondary_phone_verified": True})
 
 
 class TermsAcceptView(APIView):

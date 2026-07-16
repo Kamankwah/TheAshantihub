@@ -38,6 +38,8 @@ export const handlers = [
     return HttpResponse.json({
       contact_email: '', contact_phone: '', contact_address: '',
       facebook_url: '', instagram_url: '', linkedin_url: '', twitter_url: '',
+      tiktok_url: 'https://tiktok.com/@ashantihub', youtube_url: 'https://youtube.com/@ashantihub',
+      whatsapp_number: '233244000000', support_hours: 'Mon–Sat, 8:00am – 8:00pm GMT',
       warranty_returns_policy: '', service_dispute_policy: '',
     })
   }),
@@ -46,6 +48,7 @@ export const handlers = [
     return HttpResponse.json({
       contact_email: '', contact_phone: '', contact_address: '',
       facebook_url: '', instagram_url: '', linkedin_url: '', twitter_url: '',
+      tiktok_url: '', youtube_url: '', whatsapp_number: '', support_hours: '',
       warranty_returns_policy: '', service_dispute_policy: '',
       ...body,
     })
@@ -79,6 +82,18 @@ export const handlers = [
   http.get('http://localhost:8000/api/orders/', () => {
     return HttpResponse.json([])
   }),
+  // The signed-in customer's full self-service profile (useMyCustomerProfile,
+  // AccountProfileCard/SettingsTab) — default handler, overridden per-test
+  // where a specific address/gender/secondary-email state is needed.
+  http.get('http://localhost:8000/api/accounts/customers/me/profile/', () => {
+    return HttpResponse.json({
+      id: 1, full_name: 'Ama Boateng', avatar: null, email: null, phone: null,
+      address: null, gender: null, date_of_birth: null,
+      secondary_email: null, secondary_email_verified: false,
+      secondary_phone: null, secondary_phone_verified: false,
+      email_notifications_enabled: true, sms_notifications_enabled: true,
+    })
+  }),
   // Events (docs/BUSINESS_EVENTS_ROADMAP.md Phase 6) — default handlers,
   // overridden per-test via server.use() where a specific events state/
   // response is needed.
@@ -86,6 +101,36 @@ export const handlers = [
     return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
   }),
   http.get('http://localhost:8000/api/events/mine/', () => {
+    return HttpResponse.json([])
+  }),
+  // The signed-in customer's own purchased tickets (useMyTickets) — default
+  // empty-array handler, overridden per-test where specific ticket rows are
+  // needed (e.g. UserPanel.test.jsx's Account Overview/My Tickets tabs).
+  http.get('http://localhost:8000/api/events/tickets/mine/', () => {
+    return HttpResponse.json([])
+  }),
+  // Event pricing tiers (event pricing tiers work) — default handler
+  // matching the 5 seeded backend rows, overridden per-test where a
+  // different price/proposal state is needed.
+  http.get('http://localhost:8000/api/events/pricing-tiers/', () => {
+    return HttpResponse.json([
+      { id: 1, duration_days: 7, live_price: '20.00' },
+      { id: 2, duration_days: 15, live_price: '30.00' },
+      { id: 3, duration_days: 30, live_price: '50.00' },
+      { id: 4, duration_days: 60, live_price: '90.00' },
+      { id: 5, duration_days: 90, live_price: '120.00' },
+    ])
+  }),
+  http.get('http://localhost:8000/api/events/pricing-tiers/manage/', () => {
+    return HttpResponse.json([
+      { id: 1, duration_days: 7, live_price: '20.00', pending_price: null, proposed_by: null, proposed_by_name: null, proposed_at: null },
+      { id: 2, duration_days: 15, live_price: '30.00', pending_price: null, proposed_by: null, proposed_by_name: null, proposed_at: null },
+      { id: 3, duration_days: 30, live_price: '50.00', pending_price: null, proposed_by: null, proposed_by_name: null, proposed_at: null },
+      { id: 4, duration_days: 60, live_price: '90.00', pending_price: null, proposed_by: null, proposed_by_name: null, proposed_at: null },
+      { id: 5, duration_days: 90, live_price: '120.00', pending_price: null, proposed_by: null, proposed_by_name: null, proposed_at: null },
+    ])
+  }),
+  http.get('http://localhost:8000/api/events/moderation/pending/', () => {
     return HttpResponse.json([])
   }),
   // RSVP / attendees (docs/BUSINESS_EVENTS_ROADMAP.md Phase 7) — default
@@ -99,6 +144,17 @@ export const handlers = [
   }),
   http.get('http://localhost:8000/api/events/:id/rsvps/', () => {
     return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
+  // Business Command Center analytics (frontend dashboard redesign) — the
+  // Analytics tab is the default landing tab and fires the owner's transaction
+  // ledger + credit score on mount to derive its charts. Default to empty/none
+  // so any dashboard render is clean; overridden per-test via server.use()
+  // where specific analytics data is asserted.
+  http.get('http://localhost:8000/api/billing/transactions/mine/', () => {
+    return HttpResponse.json([])
+  }),
+  http.get('http://localhost:8000/api/credit/scores/me/', () => {
+    return HttpResponse.json({ score: null, grade: null, grade_label: null, loan_eligible: false, factors: {}, computed_at: null })
   }),
   // Reviews & Q&A (reviews/qa apps, frontend Phase 3) — default handlers,
   // overridden per-test via server.use() where a specific reviews/Q&A/
@@ -149,5 +205,109 @@ export const handlers = [
   http.post('http://localhost:8000/api/qa/questions/:id/answer/', async ({ request }) => {
     const body = await request.json()
     return HttpResponse.json({ id: 1, answer_text: body.answer_text, answered_at: '2026-07-01T00:00:00Z' })
+  }),
+  // Public contact form + staff contact-messages queue (frontend Phase —
+  // Contact page rebuild). Default handlers, overridden per-test where a
+  // specific submit-error/queue-content response is needed.
+  http.post('http://localhost:8000/api/core/contact/', async ({ request }) => {
+    const body = await request.json()
+    return HttpResponse.json(
+      { id: 1, category: body.category, name: body.name, email: body.email, phone: body.phone || '', subject: body.subject, message: body.message, status: 'new', resolved_by_name: null, resolved_at: null, created_at: '2026-07-01T00:00:00Z' },
+      { status: 201 },
+    )
+  }),
+  http.get('http://localhost:8000/api/core/contact-messages/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
+  http.post('http://localhost:8000/api/core/contact-messages/:id/read/', () => {
+    return HttpResponse.json({ id: 1, status: 'read' })
+  }),
+  http.post('http://localhost:8000/api/core/contact-messages/:id/resolve/', () => {
+    return HttpResponse.json({ id: 1, status: 'resolved' })
+  }),
+  // Admin OverviewPanel (system-admin-dashboard visual-system rebuild) fires
+  // several staff-only queue/count hooks on mount, each gated client-side by
+  // `auth.hasPermission(...)` — but any StaffDashboard render with a
+  // permissive-enough session (e.g. the super_admin test fixture's
+  // `hasPermission: () => true`) will fire all of them. Default handlers
+  // here so a test that doesn't care about these panels' content doesn't
+  // trip MSW's `onUnhandledRequest: 'error'`; overridden per-test via
+  // server.use() where specific queue content is asserted.
+  http.get('http://localhost:8000/api/accounts/kyc/pending/', () => {
+    return HttpResponse.json([])
+  }),
+  http.get('http://localhost:8000/api/listings/moderation/pending/', () => {
+    return HttpResponse.json([])
+  }),
+  http.get('http://localhost:8000/api/listings/hero/pending/', () => {
+    return HttpResponse.json([])
+  }),
+  http.get('http://localhost:8000/api/accounts/customers/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
+  http.get('http://localhost:8000/api/accounts/business-owners/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
+  http.get('http://localhost:8000/api/events/tickets/escrow/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
+  // Disputes (disputes app) — default handler, overridden per-test via
+  // server.use() where a specific dispute-queue response is needed.
+  http.get('http://localhost:8000/api/disputes/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
+  http.post('http://localhost:8000/api/disputes/:id/flag/', () => {
+    return HttpResponse.json({ id: 1, status: 'investigating' })
+  }),
+  http.post('http://localhost:8000/api/disputes/:id/resolve/', () => {
+    return HttpResponse.json({ id: 1, status: 'resolved' })
+  }),
+  // Transactions report (extended billing app) — default handler,
+  // overridden per-test via server.use() where a specific report is needed.
+  http.get('http://localhost:8000/api/billing/transactions/report/', () => {
+    return HttpResponse.json({ summary: { count: 0, total_amount: '0.00' }, status_breakdown: {}, series: [] })
+  }),
+  // Messaging (messaging app) — default handlers, overridden per-test via
+  // server.use() where specific conversation/thread content is needed.
+  // GET /api/messaging/conversations/ (caller's own) has no pagination_class
+  // on the backend, so it's a plain array — same convention as
+  // GET /api/orders/ above.
+  http.get('http://localhost:8000/api/messaging/conversations/', () => {
+    return HttpResponse.json([])
+  }),
+  http.post('http://localhost:8000/api/messaging/conversations/', async ({ request }) => {
+    const body = await request.json()
+    return HttpResponse.json(
+      {
+        id: 1, customer: 1, business_owner: null, starter_name: 'Customer', subject: body.subject || '',
+        status: 'open',
+        messages: [{ id: 1, conversation: 1, sender_type: 'customer', body: body.body, created_at: '2026-07-01T00:00:00Z' }],
+        created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z',
+      },
+      { status: 201 },
+    )
+  }),
+  http.post('http://localhost:8000/api/messaging/conversations/:id/messages/', async ({ params, request }) => {
+    const body = await request.json()
+    return HttpResponse.json(
+      { id: 2, conversation: Number(params.id), sender_type: 'customer', body: body.body, created_at: '2026-07-01T00:00:00Z' },
+      { status: 201 },
+    )
+  }),
+  http.get('http://localhost:8000/api/messaging/staff/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
+  http.get('http://localhost:8000/api/messaging/staff/:id/', ({ params }) => {
+    return HttpResponse.json({
+      id: Number(params.id), customer: 1, business_owner: null, starter_name: 'Customer', subject: '', status: 'open',
+      messages: [], created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z',
+    })
+  }),
+  http.post('http://localhost:8000/api/messaging/staff/:id/reply/', async ({ params, request }) => {
+    const body = await request.json()
+    return HttpResponse.json(
+      { id: 3, conversation: Number(params.id), sender_type: 'staff', body: body.body, created_at: '2026-07-01T00:00:00Z' },
+      { status: 201 },
+    )
   }),
 ]
