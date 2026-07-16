@@ -49,7 +49,7 @@ export default function EventPricingPanel({ auth }) {
             <button onClick={() => propose(t.id)} disabled={!draftById[t.id]} style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: draftById[t.id] ? "pointer" : "default" }}>Propose</button>
           </div>}
           {canApprove && t.pending_price && <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
-            <button onClick={() => approve(t.id)} style={{ background: D.green, color: "#04210f", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Approve</button>
+            <button onClick={() => approve(t.id)} style={{ background: D.green, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Approve</button>
             <button onClick={() => reject(t.id)} style={{ background: "rgba(248,113,113,0.14)", color: D.red, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✕ Reject</button>
           </div>}
         </div>
