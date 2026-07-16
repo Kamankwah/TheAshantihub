@@ -223,3 +223,65 @@ class PasswordResetConfirmTests(TestCase):
         )
         self.other_customer.refresh_from_db()
         self.assertTrue(check_password("kojo-password", self.other_customer.password_hash))
+
+
+class PasswordResetTypelessRequestTests(TestCase):
+    """The public forgot-password form sends email only — no account_type.
+    The backend checks every account type for a match and each matching
+    account gets its own reset link (the emailed link carries the type), so
+    no public form ever advertises which account classes exist."""
+
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.customer = Customer.objects.create(
+            full_name="Ama Buyer",
+            phone="+233200003333",
+            email="shared@example.com",
+            password_hash=make_password("old-password"),
+        )
+        self.staff = StaffUser.objects.create(
+            full_name="Adwoa Admin",
+            email="admin-only@example.com",
+            password_hash=make_password("old-password"),
+            role=Role.objects.get(name="super_admin"),
+        )
+
+    def _request(self, email):
+        return self.client.post(
+            "/api/accounts/password-reset/request/", {"email": email}, format="json"
+        )
+
+    def test_email_only_request_finds_a_customer(self):
+        response = self._request("shared@example.com")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(
+            PasswordResetToken.objects.filter(account_type="customer", account_id=self.customer.id).exists()
+        )
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("type=customer", mail.outbox[0].body)
+
+    def test_email_only_request_finds_a_staff_account(self):
+        response = self._request("admin-only@example.com")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(
+            PasswordResetToken.objects.filter(account_type="staff", account_id=self.staff.id).exists()
+        )
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("type=staff", mail.outbox[0].body)
+
+    def test_email_only_request_covers_multiple_matching_account_types(self):
+        BusinessOwner.objects.create(
+            full_name="Ama Trader", login_phone="+233207003333",
+            email="shared@example.com", password_hash=make_password("old-password"),
+        )
+        response = self._request("shared@example.com")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(PasswordResetToken.objects.count(), 2)
+        self.assertEqual(len(mail.outbox), 2)
+
+    def test_email_only_request_is_generic_for_unknown_email(self):
+        response = self._request("nobody@example.com")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(PasswordResetToken.objects.count(), 0)
+        self.assertEqual(len(mail.outbox), 0)
