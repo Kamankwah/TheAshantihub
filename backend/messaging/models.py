@@ -27,6 +27,12 @@ class Conversation(models.Model):
     business_owner = models.ForeignKey(
         BusinessOwner, on_delete=models.CASCADE, null=True, blank=True, related_name="conversations"
     )
+    # Anonymous guest support chat: a browser-generated random token
+    # (persisted in localStorage) stands in for an account. Exactly one of
+    # customer/business_owner/guest_token is set per row — the constraint
+    # below. NULL (never "") when unused so the exactly-one check stays a
+    # clean isnull test.
+    guest_token = models.CharField(max_length=64, null=True, blank=True, db_index=True)
     subject = models.CharField(max_length=200, blank=True)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=OPEN)
 
@@ -41,26 +47,36 @@ class Conversation(models.Model):
         constraints = [
             models.CheckConstraint(
                 check=(
-                    models.Q(customer__isnull=False, business_owner__isnull=True)
-                    | models.Q(customer__isnull=True, business_owner__isnull=False)
+                    models.Q(customer__isnull=False, business_owner__isnull=True, guest_token__isnull=True)
+                    | models.Q(customer__isnull=True, business_owner__isnull=False, guest_token__isnull=True)
+                    | models.Q(customer__isnull=True, business_owner__isnull=True, guest_token__isnull=False)
                 ),
-                name="conversation_exactly_one_of_customer_or_business_owner",
+                name="conversation_exactly_one_starter",
             ),
         ]
 
+    @property
+    def starter_display_name(self):
+        if self.customer_id:
+            return self.customer.full_name
+        if self.business_owner_id:
+            return self.business_owner.full_name
+        return "Guest"
+
     def __str__(self):
-        starter = self.customer.full_name if self.customer_id else self.business_owner.full_name
-        return f"Conversation with {starter} ({self.status})"
+        return f"Conversation with {self.starter_display_name} ({self.status})"
 
 
 class Message(models.Model):
     CUSTOMER = "customer"
     BUSINESS_OWNER = "business_owner"
     STAFF = "staff"
+    GUEST = "guest"
     SENDER_TYPE_CHOICES = [
         (CUSTOMER, "Customer"),
         (BUSINESS_OWNER, "Business Owner"),
         (STAFF, "Staff"),
+        (GUEST, "Guest"),
     ]
 
     conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name="messages")

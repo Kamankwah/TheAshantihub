@@ -145,6 +145,11 @@ REST_FRAMEWORK = {
         # but not unlimited, since it's dark/unexercised until HUBTEL_* env
         # vars are set (see settings.PAYMENTS_PROVIDER).
         "hubtel_webhook": "60/min",
+        # Support chat — open to anonymous guests (keyed per-IP when
+        # anonymous, per-account when signed in), so rate-limited to keep
+        # guest spam bounded without getting in the way of a real
+        # back-and-forth conversation.
+        "messaging": "60/hour",
     },
 }
 

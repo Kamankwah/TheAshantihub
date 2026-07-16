@@ -31,7 +31,7 @@ class ConversationSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_starter_name(self, obj):
-        return obj.customer.full_name if obj.customer_id else obj.business_owner.full_name
+        return obj.starter_display_name
 
 
 class ConversationCreateSerializer(serializers.Serializer):
@@ -69,7 +69,7 @@ class StaffConversationListSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_starter_name(self, obj):
-        return obj.customer.full_name if obj.customer_id else obj.business_owner.full_name
+        return obj.starter_display_name
 
     def _last_message(self, obj):
         # Relies on the queryset having .prefetch_related("messages") so
