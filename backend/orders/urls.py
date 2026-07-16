@@ -12,4 +12,5 @@ urlpatterns = [
         views.OrderDeliveryStatusUpdateView.as_view(),
         name="order-delivery-status-update",
     ),
+    path("<int:pk>/dispute/", views.OrderDisputeCreateView.as_view(), name="order-dispute-create"),
 ]

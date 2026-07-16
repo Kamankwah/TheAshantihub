@@ -41,4 +41,5 @@ urlpatterns = [
         name="transaction-mine-list-create",
     ),
     path("transactions/", views.TransactionReportListView.as_view(), name="transaction-report-list"),
+    path("transactions/report/", views.TransactionReportView.as_view(), name="transaction-report-aggregate"),
 ]

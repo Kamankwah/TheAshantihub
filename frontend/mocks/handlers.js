@@ -207,4 +207,89 @@ export const handlers = [
   http.post('http://localhost:8000/api/core/contact-messages/:id/resolve/', () => {
     return HttpResponse.json({ id: 1, status: 'resolved' })
   }),
+  // Admin OverviewPanel (system-admin-dashboard visual-system rebuild) fires
+  // several staff-only queue/count hooks on mount, each gated client-side by
+  // `auth.hasPermission(...)` — but any StaffDashboard render with a
+  // permissive-enough session (e.g. the super_admin test fixture's
+  // `hasPermission: () => true`) will fire all of them. Default handlers
+  // here so a test that doesn't care about these panels' content doesn't
+  // trip MSW's `onUnhandledRequest: 'error'`; overridden per-test via
+  // server.use() where specific queue content is asserted.
+  http.get('http://localhost:8000/api/accounts/kyc/pending/', () => {
+    return HttpResponse.json([])
+  }),
+  http.get('http://localhost:8000/api/listings/moderation/pending/', () => {
+    return HttpResponse.json([])
+  }),
+  http.get('http://localhost:8000/api/listings/hero/pending/', () => {
+    return HttpResponse.json([])
+  }),
+  http.get('http://localhost:8000/api/accounts/customers/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
+  http.get('http://localhost:8000/api/accounts/business-owners/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
+  http.get('http://localhost:8000/api/events/tickets/escrow/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
+  // Disputes (disputes app) — default handler, overridden per-test via
+  // server.use() where a specific dispute-queue response is needed.
+  http.get('http://localhost:8000/api/disputes/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
+  http.post('http://localhost:8000/api/disputes/:id/flag/', () => {
+    return HttpResponse.json({ id: 1, status: 'investigating' })
+  }),
+  http.post('http://localhost:8000/api/disputes/:id/resolve/', () => {
+    return HttpResponse.json({ id: 1, status: 'resolved' })
+  }),
+  // Transactions report (extended billing app) — default handler,
+  // overridden per-test via server.use() where a specific report is needed.
+  http.get('http://localhost:8000/api/billing/transactions/report/', () => {
+    return HttpResponse.json({ summary: { count: 0, total_amount: '0.00' }, status_breakdown: {}, series: [] })
+  }),
+  // Messaging (messaging app) — default handlers, overridden per-test via
+  // server.use() where specific conversation/thread content is needed.
+  // GET /api/messaging/conversations/ (caller's own) has no pagination_class
+  // on the backend, so it's a plain array — same convention as
+  // GET /api/orders/ above.
+  http.get('http://localhost:8000/api/messaging/conversations/', () => {
+    return HttpResponse.json([])
+  }),
+  http.post('http://localhost:8000/api/messaging/conversations/', async ({ request }) => {
+    const body = await request.json()
+    return HttpResponse.json(
+      {
+        id: 1, customer: 1, business_owner: null, starter_name: 'Customer', subject: body.subject || '',
+        status: 'open',
+        messages: [{ id: 1, conversation: 1, sender_type: 'customer', body: body.body, created_at: '2026-07-01T00:00:00Z' }],
+        created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z',
+      },
+      { status: 201 },
+    )
+  }),
+  http.post('http://localhost:8000/api/messaging/conversations/:id/messages/', async ({ params, request }) => {
+    const body = await request.json()
+    return HttpResponse.json(
+      { id: 2, conversation: Number(params.id), sender_type: 'customer', body: body.body, created_at: '2026-07-01T00:00:00Z' },
+      { status: 201 },
+    )
+  }),
+  http.get('http://localhost:8000/api/messaging/staff/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
+  http.get('http://localhost:8000/api/messaging/staff/:id/', ({ params }) => {
+    return HttpResponse.json({
+      id: Number(params.id), customer: 1, business_owner: null, starter_name: 'Customer', subject: '', status: 'open',
+      messages: [], created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z',
+    })
+  }),
+  http.post('http://localhost:8000/api/messaging/staff/:id/reply/', async ({ params, request }) => {
+    const body = await request.json()
+    return HttpResponse.json(
+      { id: 3, conversation: Number(params.id), sender_type: 'staff', body: body.body, created_at: '2026-07-01T00:00:00Z' },
+      { status: 201 },
+    )
+  }),
 ]

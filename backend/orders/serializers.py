@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from disputes.models import Dispute
+
 from .models import Order, OrderItem
 
 
@@ -35,3 +37,13 @@ class OrderDeliveryStatusUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = ["delivery_status"]
+
+
+class OrderDisputeCreateSerializer(serializers.Serializer):
+    """Input shape for POST /api/orders/{id}/dispute/ — shape validation
+    only, same convention as ReviewSubmitSerializer/ContactMessageSubmitSerializer.
+    The view creates the disputes.Dispute row directly (order/raised_by/
+    status aren't caller-supplied)."""
+
+    reason = serializers.ChoiceField(choices=Dispute.REASON_CHOICES)
+    description = serializers.CharField()

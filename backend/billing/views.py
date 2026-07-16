@@ -1,3 +1,6 @@
+from django.db.models import Count, Sum
+from django.db.models.functions import TruncMonth
+from django.utils.dateparse import parse_date
 from rest_framework import generics
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -189,12 +192,139 @@ class BillingPagination(PageNumberPagination):
     page_size = 20
 
 
+def _parse_report_date_params(request):
+    """Shared `?date_from=&date_to=` (ISO YYYY-MM-DD) parsing used by both
+    TransactionReportListView and TransactionReportView below, so the raw
+    paginated list and the aggregate report can be filtered identically by
+    a frontend report page. Returns (date_from, date_to, error_response) —
+    error_response is None on success, otherwise a ready-to-return 400
+    Response.
+    """
+
+    date_from = date_to = None
+    date_from_raw = request.query_params.get("date_from")
+    date_to_raw = request.query_params.get("date_to")
+    if date_from_raw:
+        date_from = parse_date(date_from_raw)
+        if date_from is None:
+            return None, None, Response({"date_from": "Must be an ISO date (YYYY-MM-DD)."}, status=400)
+    if date_to_raw:
+        date_to = parse_date(date_to_raw)
+        if date_to is None:
+            return None, None, Response({"date_to": "Must be an ISO date (YYYY-MM-DD)."}, status=400)
+    return date_from, date_to, None
+
+
 class TransactionReportListView(generics.ListAPIView):
-    """Staff-only broad view across every business owner's transactions."""
+    """GET /api/billing/transactions/ — staff-only (transactions.report)
+    broad, paginated view across every business owner's AND every
+    customer's transactions (see TransactionReportView's docstring below for
+    what's included). Accepts the same optional `?date_from=&date_to=`
+    (ISO dates, inclusive) as TransactionReportView so a frontend report
+    page can page through the exact rows behind a given aggregate.
+    """
 
     serializer_class = TransactionReportSerializer
-    queryset = Transaction.objects.all()
     pagination_class = BillingPagination
 
     def get_permissions(self):
         return [HasRolePermission("transactions.report")]
+
+    def get_queryset(self):
+        queryset = Transaction.objects.all()
+        date_from, date_to, error = _parse_report_date_params(self.request)
+        if error is not None:
+            # generics.ListAPIView has no clean hook to short-circuit with a
+            # custom error response from get_queryset — filtering to an
+            # impossible queryset here and re-validating (cheaply) in list()
+            # would be awkward, so this view instead re-parses in list() to
+            # return the 400. get_queryset() itself just applies whatever
+            # parses cleanly; see list() below for the actual guard.
+            return queryset.none()
+        if date_from:
+            queryset = queryset.filter(created_at__date__gte=date_from)
+        if date_to:
+            queryset = queryset.filter(created_at__date__lte=date_to)
+        return queryset
+
+    def list(self, request, *args, **kwargs):
+        _, _, error = _parse_report_date_params(request)
+        if error is not None:
+            return error
+        return super().list(request, *args, **kwargs)
+
+
+class TransactionReportView(APIView):
+    """GET /api/billing/transactions/report/?date_from=&date_to= —
+    staff-only (transactions.report) AGGREGATE report: summary totals, a
+    breakdown by status, and a month-bucketed amount series shaped for the
+    frontend's SpendAreaChart component (`[{month:"2026-01", amount:"1234.56"},
+    ...]` — "YYYY-MM" strings, oldest first; SpendAreaChart's own docstring
+    example uses an abbreviated "Feb" label, but this endpoint returns a
+    sortable ISO month key and leaves any display formatting to the caller).
+
+    **What's included — every Transaction row, not just business-owner
+    payments:** this already covers business-owner subscription/hero-media/
+    promotion payments (business_owner set) AND customer order checkouts
+    (orders.views.OrderCheckoutView, customer set) AND customer event-ticket
+    purchases (events.views — TicketPurchaseView et al, customer set) — all
+    three write a billing.Transaction row today, so this report is a
+    complete picture of platform payment volume, not a partial one gap-
+    flagged as missing. Ticket *refunds* also book a Transaction with
+    status=refunded (events.views.EscrowRefundView), so those net out in the
+    refunded bucket of `status_breakdown` rather than silently vanishing —
+    `summary.total_amount` is a raw sum across all statuses (including
+    refunded/failed/pending rows), not a "net revenue" figure; a caller
+    wanting net revenue should compute it from `status_breakdown` (e.g.
+    success total minus refunded total) rather than trust `total_amount`
+    alone for that purpose.
+
+    Deliberately does NOT embed the underlying transaction list — see
+    TransactionReportListView (GET /api/billing/transactions/) for the
+    existing paginated raw list, filterable by the same `?date_from=
+    &date_to=` params, so a `?date_from=&date_to=` call to *this* aggregate
+    endpoint doesn't also need its own pagination envelope.
+    """
+
+    def get_permissions(self):
+        return [HasRolePermission("transactions.report")]
+
+    def get(self, request):
+        date_from, date_to, error = _parse_report_date_params(request)
+        if error is not None:
+            return error
+
+        queryset = Transaction.objects.all()
+        if date_from:
+            queryset = queryset.filter(created_at__date__gte=date_from)
+        if date_to:
+            queryset = queryset.filter(created_at__date__lte=date_to)
+
+        summary = queryset.aggregate(count=Count("id"), total_amount=Sum("amount"))
+
+        status_breakdown = {
+            row["status"]: {"count": row["count"], "amount": str(row["amount"] or "0.00")}
+            for row in queryset.values("status").annotate(count=Count("id"), amount=Sum("amount"))
+        }
+
+        monthly = (
+            queryset.annotate(month=TruncMonth("created_at"))
+            .values("month")
+            .annotate(amount=Sum("amount"))
+            .order_by("month")
+        )
+        series = [
+            {"month": row["month"].strftime("%Y-%m"), "amount": str(row["amount"] or "0.00")}
+            for row in monthly
+        ]
+
+        return Response(
+            {
+                "summary": {
+                    "count": summary["count"] or 0,
+                    "total_amount": str(summary["total_amount"] or "0.00"),
+                },
+                "status_breakdown": status_breakdown,
+                "series": series,
+            }
+        )
