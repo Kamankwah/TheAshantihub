@@ -27,13 +27,13 @@ function makeAuth(overrides = {}) {
 
 describe('StaffDashboard', () => {
   it('shows Overview by default with a greeting and the session permissions', () => {
-    render(<StaffDashboard auth={makeAuth()} onExit={vi.fn()} />)
+    renderWithQueryClient(<StaffDashboard auth={makeAuth()} onExit={vi.fn()} />)
     expect(screen.getByText(/Akwaaba, Akosua/)).toBeInTheDocument()
     expect(screen.getByText('messaging.manage')).toBeInTheDocument()
   })
 
   it('only shows nav items the session has permission for', () => {
-    render(<StaffDashboard auth={makeAuth()} onExit={vi.fn()} />)
+    renderWithQueryClient(<StaffDashboard auth={makeAuth()} onExit={vi.fn()} />)
     expect(screen.getByText('Messaging / Tickets')).toBeInTheDocument()
     expect(screen.getByText('Users')).toBeInTheDocument()
     expect(screen.queryByText('KYC Queue')).not.toBeInTheDocument()
@@ -52,16 +52,36 @@ describe('StaffDashboard', () => {
       ] },
       hasPermission: () => true,
     })
-    render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     ;['KYC Queue', 'Listings Moderation', 'Hero Approval', 'Events Moderation', 'Event Pricing', 'Reviews', 'Delivery Management', 'Users', 'Categories & Zones', 'Site Settings', 'Staff Management',
       'Escrow Ledger', 'Disputes', 'Transactions Report', 'Promotions', 'Analytics', 'Messaging / Tickets']
       .forEach((label) => expect(screen.getByText(label)).toBeInTheDocument())
   })
 
   it('switches panels on nav click and shows a coming-soon message for unbuilt permissions', () => {
-    render(<StaffDashboard auth={makeAuth()} onExit={vi.fn()} />)
-    fireEvent.click(screen.getByText('Messaging / Tickets'))
+    // Disputes/Transactions Report/Messaging all went from ComingSoonPanel
+    // stubs to real panels (system-admin-dashboard real-data wiring) —
+    // Analytics is the one remaining unbuilt tab, so this test now exercises
+    // that one instead of Messaging.
+    const auth = makeAuth({ hasPermission: (c) => ['messaging.manage', 'disputes.flag', 'users.view', 'analytics.view'].includes(c) })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Analytics'))
     expect(screen.getByText(/coming soon/i)).toBeInTheDocument()
+  })
+
+  it('switches to the Messaging / Tickets panel and shows the real queue', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/messaging/staff/', () => {
+        return HttpResponse.json({
+          count: 1, next: null, previous: null,
+          results: [{ id: 1, customer: 1, business_owner: null, starter_name: 'Ama Buyer', subject: 'Order question', status: 'open', needs_reply: true, last_message_at: '2026-07-01T00:00:00Z', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' }],
+        })
+      }),
+    )
+    renderWithQueryClient(<StaffDashboard auth={makeAuth()} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Messaging / Tickets'))
+    expect(await screen.findByText(/Ama Buyer/)).toBeInTheDocument()
+    expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument()
   })
 
   // Promotions went self-serve (business owners purchase Featured/Boost from
@@ -70,7 +90,7 @@ describe('StaffDashboard', () => {
   // informational panel shows instead, not "coming soon".
   it('shows a self-serve informational panel for Promotions instead of coming-soon', () => {
     const auth = makeAuth({ hasPermission: (c) => c === 'promotions.manage' })
-    render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('Promotions'))
     expect(screen.getByText('Promotions are self-serve')).toBeInTheDocument()
     expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument()
@@ -78,17 +98,18 @@ describe('StaffDashboard', () => {
 
   it('calls onExit when the exit button is clicked', () => {
     const onExit = vi.fn()
-    render(<StaffDashboard auth={makeAuth()} onExit={onExit} />)
+    renderWithQueryClient(<StaffDashboard auth={makeAuth()} onExit={onExit} />)
     fireEvent.click(screen.getByText('← Exit'))
     expect(onExit).toHaveBeenCalled()
   })
 
-  it('toggles theme when the theme button is clicked', () => {
-    render(<StaffDashboard auth={makeAuth()} onExit={vi.fn()} />)
-    const toggle = screen.getByTitle('Toggle theme')
-    expect(toggle.textContent).toBe('🌙')
-    fireEvent.click(toggle)
-    expect(toggle.textContent).toBe('☀️')
+  // The admin dashboard was restyled onto the always-dark "mission-control"
+  // theme (frontend/components/admin/*, matching BusinessCommandCenter's
+  // convention) — the light/dark theme toggle was a deliberate removal, not
+  // a regression.
+  it('has no light/dark theme toggle — the dashboard is always-dark', () => {
+    renderWithQueryClient(<StaffDashboard auth={makeAuth()} onExit={vi.fn()} />)
+    expect(screen.queryByTitle('Toggle theme')).not.toBeInTheDocument()
   })
 
   it('renders the KYC queue and approves an entry', async () => {
@@ -307,7 +328,7 @@ describe('StaffDashboard', () => {
 
   it('only shows the Site Settings nav item for a session with site_settings.manage', () => {
     const auth = makeAuth({ hasPermission: (c) => c === 'site_settings.manage' })
-    render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     expect(screen.getByText('Site Settings')).toBeInTheDocument()
   })
 
@@ -419,7 +440,7 @@ describe('StaffDashboard', () => {
 describe('StaffDashboard Reviews moderation', () => {
   it('only shows the Reviews nav item for a session with reviews.moderate', () => {
     const auth = makeAuth({ hasPermission: (c) => c === 'reviews.moderate' })
-    render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     expect(screen.getByText('Reviews')).toBeInTheDocument()
   })
 
@@ -520,7 +541,7 @@ describe('StaffDashboard Reviews moderation', () => {
 describe('StaffDashboard Delivery Management', () => {
   it('only shows the Delivery Management nav item for a session with orders.manage_delivery', () => {
     const auth = makeAuth({ hasPermission: (c) => c === 'orders.manage_delivery' })
-    render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     expect(screen.getByText('Delivery Management')).toBeInTheDocument()
   })
 
@@ -603,7 +624,7 @@ describe('StaffDashboard Delivery Management', () => {
 describe('StaffDashboard Contact Messages', () => {
   it('only shows the Contact Messages nav item for a session with contact_messages.manage', () => {
     const auth = makeAuth({ hasPermission: (c) => c === 'contact_messages.manage' })
-    render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     expect(screen.getByText('Contact Messages')).toBeInTheDocument()
   })
 
@@ -814,7 +835,7 @@ describe('StaffDashboard Event Pricing', () => {
 describe('StaffDashboard Subscription Plans Management', () => {
   it('only shows the Subscription Plans nav item for a session with subscription_plans.manage', () => {
     const auth = makeAuth({ hasPermission: (c) => c === 'subscription_plans.manage' })
-    render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     expect(screen.getByText('Subscription Plans')).toBeInTheDocument()
     expect(screen.queryByText('Plan Approvals')).not.toBeInTheDocument()
   })
@@ -915,7 +936,7 @@ describe('StaffDashboard Subscription Plans Management', () => {
 describe('StaffDashboard Subscription Plan Approvals', () => {
   it('only shows the Plan Approvals nav item for a session with subscription_plans.approve', () => {
     const auth = makeAuth({ hasPermission: (c) => c === 'subscription_plans.approve' })
-    render(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     expect(screen.getByText('Plan Approvals')).toBeInTheDocument()
     expect(screen.queryByText('Subscription Plans')).not.toBeInTheDocument()
   })
@@ -999,5 +1020,241 @@ describe('StaffDashboard Subscription Plan Approvals', () => {
     await screen.findByText('Service Deluxe')
     fireEvent.click(screen.getByText('✓ Approve'))
     await screen.findByText('Could not approve this plan.')
+  })
+})
+
+describe('StaffDashboard Overview KPIs', () => {
+  // Overview has no permission gate itself, but each KPI tile's backing
+  // endpoint IS gated server-side — this session only holds users.view, so
+  // only the Customers/Business Owners tiles (and no others) should render,
+  // and no unauthorized request should be made for the gated-off ones.
+  it('only renders KPI tiles the session has permission for', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/accounts/customers/', () => {
+        return HttpResponse.json({ count: 5, next: null, previous: null, results: [] })
+      }),
+      http.get('http://localhost:8000/api/accounts/business-owners/', () => {
+        return HttpResponse.json({ count: 2, next: null, previous: null, results: [] })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'users.view' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    expect(screen.getByText('Customers')).toBeInTheDocument()
+    expect(screen.getByText('Business Owners')).toBeInTheDocument()
+    // KPI values load asynchronously (react-query) — the labels above render
+    // immediately (a pure permission check), but the counts start at 0 until
+    // each query resolves, so these need to be awaited separately.
+    await screen.findByText('5')
+    await screen.findByText('2')
+    expect(screen.queryByText('Pending KYC')).not.toBeInTheDocument()
+    expect(screen.queryByText('Open Disputes')).not.toBeInTheDocument()
+  })
+
+  it('shows a KYC KPI tile for a session with kyc.approve', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/accounts/kyc/pending/', () => {
+        return HttpResponse.json([{ id: 1 }, { id: 2 }])
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'kyc.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    expect(screen.getByText('Pending KYC')).toBeInTheDocument()
+    await screen.findByText('2')
+  })
+})
+
+describe('StaffDashboard Disputes', () => {
+  it('only shows the Disputes nav item for a session with disputes.flag or disputes.resolve_financial', () => {
+    const auth = makeAuth({ hasPermission: (c) => c === 'disputes.flag' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    expect(screen.getByText('Disputes')).toBeInTheDocument()
+  })
+
+  it('reads the paginated disputes queue (data.results) and shows status', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/disputes/', () => {
+        return HttpResponse.json({
+          count: 1, next: null, previous: null,
+          results: [{ id: 1, order: 9, order_total_amount: '150.00', order_status: 'paid', raised_by: 3, raised_by_name: 'Ama Buyer', reason: 'delivery_issue', description: 'Never arrived.', status: 'open', resolution_notes: null, refund_amount: null, flagged_by: null, flagged_by_name: null, resolved_by: null, resolved_by_name: null, created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' }],
+        })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'disputes.flag' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Disputes'))
+    await screen.findByText(/Order #9/)
+    expect(screen.getByText('Open')).toBeInTheDocument()
+  })
+
+  it('a disputes.flag-only session can flag an open dispute but not resolve it', async () => {
+    let flagCalled = false
+    server.use(
+      http.get('http://localhost:8000/api/disputes/', () => {
+        return HttpResponse.json({
+          count: 1, next: null, previous: null,
+          results: [{ id: 1, order: 9, order_total_amount: '150.00', order_status: 'paid', raised_by: 3, raised_by_name: 'Ama Buyer', reason: 'delivery_issue', description: 'Never arrived.', status: 'open', resolution_notes: null, refund_amount: null, flagged_by: null, flagged_by_name: null, resolved_by: null, resolved_by_name: null, created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' }],
+        })
+      }),
+      http.post('http://localhost:8000/api/disputes/1/flag/', () => {
+        flagCalled = true
+        return HttpResponse.json({ id: 1, status: 'investigating' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'disputes.flag' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Disputes'))
+    await screen.findByText(/Order #9/)
+    expect(screen.queryByText('✓ Resolve')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('🚩 Flag'))
+    await waitFor(() => expect(flagCalled).toBe(true))
+  })
+
+  it('a disputes.resolve_financial session can resolve a dispute with a refund amount', async () => {
+    let resolveBody = null
+    server.use(
+      http.get('http://localhost:8000/api/disputes/', () => {
+        return HttpResponse.json({
+          count: 1, next: null, previous: null,
+          results: [{ id: 1, order: 9, order_total_amount: '150.00', order_status: 'paid', raised_by: 3, raised_by_name: 'Ama Buyer', reason: 'delivery_issue', description: 'Never arrived.', status: 'investigating', resolution_notes: null, refund_amount: null, flagged_by: 2, flagged_by_name: 'Support Person', resolved_by: null, resolved_by_name: null, created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' }],
+        })
+      }),
+      http.post('http://localhost:8000/api/disputes/1/resolve/', async ({ request }) => {
+        resolveBody = await request.json()
+        return HttpResponse.json({ id: 1, status: 'resolved' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'disputes.resolve_financial' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Disputes'))
+    await screen.findByText(/Order #9/)
+    fireEvent.click(screen.getByText('✓ Resolve'))
+    fireEvent.change(screen.getByPlaceholderText('Refund amount (optional)'), { target: { value: '50.00' } })
+    fireEvent.click(screen.getByText('Confirm resolve'))
+    await waitFor(() => expect(resolveBody).toEqual({ outcome: 'resolved', refund_amount: '50.00', resolution_notes: '' }))
+  })
+
+  it('shows no actions on a terminal (resolved) dispute', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/disputes/', () => {
+        return HttpResponse.json({
+          count: 1, next: null, previous: null,
+          results: [{ id: 1, order: 9, order_total_amount: '150.00', order_status: 'paid', raised_by: 3, raised_by_name: 'Ama Buyer', reason: 'delivery_issue', description: 'Never arrived.', status: 'resolved', resolution_notes: 'Refunded.', refund_amount: '50.00', flagged_by: 2, flagged_by_name: 'Support Person', resolved_by: 4, resolved_by_name: 'Accountant Person', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' }],
+        })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => ['disputes.flag', 'disputes.resolve_financial'].includes(c) })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Disputes'))
+    await screen.findByText(/Order #9/)
+    expect(screen.queryByText('🚩 Flag')).not.toBeInTheDocument()
+    expect(screen.queryByText('✓ Resolve')).not.toBeInTheDocument()
+    expect(screen.queryByText('✕ Reject')).not.toBeInTheDocument()
+  })
+
+  it('shows an inline error when flagging a dispute fails', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/disputes/', () => {
+        return HttpResponse.json({
+          count: 1, next: null, previous: null,
+          results: [{ id: 1, order: 9, order_total_amount: '150.00', order_status: 'paid', raised_by: 3, raised_by_name: 'Ama Buyer', reason: 'delivery_issue', description: 'Never arrived.', status: 'open', resolution_notes: null, refund_amount: null, flagged_by: null, flagged_by_name: null, resolved_by: null, resolved_by_name: null, created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' }],
+        })
+      }),
+      http.post('http://localhost:8000/api/disputes/1/flag/', () => {
+        return HttpResponse.json({ detail: 'Server error' }, { status: 500 })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'disputes.flag' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Disputes'))
+    await screen.findByText(/Order #9/)
+    fireEvent.click(screen.getByText('🚩 Flag'))
+    await screen.findByText('Could not flag this dispute.')
+  })
+})
+
+describe('StaffDashboard Transactions Report', () => {
+  it('only shows the Transactions Report nav item for a session with transactions.report', () => {
+    const auth = makeAuth({ hasPermission: (c) => c === 'transactions.report' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    expect(screen.getByText('Transactions Report')).toBeInTheDocument()
+  })
+
+  it('renders the summary KPIs and status breakdown', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/billing/transactions/report/', () => {
+        return HttpResponse.json({
+          summary: { count: 4, total_amount: '620.00' },
+          status_breakdown: { success: { count: 3, amount: '600.00' }, refunded: { count: 1, amount: '20.00' } },
+          series: [{ month: '2026-06', amount: '300.00' }, { month: '2026-07', amount: '320.00' }],
+        })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'transactions.report' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Transactions Report'))
+    await screen.findByText('Total Transactions')
+    expect(screen.getByText('4')).toBeInTheDocument()
+    expect(screen.getByText('Success')).toBeInTheDocument()
+    expect(screen.getByText('Refunded')).toBeInTheDocument()
+  })
+
+  it('shows an inline error state when the report fails to load', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/billing/transactions/report/', () => new HttpResponse(null, { status: 500 })),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'transactions.report' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Transactions Report'))
+    await screen.findByText('Could not load the transactions report.')
+  })
+})
+
+describe('StaffDashboard Messaging', () => {
+  it('only shows the Messaging / Tickets nav item for a session with messaging.manage', () => {
+    const auth = makeAuth({ hasPermission: (c) => c === 'messaging.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    expect(screen.getByText('Messaging / Tickets')).toBeInTheDocument()
+  })
+
+  it('expands a conversation thread and sends a reply', async () => {
+    let replyBody = null
+    server.use(
+      http.get('http://localhost:8000/api/messaging/staff/', () => {
+        return HttpResponse.json({
+          count: 1, next: null, previous: null,
+          results: [{ id: 5, customer: 1, business_owner: null, starter_name: 'Ama Buyer', subject: 'Order question', status: 'open', needs_reply: true, last_message_at: '2026-07-01T00:00:00Z', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' }],
+        })
+      }),
+      http.get('http://localhost:8000/api/messaging/staff/5/', () => {
+        return HttpResponse.json({
+          id: 5, customer: 1, business_owner: null, starter_name: 'Ama Buyer', subject: 'Order question', status: 'open',
+          messages: [{ id: 1, conversation: 5, sender_type: 'customer', body: 'Where is my order?', created_at: '2026-07-01T00:00:00Z' }],
+          created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z',
+        })
+      }),
+      http.post('http://localhost:8000/api/messaging/staff/5/reply/', async ({ request }) => {
+        replyBody = await request.json()
+        return HttpResponse.json({ id: 2, conversation: 5, sender_type: 'staff', body: replyBody.body, created_at: '2026-07-01T01:00:00Z' }, { status: 201 })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'messaging.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Messaging / Tickets'))
+    await screen.findByText(/Ama Buyer/)
+    fireEvent.click(screen.getByText(/Ama Buyer/))
+    await screen.findByText('Where is my order?')
+    fireEvent.change(screen.getByPlaceholderText('Reply as AshantiHub Support…'), { target: { value: 'It shipped yesterday!' } })
+    fireEvent.click(screen.getByText('Reply'))
+    await waitFor(() => expect(replyBody).toEqual({ body: 'It shipped yesterday!' }))
+  })
+
+  it('shows an inline error when the queue fails to load', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/messaging/staff/', () => new HttpResponse(null, { status: 500 })),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'messaging.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Messaging / Tickets'))
+    await screen.findByText('Could not load the messaging queue.')
   })
 })

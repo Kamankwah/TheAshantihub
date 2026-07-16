@@ -9,12 +9,16 @@ import { apiFetch } from '../apiClient.js'
 // filter, forwarded as `?status=`, per the backend's optional query param —
 // not required by any current caller, but convenient for a future filtered
 // view.
-export function useEscrowLedger({ status } = {}) {
+// `enabled` (default true) — see hooks/useKYCQueue.js's identical
+// convention, used the same way by OverviewPanel (gating on escrow.view||
+// escrow.release||escrow.refund).
+export function useEscrowLedger({ status, enabled = true } = {}) {
   const params = new URLSearchParams()
   if (status) params.set('status', status)
   const qs = params.toString()
   return useQuery({
     queryKey: ['escrow-ledger', status ?? null],
     queryFn: () => apiFetch(`/api/events/tickets/escrow/${qs ? `?${qs}` : ''}`),
+    enabled,
   })
 }

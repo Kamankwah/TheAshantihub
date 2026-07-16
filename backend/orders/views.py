@@ -12,10 +12,13 @@ from accounts.permissions import HasRolePermission
 from accounts.views import IsCustomer
 from billing.models import Transaction
 from cart.models import Cart
+from disputes.models import Dispute
+from disputes.serializers import DisputeSerializer
 
 from .models import Order, OrderItem
 from .serializers import (
     OrderDeliveryStatusUpdateSerializer,
+    OrderDisputeCreateSerializer,
     OrderSerializer,
     StaffOrderSerializer,
 )
@@ -123,3 +126,32 @@ class OrderDeliveryStatusUpdateView(generics.UpdateAPIView):
 
     def get_permissions(self):
         return [HasRolePermission("orders.manage_delivery")]
+
+
+class OrderDisputeCreateView(APIView):
+    """POST /api/orders/{id}/dispute/ — a signed-in customer who owns this
+    order raises a dispute against it (reason + description). 404s for
+    another customer's order (the lookup is pre-scoped to the caller, same
+    convention as OrderDetailView above) rather than leaking a 403/whether
+    the order exists at all. Creates the disputes.Dispute row directly:
+    raised_by=request.user, status=Dispute.OPEN — this is what actually
+    populates the staff dispute queue (disputes.views.DisputeListView).
+    No restriction on how many disputes a customer can raise against the
+    same order, or on the order's own status — a dispute can legitimately
+    be raised over, e.g., a pending order's stuck payment too.
+    """
+
+    permission_classes = [IsAuthenticated, IsCustomer]
+
+    def post(self, request, pk):
+        order = generics.get_object_or_404(Order, pk=pk, customer=request.user)
+        serializer = OrderDisputeCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        dispute = Dispute.objects.create(
+            order=order,
+            raised_by=request.user,
+            reason=serializer.validated_data["reason"],
+            description=serializer.validated_data["description"],
+            status=Dispute.OPEN,
+        )
+        return Response(DisputeSerializer(dispute).data, status=status.HTTP_201_CREATED)

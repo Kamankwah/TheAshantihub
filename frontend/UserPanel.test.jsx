@@ -165,6 +165,75 @@ describe('UserPanel', () => {
       // Back on Profile — the name field is visible again.
       expect(screen.getByDisplayValue('Ama Boateng')).toBeInTheDocument()
     })
+
+    // MessagingCenter is now backed by the real messaging app
+    // (useMyConversations()/POST /api/messaging/conversations/(:id/messages/)?)
+    // instead of the old hardcoded MOCK_CONVERSATIONS.
+    it('renders a real conversation from useMyConversations with its last message', async () => {
+      Element.prototype.scrollIntoView = vi.fn()
+      server.use(
+        http.get('http://localhost:8000/api/messaging/conversations/', () => HttpResponse.json([
+          {
+            id: 1, customer: 1, business_owner: null, starter_name: 'Ama Boateng', subject: 'Royal Ashanti Lodge', status: 'open',
+            messages: [{ id: 1, conversation: 1, sender_type: 'staff', body: 'We checked availability for you!', created_at: '2026-07-01T10:00:00Z' }],
+            created_at: '2026-07-01T09:00:00Z', updated_at: '2026-07-01T10:00:00Z',
+          },
+        ])),
+      )
+      renderPanel()
+      fireEvent.click(screen.getAllByText('Messages')[0])
+      await screen.findByText('We checked availability for you!')
+      // "Re: Royal Ashanti Lodge" appears twice — once in the left
+      // conversation-list row, once in the right chat header.
+      expect(screen.getAllByText('Re: Royal Ashanti Lodge').length).toBeGreaterThan(0)
+    })
+
+    it('replying within an existing conversation posts to /messages/ and refetches', async () => {
+      Element.prototype.scrollIntoView = vi.fn()
+      let replyBody = null
+      server.use(
+        http.get('http://localhost:8000/api/messaging/conversations/', () => HttpResponse.json([
+          {
+            id: 1, customer: 1, business_owner: null, starter_name: 'Ama Boateng', subject: 'Royal Ashanti Lodge', status: 'open',
+            messages: [{ id: 1, conversation: 1, sender_type: 'staff', body: 'We checked availability for you!', created_at: '2026-07-01T10:00:00Z' }],
+            created_at: '2026-07-01T09:00:00Z', updated_at: '2026-07-01T10:00:00Z',
+          },
+        ])),
+        http.post('http://localhost:8000/api/messaging/conversations/1/messages/', async ({ request }) => {
+          replyBody = await request.json()
+          return HttpResponse.json({ id: 2, conversation: 1, sender_type: 'customer', body: replyBody.body, created_at: '2026-07-01T11:00:00Z' }, { status: 201 })
+        }),
+      )
+      renderPanel()
+      fireEvent.click(screen.getAllByText('Messages')[0])
+      await screen.findByText('We checked availability for you!')
+      const input = screen.getByPlaceholderText('Type a message...')
+      fireEvent.change(input, { target: { value: 'Is breakfast included?' } })
+      fireEvent.click(screen.getByText('➤'))
+      await waitFor(() => expect(replyBody).toEqual({ body: 'Is breakfast included?' }))
+    })
+
+    it('sending a first message with zero conversations starts a new one', async () => {
+      Element.prototype.scrollIntoView = vi.fn()
+      let createBody = null
+      server.use(
+        http.get('http://localhost:8000/api/messaging/conversations/', () => HttpResponse.json([])),
+        http.post('http://localhost:8000/api/messaging/conversations/', async ({ request }) => {
+          createBody = await request.json()
+          return HttpResponse.json(
+            { id: 9, customer: 1, business_owner: null, starter_name: 'Ama Boateng', subject: createBody.subject, status: 'open', messages: [{ id: 1, conversation: 9, sender_type: 'customer', body: createBody.body, created_at: '2026-07-01T00:00:00Z' }], created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' },
+            { status: 201 },
+          )
+        }),
+      )
+      renderPanel()
+      fireEvent.click(screen.getAllByText('Messages')[0])
+      await screen.findByText(/Send a message below to start a new conversation/)
+      const input = screen.getByPlaceholderText('Type a message...')
+      fireEvent.change(input, { target: { value: 'Hello, I have a question.' } })
+      fireEvent.click(screen.getByText('➤'))
+      await waitFor(() => expect(createBody).toEqual({ subject: '', body: 'Hello, I have a question.' }))
+    })
   })
 
   describe('My Events tab', () => {

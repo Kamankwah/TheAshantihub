@@ -30,6 +30,8 @@ INSTALLED_APPS = [
     "events",
     "reviews",
     "qa",
+    "disputes",
+    "messaging",
 ]
 
 MIDDLEWARE = [

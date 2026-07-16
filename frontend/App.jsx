@@ -7,12 +7,6 @@ import { useListing } from "./hooks/useListing.js";
 import { useEvents } from "./hooks/useEvents.js";
 import { useAuth } from "./hooks/useAuth.js";
 import { useTheme } from "./hooks/useTheme.js";
-import { useKYCQueue } from "./hooks/useKYCQueue.js";
-import { useModerationQueue } from "./hooks/useModerationQueue.js";
-import { useHeroModerationQueue } from "./hooks/useHeroModerationQueue.js";
-import { useCustomers } from "./hooks/useCustomers.js";
-import { useBusinessOwners } from "./hooks/useBusinessOwners.js";
-import { useStaffRoster } from "./hooks/useStaffRoster.js";
 import { useMyListings } from "./hooks/useMyListings.js";
 import { useMyHeroSubmission } from "./hooks/useMyHeroSubmission.js";
 import { useBusinessProfile } from "./hooks/useBusinessProfile.js";
@@ -21,20 +15,12 @@ import { useMySubscription } from "./hooks/useMySubscription.js";
 import { useMyTransactions } from "./hooks/useMyTransactions.js";
 import { useMyCreditScore } from "./hooks/useMyCreditScore.js";
 import { useCart } from "./hooks/useCart.js";
-import { useSiteSettings } from "./hooks/useSiteSettings.js";
-import { useReviewsModerationQueue } from "./hooks/useReviewsModerationQueue.js";
-import { useSubscriptionPlansManageQueue } from "./hooks/useSubscriptionPlansManageQueue.js";
-import { useSubscriptionPlanPendingQueue } from "./hooks/useSubscriptionPlanPendingQueue.js";
-import { useContactMessagesQueue } from "./hooks/useContactMessagesQueue.js";
 import { useListingReviews } from "./hooks/useListingReviews.js";
 import { useReviewEligibility } from "./hooks/useReviewEligibility.js";
 import { useOrders } from "./hooks/useOrders.js";
+import { useMyConversations } from "./hooks/useMyConversations.js";
 import { useMyTickets } from "./hooks/useMyTickets.js";
 import { useMyCustomerProfile } from "./hooks/useMyCustomerProfile.js";
-import { useDeliveryQueue } from "./hooks/useDeliveryQueue.js";
-import { useEscrowLedger } from "./hooks/useEscrowLedger.js";
-import { useEventModerationQueue } from "./hooks/useEventModerationQueue.js";
-import { useEventPricingTiersAdmin } from "./hooks/useEventPricingTiersAdmin.js";
 import { apiPost, apiPatch } from "./apiClient.js";
 import { C, CURRENCIES } from "./theme.js";
 import Flag from "./components/Flag.jsx";
@@ -62,6 +48,7 @@ import EventCard, { formatEventDate } from "./components/EventCard.jsx";
 import EventDetailPage from "./components/EventDetailPage.jsx";
 import EventSubmissionPanel from "./components/EventSubmissionPanel.jsx";
 import BusinessCommandCenter from "./components/dashboard/BusinessCommandCenter.jsx";
+import AdminCommandCenter from "./components/admin/AdminCommandCenter.jsx";
 import { D, glassCard, ghs } from "./components/dashboard/theme.js";
 import KpiCard from "./components/dashboard/charts/KpiCard.jsx";
 import ChartFrame from "./components/dashboard/charts/ChartFrame.jsx";
@@ -342,47 +329,19 @@ function CookieBanner({onAccept,onDecline}) {
 // no longer be messaged directly, in-app or via WhatsApp. Every conversation
 // here is with AshantiHub Support *about* a business/listing/event — staff
 // relay to and from the business on the customer's behalf — never a direct
-// customer<->business channel. `businessName`/`businessImg` are kept as the
-// "what this thread is about" context (shown as a "Re:" line), not as who
-// the customer is chatting with; `from` is "customer" or "support" (never
-// "business") to keep that honest in the transcript itself.
-const MOCK_CONVERSATIONS = [
-  {
-    id:1, businessId:1, businessName:"Royal Ashanti Lodge", businessImg:"🏰",
-    lastMessage:"Good news — Royal Ashanti Lodge has availability for your dates!", lastTime:"10:34 AM",
-    unread:1, status:"online",
-    messages:[
-      {id:1,from:"customer",text:"Hello! I'd like to book a Deluxe Suite at Royal Ashanti Lodge for June 20–23. Do they have availability?",time:"10:20 AM",read:true},
-      {id:2,from:"support",text:"Akwaaba! We've checked with Royal Ashanti Lodge — they have the Deluxe Suite available for those dates. The rate is GHS 750/night. Shall we confirm the booking for you?",time:"10:28 AM",read:true},
-      {id:3,from:"customer",text:"That's perfect! Is breakfast included?",time:"10:30 AM",read:true},
-      {id:4,from:"support",text:"Good news — Royal Ashanti Lodge has availability for your dates! We've confirmed breakfast is included and will send your booking reference shortly.",time:"10:34 AM",read:false},
-    ]
-  },
-  {
-    id:2, businessId:7, businessName:"Kente Palace Weavers", businessImg:"🧶",
-    lastMessage:"Your kente cloth is ready for collection — details from Kente Palace Weavers below!", lastTime:"Yesterday",
-    unread:2, status:"offline",
-    messages:[
-      {id:1,from:"customer",text:"Do you know if Kente Palace Weavers ship internationally to the UK?",time:"Yesterday 2:15 PM",read:true},
-      {id:2,from:"support",text:"Yes! Kente Palace Weavers ship via DHL — delivery takes 5–7 days to the UK. They can also arrange custom kente patterns.",time:"Yesterday 3:00 PM",read:true},
-      {id:3,from:"customer",text:"Wonderful! I'd like to order 3 yards in blue and gold royal pattern.",time:"Yesterday 3:30 PM",read:true},
-      {id:4,from:"support",text:"We've passed that on — your kente cloth is ready for collection! Kente Palace Weavers have also prepared a gift package for you.",time:"Yesterday 4:00 PM",read:false},
-      {id:5,from:"support",text:"Total: GHS 450 + GHS 80 shipping. Let us know if you'd like us to confirm shipping on your behalf.",time:"Yesterday 4:02 PM",read:false},
-    ]
-  },
-  {
-    id:3, businessId:3, businessName:"Manhyia Palace Experience", businessImg:"👑",
-    lastMessage:"Your tour with Manhyia Palace Experience is confirmed for June 22 at 9:00 AM!", lastTime:"2 days ago",
-    unread:0, status:"online",
-    messages:[
-      {id:1,from:"customer",text:"I'd like to book the Manhyia Palace Experience tour for 2 people on June 22.",time:"2 days ago",read:true},
-      {id:2,from:"support",text:"Akwaaba! The Akwasidae Festival tour is their most popular. GHS 80/person includes guide and entrance. Please confirm your names and we'll book it with them.",time:"2 days ago",read:true},
-      {id:3,from:"customer",text:"Emma Thompson and Hans Mueller.",time:"2 days ago",read:true},
-      {id:4,from:"support",text:"Your tour with Manhyia Palace Experience is confirmed for June 22 at 9:00 AM!",time:"2 days ago",read:true},
-    ]
-  },
-];
-
+// customer<->business channel. Backed by the real `messaging` app
+// (useMyConversations()/POST /api/messaging/conversations/(:id/messages/)?)
+// as of the system-admin-dashboard real-data-wiring work — this used to read
+// a hardcoded MOCK_CONVERSATIONS array (deleted). `subject` is kept as the
+// "what this thread is about" context (shown as a "Re:" line when set), not
+// as who the customer is chatting with; `sender_type` is "customer",
+// "business_owner", or "staff" (never a business itself) to keep that
+// honest in the transcript itself. Read/unread has no backing field on the
+// real `Message` model (unlike the old mock's per-message `read` flag), so
+// this derives a "needs your attention" indicator instead: a conversation is
+// flagged whenever it's `open` and its most recent message is from staff —
+// naturally clearing itself once the caller replies (their own reply becomes
+// the new most-recent message), no separate "mark as read" call needed.
 const QUICK_REPLIES = [
   "Is this available?",
   "What are your opening hours?",
@@ -392,66 +351,79 @@ const QUICK_REPLIES = [
   "I'd like to make a booking",
 ];
 
-const AUTO_TRANSLATE = {
-  "hello":"Akwaaba",
-  "thank you":"Medaase",
-  "how much":"Εho sen?",
-  "available":"Εwɔ hɔ",
-  "good":"Ε yɛ fe",
-};
+function needsCustomerAttention(conv) {
+  const last = conv.messages?.[conv.messages.length - 1];
+  return conv.status === "open" && last?.sender_type === "staff";
+}
+
+function formatConvTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const sameDay = d.toDateString() === new Date().toDateString();
+  return sameDay
+    ? d.toLocaleTimeString("en-GH", { hour: "2-digit", minute: "2-digit" })
+    : d.toLocaleDateString("en-GH", { month: "short", day: "numeric" });
+}
 
 function MessagingCenter({ user, onClose, initialBusiness }) {
-  const [conversations, setConversations] = useState(MOCK_CONVERSATIONS);
-  const [activeConv, setActiveConv] = useState(initialBusiness ? MOCK_CONVERSATIONS.find(c=>c.businessId===initialBusiness?.id) || MOCK_CONVERSATIONS[0] : MOCK_CONVERSATIONS[0]);
+  const isSignedIn = !!user;
+  const selfSenderType = user?.accountType === "business_owner" ? "business_owner" : "customer";
+  const { data: conversationsData, refetch } = useMyConversations(isSignedIn);
+  const conversations = conversationsData || [];
+  const [activeConvId, setActiveConvId] = useState(null);
   const [newMessage, setNewMessage] = useState("");
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [searchConv, setSearchConv] = useState("");
-  const [showNewChat, setShowNewChat] = useState(false);
-  const [translating, setTranslating] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [actionError, setActionError] = useState(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const hasAutoSelectedRef = useRef(false);
+
+  // Auto-pick a starting conversation the first time the list loads —
+  // preferring one already "about" the business/listing this was opened
+  // for, else the most recently active one (Conversation.Meta.ordering is
+  // ["-updated_at"], so conversations[0] is already that). Only runs once
+  // per mount (hasAutoSelectedRef) so the "✉️ Start New Conversation"
+  // button below (which deliberately sets activeConvId back to null) isn't
+  // immediately overridden by this effect re-picking the same conversation.
+  useEffect(() => {
+    if (hasAutoSelectedRef.current || conversations.length === 0) return;
+    hasAutoSelectedRef.current = true;
+    const bySubject = initialBusiness && conversations.find(c => c.subject?.includes(initialBusiness.name));
+    setActiveConvId((bySubject || conversations[0]).id);
+  }, [conversations, initialBusiness]);
+
+  const activeConv = conversations.find(c => c.id === activeConvId) || null;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior:"smooth" });
   }, [activeConv?.messages]);
 
-  // Mark messages as read when conversation opened
-  useEffect(() => {
-    if(activeConv) {
-      setConversations(convs => convs.map(c =>
-        c.id===activeConv.id ? {...c, unread:0, messages:c.messages.map(m=>({...m,read:true}))} : c
-      ));
+  const sendMessage = async () => {
+    if(!newMessage.trim()||!user) return;
+    setSending(true);
+    setActionError(null);
+    try {
+      if (activeConv) {
+        await apiPost(`/api/messaging/conversations/${activeConv.id}/messages/`, { body: newMessage });
+      } else {
+        const subject = initialBusiness ? `Re: ${initialBusiness.name}` : "";
+        const created = await apiPost(`/api/messaging/conversations/`, { subject, body: newMessage });
+        setActiveConvId(created.id);
+      }
+      setNewMessage("");
+      setShowQuickReplies(false);
+      await refetch();
+    } catch (err) {
+      setActionError("Could not send your message. Please try again.");
+    } finally {
+      setSending(false);
     }
-  }, [activeConv?.id]);
-
-  const sendMessage = () => {
-    if(!newMessage.trim()) return;
-    const msg = { id:Date.now(), from:"customer", text:newMessage, time:new Date().toLocaleTimeString("en-GH",{hour:"2-digit",minute:"2-digit"}), read:true };
-    setConversations(convs => convs.map(c =>
-      c.id===activeConv.id ? {...c, messages:[...c.messages,msg], lastMessage:newMessage, lastTime:"Just now"} : c
-    ));
-    setActiveConv(prev => ({...prev, messages:[...prev.messages,msg], lastMessage:newMessage, lastTime:"Just now"}));
-    setNewMessage("");
-    setShowQuickReplies(false);
-    // Simulate an AshantiHub Support auto-reply after 2 seconds — staff relay
-    // to/from the business, never a direct customer<->business channel
-    // (fraud-prevention, docs/UI_MODERNIZATION_ROADMAP.md Phase F).
-    setTimeout(() => {
-      const autoReplies = [
-        "Thank you for your message! We'll pass this on and get back to you shortly. 🙏",
-        "Akwaaba! We've received your message and will follow up with the business within 30 minutes.",
-        "Thank you! A support team member will assist you shortly.",
-      ];
-      const reply = { id:Date.now()+1, from:"support", text:autoReplies[Math.floor(Math.random()*autoReplies.length)], time:new Date().toLocaleTimeString("en-GH",{hour:"2-digit",minute:"2-digit"}), read:false, isAuto:true };
-      setConversations(convs => convs.map(c =>
-        c.id===activeConv.id ? {...c, messages:[...c.messages,reply], lastMessage:reply.text, lastTime:"Just now"} : c
-      ));
-      setActiveConv(prev => ({...prev, messages:[...prev.messages,reply]}));
-    }, 2000);
   };
 
-  const totalUnread = conversations.reduce((s,c)=>s+c.unread,0);
-  const filteredConvs = conversations.filter(c => c.businessName.toLowerCase().includes(searchConv.toLowerCase()));
+  const totalUnread = conversations.filter(needsCustomerAttention).length;
+  const filteredConvs = conversations.filter(c => (c.subject || "AshantiHub Support").toLowerCase().includes(searchConv.toLowerCase()));
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:8}}
@@ -474,8 +446,9 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
               style={{width:"100%",padding:"7px 12px",borderRadius:20,border:"none",fontSize:"0.75rem",outline:"none",fontFamily:"inherit",background:"rgba(255,255,255,0.15)",color:"white"}}/>
           </div>
 
-          {/* New Chat Button */}
-          <button onClick={()=>setShowNewChat(true)}
+          {/* New Chat Button — clears the active selection so the input
+              below starts a fresh conversation on send. */}
+          <button onClick={()=>setActiveConvId(null)}
             style={{margin:"10px 12px 4px",background:`${C.gold}15`,color:C.deepGold,border:`1.5px dashed ${C.gold}`,borderRadius:12,padding:"9px",fontSize:"0.74rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
             ✉️ Start New Conversation
           </button>
@@ -485,33 +458,37 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
             {filteredConvs.length===0&&(
               <div style={{padding:"20px",textAlign:"center",color:"#aaa",fontSize:"0.76rem"}}>No conversations found</div>
             )}
-            {filteredConvs.map(conv=>(
-              <div key={conv.id} onClick={()=>setActiveConv(conv)}
-                style={{padding:"12px 14px",cursor:"pointer",borderBottom:"1px solid #f5f5f5",background:activeConv?.id===conv.id?`${C.gold}12`:"white",transition:"background 0.2s"}}
-                onMouseEnter={e=>{ if(activeConv?.id!==conv.id) e.currentTarget.style.background="#fafafa"; }}
-                onMouseLeave={e=>{ if(activeConv?.id!==conv.id) e.currentTarget.style.background="white"; }}>
+            {filteredConvs.map(conv=>{
+              const lastMsg = conv.messages?.[conv.messages.length-1];
+              const attention = needsCustomerAttention(conv);
+              return (
+              <div key={conv.id} onClick={()=>setActiveConvId(conv.id)}
+                style={{padding:"12px 14px",cursor:"pointer",borderBottom:"1px solid #f5f5f5",background:activeConvId===conv.id?`${C.gold}12`:"white",transition:"background 0.2s"}}
+                onMouseEnter={e=>{ if(activeConvId!==conv.id) e.currentTarget.style.background="#fafafa"; }}
+                onMouseLeave={e=>{ if(activeConvId!==conv.id) e.currentTarget.style.background="white"; }}>
                 <div style={{display:"flex",gap:10,alignItems:"center"}}>
                   {/* Avatar */}
                   <div style={{position:"relative",flexShrink:0}}>
-                    <div style={{width:44,height:44,borderRadius:"50%",background:`${C.gold}20`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.4rem",border:activeConv?.id===conv.id?`2px solid ${C.gold}`:"2px solid transparent"}}>
-                      {conv.businessImg}
+                    <div style={{width:44,height:44,borderRadius:"50%",background:`${C.gold}20`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.4rem",border:activeConvId===conv.id?`2px solid ${C.gold}`:"2px solid transparent"}}>
+                      🎧
                     </div>
-                    <div style={{position:"absolute",bottom:1,right:1,width:11,height:11,borderRadius:"50%",background:conv.status==="online"?"#22c55e":"#aaa",border:"2px solid white"}}/>
+                    <div style={{position:"absolute",bottom:1,right:1,width:11,height:11,borderRadius:"50%",background:"#22c55e",border:"2px solid white"}}/>
                   </div>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
                       <span style={{fontWeight:800,fontSize:"0.78rem",color:C.darkBrown,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>AshantiHub Support</span>
-                      <span style={{fontSize:"0.6rem",color:"#aaa",flexShrink:0,marginLeft:4}}>{conv.lastTime}</span>
+                      <span style={{fontSize:"0.6rem",color:"#aaa",flexShrink:0,marginLeft:4}}>{formatConvTime(lastMsg?.created_at||conv.updated_at)}</span>
                     </div>
-                    <div style={{fontSize:"0.64rem",color:C.deepGold,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>Re: {conv.businessName}</div>
+                    {conv.subject&&<div style={{fontSize:"0.64rem",color:C.deepGold,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>Re: {conv.subject}</div>}
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <span style={{fontSize:"0.68rem",color:"#888",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{conv.lastMessage}</span>
-                      {conv.unread>0&&<span style={{background:C.kente2,color:"white",borderRadius:"50%",width:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.58rem",fontWeight:900,flexShrink:0,marginLeft:4}}>{conv.unread}</span>}
+                      <span style={{fontSize:"0.68rem",color:"#888",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{lastMsg?.body||"No messages yet"}</span>
+                      {attention&&<span style={{width:10,height:10,borderRadius:"50%",background:C.kente2,flexShrink:0,marginLeft:4}}/>}
                     </div>
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* User info */}
@@ -526,22 +503,24 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
           </div>
         </div>
 
-        {/* RIGHT — Chat Window */}
+        {/* RIGHT — Chat Window. Shown whenever the caller is signed in
+            (regardless of whether a specific conversation is selected yet —
+            a brand-new caller with zero conversations must still be able to
+            compose their first message), the "select or start" placeholder
+            only for a signed-out visitor. */}
         <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0}}>
-          {activeConv ? (
+          {isSignedIn ? (
             <>
               {/* Chat Header */}
               <div style={{padding:"14px 18px",borderBottom:"1px solid #f0f0f0",display:"flex",alignItems:"center",gap:12,background:"white"}}>
                 <div style={{position:"relative"}}>
-                  <div style={{width:42,height:42,borderRadius:"50%",background:`${C.gold}20`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.3rem"}}>{activeConv.businessImg}</div>
-                  <div style={{position:"absolute",bottom:1,right:1,width:10,height:10,borderRadius:"50%",background:activeConv.status==="online"?"#22c55e":"#aaa",border:"2px solid white"}}/>
+                  <div style={{width:42,height:42,borderRadius:"50%",background:`${C.gold}20`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.3rem"}}>🎧</div>
+                  <div style={{position:"absolute",bottom:1,right:1,width:10,height:10,borderRadius:"50%",background:"#22c55e",border:"2px solid white"}}/>
                 </div>
                 <div style={{flex:1}}>
                   <div style={{fontWeight:900,fontSize:"0.88rem",color:C.darkBrown}}>AshantiHub Support</div>
-                  <div style={{fontSize:"0.68rem",color:C.deepGold,fontWeight:700,marginBottom:1}}>Re: {activeConv.businessName}</div>
-                  <div style={{fontSize:"0.65rem",color:activeConv.status==="online"?"#22c55e":"#aaa",fontWeight:600}}>
-                    {activeConv.status==="online"?"● Support team online now":"● Support team offline — usually replies within 1 hour"}
-                  </div>
+                  <div style={{fontSize:"0.68rem",color:C.deepGold,fontWeight:700,marginBottom:1}}>{activeConv?.subject ? `Re: ${activeConv.subject}` : "New conversation"}</div>
+                  <div style={{fontSize:"0.65rem",color:"#22c55e",fontWeight:600}}>● Support team online now</div>
                 </div>
                 <div style={{display:"flex",gap:8}}>
                   <button onClick={onClose} style={{background:"#f0f0f0",border:"none",borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#666",fontSize:"0.9rem"}}>✕</button>
@@ -550,41 +529,48 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
 
               {/* Messages */}
               <div style={{flex:1,overflowY:"auto",padding:"16px",display:"flex",flexDirection:"column",gap:10,background:"#f8f9fa"}}>
-                {/* Date divider */}
-                <div style={{textAlign:"center",margin:"4px 0"}}>
-                  <span style={{background:"#e0e0e0",color:"#888",borderRadius:20,padding:"3px 12px",fontSize:"0.62rem",fontWeight:600}}>Today</span>
-                </div>
-
-                {activeConv.messages.map(msg=>(
-                  <div key={msg.id} style={{display:"flex",justifyContent:msg.from==="customer"?"flex-end":"flex-start",alignItems:"flex-end",gap:8}}>
-                    {msg.from==="support"&&(
+                {activeConv&&activeConv.messages.length>0&&(
+                  <div style={{textAlign:"center",margin:"4px 0"}}>
+                    <span style={{background:"#e0e0e0",color:"#888",borderRadius:20,padding:"3px 12px",fontSize:"0.62rem",fontWeight:600}}>Conversation started {formatConvTime(activeConv.created_at)}</span>
+                  </div>
+                )}
+                {!activeConv&&(
+                  <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:10,color:"#aaa",textAlign:"center"}}>
+                    <div style={{fontSize:"2.5rem"}}>✉️</div>
+                    <div style={{fontSize:"0.76rem",maxWidth:220,lineHeight:1.6}}>Send a message below to start a new conversation with AshantiHub Support{initialBusiness?` about ${initialBusiness.name}`:""}.</div>
+                  </div>
+                )}
+                {(activeConv?.messages||[]).map(msg=>{
+                  const isSelf = msg.sender_type===selfSenderType;
+                  return (
+                  <div key={msg.id} style={{display:"flex",justifyContent:isSelf?"flex-end":"flex-start",alignItems:"flex-end",gap:8}}>
+                    {msg.sender_type==="staff"&&(
                       <div style={{width:28,height:28,borderRadius:"50%",background:`${C.gold}20`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.9rem",flexShrink:0}}>🎧</div>
                     )}
                     <div style={{maxWidth:"72%"}}>
                       <div style={{
-                        background:msg.from==="customer"?`linear-gradient(135deg,${C.kente3},${C.darkBrown})`:"white",
-                        color:msg.from==="customer"?"white":C.darkBrown,
-                        borderRadius:msg.from==="customer"?"18px 18px 4px 18px":"18px 18px 18px 4px",
+                        background:isSelf?`linear-gradient(135deg,${C.kente3},${C.darkBrown})`:"white",
+                        color:isSelf?"white":C.darkBrown,
+                        borderRadius:isSelf?"18px 18px 4px 18px":"18px 18px 18px 4px",
                         padding:"10px 14px",
                         fontSize:"0.78rem",
                         lineHeight:1.5,
                         boxShadow:"0 1px 4px rgba(0,0,0,0.1)",
                       }}>
-                        {msg.isAuto&&<div style={{fontSize:"0.58rem",opacity:0.7,marginBottom:3}}>🤖 Auto-reply</div>}
-                        {msg.text}
+                        {msg.body}
                       </div>
-                      <div style={{fontSize:"0.58rem",color:"#aaa",marginTop:3,textAlign:msg.from==="customer"?"right":"left",display:"flex",gap:4,justifyContent:msg.from==="customer"?"flex-end":"flex-start",alignItems:"center"}}>
-                        {msg.time}
-                        {msg.from==="customer"&&<span style={{color:msg.read?"#22c55e":"#aaa"}}>{msg.read?"✓✓":"✓"}</span>}
+                      <div style={{fontSize:"0.58rem",color:"#aaa",marginTop:3,textAlign:isSelf?"right":"left"}}>
+                        {formatConvTime(msg.created_at)}
                       </div>
                     </div>
-                    {msg.from==="customer"&&(
+                    {isSelf&&(
                       <div style={{width:28,height:28,borderRadius:"50%",background:C.gold,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:C.darkBrown,fontSize:"0.7rem",flexShrink:0}}>
                         {user?.fullName?.[0]?.toUpperCase()||"U"}
                       </div>
                     )}
                   </div>
-                ))}
+                  );
+                })}
                 <div ref={messagesEndRef}/>
               </div>
 
@@ -602,9 +588,9 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
 
               {/* Message Input */}
               <div style={{padding:"12px 14px",borderTop:"1px solid #f0f0f0",background:"white"}}>
-                {!user&&(
+                {actionError&&(
                   <div style={{background:`${C.kente1}12`,border:`1px solid ${C.kente1}33`,borderRadius:10,padding:"8px 12px",marginBottom:10,fontSize:"0.72rem",color:C.kente1,fontWeight:600,textAlign:"center"}}>
-                    ⚠️ Sign in to message AshantiHub Support
+                    {actionError}
                   </div>
                 )}
                 <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
@@ -618,18 +604,18 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
                       ref={inputRef}
                       value={newMessage}
                       onChange={e=>setNewMessage(e.target.value)}
-                      onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(user)sendMessage();}}}
-                      placeholder={user?"Type a message...":"Sign in to message AshantiHub Support"}
-                      disabled={!user}
+                      onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(!sending)sendMessage();}}}
+                      placeholder="Type a message..."
+                      disabled={sending}
                       style={{flex:1,border:"none",background:"transparent",outline:"none",fontSize:"0.82rem",fontFamily:"inherit",color:C.darkBrown}}/>
                     {newMessage&&(
                       <button onClick={()=>setNewMessage("")} style={{background:"none",border:"none",color:"#aaa",cursor:"pointer",fontSize:"0.9rem",padding:0}}>✕</button>
                     )}
                   </div>
                   <button
-                    onClick={()=>{if(user)sendMessage();}}
-                    disabled={!newMessage.trim()||!user}
-                    style={{background:newMessage.trim()&&user?C.kente2:"#ddd",color:"white",border:"none",borderRadius:"50%",width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",cursor:newMessage.trim()&&user?"pointer":"default",fontSize:"1rem",flexShrink:0,transition:"background 0.2s"}}>
+                    onClick={()=>{if(!sending)sendMessage();}}
+                    disabled={!newMessage.trim()||sending}
+                    style={{background:newMessage.trim()&&!sending?C.kente2:"#ddd",color:"white",border:"none",borderRadius:"50%",width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",cursor:newMessage.trim()&&!sending?"pointer":"default",fontSize:"1rem",flexShrink:0,transition:"background 0.2s"}}>
                     ➤
                   </button>
                 </div>
@@ -642,7 +628,7 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
             <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,color:"#aaa"}}>
               <div style={{fontSize:"3rem"}}>💬</div>
               <div style={{fontWeight:700,fontSize:"0.88rem",color:C.darkBrown}}>Your Messages</div>
-              <div style={{fontSize:"0.76rem",textAlign:"center",maxWidth:240,lineHeight:1.6}}>Select a conversation or start a new one to reach AshantiHub Support about a Kumasi business</div>
+              <div style={{fontSize:"0.76rem",textAlign:"center",maxWidth:240,lineHeight:1.6}}>Sign in to reach AshantiHub Support about a Kumasi business</div>
             </div>
           )}
         </div>
@@ -1114,1098 +1100,17 @@ const DASHBOARD_THEME = {
   dark:  { pageBg:"#14161c", sidebarBg:"#0d0e12", sidebarText:C.cream, cardBg:"#1c1f26", text:C.cream, textMuted:"#9aa0aa", border:"#2a2d35" },
 };
 
-const ROLE_COLORS = { super_admin:C.gold, admin:C.kente3, accountant:C.kente1, marketing:C.kente2, support:C.ghGreen };
-
-function ComingSoonPanel({theme,feature}) {
-  return <div style={{background:theme.cardBg,borderRadius:16,padding:"40px 24px",textAlign:"center",border:`1px solid ${theme.border}`}}>
-    <div style={{fontSize:"2rem",marginBottom:10}}>🚧</div>
-    <div style={{color:theme.text,fontWeight:800,fontSize:"0.9rem",marginBottom:4}}>Coming soon</div>
-    <div style={{color:theme.textMuted,fontSize:"0.78rem"}}>{feature} isn't built yet.</div>
-  </div>;
-}
-
-// Promotions went live as a business-owner self-serve feature in
-// docs/BUSINESS_EVENTS_ROADMAP.md Phase 5 (BusinessDashboard's Listings &
-// Prices tab — "📣 Promote"), so the old ComingSoonPanel placeholder here
-// would now be actively misleading to staff. There's no backend "list all
-// promotions" endpoint in this phase's scope (only the purchase endpoint and
-// the `is_promoted` flag on listings), so this stays a minimal informational
-// panel rather than a fabricated admin promotions-management UI.
-function PromotionsInfoPanel({theme}) {
-  return <div style={{background:theme.cardBg,borderRadius:16,padding:"40px 24px",textAlign:"center",border:`1px solid ${theme.border}`}}>
-    <div style={{fontSize:"2rem",marginBottom:10}}>📣</div>
-    <div style={{color:theme.text,fontWeight:800,fontSize:"0.9rem",marginBottom:4}}>Promotions are self-serve</div>
-    <div style={{color:theme.textMuted,fontSize:"0.78rem",maxWidth:420,margin:"0 auto"}}>Business owners now purchase Featured and Boost promotions directly from their own dashboard's Listings &amp; Prices tab. There's nothing for staff to manage here yet — a future phase may add an admin view of active promotions.</div>
-  </div>;
-}
-
-function StaffOverviewPanel({auth,theme,roleColor}) {
-  const permissions = auth.user?.permissions||[];
-  return <div>
-    <h2 style={{color:theme.text,fontWeight:900,margin:"0 0 6px",fontSize:"1.1rem"}}>Akwaaba, {auth.user?.full_name?.split(" ")[0]}!</h2>
-    <div style={{color:theme.textMuted,fontSize:"0.8rem",marginBottom:20}}>
-      You're signed in as <span style={{color:roleColor,fontWeight:800,textTransform:"capitalize"}}>{auth.user?.role?.replace("_"," ")}</span>.
-    </div>
-    <div style={{background:theme.cardBg,borderRadius:16,padding:"18px",border:`1px solid ${theme.border}`}}>
-      <div style={{color:theme.text,fontWeight:800,fontSize:"0.82rem",marginBottom:10}}>Your permissions</div>
-      <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-        {permissions.map(p=>(
-          <span key={p} style={{background:`${roleColor}18`,color:roleColor,borderRadius:20,padding:"3px 10px",fontSize:"0.68rem",fontWeight:700}}>{p}</span>
-        ))}
-      </div>
-    </div>
-  </div>;
-}
-
-function KYCQueuePanel({theme}) {
-  const {data,isLoading,isError,refetch} = useKYCQueue();
-  const [rejectingId,setRejectingId] = useState(null);
-  const [rejectReason,setRejectReason] = useState("");
-  const [actionError,setActionError] = useState(null);
-
-  const approve = async (id) => {
-    setActionError(null);
-    try { await apiPost(`/api/accounts/kyc/${id}/approve/`,{}); refetch(); }
-    catch (err) { setActionError("Could not approve this submission. Please try again."); }
-  };
-  const reject = async (id) => {
-    setActionError(null);
-    try { await apiPost(`/api/accounts/kyc/${id}/reject/`,{reason:rejectReason}); setRejectingId(null); setRejectReason(""); refetch(); }
-    catch (err) { setActionError("Could not reject this submission. Please try again."); }
-  };
-
-  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
-  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the KYC queue.</div>;
-  const items = data||[];
-
-  return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
-    <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Pending KYC submissions ({items.length})</div>
-    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
-    {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No pending submissions.</div>}
-    {items.map(o=>(
-      <div key={o.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-          <div>
-            <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>{o.full_name}</div>
-            <div style={{color:theme.textMuted,fontSize:"0.68rem"}}>{o.login_phone} • submitted {o.created_at?.slice(0,10)}</div>
-          </div>
-          <div style={{display:"flex",gap:6}}>
-            <button onClick={()=>approve(o.id)} style={{background:"#22c55e",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✓ Approve</button>
-            <button onClick={()=>setRejectingId(o.id)} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✕ Reject</button>
-          </div>
-        </div>
-        {rejectingId===o.id&&<div style={{marginTop:8,display:"flex",gap:6}}>
-          <input value={rejectReason} onChange={e=>setRejectReason(e.target.value)} placeholder="Rejection reason" style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
-          <button onClick={()=>reject(o.id)} disabled={!rejectReason} style={{background:"#dc2626",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:rejectReason?"pointer":"default"}}>Confirm reject</button>
-        </div>}
-      </div>
-    ))}
-  </div>;
-}
-
-function ListingsModerationPanel({theme}) {
-  const {data,isLoading,isError,refetch} = useModerationQueue();
-  const [rejectingId,setRejectingId] = useState(null);
-  const [rejectReason,setRejectReason] = useState("");
-  const [actionError,setActionError] = useState(null);
-
-  const approve = async (id) => {
-    setActionError(null);
-    try { await apiPost(`/api/listings/moderation/${id}/approve/`,{}); refetch(); }
-    catch (err) { setActionError("Could not approve this listing."); }
-  };
-  const reject = async (id) => {
-    setActionError(null);
-    try { await apiPost(`/api/listings/moderation/${id}/reject/`,{reason:rejectReason}); setRejectingId(null); setRejectReason(""); refetch(); }
-    catch (err) { setActionError("Could not reject this listing."); }
-  };
-
-  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
-  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the moderation queue.</div>;
-  const items = data||[];
-
-  return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
-    <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Pending listings ({items.length})</div>
-    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
-    {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No pending listings.</div>}
-    {items.map(l=>(
-      <div key={l.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-          <div>
-            <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>{l.name}</div>
-            <div style={{color:theme.textMuted,fontSize:"0.68rem"}}>{l.category?.label} • {l.zone?.name} • GHS {l.price_amount} • {l.contact_phone}</div>
-          </div>
-          <div style={{display:"flex",gap:6}}>
-            <button onClick={()=>approve(l.id)} style={{background:"#22c55e",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✓ Approve</button>
-            <button onClick={()=>setRejectingId(l.id)} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✕ Reject</button>
-          </div>
-        </div>
-        {rejectingId===l.id&&<div style={{marginTop:8,display:"flex",gap:6}}>
-          <input value={rejectReason} onChange={e=>setRejectReason(e.target.value)} placeholder="Rejection reason" style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
-          <button onClick={()=>reject(l.id)} disabled={!rejectReason} style={{background:"#dc2626",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:rejectReason?"pointer":"default"}}>Confirm reject</button>
-        </div>}
-      </div>
-    ))}
-  </div>;
-}
-
-function HeroApprovalPanel({theme}) {
-  const {data,isLoading,isError,refetch} = useHeroModerationQueue();
-  const [rejectingId,setRejectingId] = useState(null);
-  const [rejectReason,setRejectReason] = useState("");
-  const [actionError,setActionError] = useState(null);
-
-  const approve = async (id) => {
-    setActionError(null);
-    try { await apiPost(`/api/listings/hero/${id}/approve/`,{}); refetch(); }
-    catch (err) { setActionError("Could not approve this submission."); }
-  };
-  const reject = async (id) => {
-    setActionError(null);
-    try { await apiPost(`/api/listings/hero/${id}/reject/`,{reason:rejectReason}); setRejectingId(null); setRejectReason(""); refetch(); }
-    catch (err) { setActionError("Could not reject this submission."); }
-  };
-
-  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
-  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the hero approval queue.</div>;
-  const items = data||[];
-
-  return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
-    <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Pending hero submissions ({items.length})</div>
-    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
-    {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No pending submissions.</div>}
-    {items.map(s=>(
-      <div key={s.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}>
-          <div style={{display:"flex",gap:10}}>
-            {s.media_type==="video" ? (
-              <video src={s.media} muted style={{width:80,height:80,objectFit:"cover",borderRadius:10,background:"#000",flexShrink:0}}/>
-            ) : (
-              <img src={s.media} alt={s.caption||""} style={{width:80,height:80,objectFit:"cover",borderRadius:10,flexShrink:0}}/>
-            )}
-            <div>
-              <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>{s.business_owner_name}</div>
-              <div style={{color:theme.textMuted,fontSize:"0.72rem",margin:"3px 0",maxWidth:320}}>"{s.caption}"</div>
-              <div style={{color:theme.textMuted,fontSize:"0.65rem"}}>Submitted {s.submitted_at?.slice(0,10)}</div>
-            </div>
-          </div>
-          <div style={{display:"flex",gap:6}}>
-            <button onClick={()=>approve(s.id)} style={{background:"#22c55e",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✓ Approve</button>
-            <button onClick={()=>setRejectingId(s.id)} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✕ Reject</button>
-          </div>
-        </div>
-        {rejectingId===s.id&&<div style={{marginTop:8,display:"flex",gap:6}}>
-          <input value={rejectReason} onChange={e=>setRejectReason(e.target.value)} placeholder="Rejection reason" style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
-          <button onClick={()=>reject(s.id)} disabled={!rejectReason} style={{background:"#dc2626",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:rejectReason?"pointer":"default"}}>Confirm reject</button>
-        </div>}
-      </div>
-    ))}
-  </div>;
-}
-
-// Events Moderation staff panel (event pricing tiers work) — clones
-// ListingsModerationPanel's exact shape (unpaginated queue, approve with no
-// reason / reject with a required reason input, refetch() after each
-// action). Gated by the pre-existing event.approve permission, which had no
-// frontend UI at all before this.
-function EventsModerationPanel({theme}) {
-  const {data,isLoading,isError,refetch} = useEventModerationQueue();
-  const [rejectingId,setRejectingId] = useState(null);
-  const [rejectReason,setRejectReason] = useState("");
-  const [actionError,setActionError] = useState(null);
-
-  const approve = async (id) => {
-    setActionError(null);
-    try { await apiPost(`/api/events/moderation/${id}/approve/`,{}); refetch(); }
-    catch (err) { setActionError("Could not approve this event."); }
-  };
-  const reject = async (id) => {
-    setActionError(null);
-    try { await apiPost(`/api/events/moderation/${id}/reject/`,{reason:rejectReason}); setRejectingId(null); setRejectReason(""); refetch(); }
-    catch (err) { setActionError("Could not reject this event."); }
-  };
-
-  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
-  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the events queue.</div>;
-  const items = data||[];
-
-  return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
-    <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Pending events ({items.length})</div>
-    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
-    {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No pending events.</div>}
-    {items.map(ev=>(
-      <div key={ev.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-          <div>
-            <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>{ev.name}</div>
-            <div style={{color:theme.textMuted,fontSize:"0.68rem"}}>{ev.category?.label} • {ev.zone?.name} • {ev.visibility_days} days • {ev.submitted_by_business_name||ev.submitted_by_customer_name}</div>
-          </div>
-          <div style={{display:"flex",gap:6}}>
-            <button onClick={()=>approve(ev.id)} style={{background:"#22c55e",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✓ Approve</button>
-            <button onClick={()=>setRejectingId(ev.id)} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✕ Reject</button>
-          </div>
-        </div>
-        {rejectingId===ev.id&&<div style={{marginTop:8,display:"flex",gap:6}}>
-          <input value={rejectReason} onChange={e=>setRejectReason(e.target.value)} placeholder="Rejection reason" style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
-          <button onClick={()=>reject(ev.id)} disabled={!rejectReason} style={{background:"#dc2626",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:rejectReason?"pointer":"default"}}>Confirm reject</button>
-        </div>}
-      </div>
-    ))}
-  </div>;
-}
-
-// Event Pricing staff panel (event pricing tiers work) — clones
-// EscrowLedgerPanel's dual-permission-gating shape: an accountant (holding
-// event_pricing.manage) can propose a new price per tier; a super_admin
-// (holding event_pricing.approve) can approve or reject any pending
-// proposal. Both roles can view the list; action UI is per-permission.
-function EventPricingPanel({theme,auth}) {
-  const {data,isLoading,isError,refetch} = useEventPricingTiersAdmin();
-  const [draftById,setDraftById] = useState({});
-  const [actionError,setActionError] = useState(null);
-
-  const canPropose = auth.hasPermission("event_pricing.manage");
-  const canApprove = auth.hasPermission("event_pricing.approve");
-
-  const propose = async (id) => {
-    setActionError(null);
-    try { await apiPost(`/api/events/pricing-tiers/${id}/propose/`,{price:draftById[id]}); setDraftById(d=>({...d,[id]:""})); refetch(); }
-    catch (err) { setActionError("Could not propose this price."); }
-  };
-  const approve = async (id) => {
-    setActionError(null);
-    try { await apiPost(`/api/events/pricing-tiers/${id}/approve/`,{}); refetch(); }
-    catch (err) { setActionError("Could not approve this change."); }
-  };
-  const reject = async (id) => {
-    setActionError(null);
-    try { await apiPost(`/api/events/pricing-tiers/${id}/reject/`,{}); refetch(); }
-    catch (err) { setActionError("Could not reject this change."); }
-  };
-
-  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
-  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load pricing tiers.</div>;
-  const tiers = data||[];
-
-  return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
-    <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Event Pricing Tiers</div>
-    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
-    {tiers.map(t=>(
-      <div key={t.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
-        <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>{t.duration_days} days — GHS {t.live_price}</div>
-        {t.pending_price&&<div style={{color:"#f59e0b",fontSize:"0.72rem",marginTop:4}}>Pending: GHS {t.pending_price}{t.proposed_by_name?` (proposed by ${t.proposed_by_name})`:""}</div>}
-        {canPropose&&<div style={{marginTop:8,display:"flex",gap:6}}>
-          <input value={draftById[t.id]||""} onChange={e=>setDraftById(d=>({...d,[t.id]:e.target.value}))} placeholder="New price" style={{width:100,padding:"5px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
-          <button onClick={()=>propose(t.id)} disabled={!draftById[t.id]} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:draftById[t.id]?"pointer":"default"}}>Propose</button>
-        </div>}
-        {canApprove&&t.pending_price&&<div style={{marginTop:8,display:"flex",gap:6}}>
-          <button onClick={()=>approve(t.id)} style={{background:"#22c55e",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✓ Approve</button>
-          <button onClick={()=>reject(t.id)} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✕ Reject</button>
-        </div>}
-      </div>
-    ))}
-  </div>;
-}
-
-const REVIEW_STATUS_META = {
-  published: { label:"Published", color:"#22c55e" },
-  hidden: { label:"Hidden", color:"#dc2626" },
-};
-
-function ReviewsModerationPanel({theme}) {
-  // GET /api/reviews/moderation/ is paginated ({count, next, previous,
-  // results}), unlike ListingsModerationPanel/HeroApprovalPanel's plain-array
-  // endpoints — so `items` reads data?.results, not data||[]. This is also a
-  // full queue (every review regardless of status), not a pending-only one —
-  // moderation here is reactive-by-browsing, hide/unhide rather than
-  // approve/reject.
-  const {data,isLoading,isError,refetch} = useReviewsModerationQueue();
-  const [hidingId,setHidingId] = useState(null);
-  const [hideReason,setHideReason] = useState("");
-  const [actionError,setActionError] = useState(null);
-
-  const hide = async (id) => {
-    setActionError(null);
-    try { await apiPost(`/api/reviews/moderation/${id}/hide/`,{reason:hideReason}); setHidingId(null); setHideReason(""); refetch(); }
-    catch (err) { setActionError("Could not hide this review."); }
-  };
-  const unhide = async (id) => {
-    setActionError(null);
-    try { await apiPost(`/api/reviews/moderation/${id}/unhide/`,{}); refetch(); }
-    catch (err) { setActionError("Could not unhide this review."); }
-  };
-
-  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
-  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the reviews queue.</div>;
-  const items = data?.results||[];
-
-  return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
-    <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Reviews ({data?.count??items.length})</div>
-    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
-    {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No reviews yet.</div>}
-    {items.map(r=>{
-      const statusMeta = REVIEW_STATUS_META[r.status]||{label:r.status,color:"#888"};
-      return (
-      <div key={r.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,flexWrap:"wrap"}}>
-          <div>
-            <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>
-              {"★".repeat(r.rating)}{"☆".repeat(5-r.rating)} <span style={{color:theme.textMuted,fontWeight:400}}>({r.target_type})</span>
-              {r.verified&&<span style={{background:"#22c55e22",color:"#22c55e",borderRadius:20,padding:"2px 8px",fontSize:"0.6rem",fontWeight:700,marginLeft:6}}>✓ Verified</span>}
-              <span style={{background:`${statusMeta.color}22`,color:statusMeta.color,borderRadius:20,padding:"2px 8px",fontSize:"0.6rem",fontWeight:700,marginLeft:6}}>{statusMeta.label}</span>
-            </div>
-            {r.comment&&<div style={{color:theme.textMuted,fontSize:"0.75rem",margin:"4px 0",maxWidth:420}}>"{r.comment}"</div>}
-            <div style={{color:theme.textMuted,fontSize:"0.65rem"}}>{r.author_name} • {r.created_at?.slice(0,10)}</div>
-            {r.status==="hidden"&&r.hidden_reason&&<div style={{color:"#dc2626",fontSize:"0.65rem",marginTop:2}}>Hidden: {r.hidden_reason}</div>}
-          </div>
-          <div style={{display:"flex",gap:6}}>
-            {r.status==="published"&&<button onClick={()=>setHidingId(r.id)} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>🚫 Hide</button>}
-            {r.status==="hidden"&&<button onClick={()=>unhide(r.id)} style={{background:"#22c55e",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>↩️ Unhide</button>}
-          </div>
-        </div>
-        {hidingId===r.id&&<div style={{marginTop:8,display:"flex",gap:6}}>
-          <input value={hideReason} onChange={e=>setHideReason(e.target.value)} placeholder="Reason for hiding" style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
-          <button onClick={()=>hide(r.id)} disabled={!hideReason} style={{background:"#dc2626",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:hideReason?"pointer":"default"}}>Confirm hide</button>
-        </div>}
-      </div>
-      );
-    })}
-  </div>;
-}
-
-const SUBSCRIPTION_PLAN_STATUS_META = {
-  pending_approval: { label:"Pending Approval", color:"#f59e0b" },
-  active: { label:"Active", color:"#22c55e" },
-  rejected: { label:"Rejected", color:"#dc2626" },
-};
-
-const EMPTY_SUBSCRIPTION_PLAN_FORM = {
-  tier:"", name:"", kind:"product", monthly_price:"",
-  max_active_listings:"", hero_days:"", boost_credits_per_month:"",
-  is_recommended:false, features:"",
-};
-
-// features is edited as a plain one-bullet-per-line textarea and converted to
-// a JSON array on submit; max_active_listings left blank means unlimited
-// (null), matching the backend contract.
-function subscriptionPlanFormToPayload(form) {
-  return {
-    tier: form.tier.trim(),
-    name: form.name.trim(),
-    kind: form.kind,
-    monthly_price: form.monthly_price,
-    max_active_listings: form.max_active_listings===""?null:Number(form.max_active_listings),
-    hero_days: form.hero_days===""?0:Number(form.hero_days),
-    boost_credits_per_month: form.boost_credits_per_month===""?0:Number(form.boost_credits_per_month),
-    is_recommended: form.is_recommended,
-    features: form.features.split("\n").map(s=>s.trim()).filter(Boolean),
-  };
-}
-
-function subscriptionPlanToForm(plan) {
-  return {
-    tier: plan.tier||"",
-    name: plan.name||"",
-    kind: plan.kind||"product",
-    monthly_price: plan.monthly_price??"",
-    max_active_listings: plan.max_active_listings==null?"":String(plan.max_active_listings),
-    hero_days: plan.hero_days??"",
-    boost_credits_per_month: plan.boost_credits_per_month??"",
-    is_recommended: !!plan.is_recommended,
-    features: (plan.features||[]).join("\n"),
-  };
-}
-
-// Shared field set for both the "create new plan" form and each plan's
-// inline "Edit" reveal in SubscriptionPlansManagePanel below — same
-// "generic field list drives the form" convention as SiteSettingsForm's
-// SITE_SETTINGS_FIELDS, just not table-driven since these fields have mixed
-// input types (text/select/number/checkbox/textarea).
-function SubscriptionPlanFormFields({theme,form,setField}) {
-  const fieldStyle = {padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"};
-  return <div style={{display:"flex",flexDirection:"column",gap:8}}>
-    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-      <input value={form.tier} onChange={e=>setField("tier",e.target.value)} placeholder="Tier slug (e.g. product_basic)" style={{...fieldStyle,flex:1,minWidth:160}}/>
-      <input value={form.name} onChange={e=>setField("name",e.target.value)} placeholder="Plan name" style={{...fieldStyle,flex:1,minWidth:140}}/>
-      <select value={form.kind} onChange={e=>setField("kind",e.target.value)} style={{...fieldStyle,width:120}}>
-        <option value="product">Product</option>
-        <option value="service">Service</option>
-      </select>
-    </div>
-    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-      <input type="number" min={0} step="0.01" value={form.monthly_price} onChange={e=>setField("monthly_price",e.target.value)} placeholder="Monthly price (GHS)" style={{...fieldStyle,flex:1,minWidth:120}}/>
-      <input type="number" min={0} value={form.max_active_listings} onChange={e=>setField("max_active_listings",e.target.value)} placeholder="Max active listings (blank = unlimited)" style={{...fieldStyle,flex:1,minWidth:190}}/>
-    </div>
-    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-      <input type="number" min={0} value={form.hero_days} onChange={e=>setField("hero_days",e.target.value)} placeholder="Hero days" style={{...fieldStyle,flex:1,minWidth:100}}/>
-      <input type="number" min={0} value={form.boost_credits_per_month} onChange={e=>setField("boost_credits_per_month",e.target.value)} placeholder="Boost credits / month" style={{...fieldStyle,flex:1,minWidth:150}}/>
-    </div>
-    <label style={{display:"flex",alignItems:"center",gap:6,color:theme.textMuted,fontSize:"0.75rem"}}>
-      <input type="checkbox" checked={form.is_recommended} onChange={e=>setField("is_recommended",e.target.checked)}/> Recommended plan
-    </label>
-    <textarea value={form.features} onChange={e=>setField("features",e.target.value)} placeholder="Features, one per line" rows={3} style={{...fieldStyle,resize:"vertical"}}/>
-  </div>;
-}
-
-// Staff "subscription_plans.manage" panel (accountant + super_admin): create
-// new plans and edit any existing plan regardless of status. Clones
-// CategoriesZonesPanel's create-form + local actionError/refetch()
-// convention, plus HeroApprovalPanel's per-row inline-reveal shape for edit.
-// A plan the server resets to "pending_approval" on edit (per the backend
-// contract) is just reflected via the status badge below — no special
-// handling needed here.
-function SubscriptionPlansManagePanel({theme}) {
-  const {data,isLoading,isError,refetch} = useSubscriptionPlansManageQueue();
-  const [createForm,setCreateForm] = useState(EMPTY_SUBSCRIPTION_PLAN_FORM);
-  const [creating,setCreating] = useState(false);
-  const [editingId,setEditingId] = useState(null);
-  const [editForm,setEditForm] = useState(null);
-  const [saving,setSaving] = useState(false);
-  const [actionError,setActionError] = useState(null);
-
-  const setCreateField = (key,value) => setCreateForm(f=>({...f,[key]:value}));
-  const setEditFieldValue = (key,value) => setEditForm(f=>({...f,[key]:value}));
-
-  const createPlan = async () => {
-    setActionError(null);
-    setCreating(true);
-    try {
-      await apiPost("/api/billing/plans/manage/", subscriptionPlanFormToPayload(createForm));
-      setCreateForm(EMPTY_SUBSCRIPTION_PLAN_FORM);
-      refetch();
-    } catch (err) {
-      setActionError("Could not create this plan. Check the fields and try again.");
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const startEdit = (plan) => {
-    setActionError(null);
-    setEditingId(plan.id);
-    setEditForm(subscriptionPlanToForm(plan));
-  };
-
-  const saveEdit = async () => {
-    if(!editingId||!editForm) return;
-    setActionError(null);
-    setSaving(true);
-    try {
-      await apiPatch(`/api/billing/plans/manage/${editingId}/`, subscriptionPlanFormToPayload(editForm));
-      setEditingId(null);
-      setEditForm(null);
-      refetch();
-    } catch (err) {
-      setActionError("Could not save this plan. Check the fields and try again.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
-  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load subscription plans.</div>;
-  const items = data||[];
-
-  return <div>
-    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
-    <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`,marginBottom:16,maxWidth:560}}>
-      <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:12}}>Create a new plan</div>
-      <SubscriptionPlanFormFields theme={theme} form={createForm} setField={setCreateField}/>
-      <button onClick={createPlan} disabled={creating||!createForm.tier||!createForm.name} style={{marginTop:12,background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"8px 20px",fontSize:"0.78rem",fontWeight:800,cursor:creating?"default":"pointer",fontFamily:"inherit"}}>{creating?"Creating…":"Create plan"}</button>
-    </div>
-
-    <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
-      <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>All plans ({items.length})</div>
-      {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No plans yet.</div>}
-      {items.map(p=>{
-        const statusMeta = SUBSCRIPTION_PLAN_STATUS_META[p.status]||{label:p.status,color:"#888"};
-        return (
-        <div key={p.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
-          {editingId===p.id ? (
-            <div>
-              <SubscriptionPlanFormFields theme={theme} form={editForm} setField={setEditFieldValue}/>
-              <div style={{display:"flex",gap:8,marginTop:10}}>
-                <button onClick={saveEdit} disabled={saving} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"6px 16px",fontSize:"0.75rem",fontWeight:800,cursor:saving?"default":"pointer",fontFamily:"inherit"}}>{saving?"Saving…":"Save"}</button>
-                <button onClick={()=>{setEditingId(null);setEditForm(null);}} style={{background:"none",border:`1px solid ${theme.border}`,color:theme.textMuted,borderRadius:20,padding:"6px 16px",fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
-              </div>
-            </div>
-          ) : (
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,flexWrap:"wrap"}}>
-              <div>
-                <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>
-                  {p.name} <span style={{color:theme.textMuted,fontWeight:400}}>({p.tier})</span>
-                  {p.is_recommended&&<span style={{background:`${C.gold}33`,color:C.gold,borderRadius:20,padding:"2px 8px",fontSize:"0.6rem",fontWeight:700,marginLeft:6}}>★ Recommended</span>}
-                  <span style={{background:`${statusMeta.color}22`,color:statusMeta.color,borderRadius:20,padding:"2px 8px",fontSize:"0.6rem",fontWeight:700,marginLeft:6}}>{statusMeta.label}</span>
-                </div>
-                <div style={{color:theme.textMuted,fontSize:"0.72rem",margin:"3px 0"}}>{p.kind==="product"?"Product":"Service"} · GHS {p.monthly_price}/mo · Max listings: {p.max_active_listings??"Unlimited"} · Hero days: {p.hero_days} · Boost credits: {p.boost_credits_per_month}</div>
-                {p.status==="rejected"&&p.rejection_reason&&<div style={{color:"#dc2626",fontSize:"0.68rem",marginTop:2}}>Rejected: {p.rejection_reason}</div>}
-              </div>
-              <button onClick={()=>startEdit(p)} style={{background:"none",border:`1px solid ${theme.border}`,color:theme.text,borderRadius:20,padding:"5px 14px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✏️ Edit</button>
-            </div>
-          )}
-        </div>
-        );
-      })}
-    </div>
-  </div>;
-}
-
-// Staff "subscription_plans.approve" panel (super_admin only): approve/reject
-// pending plans. Clones HeroApprovalPanel's exact shape (list + approve +
-// reveal-a-reason-then-reject).
-function SubscriptionPlanApprovalPanel({theme}) {
-  const {data,isLoading,isError,refetch} = useSubscriptionPlanPendingQueue();
-  const [rejectingId,setRejectingId] = useState(null);
-  const [rejectReason,setRejectReason] = useState("");
-  const [actionError,setActionError] = useState(null);
-
-  const approve = async (id) => {
-    setActionError(null);
-    try { await apiPost(`/api/billing/plans/${id}/approve/`,{}); refetch(); }
-    catch (err) { setActionError("Could not approve this plan."); }
-  };
-  const reject = async (id) => {
-    setActionError(null);
-    try { await apiPost(`/api/billing/plans/${id}/reject/`,{reason:rejectReason}); setRejectingId(null); setRejectReason(""); refetch(); }
-    catch (err) { setActionError("Could not reject this plan."); }
-  };
-
-  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
-  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the plan approval queue.</div>;
-  const items = data||[];
-
-  return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
-    <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Pending plan approvals ({items.length})</div>
-    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
-    {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No pending plans.</div>}
-    {items.map(p=>(
-      <div key={p.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}>
-          <div>
-            <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>{p.name} <span style={{color:theme.textMuted,fontWeight:400}}>({p.tier})</span></div>
-            <div style={{color:theme.textMuted,fontSize:"0.72rem",margin:"3px 0"}}>{p.kind==="product"?"Product":"Service"} · GHS {p.monthly_price}/mo · Max listings: {p.max_active_listings??"Unlimited"} · Hero days: {p.hero_days} · Boost credits: {p.boost_credits_per_month}</div>
-          </div>
-          <div style={{display:"flex",gap:6}}>
-            <button onClick={()=>approve(p.id)} style={{background:"#22c55e",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✓ Approve</button>
-            <button onClick={()=>setRejectingId(p.id)} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>✕ Reject</button>
-          </div>
-        </div>
-        {rejectingId===p.id&&<div style={{marginTop:8,display:"flex",gap:6}}>
-          <input value={rejectReason} onChange={e=>setRejectReason(e.target.value)} placeholder="Rejection reason" style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
-          <button onClick={()=>reject(p.id)} disabled={!rejectReason} style={{background:"#dc2626",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:rejectReason?"pointer":"default"}}>Confirm reject</button>
-        </div>}
-      </div>
-    ))}
-  </div>;
-}
-
-const DELIVERY_STATUS_OPTIONS = [
-  { value: "processing", label: "Processing" },
-  { value: "shipped", label: "Shipped" },
-  { value: "out_for_delivery", label: "Out for Delivery" },
-  { value: "delivered", label: "Delivered" },
-];
-
-// Clones ReviewsModerationPanel's exact shape: useDeliveryQueue() is
-// paginated ({count, next, previous, results}), so items reads data?.results
-// (not data||[]). Only paid orders get the delivery-status <select> — a
-// pending/cancelled order has nothing to ship yet.
-function DeliveryManagementPanel({theme}) {
-  const {data,isLoading,isError,refetch} = useDeliveryQueue();
-  const [updatingId,setUpdatingId] = useState(null);
-  const [actionError,setActionError] = useState(null);
-
-  const updateStatus = async (id, delivery_status) => {
-    setActionError(null);
-    setUpdatingId(id);
-    try {
-      await apiPatch(`/api/orders/${id}/delivery-status/`,{delivery_status});
-      refetch();
-    } catch (err) {
-      setActionError("Could not update this order's delivery status.");
-    } finally {
-      setUpdatingId(null);
-    }
-  };
-
-  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
-  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the orders queue.</div>;
-  const items = data?.results||[];
-
-  return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
-    <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Orders ({data?.count??items.length})</div>
-    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
-    {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No orders yet.</div>}
-    {items.map(o=>(
-      <div key={o.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-          <div>
-            <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>{o.customer_name}</div>
-            <div style={{color:theme.textMuted,fontSize:"0.68rem"}}>Order #{o.id} • {o.status} • GHS {o.total_amount} • {o.placed_at?.slice(0,10)}</div>
-          </div>
-          {o.status==="paid" && (
-            <select
-              value={o.delivery_status}
-              disabled={updatingId===o.id}
-              onChange={e=>updateStatus(o.id,e.target.value)}
-              style={{padding:"5px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.72rem",fontFamily:"inherit",background:theme.cardBg,color:theme.text}}
-            >
-              {DELIVERY_STATUS_OPTIONS.map(opt=><option key={opt.value} value={opt.value}>{opt.label}</option>)}
-            </select>
-          )}
-        </div>
-      </div>
-    ))}
-  </div>;
-}
-
-const CONTACT_STATUS_META = {
-  new: { label:"New", color:"#2563eb" },
-  read: { label:"Read", color:"#d97706" },
-  resolved: { label:"Resolved", color:"#22c55e" },
-};
-
-function ContactMessagesPanel({theme}) {
-  // GET /api/core/contact-messages/ is paginated ({count, next, previous,
-  // results}), same convention as ReviewsModerationPanel/
-  // useReviewsModerationQueue above — `items` reads data?.results, not
-  // data||[]. Resolved is a final state (no un-resolving), so "Mark read"
-  // is hidden once a message is resolved.
-  const {data,isLoading,isError,refetch} = useContactMessagesQueue();
-  const [actionError,setActionError] = useState(null);
-
-  const markRead = async (id) => {
-    setActionError(null);
-    try { await apiPost(`/api/core/contact-messages/${id}/read/`,{}); refetch(); }
-    catch (err) { setActionError("Could not mark this message as read."); }
-  };
-  const resolve = async (id) => {
-    setActionError(null);
-    try { await apiPost(`/api/core/contact-messages/${id}/resolve/`,{}); refetch(); }
-    catch (err) { setActionError("Could not resolve this message."); }
-  };
-
-  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
-  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the contact messages queue.</div>;
-  const items = data?.results||[];
-
-  return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
-    <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Contact Messages ({data?.count??items.length})</div>
-    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
-    {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No contact messages yet.</div>}
-    {items.map(m=>{
-      const statusMeta = CONTACT_STATUS_META[m.status]||{label:m.status,color:"#888"};
-      return (
-      <div key={m.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,flexWrap:"wrap"}}>
-          <div>
-            <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>
-              {m.subject} <span style={{color:theme.textMuted,fontWeight:400}}>({m.category})</span>
-              <span style={{background:`${statusMeta.color}22`,color:statusMeta.color,borderRadius:20,padding:"2px 8px",fontSize:"0.6rem",fontWeight:700,marginLeft:6}}>{statusMeta.label}</span>
-            </div>
-            {m.message&&<div style={{color:theme.textMuted,fontSize:"0.75rem",margin:"4px 0",maxWidth:420}}>"{m.message}"</div>}
-            <div style={{color:theme.textMuted,fontSize:"0.65rem"}}>{m.name} • {m.email}{m.phone?` • ${m.phone}`:""} • {m.created_at?.slice(0,10)}</div>
-            {m.status==="resolved"&&m.resolved_by_name&&<div style={{color:"#22c55e",fontSize:"0.65rem",marginTop:2}}>Resolved by {m.resolved_by_name}{m.resolved_at?` on ${m.resolved_at.slice(0,10)}`:""}</div>}
-          </div>
-          <div style={{display:"flex",gap:6}}>
-            {m.status!=="resolved"&&<button onClick={()=>markRead(m.id)} style={{background:"#fef3c7",color:"#d97706",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>Mark read</button>}
-            {m.status!=="resolved"&&<button onClick={()=>resolve(m.id)} style={{background:"#22c55e",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>Resolve</button>}
-          </div>
-        </div>
-      </div>
-      );
-    })}
-  </div>;
-}
-
-const ESCROW_STATUS_META = {
-  held: { label:"Held", color:"#f59e0b" },
-  released: { label:"Released", color:"#22c55e" },
-};
-
-// Escrow Ledger staff panel (event ticketing + escrow work). Clones
-// ReviewsModerationPanel's shape exactly — same paginated-queue/actionError/
-// refetch() convention, `data?.results` (useEscrowLedger mirrors
-// useReviewsModerationQueue's paginated shape). Release/Hold require
-// `escrow.release`; Refund requires `escrow.refund` — a stricter,
-// non-overlapping permission per events/views.py's EscrowRefundView. A
-// refunded ticket (refunded_at set) never gets Release/Hold/Refund actions
-// again regardless of permission, and Refund itself only ever shows for a
-// still-held, not-yet-delivered ticket (mirrors EscrowRefundView's own
-// validation, so a click here doesn't just round-trip into a 400).
-function EscrowLedgerPanel({theme,auth}) {
-  const {data,isLoading,isError,refetch} = useEscrowLedger();
-  const [noteById,setNoteById] = useState({});
-  const [reasonById,setReasonById] = useState({});
-  const [actionError,setActionError] = useState(null);
-
-  const canRelease = auth.hasPermission("escrow.release");
-  const canRefund = auth.hasPermission("escrow.refund");
-
-  const release = async (id) => {
-    setActionError(null);
-    try { await apiPost(`/api/events/tickets/${id}/escrow/release/`,{note:noteById[id]||""}); refetch(); }
-    catch (err) { setActionError("Could not release this ticket's escrow."); }
-  };
-  const hold = async (id) => {
-    setActionError(null);
-    try { await apiPost(`/api/events/tickets/${id}/escrow/hold/`,{note:noteById[id]||""}); refetch(); }
-    catch (err) { setActionError("Could not hold this ticket's escrow."); }
-  };
-  const refund = async (id) => {
-    setActionError(null);
-    try { await apiPost(`/api/events/tickets/${id}/escrow/refund/`,{reason:reasonById[id]||""}); refetch(); }
-    catch (err) { setActionError("Could not refund this ticket."); }
-  };
-
-  if(isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
-  if(isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the escrow ledger.</div>;
-  const items = data?.results||[];
-
-  return <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
-    <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:14}}>Escrow Ledger ({data?.count??items.length})</div>
-    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
-    {items.length===0&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No tickets yet.</div>}
-    {items.map(t=>{
-      const statusMeta = ESCROW_STATUS_META[t.escrow_status]||{label:t.escrow_status,color:"#888"};
-      const isRefunded = !!t.refunded_at;
-      const isDelivered = !!t.delivered_at;
-      return (
-      <div key={t.id} style={{padding:"12px 0",borderBottom:`1px solid ${theme.border}`}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,flexWrap:"wrap"}}>
-          <div>
-            <div style={{color:theme.text,fontWeight:700,fontSize:"0.82rem"}}>
-              {t.event_name} — {t.ticket_type_name} <span style={{color:theme.textMuted,fontWeight:400}}>({t.code})</span>
-              {isRefunded ? (
-                <span style={{background:"#dc262622",color:"#dc2626",borderRadius:20,padding:"2px 8px",fontSize:"0.6rem",fontWeight:700,marginLeft:6}}>Refunded</span>
-              ) : (
-                <span style={{background:`${statusMeta.color}22`,color:statusMeta.color,borderRadius:20,padding:"2px 8px",fontSize:"0.6rem",fontWeight:700,marginLeft:6}}>{statusMeta.label}</span>
-              )}
-            </div>
-            <div style={{color:theme.textMuted,fontSize:"0.68rem",marginTop:2}}>
-              Buyer: {t.purchased_by_name} • GHS {t.price}
-            </div>
-            <div style={{color:theme.textMuted,fontSize:"0.65rem",marginTop:2}}>
-              Held {t.escrow_held_at?.slice(0,10)||"—"} • Released {t.escrow_released_at?.slice(0,10)||"—"} • Delivered {t.delivered_at?.slice(0,10)||"—"}
-            </div>
-            {t.escrow_override_note&&<div style={{color:theme.textMuted,fontSize:"0.65rem",marginTop:2}}>Note: {t.escrow_override_note}</div>}
-            {isRefunded&&t.refund_reason&&<div style={{color:"#dc2626",fontSize:"0.65rem",marginTop:2}}>Refund reason: {t.refund_reason}</div>}
-          </div>
-        </div>
-        {!isRefunded&&(canRelease||canRefund)&&<div style={{marginTop:8,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-          {canRelease&&t.escrow_status==="held"&&<>
-            <input value={noteById[t.id]||""} onChange={e=>setNoteById(n=>({...n,[t.id]:e.target.value}))} placeholder="Note (optional)" style={{flex:1,minWidth:120,padding:"5px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
-            <button onClick={()=>release(t.id)} style={{background:"#22c55e",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>Release</button>
-          </>}
-          {canRelease&&t.escrow_status==="released"&&<>
-            <input value={noteById[t.id]||""} onChange={e=>setNoteById(n=>({...n,[t.id]:e.target.value}))} placeholder="Note (optional)" style={{flex:1,minWidth:120,padding:"5px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
-            <button onClick={()=>hold(t.id)} style={{background:"#f59e0b",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>Hold</button>
-          </>}
-          {canRefund&&t.escrow_status==="held"&&!isDelivered&&<>
-            <input value={reasonById[t.id]||""} onChange={e=>setReasonById(n=>({...n,[t.id]:e.target.value}))} placeholder="Refund reason (optional)" style={{flex:1,minWidth:120,padding:"5px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
-            <button onClick={()=>refund(t.id)} style={{background:"#dc2626",color:"white",border:"none",borderRadius:20,padding:"5px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer"}}>Refund</button>
-          </>}
-        </div>}
-      </div>
-      );
-    })}
-  </div>;
-}
-
-function UsersPanel({theme}) {
-  const [subTab,setSubTab] = useState("customers");
-  const customers = useCustomers();
-  const owners = useBusinessOwners();
-  const active = subTab==="customers"?customers:owners;
-
-  return <div>
-    <div style={{display:"flex",gap:8,marginBottom:14}}>
-      <button onClick={()=>setSubTab("customers")} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:700,fontSize:"0.75rem",background:subTab==="customers"?C.gold:theme.border,color:subTab==="customers"?C.darkBrown:theme.textMuted,fontFamily:"inherit"}}>Customers</button>
-      <button onClick={()=>setSubTab("owners")} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:700,fontSize:"0.75rem",background:subTab==="owners"?C.gold:theme.border,color:subTab==="owners"?C.darkBrown:theme.textMuted,fontFamily:"inherit"}}>Business Owners</button>
-    </div>
-    {active.isLoading&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>}
-    {active.isError&&<div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load this list.</div>}
-    {active.data&&<div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
-      <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:4}}>{active.data.count} total</div>
-      {active.data.count>20&&<div style={{color:theme.textMuted,fontSize:"0.68rem",marginBottom:10}}>Showing first 20 of {active.data.count}.</div>}
-      {active.data.results.map(u=>(
-        <div key={u.id} style={{padding:"10px 0",borderBottom:`1px solid ${theme.border}`}}>
-          <div style={{color:theme.text,fontWeight:700,fontSize:"0.8rem"}}>{u.full_name}</div>
-          <div style={{color:theme.textMuted,fontSize:"0.68rem"}}>
-            {subTab==="customers"?`${u.phone||"—"} • ${u.email||"—"}`:`${u.login_phone} • KYC: ${u.kyc_status}`}
-          </div>
-        </div>
-      ))}
-    </div>}
-  </div>;
-}
-
-function CategoriesZonesPanel({theme,auth}) {
-  const categories = useCategories();
-  const zones = useZones();
-  const [newCategoryLabel,setNewCategoryLabel] = useState("");
-  const [newZoneName,setNewZoneName] = useState("");
-  const [actionError,setActionError] = useState(null);
-
-  const addCategory = async () => {
-    if(!newCategoryLabel) return;
-    setActionError(null);
-    try {
-      const slug = newCategoryLabel.toLowerCase().replace(/\s+/g,"-");
-      await apiPost("/api/listings/categories/",{slug,icon:"🆕",label:newCategoryLabel,color:"#888888"});
-      setNewCategoryLabel("");
-      categories.refetch();
-    } catch (err) { setActionError("Could not add this category."); }
-  };
-  const addZone = async () => {
-    if(!newZoneName) return;
-    setActionError(null);
-    try {
-      await apiPost("/api/listings/zones/",{name:newZoneName});
-      setNewZoneName("");
-      zones.refetch();
-    } catch (err) { setActionError("Could not add this zone."); }
-  };
-
-  return <div>
-    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:16}}>
-    <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
-      <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:12}}>Categories</div>
-      {(categories.data||[]).map(c=>(
-        <div key={c.id} style={{padding:"6px 0",color:theme.text,fontSize:"0.8rem"}}>{c.icon} {c.label}</div>
-      ))}
-      {auth.hasPermission("categories.manage")&&<div style={{marginTop:12,display:"flex",gap:6}}>
-        <input value={newCategoryLabel} onChange={e=>setNewCategoryLabel(e.target.value)} placeholder="New category label" style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
-        <button onClick={addCategory} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>Add category</button>
-      </div>}
-    </div>
-    <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
-      <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:12}}>Zones</div>
-      {(zones.data||[]).map(z=>(
-        <div key={z.id} style={{padding:"6px 0",color:theme.text,fontSize:"0.8rem"}}>{z.name}</div>
-      ))}
-      {auth.hasPermission("zones.manage")&&<div style={{marginTop:12,display:"flex",gap:6}}>
-        <input value={newZoneName} onChange={e=>setNewZoneName(e.target.value)} placeholder="New zone name" style={{flex:1,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
-        <button onClick={addZone} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>Add zone</button>
-      </div>}
-    </div>
-    </div>
-  </div>;
-}
-
-const SITE_SETTINGS_FIELDS = [
-  {key:"contact_email",label:"Contact email",placeholder:"hello@ashantihub.com"},
-  {key:"contact_phone",label:"Contact phone",placeholder:"+233 20 111 2233"},
-  {key:"contact_address",label:"Contact address",placeholder:"Adum, Kumasi"},
-  {key:"facebook_url",label:"Facebook URL",placeholder:"https://facebook.com/ashantihub"},
-  {key:"instagram_url",label:"Instagram URL",placeholder:"https://instagram.com/ashantihub"},
-  {key:"linkedin_url",label:"LinkedIn URL",placeholder:"https://linkedin.com/company/ashantihub"},
-  {key:"twitter_url",label:"Twitter / X URL",placeholder:"https://x.com/ashantihub"},
-  {key:"tiktok_url",label:"TikTok URL",placeholder:"https://tiktok.com/@ashantihub"},
-  {key:"youtube_url",label:"YouTube URL",placeholder:"https://youtube.com/@ashantihub"},
-  {key:"whatsapp_number",label:"WhatsApp support number",placeholder:"233244000000 (digits only, no +)"},
-  {key:"support_hours",label:"Support hours",placeholder:"Mon–Sat, 8:00am – 8:00pm GMT"},
-  {key:"warranty_returns_policy",label:"Warranty & returns policy",placeholder:"e.g. Items may be returned within 7 days if unopened...",multiline:true},
-  {key:"service_dispute_policy",label:"Service satisfaction & dispute policy",placeholder:"e.g. If a service doesn't meet expectations, contact AshantiHub Support within 48 hours...",multiline:true},
-];
-
-function SiteSettingsForm({theme,initial,onSaved}) {
-  // `initial` is only passed once the GET has resolved (see SiteSettingsPanel
-  // below), so this lazy useState seed is race-free — no useEffect re-seeding
-  // needed, and no risk of clobbering in-flight edits.
-  const [form,setForm] = useState(() => ({...initial}));
-  const [actionError,setActionError] = useState(null);
-  const [saved,setSaved] = useState(false);
-
-  const showToast = () => { setSaved(true); setTimeout(()=>setSaved(false),2500); };
-
-  const setField = (key,value) => setForm(f=>({...f,[key]:value}));
-
-  const save = async () => {
-    setActionError(null);
-    try {
-      await apiPatch("/api/core/site-settings/", {...form});
-      showToast();
-      onSaved();
-    } catch (err) {
-      setActionError("Could not save site settings. Please try again.");
-    }
-  };
-
-  return <div>
-    {saved&&<div style={{position:"fixed",top:70,right:20,background:"#22c55e",color:"white",borderRadius:12,padding:"10px 18px",fontSize:"0.8rem",fontWeight:700,zIndex:999}}>✓ Saved!</div>}
-    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
-    <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`,maxWidth:520}}>
-      <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:12}}>Footer contact & social links</div>
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {SITE_SETTINGS_FIELDS.map(f=>(
-          <label key={f.key} style={{display:"flex",flexDirection:"column",gap:4}}>
-            <span style={{color:theme.textMuted,fontSize:"0.68rem",fontWeight:700}}>{f.label}</span>
-            {f.multiline ? (
-              <textarea value={form[f.key]||""} onChange={e=>setField(f.key,e.target.value)} placeholder={f.placeholder} rows={4} style={{padding:"8px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.78rem",fontFamily:"inherit",background:theme.pageBg,color:theme.text,resize:"vertical"}}/>
-            ) : (
-              <input value={form[f.key]||""} onChange={e=>setField(f.key,e.target.value)} placeholder={f.placeholder} style={{padding:"8px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.78rem",fontFamily:"inherit",background:theme.pageBg,color:theme.text}}/>
-            )}
-          </label>
-        ))}
-      </div>
-      <button onClick={save} style={{marginTop:16,background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"8px 20px",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>Save</button>
-    </div>
-  </div>;
-}
-
-function SiteSettingsPanel({theme}) {
-  const settings = useSiteSettings();
-
-  return <div>
-    {settings.isLoading&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>}
-    {settings.isError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>Could not load site settings.</div>}
-    {settings.data&&<SiteSettingsForm theme={theme} initial={settings.data} onSaved={settings.refetch}/>}
-  </div>;
-}
-
-const STATUS_COLORS = {active:"#22c55e",invited:"#f59e0b",invite_expired:"#dc2626"};
-
-function StaffManagementPanel({theme}) {
-  const {data,isLoading,isError,refetch} = useStaffRoster();
-  const [inviteName,setInviteName] = useState("");
-  const [inviteEmail,setInviteEmail] = useState("");
-  const [inviteRole,setInviteRole] = useState("");
-  const [actionError,setActionError] = useState(null);
-
-  const sendInvite = async () => {
-    if(!inviteName||!inviteEmail||!inviteRole) return;
-    setActionError(null);
-    try {
-      await apiPost("/api/accounts/staff/invite/",{full_name:inviteName,email:inviteEmail,role:inviteRole});
-      setInviteName(""); setInviteEmail(""); setInviteRole("");
-      refetch();
-    } catch (err) { setActionError("Could not send the invite. Check the details and try again."); }
-  };
-
-  return <div>
-    <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`,marginBottom:16}}>
-      <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:12}}>Invite a staff member</div>
-      {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
-      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-        <input value={inviteName} onChange={e=>setInviteName(e.target.value)} placeholder="Full name" style={{flex:1,minWidth:120,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
-        <input value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)} placeholder="Email" style={{flex:1,minWidth:120,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
-        <select value={inviteRole} onChange={e=>setInviteRole(e.target.value)} style={{width:120,padding:"6px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}>
-          <option value="">Role</option>
-          <option value="super_admin">Super Admin</option>
-          <option value="admin">Admin</option>
-          <option value="accountant">Accountant</option>
-          <option value="marketing">Marketing</option>
-          <option value="support">Support</option>
-        </select>
-        <button onClick={sendInvite} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>Send invite</button>
-      </div>
-    </div>
-
-    {isLoading&&<div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>}
-    {isError&&<div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load the staff roster.</div>}
-    {data&&<div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
-      <div style={{color:theme.text,fontWeight:800,fontSize:"0.88rem",marginBottom:10}}>{data.count} staff members</div>
-      {data.results.map(s=>(
-        <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${theme.border}`}}>
-          <div>
-            <div style={{color:theme.text,fontWeight:700,fontSize:"0.8rem"}}>{s.full_name}</div>
-            <div style={{color:theme.textMuted,fontSize:"0.68rem"}}>{s.email} • {s.role}</div>
-          </div>
-          <span style={{background:`${STATUS_COLORS[s.status]}22`,color:STATUS_COLORS[s.status],borderRadius:20,padding:"2px 8px",fontSize:"0.62rem",fontWeight:700}}>{s.status}</span>
-        </div>
-      ))}
-    </div>}
-  </div>;
-}
-
+// The staff dashboard is the Admin Command Center (frontend/components/
+// admin/*), the dark "mission-control" restyle of the old inline-in-App.jsx
+// StaffDashboard — matching the Business Command Center's visual system
+// (frontend/components/dashboard/*) while keeping every panel's behavior/
+// text unchanged (see frontend/StaffDashboard.test.jsx, the behavioral
+// contract). This thin wrapper keeps the historical `StaffDashboard` export/
+// signature (used by StaffDashboard.test.jsx and the `/staff` route below)
+// while delegating to the new shell — same convention as `BusinessDashboard`
+// delegating to `BusinessCommandCenter` just below.
 export function StaffDashboard({auth,onExit}) {
-  const {theme,toggleTheme} = useTheme();
-  const t = DASHBOARD_THEME[theme];
-  const [activeTab,setActiveTab] = useState("overview");
-  const [sidebarCollapsed,setSidebarCollapsed] = useState(false);
-  const role = auth.user?.role;
-  const roleColor = ROLE_COLORS[role]||C.gold;
-
-  const NAV_ITEMS = [
-    {id:"overview",icon:"📊",label:"Overview",show:true},
-    {id:"kyc",icon:"🪪",label:"KYC Queue",show:auth.hasPermission("kyc.approve")},
-    {id:"moderation",icon:"📋",label:"Listings Moderation",show:auth.hasPermission("listings.moderate")},
-    {id:"hero",icon:"🌟",label:"Hero Approval",show:auth.hasPermission("hero_media.approve")},
-    {id:"events-moderation",icon:"🎉",label:"Events Moderation",show:auth.hasPermission("event.approve")},
-    {id:"event-pricing",icon:"💵",label:"Event Pricing",show:auth.hasPermission("event_pricing.manage")||auth.hasPermission("event_pricing.approve")},
-    {id:"reviews",icon:"⭐",label:"Reviews",show:auth.hasPermission("reviews.moderate")},
-    {id:"subscription-plans",icon:"💳",label:"Subscription Plans",show:auth.hasPermission("subscription_plans.manage")},
-    {id:"subscription-plans-approval",icon:"✅",label:"Plan Approvals",show:auth.hasPermission("subscription_plans.approve")},
-    {id:"delivery",icon:"🚚",label:"Delivery Management",show:auth.hasPermission("orders.manage_delivery")},
-    {id:"contact-messages",icon:"✉️",label:"Contact Messages",show:auth.hasPermission("contact_messages.manage")},
-    {id:"users",icon:"👥",label:"Users",show:auth.hasPermission("users.view")},
-    {id:"categories-zones",icon:"🗂️",label:"Categories & Zones",show:auth.hasPermission("categories.manage")||auth.hasPermission("zones.manage")},
-    {id:"site-settings",icon:"🧭",label:"Site Settings",show:auth.hasPermission("site_settings.manage")},
-    {id:"staff",icon:"🛡️",label:"Staff Management",show:auth.hasPermission("staff.manage")},
-    {id:"escrow",icon:"💰",label:"Escrow Ledger",show:auth.hasPermission("escrow.view")||auth.hasPermission("escrow.release")||auth.hasPermission("escrow.refund")},
-    {id:"disputes",icon:"⚖️",label:"Disputes",show:auth.hasPermission("disputes.resolve_financial")||auth.hasPermission("disputes.flag")},
-    {id:"transactions",icon:"📈",label:"Transactions Report",show:auth.hasPermission("transactions.report")},
-    {id:"promotions",icon:"🎯",label:"Promotions",show:auth.hasPermission("promotions.manage")},
-    {id:"analytics",icon:"📊",label:"Analytics",show:auth.hasPermission("analytics.view")},
-    {id:"messaging",icon:"💬",label:"Messaging / Tickets",show:auth.hasPermission("messaging.manage")},
-  ].filter(item=>item.show);
-
-  return <div style={{fontFamily:"'Georgia',serif",background:t.pageBg,minHeight:"100vh",display:"flex"}}>
-    <div style={{width:sidebarCollapsed?60:220,background:t.sidebarBg,borderLeft:`4px solid ${roleColor}`,transition:"width 0.2s",flexShrink:0,position:"sticky",top:0,height:"100vh",overflowY:"auto"}}>
-      <div style={{padding:"16px 12px",display:"flex",alignItems:"center",gap:8}}>
-        <Flag w={28} h={19}/>
-        {!sidebarCollapsed&&<div style={{color:t.sidebarText,fontWeight:900,fontSize:"0.85rem"}}>AshantiHub Staff</div>}
-      </div>
-      <button onClick={()=>setSidebarCollapsed(s=>!s)} style={{background:"none",border:"none",color:t.textMuted,cursor:"pointer",padding:"4px 12px",fontSize:"0.7rem",fontFamily:"inherit"}}>{sidebarCollapsed?"→":"← Collapse"}</button>
-      <nav>
-        {NAV_ITEMS.map(item=>(
-          <button key={item.id} onClick={()=>setActiveTab(item.id)} style={{display:"flex",alignItems:"center",gap:10,width:"100%",background:activeTab===item.id?`${roleColor}22`:"none",border:"none",borderLeft:activeTab===item.id?`3px solid ${roleColor}`:"3px solid transparent",color:t.sidebarText,padding:"10px 12px",fontSize:"0.78rem",fontWeight:activeTab===item.id?800:600,cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>
-            <span>{item.icon}</span>{!sidebarCollapsed&&<span>{item.label}</span>}
-          </button>
-        ))}
-      </nav>
-    </div>
-
-    <div style={{flex:1,minWidth:0}}>
-      <div style={{background:t.cardBg,borderBottom:`1px solid ${t.border}`,padding:"0 20px",display:"flex",alignItems:"center",justifyContent:"space-between",height:56,position:"sticky",top:0,zIndex:10}}>
-        <div style={{color:t.text,fontWeight:800,fontSize:"0.9rem"}}>{NAV_ITEMS.find(i=>i.id===activeTab)?.label}</div>
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <button onClick={toggleTheme} title="Toggle theme" style={{background:"none",border:`1px solid ${t.border}`,borderRadius:20,padding:"4px 10px",cursor:"pointer",fontSize:"0.8rem"}}>{theme==="dark"?"☀️":"🌙"}</button>
-          <div style={{display:"flex",alignItems:"center",gap:6}}>
-            <span style={{background:roleColor,color:"white",borderRadius:20,padding:"2px 8px",fontSize:"0.62rem",fontWeight:800,textTransform:"capitalize"}}>{role?.replace("_"," ")}</span>
-            <span style={{color:t.text,fontSize:"0.78rem",fontWeight:700}}>{auth.user?.full_name}</span>
-          </div>
-          <button onClick={onExit} style={{background:"none",border:`1px solid ${t.border}`,color:t.textMuted,borderRadius:20,padding:"4px 12px",fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>← Exit</button>
-        </div>
-      </div>
-
-      <div style={{padding:"22px 20px 60px"}}>
-        {activeTab==="overview"&&<StaffOverviewPanel auth={auth} theme={t} roleColor={roleColor}/>}
-        {activeTab==="kyc"&&<KYCQueuePanel theme={t}/>}
-        {activeTab==="moderation"&&<ListingsModerationPanel theme={t}/>}
-        {activeTab==="hero"&&<HeroApprovalPanel theme={t}/>}
-        {activeTab==="events-moderation"&&<EventsModerationPanel theme={t}/>}
-        {activeTab==="event-pricing"&&<EventPricingPanel theme={t} auth={auth}/>}
-        {activeTab==="reviews"&&<ReviewsModerationPanel theme={t}/>}
-        {activeTab==="subscription-plans"&&<SubscriptionPlansManagePanel theme={t}/>}
-        {activeTab==="subscription-plans-approval"&&<SubscriptionPlanApprovalPanel theme={t}/>}
-        {activeTab==="delivery"&&<DeliveryManagementPanel theme={t}/>}
-        {activeTab==="contact-messages"&&<ContactMessagesPanel theme={t}/>}
-        {activeTab==="users"&&<UsersPanel theme={t}/>}
-        {activeTab==="categories-zones"&&<CategoriesZonesPanel theme={t} auth={auth}/>}
-        {activeTab==="site-settings"&&<SiteSettingsPanel theme={t}/>}
-        {activeTab==="staff"&&<StaffManagementPanel theme={t}/>}
-        {activeTab==="escrow"&&<EscrowLedgerPanel theme={t} auth={auth}/>}
-        {activeTab==="disputes"&&<ComingSoonPanel theme={t} feature="Disputes"/>}
-        {activeTab==="transactions"&&<ComingSoonPanel theme={t} feature="Transactions Report"/>}
-        {activeTab==="promotions"&&<PromotionsInfoPanel theme={t}/>}
-        {activeTab==="analytics"&&<ComingSoonPanel theme={t} feature="Analytics"/>}
-        {activeTab==="messaging"&&<ComingSoonPanel theme={t} feature="Messaging / Tickets"/>}
-      </div>
-    </div>
-  </div>;
+  return <AdminCommandCenter auth={auth} onExit={onExit} />;
 }
 
 // The business-owner dashboard is the unified dark "mission-control" Business
@@ -3165,6 +2070,22 @@ export default function AshantiHub() {
   const { data: cart, refetch: refetchCart } = useCart(isCustomer);
   const cartItemCount = cart?.items?.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
 
+  // Unread-messages badge count for ChatLauncher — real `messaging` app data
+  // (see MessagingCenter's notes on needsCustomerAttention above) rather
+  // than the old MOCK_CONVERSATIONS. Same query key as MessagingCenter's own
+  // useMyConversations() call, so React Query shares the cache instead of
+  // double-fetching once the messaging modal is actually opened. Must be
+  // called here, alongside useCart above — not further down near where
+  // unreadMessages is actually computed — because several early `return`s
+  // (showRegistrationFlow/isAdmin/showAccount/showBizDash.../isLoading/
+  // show404, below) sit between here and there; a hook call placed after
+  // any of them would violate the rules of hooks (it wouldn't run on every
+  // render), which is exactly what happened here initially — React's
+  // "Rendered more hooks than during the previous render" error, caught by
+  // App.routing.test.jsx's route-switching tests exercising both an
+  // early-return path and a normal-render path across renders.
+  const { data: myConversationsData } = useMyConversations(!!user);
+
   // Add-to-cart (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4) — passed down to
   // ListingDetailPage as `onAddToCart`, same "AshantiHub owns the mutation,
   // the component just calls the callback and owns its own local adding/
@@ -3296,10 +2217,7 @@ export default function AshantiHub() {
   // Category strip grouping for the Business tab — see groupCategoriesByKind above.
   const {productCategories,serviceCategories}=groupCategoriesByKind(categories);
 
-  // Unread-messages badge count for Navbar — MOCK_CONVERSATIONS is mock
-  // messaging data (Phase-2 messaging is out of scope, see App.jsx notes
-  // near MessagingCenter), so this stays computed here rather than moving.
-  const unreadMessages = MOCK_CONVERSATIONS.reduce((s, c) => s + c.unread, 0);
+  const unreadMessages = (myConversationsData || []).filter(needsCustomerAttention).length;
 
   // Favourites drawer — renders every favourited id regardless of which category/page
   // is currently loaded, fetching each one individually via `FavDrawerItem`/`useListing`
