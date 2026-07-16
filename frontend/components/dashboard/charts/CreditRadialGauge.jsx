@@ -15,7 +15,7 @@ export default function CreditRadialGauge({ score, size = 200 }) {
       <ResponsiveContainer width="100%" height="100%">
         <RadialBarChart innerRadius="72%" outerRadius="100%" data={data} startAngle={225} endAngle={-45} barSize={14}>
           <PolarAngleAxis type="number" domain={[300, 1000]} tick={false} />
-          <RadialBar background={{ fill: "rgba(148,164,191,0.16)" }} dataKey="value" cornerRadius={10} />
+          <RadialBar background={{ fill: D.divider }} dataKey="value" cornerRadius={10} />
         </RadialBarChart>
       </ResponsiveContainer>
       <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>

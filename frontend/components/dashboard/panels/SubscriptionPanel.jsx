@@ -67,24 +67,24 @@ export default function SubscriptionPanel({ user, PaymentComponent, showToast })
         <PaymentComponent amount={Number(selectedPlan.monthly_price) * cycleMonths} purpose={`AshantiHub ${selectedPlan.name} Plan`} businessName={user?.fullName || "Your Business"} onSuccess={recordSubscriptionPayment} onClose={() => setShowPayModal(false)} />
       )}
       <h2 style={{ margin: "0 0 14px", color: D.text, fontWeight: 900, fontSize: "0.98rem" }}>💳 Subscription</h2>
-      {actionError && <div style={{ background: "rgba(248,113,113,0.12)", color: D.red, borderRadius: 12, padding: "10px 14px", fontSize: "0.78rem", marginBottom: 14 }}>{actionError}</div>}
+      {actionError && <div style={{ background: `${D.red}1f`, color: D.red, borderRadius: 12, padding: "10px 14px", fontSize: "0.78rem", marginBottom: 14 }}>{actionError}</div>}
       {subLoading && <div style={{ color: D.textDim, fontSize: "0.8rem", marginBottom: 16 }}>Loading your subscription…</div>}
       {subError && <div style={{ color: D.red, fontSize: "0.8rem", marginBottom: 16 }}>Could not load your subscription. Make sure you're signed in as a business owner.</div>}
       {!subLoading && !subError && (
         subscription?.id ? (
-          <div style={{ ...glassCard, padding: "18px", marginBottom: 16, background: "linear-gradient(135deg, rgba(52,211,153,0.18), rgba(20,40,30,0.6))", border: `1px solid rgba(52,211,153,0.3)` }}>
+          <div style={{ ...glassCard, padding: "18px", marginBottom: 16, background: "linear-gradient(135deg, rgba(0,100,0,0.16), rgba(0,100,0,0.03))", border: `1px solid rgba(0,100,0,0.3)` }}>
             <div style={{ fontWeight: 900, fontSize: "1rem", color: D.gold, marginBottom: 4 }}>💳 {subscription.plan?.name} Plan — {subscription.status}{subscription.is_trial && <span style={{ marginLeft: 8, fontSize: "0.68rem", fontWeight: 800, color: D.textDim, background: D.panelBg2, borderRadius: 20, padding: "2px 10px", verticalAlign: "middle" }}>🎁 Free trial</span>}</div>
             <div style={{ fontSize: "0.78rem", color: D.textDim }}>Billing: every {subscription.cycle_months} month{subscription.cycle_months === 1 ? "" : "s"} • Renews <strong style={{ color: D.text }}>{subscription.current_period_end?.slice(0, 10)}</strong></div>
           </div>
         ) : (
-          <div style={{ ...glassCard, padding: "18px", marginBottom: 16, background: "linear-gradient(135deg, rgba(52,211,153,0.14), rgba(20,40,30,0.55))", border: `1px solid rgba(52,211,153,0.25)` }}>
+          <div style={{ ...glassCard, padding: "18px", marginBottom: 16, background: "linear-gradient(135deg, rgba(0,100,0,0.12), rgba(0,100,0,0.02))", border: `1px solid rgba(0,100,0,0.22)` }}>
             <div style={{ fontWeight: 900, fontSize: "1rem", color: D.gold, marginBottom: 4 }}>🎁 No Active Subscription</div>
             <div style={{ fontSize: "0.78rem", color: D.textDim }}>Choose a plan below to activate your listings.</div>
           </div>
         )
       )}
       {isExpired && (
-        <div style={{ ...glassCard, padding: "18px", marginBottom: 16, background: "linear-gradient(135deg, rgba(248,113,113,0.16), rgba(40,20,20,0.6))", border: `1px solid rgba(248,113,113,0.35)`, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+        <div style={{ ...glassCard, padding: "18px", marginBottom: 16, background: "linear-gradient(135deg, rgba(204,0,0,0.14), rgba(204,0,0,0.03))", border: `1px solid rgba(204,0,0,0.32)`, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
           <div>
             <div style={{ fontWeight: 900, fontSize: "0.95rem", color: D.red, marginBottom: 4 }}>⏰ Your subscription has expired</div>
             <div style={{ fontSize: "0.78rem", color: D.textDim }}>Renew now to keep creating new listings.</div>
