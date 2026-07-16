@@ -1,5 +1,6 @@
 import datetime
 
+from django.conf import settings
 from django.contrib.auth.hashers import check_password
 from django.core import mail
 from django.core.cache import cache
@@ -39,7 +40,7 @@ class StaffInviteTests(TestCase):
         sent = mail.outbox[0]
         self.assertEqual(sent.to, ["akosua@example.com"])
         self.assertIn(invited.invite_token, sent.body)
-        self.assertIn("https://theashantihub.com/staff/activate?token=", sent.body)
+        self.assertIn(f"{settings.FRONTEND_BASE_URL}/staff/activate?token=", sent.body)
 
     def test_support_staff_cannot_invite_staff(self):
         support = StaffUser.objects.create(

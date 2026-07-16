@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import generics, status
@@ -120,7 +121,7 @@ class StaffResendInviteView(APIView):
         staff.invite_expires_at = timezone.now() + INVITE_TOKEN_LIFETIME
         staff.save(update_fields=["invite_token", "invite_expires_at"])
         send_staff_invite_email(
-            staff, f"https://theashantihub.com/staff/activate?token={staff.invite_token}"
+            staff, f"{settings.FRONTEND_BASE_URL}/staff/activate?token={staff.invite_token}"
         )
         return Response({"status": "invite resent"})
 

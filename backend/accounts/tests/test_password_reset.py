@@ -1,5 +1,6 @@
 import datetime
 
+from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
 from django.core import mail
 from django.core.cache import cache
@@ -38,7 +39,7 @@ class PasswordResetRequestTests(TestCase):
         sent = mail.outbox[0]
         self.assertEqual(sent.to, ["ama@example.com"])
         self.assertIn(token.token, sent.body)
-        self.assertIn("https://theashantihub.com/reset-password?token=", sent.body)
+        self.assertIn(f"{settings.FRONTEND_BASE_URL}/reset-password?token=", sent.body)
 
     def test_request_is_silent_and_generic_when_the_account_does_not_exist(self):
         response = self.client.post(
