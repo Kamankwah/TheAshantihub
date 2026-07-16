@@ -1,3 +1,4 @@
+from django.core import mail
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -16,7 +17,7 @@ class CustomerSecondaryEmailVerificationTests(TestCase):
             HTTP_AUTHORIZATION=f"Bearer {issue_token(self.customer, 'customer')}"
         )
 
-    def test_request_sets_pending_email_and_returns_demo_code(self):
+    def test_request_sets_pending_email_and_sends_a_real_email(self):
         response = self.client.post(
             "/api/accounts/customers/me/secondary-email/",
             {"secondary_email": "recovery@example.com"},
@@ -25,13 +26,18 @@ class CustomerSecondaryEmailVerificationTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         body = response.json()
         self.assertEqual(body["secondary_email"], "recovery@example.com")
-        self.assertRegex(body["demo_code"], r"^\d{6}$")
+        self.assertNotIn("demo_code", body)
 
         self.customer.refresh_from_db()
         self.assertEqual(self.customer.secondary_email, "recovery@example.com")
         self.assertFalse(self.customer.secondary_email_verified)
-        self.assertEqual(self.customer.secondary_email_verify_code, body["demo_code"])
+        self.assertRegex(self.customer.secondary_email_verify_code, r"^\d{6}$")
         self.assertIsNotNone(self.customer.secondary_email_verify_expires_at)
+
+        self.assertEqual(len(mail.outbox), 1)
+        sent = mail.outbox[0]
+        self.assertEqual(sent.to, ["recovery@example.com"])
+        self.assertIn(self.customer.secondary_email_verify_code, sent.body)
 
     def test_request_rejects_same_as_primary_email(self):
         response = self.client.post(
@@ -42,12 +48,13 @@ class CustomerSecondaryEmailVerificationTests(TestCase):
         self.assertEqual(response.status_code, 400, response.content)
 
     def test_confirm_with_correct_code_marks_verified(self):
-        request_response = self.client.post(
+        self.client.post(
             "/api/accounts/customers/me/secondary-email/",
             {"secondary_email": "recovery@example.com"},
             format="json",
         )
-        code = request_response.json()["demo_code"]
+        self.customer.refresh_from_db()
+        code = self.customer.secondary_email_verify_code
 
         response = self.client.post(
             "/api/accounts/customers/me/secondary-email/confirm/", {"code": code}, format="json",

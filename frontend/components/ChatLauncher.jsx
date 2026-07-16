@@ -2,9 +2,10 @@ import { C } from "../theme.js";
 import usePrefersReducedMotion from "../hooks/usePrefersReducedMotion.js";
 
 // ─── ChatLauncher ──────────────────────────────────────────────────────────
-// Floating chat-bubble button opening the existing (still mock, Phase-2)
-// MessagingCenter — App.jsx passes setShowMessaging as onOpen. Sits above
-// the pre-existing floating WhatsApp button (see App.jsx `bottom` prop).
+// Floating chat-bubble button opening MessagingCenter (real, DB-backed
+// support chat — backend.messaging) — App.jsx passes setShowMessaging as
+// onOpen. Sits above the pre-existing floating WhatsApp button (see App.jsx
+// `bottom` prop).
 
 export default function ChatLauncher({ unreadMessages = 0, onOpen, bottom = 24 }) {
   const reducedMotion = usePrefersReducedMotion();

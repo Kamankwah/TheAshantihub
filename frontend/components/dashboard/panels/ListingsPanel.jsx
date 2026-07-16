@@ -73,7 +73,22 @@ export default function ListingsPanel({ user, PaymentComponent, showToast }) {
     setShowHeroExtendPay(false);
     if (!heroSubmission?.id) return;
     setHeroActionError(null);
-    try { await apiPost(`/api/hero/${heroSubmission.id}/extend/`, { days: heroExtendDays }); toast(); refetchHeroSubmission(); }
+    try {
+      const response = await apiPost(`/api/hero/${heroSubmission.id}/extend/`, { days: heroExtendDays });
+      // Hubtel integration (docs/HUBTEL_INTEGRATION.md) — added for
+      // consistency with every other PaymentComponent onSuccess handler in
+      // this app; currently inert, since backend/listings/views.py's
+      // HeroExtendView is not one of the call sites routed through
+      // payments.services.process_payment() yet (it doesn't even book a
+      // billing.Transaction today), so this response never actually carries
+      // a "mode" field. Left here so a future conversion of that endpoint
+      // doesn't also require frontend surgery.
+      if (response?.mode === "redirect") {
+        window.location.href = response.checkout_url;
+        return;
+      }
+      toast(); refetchHeroSubmission();
+    }
     catch (err) { setHeroActionError("Payment was confirmed but we couldn't extend your Hero Spotlight. Please contact support with reference " + ref + "."); }
   };
 
@@ -85,6 +100,18 @@ export default function ListingsPanel({ user, PaymentComponent, showToast }) {
       const body = { kind: promoteKind, days: promoteDays };
       if (promoteKind === "boost") body.keywords = promoteKeywords.trim();
       const res = await apiPost(`/api/listings/${promoteListingId}/promote/`, body);
+      // Hubtel integration (docs/HUBTEL_INTEGRATION.md) — same "added for
+      // consistency, currently inert" note as extendHeroSubmission above:
+      // ListingPromoteView isn't routed through process_payment() yet, so
+      // `res` never actually carries a "mode" field today. Checked here
+      // (right after this apiPost, not in confirmPromotion below) because
+      // this flow is apiPost-first — the promotion is already fully applied
+      // by the time PaymentComponent opens, unlike the pay-first call sites
+      // elsewhere in this app.
+      if (res?.mode === "redirect") {
+        window.location.href = res.checkout_url;
+        return;
+      }
       setPromoteResult(res); setPromoteListingId(null); setShowPromotePay(true);
     } catch (err) {
       setPromoteActionError("Could not create this promotion — it may already be active on this listing, or the listing isn't published yet.");

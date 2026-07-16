@@ -140,7 +140,17 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
     if (!payTargetId) return;
     setPayError(null);
     try {
-      await apiPost(`/api/events/${payTargetId}/pay/`, {});
+      const response = await apiPost(`/api/events/${payTargetId}/pay/`, {});
+      // Hubtel integration (docs/HUBTEL_INTEGRATION.md) — once
+      // payments_provider is "hubtel", EventPayView returns
+      // {mode:"redirect", checkout_url} instead of the paid event, since
+      // paid_at/expires_at aren't set yet. Redirect rather than treating
+      // this as already published — the event only goes live once the
+      // webhook confirms payment.
+      if (response?.mode === "redirect") {
+        window.location.href = response.checkout_url;
+        return;
+      }
       setPayTargetId(null);
       refetch();
     } catch (err) {

@@ -215,3 +215,32 @@ class BusinessOwnerProfile(models.Model):
 
     def __str__(self):
         return f"Profile for {self.business_owner.full_name}"
+
+
+class PasswordResetToken(models.Model):
+    """Cross-cutting reset-token store shared by all three account types —
+    a single model rather than a per-model token field, since none of
+    Customer/BusinessOwner/StaffUser carry one today (only StaffUser has the
+    analogous invite_token/invite_expires_at pair, which is invite-specific).
+    account_type uses the same three string values authentication.issue_token
+    / the login serializers already use.
+    """
+
+    CUSTOMER = "customer"
+    BUSINESS_OWNER = "business_owner"
+    STAFF = "staff"
+    ACCOUNT_TYPE_CHOICES = [
+        (CUSTOMER, "Customer"),
+        (BUSINESS_OWNER, "Business Owner"),
+        (STAFF, "Staff"),
+    ]
+
+    account_type = models.CharField(max_length=20, choices=ACCOUNT_TYPE_CHOICES)
+    account_id = models.IntegerField()
+    token = models.CharField(max_length=64, unique=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.account_type}:{self.account_id} reset token"
