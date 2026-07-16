@@ -19,6 +19,8 @@ import { useListingReviews } from "./hooks/useListingReviews.js";
 import { useReviewEligibility } from "./hooks/useReviewEligibility.js";
 import { useOrders } from "./hooks/useOrders.js";
 import { useMyConversations } from "./hooks/useMyConversations.js";
+import { useMyTickets } from "./hooks/useMyTickets.js";
+import { useMyCustomerProfile } from "./hooks/useMyCustomerProfile.js";
 import { apiPost, apiPatch } from "./apiClient.js";
 import { C, CURRENCIES } from "./theme.js";
 import Flag from "./components/Flag.jsx";
@@ -34,6 +36,7 @@ import { HomeCtaBand } from "./components/ui/home-cta-band.tsx";
 import { EventsCtaBand } from "./components/ui/events-cta-band.tsx";
 import { AboutCtaBand } from "./components/ui/about-cta-band.tsx";
 import { ContactCtaBand } from "./components/ui/contact-cta-band.tsx";
+import { AccountProfileCard } from "./components/ui/account-profile-card.tsx";
 import { AboutPage } from "./components/ui/about-page.tsx";
 import { AboutTestimonialsSection } from "./components/ui/about-testimonials-section.tsx";
 import { AboutFaqSection } from "./components/ui/about-faq-section.tsx";
@@ -41,12 +44,16 @@ import { ContactPage } from "./components/ui/contact-page.tsx";
 import BusinessRegistrationFlow from "./components/BusinessRegistrationFlow.jsx";
 import CartDrawer from "./components/CartDrawer.jsx";
 import EventHeroCarousel from "./components/EventHeroCarousel.jsx";
-import EventCard from "./components/EventCard.jsx";
+import EventCard, { formatEventDate } from "./components/EventCard.jsx";
 import EventDetailPage from "./components/EventDetailPage.jsx";
 import EventSubmissionPanel from "./components/EventSubmissionPanel.jsx";
 import BusinessCommandCenter from "./components/dashboard/BusinessCommandCenter.jsx";
 import AdminCommandCenter from "./components/admin/AdminCommandCenter.jsx";
-import MyTicketsDrawer from "./components/MyTicketsDrawer.jsx";
+import { D, glassCard, ghs } from "./components/dashboard/theme.js";
+import KpiCard from "./components/dashboard/charts/KpiCard.jsx";
+import ChartFrame from "./components/dashboard/charts/ChartFrame.jsx";
+import SpendAreaChart from "./components/dashboard/charts/SpendAreaChart.jsx";
+import ListingsDonut from "./components/dashboard/charts/ListingsDonut.jsx";
 
 // ─── Payment System ───────────────────────────────────────────────────────────
 const MOMO_NETWORKS = [
@@ -1117,134 +1124,269 @@ export function BusinessDashboard({ onExit, user, auth }) {
   return <BusinessCommandCenter initialTab="analytics" onExit={onExit} user={user} auth={auth} PaymentComponent={MoMoPayment} />;
 }
 
-// ─── UserPanel (customer "My Account" page) ───────────────────────────────────
-// Replaces the old placeholder AccountPanel popover (which openly admitted
-// "full profile editing isn't available yet" and had no avatar image,
-// profile-editing, or order-history UI). Routed at /my-account (see
-// showAccount/setShowAccount above) rather than an overlay, since it now has
-// enough real content (profile edit, orders, saved, messages, events) to
-// warrant a full page — same "flag swaps in a full-page early return"
-// convention as StaffDashboard/BusinessDashboard/PaymentDashboard/
-// CreditDashboard, just for a customer instead of staff/a business owner.
-// Defined here (not frontend/components/) because it reuses MessagingCenter/
-// FavDrawerItem, which are both module-top-level in this
-// file — and placed next to StaffDashboard so it can reuse DASHBOARD_THEME/
-// useTheme() the same way. Deliberately skips StaffDashboard's sidebar-
-// collapse-toggle state — only 5 fixed, unfiltered nav items here, not worth
-// the extra complexity.
-const USER_NAV_ITEMS = [
-  { id: "profile", icon: "👤", label: "Profile" },
-  { id: "orders", icon: "📦", label: "Orders & Delivery" },
-  { id: "saved", icon: "❤️", label: "Saved Businesses" },
-  { id: "messages", icon: "💬", label: "Messages" },
-  { id: "events", icon: "🎉", label: "My Events" },
-  { id: "tickets", icon: "🎟️", label: "My Tickets" },
+// ─── Account Center (customer "My Account" dashboard) ─────────────────────────
+// Redesigned to match the business-owner side's Business Command Center
+// (frontend/components/dashboard/*) — the same always-dark "mission-control"
+// shell language, reusing its `D` palette, `glassCard`, and the shared
+// KpiCard/ChartFrame/SpendAreaChart/ListingsDonut chart primitives directly
+// rather than duplicating them, plus a `.command-center.account-grid` square-
+// grid background variant (frontend/index.css) BusinessCommandCenter itself
+// doesn't opt into. Routed at /my-account (see showAccount/setShowAccount
+// above), a top-level early return like StaffDashboard/BusinessCommandCenter.
+// Still defined here (not frontend/components/) because it reuses
+// MessagingCenter/MOCK_CONVERSATIONS/FavDrawerItem/NotificationsPanel, all
+// module-top-level in this file — App.jsx importing components/dashboard/* is
+// the established one-directional convention (already done for
+// BusinessCommandCenter/EventSubmissionPanel above); components/ itself never
+// imports back into App.jsx. Always-dark — no light/dark toggle (the old
+// DASHBOARD_THEME-based toggle is gone) — matching BusinessCommandCenter's own
+// "one consistent dashboard visual language" choice; this also resolves
+// MyEventsTab's old "known limitation" note below, since EventSubmissionPanel
+// was already hardcoded always-dark.
+const ACCOUNT_NAV_ITEMS = [
+  { id: "overview", icon: "📊", label: "Overview", group: "main" },
+  { id: "orders", icon: "📦", label: "Orders & Delivery", group: "main" },
+  { id: "saved", icon: "❤️", label: "Saved Businesses", group: "main" },
+  { id: "messages", icon: "💬", label: "Messages", group: "main" },
+  { id: "events", icon: "🎉", label: "My Events", group: "main" },
+  { id: "tickets", icon: "🎟️", label: "My Tickets", group: "main" },
+  { id: "profile", icon: "👤", label: "Profile", group: "system" },
+  { id: "settings", icon: "⚙️", label: "Settings", group: "system" },
+];
+const ACCOUNT_NAV_GROUPS = [
+  { id: "main", label: "Main" },
+  { id: "system", label: "System" },
 ];
 
-export function UserPanel({ user, auth, favourites, toggleFav, onExit }) {
-  const { theme, toggleTheme } = useTheme();
-  const t = DASHBOARD_THEME[theme];
-  const [activeTab, setActiveTab] = useState("profile"); // defaults to Profile so editing is immediately visible
+// Orders (order id / item name) and Tickets (event name / ticket code) are the
+// only two tabs whose already-loaded data is cheaply client-side filterable —
+// the topbar search box only renders for these rather than sitting inert
+// (non-functional) on every other tab.
+const ACCOUNT_SEARCHABLE_TABS = new Set(["orders", "tickets"]);
+
+const accountMenuItemStyle = { display: "block", width: "100%", textAlign: "left", background: "none", border: "none", color: D.textDim, padding: "8px 10px", borderRadius: 8, fontSize: "0.76rem", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" };
+
+export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, setLang }) {
+  const [activeTab, setActiveTab] = useState("overview");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showNotifs, setShowNotifs] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const { data: categories } = useCategories();
   const { data: zones } = useZones();
 
-  return <div style={{fontFamily:"'Georgia',serif",background:t.pageBg,minHeight:"100vh",display:"flex"}}>
-    <div style={{width:220,background:t.sidebarBg,borderLeft:`4px solid ${C.gold}`,flexShrink:0,position:"sticky",top:0,height:"100vh",overflowY:"auto"}}>
-      <div style={{padding:"16px 12px",display:"flex",alignItems:"center",gap:8}}>
-        <Flag w={28} h={19}/>
-        <div style={{color:t.sidebarText,fontWeight:900,fontSize:"0.85rem"}}>My Account</div>
+  const goTab = (id) => { setActiveTab(id); setSearchQuery(""); setSidebarOpen(false); };
+  const activeItem = ACCOUNT_NAV_ITEMS.find(i=>i.id===activeTab);
+  const signOut = () => { auth.logout(); onExit(); };
+
+  return <div className="shadcn-scope command-center account-grid" style={{minHeight:"100vh",display:"flex"}}>
+    <div className="ah-account-backdrop" onClick={()=>setSidebarOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:190,display:sidebarOpen?"block":"none"}}/>
+
+    <div className={`ah-account-sidebar${sidebarOpen?" ah-account-sidebar-open":""}`} style={{background:D.panelSolid,borderRight:`1px solid ${D.cardBorder}`,display:"flex",flexDirection:"column"}}>
+      <div style={{padding:"18px 16px",display:"flex",alignItems:"center",gap:10,borderBottom:`1px solid ${D.divider}`}}>
+        <Flag w={30} h={20}/>
+        <div>
+          <div style={{color:D.gold,fontWeight:900,fontSize:"0.88rem",lineHeight:1}}>AshantiHub</div>
+          <div style={{color:D.textFaint,fontSize:"0.6rem",letterSpacing:"0.06em",textTransform:"uppercase"}}>My Account</div>
+        </div>
       </div>
-      <nav>
-        {USER_NAV_ITEMS.map(item=>(
-          <button key={item.id} onClick={()=>setActiveTab(item.id)} style={{display:"flex",alignItems:"center",gap:10,width:"100%",background:activeTab===item.id?`${C.gold}22`:"none",border:"none",borderLeft:activeTab===item.id?`3px solid ${C.gold}`:"3px solid transparent",color:t.sidebarText,padding:"10px 12px",fontSize:"0.78rem",fontWeight:activeTab===item.id?800:600,cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>
-            <span>{item.icon}</span><span>{item.label}</span>
-          </button>
+
+      <nav style={{flex:1,overflowY:"auto",padding:"14px 10px"}}>
+        {ACCOUNT_NAV_GROUPS.map(group=>(
+          <div key={group.id} style={{marginBottom:14}}>
+            <div style={{padding:"0 8px 6px",fontSize:"0.62rem",fontWeight:800,letterSpacing:"0.08em",textTransform:"uppercase",color:D.textFaint}}>{group.label}</div>
+            {ACCOUNT_NAV_ITEMS.filter(i=>i.group===group.id).map(item=>{
+              const active = activeTab===item.id;
+              return (
+                <button key={item.id} onClick={()=>goTab(item.id)} style={{display:"flex",alignItems:"center",gap:10,width:"100%",background:active?D.goldSoft:"none",border:"none",borderLeft:active?`3px solid ${D.gold}`:"3px solid transparent",borderRadius:"0 10px 10px 0",color:active?D.gold:D.textDim,padding:"9px 10px",fontSize:"0.78rem",fontWeight:active?800:600,cursor:"pointer",textAlign:"left",fontFamily:"inherit",marginBottom:2}}>
+                  <span>{item.icon}</span><span>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
         ))}
       </nav>
+
+      <button onClick={()=>goTab("profile")} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",borderTop:`1px solid ${D.divider}`,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",width:"100%",textAlign:"left"}}>
+        <div style={{width:36,height:36,borderRadius:"50%",overflow:"hidden",background:D.gold,color:"#1a1205",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:"0.9rem",flexShrink:0}}>
+          {user?.avatar ? <img src={user.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : (user?.fullName?.[0]?.toUpperCase()||"U")}
+        </div>
+        <div style={{minWidth:0,flex:1}}>
+          <div style={{color:D.text,fontWeight:700,fontSize:"0.78rem",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{user?.fullName||"Customer"}</div>
+          <div style={{color:D.textFaint,fontSize:"0.64rem"}}>Customer Account</div>
+        </div>
+      </button>
     </div>
 
-    <div style={{flex:1,minWidth:0}}>
-      <div style={{background:t.cardBg,borderBottom:`1px solid ${t.border}`,padding:"0 20px",display:"flex",alignItems:"center",justifyContent:"space-between",height:56,position:"sticky",top:0,zIndex:10}}>
-        <div style={{color:t.text,fontWeight:800,fontSize:"0.9rem"}}>{USER_NAV_ITEMS.find(i=>i.id===activeTab)?.label}</div>
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <button onClick={toggleTheme} title="Toggle theme" style={{background:"none",border:`1px solid ${t.border}`,borderRadius:20,padding:"4px 10px",cursor:"pointer",fontSize:"0.8rem"}}>{theme==="dark"?"☀️":"🌙"}</button>
-          <span style={{color:t.text,fontSize:"0.78rem",fontWeight:700}}>{user?.fullName}</span>
-          <button onClick={onExit} style={{background:"none",border:`1px solid ${t.border}`,color:t.textMuted,borderRadius:20,padding:"4px 12px",fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>← Exit</button>
+    <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
+      <div style={{background:"rgba(10,14,26,0.75)",backdropFilter:"blur(8px)",borderBottom:`1px solid ${D.divider}`,padding:"0 16px",display:"flex",alignItems:"center",gap:12,height:64,position:"sticky",top:0,zIndex:80}}>
+        <button className="ah-account-hamburger" onClick={()=>setSidebarOpen(true)} style={{display:"none",background:"none",border:`1px solid ${D.divider}`,borderRadius:8,color:D.text,width:34,height:34,cursor:"pointer",fontSize:"1rem",flexShrink:0}}>☰</button>
+
+        {/* Label only (no icon) — MessagingCenter renders its own "💬 Messages"
+            header when that tab is active, so icon+label here would duplicate
+            it verbatim on screen. */}
+        <div style={{color:D.text,fontWeight:800,fontSize:"0.92rem",whiteSpace:"nowrap"}}>{activeItem?.label}</div>
+
+        {ACCOUNT_SEARCHABLE_TABS.has(activeTab) && (
+          <input
+            value={searchQuery}
+            onChange={e=>setSearchQuery(e.target.value)}
+            placeholder={activeTab==="orders" ? "Search orders…" : "Search tickets…"}
+            style={{flex:1,maxWidth:320,marginLeft:8,background:D.panelBg2,border:`1px solid ${D.divider}`,borderRadius:10,padding:"7px 12px",fontSize:"0.76rem",color:D.text,fontFamily:"inherit"}}
+          />
+        )}
+
+        <div style={{flex:1}}/>
+
+        <div style={{position:"relative"}}>
+          <button onClick={()=>setShowNotifs(v=>!v)} title="Notifications" style={{background:"none",border:`1px solid ${D.divider}`,borderRadius:10,width:34,height:34,cursor:"pointer",fontSize:"0.9rem",color:D.text}}>🔔</button>
+          {showNotifs && <NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
         </div>
+
+        <div style={{position:"relative"}}>
+          <button onClick={()=>setShowProfileMenu(v=>!v)} style={{display:"flex",alignItems:"center",gap:6,background:"none",border:`1px solid ${D.divider}`,borderRadius:20,padding:"4px 10px 4px 4px",cursor:"pointer"}}>
+            <div style={{width:26,height:26,borderRadius:"50%",overflow:"hidden",background:D.gold,color:"#1a1205",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:"0.72rem"}}>
+              {user?.avatar ? <img src={user.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : (user?.fullName?.[0]?.toUpperCase()||"U")}
+            </div>
+            <span style={{color:D.text,fontSize:"0.7rem"}}>▾</span>
+          </button>
+          {showProfileMenu && (
+            <div onClick={()=>setShowProfileMenu(false)} style={{position:"fixed",inset:0,zIndex:98}}>
+              <div onClick={e=>e.stopPropagation()} style={{position:"absolute",top:44,right:0,width:180,...glassCard,padding:6,zIndex:99}}>
+                <button onClick={()=>{goTab("profile");setShowProfileMenu(false);}} style={accountMenuItemStyle}>👤 Profile</button>
+                <button onClick={()=>{goTab("settings");setShowProfileMenu(false);}} style={accountMenuItemStyle}>⚙️ Settings</button>
+                <div style={{height:1,background:D.divider,margin:"4px 6px"}}/>
+                <button onClick={signOut} style={{...accountMenuItemStyle,color:D.red}}>🚪 Sign Out</button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <button onClick={onExit} style={{background:"none",border:`1px solid ${D.divider}`,color:D.textDim,borderRadius:20,padding:"6px 14px",fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>← Exit</button>
       </div>
 
-      <div style={{padding:"22px 20px 60px"}}>
-        {activeTab==="profile"&&<ProfileTab user={user} auth={auth} theme={t}/>}
-        {activeTab==="orders"&&<OrdersDeliveryTab theme={t}/>}
-        {activeTab==="saved"&&<SavedBusinessesTab favourites={favourites} toggleFav={toggleFav} theme={t}/>}
-        {activeTab==="messages"&&<MessagingCenter user={user} onClose={()=>setActiveTab("profile")}/>}
+      <div style={{padding:"22px 20px 60px",flex:1}}>
+        {activeTab==="overview"&&<OverviewPanel favourites={favourites} user={user}/>}
+        {activeTab==="orders"&&<OrdersDeliveryTab searchQuery={searchQuery}/>}
+        {activeTab==="saved"&&<SavedBusinessesTab favourites={favourites} toggleFav={toggleFav}/>}
+        {activeTab==="messages"&&<MessagingCenter user={user} onClose={()=>goTab("profile")}/>}
         {activeTab==="events"&&<MyEventsTab user={user} categories={categories} zones={zones}/>}
-        {activeTab==="tickets"&&<MyTicketsDrawer onClose={()=>setActiveTab("profile")}/>}
+        {activeTab==="tickets"&&<TicketsTab searchQuery={searchQuery}/>}
+        {activeTab==="profile"&&<AccountProfileCard user={user} auth={auth}/>}
+        {activeTab==="settings"&&<SettingsTab user={user} auth={auth} lang={lang} setLang={setLang} onSignOut={signOut}/>}
       </div>
     </div>
+
+    <style>{`
+      .ah-account-sidebar{ width:260px; height:100vh; position:sticky; top:0; flex-shrink:0; transition:transform .25s ease-out; }
+      @media (max-width:760px){
+        .ah-account-sidebar{ position:fixed; top:0; left:0; bottom:0; width:82vw; max-width:280px; z-index:200; transform:translateX(-100%); }
+        .ah-account-sidebar.ah-account-sidebar-open{ transform:translateX(0); }
+        .ah-account-hamburger{ display:inline-flex !important; }
+      }
+      @media (min-width:761px){
+        .ah-account-backdrop{ display:none !important; }
+        .ah-account-hamburger{ display:none; }
+      }
+    `}</style>
   </div>;
 }
 
-// Name + avatar only — email/phone are login identifiers with no
-// verification/OTP flow yet, so they're deliberately excluded from this
-// form (out of scope for this pass). avatarPreview derives from a
-// freshly-picked File via URL.createObjectURL, falling back to the current
-// user.avatar otherwise; the object URL is revoked on unmount/change to
-// avoid leaking it.
-function ProfileTab({ user, auth, theme }) {
-  const [fullName, setFullName] = useState(user?.fullName || "");
-  const [avatarFile, setAvatarFile] = useState(null);
-  const [avatarPreview, setAvatarPreview] = useState(user?.avatar || null);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [actionError, setActionError] = useState(null);
+const ACCOUNT_MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
-  useEffect(() => {
-    if (!avatarFile) { setAvatarPreview(user?.avatar || null); return; }
-    const url = URL.createObjectURL(avatarFile);
-    setAvatarPreview(url);
-    return () => URL.revokeObjectURL(url);
-  }, [avatarFile, user?.avatar]);
+const ORDER_STATUS_META = {
+  pending: { label: "Pending", color: D.amber },
+  paid: { label: "Paid", color: D.green },
+  cancelled: { label: "Cancelled", color: D.red },
+};
 
-  const showToast = () => { setSaved(true); setTimeout(()=>setSaved(false),2500); };
-
-  const save = async () => {
-    setActionError(null);
-    setSaving(true);
-    try {
-      await auth.updateProfile({ full_name: fullName, avatar: avatarFile });
-      await auth.refreshUser();
-      showToast();
-    } catch (err) {
-      setActionError("Could not save your profile. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return <div>
-    {saved&&<div style={{position:"fixed",top:70,right:20,background:"#22c55e",color:"white",borderRadius:12,padding:"10px 18px",fontSize:"0.8rem",fontWeight:700,zIndex:999}}>✓ Saved!</div>}
-    {actionError&&<div style={{color:"#dc2626",fontSize:"0.8rem",marginBottom:10}}>{actionError}</div>}
-    <div style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`,maxWidth:420}}>
-      <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:18}}>
-        <div style={{width:64,height:64,borderRadius:"50%",overflow:"hidden",background:C.gold,color:C.darkBrown,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:"1.4rem",flexShrink:0}}>
-          {avatarPreview
-            ? <img src={avatarPreview} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-            : (fullName?.[0]?.toUpperCase() || "U")}
-        </div>
-        <label style={{cursor:"pointer",display:"flex",flexDirection:"column",gap:4}}>
-          <span style={{color:theme.textMuted,fontSize:"0.68rem",fontWeight:700}}>Profile photo</span>
-          <input type="file" accept="image/*" onChange={e=>setAvatarFile(e.target.files[0])} style={{fontSize:"0.72rem",color:theme.text}}/>
-        </label>
-      </div>
-      <label style={{display:"flex",flexDirection:"column",gap:4}}>
-        <span style={{color:theme.textMuted,fontSize:"0.68rem",fontWeight:700}}>Full name</span>
-        <input value={fullName} onChange={e=>setFullName(e.target.value)} style={{padding:"8px 10px",borderRadius:10,border:`1.5px solid ${theme.border}`,fontSize:"0.78rem",fontFamily:"inherit",background:theme.pageBg,color:theme.text}}/>
-      </label>
-      <button onClick={save} disabled={saving} style={{marginTop:16,background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"8px 20px",fontSize:"0.78rem",fontWeight:800,cursor:saving?"wait":"pointer",fontFamily:"inherit"}}>{saving?"Saving…":"Save"}</button>
-    </div>
-  </div>;
+// Bucket the customer's paid orders into a 6-month spend series — same shape
+// AnalyticsPanel.jsx's own buildSpendSeries produces for the business-owner
+// side (bucketed by month, last 6 months), redefined locally since the two
+// source different data (this customer's orders vs an owner's AshantiHub
+// payment transactions) and this is this file's only caller.
+function buildOrderSpendSeries(orders, now) {
+  const buckets = [];
+  const index = {};
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const row = { key, month: ACCOUNT_MONTH_LABELS[d.getMonth()], amount: 0 };
+    buckets.push(row);
+    index[key] = row;
+  }
+  for (const o of orders || []) {
+    if (o.status !== "paid" || !o.placed_at) continue;
+    const key = String(o.placed_at).slice(0, 7);
+    if (index[key]) index[key].amount += Number(o.total_amount) || 0;
+  }
+  return buckets;
 }
+
+// The Account panel's default landing tab — KPI row + charts, mirroring
+// AnalyticsPanel.jsx's own shape/welcome-strip convention but sourced from
+// real customer data (orders, tickets, saved businesses) instead of a
+// business owner's listings/subscription/credit data. Reuses the dashboard's
+// shared KpiCard/ChartFrame/SpendAreaChart/ListingsDonut chart primitives
+// directly rather than forking parallel copies.
+function OverviewPanel({ user, favourites }) {
+  const now = new Date();
+  const { data: ordersData } = useOrders();
+  const { data: ticketsData } = useMyTickets();
+  const orders = ordersData || [];
+  const tickets = ticketsData || [];
+  const paidOrders = orders.filter(o=>o.status==="paid");
+  const totalSpent = paidOrders.reduce((s,o)=>s+(Number(o.total_amount)||0),0);
+  const activeTickets = tickets.filter(t=>!t.refunded_at);
+
+  const spendSeries = buildOrderSpendSeries(orders, now);
+  const statusCounts = orders.reduce((acc,o)=>{acc[o.status]=(acc[o.status]||0)+1;return acc;},{});
+  const donutData = Object.entries(ORDER_STATUS_META).map(([key,meta])=>({name:meta.label,value:statusCounts[key]||0,color:meta.color}));
+
+  const kpis = [
+    { icon:"📦", label:"Total Orders", value: orders.length, accent: D.gold, sub: `${paidOrders.length} paid` },
+    { icon:"💰", label:"Total Spent", value: ghs(totalSpent), accent: D.green, sub: "last 6 months" },
+    { icon:"❤️", label:"Saved Businesses", value: favourites.length, accent: D.red, sub: favourites.length===1?"business saved":"businesses saved" },
+    { icon:"🎟️", label:"My Tickets", value: activeTickets.length, accent: D.blue, sub: `${tickets.length} total` },
+  ];
+
+  const firstName = user?.fullName?.split(" ")[0] || "there";
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      <div style={{...glassCard,padding:"18px 20px",background:"linear-gradient(135deg, rgba(23,31,51,0.92), rgba(30,24,55,0.85))"}}>
+        <div style={{color:D.gold,fontWeight:900,fontSize:"1.12rem",marginBottom:3}}>Akwaaba, {firstName}! 👋</div>
+        <div style={{fontSize:"0.74rem",color:D.textDim}}>Here's what's happening with your AshantiHub account.</div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(178px,1fr))",gap:12}}>
+        {kpis.map(k=><KpiCard key={k.label} {...k}/>)}
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:14}}>
+        <ChartFrame title="Your spend over time" icon="💸">
+          <SpendAreaChart data={spendSeries}/>
+        </ChartFrame>
+        <ChartFrame title="Orders by status" icon="📦">
+          <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+            <ListingsDonut data={donutData} centerLabel="Orders" emptyMessage="You haven't placed any orders yet."/>
+            <div style={{display:"flex",flexWrap:"wrap",gap:"6px 14px",justifyContent:"center",marginTop:8}}>
+              {donutData.filter(d=>d.value>0).map(d=>(
+                <span key={d.name} style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:"0.64rem",color:D.textDim}}>
+                  <span style={{width:8,height:8,borderRadius:2,background:d.color}}/>{d.name} ({d.value})
+                </span>
+              ))}
+            </div>
+          </div>
+        </ChartFrame>
+      </div>
+    </div>
+  );
+}
+
+// The Profile tab's body is AccountProfileCard (frontend/components/ui/
+// account-profile-card.tsx), a shadcn/Tailwind card — see that file for why
+// it replaced this inline D-palette form.
 
 const DELIVERY_STEPS = [
   { id: "processing", label: "Processing" },
@@ -1253,62 +1395,63 @@ const DELIVERY_STEPS = [
   { id: "delivered", label: "Delivered" },
 ];
 
-function DeliveryStepper({ status, theme }) {
+function DeliveryStepper({ status }) {
   const activeIndex = DELIVERY_STEPS.findIndex(s=>s.id===status);
   return <div style={{display:"flex",alignItems:"flex-start",marginTop:12}}>
     {DELIVERY_STEPS.map((step,i)=>(
       <div key={step.id} style={{display:"flex",alignItems:"center",flex:i<DELIVERY_STEPS.length-1?1:"none"}}>
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,minWidth:60}}>
-          <div style={{width:10,height:10,borderRadius:"50%",background:i<=activeIndex?C.gold:theme.border,flexShrink:0}}/>
-          <span style={{fontSize:"0.6rem",color:i<=activeIndex?theme.text:theme.textMuted,fontWeight:i<=activeIndex?800:600,textAlign:"center"}}>{step.label}</span>
+          <div style={{width:10,height:10,borderRadius:"50%",background:i<=activeIndex?D.gold:D.divider,flexShrink:0}}/>
+          <span style={{fontSize:"0.6rem",color:i<=activeIndex?D.text:D.textFaint,fontWeight:i<=activeIndex?800:600,textAlign:"center"}}>{step.label}</span>
         </div>
-        {i<DELIVERY_STEPS.length-1&&<div style={{flex:1,height:2,background:i<activeIndex?C.gold:theme.border,margin:"5px 4px 0"}}/>}
+        {i<DELIVERY_STEPS.length-1&&<div style={{flex:1,height:2,background:i<activeIndex?D.gold:D.divider,margin:"5px 4px 0"}}/>}
       </div>
     ))}
   </div>;
 }
 
-const ORDER_STATUS_META = {
-  pending: { label: "Pending", color: "#f59e0b" },
-  paid: { label: "Paid", color: "#22c55e" },
-  cancelled: { label: "Cancelled", color: "#dc2626" },
-};
-
 // GET /api/orders/ is NOT paginated (unlike most staff moderation-queue
 // endpoints elsewhere in App.jsx) — reads the array directly, not
 // data?.results. Read-only: no customer-side actions, the delivery stepper
 // is only rendered for a paid order (delivery_status is otherwise still
-// "processing" by default but meaningless until payment clears).
-function OrdersDeliveryTab({ theme }) {
+// "processing" by default but meaningless until payment clears). `searchQuery`
+// filters client-side by order id or an item's listing_name (see
+// ACCOUNT_SEARCHABLE_TABS above).
+function OrdersDeliveryTab({ searchQuery }) {
   const { data, isLoading, isError } = useOrders();
   const orders = data || [];
+  const q = (searchQuery||"").trim().toLowerCase();
+  const filtered = q
+    ? orders.filter(o => String(o.id).includes(q) || (o.items||[]).some(it=>it.listing_name?.toLowerCase().includes(q)))
+    : orders;
 
-  if (isLoading) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>Loading…</div>;
-  if (isError) return <div style={{color:"#dc2626",fontSize:"0.8rem"}}>Could not load your orders.</div>;
-  if (orders.length===0) return <div style={{color:theme.textMuted,fontSize:"0.8rem"}}>No orders yet.</div>;
+  if (isLoading) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>Loading…</div>;
+  if (isError) return <div style={{color:D.red,fontSize:"0.8rem"}}>Could not load your orders.</div>;
+  if (orders.length===0) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>No orders yet.</div>;
+  if (filtered.length===0) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>No orders match "{searchQuery}".</div>;
 
   return <div style={{display:"flex",flexDirection:"column",gap:14}}>
-    {orders.map(o=>{
-      const statusMeta = ORDER_STATUS_META[o.status]||{label:o.status,color:"#888"};
+    {filtered.map(o=>{
+      const statusMeta = ORDER_STATUS_META[o.status]||{label:o.status,color:D.textDim};
       return (
-      <div key={o.id} style={{background:theme.cardBg,borderRadius:16,padding:18,border:`1px solid ${theme.border}`}}>
+      <div key={o.id} style={{...glassCard,padding:18}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-          <div style={{color:theme.text,fontWeight:800,fontSize:"0.85rem"}}>Order #{o.id}</div>
+          <div style={{color:D.text,fontWeight:800,fontSize:"0.85rem"}}>Order #{o.id}</div>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{color:theme.textMuted,fontSize:"0.7rem"}}>{o.placed_at?.slice(0,10)}</span>
+            <span style={{color:D.textDim,fontSize:"0.7rem"}}>{o.placed_at?.slice(0,10)}</span>
             <span style={{background:`${statusMeta.color}22`,color:statusMeta.color,borderRadius:20,padding:"2px 10px",fontSize:"0.65rem",fontWeight:700}}>{statusMeta.label}</span>
           </div>
         </div>
         <div style={{marginTop:10}}>
           {(o.items||[]).map(it=>(
-            <div key={it.id} style={{display:"flex",justifyContent:"space-between",fontSize:"0.76rem",color:theme.textMuted,padding:"3px 0"}}>
+            <div key={it.id} style={{display:"flex",justifyContent:"space-between",fontSize:"0.76rem",color:D.textDim,padding:"3px 0"}}>
               <span>{it.listing_name} × {it.quantity}</span>
               <span>GHS {it.line_total}</span>
             </div>
           ))}
         </div>
-        <div style={{marginTop:8,color:theme.text,fontWeight:800,fontSize:"0.8rem"}}>Total: GHS {o.total_amount}</div>
-        {o.status==="paid" && <DeliveryStepper status={o.delivery_status} theme={theme}/>}
+        <div style={{marginTop:8,color:D.text,fontWeight:800,fontSize:"0.8rem"}}>Total: GHS {o.total_amount}</div>
+        {o.status==="paid" && <DeliveryStepper status={o.delivery_status}/>}
       </div>
       );
     })}
@@ -1318,30 +1461,173 @@ function OrdersDeliveryTab({ theme }) {
 // Reuses FavDrawerItem (also module-top-level in this file) exactly as
 // FavsDrawer does, just without the drawer's fixed-position overlay chrome —
 // a plain list in this tab's content column instead. Same empty-state copy
-// as FavsDrawer's.
+// as FavsDrawer's. The inner list keeps its own light card background (same
+// look FavsDrawer itself already relies on) — a light content card sitting on
+// this panel's dark shell is a normal, established look elsewhere in the app.
 function SavedBusinessesTab({ favourites, toggleFav }) {
   return <div>
-    {favourites.length===0 && <div style={{padding:"20px",textAlign:"center",color:"#aaa",fontSize:"0.78rem"}}>No saved businesses yet.<br/>Tap ❤️ on any listing to save it.</div>}
-    {favourites.length>0 && <div style={{background:"white",borderRadius:16,overflow:"hidden",maxWidth:420,boxShadow:"0 4px 20px rgba(0,0,0,0.08)"}}>
+    {favourites.length===0 && <div style={{padding:"20px",textAlign:"center",color:D.textFaint,fontSize:"0.78rem"}}>No saved businesses yet.<br/>Tap ❤️ on any listing to save it.</div>}
+    {favourites.length>0 && <div style={{background:"white",borderRadius:16,overflow:"hidden",maxWidth:420,boxShadow:"0 4px 24px rgba(0,0,0,0.35)"}}>
       {favourites.map(id=><FavDrawerItem key={id} id={id} onRemove={toggleFav}/>)}
     </div>}
   </div>;
 }
 
 // Mounts the same self-contained EventSubmissionPanel used on the public
-// Events page (form + "My Events" list + ticket management), rather than
-// the read-only list this tab used to render — an organizer can now submit
-// and manage events straight from their account, not just view status.
-//
-// Known limitation: EventSubmissionPanel hardcodes an always-dark palette
-// (written for the always-dark public Events page and Business Command
-// Center), while UserPanel supports a live light/dark toggle — a customer
-// viewing this tab in light mode will see the panel's white-on-dark styling
-// rather than adapting to the toggle. Scoped as a known limitation rather
-// than fixed here; properly theming EventSubmissionPanel is a separate,
-// larger change.
+// Events page (form + "My Events" list + ticket management) — an organizer
+// submits and manages events straight from their account. Its own hardcoded
+// always-dark styling now matches this panel's always-dark shell exactly
+// (previously a known mismatch against UserPanel's old light/dark toggle,
+// resolved by dropping that toggle).
 function MyEventsTab({ user, categories, zones }) {
   return <EventSubmissionPanel user={user} categories={categories} zones={zones} PaymentComponent={MoMoPayment}/>;
+}
+
+// Full-width, D-styled ticket list — replaces the old MyTicketsDrawer overlay
+// mount (a light-styled fixed-position drawer, mismatched against this
+// panel's dark shell; frontend/components/MyTicketsDrawer.jsx was deleted
+// once this became its only caller's replacement). Status badge derivation
+// mirrors that component's own ticketStatus() exactly (TicketSerializer has
+// no single status field): refunded takes priority, then delivered, then the
+// raw escrow_status. `searchQuery` filters client-side by event name or
+// ticket code (see ACCOUNT_SEARCHABLE_TABS above).
+function accountTicketStatus(t) {
+  if (t.refunded_at) return { label: "Refunded", color: D.red };
+  if (t.delivered_at) return { label: "Delivered", color: D.green };
+  if (t.escrow_status === "released") return { label: "Released", color: D.green };
+  return { label: "Held", color: D.gold };
+}
+
+function TicketsTab({ searchQuery }) {
+  const { data, isLoading, isError, refetch } = useMyTickets();
+  const [copiedId, setCopiedId] = useState(null);
+  const tickets = data || [];
+  const q = (searchQuery||"").trim().toLowerCase();
+  const filtered = q
+    ? tickets.filter(t => t.event?.name?.toLowerCase().includes(q) || t.code?.toLowerCase().includes(q))
+    : tickets;
+
+  const copyCode = (t) => {
+    navigator.clipboard?.writeText(t.code);
+    setCopiedId(t.id);
+    setTimeout(()=>setCopiedId(cur=>cur===t.id?null:cur),1500);
+  };
+
+  if (isLoading) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>Loading your tickets…</div>;
+  if (isError) return <div style={{color:D.red,fontSize:"0.8rem"}}>Could not load your tickets. <button onClick={()=>refetch()} style={{marginLeft:8,background:"none",border:`1px solid ${D.red}`,color:D.red,borderRadius:20,padding:"3px 12px",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Retry</button></div>;
+  if (tickets.length===0) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>You haven't bought any tickets yet.<br/>Buy tickets from an event's page to see them here.</div>;
+  if (filtered.length===0) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>No tickets match "{searchQuery}".</div>;
+
+  return <div style={{display:"flex",flexDirection:"column",gap:14}}>
+    {filtered.map(t=>{
+      const status = accountTicketStatus(t);
+      return (
+        <div key={t.id} style={{...glassCard,padding:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+            <div>
+              <div style={{fontWeight:800,fontSize:"0.82rem",color:D.text}}>{t.event?.name}</div>
+              <div style={{fontSize:"0.68rem",color:D.textFaint}}>{formatEventDate(t.event?.event_date)}</div>
+              <div style={{fontSize:"0.74rem",color:D.textDim,marginTop:3}}>{t.ticket_type?.name} · GHS {t.price}</div>
+            </div>
+            <span style={{background:`${status.color}22`,color:status.color,borderRadius:20,padding:"2px 10px",fontSize:"0.65rem",fontWeight:800,whiteSpace:"nowrap"}}>{status.label}</span>
+          </div>
+          <div style={{marginTop:10,display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontFamily:"monospace",fontSize:"0.8rem",fontWeight:800,color:D.text,background:D.panelBg2,borderRadius:8,padding:"4px 10px"}}>{t.code}</span>
+            <button onClick={()=>copyCode(t)} style={{background:"none",border:`1px solid ${D.cardBorderStrong}`,color:D.gold,borderRadius:20,padding:"3px 11px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              {copiedId===t.id ? "Copied ✓" : "Copy"}
+            </button>
+          </div>
+        </div>
+      );
+    })}
+  </div>;
+}
+
+function NotificationToggleRow({ label, checked, onToggle, disabled }) {
+  return <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0"}}>
+    <span style={{color:D.text,fontSize:"0.78rem"}}>{label}</span>
+    <button
+      onClick={onToggle}
+      disabled={disabled}
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      style={{width:40,height:22,borderRadius:20,border:"none",cursor:disabled?"wait":"pointer",background:checked?D.gold:D.divider,position:"relative",flexShrink:0,padding:0}}
+    >
+      <span style={{position:"absolute",top:2,left:checked?20:2,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left .15s ease"}}/>
+    </button>
+  </div>;
+}
+
+// Account type/id + the existing app-wide language toggle (lang/setLang,
+// threaded down from the AshantiHub root — not a new preference, reuses what
+// already exists) + real, persisted notification-preference toggles (own
+// useMyCustomerProfile() query, same "component owns its data" convention as
+// AccountProfileCard — PATCHed via the same auth.updateProfile() the Profile
+// tab uses, since email_notifications_enabled/sms_notifications_enabled are
+// writable CustomerProfileSerializer fields) + Sign Out. These toggles are
+// honest about their own limit: there's still no email/SMS transport
+// anywhere in this app to actually honor them (see AccountProfileCard.tsx's
+// recovery-code notes) — the preference itself is real and saved, delivery
+// is future work.
+function SettingsTab({ user, auth, lang, setLang, onSignOut }) {
+  const { data: profile, refetch } = useMyCustomerProfile();
+  const [busyField, setBusyField] = useState(null);
+
+  const toggleNotif = async (field) => {
+    if (!profile) return;
+    setBusyField(field);
+    try {
+      await auth.updateProfile({ [field]: !profile[field] });
+      await refetch();
+    } finally {
+      setBusyField(null);
+    }
+  };
+
+  return <div style={{display:"flex",flexDirection:"column",gap:16,maxWidth:460}}>
+    <div style={{...glassCard,padding:18}}>
+      <div style={{fontWeight:800,color:D.text,fontSize:"0.85rem",marginBottom:12}}>Account</div>
+      <div style={{display:"flex",justifyContent:"space-between",fontSize:"0.78rem",padding:"6px 0",borderBottom:`1px solid ${D.divider}`}}>
+        <span style={{color:D.textDim}}>Account type</span>
+        <span style={{color:D.text,fontWeight:700}}>Customer</span>
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",fontSize:"0.78rem",padding:"6px 0",borderBottom:`1px solid ${D.divider}`}}>
+        <span style={{color:D.textDim}}>Account ID</span>
+        <span style={{color:D.text,fontWeight:700}}>#{user?.id}</span>
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",fontSize:"0.78rem",padding:"6px 0"}}>
+        <span style={{color:D.textDim}}>Email</span>
+        <span style={{color:D.text,fontWeight:700}}>{user?.email||"Not set"}</span>
+      </div>
+    </div>
+
+    <div style={{...glassCard,padding:18}}>
+      <div style={{fontWeight:800,color:D.text,fontSize:"0.85rem",marginBottom:10}}>Language</div>
+      <div style={{display:"flex",gap:8}}>
+        {[{id:"en",label:"English"},{id:"tw",label:"Twi"}].map(l=>(
+          <button key={l.id} onClick={()=>setLang?.(l.id)} style={{background:lang===l.id?D.goldSoft:"none",border:`1px solid ${lang===l.id?D.cardBorderStrong:D.divider}`,color:lang===l.id?D.gold:D.textDim,borderRadius:20,padding:"6px 16px",fontSize:"0.76rem",fontWeight:lang===l.id?800:600,cursor:"pointer",fontFamily:"inherit"}}>{l.label}</button>
+        ))}
+      </div>
+    </div>
+
+    <div style={{...glassCard,padding:18}}>
+      <div style={{fontWeight:800,color:D.text,fontSize:"0.85rem",marginBottom:2}}>Notification preferences</div>
+      {!profile ? (
+        <div style={{color:D.textFaint,fontSize:"0.76rem",marginTop:8}}>Loading…</div>
+      ) : (
+        <div style={{marginTop:6}}>
+          <NotificationToggleRow label="Email notifications" checked={!!profile.email_notifications_enabled} onToggle={()=>toggleNotif("email_notifications_enabled")} disabled={busyField==="email_notifications_enabled"}/>
+          <NotificationToggleRow label="SMS notifications" checked={!!profile.sms_notifications_enabled} onToggle={()=>toggleNotif("sms_notifications_enabled")} disabled={busyField==="sms_notifications_enabled"}/>
+        </div>
+      )}
+    </div>
+
+    <div style={{...glassCard,padding:18}}>
+      <div style={{fontWeight:800,color:D.text,fontSize:"0.85rem",marginBottom:10}}>Session</div>
+      <button onClick={onSignOut} style={{background:"none",border:`1px solid ${D.red}`,color:D.red,borderRadius:20,padding:"8px 20px",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>🚪 Sign Out</button>
+    </div>
+  </div>;
 }
 
 // ─── Loading Screen ───────────────────────────────────────────────────────────
@@ -1621,7 +1907,7 @@ export default function AshantiHub() {
   const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch;
   const [authModal,setAuthModal]=useState(null);
   const auth=useAuth();
-  const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id,registrationStep:auth.user.registration_step,kycStatus:auth.user.kyc_status,kycRejectionReason:auth.user.kyc_rejection_reason,avatar:auth.user.avatar} : null;
+  const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id,registrationStep:auth.user.registration_step,kycStatus:auth.user.kyc_status,kycRejectionReason:auth.user.kyc_rejection_reason,avatar:auth.user.avatar,email:auth.user.email,phone:auth.user.phone} : null;
   // Site-wide light/dark toggle (docs/UI_MODERNIZATION_ROADMAP.md Phase E) —
   // same useTheme() hook StaffDashboard already uses internally, but lifted
   // here so the customer-facing Navbar can offer the same control. The
@@ -1918,7 +2204,7 @@ export default function AshantiHub() {
   if(showRegistrationFlow) return <BusinessRegistrationFlow user={user} auth={auth} initialStep={user?.registrationStep} setPage={setPage} setShowBizDash={setShowBizDash}/>;
 
   if(isAdmin) return <StaffDashboard auth={auth} onExit={()=>setIsAdmin(false)}/>;
-  if(showAccount) return <UserPanel onExit={()=>setShowAccount(false)} user={user} auth={auth} favourites={favourites} toggleFav={toggleFav}/>;
+  if(showAccount) return <UserPanel onExit={()=>setShowAccount(false)} user={user} auth={auth} favourites={favourites} toggleFav={toggleFav} lang={lang} setLang={setLang}/>;
   if(showBizDash||showPayments||showCredit) return <BusinessCommandCenter
     initialTab={showPayments?"payments":showCredit?"credit":"analytics"}
     onExit={()=>{setShowBizDash(false);setShowPayments(false);setShowCredit(false);}}

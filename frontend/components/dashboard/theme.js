@@ -1,42 +1,50 @@
-// ─── Business Command Center — dark "mission-control" theme ──────────────────
-// The command center is a self-contained, always-dark full-screen surface (a
-// top-level early return in App.jsx), so unlike the rest of the app — which is
-// the cream/Georgia-serif inline `C` palette (frontend/theme.js) — the panels
-// here use this dark space palette. The shell root is
-// <div className="shadcn-scope command-center"> (see frontend/index.css), which
-// also feeds recharts its --chart-* / --primary tokens; these `D` values are the
-// inline-style counterpart for the hand-styled panels, kept visually in step
-// with that scope by hand (same "keep in sync by hand" caveat index.css notes
-// for its own tokens vs the `C` object).
+// ─── Business Command Center — light "artisan" theme ──────────────────────────
+// Rebuilt from the dark "mission-control" glass theme onto a light theme
+// sourced from the app's own `C` palette (frontend/theme.js) — C.cream/C.gold/
+// C.deepGold/C.darkBrown/C.orange/C.kente1/C.kente2/C.kente3 map closely onto
+// a warm cream+gold+earth-tone look, so this stays a "reuse my tokens" theme
+// rather than a hardcoded new palette. The one genuine gap is a purple accent
+// (used only for chart/usage-meter variety) — C has no purple, so a single new
+// hex is introduced for it below, called out where it's defined.
+// The shell root is <div className="shadcn-scope command-center"> (see
+// frontend/index.css), which also feeds recharts its --chart-* / --primary
+// tokens; these `D` values are the inline-style counterpart for the
+// hand-styled panels, kept visually in step with that scope by hand (same
+// "keep in sync by hand" caveat index.css notes for its own tokens vs `C`).
+//
+// NOTE: gold/deepGold/green/red/amber/blue/purple below are kept as PLAIN hex
+// strings (not rgba()) because many call sites append a hex alpha suffix
+// directly, e.g. `${D.green}22` for a translucent badge background — that
+// pattern only works with a bare 6-digit hex.
 import { C } from "../../theme.js";
 
 export const D = {
-  // deep-space base + glassy raised surfaces
-  pageBg: "#0a0e1a",
-  panelBg: "rgba(23,31,51,0.72)",     // glass card fill (over the radial-glow bg)
-  panelSolid: "#141b2d",
-  panelBg2: "rgba(15,20,35,0.6)",      // recessed inner well (inputs, list rows)
-  cardBorder: "rgba(212,160,23,0.18)", // C.gold, low opacity
-  cardBorderStrong: "rgba(212,160,23,0.45)",
-  divider: "rgba(148,164,191,0.14)",
+  // cream page + white raised card surfaces
+  pageBg: C.cream,            // #FDF6E3
+  panelBg: "#FFFFFF",         // card fill
+  panelSolid: "#FFFFFF",      // solid fill for chart tooltips etc.
+  panelBg2: "#F5ECD8",        // recessed inner well (inputs, list rows) — a shade darker than pageBg
+  cardBorder: "rgba(212,160,23,0.35)", // C.gold, low opacity
+  cardBorderStrong: "rgba(212,160,23,0.6)",
+  divider: "rgba(44,24,16,0.12)",      // C.darkBrown, low opacity
   // text
-  text: "#e9edf8",
-  textDim: "#9aa4bf",
-  textFaint: "#6b7590",
-  // accents (gold primary + kente/status hues, brightened for dark surfaces)
+  text: C.darkBrown,          // #2C1810
+  textDim: "rgba(44,24,16,0.62)",
+  textFaint: "rgba(44,24,16,0.42)",
+  // accents (gold primary + kente/status hues, retuned for legibility on cream)
   gold: C.gold,            // #D4A017
   goldSoft: "rgba(212,160,23,0.14)",
   deepGold: C.deepGold,    // #B8860B
-  green: "#34d399",
-  amber: "#fbbf24",
-  red: "#f87171",
-  blue: "#60a5fa",
-  purple: "#a78bfa",
-  kente1: "#f87171", kente2: "#34d399", kente3: "#818cf8",
-  whatsapp: "#25D366",
+  green: C.kente2,   // #006400
+  amber: C.orange,   // #E8621A
+  red: C.kente1,     // #CC0000
+  blue: C.kente3,    // #000080
+  purple: "#6B4E8E", // new — no purple exists in C; used only for chart/usage-meter variety
+  kente1: C.kente1, kente2: C.kente2, kente3: C.kente3,
+  whatsapp: C.whatsapp,
   // effects
-  glow: "0 0 28px rgba(212,160,23,0.18)",
-  shadow: "0 10px 34px rgba(0,0,0,0.42)",
+  glow: "0 0 20px rgba(212,160,23,0.25)",
+  shadow: "0 10px 28px rgba(44,24,16,0.12)",
 };
 
 // The five recharts series colors, read straight from the .command-center CSS
@@ -46,17 +54,17 @@ export const D = {
 // .command-center --chart-1..5.
 export const CHART = {
   c1: D.gold, c2: D.green, c3: D.blue, c4: D.purple, c5: D.amber,
-  grid: "rgba(148,164,191,0.14)",
-  axis: "#6b7590",
+  grid: "rgba(44,24,16,0.10)",
+  axis: "rgba(44,24,16,0.55)",
 };
 
-// Reusable glass-card base style for panels.
+// Reusable light card base style for panels — a bordered white card + soft
+// warm shadow instead of the old dark-glass blur (no backdropFilter needed
+// against a solid cream page background).
 export const glassCard = {
   background: D.panelBg,
   border: `1px solid ${D.cardBorder}`,
   borderRadius: 16,
-  backdropFilter: "blur(10px)",
-  WebkitBackdropFilter: "blur(10px)",
   boxShadow: D.shadow,
 };
 
@@ -122,18 +130,19 @@ export const LENDING_PARTNERS = [
   { id: 6, name: "Ghana Enterprise Agency", type: "Government Grant", logo: "🇬🇭", minScore: 300, maxLoan: "GHS 20,000", rate: "0% (Grant)", turnaround: "2–4 weeks", focus: "SME Development Grants", contact: "0302 685 132", color: "#34d399" },
 ];
 
-// Listing / hero status → label+color, dark-surface hues.
+// Listing / hero status → label+color, retuned for legibility on cream (draft's
+// muted warm-gray has no C equivalent — the one other new hex in this file).
 export const LISTING_STATUS_META = {
-  draft: { label: "Draft", color: "#9aa4bf" },
-  pending_review: { label: "Pending Review", color: "#fbbf24" },
-  published: { label: "Published", color: "#34d399" },
-  rejected: { label: "Rejected", color: "#f87171" },
+  draft: { label: "Draft", color: "#8A7A6B" },
+  pending_review: { label: "Pending Review", color: D.amber },
+  published: { label: "Published", color: D.green },
+  rejected: { label: "Rejected", color: D.red },
 };
 
 export const HERO_STATUS_META = {
-  pending: { label: "Pending Review", color: "#fbbf24" },
-  approved: { label: "Live", color: "#34d399" },
-  rejected: { label: "Rejected", color: "#f87171" },
+  pending: { label: "Pending Review", color: D.amber },
+  approved: { label: "Live", color: D.green },
+  rejected: { label: "Rejected", color: D.red },
 };
 
 // GHS money formatter used across panels/charts.

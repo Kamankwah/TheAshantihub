@@ -11,11 +11,13 @@ import {
   LENDING_PARTNERS,
 } from "../theme.js";
 
-// Shared dark glass gradient used for the old cream/serif gradient hero banners.
-const HERO_GRADIENT = "linear-gradient(135deg, rgba(23,31,51,0.9), rgba(20,20,45,0.85))";
+// Shared warm gold/cream gradient for the hero banners — matches the light
+// theme's welcome-strip treatment (AnalyticsPanel).
+const HERO_GRADIENT = "linear-gradient(135deg, rgba(212,160,23,0.18), rgba(232,98,26,0.08))";
 
-// Local, dark-themed port of App.jsx's ScoreGauge — background arc darkened to a
-// dark track and the "out of 1000" caption to D.textDim (do not import from App.jsx).
+// Local light-themed port of App.jsx's ScoreGauge — background arc uses the
+// theme's divider tint and the "out of 1000" caption uses D.textDim (do not
+// import from App.jsx).
 function ScoreGauge({ score }) {
   const pct = (score / 1000) * 100;
   const color = getScoreColor(score);
@@ -29,7 +31,7 @@ function ScoreGauge({ score }) {
       <svg width={140} height={90} viewBox="0 0 140 90">
         {/* Background arc */}
         <path d={`M ${cx-r},${cy} A ${r},${r} 0 0 1 ${cx+r},${cy}`}
-          fill="none" stroke="rgba(148,164,191,0.18)" strokeWidth="10" strokeLinecap="round"/>
+          fill="none" stroke={D.divider} strokeWidth="10" strokeLinecap="round"/>
         {/* Score arc */}
         <path d={`M ${cx-r},${cy} A ${r},${r} 0 0 1 ${cx+r},${cy}`}
           fill="none" stroke={color} strokeWidth="10" strokeLinecap="round"
@@ -122,7 +124,7 @@ export default function CreditPanel({ user }) {
                   { icon: loanEligible?"✅":"❌", label:"Loan Status", value: loanEligible?"Eligible":"Not yet eligible" },
                   { icon:"💰", label:"Max Loan", value: maxLoan>0?`GHS ${maxLoan.toLocaleString()}`:"—" },
                 ].map(s => (
-                  <div key={s.label} style={{ background:"rgba(255,255,255,0.06)", borderRadius:12, padding:"12px", textAlign:"center" }}>
+                  <div key={s.label} style={{ background:"rgba(255,255,255,0.55)", borderRadius:12, padding:"12px", textAlign:"center" }}>
                     <div style={{ fontSize:"1.4rem", marginBottom:4 }}>{s.icon}</div>
                     <div style={{ fontWeight:900, color:D.gold, fontSize:"1rem" }}>{s.value}</div>
                     <div style={{ fontSize:"0.62rem", opacity:0.8 }}>{s.label}</div>
@@ -146,7 +148,7 @@ export default function CreditPanel({ user }) {
                           <span style={{ fontWeight:900, color:D.gold, fontSize:"0.78rem" }}>{Math.round(f.weight*100)}% weight</span>
                         </div>
                         <div style={{ fontSize:"0.68rem", color:D.textDim, marginBottom:4 }}>{meta.desc}</div>
-                        <div style={{ height:6, background:"rgba(148,164,191,0.18)", borderRadius:10, overflow:"hidden" }}>
+                        <div style={{ height:6, background:"rgba(255,255,255,0.7)", borderRadius:10, overflow:"hidden" }}>
                           <div style={{ height:"100%", width:`${f.score_pct}%`, background:`linear-gradient(90deg,${D.gold},${D.green})`, borderRadius:10 }}/>
                         </div>
                       </div>
@@ -210,7 +212,7 @@ export default function CreditPanel({ user }) {
                         <span style={{ fontWeight:600, color:D.text }}>{meta.label}</span>
                         <span style={{ color:D.textDim }}>{String(displayValue)} <span style={{ color:D.textFaint }}>({Math.round(f.weight*100)}% weight)</span></span>
                       </div>
-                      <div style={{ height:6, background:"rgba(148,164,191,0.18)", borderRadius:10, overflow:"hidden" }}>
+                      <div style={{ height:6, background:D.panelBg2, borderRadius:10, overflow:"hidden" }}>
                         <div style={{ height:"100%", width:`${f.score_pct}%`, background:getScoreColor(score), borderRadius:10 }}/>
                       </div>
                     </div>
@@ -225,7 +227,7 @@ export default function CreditPanel({ user }) {
                 💰 Apply for a Business Loan →
               </button>
             ) : (
-              <div style={{ background:"rgba(248,113,113,0.12)", borderRadius:10, padding:"10px 14px", fontSize:"0.7rem", color:D.red, fontWeight:600, textAlign:"center" }}>
+              <div style={{ background:`${D.red}1f`, borderRadius:10, padding:"10px 14px", fontSize:"0.7rem", color:D.red, fontWeight:600, textAlign:"center" }}>
                 ❌ Score too low — keep improving to unlock loans. See the Insights tab for tips.
               </div>
             )}
@@ -248,7 +250,7 @@ export default function CreditPanel({ user }) {
               </div>
               <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginTop:12 }}>
                 {[["GHS 5M","Total Loans"],["GHS 100K","AshantiHub Revenue (2%)"],["GHS 10K","Per Month Projected"]].map(([v,l])=>(
-                  <div key={l} style={{ background:"rgba(255,255,255,0.06)", borderRadius:10, padding:"10px", textAlign:"center" }}>
+                  <div key={l} style={{ background:"rgba(255,255,255,0.55)", borderRadius:10, padding:"10px", textAlign:"center" }}>
                     <div style={{ fontWeight:900, color:D.gold, fontSize:"0.95rem" }}>{v}</div>
                     <div style={{ fontSize:"0.58rem", opacity:0.8 }}>{l}</div>
                   </div>
@@ -475,7 +477,7 @@ export default function CreditPanel({ user }) {
                   { icon:"🌱", val:"GHS 5B+", label:"SME Economic Output" },
                   { icon:"🇬🇭", val:"Top 10", label:"Ghana Fintech Impact" },
                 ].map(s => (
-                  <div key={s.label} style={{ background:"rgba(255,255,255,0.06)", borderRadius:12, padding:"14px", textAlign:"center" }}>
+                  <div key={s.label} style={{ background:"rgba(255,255,255,0.55)", borderRadius:12, padding:"14px", textAlign:"center" }}>
                     <div style={{ fontSize:"1.5rem", marginBottom:4 }}>{s.icon}</div>
                     <div style={{ fontWeight:900, color:D.gold, fontSize:"0.95rem" }}>{s.val}</div>
                     <div style={{ fontSize:"0.6rem", opacity:0.8 }}>{s.label}</div>

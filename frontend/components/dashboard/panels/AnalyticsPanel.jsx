@@ -13,6 +13,8 @@ import ListingsDonut from "../charts/ListingsDonut.jsx";
 import CreditRadialGauge from "../charts/CreditRadialGauge.jsx";
 import FactorBars from "../charts/FactorBars.jsx";
 import UsageMeters from "../charts/UsageMeters.jsx";
+import ActivityFeed from "../widgets/ActivityFeed.jsx";
+import QuickActionGrid from "../widgets/QuickActionGrid.jsx";
 
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -39,7 +41,7 @@ function buildSpendSeries(transactions, now) {
   return buckets;
 }
 
-export default function AnalyticsPanel({ user }) {
+export default function AnalyticsPanel({ user, onNavigate }) {
   const now = new Date();
   const { data: listings } = useMyListings();
   const { data: transactions } = useMyTransactions();
@@ -92,17 +94,25 @@ export default function AnalyticsPanel({ user }) {
 
   const firstName = user?.fullName?.split(" ")[0] || "there";
 
+  // "Your Listings" list-row section (the sketch's "Top products" analog) —
+  // reuses this panel's own already-fetched useMyListings() data, most
+  // recently updated first. Real fields only: thumbnail, name, price, status —
+  // no fabricated sold-counts.
+  const recentListings = [...listingList]
+    .sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0))
+    .slice(0, 5);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {/* Welcome strip */}
       <div style={{
         ...glassCard,
         padding: "18px 20px",
-        background: "linear-gradient(135deg, rgba(23,31,51,0.92), rgba(30,24,55,0.85))",
+        background: "linear-gradient(135deg, rgba(212,160,23,0.16), rgba(232,98,26,0.08))",
         display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12,
       }}>
         <div>
-          <div style={{ color: D.gold, fontWeight: 900, fontSize: "1.12rem", marginBottom: 3 }}>Akwaaba, {firstName}! 👋</div>
+          <div style={{ color: D.deepGold, fontWeight: 900, fontSize: "1.12rem", marginBottom: 3 }}>Akwaaba, {firstName}! 👋</div>
           <div style={{ fontSize: "0.74rem", color: D.textDim }}>
             {profile?.gps_address ? `📍 ${profile.gps_address}` : "Your business at a glance"}
             {profile?.business_contact_phone ? ` • ${profile.business_contact_phone}` : ""}
@@ -122,11 +132,18 @@ export default function AnalyticsPanel({ user }) {
         {kpis.map((k) => <KpiCard key={k.label} {...k} />)}
       </div>
 
-      {/* Spend + listings breakdown */}
+      {/* Main chart + recent activity */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 14 }}>
         <ChartFrame title="Your AshantiHub spend" icon="💸" aside={<span style={{ fontSize: "0.62rem", color: D.textFaint }}>subscriptions &amp; promotions</span>}>
           <SpendAreaChart data={spendSeries} />
         </ChartFrame>
+        <ChartFrame title="Recent activity" icon="🕐" minHeight={210}>
+          <ActivityFeed transactions={transactions} reviews={reviews?.results} />
+        </ChartFrame>
+      </div>
+
+      {/* Listings status + credit gauge + factors */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 14 }}>
         <ChartFrame title="Listings by status" icon="📦">
           <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
             <ListingsDonut data={donutData} />
@@ -139,10 +156,6 @@ export default function AnalyticsPanel({ user }) {
             </div>
           </div>
         </ChartFrame>
-      </div>
-
-      {/* Credit gauge + factors */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 14 }}>
         <ChartFrame title="Credit score" icon="🏅">
           <CreditRadialGauge score={score} />
         </ChartFrame>
@@ -155,6 +168,42 @@ export default function AnalyticsPanel({ user }) {
       <ChartFrame title="Plan usage" icon="📊" minHeight={90}>
         <UsageMeters data={usageData} />
       </ChartFrame>
+
+      {/* Your Listings */}
+      <ChartFrame title="Your Listings" icon="🏷️" minHeight={0}>
+        {recentListings.length === 0 ? (
+          <div style={{ color: D.textFaint, fontSize: "0.78rem" }}>You don&apos;t have any listings yet.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {recentListings.map((item) => {
+              const statusMeta = LISTING_STATUS_META[item.status] || { label: item.status, color: D.textDim };
+              return (
+                <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 12, paddingBottom: 10, borderBottom: `1px solid ${D.divider}` }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 10, background: D.panelBg2, flexShrink: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.2rem" }}>
+                    {item.photos?.[0]?.image ? <img src={item.photos[0].image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "🏷️"}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+                      <span style={{ fontWeight: 700, fontSize: "0.8rem", color: D.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
+                      <span style={{ fontWeight: 900, color: D.green, fontSize: "0.8rem", whiteSpace: "nowrap" }}>{item.price_amount != null ? `GHS ${item.price_amount}` : "No price set"}</span>
+                    </div>
+                    <div style={{ marginTop: 4, height: 6, background: D.panelBg2, borderRadius: 10, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: item.status === "published" ? "100%" : item.status === "pending_review" ? "60%" : "25%", background: statusMeta.color, borderRadius: 10 }} />
+                    </div>
+                  </div>
+                  <span style={{ background: `${statusMeta.color}20`, color: statusMeta.color, borderRadius: 20, padding: "3px 9px", fontSize: "0.6rem", fontWeight: 800, whiteSpace: "nowrap" }}>{statusMeta.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </ChartFrame>
+
+      {/* Quick actions */}
+      <div>
+        <div style={{ fontWeight: 800, color: D.text, fontSize: "0.85rem", marginBottom: 10 }}>⚡ Quick Actions</div>
+        <QuickActionGrid onNavigate={onNavigate} />
+      </div>
     </div>
   );
 }

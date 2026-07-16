@@ -28,7 +28,7 @@ class MultiAccountAuthenticationTests(TestCase):
             response.json(),
             {
                 "account_type": "customer", "id": self.customer.id, "full_name": "Ama Owusu",
-                "avatar": None,
+                "avatar": None, "email": self.customer.email, "phone": "+233241234567",
             },
         )
 

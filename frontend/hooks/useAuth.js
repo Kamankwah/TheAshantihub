@@ -83,17 +83,45 @@ export function useAuth() {
     return apiPost('/api/billing/subscriptions/start-trial/', fields)
   }, [])
 
-  // Customer profile self-edit (name + avatar only — email/phone are login
-  // identifiers with no verification/OTP flow yet, so they stay out of this
-  // endpoint entirely). Mirrors submitBusinessInfo's FormData-building
-  // convention exactly; callers follow up with refreshUser() the same way
-  // submitBusinessInfo callers already do (see BusinessRegistrationFlow.jsx).
+  // Customer profile self-edit — full_name/avatar/address/gender/
+  // date_of_birth/email_notifications_enabled/sms_notifications_enabled.
+  // Primary email/phone are the account's login identifiers with no
+  // verification/OTP flow for changing them, so they stay out of this
+  // endpoint (read-only, surfaced via refreshUser()'s /me/ call instead).
+  // Secondary/recovery email+phone go through their own request/confirm
+  // endpoints below, not this one. Mirrors submitBusinessInfo's FormData-
+  // building convention exactly; callers follow up with refreshUser() the
+  // same way submitBusinessInfo callers already do (see
+  // BusinessRegistrationFlow.jsx).
   const updateProfile = useCallback(async (fields) => {
     const formData = new FormData()
     Object.entries(fields).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== '') formData.append(key, value)
     })
     return apiPatchForm('/api/accounts/customers/me/profile/', formData)
+  }, [])
+
+  // Secondary/recovery email + phone verification (user_account_dashboard
+  // work) — each a request/confirm pair. The request call sets the pending
+  // value and returns `demo_code` directly in its response: there is no real
+  // email/SMS transport anywhere in this app (same "simulated" pattern as
+  // MoMoPayment), so the code can't actually be delivered — it's shown to
+  // the user in the UI instead of silently vanishing into a fake "sent"
+  // state.
+  const requestSecondaryEmail = useCallback(async (secondary_email) => {
+    return apiPost('/api/accounts/customers/me/secondary-email/', { secondary_email })
+  }, [])
+
+  const confirmSecondaryEmail = useCallback(async (code) => {
+    return apiPost('/api/accounts/customers/me/secondary-email/confirm/', { code })
+  }, [])
+
+  const requestSecondaryPhone = useCallback(async (secondary_phone) => {
+    return apiPost('/api/accounts/customers/me/secondary-phone/', { secondary_phone })
+  }, [])
+
+  const confirmSecondaryPhone = useCallback(async (code) => {
+    return apiPost('/api/accounts/customers/me/secondary-phone/confirm/', { code })
   }, [])
 
   const acceptBusinessTerms = useCallback(async () => {
@@ -120,5 +148,6 @@ export function useAuth() {
     user, isLoading, login, logout, registerCustomer, registerBusinessOwner,
     submitBusinessInfo, submitPayoutInfo, submitPlanSelection, acceptBusinessTerms, refreshUser,
     updateProfile, hasPermission,
+    requestSecondaryEmail, confirmSecondaryEmail, requestSecondaryPhone, confirmSecondaryPhone,
   }
 }

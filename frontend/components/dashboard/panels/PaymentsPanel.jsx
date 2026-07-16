@@ -15,6 +15,7 @@ import { D, glassCard, sectionTitle } from "../theme.js";
 import { apiPost } from "../../../apiClient.js";
 import { useMyTransactions } from "../../../hooks/useMyTransactions.js";
 import { useSubscriptionPlans } from "../../../hooks/useSubscriptionPlans.js";
+import DataTableCard from "../widgets/DataTableCard.jsx";
 
 // Local copy of App.jsx's MOMO_NETWORKS (components/ never imports from
 // App.jsx, to avoid a circular dependency). Only the fields the "Accepted
@@ -144,21 +145,25 @@ export default function PaymentsPanel({ user, PaymentComponent }) {
                 </div>
 
                 {/* Recent transactions */}
-                <div style={{ ...glassCard, padding:"20px" }}>
+                <div>
                   <div style={{ fontWeight:800, color:D.text, marginBottom:14, fontSize:"0.88rem" }}>🕐 Recent Transactions</div>
-                  {txList.length===0 && <div style={{ color:D.textFaint, fontSize:"0.78rem" }}>No payments yet.</div>}
-                  {txList.slice(0,4).map(t => (
-                    <div key={t.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderBottom:`1px solid ${D.divider}`, flexWrap:"wrap", gap:8 }}>
-                      <div>
-                        <div style={{ fontWeight:700, fontSize:"0.8rem", color:D.text }}>{t.purpose}</div>
-                        <div style={{ fontSize:"0.68rem", color:D.textDim }}>{t.created_at?.slice(0,10)} • Ref: {t.reference}</div>
-                      </div>
-                      <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                        <span style={{ fontWeight:900, color:D.green }}>GHS {Number(t.amount).toLocaleString()}</span>
-                        <span style={{ background:`${statusColor[t.status]}20`, color:statusColor[t.status], borderRadius:20, padding:"2px 8px", fontSize:"0.62rem", fontWeight:800 }}>{statusLabel[t.status]||t.status}</span>
-                      </div>
-                    </div>
-                  ))}
+                  <DataTableCard
+                    columns={[
+                      { key:"purpose", label:"Purpose" },
+                      { key:"amount", label:"Amount", align:"right" },
+                      { key:"date", label:"Date" },
+                      { key:"status", label:"Status" },
+                    ]}
+                    rows={txList.slice(0,4)}
+                    emptyText="No payments yet."
+                    renderCell={(t, c) => {
+                      if (c.key === "purpose") return t.purpose;
+                      if (c.key === "amount") return <span style={{ fontWeight:900, color:D.green }}>GHS {Number(t.amount).toLocaleString()}</span>;
+                      if (c.key === "date") return t.created_at?.slice(0,10);
+                      if (c.key === "status") return <span style={{ background:`${statusColor[t.status]}20`, color:statusColor[t.status], borderRadius:20, padding:"2px 8px", fontSize:"0.62rem", fontWeight:800 }}>{statusLabel[t.status]||t.status}</span>;
+                      return null;
+                    }}
+                  />
                 </div>
               </>
             )}
@@ -174,34 +179,25 @@ export default function PaymentsPanel({ user, PaymentComponent }) {
             {txLoading && <div style={{ color:D.textDim, fontSize:"0.82rem", padding:"20px 0" }}>Loading your payment history…</div>}
             {txError && <div style={{ color:D.red, fontSize:"0.82rem", padding:"20px 0" }}>Could not load your payment history. Make sure you're signed in as a business owner.</div>}
             {!txLoading && !txError && (
-              <div style={{ ...glassCard, padding:"20px", overflowX:"auto" }}>
-                {txList.length===0 ? <div style={{ color:D.textFaint, fontSize:"0.78rem" }}>No payments yet.</div> : (
-                  <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"0.74rem" }}>
-                    <thead>
-                      <tr style={{ borderBottom:`2px solid ${D.divider}` }}>
-                        {["Reference","Purpose","Amount","Date","Status"].map(h=>(
-                          <th key={h} style={{ textAlign:"left", padding:"8px 10px", color:D.textDim, fontWeight:700, whiteSpace:"nowrap" }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {txList.map(t => (
-                        <tr key={t.id} style={{ borderBottom:`1px solid ${D.divider}` }}
-                          onMouseEnter={e=>e.currentTarget.style.background=D.panelBg2}
-                          onMouseLeave={e=>e.currentTarget.style.background=""}>
-                          <td style={{ padding:"10px", fontWeight:700, color:D.deepGold, fontSize:"0.68rem" }}>{t.reference}</td>
-                          <td style={{ padding:"10px", fontWeight:600, color:D.text }}>{t.purpose}</td>
-                          <td style={{ padding:"10px", fontWeight:800, color:D.green }}>GHS {Number(t.amount).toLocaleString()}</td>
-                          <td style={{ padding:"10px", color:D.textDim }}>{t.created_at?.slice(0,10)}</td>
-                          <td style={{ padding:"10px" }}>
-                            <span style={{ background:`${statusColor[t.status]}20`, color:statusColor[t.status], borderRadius:20, padding:"3px 9px", fontSize:"0.62rem", fontWeight:800 }}>{statusLabel[t.status]||t.status}</span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
+              <DataTableCard
+                columns={[
+                  { key:"reference", label:"Reference" },
+                  { key:"purpose", label:"Purpose" },
+                  { key:"amount", label:"Amount" },
+                  { key:"date", label:"Date" },
+                  { key:"status", label:"Status" },
+                ]}
+                rows={txList}
+                emptyText="No payments yet."
+                renderCell={(t, c) => {
+                  if (c.key === "reference") return <span style={{ fontWeight:700, color:D.deepGold, fontSize:"0.68rem" }}>{t.reference}</span>;
+                  if (c.key === "purpose") return t.purpose;
+                  if (c.key === "amount") return <span style={{ fontWeight:800, color:D.green }}>GHS {Number(t.amount).toLocaleString()}</span>;
+                  if (c.key === "date") return t.created_at?.slice(0,10);
+                  if (c.key === "status") return <span style={{ background:`${statusColor[t.status]}20`, color:statusColor[t.status], borderRadius:20, padding:"3px 9px", fontSize:"0.62rem", fontWeight:800 }}>{statusLabel[t.status]||t.status}</span>;
+                  return null;
+                }}
+              />
             )}
           </>
         )}
