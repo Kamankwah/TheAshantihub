@@ -159,13 +159,16 @@ export function useAuth() {
 
   // Password reset (staff onboarding + account-recovery work) — plain
   // apiPost wrappers with no local auth-state side effects, same convention
-  // as acceptBusinessTerms/submitPayoutInfo above. account_type is one of
-  // 'customer'/'business_owner'/'staff', matching LOGIN_PATHS' keys. The
-  // request step deliberately doesn't throw/surface "no such account" — the
-  // backend always returns a generic success response regardless, so callers
-  // should show the same generic copy whether or not this resolves.
-  const requestPasswordReset = useCallback(async (accountType, email) => {
-    return apiPost('/api/accounts/password-reset/request/', { email, account_type: accountType })
+  // as acceptBusinessTerms/submitPayoutInfo above. The request step takes
+  // email only — the backend checks every account type for a match and each
+  // one gets its own reset link (the emailed link carries the type, so no
+  // public form ever asks the caller to declare it — a "Staff" picker on a
+  // public form would advertise which account classes exist). It also
+  // deliberately doesn't throw/surface "no such account" — the backend
+  // always returns a generic success response regardless, so callers should
+  // show the same generic copy whether or not this resolves.
+  const requestPasswordReset = useCallback(async (email) => {
+    return apiPost('/api/accounts/password-reset/request/', { email })
   }, [])
 
   const confirmPasswordReset = useCallback(async (accountType, token, password) => {
