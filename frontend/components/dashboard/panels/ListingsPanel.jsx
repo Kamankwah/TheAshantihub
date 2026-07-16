@@ -1,25 +1,206 @@
 import { useState } from "react";
-import { apiPost, apiPatch } from "../../../apiClient.js";
+import { apiPost, apiPatch, apiPostForm } from "../../../apiClient.js";
 import { useMyListings } from "../../../hooks/useMyListings.js";
 import { useMyHeroSubmission } from "../../../hooks/useMyHeroSubmission.js";
+import { useCategories } from "../../../hooks/useCategories.js";
+import { useZones } from "../../../hooks/useZones.js";
 import { D, glassCard, LISTING_STATUS_META, HERO_STATUS_META } from "../theme.js";
 
 // Listings & Prices panel — ported from App.jsx's BusinessDashboard "listings"
-// tab, re-themed dark. Owns its own listing edit / hero-submit / promote state
-// and mutations (plain apiPost/apiPatch + refetch, the app convention). The
-// simulated-pay modal is passed in as `PaymentComponent` (App.jsx's MoMoPayment)
-// to avoid an App.jsx ⇄ components/ circular import.
+// tab, re-themed dark. Owns its own listing create / edit / hero-submit /
+// promote state and mutations (plain apiPost/apiPatch + refetch, the app
+// convention). The simulated-pay modal is passed in as `PaymentComponent`
+// (App.jsx's MoMoPayment) to avoid an App.jsx ⇄ components/ circular import.
 const inputStyle = {
   width: "100%", padding: "8px", borderRadius: 8, border: `1.5px solid ${D.cardBorder}`,
   fontSize: "0.8rem", fontFamily: "inherit", outline: "none", boxSizing: "border-box",
   background: D.panelBg2, color: D.text,
 };
 const labelStyle = { fontSize: "0.68rem", fontWeight: 700, color: D.textDim, display: "block", marginBottom: 3 };
+const textareaStyle = { ...inputStyle, minHeight: 56, resize: "vertical" };
+const fieldGrid2 = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 };
+
+const PRICE_UNITS = ["per night", "per person", "per day", "per item", "per service"];
+
+// Blank state for the create form. Booleans the owner must consciously answer
+// (has_warranty/has_expiry) are tri-state selects — "" (unanswered) / "yes" /
+// "no" — so the form can force an explicit answer for products, mirroring the
+// server-side rule in OwnerListingSerializer.validate().
+const emptyCreateForm = () => ({
+  category: "", zone: "", name: "", description: "", price_amount: "", price_unit: "per item", tag: "",
+  has_warranty: "", warranty_details: "", has_expiry: "", expiry_date: "", return_policy: "",
+  brand: "", condition: "", dimensions: "", weight: "", stock_quantity: "",
+  service_duration: "", whats_included: "", requirements: "", revisions: "", delivery_time: "",
+  specs: [],
+});
+
+// The product/service decision fields, shaped for a POST/PATCH body. Sent
+// unconditionally by both the create and edit forms (same "include
+// unconditionally" convention saveEdit already used for service_duration/
+// specs) — blanks/false are harmless for the non-applicable kind.
+const decisionFieldsBody = (form) => ({
+  service_duration: form.service_duration || "",
+  whats_included: form.whats_included || "",
+  requirements: form.requirements || "",
+  revisions: form.revisions || "",
+  delivery_time: form.delivery_time || "",
+  has_warranty: form.has_warranty === "yes",
+  warranty_details: form.warranty_details || "",
+  has_expiry: form.has_expiry === "yes",
+  expiry_date: form.expiry_date || null,
+  return_policy: form.return_policy || "",
+  brand: form.brand || "",
+  condition: form.condition || "",
+  dimensions: form.dimensions || "",
+  weight: form.weight || "",
+  stock_quantity: form.stock_quantity === "" || form.stock_quantity == null ? null : Number(form.stock_quantity),
+});
+
+// Best-effort readable message from apiClient.js's thrown error (.body carries
+// the parsed DRF field-error object when there is one).
+const formatApiError = (err, fallback) => {
+  const body = err?.body;
+  if (body && typeof body === "object") {
+    const parts = Object.entries(body).map(([field, msgs]) => {
+      const msg = Array.isArray(msgs) ? msgs[0] : String(msgs);
+      return field === "detail" || field === "non_field_errors" ? msg : `${field.replaceAll("_", " ")}: ${msg}`;
+    });
+    if (parts.length > 0) return parts.join(" ");
+  }
+  return fallback;
+};
+
+// ─── Shared field editors (create + edit forms) ──────────────────────────────
+
+function SpecsEditor({ specs, onChange }) {
+  const list = specs || [];
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <label style={labelStyle}>Specs</label>
+      {list.map((spec, i) => (
+        <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+          <input value={spec.label || ""} placeholder="Label (e.g. Material)" onChange={e => onChange(list.map((s, si) => si === i ? { ...s, label: e.target.value } : s))} style={inputStyle} />
+          <input value={spec.value || ""} placeholder="Value (e.g. Cotton)" onChange={e => onChange(list.map((s, si) => si === i ? { ...s, value: e.target.value } : s))} style={inputStyle} />
+          <button onClick={() => onChange(list.filter((_, si) => si !== i))} style={{ background: `${D.red}26`, color: D.red, border: "none", borderRadius: 8, padding: "0 10px", fontWeight: 700, cursor: "pointer" }}>✕</button>
+        </div>
+      ))}
+      <button onClick={() => onChange([...list, { label: "", value: "" }])} style={{ background: "none", border: `1.5px dashed ${D.cardBorderStrong}`, color: D.gold, borderRadius: 8, padding: "6px 12px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>+ Add spec</button>
+    </div>
+  );
+}
+
+// Kind-branched decision fields. Product: warranty/expiry conscious-answer
+// selects with conditional detail inputs, required return policy, plus the
+// Amazon-style attributes. Service: Fiverr-style gig fields. `update(field,
+// value)` patches a single key on the owning form state.
+function DecisionFields({ kind, form, update }) {
+  if (kind === "product") {
+    return (
+      <>
+        <div style={fieldGrid2}>
+          <div>
+            <label style={labelStyle}>Warranty? *</label>
+            <select value={form.has_warranty || ""} onChange={e => update("has_warranty", e.target.value)} style={inputStyle}>
+              <option value="">— Please answer —</option>
+              <option value="yes">Yes — comes with a warranty</option>
+              <option value="no">No warranty</option>
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Expires? *</label>
+            <select value={form.has_expiry || ""} onChange={e => update("has_expiry", e.target.value)} style={inputStyle}>
+              <option value="">— Please answer —</option>
+              <option value="yes">Yes — has an expiry date</option>
+              <option value="no">No expiry date</option>
+            </select>
+          </div>
+        </div>
+        {form.has_warranty === "yes" && (
+          <div style={{ marginBottom: 10 }}>
+            <label style={labelStyle}>Warranty details *</label>
+            <textarea value={form.warranty_details || ""} placeholder="e.g. 12-month manufacturer warranty covering defects" onChange={e => update("warranty_details", e.target.value)} style={textareaStyle} />
+          </div>
+        )}
+        {form.has_expiry === "yes" && (
+          <div style={{ marginBottom: 10 }}>
+            <label style={labelStyle}>Expiry date *</label>
+            <input type="date" value={form.expiry_date || ""} onChange={e => update("expiry_date", e.target.value)} style={inputStyle} />
+          </div>
+        )}
+        <div style={{ marginBottom: 10 }}>
+          <label style={labelStyle}>Return policy *</label>
+          <textarea value={form.return_policy || ""} placeholder="e.g. Returns accepted within 7 days if unused, buyer covers transport" onChange={e => update("return_policy", e.target.value)} style={textareaStyle} />
+        </div>
+        <div style={fieldGrid2}>
+          <div>
+            <label style={labelStyle}>Brand</label>
+            <input value={form.brand || ""} placeholder="e.g. Bonwire Weavers" onChange={e => update("brand", e.target.value)} style={inputStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>Condition</label>
+            <select value={form.condition || ""} onChange={e => update("condition", e.target.value)} style={inputStyle}>
+              <option value="">Not specified</option>
+              <option value="new">New</option>
+              <option value="used">Used</option>
+              <option value="refurbished">Refurbished</option>
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Dimensions</label>
+            <input value={form.dimensions || ""} placeholder="e.g. 180cm x 30cm" onChange={e => update("dimensions", e.target.value)} style={inputStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>Weight</label>
+            <input value={form.weight || ""} placeholder="e.g. 0.4 kg" onChange={e => update("weight", e.target.value)} style={inputStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>Stock quantity</label>
+            <input type="number" min={0} value={form.stock_quantity ?? ""} placeholder="Leave blank if not tracked" onChange={e => update("stock_quantity", e.target.value)} style={inputStyle} />
+          </div>
+        </div>
+      </>
+    );
+  }
+  if (kind === "service") {
+    return (
+      <>
+        <div style={{ marginBottom: 10 }}>
+          <label style={labelStyle}>Service duration (e.g. '1 hour', '2-3 days')</label>
+          <input value={form.service_duration || ""} placeholder="e.g. 2 hours" onChange={e => update("service_duration", e.target.value)} style={inputStyle} />
+        </div>
+        <div style={{ marginBottom: 10 }}>
+          <label style={labelStyle}>What's included</label>
+          <textarea value={form.whats_included || ""} placeholder="What the customer gets — e.g. transport, materials, consultation" onChange={e => update("whats_included", e.target.value)} style={textareaStyle} />
+        </div>
+        <div style={{ marginBottom: 10 }}>
+          <label style={labelStyle}>Requirements from the customer</label>
+          <textarea value={form.requirements || ""} placeholder="What you need from the customer before you can start" onChange={e => update("requirements", e.target.value)} style={textareaStyle} />
+        </div>
+        <div style={fieldGrid2}>
+          <div>
+            <label style={labelStyle}>Revisions</label>
+            <input value={form.revisions || ""} placeholder="e.g. 2 free revisions" onChange={e => update("revisions", e.target.value)} style={inputStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>Delivery time</label>
+            <input value={form.delivery_time || ""} placeholder="e.g. 3-5 business days" onChange={e => update("delivery_time", e.target.value)} style={inputStyle} />
+          </div>
+        </div>
+      </>
+    );
+  }
+  return null;
+}
 
 export default function ListingsPanel({ user, PaymentComponent, showToast }) {
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [actionError, setActionError] = useState(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [createForm, setCreateForm] = useState(emptyCreateForm);
+  const [createPhoto, setCreatePhoto] = useState(null);
+  const [createError, setCreateError] = useState(null);
+  const [creating, setCreating] = useState(false);
   const [heroSubmitPhoto, setHeroSubmitPhoto] = useState(null);
   const [heroCaption, setHeroCaption] = useState("");
   const [heroActionError, setHeroActionError] = useState(null);
@@ -35,20 +216,77 @@ export default function ListingsPanel({ user, PaymentComponent, showToast }) {
 
   const { data: listings, isLoading: listingsLoading, isError: listingsError, refetch: refetchListings } = useMyListings();
   const { data: heroSubmission, refetch: refetchHeroSubmission } = useMyHeroSubmission();
+  const { data: categories } = useCategories();
+  const { data: zones } = useZones();
   const listingList = listings || [];
+  // Business listings are product/service only — event-kind categories belong
+  // to the Events tab's submission flow, not this panel.
+  const listableCategories = (categories || []).filter(c => c.kind === "product" || c.kind === "service");
+  const zoneList = zones || [];
+  const categoryKindById = (id) => (categories || []).find(c => c.id === Number(id))?.kind;
 
   const toast = () => { if (showToast) showToast(); };
+
+  const updateCreate = (field, value) => setCreateForm(f => ({ ...f, [field]: value }));
+  const createKind = categoryKindById(createForm.category);
+  // Client-side mirror of OwnerListingSerializer.validate()'s product rules,
+  // so the button stays disabled until the owner has consciously answered.
+  const productAnswersComplete = createKind !== "product" || (
+    createForm.has_warranty !== "" && createForm.has_expiry !== "" &&
+    createForm.return_policy.trim() !== "" &&
+    (createForm.has_warranty !== "yes" || createForm.warranty_details.trim() !== "") &&
+    (createForm.has_expiry !== "yes" || createForm.expiry_date !== "")
+  );
+  const canSubmitCreate = Boolean(
+    createForm.category && createForm.zone && createForm.name.trim() &&
+    createForm.description.trim() && productAnswersComplete,
+  );
+
+  const submitCreate = async () => {
+    if (!canSubmitCreate || creating) return;
+    setCreateError(null); setCreating(true);
+    try {
+      const created = await apiPost("/api/listings/mine/", {
+        category: Number(createForm.category), zone: Number(createForm.zone),
+        name: createForm.name.trim(), description: createForm.description.trim(),
+        price_amount: createForm.price_amount === "" ? null : createForm.price_amount,
+        price_unit: createForm.price_unit, tag: createForm.tag.trim() || null,
+        specs: createForm.specs,
+        ...decisionFieldsBody(createForm),
+      });
+      if (createPhoto) {
+        // Photo goes to the existing gallery endpoint (same "JSON create,
+        // then multipart photo" two-step as EventSubmissionPanel's flow) —
+        // its failure shouldn't roll back the already-created listing.
+        try {
+          const fd = new FormData();
+          fd.append("image", createPhoto);
+          fd.append("order", "0");
+          await apiPostForm(`/api/listings/${created.id}/photos/`, fd);
+        } catch {
+          setActionError("Your listing was created, but the photo failed to upload — you can add it again later.");
+        }
+      }
+      setShowCreate(false); setCreateForm(emptyCreateForm()); setCreatePhoto(null);
+      toast(); refetchListings();
+    } catch (err) {
+      setCreateError(formatApiError(err, "Could not create this listing. Please check the fields and try again."));
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const saveEdit = async (id) => {
     setActionError(null);
     try {
       await apiPatch(`/api/listings/mine/${id}/`, {
         name: editForm.name, price_amount: editForm.price_amount, price_unit: editForm.price_unit,
-        specs: editForm.specs, service_duration: editForm.service_duration,
+        specs: editForm.specs,
+        ...decisionFieldsBody(editForm),
       });
       setEditingId(null); toast(); refetchListings();
     } catch (err) {
-      setActionError("Could not save this listing. It may already be published, or a field may be invalid.");
+      setActionError(formatApiError(err, "Could not save this listing. It may already be published, or a field may be invalid."));
     }
   };
 
@@ -138,10 +376,71 @@ export default function ListingsPanel({ user, PaymentComponent, showToast }) {
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
         <h2 style={{ margin: 0, color: D.text, fontWeight: 900, fontSize: "0.98rem" }}>🏷️ Listings &amp; Prices</h2>
-        <a href="https://wa.me/233244000000?text=UPDATE%3A%20" target="_blank" rel="noopener noreferrer" style={{ background: D.whatsapp, color: "#04210f", borderRadius: 20, padding: "6px 14px", fontSize: "0.7rem", fontWeight: 800, textDecoration: "none" }}>📱 WhatsApp Update</a>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <button onClick={() => { setShowCreate(s => !s); setCreateError(null); }} style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "7px 16px", fontSize: "0.72rem", fontWeight: 900, cursor: "pointer", fontFamily: "inherit" }}>➕ List a New Product / Service</button>
+          <a href="https://wa.me/233244000000?text=UPDATE%3A%20" target="_blank" rel="noopener noreferrer" style={{ background: D.whatsapp, color: "#04210f", borderRadius: 20, padding: "6px 14px", fontSize: "0.7rem", fontWeight: 800, textDecoration: "none" }}>📱 WhatsApp Update</a>
+        </div>
       </div>
 
       {actionError && <div style={{ background: `${D.red}1f`, color: D.red, borderRadius: 12, padding: "10px 14px", fontSize: "0.78rem", marginBottom: 14 }}>{actionError}</div>}
+
+      {showCreate && (
+        <div style={{ ...glassCard, padding: "16px", marginBottom: 14, border: `2px solid ${D.cardBorderStrong}` }}>
+          <div style={{ fontWeight: 900, fontSize: "0.88rem", color: D.text, marginBottom: 10 }}>➕ New Listing</div>
+          <div style={fieldGrid2}>
+            <div>
+              <label style={labelStyle}>Category *</label>
+              <select value={createForm.category} onChange={e => updateCreate("category", e.target.value)} style={inputStyle}>
+                <option value="">Choose a category…</option>
+                {listableCategories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.label} ({c.kind})</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Zone *</label>
+              <select value={createForm.zone} onChange={e => updateCreate("zone", e.target.value)} style={inputStyle}>
+                <option value="">Choose a zone…</option>
+                {zoneList.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Name *</label>
+              <input value={createForm.name} placeholder="e.g. Hand-woven Kente Scarf" onChange={e => updateCreate("name", e.target.value)} style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Tag</label>
+              <input value={createForm.tag} placeholder="e.g. Best Seller" onChange={e => updateCreate("tag", e.target.value)} style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Price (GHS)</label>
+              <input type="number" min={0} value={createForm.price_amount} placeholder="Leave blank if unpriced" onChange={e => updateCreate("price_amount", e.target.value)} style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Unit</label>
+              <select value={createForm.price_unit} onChange={e => updateCreate("price_unit", e.target.value)} style={inputStyle}>
+                {PRICE_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <label style={labelStyle}>Description *</label>
+            <textarea value={createForm.description} placeholder="Describe what you're offering — customers see this on your listing page" onChange={e => updateCreate("description", e.target.value)} style={textareaStyle} />
+          </div>
+          {!createKind && (
+            <div style={{ color: D.textFaint, fontSize: "0.72rem", marginBottom: 10 }}>Choose a category above to fill in the product or service details.</div>
+          )}
+          <DecisionFields kind={createKind} form={createForm} update={updateCreate} />
+          {createKind && <SpecsEditor specs={createForm.specs} onChange={specs => setCreateForm(f => ({ ...f, specs }))} />}
+          <div style={{ marginBottom: 10 }}>
+            <label style={labelStyle}>Photo (optional)</label>
+            <input type="file" accept="image/jpeg,image/png" onChange={e => setCreatePhoto(e.target.files?.[0] || null)} style={{ ...inputStyle, padding: "6px" }} />
+          </div>
+          {createError && <div style={{ color: D.red, fontSize: "0.72rem", marginBottom: 8 }}>{createError}</div>}
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={() => { setShowCreate(false); setCreateError(null); }} style={{ flex: 1, background: D.panelBg2, color: D.textDim, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "8px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+            <button onClick={submitCreate} disabled={!canSubmitCreate || creating} style={{ flex: 2, background: canSubmitCreate && !creating ? D.gold : D.panelBg2, color: canSubmitCreate && !creating ? "#1a1205" : D.textFaint, border: "none", borderRadius: 20, padding: "8px", fontWeight: 900, cursor: canSubmitCreate && !creating ? "pointer" : "default", fontFamily: "inherit" }}>{creating ? "Creating…" : "✓ Create Listing"}</button>
+          </div>
+        </div>
+      )}
 
       {heroSubmitPhoto && (
         <div style={{ ...glassCard, padding: "14px 16px", marginBottom: 14, border: `2px solid ${D.cardBorderStrong}` }}>
@@ -238,21 +537,14 @@ export default function ListingsPanel({ user, PaymentComponent, showToast }) {
                       </select>
                     </div>
                   </div>
-                  <div style={{ marginBottom: 10 }}>
-                    <label style={labelStyle}>Service duration (e.g. '1 hour', '2-3 days')</label>
-                    <input value={editForm.service_duration || ""} placeholder="e.g. 2 hours" onChange={e => setEditForm(f => ({ ...f, service_duration: e.target.value }))} style={inputStyle} />
-                  </div>
-                  <div style={{ marginBottom: 10 }}>
-                    <label style={labelStyle}>Specs</label>
-                    {(editForm.specs || []).map((spec, i) => (
-                      <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-                        <input value={spec.label || ""} placeholder="Label (e.g. Material)" onChange={e => setEditForm(f => ({ ...f, specs: f.specs.map((s, si) => si === i ? { ...s, label: e.target.value } : s) }))} style={inputStyle} />
-                        <input value={spec.value || ""} placeholder="Value (e.g. Cotton)" onChange={e => setEditForm(f => ({ ...f, specs: f.specs.map((s, si) => si === i ? { ...s, value: e.target.value } : s) }))} style={inputStyle} />
-                        <button onClick={() => setEditForm(f => ({ ...f, specs: f.specs.filter((_, si) => si !== i) }))} style={{ background: `${D.red}26`, color: D.red, border: "none", borderRadius: 8, padding: "0 10px", fontWeight: 700, cursor: "pointer" }}>✕</button>
-                      </div>
-                    ))}
-                    <button onClick={() => setEditForm(f => ({ ...f, specs: [...(f.specs || []), { label: "", value: "" }] }))} style={{ background: "none", border: `1.5px dashed ${D.cardBorderStrong}`, color: D.gold, borderRadius: 8, padding: "6px 12px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>+ Add spec</button>
-                  </div>
+                  {/* Kind-branched decision fields. OwnerListingSerializer's
+                      `category` is a plain id, so the kind comes from the
+                      already-fetched categories list; "service" is the
+                      fallback when it can't be resolved (categories still
+                      loading / legacy row), preserving this form's historical
+                      always-show-service_duration behavior. */}
+                  <DecisionFields kind={categoryKindById(item.category) || "service"} form={editForm} update={(field, value) => setEditForm(f => ({ ...f, [field]: value }))} />
+                  <SpecsEditor specs={editForm.specs} onChange={specs => setEditForm(f => ({ ...f, specs }))} />
                   <div style={{ display: "flex", gap: 6 }}>
                     <button onClick={() => setEditingId(null)} style={{ flex: 1, background: D.panelBg2, color: D.textDim, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "8px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
                     <button onClick={() => saveEdit(item.id)} style={{ flex: 2, background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "8px", fontWeight: 900, cursor: "pointer", fontFamily: "inherit" }}>✓ Save</button>
@@ -277,7 +569,22 @@ export default function ListingsPanel({ user, PaymentComponent, showToast }) {
                     {item.status === "rejected" && item.rejection_reason && <div style={{ fontSize: "0.65rem", color: D.red, marginTop: 3 }}>Rejected: {item.rejection_reason}</div>}
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
-                    {canEdit && <button onClick={() => { setEditingId(item.id); setEditForm({ name: item.name, price_amount: item.price_amount, price_unit: item.price_unit, specs: item.specs || [], service_duration: item.service_duration || "" }); }} style={{ background: D.goldSoft, color: D.gold, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>✏️ Edit</button>}
+                    {canEdit && <button onClick={() => { setEditingId(item.id); setEditForm({
+                      name: item.name, price_amount: item.price_amount, price_unit: item.price_unit,
+                      specs: item.specs || [], service_duration: item.service_duration || "",
+                      whats_included: item.whats_included || "", requirements: item.requirements || "",
+                      revisions: item.revisions || "", delivery_time: item.delivery_time || "",
+                      // Tri-state selects seeded to the stored boolean — an
+                      // existing row has already "answered" (default no).
+                      has_warranty: item.has_warranty ? "yes" : "no",
+                      warranty_details: item.warranty_details || "",
+                      has_expiry: item.has_expiry ? "yes" : "no",
+                      expiry_date: item.expiry_date || "",
+                      return_policy: item.return_policy || "",
+                      brand: item.brand || "", condition: item.condition || "",
+                      dimensions: item.dimensions || "", weight: item.weight || "",
+                      stock_quantity: item.stock_quantity ?? "",
+                    }); }} style={{ background: D.goldSoft, color: D.gold, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>✏️ Edit</button>}
                     {(item.status === "draft" || item.status === "rejected") && <button onClick={() => submitForReview(item.id)} style={{ background: D.kente2, color: "#fff", border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>📤 Submit for Review</button>}
                     {item.status === "published" && <button onClick={() => { setPromoteListingId(item.id); setPromoteKind("featured"); setPromoteDays(7); setPromoteKeywords(""); setPromoteActionError(null); }} style={{ background: `${D.red}18`, color: D.kente1, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>📣 Promote</button>}
                   </div>

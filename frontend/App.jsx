@@ -59,7 +59,7 @@ import ListingsDonut from "./components/dashboard/charts/ListingsDonut.jsx";
 // ─── Payment System ───────────────────────────────────────────────────────────
 const MOMO_NETWORKS = [
   { id:"mtn", name:"MTN MoMo", color:"#FCD116", textColor:"#1A1A1A", logo:"🟡", ussd:"*170#", fee:"1.5%" },
-  { id:"vodafone", name:"Vodafone Cash", color:"#E31837", textColor:"white", logo:"🔴", ussd:"*110#", fee:"1.5%" },
+  { id:"telecel", name:"Telecel Cash", color:"#E31837", textColor:"white", logo:"🔴", ussd:"*110#", fee:"1.5%" },
   { id:"airteltigo", name:"AirtelTigo Money", color:"#E87722", textColor:"white", logo:"🟠", ussd:"*500#", fee:"1.5%" },
 ];
 
@@ -85,6 +85,9 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
   const [countdown, setCountdown] = useState(30);
   const [success, setSuccess] = useState(false);
   const [txnRef] = useState(`AH${Date.now().toString().slice(-8)}`);
+  // Holds the pending 1s "success → onSuccess" timeout — see the countdown
+  // effect below for why this is a ref cancelled only on unmount.
+  const successTimeoutRef = useRef(null);
 
   // Hubtel integration (docs/HUBTEL_INTEGRATION.md, plan Workstream E) — the
   // real 30s "processing" countdown/success-receipt UI below only makes
@@ -113,25 +116,39 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
       return;
     }
     if (step === 3 && !success) {
-      let successTimeout;
       const timer = setInterval(() => {
         setCountdown(c => {
           if (c <= 1) {
             clearInterval(timer);
             setSuccess(true);
-            // Cancelled below on unmount/step-change — without this, closing the
-            // modal in this 1s window still let onSuccess fire afterward, now
-            // triggering real transaction/subscription writes (previously
-            // harmless, since it only called a mock success handler).
-            successTimeout = setTimeout(() => onSuccess && onSuccess(txnRef), 1000);
+            // Tracked in a ref, cancelled by the unmount-only effect below —
+            // NOT by this effect's own cleanup. `success` is a dependency of
+            // this effect, so setSuccess(true) immediately re-runs it; when
+            // the cleanup here also cleared this timeout it cancelled
+            // onSuccess *every* time in production, meaning no simulated
+            // payment ever reached its caller's success handler (events
+            // stuck on "Pay to publish", orders never placed). React's
+            // dev-mode double-invocation of state updaters masked that
+            // regression in tests/`npm run dev` (a second, untracked timeout
+            // leaked and still fired) — which is also why the ref-guard
+            // matters: it keeps this from scheduling twice in dev.
+            if (!successTimeoutRef.current) {
+              successTimeoutRef.current = setTimeout(() => onSuccess && onSuccess(txnRef), 1000);
+            }
             return 0;
           }
           return c - 1;
         });
       }, 100);
-      return () => { clearInterval(timer); clearTimeout(successTimeout); };
+      return () => clearInterval(timer);
     }
   }, [step, success, isHubtel]);
+
+  // Unmount-only cancellation of the pending onSuccess timeout — closing the
+  // modal inside the 1s success window must still stop onSuccess from firing
+  // afterward (it triggers real transaction/subscription writes), which is
+  // the intent the broken same-effect cleanup described above was after.
+  useEffect(() => () => clearTimeout(successTimeoutRef.current), []);
 
   const selectedNetwork = MOMO_NETWORKS.find(n => n.id === network);
   const fee = amount * 0.015;
@@ -895,8 +912,8 @@ function MoMoModal({item,user,onClose}) {
             <div>
               <label style={lStyle}>Select Network</label>
               <div style={{display:"flex",gap:8}}>
-                {["MTN","Vodafone","AirtelTigo"].map(n=>(
-                  <button key={n} onClick={()=>setNetwork(n)} style={{flex:1,background:network===n?(n==="MTN"?"#FCD116":n==="Vodafone"?"#e31837":"#e87722"):"#f0f0f0",color:network===n?"white":C.darkBrown,border:"none",borderRadius:12,padding:"10px 6px",fontWeight:800,fontSize:"0.72rem",cursor:"pointer"}}>{n}</button>
+                {["MTN","Telecel","AirtelTigo"].map(n=>(
+                  <button key={n} onClick={()=>setNetwork(n)} style={{flex:1,background:network===n?(n==="MTN"?"#FCD116":n==="Telecel"?"#e31837":"#e87722"):"#f0f0f0",color:network===n?"white":C.darkBrown,border:"none",borderRadius:12,padding:"10px 6px",fontWeight:800,fontSize:"0.72rem",cursor:"pointer"}}>{n}</button>
                 ))}
               </div>
             </div>
@@ -2974,9 +2991,16 @@ export default function AshantiHub() {
             `}</style>
           </div>
 
+          {/* background:C.void is load-bearing, not cosmetic — EventSubmissionPanel is
+              styled white-text-on-translucent-white for a dark backdrop, but the app
+              root's background is C.cream, so without a dark band here the whole
+              submission form (labels, inputs, the photo-upload file input) rendered
+              near-invisible white-on-cream. */}
           {showEventSubmit&&(
-            <div style={{maxWidth:1280,margin:"0 auto",padding:"16px 14px 0"}}>
-              <EventSubmissionPanel user={user} categories={categories} zones={zones} PaymentComponent={MoMoPayment}/>
+            <div style={{background:C.void}}>
+              <div style={{maxWidth:1280,margin:"0 auto",padding:"16px 14px"}}>
+                <EventSubmissionPanel user={user} categories={categories} zones={zones} PaymentComponent={MoMoPayment}/>
+              </div>
             </div>
           )}
 

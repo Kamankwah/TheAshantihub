@@ -103,9 +103,9 @@ export default function ListingDetailPage({
       case "overview":
         return <OverviewSection description={item.description} />;
       case "specs":
-        return <SpecsSection specs={item.specs} />;
+        return <SpecsSection item={item} />;
       case "duration":
-        return <DurationSection duration={item.service_duration} />;
+        return <DurationSection item={item} />;
       case "reviews":
         return <ReviewsSection listingId={id} item={item} user={user} />;
       case "qanda":
@@ -117,7 +117,7 @@ export default function ListingDetailPage({
       case "more-service":
         return <MoreOptionsSection related={related} onOpenListing={onOpenListing} label="More Service options" />;
       case "warranty":
-        return <PolicySection label="Warranty & Returns" fieldKey="warranty_returns_policy" />;
+        return <WarrantySection item={item} />;
       case "dispute":
         return <PolicySection label="Service satisfaction & dispute" fieldKey="service_dispute_policy" />;
       default:
@@ -318,8 +318,21 @@ function OverviewSection({ description }) {
 }
 
 // ─── SpecsSection ───────────────────────────────────────────────────────────
-function SpecsSection({ specs }) {
-  const list = Array.isArray(specs) ? specs : [];
+// The structured product attributes (comprehensive listing-creation work —
+// brand/condition/dimensions/weight/stock, real Listing fields) render as
+// leading rows of the same table as the owner's freeform `specs` pairs, only
+// when set — so pre-existing listings with none of them are unchanged.
+const CONDITION_LABELS = { new: "New", used: "Used", refurbished: "Refurbished" };
+
+function SpecsSection({ item }) {
+  const attrRows = [
+    item.brand && { label: "Brand", value: item.brand },
+    item.condition && { label: "Condition", value: CONDITION_LABELS[item.condition] || item.condition },
+    item.dimensions && { label: "Dimensions", value: item.dimensions },
+    item.weight && { label: "Weight", value: item.weight },
+    item.stock_quantity != null && { label: "In stock", value: String(item.stock_quantity) },
+  ].filter(Boolean);
+  const list = [...attrRows, ...(Array.isArray(item.specs) ? item.specs : [])];
   return (
     <div>
       <h2 style={sectionHeadingStyle}>Specs</h2>
@@ -340,7 +353,17 @@ function SpecsSection({ specs }) {
 }
 
 // ─── DurationSection ────────────────────────────────────────────────────────
-function DurationSection({ duration }) {
+// Also carries the Fiverr-style service decision fields (comprehensive
+// listing-creation work) when the seller filled them in — each block only
+// renders when non-empty, so older service listings look exactly as before.
+function DurationSection({ item }) {
+  const duration = item.service_duration;
+  const extras = [
+    ["What's included", item.whats_included],
+    ["What the seller needs from you", item.requirements],
+    ["Revisions", item.revisions],
+    ["Delivery time", item.delivery_time],
+  ].filter(([, value]) => value);
   return (
     <div>
       <h2 style={sectionHeadingStyle}>Service Duration</h2>
@@ -348,6 +371,50 @@ function DurationSection({ duration }) {
         <p style={{ color: "rgba(255,255,255,0.8)", fontSize: "0.88rem", lineHeight: 1.7 }}>{duration}</p>
       ) : (
         <EmptyNote text="Duration not specified" />
+      )}
+      {extras.map(([label, value]) => (
+        <div key={label} style={{ marginTop: 14 }}>
+          <div style={{ color: C.gold, fontSize: "0.78rem", fontWeight: 800, marginBottom: 4 }}>{label}</div>
+          <p style={{ color: "rgba(255,255,255,0.8)", fontSize: "0.85rem", lineHeight: 1.6, margin: 0, whiteSpace: "pre-wrap" }}>{value}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── WarrantySection ────────────────────────────────────────────────────────
+// The product's own warranty/expiry/return terms (comprehensive listing-
+// creation work — real Listing fields, seller-provided at creation) above the
+// platform-wide policy text PolicySection used to render alone. Each seller
+// block only renders when the field is actually present/set, so older rows
+// (and the platform-policy behavior/copy the tests assert) are unchanged.
+function WarrantySection({ item }) {
+  const settingsQuery = useSiteSettings();
+  const platformText = settingsQuery.data?.warranty_returns_policy;
+  const sellerBlocks = [
+    item.has_warranty === true && ["Seller warranty", item.warranty_details || "This product comes with a warranty."],
+    item.has_warranty === false && ["Seller warranty", "This seller does not offer a warranty on this item."],
+    item.has_expiry === true && item.expiry_date && ["Expiry date", item.expiry_date],
+    Boolean(item.return_policy) && ["Seller return policy", item.return_policy],
+  ].filter(Boolean);
+  return (
+    <div>
+      <h2 style={sectionHeadingStyle}>Warranty & Returns</h2>
+      {sellerBlocks.map(([label, value]) => (
+        <div key={label} style={{ marginBottom: 14 }}>
+          <div style={{ color: C.gold, fontSize: "0.78rem", fontWeight: 800, marginBottom: 4 }}>{label}</div>
+          <p style={{ color: "rgba(255,255,255,0.8)", fontSize: "0.85rem", lineHeight: 1.6, margin: 0, whiteSpace: "pre-wrap" }}>{value}</p>
+        </div>
+      ))}
+      {sellerBlocks.length > 0 && (
+        <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.75rem", fontWeight: 700, margin: "4px 0 8px" }}>AshantiHub platform policy</div>
+      )}
+      {settingsQuery.isLoading ? (
+        <EmptyNote text="Loading…" />
+      ) : platformText ? (
+        <p style={{ color: "rgba(255,255,255,0.8)", fontSize: "0.88rem", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{platformText}</p>
+      ) : (
+        <EmptyNote text="No policy has been published yet." />
       )}
     </div>
   );

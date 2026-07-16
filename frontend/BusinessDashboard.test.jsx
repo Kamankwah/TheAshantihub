@@ -406,6 +406,114 @@ describe('BusinessDashboard Listings & Prices specs/service_duration editing', (
   })
 })
 
+describe('BusinessDashboard Listings & Prices — create a new listing', () => {
+  // The create form (comprehensive listing-creation work) branches on the
+  // selected category's kind — the default mock categories handler serves
+  // Hotels (service, id 1) and Food (product, id 2).
+  function openCreateForm() {
+    return (async () => {
+      fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
+      fireEvent.click(await screen.findByText('➕ List a New Product / Service'))
+      await screen.findByText('➕ New Listing')
+    })()
+  }
+
+  function fillCommonFields({ categoryId }) {
+    fireEvent.change(screen.getByDisplayValue('Choose a category…'), { target: { value: String(categoryId) } })
+    fireEvent.change(screen.getByDisplayValue('Choose a zone…'), { target: { value: '1' } })
+    fireEvent.change(screen.getByPlaceholderText('e.g. Hand-woven Kente Scarf'), { target: { value: 'Kente Scarf' } })
+    fireEvent.change(screen.getByPlaceholderText("Describe what you're offering — customers see this on your listing page"), { target: { value: 'Hand-woven.' } })
+  }
+
+  it('keeps Create disabled for a product until warranty/expiry/return-policy are consciously answered', async () => {
+    mockDashboardData()
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
+    await openCreateForm()
+    fillCommonFields({ categoryId: 2 })
+    // Product decision fields revealed, but unanswered → still disabled
+    expect(screen.getByText('Return policy *')).toBeInTheDocument()
+    expect(screen.getByText('✓ Create Listing')).toBeDisabled()
+    const [warrantySelect, expirySelect] = screen.getAllByDisplayValue('— Please answer —')
+    fireEvent.change(warrantySelect, { target: { value: 'no' } })
+    fireEvent.change(expirySelect, { target: { value: 'no' } })
+    expect(screen.getByText('✓ Create Listing')).toBeDisabled()
+    fireEvent.change(screen.getByPlaceholderText('e.g. Returns accepted within 7 days if unused, buyer covers transport'), { target: { value: '7-day returns.' } })
+    expect(screen.getByText('✓ Create Listing')).not.toBeDisabled()
+  })
+
+  it('creates a product listing with the decision fields in the POST body and shows the toast', async () => {
+    mockDashboardData()
+    let postBody = null
+    server.use(
+      http.post('http://localhost:8000/api/listings/mine/', async ({ request }) => {
+        postBody = await request.json()
+        return HttpResponse.json({ id: 42, ...postBody, status: 'draft' }, { status: 201 })
+      }),
+    )
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
+    await openCreateForm()
+    fillCommonFields({ categoryId: 2 })
+    const [warrantySelect, expirySelect] = screen.getAllByDisplayValue('— Please answer —')
+    fireEvent.change(warrantySelect, { target: { value: 'yes' } })
+    fireEvent.change(expirySelect, { target: { value: 'no' } })
+    fireEvent.change(screen.getByPlaceholderText('e.g. 12-month manufacturer warranty covering defects'), { target: { value: '12-month warranty.' } })
+    fireEvent.change(screen.getByPlaceholderText('e.g. Returns accepted within 7 days if unused, buyer covers transport'), { target: { value: '7-day returns.' } })
+    fireEvent.change(screen.getByPlaceholderText('e.g. Bonwire Weavers'), { target: { value: 'Bonwire Weavers' } })
+    fireEvent.change(screen.getByDisplayValue('Not specified'), { target: { value: 'new' } })
+    fireEvent.change(screen.getByPlaceholderText('Leave blank if not tracked'), { target: { value: '5' } })
+    fireEvent.click(screen.getByText('✓ Create Listing'))
+    await waitFor(() => expect(postBody).toMatchObject({
+      category: 2, zone: 1, name: 'Kente Scarf', description: 'Hand-woven.',
+      has_warranty: true, warranty_details: '12-month warranty.',
+      has_expiry: false, expiry_date: null, return_policy: '7-day returns.',
+      brand: 'Bonwire Weavers', condition: 'new', stock_quantity: 5,
+    }))
+    await screen.findByText('✓ Saved!')
+  })
+
+  it('reveals the Fiverr-style service fields (and no product battery) for a service category', async () => {
+    mockDashboardData()
+    let postBody = null
+    server.use(
+      http.post('http://localhost:8000/api/listings/mine/', async ({ request }) => {
+        postBody = await request.json()
+        return HttpResponse.json({ id: 43, ...postBody, status: 'draft' }, { status: 201 })
+      }),
+    )
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
+    await openCreateForm()
+    fillCommonFields({ categoryId: 1 })
+    expect(screen.queryByText('Return policy *')).not.toBeInTheDocument()
+    fireEvent.change(screen.getByPlaceholderText('What the customer gets — e.g. transport, materials, consultation'), { target: { value: 'Transport and guide.' } })
+    fireEvent.change(screen.getByPlaceholderText('What you need from the customer before you can start'), { target: { value: 'Comfortable shoes.' } })
+    fireEvent.change(screen.getByPlaceholderText('e.g. 2 hours'), { target: { value: '3 hours' } })
+    fireEvent.change(screen.getByPlaceholderText('e.g. 3-5 business days'), { target: { value: 'Within 48 hours' } })
+    // No product answers needed for a service — button enabled already
+    expect(screen.getByText('✓ Create Listing')).not.toBeDisabled()
+    fireEvent.click(screen.getByText('✓ Create Listing'))
+    await waitFor(() => expect(postBody).toMatchObject({
+      category: 1, zone: 1, name: 'Kente Scarf',
+      service_duration: '3 hours', whats_included: 'Transport and guide.',
+      requirements: 'Comfortable shoes.', delivery_time: 'Within 48 hours',
+    }))
+  })
+
+  it('surfaces the server field error when the create is rejected', async () => {
+    mockDashboardData()
+    server.use(
+      http.post('http://localhost:8000/api/listings/mine/', () => HttpResponse.json(
+        { subscription: ["Your subscription isn't active. Choose or renew a plan before adding new listings."] },
+        { status: 400 },
+      )),
+    )
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
+    await openCreateForm()
+    fillCommonFields({ categoryId: 1 })
+    fireEvent.click(screen.getByText('✓ Create Listing'))
+    await screen.findByText(/subscription: Your subscription isn't active/)
+  })
+})
+
 // ─── Command Center — new dark analytics / unified dashboard ─────────────────
 // Rich analytics fixture: listings across statuses, a spend transaction, a real
 // credit score with factors, and an active subscription with plan entitlements.
