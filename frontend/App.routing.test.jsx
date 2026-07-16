@@ -210,11 +210,54 @@ describe('AshantiHub routing — dashboard and detail routes', () => {
   )
 
   it(
-    'mounting directly at /my-account (simulating a hard reload) renders UserPanel directly',
+    // Replaces an older 'renders UserPanel directly' test that mounted this
+    // route with no session at all — it pinned the very bug fixed here: the
+    // page rendered for anyone, so its tab panels fired customer-scoped
+    // queries (GET /api/orders/, GET /api/events/tickets/mine/, both
+    // [IsAuthenticated, IsCustomer]) with no token and spammed 401s. Same
+    // signed-out/signed-in pair the /business-dashboard bug above got; the
+    // "hard reload doesn't bounce to Home" intent it covered is kept below.
+    'mounting directly at /my-account while signed out shows a sign-in prompt, not the account page',
     async () => {
+      let customerScopedCalls = 0
+      server.use(
+        http.get('http://localhost:8000/api/orders/', () => {
+          customerScopedCalls += 1
+          return new HttpResponse(null, { status: 401 })
+        }),
+        http.get('http://localhost:8000/api/events/tickets/mine/', () => {
+          customerScopedCalls += 1
+          return new HttpResponse(null, { status: 401 })
+        }),
+      )
       renderAtPath('/my-account')
-      expect(await screen.findByText('My Account', {}, { timeout: 3000 })).toBeInTheDocument()
-      expect(screen.queryByText(/Ashanti Rising/i)).not.toBeInTheDocument()
+      expect(
+        await screen.findByText(/Sign in with a customer account/i, {}, { timeout: 3000 }),
+      ).toBeInTheDocument()
+      expect(screen.queryByText('My Account')).not.toBeInTheDocument()
+      expect(customerScopedCalls).toBe(0)
+    },
+    8000,
+  )
+
+  it(
+    'mounting directly at /my-account (simulating a hard reload) as a signed-in customer renders UserPanel directly',
+    async () => {
+      setStoredAuth({ token: 'test-token', account_type: 'customer', id: 1, full_name: 'Ama Owusu' })
+      server.use(
+        http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({
+          account_type: 'customer', id: 1, full_name: 'Ama Owusu', registration_step: 'complete',
+        })),
+        http.get('http://localhost:8000/api/orders/', () => HttpResponse.json([])),
+        http.get('http://localhost:8000/api/events/tickets/mine/', () => HttpResponse.json([])),
+      )
+      try {
+        renderAtPath('/my-account')
+        expect(await screen.findByText('My Account', {}, { timeout: 3000 })).toBeInTheDocument()
+        expect(screen.queryByText(/Ashanti Rising/i)).not.toBeInTheDocument()
+      } finally {
+        setStoredAuth(null)
+      }
     },
     8000,
   )
@@ -312,6 +355,41 @@ describe('AshantiHub routing — dashboard and detail routes', () => {
       expect(window.location.pathname).toBe('/events')
 
       window.history.pushState({}, '', '/')
+    },
+    8000,
+  )
+})
+
+// GET /api/messaging/conversations/ admits only Customer/BusinessOwner
+// (messaging/views.py's IsCustomerOrBusinessOwner) — a staff session is
+// signed in but holds no customer-facing inbox of its own (staff read the
+// same threads through the admin MessagingPanel's /api/messaging/staff/
+// instead). Both call sites used to gate this query on merely being signed
+// in (`!!user`), so every staff page load fired a guaranteed 403 — four
+// times over, since React Query retries a failed query 3x by default.
+describe('AshantiHub — messaging queries for a staff session', () => {
+  it(
+    'does not fetch the customer/business-owner conversations endpoint for a staff session',
+    async () => {
+      let conversationCalls = 0
+      setStoredAuth({ token: 'test-token', account_type: 'staff', id: 1, full_name: 'Akosua Support' })
+      server.use(
+        http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({
+          account_type: 'staff', id: 1, full_name: 'Akosua Support',
+          role: 'support', permissions: ['messaging.manage', 'users.view'],
+        })),
+        http.get('http://localhost:8000/api/messaging/conversations/', () => {
+          conversationCalls += 1
+          return new HttpResponse(null, { status: 403 })
+        }),
+      )
+      try {
+        renderAtPath('/staff')
+        expect(await screen.findByText(/Akwaaba, Akosua/i, {}, { timeout: 3000 })).toBeInTheDocument()
+        expect(conversationCalls).toBe(0)
+      } finally {
+        setStoredAuth(null)
+      }
     },
     8000,
   )
