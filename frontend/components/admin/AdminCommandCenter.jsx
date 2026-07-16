@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Flag from "../Flag.jsx";
+import { useStaffBadges } from "../../hooks/useStaffBadges.js";
 import { D, ROLE_ACCENTS, ROLE_BADGE_TEXT } from "./theme.js";
 import OverviewPanel from "./panels/OverviewPanel.jsx";
 import KYCQueuePanel from "./panels/KYCQueuePanel.jsx";
@@ -91,7 +92,28 @@ function buildNavGroups(auth) {
     .filter(group => group.items.length > 0);
 }
 
+// Maps a nav item id → the key it reads from GET /api/notifications/
+// staff-badges/ (item 10). Only tabs with genuine pending work appear here;
+// a count > 0 renders a small badge next to that tab's label so staff see at
+// a glance which tabs need attention. The badges query polls every 60s (see
+// useStaffBadges) so newly-arrived work surfaces without a manual reload.
+const BADGE_KEY_BY_TAB = {
+  kyc: "kyc",
+  moderation: "listings",
+  hero: "hero",
+  "events-moderation": "events",
+  reviews: "reviews",
+  "subscription-plans-approval": "plan_approvals",
+  "contact-messages": "contact_messages",
+  escrow: "escrow",
+};
+
 export default function AdminCommandCenter({ auth, onExit }) {
+  const { data: staffBadges } = useStaffBadges();
+  const badgeFor = (tabId) => {
+    const key = BADGE_KEY_BY_TAB[tabId];
+    return key ? (staffBadges?.[key] || 0) : 0;
+  };
   const [activeTab, setActiveTab] = useState("overview");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -132,7 +154,9 @@ export default function AdminCommandCenter({ auth, onExit }) {
           {navGroups.map(group => (
             <div key={group.id} style={{ marginTop: 10 }}>
               {!sidebarCollapsed && <div style={{ color: D.textFaint, fontSize: "0.6rem", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", padding: "6px 12px" }}>{group.label}</div>}
-              {group.items.map(item => (
+              {group.items.map(item => {
+                const badgeCount = badgeFor(item.id);
+                return (
                 <button key={item.id} onClick={() => setActiveTab(item.id)} style={{
                   display: "flex", alignItems: "center", gap: 10, width: "100%",
                   background: activeTab === item.id ? `${roleColor}22` : "none",
@@ -140,9 +164,22 @@ export default function AdminCommandCenter({ auth, onExit }) {
                   color: D.text, padding: "10px 12px", fontSize: "0.78rem",
                   fontWeight: activeTab === item.id ? 800 : 600, cursor: "pointer", textAlign: "left", fontFamily: "inherit",
                 }}>
-                  <span>{item.icon}</span>{!sidebarCollapsed && <span>{item.label}</span>}
+                  <span style={{ position: "relative", flexShrink: 0 }}>
+                    {item.icon}
+                    {/* Collapsed sidebar: a dot on the icon since the label (and its inline badge) is hidden. */}
+                    {sidebarCollapsed && badgeCount > 0 && (
+                      <span style={{ position: "absolute", top: -4, right: -6, background: D.red, borderRadius: "50%", width: 8, height: 8 }} />
+                    )}
+                  </span>
+                  {!sidebarCollapsed && <span style={{ flex: 1 }}>{item.label}</span>}
+                  {!sidebarCollapsed && badgeCount > 0 && (
+                    <span aria-label={`${badgeCount} pending`} style={{ background: D.red, color: "#fff", borderRadius: 10, minWidth: 18, height: 18, fontSize: "0.62rem", fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px", flexShrink: 0 }}>
+                      {badgeCount > 99 ? "99+" : badgeCount}
+                    </span>
+                  )}
                 </button>
-              ))}
+                );
+              })}
             </div>
           ))}
         </nav>

@@ -19,6 +19,7 @@ import { useListingReviews } from "./hooks/useListingReviews.js";
 import { useReviewEligibility } from "./hooks/useReviewEligibility.js";
 import { useOrders } from "./hooks/useOrders.js";
 import { useMyConversations, getGuestToken } from "./hooks/useMyConversations.js";
+import { useNotifications } from "./hooks/useNotifications.js";
 import { useMyTickets } from "./hooks/useMyTickets.js";
 import { useMyCustomerProfile } from "./hooks/useMyCustomerProfile.js";
 import { useSiteSettings } from "./hooks/useSiteSettings.js";
@@ -1441,30 +1442,83 @@ function PaymentReturnPage({setPage}) {
 }
 
 // ─── Notifications Panel ──────────────────────────────────────────────────────
-function NotificationsPanel({user,onClose}) {
-  const notifs = user ? [
-    {id:1,icon:"📅",title:"Akwasidae Festival in 15 days!",body:"Book your hotel and tours now before they fill up.",time:"Just now",unread:true},
-    {id:2,icon:"✅",title:"Booking Confirmed",body:"Your enquiry to Royal Ashanti Lodge has been received.",time:"2 hours ago",unread:true},
-    {id:3,icon:"🎁",title:"You have GHS 10 referral credit",body:"Your friend signed up using your referral code.",time:"Yesterday",unread:false},
-    {id:4,icon:"💬",title:"New deal from Afia's Kitchen",body:"20% off fufu and light soup this weekend only!",time:"2 days ago",unread:false},
-  ] : [];
+// Relative "time ago" for a notification's created_at ISO string. Local,
+// dependency-free (no date lib is used anywhere in this app).
+function relativeTime(iso) {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const secs = Math.max(0, Math.round((Date.now() - then) / 1000));
+  if (secs < 60) return "Just now";
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins} min${mins === 1 ? "" : "s"} ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs} hour${hrs === 1 ? "" : "s"} ago`;
+  const days = Math.round(hrs / 24);
+  if (days < 7) return `${days} day${days === 1 ? "" : "s"} ago`;
+  const weeks = Math.round(days / 7);
+  if (weeks < 5) return `${weeks} week${weeks === 1 ? "" : "s"} ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+// Real notifications dropdown (punch-list item 5), backed by the notifications
+// app. Self-contained: owns its own useNotifications() query (same convention
+// as CartDrawer owning useCart()) rather than being handed data as a prop —
+// AshantiHub separately calls useNotifications() too, for the Navbar bell
+// count, sharing the same React Query cache. Mutations (mark one read /
+// mark all read) are plain apiPost calls then refetch(), the established
+// convention. Clicking a notification marks it read and, if it carries an
+// in-app path link ("/business-dashboard", "/my-account", …), routes there.
+function NotificationsPanel({ user, onClose }) {
+  const navigate = useNavigate();
+  const { data, refetch } = useNotifications(!!user);
+  const notifs = data?.results || [];
+  const unreadCount = data?.unread_count ?? 0;
+
+  const markRead = async (id) => {
+    try {
+      await apiPost(`/api/notifications/${id}/read/`);
+      refetch();
+    } catch { /* best-effort — a failed read-mark shouldn't disrupt the UI */ }
+  };
+
+  const markAllRead = async () => {
+    try {
+      await apiPost("/api/notifications/read-all/");
+      refetch();
+    } catch { /* best-effort */ }
+  };
+
+  const onItemClick = (n) => {
+    if (!n.is_read) markRead(n.id);
+    // Only in-app paths are routed; staff-tab-id links (no leading slash) are
+    // context for the staff badges, not something the customer bell navigates.
+    if (n.link && n.link.startsWith("/")) {
+      onClose();
+      navigate(n.link);
+    }
+  };
 
   return <div style={{position:"fixed",inset:0,zIndex:999}} onClick={onClose}>
     <div style={{position:"absolute",top:65,right:16,background:"white",borderRadius:16,width:320,maxHeight:400,overflowY:"auto",boxShadow:"0 8px 40px rgba(0,0,0,0.2)",border:"1px solid #f0f0f0"}} onClick={e=>e.stopPropagation()}>
-      <div style={{padding:"14px 16px",borderBottom:"1px solid #f0f0f0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      <div style={{padding:"14px 16px",borderBottom:"1px solid #f0f0f0",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
         <div style={{fontWeight:800,color:C.darkBrown,fontSize:"0.88rem"}}>🔔 Notifications</div>
-        <span style={{background:`${C.kente1}20`,color:C.kente1,borderRadius:20,padding:"2px 8px",fontSize:"0.62rem",fontWeight:800}}>{notifs.filter(n=>n.unread).length} new</span>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{background:`${C.kente1}20`,color:C.kente1,borderRadius:20,padding:"2px 8px",fontSize:"0.62rem",fontWeight:800}}>{unreadCount} new</span>
+          {user&&unreadCount>0&&<button onClick={markAllRead} style={{background:"none",border:"none",color:C.gold,fontSize:"0.62rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit",padding:0}}>Mark all read</button>}
+        </div>
       </div>
       {!user&&<div style={{padding:"20px",textAlign:"center",color:"#aaa",fontSize:"0.78rem"}}>Sign in to see your notifications</div>}
+      {user&&notifs.length===0&&<div style={{padding:"20px",textAlign:"center",color:"#aaa",fontSize:"0.78rem"}}>You have no notifications yet.</div>}
       {notifs.map(n=>(
-        <div key={n.id} style={{padding:"12px 16px",borderBottom:"1px solid #f9f9f9",background:n.unread?`${C.gold}08`:"white",display:"flex",gap:10,alignItems:"flex-start"}}>
-          <span style={{fontSize:"1.2rem",flexShrink:0}}>{n.icon}</span>
-          <div style={{flex:1}}>
+        <div key={n.id} onClick={()=>onItemClick(n)} style={{padding:"12px 16px",borderBottom:"1px solid #f9f9f9",background:!n.is_read?`${C.gold}08`:"white",display:"flex",gap:10,alignItems:"flex-start",cursor:"pointer"}}>
+          <span style={{fontSize:"1.2rem",flexShrink:0}}>{n.icon||"🔔"}</span>
+          <div style={{flex:1,minWidth:0}}>
             <div style={{fontWeight:700,fontSize:"0.78rem",color:C.darkBrown,marginBottom:2}}>{n.title}</div>
-            <div style={{fontSize:"0.7rem",color:"#666",lineHeight:1.4,marginBottom:2}}>{n.body}</div>
-            <div style={{fontSize:"0.62rem",color:"#aaa"}}>{n.time}</div>
+            {n.body&&<div style={{fontSize:"0.7rem",color:"#666",lineHeight:1.4,marginBottom:2}}>{n.body}</div>}
+            <div style={{fontSize:"0.62rem",color:"#aaa"}}>{relativeTime(n.created_at)}</div>
           </div>
-          {n.unread&&<div style={{width:8,height:8,borderRadius:"50%",background:C.kente1,flexShrink:0,marginTop:4}}/>}
+          {!n.is_read&&<div style={{width:8,height:8,borderRadius:"50%",background:C.kente1,flexShrink:0,marginTop:4}}/>}
         </div>
       ))}
     </div>
@@ -2521,6 +2575,16 @@ export default function AshantiHub() {
     !auth.isLoading && !user ? getGuestToken() : null,
   );
 
+  // Unread-notification count for the Navbar bell badge (punch-list item 5) —
+  // real notifications app data. Called here alongside the hooks above (not
+  // further down) for the same rules-of-hooks reason: several early returns
+  // sit between here and the render. Enabled only once session restore
+  // settles and a signed-in account exists (the endpoint requires auth, and
+  // guests own no notifications). NotificationsPanel calls useNotifications()
+  // itself too — same query key, so React Query shares this cache.
+  const { data: notificationsData } = useNotifications(!auth.isLoading && !!user);
+  const unreadNotifs = notificationsData?.unread_count ?? 0;
+
   // Add-to-cart (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4) — passed down to
   // ListingDetailPage as `onAddToCart`, same "AshantiHub owns the mutation,
   // the component just calls the callback and owns its own local adding/
@@ -2702,6 +2766,7 @@ export default function AshantiHub() {
         setShowAccount={setShowAccount}
         setShowCart={setShowCart}
         cartCount={cartItemCount}
+        notifCount={unreadNotifs}
         theme={theme} toggleTheme={toggleTheme}
         T={T}
       />

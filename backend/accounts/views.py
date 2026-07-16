@@ -8,6 +8,8 @@ from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from notifications.services import notify_business_owner, notify_staff_role
+
 from .authentication import issue_token
 from .emails import send_staff_invite_email, send_verification_code_email
 from .models import BusinessOwner, Customer, StaffUser
@@ -232,6 +234,11 @@ class KYCApproveView(APIView):
         owner.kyc_status = BusinessOwner.VERIFIED
         owner.kyc_rejection_reason = None
         owner.save(update_fields=["kyc_status", "kyc_rejection_reason"])
+        notify_business_owner(
+            owner, "kyc_approved", "Your business is verified!",
+            body="Your KYC has been approved — you can now publish listings.",
+            link="/business-dashboard", icon="✅",
+        )
         return Response({"id": owner.id, "kyc_status": owner.kyc_status})
 
 
@@ -245,6 +252,11 @@ class KYCRejectView(APIView):
         owner.kyc_status = BusinessOwner.REJECTED
         owner.kyc_rejection_reason = reason
         owner.save(update_fields=["kyc_status", "kyc_rejection_reason"])
+        notify_business_owner(
+            owner, "kyc_rejected", "Your KYC needs attention",
+            body=reason or "Your KYC submission was rejected. Please review and resubmit.",
+            link="/business-dashboard", icon="⚠️",
+        )
         return Response({"id": owner.id, "kyc_status": owner.kyc_status})
 
 
@@ -390,4 +402,10 @@ class TermsAcceptView(APIView):
         profile = owner.profile
         profile.terms_accepted_at = timezone.now()
         profile.save(update_fields=["terms_accepted_at"])
+        # Registration is now complete — the owner enters the KYC review queue.
+        notify_staff_role(
+            "kyc.approve", "kyc_needs_approval", "New KYC submission",
+            body=f"{owner.full_name} has completed registration and needs KYC review.",
+            link="kyc", icon="🪪",
+        )
         return Response({"registration_step": owner.compute_registration_step()})

@@ -17,6 +17,7 @@ from accounts.models import BusinessOwner
 from accounts.permissions import HasRolePermission
 from accounts.views import IsBusinessOwner
 from billing.models import Transaction
+from notifications.services import notify_business_owner, notify_staff_role
 
 from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, Promotion, Zone
 from .permissions import IsHeroMediaOwner, IsListingOwner, IsListingPhotoOwner
@@ -230,6 +231,11 @@ class ListingSubmitView(APIView):
             )
         listing.status = Listing.PENDING_REVIEW
         listing.save(update_fields=["status"])
+        notify_staff_role(
+            "listings.moderate", "listing_needs_moderation", "New listing for review",
+            body=f"“{listing.name}” has been submitted for moderation.",
+            link="moderation", icon="📋",
+        )
         return Response({"id": listing.id, "status": listing.status})
 
 
@@ -341,6 +347,11 @@ class ModerationApproveView(APIView):
         listing.status = Listing.PUBLISHED
         listing.rejection_reason = None
         listing.save(update_fields=["status", "rejection_reason"])
+        notify_business_owner(
+            listing.business_owner, "listing_approved", "Listing published",
+            body=f"“{listing.name}” is now live on AshantiHub.",
+            link="/business-dashboard", icon="✅",
+        )
         return Response({"id": listing.id, "status": listing.status})
 
 
@@ -356,6 +367,11 @@ class ModerationRejectView(APIView):
         listing.status = Listing.REJECTED
         listing.rejection_reason = reason
         listing.save(update_fields=["status", "rejection_reason"])
+        notify_business_owner(
+            listing.business_owner, "listing_rejected", "Listing needs changes",
+            body=f"“{listing.name}” was rejected: {reason}",
+            link="/business-dashboard", icon="⚠️",
+        )
         return Response({"id": listing.id, "status": listing.status})
 
 
@@ -431,6 +447,11 @@ class HeroSubmitView(APIView):
         finally:
             listing_photo.image.close()
         submission.save()
+        notify_staff_role(
+            "hero_media.approve", "hero_needs_approval", "New hero submission",
+            body=f"{request.user.full_name} submitted hero media for review.",
+            link="hero", icon="🌟",
+        )
         return Response(HeroMediaModerationSerializer(submission).data, status=201)
 
 
@@ -511,6 +532,11 @@ class HeroApproveView(APIView):
         submission.save(
             update_fields=["status", "rejection_reason", "approved_at", "expires_at"]
         )
+        notify_business_owner(
+            submission.business_owner, "hero_approved", "Hero media approved",
+            body="Your hero submission is now featured on the Business homepage.",
+            link="/business-dashboard", icon="🌟",
+        )
         return Response(
             {"id": submission.id, "status": submission.status, "expires_at": submission.expires_at}
         )
@@ -528,6 +554,11 @@ class HeroRejectView(APIView):
         submission.status = HeroMediaSubmission.REJECTED
         submission.rejection_reason = reason
         submission.save(update_fields=["status", "rejection_reason"])
+        notify_business_owner(
+            submission.business_owner, "hero_rejected", "Hero media not approved",
+            body=f"Your hero submission was rejected: {reason}",
+            link="/business-dashboard", icon="⚠️",
+        )
         return Response({"id": submission.id, "status": submission.status})
 
 

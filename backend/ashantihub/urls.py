@@ -18,6 +18,7 @@ urlpatterns = [
     path("api/disputes/", include("disputes.urls")),
     path("api/messaging/", include("messaging.urls")),
     path("api/payments/", include("payments.urls")),
+    path("api/notifications/", include("notifications.urls")),
 ]
 
 if settings.DEBUG:

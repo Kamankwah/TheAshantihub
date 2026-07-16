@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "disputes",
     "messaging",
     "payments",
+    "notifications",
 ]
 
 MIDDLEWARE = [
