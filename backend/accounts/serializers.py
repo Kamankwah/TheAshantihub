@@ -1,5 +1,6 @@
 import datetime
 
+from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
 from django.db.models import Q
 from django.utils import timezone
@@ -67,8 +68,12 @@ class StaffInviteSerializer(serializers.ModelSerializer):
         validated_data["invite_token"] = get_random_string(43)
         validated_data["invite_expires_at"] = timezone.now() + INVITE_TOKEN_LIFETIME
         staff = StaffUser.objects.create(**validated_data)
+        # FRONTEND_BASE_URL is per-environment (production vs staging vs local
+        # dev), so the link lands on the frontend whose backend actually holds
+        # this token — a hardcoded domain here once sent staging invites to
+        # the production site, where the token doesn't exist.
         send_staff_invite_email(
-            staff, f"https://theashantihub.com/staff/activate?token={staff.invite_token}"
+            staff, f"{settings.FRONTEND_BASE_URL}/staff/activate?token={staff.invite_token}"
         )
         return staff
 
@@ -119,7 +124,7 @@ class PasswordResetRequestSerializer(serializers.Serializer):
                 token=token,
                 expires_at=timezone.now() + PASSWORD_RESET_TOKEN_LIFETIME,
             )
-            reset_link = f"https://theashantihub.com/reset-password?token={token}&type={account_type}"
+            reset_link = f"{settings.FRONTEND_BASE_URL}/reset-password?token={token}&type={account_type}"
             send_password_reset_email(email, reset_link)
         return None
 
