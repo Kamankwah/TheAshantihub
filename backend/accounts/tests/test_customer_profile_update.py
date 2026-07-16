@@ -64,14 +64,62 @@ class CustomerProfileUpdateTests(TestCase):
         self.assertEqual(response.status_code, 400, response.content)
         self.assertIn("avatar", response.json())
 
-    def test_response_excludes_phone_and_email(self):
+    def test_response_includes_read_only_phone_and_email(self):
         response = self.client.patch(
             "/api/accounts/customers/me/profile/", {"full_name": "Ama Owusu"}, format="json",
         )
         self.assertEqual(response.status_code, 200, response.content)
         body = response.json()
-        self.assertNotIn("phone", body)
-        self.assertNotIn("email", body)
+        self.assertEqual(body["phone"], "+233200002222")
+        self.assertIsNone(body["email"])
+
+    def test_cannot_change_primary_phone_or_email_via_patch(self):
+        response = self.client.patch(
+            "/api/accounts/customers/me/profile/",
+            {"phone": "+233200009999", "email": "new@example.com"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.phone, "+233200002222")
+        self.assertIsNone(self.customer.email)
+
+    def test_customer_can_update_address_gender_and_date_of_birth(self):
+        response = self.client.patch(
+            "/api/accounts/customers/me/profile/",
+            {"address": "12 Prempeh II St, Kumasi", "gender": "female", "date_of_birth": "1998-04-02"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.address, "12 Prempeh II St, Kumasi")
+        self.assertEqual(self.customer.gender, "female")
+        self.assertEqual(str(self.customer.date_of_birth), "1998-04-02")
+
+    def test_customer_can_toggle_notification_preferences(self):
+        response = self.client.patch(
+            "/api/accounts/customers/me/profile/",
+            {"email_notifications_enabled": False, "sms_notifications_enabled": False},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.customer.refresh_from_db()
+        self.assertFalse(self.customer.email_notifications_enabled)
+        self.assertFalse(self.customer.sms_notifications_enabled)
+
+    def test_cannot_set_secondary_email_or_phone_via_patch(self):
+        # secondary_email/secondary_phone are read-only on this serializer —
+        # only CustomerSecondaryEmail/PhoneRequestView (its own endpoint) may
+        # set them, since doing so must also kick off verification.
+        response = self.client.patch(
+            "/api/accounts/customers/me/profile/",
+            {"secondary_email": "recovery@example.com", "secondary_phone": "+233200003333"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.customer.refresh_from_db()
+        self.assertIsNone(self.customer.secondary_email)
+        self.assertIsNone(self.customer.secondary_phone)
 
     def test_customer_can_fetch_their_own_profile(self):
         response = self.client.get("/api/accounts/customers/me/profile/")
