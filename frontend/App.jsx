@@ -413,7 +413,7 @@ function formatConvTime(iso) {
 // flow instead, sized to fill its container — used only by UserPanel's
 // Messages tab, where a full floating widget/backdrop makes no sense inside
 // an already-dedicated dashboard tab.
-function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
+function MessagingCenter({ user, onClose, initialBusiness, embedded = false, onRequestSignIn }) {
   // "Signed in" is not the same thing as "holds a support inbox here":
   // /api/messaging/conversations/ admits only Customer/BusinessOwner
   // (messaging/views.py's IsCustomerOrBusinessOwner). A staff session is
@@ -455,7 +455,7 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
   }, [activeConv?.messages]);
 
   const sendMessage = async () => {
-    if(!newMessage.trim()||!user) return;
+    if(!newMessage.trim()||!canHoldConversation) return;
     setSending(true);
     setActionError(null);
     try {
@@ -516,8 +516,11 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
           </div>
 
           {/* New Chat Button — clears the active selection so the input
-              below starts a fresh conversation on send. */}
-          <button onClick={()=>setActiveConvId(null)}
+              below starts a fresh conversation on send. Also clears the
+              draft and focuses the input: for a caller with no
+              conversations yet the compose state is already showing, so
+              without the focus jump this click looked like it did nothing. */}
+          <button onClick={()=>{setActiveConvId(null);setNewMessage("");inputRef.current?.focus();}}
             style={{margin:"10px 12px 4px",background:`${C.gold}15`,color:C.deepGold,border:`1.5px dashed ${C.gold}`,borderRadius:12,padding:"9px",fontSize:"0.74rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
             ✉️ Start New Conversation
           </button>
@@ -572,14 +575,15 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
           </div>
         </div>
 
-        {/* RIGHT — Chat Window. Shown whenever the caller can actually hold a
-            conversation here (regardless of whether a specific one is selected
-            yet — a brand-new caller with zero conversations must still be able
-            to compose their first message), the placeholder otherwise: a
-            signed-out visitor, or a staff session, whose inbox is the admin
-            MessagingPanel rather than this customer-facing widget. */}
+        {/* RIGHT — Chat Window. Always rendered — a signed-out visitor sees
+            the same chat surface (greeted as "Guest") rather than a sign-in
+            wall, per the concierge-style design ask; only the composer at the
+            bottom branches on who the caller is (real input for customers/
+            business owners, a sign-in button for guests, a pointer to the
+            admin MessagingPanel for staff sessions, whose inbox lives there —
+            /api/messaging/conversations/ 403s a StaffUser). */}
         <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0}}>
-          {canHoldConversation ? (
+          {(
             <>
               {/* Chat Header */}
               <div style={{padding:"14px 18px",borderBottom:"1px solid #f0f0f0",display:"flex",alignItems:"center",gap:12,background:"white"}}>
@@ -627,7 +631,7 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
                       <div style={{width:28,height:28,borderRadius:"50%",background:`${C.gold}20`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.9rem",flexShrink:0}}>🎧</div>
                       <div style={{maxWidth:"72%"}}>
                         <div style={{background:"white",color:C.darkBrown,borderRadius:"18px 18px 18px 4px",padding:"10px 14px",fontSize:"0.78rem",lineHeight:1.5,boxShadow:"0 1px 4px rgba(0,0,0,0.1)"}}>
-                          👋 Welcome to AshantiHub! How may I help you today?
+                          👋 Welcome to AshantiHub! Hello {user?.fullName || "Guest"}, how can I assist you today?
                         </div>
                       </div>
                     </div>
@@ -682,7 +686,13 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
                 </div>
               )}
 
-              {/* Message Input */}
+              {/* Composer — the one part of the chat window that branches on
+                  who the caller is. Customers/business owners get the real
+                  input; a guest gets a sign-in button (opens the auth modal
+                  only when *they* choose to — never automatically on chat
+                  open); a staff session gets pointed at its real inbox, the
+                  admin MessagingPanel. */}
+              {canHoldConversation ? (
               <div style={{padding:"12px 14px",borderTop:"1px solid #f0f0f0",background:"white"}}>
                 {actionError&&(
                   <div style={{background:`${C.kente1}12`,border:`1px solid ${C.kente1}33`,borderRadius:10,padding:"8px 12px",marginBottom:10,fontSize:"0.72rem",color:C.kente1,fontWeight:600,textAlign:"center"}}>
@@ -719,19 +729,22 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
                   💡 Messages are stored on AshantiHub • Handled by AshantiHub Support, who relay to the business on your behalf
                 </div>
               </div>
-            </>
-          ) : (
-            <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,color:"#aaa"}}>
-              <div style={{fontSize:"3rem"}}>💬</div>
-              <div style={{fontWeight:700,fontSize:"0.88rem",color:C.darkBrown}}>Your Messages</div>
-              {/* A staff caller is signed in already — "sign in" copy would be
-                  plainly wrong for them; point them at their real inbox. */}
-              <div style={{fontSize:"0.76rem",textAlign:"center",maxWidth:240,lineHeight:1.6}}>
-                {user?.accountType==="staff"
-                  ? "Staff replies to support threads live in the Messaging tab of the staff dashboard."
-                  : "Sign in to reach AshantiHub Support about a Kumasi business"}
+              ) : user?.accountType==="staff" ? (
+              <div style={{padding:"14px",borderTop:"1px solid #f0f0f0",background:"white",textAlign:"center",fontSize:"0.74rem",color:"#888",lineHeight:1.6}}>
+                Staff replies to support threads live in the Messaging tab of the staff dashboard.
               </div>
-            </div>
+              ) : (
+              <div style={{padding:"12px 14px",borderTop:"1px solid #f0f0f0",background:"white"}}>
+                <button onClick={()=>onRequestSignIn?.()}
+                  style={{width:"100%",background:`linear-gradient(135deg,${C.gold},${C.deepGold})`,color:C.darkBrown,border:"none",borderRadius:20,padding:"11px",fontSize:"0.8rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                  🔐 Sign in to send a message
+                </button>
+                <div style={{fontSize:"0.6rem",color:"#aaa",marginTop:6,textAlign:"center"}}>
+                  Browsing as Guest — an account is only needed to send
+                </div>
+              </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -2651,7 +2664,7 @@ export default function AshantiHub() {
       {!cookieDismissed&&<CookieBanner onAccept={()=>{setCookieConsent(true);setCookieDismissed(true);Analytics.track("cookie_accepted");}} onDecline={()=>{setCookieDismissed(true);Analytics.track("cookie_declined");}}/>}
       <OfflineBanner/>
       {authModal&&<AuthModal authState={authModal} auth={auth} onClose={()=>setAuthModal(null)} onSuccess={handleAuthSuccess}/>}
-      {showMessaging&&<MessagingCenter user={user} onClose={()=>{setShowMessaging(false);setMessagingBusiness(null);}} initialBusiness={messagingBusiness}/>}
+      {showMessaging&&<MessagingCenter user={user} onClose={()=>{setShowMessaging(false);setMessagingBusiness(null);}} initialBusiness={messagingBusiness} onRequestSignIn={()=>setAuthModal("login")}/>}
       {showNotifs&&<NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
       {showFavs&&<FavsDrawer/>}
       {showCart&&isCustomer&&<CartDrawer user={user} currency={currency} onClose={()=>setShowCart(false)} PaymentComponent={MoMoPayment}/>}
@@ -2746,7 +2759,7 @@ export default function AshantiHub() {
               favourites={favourites}
               onFavourite={toggleFav}
               currency={currency}
-              onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);if(!user)setAuthModal("signup");}}
+              onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);}}
               onOpenListing={(otherId)=>setSelectedListingId(otherId)}
               onAddToCart={handleAddToCart}
               CardComponent={Card}
@@ -2877,7 +2890,7 @@ export default function AshantiHub() {
                         page). Promoted/boosted sorting-first lands in a later phase — this renders
                         `listings` in whatever order the API returns, unsorted client-side. */}
                     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>
-                      {listings.map(item=><Card key={item.id} item={item} accentColor={activeCatObj?.color} user={user} favourites={favourites} onFavourite={toggleFav} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);if(!user)setAuthModal("signup");}} onOpen={(id)=>setSelectedListingId(id)}/>)}
+                      {listings.map(item=><Card key={item.id} item={item} accentColor={activeCatObj?.color} user={user} favourites={favourites} onFavourite={toggleFav} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);}} onOpen={(id)=>setSelectedListingId(id)}/>)}
                     </div>
                     {hasNextPage&&(
                       <div style={{textAlign:"center",marginTop:18}}>
@@ -3063,7 +3076,7 @@ export default function AshantiHub() {
           widget (embedded=false). */}
       <ChatLauncher
         unreadMessages={unreadMessages}
-        onOpen={() => { setShowMessaging(true); if (!user) setAuthModal("signup"); }}
+        onOpen={() => setShowMessaging(true)}
         bottom={(cookieDismissed ? 24 : 100) + 64}
       />
 
