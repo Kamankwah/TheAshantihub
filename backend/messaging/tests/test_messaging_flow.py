@@ -209,3 +209,85 @@ class StaffConversationQueueTests(MessagingTestsBase):
         response = self.client.get(f"/api/messaging/staff/{self.conversation.id}/")
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(len(response.json()["messages"]), 1)
+
+
+GUEST_TOKEN = "guest-4f9a2b7c-1d3e-4a5b-8c6d-0e1f2a3b4c5d"
+OTHER_GUEST_TOKEN = "guest-ffffffff-aaaa-bbbb-cccc-dddddddddddd"
+
+
+class GuestConversationTests(MessagingTestsBase):
+    """Anonymous guest support chat — a browser-generated guest_token stands
+    in for an account (Conversation.guest_token). No sign-in is required to
+    talk to support; the token scopes reads/replies exactly the way the
+    account FK does for signed-in callers."""
+
+    def _start_guest_conversation(self, token=GUEST_TOKEN, body="Hello from a guest"):
+        return self.client.post(
+            CONVERSATIONS_URL,
+            {"body": body, "guest_token": token},
+            format="json",
+        )
+
+    def test_guest_starts_conversation_without_account(self):
+        response = self._start_guest_conversation()
+        self.assertEqual(response.status_code, 201)
+        conversation = Conversation.objects.get(pk=response.data["id"])
+        self.assertEqual(conversation.guest_token, GUEST_TOKEN)
+        self.assertIsNone(conversation.customer)
+        self.assertIsNone(conversation.business_owner)
+        self.assertEqual(conversation.messages.get().sender_type, Message.GUEST)
+
+    def test_guest_list_is_scoped_to_their_token(self):
+        self._start_guest_conversation()
+        self._start_guest_conversation(token=OTHER_GUEST_TOKEN, body="Different guest")
+        response = self.client.get(CONVERSATIONS_URL, {"guest_token": GUEST_TOKEN})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["messages"][0]["body"], "Hello from a guest")
+
+    def test_guest_cannot_reply_in_another_guests_conversation(self):
+        created = self._start_guest_conversation()
+        response = self.client.post(
+            f"{CONVERSATIONS_URL}{created.data['id']}/messages/",
+            {"body": "sneaky", "guest_token": OTHER_GUEST_TOKEN},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_guest_reply_in_own_conversation(self):
+        created = self._start_guest_conversation()
+        response = self.client.post(
+            f"{CONVERSATIONS_URL}{created.data['id']}/messages/",
+            {"body": "follow-up", "guest_token": GUEST_TOKEN},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["sender_type"], "guest")
+
+    def test_short_guest_token_rejected(self):
+        # DRF reports a permission denial as 401 (not 403) when the caller
+        # is anonymous — same shape the no-token test above asserts.
+        response = self._start_guest_conversation(token="short")
+        self.assertEqual(response.status_code, 401)
+
+    def test_staff_queue_shows_guest_starter_name(self):
+        self._start_guest_conversation()
+        self._auth(self.support, "staff")
+        response = self.client.get(STAFF_URL)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["results"][0]["starter_name"], "Guest")
+
+    def test_staff_can_reply_to_guest_conversation(self):
+        created = self._start_guest_conversation()
+        self._auth(self.support, "staff")
+        response = self.client.post(
+            f"/api/messaging/staff/{created.data['id']}/reply/",
+            {"body": "Hello Guest, how can we help?"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+
+    def test_staff_session_cannot_use_customer_endpoint(self):
+        self._auth(self.support, "staff")
+        response = self.client.post(CONVERSATIONS_URL, {"body": "hi"}, format="json")
+        self.assertEqual(response.status_code, 403)
