@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { C } from "../theme.js";
+import { C, optionStyle } from "../theme.js";
 import { apiPost, apiPostForm } from "../apiClient.js";
 import { useMyEvents } from "../hooks/useMyEvents.js";
 import { useEventAttendees } from "../hooks/useEventAttendees.js";
@@ -112,14 +112,23 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
     try {
       const formData = new FormData();
       formData.append("media", mediaFile);
-      formData.append("media_type", mediaFile.type?.startsWith("video") ? "video" : "image");
+      // Always "image" — EventMedia.media is an ImageField (jpeg/png only,
+      // content-sniffed server-side), so the file input below only accepts
+      // images; the model's media_type=video choice isn't uploadable here.
+      formData.append("media_type", "image");
       formData.append("order", 0);
       await apiPostForm(`/api/events/${justSubmitted.id}/media/`, formData);
       setMediaUploaded(true);
       setMediaFile(null);
       refetch();
     } catch (err) {
-      setMediaError("Could not upload this photo.");
+      // Surface the backend's own validation message when there is one
+      // (e.g. "Unsupported file type: expected an image, got image/webp")
+      // instead of a generic failure — apiClient.js attaches the parsed
+      // error body as err.body, same convention EventDetailPage's RSVP
+      // capacity check relies on.
+      const fieldError = Array.isArray(err?.body?.media) ? err.body.media[0] : null;
+      setMediaError(fieldError || err?.body?.detail || "Could not upload this photo — please try again.");
     } finally {
       setUploadingMedia(false);
     }
@@ -202,8 +211,8 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
                   Your access code: <strong>{justSubmitted.access_code}</strong>
                 </div>
               )}
-              <label style={labelStyle}>Add a photo (optional)</label>
-              <input type="file" accept="image/*,video/*" onChange={(e) => setMediaFile(e.target.files?.[0] || null)} style={{ color: "white", fontSize: "0.76rem" }} />
+              <label style={labelStyle}>Add a photo (optional — JPEG or PNG)</label>
+              <input type="file" accept="image/jpeg,image/png" onChange={(e) => setMediaFile(e.target.files?.[0] || null)} style={{ color: "white", fontSize: "0.76rem" }} />
               <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center" }}>
                 <button
                   onClick={uploadMedia}
@@ -229,17 +238,17 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
 
               <label htmlFor="event-category" style={labelStyle}>Category</label>
               <select id="event-category" required value={form.category} onChange={setField("category")} style={inputStyle}>
-                <option value="">Select a category</option>
+                <option value="" style={optionStyle}>Select a category</option>
                 {eventCategories.map((c) => (
-                  <option key={c.id} value={c.id}>{c.icon} {c.label}</option>
+                  <option key={c.id} value={c.id} style={optionStyle}>{c.icon} {c.label}</option>
                 ))}
               </select>
 
               <label htmlFor="event-zone" style={labelStyle}>Zone</label>
               <select id="event-zone" value={form.zone} onChange={setField("zone")} style={inputStyle}>
-                <option value="">Select a zone</option>
+                <option value="" style={optionStyle}>Select a zone</option>
                 {(zones || []).map((z) => (
-                  <option key={z.id} value={z.id}>{z.name}</option>
+                  <option key={z.id} value={z.id} style={optionStyle}>{z.name}</option>
                 ))}
               </select>
 
@@ -265,11 +274,11 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
 
               <label htmlFor="event-visibility-days" style={labelStyle}>Visibility</label>
               <select id="event-visibility-days" required value={form.visibility_days} onChange={setField("visibility_days")} style={inputStyle}>
-                <option value="">Select a duration</option>
+                <option value="" style={optionStyle}>Select a duration</option>
                 {VISIBILITY_TIER_DAYS.map((days) => {
                   const tier = (pricingTiers || []).find((t) => t.duration_days === days);
                   return (
-                    <option key={days} value={days}>
+                    <option key={days} value={days} style={optionStyle}>
                       {days} days{tier ? ` — GHS ${tier.live_price}` : ""}
                     </option>
                   );

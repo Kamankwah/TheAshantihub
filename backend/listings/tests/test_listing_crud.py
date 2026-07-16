@@ -311,7 +311,14 @@ class ListingCRUDTests(TestCase):
         self._auth(self.owner)
         response = self.client.post(
             "/api/listings/mine/",
-            {"category": self.shops.id, "zone": self.manhyia.id, "name": "Yet Another", "description": "D."},
+            {
+                "category": self.shops.id, "zone": self.manhyia.id, "name": "Yet Another",
+                "description": "D.",
+                # shops is a product-kind category, so the decision-field
+                # requirements apply (see test_listing_decision_fields.py).
+                "has_warranty": False, "has_expiry": False,
+                "return_policy": "Returns within 7 days.",
+            },
             format="json",
         )
         self.assertEqual(response.status_code, 201, response.content)

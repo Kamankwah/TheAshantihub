@@ -361,7 +361,7 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
             <select value={payoutMomoNetwork} onChange={e=>setPayoutMomoNetwork(e.target.value)} style={inputStyle}>
               <option value="">Mobile money network</option>
               <option value="MTN">MTN</option>
-              <option value="Vodafone">Vodafone</option>
+              <option value="Telecel">Telecel Cash</option>
               <option value="AirtelTigo">AirtelTigo</option>
             </select>
             <input value={payoutBankAccountNumber} onChange={e=>setPayoutBankAccountNumber(e.target.value)} placeholder="Bank account number" required={defaultPayoutMethod==="bank"} style={inputStyle}/>

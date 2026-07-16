@@ -1,4 +1,4 @@
-import { C } from "../theme.js";
+import { C, optionStyle } from "../theme.js";
 
 // ─── Sidebar ────────────────────────────────────────────────────────────────
 // Reusable browse-filter sidebar for the Business tab grid (and, per
@@ -98,9 +98,9 @@ export default function Sidebar({
           onChange={(e) => { const value = e.target.value; setFilters((f) => ({ ...f, zone: value || undefined })); }}
           style={selectStyle}
         >
-          <option value="">All Zones</option>
+          <option value="" style={optionStyle}>All Zones</option>
           {(zones || []).map((z) => (
-            <option key={z.id} value={z.name}>{z.name}</option>
+            <option key={z.id} value={z.name} style={optionStyle}>{z.name}</option>
           ))}
         </select>
 
@@ -139,9 +139,9 @@ export default function Sidebar({
               onChange={(e) => { const value = e.target.value; setFilters((f) => ({ ...f, ordering: value || undefined })); }}
               style={selectStyle}
             >
-              <option value="">Newest</option>
-              <option value="price_amount">Lowest Price</option>
-              <option value="-price_amount">Highest Price</option>
+              <option value="" style={optionStyle}>Newest</option>
+              <option value="price_amount" style={optionStyle}>Lowest Price</option>
+              <option value="-price_amount" style={optionStyle}>Highest Price</option>
             </select>
           </>
         )}

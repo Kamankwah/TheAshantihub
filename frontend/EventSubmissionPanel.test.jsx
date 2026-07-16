@@ -69,6 +69,71 @@ describe('EventSubmissionPanel', () => {
     expect(screen.getByText(/Akwasidae Festival.*is now pending approval/)).toBeInTheDocument()
   })
 
+  it('uploads the post-submission photo as multipart form-data and confirms', async () => {
+    // The request body itself can't be consumed here — reading a
+    // jsdom-created File part hangs under this test setup's interceptor —
+    // so this asserts the multipart content-type (proof apiPostForm sent
+    // FormData, not JSON) plus the success UI; the exact field names the
+    // backend expects ("media"/"media_type") are covered by
+    // backend/events' own EventMediaCreateView tests.
+    let uploadedContentType = null
+    server.use(
+      http.get('http://localhost:8000/api/events/mine/', () => HttpResponse.json([])),
+      http.post('http://localhost:8000/api/events/submit/', () =>
+        HttpResponse.json({ id: 10, name: 'Akwasidae Festival', status: 'pending', access_level: 'public' }, { status: 201 }),
+      ),
+      http.post('http://localhost:8000/api/events/10/media/', ({ request }) => {
+        uploadedContentType = request.headers.get('content-type')
+        return HttpResponse.json({ id: 1, media: 'http://localhost:8000/media/event_media/photo.jpg', media_type: 'image', order: 0 }, { status: 201 })
+      }),
+    )
+    const { container } = renderPanel()
+    fireEvent.click(screen.getByText('📅 Submit an Event'))
+    fireEvent.change(screen.getByLabelText('Event Name'), { target: { value: 'Akwasidae Festival' } })
+    fireEvent.change(screen.getByLabelText('Category'), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Royal drumming.' } })
+    fireEvent.change(screen.getByLabelText('Address'), { target: { value: 'Manhyia Palace' } })
+    fireEvent.change(screen.getByLabelText('Event Date'), { target: { value: '2026-08-03T10:00' } })
+    fireEvent.change(screen.getByLabelText('Visibility'), { target: { value: '15' } })
+    fireEvent.click(screen.getByText('Submit for Review'))
+    await screen.findByText('✅ Submitted for review')
+
+    const file = new File(['jpeg-bytes'], 'photo.jpg', { type: 'image/jpeg' })
+    fireEvent.change(container.querySelector('input[type="file"]'), { target: { files: [file] } })
+    fireEvent.click(screen.getByText('Upload Photo'))
+
+    expect(await screen.findByText('Photo added ✓')).toBeInTheDocument()
+    expect(uploadedContentType).toMatch(/^multipart\/form-data/)
+  })
+
+  it('surfaces the backend\'s own validation message when the upload is rejected', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/events/mine/', () => HttpResponse.json([])),
+      http.post('http://localhost:8000/api/events/submit/', () =>
+        HttpResponse.json({ id: 10, name: 'Akwasidae Festival', status: 'pending', access_level: 'public' }, { status: 201 }),
+      ),
+      http.post('http://localhost:8000/api/events/10/media/', () =>
+        HttpResponse.json({ media: ['Unsupported file type: expected an image, got image/webp.'] }, { status: 400 }),
+      ),
+    )
+    const { container } = renderPanel()
+    fireEvent.click(screen.getByText('📅 Submit an Event'))
+    fireEvent.change(screen.getByLabelText('Event Name'), { target: { value: 'Akwasidae Festival' } })
+    fireEvent.change(screen.getByLabelText('Category'), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Royal drumming.' } })
+    fireEvent.change(screen.getByLabelText('Address'), { target: { value: 'Manhyia Palace' } })
+    fireEvent.change(screen.getByLabelText('Event Date'), { target: { value: '2026-08-03T10:00' } })
+    fireEvent.change(screen.getByLabelText('Visibility'), { target: { value: '15' } })
+    fireEvent.click(screen.getByText('Submit for Review'))
+    await screen.findByText('✅ Submitted for review')
+
+    const file = new File(['webp-bytes'], 'photo.webp', { type: 'image/webp' })
+    fireEvent.change(container.querySelector('input[type="file"]'), { target: { files: [file] } })
+    fireEvent.click(screen.getByText('Upload Photo'))
+
+    expect(await screen.findByText('Unsupported file type: expected an image, got image/webp.')).toBeInTheDocument()
+  })
+
   it('shows the access code for a submitted private event', async () => {
     server.use(
       http.get('http://localhost:8000/api/events/mine/', () => HttpResponse.json([])),

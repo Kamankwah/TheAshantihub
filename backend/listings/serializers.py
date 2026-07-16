@@ -6,6 +6,18 @@ from billing.models import Subscription
 
 from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, Promotion, Zone
 
+# The product/service decision fields added by the comprehensive listing-
+# creation work — shared between the owner-facing (writable) and public
+# (read-only) serializers so the two field lists can't drift apart.
+LISTING_DECISION_FIELDS = [
+    # Product-oriented
+    "has_warranty", "warranty_details", "has_expiry", "expiry_date", "return_policy",
+    "brand", "condition", "dimensions", "weight", "stock_quantity",
+    # Service-oriented (service_duration predates this work and stays where
+    # it already was in each serializer's field list)
+    "whats_included", "requirements", "revisions", "delivery_time",
+]
+
 
 class ListingPhotoSerializer(serializers.ModelSerializer):
     class Meta:
@@ -59,8 +71,12 @@ class PublicListingSerializer(serializers.ModelSerializer):
             "id", "name", "description", "category", "zone", "price_amount", "price_unit",
             "tag", "contact_phone", "lat", "lng", "main_photo", "photos", "created_at",
             "is_promoted", "specs", "service_duration", "avg_rating", "review_count",
-            "business_owner",
+            "business_owner", *LISTING_DECISION_FIELDS,
         ]
+        # This serializer only ever backs read-only views (list/detail/
+        # related), but mark the decision fields read-only explicitly anyway
+        # so a future write usage can't accept them unvalidated.
+        read_only_fields = LISTING_DECISION_FIELDS
 
     def get_is_promoted(self, obj):
         return bool(getattr(obj, "is_promoted", False))
@@ -84,7 +100,8 @@ class OwnerListingSerializer(serializers.ModelSerializer):
         fields = [
             "id", "category", "zone", "name", "description", "price_amount", "price_unit",
             "tag", "contact_phone", "lat", "lng", "main_photo", "photos", "specs",
-            "service_duration", "status", "rejection_reason", "created_at", "updated_at",
+            "service_duration", *LISTING_DECISION_FIELDS,
+            "status", "rejection_reason", "created_at", "updated_at",
         ]
         read_only_fields = ["status", "rejection_reason", "created_at", "updated_at"]
         extra_kwargs = {"contact_phone": {"required": False}}
@@ -143,6 +160,52 @@ class OwnerListingSerializer(serializers.ModelSerializer):
                             )
                         }
                     )
+
+        # ── Product decision-field enforcement (comprehensive listing-
+        # creation work). "Mandatory" here means "the form makes the user
+        # consciously answer at creation time", not "reject pre-existing
+        # rows": a CREATE of a product-kind listing must explicitly provide
+        # has_warranty/has_expiry (booleans the owner must answer either way
+        # — presence is checked against initial_data since a missing
+        # BooleanField would otherwise just silently default) and a non-empty
+        # return_policy. An EDIT only rejects explicitly blanking
+        # return_policy on a product — a PATCH that doesn't touch these
+        # fields keeps working against old rows created before this feature.
+        # warranty_details/expiry_date are only required when their toggle is
+        # actually true (effective value, instance-aware for PATCHes).
+        errors = {}
+        is_product = category is not None and category.kind == Category.PRODUCT
+        if is_product:
+            if self.instance is None:
+                if "has_warranty" not in self.initial_data:
+                    errors["has_warranty"] = "State whether this product comes with a warranty."
+                if "has_expiry" not in self.initial_data:
+                    errors["has_expiry"] = "State whether this product has an expiry date."
+                if not (data.get("return_policy") or "").strip():
+                    errors["return_policy"] = "A return policy is required for a product listing."
+            elif "return_policy" in data and not (data.get("return_policy") or "").strip():
+                errors["return_policy"] = "A return policy is required for a product listing."
+
+            has_warranty = data.get(
+                "has_warranty", getattr(self.instance, "has_warranty", False)
+            )
+            warranty_details = data.get(
+                "warranty_details", getattr(self.instance, "warranty_details", "")
+            )
+            if has_warranty and not (warranty_details or "").strip():
+                errors["warranty_details"] = (
+                    "Describe the warranty since this product comes with one."
+                )
+
+            has_expiry = data.get("has_expiry", getattr(self.instance, "has_expiry", False))
+            expiry_date = data.get("expiry_date", getattr(self.instance, "expiry_date", None))
+            if has_expiry and not expiry_date:
+                errors["expiry_date"] = (
+                    "Provide the expiry date since this product can expire."
+                )
+
+        if errors:
+            raise serializers.ValidationError(errors)
 
         return data
 
