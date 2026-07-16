@@ -1095,13 +1095,9 @@ const TRANSLATIONS = {
 };
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
-const DASHBOARD_THEME = {
-  light: { pageBg:"#f0f2f5", sidebarBg:C.cream, sidebarText:C.darkBrown, cardBg:"#ffffff", text:C.darkBrown, textMuted:"#666", border:"#e0e0e0" },
-  dark:  { pageBg:"#14161c", sidebarBg:"#0d0e12", sidebarText:C.cream, cardBg:"#1c1f26", text:C.cream, textMuted:"#9aa0aa", border:"#2a2d35" },
-};
 
 // The staff dashboard is the Admin Command Center (frontend/components/
-// admin/*), the dark "mission-control" restyle of the old inline-in-App.jsx
+// admin/*), the light "artisan" restyle of the old inline-in-App.jsx
 // StaffDashboard — matching the Business Command Center's visual system
 // (frontend/components/dashboard/*) while keeping every panel's behavior/
 // text unchanged (see frontend/StaffDashboard.test.jsx, the behavioral
@@ -1113,7 +1109,7 @@ export function StaffDashboard({auth,onExit}) {
   return <AdminCommandCenter auth={auth} onExit={onExit} />;
 }
 
-// The business-owner dashboard is the unified dark "mission-control" Business
+// The business-owner dashboard is the unified light "artisan" Business
 // Command Center (frontend/components/dashboard/*), which replaced the three
 // former inline-styled dashboards (BusinessDashboard / PaymentDashboard /
 // CreditDashboard) — folding Payments and Credit in as tabs and adding the
@@ -1126,7 +1122,7 @@ export function BusinessDashboard({ onExit, user, auth }) {
 
 // ─── Account Center (customer "My Account" dashboard) ─────────────────────────
 // Redesigned to match the business-owner side's Business Command Center
-// (frontend/components/dashboard/*) — the same always-dark "mission-control"
+// (frontend/components/dashboard/*) — the same always-light "artisan"
 // shell language, reusing its `D` palette, `glassCard`, and the shared
 // KpiCard/ChartFrame/SpendAreaChart/ListingsDonut chart primitives directly
 // rather than duplicating them, plus a `.command-center.account-grid` square-
@@ -1138,11 +1134,10 @@ export function BusinessDashboard({ onExit, user, auth }) {
 // module-top-level in this file — App.jsx importing components/dashboard/* is
 // the established one-directional convention (already done for
 // BusinessCommandCenter/EventSubmissionPanel above); components/ itself never
-// imports back into App.jsx. Always-dark — no light/dark toggle (the old
-// DASHBOARD_THEME-based toggle is gone) — matching BusinessCommandCenter's own
-// "one consistent dashboard visual language" choice; this also resolves
-// MyEventsTab's old "known limitation" note below, since EventSubmissionPanel
-// was already hardcoded always-dark.
+// imports back into App.jsx. Always-light — no light/dark toggle of its own,
+// matching BusinessCommandCenter's own "one consistent dashboard visual
+// language" choice; this also resolves MyEventsTab's old "known limitation"
+// note below, since EventSubmissionPanel was already hardcoded always-dark.
 const ACCOUNT_NAV_ITEMS = [
   { id: "overview", icon: "📊", label: "Overview", group: "main" },
   { id: "orders", icon: "📦", label: "Orders & Delivery", group: "main" },
@@ -1219,7 +1214,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
     </div>
 
     <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
-      <div style={{background:"rgba(10,14,26,0.75)",backdropFilter:"blur(8px)",borderBottom:`1px solid ${D.divider}`,padding:"0 16px",display:"flex",alignItems:"center",gap:12,height:64,position:"sticky",top:0,zIndex:80}}>
+      <div style={{background:"rgba(253,246,227,0.9)",backdropFilter:"blur(8px)",borderBottom:`1px solid ${D.divider}`,padding:"0 16px",display:"flex",alignItems:"center",gap:12,height:64,position:"sticky",top:0,zIndex:80}}>
         <button className="ah-account-hamburger" onClick={()=>setSidebarOpen(true)} style={{display:"none",background:"none",border:`1px solid ${D.divider}`,borderRadius:8,color:D.text,width:34,height:34,cursor:"pointer",fontSize:"1rem",flexShrink:0}}>☰</button>
 
         {/* Label only (no icon) — MessagingCenter renders its own "💬 Messages"

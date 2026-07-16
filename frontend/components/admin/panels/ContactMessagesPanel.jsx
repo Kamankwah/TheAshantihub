@@ -48,7 +48,7 @@ export default function ContactMessagesPanel() {
               </div>
               <div style={{ display: "flex", gap: 6 }}>
                 {m.status !== "resolved" && <button onClick={() => markRead(m.id)} style={{ background: "rgba(251,191,36,0.16)", color: D.amber, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Mark read</button>}
-                {m.status !== "resolved" && <button onClick={() => resolve(m.id)} style={{ background: D.green, color: "#04210f", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Resolve</button>}
+                {m.status !== "resolved" && <button onClick={() => resolve(m.id)} style={{ background: D.green, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Resolve</button>}
               </div>
             </div>
           </div>

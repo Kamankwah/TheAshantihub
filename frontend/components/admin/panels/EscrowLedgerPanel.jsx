@@ -76,7 +76,7 @@ export default function EscrowLedgerPanel({ auth }) {
             {!isRefunded && (canRelease || canRefund) && <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
               {canRelease && t.escrow_status === "held" && <>
                 <input value={noteById[t.id] || ""} onChange={e => setNoteById(n => ({ ...n, [t.id]: e.target.value }))} placeholder="Note (optional)" style={{ flex: 1, minWidth: 120, padding: "5px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.72rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
-                <button onClick={() => release(t.id)} style={{ background: D.green, color: "#04210f", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Release</button>
+                <button onClick={() => release(t.id)} style={{ background: D.green, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Release</button>
               </>}
               {canRelease && t.escrow_status === "released" && <>
                 <input value={noteById[t.id] || ""} onChange={e => setNoteById(n => ({ ...n, [t.id]: e.target.value }))} placeholder="Note (optional)" style={{ flex: 1, minWidth: 120, padding: "5px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.72rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
@@ -84,7 +84,7 @@ export default function EscrowLedgerPanel({ auth }) {
               </>}
               {canRefund && t.escrow_status === "held" && !isDelivered && <>
                 <input value={reasonById[t.id] || ""} onChange={e => setReasonById(n => ({ ...n, [t.id]: e.target.value }))} placeholder="Refund reason (optional)" style={{ flex: 1, minWidth: 120, padding: "5px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.72rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
-                <button onClick={() => refund(t.id)} style={{ background: D.red, color: "#2a0606", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Refund</button>
+                <button onClick={() => refund(t.id)} style={{ background: D.red, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Refund</button>
               </>}
             </div>}
           </div>

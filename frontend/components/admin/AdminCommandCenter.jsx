@@ -1,6 +1,6 @@
 import { useState } from "react";
 import Flag from "../Flag.jsx";
-import { D, ROLE_ACCENTS } from "./theme.js";
+import { D, ROLE_ACCENTS, ROLE_BADGE_TEXT } from "./theme.js";
 import OverviewPanel from "./panels/OverviewPanel.jsx";
 import KYCQueuePanel from "./panels/KYCQueuePanel.jsx";
 import ListingsModerationPanel from "./panels/ListingsModerationPanel.jsx";
@@ -108,7 +108,7 @@ export default function AdminCommandCenter({ auth, onExit }) {
       {/* Sidebar */}
       <div style={{
         width: sidebarCollapsed ? 60 : 240, flexShrink: 0, position: "sticky", top: 0, height: "100vh", overflowY: "auto",
-        background: "linear-gradient(180deg, rgba(15,20,35,0.9), rgba(10,14,26,0.96))",
+        background: "rgba(253,246,227,0.95)",
         borderRight: `1px solid ${D.cardBorder}`, transition: "width 0.2s",
       }}>
         <div style={{ padding: "16px 12px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${D.divider}` }}>
@@ -151,19 +151,19 @@ export default function AdminCommandCenter({ auth, onExit }) {
       {/* Main column */}
       <div style={{ flex: 1, minWidth: 0 }}>
         {/* Header */}
-        <div style={{ background: "linear-gradient(135deg, rgba(10,14,26,0.96), rgba(19,26,46,0.96))", padding: "0 20px", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 2px 24px rgba(0,0,0,0.5)", backdropFilter: "blur(8px)", borderBottom: `1px solid ${D.cardBorder}` }}>
+        <div style={{ background: "rgba(253,246,227,0.9)", padding: "0 20px", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 2px 12px rgba(44,24,16,0.08)", backdropFilter: "blur(8px)", borderBottom: `1px solid ${D.cardBorder}` }}>
           <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(90deg,#CC0000 33%,#D4A017 33%,#D4A017 66%,#006400 66%)" }} />
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 60, gap: 10 }}>
             <div style={{ color: D.text, fontWeight: 800, fontSize: "0.9rem" }}>{activeLabel}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <span style={{ background: roleColor, color: "#0a0e1a", borderRadius: 20, padding: "3px 10px", fontSize: "0.62rem", fontWeight: 800, textTransform: "capitalize" }}>{role?.replace("_", " ")}</span>
+              <span style={{ background: roleColor, color: ROLE_BADGE_TEXT[role] || "#fff", borderRadius: 20, padding: "3px 10px", fontSize: "0.62rem", fontWeight: 800, textTransform: "capitalize" }}>{role?.replace("_", " ")}</span>
               <span style={{ color: D.text, fontSize: "0.78rem", fontWeight: 700, whiteSpace: "nowrap" }}>{auth.user?.full_name}</span>
-              <button onClick={onExit} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${D.divider}`, color: D.textDim, borderRadius: 20, padding: "5px 13px", fontSize: "0.68rem", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>← Exit</button>
+              <button onClick={onExit} style={{ background: "rgba(44,24,16,0.05)", border: `1px solid ${D.divider}`, color: D.textDim, borderRadius: 20, padding: "5px 13px", fontSize: "0.68rem", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>← Exit</button>
             </div>
           </div>
         </div>
 
-        {saved && <div style={{ position: "fixed", top: 74, right: 20, background: D.green, color: "#04210f", borderRadius: 12, padding: "10px 18px", fontSize: "0.8rem", fontWeight: 800, zIndex: 999, boxShadow: "0 6px 24px rgba(52,211,153,0.4)" }}>✓ Saved!</div>}
+        {saved && <div style={{ position: "fixed", top: 74, right: 20, background: D.green, color: "#fff", borderRadius: 12, padding: "10px 18px", fontSize: "0.8rem", fontWeight: 800, zIndex: 999, boxShadow: "0 6px 24px rgba(0,100,0,0.28)" }}>✓ Saved!</div>}
 
         <div style={{ padding: "22px 20px 72px" }}>
           {activeTab === "overview" && <OverviewPanel auth={auth} roleColor={roleColor} />}

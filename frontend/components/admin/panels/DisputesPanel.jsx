@@ -95,7 +95,7 @@ export default function DisputesPanel({ auth }) {
                   )}
                   {canResolve && (
                     <>
-                      <button onClick={() => setResolvingId(resolvingId === dsp.id ? null : dsp.id)} style={{ background: D.green, color: "#04210f", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Resolve</button>
+                      <button onClick={() => setResolvingId(resolvingId === dsp.id ? null : dsp.id)} style={{ background: D.green, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Resolve</button>
                       <button onClick={() => resolve(dsp.id, "rejected")} style={{ background: "rgba(248,113,113,0.14)", color: D.red, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✕ Reject</button>
                     </>
                   )}
@@ -106,7 +106,7 @@ export default function DisputesPanel({ auth }) {
               <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                 <input value={refundById[dsp.id] || ""} onChange={e => setRefundById(r => ({ ...r, [dsp.id]: e.target.value }))} placeholder="Refund amount (optional)" style={{ width: 160, padding: "5px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.72rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
                 <input value={notesById[dsp.id] || ""} onChange={e => setNotesById(n => ({ ...n, [dsp.id]: e.target.value }))} placeholder="Resolution notes (optional)" style={{ flex: 1, minWidth: 160, padding: "5px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.72rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
-                <button onClick={() => resolve(dsp.id, "resolved")} style={{ background: D.green, color: "#04210f", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Confirm resolve</button>
+                <button onClick={() => resolve(dsp.id, "resolved")} style={{ background: D.green, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Confirm resolve</button>
               </div>
             )}
           </div>

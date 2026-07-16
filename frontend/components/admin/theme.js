@@ -1,5 +1,5 @@
-// ─── Admin Command Center — dark "mission-control" theme ─────────────────────
-// The staff dashboard reuses the exact dark space palette built for the
+// ─── Admin Command Center — light "artisan" theme ─────────────────────────────
+// The staff dashboard reuses the exact light cream/gold palette built for the
 // Business Command Center (frontend/components/dashboard/theme.js) rather than
 // duplicating it — `D`/`CHART`/`glassCard`/`sectionTitle` are re-exported
 // straight from there so the two dashboards stay visually identical and in
@@ -18,6 +18,17 @@ export const ROLE_ACCENTS = {
   accountant: C.kente1,
   marketing: C.kente2,
   support: C.ghGreen,
+};
+
+// Text color for the role badge, keyed by role — ROLE_ACCENTS' backgrounds
+// range from light gold to dark navy/red/green/teal, so a single flat text
+// color doesn't stay legible across all of them.
+export const ROLE_BADGE_TEXT = {
+  super_admin: "#1a1205",
+  admin: "#fff",
+  accountant: "#fff",
+  marketing: "#fff",
+  support: "#fff",
 };
 
 // ─── Per-panel status-label→color lookup maps ─────────────────────────────
