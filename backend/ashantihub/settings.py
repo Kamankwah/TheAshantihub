@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     "qa",
     "disputes",
     "messaging",
+    "payments",
 ]
 
 MIDDLEWARE = [
@@ -72,6 +73,40 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 CORS_ALLOW_ALL_ORIGINS = True
 
+# Email — defaults to Django's console backend so nothing breaks locally
+# without SMTP configured; set EMAIL_BACKEND (and the SMTP vars below) in
+# production to actually deliver staff-invite/password-reset/verification
+# emails (see accounts/emails.py).
+EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
+EMAIL_HOST = env("EMAIL_HOST", default="")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="no-reply@theashantihub.com")
+
+# Public base URL of the deployed frontend (e.g. https://theashantihub.com) —
+# used to build Hubtel's returnUrl/cancellationUrl (payments/hubtel_client.py)
+# so a customer redirected off-app to pay lands back on /payment/return.
+# Blank in dev, where the Hubtel path is never actually exercised anyway
+# (see PAYMENTS_PROVIDER below).
+FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", default="http://localhost:5173")
+
+# Hubtel payments (docs/HUBTEL_INTEGRATION.md, plan Workstream E). Every
+# HUBTEL_* var is blank by default — PAYMENTS_PROVIDER is *derived* from
+# whether HUBTEL_CLIENT_ID is actually set, not a separate manually-toggled
+# flag, so the app automatically flips from the pre-existing simulated-
+# payment behavior to real Hubtel Checkout the moment real credentials are
+# added and the process restarts, with no code change/redeploy needed for
+# that flip. See payments/services.py's process_payment() for what each
+# mode actually does.
+HUBTEL_CLIENT_ID = env("HUBTEL_CLIENT_ID", default="")
+HUBTEL_CLIENT_SECRET = env("HUBTEL_CLIENT_SECRET", default="")
+HUBTEL_MERCHANT_ACCOUNT = env("HUBTEL_MERCHANT_ACCOUNT", default="")
+HUBTEL_WEBHOOK_SECRET = env("HUBTEL_WEBHOOK_SECRET", default="")
+HUBTEL_CALLBACK_URL = env("HUBTEL_CALLBACK_URL", default="")
+PAYMENTS_PROVIDER = "hubtel" if HUBTEL_CLIENT_ID else "simulated"
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "accounts.authentication.MultiAccountJWTAuthentication",
@@ -88,6 +123,12 @@ REST_FRAMEWORK = {
         "business_owner_register": "5/min",
         "staff_activate": "5/min",
         "login": "5/min",
+        "password_reset_request": "5/min",
+        # The Hubtel webhook is a public, unauthenticated endpoint (Hubtel
+        # calls it from the internet, not a logged-in app user) — generous
+        # but not unlimited, since it's dark/unexercised until HUBTEL_* env
+        # vars are set (see settings.PAYMENTS_PROVIDER).
+        "hubtel_webhook": "60/min",
     },
 }
 

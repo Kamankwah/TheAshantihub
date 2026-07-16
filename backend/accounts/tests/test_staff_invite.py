@@ -1,6 +1,7 @@
 import datetime
 
 from django.contrib.auth.hashers import check_password
+from django.core import mail
 from django.core.cache import cache
 from django.test import TestCase
 from django.utils import timezone
@@ -33,6 +34,12 @@ class StaffInviteTests(TestCase):
         invited = StaffUser.objects.get(email="akosua@example.com")
         self.assertEqual(invited.role.name, "support")
         self.assertEqual(invited.invited_by, self.super_admin)
+
+        self.assertEqual(len(mail.outbox), 1)
+        sent = mail.outbox[0]
+        self.assertEqual(sent.to, ["akosua@example.com"])
+        self.assertIn(invited.invite_token, sent.body)
+        self.assertIn("https://theashantihub.com/staff/activate?token=", sent.body)
 
     def test_support_staff_cannot_invite_staff(self):
         support = StaffUser.objects.create(
@@ -118,6 +125,11 @@ class StaffInviteTests(TestCase):
         invited.refresh_from_db()
         self.assertNotEqual(invited.invite_token, "old-token-789")
         self.assertGreater(invited.invite_expires_at, timezone.now())
+
+        self.assertEqual(len(mail.outbox), 1)
+        sent = mail.outbox[0]
+        self.assertEqual(sent.to, ["waiting@example.com"])
+        self.assertIn(invited.invite_token, sent.body)
 
     def test_non_super_admin_cannot_invite_super_admin(self):
         # admin doesn't have staff.manage by default; grant it explicitly for

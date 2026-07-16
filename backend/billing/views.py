@@ -1,7 +1,7 @@
 from django.db.models import Count, Sum
 from django.db.models.functions import TruncMonth
 from django.utils.dateparse import parse_date
-from rest_framework import generics
+from rest_framework import generics, status
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -9,6 +9,7 @@ from rest_framework.views import APIView
 
 from accounts.permissions import HasRolePermission
 from accounts.views import IsBusinessOwner
+from payments.services import process_payment
 
 from .models import Subscription, SubscriptionPlan, Transaction
 from .serializers import (
@@ -17,6 +18,7 @@ from .serializers import (
     SubscriptionPlanAdminSerializer,
     SubscriptionPlanSerializer,
     SubscriptionSerializer,
+    TransactionMineCreateSerializer,
     TransactionReportSerializer,
     TransactionSerializer,
 )
@@ -171,11 +173,19 @@ class SubscriptionStartTrialView(APIView):
         )
 
 
-class TransactionMineListCreateView(generics.ListCreateAPIView):
-    """List/create the current business owner's own transactions.
+class TransactionMineListCreateView(generics.ListAPIView):
+    """GET the current business owner's own transactions (unchanged). POST
+    is now a plain APIView-style handler routed through
+    payments.services.process_payment() (docs/HUBTEL_INTEGRATION.md, plan
+    Workstream E) rather than DRF's CreateModelMixin directly saving a
+    client-supplied TransactionSerializer payload — see
+    TransactionMineCreateSerializer's docstring for the security hole this
+    closes (the old create() let the caller set status/reference directly).
 
-    Creation is expected to be called by the simulated MoMoPayment success
-    flow — there is no real payment gateway verifying these records.
+    Still the same URL (billing/urls.py unchanged) and still backs the
+    subscription-payment flow (frontend SubscriptionPanel.jsx/
+    PaymentsPanel.jsx's recordSubscriptionPayment) — only what the client is
+    allowed to send, and who controls status/reference, has changed.
     """
 
     serializer_class = TransactionSerializer
@@ -184,8 +194,56 @@ class TransactionMineListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         return Transaction.objects.filter(business_owner=self.request.user)
 
-    def perform_create(self, serializer):
-        serializer.save(business_owner=self.request.user)
+    def post(self, request, *args, **kwargs):
+        input_serializer = TransactionMineCreateSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        data = input_serializer.validated_data
+        metadata = data.get("metadata") or {}
+
+        # Never trust a client-reported amount at face value
+        # (docs/HUBTEL_INTEGRATION.md §8) — when the metadata a "subscription"
+        # payment needs to activate itself (plan tier + cycle_months, see
+        # payments.services._finalize_subscription) resolves to a real active
+        # plan, recompute the authoritative amount from
+        # SubscriptionPlan.monthly_price server-side and use *that*,
+        # discarding whatever the client sent in `amount`. Only falls back to
+        # the client-submitted amount when metadata doesn't resolve to a real
+        # plan (e.g. no metadata sent at all) — same "log/ignore rather than
+        # trust" posture as the webhook's own amount re-verification.
+        amount = data["amount"]
+        plan_tier = metadata.get("plan")
+        cycle_months = metadata.get("cycle_months")
+        if plan_tier and cycle_months:
+            plan = SubscriptionPlan.objects.filter(
+                tier=plan_tier, status=SubscriptionPlan.ACTIVE_STATUS
+            ).first()
+            if plan is not None:
+                try:
+                    amount = plan.monthly_price * int(cycle_months)
+                except (TypeError, ValueError):
+                    pass
+
+        result = process_payment(
+            kind=data["kind"],
+            amount=amount,
+            purpose=data["purpose"],
+            business_owner=request.user,
+            metadata=metadata,
+        )
+
+        if result["mode"] == "redirect":
+            return Response(
+                {
+                    "mode": "redirect",
+                    "checkout_url": result["checkout_url"],
+                    "reference": result["reference"],
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        return Response(
+            TransactionSerializer(result["transaction"]).data, status=status.HTTP_201_CREATED
+        )
 
 
 class BillingPagination(PageNumberPagination):

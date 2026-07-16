@@ -1,7 +1,6 @@
 from decimal import Decimal
 
 from django.db import transaction as db_transaction
-from django.utils.crypto import get_random_string
 from rest_framework import generics, status
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
@@ -10,10 +9,11 @@ from rest_framework.views import APIView
 
 from accounts.permissions import HasRolePermission
 from accounts.views import IsCustomer
-from billing.models import Transaction
 from cart.models import Cart
 from disputes.models import Dispute
 from disputes.serializers import DisputeSerializer
+from payments.models import CheckoutSession
+from payments.services import process_payment
 
 from .models import Order, OrderItem
 from .serializers import (
@@ -27,11 +27,21 @@ from .serializers import (
 class OrderCheckoutView(APIView):
     """POST /api/orders/checkout/ — takes the caller's current cart, requires
     it to be non-empty, creates an Order + OrderItems snapshotting each cart
-    line, computes total_amount, empties the cart, and — matching this
-    codebase's existing simulated-payment pattern (billing.SubscriptionMeView
-    / TransactionMineListCreateView) — creates a billing.Transaction and sets
-    the new Order's status to `paid` immediately. No real payment gateway
-    involved yet.
+    line, computes total_amount, and routes the payment through
+    payments.services.process_payment() (docs/HUBTEL_INTEGRATION.md, plan
+    Workstream E) rather than writing a billing.Transaction directly.
+
+    In simulated mode (PAYMENTS_PROVIDER != "hubtel", the only mode exercised
+    until real Hubtel credentials exist) this behaves exactly as before:
+    the Transaction is created and the Order is marked `paid` and the cart
+    emptied, all synchronously, in the same 201 response.
+
+    In Hubtel mode, the Order is still created (PENDING) and the cart is
+    left alone — nothing is paid for yet — and the response is instead
+    `{"mode": "redirect", "checkout_url": ..., "reference": ...}` for the
+    frontend to redirect to. The Order only moves to PAID, and the cart is
+    only emptied, once payments.views.HubtelWebhookView confirms payment
+    (see payments.services._finalize_order_checkout).
     """
 
     permission_classes = [IsAuthenticated, IsCustomer]
@@ -59,16 +69,29 @@ class OrderCheckoutView(APIView):
                     line_total=line_total,
                 )
 
-            Transaction.objects.create(
-                customer=request.user,
+            result = process_payment(
+                kind=CheckoutSession.ORDER_CHECKOUT,
                 amount=total,
                 purpose=f"AshantiHub Order #{order.id}",
-                status=Transaction.SUCCESS,
-                reference=f"AH-ORD-{order.id}-{get_random_string(8).upper()}",
+                customer=request.user,
+                metadata={"order_id": order.id},
             )
-            order.status = Order.PAID
-            order.save(update_fields=["status"])
 
+            if result["mode"] == "redirect":
+                return Response(
+                    {
+                        "mode": "redirect",
+                        "checkout_url": result["checkout_url"],
+                        "reference": result["reference"],
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            # Immediate/simulated mode — process_payment() has already
+            # created the Transaction and run _finalize_order_checkout
+            # (order.status = PAID) synchronously, exactly matching this
+            # view's pre-existing behavior.
+            order.refresh_from_db()
             cart.items.all().delete()
 
         return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)

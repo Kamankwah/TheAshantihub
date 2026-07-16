@@ -6,7 +6,16 @@ from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import serializers
 
-from .models import BusinessOwner, BusinessOwnerProfile, Customer, Role, StaffUser
+from .authentication import ACCOUNT_MODELS
+from .emails import send_password_reset_email, send_staff_invite_email
+from .models import (
+    BusinessOwner,
+    BusinessOwnerProfile,
+    Customer,
+    PasswordResetToken,
+    Role,
+    StaffUser,
+)
 
 # Used to pay the same check_password() cost when no account is found, so that
 # login timing does not leak whether an identifier exists (see login serializers below).
@@ -57,7 +66,11 @@ class StaffInviteSerializer(serializers.ModelSerializer):
         validated_data["invited_by"] = self.context["request"].user
         validated_data["invite_token"] = get_random_string(43)
         validated_data["invite_expires_at"] = timezone.now() + INVITE_TOKEN_LIFETIME
-        return StaffUser.objects.create(**validated_data)
+        staff = StaffUser.objects.create(**validated_data)
+        send_staff_invite_email(
+            staff, f"https://theashantihub.com/staff/activate?token={staff.invite_token}"
+        )
+        return staff
 
 
 class StaffActivateSerializer(serializers.Serializer):
@@ -80,6 +93,70 @@ class StaffActivateSerializer(serializers.Serializer):
         self.staff.invite_expires_at = None
         self.staff.save(update_fields=["password_hash", "invite_token", "invite_expires_at"])
         return self.staff
+
+
+PASSWORD_RESET_TOKEN_LIFETIME = datetime.timedelta(hours=1)
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    account_type = serializers.ChoiceField(choices=list(ACCOUNT_MODELS.keys()))
+
+    def save(self):
+        email = self.validated_data["email"]
+        account_type = self.validated_data["account_type"]
+        model = ACCOUNT_MODELS[account_type]
+        account = model.objects.filter(email=email).first()
+        # Always behave the same whether or not an account was found — the
+        # view returns a generic success response either way, so this method
+        # never signals "not found" back up to it (avoids leaking account
+        # existence via response shape or timing).
+        if account is not None:
+            token = get_random_string(43)
+            PasswordResetToken.objects.create(
+                account_type=account_type,
+                account_id=account.id,
+                token=token,
+                expires_at=timezone.now() + PASSWORD_RESET_TOKEN_LIFETIME,
+            )
+            reset_link = f"https://theashantihub.com/reset-password?token={token}&type={account_type}"
+            send_password_reset_email(email, reset_link)
+        return None
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    token = serializers.CharField()
+    account_type = serializers.ChoiceField(choices=list(ACCOUNT_MODELS.keys()))
+    password = serializers.CharField(min_length=8)
+
+    def validate(self, attrs):
+        try:
+            reset_token = PasswordResetToken.objects.get(
+                token=attrs["token"], account_type=attrs["account_type"]
+            )
+        except PasswordResetToken.DoesNotExist as exc:
+            raise serializers.ValidationError("Invalid or expired reset token") from exc
+        if reset_token.used_at is not None:
+            raise serializers.ValidationError("This reset link has already been used")
+        if reset_token.expires_at < timezone.now():
+            raise serializers.ValidationError("This reset link has expired")
+
+        model = ACCOUNT_MODELS[attrs["account_type"]]
+        try:
+            account = model.objects.get(pk=reset_token.account_id)
+        except model.DoesNotExist as exc:
+            raise serializers.ValidationError("Invalid or expired reset token") from exc
+
+        self.reset_token = reset_token
+        self.account = account
+        return attrs
+
+    def save(self):
+        self.account.password_hash = make_password(self.validated_data["password"])
+        self.account.save(update_fields=["password_hash"])
+        self.reset_token.used_at = timezone.now()
+        self.reset_token.save(update_fields=["used_at"])
+        return self.account
 
 
 class BusinessOwnerRegistrationSerializer(serializers.ModelSerializer):

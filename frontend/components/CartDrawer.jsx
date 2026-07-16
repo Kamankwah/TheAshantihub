@@ -85,8 +85,18 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   const handlePaymentSuccess = async (ref) => {
     setCheckoutError(null);
     try {
-      const placedOrder = await apiPost("/api/orders/checkout/", {});
-      setOrder(placedOrder);
+      const response = await apiPost("/api/orders/checkout/", {});
+      // Hubtel integration (docs/HUBTEL_INTEGRATION.md) — once
+      // payments_provider is "hubtel", OrderCheckoutView returns
+      // {mode:"redirect", checkout_url} instead of the placed order, since
+      // nothing is actually paid for yet. Redirect the browser to Hubtel's
+      // hosted checkout rather than treating this as an already-placed
+      // order — the order only becomes PAID once the webhook confirms it.
+      if (response?.mode === "redirect") {
+        window.location.href = response.checkout_url;
+        return;
+      }
+      setOrder(response);
       refetch();
     } catch (err) {
       setCheckoutError("Payment was confirmed but we couldn't place your order. Please contact support with reference " + ref + ".");

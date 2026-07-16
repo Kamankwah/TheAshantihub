@@ -16,6 +16,8 @@ from accounts.models import BusinessOwner, StaffUser
 from accounts.permissions import HasAnyRolePermission, HasRolePermission
 from accounts.views import IsCustomer
 from billing.models import Transaction
+from payments.models import CheckoutSession
+from payments.services import process_payment
 
 from .models import Event, EventPricingTier, EventRSVP, EventTicketType, Ticket
 from .permissions import (
@@ -316,10 +318,17 @@ class EventPayView(APIView):
     """POST /api/events/{id}/pay/ — the organizer pays for their *already
     approved* event's visibility window (see Event's class docstring: this
     is the step that sets paid_at and computes expires_at, per the
-    approve-then-pay sequencing). Creates a billing.Transaction on the
-    correct nullable side (business_owner or customer) depending on who
-    submitted — mirrors ListingPromoteView/OrderCheckoutView's simulated-
-    payment pattern.
+    approve-then-pay sequencing). Routed through
+    payments.services.process_payment() (docs/HUBTEL_INTEGRATION.md, plan
+    Workstream E) rather than writing a billing.Transaction directly.
+
+    In simulated mode this behaves exactly as before: paid_at/expires_at are
+    set synchronously in this same request (via
+    payments.services._finalize_event_pay, run inline by process_payment()).
+    In Hubtel mode, paid_at/expires_at stay null and the response is instead
+    `{"mode": "redirect", "checkout_url": ..., "reference": ...}` — the event
+    only becomes live once payments.views.HubtelWebhookView confirms
+    payment.
     """
 
     permission_classes = [IsAuthenticated, IsEventOwner]
@@ -337,28 +346,35 @@ class EventPayView(APIView):
                 {"detail": "This event has already been paid for."}, status=400
             )
 
-        now = timezone.now()
         tier = EventPricingTier.objects.filter(duration_days=event.visibility_days).first()
         # tier.live_price is the flat total for the whole window, not a
         # per-day rate — do not multiply by visibility_days here.
         amount = tier.live_price if tier else _LEGACY_DAILY_RATE * event.visibility_days
 
         with db_transaction.atomic():
-            event.paid_at = now
-            event.expires_at = now + timedelta(days=event.visibility_days)
-            event.save(update_fields=["paid_at", "expires_at"])
-
-            txn_kwargs = {
+            payment_kwargs = {
+                "kind": CheckoutSession.EVENT_PAY,
                 "amount": amount,
                 "purpose": f"Event visibility payment for '{event.name}' ({event.visibility_days} days)",
-                "status": Transaction.SUCCESS,
-                "reference": f"AH-EVENT-{event.id}-{get_random_string(8).upper()}",
+                "metadata": {"event_id": event.id},
             }
             if event.submitted_by_business_id:
-                txn_kwargs["business_owner"] = event.submitted_by_business
+                payment_kwargs["business_owner"] = event.submitted_by_business
             else:
-                txn_kwargs["customer"] = event.submitted_by_customer
-            Transaction.objects.create(**txn_kwargs)
+                payment_kwargs["customer"] = event.submitted_by_customer
+            result = process_payment(**payment_kwargs)
+
+            if result["mode"] == "redirect":
+                return Response(
+                    {
+                        "mode": "redirect",
+                        "checkout_url": result["checkout_url"],
+                        "reference": result["reference"],
+                    },
+                    status=200,
+                )
+
+            event.refresh_from_db()
 
         return Response(EventOwnerSerializer(event, context={"request": request}).data)
 
@@ -598,17 +614,30 @@ class EventTicketTypeUpdateView(generics.RetrieveUpdateAPIView):
 class TicketPurchaseView(APIView):
     """POST /api/events/{id}/tickets/purchase/ — a signed-in customer buys
     one or more tickets of a given type for a *live* event (event
-    ticketing + escrow work). Mirrors EventPayView's atomic
-    Transaction-creation template, and EventRSVPView's
+    ticketing + escrow work). Mirrors EventRSVPView's
     select_for_update()-then-check-then-create oversell-prevention pattern
     (locked on EventTicketType rather than Event, since the thing being
-    contended over is ticket inventory, not RSVP capacity).
+    contended over is ticket inventory, not RSVP capacity), and is routed
+    through payments.services.process_payment() (docs/HUBTEL_INTEGRATION.md,
+    plan Workstream E) rather than writing a billing.Transaction directly.
 
-    Payment is simulated (SUCCESS immediately, matching every other
-    Transaction-creating view in this codebase — see EventPayView), but
-    each resulting Ticket starts life escrow_status=held: the money isn't
-    considered "delivered to the organizer" until the ticket is checked in
-    (EventCheckinView) or a staff accountant manually releases/refunds it.
+    Inventory (`quantity_sold`) is reserved **optimistically, under this same
+    lock, before process_payment() is ever called** — in simulated mode this
+    is no different from before (the reservation and the Transaction are
+    both committed together, synchronously). In Hubtel mode it means a
+    ticket is provisionally "sold" the moment checkout starts, not once
+    payment is confirmed; if the webhook later reports failure/expiry
+    instead of success, payments.services._fail_ticket_purchase rolls the
+    reservation back. This optimistic-reserve-then-rollback approach is
+    necessary because oversell-prevention requires the lock+check+reserve to
+    happen atomically at checkout time — it cannot be deferred to whenever
+    the webhook eventually arrives, or two concurrent Hubtel checkouts could
+    both "succeed" against the same last unit of inventory.
+
+    Each resulting Ticket starts life escrow_status=held regardless of
+    provider: the money isn't considered "delivered to the organizer" until
+    the ticket is checked in (EventCheckinView) or a staff accountant
+    manually releases/refunds it.
     """
 
     permission_classes = [IsAuthenticated, IsCustomer]
@@ -636,27 +665,42 @@ class TicketPurchaseView(APIView):
             ):
                 return Response({"detail": "Not enough tickets remaining."}, status=400)
 
-            txn = Transaction.objects.create(
-                customer=request.user,
-                amount=ticket_type.price * quantity,
-                purpose=f"{quantity}x '{ticket_type.name}' ticket(s) for '{event.name}'",
-                status=Transaction.SUCCESS,
-                reference=f"AH-TICKET-{event.id}-{get_random_string(8).upper()}",
-            )
-
-            tickets = [
-                Ticket.objects.create(
-                    ticket_type=ticket_type,
-                    purchased_by=request.user,
-                    transaction=txn,
-                    delivery_method=ticket_type.delivery_method,
-                    price=ticket_type.price,
-                )
-                for _ in range(quantity)
-            ]
-
+            # Reserve inventory now, under this lock, regardless of provider
+            # — see docstring above for why this can't wait for webhook
+            # confirmation.
             ticket_type.quantity_sold += quantity
             ticket_type.save(update_fields=["quantity_sold"])
+
+            result = process_payment(
+                kind=CheckoutSession.TICKET_PURCHASE,
+                amount=ticket_type.price * quantity,
+                purpose=f"{quantity}x '{ticket_type.name}' ticket(s) for '{event.name}'",
+                customer=request.user,
+                metadata={
+                    "event_id": event.id,
+                    "ticket_type_id": ticket_type.id,
+                    "quantity": quantity,
+                    "customer_id": request.user.id,
+                    "delivery_method": ticket_type.delivery_method,
+                    "unit_price": str(ticket_type.price),
+                },
+            )
+
+            if result["mode"] == "redirect":
+                return Response(
+                    {
+                        "mode": "redirect",
+                        "checkout_url": result["checkout_url"],
+                        "reference": result["reference"],
+                    },
+                    status=200,
+                )
+
+            # Immediate/simulated mode — process_payment() already ran
+            # payments.services._finalize_ticket_purchase, which created the
+            # Ticket row(s) and recorded their ids on the session's metadata.
+            ticket_ids = result["session"].metadata.get("ticket_ids", [])
+            tickets = Ticket.objects.filter(id__in=ticket_ids)
 
         return Response(
             TicketSerializer(tickets, many=True, context={"request": request}).data, status=201

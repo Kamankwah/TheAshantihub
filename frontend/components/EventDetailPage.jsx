@@ -421,11 +421,22 @@ function EventTicketsSection({ eventId, hasTickets, user, PaymentComponent }) {
     if (!payTarget) return;
     setPayError(null);
     try {
-      const tickets = await apiPost(`/api/events/${eventId}/tickets/purchase/`, {
+      const response = await apiPost(`/api/events/${eventId}/tickets/purchase/`, {
         ticket_type: payTarget.ticketType.id,
         quantity: payTarget.quantity,
       });
-      setPurchasedByType((p) => ({ ...p, [payTarget.ticketType.id]: tickets }));
+      // Hubtel integration (docs/HUBTEL_INTEGRATION.md) — once
+      // payments_provider is "hubtel", TicketPurchaseView returns
+      // {mode:"redirect", checkout_url} instead of the purchased tickets
+      // (inventory is reserved optimistically, but no Ticket rows/codes
+      // exist yet). Redirect rather than showing a purchase confirmation —
+      // the actual ticket code(s) are only created once the webhook
+      // confirms payment (see "My Tickets" for them afterward).
+      if (response?.mode === "redirect") {
+        window.location.href = response.checkout_url;
+        return;
+      }
+      setPurchasedByType((p) => ({ ...p, [payTarget.ticketType.id]: response }));
       setPayTarget(null);
       ticketTypesQuery.refetch();
     } catch (err) {

@@ -20,16 +20,34 @@ class TransactionMineTests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(owner, 'business_owner')}")
 
     def test_create_transaction_records_success(self):
+        # kind/amount/purpose only — status/reference are always
+        # server-controlled via payments.services.process_payment() now
+        # (closes the hole where a caller used to be able to POST an
+        # arbitrary reference/status="success" directly).
         self._auth(self.owner)
         response = self.client.post(
             "/api/billing/transactions/mine/",
-            {"amount": "100.00", "purpose": "AshantiHub Standard Plan — Monthly", "reference": "AH12345678"},
+            {"kind": "subscription", "amount": "100.00", "purpose": "AshantiHub Standard Plan — Monthly"},
             format="json",
         )
         self.assertEqual(response.status_code, 201, response.content)
-        transaction = Transaction.objects.get(reference="AH12345678")
-        self.assertEqual(transaction.business_owner, self.owner)
+        transaction = Transaction.objects.get(business_owner=self.owner)
         self.assertEqual(transaction.status, Transaction.SUCCESS)
+        self.assertEqual(str(transaction.amount), "100.00")
+        self.assertTrue(transaction.reference)
+
+    def test_create_transaction_rejects_client_supplied_status_and_reference(self):
+        # A caller can no longer set status/reference directly — kind is
+        # restricted to the one real usage ("subscription"); anything else
+        # (including trying to sneak status="success" in) is a 400.
+        self._auth(self.owner)
+        response = self.client.post(
+            "/api/billing/transactions/mine/",
+            {"amount": "100.00", "purpose": "Sneaky", "status": "success", "reference": "AH-FAKE"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertFalse(Transaction.objects.filter(reference="AH-FAKE").exists())
 
     def test_list_returns_only_own_transactions(self):
         Transaction.objects.create(

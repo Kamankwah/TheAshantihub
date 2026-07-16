@@ -128,6 +128,50 @@ export function useAuth() {
     return apiPost('/api/accounts/business-owners/me/terms/', {})
   }, [])
 
+  // Staff invite activation (staff onboarding work) — the activate endpoint
+  // only returns {status, token}, not a full login-response shape (no
+  // account_type/full_name), so this mirrors login()'s own
+  // store-token-then-merge-/me/ two-step exactly rather than inventing a
+  // second auth-persistence mechanism: setStoredAuth the freshly-issued
+  // token immediately (as a bare {token, account_type:'staff'} — 'staff' is
+  // hardcoded since this endpoint can only ever activate a StaffUser), then
+  // fetch /me/ (now authorized by that token) to fill in full_name/role/
+  // permissions/etc. before setUser. Callers pass the resolved result into
+  // the same onSuccess() flow AuthModal's login/signup already use, so a
+  // successful activation flips AshantiHub's isAdmin exactly like a staff
+  // login would.
+  const activateStaff = useCallback(async (token, password) => {
+    const data = await apiPost('/api/accounts/staff/activate/', { token, password })
+    setStoredAuth({ token: data.token, account_type: 'staff' })
+    let merged = { token: data.token, account_type: 'staff' }
+    try {
+      const me = await apiFetch('/api/accounts/me/')
+      merged = { ...merged, ...me }
+      setStoredAuth(merged)
+    } catch {
+      // /me/ failed right after activation — same "keep the session, let the
+      // next page load's session-restore effect retry /me/" fallback login()
+      // already relies on above.
+    }
+    setUser(merged)
+    return merged
+  }, [])
+
+  // Password reset (staff onboarding + account-recovery work) — plain
+  // apiPost wrappers with no local auth-state side effects, same convention
+  // as acceptBusinessTerms/submitPayoutInfo above. account_type is one of
+  // 'customer'/'business_owner'/'staff', matching LOGIN_PATHS' keys. The
+  // request step deliberately doesn't throw/surface "no such account" — the
+  // backend always returns a generic success response regardless, so callers
+  // should show the same generic copy whether or not this resolves.
+  const requestPasswordReset = useCallback(async (accountType, email) => {
+    return apiPost('/api/accounts/password-reset/request/', { email, account_type: accountType })
+  }, [])
+
+  const confirmPasswordReset = useCallback(async (accountType, token, password) => {
+    return apiPost('/api/accounts/password-reset/confirm/', { token, account_type: accountType, password })
+  }, [])
+
   const refreshUser = useCallback(async () => {
     const me = await apiFetch('/api/accounts/me/')
     setUser((current) => {
@@ -149,5 +193,6 @@ export function useAuth() {
     submitBusinessInfo, submitPayoutInfo, submitPlanSelection, acceptBusinessTerms, refreshUser,
     updateProfile, hasPermission,
     requestSecondaryEmail, confirmSecondaryEmail, requestSecondaryPhone, confirmSecondaryPhone,
+    activateStaff, requestPasswordReset, confirmPasswordReset,
   }
 }

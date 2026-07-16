@@ -316,3 +316,40 @@ describe('AshantiHub routing — dashboard and detail routes', () => {
     8000,
   )
 })
+
+// Hubtel integration (docs/HUBTEL_INTEGRATION.md, plan Workstream E) — the
+// page a customer/business owner lands back on after Hubtel's hosted
+// checkout. Unexercised in real usage until real Hubtel credentials exist,
+// but the route/page itself is real and hard-reload-safe like every other
+// page in this file, so it gets the same routing coverage.
+describe('AshantiHub routing — /payment/return', () => {
+  it(
+    'mounting directly at /payment/return polls the checkout session and shows a success state',
+    async () => {
+      server.use(
+        http.get('http://localhost:8000/api/payments/checkout-sessions/AH-TEST-REF/', () =>
+          HttpResponse.json({
+            reference: 'AH-TEST-REF', kind: 'order_checkout', amount: '150.00',
+            purpose: 'AshantiHub Order #1', status: 'success', checkout_url: null,
+            created_at: '2026-07-15T10:00:00Z',
+          }),
+        ),
+      )
+      renderAtPath('/payment/return?reference=AH-TEST-REF')
+      expect(await screen.findByText(/Payment Successful/i, {}, { timeout: 3000 })).toBeInTheDocument()
+    },
+    8000,
+  )
+
+  it(
+    'mounting directly at /payment/return with no ?reference= shows an error, not a Home bounce',
+    async () => {
+      renderAtPath('/payment/return')
+      expect(
+        await screen.findByText(/No payment reference found/i, {}, { timeout: 3000 }),
+      ).toBeInTheDocument()
+      expect(screen.queryByText(/Ashanti Rising/i)).not.toBeInTheDocument()
+    },
+    8000,
+  )
+})
