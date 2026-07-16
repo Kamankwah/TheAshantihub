@@ -1,4 +1,5 @@
 from datetime import timedelta
+from decimal import Decimal
 
 from django.utils import timezone
 from rest_framework import serializers
@@ -171,6 +172,37 @@ class TransactionSerializer(serializers.ModelSerializer):
         fields = ["id", "amount", "purpose", "status", "reference", "created_at"]
         read_only_fields = ["id", "created_at"]
         extra_kwargs = {"status": {"required": False}}
+
+
+class TransactionMineCreateSerializer(serializers.Serializer):
+    """Input for POST /api/billing/transactions/mine/ — routed through
+    payments.services.process_payment() (docs/HUBTEL_INTEGRATION.md, plan
+    Workstream E) rather than creating a Transaction directly. Deliberately
+    narrow: the caller supplies only `kind`/`amount`/`purpose` (+ optional
+    `metadata`, forwarded to process_payment() for the kind's finalizer —
+    e.g. "subscription" needs the plan tier + cycle_months to actually
+    activate the subscription on confirmed payment). `status`/`reference`
+    are never client-settable — this closes a real security hole the old
+    plain TransactionSerializer-backed create() had, where an authenticated
+    business owner could POST an arbitrary reference and status="success"
+    directly onto the ledger with no server-side validation at all.
+
+    `kind` is restricted to "subscription" — the only real usage of this
+    endpoint today (see frontend SubscriptionPanel.jsx/PaymentsPanel.jsx's
+    recordSubscriptionPayment). Hero-media extension and listing promotion
+    (also modeled in payments.models.CheckoutSession.KIND_CHOICES) go
+    through their own dedicated endpoints (HeroExtendView/ListingPromoteView
+    in backend/listings/views.py) and are not accepted here.
+    """
+
+    # Matches payments.models.CheckoutSession.SUBSCRIPTION's string value —
+    # kept as a plain literal rather than importing payments.models here to
+    # keep billing (the more foundational ledger app) from depending on
+    # payments (the newer, cross-cutting app that depends on billing).
+    kind = serializers.ChoiceField(choices=["subscription"])
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal("0.01"))
+    purpose = serializers.CharField(max_length=255)
+    metadata = serializers.JSONField(required=False)
 
 
 class TransactionReportSerializer(serializers.ModelSerializer):

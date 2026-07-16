@@ -12,6 +12,16 @@ urlpatterns = [
         views.StaffResendInviteView.as_view(),
         name="staff-resend-invite",
     ),
+    path(
+        "password-reset/request/",
+        views.PasswordResetRequestView.as_view(),
+        name="password-reset-request",
+    ),
+    path(
+        "password-reset/confirm/",
+        views.PasswordResetConfirmView.as_view(),
+        name="password-reset-confirm",
+    ),
     path("customers/login/", views.CustomerLoginView.as_view(), name="customer-login"),
     path(
         "customers/me/profile/",

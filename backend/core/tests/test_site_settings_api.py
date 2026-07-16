@@ -61,6 +61,10 @@ class SiteSettingsAPITests(TestCase):
                 "support_hours": "Mon–Sat, 8:00am – 8:00pm GMT",
                 "warranty_returns_policy": "Returns accepted within 7 days.",
                 "service_dispute_policy": "Contact support to raise a dispute.",
+                # Read-only, derived from settings.PAYMENTS_PROVIDER (Hubtel
+                # integration, plan Workstream E) — "simulated" here since
+                # the test settings have no HUBTEL_CLIENT_ID configured.
+                "payments_provider": "simulated",
             },
         )
 

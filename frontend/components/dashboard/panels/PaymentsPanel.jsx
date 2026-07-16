@@ -76,12 +76,23 @@ export default function PaymentsPanel({ user, PaymentComponent }) {
     setActionError(null);
     const amount = Number(selectedPlan.monthly_price) * cycleMonths;
     try {
-      await apiPost("/api/billing/transactions/mine/", {
+      // kind/amount/purpose only — status/reference are always
+      // server-controlled via payments.services.process_payment() now
+      // (Hubtel integration, docs/HUBTEL_INTEGRATION.md). `metadata` carries
+      // the plan tier + cycle_months so process_payment()'s "subscription"
+      // finalizer can actually activate the subscription itself once a real
+      // Hubtel webhook confirms payment — see SubscriptionPanel.jsx's
+      // near-identical copy of this function for the fuller comment.
+      const response = await apiPost("/api/billing/transactions/mine/", {
+        kind: "subscription",
         amount: amount.toFixed(2),
         purpose: `AshantiHub ${selectedPlan.name} Plan — ${cycleLabel}`,
-        reference: ref,
-        status: "success",
+        metadata: { plan: selectedPlan.tier, cycle_months: cycleMonths },
       });
+      if (response?.mode === "redirect") {
+        window.location.href = response.checkout_url;
+        return;
+      }
       await apiPost("/api/billing/subscriptions/me/", { plan: selectedPlan.tier, cycle_months: cycleMonths });
       refetchTx();
     } catch (err) {

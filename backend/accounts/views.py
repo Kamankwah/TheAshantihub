@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .authentication import issue_token
+from .emails import send_staff_invite_email, send_verification_code_email
 from .models import BusinessOwner, Customer, StaffUser
 from .permissions import HasRolePermission
 from .serializers import (
@@ -26,6 +27,8 @@ from .serializers import (
     CustomerSecondaryEmailRequestSerializer,
     CustomerSecondaryPhoneConfirmSerializer,
     CustomerSecondaryPhoneRequestSerializer,
+    PasswordResetConfirmSerializer,
+    PasswordResetRequestSerializer,
     PayoutDetailSerializer,
     StaffActivateSerializer,
     StaffInviteSerializer,
@@ -116,6 +119,9 @@ class StaffResendInviteView(APIView):
         staff.invite_token = get_random_string(43)
         staff.invite_expires_at = timezone.now() + INVITE_TOKEN_LIFETIME
         staff.save(update_fields=["invite_token", "invite_expires_at"])
+        send_staff_invite_email(
+            staff, f"https://theashantihub.com/staff/activate?token={staff.invite_token}"
+        )
         return Response({"status": "invite resent"})
 
 
@@ -170,6 +176,34 @@ class StaffLoginView(generics.GenericAPIView):
             "role": account.role.name,
             "permissions": list(account.role.permissions.values_list("codename", flat=True)),
         })
+
+
+class PasswordResetRequestView(generics.GenericAPIView):
+    serializer_class = PasswordResetRequestSerializer
+    permission_classes = [AllowAny]
+    throttle_scope = "password_reset_request"
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        # Always a generic response, whether or not the email matched an
+        # account — see PasswordResetRequestSerializer.save().
+        return Response(
+            {"detail": "If an account with that email exists, a password reset link has been sent."}
+        )
+
+
+class PasswordResetConfirmView(generics.GenericAPIView):
+    serializer_class = PasswordResetConfirmSerializer
+    permission_classes = [AllowAny]
+    throttle_scope = "password_reset_request"
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"status": "password reset"})
 
 
 class KYCPendingQueueView(generics.ListAPIView):
@@ -284,10 +318,12 @@ class CustomerProfileUpdateView(generics.RetrieveUpdateAPIView):
 # Secondary email/phone verification (user_account_dashboard work) — each is
 # a two-step request/confirm pair mirroring StaffActivateSerializer's
 # invite-token shape above, just with a 6-digit code instead of a long random
-# token. No real email/SMS transport exists anywhere in this codebase (see
-# CLAUDE.md's notes on Hubtel payments/AI messaging both being simulated), so
-# the request view returns the code directly in its response — clearly
-# labeled `demo_code` — rather than silently pretending to deliver it.
+# token. Real email transport now exists (accounts/emails.py) — the email
+# variant below sends the code via send_verification_code_email rather than
+# returning it in the response. No SMS transport exists (see CLAUDE.md's
+# notes on Hubtel payments/AI messaging both being simulated), so the phone
+# variant still returns the code directly in its response — clearly labeled
+# `demo_code` — rather than silently pretending to deliver it.
 class CustomerSecondaryEmailRequestView(generics.GenericAPIView):
     serializer_class = CustomerSecondaryEmailRequestSerializer
     permission_classes = [IsCustomer]
@@ -296,9 +332,9 @@ class CustomerSecondaryEmailRequestView(generics.GenericAPIView):
         serializer = self.get_serializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         customer = serializer.save()
+        send_verification_code_email(customer.secondary_email, customer.secondary_email_verify_code)
         return Response({
             "secondary_email": customer.secondary_email,
-            "demo_code": customer.secondary_email_verify_code,
             "expires_in_minutes": 10,
         })
 

@@ -21,7 +21,8 @@ import { useOrders } from "./hooks/useOrders.js";
 import { useMyConversations } from "./hooks/useMyConversations.js";
 import { useMyTickets } from "./hooks/useMyTickets.js";
 import { useMyCustomerProfile } from "./hooks/useMyCustomerProfile.js";
-import { apiPost, apiPatch } from "./apiClient.js";
+import { useSiteSettings } from "./hooks/useSiteSettings.js";
+import { apiFetch, apiPost, apiPatch } from "./apiClient.js";
 import { C, CURRENCIES } from "./theme.js";
 import Flag from "./components/Flag.jsx";
 import Navbar from "./components/Navbar.jsx";
@@ -85,7 +86,32 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
   const [success, setSuccess] = useState(false);
   const [txnRef] = useState(`AH${Date.now().toString().slice(-8)}`);
 
+  // Hubtel integration (docs/HUBTEL_INTEGRATION.md, plan Workstream E) — the
+  // real 30s "processing" countdown/success-receipt UI below only makes
+  // sense in simulated mode, where there's no real gateway and onSuccess's
+  // caller records the payment directly. When payments_provider is
+  // "hubtel", the *real* wait/confirmation happens on Hubtel's own hosted
+  // checkout page after redirect — reached in each of the ~7 onSuccess
+  // handlers' own added `mode==="redirect"` branch (see e.g.
+  // CartDrawer.jsx's handlePaymentSuccess) once process_payment()'s
+  // response comes back. So step 3 here just fires onSuccess immediately
+  // (no countdown) and shows a "redirecting" message instead of the
+  // simulated processing/receipt UI — the caller is what actually performs
+  // `window.location.href = checkout_url`. `useSiteSettings()` is read here
+  // rather than threaded down as a prop since every one of this component's
+  // ~7 call sites would otherwise need to plumb it through identically.
+  const { data: siteSettings } = useSiteSettings();
+  const isHubtel = siteSettings?.payments_provider === "hubtel";
+
   useEffect(() => {
+    if (step === 3 && !success && isHubtel) {
+      // No countdown in Hubtel mode — call onSuccess right away so the
+      // caller can redirect to the real Hubtel checkout_url as soon as
+      // possible, rather than making the user sit through a fake wait for
+      // a "success" this component has no way of actually confirming.
+      onSuccess && onSuccess(txnRef);
+      return;
+    }
     if (step === 3 && !success) {
       let successTimeout;
       const timer = setInterval(() => {
@@ -105,7 +131,7 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
       }, 100);
       return () => { clearInterval(timer); clearTimeout(successTimeout); };
     }
-  }, [step, success]);
+  }, [step, success, isHubtel]);
 
   const selectedNetwork = MOMO_NETWORKS.find(n => n.id === network);
   const fee = amount * 0.015;
@@ -214,7 +240,22 @@ export function MoMoPayment({ amount, purpose, businessName, onSuccess, onClose 
           {/* Step 3 — Processing / Success */}
           {step === 3 && (
             <div style={{ textAlign:"center", padding:"10px 0" }}>
-              {!success ? (
+              {isHubtel ? (
+                // Hubtel mode: onSuccess already fired the instant this step
+                // was reached (see the effect above) — the caller is about
+                // to redirect the browser to Hubtel's real checkout_url, so
+                // this is just a brief "hang on" message, not a fake
+                // processing/receipt UI this component can't actually back.
+                <>
+                  <div style={{ fontSize:"3rem", marginBottom:14 }}>
+                    <div style={{ display:"inline-block", animation:"spin 1s linear infinite" }}>⏳</div>
+                  </div>
+                  <div style={{ fontWeight:900, color:C.darkBrown, fontSize:"1rem", marginBottom:6 }}>Redirecting to secure payment…</div>
+                  <div style={{ color:"#555", fontSize:"0.78rem", lineHeight:1.6 }}>
+                    You're being taken to Hubtel to complete your GHS {amount.toFixed(2)} payment.
+                  </div>
+                </>
+              ) : !success ? (
                 <>
                   <div style={{ fontSize:"3rem", marginBottom:14 }}>
                     <div style={{ display:"inline-block", animation:"spin 1s linear infinite" }}>⏳</div>
@@ -365,7 +406,14 @@ function formatConvTime(iso) {
     : d.toLocaleDateString("en-GH", { month: "short", day: "numeric" });
 }
 
-function MessagingCenter({ user, onClose, initialBusiness }) {
+// `embedded` (messaging fixes work) — false (default) renders as the
+// existing small bottom-right-anchored floating widget (Card's Contact
+// Support, ListingDetailPage, ChatLauncher's own render all use this
+// default); true renders the same two-pane layout inline in normal document
+// flow instead, sized to fill its container — used only by UserPanel's
+// Messages tab, where a full floating widget/backdrop makes no sense inside
+// an already-dedicated dashboard tab.
+function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
   const isSignedIn = !!user;
   const selfSenderType = user?.accountType === "business_owner" ? "business_owner" : "customer";
   const { data: conversationsData, refetch } = useMyConversations(isSignedIn);
@@ -425,13 +473,28 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
   const totalUnread = conversations.filter(needsCustomerAttention).length;
   const filteredConvs = conversations.filter(c => (c.subject || "AshantiHub Support").toLowerCase().includes(searchConv.toLowerCase()));
 
-  return (
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:8}}
-      onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-      <div style={{background:"white",borderRadius:20,width:"100%",maxWidth:780,height:"85vh",display:"flex",overflow:"hidden",boxShadow:"0 24px 64px rgba(0,0,0,0.4)"}}>
+  // Wrapper chrome branches on `embedded` — see the prop comment above.
+  // Embedded: a plain, unstyled div in normal document flow (no fixed
+  // positioning, no backdrop, nothing to click "outside" of). Widget
+  // (default): a small fixed bottom-right panel — same corner/footprint
+  // convention as ChatLauncher's own floating bubble, sitting just above it
+  // — with a shadow instead of a full-page dark backdrop, so the rest of the
+  // page stays visible/usable behind it.
+  const wrapperStyle = embedded
+    ? undefined
+    : {position:"fixed",bottom:92,right:20,zIndex:2000,width:380,maxWidth:"calc(100vw - 40px)",height:600,maxHeight:"calc(100vh - 120px)"};
+  const panelStyle = embedded
+    ? {background:"white",borderRadius:20,width:"100%",height:"70vh",display:"flex",overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,0.14)"}
+    : {background:"white",borderRadius:20,width:"100%",height:"100%",display:"flex",overflow:"hidden",boxShadow:"0 16px 48px rgba(0,0,0,0.28)"};
 
-        {/* LEFT — Conversation List */}
-        <div style={{width:260,borderRight:`1px solid #f0f0f0`,display:"flex",flexDirection:"column",flexShrink:0}}>
+  return (
+    <div style={wrapperStyle}>
+      <div style={panelStyle}>
+
+        {/* LEFT — Conversation List. Narrower in the floating-widget layout
+            (380px total) than the embedded dashboard-tab layout (fills its
+            container), so the chat pane itself still has usable room. */}
+        <div style={{width:embedded?260:120,borderRight:`1px solid #f0f0f0`,display:"flex",flexDirection:"column",flexShrink:0}}>
           {/* Header */}
           <div style={{background:`linear-gradient(135deg,${C.darkBrown},${C.kente3})`,padding:"16px",position:"relative"}}>
             <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
@@ -520,7 +583,16 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
                 <div style={{flex:1}}>
                   <div style={{fontWeight:900,fontSize:"0.88rem",color:C.darkBrown}}>AshantiHub Support</div>
                   <div style={{fontSize:"0.68rem",color:C.deepGold,fontWeight:700,marginBottom:1}}>{activeConv?.subject ? `Re: ${activeConv.subject}` : "New conversation"}</div>
-                  <div style={{fontSize:"0.65rem",color:"#22c55e",fontWeight:600}}>● Support team online now</div>
+                  {/* "Starts once staff replies" status (messaging fixes work) —
+                      an open conversation with zero staff messages yet is
+                      waiting, not "online"; a brand-new (no activeConv at all)
+                      caller still sees the original "online" copy, matching
+                      what this line always showed before a conversation exists. */}
+                  {activeConv && !activeConv.messages.some(m=>m.sender_type==="staff") ? (
+                    <div style={{fontSize:"0.65rem",color:"#f59e0b",fontWeight:600}}>🕐 Waiting for a staff reply...</div>
+                  ) : (
+                    <div style={{fontSize:"0.65rem",color:"#22c55e",fontWeight:600}}>● Support team online now</div>
+                  )}
                 </div>
                 <div style={{display:"flex",gap:8}}>
                   <button onClick={onClose} style={{background:"#f0f0f0",border:"none",borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#666",fontSize:"0.9rem"}}>✕</button>
@@ -534,10 +606,27 @@ function MessagingCenter({ user, onClose, initialBusiness }) {
                     <span style={{background:"#e0e0e0",color:"#888",borderRadius:20,padding:"3px 12px",fontSize:"0.62rem",fontWeight:600}}>Conversation started {formatConvTime(activeConv.created_at)}</span>
                   </div>
                 )}
+                {/* Auto-welcome (messaging fixes work) — a purely client-side
+                    bubble, not a real Message, styled exactly like an
+                    incoming staff message bubble (same JSX/styling as the
+                    msg.sender_type==="staff" case below). Always shown
+                    whenever there's no active conversation yet; the old
+                    plain "send a message below..." placeholder is trimmed
+                    down underneath it now that the bubble carries the
+                    greeting. */}
                 {!activeConv&&(
-                  <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:10,color:"#aaa",textAlign:"center"}}>
-                    <div style={{fontSize:"2.5rem"}}>✉️</div>
-                    <div style={{fontSize:"0.76rem",maxWidth:220,lineHeight:1.6}}>Send a message below to start a new conversation with AshantiHub Support{initialBusiness?` about ${initialBusiness.name}`:""}.</div>
+                  <div style={{flex:1,display:"flex",flexDirection:"column",justifyContent:"center",gap:14}}>
+                    <div style={{display:"flex",justifyContent:"flex-start",alignItems:"flex-end",gap:8}}>
+                      <div style={{width:28,height:28,borderRadius:"50%",background:`${C.gold}20`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.9rem",flexShrink:0}}>🎧</div>
+                      <div style={{maxWidth:"72%"}}>
+                        <div style={{background:"white",color:C.darkBrown,borderRadius:"18px 18px 18px 4px",padding:"10px 14px",fontSize:"0.78rem",lineHeight:1.5,boxShadow:"0 1px 4px rgba(0,0,0,0.1)"}}>
+                          👋 Welcome to AshantiHub! How may I help you today?
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{textAlign:"center",color:"#aaa",fontSize:"0.7rem",lineHeight:1.6,padding:"0 24px"}}>
+                      Send a message below to start a new conversation{initialBusiness?` about ${initialBusiness.name}`:""}.
+                    </div>
                   </div>
                 )}
                 {(activeConv?.messages||[]).map(msg=>{
@@ -982,6 +1071,18 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
   const [email,setEmail]=useState("");
   const [error,setError]=useState(null);
   const [submitting,setSubmitting]=useState(false);
+  // "Forgot password?" (staff onboarding + account-recovery work) — a third
+  // inline `mode`, reachable from the login form regardless of
+  // lockedAccountType (a staff member locked into "staff-login" needs
+  // password recovery too), rather than a separate route/component — the
+  // request step only needs an email + account-type, no URL state, so it
+  // fits this modal's existing mode-toggle convention. The confirm step
+  // (token from a real emailed link) is the separate /reset-password route
+  // (ResetPasswordPage, below) since that step needs URL query params.
+  const [resetAccountType,setResetAccountType]=useState(lockedAccountType || "customer");
+  const [resetEmail,setResetEmail]=useState("");
+  const [resetSubmitting,setResetSubmitting]=useState(false);
+  const [resetSubmitted,setResetSubmitted]=useState(false);
 
   const handleLogin=async(e)=>{
     e.preventDefault();
@@ -994,6 +1095,23 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
       setError("Invalid credentials. Please check your details and try again.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Always resolves to the same generic "check your email" state regardless
+  // of success/failure — the backend itself never reveals whether the email
+  // matched an account (see docs plan), so there is nothing more specific to
+  // show here even on a genuine network error.
+  const handleForgotPassword=async(e)=>{
+    e.preventDefault();
+    setResetSubmitting(true);
+    try {
+      await auth.requestPasswordReset(lockedAccountType||resetAccountType,resetEmail);
+    } catch (err) {
+      // Intentionally swallowed — see comment above.
+    } finally {
+      setResetSubmitting(false);
+      setResetSubmitted(true);
     }
   };
 
@@ -1021,10 +1139,10 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
     <div style={{background:"white",borderRadius:22,width:"100%",maxWidth:440,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
       <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,borderRadius:"22px 22px 0 0",padding:"20px 24px",position:"relative"}}>
         <button onClick={onClose} style={{position:"absolute",top:14,right:16,background:"none",border:"none",color:"white",fontSize:"1.4rem",cursor:"pointer",opacity:0.7}}>✕</button>
-        <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>{lockedAccountType==="staff"?"Staff Sign In":mode==="login"?"Welcome back":"Create your account"}</div>
+        <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>{mode==="forgot"?"Reset your password":lockedAccountType==="staff"?"Staff Sign In":mode==="login"?"Welcome back":"Create your account"}</div>
       </div>
       <div style={{padding:"20px 24px"}}>
-        {!lockedAccountType && <div style={{display:"flex",gap:8,marginBottom:16}}>
+        {!lockedAccountType && mode!=="forgot" && <div style={{display:"flex",gap:8,marginBottom:16}}>
           <button type="button" onClick={()=>setMode("login")} style={{flex:1,padding:"8px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:800,fontSize:"0.78rem",background:mode==="login"?C.gold:"#eee",color:mode==="login"?C.darkBrown:"#666"}}>Sign In</button>
           <button type="button" onClick={()=>setMode("signup")} style={{flex:1,padding:"8px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:800,fontSize:"0.78rem",background:mode==="signup"?C.gold:"#eee",color:mode==="signup"?C.darkBrown:"#666"}}>Sign Up</button>
         </div>}
@@ -1039,7 +1157,30 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
           <input value={identifier} onChange={e=>setIdentifier(e.target.value)} placeholder="Phone or email" required style={authInputStyle}/>
           <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password" required style={authInputStyle}/>
           <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Signing in…":"Sign In"}</button>
+          <div style={{textAlign:"center",marginTop:10}}>
+            <button type="button" onClick={()=>{setMode("forgot");setError(null);setResetSubmitted(false);}} style={{background:"none",border:"none",color:C.deepGold,fontSize:"0.74rem",fontWeight:700,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit"}}>Forgot password?</button>
+          </div>
         </form>}
+
+        {mode==="forgot" && <div>
+          <button type="button" onClick={()=>{setMode("login");setResetSubmitted(false);}} style={{background:"none",border:"none",color:C.deepGold,fontSize:"0.74rem",fontWeight:700,cursor:"pointer",marginBottom:14,padding:0,fontFamily:"inherit"}}>← Back to Sign In</button>
+          {resetSubmitted ? (
+            <div style={{background:"#eafaf0",color:"#1b7a43",borderRadius:10,padding:"12px 14px",fontSize:"0.8rem",lineHeight:1.6}}>
+              If an account exists for that email, we've sent a password reset link. Please check your inbox (and spam folder).
+            </div>
+          ) : (
+            <form onSubmit={handleForgotPassword}>
+              <div style={{fontSize:"0.76rem",color:"#666",marginBottom:12,lineHeight:1.5}}>Enter your account email and we'll send you a link to reset your password.</div>
+              {!lockedAccountType && <div style={{display:"flex",gap:6,marginBottom:12}}>
+                <button type="button" onClick={()=>setResetAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.68rem",background:resetAccountType==="customer"?C.gold:"white"}}>Customer</button>
+                <button type="button" onClick={()=>setResetAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.68rem",background:resetAccountType==="business_owner"?C.gold:"white"}}>Business Owner</button>
+                <button type="button" onClick={()=>setResetAccountType("staff")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.68rem",background:resetAccountType==="staff"?C.gold:"white"}}>Staff</button>
+              </div>}
+              <input value={resetEmail} onChange={e=>setResetEmail(e.target.value)} type="email" placeholder="Email" required style={authInputStyle}/>
+              <button type="submit" disabled={resetSubmitting} style={authSubmitStyle}>{resetSubmitting?"Sending…":"Send Reset Link"}</button>
+            </form>
+          )}
+        </div>}
 
         {mode==="signup" && <form onSubmit={handleSignup}>
           <div style={{display:"flex",gap:8,marginBottom:12}}>
@@ -1052,6 +1193,208 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
           <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" required minLength={8} style={authInputStyle}/>
           <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Creating account…":accountType==="business_owner"?"Create Business Account":"Create Free Account"}</button>
         </form>}
+      </div>
+    </div>
+  </div>;
+}
+
+// ─── Staff Activation Page (/staff/activate) ─────────────────────────────────
+// Consumes the invite-email link (docs plan Workstream B) — reads ?token=
+// from the URL, lets the invited staffer set their password, then reuses
+// exactly the same onSuccess() mechanism AuthModal's login/signup already
+// hand off to AshantiHub (flips isAdmin true + navigates to /staff for a
+// staff result) rather than inventing a second post-auth wiring path.
+function StaffActivatePage({auth,onSuccess}) {
+  const location=useLocation();
+  const token=new URLSearchParams(location.search).get("token")||"";
+  const [password,setPassword]=useState("");
+  const [confirmPassword,setConfirmPassword]=useState("");
+  const [error,setError]=useState(null);
+  const [submitting,setSubmitting]=useState(false);
+
+  const handleSubmit=async(e)=>{
+    e.preventDefault();
+    setError(null);
+    if(!token){setError("This activation link is missing its token. Please use the link from your invite email.");return;}
+    if(password.length<8){setError("Password must be at least 8 characters.");return;}
+    if(password!==confirmPassword){setError("Passwords do not match.");return;}
+    setSubmitting(true);
+    try {
+      const result=await auth.activateStaff(token,password);
+      onSuccess(result);
+    } catch (err) {
+      setError("This activation link is invalid or has expired. Please ask an admin to resend your invite.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:16}}>
+    <div style={{background:"white",borderRadius:22,width:"100%",maxWidth:440,boxShadow:"0 20px 60px rgba(0,0,0,0.3)",overflow:"hidden"}}>
+      <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:"20px 24px"}}>
+        <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>Activate Your Staff Account</div>
+      </div>
+      <div style={{padding:"20px 24px"}}>
+        {error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
+        {!token && !error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>No activation token found in this link. Please use the exact link from your invite email.</div>}
+        <form onSubmit={handleSubmit}>
+          <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" required minLength={8} style={authInputStyle}/>
+          <input value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} type="password" placeholder="Confirm password" required minLength={8} style={authInputStyle}/>
+          <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Activating…":"Activate Account"}</button>
+        </form>
+      </div>
+    </div>
+  </div>;
+}
+
+// ─── Password Reset Confirm Page (/reset-password) ───────────────────────────
+// The confirm half of the reset flow — AuthModal's "Forgot password?" (see
+// above) handles the request step inline since it only needs an email/
+// account-type and no URL state; this page is the destination of the emailed
+// reset link, which does carry URL state (?token=&type=), so it needs its
+// own route. On success it hands control back to the normal sign-in flow —
+// navigate home and open AuthModal in login mode — rather than logging the
+// user in directly, since a password reset on its own carries no session
+// token to store.
+function ResetPasswordPage({auth,setPage,setAuthModal}) {
+  const location=useLocation();
+  const params=new URLSearchParams(location.search);
+  const token=params.get("token")||"";
+  const accountType=params.get("type")||"customer";
+  const [password,setPassword]=useState("");
+  const [confirmPassword,setConfirmPassword]=useState("");
+  const [error,setError]=useState(null);
+  const [submitting,setSubmitting]=useState(false);
+  const [success,setSuccess]=useState(false);
+
+  const handleSubmit=async(e)=>{
+    e.preventDefault();
+    setError(null);
+    if(!token){setError("This reset link is missing its token. Please request a new one.");return;}
+    if(password.length<8){setError("Password must be at least 8 characters.");return;}
+    if(password!==confirmPassword){setError("Passwords do not match.");return;}
+    setSubmitting(true);
+    try {
+      await auth.confirmPasswordReset(accountType,token,password);
+      setSuccess(true);
+    } catch (err) {
+      setError("This reset link is invalid or has expired. Please request a new one.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:16}}>
+    <div style={{background:"white",borderRadius:22,width:"100%",maxWidth:440,boxShadow:"0 20px 60px rgba(0,0,0,0.3)",overflow:"hidden"}}>
+      <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:"20px 24px"}}>
+        <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>Reset Your Password</div>
+      </div>
+      <div style={{padding:"20px 24px"}}>
+        {success ? (
+          <>
+            <div style={{background:"#eafaf0",color:"#1b7a43",borderRadius:10,padding:"12px 14px",marginBottom:16,fontSize:"0.8rem",lineHeight:1.6}}>Your password has been reset. You can now sign in with your new password.</div>
+            <button onClick={()=>{setAuthModal("login");setPage("home");}} style={authSubmitStyle}>Sign In</button>
+          </>
+        ) : (
+          <>
+            {error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
+            {!token && !error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>No reset token found in this link. Please request a new one from the sign-in screen.</div>}
+            <form onSubmit={handleSubmit}>
+              <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="New password (min 8 characters)" required minLength={8} style={authInputStyle}/>
+              <input value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} type="password" placeholder="Confirm new password" required minLength={8} style={authInputStyle}/>
+              <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Resetting…":"Reset Password"}</button>
+            </form>
+          </>
+        )}
+      </div>
+    </div>
+  </div>;
+}
+
+// ─── Payment Return Page (/payment/return) ───────────────────────────────────
+// Hubtel integration (docs/HUBTEL_INTEGRATION.md, plan Workstream E) — where
+// a customer/business owner lands back after Hubtel's hosted checkout
+// (MoMoPayment's redirect, and every onSuccess handler's own added
+// `mode==="redirect"` branch, both point here via `?reference=`). The
+// redirect itself is never trusted as proof of payment — this page polls
+// GET /api/payments/checkout-sessions/{reference}/ (the only source of
+// truth, resolved by payments.views.HubtelWebhookView) rather than reading
+// anything off the URL/query string as a success signal. Functional-but-
+// not-fully-polished per the launch plan: this path is entirely unexercised
+// until real Hubtel credentials exist (payments_provider stays "simulated"
+// until then), so nothing has ever actually redirected here in practice.
+const PAYMENT_RETURN_POLL_INTERVAL_MS = 2000;
+const PAYMENT_RETURN_TIMEOUT_MS = 60000;
+
+function PaymentReturnPage({setPage}) {
+  const location = useLocation();
+  const reference = new URLSearchParams(location.search).get("reference") || "";
+  const [session,setSession] = useState(null);
+  const [error,setError] = useState(null);
+  const [timedOut,setTimedOut] = useState(false);
+
+  useEffect(() => {
+    if (!reference) { setError("No payment reference found in this link."); return; }
+
+    let cancelled = false;
+    const startedAt = Date.now();
+
+    const poll = async () => {
+      if (cancelled) return;
+      try {
+        const data = await apiFetch(`/api/payments/checkout-sessions/${reference}/`);
+        if (cancelled) return;
+        setSession(data);
+        if (data.status !== "pending") return; // stop polling — resolved
+        if (Date.now() - startedAt >= PAYMENT_RETURN_TIMEOUT_MS) { setTimedOut(true); return; }
+        setTimeout(poll, PAYMENT_RETURN_POLL_INTERVAL_MS);
+      } catch (err) {
+        if (!cancelled) setError("Could not check this payment's status. Please check your account for the latest status.");
+      }
+    };
+    poll();
+    return () => { cancelled = true; };
+  }, [reference]);
+
+  const status = session?.status;
+  const isDone = status && status !== "pending";
+
+  return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:16}}>
+    <div style={{background:"white",borderRadius:22,width:"100%",maxWidth:440,boxShadow:"0 20px 60px rgba(0,0,0,0.3)",overflow:"hidden",textAlign:"center"}}>
+      <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:"20px 24px"}}>
+        <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>Payment Status</div>
+      </div>
+      <div style={{padding:"28px 24px"}}>
+        {error ? (
+          <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"12px 14px",fontSize:"0.8rem",lineHeight:1.6}}>{error}</div>
+        ) : !session ? (
+          <div style={{color:"#555",fontSize:"0.82rem"}}>Confirming your payment…</div>
+        ) : status === "success" ? (
+          <>
+            <div style={{fontSize:"3rem",marginBottom:10}}>✅</div>
+            <div style={{fontWeight:900,color:"#22c55e",fontSize:"1rem",marginBottom:8}}>Payment Successful!</div>
+            <div style={{color:"#555",fontSize:"0.8rem",lineHeight:1.6}}>Your payment of GHS {session.amount} for "{session.purpose}" has been confirmed.</div>
+          </>
+        ) : status === "failed" ? (
+          <>
+            <div style={{fontSize:"3rem",marginBottom:10}}>❌</div>
+            <div style={{fontWeight:900,color:"#dc2626",fontSize:"1rem",marginBottom:8}}>Payment Failed</div>
+            <div style={{color:"#555",fontSize:"0.8rem",lineHeight:1.6}}>Your payment could not be completed. Please try again.</div>
+          </>
+        ) : status === "expired" ? (
+          <>
+            <div style={{fontSize:"3rem",marginBottom:10}}>⏰</div>
+            <div style={{fontWeight:900,color:"#d97706",fontSize:"1rem",marginBottom:8}}>Payment Expired</div>
+            <div style={{color:"#555",fontSize:"0.8rem",lineHeight:1.6}}>This checkout session expired before payment was completed. Please try again.</div>
+          </>
+        ) : timedOut ? (
+          <div style={{color:"#555",fontSize:"0.82rem",lineHeight:1.6}}>Still confirming your payment — this is taking longer than expected. Check "My Account" shortly for the latest status.</div>
+        ) : (
+          <div style={{color:"#555",fontSize:"0.82rem"}}>Confirming your payment…</div>
+        )}
+        {(isDone || error || timedOut) && (
+          <button onClick={()=>setPage("home")} style={{...authSubmitStyle,marginTop:16}}>Back to AshantiHub</button>
+        )}
       </div>
     </div>
   </div>;
@@ -1264,7 +1607,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
         {activeTab==="overview"&&<OverviewPanel favourites={favourites} user={user}/>}
         {activeTab==="orders"&&<OrdersDeliveryTab searchQuery={searchQuery}/>}
         {activeTab==="saved"&&<SavedBusinessesTab favourites={favourites} toggleFav={toggleFav}/>}
-        {activeTab==="messages"&&<MessagingCenter user={user} onClose={()=>goTab("profile")}/>}
+        {activeTab==="messages"&&<MessagingCenter user={user} onClose={()=>goTab("profile")} embedded/>}
         {activeTab==="events"&&<MyEventsTab user={user} categories={categories} zones={zones}/>}
         {activeTab==="tickets"&&<TicketsTab searchQuery={searchQuery}/>}
         {activeTab==="profile"&&<AccountProfileCard user={user} auth={auth}/>}
@@ -1839,6 +2182,21 @@ const PATH_TO_PAGE = {
   "/about": "about",
   "/contact": "contact",
   "/register": "register",
+  // Staff onboarding + account-recovery work: two more standalone pages,
+  // each rendered as its own early return below (same convention as
+  // showRegistrationFlow/isAdmin/showAccount) rather than living inside the
+  // normal page==="..." JSX switch, since neither needs the surrounding
+  // Navbar/Footer chrome.
+  "/staff/activate": "staff-activate",
+  "/reset-password": "reset-password",
+  // Hubtel integration (docs/HUBTEL_INTEGRATION.md, plan Workstream E) — the
+  // page a customer/business owner lands back on after Hubtel's hosted
+  // checkout. Same "standalone early return, no Navbar/Footer chrome"
+  // convention as the two staff/reset-password pages above; unexercised
+  // until real Hubtel credentials exist (payments_provider stays
+  // "simulated" until then, so nothing ever redirects here today), but
+  // built now per the launch plan.
+  "/payment/return": "payment-return",
 };
 const PAGE_TO_PATH = {
   home: "/",
@@ -1847,6 +2205,9 @@ const PAGE_TO_PATH = {
   about: "/about",
   contact: "/contact",
   register: "/register",
+  "staff-activate": "/staff/activate",
+  "reset-password": "/reset-password",
+  "payment-return": "/payment/return",
 };
 // Full-page dashboard "routes" (isAdmin/showBizDash-style early returns) that
 // now have real URLs too. Same two-map convention as PATH_TO_PAGE/
@@ -2194,6 +2555,13 @@ export default function AshantiHub() {
   // support, not business contact, so they stay as inline wa.me links below.
   const handleConciergeWA=(phone,name)=>{if(!user){setAuthModal("signup");return;}const msg=encodeURIComponent(`Hello ${name}! I'd like some help via AshantiHub.`);window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");};
 
+  // The single post-auth-success handler every auth surface funnels into —
+  // AuthModal's login/signup (below) and now StaffActivatePage's activation
+  // (staff onboarding work) both hand their result here rather than each
+  // separately deciding whether to flip isAdmin, so a staff activation
+  // behaves identically to a staff login.
+  const handleAuthSuccess=(result)=>{setAuthModal(null);if(result.account_type==="staff"){setIsAdmin(true);}};
+
   const showRegistrationFlow = (page==="register" && !user) ||
     (user?.accountType==="business_owner" && user.registrationStep && user.registrationStep!=="complete");
   if(showRegistrationFlow) return <BusinessRegistrationFlow user={user} auth={auth} initialStep={user?.registrationStep} setPage={setPage} setShowBizDash={setShowBizDash}/>;
@@ -2204,6 +2572,11 @@ export default function AshantiHub() {
     initialTab={showPayments?"payments":showCredit?"credit":"analytics"}
     onExit={()=>{setShowBizDash(false);setShowPayments(false);setShowCredit(false);}}
     user={user} auth={auth} PaymentComponent={MoMoPayment}/>;
+  // Staff onboarding + account-recovery work — two more standalone early
+  // returns, same convention as showAccount/showBizDash above.
+  if(page==="staff-activate") return <StaffActivatePage auth={auth} onSuccess={handleAuthSuccess}/>;
+  if(page==="reset-password") return <ResetPasswordPage auth={auth} setPage={setPage} setAuthModal={setAuthModal}/>;
+  if(page==="payment-return") return <PaymentReturnPage setPage={setPage}/>;
   if(isLoading) return <LoadingScreen/>;
   if(show404) return <NotFoundPage onHome={()=>setPage("home")}/>;
 
@@ -2232,7 +2605,7 @@ export default function AshantiHub() {
     <div style={{fontFamily:"'Georgia',serif",background:C.cream,minHeight:"100vh"}}>
       {!cookieDismissed&&<CookieBanner onAccept={()=>{setCookieConsent(true);setCookieDismissed(true);Analytics.track("cookie_accepted");}} onDecline={()=>{setCookieDismissed(true);Analytics.track("cookie_declined");}}/>}
       <OfflineBanner/>
-      {authModal&&<AuthModal authState={authModal} auth={auth} onClose={()=>setAuthModal(null)} onSuccess={(result)=>{setAuthModal(null);if(result.account_type==="staff"){setIsAdmin(true);}}}/>}
+      {authModal&&<AuthModal authState={authModal} auth={auth} onClose={()=>setAuthModal(null)} onSuccess={handleAuthSuccess}/>}
       {showMessaging&&<MessagingCenter user={user} onClose={()=>{setShowMessaging(false);setMessagingBusiness(null);}} initialBusiness={messagingBusiness}/>}
       {showNotifs&&<NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
       {showFavs&&<FavsDrawer/>}
@@ -2640,7 +3013,9 @@ export default function AshantiHub() {
       {/* Footer — every page except the redesigned full-viewport home landing page */}
       {page!=="home"&&<Footer2 setPage={setPage} setShowBizDash={setShowBizDash} setLegalDoc={setLegalDoc}/>}
 
-      {/* Floating chat launcher — opens the existing (mock, Phase-2) MessagingCenter */}
+      {/* Floating chat launcher — opens MessagingCenter (real, DB-backed
+          backend.messaging support chat) as its default small bottom-right
+          widget (embedded=false). */}
       <ChatLauncher
         unreadMessages={unreadMessages}
         onOpen={() => { setShowMessaging(true); if (!user) setAuthModal("signup"); }}

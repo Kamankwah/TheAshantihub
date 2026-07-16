@@ -3,12 +3,24 @@ import { apiPost } from "../../../apiClient.js";
 import { useStaffRoster } from "../../../hooks/useStaffRoster.js";
 import { D, glassCard, STAFF_STATUS_COLORS } from "../theme.js";
 
+// Staff onboarding work — a staff-roster row can be resent an invite while
+// its status is "invited" (still pending, hasn't activated yet) or
+// "invite_expired" (the invite_token's lifetime lapsed before they used it);
+// an "active" row has nothing to resend. Mirrors StaffListSerializer's
+// get_status() values (backend/accounts/serializers.py) exactly.
+const RESENDABLE_STATUSES = new Set(["invited", "invite_expired"]);
+
 export default function StaffManagementPanel() {
   const { data, isLoading, isError, refetch } = useStaffRoster();
   const [inviteName, setInviteName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("");
   const [actionError, setActionError] = useState(null);
+  // Per-row "sent!" confirmation (staff onboarding work) — keyed by staff id
+  // so multiple rows can independently show their own brief confirmation
+  // without a shared/global toast.
+  const [resentIds, setResentIds] = useState(new Set());
+  const [resendingId, setResendingId] = useState(null);
 
   const sendInvite = async () => {
     if (!inviteName || !inviteEmail || !inviteRole) return;
@@ -18,6 +30,20 @@ export default function StaffManagementPanel() {
       setInviteName(""); setInviteEmail(""); setInviteRole("");
       refetch();
     } catch (err) { setActionError("Could not send the invite. Check the details and try again."); }
+  };
+
+  const resendInvite = async (id) => {
+    setActionError(null);
+    setResendingId(id);
+    try {
+      await apiPost(`/api/accounts/staff/${id}/resend-invite/`, {});
+      setResentIds(prev => new Set(prev).add(id));
+      refetch();
+    } catch (err) {
+      setActionError("Could not resend the invite. Please try again.");
+    } finally {
+      setResendingId(null);
+    }
   };
 
   return (
@@ -50,7 +76,18 @@ export default function StaffManagementPanel() {
               <div style={{ color: D.text, fontWeight: 700, fontSize: "0.8rem" }}>{s.full_name}</div>
               <div style={{ color: D.textDim, fontSize: "0.68rem" }}>{s.email} • {s.role}</div>
             </div>
-            <span style={{ background: `${STAFF_STATUS_COLORS[s.status]}22`, color: STAFF_STATUS_COLORS[s.status], borderRadius: 20, padding: "2px 8px", fontSize: "0.62rem", fontWeight: 700 }}>{s.status}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ background: `${STAFF_STATUS_COLORS[s.status]}22`, color: STAFF_STATUS_COLORS[s.status], borderRadius: 20, padding: "2px 8px", fontSize: "0.62rem", fontWeight: 700 }}>{s.status}</span>
+              {RESENDABLE_STATUSES.has(s.status) && (
+                resentIds.has(s.id) ? (
+                  <span style={{ color: D.green, fontSize: "0.66rem", fontWeight: 700 }}>✓ Sent!</span>
+                ) : (
+                  <button onClick={() => resendInvite(s.id)} disabled={resendingId === s.id} style={{ background: "none", border: `1.5px solid ${D.gold}`, color: D.gold, borderRadius: 20, padding: "3px 10px", fontSize: "0.66rem", fontWeight: 700, cursor: resendingId === s.id ? "default" : "pointer", fontFamily: "inherit", opacity: resendingId === s.id ? 0.6 : 1 }}>
+                    {resendingId === s.id ? "Sending…" : "Resend"}
+                  </button>
+                )
+              )}
+            </div>
           </div>
         ))}
       </div>}
