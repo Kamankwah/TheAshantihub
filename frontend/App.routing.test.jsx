@@ -317,6 +317,93 @@ describe('AshantiHub routing — dashboard and detail routes', () => {
   )
 })
 
+// The same signed-out-dashboard bug the /business-dashboard tests above
+// cover, at the one route that was missed: /my-account rendered UserPanel
+// for anyone, so its child panels mounted and fired customer-scoped queries
+// (GET /api/orders/, GET /api/events/tickets/mine/ — both [IsAuthenticated,
+// IsCustomer]) with no session, spamming 401s. Gated on a real customer
+// session now, same as /business-dashboard and /staff.
+describe('AshantiHub routing — /my-account', () => {
+  it(
+    'mounting directly at /my-account while signed out shows a sign-in prompt, not the account page',
+    async () => {
+      let customerScopedCalls = 0
+      server.use(
+        http.get('http://localhost:8000/api/orders/', () => {
+          customerScopedCalls += 1
+          return new HttpResponse(null, { status: 401 })
+        }),
+        http.get('http://localhost:8000/api/events/tickets/mine/', () => {
+          customerScopedCalls += 1
+          return new HttpResponse(null, { status: 401 })
+        }),
+      )
+      renderAtPath('/my-account')
+      expect(
+        await screen.findByText(/Sign in with a customer account/i, {}, { timeout: 3000 }),
+      ).toBeInTheDocument()
+      expect(customerScopedCalls).toBe(0)
+    },
+    8000,
+  )
+
+  it(
+    'mounting directly at /my-account as a signed-in customer renders the account page',
+    async () => {
+      setStoredAuth({ token: 'test-token', account_type: 'customer', id: 1, full_name: 'Ama Owusu' })
+      server.use(
+        http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({
+          account_type: 'customer', id: 1, full_name: 'Ama Owusu', registration_step: 'complete',
+        })),
+        http.get('http://localhost:8000/api/orders/', () => HttpResponse.json([])),
+        http.get('http://localhost:8000/api/events/tickets/mine/', () => HttpResponse.json([])),
+      )
+      try {
+        renderAtPath('/my-account')
+        expect(await screen.findByText(/Akwaaba, Ama/i, {}, { timeout: 3000 })).toBeInTheDocument()
+      } finally {
+        setStoredAuth(null)
+      }
+    },
+    8000,
+  )
+})
+
+// GET /api/messaging/conversations/ admits only Customer/BusinessOwner
+// (messaging/views.py's IsCustomerOrBusinessOwner) — a staff session is
+// signed in but holds no customer-facing inbox of its own (staff read the
+// same threads through the admin MessagingPanel's /api/messaging/staff/
+// instead). Both call sites used to gate this query on merely being signed
+// in (`!!user`), so every staff page load fired a guaranteed 403 — four
+// times over, since React Query retries a failed query 3x by default.
+describe('AshantiHub — messaging queries for a staff session', () => {
+  it(
+    'does not fetch the customer/business-owner conversations endpoint for a staff session',
+    async () => {
+      let conversationCalls = 0
+      setStoredAuth({ token: 'test-token', account_type: 'staff', id: 1, full_name: 'Akosua Support' })
+      server.use(
+        http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({
+          account_type: 'staff', id: 1, full_name: 'Akosua Support',
+          role: 'support', permissions: ['messaging.manage', 'users.view'],
+        })),
+        http.get('http://localhost:8000/api/messaging/conversations/', () => {
+          conversationCalls += 1
+          return new HttpResponse(null, { status: 403 })
+        }),
+      )
+      try {
+        renderAtPath('/staff')
+        expect(await screen.findByText(/Akwaaba, Akosua/i, {}, { timeout: 3000 })).toBeInTheDocument()
+        expect(conversationCalls).toBe(0)
+      } finally {
+        setStoredAuth(null)
+      }
+    },
+    8000,
+  )
+})
+
 // Hubtel integration (docs/HUBTEL_INTEGRATION.md, plan Workstream E) — the
 // page a customer/business owner lands back on after Hubtel's hosted
 // checkout. Unexercised in real usage until real Hubtel credentials exist,

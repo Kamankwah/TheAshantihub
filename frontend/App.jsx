@@ -414,9 +414,15 @@ function formatConvTime(iso) {
 // Messages tab, where a full floating widget/backdrop makes no sense inside
 // an already-dedicated dashboard tab.
 function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
-  const isSignedIn = !!user;
+  // "Signed in" is not the same thing as "holds a support inbox here":
+  // /api/messaging/conversations/ admits only Customer/BusinessOwner
+  // (messaging/views.py's IsCustomerOrBusinessOwner). A staff session is
+  // signed in but reads these same threads through the admin MessagingPanel
+  // (/api/messaging/staff/) instead, so gating on !!user fired a guaranteed
+  // 403 — and would 403 again on send, since POST is gated identically.
+  const canHoldConversation = user?.accountType === "customer" || user?.accountType === "business_owner";
   const selfSenderType = user?.accountType === "business_owner" ? "business_owner" : "customer";
-  const { data: conversationsData, refetch } = useMyConversations(isSignedIn);
+  const { data: conversationsData, refetch } = useMyConversations(canHoldConversation);
   const conversations = conversationsData || [];
   const [activeConvId, setActiveConvId] = useState(null);
   const [newMessage, setNewMessage] = useState("");
@@ -566,13 +572,14 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
           </div>
         </div>
 
-        {/* RIGHT — Chat Window. Shown whenever the caller is signed in
-            (regardless of whether a specific conversation is selected yet —
-            a brand-new caller with zero conversations must still be able to
-            compose their first message), the "select or start" placeholder
-            only for a signed-out visitor. */}
+        {/* RIGHT — Chat Window. Shown whenever the caller can actually hold a
+            conversation here (regardless of whether a specific one is selected
+            yet — a brand-new caller with zero conversations must still be able
+            to compose their first message), the placeholder otherwise: a
+            signed-out visitor, or a staff session, whose inbox is the admin
+            MessagingPanel rather than this customer-facing widget. */}
         <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0}}>
-          {isSignedIn ? (
+          {canHoldConversation ? (
             <>
               {/* Chat Header */}
               <div style={{padding:"14px 18px",borderBottom:"1px solid #f0f0f0",display:"flex",alignItems:"center",gap:12,background:"white"}}>
@@ -717,7 +724,13 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
             <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,color:"#aaa"}}>
               <div style={{fontSize:"3rem"}}>💬</div>
               <div style={{fontWeight:700,fontSize:"0.88rem",color:C.darkBrown}}>Your Messages</div>
-              <div style={{fontSize:"0.76rem",textAlign:"center",maxWidth:240,lineHeight:1.6}}>Sign in to reach AshantiHub Support about a Kumasi business</div>
+              {/* A staff caller is signed in already — "sign in" copy would be
+                  plainly wrong for them; point them at their real inbox. */}
+              <div style={{fontSize:"0.76rem",textAlign:"center",maxWidth:240,lineHeight:1.6}}>
+                {user?.accountType==="staff"
+                  ? "Staff replies to support threads live in the Messaging tab of the staff dashboard."
+                  : "Sign in to reach AshantiHub Support about a Kumasi business"}
+              </div>
             </div>
           )}
         </div>
@@ -1516,6 +1529,31 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
   const goTab = (id) => { setActiveTab(id); setSearchQuery(""); setSidebarOpen(false); };
   const activeItem = ACCOUNT_NAV_ITEMS.find(i=>i.id===activeTab);
   const signOut = () => { auth.logout(); onExit(); };
+
+  // /my-account is a real URL anyone can hit directly, and AshantiHub's own
+  // `showAccount` early return sits above its isLoading check — so without
+  // these two gates this page mounted for a signed-out visitor (and during
+  // session restore), whose tab panels immediately fired customer-scoped
+  // queries (GET /api/orders/, GET /api/events/tickets/mine/ — both
+  // [IsAuthenticated, IsCustomer]) and spammed 401s, x4 each on React
+  // Query's default retries. Same gate BusinessCommandCenter already grew
+  // for the identical bug on /business-dashboard; customer-only because
+  // that's who this page is for (Navbar sends a business owner to
+  // BusinessCommandCenter instead) and who those endpoints admit.
+  // Placed below this component's own hooks so the rules of hooks still
+  // hold; the queries live in the tab panels below, which never mount.
+  const isCustomer = user?.accountType === "customer";
+  if (auth.isLoading) {
+    return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:D.pageBg,color:D.textDim}}>Loading…</div>;
+  }
+  if (!isCustomer) {
+    return (
+      <div style={{minHeight:"100vh",background:D.pageBg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:20,textAlign:"center"}}>
+        <div style={{fontSize:"1.15rem",fontWeight:700,color:D.text}}>Sign in with a customer account to view this page.</div>
+        <button onClick={onExit} style={{padding:"10px 24px",borderRadius:8,border:"none",background:D.gold,color:"#1a1205",fontWeight:700,cursor:"pointer",fontSize:"0.85rem"}}>← Back to AshantiHub</button>
+      </div>
+    );
+  }
 
   return <div className="shadcn-scope command-center account-grid" style={{minHeight:"100vh",display:"flex"}}>
     <div className="ah-account-backdrop" onClick={()=>setSidebarOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:190,display:sidebarOpen?"block":"none"}}/>
@@ -2440,7 +2478,14 @@ export default function AshantiHub() {
   // "Rendered more hooks than during the previous render" error, caught by
   // App.routing.test.jsx's route-switching tests exercising both an
   // early-return path and a normal-render path across renders.
-  const { data: myConversationsData } = useMyConversations(!!user);
+  //
+  // Gated on the account types the endpoint actually admits, not on merely
+  // being signed in — same reason as MessagingCenter's own call above, and
+  // the same convention as useCart(isCustomer) beside it. Because this sits
+  // above the isAdmin early return, a !!user gate fired this (and its 3
+  // default React Query retries) on every staff dashboard load, for an
+  // endpoint that 403s a staff session by design.
+  const { data: myConversationsData } = useMyConversations(isCustomer || user?.accountType === "business_owner");
 
   // Add-to-cart (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4) — passed down to
   // ListingDetailPage as `onAddToCart`, same "AshantiHub owns the mutation,
