@@ -1,6 +1,8 @@
 from pathlib import Path
 import environ
 
+from django.core.exceptions import ImproperlyConfigured
+
 from accounts.mixins import AnonymousUser
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -10,7 +12,16 @@ environ.Env.read_env(BASE_DIR / ".env")
 
 SECRET_KEY = env("DJANGO_SECRET_KEY", default="dev-only-insecure-key")
 DEBUG = env("DJANGO_DEBUG")
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=["*"])
+
+if not DEBUG and SECRET_KEY == "dev-only-insecure-key":
+    raise ImproperlyConfigured("DJANGO_SECRET_KEY must be set when DJANGO_DEBUG=False")
+
+# Nginx terminates TLS in front of Gunicorn in production — trust its
+# X-Forwarded-Proto/Host so request.is_secure()/build_absolute_uri() (e.g.
+# avatar/media URLs) generate https:// links rather than http://.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
 
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
@@ -68,10 +79,15 @@ DATABASES = {
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
-CORS_ALLOW_ALL_ORIGINS = True
+# Dev keeps the historical allow-all default (backend/.env sets it True);
+# production sets DJANGO_CORS_ALLOW_ALL_ORIGINS=False plus an explicit
+# DJANGO_CORS_ALLOWED_ORIGINS list of the real frontend origins.
+CORS_ALLOW_ALL_ORIGINS = env.bool("DJANGO_CORS_ALLOW_ALL_ORIGINS", default=True)
+CORS_ALLOWED_ORIGINS = env.list("DJANGO_CORS_ALLOWED_ORIGINS", default=[])
 
 # Email — defaults to Django's console backend so nothing breaks locally
 # without SMTP configured; set EMAIL_BACKEND (and the SMTP vars below) in
