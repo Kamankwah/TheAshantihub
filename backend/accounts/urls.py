@@ -18,6 +18,26 @@ urlpatterns = [
         views.CustomerProfileUpdateView.as_view(),
         name="customer-profile-update",
     ),
+    path(
+        "customers/me/secondary-email/",
+        views.CustomerSecondaryEmailRequestView.as_view(),
+        name="customer-secondary-email-request",
+    ),
+    path(
+        "customers/me/secondary-email/confirm/",
+        views.CustomerSecondaryEmailConfirmView.as_view(),
+        name="customer-secondary-email-confirm",
+    ),
+    path(
+        "customers/me/secondary-phone/",
+        views.CustomerSecondaryPhoneRequestView.as_view(),
+        name="customer-secondary-phone-request",
+    ),
+    path(
+        "customers/me/secondary-phone/confirm/",
+        views.CustomerSecondaryPhoneConfirmView.as_view(),
+        name="customer-secondary-phone-confirm",
+    ),
     path("business-owners/login/", views.BusinessOwnerLoginView.as_view(), name="business-owner-login"),
     path("staff/login/", views.StaffLoginView.as_view(), name="staff-login"),
     path(

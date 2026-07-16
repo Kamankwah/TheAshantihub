@@ -203,3 +203,18 @@
     radial-gradient(760px 620px at 60% 115%, rgba(167, 139, 250, 0.07), transparent 60%);
   background-attachment: fixed;
 }
+
+/* Adds a subtle square-grid line overlay on top of .command-center's existing
+   nebula glow, for surfaces that want the grid (currently just the redesigned
+   Account panel). Higher-specificity combined selector so plain .command-center
+   users (BusinessCommandCenter) are unaffected. */
+.command-center.account-grid {
+  background-image:
+    radial-gradient(1100px 620px at 12% -8%, rgba(212, 160, 23, 0.10), transparent 60%),
+    radial-gradient(900px 560px at 100% 0%, rgba(96, 165, 250, 0.09), transparent 55%),
+    radial-gradient(760px 620px at 60% 115%, rgba(167, 139, 250, 0.07), transparent 60%),
+    linear-gradient(to right, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: auto, auto, auto, 42px 42px, 42px 42px;
+  background-attachment: fixed;
+}
