@@ -1104,7 +1104,6 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
   // fits this modal's existing mode-toggle convention. The confirm step
   // (token from a real emailed link) is the separate /reset-password route
   // (ResetPasswordPage, below) since that step needs URL query params.
-  const [resetAccountType,setResetAccountType]=useState(lockedAccountType || "customer");
   const [resetEmail,setResetEmail]=useState("");
   const [resetSubmitting,setResetSubmitting]=useState(false);
   const [resetSubmitted,setResetSubmitted]=useState(false);
@@ -1131,7 +1130,7 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
     e.preventDefault();
     setResetSubmitting(true);
     try {
-      await auth.requestPasswordReset(lockedAccountType||resetAccountType,resetEmail);
+      await auth.requestPasswordReset(resetEmail);
     } catch (err) {
       // Intentionally swallowed — see comment above.
     } finally {
@@ -1195,12 +1194,11 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
             </div>
           ) : (
             <form onSubmit={handleForgotPassword}>
+              {/* Email only — no account-type picker. The backend checks
+                  every account type for a match and the emailed link carries
+                  the type; a visible "Staff" option on a public form would
+                  advertise which account classes exist. */}
               <div style={{fontSize:"0.76rem",color:"#666",marginBottom:12,lineHeight:1.5}}>Enter your account email and we'll send you a link to reset your password.</div>
-              {!lockedAccountType && <div style={{display:"flex",gap:6,marginBottom:12}}>
-                <button type="button" onClick={()=>setResetAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.68rem",background:resetAccountType==="customer"?C.gold:"white"}}>Customer</button>
-                <button type="button" onClick={()=>setResetAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.68rem",background:resetAccountType==="business_owner"?C.gold:"white"}}>Business Owner</button>
-                <button type="button" onClick={()=>setResetAccountType("staff")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.68rem",background:resetAccountType==="staff"?C.gold:"white"}}>Staff</button>
-              </div>}
               <input value={resetEmail} onChange={e=>setResetEmail(e.target.value)} type="email" placeholder="Email" required style={authInputStyle}/>
               <button type="submit" disabled={resetSubmitting} style={authSubmitStyle}>{resetSubmitting?"Sending…":"Send Reset Link"}</button>
             </form>

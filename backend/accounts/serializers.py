@@ -105,18 +105,28 @@ PASSWORD_RESET_TOKEN_LIFETIME = datetime.timedelta(hours=1)
 
 class PasswordResetRequestSerializer(serializers.Serializer):
     email = serializers.EmailField()
-    account_type = serializers.ChoiceField(choices=list(ACCOUNT_MODELS.keys()))
+    # Optional and normally omitted: the public form asks for email only —
+    # surfacing an account-type picker (especially a "Staff" option) would
+    # advertise which account classes exist and invite targeting. When
+    # omitted, every account type matching the email gets its own reset
+    # link; the emailed link carries the type, so the confirm step never
+    # needs the caller to declare it either.
+    account_type = serializers.ChoiceField(
+        choices=list(ACCOUNT_MODELS.keys()), required=False
+    )
 
     def save(self):
         email = self.validated_data["email"]
-        account_type = self.validated_data["account_type"]
-        model = ACCOUNT_MODELS[account_type]
-        account = model.objects.filter(email=email).first()
+        requested_type = self.validated_data.get("account_type")
+        types_to_check = [requested_type] if requested_type else list(ACCOUNT_MODELS.keys())
         # Always behave the same whether or not an account was found — the
         # view returns a generic success response either way, so this method
         # never signals "not found" back up to it (avoids leaking account
         # existence via response shape or timing).
-        if account is not None:
+        for account_type in types_to_check:
+            account = ACCOUNT_MODELS[account_type].objects.filter(email=email).first()
+            if account is None:
+                continue
             token = get_random_string(43)
             PasswordResetToken.objects.create(
                 account_type=account_type,
