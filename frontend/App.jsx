@@ -413,10 +413,16 @@ function formatConvTime(iso) {
 // flow instead, sized to fill its container — used only by UserPanel's
 // Messages tab, where a full floating widget/backdrop makes no sense inside
 // an already-dedicated dashboard tab.
-function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
-  const isSignedIn = !!user;
+function MessagingCenter({ user, onClose, initialBusiness, embedded = false, onRequestSignIn }) {
+  // "Signed in" is not the same thing as "holds a support inbox here":
+  // /api/messaging/conversations/ admits only Customer/BusinessOwner
+  // (messaging/views.py's IsCustomerOrBusinessOwner). A staff session is
+  // signed in but reads these same threads through the admin MessagingPanel
+  // (/api/messaging/staff/) instead, so gating on !!user fired a guaranteed
+  // 403 — and would 403 again on send, since POST is gated identically.
+  const canHoldConversation = user?.accountType === "customer" || user?.accountType === "business_owner";
   const selfSenderType = user?.accountType === "business_owner" ? "business_owner" : "customer";
-  const { data: conversationsData, refetch } = useMyConversations(isSignedIn);
+  const { data: conversationsData, refetch } = useMyConversations(canHoldConversation);
   const conversations = conversationsData || [];
   const [activeConvId, setActiveConvId] = useState(null);
   const [newMessage, setNewMessage] = useState("");
@@ -449,7 +455,11 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
   }, [activeConv?.messages]);
 
   const sendMessage = async () => {
-    if(!newMessage.trim()||!user) return;
+    if(!newMessage.trim()) return;
+    // A guest can type freely — the sign-in ask happens only at the moment
+    // they actually try to send (user-initiated, never automatic on open).
+    // Their draft stays in the input across the sign-in round-trip.
+    if(!canHoldConversation){ onRequestSignIn?.(); return; }
     setSending(true);
     setActionError(null);
     try {
@@ -510,8 +520,11 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
           </div>
 
           {/* New Chat Button — clears the active selection so the input
-              below starts a fresh conversation on send. */}
-          <button onClick={()=>setActiveConvId(null)}
+              below starts a fresh conversation on send. Also clears the
+              draft and focuses the input: for a caller with no
+              conversations yet the compose state is already showing, so
+              without the focus jump this click looked like it did nothing. */}
+          <button onClick={()=>{setActiveConvId(null);setNewMessage("");inputRef.current?.focus();}}
             style={{margin:"10px 12px 4px",background:`${C.gold}15`,color:C.deepGold,border:`1.5px dashed ${C.gold}`,borderRadius:12,padding:"9px",fontSize:"0.74rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
             ✉️ Start New Conversation
           </button>
@@ -566,13 +579,15 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
           </div>
         </div>
 
-        {/* RIGHT — Chat Window. Shown whenever the caller is signed in
-            (regardless of whether a specific conversation is selected yet —
-            a brand-new caller with zero conversations must still be able to
-            compose their first message), the "select or start" placeholder
-            only for a signed-out visitor. */}
+        {/* RIGHT — Chat Window. Always rendered — a signed-out visitor sees
+            the same chat surface (greeted as "Guest") rather than a sign-in
+            wall, per the concierge-style design ask; only the composer at the
+            bottom branches on who the caller is (real input for customers/
+            business owners, a sign-in button for guests, a pointer to the
+            admin MessagingPanel for staff sessions, whose inbox lives there —
+            /api/messaging/conversations/ 403s a StaffUser). */}
         <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0}}>
-          {isSignedIn ? (
+          {(
             <>
               {/* Chat Header */}
               <div style={{padding:"14px 18px",borderBottom:"1px solid #f0f0f0",display:"flex",alignItems:"center",gap:12,background:"white"}}>
@@ -620,7 +635,7 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
                       <div style={{width:28,height:28,borderRadius:"50%",background:`${C.gold}20`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.9rem",flexShrink:0}}>🎧</div>
                       <div style={{maxWidth:"72%"}}>
                         <div style={{background:"white",color:C.darkBrown,borderRadius:"18px 18px 18px 4px",padding:"10px 14px",fontSize:"0.78rem",lineHeight:1.5,boxShadow:"0 1px 4px rgba(0,0,0,0.1)"}}>
-                          👋 Welcome to AshantiHub! How may I help you today?
+                          👋 Welcome to AshantiHub! Hello {user?.fullName || "Guest"}, how can I assist you today?
                         </div>
                       </div>
                     </div>
@@ -675,7 +690,13 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
                 </div>
               )}
 
-              {/* Message Input */}
+              {/* Composer — guests get the same real input as customers/
+                  business owners and can type freely; sendMessage() is what
+                  asks a guest to sign in, only at the moment they hit send
+                  (user-initiated, never automatic on open). Only a staff
+                  session loses the composer — its inbox is the admin
+                  MessagingPanel, and posting here would 403. */}
+              {user?.accountType!=="staff" ? (
               <div style={{padding:"12px 14px",borderTop:"1px solid #f0f0f0",background:"white"}}>
                 {actionError&&(
                   <div style={{background:`${C.kente1}12`,border:`1px solid ${C.kente1}33`,borderRadius:10,padding:"8px 12px",marginBottom:10,fontSize:"0.72rem",color:C.kente1,fontWeight:600,textAlign:"center"}}>
@@ -709,16 +730,17 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
                   </button>
                 </div>
                 <div style={{fontSize:"0.6rem",color:"#aaa",marginTop:6,textAlign:"center"}}>
-                  💡 Messages are stored on AshantiHub • Handled by AshantiHub Support, who relay to the business on your behalf
+                  {canHoldConversation
+                    ? "💡 Messages are stored on AshantiHub • Handled by AshantiHub Support, who relay to the business on your behalf"
+                    : "Browsing as Guest — you'll be asked to sign in when you send"}
                 </div>
               </div>
+              ) : (
+              <div style={{padding:"14px",borderTop:"1px solid #f0f0f0",background:"white",textAlign:"center",fontSize:"0.74rem",color:"#888",lineHeight:1.6}}>
+                Staff replies to support threads live in the Messaging tab of the staff dashboard.
+              </div>
+              )}
             </>
-          ) : (
-            <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,color:"#aaa"}}>
-              <div style={{fontSize:"3rem"}}>💬</div>
-              <div style={{fontWeight:700,fontSize:"0.88rem",color:C.darkBrown}}>Your Messages</div>
-              <div style={{fontSize:"0.76rem",textAlign:"center",maxWidth:240,lineHeight:1.6}}>Sign in to reach AshantiHub Support about a Kumasi business</div>
-            </div>
           )}
         </div>
       </div>
@@ -1516,6 +1538,31 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
   const goTab = (id) => { setActiveTab(id); setSearchQuery(""); setSidebarOpen(false); };
   const activeItem = ACCOUNT_NAV_ITEMS.find(i=>i.id===activeTab);
   const signOut = () => { auth.logout(); onExit(); };
+
+  // /my-account is a real URL anyone can hit directly, and AshantiHub's own
+  // `showAccount` early return sits above its isLoading check — so without
+  // these two gates this page mounted for a signed-out visitor (and during
+  // session restore), whose tab panels immediately fired customer-scoped
+  // queries (GET /api/orders/, GET /api/events/tickets/mine/ — both
+  // [IsAuthenticated, IsCustomer]) and spammed 401s, x4 each on React
+  // Query's default retries. Same gate BusinessCommandCenter already grew
+  // for the identical bug on /business-dashboard; customer-only because
+  // that's who this page is for (Navbar sends a business owner to
+  // BusinessCommandCenter instead) and who those endpoints admit.
+  // Placed below this component's own hooks so the rules of hooks still
+  // hold; the queries live in the tab panels below, which never mount.
+  const isCustomer = user?.accountType === "customer";
+  if (auth.isLoading) {
+    return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:D.pageBg,color:D.textDim}}>Loading…</div>;
+  }
+  if (!isCustomer) {
+    return (
+      <div style={{minHeight:"100vh",background:D.pageBg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:20,textAlign:"center"}}>
+        <div style={{fontSize:"1.15rem",fontWeight:700,color:D.text}}>Sign in with a customer account to view this page.</div>
+        <button onClick={onExit} style={{padding:"10px 24px",borderRadius:8,border:"none",background:D.gold,color:"#1a1205",fontWeight:700,cursor:"pointer",fontSize:"0.85rem"}}>← Back to AshantiHub</button>
+      </div>
+    );
+  }
 
   return <div className="shadcn-scope command-center account-grid" style={{minHeight:"100vh",display:"flex"}}>
     <div className="ah-account-backdrop" onClick={()=>setSidebarOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:190,display:sidebarOpen?"block":"none"}}/>
@@ -2440,7 +2487,14 @@ export default function AshantiHub() {
   // "Rendered more hooks than during the previous render" error, caught by
   // App.routing.test.jsx's route-switching tests exercising both an
   // early-return path and a normal-render path across renders.
-  const { data: myConversationsData } = useMyConversations(!!user);
+  //
+  // Gated on the account types the endpoint actually admits, not on merely
+  // being signed in — same reason as MessagingCenter's own call above, and
+  // the same convention as useCart(isCustomer) beside it. Because this sits
+  // above the isAdmin early return, a !!user gate fired this (and its 3
+  // default React Query retries) on every staff dashboard load, for an
+  // endpoint that 403s a staff session by design.
+  const { data: myConversationsData } = useMyConversations(isCustomer || user?.accountType === "business_owner");
 
   // Add-to-cart (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4) — passed down to
   // ListingDetailPage as `onAddToCart`, same "AshantiHub owns the mutation,
@@ -2606,7 +2660,7 @@ export default function AshantiHub() {
       {!cookieDismissed&&<CookieBanner onAccept={()=>{setCookieConsent(true);setCookieDismissed(true);Analytics.track("cookie_accepted");}} onDecline={()=>{setCookieDismissed(true);Analytics.track("cookie_declined");}}/>}
       <OfflineBanner/>
       {authModal&&<AuthModal authState={authModal} auth={auth} onClose={()=>setAuthModal(null)} onSuccess={handleAuthSuccess}/>}
-      {showMessaging&&<MessagingCenter user={user} onClose={()=>{setShowMessaging(false);setMessagingBusiness(null);}} initialBusiness={messagingBusiness}/>}
+      {showMessaging&&<MessagingCenter user={user} onClose={()=>{setShowMessaging(false);setMessagingBusiness(null);}} initialBusiness={messagingBusiness} onRequestSignIn={()=>setAuthModal("login")}/>}
       {showNotifs&&<NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
       {showFavs&&<FavsDrawer/>}
       {showCart&&isCustomer&&<CartDrawer user={user} currency={currency} onClose={()=>setShowCart(false)} PaymentComponent={MoMoPayment}/>}
@@ -2701,7 +2755,7 @@ export default function AshantiHub() {
               favourites={favourites}
               onFavourite={toggleFav}
               currency={currency}
-              onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);if(!user)setAuthModal("signup");}}
+              onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);}}
               onOpenListing={(otherId)=>setSelectedListingId(otherId)}
               onAddToCart={handleAddToCart}
               CardComponent={Card}
@@ -2832,7 +2886,7 @@ export default function AshantiHub() {
                         page). Promoted/boosted sorting-first lands in a later phase — this renders
                         `listings` in whatever order the API returns, unsorted client-side. */}
                     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>
-                      {listings.map(item=><Card key={item.id} item={item} accentColor={activeCatObj?.color} user={user} favourites={favourites} onFavourite={toggleFav} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);if(!user)setAuthModal("signup");}} onOpen={(id)=>setSelectedListingId(id)}/>)}
+                      {listings.map(item=><Card key={item.id} item={item} accentColor={activeCatObj?.color} user={user} favourites={favourites} onFavourite={toggleFav} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);}} onOpen={(id)=>setSelectedListingId(id)}/>)}
                     </div>
                     {hasNextPage&&(
                       <div style={{textAlign:"center",marginTop:18}}>
@@ -3018,7 +3072,7 @@ export default function AshantiHub() {
           widget (embedded=false). */}
       <ChatLauncher
         unreadMessages={unreadMessages}
-        onOpen={() => { setShowMessaging(true); if (!user) setAuthModal("signup"); }}
+        onOpen={() => setShowMessaging(true)}
         bottom={(cookieDismissed ? 24 : 100) + 64}
       />
 
