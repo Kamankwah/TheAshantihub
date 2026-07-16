@@ -16,6 +16,11 @@ from accounts.models import BusinessOwner, StaffUser
 from accounts.permissions import HasAnyRolePermission, HasRolePermission
 from accounts.views import IsCustomer
 from billing.models import Transaction
+from notifications.services import (
+    notify_business_owner,
+    notify_customer,
+    notify_staff_role,
+)
 from payments.models import CheckoutSession
 from payments.services import process_payment
 
@@ -197,6 +202,11 @@ class EventSubmitView(APIView):
             return Response(detail, status=400)
 
         event.save()
+        notify_staff_role(
+            "event.approve", "event_needs_approval", "New event submission",
+            body=f"“{event.name}” has been submitted and needs review.",
+            link="events-moderation", icon="🎉",
+        )
         return Response(
             EventOwnerSerializer(event, context={"request": request}).data, status=201
         )
@@ -397,6 +407,15 @@ class EventModerationDetailView(generics.RetrieveAPIView):
         return [HasRolePermission("event.approve")]
 
 
+def _notify_event_organizer(event, kind, title, body="", link="", icon=""):
+    """Notify whichever account submitted the event — a BusinessOwner or a
+    Customer (exactly one is set, per Event's own CheckConstraint)."""
+    if event.submitted_by_business_id:
+        notify_business_owner(event.submitted_by_business, kind, title, body=body, link=link, icon=icon)
+    else:
+        notify_customer(event.submitted_by_customer, kind, title, body=body, link=link, icon=icon)
+
+
 class EventApproveView(APIView):
     """POST /api/events/{id}/approve/ — sets status=approved and approved_by.
     Does not itself start the paid visibility window (see Event's class
@@ -420,6 +439,11 @@ class EventApproveView(APIView):
             update_fields.append("expires_at")
 
         event.save(update_fields=update_fields)
+        _notify_event_organizer(
+            event, "event_approved", "Event approved",
+            body=f"“{event.name}” was approved. Pay to publish it and open RSVPs.",
+            link="/events", icon="✅",
+        )
         return Response({"id": event.id, "status": event.status, "expires_at": event.expires_at})
 
 
@@ -435,6 +459,11 @@ class EventRejectView(APIView):
         event.status = Event.REJECTED
         event.rejection_reason = reason
         event.save(update_fields=["status", "rejection_reason"])
+        _notify_event_organizer(
+            event, "event_rejected", "Event not approved",
+            body=f"“{event.name}” was rejected: {reason}",
+            link="/events", icon="⚠️",
+        )
         return Response({"id": event.id, "status": event.status})
 
 

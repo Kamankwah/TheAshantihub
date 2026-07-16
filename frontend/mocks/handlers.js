@@ -310,4 +310,24 @@ export const handlers = [
       { status: 201 },
     )
   }),
+
+  // Notifications (punch-list 5 & 10). AshantiHub calls useNotifications() at
+  // its root for the bell badge on any signed-in render, and AdminCommandCenter
+  // polls useStaffBadges() — both fire unconditionally, so these defaults must
+  // exist even for tests that don't care about notifications.
+  http.get('http://localhost:8000/api/notifications/', () => {
+    return HttpResponse.json({ unread_count: 0, results: [] })
+  }),
+  http.post('http://localhost:8000/api/notifications/:id/read/', ({ params }) => {
+    return HttpResponse.json({ id: Number(params.id), is_read: true })
+  }),
+  http.post('http://localhost:8000/api/notifications/read-all/', () => {
+    return HttpResponse.json({ unread_count: 0 })
+  }),
+  http.get('http://localhost:8000/api/notifications/staff-badges/', () => {
+    return HttpResponse.json({
+      kyc: 0, listings: 0, events: 0, hero: 0, reviews: 0,
+      plan_approvals: 0, contact_messages: 0, escrow: 0,
+    })
+  }),
 ]
