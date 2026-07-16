@@ -32,8 +32,23 @@ describe('ContactCtaBand', () => {
     expect(screen.getByText('Prefer to talk to a human?')).toBeInTheDocument()
   })
 
-  it('renders a real wa.me WhatsApp link via the passed-in WhatsAppButton', () => {
-    renderBand()
+  it('renders the WhatsApp link only for a signed-in user (guests use in-app chat)', () => {
+    // WhatsApp is an account-holder support channel; a signed-out guest
+    // sees no WhatsApp button (they use the in-app chat, open to everyone).
+    const { rerender } = renderBand({ user: null })
+    expect(screen.queryByText('WhatsApp')).not.toBeInTheDocument()
+
+    rerender(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ContactCtaBand
+          user={{ name: 'Ama' }}
+          onCreateAccount={vi.fn()}
+          whatsappPhone="233244000000"
+          whatsappName="AshantiHub Support"
+          WhatsAppButton={MockWhatsAppButton}
+        />
+      </QueryClientProvider>,
+    )
     const link = screen.getByText('WhatsApp')
     expect(link).toHaveAttribute('href', expect.stringContaining('https://wa.me/233244000000'))
   })
@@ -52,7 +67,7 @@ describe('ContactCtaBand', () => {
   })
 
   it('renders no email chip when contact_email is empty (the default handler)', async () => {
-    renderBand()
+    renderBand({ user: { name: 'Ama' } })
     expect(await screen.findByText('WhatsApp')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /@/ })).not.toBeInTheDocument()
   })

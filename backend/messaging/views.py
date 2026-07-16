@@ -8,6 +8,11 @@ from rest_framework.views import APIView
 
 from accounts.models import BusinessOwner, Customer
 from accounts.permissions import HasRolePermission
+from notifications.services import (
+    notify_business_owner,
+    notify_customer,
+    notify_staff_role,
+)
 
 from .models import Conversation, Message
 from .serializers import (
@@ -96,6 +101,11 @@ class ConversationListCreateView(generics.ListCreateAPIView):
             sender_type=_sender_type(request),
             body=serializer.validated_data["body"],
         )
+        notify_staff_role(
+            "messaging.manage", "new_message", "New support conversation",
+            body=f"{conversation.starter_display_name} started a support conversation.",
+            link="messaging", icon="💬",
+        )
         return Response(ConversationSerializer(conversation).data, status=201)
 
 
@@ -166,4 +176,18 @@ class StaffConversationReplyView(APIView):
             conversation=conversation, sender_type=Message.STAFF, body=serializer.validated_data["body"],
         )
         conversation.save()
+        # Notify the account that owns the thread (a guest thread has no
+        # account to notify — notify_* no-ops on a None recipient).
+        if conversation.customer_id:
+            notify_customer(
+                conversation.customer, "support_reply", "AshantiHub Support replied",
+                body="You have a new reply from AshantiHub Support.",
+                link="/my-account", icon="💬",
+            )
+        elif conversation.business_owner_id:
+            notify_business_owner(
+                conversation.business_owner, "support_reply", "AshantiHub Support replied",
+                body="You have a new reply from AshantiHub Support.",
+                link="/business-dashboard", icon="💬",
+            )
         return Response(MessageSerializer(message).data, status=201)

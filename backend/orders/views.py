@@ -12,6 +12,7 @@ from accounts.views import IsCustomer
 from cart.models import Cart
 from disputes.models import Dispute
 from disputes.serializers import DisputeSerializer
+from notifications.services import notify_customer
 from payments.models import CheckoutSession
 from payments.services import process_payment
 
@@ -149,6 +150,14 @@ class OrderDeliveryStatusUpdateView(generics.UpdateAPIView):
 
     def get_permissions(self):
         return [HasRolePermission("orders.manage_delivery")]
+
+    def perform_update(self, serializer):
+        order = serializer.save()
+        notify_customer(
+            order.customer, "order_status", "Order update",
+            body=f"Order #{order.id} is now {order.get_delivery_status_display().lower()}.",
+            link="/my-account", icon="🚚",
+        )
 
 
 class OrderDisputeCreateView(APIView):

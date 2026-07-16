@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import HasRolePermission
+from notifications.services import notify_staff_role
 
 from .models import ContactMessage
 from .serializers import ContactMessageSerializer, ContactMessageSubmitSerializer
@@ -23,6 +24,11 @@ class ContactMessageSubmitView(APIView):
         serializer = ContactMessageSubmitSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         message = ContactMessage.objects.create(**serializer.validated_data)
+        notify_staff_role(
+            "contact_messages.manage", "contact_message", "New contact message",
+            body=f"{message.name} sent a {message.get_category_display().lower()} enquiry: {message.subject}",
+            link="contact-messages", icon="✉️",
+        )
         return Response(ContactMessageSerializer(message).data, status=201)
 
 
