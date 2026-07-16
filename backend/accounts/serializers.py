@@ -254,9 +254,121 @@ class StaffLoginSerializer(serializers.Serializer):
 class CustomerProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
-        fields = ["id", "full_name", "avatar"]
-        read_only_fields = ["id"]
+        fields = [
+            "id", "full_name", "avatar", "email", "phone",
+            "address", "gender", "date_of_birth",
+            "secondary_email", "secondary_email_verified",
+            "secondary_phone", "secondary_phone_verified",
+            "email_notifications_enabled", "sms_notifications_enabled",
+        ]
+        # email/phone are the account's login identifiers — not editable here
+        # (no OTP/verification flow for the primary identifier itself).
+        # secondary_email/secondary_phone are likewise read-only on this
+        # serializer — set only via CustomerSecondaryEmail/PhoneRequestView
+        # below, which owns the verification-code lifecycle.
+        read_only_fields = [
+            "id", "email", "phone",
+            "secondary_email", "secondary_email_verified",
+            "secondary_phone", "secondary_phone_verified",
+        ]
         extra_kwargs = {"full_name": {"required": False}, "avatar": {"required": False}}
+
+
+CUSTOMER_VERIFY_CODE_LIFETIME = datetime.timedelta(minutes=10)
+
+
+class CustomerSecondaryEmailRequestSerializer(serializers.Serializer):
+    secondary_email = serializers.EmailField()
+
+    def validate_secondary_email(self, value):
+        request = self.context["request"]
+        if value == request.user.email:
+            raise serializers.ValidationError("This is already your primary email.")
+        return value
+
+    def save(self):
+        code = get_random_string(6, allowed_chars="0123456789")
+        customer = self.context["request"].user
+        customer.secondary_email = self.validated_data["secondary_email"]
+        customer.secondary_email_verified = False
+        customer.secondary_email_verify_code = code
+        customer.secondary_email_verify_expires_at = timezone.now() + CUSTOMER_VERIFY_CODE_LIFETIME
+        customer.save(update_fields=[
+            "secondary_email", "secondary_email_verified",
+            "secondary_email_verify_code", "secondary_email_verify_expires_at",
+        ])
+        return customer
+
+
+class CustomerSecondaryEmailConfirmSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=6)
+
+    def validate(self, attrs):
+        customer = self.context["request"].user
+        if not customer.secondary_email_verify_code:
+            raise serializers.ValidationError("No verification in progress. Request a new code.")
+        if customer.secondary_email_verify_expires_at < timezone.now():
+            raise serializers.ValidationError("This code has expired. Request a new one.")
+        if attrs["code"] != customer.secondary_email_verify_code:
+            raise serializers.ValidationError("Incorrect code.")
+        return attrs
+
+    def save(self):
+        customer = self.context["request"].user
+        customer.secondary_email_verified = True
+        customer.secondary_email_verify_code = None
+        customer.secondary_email_verify_expires_at = None
+        customer.save(update_fields=[
+            "secondary_email_verified", "secondary_email_verify_code", "secondary_email_verify_expires_at",
+        ])
+        return customer
+
+
+class CustomerSecondaryPhoneRequestSerializer(serializers.Serializer):
+    secondary_phone = serializers.CharField(max_length=20)
+
+    def validate_secondary_phone(self, value):
+        request = self.context["request"]
+        if value == request.user.phone:
+            raise serializers.ValidationError("This is already your primary phone number.")
+        return value
+
+    def save(self):
+        code = get_random_string(6, allowed_chars="0123456789")
+        customer = self.context["request"].user
+        customer.secondary_phone = self.validated_data["secondary_phone"]
+        customer.secondary_phone_verified = False
+        customer.secondary_phone_verify_code = code
+        customer.secondary_phone_verify_expires_at = timezone.now() + CUSTOMER_VERIFY_CODE_LIFETIME
+        customer.save(update_fields=[
+            "secondary_phone", "secondary_phone_verified",
+            "secondary_phone_verify_code", "secondary_phone_verify_expires_at",
+        ])
+        return customer
+
+
+class CustomerSecondaryPhoneConfirmSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=6)
+
+    def validate(self, attrs):
+        customer = self.context["request"].user
+        if not customer.secondary_phone_verify_code:
+            raise serializers.ValidationError("No verification in progress. Request a new code.")
+        if customer.secondary_phone_verify_expires_at < timezone.now():
+            raise serializers.ValidationError("This code has expired. Request a new one.")
+        if attrs["code"] != customer.secondary_phone_verify_code:
+            raise serializers.ValidationError("Incorrect code.")
+        return attrs
+
+    def save(self):
+        customer = self.context["request"].user
+        customer.secondary_phone_verified = True
+        customer.secondary_phone_verify_code = None
+        customer.secondary_phone_verify_expires_at = None
+        customer.save(update_fields=[
+            "secondary_phone_verified", "secondary_phone_verify_code", "secondary_phone_verify_expires_at",
+        ])
+        return customer
 
 
 class CustomerListSerializer(serializers.ModelSerializer):

@@ -39,13 +39,13 @@ function renderPanel(props = {}) {
 }
 
 describe('UserPanel', () => {
-  it('renders all 5 nav tabs and defaults to the Profile tab', () => {
+  it('renders all 8 nav tabs and defaults to the Overview tab', () => {
     renderPanel()
-    ;['Profile', 'Orders & Delivery', 'Saved Businesses', 'Messages', 'My Events'].forEach((label) => {
+    ;['Overview', 'Orders & Delivery', 'Saved Businesses', 'Messages', 'My Events', 'My Tickets', 'Profile', 'Settings'].forEach((label) => {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0)
     })
-    // Profile tab content (the name field, seeded from user.fullName) is visible by default.
-    expect(screen.getByDisplayValue('Ama Boateng')).toBeInTheDocument()
+    // Overview tab content (a KPI card) is visible by default.
+    expect(screen.getByText('Total Orders')).toBeInTheDocument()
   })
 
   it('calls onExit when the Exit button is clicked', () => {
@@ -60,22 +60,42 @@ describe('UserPanel', () => {
       const updateProfile = vi.fn().mockResolvedValue({})
       const refreshUser = vi.fn().mockResolvedValue({})
       renderPanel({ auth: { updateProfile, refreshUser } })
+      fireEvent.click(screen.getAllByText('Profile')[0])
       fireEvent.change(screen.getByDisplayValue('Ama Boateng'), { target: { value: 'Ama Owusu' } })
-      fireEvent.click(screen.getByText('Save'))
-      await waitFor(() => expect(updateProfile).toHaveBeenCalledWith({ full_name: 'Ama Owusu', avatar: null }))
+      fireEvent.click(screen.getByText('Save Changes'))
+      await waitFor(() => expect(updateProfile).toHaveBeenCalledWith(
+        expect.objectContaining({ full_name: 'Ama Owusu', avatar: null }),
+      ))
       await waitFor(() => expect(refreshUser).toHaveBeenCalledTimes(1))
       await screen.findByText('✓ Saved!')
     })
 
-    it('does not render email or phone fields', () => {
+    it('shows primary email/phone as read-only, with a separate editable/verifiable recovery pair', async () => {
+      server.use(
+        http.get('http://localhost:8000/api/accounts/customers/me/profile/', () =>
+          HttpResponse.json({
+            id: 1, full_name: 'Ama Boateng', avatar: null, email: 'ama@example.com', phone: '0244000111',
+            address: null, gender: null, date_of_birth: null,
+            secondary_email: null, secondary_email_verified: false,
+            secondary_phone: null, secondary_phone_verified: false,
+            email_notifications_enabled: true, sms_notifications_enabled: true,
+          }),
+        ),
+      )
       renderPanel()
-      expect(screen.queryByText(/email/i)).not.toBeInTheDocument()
-      expect(screen.queryByText(/phone/i)).not.toBeInTheDocument()
+      fireEvent.click(screen.getAllByText('Profile')[0])
+      // Primary email/phone are disabled, read-only display fields.
+      expect(await screen.findByDisplayValue('ama@example.com')).toBeDisabled()
+      expect(screen.getByDisplayValue('0244000111')).toBeDisabled()
+      // Recovery email/phone are real, enabled, editable inputs (not disabled).
+      expect(screen.getByPlaceholderText('you@example.com')).not.toBeDisabled()
+      expect(screen.getByPlaceholderText('024xxxxxxx')).not.toBeDisabled()
     })
 
     it('shows an inline error when saving fails', async () => {
       renderPanel({ auth: makeAuth({ updateProfile: vi.fn().mockRejectedValue(new Error('nope')) }) })
-      fireEvent.click(screen.getByText('Save'))
+      fireEvent.click(screen.getAllByText('Profile')[0])
+      fireEvent.click(screen.getByText('Save Changes'))
       await screen.findByText('Could not save your profile. Please try again.')
     })
   })

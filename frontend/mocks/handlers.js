@@ -82,6 +82,18 @@ export const handlers = [
   http.get('http://localhost:8000/api/orders/', () => {
     return HttpResponse.json([])
   }),
+  // The signed-in customer's full self-service profile (useMyCustomerProfile,
+  // AccountProfileCard/SettingsTab) — default handler, overridden per-test
+  // where a specific address/gender/secondary-email state is needed.
+  http.get('http://localhost:8000/api/accounts/customers/me/profile/', () => {
+    return HttpResponse.json({
+      id: 1, full_name: 'Ama Boateng', avatar: null, email: null, phone: null,
+      address: null, gender: null, date_of_birth: null,
+      secondary_email: null, secondary_email_verified: false,
+      secondary_phone: null, secondary_phone_verified: false,
+      email_notifications_enabled: true, sms_notifications_enabled: true,
+    })
+  }),
   // Events (docs/BUSINESS_EVENTS_ROADMAP.md Phase 6) — default handlers,
   // overridden per-test via server.use() where a specific events state/
   // response is needed.
@@ -89,6 +101,12 @@ export const handlers = [
     return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
   }),
   http.get('http://localhost:8000/api/events/mine/', () => {
+    return HttpResponse.json([])
+  }),
+  // The signed-in customer's own purchased tickets (useMyTickets) — default
+  // empty-array handler, overridden per-test where specific ticket rows are
+  // needed (e.g. UserPanel.test.jsx's Account Overview/My Tickets tabs).
+  http.get('http://localhost:8000/api/events/tickets/mine/', () => {
     return HttpResponse.json([])
   }),
   // Event pricing tiers (event pricing tiers work) — default handler
