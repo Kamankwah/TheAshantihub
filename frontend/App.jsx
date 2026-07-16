@@ -455,7 +455,11 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false, onR
   }, [activeConv?.messages]);
 
   const sendMessage = async () => {
-    if(!newMessage.trim()||!canHoldConversation) return;
+    if(!newMessage.trim()) return;
+    // A guest can type freely — the sign-in ask happens only at the moment
+    // they actually try to send (user-initiated, never automatic on open).
+    // Their draft stays in the input across the sign-in round-trip.
+    if(!canHoldConversation){ onRequestSignIn?.(); return; }
     setSending(true);
     setActionError(null);
     try {
@@ -686,13 +690,13 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false, onR
                 </div>
               )}
 
-              {/* Composer — the one part of the chat window that branches on
-                  who the caller is. Customers/business owners get the real
-                  input; a guest gets a sign-in button (opens the auth modal
-                  only when *they* choose to — never automatically on chat
-                  open); a staff session gets pointed at its real inbox, the
-                  admin MessagingPanel. */}
-              {canHoldConversation ? (
+              {/* Composer — guests get the same real input as customers/
+                  business owners and can type freely; sendMessage() is what
+                  asks a guest to sign in, only at the moment they hit send
+                  (user-initiated, never automatic on open). Only a staff
+                  session loses the composer — its inbox is the admin
+                  MessagingPanel, and posting here would 403. */}
+              {user?.accountType!=="staff" ? (
               <div style={{padding:"12px 14px",borderTop:"1px solid #f0f0f0",background:"white"}}>
                 {actionError&&(
                   <div style={{background:`${C.kente1}12`,border:`1px solid ${C.kente1}33`,borderRadius:10,padding:"8px 12px",marginBottom:10,fontSize:"0.72rem",color:C.kente1,fontWeight:600,textAlign:"center"}}>
@@ -726,22 +730,14 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false, onR
                   </button>
                 </div>
                 <div style={{fontSize:"0.6rem",color:"#aaa",marginTop:6,textAlign:"center"}}>
-                  💡 Messages are stored on AshantiHub • Handled by AshantiHub Support, who relay to the business on your behalf
+                  {canHoldConversation
+                    ? "💡 Messages are stored on AshantiHub • Handled by AshantiHub Support, who relay to the business on your behalf"
+                    : "Browsing as Guest — you'll be asked to sign in when you send"}
                 </div>
-              </div>
-              ) : user?.accountType==="staff" ? (
-              <div style={{padding:"14px",borderTop:"1px solid #f0f0f0",background:"white",textAlign:"center",fontSize:"0.74rem",color:"#888",lineHeight:1.6}}>
-                Staff replies to support threads live in the Messaging tab of the staff dashboard.
               </div>
               ) : (
-              <div style={{padding:"12px 14px",borderTop:"1px solid #f0f0f0",background:"white"}}>
-                <button onClick={()=>onRequestSignIn?.()}
-                  style={{width:"100%",background:`linear-gradient(135deg,${C.gold},${C.deepGold})`,color:C.darkBrown,border:"none",borderRadius:20,padding:"11px",fontSize:"0.8rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
-                  🔐 Sign in to send a message
-                </button>
-                <div style={{fontSize:"0.6rem",color:"#aaa",marginTop:6,textAlign:"center"}}>
-                  Browsing as Guest — an account is only needed to send
-                </div>
+              <div style={{padding:"14px",borderTop:"1px solid #f0f0f0",background:"white",textAlign:"center",fontSize:"0.74rem",color:"#888",lineHeight:1.6}}>
+                Staff replies to support threads live in the Messaging tab of the staff dashboard.
               </div>
               )}
             </>
