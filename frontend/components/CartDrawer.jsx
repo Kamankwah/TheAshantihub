@@ -45,6 +45,12 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   // the cart while the modal is still open, which would otherwise drop the
   // displayed amount to 0 right as the success screen appears.
   const [checkoutAmount, setCheckoutAmount] = useState(0);
+  // Delivery method chosen before paying (Wave F). Door-to-door needs an
+  // address + phone; store pickup needs neither.
+  const [deliveryMethod, setDeliveryMethod] = useState("store_pickup");
+  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [deliveryPhone, setDeliveryPhone] = useState("");
+  const doorToDoorReady = deliveryMethod !== "door_to_door" || (deliveryAddress.trim() && deliveryPhone.trim());
 
   const items = cart?.items || [];
 
@@ -85,7 +91,11 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   const handlePaymentSuccess = async (ref) => {
     setCheckoutError(null);
     try {
-      const response = await apiPost("/api/orders/checkout/", {});
+      const response = await apiPost("/api/orders/checkout/", {
+        delivery_method: deliveryMethod,
+        delivery_address: deliveryAddress,
+        delivery_phone: deliveryPhone,
+      });
       // Hubtel integration (docs/HUBTEL_INTEGRATION.md) — once
       // payments_provider is "hubtel", OrderCheckoutView returns
       // {mode:"redirect", checkout_url} instead of the placed order, since
@@ -202,14 +212,51 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
                 <span style={{ fontWeight: 700, color: C.darkBrown }}>{formatAmount(item.line_total)}</span>
               </div>
             ))}
-            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 900, color: C.kente2, fontSize: "0.9rem", borderTop: "1px solid #eee", paddingTop: 8, marginTop: 8, marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 900, color: C.kente2, fontSize: "0.9rem", borderTop: "1px solid #eee", paddingTop: 8, marginTop: 8, marginBottom: 14 }}>
               <span>Total</span>
               <span>{formatAmount(cart?.total)}</span>
             </div>
+
+            {/* Delivery method (Wave F) */}
+            <div style={{ fontWeight: 800, color: C.darkBrown, fontSize: "0.78rem", marginBottom: 8 }}>How would you like it?</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              {[["store_pickup", "🏬 Store pickup"], ["door_to_door", "🚚 Door-to-door"]].map(([value, label]) => (
+                <button
+                  key={value}
+                  onClick={() => setDeliveryMethod(value)}
+                  style={{ flex: 1, background: deliveryMethod === value ? C.kente2 : "#f0f0f0", color: deliveryMethod === value ? "white" : "#666", border: "none", borderRadius: 12, padding: "9px", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {deliveryMethod === "door_to_door" && (
+              <div style={{ marginBottom: 12 }}>
+                <input
+                  value={deliveryAddress}
+                  onChange={(e) => setDeliveryAddress(e.target.value)}
+                  placeholder="Delivery address"
+                  style={{ width: "100%", padding: "9px 12px", borderRadius: 10, border: "1.5px solid #e0e0e0", fontSize: "0.78rem", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 8 }}
+                />
+                <input
+                  value={deliveryPhone}
+                  onChange={(e) => setDeliveryPhone(e.target.value)}
+                  placeholder="Contact phone for delivery"
+                  style={{ width: "100%", padding: "9px 12px", borderRadius: 10, border: "1.5px solid #e0e0e0", fontSize: "0.78rem", fontFamily: "inherit", boxSizing: "border-box" }}
+                />
+              </div>
+            )}
+
             {checkoutError && <div style={{ background: "#fee2e2", color: "#dc2626", borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>{checkoutError}</div>}
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={() => setStep("cart")} style={{ flex: 1, background: "#f0f0f0", color: "#666", border: "none", borderRadius: 20, padding: "10px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>← Back</button>
-              <button onClick={() => { setCheckoutAmount(parseFloat(cart?.total) || 0); setShowPayment(true); }} style={{ flex: 2, background: C.kente2, color: "white", border: "none", borderRadius: 20, padding: "10px", fontWeight: 900, cursor: "pointer", fontFamily: "inherit" }}>Confirm & Pay</button>
+              <button
+                onClick={() => { setCheckoutAmount(parseFloat(cart?.total) || 0); setShowPayment(true); }}
+                disabled={!doorToDoorReady}
+                style={{ flex: 2, background: doorToDoorReady ? C.kente2 : "#ccc", color: "white", border: "none", borderRadius: 20, padding: "10px", fontWeight: 900, cursor: doorToDoorReady ? "pointer" : "not-allowed", fontFamily: "inherit" }}
+              >
+                Confirm &amp; Pay
+              </button>
             </div>
           </div>
         )}

@@ -108,16 +108,16 @@ describe('UserPanel', () => {
       await screen.findByText('No orders yet.')
     })
 
-    it('renders order items/total and shows a delivery stepper only for paid orders', async () => {
+    it('shows a delivery stepper only for a paid door-to-door order', async () => {
       server.use(
         http.get('http://localhost:8000/api/orders/', () =>
           HttpResponse.json([
             {
-              id: 1, status: 'paid', delivery_status: 'shipped', total_amount: '150.00', placed_at: '2026-07-01T00:00:00Z',
+              id: 1, status: 'paid', delivery_status: 'shipped', delivery_method: 'door_to_door', delivery_address: '12 Ash Road', total_amount: '150.00', placed_at: '2026-07-01T00:00:00Z',
               items: [{ id: 1, listing: 5, listing_name: 'Kente Cloth', quantity: 1, unit_price: '150.00', line_total: '150.00' }],
             },
             {
-              id: 2, status: 'pending', delivery_status: 'processing', total_amount: '80.00', placed_at: '2026-07-02T00:00:00Z',
+              id: 2, status: 'pending', delivery_status: 'processing', delivery_method: 'store_pickup', total_amount: '80.00', placed_at: '2026-07-02T00:00:00Z',
               items: [{ id: 2, listing: 6, listing_name: 'Beaded Necklace', quantity: 2, unit_price: '40.00', line_total: '80.00' }],
             },
           ]),
@@ -127,10 +127,13 @@ describe('UserPanel', () => {
       fireEvent.click(screen.getAllByText('Orders & Delivery')[0])
       await screen.findByText('Kente Cloth × 1')
       expect(screen.getByText('Beaded Necklace × 2')).toBeInTheDocument()
-      // The delivery stepper's "Processing" step label only exists once — on
-      // order #1 (paid); order #2 (pending) gets no stepper at all.
+      // The stepper's "Processing" step label exists once — on order #1 (paid,
+      // door-to-door). Order #2 is store pickup, which gets no shipping stepper.
       expect(screen.getAllByText('Processing').length).toBe(1)
       expect(screen.getByText('Shipped')).toBeInTheDocument()
+      // The delivery method is surfaced on each order.
+      expect(screen.getByText(/Door-to-door/)).toBeInTheDocument()
+      expect(screen.getByText(/Store pickup/)).toBeInTheDocument()
     })
   })
 
