@@ -29,6 +29,13 @@ class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
         fields = ["id", "slug", "icon", "label", "color", "kind"]
+        # `kind` has a model-level default (PRODUCT), which would otherwise
+        # make it optional on create — but staff must consciously choose
+        # Product vs Service when creating a category (the admin form forces
+        # the choice), so require it explicitly here. On a PATCH (partial
+        # update) DRF skips required-field enforcement, so editing name/icon/
+        # label/color without re-sending `kind` still works.
+        extra_kwargs = {"kind": {"required": True}}
 
 
 class ZoneSerializer(serializers.ModelSerializer):

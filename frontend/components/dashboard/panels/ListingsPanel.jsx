@@ -192,7 +192,18 @@ function DecisionFields({ kind, form, update }) {
   return null;
 }
 
-export default function ListingsPanel({ user, PaymentComponent, showToast }) {
+export default function ListingsPanel({ user, PaymentComponent, showToast, businessKind }) {
+  // A business owner registers as a "product" or "service" business
+  // (BusinessOwnerProfile.business_kind). When set, the create form is locked to
+  // that kind: only matching categories are selectable and only that kind's
+  // field set can appear. When it's null (older accounts backfilled before the
+  // field existed), fall back to offering both kinds so nothing breaks.
+  const kindLocked = businessKind === "product" || businessKind === "service";
+  const createButtonLabel = businessKind === "product"
+    ? "➕ List a New Product"
+    : businessKind === "service"
+      ? "➕ List a New Service"
+      : "➕ List a New Product / Service";
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [actionError, setActionError] = useState(null);
@@ -220,8 +231,12 @@ export default function ListingsPanel({ user, PaymentComponent, showToast }) {
   const { data: zones } = useZones();
   const listingList = listings || [];
   // Business listings are product/service only — event-kind categories belong
-  // to the Events tab's submission flow, not this panel.
-  const listableCategories = (categories || []).filter(c => c.kind === "product" || c.kind === "service");
+  // to the Events tab's submission flow, not this panel. When the owner's
+  // business_kind is known, narrow further to just that kind so they can't
+  // pick a category the backend (OwnerListingSerializer.validate) would reject.
+  const listableCategories = (categories || []).filter(c =>
+    kindLocked ? c.kind === businessKind : (c.kind === "product" || c.kind === "service"),
+  );
   const zoneList = zones || [];
   const categoryKindById = (id) => (categories || []).find(c => c.id === Number(id))?.kind;
 
@@ -377,7 +392,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
         <h2 style={{ margin: 0, color: D.text, fontWeight: 900, fontSize: "0.98rem" }}>🏷️ Listings &amp; Prices</h2>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <button onClick={() => { setShowCreate(s => !s); setCreateError(null); }} style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "7px 16px", fontSize: "0.72rem", fontWeight: 900, cursor: "pointer", fontFamily: "inherit" }}>➕ List a New Product / Service</button>
+          <button onClick={() => { setShowCreate(s => !s); setCreateError(null); }} style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "7px 16px", fontSize: "0.72rem", fontWeight: 900, cursor: "pointer", fontFamily: "inherit" }}>{createButtonLabel}</button>
           <a href="https://wa.me/233244000000?text=UPDATE%3A%20" target="_blank" rel="noopener noreferrer" style={{ background: D.whatsapp, color: "#04210f", borderRadius: 20, padding: "6px 14px", fontSize: "0.7rem", fontWeight: 800, textDecoration: "none" }}>📱 WhatsApp Update</a>
         </div>
       </div>
