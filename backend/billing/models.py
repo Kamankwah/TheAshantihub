@@ -59,6 +59,20 @@ class SubscriptionPlan(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=PENDING_APPROVAL)
     rejection_reason = models.CharField(max_length=500, null=True, blank=True)
 
+    # Who last approved/rejected this plan and when — the canonical pair
+    # shared with Listing/Event/HeroMediaSubmission/BusinessOwner, driving the
+    # Approved/Rejected tabs' attribution line.
+    reviewed_by = models.ForeignKey(
+        "accounts.StaffUser", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="reviewed_subscription_plans",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    # This model had no timestamp at all, so the pending queue ordered by id
+    # as a stand-in for "oldest first". Existing rows all get the migration's
+    # run time, which is wrong-but-harmless for the handful of seeded plans —
+    # their relative order is preserved by the id tiebreak in get_queryset().
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
+
     # Structured entitlements (Phase 1 of docs/BUSINESS_EVENTS_ROADMAP.md).
     # null = unlimited listings (matches frontend/components/dashboard/charts/
     # UsageMeters.jsx's/AnalyticsPanel.jsx's existing `max_active_listings ?? null` convention).

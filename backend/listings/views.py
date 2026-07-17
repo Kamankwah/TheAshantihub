@@ -29,6 +29,7 @@ from .serializers import (
     ListingPhotoSerializer,
     ModerationListingSerializer,
     OwnerListingSerializer,
+    PromotionAdminSerializer,
     PromotionPurchaseSerializer,
     PromotionSerializer,
     PublicListingSerializer,
@@ -774,3 +775,69 @@ class HeroExtendView(APIView):
                 "expires_at": submission.expires_at,
             }
         )
+
+
+# ─── Promotions management (staff) ────────────────────────────────────────
+# Promotions aren't moderated — a business owner buys one and it goes live
+# immediately — so this queue is Active/Expired/Cancelled, not
+# Pending/Approved/Rejected.
+#
+# "Expired" is derived from the time window, never read off `status`: as
+# Promotion's own docstring explains, nothing in this app transitions a row to
+# status="expired", so a finished promotion still reads status="active". The
+# legacy EXPIRED value is still matched so any hand-set row shows up rather
+# than vanishing from every tab.
+def _promotions_for_tab(tab):
+    now = timezone.now()
+    queryset = Promotion.objects.select_related("listing", "listing__business_owner")
+    if tab == "cancelled":
+        return queryset.filter(status=Promotion.CANCELLED).order_by("-starts_at")
+    if tab == "expired":
+        return queryset.filter(
+            Q(status=Promotion.ACTIVE, ends_at__lt=now) | Q(status=Promotion.EXPIRED)
+        ).order_by("-ends_at")
+    # Active — bought and not yet finished. Includes a promotion whose
+    # starts_at is still in the future, which is live-but-not-yet-running.
+    return queryset.filter(status=Promotion.ACTIVE, ends_at__gte=now).order_by("-starts_at")
+
+
+class PromotionAdminListView(generics.ListAPIView):
+    """GET /api/listings/promotions/?status=active|expired|cancelled —
+    staff-only (promotions.manage). Before this, `promotions.manage` gated a
+    nav tab with no backend view behind it at all.
+    """
+
+    serializer_class = PromotionAdminSerializer
+
+    def get_permissions(self):
+        return [HasRolePermission("promotions.manage")]
+
+    def get_queryset(self):
+        return _promotions_for_tab(self.request.query_params.get("status", "active"))
+
+
+class PromotionCancelView(APIView):
+    """POST /api/listings/promotions/{id}/cancel/ — staff-only
+    (promotions.manage). Stops a promotion early; the model reserved
+    `cancelled` for exactly this.
+
+    Refunds are out of scope: cancelling stops the ranking boost, it does not
+    reverse the amount_paid. There is no refund path here to pretend otherwise.
+    """
+
+    def get_permissions(self):
+        return [HasRolePermission("promotions.manage")]
+
+    def post(self, request, pk):
+        promotion = generics.get_object_or_404(Promotion, pk=pk)
+        if promotion.status != Promotion.ACTIVE:
+            return Response(
+                {"detail": "Only an active promotion can be cancelled."}, status=400
+            )
+        if promotion.ends_at < timezone.now():
+            return Response(
+                {"detail": "This promotion has already finished."}, status=400
+            )
+        promotion.status = Promotion.CANCELLED
+        promotion.save(update_fields=["status"])
+        return Response(PromotionAdminSerializer(promotion).data)

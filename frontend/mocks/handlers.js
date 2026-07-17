@@ -301,6 +301,17 @@ export const handlers = [
   http.post('http://localhost:8000/api/disputes/:id/resolve/', () => {
     return HttpResponse.json({ id: 1, status: 'resolved' })
   }),
+  http.post('http://localhost:8000/api/disputes/:id/re-review/', () => {
+    return HttpResponse.json({ id: 1, status: 'open' })
+  }),
+  // Promotions management (staff) — unpaginated, unlike the disputes queue
+  // above.
+  http.get('http://localhost:8000/api/listings/promotions/', () => {
+    return HttpResponse.json([])
+  }),
+  http.post('http://localhost:8000/api/listings/promotions/:id/cancel/', () => {
+    return HttpResponse.json({ id: 1, status: 'cancelled' })
+  }),
   // Transactions report (extended billing app) — default handler,
   // overridden per-test via server.use() where a specific report is needed.
   http.get('http://localhost:8000/api/billing/transactions/report/', () => {

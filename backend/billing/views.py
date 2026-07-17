@@ -1,5 +1,6 @@
 from django.db.models import Count, Sum
 from django.db.models.functions import TruncMonth
+from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework import generics, status
 from rest_framework.pagination import PageNumberPagination
@@ -66,18 +67,36 @@ class SubscriptionPlanAdminUpdateView(generics.UpdateAPIView):
         return [HasRolePermission("subscription_plans.manage")]
 
 
+# The three UI tabs → stored statuses. Note "active" is this model's approved
+# state — a plan that passed approval is live, not merely "approved".
+PLAN_STATUS_MAP = {
+    "pending": SubscriptionPlan.PENDING_APPROVAL,
+    "approved": SubscriptionPlan.ACTIVE_STATUS,
+    "rejected": SubscriptionPlan.REJECTED_STATUS,
+}
+
+
 class SubscriptionPlanPendingQueueView(generics.ListAPIView):
-    """Clones listings.HeroPendingQueueView's shape for pending subscription
-    plans. SubscriptionPlan has no created_at/submitted_at field, so ordering
-    by id (ascending) stands in for "oldest first" — ids are assigned in
-    creation order.
+    """GET /api/billing/plans/pending/?status=pending|approved|rejected —
+    clones listings.HeroPendingQueueView's shape for subscription plans. The
+    path keeps its historical "pending" segment; the tab comes from ?status=.
     """
 
     serializer_class = SubscriptionPlanAdminSerializer
-    queryset = SubscriptionPlan.objects.filter(status=SubscriptionPlan.PENDING_APPROVAL).order_by("id")
 
     def get_permissions(self):
         return [HasRolePermission("subscription_plans.approve")]
+
+    def get_queryset(self):
+        tab = self.request.query_params.get("status", "pending")
+        plan_status = PLAN_STATUS_MAP.get(tab, SubscriptionPlan.PENDING_APPROVAL)
+        queryset = SubscriptionPlan.objects.filter(status=plan_status)
+        if plan_status == SubscriptionPlan.PENDING_APPROVAL:
+            # Oldest first. created_at was backfilled to the migration's run
+            # time for pre-existing rows, so id breaks those ties in the
+            # creation order it previously stood in for.
+            return queryset.order_by("created_at", "id")
+        return queryset.order_by("-reviewed_at", "-id")
 
 
 class SubscriptionPlanApproveView(APIView):
@@ -90,7 +109,36 @@ class SubscriptionPlanApproveView(APIView):
         plan = generics.get_object_or_404(SubscriptionPlan, pk=pk)
         plan.status = SubscriptionPlan.ACTIVE_STATUS
         plan.rejection_reason = None
-        plan.save(update_fields=["status", "rejection_reason"])
+        plan.reviewed_by = request.user
+        plan.reviewed_at = timezone.now()
+        plan.save(
+            update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"]
+        )
+        return Response({"id": plan.id, "status": plan.status})
+
+
+class SubscriptionPlanReReviewView(APIView):
+    """POST /api/billing/plans/{id}/re-review/ — sends a rejected plan back to
+    the pending queue, clearing the rejection.
+    """
+
+    def get_permissions(self):
+        return [HasRolePermission("subscription_plans.approve")]
+
+    def post(self, request, pk):
+        plan = generics.get_object_or_404(SubscriptionPlan, pk=pk)
+        if plan.status != SubscriptionPlan.REJECTED_STATUS:
+            return Response(
+                {"detail": "Only a rejected plan can be sent back for re-review."},
+                status=400,
+            )
+        plan.status = SubscriptionPlan.PENDING_APPROVAL
+        plan.rejection_reason = None
+        plan.reviewed_by = None
+        plan.reviewed_at = None
+        plan.save(
+            update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"]
+        )
         return Response({"id": plan.id, "status": plan.status})
 
 
@@ -109,7 +157,11 @@ class SubscriptionPlanRejectView(APIView):
         plan = generics.get_object_or_404(SubscriptionPlan, pk=pk)
         plan.status = SubscriptionPlan.REJECTED_STATUS
         plan.rejection_reason = reason
-        plan.save(update_fields=["status", "rejection_reason"])
+        plan.reviewed_by = request.user
+        plan.reviewed_at = timezone.now()
+        plan.save(
+            update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"]
+        )
         return Response({"id": plan.id, "status": plan.status})
 
 

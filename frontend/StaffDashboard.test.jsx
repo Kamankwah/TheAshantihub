@@ -99,16 +99,22 @@ describe('StaffDashboard', () => {
     expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument()
   })
 
-  // Promotions went self-serve (business owners purchase Featured/Boost from
-  // their own dashboard — docs/BUSINESS_EVENTS_ROADMAP.md Phase 5), so the
-  // old ComingSoonPanel placeholder here would now be misleading. Assert the
-  // informational panel shows instead, not "coming soon".
-  it('shows a self-serve informational panel for Promotions instead of coming-soon', () => {
+  // Promotions are self-serve (business owners purchase Featured/Boost from
+  // their own dashboard — docs/BUSINESS_EVENTS_ROADMAP.md Phase 5), so this
+  // panel is a lifecycle view (Active/Expired/Cancelled), never an approval
+  // queue — and never the old "coming soon"/"nothing to manage" placeholder.
+  it('shows a real Promotions management panel, not coming-soon or an info card', async () => {
     const auth = makeAuth({ hasPermission: (c) => c === 'promotions.manage' })
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('Promotions'))
-    expect(screen.getByText('Promotions are self-serve')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /Active/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Expired/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Cancelled/ })).toBeInTheDocument()
     expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('Promotions are self-serve')).not.toBeInTheDocument()
+    // Promotions are bought, not approved — these must never appear here.
+    expect(screen.queryByRole('button', { name: /Pending/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Approved/ })).not.toBeInTheDocument()
   })
 
   it('calls onExit when the exit button is clicked', () => {
@@ -1290,6 +1296,64 @@ describe('StaffDashboard Overview KPIs', () => {
   })
 })
 
+describe('StaffDashboard Promotions', () => {
+  const promotionsQueue = (byStatus) =>
+    http.get('http://localhost:8000/api/listings/promotions/', ({ request }) => {
+      const status = new URL(request.url).searchParams.get('status')
+      return HttpResponse.json(byStatus[status] || [])
+    })
+
+  it('lists active promotions and cancels one after confirming', async () => {
+    let cancelCalled = false
+    server.use(
+      promotionsQueue({
+        active: [{ id: 1, listing: 5, listing_name: 'Royal Lodge', business_owner_name: 'Kwame Traders', kind: 'featured', starts_at: '2026-07-01T00:00:00Z', ends_at: '2026-07-30T00:00:00Z', keywords: '', amount_paid: '5.00', status: 'active', is_currently_active: true, created_at: '2026-07-01T00:00:00Z' }],
+      }),
+      http.post('http://localhost:8000/api/listings/promotions/1/cancel/', () => {
+        cancelCalled = true
+        return HttpResponse.json({ id: 1, status: 'cancelled' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'promotions.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Promotions'))
+    await screen.findByText('Royal Lodge')
+    expect(screen.getByText(/Kwame Traders/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('✕ Cancel'))
+    // Cancelling is not a refund — the UI must say so before confirming.
+    expect(screen.getByText(/does not refund the GHS 5.00 already paid/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('Confirm cancel'))
+    await waitFor(() => expect(cancelCalled).toBe(true))
+  })
+
+  it('marks a paid-but-not-yet-started promotion as scheduled rather than running', async () => {
+    server.use(
+      promotionsQueue({
+        active: [{ id: 2, listing: 5, listing_name: 'Kente Stall', business_owner_name: 'Ama Trader', kind: 'boost', starts_at: '2026-08-01T00:00:00Z', ends_at: '2026-08-08T00:00:00Z', keywords: 'kente', amount_paid: '3.00', status: 'active', is_currently_active: false, created_at: '2026-07-01T00:00:00Z' }],
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'promotions.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Promotions'))
+    await screen.findByText('Kente Stall')
+    expect(screen.getByText('Scheduled — not ranking yet')).toBeInTheDocument()
+  })
+
+  it('shows no cancel action on an expired promotion', async () => {
+    server.use(
+      promotionsQueue({
+        expired: [{ id: 3, listing: 5, listing_name: 'Old Promo', business_owner_name: 'Yaw Trader', kind: 'featured', starts_at: '2026-06-01T00:00:00Z', ends_at: '2026-06-08T00:00:00Z', keywords: '', amount_paid: '5.00', status: 'active', is_currently_active: false, created_at: '2026-06-01T00:00:00Z' }],
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'promotions.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Promotions'))
+    fireEvent.click(await screen.findByRole('button', { name: /Expired/ }))
+    await screen.findByText('Old Promo')
+    expect(screen.queryByText('✕ Cancel')).not.toBeInTheDocument()
+  })
+})
+
 describe('StaffDashboard Disputes', () => {
   it('only shows the Disputes nav item for a session with disputes.flag or disputes.resolve_financial', () => {
     const auth = makeAuth({ hasPermission: (c) => c === 'disputes.flag' })
@@ -1362,20 +1426,49 @@ describe('StaffDashboard Disputes', () => {
 
   it('shows no actions on a terminal (resolved) dispute', async () => {
     server.use(
-      http.get('http://localhost:8000/api/disputes/', () => {
-        return HttpResponse.json({
-          count: 1, next: null, previous: null,
-          results: [{ id: 1, order: 9, order_total_amount: '150.00', order_status: 'paid', raised_by: 3, raised_by_name: 'Ama Buyer', reason: 'delivery_issue', description: 'Never arrived.', status: 'resolved', resolution_notes: 'Refunded.', refund_amount: '50.00', flagged_by: 2, flagged_by_name: 'Support Person', resolved_by: 4, resolved_by_name: 'Accountant Person', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' }],
-        })
+      http.get('http://localhost:8000/api/disputes/', ({ request }) => {
+        const status = new URL(request.url).searchParams.get('status')
+        const results = status === 'approved'
+          ? [{ id: 1, order: 9, order_total_amount: '150.00', order_status: 'paid', raised_by: 3, raised_by_name: 'Ama Buyer', reason: 'delivery_issue', description: 'Never arrived.', status: 'resolved', resolution_notes: 'Refunded.', refund_amount: '50.00', flagged_by: 2, flagged_by_name: 'Support Person', resolved_by: 4, resolved_by_name: 'Accountant Person', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' }]
+          : []
+        return HttpResponse.json({ count: results.length, next: null, previous: null, results })
       }),
     )
     const auth = makeAuth({ hasPermission: (c) => ['disputes.flag', 'disputes.resolve_financial'].includes(c) })
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('Disputes'))
+    fireEvent.click(await screen.findByRole('button', { name: /Resolved/ }))
     await screen.findByText(/Order #9/)
     expect(screen.queryByText('🚩 Flag')).not.toBeInTheDocument()
     expect(screen.queryByText('✓ Resolve')).not.toBeInTheDocument()
     expect(screen.queryByText('✕ Reject')).not.toBeInTheDocument()
+    // A resolved dispute may have moved money, so it is never reopenable.
+    expect(screen.queryByText('🔄 Review Again')).not.toBeInTheDocument()
+  })
+
+  it('reopens a rejected dispute from the Rejected tab', async () => {
+    let reopenCalled = false
+    server.use(
+      http.get('http://localhost:8000/api/disputes/', ({ request }) => {
+        const status = new URL(request.url).searchParams.get('status')
+        const results = status === 'rejected'
+          ? [{ id: 2, order: 11, order_total_amount: '80.00', order_status: 'paid', raised_by: 3, raised_by_name: 'Ama Buyer', reason: 'delivery_issue', description: 'Wrong item.', status: 'rejected', resolution_notes: 'No evidence', refund_amount: null, flagged_by: null, flagged_by_name: null, resolved_by: 4, resolved_by_name: 'Accountant Person', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-03T00:00:00Z' }]
+          : []
+        return HttpResponse.json({ count: results.length, next: null, previous: null, results })
+      }),
+      http.post('http://localhost:8000/api/disputes/2/re-review/', () => {
+        reopenCalled = true
+        return HttpResponse.json({ id: 2, status: 'open' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'disputes.resolve_financial' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Disputes'))
+    fireEvent.click(await screen.findByRole('button', { name: /Rejected/ }))
+    await screen.findByText(/Order #11/)
+    expect(screen.getByText(/No evidence/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('🔄 Review Again'))
+    await waitFor(() => expect(reopenCalled).toBe(true))
   })
 
   it('shows an inline error when flagging a dispute fails', async () => {

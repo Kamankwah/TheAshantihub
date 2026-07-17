@@ -29,6 +29,11 @@ urlpatterns = [
         views.SubscriptionPlanRejectView.as_view(),
         name="subscription-plan-reject",
     ),
+    path(
+        "plans/<int:pk>/re-review/",
+        views.SubscriptionPlanReReviewView.as_view(),
+        name="subscription-plan-re-review",
+    ),
     path("subscriptions/me/", views.SubscriptionMeView.as_view(), name="subscription-me"),
     path(
         "subscriptions/start-trial/",

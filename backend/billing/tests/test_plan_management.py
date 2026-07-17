@@ -135,3 +135,93 @@ class SubscriptionPlanManagementTests(TestCase):
         tiers = {plan["tier"] for plan in response.json()}
         self.assertIn("product_pending5", tiers)
         self.assertNotIn("product_basic", tiers)
+
+
+class SubscriptionPlanApprovalQueueTests(SubscriptionPlanManagementTests):
+    """Pending/Approved/Rejected tabs + re-review (punch-list item 6).
+    Note "approved" maps to this model's `active` status — a plan that passes
+    approval is live.
+    """
+
+    QUEUE_URL = "/api/billing/plans/pending/"
+
+    def setUp(self):
+        super().setUp()
+        self.pending_plan = SubscriptionPlan.objects.create(
+            tier="queue_pending", name="Queue Pending", kind="product",
+            monthly_price="10.00", status=SubscriptionPlan.PENDING_APPROVAL,
+        )
+        self.rejected_plan = SubscriptionPlan.objects.create(
+            tier="queue_rejected", name="Queue Rejected", kind="product",
+            monthly_price="12.00", status=SubscriptionPlan.REJECTED_STATUS,
+            rejection_reason="Too expensive",
+        )
+
+    def test_default_queue_is_pending(self):
+        client = self._client_for(self.super_admin)
+        response = client.get(self.QUEUE_URL)
+        self.assertEqual(response.status_code, 200, response.content)
+        ids = [p["id"] for p in response.json()]
+        self.assertIn(self.pending_plan.id, ids)
+        self.assertNotIn(self.rejected_plan.id, ids)
+
+    def test_rejected_tab_lists_rejected_plans_with_reason(self):
+        client = self._client_for(self.super_admin)
+        response = client.get(f"{self.QUEUE_URL}?status=rejected")
+        row = next(p for p in response.json() if p["id"] == self.rejected_plan.id)
+        self.assertEqual(row["rejection_reason"], "Too expensive")
+
+    def test_approved_tab_lists_active_plans(self):
+        client = self._client_for(self.super_admin)
+        client.post(f"/api/billing/plans/{self.pending_plan.id}/approve/")
+        ids = [p["id"] for p in client.get(f"{self.QUEUE_URL}?status=approved").json()]
+        self.assertIn(self.pending_plan.id, ids)
+
+    def test_approve_records_reviewer_and_surfaces_the_name(self):
+        client = self._client_for(self.super_admin)
+        client.post(f"/api/billing/plans/{self.pending_plan.id}/approve/")
+        self.pending_plan.refresh_from_db()
+        self.assertEqual(self.pending_plan.reviewed_by, self.super_admin)
+        self.assertIsNotNone(self.pending_plan.reviewed_at)
+
+        row = next(
+            p for p in client.get(f"{self.QUEUE_URL}?status=approved").json()
+            if p["id"] == self.pending_plan.id
+        )
+        self.assertEqual(row["reviewed_by_name"], "Yaw SuperAdmin")
+
+    def test_reject_records_reviewer(self):
+        client = self._client_for(self.super_admin)
+        client.post(
+            f"/api/billing/plans/{self.pending_plan.id}/reject/",
+            {"reason": "Not viable"}, format="json",
+        )
+        self.pending_plan.refresh_from_db()
+        self.assertEqual(self.pending_plan.reviewed_by, self.super_admin)
+        self.assertIsNotNone(self.pending_plan.reviewed_at)
+
+    def test_re_review_moves_rejected_back_to_pending_and_clears_rejection(self):
+        client = self._client_for(self.super_admin)
+        response = client.post(f"/api/billing/plans/{self.rejected_plan.id}/re-review/")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.rejected_plan.refresh_from_db()
+        self.assertEqual(self.rejected_plan.status, SubscriptionPlan.PENDING_APPROVAL)
+        self.assertIsNone(self.rejected_plan.rejection_reason)
+        self.assertIsNone(self.rejected_plan.reviewed_by)
+        self.assertIsNone(self.rejected_plan.reviewed_at)
+
+    def test_re_review_rejects_a_non_rejected_plan(self):
+        client = self._client_for(self.super_admin)
+        response = client.post(f"/api/billing/plans/{self.pending_plan.id}/re-review/")
+        self.assertEqual(response.status_code, 400)
+
+    def test_re_review_requires_the_approve_permission(self):
+        client = self._client_for(self.accountant)
+        response = client.post(f"/api/billing/plans/{self.rejected_plan.id}/re-review/")
+        self.assertEqual(response.status_code, 403)
+
+    def test_new_plans_get_a_created_at(self):
+        """This model had no timestamp at all before item 6 — the pending
+        queue ordered by id as a stand-in for "oldest first".
+        """
+        self.assertIsNotNone(self.pending_plan.created_at)

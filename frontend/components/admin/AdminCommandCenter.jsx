@@ -21,7 +21,7 @@ import EscrowLedgerPanel from "./panels/EscrowLedgerPanel.jsx";
 import DisputesPanel from "./panels/DisputesPanel.jsx";
 import TransactionsReportPanel from "./panels/TransactionsReportPanel.jsx";
 import MessagingPanel from "./panels/MessagingPanel.jsx";
-import PromotionsInfoPanel from "./panels/PromotionsInfoPanel.jsx";
+import PromotionsPanel from "./panels/PromotionsPanel.jsx";
 import AnalyticsPanel from "./panels/AnalyticsPanel.jsx";
 
 // ─── Admin Command Center ─────────────────────────────────────────────────────
@@ -221,7 +221,7 @@ export default function AdminCommandCenter({ auth, onExit }) {
           {activeTab === "escrow" && <EscrowLedgerPanel auth={auth} />}
           {activeTab === "disputes" && <DisputesPanel auth={auth} />}
           {activeTab === "transactions" && <TransactionsReportPanel />}
-          {activeTab === "promotions" && <PromotionsInfoPanel />}
+          {activeTab === "promotions" && <PromotionsPanel auth={auth} />}
           {activeTab === "analytics" && <AnalyticsPanel />}
           {activeTab === "messaging" && <MessagingPanel />}
         </div>

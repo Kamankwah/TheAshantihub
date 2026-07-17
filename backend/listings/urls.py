@@ -25,6 +25,14 @@ urlpatterns = [
     path("categories/", views.CategoryListView.as_view(), name="category-list"),
     path("categories/<int:pk>/", views.CategoryDetailView.as_view(), name="category-detail"),
     path("zones/", views.ZoneListView.as_view(), name="zone-list"),
+    # Before the `<int:pk>/` patterns below, so "promotions" is never parsed
+    # as a listing id.
+    path("promotions/", views.PromotionAdminListView.as_view(), name="promotion-admin-list"),
+    path(
+        "promotions/<int:pk>/cancel/",
+        views.PromotionCancelView.as_view(),
+        name="promotion-cancel",
+    ),
     path("", views.PublicListingListView.as_view(), name="listing-list"),
     path("<int:pk>/", views.PublicListingDetailView.as_view(), name="listing-detail"),
     path("<int:pk>/related/", views.RelatedListingsView.as_view(), name="listing-related"),

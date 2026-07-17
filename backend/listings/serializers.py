@@ -298,6 +298,29 @@ class PromotionSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class PromotionAdminSerializer(serializers.ModelSerializer):
+    """Staff-facing shape for the promotions management queue
+    (promotions.manage). Adds the listing/business names a raw listing id
+    can't convey in a queue, and `is_currently_active` so the client doesn't
+    re-derive the live/expired distinction from timestamps itself.
+    """
+
+    listing_name = serializers.CharField(source="listing.name", read_only=True)
+    business_owner_name = serializers.CharField(
+        source="listing.business_owner.full_name", read_only=True
+    )
+    is_currently_active = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = Promotion
+        fields = [
+            "id", "listing", "listing_name", "business_owner_name", "kind",
+            "starts_at", "ends_at", "keywords", "amount_paid", "status",
+            "is_currently_active", "created_at",
+        ]
+        read_only_fields = fields
+
+
 class PromotionPurchaseSerializer(serializers.Serializer):
     """Input shape for POST /api/listings/{id}/promote/. Ownership, listing-
     status, and stacking checks happen in the view (ListingPromoteView), not

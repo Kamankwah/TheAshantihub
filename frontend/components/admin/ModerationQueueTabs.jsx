@@ -25,6 +25,12 @@ function itemsOf(query) {
 const TAB_ORDER = ["pending", "approved", "rejected"];
 const DEFAULT_LABELS = { pending: "Pending", approved: "Approved", rejected: "Rejected" };
 
+// Most callers want the three moderation states above, so `tabs` is optional.
+// Promotions overrides it (active/expired/cancelled) — promotions aren't
+// moderated, they're bought and then expire, so "pending/approved/rejected"
+// would be a lie. Anything passing custom keys must also pass `labels` for
+// them, since DEFAULT_LABELS only covers the three defaults.
+
 const fmtDate = (v) => (v ? String(v).slice(0, 10) : "");
 
 // Shared "who actioned this" line for the Approved tab, and the rejection
@@ -67,6 +73,7 @@ export default function ModerationQueueTabs({
   queries,
   renderRow,
   title,
+  tabs = TAB_ORDER,
   labels = {},
   emptyLabel = {},
 }) {
@@ -81,7 +88,7 @@ export default function ModerationQueueTabs({
       )}
 
       <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
-        {TAB_ORDER.map((key) => {
+        {tabs.map((key) => {
           const isActive = key === tab;
           // Show a count only for a tab whose data has actually loaded, so a
           // not-yet-fetched or errored tab doesn't render a misleading "0".
@@ -111,7 +118,7 @@ export default function ModerationQueueTabs({
       {active?.isError && <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load this queue.</div>}
       {active && !active.isLoading && !active.isError && items.length === 0 && (
         <div style={{ color: D.textDim, fontSize: "0.8rem" }}>
-          {emptyLabel[tab] || `No ${resolvedLabels[tab].toLowerCase()} items.`}
+          {emptyLabel[tab] || `No ${(resolvedLabels[tab] || tab).toLowerCase()} items.`}
         </div>
       )}
       {active && !active.isLoading && !active.isError &&
