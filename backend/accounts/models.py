@@ -18,6 +18,11 @@ class Role(models.Model):
     ACCOUNTANT = "accountant"
     MARKETING = "marketing"
     SUPPORT = "support"
+    # Field-work roles (punch-list item 11). max_length=20 fits the longest,
+    # "delivery_manager" (16).
+    SCOUT = "scout"
+    DELIVERY_MANAGER = "delivery_manager"
+    DISPATCH = "dispatch"
 
     NAME_CHOICES = [
         (SUPER_ADMIN, "Super Admin"),
@@ -25,6 +30,9 @@ class Role(models.Model):
         (ACCOUNTANT, "Accountant"),
         (MARKETING, "Marketing"),
         (SUPPORT, "Support"),
+        (SCOUT, "Scout"),
+        (DELIVERY_MANAGER, "Delivery Manager"),
+        (DISPATCH, "Dispatch"),
     ]
 
     name = models.CharField(max_length=20, choices=NAME_CHOICES, unique=True)
@@ -300,6 +308,64 @@ class BusinessOwnerProfile(models.Model):
 
     def __str__(self):
         return f"Profile for {self.business_owner.full_name}"
+
+
+class ScoutAssignment(models.Model):
+    """A scout's field-verification assignment for one business (punch-list
+    item 11). An admin (scouts.assign) assigns a scout to a business; the scout
+    (scouts.verify) visits, then submits a field report. Completing the report
+    writes the same BusinessOwnerProfile.address_verified/_by/_at fields the
+    KYC Approve/Reject gate (item 8) reads — so either a scout in the field OR
+    a KYC staffer at the desk can satisfy that gate ("either can verify").
+
+    The scout can also correct the Ghana Post address if it was wrong, and
+    records whether the business is legitimate and the owner's details match —
+    the three things the field visit is for.
+    """
+
+    ASSIGNED = "assigned"
+    VISITED = "visited"  # report submitted
+    STATUS_CHOICES = [
+        (ASSIGNED, "Assigned"),
+        (VISITED, "Visited"),
+    ]
+
+    business_owner = models.ForeignKey(
+        BusinessOwner, on_delete=models.CASCADE, related_name="scout_assignments"
+    )
+    scout = models.ForeignKey(
+        StaffUser, on_delete=models.CASCADE, related_name="scout_assignments"
+    )
+    assigned_by = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="scout_assignments_made",
+    )
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=ASSIGNED)
+
+    # Field report — all null until the scout submits. address_confirmed False
+    # means the stated Ghana Post address was wrong; corrected_address then
+    # holds the right one (and is written onto the profile's gps_address).
+    address_confirmed = models.BooleanField(null=True, blank=True)
+    corrected_address = models.CharField(max_length=20, blank=True)
+    business_legitimate = models.BooleanField(null=True, blank=True)
+    details_correct = models.BooleanField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    visited_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            # A business only needs one open scout assignment at a time; a
+            # scout can't be double-assigned to the same business.
+            models.UniqueConstraint(
+                fields=["business_owner", "scout"], name="unique_scout_per_business"
+            ),
+        ]
+
+    def __str__(self):
+        return f"Scout {self.scout_id} → {self.business_owner_id} ({self.status})"
 
 
 class PasswordResetToken(models.Model):

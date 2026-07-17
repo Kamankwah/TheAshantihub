@@ -2,6 +2,7 @@ import { useState } from "react";
 import { C, CURRENCIES } from "../theme.js";
 import { useCart } from "../hooks/useCart.js";
 import { apiPatch, apiPost, apiDelete } from "../apiClient.js";
+import LocationPicker from "./LocationPicker.jsx";
 
 // ─── CartDrawer ─────────────────────────────────────────────────────────────
 // Customer cart (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4). Mirrors App.jsx's
@@ -50,6 +51,8 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   const [deliveryMethod, setDeliveryMethod] = useState("store_pickup");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryPhone, setDeliveryPhone] = useState("");
+  const [deliveryLat, setDeliveryLat] = useState(null);
+  const [deliveryLng, setDeliveryLng] = useState(null);
   const doorToDoorReady = deliveryMethod !== "door_to_door" || (deliveryAddress.trim() && deliveryPhone.trim());
 
   const items = cart?.items || [];
@@ -95,6 +98,12 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
         delivery_method: deliveryMethod,
         delivery_address: deliveryAddress,
         delivery_phone: deliveryPhone,
+        // Only sent when the customer dropped a pin — the backend treats
+        // missing coords as "no pin", the dispatch map then falls back to the
+        // text address.
+        ...(deliveryMethod === "door_to_door" && deliveryLat != null
+          ? { delivery_lat: deliveryLat, delivery_lng: deliveryLng }
+          : {}),
       });
       // Hubtel integration (docs/HUBTEL_INTEGRATION.md) — once
       // payments_provider is "hubtel", OrderCheckoutView returns
@@ -242,7 +251,12 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
                   value={deliveryPhone}
                   onChange={(e) => setDeliveryPhone(e.target.value)}
                   placeholder="Contact phone for delivery"
-                  style={{ width: "100%", padding: "9px 12px", borderRadius: 10, border: "1.5px solid #e0e0e0", fontSize: "0.78rem", fontFamily: "inherit", boxSizing: "border-box" }}
+                  style={{ width: "100%", padding: "9px 12px", borderRadius: 10, border: "1.5px solid #e0e0e0", fontSize: "0.78rem", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 8 }}
+                />
+                <LocationPicker
+                  lat={deliveryLat}
+                  lng={deliveryLng}
+                  onChange={(la, ln) => { setDeliveryLat(la); setDeliveryLng(ln); }}
                 />
               </div>
             )}

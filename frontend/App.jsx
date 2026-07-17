@@ -1875,8 +1875,15 @@ function DeliveryStepper({ status }) {
 // filters client-side by order id or an item's listing_name (see
 // ACCOUNT_SEARCHABLE_TABS above).
 function OrdersDeliveryTab({ searchQuery }) {
-  const { data, isLoading, isError } = useOrders();
+  const { data, isLoading, isError, refetch } = useOrders();
+  const [confirmError, setConfirmError] = useState(null);
   const orders = data || [];
+
+  const confirmReceipt = async (orderId) => {
+    setConfirmError(null);
+    try { await apiPost(`/api/orders/${orderId}/confirm-receipt/`, {}); refetch(); }
+    catch { setConfirmError("Could not confirm receipt. Please try again."); }
+  };
   const q = (searchQuery||"").trim().toLowerCase();
   const filtered = q
     ? orders.filter(o => String(o.id).includes(q) || (o.items||[]).some(it=>it.listing_name?.toLowerCase().includes(q)))
@@ -1914,6 +1921,16 @@ function OrdersDeliveryTab({ searchQuery }) {
           </div>
         )}
         {o.status==="paid" && o.delivery_method==="door_to_door" && <DeliveryStepper status={o.delivery_status}/>}
+        {o.delivery_assignment_status==="delivered" && (
+          <div style={{marginTop:10}}>
+            <div style={{color:D.textDim,fontSize:"0.72rem",marginBottom:6}}>Your courier marked this delivered. Please confirm you received it.</div>
+            <button onClick={()=>confirmReceipt(o.id)} style={{background:D.green,color:"#fff",border:"none",borderRadius:20,padding:"8px 16px",fontWeight:800,fontSize:"0.76rem",cursor:"pointer",fontFamily:"inherit"}}>✓ Confirm receipt</button>
+            {confirmError && <div style={{color:D.red,fontSize:"0.72rem",marginTop:6}}>{confirmError}</div>}
+          </div>
+        )}
+        {o.delivery_assignment_status==="confirmed" && (
+          <div style={{marginTop:8,color:D.green,fontSize:"0.72rem",fontWeight:700}}>✓ Receipt confirmed</div>
+        )}
       </div>
       );
     })}
