@@ -287,6 +287,29 @@ export const handlers = [
   http.post('http://localhost:8000/api/accounts/business-owners/:id/unsuspend/', ({ params }) => {
     return HttpResponse.json({ id: Number(params.id), is_suspended: false })
   }),
+  // Staff account management (item 10) + permission editor (item 9) — default
+  // handlers, overridden per-test as needed.
+  http.post('http://localhost:8000/api/accounts/staff/:id/suspend/', ({ params }) => {
+    return HttpResponse.json({ id: Number(params.id), status: 'suspended' })
+  }),
+  http.post('http://localhost:8000/api/accounts/staff/:id/unsuspend/', ({ params }) => {
+    return HttpResponse.json({ id: Number(params.id), status: 'active' })
+  }),
+  http.post('http://localhost:8000/api/accounts/staff/:id/deactivate/', ({ params }) => {
+    return HttpResponse.json({ id: Number(params.id), status: 'deactivated' })
+  }),
+  http.post('http://localhost:8000/api/accounts/staff/:id/reactivate/', ({ params }) => {
+    return HttpResponse.json({ id: Number(params.id), status: 'active' })
+  }),
+  http.post('http://localhost:8000/api/accounts/staff/:id/permissions/', ({ params }) => {
+    return HttpResponse.json({ id: Number(params.id), status: 'active' })
+  }),
+  http.get('http://localhost:8000/api/accounts/permissions/', () => {
+    return HttpResponse.json([
+      { codename: 'kyc.approve', description: 'Approve or reject KYC submissions' },
+      { codename: 'users.view', description: 'View customer and business accounts' },
+    ])
+  }),
   http.get('http://localhost:8000/api/events/tickets/escrow/', () => {
     return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
   }),

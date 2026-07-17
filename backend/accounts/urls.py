@@ -101,4 +101,10 @@ urlpatterns = [
         name="staff-business-owner-unsuspend",
     ),
     path("staff/", views.StaffListView.as_view(), name="staff-list"),
+    path("staff/<int:pk>/suspend/", views.StaffSuspendView.as_view(), name="staff-suspend"),
+    path("staff/<int:pk>/unsuspend/", views.StaffUnsuspendView.as_view(), name="staff-unsuspend"),
+    path("staff/<int:pk>/deactivate/", views.StaffDeactivateView.as_view(), name="staff-deactivate"),
+    path("staff/<int:pk>/reactivate/", views.StaffReactivateView.as_view(), name="staff-reactivate"),
+    path("staff/<int:pk>/permissions/", views.StaffPermissionsView.as_view(), name="staff-permissions"),
+    path("permissions/", views.PermissionCatalogView.as_view(), name="permission-catalog"),
 ]

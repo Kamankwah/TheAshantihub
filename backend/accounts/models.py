@@ -115,6 +115,49 @@ class StaffUser(AuthenticatableAccountMixin, models.Model):
     invite_expires_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # Two distinct ways to stop a staffer signing in (punch-list item 10),
+    # cloned from the Customer/BusinessOwner precedent in migration 0021:
+    #
+    # - is_suspended: a temporary hold (misconduct, investigation). Carries a
+    #   reason, same as the customer/owner fields of the same name.
+    # - is_active: cleared when someone leaves the company. No reason field —
+    #   "they don't work here" is the whole story.
+    #
+    # Both are reversible and both reject at login (see StaffLoginSerializer).
+    # Kept as two booleans rather than one status enum so a staffer can be
+    # suspended *and* later deactivated without one overwriting the other's
+    # history.
+    is_suspended = models.BooleanField(default=False)
+    suspension_reason = models.CharField(max_length=500, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    # Per-staffer permission overrides (punch-list item 9). Permissions
+    # otherwise come only from `role`, so "add or take" a permission for one
+    # person had nowhere to live — editing Role.permissions would silently
+    # re-permission every staffer sharing that role.
+    #
+    # Effective set = role.permissions + extra_permissions - revoked_permissions
+    # (see effective_permission_codenames below). `revoked` wins over `extra`
+    # on the assumption that an explicit take-away is the more deliberate act.
+    extra_permissions = models.ManyToManyField(
+        Permission, related_name="granted_to_staff", blank=True
+    )
+    revoked_permissions = models.ManyToManyField(
+        Permission, related_name="revoked_from_staff", blank=True
+    )
+
+    def effective_permission_codenames(self):
+        """The single source of truth for what this staffer can do.
+
+        Both HasRolePermission and GET /api/accounts/me/'s `permissions` list
+        read this — they must agree, or the UI would gate differently from the
+        server and show buttons that 403.
+        """
+        role_codenames = set(self.role.permissions.values_list("codename", flat=True))
+        extra = set(self.extra_permissions.values_list("codename", flat=True))
+        revoked = set(self.revoked_permissions.values_list("codename", flat=True))
+        return (role_codenames | extra) - revoked
+
     def __str__(self):
         return f"{self.full_name} ({self.role.name})"
 

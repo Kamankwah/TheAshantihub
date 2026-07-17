@@ -61,4 +61,6 @@ export const STAFF_STATUS_COLORS = {
   active: D.green,
   invited: D.amber,
   invite_expired: D.red,
+  suspended: D.red,
+  deactivated: D.textFaint,
 };
