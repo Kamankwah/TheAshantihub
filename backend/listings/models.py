@@ -20,6 +20,11 @@ class Category(models.Model):
     label = models.CharField(max_length=100)
     color = models.CharField(max_length=20)
     kind = models.CharField(max_length=10, choices=KIND_CHOICES, default=PRODUCT)
+    # Accommodation categories (hotel, real estate, Airbnb) — business item 2 /
+    # Wave H3. A listing in an is_accommodation category is booked by date
+    # (check-in/out) through the booking engine, not requested (services) or
+    # carted (products). Only ever meaningful for a service-kind category.
+    is_accommodation = models.BooleanField(default=False)
 
     def __str__(self):
         return self.label
@@ -121,6 +126,12 @@ class Listing(models.Model):
     requirements = models.TextField(blank=True)
     revisions = models.CharField(max_length=100, blank=True)
     delivery_time = models.CharField(max_length=100, blank=True)
+
+    # ── Accommodation (booking engine, Wave H3) ─────────────────────────────
+    # How many rooms/units this accommodation listing has. The booking engine
+    # prevents the units booked for any overlapping night from exceeding this.
+    # price_amount doubles as the per-night rate for an accommodation listing.
+    units_total = models.PositiveIntegerField(default=1)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
