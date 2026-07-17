@@ -79,6 +79,10 @@ export const handlers = [
       { status: 201 },
     )
   }),
+  // Owner sales report (business item 4) — default empty summary.
+  http.get('http://localhost:8000/api/orders/owner/report/', () => {
+    return HttpResponse.json({ summary: { total_sales: '0.00', order_count: 0, item_count: 0 }, series: [], rows: [] })
+  }),
   http.get('http://localhost:8000/api/orders/', () => {
     return HttpResponse.json([])
   }),

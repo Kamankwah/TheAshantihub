@@ -642,7 +642,7 @@ describe('BusinessDashboard command-center tab navigation', () => {
     mockAnalyticsData()
     renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={analyticsUser} />)
     fireEvent.click(await screen.findByRole('button', { name: /💳 Payments/ }))
-    expect(await screen.findByText('💰 Payment Overview')).toBeInTheDocument()
+    expect(await screen.findByText('⬇ Export CSV')).toBeInTheDocument()
   })
 
   it('opens the Credit tab (ported CreditDashboard content)', async () => {
@@ -657,7 +657,7 @@ describe('BusinessDashboard command-center tab navigation', () => {
     renderWithQueryClient(
       <BusinessCommandCenter initialTab="payments" onExit={vi.fn()} user={analyticsUser} auth={makeAuth()} PaymentComponent={() => null} />,
     )
-    expect(await screen.findByText('💰 Payment Overview')).toBeInTheDocument()
+    expect(await screen.findByText('⬇ Export CSV')).toBeInTheDocument()
   })
 
   it('deep-links to the Credit tab via initialTab (the /credit route)', async () => {
@@ -795,5 +795,50 @@ describe('BusinessDashboard Bookings tab (business item 2)', () => {
     expect(screen.getByText(/2 nights/)).toBeInTheDocument()
     fireEvent.click(screen.getByText('🔑 Check in'))
     await waitFor(() => expect(checkinCalled).toBe(true))
+  })
+})
+
+describe('BusinessDashboard Payments rework (business item 4)', () => {
+  const productProfile = { ghana_card_number: 'GHA-1', gps_address: 'AK-1', business_contact_phone: '+233200000000', is_formal: false, business_kind: 'product' }
+
+  it('shows a customer sales report in Overview', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/listings/mine/', () => HttpResponse.json([])),
+      http.get('http://localhost:8000/api/accounts/business-owners/me/profile/', () => HttpResponse.json(productProfile)),
+      http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([])),
+      http.get('http://localhost:8000/api/billing/subscriptions/me/', () => HttpResponse.json({})),
+      http.get('http://localhost:8000/api/hero/mine/', () => HttpResponse.json({})),
+      http.get('http://localhost:8000/api/orders/owner/report/', () => HttpResponse.json({
+        summary: { total_sales: '450.00', order_count: 2, item_count: 3 }, series: [],
+        rows: [{ order_id: 1, date: '2026-07-10T00:00:00Z', customer: 'Ama Buyer', item: 'Kente Cloth', kind: 'product', quantity: 2, line_total: '300.00' }],
+      })),
+    )
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
+    fireEvent.click(await screen.findByRole('button', { name: /💳 Payments/ }))
+    await screen.findByText('Total Sales')
+    expect(screen.getByText('GHS 450')).toBeInTheDocument()
+    expect(screen.getByText('Kente Cloth', { exact: false })).toBeInTheDocument()
+    // The old owner-spend framing is gone.
+    expect(screen.queryByText('💰 Payment Overview')).not.toBeInTheDocument()
+  })
+
+  it('kind-gates the subscription plan grid (fixes the Wave A gap)', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/listings/mine/', () => HttpResponse.json([])),
+      http.get('http://localhost:8000/api/accounts/business-owners/me/profile/', () => HttpResponse.json(productProfile)),
+      http.get('http://localhost:8000/api/billing/subscriptions/me/', () => HttpResponse.json({})),
+      http.get('http://localhost:8000/api/hero/mine/', () => HttpResponse.json({})),
+      http.get('http://localhost:8000/api/orders/owner/report/', () => HttpResponse.json({ summary: { total_sales: '0.00', order_count: 0, item_count: 0 }, series: [], rows: [] })),
+      http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([
+        { id: 1, tier: 'product_basic', name: 'Product Basic', kind: 'product', monthly_price: '20.00', features: [], is_recommended: false },
+        { id: 2, tier: 'service', name: 'Service Plan', kind: 'service', monthly_price: '30.00', features: [], is_recommended: false },
+      ])),
+    )
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
+    fireEvent.click(await screen.findByRole('button', { name: /💳 Payments/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /My Transactions & Subscription/ }))
+    await screen.findByText('Product Basic')
+    // A product business must not see the service plan.
+    expect(screen.queryByText('Service Plan')).not.toBeInTheDocument()
   })
 })
