@@ -209,7 +209,7 @@ export default function AdminCommandCenter({ auth, onExit }) {
           {activeTab === "hero" && <HeroApprovalPanel />}
           {activeTab === "events-moderation" && <EventsModerationPanel />}
           {activeTab === "event-pricing" && <EventPricingPanel auth={auth} />}
-          {activeTab === "reviews" && <ReviewsModerationPanel />}
+          {activeTab === "reviews" && <ReviewsModerationPanel auth={auth} />}
           {activeTab === "subscription-plans" && <SubscriptionPlansManagePanel />}
           {activeTab === "subscription-plans-approval" && <SubscriptionPlanApprovalPanel />}
           {activeTab === "delivery" && <DeliveryManagementPanel />}

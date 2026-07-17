@@ -611,38 +611,41 @@ describe('StaffDashboard Reviews moderation', () => {
     expect(screen.getByText('Reviews')).toBeInTheDocument()
   })
 
-  it('reads the paginated moderation queue (data.results) and shows published/hidden status', async () => {
+  // Reviews are pre-moderated: the queue opens on Pending and reads the
+  // paginated envelope (data.results) via ModerationQueueTabs' itemsOf().
+  const reviewsQueue = (byStatus) =>
+    http.get('http://localhost:8000/api/reviews/moderation/', ({ request }) => {
+      const status = new URL(request.url).searchParams.get('status')
+      const results = byStatus[status] || []
+      return HttpResponse.json({ count: results.length, next: null, previous: null, results })
+    })
+
+  it('reads the paginated pending queue (data.results) and approves a review', async () => {
+    let approveCalled = false
     server.use(
-      http.get('http://localhost:8000/api/reviews/moderation/', () => {
-        return HttpResponse.json({
-          count: 2, next: null, previous: null,
-          results: [
-            { id: 1, target_type: 'listing', rating: 5, comment: 'Great!', verified: true, author_name: 'Ama', status: 'published', created_at: '2026-07-01T00:00:00Z' },
-            { id: 2, target_type: 'event', rating: 2, comment: 'Poorly organized', verified: true, author_name: 'Kofi', status: 'hidden', hidden_reason: 'Spam', created_at: '2026-07-02T00:00:00Z' },
-          ],
-        })
+      reviewsQueue({
+        pending: [{ id: 1, target_type: 'listing', target_name: 'Test Lodge', rating: 5, comment: 'Great!', verified: true, author_name: 'Ama', status: 'pending', created_at: '2026-07-01T00:00:00Z' }],
+      }),
+      http.post('http://localhost:8000/api/reviews/moderation/1/approve/', () => {
+        approveCalled = true
+        return HttpResponse.json({ id: 1, status: 'published' })
       }),
     )
     const auth = makeAuth({ hasPermission: (c) => c === 'reviews.moderate' })
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('Reviews'))
     await screen.findByText('"Great!"')
-    expect(screen.getByText('Published')).toBeInTheDocument()
-    expect(screen.getByText('Hidden')).toBeInTheDocument()
-    expect(screen.getByText('Hidden: Spam')).toBeInTheDocument()
+    expect(screen.getByText('Test Lodge')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('✓ Approve'))
+    await waitFor(() => expect(approveCalled).toBe(true))
   })
 
-  it('hides a published review with a reason', async () => {
-    server.use(
-      http.get('http://localhost:8000/api/reviews/moderation/', () => {
-        return HttpResponse.json({
-          count: 1, next: null, previous: null,
-          results: [{ id: 3, target_type: 'listing', rating: 1, comment: 'Fake review', verified: false, author_name: 'Unknown', status: 'published', created_at: '2026-07-01T00:00:00Z' }],
-        })
-      }),
-    )
+  it('rejects a pending review with a reason', async () => {
     let hideBody = null
     server.use(
+      reviewsQueue({
+        pending: [{ id: 3, target_type: 'listing', rating: 1, comment: 'Fake review', verified: false, author_name: 'Unknown', status: 'pending', created_at: '2026-07-01T00:00:00Z' }],
+      }),
       http.post('http://localhost:8000/api/reviews/moderation/3/hide/', async ({ request }) => {
         hideBody = await request.json()
         return HttpResponse.json({ id: 3, status: 'hidden' })
@@ -652,43 +655,67 @@ describe('StaffDashboard Reviews moderation', () => {
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('Reviews'))
     await screen.findByText('"Fake review"')
-    fireEvent.click(screen.getByText('🚫 Hide'))
-    fireEvent.change(screen.getByPlaceholderText('Reason for hiding'), { target: { value: 'Not a verified purchase' } })
-    fireEvent.click(screen.getByText('Confirm hide'))
+    fireEvent.click(screen.getByText('✕ Reject'))
+    fireEvent.change(screen.getByPlaceholderText('Reason for rejecting'), { target: { value: 'Not a verified purchase' } })
+    fireEvent.click(screen.getByText('Confirm reject'))
     await waitFor(() => expect(hideBody).toEqual({ reason: 'Not a verified purchase' }))
   })
 
-  it('unhides a hidden review', async () => {
+  it('shows the approver on the Approved tab and allows a reactive takedown', async () => {
     server.use(
-      http.get('http://localhost:8000/api/reviews/moderation/', () => {
-        return HttpResponse.json({
-          count: 1, next: null, previous: null,
-          results: [{ id: 4, target_type: 'seller', rating: 3, comment: 'Meh', verified: true, author_name: 'Yaw', status: 'hidden', hidden_reason: 'Reported', created_at: '2026-07-01T00:00:00Z' }],
-        })
-      }),
-    )
-    let unhideCalled = false
-    server.use(
-      http.post('http://localhost:8000/api/reviews/moderation/4/unhide/', () => {
-        unhideCalled = true
-        return HttpResponse.json({ id: 4, status: 'published' })
+      reviewsQueue({
+        approved: [{ id: 6, target_type: 'listing', rating: 5, comment: 'Lovely', verified: true, author_name: 'Ama', status: 'published', reviewed_by_name: 'Akosua Support', reviewed_at: '2026-07-02T00:00:00Z', created_at: '2026-07-01T00:00:00Z' }],
       }),
     )
     const auth = makeAuth({ hasPermission: (c) => c === 'reviews.moderate' })
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('Reviews'))
-    await screen.findByText('"Meh"')
-    fireEvent.click(screen.getByText('↩️ Unhide'))
-    await waitFor(() => expect(unhideCalled).toBe(true))
+    fireEvent.click(await screen.findByRole('button', { name: /Approved/ }))
+    await screen.findByText('"Lovely"')
+    expect(screen.getByText(/Approved by Akosua Support/)).toBeInTheDocument()
+    expect(screen.getByText('🚫 Hide')).toBeInTheDocument()
   })
 
-  it('shows an inline error when hiding a review fails', async () => {
+  it('shows the rejection reason and lets a super admin send a review back for re-review', async () => {
+    let reReviewCalled = false
     server.use(
-      http.get('http://localhost:8000/api/reviews/moderation/', () => {
-        return HttpResponse.json({
-          count: 1, next: null, previous: null,
-          results: [{ id: 5, target_type: 'listing', rating: 1, comment: 'Bad', verified: false, author_name: 'X', status: 'published', created_at: '2026-07-01T00:00:00Z' }],
-        })
+      reviewsQueue({
+        rejected: [{ id: 4, target_type: 'seller', rating: 3, comment: 'Meh', verified: true, author_name: 'Yaw', status: 'hidden', hidden_reason: 'Reported', reviewed_by_name: 'Akosua Support', reviewed_at: '2026-07-02T00:00:00Z', created_at: '2026-07-01T00:00:00Z' }],
+      }),
+      http.post('http://localhost:8000/api/reviews/moderation/4/re-review/', () => {
+        reReviewCalled = true
+        return HttpResponse.json({ id: 4, status: 'pending' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'reviews.moderate' || c === 'reviews.re_review' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Reviews'))
+    fireEvent.click(await screen.findByRole('button', { name: /Rejected/ }))
+    await screen.findByText('"Meh"')
+    expect(screen.getByText(/Reported/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('🔄 Review Again'))
+    await waitFor(() => expect(reReviewCalled).toBe(true))
+  })
+
+  it('hides Review Again from a moderator without reviews.re_review', async () => {
+    server.use(
+      reviewsQueue({
+        rejected: [{ id: 4, target_type: 'seller', rating: 3, comment: 'Meh', verified: true, author_name: 'Yaw', status: 'hidden', hidden_reason: 'Reported', created_at: '2026-07-01T00:00:00Z' }],
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'reviews.moderate' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Reviews'))
+    fireEvent.click(await screen.findByRole('button', { name: /Rejected/ }))
+    await screen.findByText('"Meh"')
+    expect(screen.queryByText('🔄 Review Again')).not.toBeInTheDocument()
+    expect(screen.getByText(/Only a super admin can send a rejected review back/)).toBeInTheDocument()
+  })
+
+  it('shows an inline error when rejecting a review fails', async () => {
+    server.use(
+      reviewsQueue({
+        pending: [{ id: 5, target_type: 'listing', rating: 1, comment: 'Bad', verified: false, author_name: 'X', status: 'pending', created_at: '2026-07-01T00:00:00Z' }],
       }),
       http.post('http://localhost:8000/api/reviews/moderation/5/hide/', () => {
         return HttpResponse.json({ detail: 'Server error' }, { status: 500 })
@@ -698,10 +725,10 @@ describe('StaffDashboard Reviews moderation', () => {
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('Reviews'))
     await screen.findByText('"Bad"')
-    fireEvent.click(screen.getByText('🚫 Hide'))
-    fireEvent.change(screen.getByPlaceholderText('Reason for hiding'), { target: { value: 'spam' } })
-    fireEvent.click(screen.getByText('Confirm hide'))
-    await screen.findByText('Could not hide this review.')
+    fireEvent.click(screen.getByText('✕ Reject'))
+    fireEvent.change(screen.getByPlaceholderText('Reason for rejecting'), { target: { value: 'spam' } })
+    fireEvent.click(screen.getByText('Confirm reject'))
+    await screen.findByText('Could not reject this review. Please try again.')
   })
 })
 
@@ -925,6 +952,39 @@ describe('StaffDashboard Events Moderation', () => {
     fireEvent.change(screen.getByPlaceholderText('Rejection reason'), { target: { value: 'Missing address details' } })
     fireEvent.click(screen.getByText('Confirm reject'))
     await waitFor(() => expect(rejectBody).toEqual({ reason: 'Missing address details' }))
+  })
+
+  it('shows Approved and Rejected tabs, with re-review sending a rejected event back to pending', async () => {
+    let reReviewCalled = false
+    server.use(
+      http.get('http://localhost:8000/api/events/moderation/pending/', ({ request }) => {
+        const status = new URL(request.url).searchParams.get('status')
+        if (status === 'approved') {
+          return HttpResponse.json([{ id: 7, name: 'Approved Durbar', category: { label: 'Festivals' }, zone: { name: 'Adum' }, visibility_days: 14, submitted_by_business_name: 'Ama Trader', reviewed_by_name: 'Akosua Support', reviewed_at: '2026-07-02T00:00:00Z' }])
+        }
+        if (status === 'rejected') {
+          return HttpResponse.json([{ id: 8, name: 'Rejected Gig', category: { label: 'Festivals' }, zone: { name: 'Adum' }, visibility_days: 7, submitted_by_business_name: 'Yaw Trader', rejection_reason: 'Venue unclear', reviewed_by_name: 'Akosua Support', reviewed_at: '2026-07-02T00:00:00Z' }])
+        }
+        return HttpResponse.json([])
+      }),
+      http.post('http://localhost:8000/api/events/moderation/8/re-review/', () => {
+        reReviewCalled = true
+        return HttpResponse.json({ id: 8, status: 'pending' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'event.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Events Moderation'))
+
+    fireEvent.click(await screen.findByRole('button', { name: /Approved/ }))
+    await screen.findByText('Approved Durbar')
+    expect(screen.getByText(/Approved by Akosua Support/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Rejected/ }))
+    await screen.findByText('Rejected Gig')
+    expect(screen.getByText(/Venue unclear/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('🔄 Review Again'))
+    await waitFor(() => expect(reReviewCalled).toBe(true))
   })
 })
 

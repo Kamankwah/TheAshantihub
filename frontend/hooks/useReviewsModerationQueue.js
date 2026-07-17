@@ -1,15 +1,18 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiFetch } from '../apiClient.js'
 
-// GET /api/reviews/moderation/ — staff-only (reviews.moderate permission).
+// GET /api/reviews/moderation/?status=pending|approved|rejected — staff-only
+// (reviews.moderate permission). Reviews are pre-moderated, so this is a real
+// Pending/Approved/Rejected queue like the KYC/listings/hero ones.
+//
 // Unlike useModerationQueue.js/useHeroModerationQueue.js (both unpaginated
 // arrays), this endpoint IS paginated ({count, next, previous, results}) —
-// callers must read `data?.results`, not `data` directly. It's a full
-// queue (every review regardless of status), not a pending-only one, since
-// moderation here is reactive-by-browsing rather than approve/reject.
-export function useReviewsModerationQueue() {
+// callers must read `data?.results`, not `data` directly. ModerationQueueTabs'
+// itemsOf() normalizes both shapes, so the panel itself doesn't have to care.
+export function useReviewsModerationQueue({ status = 'pending', enabled = true } = {}) {
   return useQuery({
-    queryKey: ['reviews-moderation-queue'],
-    queryFn: () => apiFetch('/api/reviews/moderation/'),
+    queryKey: ['reviews-moderation-queue', status],
+    queryFn: () => apiFetch(`/api/reviews/moderation/?status=${status}`),
+    enabled,
   })
 }

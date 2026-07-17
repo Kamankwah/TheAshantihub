@@ -2,13 +2,22 @@ import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
 import { useEventModerationQueue } from "../../../hooks/useEventModerationQueue.js";
 import { useEventModerationDetail } from "../../../hooks/useEventModerationDetail.js";
-import { D, glassCard } from "../theme.js";
+import { D } from "../theme.js";
+import ModerationQueueTabs, {
+  ApprovedByLine,
+  RejectedReason,
+  ReviewAgainButton,
+} from "../ModerationQueueTabs.jsx";
 
 // Events Moderation staff panel (event pricing tiers work) — clones
-// ListingsModerationPanel's approve/reject shape, now with a read-only
+// ListingsModerationPanel's approve/reject shape, with a read-only
 // "👁️ View" detail expander (staff dashboard review tools) so staff can see
 // an event's full description/venue/date/organizer/media before deciding.
-// Gated by the event.approve permission.
+// Restructured onto the shared Pending/Approved/Rejected shell (punch-list
+// item 4). Gated by the event.approve permission.
+//
+// An expired event appears on none of the tabs — expiry is a lapsed
+// visibility window, not a moderation outcome (see EVENT_STATUS_MAP).
 
 function DetailField({ label, value }) {
   return (
@@ -19,7 +28,7 @@ function DetailField({ label, value }) {
   );
 }
 
-function EventRow({ event, onDone }) {
+function EventRow({ event, state, onDone }) {
   const [expanded, setExpanded] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
@@ -36,6 +45,11 @@ function EventRow({ event, onDone }) {
     try { await apiPost(`/api/events/moderation/${event.id}/reject/`, { reason: rejectReason }); setRejecting(false); setRejectReason(""); onDone(); }
     catch (err) { setActionError("Could not reject this event."); }
   };
+  const reReview = async () => {
+    setActionError(null);
+    try { await apiPost(`/api/events/moderation/${event.id}/re-review/`, {}); onDone(); }
+    catch (err) { setActionError("Could not send this event back for re-review."); }
+  };
 
   const d = detail.data;
   const organizer = d?.submitted_by_business_name || d?.submitted_by_customer_name
@@ -47,11 +61,18 @@ function EventRow({ event, onDone }) {
         <div>
           <div style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>{event.name}</div>
           <div style={{ color: D.textDim, fontSize: "0.68rem" }}>{event.category?.label} • {event.zone?.name} • {event.visibility_days} days • {event.submitted_by_business_name || event.submitted_by_customer_name}</div>
+          {state === "approved" && <ApprovedByLine name={event.reviewed_by_name} at={event.reviewed_at} />}
+          {state === "rejected" && <RejectedReason reason={event.rejection_reason} />}
         </div>
         <div style={{ display: "flex", gap: 6 }}>
           <button onClick={() => setExpanded(e => !e)} style={{ background: D.panelBg2, color: D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>{expanded ? "▲ Hide" : "👁️ View"}</button>
-          <button onClick={approve} style={{ background: D.green, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Approve</button>
-          <button onClick={() => setRejecting(true)} style={{ background: "rgba(248,113,113,0.14)", color: D.red, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✕ Reject</button>
+          {state === "pending" && (
+            <>
+              <button onClick={approve} style={{ background: D.green, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Approve</button>
+              <button onClick={() => setRejecting(true)} style={{ background: "rgba(248,113,113,0.14)", color: D.red, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✕ Reject</button>
+            </>
+          )}
+          {state === "rejected" && <ReviewAgainButton onClick={reReview} />}
         </div>
       </div>
 
@@ -99,17 +120,22 @@ function EventRow({ event, onDone }) {
 }
 
 export default function EventsModerationPanel() {
-  const { data, isLoading, isError, refetch } = useEventModerationQueue();
+  const [tab, setTab] = useState("pending");
+  const pending = useEventModerationQueue({ status: "pending" });
+  const approved = useEventModerationQueue({ status: "approved" });
+  const rejected = useEventModerationQueue({ status: "rejected" });
+  const queries = { pending, approved, rejected };
 
-  if (isLoading) return <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading…</div>;
-  if (isError) return <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load the events queue.</div>;
-  const items = data || [];
+  const refetchAll = () => { pending.refetch(); approved.refetch(); rejected.refetch(); };
 
   return (
-    <div style={{ ...glassCard, padding: 18 }}>
-      <div style={{ color: D.text, fontWeight: 800, fontSize: "0.88rem", marginBottom: 14 }}>Pending events ({items.length})</div>
-      {items.length === 0 && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>No pending events.</div>}
-      {items.map(ev => <EventRow key={ev.id} event={ev} onDone={refetch} />)}
-    </div>
+    <ModerationQueueTabs
+      tab={tab}
+      onTab={setTab}
+      queries={queries}
+      title="Events moderation"
+      emptyLabel={{ pending: "No events are waiting for approval." }}
+      renderRow={(event, state) => <EventRow event={event} state={state} onDone={refetchAll} />}
+    />
   );
 }

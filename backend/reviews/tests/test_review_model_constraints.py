@@ -237,10 +237,13 @@ class ReviewModelConstraintTests(TestCase):
         review.save()
         self.assertFalse(review.verified)
 
-    def test_status_defaults_to_published(self):
+    def test_status_defaults_to_pending(self):
+        """Reviews are pre-moderated — a new one waits for staff approval
+        rather than publishing straight away (punch-list item 5).
+        """
         review = self._make()
         review.save()
-        self.assertEqual(review.status, Review.PUBLISHED)
+        self.assertEqual(review.status, Review.PENDING)
 
     def test_comment_is_optional(self):
         review = self._make()

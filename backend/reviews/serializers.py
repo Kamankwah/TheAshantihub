@@ -60,12 +60,32 @@ class ReviewModerationSerializer(serializers.ModelSerializer):
 
     author_name = serializers.CharField(source="author.full_name", read_only=True)
     hidden_by_name = serializers.CharField(source="hidden_by.full_name", read_only=True, default=None)
+    # Who last actioned this review (approved or rejected) and when — drives
+    # the Approved/Rejected tabs' attribution line.
+    reviewed_by_name = serializers.CharField(
+        source="reviewed_by.full_name", read_only=True, default=None
+    )
+    # Enough context to identify what is being reviewed without a second
+    # request — the raw target ids alone are unreadable in a queue.
+    target_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Review
         fields = [
             "id", "target_type", "listing", "event", "business_owner", "organizer_customer",
             "author", "author_name", "rating", "comment", "verified", "status",
-            "hidden_reason", "hidden_by", "hidden_by_name", "created_at",
+            "hidden_reason", "hidden_by", "hidden_by_name",
+            "reviewed_by_name", "reviewed_at", "target_name", "created_at",
         ]
         read_only_fields = fields
+
+    def get_target_name(self, obj):
+        if obj.listing_id:
+            return obj.listing.name
+        if obj.event_id:
+            return obj.event.name
+        if obj.business_owner_id:
+            return obj.business_owner.full_name
+        if obj.organizer_customer_id:
+            return obj.organizer_customer.full_name
+        return None
