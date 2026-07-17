@@ -25,11 +25,34 @@ class Order(models.Model):
         (DELIVERED, "Delivered"),
     ]
 
+    # How the customer wants the order fulfilled, chosen at checkout (Wave F,
+    # the fulfilment spine item 11's Delivery Manager is built around).
+    # store_pickup is the default and needs no address; door_to_door requires
+    # a delivery address + phone (enforced in OrderCheckoutView).
+    DOOR_TO_DOOR = "door_to_door"
+    STORE_PICKUP = "store_pickup"
+    DELIVERY_METHOD_CHOICES = [
+        (DOOR_TO_DOOR, "Door-to-door delivery"),
+        (STORE_PICKUP, "Store pickup"),
+    ]
+
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name="orders")
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
     delivery_status = models.CharField(
         max_length=20, choices=DELIVERY_STATUS_CHOICES, default=PROCESSING
     )
+    delivery_method = models.CharField(
+        max_length=20, choices=DELIVERY_METHOD_CHOICES, default=STORE_PICKUP
+    )
+    # Only meaningful for door_to_door. A free-text address (customer addresses
+    # are free text platform-wide), a contact phone for the delivery, and
+    # optional coordinates. lat/lng are optional because a free-text address
+    # can't be geocoded reliably — item 11's dispatch map falls back to a
+    # manual pin/address when they're absent (there is no geocoding service).
+    delivery_address = models.CharField(max_length=500, blank=True)
+    delivery_phone = models.CharField(max_length=20, blank=True)
+    delivery_lat = models.FloatField(null=True, blank=True)
+    delivery_lng = models.FloatField(null=True, blank=True)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
     placed_at = models.DateTimeField(auto_now_add=True)
 

@@ -266,6 +266,50 @@ class OwnerListingUpdateView(generics.UpdateAPIView):
     http_method_names = ["patch"]
 
 
+class ListingRestockView(APIView):
+    """POST /api/listings/mine/{id}/restock/ — a business owner sets a
+    listing's stock count (Wave F). Unlike the general edit endpoint (which
+    blocks editing a *published* listing), restock deliberately works on a
+    published, live listing — that's the whole point of restocking, and it's
+    the one stock mutation an owner makes routinely.
+
+    Body: {"stock_quantity": <int>} sets an absolute count, or {"add": <int>}
+    adds to the current count. Passing "add" on an untracked listing
+    (stock_quantity=None) starts tracking it from that quantity.
+    """
+
+    permission_classes = [IsAuthenticated, IsListingOwner]
+
+    def post(self, request, pk):
+        listing = generics.get_object_or_404(Listing, pk=pk)
+        self.check_object_permissions(request, listing)
+
+        if "stock_quantity" in request.data:
+            try:
+                value = int(request.data["stock_quantity"])
+            except (TypeError, ValueError):
+                return Response({"stock_quantity": "Must be a whole number."}, status=400)
+            if value < 0:
+                return Response({"stock_quantity": "Cannot be negative."}, status=400)
+            listing.stock_quantity = value
+        elif "add" in request.data:
+            try:
+                add = int(request.data["add"])
+            except (TypeError, ValueError):
+                return Response({"add": "Must be a whole number."}, status=400)
+            if add <= 0:
+                return Response({"add": "Must be greater than zero."}, status=400)
+            listing.stock_quantity = (listing.stock_quantity or 0) + add
+        else:
+            return Response(
+                {"detail": "Provide either stock_quantity (absolute) or add (increment)."},
+                status=400,
+            )
+
+        listing.save(update_fields=["stock_quantity"])
+        return Response({"id": listing.id, "stock_quantity": listing.stock_quantity})
+
+
 class ListingSubmitView(APIView):
     permission_classes = [IsAuthenticated, IsListingOwner]
 

@@ -139,6 +139,39 @@ describe('CartDrawer', () => {
     expect(screen.getByText('#42')).toBeInTheDocument()
   })
 
+  it('sends the door-to-door delivery method and address at checkout', async () => {
+    server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)))
+    let checkoutBody = null
+    server.use(
+      http.post('http://localhost:8000/api/orders/checkout/', async ({ request }) => {
+        checkoutBody = await request.json()
+        return HttpResponse.json(
+          { id: 43, status: 'paid', total_amount: '300.00', placed_at: '2026-07-14T00:00:00Z', delivery_method: 'door_to_door', items: [] },
+          { status: 201 },
+        )
+      }),
+    )
+    renderDrawer()
+    await screen.findByText('Kente Cloth')
+    fireEvent.click(screen.getByText('Checkout →'))
+    await screen.findByText('Confirm your order')
+
+    fireEvent.click(screen.getByText('🚚 Door-to-door'))
+    // Pay stays disabled until an address + phone are entered.
+    expect(screen.getByText('Confirm & Pay')).toBeDisabled()
+    fireEvent.change(screen.getByPlaceholderText('Delivery address'), { target: { value: '12 Ash Road, Kumasi' } })
+    fireEvent.change(screen.getByPlaceholderText('Contact phone for delivery'), { target: { value: '+233200112233' } })
+    expect(screen.getByText('Confirm & Pay')).toBeEnabled()
+
+    fireEvent.click(screen.getByText('Confirm & Pay'))
+    fireEvent.click(await screen.findByText('Simulate Pay'))
+    await waitFor(() => expect(checkoutBody).toEqual({
+      delivery_method: 'door_to_door',
+      delivery_address: '12 Ash Road, Kumasi',
+      delivery_phone: '+233200112233',
+    }))
+  })
+
   it('keeps the payment amount stable even after checkout empties the cart mid-payment', async () => {
     // Regression test: handlePaymentSuccess's post-checkout refetch() used to
     // feed PaymentComponent's `amount` prop straight from the live `cart?.total`

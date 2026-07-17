@@ -45,6 +45,27 @@ def _finalize_order_checkout(session):
     order.save(update_fields=["status"])
 
 
+def _fail_order_checkout(session):
+    """Rolls back the optimistic stock reservation made at checkout time when
+    an order payment instead fails or expires (Hubtel mode only — the
+    immediate/simulated path never fails). Mirrors _fail_ticket_purchase.
+    Untestable without real Hubtel credentials today, but written now so the
+    behavior exists once credentials are added.
+    """
+    from listings.models import Listing
+
+    meta = session.metadata
+    if meta.get("rolled_back"):
+        return  # idempotency belt-and-suspenders
+    for reservation in meta.get("stock_reservations", []):
+        listing = Listing.objects.select_for_update().get(id=reservation["listing_id"])
+        if listing.stock_quantity is not None:
+            listing.stock_quantity += reservation["quantity"]
+            listing.save(update_fields=["stock_quantity"])
+    session.metadata = {**meta, "rolled_back": True}
+    session.save(update_fields=["metadata", "updated_at"])
+
+
 def _finalize_event_pay(session):
     from events.models import Event
 
@@ -161,6 +182,7 @@ FINALIZERS = {
 
 FAILURE_HANDLERS = {
     CheckoutSession.TICKET_PURCHASE: _fail_ticket_purchase,
+    CheckoutSession.ORDER_CHECKOUT: _fail_order_checkout,
 }
 
 
