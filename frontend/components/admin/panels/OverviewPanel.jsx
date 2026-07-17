@@ -5,7 +5,7 @@ import { useCustomers } from "../../../hooks/useCustomers.js";
 import { useBusinessOwners } from "../../../hooks/useBusinessOwners.js";
 import { useEscrowLedger } from "../../../hooks/useEscrowLedger.js";
 import { useDisputesQueue } from "../../../hooks/useDisputesQueue.js";
-import { D, glassCard, ghs } from "../theme.js";
+import { D, ghs } from "../theme.js";
 import KpiCard from "../../dashboard/charts/KpiCard.jsx";
 
 // Overview tab — a real KPI dashboard (mirroring BusinessCommandCenter's
@@ -17,8 +17,6 @@ import KpiCard from "../../dashboard/charts/KpiCard.jsx";
 // that KPI tile just isn't rendered when the session lacks it. This must
 // never error/500 for e.g. a support-role session with no kyc.approve.
 export default function OverviewPanel({ auth, roleColor }) {
-  const permissions = auth.user?.permissions || [];
-
   const canKyc = auth.hasPermission("kyc.approve");
   const canModeration = auth.hasPermission("listings.moderate");
   const canHero = auth.hasPermission("hero_media.approve");
@@ -67,15 +65,6 @@ export default function OverviewPanel({ auth, roleColor }) {
           {kpis.map(k => <KpiCard key={k.label} {...k} />)}
         </div>
       )}
-
-      <div style={{ ...glassCard, padding: 18 }}>
-        <div style={{ color: D.text, fontWeight: 800, fontSize: "0.82rem", marginBottom: 10 }}>Your permissions</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {permissions.map(p => (
-            <span key={p} style={{ background: `${roleColor}18`, color: roleColor, borderRadius: 20, padding: "3px 10px", fontSize: "0.68rem", fontWeight: 700 }}>{p}</span>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }

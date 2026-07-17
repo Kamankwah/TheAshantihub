@@ -199,12 +199,12 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
             ) : (
               <>
                 {tab === "analytics" && <AnalyticsPanel user={user} onNavigate={selectTab} />}
-                {tab === "listings" && <ListingsPanel user={user} PaymentComponent={PaymentComponent} showToast={showToast} />}
+                {tab === "listings" && <ListingsPanel user={user} PaymentComponent={PaymentComponent} showToast={showToast} businessKind={profile?.business_kind} />}
                 {tab === "events" && <EventsPanel user={user} PaymentComponent={PaymentComponent} />}
                 {tab === "deliveries" && <DeliveriesPanel />}
                 {tab === "payments" && <PaymentsPanel user={user} PaymentComponent={PaymentComponent} />}
                 {tab === "credit" && <CreditPanel user={user} />}
-                {tab === "subscription" && <SubscriptionPanel user={user} PaymentComponent={PaymentComponent} showToast={showToast} />}
+                {tab === "subscription" && <SubscriptionPanel user={user} PaymentComponent={PaymentComponent} showToast={showToast} businessKind={profile?.business_kind} />}
               </>
             )}
           </div>

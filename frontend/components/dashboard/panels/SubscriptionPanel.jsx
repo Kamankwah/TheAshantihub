@@ -17,7 +17,7 @@ const CYCLE_OPTIONS = [
 // Subscription panel — ported from App.jsx's BusinessDashboard "subscription"
 // tab, re-themed dark. Owns cycle-length + selected-plan + pay-modal state; the
 // simulated-pay modal is the injected `PaymentComponent` (App.jsx's MoMoPayment).
-export default function SubscriptionPanel({ user, PaymentComponent, showToast }) {
+export default function SubscriptionPanel({ user, PaymentComponent, showToast, businessKind }) {
   const [cycleMonths, setCycleMonths] = useState(1);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [showPayModal, setShowPayModal] = useState(false);
@@ -25,6 +25,17 @@ export default function SubscriptionPanel({ user, PaymentComponent, showToast })
 
   const { data: subPlans, isLoading: plansLoading, isError: plansError } = useSubscriptionPlans();
   const { data: subscription, isLoading: subLoading, isError: subError, refetch: refetchSubscription } = useMySubscription();
+
+  // A product business only buys product-tier plans; a service business only
+  // service plans (SubscriptionPlan.kind matches BusinessOwnerProfile.
+  // business_kind). GET /api/billing/plans/ is public/AllowAny and can't know
+  // the caller's kind, so it returns every active plan — we filter here on the
+  // client. When business_kind is null (older accounts), show all plans so the
+  // owner is never locked out. `subPlans` stays unfiltered for renew-matching.
+  const kindLocked = businessKind === "product" || businessKind === "service";
+  const visiblePlans = kindLocked
+    ? (subPlans || []).filter(p => p.kind === businessKind)
+    : (subPlans || []);
 
   const recordSubscriptionPayment = async (ref) => {
     setShowPayModal(false);
@@ -118,7 +129,7 @@ export default function SubscriptionPanel({ user, PaymentComponent, showToast })
       {plansError && <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load subscription plans.</div>}
       {!plansLoading && !plansError && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 12 }}>
-          {(subPlans || []).map(plan => (
+          {visiblePlans.map(plan => (
             <div key={plan.id} style={{ ...glassCard, padding: "18px", border: `2px solid ${plan.is_recommended ? D.cardBorderStrong : D.cardBorder}`, position: "relative" }}>
               {plan.is_recommended && <div style={{ position: "absolute", top: -9, left: "50%", transform: "translateX(-50%)", background: D.gold, color: "#1a1205", borderRadius: 20, padding: "2px 12px", fontSize: "0.58rem", fontWeight: 900, whiteSpace: "nowrap" }}>⭐ MOST POPULAR</div>}
               <div style={{ fontWeight: 900, color: D.text, marginBottom: 2 }}>{plan.name}{plan.kind && <span style={{ marginLeft: 8, fontSize: "0.6rem", fontWeight: 800, color: D.textDim, background: D.panelBg2, borderRadius: 12, padding: "2px 8px", verticalAlign: "middle" }}>{plan.kind === "service" ? "Service" : "Product"}</span>}</div>
