@@ -668,3 +668,73 @@ describe('BusinessDashboard command-center tab navigation', () => {
     expect(await screen.findByText('🏅 AshantiHub Credit Score System')).toBeInTheDocument()
   })
 })
+
+describe('BusinessDashboard Products tab (business item 2)', () => {
+  const productProfile = { ghana_card_number: 'GHA-1', gps_address: 'AK-1', business_contact_phone: '+233200000000', is_formal: false, business_kind: 'product' }
+  const publishedProduct = {
+    id: 5, name: 'Kente Cloth', status: 'published', price_amount: '100.00', price_unit: 'per item',
+    stock_quantity: 2, has_expiry: false, expiry_date: null, specs: [{ label: 'Color', value: 'Gold' }],
+    category: 1, zone: 1,
+  }
+
+  it('shows a Products tab only for a product business', async () => {
+    mockDashboardData({ profile: productProfile })
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
+    await waitFor(() => expect(screen.getByRole('button', { name: /Products/ })).toBeInTheDocument())
+  })
+
+  it('does not show a Products tab for a service business', async () => {
+    mockDashboardData({ profile: { ...productProfile, business_kind: 'service' } })
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
+    await waitFor(() => expect(screen.getByRole('button', { name: /Services/ })).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /^📦 Products$/ })).not.toBeInTheDocument()
+  })
+
+  it('lists a published product with its stock and edits the price via the manage endpoint', async () => {
+    let manageBody = null
+    server.use(
+      http.get('http://localhost:8000/api/listings/mine/', () => HttpResponse.json([publishedProduct])),
+      http.get('http://localhost:8000/api/accounts/business-owners/me/profile/', () => HttpResponse.json(productProfile)),
+      http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([])),
+      http.get('http://localhost:8000/api/billing/subscriptions/me/', () => HttpResponse.json({})),
+      http.get('http://localhost:8000/api/hero/mine/', () => HttpResponse.json({})),
+      http.patch('http://localhost:8000/api/listings/mine/5/manage/', async ({ request }) => {
+        manageBody = await request.json()
+        return HttpResponse.json({ id: 5, ...manageBody })
+      }),
+    )
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
+    fireEvent.click(await screen.findByRole('button', { name: /Products/ }))
+    await screen.findByText('Kente Cloth')
+    expect(screen.getByText('2 in stock')).toBeInTheDocument()
+    // low stock nudge
+    expect(screen.getByText(/Running low/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('✏️ Edit price & specs'))
+    const priceInput = await screen.findByDisplayValue('100.00')
+    fireEvent.change(priceInput, { target: { value: '120.00' } })
+    fireEvent.click(screen.getByText('Save changes'))
+    await waitFor(() => expect(manageBody?.price_amount).toBe('120.00'))
+  })
+
+  it('restocks a product via the restock endpoint', async () => {
+    let restockBody = null
+    server.use(
+      http.get('http://localhost:8000/api/listings/mine/', () => HttpResponse.json([publishedProduct])),
+      http.get('http://localhost:8000/api/accounts/business-owners/me/profile/', () => HttpResponse.json(productProfile)),
+      http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([])),
+      http.get('http://localhost:8000/api/billing/subscriptions/me/', () => HttpResponse.json({})),
+      http.get('http://localhost:8000/api/hero/mine/', () => HttpResponse.json({})),
+      http.post('http://localhost:8000/api/listings/mine/5/restock/', async ({ request }) => {
+        restockBody = await request.json()
+        return HttpResponse.json({ id: 5, stock_quantity: 12 })
+      }),
+    )
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
+    fireEvent.click(await screen.findByRole('button', { name: /Products/ }))
+    await screen.findByText('Kente Cloth')
+    fireEvent.click(screen.getByText('📦 Restock'))
+    fireEvent.change(screen.getByPlaceholderText('Add quantity'), { target: { value: '10' } })
+    fireEvent.click(screen.getByText('Add to stock'))
+    await waitFor(() => expect(restockBody).toEqual({ add: 10 }))
+  })
+})

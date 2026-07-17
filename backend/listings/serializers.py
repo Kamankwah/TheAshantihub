@@ -95,6 +95,26 @@ class PublicListingSerializer(serializers.ModelSerializer):
         return getattr(obj, "review_count", 0)
 
 
+class OwnerListingManageSerializer(serializers.ModelSerializer):
+    """Light edit of a listing's *operational* fields (business item 2) —
+    price, specs, stock, and the product/service decision fields — allowed
+    even on a *published* listing WITHOUT sending it back to moderation.
+
+    The content-moderated fields (name, description, category, zone, photos)
+    are deliberately NOT here: changing those still requires the full edit +
+    re-review via OwnerListingSerializer. This mirrors how the restock endpoint
+    already mutates a published listing's stock without re-moderation — routine
+    commercial changes shouldn't pull a live listing off the marketplace.
+    """
+
+    class Meta:
+        model = Listing
+        fields = [
+            "id", "price_amount", "price_unit", "tag", "contact_phone",
+            "specs", "service_duration", *LISTING_DECISION_FIELDS,
+        ]
+
+
 class OwnerListingSerializer(serializers.ModelSerializer):
     # Read-only nested gallery so a business owner's own listing view (used by
     # the "Submit for Hero" flow to pick a photo) can show the gallery without

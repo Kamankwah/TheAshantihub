@@ -5,6 +5,7 @@ import { useBusinessProfile } from "../../hooks/useBusinessProfile.js";
 import { D, glassCard } from "./theme.js";
 import AnalyticsPanel from "./panels/AnalyticsPanel.jsx";
 import ListingsPanel from "./panels/ListingsPanel.jsx";
+import ProductsPanel from "./panels/ProductsPanel.jsx";
 import DeliveriesPanel from "./panels/DeliveriesPanel.jsx";
 import PaymentsPanel from "./panels/PaymentsPanel.jsx";
 import CreditPanel from "./panels/CreditPanel.jsx";
@@ -33,6 +34,19 @@ const TABS = [
   { id: "credit", icon: "🏅", label: "Credit" },
   { id: "subscription", icon: "⭐", label: "Subscription" },
 ];
+
+// A management tab sits right after "Listings & Prices", its shape decided by
+// the business's registered kind (business item 2): a product business gets
+// "Products" (stock/expiry management), a service business gets "Services"
+// (requests/bookings). Legacy null-kind accounts get neither.
+function buildTabs(businessKind) {
+  const managementTab =
+    businessKind === "product" ? { id: "products", icon: "📦", label: "Products" }
+    : businessKind === "service" ? { id: "services", icon: "🛠️", label: "Services" }
+    : null;
+  if (!managementTab) return TABS;
+  return [...TABS.slice(0, 2), managementTab, ...TABS.slice(2)];
+}
 
 export default function BusinessCommandCenter({ initialTab = "analytics", onExit, user, auth, PaymentComponent }) {
   const [tab, setTab] = useState(TABS.some(t => t.id === initialTab) ? initialTab : "analytics");
@@ -65,7 +79,8 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
   const isVerified = user?.kycStatus === "verified";
   const isRejected = user?.kycStatus === "rejected";
   const showToast = () => { setSaved(true); setTimeout(() => setSaved(false), 2500); };
-  const activeLabel = TABS.find(t => t.id === tab)?.label || "Overview";
+  const tabs = buildTabs(profile?.business_kind);
+  const activeLabel = tabs.find(t => t.id === tab)?.label || "Overview";
 
   const selectTab = (id) => { if (!isVerified) return; setTab(id); setMobileNavOpen(false); setShowProfile(false); };
 
@@ -117,7 +132,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
           </div>
 
           <nav style={{ padding: "6px 10px", display: "flex", flexDirection: "column", gap: 2, flex: 1 }}>
-            {TABS.map(t => {
+            {tabs.map(t => {
               const active = tab === t.id;
               return (
                 <button key={t.id} disabled={!isVerified} onClick={() => selectTab(t.id)} style={{
@@ -200,6 +215,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
               <>
                 {tab === "analytics" && <AnalyticsPanel user={user} onNavigate={selectTab} />}
                 {tab === "listings" && <ListingsPanel user={user} PaymentComponent={PaymentComponent} showToast={showToast} businessKind={profile?.business_kind} />}
+                {tab === "products" && <ProductsPanel />}
                 {tab === "events" && <EventsPanel user={user} PaymentComponent={PaymentComponent} />}
                 {tab === "deliveries" && <DeliveriesPanel />}
                 {tab === "payments" && <PaymentsPanel user={user} PaymentComponent={PaymentComponent} />}

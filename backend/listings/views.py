@@ -28,6 +28,7 @@ from .serializers import (
     HeroSubmitSerializer,
     ListingPhotoSerializer,
     ModerationListingSerializer,
+    OwnerListingManageSerializer,
     OwnerListingSerializer,
     PromotionAdminSerializer,
     PromotionPurchaseSerializer,
@@ -262,6 +263,19 @@ class OwnerListingCreateListView(generics.ListCreateAPIView):
 class OwnerListingUpdateView(generics.UpdateAPIView):
     queryset = Listing.objects.all()
     serializer_class = OwnerListingSerializer
+    permission_classes = [IsAuthenticated, IsListingOwner]
+    http_method_names = ["patch"]
+
+
+class ListingManageView(generics.UpdateAPIView):
+    """PATCH /api/listings/mine/{id}/manage/ — light edit of a listing's
+    operational fields (business item 2), allowed on a published listing
+    without re-moderation. See OwnerListingManageSerializer for what's in vs
+    out of scope. Status is never touched here.
+    """
+
+    queryset = Listing.objects.all()
+    serializer_class = OwnerListingManageSerializer
     permission_classes = [IsAuthenticated, IsListingOwner]
     http_method_names = ["patch"]
 
