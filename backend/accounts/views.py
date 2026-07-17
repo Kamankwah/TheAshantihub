@@ -12,7 +12,7 @@ from notifications.services import notify_business_owner, notify_customer, notif
 
 from .authentication import issue_token
 from .emails import send_staff_invite_email, send_verification_code_email
-from .models import BusinessOwner, Customer, Permission, StaffUser
+from .models import BusinessOwner, Customer, Permission, ScoutAssignment, StaffUser
 from .permissions import HasRolePermission
 from .serializers import (
     INVITE_TOKEN_LIFETIME,
@@ -33,6 +33,7 @@ from .serializers import (
     PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
     PayoutDetailSerializer,
+    ScoutAssignmentSerializer,
     StaffActivateSerializer,
     StaffBusinessOwnerDetailSerializer,
     StaffCustomerDetailSerializer,
@@ -621,6 +622,123 @@ class PermissionCatalogView(APIView):
         return Response(
             [{"codename": p.codename, "description": p.description} for p in permissions]
         )
+
+
+# ── Scout field verification (punch-list item 11) ──────────────────────────
+class ScoutAssignmentListCreateView(generics.ListCreateAPIView):
+    """GET/POST /api/accounts/scout-assignments/ — an admin (scouts.assign)
+    lists every assignment and assigns a scout to a business. POST body:
+    {business_owner, scout}.
+    """
+
+    serializer_class = ScoutAssignmentSerializer
+
+    def get_permissions(self):
+        return [HasRolePermission("scouts.assign")]
+
+    def get_queryset(self):
+        return ScoutAssignment.objects.select_related(
+            "business_owner", "business_owner__profile", "scout", "assigned_by"
+        )
+
+    def post(self, request):
+        business_owner_id = request.data.get("business_owner")
+        scout_id = request.data.get("scout")
+        owner = generics.get_object_or_404(BusinessOwner, pk=business_owner_id)
+        scout = generics.get_object_or_404(StaffUser, pk=scout_id)
+        if scout.role.name != "scout":
+            return Response({"scout": "That staff member is not a scout."}, status=400)
+        assignment, created = ScoutAssignment.objects.get_or_create(
+            business_owner=owner, scout=scout,
+            defaults={"assigned_by": request.user},
+        )
+        if not created:
+            return Response({"detail": "That scout is already assigned to this business."}, status=400)
+        return Response(ScoutAssignmentSerializer(assignment).data, status=201)
+
+
+class ScoutListView(generics.ListAPIView):
+    """GET /api/accounts/scouts/ — active scout staff, so the assign UI can
+    pick one. Gated by scouts.assign (only the assigner needs it).
+    """
+
+    serializer_class = StaffListSerializer
+
+    def get_permissions(self):
+        return [HasRolePermission("scouts.assign")]
+
+    def get_queryset(self):
+        return StaffUser.objects.filter(
+            role__name="scout", is_active=True, is_suspended=False
+        ).order_by("full_name")
+
+
+class MyScoutAssignmentsView(generics.ListAPIView):
+    """GET /api/accounts/scout-assignments/mine/ — the scout's own queue."""
+
+    serializer_class = ScoutAssignmentSerializer
+
+    def get_permissions(self):
+        return [HasRolePermission("scouts.verify")]
+
+    def get_queryset(self):
+        return ScoutAssignment.objects.filter(scout=self.request.user).select_related(
+            "business_owner", "business_owner__profile", "assigned_by"
+        )
+
+
+class ScoutVerifyView(APIView):
+    """POST /api/accounts/scout-assignments/{id}/verify/ — the scout submits
+    their field report (scouts.verify). Body: {address_confirmed,
+    corrected_address, business_legitimate, details_correct, notes}.
+
+    Recording the report writes the business's Ghana Post verification onto
+    BusinessOwnerProfile (address_verified/_by/_at) — the exact fields the KYC
+    Approve/Reject gate reads — so a scout's field visit satisfies that gate
+    just like a desk staffer's own toggle does ("either can verify", item 8).
+    If the scout marks the stated address wrong and supplies a correction, the
+    profile's gps_address is updated to the corrected value.
+    """
+
+    def get_permissions(self):
+        return [HasRolePermission("scouts.verify")]
+
+    def post(self, request, pk):
+        assignment = generics.get_object_or_404(
+            ScoutAssignment, pk=pk, scout=request.user
+        )
+        address_confirmed = request.data.get("address_confirmed")
+        if address_confirmed is None:
+            return Response(
+                {"address_confirmed": "Say whether the Ghana Post address was correct."},
+                status=400,
+            )
+        corrected = (request.data.get("corrected_address") or "").strip()
+
+        now = timezone.now()
+        assignment.status = ScoutAssignment.VISITED
+        assignment.address_confirmed = bool(address_confirmed)
+        assignment.corrected_address = corrected
+        assignment.business_legitimate = request.data.get("business_legitimate")
+        assignment.details_correct = request.data.get("details_correct")
+        assignment.notes = (request.data.get("notes") or "").strip()
+        assignment.visited_at = now
+        assignment.save()
+
+        # Write the KYC-gate fields onto the profile (auto-created at
+        # registration, so it exists for any real business).
+        profile = getattr(assignment.business_owner, "profile", None)
+        if profile is not None:
+            profile.address_verified = bool(address_confirmed)
+            profile.address_verified_by = request.user
+            profile.address_verified_at = now
+            update_fields = ["address_verified", "address_verified_by", "address_verified_at"]
+            if not address_confirmed and corrected:
+                profile.gps_address = corrected
+                update_fields.append("gps_address")
+            profile.save(update_fields=update_fields)
+
+        return Response(ScoutAssignmentSerializer(assignment).data)
 
 
 class IsBusinessOwner(BasePermission):

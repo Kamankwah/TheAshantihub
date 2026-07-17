@@ -107,4 +107,9 @@ urlpatterns = [
     path("staff/<int:pk>/reactivate/", views.StaffReactivateView.as_view(), name="staff-reactivate"),
     path("staff/<int:pk>/permissions/", views.StaffPermissionsView.as_view(), name="staff-permissions"),
     path("permissions/", views.PermissionCatalogView.as_view(), name="permission-catalog"),
+    # Scout field verification (item 11)
+    path("scouts/", views.ScoutListView.as_view(), name="scout-list"),
+    path("scout-assignments/", views.ScoutAssignmentListCreateView.as_view(), name="scout-assignment-list-create"),
+    path("scout-assignments/mine/", views.MyScoutAssignmentsView.as_view(), name="scout-assignment-mine"),
+    path("scout-assignments/<int:pk>/verify/", views.ScoutVerifyView.as_view(), name="scout-assignment-verify"),
 ]

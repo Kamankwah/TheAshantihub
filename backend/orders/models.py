@@ -1,6 +1,6 @@
 from django.db import models
 
-from accounts.models import Customer
+from accounts.models import Customer, StaffUser
 from listings.models import Listing
 
 
@@ -76,3 +76,49 @@ class OrderItem(models.Model):
 
     def __str__(self):
         return f"{self.quantity} x {self.listing.name} (Order {self.order_id})"
+
+
+class DeliveryAssignment(models.Model):
+    """A door-to-door order's courier assignment (punch-list item 11). The
+    Delivery Manager (delivery.manage) assigns a Dispatch to a paid
+    door-to-door order; the Dispatch (delivery.dispatch) confirms pickup at the
+    business and delivery to the customer; the customer confirms receipt.
+
+    OneToOne with Order — one delivery per order. Only ever created for a paid
+    door-to-door order (store-pickup orders are collected, not delivered). Its
+    status stays loosely in sync with Order.delivery_status so the customer's
+    existing delivery stepper reflects the courier's progress.
+    """
+
+    ASSIGNED = "assigned"
+    PICKED_UP = "picked_up"
+    DELIVERED = "delivered"
+    CONFIRMED = "confirmed"  # customer confirmed receipt
+    STATUS_CHOICES = [
+        (ASSIGNED, "Assigned"),
+        (PICKED_UP, "Picked up"),
+        (DELIVERED, "Delivered"),
+        (CONFIRMED, "Confirmed by customer"),
+    ]
+
+    order = models.OneToOneField(
+        Order, on_delete=models.CASCADE, related_name="delivery_assignment"
+    )
+    dispatch = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="dispatch_deliveries",
+    )
+    assigned_by = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="deliveries_assigned",
+    )
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=ASSIGNED)
+    notes = models.TextField(blank=True)
+
+    assigned_at = models.DateTimeField(auto_now_add=True)
+    picked_up_at = models.DateTimeField(null=True, blank=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"Delivery for Order {self.order_id} → dispatch {self.dispatch_id} ({self.status})"

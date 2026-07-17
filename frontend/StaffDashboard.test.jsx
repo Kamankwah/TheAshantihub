@@ -56,7 +56,8 @@ describe('StaffDashboard', () => {
     })
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     ;['KYC Queue', 'Listings Moderation', 'Hero Approval', 'Events Moderation', 'Event Pricing', 'Reviews', 'Delivery Management', 'Users', 'Categories & Zones', 'Site Settings', 'Staff Management',
-      'Escrow Ledger', 'Disputes', 'Transactions Report', 'Credit & Lending', 'Promotions', 'Analytics', 'Messaging / Tickets']
+      'Escrow Ledger', 'Disputes', 'Transactions Report', 'Credit & Lending', 'Promotions', 'Analytics', 'Messaging / Tickets',
+      'Scout Assignments', 'Field Verification', 'Delivery Coordination', 'My Deliveries']
       .forEach((label) => expect(screen.getByText(label)).toBeInTheDocument())
   })
 
@@ -434,7 +435,7 @@ describe('StaffDashboard', () => {
     await waitFor(() => expect(invited).toBe(true))
   })
 
-  it('constrains the invite Role field to the five valid role names', async () => {
+  it('constrains the invite Role field to the valid role names', async () => {
     server.use(
       http.get('http://localhost:8000/api/accounts/staff/', () => {
         return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
@@ -446,7 +447,7 @@ describe('StaffDashboard', () => {
     const roleSelect = await screen.findByDisplayValue('Role')
     expect(roleSelect.tagName).toBe('SELECT')
     const optionValues = Array.from(roleSelect.querySelectorAll('option')).map((o) => o.value)
-    expect(optionValues).toEqual(['', 'super_admin', 'admin', 'accountant', 'marketing', 'support'])
+    expect(optionValues).toEqual(['', 'super_admin', 'admin', 'accountant', 'marketing', 'support', 'scout', 'delivery_manager', 'dispatch'])
   })
 
   it('shows an inline error when approving a KYC submission fails', async () => {
@@ -1910,5 +1911,80 @@ describe('StaffDashboard Credit & Lending (item 16)', () => {
     fireEvent.click(screen.getByText('Review'))
     fireEvent.click(screen.getByText('Approve'))
     await waitFor(() => expect(reviewBody?.outcome).toBe('approved'))
+  })
+})
+
+describe('StaffDashboard Field Operations (item 11)', () => {
+  it('a scout submits a field report from their queue', async () => {
+    let verifyBody = null
+    server.use(
+      http.get('http://localhost:8000/api/accounts/scout-assignments/mine/', () =>
+        HttpResponse.json([
+          { id: 7, business_owner_name: 'Kwame Trader', business_login_phone: '+233201112233', gps_address: 'AK-039-5028', business_kind: 'product', status: 'assigned' },
+        ]),
+      ),
+      http.post('http://localhost:8000/api/accounts/scout-assignments/7/verify/', async ({ request }) => {
+        verifyBody = await request.json()
+        return HttpResponse.json({ id: 7, status: 'visited' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'scouts.verify' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Field Verification'))
+    await screen.findByText('Kwame Trader')
+    fireEvent.click(screen.getByText('📋 Submit report'))
+    // Answer the three yes/no questions (first Yes button per question).
+    fireEvent.click(screen.getAllByText('✓ Yes')[0]) // address correct
+    fireEvent.click(screen.getAllByText('✓ Yes')[1]) // legitimate
+    fireEvent.click(screen.getAllByText('✓ Yes')[2]) // details correct
+    fireEvent.click(screen.getByText('Submit field report'))
+    await waitFor(() => expect(verifyBody?.address_confirmed).toBe(true))
+  })
+
+  it('a delivery manager assigns a dispatch to a door-to-door order', async () => {
+    let assignBody = null
+    server.use(
+      http.get('http://localhost:8000/api/orders/delivery/', () =>
+        HttpResponse.json({ count: 1, next: null, previous: null, results: [
+          { id: 42, customer_name: 'Ama Buyer', delivery_address: '12 Ash Road', delivery_phone: '+233200112233', delivery_assignment: null, items: [{ id: 1, listing_name: 'Kente Cloth', quantity: 1, line_total: '150.00' }] },
+        ] }),
+      ),
+      http.get('http://localhost:8000/api/orders/dispatches/', () =>
+        HttpResponse.json([{ id: 9, full_name: 'Dispatch Kofi' }]),
+      ),
+      http.post('http://localhost:8000/api/orders/42/assign-dispatch/', async ({ request }) => {
+        assignBody = await request.json()
+        return HttpResponse.json({ id: 42, delivery_assignment: { status: 'assigned', dispatch_name: 'Dispatch Kofi' } })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'delivery.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Delivery Coordination'))
+    await screen.findByText(/Order #42/)
+    fireEvent.change(await screen.findByRole('combobox'), { target: { value: '9' } })
+    fireEvent.click(screen.getByText('Assign'))
+    await waitFor(() => expect(assignBody).toEqual({ dispatch: 9 }))
+  })
+
+  it('a dispatch confirms pickup on an assigned delivery', async () => {
+    let pickupCalled = false
+    server.use(
+      http.get('http://localhost:8000/api/orders/dispatch/', () =>
+        HttpResponse.json({ count: 1, next: null, previous: null, results: [
+          { id: 5, order_id: 42, status: 'assigned', customer_name: 'Ama Buyer', delivery_address: '12 Ash Road', delivery_phone: '+233200112233', delivery_lat: 6.69, delivery_lng: -1.62, pickups: [{ business_name: 'Kwame Trader', phone: '+233201112233', lat: 6.7, lng: -1.62, items: ['Kente Cloth × 1'] }] },
+        ] }),
+      ),
+      http.post('http://localhost:8000/api/orders/delivery/5/pickup/', () => {
+        pickupCalled = true
+        return HttpResponse.json({ id: 5, status: 'picked_up' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'delivery.dispatch' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('My Deliveries'))
+    await screen.findByText('Order #42')
+    expect(screen.getByText('Kwame Trader', { exact: false })).toBeInTheDocument()
+    fireEvent.click(screen.getByText('📦 Confirm pickup'))
+    await waitFor(() => expect(pickupCalled).toBe(true))
   })
 })
