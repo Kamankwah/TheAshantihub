@@ -231,7 +231,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
                 {tab === "bookings" && <BookingsPanel />}
                 {tab === "events" && <EventsPanel user={user} PaymentComponent={PaymentComponent} />}
                 {tab === "deliveries" && <DeliveriesPanel />}
-                {tab === "payments" && <PaymentsPanel user={user} PaymentComponent={PaymentComponent} />}
+                {tab === "payments" && <PaymentsPanel user={user} PaymentComponent={PaymentComponent} businessKind={profile?.business_kind} />}
                 {tab === "credit" && <CreditPanel user={user} />}
                 {tab === "subscription" && <SubscriptionPanel user={user} PaymentComponent={PaymentComponent} showToast={showToast} businessKind={profile?.business_kind} />}
               </>

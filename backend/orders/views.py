@@ -198,6 +198,92 @@ class OwnerOrderListView(generics.ListAPIView):
         return {**super().get_serializer_context(), "owner": self.request.user}
 
 
+# ── Owner sales report (business item 4 / Wave I) ──────────────────────────
+class _OwnerSalesReportBase(APIView):
+    """Shared query for the owner's sales report: their own OrderItems in PAID
+    orders, with date-range and product/service-kind filters. The owner sees
+    the customer *sales* of their listings here — distinct from the outgoing
+    subscription/promotion spend on their own transactions ledger.
+    """
+
+    permission_classes = [IsAuthenticated, IsBusinessOwner]
+
+    def _rows(self, request):
+        from django.utils.dateparse import parse_date
+
+        qs = (
+            OrderItem.objects.filter(
+                order__status=Order.PAID, listing__business_owner=request.user
+            )
+            .select_related("order", "order__customer", "listing", "listing__category")
+            .order_by("-order__placed_at")
+        )
+        date_from = parse_date(request.query_params.get("date_from") or "")
+        if date_from:
+            qs = qs.filter(order__placed_at__date__gte=date_from)
+        date_to = parse_date(request.query_params.get("date_to") or "")
+        if date_to:
+            qs = qs.filter(order__placed_at__date__lte=date_to)
+        kind = request.query_params.get("kind")
+        if kind in ("product", "service"):
+            qs = qs.filter(listing__category__kind=kind)
+        return [
+            {
+                "order_id": item.order_id,
+                "date": item.order.placed_at.isoformat(),
+                "customer": item.order.customer.full_name,
+                "item": item.listing.name,
+                "kind": item.listing.category.kind if item.listing.category else "",
+                "quantity": item.quantity,
+                "line_total": str(item.line_total),
+            }
+            for item in qs
+        ]
+
+
+class OwnerSalesReportView(_OwnerSalesReportBase):
+    """GET /api/orders/owner/report/?date_from=&date_to=&kind= — aggregate
+    sales summary + a monthly series + the (capped) rows for the UI table.
+    """
+
+    def get(self, request):
+        rows = self._rows(request)
+        total = sum((Decimal(r["line_total"]) for r in rows), Decimal("0.00"))
+        series = {}
+        for r in rows:
+            month = r["date"][:7]
+            series[month] = series.get(month, Decimal("0.00")) + Decimal(r["line_total"])
+        return Response({
+            "summary": {
+                "total_sales": str(total),
+                "order_count": len({r["order_id"] for r in rows}),
+                "item_count": len(rows),
+            },
+            "series": [{"month": m, "amount": str(a)} for m, a in sorted(series.items())],
+            # The table shows a capped preview; the CSV export carries every row.
+            "rows": rows[:200],
+        })
+
+
+class OwnerSalesReportExportView(_OwnerSalesReportBase):
+    """GET /api/orders/owner/report/export/?... — the same filtered sales data
+    as a CSV download (business item 4). First CSV export in the codebase.
+    """
+
+    def get(self, request):
+        import csv
+
+        from django.http import HttpResponse
+
+        response = HttpResponse(content_type="text/csv")
+        response["Content-Disposition"] = 'attachment; filename="ashantihub-sales.csv"'
+        writer = csv.writer(response)
+        writer.writerow(["Order", "Date", "Customer", "Item", "Kind", "Quantity", "Line total (GHS)"])
+        for r in self._rows(request):
+            writer.writerow([r["order_id"], r["date"][:10], r["customer"], r["item"], r["kind"], r["quantity"], r["line_total"]])
+        return response
+
+
 class OrderStaffPagination(PageNumberPagination):
     page_size = 20
 

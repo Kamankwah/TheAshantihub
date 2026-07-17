@@ -56,6 +56,27 @@ export async function apiFetch(path) {
   return handleResponse(response, path)
 }
 
+// Authenticated file download (business item 4's CSV export): fetches with the
+// auth header — which a plain <a download> can't send — and triggers a browser
+// download of the response body. Used for the sales-report CSV.
+export async function apiDownload(path, filename) {
+  const response = await fetch(`${API_BASE_URL}${path}`, { headers: authHeaders() })
+  if (!response.ok) {
+    const error = new Error(`Download of ${path} failed with status ${response.status}`)
+    error.status = response.status
+    throw error
+  }
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
 export async function apiPost(path, body) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
