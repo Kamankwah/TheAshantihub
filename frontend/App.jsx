@@ -1908,7 +1908,12 @@ function OrdersDeliveryTab({ searchQuery }) {
           ))}
         </div>
         <div style={{marginTop:8,color:D.text,fontWeight:800,fontSize:"0.8rem"}}>Total: GHS {o.total_amount}</div>
-        {o.status==="paid" && <DeliveryStepper status={o.delivery_status}/>}
+        {o.delivery_method && (
+          <div style={{marginTop:4,color:D.textDim,fontSize:"0.72rem"}}>
+            {o.delivery_method==="door_to_door" ? `🚚 Door-to-door${o.delivery_address ? ` — ${o.delivery_address}` : ""}` : "🏬 Store pickup"}
+          </div>
+        )}
+        {o.status==="paid" && o.delivery_method==="door_to_door" && <DeliveryStepper status={o.delivery_status}/>}
       </div>
       );
     })}

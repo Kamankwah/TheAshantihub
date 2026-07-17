@@ -8,9 +8,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import HasRolePermission
-from accounts.views import IsCustomer
+from accounts.views import IsBusinessOwner, IsCustomer
 from cart.models import Cart
 from disputes.models import Dispute
+from listings.models import Listing
 from disputes.serializers import DisputeSerializer
 from notifications.services import notify_customer
 from payments.models import CheckoutSession
@@ -21,6 +22,7 @@ from .serializers import (
     OrderDeliveryStatusUpdateSerializer,
     OrderDisputeCreateSerializer,
     OrderSerializer,
+    OwnerOrderSerializer,
     StaffOrderSerializer,
 )
 
@@ -53,12 +55,51 @@ class OrderCheckoutView(APIView):
         if not items:
             return Response({"detail": "Your cart is empty."}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Delivery method + address (Wave F). Defaults to store pickup so an
+        # older client that sends no delivery fields still checks out.
+        delivery_method = request.data.get("delivery_method") or Order.STORE_PICKUP
+        if delivery_method not in dict(Order.DELIVERY_METHOD_CHOICES):
+            return Response(
+                {"delivery_method": "Choose door-to-door delivery or store pickup."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        delivery_address = (request.data.get("delivery_address") or "").strip()
+        delivery_phone = (request.data.get("delivery_phone") or "").strip()
+        if delivery_method == Order.DOOR_TO_DOOR and (not delivery_address or not delivery_phone):
+            return Response(
+                {"detail": "Door-to-door delivery needs a delivery address and phone number."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         with db_transaction.atomic():
+            # Lock the tracked listings and check stock before creating
+            # anything. A listing with stock_quantity=None isn't inventory-
+            # tracked (services, or products the owner hasn't set a count on)
+            # and is never decremented. Mirrors the ticket flow's optimistic
+            # reserve-at-checkout, rolled back on payment failure below.
+            reservations = []
+            for item in items:
+                listing = Listing.objects.select_for_update().get(pk=item.listing_id)
+                if listing.stock_quantity is not None:
+                    if listing.stock_quantity < item.quantity:
+                        return Response(
+                            {"detail": f"Only {listing.stock_quantity} of “{listing.name}” left in stock."},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    listing.stock_quantity -= item.quantity
+                    listing.save(update_fields=["stock_quantity"])
+                    reservations.append({"listing_id": listing.id, "quantity": item.quantity})
+
             total = sum(
                 (item.unit_price_snapshot * item.quantity for item in items), Decimal("0.00")
             )
             order = Order.objects.create(
                 customer=request.user, status=Order.PENDING, total_amount=total,
+                delivery_method=delivery_method,
+                delivery_address=delivery_address if delivery_method == Order.DOOR_TO_DOOR else "",
+                delivery_phone=delivery_phone if delivery_method == Order.DOOR_TO_DOOR else "",
+                delivery_lat=request.data.get("delivery_lat") if delivery_method == Order.DOOR_TO_DOOR else None,
+                delivery_lng=request.data.get("delivery_lng") if delivery_method == Order.DOOR_TO_DOOR else None,
             )
             for item in items:
                 line_total = item.unit_price_snapshot * item.quantity
@@ -75,7 +116,9 @@ class OrderCheckoutView(APIView):
                 amount=total,
                 purpose=f"AshantiHub Order #{order.id}",
                 customer=request.user,
-                metadata={"order_id": order.id},
+                # stock_reservations lets _fail_order_checkout put the stock
+                # back if a (Hubtel-mode) payment later fails/expires.
+                metadata={"order_id": order.id, "stock_reservations": reservations},
             )
 
             if result["mode"] == "redirect":
@@ -118,6 +161,37 @@ class OrderDetailView(generics.RetrieveAPIView):
 
     def get_queryset(self):
         return Order.objects.filter(customer=self.request.user)
+
+
+class OrderOwnerPagination(PageNumberPagination):
+    page_size = 20
+
+
+class OwnerOrderListView(generics.ListAPIView):
+    """GET /api/orders/owner/ — a business owner's own sales: paid orders that
+    contain at least one of their listings. The serializer exposes only the
+    owner's own line items (a shared order may span multiple businesses), so
+    this endpoint never leaks another business's items even though the
+    underlying Order row is shared. Foundation for the business Products tab
+    (Wave H) and item 11's Delivery Manager.
+    """
+
+    serializer_class = OwnerOrderSerializer
+    permission_classes = [IsAuthenticated, IsBusinessOwner]
+    pagination_class = OrderOwnerPagination
+
+    def get_queryset(self):
+        return (
+            Order.objects.filter(
+                status=Order.PAID, items__listing__business_owner=self.request.user
+            )
+            .prefetch_related("items__listing")
+            .distinct()
+            .order_by("-placed_at")
+        )
+
+    def get_serializer_context(self):
+        return {**super().get_serializer_context(), "owner": self.request.user}
 
 
 class OrderStaffPagination(PageNumberPagination):
