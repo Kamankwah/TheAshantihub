@@ -1,12 +1,14 @@
 from decimal import Decimal
 
 from django.db import transaction as db_transaction
+from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.models import StaffUser
 from accounts.permissions import HasRolePermission
 from accounts.views import IsBusinessOwner, IsCustomer
 from cart.models import Cart
@@ -17,8 +19,10 @@ from notifications.services import notify_customer
 from payments.models import CheckoutSession
 from payments.services import process_payment
 
-from .models import Order, OrderItem
+from .models import DeliveryAssignment, Order, OrderItem
 from .serializers import (
+    DeliveryOrderSerializer,
+    DispatchDeliverySerializer,
     OrderDeliveryStatusUpdateSerializer,
     OrderDisputeCreateSerializer,
     OrderSerializer,
@@ -261,3 +265,189 @@ class OrderDisputeCreateView(APIView):
             status=Dispute.OPEN,
         )
         return Response(DisputeSerializer(dispute).data, status=status.HTTP_201_CREATED)
+
+
+# ── Door-to-door delivery (punch-list item 11) ─────────────────────────────
+class DeliveryPagination(PageNumberPagination):
+    page_size = 20
+
+
+def _sync_order_delivery_status(order, assignment_status):
+    """Keep Order.delivery_status roughly in step with the courier's progress
+    so the customer's existing delivery stepper reflects reality.
+    """
+    mapping = {
+        DeliveryAssignment.ASSIGNED: Order.PROCESSING,
+        DeliveryAssignment.PICKED_UP: Order.OUT_FOR_DELIVERY,
+        DeliveryAssignment.DELIVERED: Order.DELIVERED,
+        DeliveryAssignment.CONFIRMED: Order.DELIVERED,
+    }
+    new_status = mapping.get(assignment_status)
+    if new_status and order.delivery_status != new_status:
+        order.delivery_status = new_status
+        order.save(update_fields=["delivery_status"])
+
+
+class DeliveryManagerOrderListView(generics.ListAPIView):
+    """GET /api/orders/delivery/ — paid door-to-door orders for the Delivery
+    Manager (delivery.manage) to assign a dispatch to. Store-pickup orders are
+    excluded: they're collected, not delivered.
+    """
+
+    serializer_class = DeliveryOrderSerializer
+    pagination_class = DeliveryPagination
+
+    def get_permissions(self):
+        return [HasRolePermission("delivery.manage")]
+
+    def get_queryset(self):
+        return (
+            Order.objects.filter(status=Order.PAID, delivery_method=Order.DOOR_TO_DOOR)
+            .select_related("customer", "delivery_assignment", "delivery_assignment__dispatch")
+            .prefetch_related("items__listing")
+            .order_by("-placed_at")
+        )
+
+
+class DispatchListView(generics.ListAPIView):
+    """GET /api/orders/dispatches/ — active dispatch staff, so the Delivery
+    Manager can pick one to assign (delivery.manage).
+    """
+
+    serializer_class = None  # simple hand-built payload below
+
+    def get_permissions(self):
+        return [HasRolePermission("delivery.manage")]
+
+    def get(self, request, *args, **kwargs):
+        dispatches = StaffUser.objects.filter(
+            role__name="dispatch", is_active=True, is_suspended=False
+        ).order_by("full_name")
+        return Response([{"id": d.id, "full_name": d.full_name} for d in dispatches])
+
+
+class AssignDispatchView(APIView):
+    """POST /api/orders/{id}/assign-dispatch/ — the Delivery Manager assigns a
+    dispatch to a paid door-to-door order (delivery.manage). Body: {dispatch}.
+    Re-assigning an existing assignment just swaps the dispatch.
+    """
+
+    def get_permissions(self):
+        return [HasRolePermission("delivery.manage")]
+
+    def post(self, request, pk):
+        order = generics.get_object_or_404(Order, pk=pk)
+        if order.status != Order.PAID or order.delivery_method != Order.DOOR_TO_DOOR:
+            return Response(
+                {"detail": "Only a paid door-to-door order can be assigned a dispatch."},
+                status=400,
+            )
+        dispatch = generics.get_object_or_404(StaffUser, pk=request.data.get("dispatch"))
+        if dispatch.role.name != "dispatch":
+            return Response({"dispatch": "That staff member is not a dispatch."}, status=400)
+
+        assignment, _ = DeliveryAssignment.objects.update_or_create(
+            order=order,
+            defaults={"dispatch": dispatch, "assigned_by": request.user},
+        )
+        _sync_order_delivery_status(order, assignment.status)
+        notify_customer(
+            order.customer, "order_status", "Your delivery is on its way",
+            body=f"A courier has been assigned to Order #{order.id}.",
+            link="/my-account", icon="🚚",
+        )
+        return Response(DeliveryOrderSerializer(order).data)
+
+
+class MyDeliveriesView(generics.ListAPIView):
+    """GET /api/orders/dispatch/ — the dispatch's own assigned deliveries
+    (delivery.dispatch), with both pickup and drop-off locations.
+    """
+
+    serializer_class = DispatchDeliverySerializer
+    pagination_class = DeliveryPagination
+
+    def get_permissions(self):
+        return [HasRolePermission("delivery.dispatch")]
+
+    def get_queryset(self):
+        return (
+            DeliveryAssignment.objects.filter(dispatch=self.request.user)
+            .select_related("order", "order__customer")
+            .prefetch_related("order__items__listing__business_owner")
+            .order_by("-assigned_at")
+        )
+
+
+class DeliveryPickupView(APIView):
+    """POST /api/orders/delivery/{id}/pickup/ — the dispatch confirms they've
+    collected the items from the business (delivery.dispatch). assigned →
+    picked_up.
+    """
+
+    def get_permissions(self):
+        return [HasRolePermission("delivery.dispatch")]
+
+    def post(self, request, pk):
+        assignment = generics.get_object_or_404(
+            DeliveryAssignment, pk=pk, dispatch=request.user
+        )
+        if assignment.status != DeliveryAssignment.ASSIGNED:
+            return Response({"detail": "This delivery is not awaiting pickup."}, status=400)
+        assignment.status = DeliveryAssignment.PICKED_UP
+        assignment.picked_up_at = timezone.now()
+        assignment.save(update_fields=["status", "picked_up_at"])
+        _sync_order_delivery_status(assignment.order, assignment.status)
+        return Response(DispatchDeliverySerializer(assignment).data)
+
+
+class DeliveryDeliverView(APIView):
+    """POST /api/orders/delivery/{id}/deliver/ — the dispatch confirms they've
+    delivered to the customer (delivery.dispatch). picked_up → delivered. The
+    customer then confirms receipt separately.
+    """
+
+    def get_permissions(self):
+        return [HasRolePermission("delivery.dispatch")]
+
+    def post(self, request, pk):
+        assignment = generics.get_object_or_404(
+            DeliveryAssignment, pk=pk, dispatch=request.user
+        )
+        if assignment.status != DeliveryAssignment.PICKED_UP:
+            return Response({"detail": "This delivery has not been picked up yet."}, status=400)
+        assignment.status = DeliveryAssignment.DELIVERED
+        assignment.delivered_at = timezone.now()
+        assignment.save(update_fields=["status", "delivered_at"])
+        _sync_order_delivery_status(assignment.order, assignment.status)
+        notify_customer(
+            assignment.order.customer, "order_status", "Your order has been delivered",
+            body=f"Order #{assignment.order_id} has been delivered — please confirm you received it.",
+            link="/my-account", icon="📦",
+        )
+        return Response(DispatchDeliverySerializer(assignment).data)
+
+
+class ConfirmReceiptView(APIView):
+    """POST /api/orders/{id}/confirm-receipt/ — the customer confirms they
+    received a delivered order (IsCustomer, owns the order). delivered →
+    confirmed. Closes the loop the dispatch's "deliver" opened.
+    """
+
+    permission_classes = [IsAuthenticated, IsCustomer]
+
+    def post(self, request, pk):
+        order = generics.get_object_or_404(Order, pk=pk, customer=request.user)
+        assignment = getattr(order, "delivery_assignment", None)
+        if assignment is None:
+            return Response({"detail": "This order has no delivery to confirm."}, status=400)
+        if assignment.status != DeliveryAssignment.DELIVERED:
+            return Response(
+                {"detail": "You can only confirm receipt once the courier marks it delivered."},
+                status=400,
+            )
+        assignment.status = DeliveryAssignment.CONFIRMED
+        assignment.confirmed_at = timezone.now()
+        assignment.save(update_fields=["status", "confirmed_at"])
+        _sync_order_delivery_status(order, assignment.status)
+        return Response({"id": order.id, "status": assignment.status})

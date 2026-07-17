@@ -15,6 +15,7 @@ from .models import (
     Customer,
     PasswordResetToken,
     Role,
+    ScoutAssignment,
     StaffUser,
 )
 
@@ -683,3 +684,39 @@ class StaffListSerializer(serializers.ModelSerializer):
 
     def get_role_permissions(self, obj):
         return sorted(obj.role.permissions.values_list("codename", flat=True))
+
+
+class ScoutAssignmentSerializer(serializers.ModelSerializer):
+    """Read shape for both the admin's assignment list and the scout's own
+    queue (item 11). Surfaces the business's KYC/address details a scout needs
+    in the field without a second request.
+    """
+
+    business_owner_name = serializers.CharField(source="business_owner.full_name", read_only=True)
+    business_login_phone = serializers.CharField(source="business_owner.login_phone", read_only=True)
+    scout_name = serializers.CharField(source="scout.full_name", read_only=True)
+    assigned_by_name = serializers.CharField(source="assigned_by.full_name", read_only=True, default=None)
+    gps_address = serializers.SerializerMethodField()
+    business_kind = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ScoutAssignment
+        fields = [
+            "id", "business_owner", "business_owner_name", "business_login_phone",
+            "scout", "scout_name", "assigned_by_name", "status",
+            "gps_address", "business_kind",
+            "address_confirmed", "corrected_address", "business_legitimate",
+            "details_correct", "notes", "visited_at", "created_at",
+        ]
+        read_only_fields = fields
+
+    def _profile(self, obj):
+        return getattr(obj.business_owner, "profile", None)
+
+    def get_gps_address(self, obj):
+        profile = self._profile(obj)
+        return profile.gps_address if profile else None
+
+    def get_business_kind(self, obj):
+        profile = self._profile(obj)
+        return profile.business_kind if profile else None

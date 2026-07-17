@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from disputes.models import Dispute
 
-from .models import Order, OrderItem
+from .models import DeliveryAssignment, Order, OrderItem
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
@@ -85,3 +85,77 @@ class OrderDisputeCreateSerializer(serializers.Serializer):
 
     reason = serializers.ChoiceField(choices=Dispute.REASON_CHOICES)
     description = serializers.CharField()
+
+
+class DeliveryAssignmentSerializer(serializers.ModelSerializer):
+    dispatch_name = serializers.CharField(source="dispatch.full_name", read_only=True, default=None)
+
+    class Meta:
+        model = DeliveryAssignment
+        fields = [
+            "id", "dispatch", "dispatch_name", "status", "notes",
+            "assigned_at", "picked_up_at", "delivered_at", "confirmed_at",
+        ]
+        read_only_fields = fields
+
+
+class DeliveryOrderSerializer(serializers.ModelSerializer):
+    """The Delivery Manager's view of a paid door-to-door order (item 11):
+    what was bought, the customer's delivery details, and the current
+    assignment (if any). The Delivery Manager assigns a dispatch to unassigned
+    ones.
+    """
+
+    items = OrderItemSerializer(many=True, read_only=True)
+    customer_name = serializers.CharField(source="customer.full_name", read_only=True)
+    delivery_assignment = DeliveryAssignmentSerializer(read_only=True)
+
+    class Meta:
+        model = Order
+        fields = [
+            "id", "customer_name", "status", "delivery_status", "placed_at",
+            "items", "total_amount", "delivery_assignment", *DELIVERY_FIELDS,
+        ]
+        read_only_fields = fields
+
+
+class DispatchDeliverySerializer(serializers.ModelSerializer):
+    """A Dispatch's view of their assigned delivery (item 11) — the order's
+    items plus BOTH the business pickup location(s) and the customer's delivery
+    location/phone, which is what a courier needs to run the job.
+    """
+
+    order_id = serializers.IntegerField(source="order.id", read_only=True)
+    customer_name = serializers.CharField(source="order.customer.full_name", read_only=True)
+    delivery_address = serializers.CharField(source="order.delivery_address", read_only=True)
+    delivery_phone = serializers.CharField(source="order.delivery_phone", read_only=True)
+    delivery_lat = serializers.FloatField(source="order.delivery_lat", read_only=True, default=None)
+    delivery_lng = serializers.FloatField(source="order.delivery_lng", read_only=True, default=None)
+    pickups = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DeliveryAssignment
+        fields = [
+            "id", "order_id", "status", "customer_name",
+            "delivery_address", "delivery_phone", "delivery_lat", "delivery_lng",
+            "pickups", "assigned_at", "picked_up_at", "delivered_at", "confirmed_at",
+        ]
+        read_only_fields = fields
+
+    def get_pickups(self, obj):
+        """One pickup point per distinct business in the order — the courier
+        collects each business's items from its location.
+        """
+        seen = {}
+        for item in obj.order.items.all():
+            owner = item.listing.business_owner
+            if owner.id not in seen:
+                seen[owner.id] = {
+                    "business_name": owner.full_name,
+                    "phone": item.listing.contact_phone,
+                    "lat": float(item.listing.lat) if item.listing.lat is not None else None,
+                    "lng": float(item.listing.lng) if item.listing.lng is not None else None,
+                    "items": [],
+                }
+            seen[owner.id]["items"].append(f"{item.listing.name} × {item.quantity}")
+        return list(seen.values())
