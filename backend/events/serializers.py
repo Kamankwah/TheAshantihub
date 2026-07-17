@@ -202,6 +202,27 @@ class EventSubmitSerializer(serializers.ModelSerializer):
         return value
 
 
+class EventEditSerializer(serializers.ModelSerializer):
+    """Input shape for an organizer editing their event (business item 3 /
+    Wave E). Only the content fields — NOT visibility_days (that's what renewal
+    is for) or any lifecycle/payment field. The view resets status to pending
+    for re-approval but keeps paid_at, so no re-payment is needed.
+    """
+
+    class Meta:
+        model = Event
+        fields = [
+            "category", "zone", "name", "description", "address", "lat", "lng",
+            "event_date", "access_level",
+        ]
+        extra_kwargs = {f: {"required": False} for f in fields}
+
+    def validate_category(self, value):
+        if value.kind != Category.EVENT:
+            raise serializers.ValidationError("Category must be an event-kind category.")
+        return value
+
+
 class EventPricingTierPublicSerializer(serializers.ModelSerializer):
     """Public shape (GET /api/events/pricing-tiers/) — only the live price,
     never the pending one (an unapproved future price isn't public)."""

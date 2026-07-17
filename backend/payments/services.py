@@ -79,6 +79,26 @@ def _finalize_event_pay(session):
     event.save(update_fields=["paid_at", "expires_at"])
 
 
+def _finalize_event_renew(session):
+    """Extends a live/expired event's visibility window by the paid-for days
+    (business item 3 / Wave E). Extends from the later of now and the current
+    expiry, and un-expires an event whose window had lapsed.
+    """
+    from events.models import Event
+
+    meta = session.metadata
+    if meta.get("renewed"):
+        return  # idempotency belt-and-suspenders
+    event = Event.objects.select_for_update().get(id=meta["event_id"])
+    now = timezone.now()
+    base = event.expires_at if (event.expires_at and event.expires_at > now) else now
+    event.expires_at = base + timedelta(days=meta["renew_days"])
+    event.status = Event.APPROVED  # a renewed (previously-expired) event goes live again
+    event.save(update_fields=["expires_at", "status"])
+    session.metadata = {**meta, "renewed": True}
+    session.save(update_fields=["metadata", "updated_at"])
+
+
 def _finalize_ticket_purchase(session):
     """Creates the actual Ticket row(s) on confirmed payment. Inventory
     (`EventTicketType.quantity_sold`) is reserved optimistically at checkout
@@ -204,6 +224,7 @@ def _finalize_booking(session):
 FINALIZERS = {
     CheckoutSession.ORDER_CHECKOUT: _finalize_order_checkout,
     CheckoutSession.EVENT_PAY: _finalize_event_pay,
+    CheckoutSession.EVENT_RENEW: _finalize_event_renew,
     CheckoutSession.TICKET_PURCHASE: _finalize_ticket_purchase,
     CheckoutSession.SUBSCRIPTION: _finalize_subscription,
     CheckoutSession.SERVICE_REQUEST: _finalize_service_request,
