@@ -45,6 +45,15 @@ class MultiAccountJWTAuthentication(authentication.BaseAuthentication):
         except model.DoesNotExist as exc:
             raise exceptions.AuthenticationFailed("Account not found") from exc
 
+        # A staffer suspended or deactivated mid-session still holds a valid,
+        # unexpired token — refuse it here so the block takes effect
+        # immediately rather than only at their next login (punch-list item
+        # 10). Customers/BusinessOwners are only blocked at login today; this
+        # is deliberately staff-only, since a staffer's live token grants
+        # access to moderation/finance surfaces where an immediate cut matters.
+        if isinstance(account, StaffUser) and (account.is_suspended or not account.is_active):
+            raise exceptions.AuthenticationFailed("This staff account is no longer active")
+
         return (account, token)
 
 

@@ -499,6 +499,73 @@ describe('StaffDashboard', () => {
     await screen.findByText('Could not send the invite. Check the details and try again.')
   })
 
+  it('suspends a staff member with a reason (item 10)', async () => {
+    let suspendBody = null
+    server.use(
+      http.get('http://localhost:8000/api/accounts/staff/', () => {
+        return HttpResponse.json({ count: 1, next: null, previous: null, results: [{ id: 7, full_name: 'Kojo Staff', email: 'kojo@example.com', role: 'support', status: 'active', is_suspended: false, is_active: true, permissions: ['users.view'], role_permissions: ['users.view'] }] })
+      }),
+      http.post('http://localhost:8000/api/accounts/staff/7/suspend/', async ({ request }) => {
+        suspendBody = await request.json()
+        return HttpResponse.json({ id: 7, status: 'suspended' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'staff.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Staff Management'))
+    await screen.findByText('Kojo Staff')
+    fireEvent.click(screen.getByText('🚫 Suspend'))
+    fireEvent.change(screen.getByPlaceholderText('Reason for suspension'), { target: { value: 'Under investigation' } })
+    fireEvent.click(screen.getByText('Confirm suspend'))
+    await waitFor(() => expect(suspendBody).toEqual({ reason: 'Under investigation' }))
+  })
+
+  it('deactivates a staff member (item 10)', async () => {
+    let deactivateCalled = false
+    server.use(
+      http.get('http://localhost:8000/api/accounts/staff/', () => {
+        return HttpResponse.json({ count: 1, next: null, previous: null, results: [{ id: 7, full_name: 'Kojo Staff', email: 'kojo@example.com', role: 'support', status: 'active', is_suspended: false, is_active: true, permissions: ['users.view'], role_permissions: ['users.view'] }] })
+      }),
+      http.post('http://localhost:8000/api/accounts/staff/7/deactivate/', () => {
+        deactivateCalled = true
+        return HttpResponse.json({ id: 7, status: 'deactivated' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'staff.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Staff Management'))
+    await screen.findByText('Kojo Staff')
+    fireEvent.click(screen.getByText('⏹ Deactivate'))
+    await waitFor(() => expect(deactivateCalled).toBe(true))
+  })
+
+  it('grants an individual permission and sends the correct grant/revoke diff (item 9)', async () => {
+    let permBody = null
+    server.use(
+      http.get('http://localhost:8000/api/accounts/staff/', () => {
+        // support role grants users.view; the editor should compute a grant
+        // of kyc.approve (checked, not in role) and no revokes.
+        return HttpResponse.json({ count: 1, next: null, previous: null, results: [{ id: 7, full_name: 'Kojo Staff', email: 'kojo@example.com', role: 'support', status: 'active', is_suspended: false, is_active: true, permissions: ['users.view'], role_permissions: ['users.view'] }] })
+      }),
+      http.post('http://localhost:8000/api/accounts/staff/7/permissions/', async ({ request }) => {
+        permBody = await request.json()
+        return HttpResponse.json({ id: 7, status: 'active' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'staff.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Staff Management'))
+    await screen.findByText('Kojo Staff')
+    fireEvent.click(screen.getByText('🔑 Permissions'))
+    // The catalog checkbox for kyc.approve starts unchecked (not effective).
+    const kycLabel = await screen.findByText('kyc.approve')
+    const kycCheckbox = kycLabel.closest('label').querySelector('input[type="checkbox"]')
+    expect(kycCheckbox.checked).toBe(false)
+    fireEvent.click(kycCheckbox)
+    fireEvent.click(screen.getByText('Save permissions'))
+    await waitFor(() => expect(permBody).toEqual({ grant: ['kyc.approve'], revoke: [] }))
+  })
+
   it('only shows the Site Settings nav item for a session with site_settings.manage', () => {
     const auth = makeAuth({ hasPermission: (c) => c === 'site_settings.manage' })
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
@@ -1639,6 +1706,63 @@ describe('StaffDashboard Users management (staff dashboard review tools)', () =>
     fireEvent.change(screen.getByPlaceholderText('Reason for suspension'), { target: { value: 'Fraud' } })
     fireEvent.click(screen.getByText('Confirm suspend'))
     await waitFor(() => expect(suspendBody).toEqual({ reason: 'Fraud' }))
+  })
+
+  it('shows a customer\'s real payment history and no fabricated card field (item 9)', async () => {
+    seedUsers()
+    server.use(
+      http.get('http://localhost:8000/api/accounts/customers/1/', () => {
+        return HttpResponse.json({
+          id: 1, full_name: 'Ama Owusu', phone: '+233241234567', email: 'ama@example.com', address: '12 Ash Road',
+          is_suspended: false,
+          payment_history: [{ kind: 'order_checkout', purpose: 'Order #5', amount: '150.00', status: 'success', created_at: '2026-07-01T00:00:00Z' }],
+        })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'users.view' || c === 'users.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Users'))
+    await screen.findByText('Ama Owusu')
+    fireEvent.click(screen.getByText('👁️ View'))
+    await screen.findByText('Payment history')
+    expect(screen.getByText('Order #5')).toBeInTheDocument()
+    expect(screen.getByText(/GHS 150.00/)).toBeInTheDocument()
+    // No payment-instrument model exists — the panel must not claim otherwise.
+    expect(screen.queryByText(/last 5 digits/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Payment type/i)).not.toBeInTheDocument()
+  })
+
+  it('shows a business owner\'s profile with the payout number masked (item 9)', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/accounts/customers/', () => {
+        return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+      }),
+      http.get('http://localhost:8000/api/accounts/business-owners/', () => {
+        return HttpResponse.json({ count: 1, next: null, previous: null, results: [{ id: 3, full_name: 'Kwame Trader', login_phone: '+233201112233', email: 'kwame@example.com', kyc_status: 'verified', is_suspended: false }] })
+      }),
+      http.get('http://localhost:8000/api/accounts/business-owners/3/', () => {
+        return HttpResponse.json({
+          id: 3, full_name: 'Kwame Trader', login_phone: '+233201112233', email: 'kwame@example.com',
+          kyc_status: 'verified', is_suspended: false,
+          profile: {
+            business_kind: 'product', gps_address: 'AK-039-5028', tin: 'C0001234567', is_formal: true,
+            address_verified: true, address_verified_by_name: 'Scout Kofi',
+            default_payout_method: 'momo', payout_verification_status: 'verified',
+            payout_momo_network: 'MTN', payout_momo_name: 'Kwame Trader', payout_momo_number_masked: '•••••99888',
+            payout_bank_account_number_masked: null,
+          },
+        })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'users.view' || c === 'users.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Users'))
+    fireEvent.click(await screen.findByText('Business Owners'))
+    await screen.findByText('Kwame Trader')
+    fireEvent.click(screen.getByText('👁️ View'))
+    await screen.findByText('Payout details')
+    expect(screen.getByText('•••••99888')).toBeInTheDocument()
+    expect(screen.getByText('AK-039-5028')).toBeInTheDocument()
   })
 
   it('edits a customer and PATCHes the changed fields', async () => {

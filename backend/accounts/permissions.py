@@ -4,6 +4,14 @@ from .models import StaffUser
 
 
 class HasRolePermission(BasePermission):
+    """Both this and HasAnyRolePermission read
+    StaffUser.effective_permission_codenames() — role permissions plus
+    per-staffer grants, minus per-staffer revocations (punch-list item 9).
+    They must stay on that same helper as GET /api/accounts/me/'s
+    `permissions` list, or the UI would gate on a different set than the
+    server enforces and render buttons that 403.
+    """
+
     def __init__(self, codename):
         self.codename = codename
 
@@ -11,7 +19,7 @@ class HasRolePermission(BasePermission):
         user = request.user
         if not isinstance(user, StaffUser):
             return False
-        return user.role.permissions.filter(codename=self.codename).exists()
+        return self.codename in user.effective_permission_codenames()
 
 
 class HasAnyRolePermission(BasePermission):
@@ -28,4 +36,4 @@ class HasAnyRolePermission(BasePermission):
         user = request.user
         if not isinstance(user, StaffUser):
             return False
-        return user.role.permissions.filter(codename__in=self.codenames).exists()
+        return bool(set(self.codenames) & user.effective_permission_codenames())
