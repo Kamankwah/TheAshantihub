@@ -26,10 +26,12 @@ function makeAuth(overrides = {}) {
 }
 
 describe('StaffDashboard', () => {
-  it('shows Overview by default with a greeting and the session permissions', () => {
+  it('shows Overview by default with a greeting', () => {
     renderWithQueryClient(<StaffDashboard auth={makeAuth()} onExit={vi.fn()} />)
     expect(screen.getByText(/Akwaaba, Akosua/)).toBeInTheDocument()
-    expect(screen.getByText('messaging.manage')).toBeInTheDocument()
+    // The "Your permissions" clutter card was removed from Overview — its
+    // permission chips should no longer render.
+    expect(screen.queryByText('messaging.manage')).not.toBeInTheDocument()
   })
 
   it('only shows nav items the session has permission for', () => {
@@ -58,15 +60,28 @@ describe('StaffDashboard', () => {
       .forEach((label) => expect(screen.getByText(label)).toBeInTheDocument())
   })
 
-  it('switches panels on nav click and shows a coming-soon message for unbuilt permissions', () => {
-    // Disputes/Transactions Report/Messaging all went from ComingSoonPanel
-    // stubs to real panels (system-admin-dashboard real-data wiring) —
-    // Analytics is the one remaining unbuilt tab, so this test now exercises
-    // that one instead of Messaging.
+  it('switches to the Analytics panel and shows real marketplace counts', async () => {
+    // Analytics was the last ComingSoonPanel stub; it's now a real panel
+    // backed by GET /api/core/analytics/ (real-derived counts only).
+    server.use(
+      http.get('http://localhost:8000/api/core/analytics/', () => {
+        return HttpResponse.json({
+          customers: 42, business_owners: 7,
+          business_owners_by_kyc: { pending: 2, verified: 4, rejected: 1 },
+          listings_total: 10,
+          listings_by_status: { draft: 3, pending_review: 1, published: 5, rejected: 1 },
+          listings_by_kind: { product: 3, service: 2, event: 0 },
+          orders_total: 8, orders_by_status: { pending: 1, paid: 6, cancelled: 1 },
+          events_total: 4, events_by_status: { pending: 1, approved: 3, rejected: 0 },
+        })
+      }),
+    )
     const auth = makeAuth({ hasPermission: (c) => ['messaging.manage', 'disputes.flag', 'users.view', 'analytics.view'].includes(c) })
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('Analytics'))
-    expect(screen.getByText(/coming soon/i)).toBeInTheDocument()
+    expect(await screen.findByText('Customers')).toBeInTheDocument()
+    expect(screen.getByText('42')).toBeInTheDocument()
+    expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument()
   })
 
   it('switches to the Messaging / Tickets panel and shows the real queue', async () => {

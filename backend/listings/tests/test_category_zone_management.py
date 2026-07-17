@@ -2,8 +2,8 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from accounts.authentication import issue_token
-from accounts.models import Role, StaffUser
-from listings.models import Category, Zone
+from accounts.models import BusinessOwner, Role, StaffUser
+from listings.models import Category, Listing, Zone
 
 
 class CategoryZoneManagementTests(TestCase):
@@ -21,20 +21,88 @@ class CategoryZoneManagementTests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('marketing', 1)}")
         response = self.client.post(
             "/api/listings/categories/",
-            {"slug": "new-cat", "icon": "🆕", "label": "New Category", "color": "#123456"},
+            {"slug": "new-cat", "icon": "🆕", "label": "New Category", "color": "#123456",
+             "kind": Category.SERVICE},
             format="json",
         )
         self.assertEqual(response.status_code, 201, response.content)
-        self.assertTrue(Category.objects.filter(slug="new-cat").exists())
+        self.assertTrue(Category.objects.filter(slug="new-cat", kind=Category.SERVICE).exists())
+
+    def test_create_category_requires_kind(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('marketing', 3)}")
+        response = self.client.post(
+            "/api/listings/categories/",
+            {"slug": "no-kind", "icon": "❓", "label": "No Kind", "color": "#111111"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("kind", response.json())
 
     def test_admin_cannot_create_category(self):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('admin', 1)}")
         response = self.client.post(
             "/api/listings/categories/",
-            {"slug": "blocked-cat", "icon": "🚫", "label": "Blocked", "color": "#000000"},
+            {"slug": "blocked-cat", "icon": "🚫", "label": "Blocked", "color": "#000000",
+             "kind": Category.PRODUCT},
             format="json",
         )
         self.assertEqual(response.status_code, 403)
+
+    # ── Edit / delete (staff Categories panel CRUD) ──────────────────────────
+
+    def test_marketing_can_edit_category(self):
+        category = Category.objects.create(
+            slug="editme", icon="✏️", label="Edit Me", color="#222222", kind=Category.PRODUCT,
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('marketing', 4)}")
+        response = self.client.patch(
+            f"/api/listings/categories/{category.id}/",
+            {"label": "Edited Label", "icon": "🎨", "color": "#333333"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        category.refresh_from_db()
+        self.assertEqual(category.label, "Edited Label")
+        self.assertEqual(category.icon, "🎨")
+        # A partial edit that omits `kind` keeps the existing kind unchanged.
+        self.assertEqual(category.kind, Category.PRODUCT)
+
+    def test_admin_cannot_edit_category(self):
+        category = Category.objects.create(
+            slug="noedit", icon="🔒", label="No Edit", color="#444444", kind=Category.PRODUCT,
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('admin', 5)}")
+        response = self.client.patch(
+            f"/api/listings/categories/{category.id}/", {"label": "Hacked"}, format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_marketing_can_delete_unused_category(self):
+        category = Category.objects.create(
+            slug="deleteme", icon="🗑️", label="Delete Me", color="#555555", kind=Category.SERVICE,
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('marketing', 6)}")
+        response = self.client.delete(f"/api/listings/categories/{category.id}/")
+        self.assertEqual(response.status_code, 204, response.content)
+        self.assertFalse(Category.objects.filter(id=category.id).exists())
+
+    def test_delete_category_in_use_is_blocked(self):
+        category = Category.objects.create(
+            slug="inuse", icon="📦", label="In Use", color="#666666", kind=Category.PRODUCT,
+        )
+        zone = Zone.objects.create(name="Delete-Guard Zone")
+        owner = BusinessOwner.objects.create(
+            full_name="Owner", login_phone="+233207000111", password_hash="x",
+        )
+        Listing.objects.create(
+            business_owner=owner, category=category, zone=zone,
+            name="Blocking Listing", description="x", contact_phone="0200000000",
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('marketing', 7)}")
+        response = self.client.delete(f"/api/listings/categories/{category.id}/")
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("1 listing", response.json()["detail"])
+        self.assertTrue(Category.objects.filter(id=category.id).exists())
 
     def test_admin_can_create_zone(self):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('admin', 2)}")

@@ -28,12 +28,17 @@ function mockSubscription(sub = {}) {
   )
 }
 
-function renderPanel({ plans = [PLAN], subscription = {}, showToast = vi.fn() } = {}) {
+function renderPanel({ plans = [PLAN], subscription = {}, showToast = vi.fn(), businessKind } = {}) {
   mockPlans(plans)
   mockSubscription(subscription)
   return renderWithQueryClient(
-    <SubscriptionPanel user={{ fullName: 'Abena' }} PaymentComponent={MoMoPayment} showToast={showToast} />,
+    <SubscriptionPanel user={{ fullName: 'Abena' }} PaymentComponent={MoMoPayment} showToast={showToast} businessKind={businessKind} />,
   )
+}
+
+const SERVICE_PLAN = {
+  id: 2, tier: 'service_pro', name: 'Service Pro', monthly_price: '40.00', kind: 'service',
+  max_active_listings: 5, features: ['Priority support'], is_recommended: false,
 }
 
 describe('SubscriptionPanel cycle-length selector', () => {
@@ -55,6 +60,26 @@ describe('SubscriptionPanel cycle-length selector', () => {
     await screen.findByText('Growth')
     expect(screen.getByText('Product')).toBeInTheDocument()
     expect(screen.getByText(/Up to 10 active listings/)).toBeInTheDocument()
+  })
+})
+
+describe('SubscriptionPanel business-kind plan filtering', () => {
+  it('shows only product-kind plans for a product business', async () => {
+    renderPanel({ plans: [PLAN, SERVICE_PLAN], businessKind: 'product' })
+    await screen.findByText('Growth')
+    expect(screen.queryByText('Service Pro')).not.toBeInTheDocument()
+  })
+
+  it('shows only service-kind plans for a service business', async () => {
+    renderPanel({ plans: [PLAN, SERVICE_PLAN], businessKind: 'service' })
+    await screen.findByText('Service Pro')
+    expect(screen.queryByText('Growth')).not.toBeInTheDocument()
+  })
+
+  it('shows all plans when business_kind is null (older accounts)', async () => {
+    renderPanel({ plans: [PLAN, SERVICE_PLAN], businessKind: null })
+    await screen.findByText('Growth')
+    expect(screen.getByText('Service Pro')).toBeInTheDocument()
   })
 })
 

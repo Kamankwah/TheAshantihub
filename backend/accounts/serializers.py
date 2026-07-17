@@ -266,9 +266,14 @@ class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
         fields = [
             "ghana_card_number", "ghana_card_front_image", "ghana_card_back_image",
             "gps_address", "business_contact_phone", "is_formal",
-            "business_reg_certificate", "tin",
+            "business_reg_certificate", "tin", "business_kind",
         ]
         extra_kwargs = {field: {"required": False} for field in fields}
+        # business_kind is set at trial-start (billing.StartTrialSerializer) and
+        # drives listing-category / subscription-plan gating on the frontend; it
+        # is exposed here read-only so the owner's dashboard can read it, but
+        # this KYC-edit endpoint must never let it be switched.
+        extra_kwargs["business_kind"] = {"read_only": True}
 
     def validate(self, data):
         owner = self.instance.business_owner

@@ -21,6 +21,7 @@ urlpatterns = [
     path("hero/<int:pk>/approve/", views.HeroApproveView.as_view(), name="hero-moderation-approve"),
     path("hero/<int:pk>/reject/", views.HeroRejectView.as_view(), name="hero-moderation-reject"),
     path("categories/", views.CategoryListView.as_view(), name="category-list"),
+    path("categories/<int:pk>/", views.CategoryDetailView.as_view(), name="category-detail"),
     path("zones/", views.ZoneListView.as_view(), name="zone-list"),
     path("", views.PublicListingListView.as_view(), name="listing-list"),
     path("<int:pk>/", views.PublicListingDetailView.as_view(), name="listing-detail"),

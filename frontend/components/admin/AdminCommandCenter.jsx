@@ -22,7 +22,7 @@ import DisputesPanel from "./panels/DisputesPanel.jsx";
 import TransactionsReportPanel from "./panels/TransactionsReportPanel.jsx";
 import MessagingPanel from "./panels/MessagingPanel.jsx";
 import PromotionsInfoPanel from "./panels/PromotionsInfoPanel.jsx";
-import ComingSoonPanel from "./panels/ComingSoonPanel.jsx";
+import AnalyticsPanel from "./panels/AnalyticsPanel.jsx";
 
 // ─── Admin Command Center ─────────────────────────────────────────────────────
 // The staff dashboard's shell, restyled to match the Business Command
@@ -222,7 +222,7 @@ export default function AdminCommandCenter({ auth, onExit }) {
           {activeTab === "disputes" && <DisputesPanel auth={auth} />}
           {activeTab === "transactions" && <TransactionsReportPanel />}
           {activeTab === "promotions" && <PromotionsInfoPanel />}
-          {activeTab === "analytics" && <ComingSoonPanel feature="Analytics" />}
+          {activeTab === "analytics" && <AnalyticsPanel />}
           {activeTab === "messaging" && <MessagingPanel />}
         </div>
       </div>

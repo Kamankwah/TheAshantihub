@@ -514,6 +514,52 @@ describe('BusinessDashboard Listings & Prices — create a new listing', () => {
   })
 })
 
+describe('BusinessDashboard Listings & Prices — business-kind create gating', () => {
+  // The default categories handler serves Hotels (service, id 1) and Food
+  // (product, id 2). A product/service business_kind on the profile should lock
+  // the create button label + category dropdown to that kind.
+  it('locks the create form to products for a product business', async () => {
+    mockDashboardData({ profile: {
+      ghana_card_number: 'GHA-1', gps_address: 'AK-1', business_contact_phone: '+233200000000',
+      is_formal: false, business_kind: 'product',
+    } })
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
+    fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
+    const createBtn = await screen.findByText('➕ List a New Product')
+    fireEvent.click(createBtn)
+    await screen.findByText('➕ New Listing')
+    expect(screen.getByText('🍲 Food (product)')).toBeInTheDocument()
+    expect(screen.queryByText('🏨 Hotels (service)')).not.toBeInTheDocument()
+  })
+
+  it('locks the create form to services for a service business', async () => {
+    mockDashboardData({ profile: {
+      ghana_card_number: 'GHA-1', gps_address: 'AK-1', business_contact_phone: '+233200000000',
+      is_formal: false, business_kind: 'service',
+    } })
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
+    fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
+    const createBtn = await screen.findByText('➕ List a New Service')
+    fireEvent.click(createBtn)
+    await screen.findByText('➕ New Listing')
+    expect(screen.getByText('🏨 Hotels (service)')).toBeInTheDocument()
+    expect(screen.queryByText('🍲 Food (product)')).not.toBeInTheDocument()
+  })
+
+  it('falls back to offering both kinds when business_kind is null', async () => {
+    mockDashboardData({ profile: {
+      ghana_card_number: 'GHA-1', gps_address: 'AK-1', business_contact_phone: '+233200000000',
+      is_formal: false, business_kind: null,
+    } })
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
+    fireEvent.click(await screen.findByRole('button', { name: /Listings & Prices/ }))
+    fireEvent.click(await screen.findByText('➕ List a New Product / Service'))
+    await screen.findByText('➕ New Listing')
+    expect(screen.getByText('🍲 Food (product)')).toBeInTheDocument()
+    expect(screen.getByText('🏨 Hotels (service)')).toBeInTheDocument()
+  })
+})
+
 // ─── Command Center — new dark analytics / unified dashboard ─────────────────
 // Rich analytics fixture: listings across statuses, a spend transaction, a real
 // credit score with factors, and an active subscription with plan entitlements.

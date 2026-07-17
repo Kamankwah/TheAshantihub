@@ -88,6 +88,40 @@ class CategoryListView(generics.ListCreateAPIView):
         return [AllowAny()]
 
 
+class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """GET is public; PATCH/DELETE require categories.manage (roadmap: the
+    staff Categories panel's edit + delete actions). DELETE is guarded
+    against removing a category that still has listings — Listing.category is
+    on_delete=PROTECT, so an unguarded delete would raise ProtectedError
+    (a 500); this returns a clear 400 explaining how many listings block it.
+    """
+
+    queryset = Category.objects.all()
+    serializer_class = CategorySerializer
+    http_method_names = ["get", "patch", "delete"]
+
+    def get_permissions(self):
+        if self.request.method in ("PATCH", "DELETE"):
+            return [HasRolePermission("categories.manage")]
+        return [AllowAny()]
+
+    def destroy(self, request, *args, **kwargs):
+        category = self.get_object()
+        listing_count = category.listings.count()
+        if listing_count:
+            noun = "listing" if listing_count == 1 else "listings"
+            return Response(
+                {
+                    "detail": (
+                        f"{listing_count} {noun} use this category. Reassign or "
+                        "remove them before deleting it."
+                    )
+                },
+                status=400,
+            )
+        return super().destroy(request, *args, **kwargs)
+
+
 class ZoneListView(generics.ListCreateAPIView):
     queryset = Zone.objects.all()
     serializer_class = ZoneSerializer
