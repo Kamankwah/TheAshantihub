@@ -68,6 +68,14 @@ export default function ListingDetailPage({
   const [addingToCart, setAddingToCart] = useState(false);
   const [addedToCart, setAddedToCart] = useState(false);
   const [cartError, setCartError] = useState(null);
+  // Service request flow (business item 2 / Wave H2) — for a service listing,
+  // a customer sends a request instead of adding to cart; the owner accepts
+  // with a quote before any payment.
+  const [requestMessage, setRequestMessage] = useState("");
+  const [requestBudget, setRequestBudget] = useState("");
+  const [requesting, setRequesting] = useState(false);
+  const [requestSent, setRequestSent] = useState(false);
+  const [requestError, setRequestError] = useState(null);
 
   if (isLoading) {
     return (
@@ -205,6 +213,59 @@ export default function ListingDetailPage({
             </button>
           </div>
 
+          {/* Services transact via a request/quote flow (business item 2),
+              not the cart: the customer describes the job + an optional
+              budget, the owner accepts with a quote, then the customer pays. */}
+          {isService ? (
+            requestSent ? (
+              <div style={{ marginTop: 16, background: `${C.kente2}22`, color: "white", borderRadius: 14, padding: "14px 16px", fontSize: "0.8rem" }}>
+                ✓ Request sent. You'll be notified when the business responds with a quote — pay from “My Account” to get started.
+              </div>
+            ) : (
+              <div style={{ marginTop: 16 }}>
+                <div style={{ color: C.lightGold, fontSize: "0.78rem", fontWeight: 800, marginBottom: 8 }}>Request this service</div>
+                <textarea
+                  value={requestMessage}
+                  onChange={(e) => setRequestMessage(e.target.value)}
+                  placeholder="Describe what you need…"
+                  rows={3}
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.06)", color: "white", fontSize: "0.8rem", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 8, resize: "vertical" }}
+                />
+                <input
+                  type="number"
+                  value={requestBudget}
+                  onChange={(e) => setRequestBudget(e.target.value)}
+                  placeholder="Your budget (GHS, optional)"
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.06)", color: "white", fontSize: "0.8rem", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 8 }}
+                />
+                {requestError && <div style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{requestError}</div>}
+                <button
+                  disabled={requesting || !requestMessage.trim()}
+                  onClick={async () => {
+                    setRequestError(null);
+                    if (!user) { setRequestError("Sign in as a customer to request a service."); return; }
+                    setRequesting(true);
+                    try {
+                      await apiPost("/api/services/requests/", {
+                        listing: item.id,
+                        message: requestMessage.trim(),
+                        budget: requestBudget === "" ? null : requestBudget,
+                      });
+                      setRequestSent(true);
+                    } catch (err) {
+                      setRequestError(err?.body?.detail || "Could not send your request. Please try again.");
+                    } finally {
+                      setRequesting(false);
+                    }
+                  }}
+                  style={{ width: "100%", minHeight: 44, background: requestMessage.trim() ? C.gold : "rgba(255,255,255,0.08)", color: requestMessage.trim() ? C.darkBrown : "rgba(255,255,255,0.45)", border: "none", borderRadius: 20, fontSize: "0.82rem", fontWeight: 900, cursor: requestMessage.trim() ? "pointer" : "not-allowed", fontFamily: "inherit" }}
+                >
+                  {requesting ? "Sending…" : "Request this service"}
+                </button>
+              </div>
+            )
+          ) : (
+          <>
           {/* Add to Cart (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4) — disabled
               when the listing has no price (nothing for the backend to
               charge) or while a request is in flight. onAddToCart throws on
@@ -246,6 +307,8 @@ export default function ListingDetailPage({
           </button>
           {cartError && (
             <div style={{ marginTop: 8, color: "#ffb4b4", fontSize: "0.72rem" }}>{cartError}</div>
+          )}
+          </>
           )}
         </div>
       </div>

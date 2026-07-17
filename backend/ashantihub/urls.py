@@ -12,6 +12,7 @@ urlpatterns = [
     path("api/credit/", include("credit.urls")),
     path("api/cart/", include("cart.urls")),
     path("api/orders/", include("orders.urls")),
+    path("api/services/", include("services.urls")),
     path("api/events/", include("events.urls")),
     path("api/reviews/", include("reviews.urls")),
     path("api/qa/", include("qa.urls")),

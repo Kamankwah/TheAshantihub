@@ -362,6 +362,14 @@ export const handlers = [
   http.post('http://localhost:8000/api/orders/delivery/:id/pickup/', () => HttpResponse.json({ id: 1, status: 'picked_up' })),
   http.post('http://localhost:8000/api/orders/delivery/:id/deliver/', () => HttpResponse.json({ id: 1, status: 'delivered' })),
   http.post('http://localhost:8000/api/orders/:id/confirm-receipt/', () => HttpResponse.json({ id: 1, status: 'confirmed' })),
+  // Service requests (services app, business item 2) — default handlers.
+  http.get('http://localhost:8000/api/services/requests/mine/', () => HttpResponse.json([])),
+  http.get('http://localhost:8000/api/services/requests/incoming/', () => HttpResponse.json([])),
+  http.post('http://localhost:8000/api/services/requests/', () => HttpResponse.json({ id: 1, status: 'requested' }, { status: 201 })),
+  http.post('http://localhost:8000/api/services/requests/:id/respond/', () => HttpResponse.json({ id: 1, status: 'accepted' })),
+  http.post('http://localhost:8000/api/services/requests/:id/pay/', () => HttpResponse.json({ id: 1, status: 'in_progress' })),
+  http.post('http://localhost:8000/api/services/requests/:id/progress/', () => HttpResponse.json({ id: 1, status: 'in_progress' })),
+  http.post('http://localhost:8000/api/services/requests/:id/complete/', () => HttpResponse.json({ id: 1, status: 'completed' })),
   http.get('http://localhost:8000/api/events/tickets/escrow/', () => {
     return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
   }),

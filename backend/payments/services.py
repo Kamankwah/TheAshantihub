@@ -173,11 +173,27 @@ def _finalize_subscription(session):
     )
 
 
+def _finalize_service_request(session):
+    """Moves an accepted ServiceRequest to in_progress once the customer's
+    payment is confirmed (business item 2 / Wave H2).
+    """
+    from services.models import ServiceRequest
+
+    request_id = session.metadata.get("service_request_id")
+    service_request = ServiceRequest.objects.select_for_update().get(id=request_id)
+    if service_request.status != ServiceRequest.ACCEPTED:
+        return  # already finalized / not in a payable state — idempotency
+    service_request.status = ServiceRequest.IN_PROGRESS
+    service_request.paid_at = timezone.now()
+    service_request.save(update_fields=["status", "paid_at"])
+
+
 FINALIZERS = {
     CheckoutSession.ORDER_CHECKOUT: _finalize_order_checkout,
     CheckoutSession.EVENT_PAY: _finalize_event_pay,
     CheckoutSession.TICKET_PURCHASE: _finalize_ticket_purchase,
     CheckoutSession.SUBSCRIPTION: _finalize_subscription,
+    CheckoutSession.SERVICE_REQUEST: _finalize_service_request,
 }
 
 FAILURE_HANDLERS = {

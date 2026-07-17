@@ -6,6 +6,7 @@ import { D, glassCard } from "./theme.js";
 import AnalyticsPanel from "./panels/AnalyticsPanel.jsx";
 import ListingsPanel from "./panels/ListingsPanel.jsx";
 import ProductsPanel from "./panels/ProductsPanel.jsx";
+import ServicesPanel from "./panels/ServicesPanel.jsx";
 import DeliveriesPanel from "./panels/DeliveriesPanel.jsx";
 import PaymentsPanel from "./panels/PaymentsPanel.jsx";
 import CreditPanel from "./panels/CreditPanel.jsx";
@@ -216,6 +217,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
                 {tab === "analytics" && <AnalyticsPanel user={user} onNavigate={selectTab} />}
                 {tab === "listings" && <ListingsPanel user={user} PaymentComponent={PaymentComponent} showToast={showToast} businessKind={profile?.business_kind} />}
                 {tab === "products" && <ProductsPanel />}
+                {tab === "services" && <ServicesPanel />}
                 {tab === "events" && <EventsPanel user={user} PaymentComponent={PaymentComponent} />}
                 {tab === "deliveries" && <DeliveriesPanel />}
                 {tab === "payments" && <PaymentsPanel user={user} PaymentComponent={PaymentComponent} />}

@@ -738,3 +738,33 @@ describe('BusinessDashboard Products tab (business item 2)', () => {
     await waitFor(() => expect(restockBody).toEqual({ add: 10 }))
   })
 })
+
+describe('BusinessDashboard Services tab (business item 2)', () => {
+  const serviceProfile = { ghana_card_number: 'GHA-1', gps_address: 'AK-1', business_contact_phone: '+233200000000', is_formal: false, business_kind: 'service' }
+
+  it('lists an incoming request and accepts it with a quote', async () => {
+    let respondBody = null
+    server.use(
+      http.get('http://localhost:8000/api/listings/mine/', () => HttpResponse.json([])),
+      http.get('http://localhost:8000/api/accounts/business-owners/me/profile/', () => HttpResponse.json(serviceProfile)),
+      http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([])),
+      http.get('http://localhost:8000/api/billing/subscriptions/me/', () => HttpResponse.json({})),
+      http.get('http://localhost:8000/api/hero/mine/', () => HttpResponse.json({})),
+      http.get('http://localhost:8000/api/services/requests/incoming/', () => HttpResponse.json([
+        { id: 3, listing_name: 'Home Cleaning', customer_name: 'Yaa Buyer', message: 'Clean my house', budget: '150.00', agreed_price: null, status: 'requested', created_at: '2026-07-10T00:00:00Z', progress_note: '', decline_reason: '' },
+      ])),
+      http.post('http://localhost:8000/api/services/requests/3/respond/', async ({ request }) => {
+        respondBody = await request.json()
+        return HttpResponse.json({ id: 3, status: 'accepted' })
+      }),
+    )
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
+    fireEvent.click(await screen.findByRole('button', { name: /Services/ }))
+    await screen.findByText('Home Cleaning')
+    expect(screen.getByText('"Clean my house"')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('✓ Accept & quote'))
+    fireEvent.change(screen.getByPlaceholderText('Your price (GHS)'), { target: { value: '180' } })
+    fireEvent.click(screen.getByText('Send quote'))
+    await waitFor(() => expect(respondBody).toEqual({ action: 'accept', price: '180' }))
+  })
+})
