@@ -195,6 +195,9 @@ export default function StaffManagementPanel() {
             <option value="accountant">Accountant</option>
             <option value="marketing">Marketing</option>
             <option value="support">Support</option>
+            <option value="scout">Scout</option>
+            <option value="delivery_manager">Delivery Manager</option>
+            <option value="dispatch">Dispatch</option>
           </select>
           <button onClick={sendInvite} style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "6px 14px", fontSize: "0.72rem", fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>Send invite</button>
         </div>

@@ -337,6 +337,31 @@ export const handlers = [
       { codename: 'users.view', description: 'View customer and business accounts' },
     ])
   }),
+  // Field operations (item 11) — default handlers, overridden per-test.
+  http.get('http://localhost:8000/api/accounts/scouts/', () => HttpResponse.json([])),
+  http.get('http://localhost:8000/api/accounts/scout-assignments/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
+  http.post('http://localhost:8000/api/accounts/scout-assignments/', () => {
+    return HttpResponse.json({ id: 1, status: 'assigned' }, { status: 201 })
+  }),
+  http.get('http://localhost:8000/api/accounts/scout-assignments/mine/', () => HttpResponse.json([])),
+  http.post('http://localhost:8000/api/accounts/scout-assignments/:id/verify/', () => {
+    return HttpResponse.json({ id: 1, status: 'visited' })
+  }),
+  http.get('http://localhost:8000/api/orders/delivery/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
+  http.get('http://localhost:8000/api/orders/dispatches/', () => HttpResponse.json([])),
+  http.get('http://localhost:8000/api/orders/dispatch/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
+  http.post('http://localhost:8000/api/orders/:id/assign-dispatch/', () => {
+    return HttpResponse.json({ id: 1, delivery_assignment: { status: 'assigned' } })
+  }),
+  http.post('http://localhost:8000/api/orders/delivery/:id/pickup/', () => HttpResponse.json({ id: 1, status: 'picked_up' })),
+  http.post('http://localhost:8000/api/orders/delivery/:id/deliver/', () => HttpResponse.json({ id: 1, status: 'delivered' })),
+  http.post('http://localhost:8000/api/orders/:id/confirm-receipt/', () => HttpResponse.json({ id: 1, status: 'confirmed' })),
   http.get('http://localhost:8000/api/events/tickets/escrow/', () => {
     return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
   }),

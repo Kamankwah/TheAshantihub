@@ -21,6 +21,10 @@ import EscrowLedgerPanel from "./panels/EscrowLedgerPanel.jsx";
 import DisputesPanel from "./panels/DisputesPanel.jsx";
 import TransactionsReportPanel from "./panels/TransactionsReportPanel.jsx";
 import CreditPanel from "./panels/CreditPanel.jsx";
+import ScoutPanel from "./panels/ScoutPanel.jsx";
+import ScoutAssignmentsPanel from "./panels/ScoutAssignmentsPanel.jsx";
+import DeliveryManagerPanel from "./panels/DeliveryManagerPanel.jsx";
+import DispatchPanel from "./panels/DispatchPanel.jsx";
 import MessagingPanel from "./panels/MessagingPanel.jsx";
 import PromotionsPanel from "./panels/PromotionsPanel.jsx";
 import AnalyticsPanel from "./panels/AnalyticsPanel.jsx";
@@ -70,6 +74,15 @@ function buildNavGroups(auth) {
       items: [
         { id: "users", icon: "👥", label: "Users", show: auth.hasPermission("users.view") },
         { id: "staff", icon: "🛡️", label: "Staff Management", show: auth.hasPermission("staff.manage") },
+      ],
+    },
+    {
+      id: "field-ops", label: "Field Operations",
+      items: [
+        { id: "scout-assignments", icon: "🧭", label: "Scout Assignments", show: auth.hasPermission("scouts.assign") },
+        { id: "field-verification", icon: "📋", label: "Field Verification", show: auth.hasPermission("scouts.verify") },
+        { id: "delivery-coordination", icon: "🚚", label: "Delivery Coordination", show: auth.hasPermission("delivery.manage") },
+        { id: "my-deliveries", icon: "📦", label: "My Deliveries", show: auth.hasPermission("delivery.dispatch") },
       ],
     },
     {
@@ -224,6 +237,10 @@ export default function AdminCommandCenter({ auth, onExit }) {
           {activeTab === "disputes" && <DisputesPanel auth={auth} />}
           {activeTab === "transactions" && <TransactionsReportPanel />}
           {activeTab === "credit" && <CreditPanel />}
+          {activeTab === "scout-assignments" && <ScoutAssignmentsPanel />}
+          {activeTab === "field-verification" && <ScoutPanel />}
+          {activeTab === "delivery-coordination" && <DeliveryManagerPanel />}
+          {activeTab === "my-deliveries" && <DispatchPanel />}
           {activeTab === "promotions" && <PromotionsPanel auth={auth} />}
           {activeTab === "analytics" && <AnalyticsPanel />}
           {activeTab === "messaging" && <MessagingPanel />}

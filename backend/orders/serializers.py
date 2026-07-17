@@ -20,13 +20,23 @@ DELIVERY_FIELDS = [
 
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
+    # The courier assignment's status (item 11), so the customer's order card
+    # can show progress and reveal the "confirm receipt" button once it's
+    # been delivered. SerializerMethodField, not a nested serializer, to avoid
+    # a circular reference (DeliveryAssignmentSerializer is defined below) and
+    # because the customer only needs the status string, not the courier's id.
+    delivery_assignment_status = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
             "id", "status", "delivery_status", "total_amount", "placed_at", "items",
-            *DELIVERY_FIELDS,
+            "delivery_assignment_status", *DELIVERY_FIELDS,
         ]
+
+    def get_delivery_assignment_status(self, obj):
+        assignment = getattr(obj, "delivery_assignment", None)
+        return assignment.status if assignment else None
 
 
 class StaffOrderSerializer(serializers.ModelSerializer):
