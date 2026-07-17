@@ -159,7 +159,34 @@ export const handlers = [
     return HttpResponse.json([])
   }),
   http.get('http://localhost:8000/api/credit/scores/me/', () => {
-    return HttpResponse.json({ score: null, grade: null, grade_label: null, loan_eligible: false, factors: {}, computed_at: null })
+    return HttpResponse.json({ score: null, base_score: null, manual_adjustment: 0, adjustment_reason: '', grade: null, grade_label: null, loan_eligible: false, factors: {}, computed_at: null })
+  }),
+  // Credit management (credit app, item 16) — default handlers, overridden
+  // per-test as needed.
+  http.get('http://localhost:8000/api/credit/partners/', () => {
+    return HttpResponse.json([])
+  }),
+  http.post('http://localhost:8000/api/credit/partners/', async ({ request }) => {
+    return HttpResponse.json({ id: 99, ...(await request.json()) }, { status: 201 })
+  }),
+  http.patch('http://localhost:8000/api/credit/partners/:id/', async ({ params, request }) => {
+    return HttpResponse.json({ id: Number(params.id), ...(await request.json()) })
+  }),
+  http.get('http://localhost:8000/api/credit/scores/', () => {
+    return HttpResponse.json([])
+  }),
+  http.post('http://localhost:8000/api/credit/scores/:id/adjust/', ({ params }) => {
+    return HttpResponse.json({ business_owner: Number(params.id), score: 640, base_score: 600, manual_adjustment: 40 })
+  }),
+  http.get('http://localhost:8000/api/credit/loans/', () => {
+    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
+  http.post('http://localhost:8000/api/credit/loans/submit/', async ({ request }) => {
+    const body = await request.json()
+    return HttpResponse.json({ id: 5, status: 'submitted', score_at_application: 620, lending_partner_name: null, ...body }, { status: 201 })
+  }),
+  http.post('http://localhost:8000/api/credit/loans/:id/review/', ({ params }) => {
+    return HttpResponse.json({ id: Number(params.id), status: 'approved' })
   }),
   // Reviews & Q&A (reviews/qa apps, frontend Phase 3) — default handlers,
   // overridden per-test via server.use() where a specific reviews/Q&A/

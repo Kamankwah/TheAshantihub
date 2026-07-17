@@ -20,6 +20,7 @@ import StaffManagementPanel from "./panels/StaffManagementPanel.jsx";
 import EscrowLedgerPanel from "./panels/EscrowLedgerPanel.jsx";
 import DisputesPanel from "./panels/DisputesPanel.jsx";
 import TransactionsReportPanel from "./panels/TransactionsReportPanel.jsx";
+import CreditPanel from "./panels/CreditPanel.jsx";
 import MessagingPanel from "./panels/MessagingPanel.jsx";
 import PromotionsPanel from "./panels/PromotionsPanel.jsx";
 import AnalyticsPanel from "./panels/AnalyticsPanel.jsx";
@@ -61,6 +62,7 @@ function buildNavGroups(auth) {
         { id: "escrow", icon: "💰", label: "Escrow Ledger", show: auth.hasPermission("escrow.view") || auth.hasPermission("escrow.release") || auth.hasPermission("escrow.refund") },
         { id: "disputes", icon: "⚖️", label: "Disputes", show: auth.hasPermission("disputes.resolve_financial") || auth.hasPermission("disputes.flag") },
         { id: "transactions", icon: "📈", label: "Transactions Report", show: auth.hasPermission("transactions.report") },
+        { id: "credit", icon: "💳", label: "Credit & Lending", show: auth.hasPermission("credit.manage") },
       ],
     },
     {
@@ -221,6 +223,7 @@ export default function AdminCommandCenter({ auth, onExit }) {
           {activeTab === "escrow" && <EscrowLedgerPanel auth={auth} />}
           {activeTab === "disputes" && <DisputesPanel auth={auth} />}
           {activeTab === "transactions" && <TransactionsReportPanel />}
+          {activeTab === "credit" && <CreditPanel />}
           {activeTab === "promotions" && <PromotionsPanel auth={auth} />}
           {activeTab === "analytics" && <AnalyticsPanel />}
           {activeTab === "messaging" && <MessagingPanel />}
