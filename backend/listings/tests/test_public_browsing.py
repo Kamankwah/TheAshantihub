@@ -59,6 +59,19 @@ class PublicBrowsingTests(TestCase):
         self.assertIn(self.published_food.id, ids)
         self.assertNotIn(self.draft_listing.id, ids)
 
+    def test_suspended_owner_listings_hidden_from_public_list_and_detail(self):
+        # Staff user-management tools: suspending an owner drops their
+        # published listings out of public browse and 404s their detail page,
+        # without touching the listing's own status.
+        self.owner.is_suspended = True
+        self.owner.save(update_fields=["is_suspended"])
+        list_response = self.client.get("/api/listings/")
+        ids = [item["id"] for item in list_response.json()["results"]]
+        self.assertNotIn(self.published_hotel.id, ids)
+        self.assertNotIn(self.published_food.id, ids)
+        detail = self.client.get(f"/api/listings/{self.published_hotel.id}/")
+        self.assertEqual(detail.status_code, 404)
+
     def test_filter_by_category(self):
         response = self.client.get("/api/listings/?category=hotels")
         ids = [item["id"] for item in response.json()["results"]]

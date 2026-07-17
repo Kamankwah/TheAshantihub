@@ -1258,3 +1258,139 @@ describe('StaffDashboard Messaging', () => {
     await screen.findByText('Could not load the messaging queue.')
   })
 })
+
+describe('StaffDashboard KYC detail view (staff dashboard review tools)', () => {
+  it('expands a full detail view with Ghana card number and images before deciding', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/accounts/kyc/pending/', () => {
+        return HttpResponse.json([{ id: 9, full_name: 'Kojo Applicant', login_phone: '+233207000111', created_at: '2026-01-05T10:00:00Z' }])
+      }),
+      http.get('http://localhost:8000/api/accounts/kyc/9/', () => {
+        return HttpResponse.json({
+          id: 9, full_name: 'Kojo Applicant', login_phone: '+233207000111', email: 'kojo@example.com',
+          kyc_status: 'pending', kyc_rejection_reason: null,
+          profile: {
+            ghana_card_number: 'GHA-987654321-0', gps_address: 'AK-039-5040',
+            business_contact_phone: '+233207000111', is_formal: false, business_kind: 'product',
+            ghana_card_front_image: 'http://localhost:8000/media/ghana_cards/front.jpg',
+            ghana_card_back_image: 'http://localhost:8000/media/ghana_cards/back.jpg',
+            business_reg_certificate: null, tin: null,
+          },
+        })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'kyc.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('KYC Queue'))
+    await screen.findByText('Kojo Applicant')
+    fireEvent.click(screen.getByText('👁️ View Details'))
+    await screen.findByText('GHA-987654321-0')
+    expect(screen.getByText('AK-039-5040')).toBeInTheDocument()
+    const front = document.querySelector('img[src="http://localhost:8000/media/ghana_cards/front.jpg"]')
+    expect(front).toBeTruthy()
+  })
+})
+
+describe('StaffDashboard Users management (staff dashboard review tools)', () => {
+  function seedUsers() {
+    server.use(
+      http.get('http://localhost:8000/api/accounts/customers/', () => {
+        return HttpResponse.json({ count: 1, next: null, previous: null, results: [{ id: 1, full_name: 'Ama Owusu', phone: '+233241234567', email: 'ama@example.com', is_suspended: false }] })
+      }),
+    )
+  }
+
+  it('suspends a customer with a reason for a session that holds users.manage', async () => {
+    seedUsers()
+    let suspendBody = null
+    server.use(
+      http.post('http://localhost:8000/api/accounts/customers/1/suspend/', async ({ request }) => {
+        suspendBody = await request.json()
+        return HttpResponse.json({ id: 1, is_suspended: true })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'users.view' || c === 'users.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Users'))
+    await screen.findByText('Ama Owusu')
+    fireEvent.click(screen.getByText('🚫 Suspend'))
+    fireEvent.change(screen.getByPlaceholderText('Reason for suspension'), { target: { value: 'Fraud' } })
+    fireEvent.click(screen.getByText('Confirm suspend'))
+    await waitFor(() => expect(suspendBody).toEqual({ reason: 'Fraud' }))
+  })
+
+  it('edits a customer and PATCHes the changed fields', async () => {
+    seedUsers()
+    server.use(
+      http.get('http://localhost:8000/api/accounts/customers/1/', () => {
+        return HttpResponse.json({ id: 1, full_name: 'Ama Owusu', phone: '+233241234567', email: 'ama@example.com', address: '', is_suspended: false })
+      }),
+    )
+    let patchBody = null
+    server.use(
+      http.patch('http://localhost:8000/api/accounts/customers/1/', async ({ request }) => {
+        patchBody = await request.json()
+        return HttpResponse.json({ id: 1, ...patchBody })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'users.view' || c === 'users.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Users'))
+    await screen.findByText('Ama Owusu')
+    fireEvent.click(screen.getByText('✏️ Edit'))
+    const nameInput = await screen.findByDisplayValue('Ama Owusu')
+    fireEvent.change(nameInput, { target: { value: 'Ama Mensah' } })
+    fireEvent.click(screen.getByText('Save changes'))
+    await waitFor(() => expect(patchBody?.full_name).toBe('Ama Mensah'))
+  })
+
+  it('hides Edit/Suspend actions for a users.view-only session', async () => {
+    seedUsers()
+    const auth = makeAuth({ hasPermission: (c) => c === 'users.view' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Users'))
+    await screen.findByText('Ama Owusu')
+    expect(screen.queryByText('✏️ Edit')).not.toBeInTheDocument()
+    expect(screen.queryByText('🚫 Suspend')).not.toBeInTheDocument()
+    expect(screen.getByText('👁️ View')).toBeInTheDocument()
+  })
+
+  it('shows a Suspended badge and an Unsuspend action for an already-suspended user', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/accounts/customers/', () => {
+        return HttpResponse.json({ count: 1, next: null, previous: null, results: [{ id: 2, full_name: 'Yaw Banned', phone: '+233200000000', email: '', is_suspended: true }] })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'users.view' || c === 'users.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Users'))
+    await screen.findByText('Yaw Banned')
+    expect(screen.getByText('Suspended')).toBeInTheDocument()
+    expect(screen.getByText('↩️ Unsuspend')).toBeInTheDocument()
+  })
+})
+
+describe('StaffDashboard Events Moderation detail view (staff dashboard review tools)', () => {
+  it('expands a read-only detail view with description and venue before deciding', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/events/moderation/pending/', () => {
+        return HttpResponse.json([{ id: 3, name: 'Akwasidae Festival', category: { label: 'Festivals' }, zone: { name: 'Manhyia' }, visibility_days: 15, submitted_by_customer_name: 'Ama Owusu' }])
+      }),
+      http.get('http://localhost:8000/api/events/moderation/3/', () => {
+        return HttpResponse.json({
+          id: 3, name: 'Akwasidae Festival', description: 'Royal durbar at the palace.',
+          category: { label: 'Festivals' }, zone: { name: 'Manhyia' }, address: 'Manhyia Palace, Kumasi',
+          event_date: '2026-09-01T14:00:00Z', visibility_days: 15, access_level: 'public',
+          lat: '6.70', lng: '-1.62', submitted_by_customer_name: 'Ama Owusu', media: [],
+        })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'event.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Events Moderation'))
+    await screen.findByText('Akwasidae Festival')
+    fireEvent.click(screen.getByText('👁️ View'))
+    await screen.findByText('Royal durbar at the palace.')
+    expect(screen.getByText('Manhyia Palace, Kumasi')).toBeInTheDocument()
+  })
+})

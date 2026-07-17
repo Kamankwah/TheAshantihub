@@ -71,6 +71,13 @@ def _live_events_queryset():
     now = timezone.now()
     return Event.objects.filter(
         status=Event.APPROVED, paid_at__isnull=False, expires_at__gt=now
+    ).exclude(
+        # Suspended organizers' events drop out of public browse (staff
+        # user-management tools) — either a suspended business or a suspended
+        # customer submitter hides the event. Reversed automatically on
+        # unsuspend since it's a query-time filter, not a stored flag.
+        Q(submitted_by_business__is_suspended=True)
+        | Q(submitted_by_customer__is_suspended=True)
     ).annotate(
         avg_rating=Avg("reviews__rating", filter=Q(reviews__status="published")),
         review_count=Count("reviews", filter=Q(reviews__status="published"), distinct=True),

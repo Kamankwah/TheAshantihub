@@ -111,7 +111,14 @@ class PublicListingListView(generics.ListAPIView):
     ordering_fields = ["price_amount", "created_at"]
 
     def get_queryset(self):
-        queryset = Listing.objects.filter(status=Listing.PUBLISHED).order_by("-created_at")
+        # Suspended owners' listings drop out of public browse (staff
+        # user-management tools) — enforced here rather than at suspend-time
+        # so it's automatically reversed on unsuspend.
+        queryset = (
+            Listing.objects.filter(status=Listing.PUBLISHED)
+            .exclude(business_owner__is_suspended=True)
+            .order_by("-created_at")
+        )
 
         category_slug = self.request.query_params.get("category")
         if category_slug:
@@ -174,7 +181,11 @@ class PublicListingDetailView(generics.RetrieveAPIView):
     permission_classes = [AllowAny]
 
     def get_queryset(self):
-        return _with_rating_annotations(Listing.objects.filter(status=Listing.PUBLISHED))
+        return _with_rating_annotations(
+            Listing.objects.filter(status=Listing.PUBLISHED).exclude(
+                business_owner__is_suspended=True
+            )
+        )
 
 
 class RelatedListingsView(generics.ListAPIView):
@@ -197,6 +208,7 @@ class RelatedListingsView(generics.ListAPIView):
         )
         queryset = (
             Listing.objects.filter(status=Listing.PUBLISHED)
+            .exclude(business_owner__is_suspended=True)
             .filter(Q(category=anchor.category) | Q(zone=anchor.zone))
             .exclude(pk=anchor.pk)
             .order_by("-created_at")
