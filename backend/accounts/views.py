@@ -211,12 +211,36 @@ class PasswordResetConfirmView(generics.GenericAPIView):
         return Response({"status": "password reset"})
 
 
+# Staff moderation-queue restructuring — the canonical three-state queue
+# convention shared by every moderated model (KYC here, Listing/Hero in
+# listings/views.py): one ListAPIView serves Pending/Approved/Rejected via a
+# `?status=` query param (default "pending"), mapping the tab key to the
+# model's real status value(s). Kept on the existing `.../pending/` URL (the
+# path name is historical) so no route churn and existing callers with no
+# param keep getting the pending queue.
+KYC_STATUS_MAP = {
+    "pending": BusinessOwner.PENDING,
+    "approved": BusinessOwner.VERIFIED,
+    "rejected": BusinessOwner.REJECTED,
+}
+
+
 class KYCPendingQueueView(generics.ListAPIView):
     serializer_class = BusinessOwnerKYCSerializer
-    queryset = BusinessOwner.objects.filter(kyc_status=BusinessOwner.PENDING).order_by("created_at")
 
     def get_permissions(self):
         return [HasRolePermission("kyc.approve")]
+
+    def get_queryset(self):
+        tab = self.request.query_params.get("status", "pending")
+        kyc_status = KYC_STATUS_MAP.get(tab, BusinessOwner.PENDING)
+        queryset = BusinessOwner.objects.filter(kyc_status=kyc_status)
+        # Pending: oldest-first (a work queue). Approved/Rejected: most-recently
+        # actioned first (a history), falling back to created_at for legacy
+        # rows actioned before reviewed_at existed.
+        if kyc_status == BusinessOwner.PENDING:
+            return queryset.order_by("created_at")
+        return queryset.order_by("-reviewed_at", "-created_at")
 
 
 class KYCDetailView(generics.RetrieveAPIView):
@@ -235,7 +259,9 @@ class KYCApproveView(APIView):
         owner = generics.get_object_or_404(BusinessOwner, pk=pk)
         owner.kyc_status = BusinessOwner.VERIFIED
         owner.kyc_rejection_reason = None
-        owner.save(update_fields=["kyc_status", "kyc_rejection_reason"])
+        owner.reviewed_by = request.user
+        owner.reviewed_at = timezone.now()
+        owner.save(update_fields=["kyc_status", "kyc_rejection_reason", "reviewed_by", "reviewed_at"])
         notify_business_owner(
             owner, "kyc_approved", "Your business is verified!",
             body="Your KYC has been approved — you can now publish listings.",
@@ -253,13 +279,73 @@ class KYCRejectView(APIView):
         owner = generics.get_object_or_404(BusinessOwner, pk=pk)
         owner.kyc_status = BusinessOwner.REJECTED
         owner.kyc_rejection_reason = reason
-        owner.save(update_fields=["kyc_status", "kyc_rejection_reason"])
+        owner.reviewed_by = request.user
+        owner.reviewed_at = timezone.now()
+        owner.save(update_fields=["kyc_status", "kyc_rejection_reason", "reviewed_by", "reviewed_at"])
         notify_business_owner(
             owner, "kyc_rejected", "Your KYC needs attention",
             body=reason or "Your KYC submission was rejected. Please review and resubmit.",
             link="/business-dashboard", icon="⚠️",
         )
         return Response({"id": owner.id, "kyc_status": owner.kyc_status})
+
+
+class KYCReReviewView(APIView):
+    """POST /api/accounts/kyc/{id}/re-review/ — the canonical re-review action
+    (staff moderation-queue restructuring): move a REJECTED submission back to
+    PENDING, clearing the rejection reason and approver attribution, and
+    re-notify staff who can approve KYC. Gated by the same kyc.approve
+    permission. Only a rejected submission can be re-opened.
+    """
+
+    def get_permissions(self):
+        return [HasRolePermission("kyc.approve")]
+
+    def post(self, request, pk):
+        owner = generics.get_object_or_404(BusinessOwner, pk=pk)
+        if owner.kyc_status != BusinessOwner.REJECTED:
+            return Response(
+                {"detail": "Only a rejected KYC submission can be sent back for re-review."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        owner.kyc_status = BusinessOwner.PENDING
+        owner.kyc_rejection_reason = None
+        owner.reviewed_by = None
+        owner.reviewed_at = None
+        owner.save(update_fields=["kyc_status", "kyc_rejection_reason", "reviewed_by", "reviewed_at"])
+        notify_staff_role(
+            "kyc.approve", "kyc_needs_approval", "KYC re-opened for review",
+            body=f"{owner.full_name}'s KYC has been re-opened and needs review again.",
+            link="kyc", icon="🪪",
+        )
+        return Response({"id": owner.id, "kyc_status": owner.kyc_status})
+
+
+class KYCAddressVerifyView(APIView):
+    """POST /api/accounts/kyc/{id}/address-verify/ {verified: bool} — records a
+    staff decision on the business's Ghana Post digital address (punch-list
+    item 8), with attribution. Setting either true or false marks a decision as
+    having been made (address_verified_at), which is what unblocks the KYC
+    Approve/Reject buttons on the frontend. Gated by kyc.approve.
+    """
+
+    def get_permissions(self):
+        return [HasRolePermission("kyc.approve")]
+
+    def post(self, request, pk):
+        owner = generics.get_object_or_404(BusinessOwner, pk=pk)
+        verified = bool(request.data.get("verified", False))
+        profile = owner.profile
+        profile.address_verified = verified
+        profile.address_verified_by = request.user
+        profile.address_verified_at = timezone.now()
+        profile.save(update_fields=["address_verified", "address_verified_by", "address_verified_at"])
+        return Response({
+            "id": owner.id,
+            "address_verified": profile.address_verified,
+            "address_verified_by_name": request.user.full_name,
+            "address_verified_at": profile.address_verified_at,
+        })
 
 
 class AccountsPagination(PageNumberPagination):

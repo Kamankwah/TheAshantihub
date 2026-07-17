@@ -227,13 +227,20 @@ class ModerationListingSerializer(serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
     zone = ZoneSerializer(read_only=True)
     photos = ListingPhotoSerializer(many=True, read_only=True)
+    # business_owner_name (staff moderation-queue restructuring, item 2) lets
+    # the panel group/identify listings by their owning business without a
+    # second lookup. reviewed_by_name/reviewed_at (approver attribution) back
+    # the Approved/Rejected tabs' "who actioned this" line.
+    business_owner_name = serializers.CharField(source="business_owner.full_name", read_only=True)
+    reviewed_by_name = serializers.CharField(source="reviewed_by.full_name", read_only=True, default=None)
 
     class Meta:
         model = Listing
         fields = [
-            "id", "business_owner", "name", "description", "category", "zone", "price_amount",
-            "price_unit", "tag", "contact_phone", "lat", "lng", "main_photo", "photos",
-            "status", "rejection_reason", "created_at",
+            "id", "business_owner", "business_owner_name", "name", "description", "category",
+            "zone", "price_amount", "price_unit", "tag", "contact_phone", "lat", "lng",
+            "main_photo", "photos", "status", "rejection_reason", "created_at",
+            "reviewed_by_name", "reviewed_at",
         ]
 
 
@@ -243,13 +250,16 @@ class HeroMediaModerationSerializer(serializers.ModelSerializer):
     """
 
     business_owner_name = serializers.CharField(source="business_owner.full_name", read_only=True)
+    # Approver attribution (staff moderation-queue restructuring) — backs the
+    # Approved/Rejected tabs' "who actioned this" line.
+    reviewed_by_name = serializers.CharField(source="reviewed_by.full_name", read_only=True, default=None)
 
     class Meta:
         model = HeroMediaSubmission
         fields = [
             "id", "business_owner", "business_owner_name", "media", "media_type", "caption",
             "status", "rejection_reason", "submitted_at", "approved_at", "expires_at",
-            "extended_days",
+            "extended_days", "reviewed_by_name", "reviewed_at",
         ]
 
 

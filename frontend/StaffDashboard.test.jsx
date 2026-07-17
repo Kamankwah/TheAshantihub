@@ -127,14 +127,30 @@ describe('StaffDashboard', () => {
     expect(screen.queryByTitle('Toggle theme')).not.toBeInTheDocument()
   })
 
-  it('renders the KYC queue and approves an entry', async () => {
+  // KYC now has Pending/Approved/Rejected tabs, and Approve/Reject are gated
+  // behind the Ghana Post address-verification decision (punch-list item 8):
+  // the reviewer must open Details and verify the address before approving.
+  it('renders the KYC queue and approves an entry after verifying the address', async () => {
     server.use(
       http.get('http://localhost:8000/api/accounts/kyc/pending/', () => {
         return HttpResponse.json([{ id: 7, full_name: 'Kwame Business', login_phone: '+233201112233', created_at: '2026-07-01T00:00:00Z' }])
       }),
+      http.get('http://localhost:8000/api/accounts/kyc/7/', () => {
+        return HttpResponse.json({
+          id: 7, full_name: 'Kwame Business', login_phone: '+233201112233', email: 'kwame@example.com',
+          kyc_status: 'pending', kyc_rejection_reason: null, reviewed_by_name: null, reviewed_at: null,
+          profile: { gps_address: 'AK-039-5030', business_contact_phone: '+233201112233', is_formal: false, address_verified: false, address_verified_by_name: null, address_verified_at: null },
+        })
+      }),
     )
+    let addressVerified = false
     let approveCalled = false
     server.use(
+      http.post('http://localhost:8000/api/accounts/kyc/7/address-verify/', async ({ request }) => {
+        const body = await request.json()
+        addressVerified = body.verified
+        return HttpResponse.json({ id: 7, address_verified: body.verified, address_verified_by_name: 'Akosua Support', address_verified_at: '2026-07-02T00:00:00Z' })
+      }),
       http.post('http://localhost:8000/api/accounts/kyc/7/approve/', () => {
         approveCalled = true
         return HttpResponse.json({ id: 7, kyc_status: 'verified' })
@@ -144,8 +160,130 @@ describe('StaffDashboard', () => {
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('KYC Queue'))
     await screen.findByText('Kwame Business')
+    // Approve is disabled until the address is verified.
+    expect(screen.getByText('✓ Approve')).toBeDisabled()
+    fireEvent.click(screen.getByText('👁️ View Details'))
+    await screen.findByText('✓ Address verified')
+    fireEvent.click(screen.getByText('✓ Address verified'))
+    await waitFor(() => expect(addressVerified).toBe(true))
+    await waitFor(() => expect(screen.getByText('✓ Approve')).toBeEnabled())
     fireEvent.click(screen.getByText('✓ Approve'))
     await waitFor(() => expect(approveCalled).toBe(true))
+  })
+
+  it('keeps KYC Approve/Reject disabled until an address decision is made', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/accounts/kyc/pending/', () => {
+        return HttpResponse.json([{ id: 11, full_name: 'Abena Trader', login_phone: '+233201119999', created_at: '2026-07-01T00:00:00Z' }])
+      }),
+      http.get('http://localhost:8000/api/accounts/kyc/11/', () => {
+        return HttpResponse.json({
+          id: 11, full_name: 'Abena Trader', login_phone: '+233201119999', email: 'abena@example.com',
+          kyc_status: 'pending', kyc_rejection_reason: null, reviewed_by_name: null, reviewed_at: null,
+          profile: { gps_address: 'AK-100-2000', business_contact_phone: '+233201119999', is_formal: false, address_verified: false, address_verified_by_name: null, address_verified_at: null },
+        })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'kyc.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('KYC Queue'))
+    await screen.findByText('Abena Trader')
+    expect(screen.getByText('✓ Approve')).toBeDisabled()
+    expect(screen.getByText('✕ Reject')).toBeDisabled()
+    fireEvent.click(screen.getByText('👁️ View Details'))
+    // Still disabled after opening details but before deciding on the address.
+    await screen.findByText('✓ Address verified')
+    expect(screen.getByText('✓ Approve')).toBeDisabled()
+  })
+
+  it('shows KYC Approved and Rejected tabs, with re-review sending a rejected owner back to pending', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/accounts/kyc/pending/', ({ request }) => {
+        const status = new URL(request.url).searchParams.get('status') || 'pending'
+        if (status === 'rejected') {
+          return HttpResponse.json([{ id: 20, full_name: 'Kojo Rejected', login_phone: '+233201110000', created_at: '2026-07-01T00:00:00Z', kyc_rejection_reason: 'Blurry card', reviewed_by_name: 'Akosua Support', reviewed_at: '2026-07-02T00:00:00Z' }])
+        }
+        return HttpResponse.json([])
+      }),
+    )
+    let reReviewCalled = false
+    server.use(
+      http.post('http://localhost:8000/api/accounts/kyc/20/re-review/', () => {
+        reReviewCalled = true
+        return HttpResponse.json({ id: 20, kyc_status: 'pending' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'kyc.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('KYC Queue'))
+    fireEvent.click(screen.getByRole('button', { name: /Rejected/ }))
+    await screen.findByText('Kojo Rejected')
+    expect(screen.getByText(/Blurry card/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('🔄 Review Again'))
+    await waitFor(() => expect(reReviewCalled).toBe(true))
+  })
+
+  it('shows listings grouped by business, an approver on Published, and re-review on Rejected', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/listings/moderation/pending/', ({ request }) => {
+        const status = new URL(request.url).searchParams.get('status') || 'pending'
+        if (status === 'approved') {
+          return HttpResponse.json([{ id: 30, name: 'Verified Lodge', business_owner_name: 'Kwame Traders', category: { label: 'Hotels' }, zone: { name: 'Manhyia' }, price_amount: '450.00', contact_phone: '+233244000001', reviewed_by_name: 'Akosua Support', reviewed_at: '2026-07-02T00:00:00Z' }])
+        }
+        if (status === 'rejected') {
+          return HttpResponse.json([{ id: 31, name: 'Bad Lodge', business_owner_name: 'Kwame Traders', category: { label: 'Hotels' }, zone: { name: 'Manhyia' }, price_amount: '99.00', contact_phone: '+233244000002', rejection_reason: 'Photos too dark' }])
+        }
+        return HttpResponse.json([{ id: 32, name: 'Pending Lodge', business_owner_name: 'Kwame Traders', category: { label: 'Hotels' }, zone: { name: 'Manhyia' }, price_amount: '120.00', contact_phone: '+233244000003' }])
+      }),
+    )
+    let reReviewCalled = false
+    server.use(
+      http.post('http://localhost:8000/api/listings/moderation/31/re-review/', () => {
+        reReviewCalled = true
+        return HttpResponse.json({ id: 31, status: 'pending_review' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'listings.moderate' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Listings Moderation'))
+    await screen.findByText('Pending Lodge')
+    // Business grouping header (item 2).
+    expect(screen.getByText('🏢 Kwame Traders')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Published/ }))
+    await screen.findByText('Verified Lodge')
+    expect(screen.getByText(/Published by Akosua Support/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Rejected/ }))
+    await screen.findByText('Bad Lodge')
+    expect(screen.getByText(/Photos too dark/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('🔄 Review Again'))
+    await waitFor(() => expect(reReviewCalled).toBe(true))
+  })
+
+  it('re-reviews a rejected hero submission', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/listings/hero/pending/', ({ request }) => {
+        const status = new URL(request.url).searchParams.get('status') || 'pending'
+        if (status === 'rejected') {
+          return HttpResponse.json([{ id: 40, business_owner_name: 'Ama Trader', media: 'http://localhost:8000/media/hero_media/h.jpg', media_type: 'image', caption: 'Nope', submitted_at: '2026-07-01T00:00:00Z', rejection_reason: 'Off brand' }])
+        }
+        return HttpResponse.json([])
+      }),
+    )
+    let reReviewCalled = false
+    server.use(
+      http.post('http://localhost:8000/api/listings/hero/40/re-review/', () => {
+        reReviewCalled = true
+        return HttpResponse.json({ id: 40, status: 'pending' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'hero_media.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Hero Approval'))
+    fireEvent.click(screen.getByRole('button', { name: /Rejected/ }))
+    await screen.findByText('Ama Trader')
+    expect(screen.getByText(/Off brand/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('🔄 Review Again'))
+    await waitFor(() => expect(reReviewCalled).toBe(true))
   })
 
   it('renders the listings moderation queue', async () => {
@@ -310,6 +448,16 @@ describe('StaffDashboard', () => {
       http.get('http://localhost:8000/api/accounts/kyc/pending/', () => {
         return HttpResponse.json([{ id: 8, full_name: 'Yaw Trader', login_phone: '+233201112244', created_at: '2026-07-01T00:00:00Z' }])
       }),
+      http.get('http://localhost:8000/api/accounts/kyc/8/', () => {
+        return HttpResponse.json({
+          id: 8, full_name: 'Yaw Trader', login_phone: '+233201112244', email: 'yaw@example.com',
+          kyc_status: 'pending', kyc_rejection_reason: null, reviewed_by_name: null, reviewed_at: null,
+          profile: { gps_address: 'AK-200-3000', business_contact_phone: '+233201112244', is_formal: false, address_verified: false, address_verified_by_name: null, address_verified_at: null },
+        })
+      }),
+      http.post('http://localhost:8000/api/accounts/kyc/8/address-verify/', () => {
+        return HttpResponse.json({ id: 8, address_verified: true, address_verified_by_name: 'Akosua Support', address_verified_at: '2026-07-02T00:00:00Z' })
+      }),
       http.post('http://localhost:8000/api/accounts/kyc/8/approve/', () => {
         return HttpResponse.json({ detail: 'Server error' }, { status: 500 })
       }),
@@ -318,6 +466,10 @@ describe('StaffDashboard', () => {
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('KYC Queue'))
     await screen.findByText('Yaw Trader')
+    fireEvent.click(screen.getByText('👁️ View Details'))
+    await screen.findByText('✓ Address verified')
+    fireEvent.click(screen.getByText('✓ Address verified'))
+    await waitFor(() => expect(screen.getByText('✓ Approve')).toBeEnabled())
     fireEvent.click(screen.getByText('✓ Approve'))
     await screen.findByText('Could not approve this submission. Please try again.')
   })
@@ -1300,7 +1452,9 @@ describe('StaffDashboard KYC detail view (staff dashboard review tools)', () => 
     await screen.findByText('Kojo Applicant')
     fireEvent.click(screen.getByText('👁️ View Details'))
     await screen.findByText('GHA-987654321-0')
-    expect(screen.getByText('AK-039-5040')).toBeInTheDocument()
+    // The GPS/digital address now shows both in the details grid and in the
+    // Ghana Post address-verification control (punch-list item 8).
+    expect(screen.getAllByText('AK-039-5040').length).toBeGreaterThan(0)
     const front = document.querySelector('img[src="http://localhost:8000/media/ghana_cards/front.jpg"]')
     expect(front).toBeTruthy()
   })

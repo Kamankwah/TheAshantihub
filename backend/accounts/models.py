@@ -136,6 +136,19 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
     kyc_status = models.CharField(max_length=10, choices=KYC_STATUS_CHOICES, default=PENDING)
     kyc_rejection_reason = models.CharField(max_length=500, null=True, blank=True)
 
+    # Approver attribution (staff moderation-queue restructuring) — which staff
+    # member approved OR rejected this KYC submission, and when. Set by
+    # KYCApproveView/KYCRejectView; cleared by KYCReReviewView when a rejected
+    # submission is re-opened back to pending. The canonical `reviewed_by`/
+    # `reviewed_at` pair shared by every moderated model (Listing,
+    # HeroMediaSubmission) so the Approved/Rejected staff tabs can show who
+    # actioned each item.
+    reviewed_by = models.ForeignKey(
+        "StaffUser", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="reviewed_business_owners",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
     # Staff moderation (staff user-management tools) — same semantics as
     # Customer.is_suspended above: blocks login and hides this owner's
     # listings/events from public browse.
@@ -227,6 +240,20 @@ class BusinessOwnerProfile(models.Model):
         default="pending",
     )
     terms_accepted_at = models.DateTimeField(null=True, blank=True)
+
+    # Ghana Post address verification (staff moderation-queue restructuring,
+    # punch-list item 8) — a staff toggle confirming the business's Ghana Post
+    # digital address (gps_address) during KYC review. A precursor to the
+    # future Scouts field-verification role; for now just a staff-set flag +
+    # attribution. `address_verified_at` being non-null is the "a decision has
+    # been made" signal the KYC Approve/Reject gating keys off of (verified ✓
+    # or explicitly marked wrong both set it).
+    address_verified = models.BooleanField(default=False)
+    address_verified_by = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="address_verified_profiles",
+    )
+    address_verified_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"Profile for {self.business_owner.full_name}"
