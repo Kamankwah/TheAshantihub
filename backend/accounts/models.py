@@ -88,6 +88,14 @@ class Customer(AuthenticatableAccountMixin, models.Model):
     email_notifications_enabled = models.BooleanField(default=True)
     sms_notifications_enabled = models.BooleanField(default=True)
 
+    # Staff moderation (staff user-management tools) — a suspended account is
+    # blocked at login (see CustomerLoginSerializer) and its content is hidden
+    # from public browse (see the public listing/event querysets). The token of
+    # an already-signed-in account stays valid until expiry — suspension is
+    # enforced at the login boundary, not per-request.
+    is_suspended = models.BooleanField(default=False)
+    suspension_reason = models.CharField(max_length=500, blank=True, default="")
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -127,6 +135,13 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
     password_hash = models.CharField(max_length=255)
     kyc_status = models.CharField(max_length=10, choices=KYC_STATUS_CHOICES, default=PENDING)
     kyc_rejection_reason = models.CharField(max_length=500, null=True, blank=True)
+
+    # Staff moderation (staff user-management tools) — same semantics as
+    # Customer.is_suspended above: blocks login and hides this owner's
+    # listings/events from public browse.
+    is_suspended = models.BooleanField(default=False)
+    suspension_reason = models.CharField(max_length=500, blank=True, default="")
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

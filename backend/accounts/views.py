@@ -8,7 +8,7 @@ from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from notifications.services import notify_business_owner, notify_staff_role
+from notifications.services import notify_business_owner, notify_customer, notify_staff_role
 
 from .authentication import issue_token
 from .emails import send_staff_invite_email, send_verification_code_email
@@ -34,6 +34,8 @@ from .serializers import (
     PasswordResetRequestSerializer,
     PayoutDetailSerializer,
     StaffActivateSerializer,
+    StaffBusinessOwnerDetailSerializer,
+    StaffCustomerDetailSerializer,
     StaffInviteSerializer,
     StaffListSerializer,
     StaffLoginSerializer,
@@ -289,6 +291,111 @@ class StaffListView(generics.ListAPIView):
 
     def get_permissions(self):
         return [HasRolePermission("staff.manage")]
+
+
+# ── Staff user-management (staff user-management tools) ─────────────────────
+# Detail/edit + suspend/unsuspend for one customer or business owner, all
+# gated by the users.manage permission (seeded onto admin/super_admin). Edit
+# is a RetrieveUpdateAPIView (GET the full record, PATCH the correctable
+# identity fields); suspend/unsuspend are dedicated actions that flip
+# is_suspended and notify the affected account.
+
+
+class StaffCustomerDetailView(generics.RetrieveUpdateAPIView):
+    queryset = Customer.objects.all()
+    serializer_class = StaffCustomerDetailSerializer
+    http_method_names = ["get", "patch"]
+
+    def get_permissions(self):
+        return [HasRolePermission("users.manage")]
+
+
+class StaffBusinessOwnerDetailView(generics.RetrieveUpdateAPIView):
+    queryset = BusinessOwner.objects.all()
+    serializer_class = StaffBusinessOwnerDetailSerializer
+    http_method_names = ["get", "patch"]
+
+    def get_permissions(self):
+        return [HasRolePermission("users.manage")]
+
+
+class StaffCustomerSuspendView(APIView):
+    def get_permissions(self):
+        return [HasRolePermission("users.manage")]
+
+    def post(self, request, pk):
+        customer = generics.get_object_or_404(Customer, pk=pk)
+        customer.is_suspended = True
+        customer.suspension_reason = request.data.get("reason", "") or ""
+        customer.save(update_fields=["is_suspended", "suspension_reason"])
+        notify_customer(
+            customer, "account_suspended", "Your account has been suspended",
+            body=customer.suspension_reason
+            or "Your account has been suspended. Please contact AshantiHub support.",
+            icon="🚫",
+        )
+        return Response({
+            "id": customer.id,
+            "is_suspended": customer.is_suspended,
+            "suspension_reason": customer.suspension_reason,
+        })
+
+
+class StaffCustomerUnsuspendView(APIView):
+    def get_permissions(self):
+        return [HasRolePermission("users.manage")]
+
+    def post(self, request, pk):
+        customer = generics.get_object_or_404(Customer, pk=pk)
+        customer.is_suspended = False
+        customer.suspension_reason = ""
+        customer.save(update_fields=["is_suspended", "suspension_reason"])
+        notify_customer(
+            customer, "account_reinstated", "Your account has been reinstated",
+            body="Your account is active again — welcome back.",
+            icon="✅",
+        )
+        return Response({"id": customer.id, "is_suspended": customer.is_suspended})
+
+
+class StaffBusinessOwnerSuspendView(APIView):
+    def get_permissions(self):
+        return [HasRolePermission("users.manage")]
+
+    def post(self, request, pk):
+        owner = generics.get_object_or_404(BusinessOwner, pk=pk)
+        owner.is_suspended = True
+        owner.suspension_reason = request.data.get("reason", "") or ""
+        owner.save(update_fields=["is_suspended", "suspension_reason"])
+        notify_business_owner(
+            owner, "account_suspended", "Your account has been suspended",
+            body=owner.suspension_reason
+            or "Your account has been suspended. Your listings and events are hidden. "
+            "Please contact AshantiHub support.",
+            icon="🚫",
+        )
+        return Response({
+            "id": owner.id,
+            "is_suspended": owner.is_suspended,
+            "suspension_reason": owner.suspension_reason,
+        })
+
+
+class StaffBusinessOwnerUnsuspendView(APIView):
+    def get_permissions(self):
+        return [HasRolePermission("users.manage")]
+
+    def post(self, request, pk):
+        owner = generics.get_object_or_404(BusinessOwner, pk=pk)
+        owner.is_suspended = False
+        owner.suspension_reason = ""
+        owner.save(update_fields=["is_suspended", "suspension_reason"])
+        notify_business_owner(
+            owner, "account_reinstated", "Your account has been reinstated",
+            body="Your account is active again — your listings and events are visible.",
+            icon="✅",
+        )
+        return Response({"id": owner.id, "is_suspended": owner.is_suspended})
 
 
 class IsBusinessOwner(BasePermission):

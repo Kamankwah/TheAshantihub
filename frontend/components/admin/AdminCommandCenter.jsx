@@ -214,7 +214,7 @@ export default function AdminCommandCenter({ auth, onExit }) {
           {activeTab === "subscription-plans-approval" && <SubscriptionPlanApprovalPanel />}
           {activeTab === "delivery" && <DeliveryManagementPanel />}
           {activeTab === "contact-messages" && <ContactMessagesPanel />}
-          {activeTab === "users" && <UsersPanel />}
+          {activeTab === "users" && <UsersPanel auth={auth} />}
           {activeTab === "categories-zones" && <CategoriesZonesPanel auth={auth} />}
           {activeTab === "site-settings" && <SiteSettingsPanel showToast={showToast} />}
           {activeTab === "staff" && <StaffManagementPanel />}
