@@ -18,6 +18,8 @@ import { useCart } from "./hooks/useCart.js";
 import { useListingReviews } from "./hooks/useListingReviews.js";
 import { useReviewEligibility } from "./hooks/useReviewEligibility.js";
 import { useOrders } from "./hooks/useOrders.js";
+import { useMyServiceRequests } from "./hooks/useMyServiceRequests.js";
+import { useMyBookings } from "./hooks/useMyBookings.js";
 import { useMyConversations, getGuestToken } from "./hooks/useMyConversations.js";
 import { useNotifications } from "./hooks/useNotifications.js";
 import { useMyTickets } from "./hooks/useMyTickets.js";
@@ -1578,6 +1580,8 @@ export function BusinessDashboard({ onExit, user, auth }) {
 const ACCOUNT_NAV_ITEMS = [
   { id: "overview", icon: "📊", label: "Overview", group: "main" },
   { id: "orders", icon: "📦", label: "Orders & Delivery", group: "main" },
+  { id: "requests", icon: "🛠️", label: "My Requests", group: "main" },
+  { id: "bookings", icon: "🏨", label: "My Bookings", group: "main" },
   { id: "saved", icon: "❤️", label: "Saved Businesses", group: "main" },
   { id: "messages", icon: "💬", label: "Messages", group: "main" },
   { id: "events", icon: "🎉", label: "My Events", group: "main" },
@@ -1598,7 +1602,7 @@ const ACCOUNT_SEARCHABLE_TABS = new Set(["orders", "tickets"]);
 
 const accountMenuItemStyle = { display: "block", width: "100%", textAlign: "left", background: "none", border: "none", color: D.textDim, padding: "8px 10px", borderRadius: 8, fontSize: "0.76rem", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" };
 
-export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, setLang }) {
+export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, setLang, PaymentComponent }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [searchQuery, setSearchQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -1725,6 +1729,8 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
       <div style={{padding:"22px 20px 60px",flex:1}}>
         {activeTab==="overview"&&<OverviewPanel favourites={favourites} user={user}/>}
         {activeTab==="orders"&&<OrdersDeliveryTab searchQuery={searchQuery}/>}
+        {activeTab==="requests"&&<ServiceRequestsTab PaymentComponent={PaymentComponent}/>}
+        {activeTab==="bookings"&&<MyBookingsTab/>}
         {activeTab==="saved"&&<SavedBusinessesTab favourites={favourites} toggleFav={toggleFav}/>}
         {activeTab==="messages"&&<MessagingCenter user={user} onClose={()=>goTab("profile")} embedded/>}
         {activeTab==="events"&&<MyEventsTab user={user} categories={categories} zones={zones}/>}
@@ -1874,6 +1880,105 @@ function DeliveryStepper({ status }) {
 // "processing" by default but meaningless until payment clears). `searchQuery`
 // filters client-side by order id or an item's listing_name (see
 // ACCOUNT_SEARCHABLE_TABS above).
+// The customer's service requests (business item 2 / Wave H2). Shows each
+// request's status; an accepted request gets a "Pay to start" button that runs
+// the simulated payment then POSTs the pay endpoint (moving it to in_progress).
+const SR_STATUS_META = {
+  requested: { label: "Awaiting response", color: D.amber },
+  accepted: { label: "Accepted — pay to start", color: D.blue },
+  declined: { label: "Declined", color: D.red },
+  in_progress: { label: "In progress", color: D.blue },
+  completed: { label: "Completed", color: D.green },
+  cancelled: { label: "Cancelled", color: D.textFaint },
+};
+
+function ServiceRequestsTab({ PaymentComponent }) {
+  const { data, isLoading, isError, refetch } = useMyServiceRequests();
+  const [payingFor, setPayingFor] = useState(null); // the request being paid
+  const [payError, setPayError] = useState(null);
+
+  const requests = data || [];
+  if (isLoading) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>Loading…</div>;
+  if (isError) return <div style={{color:D.red,fontSize:"0.8rem"}}>Could not load your requests.</div>;
+  if (requests.length===0) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>You haven't requested any services yet.</div>;
+
+  const onPaid = async () => {
+    setPayError(null);
+    try { await apiPost(`/api/services/requests/${payingFor.id}/pay/`, {}); setPayingFor(null); refetch(); }
+    catch { setPayError("Payment went through but we couldn't start the job — please contact support."); }
+  };
+
+  return <div style={{display:"flex",flexDirection:"column",gap:14}}>
+    {payError && <div style={{color:D.red,fontSize:"0.78rem"}}>{payError}</div>}
+    {requests.map(sr=>{
+      const meta = SR_STATUS_META[sr.status]||{label:sr.status,color:D.textDim};
+      return (
+        <div key={sr.id} style={{...glassCard,padding:18}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+            <div style={{color:D.text,fontWeight:800,fontSize:"0.85rem"}}>{sr.listing_name}</div>
+            <span style={{background:`${meta.color}22`,color:meta.color,borderRadius:20,padding:"2px 10px",fontSize:"0.65rem",fontWeight:700}}>{meta.label}</span>
+          </div>
+          <div style={{color:D.textDim,fontSize:"0.74rem",marginTop:6}}>"{sr.message}"</div>
+          <div style={{color:D.textDim,fontSize:"0.72rem",marginTop:4}}>
+            {sr.agreed_price!=null && <>Quoted: GHS {sr.agreed_price}</>}
+            {sr.progress_note && sr.status==="in_progress" && <> · Update: {sr.progress_note}</>}
+            {sr.decline_reason && <> · {sr.decline_reason}</>}
+          </div>
+          {sr.status==="accepted" && (
+            <button onClick={()=>setPayingFor(sr)} style={{marginTop:10,background:D.green,color:"#fff",border:"none",borderRadius:20,padding:"8px 16px",fontWeight:800,fontSize:"0.76rem",cursor:"pointer",fontFamily:"inherit"}}>💳 Pay GHS {sr.agreed_price} to start</button>
+          )}
+        </div>
+      );
+    })}
+    {payingFor && PaymentComponent && (
+      <PaymentComponent amount={parseFloat(payingFor.agreed_price)||0} onSuccess={onPaid} onClose={()=>setPayingFor(null)} />
+    )}
+  </div>;
+}
+
+// The customer's accommodation bookings (business item 2 / Wave H3). A future
+// booking (confirmed, not yet checked in) can be cancelled, freeing the dates.
+const BK_STATUS_META = {
+  pending: { label: "Pending payment", color: D.amber },
+  confirmed: { label: "Confirmed", color: D.blue },
+  checked_in: { label: "Checked in", color: D.green },
+  checked_out: { label: "Checked out", color: D.textFaint },
+  cancelled: { label: "Cancelled", color: D.red },
+};
+
+function MyBookingsTab() {
+  const { data, isLoading, isError, refetch } = useMyBookings();
+  const [actionError, setActionError] = useState(null);
+  const bookings = data || [];
+  if (isLoading) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>Loading…</div>;
+  if (isError) return <div style={{color:D.red,fontSize:"0.8rem"}}>Could not load your bookings.</div>;
+  if (bookings.length===0) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>No bookings yet.</div>;
+
+  const cancel = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/bookings/${id}/cancel/`, {}); refetch(); }
+    catch { setActionError("Could not cancel this booking."); }
+  };
+
+  return <div style={{display:"flex",flexDirection:"column",gap:14}}>
+    {actionError && <div style={{color:D.red,fontSize:"0.78rem"}}>{actionError}</div>}
+    {bookings.map(b=>{
+      const meta = BK_STATUS_META[b.status]||{label:b.status,color:D.textDim};
+      const cancellable = b.status==="confirmed"||b.status==="pending";
+      return (
+        <div key={b.id} style={{...glassCard,padding:18}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+            <div style={{color:D.text,fontWeight:800,fontSize:"0.85rem"}}>{b.listing_name}</div>
+            <span style={{background:`${meta.color}22`,color:meta.color,borderRadius:20,padding:"2px 10px",fontSize:"0.65rem",fontWeight:700}}>{meta.label}</span>
+          </div>
+          <div style={{color:D.textDim,fontSize:"0.74rem",marginTop:6}}>{b.check_in} → {b.check_out} · {b.nights} night{b.nights===1?"":"s"} · {b.units} unit{b.units===1?"":"s"} · GHS {b.total_price}</div>
+          {cancellable && <button onClick={()=>cancel(b.id)} style={{marginTop:10,background:`${D.red}22`,color:D.red,border:"none",borderRadius:20,padding:"7px 14px",fontWeight:700,fontSize:"0.74rem",cursor:"pointer",fontFamily:"inherit"}}>Cancel booking</button>}
+        </div>
+      );
+    })}
+  </div>;
+}
+
 function OrdersDeliveryTab({ searchQuery }) {
   const { data, isLoading, isError, refetch } = useOrders();
   const [confirmError, setConfirmError] = useState(null);
@@ -2732,7 +2837,7 @@ export default function AshantiHub() {
   if(showRegistrationFlow) return <BusinessRegistrationFlow user={user} auth={auth} initialStep={user?.registrationStep} setPage={setPage} setShowBizDash={setShowBizDash}/>;
 
   if(isAdmin) return <StaffDashboard auth={auth} onExit={()=>setIsAdmin(false)}/>;
-  if(showAccount) return <UserPanel onExit={()=>setShowAccount(false)} user={user} auth={auth} favourites={favourites} toggleFav={toggleFav} lang={lang} setLang={setLang}/>;
+  if(showAccount) return <UserPanel onExit={()=>setShowAccount(false)} user={user} auth={auth} favourites={favourites} toggleFav={toggleFav} lang={lang} setLang={setLang} PaymentComponent={MoMoPayment}/>;
   if(showBizDash||showPayments||showCredit) return <BusinessCommandCenter
     initialTab={showPayments?"payments":showCredit?"credit":"analytics"}
     onExit={()=>{setShowBizDash(false);setShowPayments(false);setShowCredit(false);}}

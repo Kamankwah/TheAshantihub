@@ -5,6 +5,9 @@ import { useBusinessProfile } from "../../hooks/useBusinessProfile.js";
 import { D, glassCard } from "./theme.js";
 import AnalyticsPanel from "./panels/AnalyticsPanel.jsx";
 import ListingsPanel from "./panels/ListingsPanel.jsx";
+import ProductsPanel from "./panels/ProductsPanel.jsx";
+import ServicesPanel from "./panels/ServicesPanel.jsx";
+import BookingsPanel from "./panels/BookingsPanel.jsx";
 import DeliveriesPanel from "./panels/DeliveriesPanel.jsx";
 import PaymentsPanel from "./panels/PaymentsPanel.jsx";
 import CreditPanel from "./panels/CreditPanel.jsx";
@@ -33,6 +36,28 @@ const TABS = [
   { id: "credit", icon: "🏅", label: "Credit" },
   { id: "subscription", icon: "⭐", label: "Subscription" },
 ];
+
+// A management tab sits right after "Listings & Prices", its shape decided by
+// the business's registered kind (business item 2): a product business gets
+// "Products" (stock/expiry management), a service business gets "Services"
+// (requests/bookings). Legacy null-kind accounts get neither.
+function buildTabs(businessKind) {
+  // A product business gets "Products"; a service business gets "Services"
+  // (requests) AND "Bookings" (accommodation) — a service business may do
+  // either or both, and the Bookings tab simply stays empty for one that has
+  // no accommodation listings. Legacy null-kind accounts get none.
+  let managementTabs = [];
+  if (businessKind === "product") {
+    managementTabs = [{ id: "products", icon: "📦", label: "Products" }];
+  } else if (businessKind === "service") {
+    managementTabs = [
+      { id: "services", icon: "🛠️", label: "Services" },
+      { id: "bookings", icon: "🏨", label: "Bookings" },
+    ];
+  }
+  if (managementTabs.length === 0) return TABS;
+  return [...TABS.slice(0, 2), ...managementTabs, ...TABS.slice(2)];
+}
 
 export default function BusinessCommandCenter({ initialTab = "analytics", onExit, user, auth, PaymentComponent }) {
   const [tab, setTab] = useState(TABS.some(t => t.id === initialTab) ? initialTab : "analytics");
@@ -65,7 +90,8 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
   const isVerified = user?.kycStatus === "verified";
   const isRejected = user?.kycStatus === "rejected";
   const showToast = () => { setSaved(true); setTimeout(() => setSaved(false), 2500); };
-  const activeLabel = TABS.find(t => t.id === tab)?.label || "Overview";
+  const tabs = buildTabs(profile?.business_kind);
+  const activeLabel = tabs.find(t => t.id === tab)?.label || "Overview";
 
   const selectTab = (id) => { if (!isVerified) return; setTab(id); setMobileNavOpen(false); setShowProfile(false); };
 
@@ -117,7 +143,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
           </div>
 
           <nav style={{ padding: "6px 10px", display: "flex", flexDirection: "column", gap: 2, flex: 1 }}>
-            {TABS.map(t => {
+            {tabs.map(t => {
               const active = tab === t.id;
               return (
                 <button key={t.id} disabled={!isVerified} onClick={() => selectTab(t.id)} style={{
@@ -200,6 +226,9 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
               <>
                 {tab === "analytics" && <AnalyticsPanel user={user} onNavigate={selectTab} />}
                 {tab === "listings" && <ListingsPanel user={user} PaymentComponent={PaymentComponent} showToast={showToast} businessKind={profile?.business_kind} />}
+                {tab === "products" && <ProductsPanel />}
+                {tab === "services" && <ServicesPanel />}
+                {tab === "bookings" && <BookingsPanel />}
                 {tab === "events" && <EventsPanel user={user} PaymentComponent={PaymentComponent} />}
                 {tab === "deliveries" && <DeliveriesPanel />}
                 {tab === "payments" && <PaymentsPanel user={user} PaymentComponent={PaymentComponent} />}

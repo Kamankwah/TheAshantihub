@@ -38,6 +38,8 @@ INSTALLED_APPS = [
     "credit",
     "cart",
     "orders",
+    "services",
+    "bookings",
     "events",
     "reviews",
     "qa",
