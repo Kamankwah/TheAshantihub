@@ -168,3 +168,82 @@ class DisputeResolveTests(DisputeTestsBase):
         self.assertEqual(response.status_code, 200, response.content)
         self.dispute.refresh_from_db()
         self.assertEqual(self.dispute.status, Dispute.RESOLVED)
+
+
+class DisputeQueueTabTests(DisputeTestsBase):
+    """Pending/Approved/Rejected tabs over Dispute's four statuses
+    (punch-list item 7). `open` and `investigating` share the Pending tab —
+    both mean "still being worked".
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.investigating = Dispute.objects.create(
+            raised_by=self.buyer, reason=Dispute.DELIVERY_ISSUE,
+            description="Still looking into it.", status=Dispute.INVESTIGATING,
+        )
+        self.resolved = Dispute.objects.create(
+            raised_by=self.buyer, reason=Dispute.DELIVERY_ISSUE,
+            description="Refunded.", status=Dispute.RESOLVED,
+            resolved_by=self.accountant, resolution_notes="Refund issued",
+        )
+        self.rejected = Dispute.objects.create(
+            raised_by=self.buyer, reason=Dispute.DELIVERY_ISSUE,
+            description="Not our fault.", status=Dispute.REJECTED,
+            resolved_by=self.accountant, resolution_notes="No evidence",
+        )
+
+    def test_pending_tab_holds_both_open_and_investigating(self):
+        self._auth_staff(self.support)
+        response = self.client.get(LIST_URL)
+        self.assertEqual(response.status_code, 200, response.content)
+        ids = [d["id"] for d in response.json()["results"]]
+        self.assertCountEqual(ids, [self.dispute.id, self.investigating.id])
+
+    def test_approved_tab_lists_resolved_disputes(self):
+        self._auth_staff(self.support)
+        ids = [d["id"] for d in self.client.get(f"{LIST_URL}?status=approved").json()["results"]]
+        self.assertEqual(ids, [self.resolved.id])
+
+    def test_rejected_tab_lists_rejected_disputes(self):
+        self._auth_staff(self.support)
+        ids = [d["id"] for d in self.client.get(f"{LIST_URL}?status=rejected").json()["results"]]
+        self.assertEqual(ids, [self.rejected.id])
+
+    def test_unknown_status_falls_back_to_pending(self):
+        self._auth_staff(self.support)
+        ids = [d["id"] for d in self.client.get(f"{LIST_URL}?status=nonsense").json()["results"]]
+        self.assertCountEqual(ids, [self.dispute.id, self.investigating.id])
+
+
+class DisputeReReviewTests(DisputeQueueTabTests):
+    def _re_review_url(self, pk):
+        return f"/api/disputes/{pk}/re-review/"
+
+    def test_re_review_reopens_a_rejected_dispute(self):
+        self._auth_staff(self.accountant)
+        response = self.client.post(self._re_review_url(self.rejected.id))
+        self.assertEqual(response.status_code, 200, response.content)
+        self.rejected.refresh_from_db()
+        self.assertEqual(self.rejected.status, Dispute.OPEN)
+        self.assertEqual(self.rejected.resolution_notes, "")
+        self.assertIsNone(self.rejected.resolved_by)
+
+    def test_a_reopened_dispute_returns_to_the_pending_tab(self):
+        self._auth_staff(self.accountant)
+        self.client.post(self._re_review_url(self.rejected.id))
+        ids = [d["id"] for d in self.client.get(LIST_URL).json()["results"]]
+        self.assertIn(self.rejected.id, ids)
+
+    def test_a_resolved_dispute_cannot_be_reopened(self):
+        """It may have moved money (refund_amount), so reopening is not a
+        safe no-op — only `rejected` is reversible.
+        """
+        self._auth_staff(self.accountant)
+        response = self.client.post(self._re_review_url(self.resolved.id))
+        self.assertEqual(response.status_code, 400)
+
+    def test_re_review_requires_resolve_financial_not_just_flag(self):
+        self._auth_staff(self.support)
+        response = self.client.post(self._re_review_url(self.rejected.id))
+        self.assertEqual(response.status_code, 403)

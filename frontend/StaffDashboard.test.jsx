@@ -99,16 +99,22 @@ describe('StaffDashboard', () => {
     expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument()
   })
 
-  // Promotions went self-serve (business owners purchase Featured/Boost from
-  // their own dashboard — docs/BUSINESS_EVENTS_ROADMAP.md Phase 5), so the
-  // old ComingSoonPanel placeholder here would now be misleading. Assert the
-  // informational panel shows instead, not "coming soon".
-  it('shows a self-serve informational panel for Promotions instead of coming-soon', () => {
+  // Promotions are self-serve (business owners purchase Featured/Boost from
+  // their own dashboard — docs/BUSINESS_EVENTS_ROADMAP.md Phase 5), so this
+  // panel is a lifecycle view (Active/Expired/Cancelled), never an approval
+  // queue — and never the old "coming soon"/"nothing to manage" placeholder.
+  it('shows a real Promotions management panel, not coming-soon or an info card', async () => {
     const auth = makeAuth({ hasPermission: (c) => c === 'promotions.manage' })
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('Promotions'))
-    expect(screen.getByText('Promotions are self-serve')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /Active/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Expired/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Cancelled/ })).toBeInTheDocument()
     expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('Promotions are self-serve')).not.toBeInTheDocument()
+    // Promotions are bought, not approved — these must never appear here.
+    expect(screen.queryByRole('button', { name: /Pending/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Approved/ })).not.toBeInTheDocument()
   })
 
   it('calls onExit when the exit button is clicked', () => {
@@ -127,14 +133,30 @@ describe('StaffDashboard', () => {
     expect(screen.queryByTitle('Toggle theme')).not.toBeInTheDocument()
   })
 
-  it('renders the KYC queue and approves an entry', async () => {
+  // KYC now has Pending/Approved/Rejected tabs, and Approve/Reject are gated
+  // behind the Ghana Post address-verification decision (punch-list item 8):
+  // the reviewer must open Details and verify the address before approving.
+  it('renders the KYC queue and approves an entry after verifying the address', async () => {
     server.use(
       http.get('http://localhost:8000/api/accounts/kyc/pending/', () => {
         return HttpResponse.json([{ id: 7, full_name: 'Kwame Business', login_phone: '+233201112233', created_at: '2026-07-01T00:00:00Z' }])
       }),
+      http.get('http://localhost:8000/api/accounts/kyc/7/', () => {
+        return HttpResponse.json({
+          id: 7, full_name: 'Kwame Business', login_phone: '+233201112233', email: 'kwame@example.com',
+          kyc_status: 'pending', kyc_rejection_reason: null, reviewed_by_name: null, reviewed_at: null,
+          profile: { gps_address: 'AK-039-5030', business_contact_phone: '+233201112233', is_formal: false, address_verified: false, address_verified_by_name: null, address_verified_at: null },
+        })
+      }),
     )
+    let addressVerified = false
     let approveCalled = false
     server.use(
+      http.post('http://localhost:8000/api/accounts/kyc/7/address-verify/', async ({ request }) => {
+        const body = await request.json()
+        addressVerified = body.verified
+        return HttpResponse.json({ id: 7, address_verified: body.verified, address_verified_by_name: 'Akosua Support', address_verified_at: '2026-07-02T00:00:00Z' })
+      }),
       http.post('http://localhost:8000/api/accounts/kyc/7/approve/', () => {
         approveCalled = true
         return HttpResponse.json({ id: 7, kyc_status: 'verified' })
@@ -144,8 +166,130 @@ describe('StaffDashboard', () => {
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('KYC Queue'))
     await screen.findByText('Kwame Business')
+    // Approve is disabled until the address is verified.
+    expect(screen.getByText('✓ Approve')).toBeDisabled()
+    fireEvent.click(screen.getByText('👁️ View Details'))
+    await screen.findByText('✓ Address verified')
+    fireEvent.click(screen.getByText('✓ Address verified'))
+    await waitFor(() => expect(addressVerified).toBe(true))
+    await waitFor(() => expect(screen.getByText('✓ Approve')).toBeEnabled())
     fireEvent.click(screen.getByText('✓ Approve'))
     await waitFor(() => expect(approveCalled).toBe(true))
+  })
+
+  it('keeps KYC Approve/Reject disabled until an address decision is made', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/accounts/kyc/pending/', () => {
+        return HttpResponse.json([{ id: 11, full_name: 'Abena Trader', login_phone: '+233201119999', created_at: '2026-07-01T00:00:00Z' }])
+      }),
+      http.get('http://localhost:8000/api/accounts/kyc/11/', () => {
+        return HttpResponse.json({
+          id: 11, full_name: 'Abena Trader', login_phone: '+233201119999', email: 'abena@example.com',
+          kyc_status: 'pending', kyc_rejection_reason: null, reviewed_by_name: null, reviewed_at: null,
+          profile: { gps_address: 'AK-100-2000', business_contact_phone: '+233201119999', is_formal: false, address_verified: false, address_verified_by_name: null, address_verified_at: null },
+        })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'kyc.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('KYC Queue'))
+    await screen.findByText('Abena Trader')
+    expect(screen.getByText('✓ Approve')).toBeDisabled()
+    expect(screen.getByText('✕ Reject')).toBeDisabled()
+    fireEvent.click(screen.getByText('👁️ View Details'))
+    // Still disabled after opening details but before deciding on the address.
+    await screen.findByText('✓ Address verified')
+    expect(screen.getByText('✓ Approve')).toBeDisabled()
+  })
+
+  it('shows KYC Approved and Rejected tabs, with re-review sending a rejected owner back to pending', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/accounts/kyc/pending/', ({ request }) => {
+        const status = new URL(request.url).searchParams.get('status') || 'pending'
+        if (status === 'rejected') {
+          return HttpResponse.json([{ id: 20, full_name: 'Kojo Rejected', login_phone: '+233201110000', created_at: '2026-07-01T00:00:00Z', kyc_rejection_reason: 'Blurry card', reviewed_by_name: 'Akosua Support', reviewed_at: '2026-07-02T00:00:00Z' }])
+        }
+        return HttpResponse.json([])
+      }),
+    )
+    let reReviewCalled = false
+    server.use(
+      http.post('http://localhost:8000/api/accounts/kyc/20/re-review/', () => {
+        reReviewCalled = true
+        return HttpResponse.json({ id: 20, kyc_status: 'pending' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'kyc.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('KYC Queue'))
+    fireEvent.click(screen.getByRole('button', { name: /Rejected/ }))
+    await screen.findByText('Kojo Rejected')
+    expect(screen.getByText(/Blurry card/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('🔄 Review Again'))
+    await waitFor(() => expect(reReviewCalled).toBe(true))
+  })
+
+  it('shows listings grouped by business, an approver on Published, and re-review on Rejected', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/listings/moderation/pending/', ({ request }) => {
+        const status = new URL(request.url).searchParams.get('status') || 'pending'
+        if (status === 'approved') {
+          return HttpResponse.json([{ id: 30, name: 'Verified Lodge', business_owner_name: 'Kwame Traders', category: { label: 'Hotels' }, zone: { name: 'Manhyia' }, price_amount: '450.00', contact_phone: '+233244000001', reviewed_by_name: 'Akosua Support', reviewed_at: '2026-07-02T00:00:00Z' }])
+        }
+        if (status === 'rejected') {
+          return HttpResponse.json([{ id: 31, name: 'Bad Lodge', business_owner_name: 'Kwame Traders', category: { label: 'Hotels' }, zone: { name: 'Manhyia' }, price_amount: '99.00', contact_phone: '+233244000002', rejection_reason: 'Photos too dark' }])
+        }
+        return HttpResponse.json([{ id: 32, name: 'Pending Lodge', business_owner_name: 'Kwame Traders', category: { label: 'Hotels' }, zone: { name: 'Manhyia' }, price_amount: '120.00', contact_phone: '+233244000003' }])
+      }),
+    )
+    let reReviewCalled = false
+    server.use(
+      http.post('http://localhost:8000/api/listings/moderation/31/re-review/', () => {
+        reReviewCalled = true
+        return HttpResponse.json({ id: 31, status: 'pending_review' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'listings.moderate' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Listings Moderation'))
+    await screen.findByText('Pending Lodge')
+    // Business grouping header (item 2).
+    expect(screen.getByText('🏢 Kwame Traders')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Published/ }))
+    await screen.findByText('Verified Lodge')
+    expect(screen.getByText(/Published by Akosua Support/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Rejected/ }))
+    await screen.findByText('Bad Lodge')
+    expect(screen.getByText(/Photos too dark/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('🔄 Review Again'))
+    await waitFor(() => expect(reReviewCalled).toBe(true))
+  })
+
+  it('re-reviews a rejected hero submission', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/listings/hero/pending/', ({ request }) => {
+        const status = new URL(request.url).searchParams.get('status') || 'pending'
+        if (status === 'rejected') {
+          return HttpResponse.json([{ id: 40, business_owner_name: 'Ama Trader', media: 'http://localhost:8000/media/hero_media/h.jpg', media_type: 'image', caption: 'Nope', submitted_at: '2026-07-01T00:00:00Z', rejection_reason: 'Off brand' }])
+        }
+        return HttpResponse.json([])
+      }),
+    )
+    let reReviewCalled = false
+    server.use(
+      http.post('http://localhost:8000/api/listings/hero/40/re-review/', () => {
+        reReviewCalled = true
+        return HttpResponse.json({ id: 40, status: 'pending' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'hero_media.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Hero Approval'))
+    fireEvent.click(screen.getByRole('button', { name: /Rejected/ }))
+    await screen.findByText('Ama Trader')
+    expect(screen.getByText(/Off brand/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('🔄 Review Again'))
+    await waitFor(() => expect(reReviewCalled).toBe(true))
   })
 
   it('renders the listings moderation queue', async () => {
@@ -310,6 +454,16 @@ describe('StaffDashboard', () => {
       http.get('http://localhost:8000/api/accounts/kyc/pending/', () => {
         return HttpResponse.json([{ id: 8, full_name: 'Yaw Trader', login_phone: '+233201112244', created_at: '2026-07-01T00:00:00Z' }])
       }),
+      http.get('http://localhost:8000/api/accounts/kyc/8/', () => {
+        return HttpResponse.json({
+          id: 8, full_name: 'Yaw Trader', login_phone: '+233201112244', email: 'yaw@example.com',
+          kyc_status: 'pending', kyc_rejection_reason: null, reviewed_by_name: null, reviewed_at: null,
+          profile: { gps_address: 'AK-200-3000', business_contact_phone: '+233201112244', is_formal: false, address_verified: false, address_verified_by_name: null, address_verified_at: null },
+        })
+      }),
+      http.post('http://localhost:8000/api/accounts/kyc/8/address-verify/', () => {
+        return HttpResponse.json({ id: 8, address_verified: true, address_verified_by_name: 'Akosua Support', address_verified_at: '2026-07-02T00:00:00Z' })
+      }),
       http.post('http://localhost:8000/api/accounts/kyc/8/approve/', () => {
         return HttpResponse.json({ detail: 'Server error' }, { status: 500 })
       }),
@@ -318,6 +472,10 @@ describe('StaffDashboard', () => {
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('KYC Queue'))
     await screen.findByText('Yaw Trader')
+    fireEvent.click(screen.getByText('👁️ View Details'))
+    await screen.findByText('✓ Address verified')
+    fireEvent.click(screen.getByText('✓ Address verified'))
+    await waitFor(() => expect(screen.getByText('✓ Approve')).toBeEnabled())
     fireEvent.click(screen.getByText('✓ Approve'))
     await screen.findByText('Could not approve this submission. Please try again.')
   })
@@ -459,38 +617,41 @@ describe('StaffDashboard Reviews moderation', () => {
     expect(screen.getByText('Reviews')).toBeInTheDocument()
   })
 
-  it('reads the paginated moderation queue (data.results) and shows published/hidden status', async () => {
+  // Reviews are pre-moderated: the queue opens on Pending and reads the
+  // paginated envelope (data.results) via ModerationQueueTabs' itemsOf().
+  const reviewsQueue = (byStatus) =>
+    http.get('http://localhost:8000/api/reviews/moderation/', ({ request }) => {
+      const status = new URL(request.url).searchParams.get('status')
+      const results = byStatus[status] || []
+      return HttpResponse.json({ count: results.length, next: null, previous: null, results })
+    })
+
+  it('reads the paginated pending queue (data.results) and approves a review', async () => {
+    let approveCalled = false
     server.use(
-      http.get('http://localhost:8000/api/reviews/moderation/', () => {
-        return HttpResponse.json({
-          count: 2, next: null, previous: null,
-          results: [
-            { id: 1, target_type: 'listing', rating: 5, comment: 'Great!', verified: true, author_name: 'Ama', status: 'published', created_at: '2026-07-01T00:00:00Z' },
-            { id: 2, target_type: 'event', rating: 2, comment: 'Poorly organized', verified: true, author_name: 'Kofi', status: 'hidden', hidden_reason: 'Spam', created_at: '2026-07-02T00:00:00Z' },
-          ],
-        })
+      reviewsQueue({
+        pending: [{ id: 1, target_type: 'listing', target_name: 'Test Lodge', rating: 5, comment: 'Great!', verified: true, author_name: 'Ama', status: 'pending', created_at: '2026-07-01T00:00:00Z' }],
+      }),
+      http.post('http://localhost:8000/api/reviews/moderation/1/approve/', () => {
+        approveCalled = true
+        return HttpResponse.json({ id: 1, status: 'published' })
       }),
     )
     const auth = makeAuth({ hasPermission: (c) => c === 'reviews.moderate' })
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('Reviews'))
     await screen.findByText('"Great!"')
-    expect(screen.getByText('Published')).toBeInTheDocument()
-    expect(screen.getByText('Hidden')).toBeInTheDocument()
-    expect(screen.getByText('Hidden: Spam')).toBeInTheDocument()
+    expect(screen.getByText('Test Lodge')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('✓ Approve'))
+    await waitFor(() => expect(approveCalled).toBe(true))
   })
 
-  it('hides a published review with a reason', async () => {
-    server.use(
-      http.get('http://localhost:8000/api/reviews/moderation/', () => {
-        return HttpResponse.json({
-          count: 1, next: null, previous: null,
-          results: [{ id: 3, target_type: 'listing', rating: 1, comment: 'Fake review', verified: false, author_name: 'Unknown', status: 'published', created_at: '2026-07-01T00:00:00Z' }],
-        })
-      }),
-    )
+  it('rejects a pending review with a reason', async () => {
     let hideBody = null
     server.use(
+      reviewsQueue({
+        pending: [{ id: 3, target_type: 'listing', rating: 1, comment: 'Fake review', verified: false, author_name: 'Unknown', status: 'pending', created_at: '2026-07-01T00:00:00Z' }],
+      }),
       http.post('http://localhost:8000/api/reviews/moderation/3/hide/', async ({ request }) => {
         hideBody = await request.json()
         return HttpResponse.json({ id: 3, status: 'hidden' })
@@ -500,43 +661,67 @@ describe('StaffDashboard Reviews moderation', () => {
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('Reviews'))
     await screen.findByText('"Fake review"')
-    fireEvent.click(screen.getByText('🚫 Hide'))
-    fireEvent.change(screen.getByPlaceholderText('Reason for hiding'), { target: { value: 'Not a verified purchase' } })
-    fireEvent.click(screen.getByText('Confirm hide'))
+    fireEvent.click(screen.getByText('✕ Reject'))
+    fireEvent.change(screen.getByPlaceholderText('Reason for rejecting'), { target: { value: 'Not a verified purchase' } })
+    fireEvent.click(screen.getByText('Confirm reject'))
     await waitFor(() => expect(hideBody).toEqual({ reason: 'Not a verified purchase' }))
   })
 
-  it('unhides a hidden review', async () => {
+  it('shows the approver on the Approved tab and allows a reactive takedown', async () => {
     server.use(
-      http.get('http://localhost:8000/api/reviews/moderation/', () => {
-        return HttpResponse.json({
-          count: 1, next: null, previous: null,
-          results: [{ id: 4, target_type: 'seller', rating: 3, comment: 'Meh', verified: true, author_name: 'Yaw', status: 'hidden', hidden_reason: 'Reported', created_at: '2026-07-01T00:00:00Z' }],
-        })
-      }),
-    )
-    let unhideCalled = false
-    server.use(
-      http.post('http://localhost:8000/api/reviews/moderation/4/unhide/', () => {
-        unhideCalled = true
-        return HttpResponse.json({ id: 4, status: 'published' })
+      reviewsQueue({
+        approved: [{ id: 6, target_type: 'listing', rating: 5, comment: 'Lovely', verified: true, author_name: 'Ama', status: 'published', reviewed_by_name: 'Akosua Support', reviewed_at: '2026-07-02T00:00:00Z', created_at: '2026-07-01T00:00:00Z' }],
       }),
     )
     const auth = makeAuth({ hasPermission: (c) => c === 'reviews.moderate' })
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('Reviews'))
-    await screen.findByText('"Meh"')
-    fireEvent.click(screen.getByText('↩️ Unhide'))
-    await waitFor(() => expect(unhideCalled).toBe(true))
+    fireEvent.click(await screen.findByRole('button', { name: /Approved/ }))
+    await screen.findByText('"Lovely"')
+    expect(screen.getByText(/Approved by Akosua Support/)).toBeInTheDocument()
+    expect(screen.getByText('🚫 Hide')).toBeInTheDocument()
   })
 
-  it('shows an inline error when hiding a review fails', async () => {
+  it('shows the rejection reason and lets a super admin send a review back for re-review', async () => {
+    let reReviewCalled = false
     server.use(
-      http.get('http://localhost:8000/api/reviews/moderation/', () => {
-        return HttpResponse.json({
-          count: 1, next: null, previous: null,
-          results: [{ id: 5, target_type: 'listing', rating: 1, comment: 'Bad', verified: false, author_name: 'X', status: 'published', created_at: '2026-07-01T00:00:00Z' }],
-        })
+      reviewsQueue({
+        rejected: [{ id: 4, target_type: 'seller', rating: 3, comment: 'Meh', verified: true, author_name: 'Yaw', status: 'hidden', hidden_reason: 'Reported', reviewed_by_name: 'Akosua Support', reviewed_at: '2026-07-02T00:00:00Z', created_at: '2026-07-01T00:00:00Z' }],
+      }),
+      http.post('http://localhost:8000/api/reviews/moderation/4/re-review/', () => {
+        reReviewCalled = true
+        return HttpResponse.json({ id: 4, status: 'pending' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'reviews.moderate' || c === 'reviews.re_review' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Reviews'))
+    fireEvent.click(await screen.findByRole('button', { name: /Rejected/ }))
+    await screen.findByText('"Meh"')
+    expect(screen.getByText(/Reported/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('🔄 Review Again'))
+    await waitFor(() => expect(reReviewCalled).toBe(true))
+  })
+
+  it('hides Review Again from a moderator without reviews.re_review', async () => {
+    server.use(
+      reviewsQueue({
+        rejected: [{ id: 4, target_type: 'seller', rating: 3, comment: 'Meh', verified: true, author_name: 'Yaw', status: 'hidden', hidden_reason: 'Reported', created_at: '2026-07-01T00:00:00Z' }],
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'reviews.moderate' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Reviews'))
+    fireEvent.click(await screen.findByRole('button', { name: /Rejected/ }))
+    await screen.findByText('"Meh"')
+    expect(screen.queryByText('🔄 Review Again')).not.toBeInTheDocument()
+    expect(screen.getByText(/Only a super admin can send a rejected review back/)).toBeInTheDocument()
+  })
+
+  it('shows an inline error when rejecting a review fails', async () => {
+    server.use(
+      reviewsQueue({
+        pending: [{ id: 5, target_type: 'listing', rating: 1, comment: 'Bad', verified: false, author_name: 'X', status: 'pending', created_at: '2026-07-01T00:00:00Z' }],
       }),
       http.post('http://localhost:8000/api/reviews/moderation/5/hide/', () => {
         return HttpResponse.json({ detail: 'Server error' }, { status: 500 })
@@ -546,10 +731,10 @@ describe('StaffDashboard Reviews moderation', () => {
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('Reviews'))
     await screen.findByText('"Bad"')
-    fireEvent.click(screen.getByText('🚫 Hide'))
-    fireEvent.change(screen.getByPlaceholderText('Reason for hiding'), { target: { value: 'spam' } })
-    fireEvent.click(screen.getByText('Confirm hide'))
-    await screen.findByText('Could not hide this review.')
+    fireEvent.click(screen.getByText('✕ Reject'))
+    fireEvent.change(screen.getByPlaceholderText('Reason for rejecting'), { target: { value: 'spam' } })
+    fireEvent.click(screen.getByText('Confirm reject'))
+    await screen.findByText('Could not reject this review. Please try again.')
   })
 })
 
@@ -773,6 +958,39 @@ describe('StaffDashboard Events Moderation', () => {
     fireEvent.change(screen.getByPlaceholderText('Rejection reason'), { target: { value: 'Missing address details' } })
     fireEvent.click(screen.getByText('Confirm reject'))
     await waitFor(() => expect(rejectBody).toEqual({ reason: 'Missing address details' }))
+  })
+
+  it('shows Approved and Rejected tabs, with re-review sending a rejected event back to pending', async () => {
+    let reReviewCalled = false
+    server.use(
+      http.get('http://localhost:8000/api/events/moderation/pending/', ({ request }) => {
+        const status = new URL(request.url).searchParams.get('status')
+        if (status === 'approved') {
+          return HttpResponse.json([{ id: 7, name: 'Approved Durbar', category: { label: 'Festivals' }, zone: { name: 'Adum' }, visibility_days: 14, submitted_by_business_name: 'Ama Trader', reviewed_by_name: 'Akosua Support', reviewed_at: '2026-07-02T00:00:00Z' }])
+        }
+        if (status === 'rejected') {
+          return HttpResponse.json([{ id: 8, name: 'Rejected Gig', category: { label: 'Festivals' }, zone: { name: 'Adum' }, visibility_days: 7, submitted_by_business_name: 'Yaw Trader', rejection_reason: 'Venue unclear', reviewed_by_name: 'Akosua Support', reviewed_at: '2026-07-02T00:00:00Z' }])
+        }
+        return HttpResponse.json([])
+      }),
+      http.post('http://localhost:8000/api/events/moderation/8/re-review/', () => {
+        reReviewCalled = true
+        return HttpResponse.json({ id: 8, status: 'pending' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'event.approve' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Events Moderation'))
+
+    fireEvent.click(await screen.findByRole('button', { name: /Approved/ }))
+    await screen.findByText('Approved Durbar')
+    expect(screen.getByText(/Approved by Akosua Support/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Rejected/ }))
+    await screen.findByText('Rejected Gig')
+    expect(screen.getByText(/Venue unclear/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('🔄 Review Again'))
+    await waitFor(() => expect(reReviewCalled).toBe(true))
   })
 })
 
@@ -1078,6 +1296,64 @@ describe('StaffDashboard Overview KPIs', () => {
   })
 })
 
+describe('StaffDashboard Promotions', () => {
+  const promotionsQueue = (byStatus) =>
+    http.get('http://localhost:8000/api/listings/promotions/', ({ request }) => {
+      const status = new URL(request.url).searchParams.get('status')
+      return HttpResponse.json(byStatus[status] || [])
+    })
+
+  it('lists active promotions and cancels one after confirming', async () => {
+    let cancelCalled = false
+    server.use(
+      promotionsQueue({
+        active: [{ id: 1, listing: 5, listing_name: 'Royal Lodge', business_owner_name: 'Kwame Traders', kind: 'featured', starts_at: '2026-07-01T00:00:00Z', ends_at: '2026-07-30T00:00:00Z', keywords: '', amount_paid: '5.00', status: 'active', is_currently_active: true, created_at: '2026-07-01T00:00:00Z' }],
+      }),
+      http.post('http://localhost:8000/api/listings/promotions/1/cancel/', () => {
+        cancelCalled = true
+        return HttpResponse.json({ id: 1, status: 'cancelled' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'promotions.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Promotions'))
+    await screen.findByText('Royal Lodge')
+    expect(screen.getByText(/Kwame Traders/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('✕ Cancel'))
+    // Cancelling is not a refund — the UI must say so before confirming.
+    expect(screen.getByText(/does not refund the GHS 5.00 already paid/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('Confirm cancel'))
+    await waitFor(() => expect(cancelCalled).toBe(true))
+  })
+
+  it('marks a paid-but-not-yet-started promotion as scheduled rather than running', async () => {
+    server.use(
+      promotionsQueue({
+        active: [{ id: 2, listing: 5, listing_name: 'Kente Stall', business_owner_name: 'Ama Trader', kind: 'boost', starts_at: '2026-08-01T00:00:00Z', ends_at: '2026-08-08T00:00:00Z', keywords: 'kente', amount_paid: '3.00', status: 'active', is_currently_active: false, created_at: '2026-07-01T00:00:00Z' }],
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'promotions.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Promotions'))
+    await screen.findByText('Kente Stall')
+    expect(screen.getByText('Scheduled — not ranking yet')).toBeInTheDocument()
+  })
+
+  it('shows no cancel action on an expired promotion', async () => {
+    server.use(
+      promotionsQueue({
+        expired: [{ id: 3, listing: 5, listing_name: 'Old Promo', business_owner_name: 'Yaw Trader', kind: 'featured', starts_at: '2026-06-01T00:00:00Z', ends_at: '2026-06-08T00:00:00Z', keywords: '', amount_paid: '5.00', status: 'active', is_currently_active: false, created_at: '2026-06-01T00:00:00Z' }],
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'promotions.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Promotions'))
+    fireEvent.click(await screen.findByRole('button', { name: /Expired/ }))
+    await screen.findByText('Old Promo')
+    expect(screen.queryByText('✕ Cancel')).not.toBeInTheDocument()
+  })
+})
+
 describe('StaffDashboard Disputes', () => {
   it('only shows the Disputes nav item for a session with disputes.flag or disputes.resolve_financial', () => {
     const auth = makeAuth({ hasPermission: (c) => c === 'disputes.flag' })
@@ -1150,20 +1426,49 @@ describe('StaffDashboard Disputes', () => {
 
   it('shows no actions on a terminal (resolved) dispute', async () => {
     server.use(
-      http.get('http://localhost:8000/api/disputes/', () => {
-        return HttpResponse.json({
-          count: 1, next: null, previous: null,
-          results: [{ id: 1, order: 9, order_total_amount: '150.00', order_status: 'paid', raised_by: 3, raised_by_name: 'Ama Buyer', reason: 'delivery_issue', description: 'Never arrived.', status: 'resolved', resolution_notes: 'Refunded.', refund_amount: '50.00', flagged_by: 2, flagged_by_name: 'Support Person', resolved_by: 4, resolved_by_name: 'Accountant Person', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' }],
-        })
+      http.get('http://localhost:8000/api/disputes/', ({ request }) => {
+        const status = new URL(request.url).searchParams.get('status')
+        const results = status === 'approved'
+          ? [{ id: 1, order: 9, order_total_amount: '150.00', order_status: 'paid', raised_by: 3, raised_by_name: 'Ama Buyer', reason: 'delivery_issue', description: 'Never arrived.', status: 'resolved', resolution_notes: 'Refunded.', refund_amount: '50.00', flagged_by: 2, flagged_by_name: 'Support Person', resolved_by: 4, resolved_by_name: 'Accountant Person', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' }]
+          : []
+        return HttpResponse.json({ count: results.length, next: null, previous: null, results })
       }),
     )
     const auth = makeAuth({ hasPermission: (c) => ['disputes.flag', 'disputes.resolve_financial'].includes(c) })
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('Disputes'))
+    fireEvent.click(await screen.findByRole('button', { name: /Resolved/ }))
     await screen.findByText(/Order #9/)
     expect(screen.queryByText('🚩 Flag')).not.toBeInTheDocument()
     expect(screen.queryByText('✓ Resolve')).not.toBeInTheDocument()
     expect(screen.queryByText('✕ Reject')).not.toBeInTheDocument()
+    // A resolved dispute may have moved money, so it is never reopenable.
+    expect(screen.queryByText('🔄 Review Again')).not.toBeInTheDocument()
+  })
+
+  it('reopens a rejected dispute from the Rejected tab', async () => {
+    let reopenCalled = false
+    server.use(
+      http.get('http://localhost:8000/api/disputes/', ({ request }) => {
+        const status = new URL(request.url).searchParams.get('status')
+        const results = status === 'rejected'
+          ? [{ id: 2, order: 11, order_total_amount: '80.00', order_status: 'paid', raised_by: 3, raised_by_name: 'Ama Buyer', reason: 'delivery_issue', description: 'Wrong item.', status: 'rejected', resolution_notes: 'No evidence', refund_amount: null, flagged_by: null, flagged_by_name: null, resolved_by: 4, resolved_by_name: 'Accountant Person', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-03T00:00:00Z' }]
+          : []
+        return HttpResponse.json({ count: results.length, next: null, previous: null, results })
+      }),
+      http.post('http://localhost:8000/api/disputes/2/re-review/', () => {
+        reopenCalled = true
+        return HttpResponse.json({ id: 2, status: 'open' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'disputes.resolve_financial' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Disputes'))
+    fireEvent.click(await screen.findByRole('button', { name: /Rejected/ }))
+    await screen.findByText(/Order #11/)
+    expect(screen.getByText(/No evidence/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('🔄 Review Again'))
+    await waitFor(() => expect(reopenCalled).toBe(true))
   })
 
   it('shows an inline error when flagging a dispute fails', async () => {
@@ -1300,7 +1605,9 @@ describe('StaffDashboard KYC detail view (staff dashboard review tools)', () => 
     await screen.findByText('Kojo Applicant')
     fireEvent.click(screen.getByText('👁️ View Details'))
     await screen.findByText('GHA-987654321-0')
-    expect(screen.getByText('AK-039-5040')).toBeInTheDocument()
+    // The GPS/digital address now shows both in the details grid and in the
+    // Ghana Post address-verification control (punch-list item 8).
+    expect(screen.getAllByText('AK-039-5040').length).toBeGreaterThan(0)
     const front = document.querySelector('img[src="http://localhost:8000/media/ghana_cards/front.jpg"]')
     expect(front).toBeTruthy()
   })

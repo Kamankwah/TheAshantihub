@@ -81,7 +81,9 @@ class ReviewSubmitListingTests(ReviewSubmitTestsBase):
         self.assertEqual(response.status_code, 201, response.content)
         review = Review.objects.get(listing=self.listing, author=self.buyer)
         self.assertTrue(review.verified)
-        self.assertEqual(review.status, Review.PUBLISHED)
+        # A verified purchase gets the review accepted, not published — it
+        # still waits on staff approval (punch-list item 5).
+        self.assertEqual(review.status, Review.PENDING)
         self.assertEqual(review.rating, 5)
 
     def test_unverified_submission_is_403(self):

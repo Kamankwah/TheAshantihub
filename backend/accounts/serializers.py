@@ -204,27 +204,48 @@ class BusinessOwnerRegistrationSerializer(serializers.ModelSerializer):
 
 
 class BusinessOwnerKYCSerializer(serializers.ModelSerializer):
+    # Approver attribution (staff moderation-queue restructuring) — surfaced on
+    # the list shape so the Approved/Rejected tabs can show who actioned each
+    # submission without expanding its detail. kyc_rejection_reason is here for
+    # the same reason (the Rejected tab shows it inline).
+    reviewed_by_name = serializers.CharField(source="reviewed_by.full_name", read_only=True, default=None)
+
     class Meta:
         model = BusinessOwner
-        fields = ["id", "full_name", "login_phone", "kyc_status", "created_at"]
+        fields = [
+            "id", "full_name", "login_phone", "kyc_status", "kyc_rejection_reason",
+            "created_at", "reviewed_by_name", "reviewed_at",
+        ]
 
 
 class BusinessOwnerProfileKYCDetailSerializer(serializers.ModelSerializer):
+    # Ghana Post address verification (punch-list item 8). address_verified_at
+    # being non-null is the "a decision was made" signal the frontend's KYC
+    # Approve/Reject gating reads.
+    address_verified_by_name = serializers.CharField(
+        source="address_verified_by.full_name", read_only=True, default=None
+    )
+
     class Meta:
         model = BusinessOwnerProfile
         fields = [
             "ghana_card_number", "ghana_card_front_image", "ghana_card_back_image",
             "gps_address", "business_contact_phone", "is_formal", "business_kind",
             "business_reg_certificate", "tin",
+            "address_verified", "address_verified_by_name", "address_verified_at",
         ]
 
 
 class BusinessOwnerKYCDetailSerializer(serializers.ModelSerializer):
     profile = BusinessOwnerProfileKYCDetailSerializer(read_only=True)
+    reviewed_by_name = serializers.CharField(source="reviewed_by.full_name", read_only=True, default=None)
 
     class Meta:
         model = BusinessOwner
-        fields = ["id", "full_name", "login_phone", "email", "kyc_status", "kyc_rejection_reason", "created_at", "profile"]
+        fields = [
+            "id", "full_name", "login_phone", "email", "kyc_status", "kyc_rejection_reason",
+            "created_at", "reviewed_by_name", "reviewed_at", "profile",
+        ]
 
 
 class PayoutDetailSerializer(serializers.ModelSerializer):

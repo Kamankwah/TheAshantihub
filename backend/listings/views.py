@@ -29,6 +29,7 @@ from .serializers import (
     ListingPhotoSerializer,
     ModerationListingSerializer,
     OwnerListingSerializer,
+    PromotionAdminSerializer,
     PromotionPurchaseSerializer,
     PromotionSerializer,
     PublicListingSerializer,
@@ -364,12 +365,33 @@ class ListingPromoteView(APIView):
         return Response(PromotionSerializer(promotion).data, status=201)
 
 
+# Staff moderation-queue restructuring — the canonical three-state queue
+# convention (see accounts.views.KYC_STATUS_MAP): one ListAPIView serves
+# Pending/Approved/Rejected via a `?status=` query param (default "pending"),
+# on the existing `.../pending/` URL. For listings "approved" == published.
+LISTING_STATUS_MAP = {
+    "pending": Listing.PENDING_REVIEW,
+    "approved": Listing.PUBLISHED,
+    "rejected": Listing.REJECTED,
+}
+
+
 class ModerationPendingQueueView(generics.ListAPIView):
     serializer_class = ModerationListingSerializer
-    queryset = Listing.objects.filter(status=Listing.PENDING_REVIEW).order_by("created_at")
 
     def get_permissions(self):
         return [HasRolePermission("listings.moderate")]
+
+    def get_queryset(self):
+        tab = self.request.query_params.get("status", "pending")
+        listing_status = LISTING_STATUS_MAP.get(tab, Listing.PENDING_REVIEW)
+        queryset = Listing.objects.filter(status=listing_status)
+        # Item 2: group by owning business so a reviewer sees a business's
+        # listings together. Within a business, pending is oldest-first (work
+        # queue); approved/rejected are most-recently-actioned first (history).
+        if listing_status == Listing.PENDING_REVIEW:
+            return queryset.order_by("business_owner__full_name", "created_at")
+        return queryset.order_by("business_owner__full_name", "-reviewed_at", "-created_at")
 
 
 class ModerationListingDetailView(generics.RetrieveAPIView):
@@ -392,7 +414,9 @@ class ModerationApproveView(APIView):
             )
         listing.status = Listing.PUBLISHED
         listing.rejection_reason = None
-        listing.save(update_fields=["status", "rejection_reason"])
+        listing.reviewed_by = request.user
+        listing.reviewed_at = timezone.now()
+        listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
         notify_business_owner(
             listing.business_owner, "listing_approved", "Listing published",
             body=f"“{listing.name}” is now live on AshantiHub.",
@@ -412,11 +436,42 @@ class ModerationRejectView(APIView):
         listing = generics.get_object_or_404(Listing, pk=pk)
         listing.status = Listing.REJECTED
         listing.rejection_reason = reason
-        listing.save(update_fields=["status", "rejection_reason"])
+        listing.reviewed_by = request.user
+        listing.reviewed_at = timezone.now()
+        listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
         notify_business_owner(
             listing.business_owner, "listing_rejected", "Listing needs changes",
             body=f"“{listing.name}” was rejected: {reason}",
             link="/business-dashboard", icon="⚠️",
+        )
+        return Response({"id": listing.id, "status": listing.status})
+
+
+class ModerationReReviewView(APIView):
+    """POST /api/listings/moderation/{id}/re-review/ — the canonical re-review
+    action (staff moderation-queue restructuring): move a REJECTED listing back
+    to PENDING_REVIEW, clearing the rejection reason and approver attribution,
+    and re-notify staff who can moderate listings. Gated by listings.moderate.
+    """
+
+    def get_permissions(self):
+        return [HasRolePermission("listings.moderate")]
+
+    def post(self, request, pk):
+        listing = generics.get_object_or_404(Listing, pk=pk)
+        if listing.status != Listing.REJECTED:
+            return Response(
+                {"detail": "Only a rejected listing can be sent back for re-review."}, status=400
+            )
+        listing.status = Listing.PENDING_REVIEW
+        listing.rejection_reason = None
+        listing.reviewed_by = None
+        listing.reviewed_at = None
+        listing.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
+        notify_staff_role(
+            "listings.moderate", "listing_needs_moderation", "Listing re-opened for review",
+            body=f"“{listing.name}” has been re-opened and needs moderation again.",
+            link="moderation", icon="📋",
         )
         return Response({"id": listing.id, "status": listing.status})
 
@@ -543,16 +598,30 @@ class HeroMineView(APIView):
         return Response(HeroMediaModerationSerializer(submission).data)
 
 
+HERO_STATUS_MAP = {
+    "pending": HeroMediaSubmission.PENDING,
+    "approved": HeroMediaSubmission.APPROVED,
+    "rejected": HeroMediaSubmission.REJECTED,
+}
+
+
 class HeroPendingQueueView(generics.ListAPIView):
-    """Clones ModerationPendingQueueView's shape for hero-media submissions."""
+    """Clones ModerationPendingQueueView's shape for hero-media submissions,
+    including the `?status=` three-state param (staff moderation-queue
+    restructuring)."""
 
     serializer_class = HeroMediaModerationSerializer
-    queryset = HeroMediaSubmission.objects.filter(status=HeroMediaSubmission.PENDING).order_by(
-        "submitted_at"
-    )
 
     def get_permissions(self):
         return [HasRolePermission("hero_media.approve")]
+
+    def get_queryset(self):
+        tab = self.request.query_params.get("status", "pending")
+        hero_status = HERO_STATUS_MAP.get(tab, HeroMediaSubmission.PENDING)
+        queryset = HeroMediaSubmission.objects.filter(status=hero_status)
+        if hero_status == HeroMediaSubmission.PENDING:
+            return queryset.order_by("submitted_at")
+        return queryset.order_by("-reviewed_at", "-submitted_at")
 
 
 class HeroMediaDetailView(generics.RetrieveAPIView):
@@ -575,8 +644,13 @@ class HeroApproveView(APIView):
         submission.rejection_reason = None
         submission.approved_at = now
         submission.expires_at = now + timedelta(days=hero_days)
+        submission.reviewed_by = request.user
+        submission.reviewed_at = now
         submission.save(
-            update_fields=["status", "rejection_reason", "approved_at", "expires_at"]
+            update_fields=[
+                "status", "rejection_reason", "approved_at", "expires_at",
+                "reviewed_by", "reviewed_at",
+            ]
         )
         notify_business_owner(
             submission.business_owner, "hero_approved", "Hero media approved",
@@ -599,11 +673,43 @@ class HeroRejectView(APIView):
         submission = generics.get_object_or_404(HeroMediaSubmission, pk=pk)
         submission.status = HeroMediaSubmission.REJECTED
         submission.rejection_reason = reason
-        submission.save(update_fields=["status", "rejection_reason"])
+        submission.reviewed_by = request.user
+        submission.reviewed_at = timezone.now()
+        submission.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
         notify_business_owner(
             submission.business_owner, "hero_rejected", "Hero media not approved",
             body=f"Your hero submission was rejected: {reason}",
             link="/business-dashboard", icon="⚠️",
+        )
+        return Response({"id": submission.id, "status": submission.status})
+
+
+class HeroReReviewView(APIView):
+    """POST /api/listings/hero/{id}/re-review/ — the canonical re-review action
+    (staff moderation-queue restructuring): move a REJECTED hero submission
+    back to PENDING, clearing the rejection reason and approver attribution,
+    and re-notify staff who can approve hero media. Gated by hero_media.approve.
+    """
+
+    def get_permissions(self):
+        return [HasRolePermission("hero_media.approve")]
+
+    def post(self, request, pk):
+        submission = generics.get_object_or_404(HeroMediaSubmission, pk=pk)
+        if submission.status != HeroMediaSubmission.REJECTED:
+            return Response(
+                {"detail": "Only a rejected hero submission can be sent back for re-review."},
+                status=400,
+            )
+        submission.status = HeroMediaSubmission.PENDING
+        submission.rejection_reason = None
+        submission.reviewed_by = None
+        submission.reviewed_at = None
+        submission.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
+        notify_staff_role(
+            "hero_media.approve", "hero_needs_approval", "Hero submission re-opened",
+            body=f"{submission.business_owner.full_name}'s hero submission has been re-opened and needs review again.",
+            link="hero", icon="🌟",
         )
         return Response({"id": submission.id, "status": submission.status})
 
@@ -669,3 +775,69 @@ class HeroExtendView(APIView):
                 "expires_at": submission.expires_at,
             }
         )
+
+
+# ─── Promotions management (staff) ────────────────────────────────────────
+# Promotions aren't moderated — a business owner buys one and it goes live
+# immediately — so this queue is Active/Expired/Cancelled, not
+# Pending/Approved/Rejected.
+#
+# "Expired" is derived from the time window, never read off `status`: as
+# Promotion's own docstring explains, nothing in this app transitions a row to
+# status="expired", so a finished promotion still reads status="active". The
+# legacy EXPIRED value is still matched so any hand-set row shows up rather
+# than vanishing from every tab.
+def _promotions_for_tab(tab):
+    now = timezone.now()
+    queryset = Promotion.objects.select_related("listing", "listing__business_owner")
+    if tab == "cancelled":
+        return queryset.filter(status=Promotion.CANCELLED).order_by("-starts_at")
+    if tab == "expired":
+        return queryset.filter(
+            Q(status=Promotion.ACTIVE, ends_at__lt=now) | Q(status=Promotion.EXPIRED)
+        ).order_by("-ends_at")
+    # Active — bought and not yet finished. Includes a promotion whose
+    # starts_at is still in the future, which is live-but-not-yet-running.
+    return queryset.filter(status=Promotion.ACTIVE, ends_at__gte=now).order_by("-starts_at")
+
+
+class PromotionAdminListView(generics.ListAPIView):
+    """GET /api/listings/promotions/?status=active|expired|cancelled —
+    staff-only (promotions.manage). Before this, `promotions.manage` gated a
+    nav tab with no backend view behind it at all.
+    """
+
+    serializer_class = PromotionAdminSerializer
+
+    def get_permissions(self):
+        return [HasRolePermission("promotions.manage")]
+
+    def get_queryset(self):
+        return _promotions_for_tab(self.request.query_params.get("status", "active"))
+
+
+class PromotionCancelView(APIView):
+    """POST /api/listings/promotions/{id}/cancel/ — staff-only
+    (promotions.manage). Stops a promotion early; the model reserved
+    `cancelled` for exactly this.
+
+    Refunds are out of scope: cancelling stops the ranking boost, it does not
+    reverse the amount_paid. There is no refund path here to pretend otherwise.
+    """
+
+    def get_permissions(self):
+        return [HasRolePermission("promotions.manage")]
+
+    def post(self, request, pk):
+        promotion = generics.get_object_or_404(Promotion, pk=pk)
+        if promotion.status != Promotion.ACTIVE:
+            return Response(
+                {"detail": "Only an active promotion can be cancelled."}, status=400
+            )
+        if promotion.ends_at < timezone.now():
+            return Response(
+                {"detail": "This promotion has already finished."}, status=400
+            )
+        promotion.status = Promotion.CANCELLED
+        promotion.save(update_fields=["status"])
+        return Response(PromotionAdminSerializer(promotion).data)

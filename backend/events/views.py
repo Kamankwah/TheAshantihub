@@ -396,14 +396,38 @@ class EventPayView(APIView):
         return Response(EventOwnerSerializer(event, context={"request": request}).data)
 
 
+# The three UI tabs → stored statuses. Event.EXPIRED is deliberately absent:
+# an expired event is a lapsed listing, not a moderation outcome, so it belongs
+# on none of these tabs.
+EVENT_STATUS_MAP = {
+    "pending": Event.PENDING,
+    "approved": Event.APPROVED,
+    "rejected": Event.REJECTED,
+}
+
+
 class EventPendingQueueView(generics.ListAPIView):
-    """Clones ModerationPendingQueueView's shape for events."""
+    """GET /api/events/moderation/pending/?status=pending|approved|rejected —
+    clones ModerationPendingQueueView's shape for events. The path still says
+    "pending" for historical reasons; the tab comes from ?status=, defaulting
+    to pending, with an unknown value falling back to pending.
+    """
 
     serializer_class = EventModerationSerializer
-    queryset = Event.objects.filter(status=Event.PENDING).order_by("created_at")
 
     def get_permissions(self):
         return [HasRolePermission("event.approve")]
+
+    def get_queryset(self):
+        tab = self.request.query_params.get("status", "pending")
+        event_status = EVENT_STATUS_MAP.get(tab, Event.PENDING)
+        queryset = Event.objects.filter(status=event_status)
+        if event_status == Event.PENDING:
+            # A work queue — oldest first.
+            return queryset.order_by("created_at")
+        # History — most recently actioned first. Events moderated before this
+        # queue existed have no reviewed_at, hence the created_at fallback.
+        return queryset.order_by("-reviewed_at", "-created_at")
 
 
 class EventModerationDetailView(generics.RetrieveAPIView):
@@ -439,7 +463,11 @@ class EventApproveView(APIView):
         event.status = Event.APPROVED
         event.rejection_reason = None
         event.approved_by = request.user
-        update_fields = ["status", "rejection_reason", "approved_by"]
+        event.reviewed_by = request.user
+        event.reviewed_at = timezone.now()
+        update_fields = [
+            "status", "rejection_reason", "approved_by", "reviewed_by", "reviewed_at",
+        ]
 
         if event.paid_at is not None and event.expires_at is None:
             event.expires_at = event.paid_at + timedelta(days=event.visibility_days)
@@ -465,11 +493,45 @@ class EventRejectView(APIView):
         event = generics.get_object_or_404(Event, pk=pk)
         event.status = Event.REJECTED
         event.rejection_reason = reason
-        event.save(update_fields=["status", "rejection_reason"])
+        event.reviewed_by = request.user
+        event.reviewed_at = timezone.now()
+        event.save(
+            update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"]
+        )
         _notify_event_organizer(
             event, "event_rejected", "Event not approved",
             body=f"“{event.name}” was rejected: {reason}",
             link="/events", icon="⚠️",
+        )
+        return Response({"id": event.id, "status": event.status})
+
+
+class EventReReviewView(APIView):
+    """POST /api/events/moderation/{id}/re-review/ — sends a rejected event
+    back to the pending queue, clearing the rejection.
+    """
+
+    def get_permissions(self):
+        return [HasRolePermission("event.approve")]
+
+    def post(self, request, pk):
+        event = generics.get_object_or_404(Event, pk=pk)
+        if event.status != Event.REJECTED:
+            return Response(
+                {"detail": "Only a rejected event can be sent back for re-review."},
+                status=400,
+            )
+        event.status = Event.PENDING
+        event.rejection_reason = None
+        event.reviewed_by = None
+        event.reviewed_at = None
+        event.save(
+            update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"]
+        )
+        notify_staff_role(
+            "event.approve", "event_needs_approval", "Event re-opened for review",
+            body=f"“{event.name}” was sent back and needs a fresh decision.",
+            link="events-moderation", icon="🎉",
         )
         return Response({"id": event.id, "status": event.status})
 

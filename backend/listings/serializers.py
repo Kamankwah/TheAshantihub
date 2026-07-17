@@ -227,13 +227,20 @@ class ModerationListingSerializer(serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
     zone = ZoneSerializer(read_only=True)
     photos = ListingPhotoSerializer(many=True, read_only=True)
+    # business_owner_name (staff moderation-queue restructuring, item 2) lets
+    # the panel group/identify listings by their owning business without a
+    # second lookup. reviewed_by_name/reviewed_at (approver attribution) back
+    # the Approved/Rejected tabs' "who actioned this" line.
+    business_owner_name = serializers.CharField(source="business_owner.full_name", read_only=True)
+    reviewed_by_name = serializers.CharField(source="reviewed_by.full_name", read_only=True, default=None)
 
     class Meta:
         model = Listing
         fields = [
-            "id", "business_owner", "name", "description", "category", "zone", "price_amount",
-            "price_unit", "tag", "contact_phone", "lat", "lng", "main_photo", "photos",
-            "status", "rejection_reason", "created_at",
+            "id", "business_owner", "business_owner_name", "name", "description", "category",
+            "zone", "price_amount", "price_unit", "tag", "contact_phone", "lat", "lng",
+            "main_photo", "photos", "status", "rejection_reason", "created_at",
+            "reviewed_by_name", "reviewed_at",
         ]
 
 
@@ -243,13 +250,16 @@ class HeroMediaModerationSerializer(serializers.ModelSerializer):
     """
 
     business_owner_name = serializers.CharField(source="business_owner.full_name", read_only=True)
+    # Approver attribution (staff moderation-queue restructuring) — backs the
+    # Approved/Rejected tabs' "who actioned this" line.
+    reviewed_by_name = serializers.CharField(source="reviewed_by.full_name", read_only=True, default=None)
 
     class Meta:
         model = HeroMediaSubmission
         fields = [
             "id", "business_owner", "business_owner_name", "media", "media_type", "caption",
             "status", "rejection_reason", "submitted_at", "approved_at", "expires_at",
-            "extended_days",
+            "extended_days", "reviewed_by_name", "reviewed_at",
         ]
 
 
@@ -284,6 +294,29 @@ class PromotionSerializer(serializers.ModelSerializer):
         model = Promotion
         fields = [
             "id", "listing", "kind", "starts_at", "ends_at", "keywords", "amount_paid", "status",
+        ]
+        read_only_fields = fields
+
+
+class PromotionAdminSerializer(serializers.ModelSerializer):
+    """Staff-facing shape for the promotions management queue
+    (promotions.manage). Adds the listing/business names a raw listing id
+    can't convey in a queue, and `is_currently_active` so the client doesn't
+    re-derive the live/expired distinction from timestamps itself.
+    """
+
+    listing_name = serializers.CharField(source="listing.name", read_only=True)
+    business_owner_name = serializers.CharField(
+        source="listing.business_owner.full_name", read_only=True
+    )
+    is_currently_active = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = Promotion
+        fields = [
+            "id", "listing", "listing_name", "business_owner_name", "kind",
+            "starts_at", "ends_at", "keywords", "amount_paid", "status",
+            "is_currently_active", "created_at",
         ]
         read_only_fields = fields
 

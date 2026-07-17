@@ -50,14 +50,19 @@ class EventRatingAnnotationTests(TestCase):
         )
 
         # 3 reviews with known ratings: 5, 4, 3 -> average exactly 4.0.
+        # status=PUBLISHED is explicit: reviews are pre-moderated and default
+        # to PENDING, which the rating annotations deliberately exclude.
         Review.objects.create(
-            target_type=Review.EVENT, event=self.business_event, author=self.reviewer_a, rating=5, verified=True,
+            target_type=Review.EVENT, event=self.business_event, author=self.reviewer_a,
+            rating=5, verified=True, status=Review.PUBLISHED,
         )
         Review.objects.create(
-            target_type=Review.EVENT, event=self.business_event, author=self.reviewer_b, rating=4, verified=True,
+            target_type=Review.EVENT, event=self.business_event, author=self.reviewer_b,
+            rating=4, verified=True, status=Review.PUBLISHED,
         )
         Review.objects.create(
-            target_type=Review.EVENT, event=self.business_event, author=self.reviewer_c, rating=3, verified=True,
+            target_type=Review.EVENT, event=self.business_event, author=self.reviewer_c,
+            rating=3, verified=True, status=Review.PUBLISHED,
         )
 
     def _find(self, results, event_id):

@@ -191,11 +191,14 @@ export const handlers = [
   http.get('http://localhost:8000/api/reviews/moderation/', () => {
     return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
   }),
+  http.post('http://localhost:8000/api/reviews/moderation/:id/approve/', () => {
+    return HttpResponse.json({ id: 1, status: 'published' })
+  }),
   http.post('http://localhost:8000/api/reviews/moderation/:id/hide/', () => {
     return HttpResponse.json({ id: 1, status: 'hidden' })
   }),
-  http.post('http://localhost:8000/api/reviews/moderation/:id/unhide/', () => {
-    return HttpResponse.json({ id: 1, status: 'published' })
+  http.post('http://localhost:8000/api/reviews/moderation/:id/re-review/', () => {
+    return HttpResponse.json({ id: 1, status: 'pending' })
   }),
   http.get('http://localhost:8000/api/qa/questions/listing/:id/', () => {
     return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
@@ -297,6 +300,17 @@ export const handlers = [
   }),
   http.post('http://localhost:8000/api/disputes/:id/resolve/', () => {
     return HttpResponse.json({ id: 1, status: 'resolved' })
+  }),
+  http.post('http://localhost:8000/api/disputes/:id/re-review/', () => {
+    return HttpResponse.json({ id: 1, status: 'open' })
+  }),
+  // Promotions management (staff) — unpaginated, unlike the disputes queue
+  // above.
+  http.get('http://localhost:8000/api/listings/promotions/', () => {
+    return HttpResponse.json([])
+  }),
+  http.post('http://localhost:8000/api/listings/promotions/:id/cancel/', () => {
+    return HttpResponse.json({ id: 1, status: 'cancelled' })
   }),
   // Transactions report (extended billing app) — default handler,
   // overridden per-test via server.use() where a specific report is needed.

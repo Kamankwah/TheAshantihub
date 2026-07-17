@@ -32,6 +32,11 @@ urlpatterns = [
         "moderation/<int:pk>/approve/", views.EventApproveView.as_view(), name="event-moderation-approve"
     ),
     path(
+        "moderation/<int:pk>/re-review/",
+        views.EventReReviewView.as_view(),
+        name="event-moderation-re-review",
+    ),
+    path(
         "moderation/<int:pk>/reject/", views.EventRejectView.as_view(), name="event-moderation-reject"
     ),
     path("tickets/mine/", views.MyTicketsListView.as_view(), name="my-tickets"),

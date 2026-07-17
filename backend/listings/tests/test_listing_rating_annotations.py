@@ -40,14 +40,19 @@ class ListingRatingAnnotationTests(TestCase):
         )
 
         # 3 reviews with known ratings: 5, 4, 3 -> average exactly 4.0.
+        # status=PUBLISHED is explicit: reviews are pre-moderated and default
+        # to PENDING, which the rating annotations deliberately exclude.
         Review.objects.create(
-            target_type=Review.LISTING, listing=self.listing, author=self.reviewer_a, rating=5, verified=True,
+            target_type=Review.LISTING, listing=self.listing, author=self.reviewer_a,
+            rating=5, verified=True, status=Review.PUBLISHED,
         )
         Review.objects.create(
-            target_type=Review.LISTING, listing=self.listing, author=self.reviewer_b, rating=4, verified=True,
+            target_type=Review.LISTING, listing=self.listing, author=self.reviewer_b,
+            rating=4, verified=True, status=Review.PUBLISHED,
         )
         Review.objects.create(
-            target_type=Review.LISTING, listing=self.listing, author=self.reviewer_c, rating=3, verified=True,
+            target_type=Review.LISTING, listing=self.listing, author=self.reviewer_c,
+            rating=3, verified=True, status=Review.PUBLISHED,
         )
 
     def _find(self, results, listing_id):
@@ -119,7 +124,8 @@ class ListingReviewPaginationEnvelopeTests(TestCase):
             price_amount="100.00", status=Listing.PUBLISHED,
         )
         Review.objects.create(
-            target_type=Review.LISTING, listing=self.listing, author=self.reviewer, rating=4, verified=True,
+            target_type=Review.LISTING, listing=self.listing, author=self.reviewer,
+            rating=4, verified=True, status=Review.PUBLISHED,
         )
 
     def test_envelope_shape(self):

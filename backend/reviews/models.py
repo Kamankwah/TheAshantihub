@@ -24,16 +24,36 @@ class Review(models.Model):
     a `Customer` (not a `BusinessOwner`) submitted/organized the event being
     reviewed (mirrors `Event.submitted_by_customer`'s existence).
 
-    **Moderation: publish immediately, staff moderates reactively** — unlike
-    `Listing`/`Event`'s pre-moderation `pending`/`approved`/`rejected` status
-    machinery, a `Review` is already gated behind a real verified purchase/
-    attendance record at creation time (the strongest anti-spam signal this
-    app has), so a "pending approval" state would look broken and undercut
-    the point of showing reviews at all. `status` here is a much simpler
-    `published`/`hidden` toggle, flipped reactively by staff holding the
-    `reviews.moderate` permission (see
-    accounts/migrations/0011_seed_reviews_moderate_permission.py) via a
-    Phase 2 hide/unhide endpoint — not an approval queue.
+    **Moderation: pre-moderated, then reactively moderated.** A review is
+    gated twice. First at creation, by a real verified purchase/attendance
+    record (the strongest anti-spam signal this app has) — see
+    `ReviewCreateView`. Second by staff: a new review lands in `pending` and
+    is invisible to the public until someone holding `reviews.moderate`
+    approves it.
+
+    This second gate was added deliberately (staff moderation-queue
+    restructuring, punch-list item 5) and reverses this model's original
+    "publish immediately" design — the queue is now the same
+    Pending/Approved/Rejected shape every other moderated surface uses.
+    The trade-off is real and worth stating: a review no longer appears the
+    moment it is written, so an unworked queue means reviews silently stop
+    showing up.
+
+    The three states map onto the fields that were already here rather than
+    a fourth status: `pending` is new, `published` is the approved state, and
+    `hidden` doubles as the rejected state (carrying `hidden_reason` and
+    `hidden_by`, which is why those names stayed). `reviewed_by`/`reviewed_at`
+    record the approval, matching the canonical pair on
+    `Listing`/`HeroMediaSubmission`/`BusinessOwner`.
+
+    Nothing downstream needed changing to keep `pending` private: the public
+    list view and the `avg_rating`/`review_count` annotations already filter
+    on `status="published"`, so a pending review is invisible and does not
+    move any rating average.
+
+    Sending a rejected review back to `pending` is restricted to
+    `reviews.re_review` (super_admin only) — a tighter gate than the
+    `reviews.moderate` needed to approve or reject in the first place.
     """
 
     LISTING = "listing"
@@ -47,9 +67,14 @@ class Review(models.Model):
         (ORGANIZER, "Organizer"),
     ]
 
+    # `hidden` is also the rejected state — see the class docstring. Kept
+    # under its original name so existing rows, `hidden_reason`/`hidden_by`,
+    # and the hide/unhide endpoints all keep meaning the same thing.
+    PENDING = "pending"
     PUBLISHED = "published"
     HIDDEN = "hidden"
     STATUS_CHOICES = [
+        (PENDING, "Pending"),
         (PUBLISHED, "Published"),
         (HIDDEN, "Hidden"),
     ]
@@ -92,12 +117,24 @@ class Review(models.Model):
     # time so it can drive a "Verified Purchase/Attendee" badge on render.
     verified = models.BooleanField(default=False)
 
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PUBLISHED)
+    # Defaults to PENDING so a newly written review waits for staff approval.
+    # Changing the default does not touch existing rows, so every review that
+    # was already published stays published.
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
     hidden_reason = models.TextField(null=True, blank=True)
     hidden_by = models.ForeignKey(
         StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="hidden_reviews",
     )
+
+    # Who approved this review, and when — the canonical pair used by every
+    # other moderated queue. Distinct from hidden_by/hidden_reason above,
+    # which record the reject/hide side.
+    reviewed_by = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="reviewed_reviews",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -117,6 +117,18 @@ class Event(models.Model):
         StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="approved_events",
     )
+    # Who last made a moderation decision (approve *or* reject) and when —
+    # the canonical pair shared with Listing/HeroMediaSubmission/BusinessOwner,
+    # driving the Approved/Rejected tabs' attribution line.
+    #
+    # Kept alongside `approved_by` rather than replacing it: approved_by means
+    # "who approved this event", which survives a later rejection, whereas
+    # reviewed_by tracks the most recent decision either way.
+    reviewed_by = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="reviewed_events",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
 
     access_level = models.CharField(max_length=10, choices=ACCESS_LEVEL_CHOICES, default=PUBLIC)
     # Always generated on creation regardless of access_level (see
