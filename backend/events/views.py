@@ -34,6 +34,7 @@ from .permissions import (
 from .serializers import (
     EventAttendeeSerializer,
     EventDetailSerializer,
+    EventEditSerializer,
     EventMediaSerializer,
     EventModerationSerializer,
     EventOwnerSerializer,
@@ -329,6 +330,90 @@ class EventPricingTierRejectView(APIView):
         tier.proposed_at = None
         tier.save(update_fields=["pending_price", "proposed_by", "proposed_at"])
         return Response(EventPricingTierManageSerializer(tier).data)
+
+
+class EventOwnerUpdateView(generics.UpdateAPIView):
+    """PATCH /api/events/mine/{id}/ — the organizer edits their event's content
+    (business item 3 / Wave E). Editing sends it back to `pending` for
+    re-approval but KEEPS paid_at/expires_at, so no re-payment is needed — a
+    re-approved edit simply goes live again on the same paid window. Images are
+    edited separately via POST /api/events/{id}/media/ (already IsEventOwner).
+    visibility_days isn't editable here (that's renewal's job).
+    """
+
+    queryset = Event.objects.all()
+    serializer_class = EventEditSerializer
+    permission_classes = [IsAuthenticated, IsEventOwner]
+    http_method_names = ["patch"]
+
+    def perform_update(self, serializer):
+        event = serializer.save()
+        # Any edit re-enters moderation. A rejected event being fixed, or a
+        # live one being changed, both go back to pending.
+        if event.status != Event.PENDING:
+            event.status = Event.PENDING
+            event.rejection_reason = None
+            event.reviewed_by = None
+            event.reviewed_at = None
+            event.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
+            notify_staff_role(
+                "event.approve", "event_needs_approval", "Edited event needs re-approval",
+                body=f"“{event.name}” was edited and needs re-approval.",
+                link="events-moderation", icon="🎉",
+            )
+
+
+class EventRenewView(APIView):
+    """POST /api/events/{id}/renew/ {additional_days} — the organizer extends
+    their event's visibility window (business item 3 / Wave E). Priced off the
+    EventPricingTier for `additional_days` (must match a tier). Works on a live
+    OR expired event that has already been paid for; the payment's finalizer
+    extends expires_at (from now if the window had lapsed) and un-expires it.
+    """
+
+    permission_classes = [IsAuthenticated, IsEventOwner]
+
+    def post(self, request, pk):
+        event = generics.get_object_or_404(Event, pk=pk)
+        self.check_object_permissions(request, event)
+
+        if event.paid_at is None or event.status not in (Event.APPROVED, Event.EXPIRED):
+            return Response(
+                {"detail": "Only a paid, live or expired event can be renewed."}, status=400
+            )
+        try:
+            additional_days = int(request.data.get("additional_days"))
+        except (TypeError, ValueError):
+            return Response({"additional_days": "A whole number of days is required."}, status=400)
+
+        tier = EventPricingTier.objects.filter(duration_days=additional_days).first()
+        if tier is None:
+            return Response(
+                {"additional_days": "Must match one of the configured pricing tiers."}, status=400
+            )
+        amount = tier.live_price
+
+        with db_transaction.atomic():
+            payment_kwargs = {
+                "kind": CheckoutSession.EVENT_RENEW,
+                "amount": amount,
+                "purpose": f"Event renewal for '{event.name}' (+{additional_days} days)",
+                "metadata": {"event_id": event.id, "renew_days": additional_days},
+            }
+            if event.submitted_by_business_id:
+                payment_kwargs["business_owner"] = event.submitted_by_business
+            else:
+                payment_kwargs["customer"] = event.submitted_by_customer
+            result = process_payment(**payment_kwargs)
+
+            if result["mode"] == "redirect":
+                return Response(
+                    {"mode": "redirect", "checkout_url": result["checkout_url"], "reference": result["reference"]},
+                    status=200,
+                )
+            event.refresh_from_db()
+
+        return Response(EventOwnerSerializer(event, context={"request": request}).data)
 
 
 class EventPayView(APIView):

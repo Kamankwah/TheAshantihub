@@ -4,6 +4,7 @@ from . import views
 
 urlpatterns = [
     path("mine/", views.EventMineListView.as_view(), name="event-mine-list"),
+    path("mine/<int:pk>/", views.EventOwnerUpdateView.as_view(), name="event-owner-update"),
     path("submit/", views.EventSubmitView.as_view(), name="event-submit"),
     path("pricing-tiers/", views.EventPricingTierListView.as_view(), name="event-pricing-tier-list"),
     path(
@@ -60,6 +61,7 @@ urlpatterns = [
     path("<int:pk>/unlock/", views.EventUnlockView.as_view(), name="event-unlock"),
     path("<int:pk>/media/", views.EventMediaCreateView.as_view(), name="event-media-create"),
     path("<int:pk>/pay/", views.EventPayView.as_view(), name="event-pay"),
+    path("<int:pk>/renew/", views.EventRenewView.as_view(), name="event-renew"),
     path("<int:pk>/rsvp/", views.EventRSVPView.as_view(), name="event-rsvp"),
     path("<int:pk>/rsvps/", views.EventAttendeesListView.as_view(), name="event-rsvps"),
     path("<int:pk>/ticket-types/", views.EventTicketTypeListCreateView.as_view(), name="event-ticket-types"),

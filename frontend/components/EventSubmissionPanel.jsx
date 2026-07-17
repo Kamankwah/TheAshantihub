@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { C, optionStyle } from "../theme.js";
-import { apiPost, apiPostForm } from "../apiClient.js";
+import { apiPost, apiPatch, apiPostForm } from "../apiClient.js";
 import { useMyEvents } from "../hooks/useMyEvents.js";
 import { useEventAttendees } from "../hooks/useEventAttendees.js";
 import { useEventPricingTiers } from "../hooks/useEventPricingTiers.js";
@@ -58,6 +58,16 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
   const [payTargetId, setPayTargetId] = useState(null);
   const [payAmount, setPayAmount] = useState(0);
   const [payError, setPayError] = useState(null);
+
+  // Edit + renew (business item 3 / Wave E).
+  const [editId, setEditId] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [editFile, setEditFile] = useState(null);
+  const [editError, setEditError] = useState(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [renewId, setRenewId] = useState(null);       // event being renewed
+  const [renewDays, setRenewDays] = useState(null);    // chosen tier duration
+  const [renewAmount, setRenewAmount] = useState(0);
 
   // Attendees view (docs/BUSINESS_EVENTS_ROADMAP.md Phase 7) — at most one
   // event's attendee list is expanded at a time; useEventAttendees is only
@@ -169,6 +179,66 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
     }
   };
 
+  const openEdit = (ev) => {
+    setEditError(null);
+    setEditFile(null);
+    setEditForm({ name: ev.name, description: ev.description, address: ev.address, event_date: (ev.event_date || "").slice(0, 16) });
+    setEditId(editId === ev.id ? null : ev.id);
+  };
+
+  const saveEdit = async (ev) => {
+    setEditError(null);
+    setSavingEdit(true);
+    try {
+      await apiPatch(`/api/events/mine/${ev.id}/`, {
+        name: editForm.name?.trim(),
+        description: editForm.description?.trim(),
+        address: editForm.address?.trim(),
+        ...(editForm.event_date ? { event_date: editForm.event_date } : {}),
+      });
+      if (editFile) {
+        const fd = new FormData();
+        fd.append("media", editFile);
+        await apiPostForm(`/api/events/${ev.id}/media/`, fd);
+      }
+      setEditId(null);
+      refetch();
+    } catch (err) {
+      setEditError("Could not save your changes. Please try again.");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const openRenew = (ev, days) => {
+    setPayError(null);
+    const tier = (pricingTiers || []).find((t) => t.duration_days === days);
+    if (!tier) { setPayError("Pricing for that duration isn't available."); return; }
+    setRenewDays(days);
+    setRenewAmount(Number(tier.live_price));
+    setRenewId(ev.id);
+  };
+
+  const confirmRenew = async () => {
+    if (!renewId) return;
+    setPayError(null);
+    try {
+      const response = await apiPost(`/api/events/${renewId}/renew/`, { additional_days: renewDays });
+      if (response?.mode === "redirect") { window.location.href = response.checkout_url; return; }
+      refetch();
+    } catch (err) {
+      setPayError("Payment was confirmed but we couldn't extend your event. Please contact support.");
+    } finally {
+      setRenewId(null);
+    }
+  };
+
+  // Days until an event's paid visibility window ends; negative = expired.
+  const daysLeft = (ev) => {
+    if (!ev.expires_at) return null;
+    return Math.ceil((new Date(ev.expires_at).getTime() - Date.now()) / 86400000);
+  };
+
   if (!user) {
     return (
       <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 16, padding: "16px 18px", color: C.lightGold, fontSize: "0.8rem", textAlign: "center" }}>
@@ -186,6 +256,15 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
           businessName={user?.fullName || ""}
           onSuccess={confirmPay}
           onClose={() => setPayTargetId(null)}
+        />
+      )}
+      {renewId && PaymentComponent && (
+        <PaymentComponent
+          amount={renewAmount}
+          purpose={`Event renewal (+${renewDays} days)`}
+          businessName={user?.fullName || ""}
+          onSuccess={confirmRenew}
+          onClose={() => setRenewId(null)}
         />
       )}
 
@@ -331,6 +410,16 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
             {ev.status === "rejected" && ev.rejection_reason && (
               <div style={{ color: "#ffb4b4", fontSize: "0.74rem", marginTop: 6 }}>Reason: {ev.rejection_reason}</div>
             )}
+            {/* Expiry countdown (Wave E) — for a paid event. */}
+            {ev.paid_at && ev.expires_at && (() => {
+              const d = daysLeft(ev);
+              const expired = d != null && d < 0;
+              return (
+                <div style={{ color: expired ? "#ffb4b4" : d <= 7 ? C.gold : C.lightGold, fontSize: "0.72rem", marginTop: 6 }}>
+                  {expired ? `⚠️ Expired ${-d} day${-d === 1 ? "" : "s"} ago` : `⏳ Live · ${d} day${d === 1 ? "" : "s"} left`}
+                </div>
+              );
+            })()}
             {ev.access_level === "private" && ev.access_code && (
               <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ color: C.lightGold, fontSize: "0.74rem" }}>Access code: <strong>{ev.access_code}</strong></span>
@@ -351,6 +440,24 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
                   💳 Pay to publish
                 </button>
               )}
+              {/* Edit (Wave E) — any non-cancelled event; sends it back for
+                  re-approval, no re-payment. */}
+              <button
+                onClick={() => openEdit(ev)}
+                style={{ background: "rgba(255,255,255,0.08)", color: "white", border: "1px solid rgba(255,255,255,0.22)", borderRadius: 20, padding: "7px 16px", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}
+              >
+                {editId === ev.id ? "▲ Close edit" : "✏️ Edit"}
+              </button>
+              {/* Renew — a paid, live-or-expired event. */}
+              {ev.paid_at && (ev.status === "approved" || ev.status === "expired") && (pricingTiers || []).map((t) => (
+                <button
+                  key={t.duration_days}
+                  onClick={() => openRenew(ev, t.duration_days)}
+                  style={{ background: "rgba(212,160,23,0.16)", color: C.gold, border: `1px solid ${C.gold}55`, borderRadius: 20, padding: "7px 14px", fontWeight: 700, fontSize: "0.72rem", cursor: "pointer", fontFamily: "inherit" }}
+                >
+                  🔄 +{t.duration_days}d · GHS {t.live_price}
+                </button>
+              ))}
               <button
                 onClick={() => setExpandedAttendeesId((cur) => (cur === ev.id ? null : ev.id))}
                 style={{ background: "rgba(255,255,255,0.08)", color: "white", border: "1px solid rgba(255,255,255,0.22)", borderRadius: 20, padding: "7px 16px", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}
@@ -370,6 +477,20 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
                 {expandedCheckinId === ev.id ? "▲ Hide Check-in" : "✅ Check-in"}
               </button>
             </div>
+            {editId === ev.id && (
+              <div style={{ marginTop: 10, padding: "12px 14px", background: "rgba(255,255,255,0.05)", borderRadius: 10, border: "1px solid rgba(255,255,255,0.14)" }}>
+                <div style={{ color: C.gold, fontSize: "0.72rem", fontWeight: 800, marginBottom: 8 }}>Edit event — this will need re-approval (no re-payment)</div>
+                {["name", "address"].map((f) => (
+                  <input key={f} value={editForm[f] || ""} onChange={(e) => setEditForm((s) => ({ ...s, [f]: e.target.value }))} placeholder={f} style={{ ...inputStyle, marginBottom: 8 }} />
+                ))}
+                <textarea value={editForm.description || ""} onChange={(e) => setEditForm((s) => ({ ...s, description: e.target.value }))} placeholder="Description" rows={2} style={{ ...inputStyle, marginBottom: 8, resize: "vertical" }} />
+                <input type="datetime-local" value={editForm.event_date || ""} onChange={(e) => setEditForm((s) => ({ ...s, event_date: e.target.value }))} style={{ ...inputStyle, marginBottom: 8 }} />
+                <div style={{ color: C.lightGold, fontSize: "0.68rem", marginBottom: 4 }}>Add a photo (optional)</div>
+                <input type="file" accept="image/*,video/*" onChange={(e) => setEditFile(e.target.files?.[0] || null)} style={{ color: "white", fontSize: "0.72rem", marginBottom: 8 }} />
+                {editError && <div style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{editError}</div>}
+                <button onClick={() => saveEdit(ev)} disabled={savingEdit} style={{ background: C.gold, color: C.darkBrown, border: "none", borderRadius: 20, padding: "7px 16px", fontWeight: 800, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit", opacity: savingEdit ? 0.6 : 1 }}>{savingEdit ? "Saving…" : "Save & resubmit"}</button>
+              </div>
+            )}
             {expandedAttendeesId === ev.id && <EventAttendeesPanel eventId={ev.id} />}
             {expandedTicketsId === ev.id && <EventTicketTypesPanel eventId={ev.id} />}
             {expandedCheckinId === ev.id && <EventCheckinPanel eventId={ev.id} />}

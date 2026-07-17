@@ -293,3 +293,53 @@ describe('EventSubmissionPanel — Attendees view (docs/BUSINESS_EVENTS_ROADMAP.
     expect(await screen.findByText(/Could not load attendees\./)).toBeInTheDocument()
   })
 })
+
+describe('EventSubmissionPanel edit + renew (business item 3)', () => {
+  const liveEvent = {
+    id: 9, name: 'Akwasidae', description: 'Durbar.', address: 'Palace', status: 'approved',
+    access_level: 'public', paid_at: '2026-07-01T00:00:00Z', expires_at: '2099-01-01T00:00:00Z',
+    visibility_days: 30, event_date: '2026-08-01T18:00',
+  }
+
+  it('shows an expiry countdown for a paid event', async () => {
+    server.use(http.get('http://localhost:8000/api/events/mine/', () => HttpResponse.json([liveEvent])))
+    renderPanel()
+    await screen.findByText('Akwasidae')
+    expect(screen.getByText(/Live ·/)).toBeInTheDocument()
+  })
+
+  it('edits an event and sends it back for re-approval', async () => {
+    let patchBody = null
+    server.use(
+      http.get('http://localhost:8000/api/events/mine/', () => HttpResponse.json([liveEvent])),
+      http.patch('http://localhost:8000/api/events/mine/9/', async ({ request }) => {
+        patchBody = await request.json()
+        return HttpResponse.json({ id: 9, status: 'pending' })
+      }),
+    )
+    renderPanel()
+    await screen.findByText('Akwasidae')
+    fireEvent.click(screen.getByText('✏️ Edit'))
+    const nameInput = await screen.findByDisplayValue('Akwasidae')
+    fireEvent.change(nameInput, { target: { value: 'Akwasidae 2026' } })
+    fireEvent.click(screen.getByText('Save & resubmit'))
+    await waitFor(() => expect(patchBody?.name).toBe('Akwasidae 2026'))
+  })
+
+  it('renews a paid event through the payment flow', async () => {
+    let renewBody = null
+    server.use(
+      http.get('http://localhost:8000/api/events/mine/', () => HttpResponse.json([liveEvent])),
+      http.post('http://localhost:8000/api/events/9/renew/', async ({ request }) => {
+        renewBody = await request.json()
+        return HttpResponse.json({ id: 9, status: 'approved' })
+      }),
+    )
+    renderPanel()
+    await screen.findByText('Akwasidae')
+    // Renew buttons list each tier; click the +30d one.
+    fireEvent.click(await screen.findByText(/🔄 \+30d/))
+    fireEvent.click(await screen.findByText('Confirm Payment'))
+    await waitFor(() => expect(renewBody).toEqual({ additional_days: 30 }))
+  })
+})
