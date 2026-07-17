@@ -103,6 +103,13 @@ export const handlers = [
   http.get('http://localhost:8000/api/events/mine/', () => {
     return HttpResponse.json([])
   }),
+  // Event edit + renew (business item 3) — default handlers.
+  http.patch('http://localhost:8000/api/events/mine/:id/', async ({ params, request }) => {
+    return HttpResponse.json({ id: Number(params.id), status: 'pending', ...(await request.json()) })
+  }),
+  http.post('http://localhost:8000/api/events/:id/renew/', () => {
+    return HttpResponse.json({ id: 1, status: 'approved' })
+  }),
   // The signed-in customer's own purchased tickets (useMyTickets) — default
   // empty-array handler, overridden per-test where specific ticket rows are
   // needed (e.g. UserPanel.test.jsx's Account Overview/My Tickets tabs).
