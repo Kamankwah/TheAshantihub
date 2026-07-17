@@ -7,6 +7,7 @@ import AnalyticsPanel from "./panels/AnalyticsPanel.jsx";
 import ListingsPanel from "./panels/ListingsPanel.jsx";
 import ProductsPanel from "./panels/ProductsPanel.jsx";
 import ServicesPanel from "./panels/ServicesPanel.jsx";
+import BookingsPanel from "./panels/BookingsPanel.jsx";
 import DeliveriesPanel from "./panels/DeliveriesPanel.jsx";
 import PaymentsPanel from "./panels/PaymentsPanel.jsx";
 import CreditPanel from "./panels/CreditPanel.jsx";
@@ -41,12 +42,21 @@ const TABS = [
 // "Products" (stock/expiry management), a service business gets "Services"
 // (requests/bookings). Legacy null-kind accounts get neither.
 function buildTabs(businessKind) {
-  const managementTab =
-    businessKind === "product" ? { id: "products", icon: "📦", label: "Products" }
-    : businessKind === "service" ? { id: "services", icon: "🛠️", label: "Services" }
-    : null;
-  if (!managementTab) return TABS;
-  return [...TABS.slice(0, 2), managementTab, ...TABS.slice(2)];
+  // A product business gets "Products"; a service business gets "Services"
+  // (requests) AND "Bookings" (accommodation) — a service business may do
+  // either or both, and the Bookings tab simply stays empty for one that has
+  // no accommodation listings. Legacy null-kind accounts get none.
+  let managementTabs = [];
+  if (businessKind === "product") {
+    managementTabs = [{ id: "products", icon: "📦", label: "Products" }];
+  } else if (businessKind === "service") {
+    managementTabs = [
+      { id: "services", icon: "🛠️", label: "Services" },
+      { id: "bookings", icon: "🏨", label: "Bookings" },
+    ];
+  }
+  if (managementTabs.length === 0) return TABS;
+  return [...TABS.slice(0, 2), ...managementTabs, ...TABS.slice(2)];
 }
 
 export default function BusinessCommandCenter({ initialTab = "analytics", onExit, user, auth, PaymentComponent }) {
@@ -218,6 +228,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
                 {tab === "listings" && <ListingsPanel user={user} PaymentComponent={PaymentComponent} showToast={showToast} businessKind={profile?.business_kind} />}
                 {tab === "products" && <ProductsPanel />}
                 {tab === "services" && <ServicesPanel />}
+                {tab === "bookings" && <BookingsPanel />}
                 {tab === "events" && <EventsPanel user={user} PaymentComponent={PaymentComponent} />}
                 {tab === "deliveries" && <DeliveriesPanel />}
                 {tab === "payments" && <PaymentsPanel user={user} PaymentComponent={PaymentComponent} />}

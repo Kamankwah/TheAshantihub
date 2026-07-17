@@ -19,6 +19,7 @@ import { useListingReviews } from "./hooks/useListingReviews.js";
 import { useReviewEligibility } from "./hooks/useReviewEligibility.js";
 import { useOrders } from "./hooks/useOrders.js";
 import { useMyServiceRequests } from "./hooks/useMyServiceRequests.js";
+import { useMyBookings } from "./hooks/useMyBookings.js";
 import { useMyConversations, getGuestToken } from "./hooks/useMyConversations.js";
 import { useNotifications } from "./hooks/useNotifications.js";
 import { useMyTickets } from "./hooks/useMyTickets.js";
@@ -1580,6 +1581,7 @@ const ACCOUNT_NAV_ITEMS = [
   { id: "overview", icon: "📊", label: "Overview", group: "main" },
   { id: "orders", icon: "📦", label: "Orders & Delivery", group: "main" },
   { id: "requests", icon: "🛠️", label: "My Requests", group: "main" },
+  { id: "bookings", icon: "🏨", label: "My Bookings", group: "main" },
   { id: "saved", icon: "❤️", label: "Saved Businesses", group: "main" },
   { id: "messages", icon: "💬", label: "Messages", group: "main" },
   { id: "events", icon: "🎉", label: "My Events", group: "main" },
@@ -1728,6 +1730,7 @@ export function UserPanel({ user, auth, favourites, toggleFav, onExit, lang, set
         {activeTab==="overview"&&<OverviewPanel favourites={favourites} user={user}/>}
         {activeTab==="orders"&&<OrdersDeliveryTab searchQuery={searchQuery}/>}
         {activeTab==="requests"&&<ServiceRequestsTab PaymentComponent={PaymentComponent}/>}
+        {activeTab==="bookings"&&<MyBookingsTab/>}
         {activeTab==="saved"&&<SavedBusinessesTab favourites={favourites} toggleFav={toggleFav}/>}
         {activeTab==="messages"&&<MessagingCenter user={user} onClose={()=>goTab("profile")} embedded/>}
         {activeTab==="events"&&<MyEventsTab user={user} categories={categories} zones={zones}/>}
@@ -1930,6 +1933,49 @@ function ServiceRequestsTab({ PaymentComponent }) {
     {payingFor && PaymentComponent && (
       <PaymentComponent amount={parseFloat(payingFor.agreed_price)||0} onSuccess={onPaid} onClose={()=>setPayingFor(null)} />
     )}
+  </div>;
+}
+
+// The customer's accommodation bookings (business item 2 / Wave H3). A future
+// booking (confirmed, not yet checked in) can be cancelled, freeing the dates.
+const BK_STATUS_META = {
+  pending: { label: "Pending payment", color: D.amber },
+  confirmed: { label: "Confirmed", color: D.blue },
+  checked_in: { label: "Checked in", color: D.green },
+  checked_out: { label: "Checked out", color: D.textFaint },
+  cancelled: { label: "Cancelled", color: D.red },
+};
+
+function MyBookingsTab() {
+  const { data, isLoading, isError, refetch } = useMyBookings();
+  const [actionError, setActionError] = useState(null);
+  const bookings = data || [];
+  if (isLoading) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>Loading…</div>;
+  if (isError) return <div style={{color:D.red,fontSize:"0.8rem"}}>Could not load your bookings.</div>;
+  if (bookings.length===0) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>No bookings yet.</div>;
+
+  const cancel = async (id) => {
+    setActionError(null);
+    try { await apiPost(`/api/bookings/${id}/cancel/`, {}); refetch(); }
+    catch { setActionError("Could not cancel this booking."); }
+  };
+
+  return <div style={{display:"flex",flexDirection:"column",gap:14}}>
+    {actionError && <div style={{color:D.red,fontSize:"0.78rem"}}>{actionError}</div>}
+    {bookings.map(b=>{
+      const meta = BK_STATUS_META[b.status]||{label:b.status,color:D.textDim};
+      const cancellable = b.status==="confirmed"||b.status==="pending";
+      return (
+        <div key={b.id} style={{...glassCard,padding:18}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+            <div style={{color:D.text,fontWeight:800,fontSize:"0.85rem"}}>{b.listing_name}</div>
+            <span style={{background:`${meta.color}22`,color:meta.color,borderRadius:20,padding:"2px 10px",fontSize:"0.65rem",fontWeight:700}}>{meta.label}</span>
+          </div>
+          <div style={{color:D.textDim,fontSize:"0.74rem",marginTop:6}}>{b.check_in} → {b.check_out} · {b.nights} night{b.nights===1?"":"s"} · {b.units} unit{b.units===1?"":"s"} · GHS {b.total_price}</div>
+          {cancellable && <button onClick={()=>cancel(b.id)} style={{marginTop:10,background:`${D.red}22`,color:D.red,border:"none",borderRadius:20,padding:"7px 14px",fontWeight:700,fontSize:"0.74rem",cursor:"pointer",fontFamily:"inherit"}}>Cancel booking</button>}
+        </div>
+      );
+    })}
   </div>;
 }
 

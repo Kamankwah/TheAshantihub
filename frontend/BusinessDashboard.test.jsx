@@ -768,3 +768,32 @@ describe('BusinessDashboard Services tab (business item 2)', () => {
     await waitFor(() => expect(respondBody).toEqual({ action: 'accept', price: '180' }))
   })
 })
+
+describe('BusinessDashboard Bookings tab (business item 2)', () => {
+  const serviceProfile = { ghana_card_number: 'GHA-1', gps_address: 'AK-1', business_contact_phone: '+233200000000', is_formal: false, business_kind: 'service' }
+
+  it('a service business gets a Bookings tab and can check a guest in', async () => {
+    let checkinCalled = false
+    server.use(
+      http.get('http://localhost:8000/api/listings/mine/', () => HttpResponse.json([])),
+      http.get('http://localhost:8000/api/accounts/business-owners/me/profile/', () => HttpResponse.json(serviceProfile)),
+      http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([])),
+      http.get('http://localhost:8000/api/billing/subscriptions/me/', () => HttpResponse.json({})),
+      http.get('http://localhost:8000/api/hero/mine/', () => HttpResponse.json({})),
+      http.get('http://localhost:8000/api/services/requests/incoming/', () => HttpResponse.json([])),
+      http.get('http://localhost:8000/api/bookings/incoming/', () => HttpResponse.json([
+        { id: 8, listing_name: 'Ashanti Lodge', customer_name: 'Ama Guest', check_in: '2026-08-01', check_out: '2026-08-03', nights: 2, units: 1, total_price: '400.00', status: 'confirmed' },
+      ])),
+      http.post('http://localhost:8000/api/bookings/8/check-in/', () => {
+        checkinCalled = true
+        return HttpResponse.json({ id: 8, status: 'checked_in' })
+      }),
+    )
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
+    fireEvent.click(await screen.findByRole('button', { name: /Bookings/ }))
+    await screen.findByText('Ashanti Lodge')
+    expect(screen.getByText(/2 nights/)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('🔑 Check in'))
+    await waitFor(() => expect(checkinCalled).toBe(true))
+  })
+})

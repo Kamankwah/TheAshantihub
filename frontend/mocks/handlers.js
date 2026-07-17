@@ -370,6 +370,13 @@ export const handlers = [
   http.post('http://localhost:8000/api/services/requests/:id/pay/', () => HttpResponse.json({ id: 1, status: 'in_progress' })),
   http.post('http://localhost:8000/api/services/requests/:id/progress/', () => HttpResponse.json({ id: 1, status: 'in_progress' })),
   http.post('http://localhost:8000/api/services/requests/:id/complete/', () => HttpResponse.json({ id: 1, status: 'completed' })),
+  // Bookings (bookings app, business item 2 / Wave H3) — default handlers.
+  http.get('http://localhost:8000/api/bookings/mine/', () => HttpResponse.json([])),
+  http.get('http://localhost:8000/api/bookings/incoming/', () => HttpResponse.json([])),
+  http.post('http://localhost:8000/api/bookings/', () => HttpResponse.json({ id: 1, status: 'confirmed', check_in: '2026-08-01', check_out: '2026-08-03', total_price: '400.00' }, { status: 201 })),
+  http.post('http://localhost:8000/api/bookings/:id/cancel/', () => HttpResponse.json({ id: 1, status: 'cancelled' })),
+  http.post('http://localhost:8000/api/bookings/:id/check-in/', () => HttpResponse.json({ id: 1, status: 'checked_in' })),
+  http.post('http://localhost:8000/api/bookings/:id/check-out/', () => HttpResponse.json({ id: 1, status: 'checked_out' })),
   http.get('http://localhost:8000/api/events/tickets/escrow/', () => {
     return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
   }),

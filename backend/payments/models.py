@@ -38,6 +38,7 @@ class CheckoutSession(models.Model):
     HERO_EXTEND = "hero_extend"
     LISTING_PROMOTION = "listing_promotion"
     SERVICE_REQUEST = "service_request"
+    BOOKING = "booking"
     KIND_CHOICES = [
         (ORDER_CHECKOUT, "Order Checkout"),
         (EVENT_PAY, "Event Pay"),
@@ -46,6 +47,7 @@ class CheckoutSession(models.Model):
         (HERO_EXTEND, "Hero Extend"),
         (LISTING_PROMOTION, "Listing Promotion"),
         (SERVICE_REQUEST, "Service Request"),
+        (BOOKING, "Booking"),
     ]
 
     PENDING = "pending"
