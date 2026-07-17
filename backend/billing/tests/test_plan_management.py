@@ -225,3 +225,19 @@ class SubscriptionPlanApprovalQueueTests(SubscriptionPlanManagementTests):
         queue ordered by id as a stand-in for "oldest first".
         """
         self.assertIsNotNone(self.pending_plan.created_at)
+
+    def test_plans_predating_created_at_sort_first_in_the_pending_queue(self):
+        """auto_now_add doesn't backfill, so rows that existed before the
+        column have created_at=NULL. They're the oldest of all, and Postgres
+        sorts NULLs last on an ascending order_by — without an explicit
+        nulls_first they'd surface as the *newest* in an oldest-first queue.
+        """
+        legacy = SubscriptionPlan.objects.create(
+            tier="queue_legacy", name="Queue Legacy", kind="product",
+            monthly_price="8.00", status=SubscriptionPlan.PENDING_APPROVAL,
+        )
+        SubscriptionPlan.objects.filter(pk=legacy.pk).update(created_at=None)
+
+        client = self._client_for(self.super_admin)
+        ids = [p["id"] for p in client.get(self.QUEUE_URL).json()]
+        self.assertEqual(ids[0], legacy.id, "a plan with no created_at must sort oldest-first")

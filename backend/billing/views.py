@@ -1,4 +1,4 @@
-from django.db.models import Count, Sum
+from django.db.models import Count, F, Sum
 from django.db.models.functions import TruncMonth
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -92,10 +92,12 @@ class SubscriptionPlanPendingQueueView(generics.ListAPIView):
         plan_status = PLAN_STATUS_MAP.get(tab, SubscriptionPlan.PENDING_APPROVAL)
         queryset = SubscriptionPlan.objects.filter(status=plan_status)
         if plan_status == SubscriptionPlan.PENDING_APPROVAL:
-            # Oldest first. created_at was backfilled to the migration's run
-            # time for pre-existing rows, so id breaks those ties in the
-            # creation order it previously stood in for.
-            return queryset.order_by("created_at", "id")
+            # Oldest first. Rows predating created_at have NULL (auto_now_add
+            # doesn't backfill) and are the oldest of all, so they sort first —
+            # Postgres would otherwise put NULLs last on an ascending sort and
+            # show the seeded plans as the newest. `id` keeps those legacy rows
+            # in the creation order it previously stood in for.
+            return queryset.order_by(F("created_at").asc(nulls_first=True), "id")
         return queryset.order_by("-reviewed_at", "-id")
 
 

@@ -68,9 +68,12 @@ class SubscriptionPlan(models.Model):
     )
     reviewed_at = models.DateTimeField(null=True, blank=True)
     # This model had no timestamp at all, so the pending queue ordered by id
-    # as a stand-in for "oldest first". Existing rows all get the migration's
-    # run time, which is wrong-but-harmless for the handful of seeded plans —
-    # their relative order is preserved by the id tiebreak in get_queryset().
+    # as a stand-in for "oldest first". Nullable because rows predating the
+    # column keep NULL — auto_now_add only stamps new rows, it does not
+    # backfill. Those legacy rows are by definition the *oldest*, so the
+    # pending queue sorts them first explicitly (nulls_first=True); Postgres
+    # would otherwise sort NULLs last on an ascending order_by and show the
+    # seeded plans as the newest. See SubscriptionPlanPendingQueueView.
     created_at = models.DateTimeField(auto_now_add=True, null=True)
 
     # Structured entitlements (Phase 1 of docs/BUSINESS_EVENTS_ROADMAP.md).
