@@ -22,6 +22,11 @@ from .models import (
 # login timing does not leak whether an identifier exists (see login serializers below).
 DUMMY_PASSWORD_HASH = make_password("dummy-password-for-constant-time-login-checks")
 
+# Shown to a suspended account whose credentials are otherwise valid (staff
+# user-management tools). Deliberately generic — points them at support rather
+# than explaining the specific reason (the reason is staff-internal).
+SUSPENDED_LOGIN_MESSAGE = "This account has been suspended. Please contact AshantiHub support."
+
 
 class CustomerRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
@@ -209,7 +214,7 @@ class BusinessOwnerProfileKYCDetailSerializer(serializers.ModelSerializer):
         model = BusinessOwnerProfile
         fields = [
             "ghana_card_number", "ghana_card_front_image", "ghana_card_back_image",
-            "gps_address", "business_contact_phone", "is_formal",
+            "gps_address", "business_contact_phone", "is_formal", "business_kind",
             "business_reg_certificate", "tin",
         ]
 
@@ -309,6 +314,10 @@ class CustomerLoginSerializer(serializers.Serializer):
         password_valid = check_password(attrs["password"], password_hash)
         if account is None or not password_valid:
             raise serializers.ValidationError("Invalid credentials")
+        # Only surfaced after valid credentials — never leaks a suspension to
+        # someone who couldn't otherwise sign in.
+        if account.is_suspended:
+            raise serializers.ValidationError(SUSPENDED_LOGIN_MESSAGE)
         self.account = account
         return attrs
 
@@ -325,6 +334,8 @@ class BusinessOwnerLoginSerializer(serializers.Serializer):
         password_valid = check_password(attrs["password"], password_hash)
         if account is None or not password_valid:
             raise serializers.ValidationError("Invalid credentials")
+        if account.is_suspended:
+            raise serializers.ValidationError(SUSPENDED_LOGIN_MESSAGE)
         self.account = account
         return attrs
 
@@ -466,13 +477,59 @@ class CustomerSecondaryPhoneConfirmSerializer(serializers.Serializer):
 class CustomerListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
-        fields = ["id", "full_name", "phone", "email", "created_at"]
+        fields = ["id", "full_name", "phone", "email", "is_suspended", "created_at"]
 
 
 class BusinessOwnerListSerializer(serializers.ModelSerializer):
     class Meta:
         model = BusinessOwner
-        fields = ["id", "full_name", "login_phone", "email", "kyc_status", "created_at"]
+        fields = [
+            "id", "full_name", "login_phone", "email", "kyc_status",
+            "is_suspended", "created_at",
+        ]
+
+
+# ── Staff user-management (staff user-management tools) ─────────────────────
+# Detail + edit shapes for the admin Users tab, gated by users.manage. Staff
+# may correct core identity fields (a mistyped name/phone/email) but never
+# touch password_hash, suspension state (set via the dedicated suspend/
+# unsuspend actions), or KYC state (its own moderation flow). is_suspended/
+# suspension_reason are read-only here — surfaced for display, mutated only
+# through the suspend/unsuspend endpoints.
+class StaffCustomerDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Customer
+        fields = [
+            "id", "full_name", "phone", "email", "address", "gender", "date_of_birth",
+            "is_suspended", "suspension_reason", "created_at",
+        ]
+        read_only_fields = ["id", "is_suspended", "suspension_reason", "created_at"]
+        extra_kwargs = {
+            "full_name": {"required": False},
+            "phone": {"required": False},
+            "email": {"required": False},
+            "address": {"required": False},
+            "gender": {"required": False},
+            "date_of_birth": {"required": False},
+        }
+
+
+class StaffBusinessOwnerDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BusinessOwner
+        fields = [
+            "id", "full_name", "login_phone", "email", "kyc_status", "kyc_rejection_reason",
+            "is_suspended", "suspension_reason", "created_at",
+        ]
+        read_only_fields = [
+            "id", "kyc_status", "kyc_rejection_reason",
+            "is_suspended", "suspension_reason", "created_at",
+        ]
+        extra_kwargs = {
+            "full_name": {"required": False},
+            "login_phone": {"required": False},
+            "email": {"required": False},
+        }
 
 
 class StaffListSerializer(serializers.ModelSerializer):

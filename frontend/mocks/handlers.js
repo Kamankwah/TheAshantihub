@@ -133,6 +133,11 @@ export const handlers = [
   http.get('http://localhost:8000/api/events/moderation/pending/', () => {
     return HttpResponse.json([])
   }),
+  // Event moderation detail (staff dashboard review tools) — default handler,
+  // overridden per-test where a specific event's full detail is asserted.
+  http.get('http://localhost:8000/api/events/moderation/:id/', ({ params }) => {
+    return HttpResponse.json({ id: Number(params.id), name: 'Event', description: '', category: null, zone: null, media: [] })
+  }),
   // RSVP / attendees (docs/BUSINESS_EVENTS_ROADMAP.md Phase 7) — default
   // handlers, overridden per-test via server.use() where a specific
   // RSVP/capacity/attendee-list response is needed.
@@ -247,6 +252,37 @@ export const handlers = [
   }),
   http.get('http://localhost:8000/api/accounts/business-owners/', () => {
     return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+  }),
+  // KYC detail (staff dashboard review tools) — default handler, overridden
+  // per-test where a specific applicant's full detail is asserted.
+  http.get('http://localhost:8000/api/accounts/kyc/:id/', ({ params }) => {
+    return HttpResponse.json({ id: Number(params.id), full_name: 'Owner', login_phone: '', email: '', kyc_status: 'pending', profile: {} })
+  }),
+  // Staff user-management detail/edit/suspend (staff dashboard review tools)
+  // — default handlers, overridden per-test as needed.
+  http.get('http://localhost:8000/api/accounts/customers/:id/', ({ params }) => {
+    return HttpResponse.json({ id: Number(params.id), full_name: 'Customer', phone: '', email: '', is_suspended: false })
+  }),
+  http.patch('http://localhost:8000/api/accounts/customers/:id/', async ({ params, request }) => {
+    return HttpResponse.json({ id: Number(params.id), ...(await request.json()) })
+  }),
+  http.post('http://localhost:8000/api/accounts/customers/:id/suspend/', ({ params }) => {
+    return HttpResponse.json({ id: Number(params.id), is_suspended: true })
+  }),
+  http.post('http://localhost:8000/api/accounts/customers/:id/unsuspend/', ({ params }) => {
+    return HttpResponse.json({ id: Number(params.id), is_suspended: false })
+  }),
+  http.get('http://localhost:8000/api/accounts/business-owners/:id/', ({ params }) => {
+    return HttpResponse.json({ id: Number(params.id), full_name: 'Owner', login_phone: '', email: '', kyc_status: 'pending', is_suspended: false })
+  }),
+  http.patch('http://localhost:8000/api/accounts/business-owners/:id/', async ({ params, request }) => {
+    return HttpResponse.json({ id: Number(params.id), ...(await request.json()) })
+  }),
+  http.post('http://localhost:8000/api/accounts/business-owners/:id/suspend/', ({ params }) => {
+    return HttpResponse.json({ id: Number(params.id), is_suspended: true })
+  }),
+  http.post('http://localhost:8000/api/accounts/business-owners/:id/unsuspend/', ({ params }) => {
+    return HttpResponse.json({ id: Number(params.id), is_suspended: false })
   }),
   http.get('http://localhost:8000/api/events/tickets/escrow/', () => {
     return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })

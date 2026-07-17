@@ -76,6 +76,18 @@ class EventVisibilityTests(TestCase):
         response = self.client.get("/api/events/")
         self.assertEqual(response.json()["results"], [])
 
+    def test_list_excludes_suspended_customer_organizer_events(self):
+        # Staff user-management tools: a suspended organizer's live events
+        # drop out of public browse and 404 on detail, reversed on unsuspend.
+        event = self._make_event()
+        self.customer.is_suspended = True
+        self.customer.save(update_fields=["is_suspended"])
+        self.assertEqual(self.client.get("/api/events/").json()["results"], [])
+        self.assertEqual(self.client.get(f"/api/events/{event.id}/").status_code, 404)
+        self.customer.is_suspended = False
+        self.customer.save(update_fields=["is_suspended"])
+        self.assertEqual(len(self.client.get("/api/events/").json()["results"]), 1)
+
     def test_list_excludes_approved_but_unpaid_events(self):
         self._make_event(paid_at=None, expires_at=None)
         response = self.client.get("/api/events/")

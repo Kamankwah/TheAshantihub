@@ -67,6 +67,32 @@ urlpatterns = [
     path("kyc/<int:pk>/approve/", views.KYCApproveView.as_view(), name="kyc-approve"),
     path("kyc/<int:pk>/reject/", views.KYCRejectView.as_view(), name="kyc-reject"),
     path("customers/", views.CustomerListView.as_view(), name="customer-list"),
+    path("customers/<int:pk>/", views.StaffCustomerDetailView.as_view(), name="staff-customer-detail"),
+    path(
+        "customers/<int:pk>/suspend/",
+        views.StaffCustomerSuspendView.as_view(),
+        name="staff-customer-suspend",
+    ),
+    path(
+        "customers/<int:pk>/unsuspend/",
+        views.StaffCustomerUnsuspendView.as_view(),
+        name="staff-customer-unsuspend",
+    ),
     path("business-owners/", views.BusinessOwnerListView.as_view(), name="business-owner-list"),
+    path(
+        "business-owners/<int:pk>/",
+        views.StaffBusinessOwnerDetailView.as_view(),
+        name="staff-business-owner-detail",
+    ),
+    path(
+        "business-owners/<int:pk>/suspend/",
+        views.StaffBusinessOwnerSuspendView.as_view(),
+        name="staff-business-owner-suspend",
+    ),
+    path(
+        "business-owners/<int:pk>/unsuspend/",
+        views.StaffBusinessOwnerUnsuspendView.as_view(),
+        name="staff-business-owner-unsuspend",
+    ),
     path("staff/", views.StaffListView.as_view(), name="staff-list"),
 ]
