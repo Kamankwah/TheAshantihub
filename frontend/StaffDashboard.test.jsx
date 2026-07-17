@@ -56,7 +56,7 @@ describe('StaffDashboard', () => {
     })
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     ;['KYC Queue', 'Listings Moderation', 'Hero Approval', 'Events Moderation', 'Event Pricing', 'Reviews', 'Delivery Management', 'Users', 'Categories & Zones', 'Site Settings', 'Staff Management',
-      'Escrow Ledger', 'Disputes', 'Transactions Report', 'Promotions', 'Analytics', 'Messaging / Tickets']
+      'Escrow Ledger', 'Disputes', 'Transactions Report', 'Credit & Lending', 'Promotions', 'Analytics', 'Messaging / Tickets']
       .forEach((label) => expect(screen.getByText(label)).toBeInTheDocument())
   })
 
@@ -1838,5 +1838,77 @@ describe('StaffDashboard Events Moderation detail view (staff dashboard review t
     fireEvent.click(screen.getByText('👁️ View'))
     await screen.findByText('Royal durbar at the palace.')
     expect(screen.getByText('Manhyia Palace, Kumasi')).toBeInTheDocument()
+  })
+})
+
+describe('StaffDashboard Credit & Lending (item 16)', () => {
+  it('only shows the Credit nav item for a session with credit.manage', () => {
+    const auth = makeAuth({ hasPermission: (c) => c === 'credit.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    expect(screen.getByText('Credit & Lending')).toBeInTheDocument()
+  })
+
+  it('adjusts a business owner credit score with a required reason', async () => {
+    let adjustBody = null
+    server.use(
+      http.get('http://localhost:8000/api/credit/scores/', () => {
+        return HttpResponse.json([{ business_owner: 3, business_owner_name: 'Kwame Trader', score: 620, base_score: 620, manual_adjustment: 0, adjustment_reason: '', adjusted_by_name: null, grade: 'B-', grade_label: 'Average', factors: {} }])
+      }),
+      http.post('http://localhost:8000/api/credit/scores/3/adjust/', async ({ request }) => {
+        adjustBody = await request.json()
+        return HttpResponse.json({ business_owner: 3, business_owner_name: 'Kwame Trader', score: 660, base_score: 620, manual_adjustment: 40 })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'credit.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Credit & Lending'))
+    await screen.findByText('Kwame Trader')
+    fireEvent.click(screen.getByText('⚖️ Adjust'))
+    fireEvent.change(screen.getByPlaceholderText('+/- points'), { target: { value: '40' } })
+    fireEvent.change(screen.getByPlaceholderText('Reason (required)'), { target: { value: 'Long relationship' } })
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(adjustBody).toEqual({ adjustment: 40, reason: 'Long relationship' }))
+  })
+
+  it('creates a lending partner', async () => {
+    let createBody = null
+    server.use(
+      http.get('http://localhost:8000/api/credit/scores/', () => HttpResponse.json([])),
+      http.get('http://localhost:8000/api/credit/partners/', () => HttpResponse.json([])),
+      http.post('http://localhost:8000/api/credit/partners/', async ({ request }) => {
+        createBody = await request.json()
+        return HttpResponse.json({ id: 10, ...createBody }, { status: 201 })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'credit.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Credit & Lending'))
+    await screen.findByText('+ Add partner')
+    fireEvent.click(screen.getByText('+ Add partner'))
+    fireEvent.change(screen.getByPlaceholderText('Partner name'), { target: { value: 'Kumasi Credit Union' } })
+    fireEvent.click(screen.getByText('Add partner'))
+    await waitFor(() => expect(createBody?.name).toBe('Kumasi Credit Union'))
+  })
+
+  it('reviews a loan application', async () => {
+    let reviewBody = null
+    server.use(
+      http.get('http://localhost:8000/api/credit/scores/', () => HttpResponse.json([])),
+      http.get('http://localhost:8000/api/credit/partners/', () => HttpResponse.json([])),
+      http.get('http://localhost:8000/api/credit/loans/', () => {
+        return HttpResponse.json({ count: 1, next: null, previous: null, results: [{ id: 5, business_owner_name: 'Kwame Trader', amount: '5000.00', purpose: 'Restock', lending_partner_name: 'Fidelity Bank Ghana', score_at_application: 620, status: 'submitted', created_at: '2026-07-10T00:00:00Z', reviewed_by_name: null, decision_notes: '' }] })
+      }),
+      http.post('http://localhost:8000/api/credit/loans/5/review/', async ({ request }) => {
+        reviewBody = await request.json()
+        return HttpResponse.json({ id: 5, status: 'approved' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'credit.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Credit & Lending'))
+    await screen.findByText(/Kwame Trader · GHS 5000.00/)
+    fireEvent.click(screen.getByText('Review'))
+    fireEvent.click(screen.getByText('Approve'))
+    await waitFor(() => expect(reviewBody?.outcome).toBe('approved'))
   })
 })

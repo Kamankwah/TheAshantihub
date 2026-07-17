@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { apiPost } from "../../../apiClient.js";
 import { useMyCreditScore } from "../../../hooks/useMyCreditScore.js";
+import { useLendingPartners } from "../../../hooks/useLendingPartners.js";
 import {
   D,
   glassCard,
@@ -8,8 +10,18 @@ import {
   getScoreGrade,
   maxLoanForScore,
   CREDIT_FACTOR_META,
-  LENDING_PARTNERS,
 } from "../theme.js";
+
+// Lending partners now come from GET /api/credit/partners/ (item 16), not the
+// old hardcoded LENDING_PARTNERS constant. `partner_type` is a slug from the
+// backend; this maps it back to the display label the UI used to show.
+const PARTNER_TYPE_LABELS = {
+  bank: "Bank",
+  microfinance: "Microfinance",
+  ngo: "NGO Lender",
+  government: "Government Grant",
+  other: "Other",
+};
 
 // Shared warm gold/cream gradient for the hero banners — matches the light
 // theme's welcome-strip treatment (AnalyticsPanel).
@@ -54,6 +66,9 @@ export default function CreditPanel({ user }) {
   const [loanAmount, setLoanAmount] = useState("");
   const [loanPurpose, setLoanPurpose] = useState("");
   const [loanSubmitted, setLoanSubmitted] = useState(false);
+  const [submittedApp, setSubmittedApp] = useState(null); // the real created application
+  const [submitError, setSubmitError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
   // Real, single-business-owner data. The backend (GET /api/credit/scores/me/)
   // only exposes the current business owner's own score — there is no
@@ -61,10 +76,31 @@ export default function CreditPanel({ user }) {
   // MOCK_CREDIT_BUSINESSES-driven UI) this dashboard shows one score, not a
   // browsable list/dropdown of businesses.
   const { data: scoreData, isLoading, isError, refetch } = useMyCreditScore();
+  const { data: partnersData } = useLendingPartners();
+  const partners = partnersData || [];
   const score = scoreData?.score ?? null;
   const maxLoan = score != null ? maxLoanForScore(score) : 0;
   const loanEligible = scoreData?.loan_eligible ?? false;
-  const matchedPartners = score != null ? LENDING_PARTNERS.filter(p => p.minScore <= score) : [];
+  const matchedPartners = score != null ? partners.filter(p => p.min_score <= score) : [];
+
+  const submitLoan = async () => {
+    if (submitting) return;
+    setSubmitError(null);
+    setSubmitting(true);
+    try {
+      const app = await apiPost("/api/credit/loans/submit/", {
+        lending_partner: selectedPartner?.id ?? null,
+        amount: loanAmount,
+        purpose: loanPurpose,
+      });
+      setSubmittedApp(app);
+      setLoanSubmitted(true);
+    } catch {
+      setSubmitError("Could not submit your application. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const tabs = [
     { id:"overview", icon:"📊", label:"Credit Overview" },
@@ -259,20 +295,20 @@ export default function CreditPanel({ user }) {
             </div>
 
             <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))", gap:14 }}>
-              {LENDING_PARTNERS.map(p => (
-                <div key={p.id} style={{ ...glassCard, padding:"20px", borderTop:`4px solid ${p.color}` }}>
+              {partners.map(p => (
+                <div key={p.id} style={{ ...glassCard, padding:"20px", borderTop:`4px solid ${p.color || D.gold}` }}>
                   <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14 }}>
-                    <div style={{ width:44, height:44, borderRadius:12, background:`${p.color}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1.4rem" }}>{p.logo}</div>
+                    <div style={{ width:44, height:44, borderRadius:12, background:`${p.color || D.gold}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1.4rem" }}>{p.logo}</div>
                     <div>
                       <div style={{ fontWeight:800, fontSize:"0.88rem", color:D.text }}>{p.name}</div>
-                      <span style={{ background:`${p.color}20`, color:p.color, borderRadius:20, padding:"2px 8px", fontSize:"0.62rem", fontWeight:700 }}>{p.type}</span>
+                      <span style={{ background:`${p.color || D.gold}20`, color:p.color || D.gold, borderRadius:20, padding:"2px 8px", fontSize:"0.62rem", fontWeight:700 }}>{PARTNER_TYPE_LABELS[p.partner_type] || p.partner_type}</span>
                     </div>
                   </div>
                   <div style={{ display:"flex", flexDirection:"column", gap:6, marginBottom:14, fontSize:"0.74rem" }}>
                     {[
-                      ["📊 Min Score", `${p.minScore}+`],
-                      ["💰 Max Loan", p.maxLoan],
-                      ["📈 Interest Rate", p.rate],
+                      ["📊 Min Score", `${p.min_score}+`],
+                      ["💰 Max Loan", p.max_loan],
+                      ["📈 Interest Rate", p.interest_rate],
                       ["⏱️ Turnaround", p.turnaround],
                       ["🎯 Focus", p.focus],
                     ].map(([k,v])=>(
@@ -283,12 +319,12 @@ export default function CreditPanel({ user }) {
                     ))}
                   </div>
                   <div style={{ display:"flex", gap:6 }}>
-                    <a href={`https://wa.me/233${p.contact.replace(/\s/g,"")}`} target="_blank" rel="noopener noreferrer"
+                    <a href={`https://wa.me/233${(p.contact||"").replace(/\s/g,"")}`} target="_blank" rel="noopener noreferrer"
                       style={{ flex:1, background:D.whatsapp, color:"white", borderRadius:20, padding:"8px", fontSize:"0.7rem", fontWeight:700, textDecoration:"none", textAlign:"center" }}>
                       📱 Contact
                     </a>
                     <button onClick={()=>{ setSelectedPartner(p); setCreditTab("apply"); }}
-                      style={{ flex:2, background:p.color, color:"white", border:"none", borderRadius:20, padding:"8px", fontSize:"0.7rem", fontWeight:700, cursor:"pointer" }}>
+                      style={{ flex:2, background:p.color || D.gold, color:"white", border:"none", borderRadius:20, padding:"8px", fontSize:"0.7rem", fontWeight:700, cursor:"pointer" }}>
                       Apply for Loan →
                     </button>
                   </div>
@@ -328,13 +364,13 @@ export default function CreditPanel({ user }) {
                 <div style={{ background:D.goldSoft, border:`1px solid ${D.cardBorder}`, borderRadius:14, padding:"16px", marginBottom:20, textAlign:"left", display:"inline-block", minWidth:300 }}>
                   <div style={{ fontWeight:800, color:D.gold, marginBottom:8, fontSize:"0.82rem" }}>📋 Application Reference</div>
                   {[
-                    ["Reference", `AH-LOAN-${Date.now().toString().slice(-6)}`],
+                    ["Reference", submittedApp ? `AH-LOAN-${submittedApp.id}` : "—"],
                     ["Business", user?.fullName || "Your Business"],
-                    ["Credit Score", score],
+                    ["Credit Score", submittedApp?.score_at_application ?? score],
                     ["Amount Requested", `GHS ${Number(loanAmount).toLocaleString()}`],
-                    ["Partner", selectedPartner?.name || "Multiple Partners"],
+                    ["Partner", submittedApp?.lending_partner_name || selectedPartner?.name || "Multiple Partners"],
                     ["Purpose", loanPurpose],
-                    ["Status", "Under Review ⏳"],
+                    ["Status", "Submitted ⏳"],
                   ].map(([k,v])=>(
                     <div key={k} style={{ display:"flex", justifyContent:"space-between", fontSize:"0.72rem", marginBottom:4 }}>
                       <span style={{ color:D.textDim }}>{k}</span>
@@ -343,7 +379,7 @@ export default function CreditPanel({ user }) {
                   ))}
                 </div>
                 <div style={{ display:"flex", gap:8, justifyContent:"center", flexWrap:"wrap" }}>
-                  <button onClick={()=>{ setLoanSubmitted(false); setLoanAmount(""); setLoanPurpose(""); }}
+                  <button onClick={()=>{ setLoanSubmitted(false); setSubmittedApp(null); setLoanAmount(""); setLoanPurpose(""); }}
                     style={{ background:D.gold, color:D.pageBg, border:"none", borderRadius:30, padding:"10px 22px", fontWeight:900, cursor:"pointer" }}>
                     Apply for Another Loan
                   </button>
@@ -385,19 +421,21 @@ export default function CreditPanel({ user }) {
                   {/* Preferred partner */}
                   <div style={{ marginBottom:16 }}>
                     <label style={{ fontSize:"0.76rem", fontWeight:700, color:D.text, marginBottom:6, display:"block" }}>Preferred Lender</label>
-                    <select value={selectedPartner?.id||""} onChange={e=>setSelectedPartner(LENDING_PARTNERS.find(p=>p.id===Number(e.target.value))||null)}
+                    <select value={selectedPartner?.id||""} onChange={e=>setSelectedPartner(partners.find(p=>p.id===Number(e.target.value))||null)}
                       style={{ width:"100%", padding:"11px 14px", borderRadius:10, border:`1.5px solid ${D.divider}`, fontSize:"0.85rem", background:D.panelBg2, color:D.text, outline:"none" }}>
                       <option value="">Best match for my score</option>
                       {matchedPartners.map(p=>(
-                        <option key={p.id} value={p.id}>{p.name} — {p.maxLoan}</option>
+                        <option key={p.id} value={p.id}>{p.name} — {p.max_loan}</option>
                       ))}
                     </select>
                   </div>
 
+                  {submitError && <div style={{ color:D.red, fontSize:"0.72rem", marginBottom:8 }}>{submitError}</div>}
                   <button
-                    onClick={()=>{ if(loanAmount&&loanPurpose&&Number(loanAmount)<=maxLoan) setLoanSubmitted(true); }}
-                    style={{ width:"100%", background:loanAmount&&loanPurpose&&Number(loanAmount)<=maxLoan?D.green:D.panelBg2, color:loanAmount&&loanPurpose&&Number(loanAmount)<=maxLoan?D.pageBg:D.textFaint, border:"none", borderRadius:20, padding:"12px", fontWeight:900, cursor:loanAmount&&loanPurpose?"pointer":"default", fontSize:"0.88rem" }}>
-                    🚀 Submit Application
+                    onClick={()=>{ if(loanAmount&&loanPurpose&&Number(loanAmount)<=maxLoan) submitLoan(); }}
+                    disabled={submitting}
+                    style={{ width:"100%", background:loanAmount&&loanPurpose&&Number(loanAmount)<=maxLoan?D.green:D.panelBg2, color:loanAmount&&loanPurpose&&Number(loanAmount)<=maxLoan?D.pageBg:D.textFaint, border:"none", borderRadius:20, padding:"12px", fontWeight:900, cursor:loanAmount&&loanPurpose&&!submitting?"pointer":"default", fontSize:"0.88rem", opacity:submitting?0.6:1 }}>
+                    {submitting ? "Submitting…" : "🚀 Submit Application"}
                   </button>
                   <div style={{ fontSize:"0.65rem", color:D.textFaint, marginTop:8, textAlign:"center" }}>Your AshantiHub Credit Score is shared with the lender. No collateral required for eligible businesses.</div>
                 </div>
@@ -410,7 +448,7 @@ export default function CreditPanel({ user }) {
                     <ScoreGauge score={score}/>
                     <div style={{ marginTop:14, fontSize:"0.74rem", lineHeight:1.8, opacity:0.9 }}>
                       <div>✅ Loan eligible up to <strong style={{ color:D.gold }}>GHS {maxLoan.toLocaleString()}</strong></div>
-                      <div>🤝 Eligible for <strong style={{ color:D.gold }}>{matchedPartners.length} of {LENDING_PARTNERS.length}</strong> partners</div>
+                      <div>🤝 Eligible for <strong style={{ color:D.gold }}>{matchedPartners.length} of {partners.length}</strong> partners</div>
                       <div>📈 Score improves with more listings, tenure and verification</div>
                     </div>
                   </div>
@@ -420,10 +458,10 @@ export default function CreditPanel({ user }) {
                     <div style={{ fontWeight:800, color:D.text, marginBottom:12, fontSize:"0.85rem" }}>🤝 Your Matched Partners</div>
                     {matchedPartners.map(p=>(
                       <div key={p.id} style={{ display:"flex", gap:10, alignItems:"center", padding:"8px 0", borderBottom:`1px solid ${D.divider}` }}>
-                        <div style={{ width:32, height:32, borderRadius:8, background:`${p.color}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1rem" }}>{p.logo}</div>
+                        <div style={{ width:32, height:32, borderRadius:8, background:`${p.color || D.gold}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1rem" }}>{p.logo}</div>
                         <div style={{ flex:1 }}>
                           <div style={{ fontWeight:700, fontSize:"0.76rem", color:D.text }}>{p.name}</div>
-                          <div style={{ fontSize:"0.65rem", color:D.textDim }}>{p.maxLoan} • {p.rate}</div>
+                          <div style={{ fontSize:"0.65rem", color:D.textDim }}>{p.max_loan} • {p.interest_rate}</div>
                         </div>
                         <span style={{ background:`${D.green}22`, color:D.green, borderRadius:20, padding:"2px 7px", fontSize:"0.6rem", fontWeight:700 }}>✓ Match</span>
                       </div>

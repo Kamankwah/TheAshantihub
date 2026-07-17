@@ -118,17 +118,11 @@ export const CREDIT_FACTOR_META = {
   payout_verified: { icon: "🏦", label: "Payout Details Verified", desc: "Whether your MoMo/bank payout details have been verified" },
 };
 
-// AshantiHub-verified lending partners directory (frontend-only; no backend
-// model — see the note this carried in App.jsx). Matched against the owner's
-// real score by minScore.
-export const LENDING_PARTNERS = [
-  { id: 1, name: "Fidelity Bank Ghana", type: "Bank", logo: "🏦", minScore: 600, maxLoan: "GHS 50,000", rate: "18–24% p.a.", turnaround: "3–5 days", focus: "SME Business Loans", contact: "0302 214 460", color: "#3a7afe" },
-  { id: 2, name: "Sinapi Aba Savings & Loans", type: "Microfinance", logo: "🌱", minScore: 400, maxLoan: "GHS 10,000", rate: "24–36% p.a.", turnaround: "1–2 days", focus: "Micro & Small Business", contact: "0322 495 822", color: "#34d399" },
-  { id: 3, name: "Opportunity International Ghana", type: "NGO Lender", logo: "🤝", minScore: 350, maxLoan: "GHS 5,000", rate: "20–28% p.a.", turnaround: "2–3 days", focus: "Women & Youth Businesses", contact: "0302 785 960", color: "#fb923c" },
-  { id: 4, name: "ARB Apex Bank", type: "Bank", logo: "🏛️", minScore: 500, maxLoan: "GHS 25,000", rate: "20–26% p.a.", turnaround: "3–7 days", focus: "Rural & Informal Business", contact: "0322 022 328", color: "#f472b6" },
-  { id: 5, name: "Absa Ghana SME", type: "Bank", logo: "🔴", minScore: 650, maxLoan: "GHS 100,000", rate: "16–22% p.a.", turnaround: "5–7 days", focus: "Established Businesses", contact: "0302 429 150", color: "#f87171" },
-  { id: 6, name: "Ghana Enterprise Agency", type: "Government Grant", logo: "🇬🇭", minScore: 300, maxLoan: "GHS 20,000", rate: "0% (Grant)", turnaround: "2–4 weeks", focus: "SME Development Grants", contact: "0302 685 132", color: "#34d399" },
-];
+// (LENDING_PARTNERS lived here as a hardcoded directory until item 16 moved it
+// into a real backend model. Partners now come from GET /api/credit/partners/
+// via useLendingPartners — seeded from these same six rows in
+// credit/migrations/0003_seed_lending_partners.py — so both the business
+// CreditPanel and the staff Credit panel share one source of truth.)
 
 // Listing / hero status → label+color, retuned for legibility on cream (draft's
 // muted warm-gray has no C equivalent — the one other new hex in this file).
