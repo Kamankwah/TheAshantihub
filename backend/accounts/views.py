@@ -12,7 +12,7 @@ from notifications.services import notify_business_owner, notify_customer, notif
 
 from .authentication import issue_token
 from .emails import send_staff_invite_email, send_verification_code_email
-from .models import BusinessOwner, Customer, StaffUser
+from .models import BusinessOwner, Customer, Permission, StaffUser
 from .permissions import HasRolePermission
 from .serializers import (
     INVITE_TOKEN_LIFETIME,
@@ -53,7 +53,10 @@ def me(request):
     }
     if isinstance(request.user, StaffUser):
         data["role"] = request.user.role.name
-        data["permissions"] = list(request.user.role.permissions.values_list("codename", flat=True))
+        # Effective set (role + per-staffer grants − revocations), NOT raw
+        # role permissions — must match what HasRolePermission enforces, or
+        # the UI gates on a different set than the server (punch-list item 9).
+        data["permissions"] = sorted(request.user.effective_permission_codenames())
     if isinstance(request.user, BusinessOwner):
         data["kyc_status"] = request.user.kyc_status
         data["kyc_rejection_reason"] = request.user.kyc_rejection_reason
@@ -179,7 +182,7 @@ class StaffLoginView(generics.GenericAPIView):
             "id": account.id,
             "full_name": account.full_name,
             "role": account.role.name,
-            "permissions": list(account.role.permissions.values_list("codename", flat=True)),
+            "permissions": sorted(account.effective_permission_codenames()),
         })
 
 
@@ -211,12 +214,36 @@ class PasswordResetConfirmView(generics.GenericAPIView):
         return Response({"status": "password reset"})
 
 
+# Staff moderation-queue restructuring — the canonical three-state queue
+# convention shared by every moderated model (KYC here, Listing/Hero in
+# listings/views.py): one ListAPIView serves Pending/Approved/Rejected via a
+# `?status=` query param (default "pending"), mapping the tab key to the
+# model's real status value(s). Kept on the existing `.../pending/` URL (the
+# path name is historical) so no route churn and existing callers with no
+# param keep getting the pending queue.
+KYC_STATUS_MAP = {
+    "pending": BusinessOwner.PENDING,
+    "approved": BusinessOwner.VERIFIED,
+    "rejected": BusinessOwner.REJECTED,
+}
+
+
 class KYCPendingQueueView(generics.ListAPIView):
     serializer_class = BusinessOwnerKYCSerializer
-    queryset = BusinessOwner.objects.filter(kyc_status=BusinessOwner.PENDING).order_by("created_at")
 
     def get_permissions(self):
         return [HasRolePermission("kyc.approve")]
+
+    def get_queryset(self):
+        tab = self.request.query_params.get("status", "pending")
+        kyc_status = KYC_STATUS_MAP.get(tab, BusinessOwner.PENDING)
+        queryset = BusinessOwner.objects.filter(kyc_status=kyc_status)
+        # Pending: oldest-first (a work queue). Approved/Rejected: most-recently
+        # actioned first (a history), falling back to created_at for legacy
+        # rows actioned before reviewed_at existed.
+        if kyc_status == BusinessOwner.PENDING:
+            return queryset.order_by("created_at")
+        return queryset.order_by("-reviewed_at", "-created_at")
 
 
 class KYCDetailView(generics.RetrieveAPIView):
@@ -235,7 +262,9 @@ class KYCApproveView(APIView):
         owner = generics.get_object_or_404(BusinessOwner, pk=pk)
         owner.kyc_status = BusinessOwner.VERIFIED
         owner.kyc_rejection_reason = None
-        owner.save(update_fields=["kyc_status", "kyc_rejection_reason"])
+        owner.reviewed_by = request.user
+        owner.reviewed_at = timezone.now()
+        owner.save(update_fields=["kyc_status", "kyc_rejection_reason", "reviewed_by", "reviewed_at"])
         notify_business_owner(
             owner, "kyc_approved", "Your business is verified!",
             body="Your KYC has been approved — you can now publish listings.",
@@ -253,13 +282,73 @@ class KYCRejectView(APIView):
         owner = generics.get_object_or_404(BusinessOwner, pk=pk)
         owner.kyc_status = BusinessOwner.REJECTED
         owner.kyc_rejection_reason = reason
-        owner.save(update_fields=["kyc_status", "kyc_rejection_reason"])
+        owner.reviewed_by = request.user
+        owner.reviewed_at = timezone.now()
+        owner.save(update_fields=["kyc_status", "kyc_rejection_reason", "reviewed_by", "reviewed_at"])
         notify_business_owner(
             owner, "kyc_rejected", "Your KYC needs attention",
             body=reason or "Your KYC submission was rejected. Please review and resubmit.",
             link="/business-dashboard", icon="⚠️",
         )
         return Response({"id": owner.id, "kyc_status": owner.kyc_status})
+
+
+class KYCReReviewView(APIView):
+    """POST /api/accounts/kyc/{id}/re-review/ — the canonical re-review action
+    (staff moderation-queue restructuring): move a REJECTED submission back to
+    PENDING, clearing the rejection reason and approver attribution, and
+    re-notify staff who can approve KYC. Gated by the same kyc.approve
+    permission. Only a rejected submission can be re-opened.
+    """
+
+    def get_permissions(self):
+        return [HasRolePermission("kyc.approve")]
+
+    def post(self, request, pk):
+        owner = generics.get_object_or_404(BusinessOwner, pk=pk)
+        if owner.kyc_status != BusinessOwner.REJECTED:
+            return Response(
+                {"detail": "Only a rejected KYC submission can be sent back for re-review."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        owner.kyc_status = BusinessOwner.PENDING
+        owner.kyc_rejection_reason = None
+        owner.reviewed_by = None
+        owner.reviewed_at = None
+        owner.save(update_fields=["kyc_status", "kyc_rejection_reason", "reviewed_by", "reviewed_at"])
+        notify_staff_role(
+            "kyc.approve", "kyc_needs_approval", "KYC re-opened for review",
+            body=f"{owner.full_name}'s KYC has been re-opened and needs review again.",
+            link="kyc", icon="🪪",
+        )
+        return Response({"id": owner.id, "kyc_status": owner.kyc_status})
+
+
+class KYCAddressVerifyView(APIView):
+    """POST /api/accounts/kyc/{id}/address-verify/ {verified: bool} — records a
+    staff decision on the business's Ghana Post digital address (punch-list
+    item 8), with attribution. Setting either true or false marks a decision as
+    having been made (address_verified_at), which is what unblocks the KYC
+    Approve/Reject buttons on the frontend. Gated by kyc.approve.
+    """
+
+    def get_permissions(self):
+        return [HasRolePermission("kyc.approve")]
+
+    def post(self, request, pk):
+        owner = generics.get_object_or_404(BusinessOwner, pk=pk)
+        verified = bool(request.data.get("verified", False))
+        profile = owner.profile
+        profile.address_verified = verified
+        profile.address_verified_by = request.user
+        profile.address_verified_at = timezone.now()
+        profile.save(update_fields=["address_verified", "address_verified_by", "address_verified_at"])
+        return Response({
+            "id": owner.id,
+            "address_verified": profile.address_verified,
+            "address_verified_by_name": request.user.full_name,
+            "address_verified_at": profile.address_verified_at,
+        })
 
 
 class AccountsPagination(PageNumberPagination):
@@ -396,6 +485,142 @@ class StaffBusinessOwnerUnsuspendView(APIView):
             icon="✅",
         )
         return Response({"id": owner.id, "is_suspended": owner.is_suspended})
+
+
+# ── Staff account management (punch-list item 10) ──────────────────────────
+# Suspend/reactivate and deactivate/reactivate one staffer, plus a per-staffer
+# permission editor (item 9). All gated by staff.manage, the permission whose
+# own description already promised "deactivate or reassign" with no backend
+# behind it until now.
+
+
+def _guard_self_action(request, staff):
+    """A staffer must not be able to suspend, deactivate, or strip the
+    permissions of their own account — that would either lock them out
+    mid-request or, worse, let them climb out of a restriction. Returns a
+    Response to short-circuit with, or None to proceed.
+    """
+    if request.user.id == staff.id:
+        return Response(
+            {"detail": "You cannot apply this action to your own account."}, status=400
+        )
+    return None
+
+
+class StaffSuspendView(APIView):
+    def get_permissions(self):
+        return [HasRolePermission("staff.manage")]
+
+    def post(self, request, pk):
+        staff = generics.get_object_or_404(StaffUser, pk=pk)
+        guard = _guard_self_action(request, staff)
+        if guard:
+            return guard
+        staff.is_suspended = True
+        staff.suspension_reason = request.data.get("reason", "") or ""
+        staff.save(update_fields=["is_suspended", "suspension_reason"])
+        return Response(StaffListSerializer(staff).data)
+
+
+class StaffUnsuspendView(APIView):
+    def get_permissions(self):
+        return [HasRolePermission("staff.manage")]
+
+    def post(self, request, pk):
+        staff = generics.get_object_or_404(StaffUser, pk=pk)
+        staff.is_suspended = False
+        staff.suspension_reason = ""
+        staff.save(update_fields=["is_suspended", "suspension_reason"])
+        return Response(StaffListSerializer(staff).data)
+
+
+class StaffDeactivateView(APIView):
+    """Marks a staffer as no longer with the company. Distinct from suspend:
+    no reason field, and it's the state used when someone leaves for good.
+    Reversible via StaffReactivateView.
+    """
+
+    def get_permissions(self):
+        return [HasRolePermission("staff.manage")]
+
+    def post(self, request, pk):
+        staff = generics.get_object_or_404(StaffUser, pk=pk)
+        guard = _guard_self_action(request, staff)
+        if guard:
+            return guard
+        staff.is_active = False
+        staff.save(update_fields=["is_active"])
+        return Response(StaffListSerializer(staff).data)
+
+
+class StaffReactivateView(APIView):
+    def get_permissions(self):
+        return [HasRolePermission("staff.manage")]
+
+    def post(self, request, pk):
+        staff = generics.get_object_or_404(StaffUser, pk=pk)
+        staff.is_active = True
+        staff.save(update_fields=["is_active"])
+        return Response(StaffListSerializer(staff).data)
+
+
+class StaffPermissionsView(APIView):
+    """POST /api/accounts/staff/{id}/permissions/ — set a staffer's per-user
+    permission overrides (item 9). Body: {"grant": [codename, ...],
+    "revoke": [codename, ...]} — the full desired override sets, not deltas,
+    so an empty list clears that side. Unknown codenames 400 rather than being
+    silently dropped, so a typo in the editor surfaces.
+    """
+
+    def get_permissions(self):
+        return [HasRolePermission("staff.manage")]
+
+    def post(self, request, pk):
+        staff = generics.get_object_or_404(StaffUser, pk=pk)
+        guard = _guard_self_action(request, staff)
+        if guard:
+            return guard
+
+        grant_codes = request.data.get("grant", []) or []
+        revoke_codes = request.data.get("revoke", []) or []
+        overlap = set(grant_codes) & set(revoke_codes)
+        if overlap:
+            return Response(
+                {"detail": f"A permission cannot be both granted and revoked: {', '.join(sorted(overlap))}."},
+                status=400,
+            )
+
+        grant_perms = list(Permission.objects.filter(codename__in=grant_codes))
+        revoke_perms = list(Permission.objects.filter(codename__in=revoke_codes))
+        missing = (set(grant_codes) | set(revoke_codes)) - {
+            p.codename for p in grant_perms + revoke_perms
+        }
+        if missing:
+            return Response(
+                {"detail": f"Unknown permission(s): {', '.join(sorted(missing))}."}, status=400
+            )
+
+        staff.extra_permissions.set(grant_perms)
+        staff.revoked_permissions.set(revoke_perms)
+        return Response(StaffListSerializer(staff).data)
+
+
+class PermissionCatalogView(APIView):
+    """GET /api/accounts/permissions/ — every assignable permission with its
+    description, so the per-staffer editor can render the full checklist. Also
+    reports which codenames the staffer's role already grants, so the UI can
+    show role-granted vs individually-granted vs revoked without recomputing.
+    Gated by staff.manage (same as the editor that consumes it).
+    """
+
+    def get_permissions(self):
+        return [HasRolePermission("staff.manage")]
+
+    def get(self, request):
+        permissions = Permission.objects.all().order_by("codename")
+        return Response(
+            [{"codename": p.codename, "description": p.description} for p in permissions]
+        )
 
 
 class IsBusinessOwner(BasePermission):

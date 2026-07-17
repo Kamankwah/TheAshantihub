@@ -66,6 +66,12 @@ urlpatterns = [
     path("kyc/<int:pk>/", views.KYCDetailView.as_view(), name="kyc-detail"),
     path("kyc/<int:pk>/approve/", views.KYCApproveView.as_view(), name="kyc-approve"),
     path("kyc/<int:pk>/reject/", views.KYCRejectView.as_view(), name="kyc-reject"),
+    path("kyc/<int:pk>/re-review/", views.KYCReReviewView.as_view(), name="kyc-re-review"),
+    path(
+        "kyc/<int:pk>/address-verify/",
+        views.KYCAddressVerifyView.as_view(),
+        name="kyc-address-verify",
+    ),
     path("customers/", views.CustomerListView.as_view(), name="customer-list"),
     path("customers/<int:pk>/", views.StaffCustomerDetailView.as_view(), name="staff-customer-detail"),
     path(
@@ -95,4 +101,10 @@ urlpatterns = [
         name="staff-business-owner-unsuspend",
     ),
     path("staff/", views.StaffListView.as_view(), name="staff-list"),
+    path("staff/<int:pk>/suspend/", views.StaffSuspendView.as_view(), name="staff-suspend"),
+    path("staff/<int:pk>/unsuspend/", views.StaffUnsuspendView.as_view(), name="staff-unsuspend"),
+    path("staff/<int:pk>/deactivate/", views.StaffDeactivateView.as_view(), name="staff-deactivate"),
+    path("staff/<int:pk>/reactivate/", views.StaffReactivateView.as_view(), name="staff-reactivate"),
+    path("staff/<int:pk>/permissions/", views.StaffPermissionsView.as_view(), name="staff-permissions"),
+    path("permissions/", views.PermissionCatalogView.as_view(), name="permission-catalog"),
 ]

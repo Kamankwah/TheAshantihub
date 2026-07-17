@@ -73,6 +73,18 @@ class Listing(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=DRAFT)
     rejection_reason = models.CharField(max_length=500, null=True, blank=True)
 
+    # Approver attribution (staff moderation-queue restructuring) — which staff
+    # member approved (published) OR rejected this listing, and when. Set by
+    # ModerationApproveView/ModerationRejectView; cleared by
+    # ModerationReReviewView when a rejected listing is re-opened to pending.
+    # Same canonical reviewed_by/reviewed_at pair as BusinessOwner (KYC) and
+    # HeroMediaSubmission.
+    reviewed_by = models.ForeignKey(
+        "accounts.StaffUser", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="reviewed_listings",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
     # Structured (not freeform-text) spec table, per the reviews/ratings/Q&A
     # plan's ListingDetailPage "Specs" tab (docs/PROJECT_SCOPE.md) — a list
     # of {"label": ..., "value": ...} dicts so the frontend can render a real
@@ -170,6 +182,19 @@ class HeroMediaSubmission(models.Model):
 
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
     rejection_reason = models.CharField(max_length=500, null=True, blank=True)
+
+    # Approver attribution (staff moderation-queue restructuring) — which staff
+    # member approved OR rejected this hero submission, and when. Set by
+    # HeroApproveView/HeroRejectView; cleared by HeroReReviewView when a
+    # rejected submission is re-opened to pending. Same canonical
+    # reviewed_by/reviewed_at pair as BusinessOwner (KYC) and Listing. Distinct
+    # from approved_at (the moment the visibility window starts), which stays a
+    # separate field since it also drives expires_at.
+    reviewed_by = models.ForeignKey(
+        "accounts.StaffUser", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="reviewed_hero_submissions",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
 
     submitted_at = models.DateTimeField(auto_now_add=True)
     approved_at = models.DateTimeField(null=True, blank=True)

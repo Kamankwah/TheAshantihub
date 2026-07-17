@@ -2,7 +2,12 @@ import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
 import { useKYCQueue } from "../../../hooks/useKYCQueue.js";
 import { useKYCDetail } from "../../../hooks/useKYCDetail.js";
-import { D, glassCard } from "../theme.js";
+import { D } from "../theme.js";
+import ModerationQueueTabs, {
+  ApprovedByLine,
+  RejectedReason,
+  ReviewAgainButton,
+} from "../ModerationQueueTabs.jsx";
 
 // A single labelled field in the detail view. Renders a "—" for empty values
 // so a missing/incomplete KYC field is visible rather than silently blank.
@@ -32,25 +37,50 @@ function CardImage({ label, url }) {
   );
 }
 
-function KYCRow({ owner, onDone }) {
+function KYCRow({ owner, state, onDone }) {
   const [expanded, setExpanded] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [actionError, setActionError] = useState(null);
+  // Optimistic mirror of the address-verify decision, so the Approve/Reject
+  // gating updates the instant the staffer clicks without waiting on a
+  // refetch. null = no local decision yet (fall back to the server value).
+  const [localAddress, setLocalAddress] = useState(null); // null | { verified: bool }
   const detail = useKYCDetail(owner.id, { enabled: expanded });
+
+  const p = detail.data?.profile;
+  // Item 8: a Ghana Post address decision (verified ✓ or explicitly wrong)
+  // must be recorded before Approve/Reject unlock. The server signals "a
+  // decision was made" via address_verified_at; localAddress covers the
+  // just-clicked case before the detail refetch lands.
+  const serverDecided = p?.address_verified_at != null;
+  const addressDecided = localAddress != null || serverDecided;
+  const addressVerified = localAddress != null ? localAddress.verified : p?.address_verified;
+  const gateReady = expanded && addressDecided;
 
   const approve = async () => {
     setActionError(null);
     try { await apiPost(`/api/accounts/kyc/${owner.id}/approve/`, {}); onDone(); }
-    catch (err) { setActionError("Could not approve this submission. Please try again."); }
+    catch { setActionError("Could not approve this submission. Please try again."); }
   };
   const reject = async () => {
     setActionError(null);
     try { await apiPost(`/api/accounts/kyc/${owner.id}/reject/`, { reason: rejectReason }); setRejecting(false); setRejectReason(""); onDone(); }
-    catch (err) { setActionError("Could not reject this submission. Please try again."); }
+    catch { setActionError("Could not reject this submission. Please try again."); }
   };
-
-  const p = detail.data?.profile;
+  const reReview = async () => {
+    setActionError(null);
+    try { await apiPost(`/api/accounts/kyc/${owner.id}/re-review/`, {}); onDone(); }
+    catch { setActionError("Could not send this submission back for re-review."); }
+  };
+  const verifyAddress = async (verified) => {
+    setActionError(null);
+    try {
+      await apiPost(`/api/accounts/kyc/${owner.id}/address-verify/`, { verified });
+      setLocalAddress({ verified });
+      detail.refetch();
+    } catch { setActionError("Could not record the address verification. Please try again."); }
+  };
 
   return (
     <div style={{ padding: "12px 0", borderBottom: `1px solid ${D.divider}` }}>
@@ -58,15 +88,28 @@ function KYCRow({ owner, onDone }) {
         <div>
           <div style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>{owner.full_name}</div>
           <div style={{ color: D.textDim, fontSize: "0.68rem" }}>{owner.login_phone} • submitted {owner.created_at?.slice(0, 10)}</div>
+          {state === "approved" && <ApprovedByLine name={owner.reviewed_by_name} at={owner.reviewed_at} verb="Verified" />}
+          {state === "rejected" && <RejectedReason reason={owner.kyc_rejection_reason} />}
         </div>
         <div style={{ display: "flex", gap: 6 }}>
           <button onClick={() => setExpanded(e => !e)} style={{ background: D.panelBg2, color: D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>{expanded ? "▲ Hide Details" : "👁️ View Details"}</button>
-          <button onClick={approve} style={{ background: D.green, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Approve</button>
-          <button onClick={() => setRejecting(true)} style={{ background: "rgba(248,113,113,0.14)", color: D.red, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✕ Reject</button>
+          {state === "pending" && (
+            <>
+              <button onClick={approve} disabled={!gateReady} title={gateReady ? "" : "Verify the Ghana Post address first"} style={{ background: gateReady ? D.green : D.panelBg2, color: gateReady ? "#fff" : D.textFaint, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: gateReady ? "pointer" : "not-allowed" }}>✓ Approve</button>
+              <button onClick={() => setRejecting(true)} disabled={!gateReady} title={gateReady ? "" : "Verify the Ghana Post address first"} style={{ background: gateReady ? "rgba(248,113,113,0.14)" : D.panelBg2, color: gateReady ? D.red : D.textFaint, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: gateReady ? "pointer" : "not-allowed" }}>✕ Reject</button>
+            </>
+          )}
+          {state === "rejected" && <ReviewAgainButton onClick={reReview} />}
         </div>
       </div>
 
       {actionError && <div style={{ color: D.red, fontSize: "0.8rem", marginTop: 8 }}>{actionError}</div>}
+
+      {state === "pending" && !gateReady && (
+        <div style={{ color: D.amber, fontSize: "0.68rem", marginTop: 6 }}>
+          {expanded ? "Verify the Ghana Post address below to enable Approve / Reject." : "Open Details and verify the Ghana Post address to enable Approve / Reject."}
+        </div>
+      )}
 
       {rejecting && <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
         <input value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Rejection reason" style={{ flex: 1, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
@@ -94,6 +137,22 @@ function KYCRow({ owner, onDone }) {
               </div>
               {detail.data.kyc_rejection_reason && <DetailField label="Previous rejection reason" value={detail.data.kyc_rejection_reason} />}
 
+              {/* Item 8: Ghana Post address verification control. */}
+              <div style={{ color: D.gold, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", margin: "14px 0 8px" }}>Ghana Post address verification</div>
+              <div style={{ color: D.textDim, fontSize: "0.72rem", marginBottom: 8 }}>Confirm the digital address <strong style={{ color: D.text }}>{p?.gps_address || "—"}</strong> before approving or rejecting.</div>
+              {addressDecided && (
+                <div style={{ color: addressVerified ? D.green : D.red, fontSize: "0.72rem", fontWeight: 700, marginBottom: 8 }}>
+                  {addressVerified ? "✓ Address verified" : "✗ Address marked wrong"}
+                  {p?.address_verified_by_name ? ` by ${p.address_verified_by_name}` : ""}
+                </div>
+              )}
+              {state === "pending" && (
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button onClick={() => verifyAddress(true)} style={{ background: addressVerified === true ? D.green : D.panelBg, color: addressVerified === true ? "#fff" : D.green, border: `1px solid ${D.green}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Address verified</button>
+                  <button onClick={() => verifyAddress(false)} style={{ background: (addressDecided && !addressVerified) ? D.red : D.panelBg, color: (addressDecided && !addressVerified) ? "#fff" : D.red, border: `1px solid ${D.red}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✗ Address wrong</button>
+                </div>
+              )}
+
               <div style={{ color: D.gold, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", margin: "14px 0 10px" }}>Ghana Card</div>
               <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
                 <CardImage label="Front" url={p?.ghana_card_front_image} />
@@ -116,18 +175,26 @@ function KYCRow({ owner, onDone }) {
   );
 }
 
+// KYC queue, restructured into Pending / Approved / Rejected tabs (staff
+// moderation-queue restructuring, items 1 & 8). Pending keeps the full-detail
+// view and adds the Ghana Post address-verification gate on Approve/Reject.
 export default function KYCQueuePanel() {
-  const { data, isLoading, isError, refetch } = useKYCQueue();
+  const [tab, setTab] = useState("pending");
+  const pending = useKYCQueue({ status: "pending" });
+  const approved = useKYCQueue({ status: "approved" });
+  const rejected = useKYCQueue({ status: "rejected" });
+  const queries = { pending, approved, rejected };
 
-  if (isLoading) return <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading…</div>;
-  if (isError) return <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load the KYC queue.</div>;
-  const items = data || [];
+  const refetchAll = () => { pending.refetch(); approved.refetch(); rejected.refetch(); };
 
   return (
-    <div style={{ ...glassCard, padding: 18 }}>
-      <div style={{ color: D.text, fontWeight: 800, fontSize: "0.88rem", marginBottom: 14 }}>Pending KYC submissions ({items.length})</div>
-      {items.length === 0 && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>No pending submissions.</div>}
-      {items.map(o => <KYCRow key={o.id} owner={o} onDone={refetch} />)}
-    </div>
+    <ModerationQueueTabs
+      tab={tab}
+      onTab={setTab}
+      queries={queries}
+      title="KYC submissions"
+      labels={{ approved: "Verified" }}
+      renderRow={(owner, state) => <KYCRow owner={owner} state={state} onDone={refetchAll} />}
+    />
   );
 }

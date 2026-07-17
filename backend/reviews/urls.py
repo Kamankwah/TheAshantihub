@@ -19,6 +19,11 @@ urlpatterns = [
         name="review-list-organizer-customer",
     ),
     path("moderation/", views.ReviewModerationListView.as_view(), name="review-moderation-list"),
+    path("moderation/<int:pk>/approve/", views.ReviewApproveView.as_view(), name="review-approve"),
     path("moderation/<int:pk>/hide/", views.ReviewHideView.as_view(), name="review-hide"),
-    path("moderation/<int:pk>/unhide/", views.ReviewUnhideView.as_view(), name="review-unhide"),
+    path(
+        "moderation/<int:pk>/re-review/",
+        views.ReviewReReviewView.as_view(),
+        name="review-re-review",
+    ),
 ]

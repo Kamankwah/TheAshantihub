@@ -26,6 +26,24 @@ DUMMY_PASSWORD_HASH = make_password("dummy-password-for-constant-time-login-chec
 # user-management tools). Deliberately generic — points them at support rather
 # than explaining the specific reason (the reason is staff-internal).
 SUSPENDED_LOGIN_MESSAGE = "This account has been suspended. Please contact AshantiHub support."
+DEACTIVATED_LOGIN_MESSAGE = "This staff account is no longer active. Please contact AshantiHub support."
+
+
+def mask_but_last(value, keep=5):
+    """Show only the last `keep` characters of an account/phone number,
+    masking the rest (punch-list item 9). The payout numbers are stored
+    unmasked; this is the ONLY thing that should ever ship them to a client,
+    and it never ships the full value.
+
+    A value shorter than `keep` is masked entirely rather than shown in full —
+    a 4-digit number isn't safer to reveal just because it's short.
+    """
+    if not value:
+        return None
+    digits = str(value)
+    if len(digits) <= keep:
+        return "•" * len(digits)
+    return "•" * (len(digits) - keep) + digits[-keep:]
 
 
 class CustomerRegistrationSerializer(serializers.ModelSerializer):
@@ -204,27 +222,48 @@ class BusinessOwnerRegistrationSerializer(serializers.ModelSerializer):
 
 
 class BusinessOwnerKYCSerializer(serializers.ModelSerializer):
+    # Approver attribution (staff moderation-queue restructuring) — surfaced on
+    # the list shape so the Approved/Rejected tabs can show who actioned each
+    # submission without expanding its detail. kyc_rejection_reason is here for
+    # the same reason (the Rejected tab shows it inline).
+    reviewed_by_name = serializers.CharField(source="reviewed_by.full_name", read_only=True, default=None)
+
     class Meta:
         model = BusinessOwner
-        fields = ["id", "full_name", "login_phone", "kyc_status", "created_at"]
+        fields = [
+            "id", "full_name", "login_phone", "kyc_status", "kyc_rejection_reason",
+            "created_at", "reviewed_by_name", "reviewed_at",
+        ]
 
 
 class BusinessOwnerProfileKYCDetailSerializer(serializers.ModelSerializer):
+    # Ghana Post address verification (punch-list item 8). address_verified_at
+    # being non-null is the "a decision was made" signal the frontend's KYC
+    # Approve/Reject gating reads.
+    address_verified_by_name = serializers.CharField(
+        source="address_verified_by.full_name", read_only=True, default=None
+    )
+
     class Meta:
         model = BusinessOwnerProfile
         fields = [
             "ghana_card_number", "ghana_card_front_image", "ghana_card_back_image",
             "gps_address", "business_contact_phone", "is_formal", "business_kind",
             "business_reg_certificate", "tin",
+            "address_verified", "address_verified_by_name", "address_verified_at",
         ]
 
 
 class BusinessOwnerKYCDetailSerializer(serializers.ModelSerializer):
     profile = BusinessOwnerProfileKYCDetailSerializer(read_only=True)
+    reviewed_by_name = serializers.CharField(source="reviewed_by.full_name", read_only=True, default=None)
 
     class Meta:
         model = BusinessOwner
-        fields = ["id", "full_name", "login_phone", "email", "kyc_status", "kyc_rejection_reason", "created_at", "profile"]
+        fields = [
+            "id", "full_name", "login_phone", "email", "kyc_status", "kyc_rejection_reason",
+            "created_at", "reviewed_by_name", "reviewed_at", "profile",
+        ]
 
 
 class PayoutDetailSerializer(serializers.ModelSerializer):
@@ -355,6 +394,14 @@ class StaffLoginSerializer(serializers.Serializer):
         password_valid = check_password(attrs["password"], password_hash)
         if account is None or not password_valid:
             raise serializers.ValidationError("Invalid credentials")
+        # Only surfaced after valid credentials — never leaks account state to
+        # someone who couldn't otherwise sign in (punch-list item 10). Both a
+        # temporary suspension and a "no longer works here" deactivation stop
+        # login; they carry different copy so the staffer knows which it is.
+        if account.is_suspended:
+            raise serializers.ValidationError(SUSPENDED_LOGIN_MESSAGE)
+        if not account.is_active:
+            raise serializers.ValidationError(DEACTIVATED_LOGIN_MESSAGE)
         self.account = account
         return attrs
 
@@ -502,13 +549,22 @@ class BusinessOwnerListSerializer(serializers.ModelSerializer):
 # suspension_reason are read-only here — surfaced for display, mutated only
 # through the suspend/unsuspend endpoints.
 class StaffCustomerDetailSerializer(serializers.ModelSerializer):
+    # Real payment history (punch-list item 9). NOTE: there is deliberately no
+    # "payment type" or "last 5 digits of their card" here — no payment-method/
+    # card/wallet model exists anywhere in this codebase (payments are
+    # simulated, CheckoutSession stores no instrument). So the honest answer to
+    # "what did they pay with" is their actual payment history: what they
+    # bought, how much, and whether it succeeded. Sourced from CheckoutSession
+    # in a SerializerMethodField rather than invented.
+    payment_history = serializers.SerializerMethodField()
+
     class Meta:
         model = Customer
         fields = [
             "id", "full_name", "phone", "email", "address", "gender", "date_of_birth",
-            "is_suspended", "suspension_reason", "created_at",
+            "is_suspended", "suspension_reason", "payment_history", "created_at",
         ]
-        read_only_fields = ["id", "is_suspended", "suspension_reason", "created_at"]
+        read_only_fields = ["id", "is_suspended", "suspension_reason", "payment_history", "created_at"]
         extra_kwargs = {
             "full_name": {"required": False},
             "phone": {"required": False},
@@ -518,17 +574,38 @@ class StaffCustomerDetailSerializer(serializers.ModelSerializer):
             "date_of_birth": {"required": False},
         }
 
+    def get_payment_history(self, obj):
+        # Last 10 payment attempts, newest first. Only what the backend
+        # actually records — kind/purpose/amount/status/date.
+        sessions = obj.checkout_sessions.all().order_by("-created_at")[:10]
+        return [
+            {
+                "kind": s.kind,
+                "purpose": s.purpose,
+                "amount": str(s.amount),
+                "status": s.status,
+                "created_at": s.created_at,
+            }
+            for s in sessions
+        ]
+
 
 class StaffBusinessOwnerDetailSerializer(serializers.ModelSerializer):
+    # Full profile (punch-list item 9) — surfaced read-only for staff review;
+    # the editable identity fields stay the three below. `profile` is the
+    # OneToOne BusinessOwnerProfile; a business owner mid-registration may not
+    # have one yet, so every getter tolerates its absence.
+    profile = serializers.SerializerMethodField()
+
     class Meta:
         model = BusinessOwner
         fields = [
             "id", "full_name", "login_phone", "email", "kyc_status", "kyc_rejection_reason",
-            "is_suspended", "suspension_reason", "created_at",
+            "is_suspended", "suspension_reason", "profile", "created_at",
         ]
         read_only_fields = [
             "id", "kyc_status", "kyc_rejection_reason",
-            "is_suspended", "suspension_reason", "created_at",
+            "is_suspended", "suspension_reason", "profile", "created_at",
         ]
         extra_kwargs = {
             "full_name": {"required": False},
@@ -536,18 +613,73 @@ class StaffBusinessOwnerDetailSerializer(serializers.ModelSerializer):
             "email": {"required": False},
         }
 
+    def get_profile(self, obj):
+        profile = getattr(obj, "profile", None)
+        if profile is None:
+            return None
+        return {
+            "business_contact_phone": profile.business_contact_phone,
+            "business_kind": profile.business_kind,
+            "gps_address": profile.gps_address,
+            "is_formal": profile.is_formal,
+            "tin": profile.tin,
+            "address_verified": profile.address_verified,
+            "address_verified_by_name": (
+                profile.address_verified_by.full_name if profile.address_verified_by else None
+            ),
+            "address_verified_at": profile.address_verified_at,
+            # Payout details — the ONLY place these leave the server, and
+            # masked to the last 5 (the numbers are stored unmasked). Names are
+            # not sensitive and shown in full; the account/momo numbers are
+            # masked; the network/bank/method labels are not numbers.
+            "default_payout_method": profile.default_payout_method,
+            "payout_verification_status": profile.payout_verification_status,
+            "payout_bank_name": profile.payout_bank_name,
+            "payout_bank_account_name": profile.payout_bank_account_name,
+            "payout_bank_account_number_masked": mask_but_last(profile.payout_bank_account_number),
+            "payout_momo_network": profile.payout_momo_network,
+            "payout_momo_name": profile.payout_momo_name,
+            "payout_momo_number_masked": mask_but_last(profile.payout_momo_number),
+        }
+
 
 class StaffListSerializer(serializers.ModelSerializer):
     role = serializers.CharField(source="role.name", read_only=True)
     status = serializers.SerializerMethodField()
+    # Effective permissions, so the panel's per-staffer permission editor
+    # (item 9) can show what's currently allowed without a second request.
+    permissions = serializers.SerializerMethodField()
+    # The role's own permission set, so the editor can compute grant/revoke
+    # as a diff against it — a permission that's effective but NOT in this set
+    # is an individual grant that must be preserved, which an "effective set
+    # only" view can't tell apart. Not sensitive: a role's permissions are
+    # already derivable from the role.
+    role_permissions = serializers.SerializerMethodField()
 
     class Meta:
         model = StaffUser
-        fields = ["id", "full_name", "email", "phone", "role", "status", "created_at"]
+        fields = [
+            "id", "full_name", "email", "phone", "role", "status",
+            "is_suspended", "suspension_reason", "is_active",
+            "permissions", "role_permissions", "created_at",
+        ]
 
     def get_status(self, obj):
+        # Deactivation and suspension take priority over invite state — a
+        # deactivated staffer is deactivated whether or not their invite ever
+        # completed. Order matters: deactivated is the more terminal of the two.
+        if not obj.is_active:
+            return "deactivated"
+        if obj.is_suspended:
+            return "suspended"
         if obj.invite_token is None:
             return "active"
         if obj.invite_expires_at and obj.invite_expires_at < timezone.now():
             return "invite_expired"
         return "invited"
+
+    def get_permissions(self, obj):
+        return sorted(obj.effective_permission_codenames())
+
+    def get_role_permissions(self, obj):
+        return sorted(obj.role.permissions.values_list("codename", flat=True))

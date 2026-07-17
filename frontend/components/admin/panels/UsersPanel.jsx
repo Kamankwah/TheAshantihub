@@ -33,6 +33,7 @@ const CONFIG = {
       { name: "date_of_birth", label: "Date of birth" },
       { name: "created_at", label: "Joined", slice: 10 },
     ],
+    renderExtra: (data) => <CustomerPaymentHistory history={data.payment_history} />,
   },
   owners: {
     basePath: "/api/accounts/business-owners",
@@ -49,6 +50,7 @@ const CONFIG = {
       { name: "kyc_rejection_reason", label: "KYC rejection reason" },
       { name: "created_at", label: "Joined", slice: 10 },
     ],
+    renderExtra: (data) => <OwnerProfile profile={data.profile} />,
   },
 };
 
@@ -58,6 +60,79 @@ function DetailField({ label, value }) {
       <div style={{ color: D.textFaint, fontSize: "0.6rem", fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</div>
       <div style={{ color: D.text, fontSize: "0.78rem", wordBreak: "break-word" }}>{value || "—"}</div>
     </div>
+  );
+}
+
+function SectionTitle({ children }) {
+  return (
+    <div style={{ color: D.gold, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", margin: "14px 0 8px" }}>{children}</div>
+  );
+}
+
+// A customer's real payment history (item 9). There is deliberately no
+// "payment type"/"last 5 digits" here — no payment-instrument model exists, so
+// this is what they actually paid for, not what they paid with.
+function CustomerPaymentHistory({ history }) {
+  return (
+    <>
+      <SectionTitle>Payment history</SectionTitle>
+      {(!history || history.length === 0) ? (
+        <div style={{ color: D.textDim, fontSize: "0.75rem" }}>No payments yet.</div>
+      ) : (
+        history.map((p, i) => (
+          <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "5px 0", borderBottom: `1px solid ${D.divider}`, fontSize: "0.72rem" }}>
+            <span style={{ color: D.text }}>{p.purpose || p.kind}</span>
+            <span style={{ color: D.textDim, whiteSpace: "nowrap" }}>
+              GHS {p.amount} • <span style={{ color: p.status === "success" ? D.green : p.status === "failed" ? D.red : D.amber }}>{p.status}</span> • {p.created_at?.slice(0, 10)}
+            </span>
+          </div>
+        ))
+      )}
+    </>
+  );
+}
+
+// A business owner's full profile (item 9) — including payout details, whose
+// account/momo numbers arrive already masked to the last 5 from the backend
+// (they're stored unmasked and never leave the server in full).
+function OwnerProfile({ profile }) {
+  if (!profile) {
+    return (
+      <>
+        <SectionTitle>Business profile</SectionTitle>
+        <div style={{ color: D.textDim, fontSize: "0.75rem" }}>This owner hasn't completed registration yet.</div>
+      </>
+    );
+  }
+  return (
+    <>
+      <SectionTitle>Business profile</SectionTitle>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0 20px" }}>
+        <DetailField label="Business kind" value={profile.business_kind} />
+        <DetailField label="Business contact phone" value={profile.business_contact_phone} />
+        <DetailField label="Ghana Post (GPS) address" value={profile.gps_address} />
+        <DetailField label="Formally registered?" value={profile.is_formal === true ? "Yes" : profile.is_formal === false ? "No" : null} />
+        <DetailField label="TIN" value={profile.tin} />
+        <DetailField label="Address verified" value={profile.address_verified ? `Yes${profile.address_verified_by_name ? ` — ${profile.address_verified_by_name}` : ""}` : "No"} />
+      </div>
+
+      <SectionTitle>Payout details</SectionTitle>
+      <div style={{ color: D.textFaint, fontSize: "0.62rem", marginBottom: 8 }}>Account numbers are masked to the last 5 digits.</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0 20px" }}>
+        <DetailField label="Default method" value={profile.default_payout_method} />
+        <DetailField label="Verification" value={profile.payout_verification_status} />
+        {(profile.payout_momo_number_masked || profile.payout_momo_name) && <>
+          <DetailField label="MoMo network" value={profile.payout_momo_network} />
+          <DetailField label="MoMo name" value={profile.payout_momo_name} />
+          <DetailField label="MoMo number" value={profile.payout_momo_number_masked} />
+        </>}
+        {(profile.payout_bank_account_number_masked || profile.payout_bank_name) && <>
+          <DetailField label="Bank" value={profile.payout_bank_name} />
+          <DetailField label="Account name" value={profile.payout_bank_account_name} />
+          <DetailField label="Account number" value={profile.payout_bank_account_number_masked} />
+        </>}
+      </div>
+    </>
   );
 }
 
@@ -148,6 +223,7 @@ function UserRow({ user, config, canManage, onChanged }) {
                 ))}
               </div>
               {detail.data.is_suspended && <DetailField label="Suspension reason" value={detail.data.suspension_reason} />}
+              {config.renderExtra && config.renderExtra(detail.data)}
             </>
           )}
           {detail.data && mode === "edit" && (

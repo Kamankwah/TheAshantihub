@@ -38,14 +38,18 @@ class SubscriptionPlanAdminSerializer(serializers.ModelSerializer):
     SubscriptionPlanPendingQueueView (list pending).
     """
 
+    reviewed_by_name = serializers.CharField(
+        source="reviewed_by.full_name", read_only=True, default=None
+    )
+
     class Meta:
         model = SubscriptionPlan
         fields = [
             "id", "tier", "name", "kind", "monthly_price", "features", "is_recommended",
             "status", "rejection_reason", "max_active_listings", "hero_days",
-            "boost_credits_per_month",
+            "boost_credits_per_month", "reviewed_by_name", "reviewed_at", "created_at",
         ]
-        read_only_fields = ["id"]
+        read_only_fields = ["id", "reviewed_by_name", "reviewed_at", "created_at"]
 
     def create(self, validated_data):
         # Never trust client-submitted status on creation — every new plan

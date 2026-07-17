@@ -136,12 +136,13 @@ class StaffBadgesView(APIView):
                     "hero_media.approve",
                     HeroMediaSubmission.objects.filter(status=HeroMediaSubmission.PENDING),
                 ),
-                # Reviews are moderated reactively (published on creation, no
-                # "pending" subset), so the actionable queue = every currently
-                # published review a moderator could still hide.
+                # Reviews are pre-moderated now (punch-list item 5), so this is
+                # a real pending queue like the others above. It used to count
+                # every published review — everything a moderator could still
+                # reactively hide — which meant the badge never reached zero.
                 "reviews": count(
                     "reviews.moderate",
-                    Review.objects.filter(status=Review.PUBLISHED),
+                    Review.objects.filter(status=Review.PENDING),
                 ),
                 "plan_approvals": count(
                     "subscription_plans.approve",

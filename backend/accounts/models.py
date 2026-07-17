@@ -115,6 +115,49 @@ class StaffUser(AuthenticatableAccountMixin, models.Model):
     invite_expires_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # Two distinct ways to stop a staffer signing in (punch-list item 10),
+    # cloned from the Customer/BusinessOwner precedent in migration 0021:
+    #
+    # - is_suspended: a temporary hold (misconduct, investigation). Carries a
+    #   reason, same as the customer/owner fields of the same name.
+    # - is_active: cleared when someone leaves the company. No reason field —
+    #   "they don't work here" is the whole story.
+    #
+    # Both are reversible and both reject at login (see StaffLoginSerializer).
+    # Kept as two booleans rather than one status enum so a staffer can be
+    # suspended *and* later deactivated without one overwriting the other's
+    # history.
+    is_suspended = models.BooleanField(default=False)
+    suspension_reason = models.CharField(max_length=500, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    # Per-staffer permission overrides (punch-list item 9). Permissions
+    # otherwise come only from `role`, so "add or take" a permission for one
+    # person had nowhere to live — editing Role.permissions would silently
+    # re-permission every staffer sharing that role.
+    #
+    # Effective set = role.permissions + extra_permissions - revoked_permissions
+    # (see effective_permission_codenames below). `revoked` wins over `extra`
+    # on the assumption that an explicit take-away is the more deliberate act.
+    extra_permissions = models.ManyToManyField(
+        Permission, related_name="granted_to_staff", blank=True
+    )
+    revoked_permissions = models.ManyToManyField(
+        Permission, related_name="revoked_from_staff", blank=True
+    )
+
+    def effective_permission_codenames(self):
+        """The single source of truth for what this staffer can do.
+
+        Both HasRolePermission and GET /api/accounts/me/'s `permissions` list
+        read this — they must agree, or the UI would gate differently from the
+        server and show buttons that 403.
+        """
+        role_codenames = set(self.role.permissions.values_list("codename", flat=True))
+        extra = set(self.extra_permissions.values_list("codename", flat=True))
+        revoked = set(self.revoked_permissions.values_list("codename", flat=True))
+        return (role_codenames | extra) - revoked
+
     def __str__(self):
         return f"{self.full_name} ({self.role.name})"
 
@@ -135,6 +178,19 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
     password_hash = models.CharField(max_length=255)
     kyc_status = models.CharField(max_length=10, choices=KYC_STATUS_CHOICES, default=PENDING)
     kyc_rejection_reason = models.CharField(max_length=500, null=True, blank=True)
+
+    # Approver attribution (staff moderation-queue restructuring) — which staff
+    # member approved OR rejected this KYC submission, and when. Set by
+    # KYCApproveView/KYCRejectView; cleared by KYCReReviewView when a rejected
+    # submission is re-opened back to pending. The canonical `reviewed_by`/
+    # `reviewed_at` pair shared by every moderated model (Listing,
+    # HeroMediaSubmission) so the Approved/Rejected staff tabs can show who
+    # actioned each item.
+    reviewed_by = models.ForeignKey(
+        "StaffUser", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="reviewed_business_owners",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
 
     # Staff moderation (staff user-management tools) — same semantics as
     # Customer.is_suspended above: blocks login and hides this owner's
@@ -227,6 +283,20 @@ class BusinessOwnerProfile(models.Model):
         default="pending",
     )
     terms_accepted_at = models.DateTimeField(null=True, blank=True)
+
+    # Ghana Post address verification (staff moderation-queue restructuring,
+    # punch-list item 8) — a staff toggle confirming the business's Ghana Post
+    # digital address (gps_address) during KYC review. A precursor to the
+    # future Scouts field-verification role; for now just a staff-set flag +
+    # attribution. `address_verified_at` being non-null is the "a decision has
+    # been made" signal the KYC Approve/Reject gating keys off of (verified ✓
+    # or explicitly marked wrong both set it).
+    address_verified = models.BooleanField(default=False)
+    address_verified_by = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="address_verified_profiles",
+    )
+    address_verified_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"Profile for {self.business_owner.full_name}"

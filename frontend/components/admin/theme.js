@@ -35,10 +35,9 @@ export const ROLE_BADGE_TEXT = {
 // Moved out of App.jsx's old inline StaffDashboard section so every extracted
 // panel imports these instead of redefining its own local copy.
 
-export const REVIEW_STATUS_META = {
-  published: { label: "Published", color: D.green },
-  hidden: { label: "Hidden", color: D.red },
-};
+// (REVIEW_STATUS_META lived here until reviews moved onto ModerationQueueTabs
+// — the Pending/Approved/Rejected tab a row sits under now conveys its status,
+// so the per-row badge it fed no longer exists.)
 
 export const SUBSCRIPTION_PLAN_STATUS_META = {
   pending_approval: { label: "Pending Approval", color: D.amber },
@@ -62,4 +61,6 @@ export const STAFF_STATUS_COLORS = {
   active: D.green,
   invited: D.amber,
   invite_expired: D.red,
+  suspended: D.red,
+  deactivated: D.textFaint,
 };

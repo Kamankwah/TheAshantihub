@@ -39,9 +39,11 @@ export default function OverviewPanel({ auth, roleColor }) {
   const escrowHeldTotal = canEscrow
     ? (escrowHeld.data?.results || []).reduce((sum, t) => sum + (Number(t.price) || 0), 0)
     : null;
-  const openDisputesCount = canDisputes
-    ? (disputes.data?.results || []).filter(d => d.status === "open" || d.status === "investigating").length
-    : null;
+  // The disputes queue now defaults to ?status=pending, which is exactly
+  // open+investigating — so `count` (the total across every page) is the real
+  // figure. This used to filter the first page client-side, silently capping
+  // the KPI at the 20-row page size.
+  const openDisputesCount = canDisputes ? (disputes.data?.count ?? 0) : null;
 
   const kpis = [
     canKyc && { icon: "🪪", label: "Pending KYC", value: (kyc.data || []).length, accent: D.amber },

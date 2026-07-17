@@ -1,4 +1,5 @@
 from django.db.models import Avg, Count
+from django.utils import timezone
 from rest_framework import generics
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -10,6 +11,7 @@ from accounts.permissions import HasRolePermission
 from accounts.views import IsCustomer
 from events.models import Event, EventRSVP
 from listings.models import Listing
+from notifications.services import notify_staff_role
 from orders.models import Order, OrderItem
 
 from .models import Review
@@ -117,14 +119,25 @@ class ReviewSubmitView(APIView):
         if Review.objects.filter(author=request.user, **existing_filter).exists():
             return Response({"detail": "You have already reviewed this."}, status=400)
 
+        # Pre-moderation (punch-list item 5): a new review waits for staff
+        # approval instead of publishing straight away. The verified-purchase
+        # check above is still the first gate — this is the second.
         review = Review.objects.create(
             target_type=target_type,
             author=request.user,
             rating=data["rating"],
             comment=data["comment"],
             verified=True,
-            status=Review.PUBLISHED,
+            status=Review.PENDING,
             **target_kwargs,
+        )
+        notify_staff_role(
+            "reviews.moderate",
+            "review_needs_moderation",
+            "New review awaiting approval",
+            body=f"A {data['rating']}-star review needs to be approved before it goes live.",
+            link="reviews",
+            icon="⭐",
         )
         return Response(ReviewSerializer(review).data, status=201)
 
@@ -229,22 +242,74 @@ class ReviewModerationPagination(PageNumberPagination):
     page_size = 20
 
 
+# Maps the three UI tabs onto the stored statuses. `hidden` doubles as the
+# rejected state — see the Review docstring for why it kept that name.
+REVIEW_STATUS_MAP = {
+    "pending": Review.PENDING,
+    "approved": Review.PUBLISHED,
+    "rejected": Review.HIDDEN,
+}
+
+
 class ReviewModerationListView(generics.ListAPIView):
-    """GET /api/reviews/moderation/ — all reviews regardless of status,
-    staff-only (reviews.moderate).
+    """GET /api/reviews/moderation/?status=pending|approved|rejected —
+    staff-only (reviews.moderate). Defaults to pending; an unknown value
+    falls back to pending rather than erroring.
     """
 
     serializer_class = ReviewModerationSerializer
-    queryset = Review.objects.all().order_by("-created_at")
     pagination_class = ReviewModerationPagination
 
     def get_permissions(self):
         return [HasRolePermission("reviews.moderate")]
 
+    def get_queryset(self):
+        tab = self.request.query_params.get("status", "pending")
+        review_status = REVIEW_STATUS_MAP.get(tab, Review.PENDING)
+        queryset = Review.objects.filter(status=review_status)
+        if review_status == Review.PENDING:
+            # A work queue — oldest first, so nothing starves at the bottom.
+            return queryset.order_by("created_at")
+        # History — most recently actioned first. Rows moderated before this
+        # queue existed have no reviewed_at and sort last, hence the fallback.
+        return queryset.order_by("-reviewed_at", "-created_at")
+
+
+class ReviewApproveView(APIView):
+    """POST /api/reviews/moderation/{id}/approve/ — publishes a pending
+    review. Only a pending review can be approved; a published one is
+    already live and a rejected one must go back through re-review first.
+    """
+
+    def get_permissions(self):
+        return [HasRolePermission("reviews.moderate")]
+
+    def post(self, request, pk):
+        review = generics.get_object_or_404(Review, pk=pk)
+        if review.status != Review.PENDING:
+            return Response(
+                {"detail": "Only a pending review can be approved."}, status=400
+            )
+        review.status = Review.PUBLISHED
+        review.hidden_reason = None
+        review.hidden_by = None
+        review.reviewed_by = request.user
+        review.reviewed_at = timezone.now()
+        review.save(
+            update_fields=[
+                "status", "hidden_reason", "hidden_by", "reviewed_by", "reviewed_at",
+            ]
+        )
+        return Response({"id": review.id, "status": review.status})
+
 
 class ReviewHideView(APIView):
     """POST /api/reviews/moderation/{id}/hide/ — body {"reason": "..."}
     required non-empty, mirrors ModerationRejectView's reason requirement.
+
+    This is the reject action for a pending review, and stays usable on a
+    published one as a reactive takedown — both land in the same `hidden`
+    state, so both surface on the Rejected tab.
     """
 
     def get_permissions(self):
@@ -258,18 +323,56 @@ class ReviewHideView(APIView):
         review.status = Review.HIDDEN
         review.hidden_reason = reason
         review.hidden_by = request.user
-        review.save(update_fields=["status", "hidden_reason", "hidden_by"])
+        # Also record the canonical pair, so the Rejected tab can show who
+        # actioned it and when without special-casing this queue.
+        review.reviewed_by = request.user
+        review.reviewed_at = timezone.now()
+        review.save(
+            update_fields=[
+                "status", "hidden_reason", "hidden_by", "reviewed_by", "reviewed_at",
+            ]
+        )
         return Response({"id": review.id, "status": review.status})
 
 
-class ReviewUnhideView(APIView):
+class ReviewReReviewView(APIView):
+    """POST /api/reviews/moderation/{id}/re-review/ — sends a rejected review
+    back to pending, clearing the rejection.
+
+    Deliberately gated on `reviews.re_review` (super_admin only), a tighter
+    permission than the `reviews.moderate` needed to approve or reject —
+    reversing another moderator's rejection is a supervisor action.
+
+    Supersedes the old unhide endpoint, which put a hidden review straight
+    back to published without re-running the approval step.
+    """
+
     def get_permissions(self):
-        return [HasRolePermission("reviews.moderate")]
+        return [HasRolePermission("reviews.re_review")]
 
     def post(self, request, pk):
         review = generics.get_object_or_404(Review, pk=pk)
-        review.status = Review.PUBLISHED
+        if review.status != Review.HIDDEN:
+            return Response(
+                {"detail": "Only a rejected review can be sent back for re-review."},
+                status=400,
+            )
+        review.status = Review.PENDING
         review.hidden_reason = None
         review.hidden_by = None
-        review.save(update_fields=["status", "hidden_reason", "hidden_by"])
+        review.reviewed_by = None
+        review.reviewed_at = None
+        review.save(
+            update_fields=[
+                "status", "hidden_reason", "hidden_by", "reviewed_by", "reviewed_at",
+            ]
+        )
+        notify_staff_role(
+            "reviews.moderate",
+            "review_needs_moderation",
+            "Review re-opened for approval",
+            body="A rejected review was sent back and needs a fresh decision.",
+            link="reviews",
+            icon="⭐",
+        )
         return Response({"id": review.id, "status": review.status})

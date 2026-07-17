@@ -191,11 +191,14 @@ export const handlers = [
   http.get('http://localhost:8000/api/reviews/moderation/', () => {
     return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
   }),
+  http.post('http://localhost:8000/api/reviews/moderation/:id/approve/', () => {
+    return HttpResponse.json({ id: 1, status: 'published' })
+  }),
   http.post('http://localhost:8000/api/reviews/moderation/:id/hide/', () => {
     return HttpResponse.json({ id: 1, status: 'hidden' })
   }),
-  http.post('http://localhost:8000/api/reviews/moderation/:id/unhide/', () => {
-    return HttpResponse.json({ id: 1, status: 'published' })
+  http.post('http://localhost:8000/api/reviews/moderation/:id/re-review/', () => {
+    return HttpResponse.json({ id: 1, status: 'pending' })
   }),
   http.get('http://localhost:8000/api/qa/questions/listing/:id/', () => {
     return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
@@ -284,6 +287,29 @@ export const handlers = [
   http.post('http://localhost:8000/api/accounts/business-owners/:id/unsuspend/', ({ params }) => {
     return HttpResponse.json({ id: Number(params.id), is_suspended: false })
   }),
+  // Staff account management (item 10) + permission editor (item 9) — default
+  // handlers, overridden per-test as needed.
+  http.post('http://localhost:8000/api/accounts/staff/:id/suspend/', ({ params }) => {
+    return HttpResponse.json({ id: Number(params.id), status: 'suspended' })
+  }),
+  http.post('http://localhost:8000/api/accounts/staff/:id/unsuspend/', ({ params }) => {
+    return HttpResponse.json({ id: Number(params.id), status: 'active' })
+  }),
+  http.post('http://localhost:8000/api/accounts/staff/:id/deactivate/', ({ params }) => {
+    return HttpResponse.json({ id: Number(params.id), status: 'deactivated' })
+  }),
+  http.post('http://localhost:8000/api/accounts/staff/:id/reactivate/', ({ params }) => {
+    return HttpResponse.json({ id: Number(params.id), status: 'active' })
+  }),
+  http.post('http://localhost:8000/api/accounts/staff/:id/permissions/', ({ params }) => {
+    return HttpResponse.json({ id: Number(params.id), status: 'active' })
+  }),
+  http.get('http://localhost:8000/api/accounts/permissions/', () => {
+    return HttpResponse.json([
+      { codename: 'kyc.approve', description: 'Approve or reject KYC submissions' },
+      { codename: 'users.view', description: 'View customer and business accounts' },
+    ])
+  }),
   http.get('http://localhost:8000/api/events/tickets/escrow/', () => {
     return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
   }),
@@ -297,6 +323,17 @@ export const handlers = [
   }),
   http.post('http://localhost:8000/api/disputes/:id/resolve/', () => {
     return HttpResponse.json({ id: 1, status: 'resolved' })
+  }),
+  http.post('http://localhost:8000/api/disputes/:id/re-review/', () => {
+    return HttpResponse.json({ id: 1, status: 'open' })
+  }),
+  // Promotions management (staff) — unpaginated, unlike the disputes queue
+  // above.
+  http.get('http://localhost:8000/api/listings/promotions/', () => {
+    return HttpResponse.json([])
+  }),
+  http.post('http://localhost:8000/api/listings/promotions/:id/cancel/', () => {
+    return HttpResponse.json({ id: 1, status: 'cancelled' })
   }),
   // Transactions report (extended billing app) — default handler,
   // overridden per-test via server.use() where a specific report is needed.
