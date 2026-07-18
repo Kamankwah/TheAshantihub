@@ -39,6 +39,7 @@ export default function Sidebar({
   showSort = true,
   showVerifiedToggle = true,
   showKindFilter = false,
+  categoryOptions,
   search,
   onSearchChange,
 }) {
@@ -107,6 +108,25 @@ export default function Sidebar({
               <option value="" style={optionStyle}>All Products &amp; Services</option>
               <option value="product" style={optionStyle}>Products only</option>
               <option value="service" style={optionStyle}>Services only</option>
+            </select>
+          </>
+        )}
+
+        {/* Category dropdown — used by the Events tab to filter by event
+            category (mirrors the Business tab's Type filter position). */}
+        {categoryOptions && (
+          <>
+            <label htmlFor="ah-sidebar-category" style={labelStyle}>Category</label>
+            <select
+              id="ah-sidebar-category"
+              value={filters.category || ""}
+              onChange={(e) => { const value = e.target.value; setFilters((f) => ({ ...f, category: value || undefined })); }}
+              style={{ ...selectStyle, marginBottom: 14 }}
+            >
+              <option value="" style={optionStyle}>All Categories</option>
+              {categoryOptions.map((c) => (
+                <option key={c.id} value={c.slug} style={optionStyle}>{c.icon ? `${c.icon} ` : ""}{c.label}</option>
+              ))}
             </select>
           </>
         )}

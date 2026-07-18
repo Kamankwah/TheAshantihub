@@ -26,7 +26,7 @@ class SubscriptionPlanSerializer(serializers.ModelSerializer):
         model = SubscriptionPlan
         fields = [
             "id", "tier", "name", "kind", "monthly_price", "features", "is_recommended",
-            "max_active_listings", "hero_days", "boost_credits_per_month",
+            "max_active_listings", "hero_days", "hero_slots", "boost_credits_per_month",
         ]
 
 
@@ -46,7 +46,7 @@ class SubscriptionPlanAdminSerializer(serializers.ModelSerializer):
         model = SubscriptionPlan
         fields = [
             "id", "tier", "name", "kind", "monthly_price", "features", "is_recommended",
-            "status", "rejection_reason", "max_active_listings", "hero_days",
+            "status", "rejection_reason", "max_active_listings", "hero_days", "hero_slots",
             "boost_credits_per_month", "reviewed_by_name", "reviewed_at", "created_at",
         ]
         read_only_fields = ["id", "reviewed_by_name", "reviewed_at", "created_at"]

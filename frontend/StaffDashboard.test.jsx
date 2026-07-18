@@ -1183,7 +1183,7 @@ describe('StaffDashboard Subscription Plans Management', () => {
     fireEvent.click(screen.getByText('Create plan'))
     await waitFor(() => expect(createBody).toEqual({
       tier: 'service_starter', name: 'Service Starter', kind: 'product', monthly_price: '15.00',
-      max_active_listings: null, hero_days: 0, boost_credits_per_month: 0, is_recommended: false, features: [],
+      max_active_listings: null, hero_days: 0, hero_slots: 1, boost_credits_per_month: 0, is_recommended: false, features: [],
     }))
   })
 

@@ -5,7 +5,7 @@ import { D, glassCard, SUBSCRIPTION_PLAN_STATUS_META } from "../theme.js";
 
 const EMPTY_SUBSCRIPTION_PLAN_FORM = {
   tier: "", name: "", kind: "product", monthly_price: "",
-  max_active_listings: "", hero_days: "", boost_credits_per_month: "",
+  max_active_listings: "", hero_days: "", hero_slots: "", boost_credits_per_month: "",
   is_recommended: false, features: "",
 };
 
@@ -20,6 +20,7 @@ function subscriptionPlanFormToPayload(form) {
     monthly_price: form.monthly_price,
     max_active_listings: form.max_active_listings === "" ? null : Number(form.max_active_listings),
     hero_days: form.hero_days === "" ? 0 : Number(form.hero_days),
+    hero_slots: form.hero_slots === "" ? 1 : Number(form.hero_slots),
     boost_credits_per_month: form.boost_credits_per_month === "" ? 0 : Number(form.boost_credits_per_month),
     is_recommended: form.is_recommended,
     features: form.features.split("\n").map(s => s.trim()).filter(Boolean),
@@ -34,6 +35,7 @@ function subscriptionPlanToForm(plan) {
     monthly_price: plan.monthly_price ?? "",
     max_active_listings: plan.max_active_listings == null ? "" : String(plan.max_active_listings),
     hero_days: plan.hero_days ?? "",
+    hero_slots: plan.hero_slots ?? "",
     boost_credits_per_month: plan.boost_credits_per_month ?? "",
     is_recommended: !!plan.is_recommended,
     features: (plan.features || []).join("\n"),
@@ -62,6 +64,7 @@ function SubscriptionPlanFormFields({ form, setField }) {
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <input type="number" min={0} value={form.hero_days} onChange={e => setField("hero_days", e.target.value)} placeholder="Hero days" style={{ ...fieldStyle, flex: 1, minWidth: 100 }} />
+        <input type="number" min={1} value={form.hero_slots} onChange={e => setField("hero_slots", e.target.value)} placeholder="Hero slots (blank = 1)" style={{ ...fieldStyle, flex: 1, minWidth: 130 }} />
         <input type="number" min={0} value={form.boost_credits_per_month} onChange={e => setField("boost_credits_per_month", e.target.value)} placeholder="Boost credits / month" style={{ ...fieldStyle, flex: 1, minWidth: 150 }} />
       </div>
       <label style={{ display: "flex", alignItems: "center", gap: 6, color: D.textDim, fontSize: "0.75rem" }}>

@@ -127,11 +127,11 @@ class OwnerListingSerializer(serializers.ModelSerializer):
         fields = [
             "id", "category", "zone", "name", "description", "price_amount", "price_unit",
             "tag", "contact_phone", "lat", "lng", "main_photo", "photos", "specs",
-            "service_duration", *LISTING_DECISION_FIELDS,
+            "service_duration", "units_total", *LISTING_DECISION_FIELDS,
             "status", "rejection_reason", "created_at", "updated_at",
         ]
         read_only_fields = ["status", "rejection_reason", "created_at", "updated_at"]
-        extra_kwargs = {"contact_phone": {"required": False}}
+        extra_kwargs = {"contact_phone": {"required": False}, "units_total": {"required": False}}
 
     def validate(self, data):
         if self.instance is not None and self.instance.status == Listing.PUBLISHED:
@@ -288,11 +288,18 @@ class HeroActiveSerializer(serializers.ModelSerializer):
     """Public shape for the live hero slider — GET /api/hero/active/."""
 
     business_name = serializers.CharField(source="business_owner.full_name", read_only=True)
+    # The listing behind this hero slide, so the slider's Buy Now / Engage
+    # Service CTA can route to the cart (product) or the listing (service).
+    listing_kind = serializers.CharField(source="listing.category.kind", read_only=True, default=None)
+    price_amount = serializers.DecimalField(
+        source="listing.price_amount", max_digits=10, decimal_places=2, read_only=True, default=None,
+    )
 
     class Meta:
         model = HeroMediaSubmission
         fields = [
             "id", "media", "media_type", "caption", "business_name", "approved_at", "expires_at",
+            "listing", "listing_kind", "price_amount",
         ]
 
 

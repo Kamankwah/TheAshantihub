@@ -27,25 +27,27 @@ describe('HeroCarousel', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  it('renders the first slide business name and caption once loaded', async () => {
+  it('renders the first slide caption as the headline once loaded', async () => {
+    // The business name is intentionally NOT shown in the hero (the caption is
+    // the big marketable headline instead).
     server.use(http.get('http://localhost:8000/api/hero/active/', () => HttpResponse.json(SLIDES)))
     renderCarousel()
-    expect(await screen.findByText('Kente Palace Weavers')).toBeInTheDocument()
-    expect(screen.getByText('Best kente in Bonwire')).toBeInTheDocument()
+    expect(await screen.findByText('Best kente in Bonwire')).toBeInTheDocument()
+    expect(screen.queryByText('Kente Palace Weavers')).not.toBeInTheDocument()
   })
 
   it('advances to the next slide when the next control is clicked', async () => {
     server.use(http.get('http://localhost:8000/api/hero/active/', () => HttpResponse.json(SLIDES)))
     renderCarousel()
-    await screen.findByText('Kente Palace Weavers')
+    await screen.findByText('Best kente in Bonwire')
     fireEvent.click(screen.getByLabelText('Next slide'))
-    expect(screen.getByText("Afia's Kitchen")).toBeInTheDocument()
+    expect(screen.getByText('Fresh chop daily')).toBeInTheDocument()
   })
 
   it('renders dot controls matching the slide count', async () => {
     server.use(http.get('http://localhost:8000/api/hero/active/', () => HttpResponse.json(SLIDES)))
     renderCarousel()
-    await screen.findByText('Kente Palace Weavers')
+    await screen.findByText('Best kente in Bonwire')
     expect(screen.getByLabelText('Go to slide 1')).toBeInTheDocument()
     expect(screen.getByLabelText('Go to slide 2')).toBeInTheDocument()
   })
@@ -53,7 +55,7 @@ describe('HeroCarousel', () => {
   it('does not render prev/next/dot controls for a single slide', async () => {
     server.use(http.get('http://localhost:8000/api/hero/active/', () => HttpResponse.json([SLIDES[0]])))
     renderCarousel()
-    await screen.findByText('Kente Palace Weavers')
+    await screen.findByText('Best kente in Bonwire')
     expect(screen.queryByLabelText('Next slide')).not.toBeInTheDocument()
   })
 })

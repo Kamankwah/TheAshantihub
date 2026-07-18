@@ -192,6 +192,11 @@ class EventSubmitView(APIView):
 
     permission_classes = [IsAuthenticated, IsCustomerOrBusinessOwner]
 
+    # An organizer (customer or business) may have at most this many events
+    # outstanding (pending or live) at once; beyond that they must contact
+    # staff to feature more.
+    MAX_OUTSTANDING_EVENTS = 3
+
     def post(self, request):
         serializer = EventSubmitSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -202,6 +207,28 @@ class EventSubmitView(APIView):
             event.submitted_by_business = user
         else:
             event.submitted_by_customer = user
+
+        # Cap outstanding events per organizer. "Outstanding" = still pending, or
+        # approved and not yet expired (rejected/expired ones don't count).
+        now = timezone.now()
+        if isinstance(user, BusinessOwner):
+            owned = Event.objects.filter(submitted_by_business=user)
+        else:
+            owned = Event.objects.filter(submitted_by_customer=user)
+        outstanding = owned.filter(
+            Q(status=Event.PENDING)
+            | Q(status=Event.APPROVED) & (Q(expires_at__isnull=True) | Q(expires_at__gt=now))
+        ).count()
+        if outstanding >= self.MAX_OUTSTANDING_EVENTS:
+            return Response(
+                {
+                    "detail": (
+                        f"You can have at most {self.MAX_OUTSTANDING_EVENTS} events at a time. "
+                        "Please contact AshantiHub staff if you'd like to feature more."
+                    )
+                },
+                status=400,
+            )
 
         try:
             event.full_clean(exclude=["access_code"])
