@@ -22,6 +22,7 @@ function PromotionRow({ promotion, state, canManage, onDone }) {
   const [confirming, setConfirming] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
+  const [viewing, setViewing] = useState(false);
   const [actionError, setActionError] = useState(null);
   const kind = KIND_META[promotion.kind] || { label: promotion.kind, color: D.textDim };
 
@@ -69,25 +70,42 @@ function PromotionRow({ promotion, state, canManage, onDone }) {
             <div style={{ color: D.red, fontSize: "0.65rem", fontWeight: 700, marginTop: 2 }}>✕ Rejected{promotion.rejection_reason ? ` — ${promotion.rejection_reason}` : ""}</div>
           )}
         </div>
-        {state === "pending" && canManage && !rejecting && (
-          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-            <button onClick={approve} style={{ background: D.green, color: "#0b2e13", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 800, cursor: "pointer" }}>✓ Approve</button>
-            <button onClick={() => setRejecting(true)} style={{ background: "rgba(248,113,113,0.14)", color: D.red, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✕ Reject</button>
-          </div>
-        )}
-        {state === "active" && canManage && (
-          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-            {confirming ? (
+        {/* View (all tabs) + state-specific actions */}
+        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+          <button onClick={() => setViewing(v => !v)} style={{ background: D.panelBg2, color: D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>{viewing ? "Close" : "👁 View"}</button>
+          {state === "pending" && canManage && !rejecting && (
+            <>
+              <button onClick={approve} style={{ background: D.green, color: "#0b2e13", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 800, cursor: "pointer" }}>✓ Approve</button>
+              <button onClick={() => setRejecting(true)} style={{ background: "rgba(248,113,113,0.14)", color: D.red, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✕ Reject</button>
+            </>
+          )}
+          {state === "active" && canManage && (
+            confirming ? (
               <>
                 <button onClick={cancel} style={{ background: D.red, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Confirm cancel</button>
                 <button onClick={() => setConfirming(false)} style={{ background: D.panelBg2, color: D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Keep</button>
               </>
             ) : (
               <button onClick={() => setConfirming(true)} style={{ background: "rgba(248,113,113,0.14)", color: D.red, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✕ Cancel</button>
-            )}
-          </div>
-        )}
+            )
+          )}
+        </div>
       </div>
+
+      {/* Full detail — available on every tab (pre-prod bug fix 7 view button) */}
+      {viewing && (
+        <div style={{ marginTop: 10, padding: "12px 14px", background: D.panelBg2, borderRadius: 10, border: `1px solid ${D.divider}`, fontSize: "0.72rem", color: D.textDim, lineHeight: 1.7 }}>
+          <div><b>Listing:</b> {promotion.listing_name} (#{promotion.listing})</div>
+          <div><b>Business:</b> {promotion.business_owner_name}</div>
+          <div><b>Type:</b> {kind.label}</div>
+          {promotion.kind === "boost" && <div><b>Keywords:</b> {promotion.keywords || "—"}</div>}
+          <div><b>Amount paid:</b> GHS {promotion.amount_paid}</div>
+          <div><b>Window:</b> {fmtDate(promotion.starts_at)} → {fmtDate(promotion.ends_at)}</div>
+          <div><b>Status:</b> {promotion.status}{promotion.is_currently_active ? " (currently ranking)" : ""}</div>
+          <div><b>Purchased:</b> {fmtDate(promotion.created_at)}</div>
+          {promotion.rejection_reason && <div style={{ color: D.red }}><b>Rejection reason:</b> {promotion.rejection_reason}</div>}
+        </div>
+      )}
 
       {/* Reject reason input (pending rows) */}
       {state === "pending" && rejecting && (

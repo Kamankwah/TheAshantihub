@@ -48,6 +48,7 @@ export default function CategoriesZonesPanel({ auth }) {
   const [newIcon, setNewIcon] = useState("🆕");
   const [newColor, setNewColor] = useState("#888888");
   const [newKind, setNewKind] = useState("product");
+  const [newIsAccommodation, setNewIsAccommodation] = useState(false);
   const [newZoneName, setNewZoneName] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState({});
@@ -60,8 +61,11 @@ export default function CategoriesZonesPanel({ auth }) {
       await apiPost("/api/listings/categories/", {
         slug: slugify(newLabel), icon: newIcon || "🆕", label: newLabel.trim(),
         color: newColor, kind: newKind,
+        // Only a service category can be accommodation (hotel/real-estate/
+        // Airbnb) — its listings are booked by date in the Bookings tab.
+        is_accommodation: newKind === "service" ? newIsAccommodation : false,
       });
-      setNewLabel(""); setNewIcon("🆕"); setNewColor("#888888");
+      setNewLabel(""); setNewIcon("🆕"); setNewColor("#888888"); setNewIsAccommodation(false);
       categories.refetch();
     } catch (err) { setActionError("Could not add this category."); }
   };
@@ -69,7 +73,7 @@ export default function CategoriesZonesPanel({ auth }) {
   const startEdit = (c) => {
     setActionError(null);
     setEditingId(c.id);
-    setEditDraft({ label: c.label, icon: c.icon, color: c.color, kind: c.kind });
+    setEditDraft({ label: c.label, icon: c.icon, color: c.color, kind: c.kind, is_accommodation: !!c.is_accommodation });
   };
 
   const saveEdit = async (id) => {
@@ -77,6 +81,7 @@ export default function CategoriesZonesPanel({ auth }) {
     try {
       await apiPatch(`/api/listings/categories/${id}/`, {
         label: editDraft.label, icon: editDraft.icon, color: editDraft.color, kind: editDraft.kind,
+        is_accommodation: editDraft.kind === "service" ? !!editDraft.is_accommodation : false,
       });
       setEditingId(null);
       categories.refetch();
@@ -127,6 +132,12 @@ export default function CategoriesZonesPanel({ auth }) {
               {CREATE_KINDS.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
             </select>
           </div>
+          {editDraft.kind === "service" && (
+            <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, color: D.textDim, fontSize: "0.72rem", cursor: "pointer" }}>
+              <input type="checkbox" checked={!!editDraft.is_accommodation} onChange={e => setEditDraft(d => ({ ...d, is_accommodation: e.target.checked }))} />
+              🏨 Accommodation (booked by date — hotel / real estate / Airbnb)
+            </label>
+          )}
           <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
             <button onClick={() => saveEdit(c.id)} style={goldBtn}>Save</button>
             <button onClick={() => setEditingId(null)} style={ghostBtn}>Cancel</button>
@@ -136,7 +147,10 @@ export default function CategoriesZonesPanel({ auth }) {
     }
     return (
       <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: `1px solid ${D.divider}` }}>
-        <span style={{ color: D.text, fontSize: "0.8rem", flex: 1 }}>{c.icon} {c.label}</span>
+        <span style={{ color: D.text, fontSize: "0.8rem", flex: 1 }}>
+          {c.icon} {c.label}
+          {c.is_accommodation && <span style={{ marginLeft: 6, background: `${D.gold}22`, color: D.gold, borderRadius: 20, padding: "1px 7px", fontSize: "0.58rem", fontWeight: 800 }}>🏨 Accommodation</span>}
+        </span>
         <span style={{ width: 12, height: 12, borderRadius: "50%", background: c.color, flexShrink: 0 }} title={c.color} />
         {canManageCategories && (
           <>
@@ -180,6 +194,15 @@ export default function CategoriesZonesPanel({ auth }) {
                 </select>
                 <button onClick={addCategory} style={goldBtn}>Add category</button>
               </div>
+              {/* Accommodation is only meaningful for a service category — its
+                  listings are booked by date in the Bookings tab rather than
+                  carted. */}
+              {newKind === "service" && (
+                <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, color: D.textDim, fontSize: "0.72rem", cursor: "pointer" }}>
+                  <input type="checkbox" checked={newIsAccommodation} onChange={e => setNewIsAccommodation(e.target.checked)} />
+                  🏨 Accommodation (booked by date — hotel / real estate / Airbnb)
+                </label>
+              )}
             </div>
           )}
         </div>

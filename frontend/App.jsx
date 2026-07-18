@@ -962,25 +962,16 @@ export function groupCategoriesByKind(categories) {
 }
 
 // ─── Business Card ─────────────────────────────────────────────────────────────
-export function Card({item,accentColor,user,favourites,onFavourite,currency,onMessage,onOpen,onBuyNow}) {
+export function Card({item,accentColor,user,favourites,onFavourite,currency,onMessage,onOpen}) {
   const [showReviews,setShowReviews]=useState(false);
-  const [showPay,setShowPay]=useState(false);
-  const [buying,setBuying]=useState(false);
   const [photoIdx,setPhotoIdx]=useState(0);
   const isFav = favourites.includes(item.id);
 
-  // "Buy" routes through the cart's delivery flow (store pickup vs door-to-door)
-  // rather than the old MoMoModal that jumped straight to a fake payment with no
-  // delivery choice and created no real order (bug fix 1b). onBuyNow adds this
-  // item to the cart and opens CartDrawer, where the customer picks delivery and
-  // a real order is placed. Falls back to the legacy MoMoModal only if no
-  // onBuyNow is wired (defensive — the marketplace grid always passes it).
-  const handleBuy = async () => {
-    if(!onBuyNow){ setShowPay(true); return; }
-    setBuying(true);
-    try { await onBuyNow(item); } catch { /* onBuyNow surfaces its own auth prompt */ }
-    finally { setBuying(false); }
-  };
+  // Card thumbnail: prefer main_photo, but fall back to the first gallery photo
+  // so images uploaded via the owner's Products/Services photo manager (which
+  // create ListingPhoto rows, not main_photo) still show on the marketplace
+  // grid, not just on the detail page.
+  const cardPhoto = item.main_photo || item.photos?.[0]?.image || null;
 
   const displayPrice = () => {
     const amount = parseFloat(item.price_amount)||0;
@@ -991,26 +982,25 @@ export function Card({item,accentColor,user,favourites,onFavourite,currency,onMe
 
   return <>
     {showReviews&&<ReviewsModal item={item} user={user} onClose={()=>setShowReviews(false)}/>}
-    {showPay&&<MoMoModal item={item} user={user} onClose={()=>setShowPay(false)}/>}
     <div style={{background:"rgba(255,255,255,0.04)",backdropFilter:"blur(6px)",borderRadius:16,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.3)",border:`1.5px solid ${accentColor}55`,transition:"transform 0.2s"}}
       onMouseEnter={e=>e.currentTarget.style.transform="translateY(-4px)"}
       onMouseLeave={e=>e.currentTarget.style.transform=""}>
       {/* Photo strip — clicking it opens the PDP (ListingDetailPage) when onOpen is provided;
           the favourite/share buttons inside it stopPropagation so they don't also trigger it. */}
       <div onClick={()=>onOpen&&onOpen(item.id)} style={{height:140,position:"relative",overflow:"hidden",background:`linear-gradient(135deg,${accentColor}22,${accentColor}44)`,cursor:onOpen?"pointer":"default"}}>
-        {/* Real photo if available, fallback to category emoji */}
-        {item.main_photo ? (
-          <img src={item.main_photo} alt={item.name}
+        {/* Real photo if available (main_photo or first gallery photo), fallback to category emoji */}
+        {cardPhoto ? (
+          <img src={cardPhoto} alt={item.name}
             style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}
             onError={e=>{e.target.style.display="none";e.target.nextSibling.style.display="flex";}}
           />
         ) : null}
         {/* Emoji fallback */}
-        <div style={{display:item.main_photo?"none":"flex",width:"100%",height:"100%",alignItems:"center",justifyContent:"center",fontSize:"3rem",position:"absolute",inset:0}}>
+        <div style={{display:cardPhoto?"none":"flex",width:"100%",height:"100%",alignItems:"center",justifyContent:"center",fontSize:"3rem",position:"absolute",inset:0}}>
           {item.category?.icon}
         </div>
         {/* Gradient overlay on photos */}
-        {item.main_photo&&<div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom,transparent 40%,rgba(0,0,0,0.4))"}}/>}
+        {cardPhoto&&<div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom,transparent 40%,rgba(0,0,0,0.4))"}}/>}
         {/* Photo thumbnails */}
         {item.photos?.length>1&&(
           <div style={{position:"absolute",bottom:6,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4,zIndex:2}}>
@@ -1060,9 +1050,6 @@ export function Card({item,accentColor,user,favourites,onFavourite,currency,onMe
             <button onClick={()=>{ if(onMessage) onMessage(item); }}
               style={{background:`${C.kente3}15`,color:C.kente3,border:`1px solid ${C.kente3}33`,borderRadius:20,padding:"5px 10px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
               🎧 Contact Support
-            </button>
-            <button onClick={handleBuy} disabled={buying} style={{background:accentColor,color:"white",border:"none",borderRadius:20,padding:"5px 10px",fontSize:"0.68rem",fontWeight:700,cursor:buying?"default":"pointer",opacity:buying?0.7:1}}>
-              {buying?"Adding…":"🛒 Buy"}
             </button>
           </div>
         </div>
@@ -2748,16 +2735,6 @@ export default function AshantiHub() {
     refetchCart();
   };
 
-  // Card "🛒 Buy": add to cart, then open CartDrawer so the customer chooses a
-  // delivery option (store pickup / door-to-door) and a real order is placed —
-  // the delivery flow the old fake MoMoModal skipped (bug fix 1b). Auth-gating
-  // (sign-in prompt for guests, customer-only) is handled by handleAddToCart,
-  // which throws on those paths — so only open the drawer when it resolves.
-  const handleBuyNow = async (item) => {
-    await handleAddToCart(item);
-    setShowCart(true);
-  };
-
   const [cookieConsent,setCookieConsent]=useState(false);
   const [cookieDismissed,setCookieDismissed]=useState(false);
   const [showMessaging,setShowMessaging]=useState(false);
@@ -3062,7 +3039,6 @@ export default function AshantiHub() {
               onClose={()=>setShowFilters(false)}
               search={searchInput}
               onSearchChange={setSearchInput}
-              showKindFilter={true}
             />
             <div style={{flex:1,minWidth:0}}>
             {filters.category==="grocery"?(
@@ -3146,7 +3122,7 @@ export default function AshantiHub() {
                         page). Promoted/boosted sorting-first lands in a later phase — this renders
                         `listings` in whatever order the API returns, unsorted client-side. */}
                     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>
-                      {listings.map(item=><Card key={item.id} item={item} accentColor={activeCatObj?.color||C.gold} user={user} favourites={favourites} onFavourite={toggleFav} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);}} onOpen={(id)=>setSelectedListingId(id)} onBuyNow={handleBuyNow}/>)}
+                      {listings.map(item=><Card key={item.id} item={item} accentColor={activeCatObj?.color||C.gold} user={user} favourites={favourites} onFavourite={toggleFav} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);}} onOpen={(id)=>setSelectedListingId(id)}/>)}
                     </div>
                     {hasNextPage&&(
                       <div style={{textAlign:"center",marginTop:18}}>

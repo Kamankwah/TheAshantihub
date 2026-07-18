@@ -22,6 +22,7 @@ export default function ListingsModerationPanel() {
 
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [expandedId, setExpandedId] = useState(null);
   const [actionError, setActionError] = useState(null);
 
   const refetchAll = () => { pending.refetch(); approved.refetch(); rejected.refetch(); };
@@ -61,6 +62,9 @@ export default function ListingsModerationPanel() {
             {state === "rejected" && <RejectedReason reason={l.rejection_reason} />}
           </div>
           <div style={{ display: "flex", gap: 6 }}>
+            {/* View full details — available on every tab, especially Published
+                and Rejected where there are no other actions to open the row. */}
+            <button onClick={() => setExpandedId(id => id === l.id ? null : l.id)} style={{ background: D.panelBg2, color: D.text, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>{expandedId === l.id ? "Close" : "👁 View"}</button>
             {state === "pending" && (
               <>
                 <button onClick={() => approve(l.id)} style={{ background: D.green, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Approve</button>
@@ -70,6 +74,36 @@ export default function ListingsModerationPanel() {
             {state === "rejected" && <ReviewAgainButton onClick={() => reReview(l.id)} />}
           </div>
         </div>
+
+        {/* Full detail — description, photos, specs and (for a rejected
+            listing) the rejection reason. All fields are already on the
+            moderation serializer, so no extra fetch. */}
+        {expandedId === l.id && (
+          <div style={{ marginTop: 10, padding: "12px 14px", background: D.panelBg2, borderRadius: 10, border: `1px solid ${D.divider}` }}>
+            {l.description && <div style={{ color: D.textDim, fontSize: "0.74rem", lineHeight: 1.6, marginBottom: 8 }}>{l.description}</div>}
+            <div style={{ color: D.textFaint, fontSize: "0.68rem", marginBottom: 8 }}>
+              {l.category?.label} • {l.zone?.name} • GHS {l.price_amount}{l.price_unit ? ` ${l.price_unit}` : ""} • 📞 {l.contact_phone}
+              {l.service_duration ? ` • ⏱ ${l.service_duration}` : ""}
+            </div>
+            {(l.specs || []).length > 0 && (
+              <div style={{ marginBottom: 8 }}>
+                {l.specs.map((s, i) => (
+                  <div key={i} style={{ color: D.textDim, fontSize: "0.7rem" }}><b>{s.label}:</b> {s.value}</div>
+                ))}
+              </div>
+            )}
+            {(l.photos || []).length > 0 ? (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {l.photos.map(p => <img key={p.id} src={p.image} alt="" style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: `1px solid ${D.divider}` }} />)}
+              </div>
+            ) : (
+              <div style={{ color: D.textFaint, fontSize: "0.68rem" }}>No photos uploaded.</div>
+            )}
+            {state === "rejected" && l.rejection_reason && (
+              <div style={{ color: D.red, fontSize: "0.72rem", marginTop: 8 }}>Rejection reason: {l.rejection_reason}</div>
+            )}
+          </div>
+        )}
         {rejectingId === l.id && state === "pending" && (
           <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
             <input value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Rejection reason" style={{ flex: 1, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />

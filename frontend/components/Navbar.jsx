@@ -33,7 +33,7 @@ const SOLIDIFY_SCROLL_Y = 60;
 
 const NAV_ITEMS = [
   { id: "home", label: "Home" },
-  { id: "business", label: "Business" },
+  { id: "business", label: "Adwaso" },
   { id: "events", label: "Events" },
   { id: "about", label: "About" },
   { id: "contact", label: "Contact" },

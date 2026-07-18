@@ -33,16 +33,17 @@ describe('Navbar', () => {
     renderNavbar()
     expect(screen.getByText('AshantiHub')).toBeInTheDocument()
     expect(screen.getAllByText(/Home/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/Business/).length).toBeGreaterThan(0)
+    // The Business nav link is labelled "Adwaso" (route stays /business).
+    expect(screen.getAllByText(/Adwaso/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/Events/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/About/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/Contact/).length).toBeGreaterThan(0)
   })
 
-  it('navigates to the business page when Business is clicked', () => {
+  it('navigates to the business page when Adwaso is clicked', () => {
     const setPage = vi.fn()
     renderNavbar({ setPage })
-    fireEvent.click(screen.getAllByText(/Business/)[0])
+    fireEvent.click(screen.getAllByText(/Adwaso/)[0])
     expect(setPage).toHaveBeenCalledWith('business')
   })
 
