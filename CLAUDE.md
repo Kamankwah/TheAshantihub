@@ -12,7 +12,59 @@ All frontend commands run from the `frontend/` directory:
 - `cd frontend && npm run preview` — serve the built `dist/` output locally
 - `cd frontend && npm run test` — run the Vitest suite
 
-Backend commands (Django/DRF, under `backend/`) run via `docker compose` from the repo root — see `docker-compose.yml`.
+Backend commands (Django/DRF, under `backend/`) run via `docker compose` from the repo root — see `docker-compose.yml`. **The compose service is named `web`** (not `backend`): run backend commands as `docker compose run --rm web python manage.py <cmd>`.
+
+## Deployment & workflow
+
+**GOLDEN RULE — never deploy to production without an explicit instruction from the user.**
+All development is verified locally, then shipped to the **test/staging** environment. Promotion to **production** happens *only* when the user explicitly says so (e.g. "promote to production", "deploy to prod"). Do not promote to production proactively, "to finish the job", or because staging looks good — always stop and wait for the user's go-ahead. Approval to deploy to test is **not** approval to deploy to production.
+
+### 1. Verify before merging (always)
+
+Before opening/merging any PR, run and pass:
+- `cd frontend && npx vitest run` — the full Vitest suite. **Run it from the `frontend/` directory.** If run from the repo root, Vitest globs stale `.worktrees/**` and `.claude/worktrees/**` copies (leftover git worktrees) that lack `node_modules` and produces a spurious mass failure ("hundreds of test files failed", `import` times in the thousands of seconds). That is an environment artifact, not a real failure — re-run scoped to `frontend/`.
+- `cd frontend && npm run build` — the production build (this is what both Vercel and the prod `deploy.sh` run).
+- `docker compose run --rm web python manage.py test` — the full Django suite (run the specific app(s) touched for speed, then the whole suite before a release).
+- `docker compose run --rm web python manage.py makemigrations --check --dry-run` — catch model changes with no migration.
+
+Add/adjust tests for any behavior change; `frontend/StaffDashboard.test.jsx` (~100 assertions) is treated as a behavioral contract — only change it when the change is intentional and note why.
+
+### 2. Ship to test / staging (the normal flow)
+
+Two remote branches gate integration: **`righteoushack`** (integration) and **`main`**. The per-change flow, established across sessions, is:
+
+1. Work on a feature branch (e.g. `feature/launch-day-hardening`); commit with the repo's commit-message convention.
+2. `git push origin <feature-branch>` → open a PR **into `righteoushack`**, merge it.
+3. Open a PR **into `main`**, merge it.
+4. **Test deploys automatically + manually:**
+   - **Frontend**: Vercel watches `main` and rebuilds **test.theashantihub.com** on merge (Vercel "Root Directory" = `frontend`, per `frontend/vercel.json`). No action needed beyond the merge.
+   - **Backend (staging)**: SSH in and run the staging deploy script:
+     `ssh -i ~/.ssh/ashantihub_launch root@172.93.109.138` then `bash /opt/ashantihub/deploy-staging.sh`. It pulls `main`, migrates the **staging** DB (`/opt/ashantihub-staging/`, → **api-test.theashantihub.com**), and collects static. Skip it only when the change is frontend-only (no backend/migration diff).
+5. Verify on test (endpoints return the expected status, migrations applied, the actual flow works in the browser). Then **stop** — production waits for the user.
+
+### 3. Promote to production (only on the user's explicit say-so)
+
+Production is **theashantihub.com** / **api.theashantihub.com**, served from **`/opt/ashantihub/`** on the same VPS (`172.93.109.138`). The `production` git branch tracks what's live. When — and only when — the user asks to promote:
+
+1. **Back up the production DB first.** `deploy.sh` does **not** back up before migrating. Take a `pg_dump` (system Postgres, creds in `/opt/ashantihub/backend/.env`): write a gzipped dump to `/opt/ashantihub/backups/pre-promote-<timestamp>.sql.gz` and verify it (gzip -t, non-trivial `CREATE TABLE`/`COPY` counts) before proceeding.
+2. **Fast-forward `production` → `main`:** `git push origin origin/main:refs/heads/production` (a clean fast-forward — no `--force`; production is always an ancestor of main under this flow).
+3. **Run the prod deploy:** `ssh -i ~/.ssh/ashantihub_launch root@172.93.109.138` then `bash /opt/ashantihub/deploy.sh`. It resets to `origin/production`, `pip install`, **migrates the production DB**, collectstatic, **builds the frontend on the VPS** (`npm ci && npm run build`, rsync to `/var/www/ashantihub-frontend/` — production frontend is server-built, *not* Vercel), and restarts `ashantihub-gunicorn` + reloads nginx.
+4. **Verify production** (frontend 200, a public API endpoint 200, a spot-check of the shipped feature). Flag any data migrations that delete/alter live data *before* running (e.g. a seed-clearing migration) so the user knows.
+
+### Environments at a glance
+
+| | Frontend | Backend API | Server path | Deploy |
+|---|---|---|---|---|
+| **Test/staging** | test.theashantihub.com (Vercel, auto on `main`) | api-test.theashantihub.com | `/opt/ashantihub-staging/` | `deploy-staging.sh` |
+| **Production** | theashantihub.com (VPS-built) | api.theashantihub.com | `/opt/ashantihub/` | `deploy.sh` (after FF `production`→`main`) |
+
+VPS SSH: `ssh -i ~/.ssh/ashantihub_launch root@172.93.109.138`. On the VPS, run Django management commands as `cd /opt/ashantihub/backend && sudo -u ashantihub /opt/ashantihub/venv/bin/python manage.py <cmd>`.
+
+### Deployment gotchas
+
+- **Server-side `.env` is not in git.** Settings like `GPS_REMOTE_VALIDATION` live only in `/opt/ashantihub/backend/.env` (and the staging equivalent). They persist across deploys (`deploy.sh` doesn't touch `.env`), but must be set per-environment by hand; back up the file before editing and restart `ashantihub-gunicorn` afterward.
+- **Migrations run against live data on promote.** They applied cleanly on staging first (same ordered sequence), which is the safety net — always deploy to staging before production so migrations are proven against a real (separate) DB.
+- The prod frontend is built on the VPS by `deploy.sh`; a stale browser cache can make a just-shipped UI change look "not deployed" — hard-refresh before diagnosing.
 
 ## Project structure
 
