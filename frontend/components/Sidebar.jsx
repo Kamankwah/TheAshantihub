@@ -38,6 +38,7 @@ export default function Sidebar({
   showPriceRange = true,
   showSort = true,
   showVerifiedToggle = true,
+  showKindFilter = false,
   search,
   onSearchChange,
 }) {
@@ -88,6 +89,25 @@ export default function Sidebar({
               placeholder="Search businesses..."
               style={{ ...selectStyle, marginBottom: 14 }}
             />
+          </>
+        )}
+
+        {/* Type (product vs service) — the Business tab passes showKindFilter
+            so customers browse all products & services by default and narrow to
+            one kind here. */}
+        {showKindFilter && (
+          <>
+            <label htmlFor="ah-sidebar-kind" style={labelStyle}>Type</label>
+            <select
+              id="ah-sidebar-kind"
+              value={filters.kind || ""}
+              onChange={(e) => { const value = e.target.value; setFilters((f) => ({ ...f, kind: value || undefined, category: undefined })); }}
+              style={{ ...selectStyle, marginBottom: 14 }}
+            >
+              <option value="" style={optionStyle}>All Products &amp; Services</option>
+              <option value="product" style={optionStyle}>Products only</option>
+              <option value="service" style={optionStyle}>Services only</option>
+            </select>
           </>
         )}
 
