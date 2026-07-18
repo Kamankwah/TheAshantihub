@@ -12,8 +12,11 @@ vi.mock('../components/DeliveryRouteMap.jsx', () => ({
   default: () => createElement('div', { 'data-testid': 'route-map' }, 'route map'),
 }))
 vi.mock('../components/LocationPicker.jsx', () => ({
-  default: ({ onChange }) =>
-    createElement('button', { type: 'button', onClick: () => onChange(6.7, -1.62) }, 'drop-pin'),
+  default: ({ onChange, onAddress }) =>
+    createElement('button', {
+      type: 'button',
+      onClick: () => { onChange(6.7, -1.62); if (onAddress) onAddress('KNUST Ave, Kumasi'); },
+    }, 'drop-pin'),
 }))
 
 // jsdom does not implement matchMedia; stub it so hooks like useTheme (which
