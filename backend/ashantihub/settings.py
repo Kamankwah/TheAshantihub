@@ -29,6 +29,27 @@ GPS_REMOTE_VALIDATION = env.bool("GPS_REMOTE_VALIDATION", default=False)
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST = True
 
+# ── Security response headers (manage.py check --deploy hardening) ──────────
+# Always-safe headers (no redirect, no HTTPS requirement) — applied everywhere.
+SECURE_CONTENT_TYPE_NOSNIFF = True          # X-Content-Type-Options: nosniff
+SECURE_REFERRER_POLICY = "same-origin"      # Referrer-Policy
+X_FRAME_OPTIONS = "DENY"                     # X-Frame-Options (clickjacking)
+
+# HTTPS-enforcing headers — production only. DEBUG is read from the env at
+# import time (True in dev/docker via backend/.env), so these evaluate False
+# there and never 301-redirect the test client / dev server; in production
+# (DEBUG=False) they take effect. Safe behind nginx via SECURE_PROXY_SSL_HEADER.
+SECURE_SSL_REDIRECT = not DEBUG
+SECURE_HSTS_SECONDS = 0 if DEBUG else 31536000  # 1 year
+SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
+SECURE_HSTS_PRELOAD = not DEBUG
+
+# This is a stateless DRF API authenticated via JWT in the Authorization header
+# — no session/cookie auth anywhere — so Django's cookie-based CSRF middleware
+# isn't applicable. Silence its deploy-check warning rather than adding
+# middleware that would do nothing here (security.W003).
+SILENCED_SYSTEM_CHECKS = ["security.W003"]
+
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
     # Required transitively: rest_framework_simplejwt.tokens imports AbstractBaseUser at module load time
@@ -56,8 +77,14 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # SecurityMiddleware first so its HTTPS/HSTS handling wraps everything
+    # (manage.py check --deploy W001). CorsMiddleware stays high (before
+    # CommonMiddleware, per corsheaders docs). XFrameOptionsMiddleware last —
+    # it just stamps X-Frame-Options on the response (W002).
+    "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
 ROOT_URLCONF = "ashantihub.urls"
