@@ -162,6 +162,26 @@ describe('AshantiHub routing — dashboard and detail routes', () => {
   )
 
   it(
+    'a signed-in customer visiting /register sees a "sign out to register a business" screen, not a blank page',
+    async () => {
+      setStoredAuth({ token: 'test-token', account_type: 'customer', id: 2, full_name: 'Yaa' })
+      server.use(
+        http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({
+          account_type: 'customer', id: 2, full_name: 'Yaa', registration_step: 'complete',
+        })),
+      )
+      try {
+        renderAtPath('/register')
+        expect(await screen.findByText(/You're signed in as a customer/i, {}, { timeout: 3000 })).toBeInTheDocument()
+        expect(screen.getByText(/Sign out & register a business/i)).toBeInTheDocument()
+      } finally {
+        setStoredAuth(null)
+      }
+    },
+    8000,
+  )
+
+  it(
     'mounting directly at /payments (simulating a hard reload) renders the Business Command Center',
     async () => {
       // Same business-owner-session gate as /business-dashboard above — now
