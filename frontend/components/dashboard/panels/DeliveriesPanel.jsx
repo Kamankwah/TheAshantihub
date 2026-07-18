@@ -1,69 +1,98 @@
+import { useOwnerOrders } from "../../../hooks/useOwnerOrders.js";
 import { D, glassCard } from "../theme.js";
 
-// ─── Deliveries panel — scaffold (docs/superpowers/specs task 3) ─────────────
-// Delivery Status is a NEW feature with NO backing data yet. Deliberately NOT
-// faked (the app's real-derived-only convention; a past mockDeliveryOrders /
-// mockRiders UI was deleted for being fictional). This renders the intended
-// status-pipeline design plus an honest "coming soon / no orders yet" state.
-//
-// FUTURE BACKEND (not built this task — see the design spec):
-//   • owner-scoped endpoint  GET /api/orders/received/  filtering
-//     OrderItem.objects.filter(listing__business_owner=request.user)
-//     (the OrderItem → listing.business_owner join already exists in the schema;
-//      nothing queries it yet, and Order is customer-scoped + payment-status only)
-//   • an OrderItem.fulfillment_status field advancing through the pipeline below
-//     (owner PATCH), since one Order can span multiple sellers
-//   • an optional delivery address captured at checkout (Order has none today)
-//   • a matching frontend hook, e.g. useReceivedOrders()
-// Courier / GPS tracking is explicitly out of scope even for that later build.
+// ─── Deliveries panel — the owner's fulfilment view (pre-prod bug fix 5) ──────
+// Wired to the real owner-orders spine (Wave F/G). GET /api/orders/owner/
+// returns the owner's PAID orders (only their own line items) with the delivery
+// method the customer chose and the current delivery_status. This is a
+// READ-ONLY status view for the owner: the actual courier hand-off/advancement
+// is run by staff (item 11's Delivery Manager + Dispatch roles), so the owner
+// watches progress here rather than driving it.
 
-const PIPELINE = [
-  { key: "pending", label: "Pending", icon: "🧾", color: D.textDim },
-  { key: "preparing", label: "Preparing", icon: "👩🏾‍🍳", color: D.amber },
-  { key: "dispatched", label: "Dispatched", icon: "📦", color: D.blue },
-  { key: "out", label: "Out for delivery", icon: "🛵", color: D.purple },
-  { key: "delivered", label: "Delivered", icon: "✅", color: D.green },
-];
+const STATUS_META = {
+  processing: { label: "Processing", icon: "🧾", color: D.textDim },
+  shipped: { label: "Shipped", icon: "📦", color: D.blue },
+  out_for_delivery: { label: "Out for delivery", icon: "🛵", color: D.purple },
+  delivered: { label: "Delivered", icon: "✅", color: D.green },
+};
+const PIPELINE = ["processing", "shipped", "out_for_delivery", "delivered"];
+
+function OrderRow({ order }) {
+  const doorToDoor = order.delivery_method === "door_to_door";
+  const meta = STATUS_META[order.delivery_status] || { label: order.delivery_status, color: D.textDim, icon: "•" };
+  const stepIndex = PIPELINE.indexOf(order.delivery_status);
+
+  return (
+    <div style={{ ...glassCard, padding: 16, marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ color: D.text, fontWeight: 800, fontSize: "0.9rem" }}>Order #{order.id} · {order.customer_name}</div>
+          <div style={{ color: D.textDim, fontSize: "0.72rem", marginTop: 2 }}>
+            {order.placed_at?.slice(0, 10)} · {doorToDoor ? "🛵 Door-to-door" : "🏬 Store pickup"} · GHS {order.owner_subtotal}
+          </div>
+        </div>
+        <span style={{ background: `${meta.color}22`, color: meta.color, borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>{meta.icon} {meta.label}</span>
+      </div>
+
+      <div style={{ color: D.textFaint, fontSize: "0.72rem", marginTop: 8 }}>
+        {(order.items || []).map(i => `${i.quantity}× ${i.listing_name || i.name || "item"}`).join(", ")}
+      </div>
+
+      {doorToDoor && order.delivery_address && (
+        <div style={{ color: D.textDim, fontSize: "0.7rem", marginTop: 6 }}>
+          📍 {order.delivery_address}{order.delivery_phone ? ` · ${order.delivery_phone}` : ""}
+        </div>
+      )}
+
+      {/* Progress track — only meaningful for door-to-door delivery */}
+      {doorToDoor && (
+        <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 12, flexWrap: "wrap" }}>
+          {PIPELINE.map((key, i) => {
+            const done = stepIndex >= i;
+            const c = STATUS_META[key].color;
+            return (
+              <div key={key} style={{ display: "flex", alignItems: "center", gap: 4, flex: "1 1 auto", minWidth: 0 }}>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, minWidth: 62 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem", background: done ? `${c}1e` : `${D.divider}22`, border: `1.5px solid ${done ? `${c}88` : D.divider}`, opacity: done ? 1 : 0.5 }}>
+                    {STATUS_META[key].icon}
+                  </div>
+                  <div style={{ fontSize: "0.56rem", fontWeight: 700, color: done ? c : D.textFaint, textAlign: "center" }}>{STATUS_META[key].label}</div>
+                </div>
+                {i < PIPELINE.length - 1 && <div style={{ flex: 1, height: 2, minWidth: 8, background: stepIndex > i ? STATUS_META[key].color + "88" : D.divider, borderRadius: 2 }} />}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function DeliveriesPanel() {
+  const { data, isLoading, isError } = useOwnerOrders();
+  const orders = data?.results || [];
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-        <h2 style={{ margin: 0, color: D.text, fontWeight: 900, fontSize: "0.98rem" }}>🚚 Delivery Status</h2>
-        <span style={{ background: D.goldSoft, color: D.gold, borderRadius: 20, padding: "3px 11px", fontSize: "0.62rem", fontWeight: 800, letterSpacing: "0.03em" }}>COMING SOON</span>
+    <div style={{ maxWidth: 720 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 4 }}>
+        <h2 style={{ margin: 0, color: D.text, fontWeight: 900, fontSize: "0.98rem" }}>🚚 Deliveries</h2>
+      </div>
+      <div style={{ color: D.textFaint, fontSize: "0.72rem", marginBottom: 14 }}>
+        Paid orders for your listings. Our delivery team handles door-to-door fulfilment — track each order's progress here. Store-pickup orders are ready for the customer to collect.
       </div>
 
-      {/* Pipeline preview — the board deliveries will flow through */}
-      <div style={{ ...glassCard, padding: "20px 18px" }}>
-        <div style={{ fontSize: "0.72rem", color: D.textDim, marginBottom: 16 }}>
-          When order delivery goes live, each order for your listings will move along this pipeline — you&apos;ll advance the status as you fulfil it.
+      {isLoading && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading your orders…</div>}
+      {isError && <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load your orders.</div>}
+      {!isLoading && !isError && orders.length === 0 && (
+        <div style={{ ...glassCard, padding: "40px 24px", textAlign: "center" }}>
+          <div style={{ fontSize: "2.4rem", marginBottom: 10 }}>🚚</div>
+          <div style={{ fontWeight: 900, color: D.text, fontSize: "1rem", marginBottom: 8 }}>No orders yet</div>
+          <div style={{ color: D.textDim, fontSize: "0.8rem", lineHeight: 1.7, maxWidth: 460, margin: "0 auto" }}>
+            When a customer buys one of your listings, the order appears here with its delivery method and live fulfilment status.
+          </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", justifyContent: "space-between" }}>
-          {PIPELINE.map((step, i) => (
-            <div key={step.key} style={{ display: "flex", alignItems: "center", gap: 6, flex: "1 1 auto", minWidth: 0 }}>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, minWidth: 84 }}>
-                <div style={{
-                  width: 48, height: 48, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: "1.25rem", background: `${step.color}1e`, border: `1.5px solid ${step.color}55`,
-                }}>{step.icon}</div>
-                <div style={{ fontSize: "0.62rem", fontWeight: 700, color: D.textDim, textAlign: "center" }}>{step.label}</div>
-              </div>
-              {i < PIPELINE.length - 1 && (
-                <div style={{ flex: 1, height: 2, minWidth: 12, background: `linear-gradient(90deg, ${step.color}66, ${PIPELINE[i + 1].color}66)`, borderRadius: 2 }} />
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Honest empty state */}
-      <div style={{ ...glassCard, padding: "40px 24px", textAlign: "center" }}>
-        <div style={{ fontSize: "2.4rem", marginBottom: 10 }}>🚚</div>
-        <div style={{ fontWeight: 900, color: D.text, fontSize: "1rem", marginBottom: 8 }}>Delivery tracking is coming soon</div>
-        <div style={{ color: D.textDim, fontSize: "0.8rem", lineHeight: 1.7, maxWidth: 460, margin: "0 auto" }}>
-          You&apos;ll manage fulfilment for orders of your listings here once order delivery goes live — marking each one preparing, dispatched, out for delivery and delivered. There are no orders to show yet.
-        </div>
-      </div>
+      )}
+      {orders.map(o => <OrderRow key={o.id} order={o} />)}
     </div>
   );
 }

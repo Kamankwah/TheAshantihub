@@ -1,7 +1,10 @@
 import { apiPost } from "../../../apiClient.js";
 import { useIncomingBookings } from "../../../hooks/useIncomingBookings.js";
+import { useMyListings } from "../../../hooks/useMyListings.js";
+import { useCategories } from "../../../hooks/useCategories.js";
 import { useState } from "react";
-import { D, glassCard } from "../theme.js";
+import { D, glassCard, sectionTitle } from "../theme.js";
+import OwnerListingCard from "./OwnerListingCard.jsx";
 
 // Accommodation booking management (business item 2 / Wave H3): an
 // accommodation business's bookings, with check-in / check-out. Surfaced as a
@@ -51,15 +54,34 @@ function BookingCard({ booking, onChanged }) {
 
 export default function BookingsPanel() {
   const { data, isLoading, isError, refetch } = useIncomingBookings();
+  const listings = useMyListings();
+  const categories = useCategories();
+
   if (isLoading) return <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading bookings…</div>;
   if (isError) return <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load your bookings.</div>;
   const bookings = data || [];
   const arriving = bookings.filter(b => b.status === "confirmed").length;
 
+  // The owner's own approved accommodation listings (bug fix 4): edit price,
+  // specs and photos here. A service listing only appears here when its
+  // category is flagged is_accommodation (hotel/real-estate/Airbnb).
+  const catMap = Object.fromEntries((categories.data || []).map(c => [c.id, c]));
+  const myAccommodations = (listings.data || []).filter(l => {
+    if (l.status !== "published") return false;
+    const cat = catMap[l.category];
+    return cat && cat.is_accommodation;
+  });
+
   return (
     <div style={{ maxWidth: 720 }}>
-      <div style={{ color: D.text, fontWeight: 800, fontSize: "0.95rem", marginBottom: 4 }}>Bookings</div>
-      <div style={{ color: D.textFaint, fontSize: "0.72rem", marginBottom: 14 }}>{arriving} awaiting check-in. Only your accommodation listings appear here.</div>
+      {/* Your accommodation listings — view/edit price, specs, photos (bug fix 4) */}
+      <div style={{ ...sectionTitle, marginBottom: 4 }}>Your accommodation listings</div>
+      <div style={{ color: D.textFaint, fontSize: "0.72rem", marginBottom: 14 }}>Approved rooms/properties. Edit price, specs and add photos here — changes go live without re-approval.</div>
+      {!listings.isLoading && myAccommodations.length === 0 && <div style={{ color: D.textDim, fontSize: "0.82rem", marginBottom: 20 }}>No approved accommodation listings yet. A listing appears here once it's approved under an accommodation category.</div>}
+      {myAccommodations.map(l => <OwnerListingCard key={l.id} listing={l} onChanged={listings.refetch} variant="accommodation" />)}
+
+      <div style={{ ...sectionTitle, marginTop: 28, marginBottom: 4 }}>Bookings</div>
+      <div style={{ color: D.textFaint, fontSize: "0.72rem", marginBottom: 14 }}>{arriving} awaiting check-in.</div>
       {bookings.length === 0 && <div style={{ color: D.textDim, fontSize: "0.82rem" }}>No bookings yet. They'll appear here when a customer books one of your accommodation listings.</div>}
       {bookings.map(b => <BookingCard key={b.id} booking={b} onChanged={refetch} />)}
     </div>

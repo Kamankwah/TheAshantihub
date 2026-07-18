@@ -517,6 +517,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
               </div>
             )}
           </div>
+          <div style={{ color: D.textFaint, fontSize: "0.68rem", marginBottom: 8 }}>ℹ️ Promotions are reviewed by our team before they go live. Your listing starts ranking higher once approved.</div>
           {promoteActionError && <div style={{ color: D.red, fontSize: "0.72rem", marginBottom: 8 }}>{promoteActionError}</div>}
           <div style={{ display: "flex", gap: 6 }}>
             <button onClick={() => { setPromoteListingId(null); setPromoteActionError(null); }} style={{ flex: 1, background: D.panelBg2, color: D.textDim, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "8px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>

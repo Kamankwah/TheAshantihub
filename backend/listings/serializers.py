@@ -28,7 +28,7 @@ class ListingPhotoSerializer(serializers.ModelSerializer):
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
-        fields = ["id", "slug", "icon", "label", "color", "kind"]
+        fields = ["id", "slug", "icon", "label", "color", "kind", "is_accommodation"]
         # `kind` has a model-level default (PRODUCT), which would otherwise
         # make it optional on create — but staff must consciously choose
         # Product vs Service when creating a category (the admin form forces
@@ -313,7 +313,8 @@ class PromotionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Promotion
         fields = [
-            "id", "listing", "kind", "starts_at", "ends_at", "keywords", "amount_paid", "status",
+            "id", "listing", "kind", "starts_at", "ends_at", "keywords", "amount_paid",
+            "status", "rejection_reason",
         ]
         read_only_fields = fields
 
@@ -336,7 +337,7 @@ class PromotionAdminSerializer(serializers.ModelSerializer):
         fields = [
             "id", "listing", "listing_name", "business_owner_name", "kind",
             "starts_at", "ends_at", "keywords", "amount_paid", "status",
-            "is_currently_active", "created_at",
+            "rejection_reason", "is_currently_active", "created_at",
         ]
         read_only_fields = fields
 

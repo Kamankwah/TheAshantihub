@@ -629,13 +629,34 @@ describe('BusinessDashboard Analytics tab', () => {
 })
 
 describe('BusinessDashboard command-center tab navigation', () => {
-  it('opens the Deliveries scaffold with an honest coming-soon state', async () => {
+  it('opens the Deliveries tab and lists the owner\'s paid orders (bug fix 5)', async () => {
     mockAnalyticsData()
+    server.use(
+      http.get('http://localhost:8000/api/orders/owner/', () => HttpResponse.json({
+        count: 1, next: null, previous: null,
+        results: [{
+          id: 42, customer_name: 'Yaa Buyer', status: 'paid', delivery_status: 'shipped',
+          delivery_method: 'door_to_door', delivery_address: '12 Kejetia Rd', delivery_phone: '+233200000000',
+          placed_at: '2026-07-15T00:00:00Z', owner_subtotal: '250.00',
+          items: [{ id: 1, listing_name: 'Kente Cloth', quantity: 2 }],
+        }],
+      })),
+    )
     renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={analyticsUser} />)
     fireEvent.click(await screen.findByRole('button', { name: /🚚 Deliveries/ }))
-    expect(await screen.findByText('Delivery tracking is coming soon')).toBeInTheDocument()
-    expect(screen.getByText('COMING SOON')).toBeInTheDocument()
-    expect(screen.getByText('Out for delivery')).toBeInTheDocument()
+    expect(await screen.findByText(/Order #42/)).toBeInTheDocument()
+    expect(screen.getByText(/Yaa Buyer/)).toBeInTheDocument()
+    expect(screen.queryByText('COMING SOON')).not.toBeInTheDocument()
+  })
+
+  it('shows an honest empty state on the Deliveries tab when there are no orders', async () => {
+    mockAnalyticsData()
+    server.use(
+      http.get('http://localhost:8000/api/orders/owner/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+    )
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={analyticsUser} />)
+    fireEvent.click(await screen.findByRole('button', { name: /🚚 Deliveries/ }))
+    expect(await screen.findByText('No orders yet')).toBeInTheDocument()
   })
 
   it('opens the Payments tab (ported PaymentDashboard content)', async () => {
