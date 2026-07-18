@@ -54,6 +54,9 @@ const decisionFieldsBody = (form) => ({
   dimensions: form.dimensions || "",
   weight: form.weight || "",
   stock_quantity: form.stock_quantity === "" || form.stock_quantity == null ? null : Number(form.stock_quantity),
+  // Only meaningful for accommodation listings; omitted (undefined → not sent,
+  // backend keeps its default of 1) when blank.
+  units_total: form.units_total === "" || form.units_total == null ? undefined : Number(form.units_total),
 });
 
 // Best-effort readable message from apiClient.js's thrown error (.body carries
@@ -93,7 +96,37 @@ function SpecsEditor({ specs, onChange }) {
 // selects with conditional detail inputs, required return policy, plus the
 // Amazon-style attributes. Service: Fiverr-style gig fields. `update(field,
 // value)` patches a single key on the owning form state.
-function DecisionFields({ kind, form, update }) {
+function DecisionFields({ kind, isAccommodation, form, update }) {
+  // Accommodation (hotel / real estate / Airbnb) — a distinct form from the
+  // generic service form: rooms/units + nightly-rate framing + amenities and
+  // house rules, since these listings are booked by date, not requested.
+  if (isAccommodation) {
+    return (
+      <>
+        <div style={{ background: `${D.gold}14`, border: `1px solid ${D.gold}44`, borderRadius: 10, padding: "8px 12px", marginBottom: 10, color: D.textDim, fontSize: "0.72rem" }}>
+          🏨 Accommodation listing — the <b>price above is charged per night</b>, and guests book it by date in the Bookings tab.
+        </div>
+        <div style={fieldGrid2}>
+          <div>
+            <label style={labelStyle}>Rooms / units available *</label>
+            <input type="number" min={1} value={form.units_total ?? ""} placeholder="e.g. 8" onChange={e => update("units_total", e.target.value)} style={inputStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>Check-in / check-out</label>
+            <input value={form.service_duration || ""} placeholder="e.g. Check-in 2pm · Check-out 11am" onChange={e => update("service_duration", e.target.value)} style={inputStyle} />
+          </div>
+        </div>
+        <div style={{ marginBottom: 10 }}>
+          <label style={labelStyle}>Amenities</label>
+          <textarea value={form.whats_included || ""} placeholder="e.g. Free Wi-Fi, air conditioning, breakfast, parking, 24/7 security" onChange={e => update("whats_included", e.target.value)} style={textareaStyle} />
+        </div>
+        <div style={{ marginBottom: 10 }}>
+          <label style={labelStyle}>House rules & cancellation policy</label>
+          <textarea value={form.requirements || ""} placeholder="e.g. No smoking indoors. Free cancellation up to 48h before check-in." onChange={e => update("requirements", e.target.value)} style={textareaStyle} />
+        </div>
+      </>
+    );
+  }
   if (kind === "product") {
     return (
       <>
@@ -239,11 +272,13 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
   );
   const zoneList = zones || [];
   const categoryKindById = (id) => (categories || []).find(c => c.id === Number(id))?.kind;
+  const categoryIsAccommodationById = (id) => !!(categories || []).find(c => c.id === Number(id))?.is_accommodation;
 
   const toast = () => { if (showToast) showToast(); };
 
   const updateCreate = (field, value) => setCreateForm(f => ({ ...f, [field]: value }));
   const createKind = categoryKindById(createForm.category);
+  const createIsAccommodation = categoryIsAccommodationById(createForm.category);
   // Client-side mirror of OwnerListingSerializer.validate()'s product rules,
   // so the button stays disabled until the owner has consciously answered.
   const productAnswersComplete = createKind !== "product" || (
@@ -443,7 +478,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
           {!createKind && (
             <div style={{ color: D.textFaint, fontSize: "0.72rem", marginBottom: 10 }}>Choose a category above to fill in the product or service details.</div>
           )}
-          <DecisionFields kind={createKind} form={createForm} update={updateCreate} />
+          <DecisionFields kind={createKind} isAccommodation={createIsAccommodation} form={createForm} update={updateCreate} />
           {createKind && <SpecsEditor specs={createForm.specs} onChange={specs => setCreateForm(f => ({ ...f, specs }))} />}
           <div style={{ marginBottom: 10 }}>
             <label style={labelStyle}>Photo (optional)</label>
@@ -571,7 +606,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                       fallback when it can't be resolved (categories still
                       loading / legacy row), preserving this form's historical
                       always-show-service_duration behavior. */}
-                  <DecisionFields kind={categoryKindById(item.category) || "service"} form={editForm} update={(field, value) => setEditForm(f => ({ ...f, [field]: value }))} />
+                  <DecisionFields kind={categoryKindById(item.category) || "service"} isAccommodation={categoryIsAccommodationById(item.category)} form={editForm} update={(field, value) => setEditForm(f => ({ ...f, [field]: value }))} />
                   <SpecsEditor specs={editForm.specs} onChange={specs => setEditForm(f => ({ ...f, specs }))} />
                   <div style={{ display: "flex", gap: 6 }}>
                     <button onClick={() => setEditingId(null)} style={{ flex: 1, background: D.panelBg2, color: D.textDim, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "8px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
@@ -612,6 +647,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                       brand: item.brand || "", condition: item.condition || "",
                       dimensions: item.dimensions || "", weight: item.weight || "",
                       stock_quantity: item.stock_quantity ?? "",
+                      units_total: item.units_total ?? "",
                     }); }} style={{ background: D.goldSoft, color: D.gold, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>✏️ Edit</button>}
                     {(item.status === "draft" || item.status === "rejected") && <button onClick={() => submitForReview(item.id)} style={{ background: D.kente2, color: "#fff", border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>📤 Submit for Review</button>}
                     {item.status === "published" && <button onClick={() => { setPromoteListingId(item.id); setPromoteKind("featured"); setPromoteDays(7); setPromoteKeywords(""); setPromoteActionError(null); }} style={{ background: `${D.red}18`, color: D.kente1, border: "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer" }}>📣 Promote</button>}

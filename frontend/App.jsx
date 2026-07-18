@@ -2735,6 +2735,12 @@ export default function AshantiHub() {
     refetchCart();
   };
 
+  // Buy Now (hero CTA): add to cart then open the cart's delivery flow.
+  // handleAddToCart throws/opens the signup prompt for guests, so swallow that.
+  const handleBuyNow = async (item) => {
+    try { await handleAddToCart(item); setShowCart(true); } catch { /* auth prompt shown */ }
+  };
+
   const [cookieConsent,setCookieConsent]=useState(false);
   const [cookieDismissed,setCookieDismissed]=useState(false);
   const [showMessaging,setShowMessaging]=useState(false);
@@ -2942,7 +2948,13 @@ export default function AshantiHub() {
           {/* Hero carousel — approved/non-expired hero-media submissions
               (docs/BUSINESS_EVENTS_ROADMAP.md Phase 2/3). Renders nothing when
               there are none active, so it never leaves a disruptive empty gap. */}
-          <HeroCarousel/>
+          <HeroCarousel onEngage={(slide)=>{
+            // Buy Now (product) → add to cart + open cart's delivery flow.
+            // Engage Service (service) → open the listing's detail page (where
+            // the service-request form lives). Slide carries the listing id/kind.
+            if(slide.listing_kind==="service"){ setSelectedListingId(slide.listing); }
+            else { handleBuyNow({id: slide.listing}); }
+          }}/>
 
           {/* Support-contact notice — was a "message businesses directly on
               WhatsApp" pitch; reworded for the fraud-prevention change
@@ -3039,7 +3051,7 @@ export default function AshantiHub() {
             ):(
               <>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                  <h2 style={{margin:0,color:C.darkBrown,fontSize:"0.95rem",fontWeight:900}}>
+                  <h2 style={{margin:0,color:C.lightGold,fontSize:"0.95rem",fontWeight:900}}>
                     {activeCatObj ? <>{activeCatObj.icon} {activeCatObj.label}</> : (filters.kind==="product" ? "🛍️ All Products" : filters.kind==="service" ? "🛠️ All Services" : "🛍️ All Products & Services")}
                     <span style={{color:"#999",fontWeight:400,fontSize:"0.72rem",marginLeft:6}}>{listings.length} results</span>
                   </h2>
@@ -3140,25 +3152,15 @@ export default function AshantiHub() {
             </span>
           </div>
 
-          {/* Search bar */}
-          <div style={{background:C.darkBrown,padding:"16px",position:"relative"}}>
-            <div style={{maxWidth:1280,margin:"0 auto",position:"relative"}}>
-              <div style={{display:"flex",borderRadius:30,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.35)"}}>
-                <input
-                  value={eventSearchInput}
-                  onChange={(e)=>setEventSearchInput(e.target.value)}
-                  placeholder="Search events…"
-                  style={{flex:1,padding:"13px 18px",border:"none",fontSize:"0.85rem",background:"white",outline:"none",fontFamily:"inherit"}}/>
-                {eventSearchInput&&<button onClick={()=>{setEventSearchInput("");setEventFilters(f=>({...f,search:undefined}));}} style={{background:"white",border:"none",padding:"0 8px",cursor:"pointer",color:"#aaa",fontSize:"1.1rem"}}>✕</button>}
-                {/* Filters trigger — mobile-only, same convention as the Business tab's ⚙️ trigger (Sidebar becomes a slide-in panel there too). */}
-                <button onClick={()=>setShowEventFilters(f=>!f)} className="ah-event-filter-trigger" style={{background:"#f5f5f5",border:"none",padding:"13px 14px",cursor:"pointer",fontSize:"0.85rem"}} title="Filters">⚙️</button>
-                <button style={{background:C.gold,color:C.black,border:"none",padding:"13px 18px",fontWeight:900,cursor:"pointer"}}>🔍</button>
-              </div>
-              <div style={{marginTop:10,display:"flex",justifyContent:"flex-end"}}>
-                <button onClick={()=>setShowEventSubmit(s=>!s)} style={{background:showEventSubmit?C.gold:"rgba(255,255,255,0.12)",color:showEventSubmit?C.darkBrown:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer"}}>
-                  {showEventSubmit?"✕ Close":"📅 Submit an Event"}
-                </button>
-              </div>
+          {/* Action row — search/category/zone filtering now lives in the
+              Sidebar (same view/filter as the Business tab). This row keeps
+              the mobile filters trigger + the Submit-an-Event toggle. */}
+          <div style={{background:C.darkBrown,padding:"12px 16px"}}>
+            <div style={{maxWidth:1280,margin:"0 auto",display:"flex",justifyContent:"flex-end",gap:8}}>
+              <button onClick={()=>setShowEventFilters(f=>!f)} className="ah-event-filter-trigger" style={{background:"rgba(255,255,255,0.12)",color:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer"}} title="Filters">⚙️ Filters & Search</button>
+              <button onClick={()=>setShowEventSubmit(s=>!s)} style={{background:showEventSubmit?C.gold:"rgba(255,255,255,0.12)",color:showEventSubmit?C.darkBrown:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer"}}>
+                {showEventSubmit?"✕ Close":"📅 Submit an Event"}
+              </button>
             </div>
             <style>{`
               @media (min-width: 761px) { .ah-event-filter-trigger { display: none !important; } }
@@ -3182,37 +3184,27 @@ export default function AshantiHub() {
             <EventDetailPage id={selectedEventId} onBack={()=>setSelectedEventId(null)} user={user} PaymentComponent={MoMoPayment}/>
           ) : (
           <div style={{background:C.void,paddingBottom:1}}>
-            {eventCategories.length>0&&(
-              <div style={{maxWidth:1280,margin:"0 auto",padding:"16px 14px 0"}}>
-                <div style={{color:C.lightGold,fontSize:"0.62rem",fontWeight:800,letterSpacing:1.5,opacity:0.65,marginBottom:5}}>CATEGORIES</div>
-                <div style={{display:"flex",gap:7,overflowX:"auto",paddingBottom:8,scrollbarWidth:"none"}}>
-                  <button onClick={()=>setEventFilters(f=>({...f,category:undefined}))} style={{background:!eventFilters.category?C.gold:"rgba(255,255,255,0.06)",color:!eventFilters.category?C.darkBrown:"white",border:`2px solid ${C.gold}`,borderRadius:30,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
-                    🥁 All Events
-                  </button>
-                  {eventCategories.map(cat=>(
-                    <button key={cat.id} onClick={()=>setEventFilters(f=>({...f,category:cat.slug}))} style={{background:eventFilters.category===cat.slug?cat.color:"rgba(255,255,255,0.06)",color:"white",border:`2px solid ${cat.color}`,borderRadius:30,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",boxShadow:eventFilters.category===cat.slug?`0 4px 12px ${cat.color}55`:"none",transition:"all 0.2s"}}>
-                      {cat.icon} {cat.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* Event category strips removed — filtering moved into the Sidebar
+                (search + category + zone), matching the Business tab's layout. */}
 
             <div style={{maxWidth:1280,margin:"0 auto",padding:"16px 14px 40px",display:"flex",gap:20,alignItems:"flex-start"}}>
               <Sidebar
                 zones={zones}
                 filters={eventFilters}
                 setFilters={setEventFilters}
-                onClear={()=>setEventFilters(f=>({category:f.category,search:f.search}))}
+                onClear={()=>{setEventSearchInput("");setEventFilters({});}}
                 open={showEventFilters}
                 onClose={()=>setShowEventFilters(false)}
+                search={eventSearchInput}
+                onSearchChange={setEventSearchInput}
+                categoryOptions={eventCategories}
                 showPriceRange={false}
                 showSort={false}
                 showVerifiedToggle={false}
               />
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                  <h2 style={{margin:0,color:C.darkBrown,fontSize:"0.95rem",fontWeight:900}}>
+                  <h2 style={{margin:0,color:C.lightGold,fontSize:"0.95rem",fontWeight:900}}>
                     {activeEventCatObj?activeEventCatObj.icon:"🥁"} {activeEventCatObj?activeEventCatObj.label:"All Events"}
                     <span style={{color:"#999",fontWeight:400,fontSize:"0.72rem",marginLeft:6}}>{events.length} results</span>
                   </h2>

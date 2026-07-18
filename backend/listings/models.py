@@ -181,6 +181,15 @@ class HeroMediaSubmission(models.Model):
     business_owner = models.ForeignKey(
         BusinessOwner, on_delete=models.CASCADE, related_name="hero_media_submissions"
     )
+    # The listing this hero media promotes (derived from the submitted
+    # ListingPhoto's listing). Lets the public hero slider deep-link a "Buy Now"/
+    # "Engage Service" CTA to the right listing, and lets the per-listing hero
+    # slot rule (one live hero per listing, up to the plan's hero_slots) work.
+    # SET_NULL so deleting the listing doesn't wipe an in-flight hero submission.
+    listing = models.ForeignKey(
+        "Listing", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="hero_submissions",
+    )
     # Reuses the same content-type validation as ListingPhoto/Listing.main_photo
     # (jpeg/png only, sniffed via python-magic) — there is no video validator
     # in the codebase yet, so `media_type=video` submissions are accepted at
