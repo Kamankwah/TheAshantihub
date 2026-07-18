@@ -2843,6 +2843,30 @@ export default function AshantiHub() {
   // behaves identically to a staff login.
   const handleAuthSuccess=(result)=>{setAuthModal(null);if(result.account_type==="staff"){setIsAdmin(true);}};
 
+  // A signed-in CUSTOMER can't register a business on their existing account —
+  // Customer and BusinessOwner are separate account types. Explain it and offer
+  // to sign out and start a business registration (after logout, user becomes
+  // null and the /register flow below renders the business signup).
+  if(page==="register" && user?.accountType==="customer"){
+    return (
+      <div style={{minHeight:"100vh",background:C.void,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14,padding:24,textAlign:"center"}}>
+        <div style={{fontSize:"2.2rem"}}>🏪</div>
+        <div style={{color:C.gold,fontWeight:900,fontSize:"1.35rem"}}>Register your business</div>
+        <div style={{color:C.lightGold,fontSize:"0.9rem",maxWidth:440,lineHeight:1.6}}>
+          You're signed in as a customer. A business on AshantiHub uses its own <strong>Business Owner</strong> account — separate from your shopping account. Sign out to register one.
+        </div>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap",justifyContent:"center",marginTop:6}}>
+          <button onClick={()=>{auth.logout();}} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"12px 26px",fontWeight:900,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
+            Sign out &amp; register a business
+          </button>
+          <button onClick={()=>setPage("home")} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:30,padding:"12px 26px",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
+            Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const showRegistrationFlow = (page==="register" && !user) ||
     (user?.accountType==="business_owner" && user.registrationStep && user.registrationStep!=="complete");
   if(showRegistrationFlow) return <BusinessRegistrationFlow user={user} auth={auth} initialStep={user?.registrationStep} setPage={setPage} setShowBizDash={setShowBizDash}/>;
