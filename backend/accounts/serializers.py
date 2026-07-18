@@ -9,6 +9,7 @@ from rest_framework import serializers
 
 from .authentication import ACCOUNT_MODELS
 from .emails import send_password_reset_email, send_staff_invite_email
+from .gps import validate_ashanti_gps
 from .models import (
     BusinessOwner,
     BusinessOwnerProfile,
@@ -321,6 +322,21 @@ class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"kyc_status": "Cannot edit a verified KYC profile."}
             )
+
+        # Ghana Card number and a Ghana Post GPS address are mandatory for a
+        # business, and the GPS address must be in the Ashanti Region. Checked
+        # against the effective (post-update) values so a partial edit of an
+        # already-complete profile still passes.
+        ghana_card = data.get("ghana_card_number", self.instance.ghana_card_number)
+        if not (ghana_card or "").strip():
+            raise serializers.ValidationError(
+                {"ghana_card_number": "Your Ghana Card number is required."}
+            )
+        gps = data.get("gps_address", self.instance.gps_address)
+        try:
+            validate_ashanti_gps(gps)
+        except serializers.ValidationError as exc:
+            raise serializers.ValidationError({"gps_address": exc.detail})
 
         is_formal = data.get("is_formal", self.instance.is_formal)
         if is_formal:

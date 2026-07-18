@@ -17,6 +17,12 @@ ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=["*"])
 if not DEBUG and SECRET_KEY == "dev-only-insecure-key":
     raise ImproperlyConfigured("DJANGO_SECRET_KEY must be set when DJANGO_DEBUG=False")
 
+# When True, business-registration GPS addresses are additionally verified as
+# real Ghana Post addresses via the public ghana-api.dev validator (best-effort;
+# never blocks on network failure). Off by default — the Ashanti-Region rule is
+# enforced deterministically from the address prefix regardless (accounts.gps).
+GPS_REMOTE_VALIDATION = env.bool("GPS_REMOTE_VALIDATION", default=False)
+
 # Nginx terminates TLS in front of Gunicorn in production — trust its
 # X-Forwarded-Proto/Host so request.is_secure()/build_absolute_uri() (e.g.
 # avatar/media URLs) generate https:// links rather than http://.
