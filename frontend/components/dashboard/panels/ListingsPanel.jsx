@@ -475,6 +475,18 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
         </div>
       )}
 
+      {/* Discoverability: when the owner has no hero submission yet, explain the
+          feature so it's obvious how to get featured (they were previously left
+          to notice the small per-photo button on their own). */}
+      {!heroSubmission?.id && !heroSubmitPhoto && (
+        <div style={{ ...glassCard, padding: "12px 16px", marginBottom: 14, borderLeft: `4px solid ${D.gold}` }}>
+          <div style={{ fontWeight: 800, fontSize: "0.82rem", color: D.text }}>🌟 Hero Spotlight</div>
+          <div style={{ fontSize: "0.72rem", color: D.textDim, marginTop: 2, lineHeight: 1.5 }}>
+            Feature one of your listing photos in the big slider on the homepage. Scroll to any listing below and click the gold <b style={{ color: D.gold }}>Submit for Hero</b> button under a photo. Our team reviews it, then it goes live on the homepage.
+          </div>
+        </div>
+      )}
+
       {heroSubmission?.id && !heroSubmitPhoto && (
         <div style={{ ...glassCard, padding: "14px 16px", marginBottom: 14, borderLeft: `4px solid ${HERO_STATUS_META[heroSubmission.status]?.color || D.textDim}` }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
@@ -606,17 +618,21 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                   </div>
                 </div>
               )}
-              {item.photos.length > 0 && (
+              {item.photos.length > 0 ? (
                 <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${D.divider}` }}>
-                  <div style={{ fontSize: "0.66rem", fontWeight: 700, color: D.textDim, marginBottom: 6 }}>📸 Gallery</div>
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ fontSize: "0.66rem", fontWeight: 700, color: D.textDim, marginBottom: 6 }}>🌟 Feature a photo on the homepage — pick one to submit:</div>
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                     {item.photos.map(photo => (
                       <div key={photo.id} style={{ textAlign: "center" }}>
-                        <img src={photo.image} alt="" style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 8, border: heroSubmitPhoto?.id === photo.id ? `2px solid ${D.gold}` : `1px solid ${D.divider}`, display: "block" }} />
-                        <button onClick={() => { setHeroSubmitPhoto({ id: photo.id, image: photo.image, listingId: item.id }); setHeroCaption(""); setHeroActionError(null); }} style={{ display: "block", marginTop: 4, background: "none", border: "none", color: D.gold, fontSize: "0.6rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", padding: 0 }}>🌟 Submit for Hero</button>
+                        <img src={photo.image} alt="" style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 8, border: heroSubmitPhoto?.id === photo.id ? `2px solid ${D.gold}` : `1px solid ${D.divider}`, display: "block", marginBottom: 4 }} />
+                        <button onClick={() => { setHeroSubmitPhoto({ id: photo.id, image: photo.image, listingId: item.id }); setHeroCaption(""); setHeroActionError(null); }} style={{ background: D.goldSoft, color: D.gold, border: `1px solid ${D.gold}55`, borderRadius: 20, padding: "4px 10px", fontSize: "0.62rem", fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>🌟 Submit for Hero</button>
                       </div>
                     ))}
                   </div>
+                </div>
+              ) : (
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${D.divider}`, fontSize: "0.64rem", color: D.textFaint }}>
+                  🌟 Add a photo to this listing (via the Products/Services tab) to submit it for the homepage Hero Spotlight.
                 </div>
               )}
             </div>

@@ -4,21 +4,34 @@ import { useCategories } from "../../../hooks/useCategories.js";
 import { useZones } from "../../../hooks/useZones.js";
 import { D, glassCard } from "../theme.js";
 
-// Category kinds that staff can create/assign here. `event` categories exist
-// (seeded for the Events tab) but aren't staff-authored from this panel, so
-// they're not offered in the create/edit selectors — they still render in
-// their own section below if present, rather than silently disappearing.
+// Category "kind" choices staff pick from. Accommodation is surfaced as its
+// own first-class option here even though it isn't a distinct backend `kind`
+// (it's a service category flagged is_accommodation) — a listing under an
+// accommodation category is booked by date in the Bookings tab. `event`
+// categories exist (seeded for the Events tab) but aren't staff-authored here.
 const CREATE_KINDS = [
   { value: "product", label: "Product" },
   { value: "service", label: "Service" },
+  { value: "accommodation", label: "Accommodation (booked by date)" },
 ];
 
-// Section order + labels for grouping the category list by kind. Any kind not
-// listed here (defensive) falls back to a generic section using the raw key.
+// Map a UI kind-choice → the backend fields it persists.
+function kindPayload(choice) {
+  if (choice === "accommodation") return { kind: "service", is_accommodation: true };
+  return { kind: choice, is_accommodation: false };
+}
+// Derive the UI kind-choice from a stored category row.
+function kindChoiceOf(c) {
+  return c.is_accommodation ? "accommodation" : c.kind;
+}
+
+// Section order + labels for grouping the category list. Accommodation is its
+// own section, split out from Services.
 const KIND_SECTIONS = [
-  { kind: "product", label: "Products" },
-  { kind: "service", label: "Services" },
-  { kind: "event", label: "Events" },
+  { key: "product", label: "Products" },
+  { key: "service", label: "Services" },
+  { key: "accommodation", label: "Accommodation" },
+  { key: "event", label: "Events" },
 ];
 
 const inputStyle = {
@@ -48,7 +61,6 @@ export default function CategoriesZonesPanel({ auth }) {
   const [newIcon, setNewIcon] = useState("🆕");
   const [newColor, setNewColor] = useState("#888888");
   const [newKind, setNewKind] = useState("product");
-  const [newIsAccommodation, setNewIsAccommodation] = useState(false);
   const [newZoneName, setNewZoneName] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState({});
@@ -60,12 +72,9 @@ export default function CategoriesZonesPanel({ auth }) {
     try {
       await apiPost("/api/listings/categories/", {
         slug: slugify(newLabel), icon: newIcon || "🆕", label: newLabel.trim(),
-        color: newColor, kind: newKind,
-        // Only a service category can be accommodation (hotel/real-estate/
-        // Airbnb) — its listings are booked by date in the Bookings tab.
-        is_accommodation: newKind === "service" ? newIsAccommodation : false,
+        color: newColor, ...kindPayload(newKind),
       });
-      setNewLabel(""); setNewIcon("🆕"); setNewColor("#888888"); setNewIsAccommodation(false);
+      setNewLabel(""); setNewIcon("🆕"); setNewColor("#888888"); setNewKind("product");
       categories.refetch();
     } catch (err) { setActionError("Could not add this category."); }
   };
@@ -73,15 +82,15 @@ export default function CategoriesZonesPanel({ auth }) {
   const startEdit = (c) => {
     setActionError(null);
     setEditingId(c.id);
-    setEditDraft({ label: c.label, icon: c.icon, color: c.color, kind: c.kind, is_accommodation: !!c.is_accommodation });
+    setEditDraft({ label: c.label, icon: c.icon, color: c.color, kindChoice: kindChoiceOf(c) });
   };
 
   const saveEdit = async (id) => {
     setActionError(null);
     try {
       await apiPatch(`/api/listings/categories/${id}/`, {
-        label: editDraft.label, icon: editDraft.icon, color: editDraft.color, kind: editDraft.kind,
-        is_accommodation: editDraft.kind === "service" ? !!editDraft.is_accommodation : false,
+        label: editDraft.label, icon: editDraft.icon, color: editDraft.color,
+        ...kindPayload(editDraft.kindChoice),
       });
       setEditingId(null);
       categories.refetch();
@@ -111,13 +120,13 @@ export default function CategoriesZonesPanel({ auth }) {
   };
 
   const allCategories = categories.data || [];
-  const knownKinds = new Set(KIND_SECTIONS.map(s => s.kind));
+  const knownKeys = new Set(KIND_SECTIONS.map(s => s.key));
   const sections = [
     ...KIND_SECTIONS,
     // Defensive: any unexpected kind still gets its own section.
-    ...[...new Set(allCategories.map(c => c.kind))]
-      .filter(k => !knownKinds.has(k))
-      .map(k => ({ kind: k, label: k || "Other" })),
+    ...[...new Set(allCategories.map(kindChoiceOf))]
+      .filter(k => !knownKeys.has(k))
+      .map(k => ({ key: k, label: k || "Other" })),
   ];
 
   const renderCategoryRow = (c) => {
@@ -128,16 +137,10 @@ export default function CategoriesZonesPanel({ auth }) {
             <input value={editDraft.icon} onChange={e => setEditDraft(d => ({ ...d, icon: e.target.value }))} style={{ ...inputStyle, width: 44, textAlign: "center" }} aria-label="Icon" />
             <input value={editDraft.label} onChange={e => setEditDraft(d => ({ ...d, label: e.target.value }))} style={{ ...inputStyle, flex: 1, minWidth: 120 }} aria-label="Label" />
             <input type="color" value={editDraft.color} onChange={e => setEditDraft(d => ({ ...d, color: e.target.value }))} style={{ width: 32, height: 30, padding: 0, border: `1.5px solid ${D.cardBorder}`, borderRadius: 8, background: D.panelBg2 }} aria-label="Color" />
-            <select value={editDraft.kind} onChange={e => setEditDraft(d => ({ ...d, kind: e.target.value }))} style={inputStyle} aria-label="Kind">
+            <select value={editDraft.kindChoice} onChange={e => setEditDraft(d => ({ ...d, kindChoice: e.target.value }))} style={inputStyle} aria-label="Kind">
               {CREATE_KINDS.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
             </select>
           </div>
-          {editDraft.kind === "service" && (
-            <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, color: D.textDim, fontSize: "0.72rem", cursor: "pointer" }}>
-              <input type="checkbox" checked={!!editDraft.is_accommodation} onChange={e => setEditDraft(d => ({ ...d, is_accommodation: e.target.checked }))} />
-              🏨 Accommodation (booked by date — hotel / real estate / Airbnb)
-            </label>
-          )}
           <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
             <button onClick={() => saveEdit(c.id)} style={goldBtn}>Save</button>
             <button onClick={() => setEditingId(null)} style={ghostBtn}>Cancel</button>
@@ -170,10 +173,10 @@ export default function CategoriesZonesPanel({ auth }) {
           <div style={{ color: D.text, fontWeight: 800, fontSize: "0.88rem", marginBottom: 12 }}>Categories</div>
 
           {sections.map(section => {
-            const rows = allCategories.filter(c => c.kind === section.kind);
+            const rows = allCategories.filter(c => kindChoiceOf(c) === section.key);
             if (rows.length === 0) return null;
             return (
-              <div key={section.kind || "other"} style={{ marginBottom: 14 }}>
+              <div key={section.key || "other"} style={{ marginBottom: 14 }}>
                 <div style={{ color: D.textFaint, fontSize: "0.62rem", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>{section.label}</div>
                 {rows.map(renderCategoryRow)}
               </div>
@@ -194,14 +197,10 @@ export default function CategoriesZonesPanel({ auth }) {
                 </select>
                 <button onClick={addCategory} style={goldBtn}>Add category</button>
               </div>
-              {/* Accommodation is only meaningful for a service category — its
-                  listings are booked by date in the Bookings tab rather than
-                  carted. */}
-              {newKind === "service" && (
-                <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, color: D.textDim, fontSize: "0.72rem", cursor: "pointer" }}>
-                  <input type="checkbox" checked={newIsAccommodation} onChange={e => setNewIsAccommodation(e.target.checked)} />
-                  🏨 Accommodation (booked by date — hotel / real estate / Airbnb)
-                </label>
+              {newKind === "accommodation" && (
+                <div style={{ color: D.textFaint, fontSize: "0.66rem", marginTop: 6 }}>
+                  🏨 Listings in an accommodation category are booked by date in the Bookings tab (hotel / real estate / Airbnb), not added to a cart.
+                </div>
               )}
             </div>
           )}

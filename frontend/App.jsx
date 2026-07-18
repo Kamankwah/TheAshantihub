@@ -2989,38 +2989,9 @@ export default function AshantiHub() {
             />
           ) : (
           <div style={{background:C.void,paddingBottom:1}}>
-          {/* Category tabs — split into Products/Services rows by Category.kind
-              (docs/BUSINESS_EVENTS_ROADMAP.md Phase 3). The old cross-category
-              smart-search results banner that lived here has been removed
-              along with the smart-search engine (see note above); the search
-              box's results now just show up in the grid below, scoped to the
-              active category tab. */}
-          <div style={{maxWidth:1280,margin:"0 auto",padding:"16px 14px 0"}}>
-            {productCategories.length>0&&(
-              <>
-                <div style={{color:C.lightGold,fontSize:"0.62rem",fontWeight:800,letterSpacing:1.5,opacity:0.65,marginBottom:5}}>PRODUCTS</div>
-                <div style={{display:"flex",gap:7,overflowX:"auto",paddingBottom:8,scrollbarWidth:"none"}}>
-                  {productCategories.map(cat=>(
-                    <button key={cat.id} onClick={()=>setFilters(f=>({...f,category:cat.slug,kind:cat.kind}))} style={{background:filters.category===cat.slug?cat.color:"rgba(255,255,255,0.06)",color:"white",border:`2px solid ${cat.color}`,borderRadius:30,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",boxShadow:filters.category===cat.slug?`0 4px 12px ${cat.color}55`:"none",transition:"all 0.2s"}}>
-                      {cat.icon} {cat.label}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-            {serviceCategories.length>0&&(
-              <>
-                <div style={{color:C.lightGold,fontSize:"0.62rem",fontWeight:800,letterSpacing:1.5,opacity:0.65,margin:"10px 0 5px"}}>SERVICES</div>
-                <div style={{display:"flex",gap:7,overflowX:"auto",paddingBottom:4,scrollbarWidth:"none"}}>
-                  {serviceCategories.map(cat=>(
-                    <button key={cat.id} onClick={()=>setFilters(f=>({...f,category:cat.slug,kind:cat.kind}))} style={{background:filters.category===cat.slug?cat.color:"rgba(255,255,255,0.06)",color:"white",border:`2px solid ${cat.color}`,borderRadius:30,padding:"6px 12px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",boxShadow:filters.category===cat.slug?`0 4px 12px ${cat.color}55`:"none",transition:"all 0.2s"}}>
-                      {cat.icon} {cat.label}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
+          {/* The old top PRODUCTS/SERVICES category-tab strips were removed at
+              the user's request — product/service filtering now lives in the
+              Sidebar's Type control, and the grid opens on all listings. */}
 
           {/* Sidebar (filters) + main content — desktop: fixed column beside the
               grid; mobile: Sidebar becomes a slide-in panel toggled by the ⚙️
@@ -3039,6 +3010,7 @@ export default function AshantiHub() {
               onClose={()=>setShowFilters(false)}
               search={searchInput}
               onSearchChange={setSearchInput}
+              showKindFilter={true}
             />
             <div style={{flex:1,minWidth:0}}>
             {filters.category==="grocery"?(
