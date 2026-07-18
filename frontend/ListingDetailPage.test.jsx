@@ -92,6 +92,14 @@ describe('ListingDetailPage', () => {
     expect(screen.getByText('Add to Cart')).not.toBeDisabled()
   })
 
+  it('blocks a business account from buying, showing a notice instead of Add to Cart', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)))
+    renderPage({ user: { id: 5, fullName: 'Biz Owner', accountType: 'business_owner' } })
+    await screen.findByText('Royal Ashanti Lodge')
+    expect(screen.getByText(/Business accounts can't purchase/i)).toBeInTheDocument()
+    expect(screen.queryByText('Add to Cart')).not.toBeInTheDocument()
+  })
+
   it('disables Add to Cart when the listing has no price', async () => {
     server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json({ ...LISTING, price_amount: null })))
     renderPage()

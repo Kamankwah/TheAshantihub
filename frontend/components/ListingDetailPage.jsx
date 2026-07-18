@@ -108,6 +108,10 @@ export default function ListingDetailPage({
   const isFav = favourites?.includes(item.id);
   const isAccommodation = !!item.category?.is_accommodation;
   const isService = item.category?.kind === "service";
+  // Businesses sell, customers buy — a signed-in business account can't
+  // purchase/request/book. Guests (no user) still see the controls, which
+  // prompt them to sign in as a customer.
+  const isBusinessAccount = !!user && user.accountType !== "customer";
   const tabs = isService ? SERVICE_TABS : PRODUCT_TABS;
 
   const displayPrice = () => {
@@ -222,10 +226,13 @@ export default function ListingDetailPage({
             </button>
           </div>
 
-          {/* Accommodation (hotel/real-estate/Airbnb) is booked by date range
-              through the booking engine (Wave H3), taking priority over the
-              generic service-request flow below. */}
-          {isAccommodation ? (
+          {/* A business account can't buy/request/book — show a clear notice
+              instead of the purchase controls (which would 403 server-side). */}
+          {isBusinessAccount ? (
+            <div style={{ marginTop: 16, background: `${C.kente1}22`, border: `1px solid ${C.kente1}55`, color: "white", borderRadius: 14, padding: "14px 16px", fontSize: "0.82rem", lineHeight: 1.6 }}>
+              🛍️ Business accounts can't purchase on AshantiHub. Sign in with a customer account to buy, request a service or book.
+            </div>
+          ) : isAccommodation ? (
             bookingDone ? (
               <div style={{ marginTop: 16, background: `${C.kente2}22`, color: "white", borderRadius: 14, padding: "14px 16px", fontSize: "0.8rem" }}>
                 ✓ Booked! {bookingDone.check_in} → {bookingDone.check_out} · GHS {bookingDone.total_price}. Manage it in “My Account”.
