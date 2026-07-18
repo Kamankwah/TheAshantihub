@@ -101,13 +101,22 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
   const handleBusinessInfoSubmit = async (e) => {
     e.preventDefault();
     setError(null);
+    // Ghana Card + a valid Ashanti Region Ghana Post address are required.
+    if (!ghanaCardNumber.trim()) { setError("Your Ghana Card number is required."); return; }
+    const gps = gpsAddress.trim().toUpperCase();
+    if (!/^[A-Z]{2}-\d{3,4}-\d{4}$/.test(gps)) {
+      setError("Enter a valid Ghana Post GPS address, e.g. AK-039-5028."); return;
+    }
+    if (gps[0] !== "A") {
+      setError("AshantiHub only admits businesses in the Ashanti Region — your Ghana Post address must be an Ashanti Region address (it begins with “A”, e.g. AK-039-5028)."); return;
+    }
     setSubmitting(true);
     try {
       await auth.submitBusinessInfo({
         ghana_card_number: ghanaCardNumber,
         ghana_card_front_image: ghanaCardFront,
         ghana_card_back_image: ghanaCardBack,
-        gps_address: gpsAddress,
+        gps_address: gps,
         business_contact_phone: businessContactPhone,
         is_formal: isFormal,
         business_reg_certificate: isFormal ? businessRegCertificate : undefined,
@@ -122,7 +131,10 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
         setError("Something went wrong determining your next step. Please refresh the page and try again.");
       }
     } catch (err) {
-      setError("Could not save your business information. Please check your details.");
+      const detail = err?.body && typeof err.body === "object"
+        ? [].concat(...Object.values(err.body))[0]
+        : null;
+      setError(detail || "Could not save your business information. Please check your details.");
     } finally {
       setSubmitting(false);
     }
@@ -237,7 +249,8 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
             <label style={labelStyle}>Ghana Card — back
               <input type="file" accept="image/*" required onChange={e=>setGhanaCardBack(e.target.files[0])} style={inputStyle}/>
             </label>
-            <input value={gpsAddress} onChange={e=>setGpsAddress(e.target.value)} placeholder="GPS address (e.g. AK-123-4567)" required style={inputStyle}/>
+            <input value={gpsAddress} onChange={e=>setGpsAddress(e.target.value)} placeholder="Ghana Post GPS address (e.g. AK-039-5028)" required style={inputStyle}/>
+            <div style={{color:"#8a6d1a",fontSize:"0.68rem",margin:"-6px 0 10px",lineHeight:1.4}}>📍 Ashanti Region only — your Ghana Post address must be an Ashanti Region address (it begins with “A”).</div>
             <input value={businessContactPhone} onChange={e=>setBusinessContactPhone(e.target.value)} placeholder="Business contact phone (public)" required style={inputStyle}/>
             <label style={{...labelStyle,display:"flex",alignItems:"center",gap:8}}>
               <input type="checkbox" checked={isFormal} onChange={e=>setIsFormal(e.target.checked)}/>
