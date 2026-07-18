@@ -82,6 +82,10 @@ class SubscriptionPlan(models.Model):
     max_active_listings = models.PositiveIntegerField(null=True, blank=True, default=None)
     # How many days an approved hero-media submission stays live for this tier.
     hero_days = models.PositiveIntegerField(default=0)
+    # How many hero-media submissions a business on this tier may have live/
+    # pending at once (one per listing) — lets a higher tier feature more of
+    # their listings on the homepage hero slider. Default 1.
+    hero_slots = models.PositiveIntegerField(default=1)
     boost_credits_per_month = models.PositiveIntegerField(default=0)
 
     def __str__(self):

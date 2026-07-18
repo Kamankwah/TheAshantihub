@@ -557,6 +557,17 @@ def _hero_days_for(business_owner):
     return subscription.plan.hero_days
 
 
+def _hero_slots_for(business_owner):
+    """How many hero-media submissions this business may have live/pending at
+    once — their current plan's hero_slots. Defaults to 1 with no subscription,
+    so a business can always feature at least one listing.
+    """
+    subscription = getattr(business_owner, "subscription", None)
+    if subscription is None:
+        return 1
+    return subscription.plan.hero_slots
+
+
 class HeroSubmitView(APIView):
     """POST /api/hero/submit/ — a business owner submits one of their existing
     ListingPhoto gallery items + a caption for hero consideration (roadmap
@@ -586,16 +597,25 @@ class HeroSubmitView(APIView):
         self.check_object_permissions(request, listing_photo)
 
         now = timezone.now()
-        has_outstanding = HeroMediaSubmission.objects.filter(business_owner=request.user).filter(
+        # Outstanding = pending, or approved-and-not-yet-expired.
+        outstanding = HeroMediaSubmission.objects.filter(business_owner=request.user).filter(
             Q(status=HeroMediaSubmission.PENDING)
             | Q(status=HeroMediaSubmission.APPROVED, expires_at__gt=now)
-        ).exists()
-        if has_outstanding:
+        )
+        # One hero per listing at a time.
+        if outstanding.filter(listing=listing_photo.listing_id).exists():
+            return Response(
+                {"detail": "This listing already has a pending or active hero submission."},
+                status=400,
+            )
+        # Up to the subscription tier's hero_slots concurrent submissions.
+        slots = _hero_slots_for(request.user)
+        if outstanding.count() >= slots:
             return Response(
                 {
                     "detail": (
-                        "You already have a pending or active hero submission. "
-                        "Only one hero submission may be outstanding at a time."
+                        f"Your plan allows {slots} hero submission{'s' if slots != 1 else ''} "
+                        "at a time. Upgrade your subscription to feature more listings."
                     )
                 },
                 status=400,
@@ -603,6 +623,7 @@ class HeroSubmitView(APIView):
 
         submission = HeroMediaSubmission(
             business_owner=request.user,
+            listing=listing_photo.listing,
             media_type=HeroMediaSubmission.IMAGE,
             caption=serializer.validated_data["caption"],
         )
