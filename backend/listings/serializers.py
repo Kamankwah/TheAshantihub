@@ -259,7 +259,8 @@ class ModerationListingSerializer(serializers.ModelSerializer):
         fields = [
             "id", "business_owner", "business_owner_name", "name", "description", "category",
             "zone", "price_amount", "price_unit", "tag", "contact_phone", "lat", "lng",
-            "main_photo", "photos", "status", "rejection_reason", "created_at",
+            "main_photo", "photos", "specs", "service_duration",
+            "status", "rejection_reason", "created_at",
             "reviewed_by_name", "reviewed_at",
         ]
 

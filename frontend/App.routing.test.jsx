@@ -93,8 +93,9 @@ describe('AshantiHub routing', () => {
         </QueryClientProvider>,
       )
 
-      await screen.findByText('Business', {}, { timeout: 3000 })
-      fireEvent.click(screen.getAllByText('Business')[0])
+      // The Business nav link is labelled "Adwaso" (route stays /business).
+      await screen.findByText('Adwaso', {}, { timeout: 3000 })
+      fireEvent.click(screen.getAllByText('Adwaso')[0])
       expect(window.location.pathname).toBe('/business')
 
       window.history.pushState({}, '', '/')
