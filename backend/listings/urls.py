@@ -31,6 +31,16 @@ urlpatterns = [
     # as a listing id.
     path("promotions/", views.PromotionAdminListView.as_view(), name="promotion-admin-list"),
     path(
+        "promotions/<int:pk>/approve/",
+        views.PromotionApproveView.as_view(),
+        name="promotion-approve",
+    ),
+    path(
+        "promotions/<int:pk>/reject/",
+        views.PromotionRejectView.as_view(),
+        name="promotion-reject",
+    ),
+    path(
         "promotions/<int:pk>/cancel/",
         views.PromotionCancelView.as_view(),
         name="promotion-cancel",

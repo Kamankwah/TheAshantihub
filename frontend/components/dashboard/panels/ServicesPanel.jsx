@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
 import { useIncomingServiceRequests } from "../../../hooks/useIncomingServiceRequests.js";
-import { D, glassCard } from "../theme.js";
+import { useMyListings } from "../../../hooks/useMyListings.js";
+import { useCategories } from "../../../hooks/useCategories.js";
+import { D, glassCard, sectionTitle } from "../theme.js";
+import OwnerListingCard from "./OwnerListingCard.jsx";
 
 // Services management (business item 2 / Wave H2): a service business's
 // incoming request queue, Fiverr/Upwork-style. The owner accepts (quoting a
@@ -93,14 +96,32 @@ function RequestCard({ sr, onChanged }) {
 
 export default function ServicesPanel() {
   const { data, isLoading, isError, refetch } = useIncomingServiceRequests();
+  const listings = useMyListings();
+  const categories = useCategories();
+
   if (isLoading) return <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading your requests…</div>;
   if (isError) return <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load your service requests.</div>;
   const requests = data || [];
   const active = requests.filter(r => !["completed", "declined", "cancelled"].includes(r.status));
 
+  // The owner's own approved service listings (bug fix 4): non-accommodation
+  // service listings belong here; accommodation ones are managed in Bookings.
+  const catMap = Object.fromEntries((categories.data || []).map(c => [c.id, c]));
+  const myServices = (listings.data || []).filter(l => {
+    if (l.status !== "published") return false;
+    const cat = catMap[l.category];
+    return cat && cat.kind === "service" && !cat.is_accommodation;
+  });
+
   return (
     <div style={{ maxWidth: 720 }}>
-      <div style={{ color: D.text, fontWeight: 800, fontSize: "0.95rem", marginBottom: 4 }}>Service requests</div>
+      {/* Your listings — view/edit price, specs and photos (bug fix 4) */}
+      <div style={{ ...sectionTitle, marginBottom: 4 }}>Your service listings</div>
+      <div style={{ color: D.textFaint, fontSize: "0.72rem", marginBottom: 14 }}>Approved services. Edit price, specs and add photos here — changes go live without re-approval.</div>
+      {!listings.isLoading && myServices.length === 0 && <div style={{ color: D.textDim, fontSize: "0.82rem", marginBottom: 20 }}>No approved service listings yet. Once a service is approved it appears here.</div>}
+      {myServices.map(l => <OwnerListingCard key={l.id} listing={l} onChanged={listings.refetch} variant="service" />)}
+
+      <div style={{ ...sectionTitle, marginTop: 28, marginBottom: 4 }}>Service requests</div>
       <div style={{ color: D.textFaint, fontSize: "0.72rem", marginBottom: 14 }}>{active.length} active. Accept a request with a quote, then track it to completion once the customer pays.</div>
       {requests.length === 0 && <div style={{ color: D.textDim, fontSize: "0.82rem" }}>No service requests yet. They'll appear here when a customer requests one of your services.</div>}
       {requests.map(r => <RequestCard key={r.id} sr={r} onChanged={refetch} />)}

@@ -32,9 +32,11 @@ class PromotionModelTests(TestCase):
         defaults.update(overrides)
         return Promotion.objects.create(**defaults)
 
-    def test_status_defaults_to_active(self):
+    def test_status_defaults_to_pending(self):
+        # A purchased promotion now awaits staff approval before it ranks
+        # (pre-prod bug fix 7), so the model default is Pending, not Active.
         promotion = self._promotion()
-        self.assertEqual(promotion.status, Promotion.ACTIVE)
+        self.assertEqual(promotion.status, Promotion.PENDING)
 
     def test_keywords_defaults_to_blank(self):
         promotion = self._promotion()
@@ -52,7 +54,9 @@ class PromotionModelTests(TestCase):
         self.assertIn(promotion.status, str(promotion))
 
     def test_is_currently_active_true_within_window(self):
-        promotion = self._promotion()
+        # is_currently_active requires status=active, so approve it explicitly
+        # (the default is now Pending — pre-prod bug fix 7).
+        promotion = self._promotion(status=Promotion.ACTIVE)
         self.assertTrue(promotion.is_currently_active)
 
     def test_is_currently_active_false_once_ended(self):

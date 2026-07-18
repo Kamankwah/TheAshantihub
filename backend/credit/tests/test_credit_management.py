@@ -23,6 +23,20 @@ class CreditManagementTestsBase(TestCase):
             full_name="Kwame Trader", login_phone="+233207990011", password_hash="x",
             kyc_status=BusinessOwner.VERIFIED,
         )
+        # The platform ships with NO seeded lending partners (migration 0004
+        # clears the old demo rows — pre-prod bug fix 2), so these tests
+        # provision the partners they need themselves rather than leaning on
+        # seed data that no longer exists.
+        self.fidelity = LendingPartner.objects.create(
+            name="Fidelity Bank Ghana", partner_type="bank", logo="🏦",
+            min_score=600, max_loan="GHS 50,000", interest_rate="18–24% p.a.",
+            turnaround="3–5 days", focus="SME Business Loans", contact="0302 214 460",
+        )
+        self.absa = LendingPartner.objects.create(
+            name="Absa Ghana SME", partner_type="bank", logo="🔴",
+            min_score=650, max_loan="GHS 100,000", interest_rate="16–22% p.a.",
+            turnaround="5–7 days", focus="Established Businesses", contact="0302 429 150",
+        )
 
     def _staff(self, staff):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(staff, 'staff')}")
@@ -32,10 +46,13 @@ class CreditManagementTestsBase(TestCase):
 
 
 class LendingPartnerSeedTests(TestCase):
-    def test_six_partners_seeded(self):
-        """The migration moved the six hardcoded frontend partners into the DB."""
-        self.assertEqual(LendingPartner.objects.count(), 6)
-        self.assertTrue(LendingPartner.objects.filter(name="Fidelity Bank Ghana").exists())
+    def test_no_partners_seeded_by_default(self):
+        """The platform ships with an empty lending-partner list (migration
+        0004 removed the six demo rows the old 0003 seed added — pre-prod bug
+        fix 2). Real partners are onboarded by staff only after they agree to
+        lend, so a fresh DB has none.
+        """
+        self.assertEqual(LendingPartner.objects.count(), 0)
 
 
 class LendingPartnerApiTests(CreditManagementTestsBase):

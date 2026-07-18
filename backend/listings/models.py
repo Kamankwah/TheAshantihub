@@ -259,11 +259,21 @@ class Promotion(models.Model):
         (BOOST, "Boost"),
     ]
 
+    # A purchased promotion is now staff-moderated before it affects ranking
+    # (pre-prod bug fix 7): the owner pays, the row is created ``pending``, and a
+    # staffer with promotions.manage approves it (→ active, window reset to start
+    # now) or rejects it (→ rejected, with a reason). ``active`` is the live
+    # state; ``cancelled`` is an explicit early-stop; ``expired`` is informational
+    # only (derived from the time window at query time, never written).
+    PENDING = "pending"
     ACTIVE = "active"
+    REJECTED = "rejected"
     EXPIRED = "expired"
     CANCELLED = "cancelled"
     STATUS_CHOICES = [
+        (PENDING, "Pending approval"),
         (ACTIVE, "Active"),
+        (REJECTED, "Rejected"),
         (EXPIRED, "Expired"),
         (CANCELLED, "Cancelled"),
     ]
@@ -275,7 +285,9 @@ class Promotion(models.Model):
     # Only meaningful for kind=boost — blank for kind=featured.
     keywords = models.CharField(max_length=255, blank=True)
     amount_paid = models.DecimalField(max_digits=10, decimal_places=2)
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=ACTIVE)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
+    # Set when a staffer rejects a pending promotion.
+    rejection_reason = models.CharField(max_length=255, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 

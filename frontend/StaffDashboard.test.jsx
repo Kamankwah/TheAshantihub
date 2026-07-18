@@ -100,22 +100,21 @@ describe('StaffDashboard', () => {
     expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument()
   })
 
-  // Promotions are self-serve (business owners purchase Featured/Boost from
-  // their own dashboard — docs/BUSINESS_EVENTS_ROADMAP.md Phase 5), so this
-  // panel is a lifecycle view (Active/Expired/Cancelled), never an approval
-  // queue — and never the old "coming soon"/"nothing to manage" placeholder.
-  it('shows a real Promotions management panel, not coming-soon or an info card', async () => {
+  // Promotions are now moderated before they rank (pre-prod bug fix 7): a
+  // purchased Featured/Boost promotion arrives Pending and a staffer approves
+  // or rejects it. The panel is a Pending/Active/Rejected/Expired/Cancelled
+  // queue — never the old "coming soon"/"nothing to manage" placeholder.
+  it('shows a real Promotions management panel with a moderation queue', async () => {
     const auth = makeAuth({ hasPermission: (c) => c === 'promotions.manage' })
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('Promotions'))
-    expect(await screen.findByRole('button', { name: /Active/ })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /Pending/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Active/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Rejected/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Expired/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Cancelled/ })).toBeInTheDocument()
     expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument()
     expect(screen.queryByText('Promotions are self-serve')).not.toBeInTheDocument()
-    // Promotions are bought, not approved — these must never appear here.
-    expect(screen.queryByRole('button', { name: /Pending/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Approved/ })).not.toBeInTheDocument()
   })
 
   it('calls onExit when the exit button is clicked', () => {
@@ -1385,6 +1384,8 @@ describe('StaffDashboard Promotions', () => {
     const auth = makeAuth({ hasPermission: (c) => c === 'promotions.manage' })
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('Promotions'))
+    // The queue now opens on Pending; cancel lives on the Active tab.
+    fireEvent.click(await screen.findByRole('button', { name: /Active/ }))
     await screen.findByText('Royal Lodge')
     expect(screen.getByText(/Kwame Traders/)).toBeInTheDocument()
     fireEvent.click(screen.getByText('✕ Cancel'))
@@ -1403,8 +1404,50 @@ describe('StaffDashboard Promotions', () => {
     const auth = makeAuth({ hasPermission: (c) => c === 'promotions.manage' })
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('Promotions'))
+    fireEvent.click(await screen.findByRole('button', { name: /Active/ }))
     await screen.findByText('Kente Stall')
     expect(screen.getByText('Scheduled — not ranking yet')).toBeInTheDocument()
+  })
+
+  it('approves a pending promotion (bug fix 7)', async () => {
+    let approveCalled = false
+    server.use(
+      promotionsQueue({
+        pending: [{ id: 7, listing: 5, listing_name: 'Fresh Stall', business_owner_name: 'Kojo Trader', kind: 'featured', starts_at: '2026-08-01T00:00:00Z', ends_at: '2026-08-08T00:00:00Z', keywords: '', amount_paid: '5.00', status: 'pending', is_currently_active: false, created_at: '2026-07-20T00:00:00Z' }],
+      }),
+      http.post('http://localhost:8000/api/listings/promotions/7/approve/', () => {
+        approveCalled = true
+        return HttpResponse.json({ id: 7, status: 'active' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'promotions.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Promotions'))
+    // Pending is the default tab.
+    await screen.findByText('Fresh Stall')
+    fireEvent.click(screen.getByText('✓ Approve'))
+    await waitFor(() => expect(approveCalled).toBe(true))
+  })
+
+  it('rejects a pending promotion with a reason (bug fix 7)', async () => {
+    let rejectBody = null
+    server.use(
+      promotionsQueue({
+        pending: [{ id: 8, listing: 5, listing_name: 'Spam Stall', business_owner_name: 'Kojo Trader', kind: 'boost', starts_at: '2026-08-01T00:00:00Z', ends_at: '2026-08-08T00:00:00Z', keywords: 'x', amount_paid: '3.00', status: 'pending', is_currently_active: false, created_at: '2026-07-20T00:00:00Z' }],
+      }),
+      http.post('http://localhost:8000/api/listings/promotions/8/reject/', async ({ request }) => {
+        rejectBody = await request.json()
+        return HttpResponse.json({ id: 8, status: 'rejected' })
+      }),
+    )
+    const auth = makeAuth({ hasPermission: (c) => c === 'promotions.manage' })
+    renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
+    fireEvent.click(screen.getByText('Promotions'))
+    await screen.findByText('Spam Stall')
+    fireEvent.click(screen.getByText('✕ Reject'))
+    fireEvent.change(screen.getByPlaceholderText('Reason (optional)'), { target: { value: 'Misleading keywords' } })
+    fireEvent.click(screen.getByText('Confirm reject'))
+    await waitFor(() => expect(rejectBody).toEqual({ reason: 'Misleading keywords' }))
   })
 
   it('shows no cancel action on an expired promotion', async () => {

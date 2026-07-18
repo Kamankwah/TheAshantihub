@@ -49,10 +49,13 @@ class PromotionPurchaseTests(TestCase):
         self.assertEqual(response.status_code, 201, response.content)
         body = response.json()
         self.assertEqual(body["kind"], "featured")
-        self.assertEqual(body["status"], "active")
+        # A purchased promotion is now created pending staff approval (bug fix 7),
+        # not immediately active.
+        self.assertEqual(body["status"], "pending")
 
         promotion = Promotion.objects.get(pk=body["id"])
         self.assertEqual(promotion.listing_id, self.published.id)
+        self.assertEqual(promotion.status, Promotion.PENDING)
         self.assertEqual(
             (promotion.ends_at - promotion.starts_at).days, 7
         )
