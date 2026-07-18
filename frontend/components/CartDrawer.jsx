@@ -257,6 +257,7 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
                   lat={deliveryLat}
                   lng={deliveryLng}
                   onChange={(la, ln) => { setDeliveryLat(la); setDeliveryLng(ln); }}
+                  onAddress={(addr) => setDeliveryAddress(addr)}
                 />
               </div>
             )}
