@@ -2915,7 +2915,7 @@ export default function AshantiHub() {
       {showNotifs&&<NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
       {showFavs&&<FavsDrawer/>}
       {showCart&&isCustomer&&<CartDrawer user={user} currency={currency} onClose={()=>setShowCart(false)} PaymentComponent={MoMoPayment}/>}
-      {showReferral&&<ReferralModal user={user} onClose={()=>setShowReferral(false)}/>}
+      {/* Referral feature hidden until it's built properly (see note below). */}
       <Navbar
         page={page} setPage={setPage}
         lang={lang} setLang={setLang}
@@ -2942,15 +2942,8 @@ export default function AshantiHub() {
             setPage={setPage}
           />
 
-          {/* Referral CTA */}
-          {user&&(
-            <div style={{background:`linear-gradient(135deg,${C.kente1},${C.kente3})`,padding:"22px 20px",textAlign:"center"}}>
-              <div style={{fontSize:"1.5rem",marginBottom:6}}>🎁</div>
-              <div style={{color:C.gold,fontWeight:900,marginBottom:4,fontSize:"0.95rem"}}>Refer friends & earn GHS 10 each</div>
-              <div style={{color:"white",fontSize:"0.75rem",marginBottom:12,opacity:0.85}}>Share AshantiHub and earn mobile money credit for every friend who signs up.</div>
-              <button onClick={()=>setShowReferral(true)} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"9px 22px",fontWeight:900,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>Get My Referral Code →</button>
-            </div>
-          )}
+          {/* Referral program hidden for now — not yet implemented (no real
+              referral tracking/credit). Re-enable once it's built properly. */}
 
           <HomeCtaBand/>
         </>

@@ -67,6 +67,42 @@ class BusinessOwnerProfileUpdateTests(TestCase):
         owner.refresh_from_db()
         self.assertEqual(owner.kyc_status, BusinessOwner.PENDING)
 
+    def test_non_ashanti_gps_address_is_rejected(self):
+        owner = self._make_owner(BusinessOwner.PENDING)
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._token(owner)}")
+        response = self.client.patch(
+            "/api/accounts/business-owners/me/profile/",
+            {"gps_address": "GA-543-0125"},  # Greater Accra — not Ashanti
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("gps_address", response.json())
+
+    def test_malformed_gps_address_is_rejected(self):
+        owner = self._make_owner(BusinessOwner.PENDING)
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._token(owner)}")
+        response = self.client.patch(
+            "/api/accounts/business-owners/me/profile/",
+            {"gps_address": "not-a-code"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("gps_address", response.json())
+
+    def test_blank_ghana_card_number_is_rejected(self):
+        owner = self._make_owner(BusinessOwner.PENDING, ghana_card_number="")
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._token(owner)}")
+        response = self.client.patch(
+            "/api/accounts/business-owners/me/profile/",
+            {"business_contact_phone": "+233208889901"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("ghana_card_number", response.json())
+
     def test_verified_owner_cannot_edit(self):
         owner = self._make_owner(BusinessOwner.VERIFIED)
         self.client = APIClient()

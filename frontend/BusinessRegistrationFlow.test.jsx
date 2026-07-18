@@ -77,7 +77,7 @@ describe('BusinessRegistrationFlow', () => {
     fireEvent.change(screen.getByPlaceholderText('Ghana Card number'), { target: { value: 'GHA-000000000-0' } })
     uploadFile(/Ghana Card — front/i)
     uploadFile(/Ghana Card — back/i)
-    fireEvent.change(screen.getByPlaceholderText('GPS address (e.g. AK-123-4567)'), { target: { value: 'AK-123-4567' } })
+    fireEvent.change(screen.getByPlaceholderText('Ghana Post GPS address (e.g. AK-039-5028)'), { target: { value: 'AK-123-4567' } })
     fireEvent.change(screen.getByPlaceholderText('Business contact phone (public)'), { target: { value: '+233201112233' } })
     fireEvent.submit(screen.getByRole('button', { name: 'Continue' }).closest('form'))
 
@@ -95,7 +95,7 @@ describe('BusinessRegistrationFlow', () => {
     fireEvent.change(screen.getByPlaceholderText('Ghana Card number'), { target: { value: 'GHA-000000000-0' } })
     uploadFile(/Ghana Card — front/i)
     uploadFile(/Ghana Card — back/i)
-    fireEvent.change(screen.getByPlaceholderText('GPS address (e.g. AK-123-4567)'), { target: { value: 'AK-123-4567' } })
+    fireEvent.change(screen.getByPlaceholderText('Ghana Post GPS address (e.g. AK-039-5028)'), { target: { value: 'AK-123-4567' } })
     fireEvent.change(screen.getByPlaceholderText('Business contact phone (public)'), { target: { value: '+233201112233' } })
     fireEvent.submit(screen.getByRole('button', { name: 'Continue' }).closest('form'))
 
@@ -241,7 +241,7 @@ describe('BusinessRegistrationFlow', () => {
       prefill={{ ghana_card_number: 'GHA-111', gps_address: 'AK-1', business_contact_phone: '+233200000000', is_formal: false, tin: '' }}
       setPage={vi.fn()} setShowBizDash={vi.fn()} />)
     expect(screen.getByPlaceholderText('Ghana Card number')).toHaveValue('GHA-111')
-    expect(screen.getByPlaceholderText('GPS address (e.g. AK-123-4567)')).toHaveValue('AK-1')
+    expect(screen.getByPlaceholderText('Ghana Post GPS address (e.g. AK-039-5028)')).toHaveValue('AK-1')
   })
 
   it('clicking Home navigates back via setPage', () => {
