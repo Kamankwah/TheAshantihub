@@ -56,6 +56,10 @@ export default function SlideCarousel({ slides, renderSlide, height = 300, scrol
             position: "absolute",
             inset: 0,
             opacity: i === index ? 1 : 0,
+            // Only the visible slide receives clicks — otherwise a later,
+            // opacity:0 slide (painted on top) silently intercepts taps meant
+            // for the active slide's CTA/link.
+            pointerEvents: i === index ? "auto" : "none",
             transition: reducedMotion ? "none" : "opacity 700ms ease",
           }}
         >

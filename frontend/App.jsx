@@ -2735,11 +2735,6 @@ export default function AshantiHub() {
     refetchCart();
   };
 
-  // Buy Now (hero CTA): add to cart then open the cart's delivery flow.
-  // handleAddToCart throws/opens the signup prompt for guests, so swallow that.
-  const handleBuyNow = async (item) => {
-    try { await handleAddToCart(item); setShowCart(true); } catch { /* auth prompt shown */ }
-  };
 
   const [cookieConsent,setCookieConsent]=useState(false);
   const [cookieDismissed,setCookieDismissed]=useState(false);
@@ -2949,11 +2944,11 @@ export default function AshantiHub() {
               (docs/BUSINESS_EVENTS_ROADMAP.md Phase 2/3). Renders nothing when
               there are none active, so it never leaves a disruptive empty gap. */}
           <HeroCarousel onEngage={(slide)=>{
-            // Buy Now (product) → add to cart + open cart's delivery flow.
-            // Engage Service (service) → open the listing's detail page (where
-            // the service-request form lives). Slide carries the listing id/kind.
-            if(slide.listing_kind==="service"){ setSelectedListingId(slide.listing); }
-            else { handleBuyNow({id: slide.listing}); }
+            // Route to the listing's detail page so the customer can make the
+            // next decision there (add to cart + choose delivery for a product,
+            // or send a service request for a service) — rather than a silent
+            // instant add-to-cart that does nothing for a guest/business viewer.
+            if(slide.listing!=null) setSelectedListingId(slide.listing);
           }}/>
 
           {/* Support-contact notice — was a "message businesses directly on
