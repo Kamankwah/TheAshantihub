@@ -219,7 +219,10 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
               <div style={{ fontWeight: 800, color: D.text, fontSize: "0.85rem", marginBottom: 6 }}>Your subscription</div>
               {subscription?.id ? (
                 <div style={{ color: D.textDim, fontSize: "0.78rem" }}>
-                  {subscription.plan_name || subscription.plan} · <span style={{ color: subscription.status === "active" ? D.green : D.amber, fontWeight: 700 }}>{subscription.status}</span>
+                  {/* subscription.plan is a nested object (SubscriptionPlanSerializer),
+                      not a string — reading .name; rendering the object itself
+                      would throw "Objects are not valid as a React child". */}
+                  {subscription.plan?.name || subscription.plan?.tier || "Your plan"} · <span style={{ color: subscription.status === "active" ? D.green : D.amber, fontWeight: 700 }}>{subscription.status}</span>
                   {subEnd && <> · renews {subEnd.slice(0, 10)}{subDays != null && subDays >= 0 ? ` (${subDays}d)` : ""}</>}
                 </div>
               ) : (

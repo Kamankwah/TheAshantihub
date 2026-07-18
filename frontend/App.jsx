@@ -962,11 +962,25 @@ export function groupCategoriesByKind(categories) {
 }
 
 // ─── Business Card ─────────────────────────────────────────────────────────────
-export function Card({item,accentColor,user,favourites,onFavourite,currency,onMessage,onOpen}) {
+export function Card({item,accentColor,user,favourites,onFavourite,currency,onMessage,onOpen,onBuyNow}) {
   const [showReviews,setShowReviews]=useState(false);
   const [showPay,setShowPay]=useState(false);
+  const [buying,setBuying]=useState(false);
   const [photoIdx,setPhotoIdx]=useState(0);
   const isFav = favourites.includes(item.id);
+
+  // "Buy" routes through the cart's delivery flow (store pickup vs door-to-door)
+  // rather than the old MoMoModal that jumped straight to a fake payment with no
+  // delivery choice and created no real order (bug fix 1b). onBuyNow adds this
+  // item to the cart and opens CartDrawer, where the customer picks delivery and
+  // a real order is placed. Falls back to the legacy MoMoModal only if no
+  // onBuyNow is wired (defensive — the marketplace grid always passes it).
+  const handleBuy = async () => {
+    if(!onBuyNow){ setShowPay(true); return; }
+    setBuying(true);
+    try { await onBuyNow(item); } catch { /* onBuyNow surfaces its own auth prompt */ }
+    finally { setBuying(false); }
+  };
 
   const displayPrice = () => {
     const amount = parseFloat(item.price_amount)||0;
@@ -1006,6 +1020,12 @@ export function Card({item,accentColor,user,favourites,onFavourite,currency,onMe
             ))}
           </div>
         )}
+        {/* Promoted badge (bug fix 7) — a Featured/Boost promotion approved by
+            staff both ranks the listing first (server-side) and shows this
+            ribbon so customers can see it's promoted. */}
+        {item.is_promoted&&(
+          <span style={{position:"absolute",top:8,left:40,background:"linear-gradient(90deg,#f59e0b,#d97706)",color:"white",fontSize:"0.58rem",fontWeight:800,padding:"2px 8px",borderRadius:20,zIndex:2,boxShadow:"0 2px 6px rgba(0,0,0,0.3)"}}>⭐ Promoted</span>
+        )}
         <span style={{position:"absolute",top:8,right:8,background:accentColor,color:"white",fontSize:"0.6rem",fontWeight:700,padding:"2px 7px",borderRadius:20,zIndex:2}}>{item.tag}</span>
         <button onClick={(e)=>{e.stopPropagation();onFavourite(item.id);}} style={{position:"absolute",top:8,left:8,background:"rgba(255,255,255,0.9)",border:"none",borderRadius:"50%",width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.9rem",zIndex:2}}>
           {isFav?"❤️":"🤍"}
@@ -1041,8 +1061,8 @@ export function Card({item,accentColor,user,favourites,onFavourite,currency,onMe
               style={{background:`${C.kente3}15`,color:C.kente3,border:`1px solid ${C.kente3}33`,borderRadius:20,padding:"5px 10px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
               🎧 Contact Support
             </button>
-            <button onClick={()=>setShowPay(true)} style={{background:accentColor,color:"white",border:"none",borderRadius:20,padding:"5px 10px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer"}}>
-              💳 Pay
+            <button onClick={handleBuy} disabled={buying} style={{background:accentColor,color:"white",border:"none",borderRadius:20,padding:"5px 10px",fontSize:"0.68rem",fontWeight:700,cursor:buying?"default":"pointer",opacity:buying?0.7:1}}>
+              {buying?"Adding…":"🛒 Buy"}
             </button>
           </div>
         </div>
@@ -2561,7 +2581,10 @@ export default function AshantiHub() {
   const [showFilters,setShowFilters]=useState(false);
 
   // ── Live marketplace data (categories/zones/listings) ─────────────────────
-  const [filters, setFilters] = useState({ category: "hotels" });
+  // No category/kind selected by default, so the grid opens on ALL published
+  // products AND services (bug fix 1a). Picking a category tab or the sidebar
+  // Type filter narrows from there.
+  const [filters, setFilters] = useState({});
   // PDP (ListingDetailPage) selection — mirrors the isAdmin/showBizDash-style
   // "flag swaps in a full component" convention, but scoped inside the
   // page==="business" block (see the JSX below) rather than a top-level
@@ -2723,6 +2746,16 @@ export default function AshantiHub() {
     if (!isCustomer) { throw new Error("Only customer accounts can add items to a cart."); }
     await apiPost("/api/cart/items/", { listing: item.id, quantity });
     refetchCart();
+  };
+
+  // Card "🛒 Buy": add to cart, then open CartDrawer so the customer chooses a
+  // delivery option (store pickup / door-to-door) and a real order is placed —
+  // the delivery flow the old fake MoMoModal skipped (bug fix 1b). Auth-gating
+  // (sign-in prompt for guests, customer-only) is handled by handleAddToCart,
+  // which throws on those paths — so only open the drawer when it resolves.
+  const handleBuyNow = async (item) => {
+    await handleAddToCart(item);
+    setShowCart(true);
   };
 
   const [cookieConsent,setCookieConsent]=useState(false);
@@ -3024,11 +3057,12 @@ export default function AshantiHub() {
               setMinPriceInput={setMinPriceInput}
               maxPriceInput={maxPriceInput}
               setMaxPriceInput={setMaxPriceInput}
-              onClear={()=>{setSearchInput("");setFilters(f=>({category:f.category,kind:f.kind}));setMinPriceInput("");setMaxPriceInput("");}}
+              onClear={()=>{setSearchInput("");setFilters({});setMinPriceInput("");setMaxPriceInput("");}}
               open={showFilters}
               onClose={()=>setShowFilters(false)}
               search={searchInput}
               onSearchChange={setSearchInput}
+              showKindFilter={true}
             />
             <div style={{flex:1,minWidth:0}}>
             {filters.category==="grocery"?(
@@ -3058,11 +3092,11 @@ export default function AshantiHub() {
               <>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
                   <h2 style={{margin:0,color:C.darkBrown,fontSize:"0.95rem",fontWeight:900}}>
-                    {activeCatObj?.icon} {activeCatObj?.label}
+                    {activeCatObj ? <>{activeCatObj.icon} {activeCatObj.label}</> : (filters.kind==="product" ? "🛍️ All Products" : filters.kind==="service" ? "🛠️ All Services" : "🛍️ All Products & Services")}
                     <span style={{color:"#999",fontWeight:400,fontSize:"0.72rem",marginLeft:6}}>{listings.length} results</span>
                   </h2>
                   <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                    <span style={{background:`${activeCatObj?.color}15`,border:`1px solid ${activeCatObj?.color}44`,borderRadius:20,padding:"3px 9px",fontSize:"0.65rem",color:activeCatObj?.color,fontWeight:700}}>📍 Kumasi</span>
+                    <span style={{background:`${(activeCatObj?.color)||C.gold}15`,border:`1px solid ${(activeCatObj?.color)||C.gold}44`,borderRadius:20,padding:"3px 9px",fontSize:"0.65rem",color:(activeCatObj?.color)||C.darkBrown,fontWeight:700}}>📍 Kumasi</span>
                   </div>
                 </div>
 
@@ -3112,7 +3146,7 @@ export default function AshantiHub() {
                         page). Promoted/boosted sorting-first lands in a later phase — this renders
                         `listings` in whatever order the API returns, unsorted client-side. */}
                     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>
-                      {listings.map(item=><Card key={item.id} item={item} accentColor={activeCatObj?.color} user={user} favourites={favourites} onFavourite={toggleFav} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);}} onOpen={(id)=>setSelectedListingId(id)}/>)}
+                      {listings.map(item=><Card key={item.id} item={item} accentColor={activeCatObj?.color||C.gold} user={user} favourites={favourites} onFavourite={toggleFav} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);}} onOpen={(id)=>setSelectedListingId(id)} onBuyNow={handleBuyNow}/>)}
                     </div>
                     {hasNextPage&&(
                       <div style={{textAlign:"center",marginTop:18}}>

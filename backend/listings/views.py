@@ -366,8 +366,14 @@ class ListingPromoteView(APIView):
 
     Body: {"kind": "featured"|"boost", "days": <int>, "keywords": "<string,
     boost only>"}. Rejects (400) if the listing isn't published, or if it
-    already has an active Promotion of the same kind (no stacking two
+    already has a pending or active Promotion of the same kind (no stacking two
     simultaneous `featured` — or two `boost` — promotions on one listing).
+
+    The promotion is created ``pending`` (bug fix 7): the owner has paid, but it
+    does not affect ranking until a staffer with promotions.manage approves it
+    (PromotionApproveView), at which point its live window is reset to start
+    then. The paid days are preserved as the starts_at..ends_at span here and
+    re-based to "now" at approval, so approval lag doesn't eat the paid window.
     """
 
     permission_classes = [IsAuthenticated, IsListingOwner]
@@ -388,15 +394,19 @@ class ListingPromoteView(APIView):
             )
 
         now = timezone.now()
-        has_active_same_kind = Promotion.objects.filter(
-            listing=listing, kind=kind, status=Promotion.ACTIVE, ends_at__gte=now,
+        # A pending OR live promotion of the same kind blocks a new purchase.
+        has_outstanding_same_kind = Promotion.objects.filter(
+            listing=listing, kind=kind,
+        ).filter(
+            Q(status=Promotion.PENDING)
+            | Q(status=Promotion.ACTIVE, ends_at__gte=now)
         ).exists()
-        if has_active_same_kind:
+        if has_outstanding_same_kind:
             return Response(
                 {
                     "detail": (
-                        f"This listing already has an active {kind} promotion. "
-                        "Wait for it to end before purchasing another."
+                        f"This listing already has a pending or active {kind} "
+                        "promotion. Wait for it to finish before purchasing another."
                     )
                 },
                 status=400,
@@ -411,7 +421,7 @@ class ListingPromoteView(APIView):
                 ends_at=now + timedelta(days=days),
                 keywords=keywords if kind == Promotion.BOOST else "",
                 amount_paid=amount,
-                status=Promotion.ACTIVE,
+                status=Promotion.PENDING,
             )
             Transaction.objects.create(
                 business_owner=request.user,
@@ -836,9 +846,9 @@ class HeroExtendView(APIView):
 
 
 # ─── Promotions management (staff) ────────────────────────────────────────
-# Promotions aren't moderated — a business owner buys one and it goes live
-# immediately — so this queue is Active/Expired/Cancelled, not
-# Pending/Approved/Rejected.
+# A purchased promotion is now moderated before it ranks (bug fix 7): the
+# queue exposes Pending/Active/Rejected/Expired/Cancelled tabs. A pending
+# promotion is paid-but-not-yet-approved and does NOT affect ranking.
 #
 # "Expired" is derived from the time window, never read off `status`: as
 # Promotion's own docstring explains, nothing in this app transitions a row to
@@ -848,21 +858,25 @@ class HeroExtendView(APIView):
 def _promotions_for_tab(tab):
     now = timezone.now()
     queryset = Promotion.objects.select_related("listing", "listing__business_owner")
+    if tab == "pending":
+        return queryset.filter(status=Promotion.PENDING).order_by("created_at")
+    if tab == "rejected":
+        return queryset.filter(status=Promotion.REJECTED).order_by("-created_at")
     if tab == "cancelled":
         return queryset.filter(status=Promotion.CANCELLED).order_by("-starts_at")
     if tab == "expired":
         return queryset.filter(
             Q(status=Promotion.ACTIVE, ends_at__lt=now) | Q(status=Promotion.EXPIRED)
         ).order_by("-ends_at")
-    # Active — bought and not yet finished. Includes a promotion whose
+    # Active — approved and not yet finished. Includes a promotion whose
     # starts_at is still in the future, which is live-but-not-yet-running.
     return queryset.filter(status=Promotion.ACTIVE, ends_at__gte=now).order_by("-starts_at")
 
 
 class PromotionAdminListView(generics.ListAPIView):
-    """GET /api/listings/promotions/?status=active|expired|cancelled —
-    staff-only (promotions.manage). Before this, `promotions.manage` gated a
-    nav tab with no backend view behind it at all.
+    """GET /api/listings/promotions/?status=pending|active|rejected|expired|
+    cancelled — staff-only (promotions.manage). Before this, `promotions.manage`
+    gated a nav tab with no backend view behind it at all.
     """
 
     serializer_class = PromotionAdminSerializer
@@ -871,7 +885,56 @@ class PromotionAdminListView(generics.ListAPIView):
         return [HasRolePermission("promotions.manage")]
 
     def get_queryset(self):
-        return _promotions_for_tab(self.request.query_params.get("status", "active"))
+        return _promotions_for_tab(self.request.query_params.get("status", "pending"))
+
+
+class PromotionApproveView(APIView):
+    """POST /api/listings/promotions/{id}/approve/ — staff-only
+    (promotions.manage). Approves a pending promotion so it starts affecting
+    ranking, re-basing its paid window to start now (so approval lag doesn't
+    eat the paid days the owner purchased).
+    """
+
+    def get_permissions(self):
+        return [HasRolePermission("promotions.manage")]
+
+    def post(self, request, pk):
+        promotion = generics.get_object_or_404(Promotion, pk=pk)
+        if promotion.status != Promotion.PENDING:
+            return Response(
+                {"detail": "Only a pending promotion can be approved."}, status=400
+            )
+        now = timezone.now()
+        duration = promotion.ends_at - promotion.starts_at
+        promotion.starts_at = now
+        promotion.ends_at = now + duration
+        promotion.status = Promotion.ACTIVE
+        promotion.rejection_reason = ""
+        promotion.save(update_fields=["starts_at", "ends_at", "status", "rejection_reason"])
+        return Response(PromotionAdminSerializer(promotion).data)
+
+
+class PromotionRejectView(APIView):
+    """POST /api/listings/promotions/{id}/reject/ {reason} — staff-only
+    (promotions.manage). Rejects a pending promotion (it never ranks).
+
+    Refunds are out of scope: rejection stops the promotion going live, it does
+    not reverse the amount_paid. There is no refund path here to pretend otherwise.
+    """
+
+    def get_permissions(self):
+        return [HasRolePermission("promotions.manage")]
+
+    def post(self, request, pk):
+        promotion = generics.get_object_or_404(Promotion, pk=pk)
+        if promotion.status != Promotion.PENDING:
+            return Response(
+                {"detail": "Only a pending promotion can be rejected."}, status=400
+            )
+        promotion.status = Promotion.REJECTED
+        promotion.rejection_reason = (request.data.get("reason") or "").strip()
+        promotion.save(update_fields=["status", "rejection_reason"])
+        return Response(PromotionAdminSerializer(promotion).data)
 
 
 class PromotionCancelView(APIView):
