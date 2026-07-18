@@ -2940,6 +2940,10 @@ export default function AshantiHub() {
           rather than what this nav item opens directly. */}
       {page==="business"&&(
         <>
+          {/* Hero + browse chrome only on the grid view. Hidden when a listing
+              detail (the checkout view) is open, so the detail page isn't
+              pushed down below the full-viewport hero. */}
+          {!selectedListingId && (<>
           {/* Hero carousel — approved/non-expired hero-media submissions
               (docs/BUSINESS_EVENTS_ROADMAP.md Phase 2/3). Renders nothing when
               there are none active, so it never leaves a disruptive empty gap. */}
@@ -2980,6 +2984,7 @@ export default function AshantiHub() {
               @media (max-width: 760px) { .ah-filter-trigger-bar { display: block; } }
             `}</style>
           </div>
+          </>)}
 
           {selectedListingId ? (
             <ListingDetailPage
@@ -3138,6 +3143,9 @@ export default function AshantiHub() {
           `selectedListingId`/ListingDetailPage in the Business tab above. */}
       {page==="events"&&(
         <>
+          {/* Hero + browse chrome only on the grid view — hidden when an event
+              detail is open, so it isn't pushed down below the full hero. */}
+          {!selectedEventId && (<>
           <EventHeroCarousel onOpen={(id)=>setSelectedEventId(id)}/>
 
           <div style={{background:C.void,borderBottom:`1.5px solid ${C.gold}30`,padding:"10px 16px",textAlign:"center"}}>
@@ -3161,6 +3169,7 @@ export default function AshantiHub() {
               @media (min-width: 761px) { .ah-event-filter-trigger { display: none !important; } }
             `}</style>
           </div>
+          </>)}
 
           {/* background:C.void is load-bearing, not cosmetic — EventSubmissionPanel is
               styled white-text-on-translucent-white for a dark backdrop, but the app
