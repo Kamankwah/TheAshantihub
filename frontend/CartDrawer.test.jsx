@@ -172,6 +172,20 @@ describe('CartDrawer', () => {
     }))
   })
 
+  it('fills the delivery address from the location picker (use my location / dropped pin)', async () => {
+    server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)))
+    renderDrawer()
+    await screen.findByText('Kente Cloth')
+    fireEvent.click(screen.getByText('Checkout →'))
+    await screen.findByText('Confirm your order')
+    fireEvent.click(screen.getByText('🚚 Door-to-door'))
+    // The address field starts empty; using the location picker fills it (the
+    // LocationPicker stub reports both coordinates and a reverse-geocoded address).
+    expect(screen.getByPlaceholderText('Delivery address')).toHaveValue('')
+    fireEvent.click(screen.getByText('drop-pin'))
+    expect(screen.getByPlaceholderText('Delivery address')).toHaveValue('KNUST Ave, Kumasi')
+  })
+
   it('keeps the payment amount stable even after checkout empties the cart mid-payment', async () => {
     // Regression test: handlePaymentSuccess's post-checkout refetch() used to
     // feed PaymentComponent's `amount` prop straight from the live `cart?.total`
