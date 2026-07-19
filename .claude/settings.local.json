@@ -40,7 +40,11 @@
       "Bash(git -C .worktrees/roles-registration-kyc log --oneline righteoushack..HEAD)",
       "Bash(curl -s -o /dev/null -w \"categories: %{http_code}\\\\n\" http://localhost:8000/api/listings/categories/)",
       "Bash(curl -s -o /dev/null -w \"listings: %{http_code}\\\\n\" \"http://localhost:8000/api/listings/?category=hotels\")",
-      "Bash(curl -s -o /dev/null -w \"events: %{http_code}\\\\n\" http://localhost:8000/api/events/)"
+      "Bash(curl -s -o /dev/null -w \"events: %{http_code}\\\\n\" http://localhost:8000/api/events/)",
+      "Bash(timeout 400 npx vitest run StaffDashboard.test.jsx)",
+      "Bash(awk '/class EventPayView/,/^class [A-Z].*\\(?!EventPayView\\)/' backend/events/views.py)",
+      "Bash(awk '/class OwnerListingSerializer/,/^class [A-Z]/' backend/listings/serializers.py)",
+      "Bash(gh repo *)"
     ]
   },
   "enabledMcpjsonServers": [
