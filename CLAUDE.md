@@ -201,3 +201,19 @@ No CSS framework or CSS files are used — all styling is inline `style={{...}}`
 - `docs/IMPLEMENTATION_INSTRUCTIONS.md` — master index tying the above together, with sequencing and what's not done yet
 
 These are specs, not implemented state — this file's "Architecture"/"Styling" sections above still describe what's actually in `App.jsx` today. Update them when code from these specs actually lands.
+
+## Design System
+
+Always read `DESIGN.md` (repo root) before making any visual or UI decisions. It is the
+source of truth for the palette, typography, spacing, layout, motion, and the
+trust-surface/anti-slop rules. All font choices, colors, and aesthetic direction are
+defined there — do not deviate without explicit user approval. In QA/review, flag any
+code that doesn't match DESIGN.md.
+
+`DESIGN.md` largely **documents** the system already in code (`frontend/theme.js` `C`,
+`frontend/components/dashboard/theme.js` `D`, `frontend/index.css` shadcn tokens — the
+palette is unchanged). The one active evolution it prescribes is **typography**: adopt
+**Fraunces** (headings) + **Plus Jakarta Sans** (body/UI/data, tabular figures) +
+**JetBrains Mono** (codes), retiring today's browser-default-serif / stray-Georgia /
+Geist split. The **verified-tier kente band** is documented as a Phase-2 principle, not
+yet built.

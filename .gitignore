@@ -5,3 +5,4 @@ dist/
 docker-compose.override.yml
 docs/LOCAL_NOTES_*.md
 .playwright-mcp/
+.gstack

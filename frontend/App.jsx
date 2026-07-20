@@ -1048,7 +1048,7 @@ export function Card({item,accentColor,user,favourites,onFavourite,currency,onMe
                 framed as an AshantiHub Support conversation about this listing,
                 not a direct line to the business. */}
             <button onClick={()=>{ if(onMessage) onMessage(item); }}
-              style={{background:`${C.kente3}15`,color:C.kente3,border:`1px solid ${C.kente3}33`,borderRadius:20,padding:"5px 10px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
+              style={{background:`${C.kente3}22`,color:"#fff",border:`1px solid ${C.kente3}66`,borderRadius:20,padding:"5px 10px",fontSize:"0.68rem",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
               🎧 Contact Support
             </button>
           </div>

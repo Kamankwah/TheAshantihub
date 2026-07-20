@@ -220,7 +220,7 @@ export default function ListingDetailPage({
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button
               onClick={() => onMessage && onMessage(item)}
-              style={{ background: `${C.kente3}15`, color: C.kente3, border: `1px solid ${C.kente3}33`, borderRadius: 20, padding: "10px 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", minHeight: 44 }}
+              style={{ background: `${C.kente3}22`, color: "#fff", border: `1px solid ${C.kente3}66`, borderRadius: 20, padding: "10px 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", minHeight: 44 }}
             >
               🎧 Contact Support
             </button>
