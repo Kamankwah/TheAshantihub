@@ -6,3 +6,11 @@ docker-compose.override.yml
 docs/LOCAL_NOTES_*.md
 .playwright-mcp/
 .gstack
+.cred.md
+
+# Server-side only, written when a checkout is provisioned (see infra/README.md).
+# .deploy.conf is what tells deploy.sh whether it is deploying production or
+# staging, so it must differ per checkout and must never be committed.
+.deploy.conf
+backups/
+

@@ -1,0 +1,71 @@
+#=========================================================================#
+# AshantiHub — Django API (reverse proxy), HTTPS                          #
+#                                                                         #
+# The SSL half of ashantihub-api.tpl.in. Rendered per environment by      #
+# infra/scripts/install-hestia-templates.sh.                              #
+#=========================================================================#
+
+server {
+	listen      %ip%:%web_ssl_port% ssl;
+	server_name %domain_idn% %alias_idn%;
+	root        %sdocroot%;
+	access_log  /var/log/nginx/domains/%domain%.log combined;
+	access_log  /var/log/nginx/domains/%domain%.bytes bytes;
+	error_log   /var/log/nginx/domains/%domain%.error.log error;
+
+	ssl_certificate     %ssl_pem%;
+	ssl_certificate_key %ssl_key%;
+
+	# TLS 1.3 0-RTT anti-replay (kept identical to Hestia's stock template).
+	if ($anti_replay = 307) { return 307 https://$host$request_uri; }
+	if ($anti_replay = 425) { return 425; }
+
+	include %home%/%user%/conf/web/%domain%/nginx.hsts.conf*;
+
+	client_max_body_size 25m;
+
+	location ^~ /.well-known/ {
+		root %sdocroot%;
+	}
+
+	location ~ /\.(?!well-known\/) {
+		deny all;
+		return 404;
+	}
+
+	location /media/ {
+		alias   __APP_DIR__/backend/media/;
+		expires 30d;
+		access_log off;
+	}
+
+	location /static/ {
+		alias   __APP_DIR__/backend/staticfiles/;
+		expires max;
+		access_log off;
+	}
+
+	location / {
+		proxy_pass http://127.0.0.1:__UPSTREAM_PORT__;
+
+		proxy_set_header Host              $host;
+		proxy_set_header X-Real-IP         $remote_addr;
+		proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+		proxy_set_header X-Forwarded-Host  $host;
+		# "https" here is what stops SECURE_SSL_REDIRECT from bouncing every
+		# proxied request into a redirect loop.
+		proxy_set_header X-Forwarded-Proto $scheme;
+
+		proxy_connect_timeout 60s;
+		proxy_send_timeout    60s;
+		proxy_read_timeout    60s;
+
+		proxy_redirect off;
+	}
+
+	location /error/ {
+		alias %home%/%user%/web/%domain%/document_errors/;
+	}
+
+	include %home%/%user%/conf/web/%domain%/nginx.ssl.conf_*;
+}

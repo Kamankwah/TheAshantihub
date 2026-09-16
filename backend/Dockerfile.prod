@@ -1,0 +1,43 @@
+# Production image for the AshantiHub Django API.
+#
+# backend/Dockerfile (the sibling of this file) is the DEVELOPMENT image —
+# it runs `manage.py runserver` with the source bind-mounted. This one bakes
+# the source in and runs gunicorn as a non-root user, and is what
+# infra/compose/docker-compose.yml builds on the server.
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# libmagic1 backs python-magic (upload content-type sniffing in listings/).
+# curl is used by the container healthcheck in docker-compose.yml.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libmagic1 curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+# Run as a non-root user. media/ and staticfiles/ are bind-mounted from the
+# host, so deploy.sh chowns those host directories to this same uid — a
+# mismatch here shows up as "permission denied" on the first photo upload,
+# not at deploy time.
+RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin ashantihub \
+    && mkdir -p /app/media /app/staticfiles \
+    && chown -R ashantihub:ashantihub /app
+USER ashantihub
+
+EXPOSE 8000
+
+# docker-compose.yml overrides this with the per-environment worker count;
+# this default keeps a bare `docker run` of the image working.
+CMD ["gunicorn", "ashantihub.wsgi:application", \
+     "--bind=0.0.0.0:8000", \
+     "--workers=4", \
+     "--timeout=60", \
+     "--access-logfile=-", \
+     "--error-logfile=-"]
