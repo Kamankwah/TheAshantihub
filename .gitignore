@@ -13,4 +13,7 @@ docs/LOCAL_NOTES_*.md
 # staging, so it must differ per checkout and must never be committed.
 .deploy.conf
 backups/
+# Written by deploy.sh from .deploy.conf so a manual `docker compose up` gets
+# the same port and worker count a deploy would use.
+infra/compose/.env
 
