@@ -137,6 +137,82 @@ EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="no-reply@theashantihub.com")
 
+# ── Error reporting ─────────────────────────────────────────────────────────
+# Who receives Django's unhandled-exception mail. Empty by default, which
+# makes the mail_admins handler below a no-op — so this is safe to leave unset
+# while EMAIL_BACKEND is still the console backend, and starts delivering the
+# moment real SMTP credentials and DJANGO_ADMIN_EMAILS are both filled in,
+# with no code change. Sentry (below) is the alerting path until then.
+ADMINS = [("AshantiHub Ops", address) for address in env.list("DJANGO_ADMIN_EMAILS", default=[])]
+MANAGERS = ADMINS
+SERVER_EMAIL = env("SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
+
+# Logging goes to stdout/stderr, not to a file: in production the app runs
+# under Docker, so the container runtime owns capture and rotation
+# (infra/compose/docker-compose.yml caps it at 10MB x 5). A file handler here
+# would need a writable path inside an otherwise read-only, non-root
+# container and would rotate independently of that.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "standard": {
+            "format": "{asctime} {levelname} {name} {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "standard",
+        },
+        "mail_admins": {
+            "class": "django.utils.log.AdminEmailHandler",
+            "level": "ERROR",
+            # HTML bodies embed a full traceback page including local
+            # variables — too much to put in an inbox.
+            "include_html": False,
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": env("DJANGO_LOG_LEVEL", default="INFO"),
+    },
+    "loggers": {
+        # Unhandled 500s land here. Django's own default config would drop
+        # the console copy once LOGGING is defined at all, so both handlers
+        # are listed explicitly.
+        "django.request": {
+            "handlers": ["console", "mail_admins"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+        # Every SQL statement at DEBUG level otherwise drowns the log.
+        "django.db.backends": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+    },
+}
+
+# Sentry — the live error-alerting path. Inert unless SENTRY_DSN is set, so
+# dev, CI and the test suite never phone home.
+SENTRY_DSN = env("SENTRY_DSN", default="")
+if SENTRY_DSN:
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        # Tells staging errors apart from production ones in the same project.
+        environment=env("SENTRY_ENVIRONMENT", default="production"),
+        # Errors only. Performance tracing on every request would cost quota
+        # this project has no use for yet.
+        traces_sample_rate=0.0,
+        # Never ship user emails/phone numbers/request bodies to Sentry.
+        send_default_pii=False,
+    )
+
 # Public base URL of the deployed frontend (e.g. https://theashantihub.com) —
 # used to build Hubtel's returnUrl/cancellationUrl (payments/hubtel_client.py)
 # so a customer redirected off-app to pay lands back on /payment/return.
