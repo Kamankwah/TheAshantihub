@@ -22,13 +22,12 @@ server {
 	# 413 before the request ever reached Django.
 	client_max_body_size 25m;
 
-	# Served from disk, ahead of the proxy: Let's Encrypt writes its
-	# challenge into the docroot, and proxying it to Django returns 404,
-	# which fails both issuance and every later renewal.
-	location ^~ /.well-known/ {
-		root %docroot%;
-	}
-
+	# No /.well-known/ location here on purpose. HestiaCP does not drop a
+	# challenge file on disk — it injects a regex location that answers the
+	# token inline, through the nginx.conf_* include at the end of this
+	# block. An "^~ /.well-known/" prefix location would outrank that regex
+	# (that is what ^~ means) and answer 404 instead, failing issuance and
+	# every later renewal.
 	location ~ /\.(?!well-known\/) {
 		deny all;
 		return 404;

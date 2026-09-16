@@ -21,8 +21,11 @@ server {
 
 	include %home%/%user%/conf/web/%domain%/nginx.forcessl.conf*;
 
-	# Dotfiles stay hidden, except .well-known — Let's Encrypt renewal
-	# writes its challenge there and must be able to read it back.
+	# Dotfiles stay hidden, except .well-known: Hestia answers the Let's
+	# Encrypt challenge from a regex location injected through the
+	# nginx.conf_* include at the end of this block, and this deny rule
+	# must not swallow it. Do not add an "^~ /.well-known/" location
+	# either — it would outrank that regex and break renewals.
 	location ~ /\.(?!well-known\/) {
 		deny all;
 		return 404;
