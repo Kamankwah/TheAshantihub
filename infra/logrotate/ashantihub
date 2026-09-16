@@ -7,6 +7,9 @@
 # Docker's json-file driver (infra/compose/docker-compose.yml). nginx logs are
 # rotated by HestiaCP's own logrotate config.
 /var/log/ashantihub-cron.log {
+	# /var/log is group-writable (root:syslog), which logrotate refuses to
+	# rotate in without being told explicitly which user to act as.
+	su root adm
 	weekly
 	rotate 8
 	compress
