@@ -1,0 +1,17 @@
+# Rotation for the cron job log written by infra/cron/ashantihub.cron.
+#
+# Install with:
+#   install -m 644 /opt/ashantihub/infra/logrotate/ashantihub /etc/logrotate.d/ashantihub
+#
+# Application logs are NOT here: those go to stdout and are rotated by
+# Docker's json-file driver (infra/compose/docker-compose.yml). nginx logs are
+# rotated by HestiaCP's own logrotate config.
+/var/log/ashantihub-cron.log {
+	weekly
+	rotate 8
+	compress
+	delaycompress
+	missingok
+	notifempty
+	create 0640 root adm
+}

@@ -1,0 +1,20 @@
+# AshantiHub scheduled jobs.
+#
+# Managed in git. Install (or reinstall after editing) with:
+#   install -m 644 /opt/ashantihub/infra/cron/ashantihub.cron /etc/cron.d/ashantihub
+#
+# Let's Encrypt renewal is NOT here — HestiaCP runs its own renewal cron.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Nightly database dumps. deploy.sh also dumps before every deploy, so this
+# covers the days nobody deploys. Staging runs later to keep the two off each
+# other's toes on a single-disk box.
+30 2 * * * root bash /opt/ashantihub/infra/scripts/backup-db.sh >> /var/log/ashantihub-cron.log 2>&1
+0 3 * * * root bash /opt/ashantihub-staging/infra/scripts/backup-db.sh >> /var/log/ashantihub-cron.log 2>&1
+
+# Expire events whose paid visibility window has elapsed. Hourly in
+# production so a finished event stops showing within the hour; once a day is
+# plenty for staging.
+5 * * * * root cd /opt/ashantihub && docker compose -p ashantihub -f infra/compose/docker-compose.yml run --rm --no-deps web python manage.py expire_events >> /var/log/ashantihub-cron.log 2>&1
+15 3 * * * root cd /opt/ashantihub-staging && docker compose -p ashantihub-staging -f infra/compose/docker-compose.yml run --rm --no-deps web python manage.py expire_events >> /var/log/ashantihub-cron.log 2>&1
