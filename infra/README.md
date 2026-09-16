@@ -194,9 +194,18 @@ yet.
 
 ## Known gaps
 
-- **No outgoing email.** Password resets, staff invites and verification
-  emails are written to the container log instead of being delivered. This
-  needs an SMTP provider before real users sign up. Configuration only, no
-  code change.
+- **User-facing email still bounces.** The relay (Stackmail, configured with
+  `v-add-sys-smtp-relay`, stored in `/etc/exim4/smtp_relay.conf`) authenticates
+  as a `demarbells.com` mailbox and refuses every other sender:
+  `550 Cannot send a message as no-reply@theashantihub.com`. `SERVER_EMAIL`
+  was therefore set to the authenticated mailbox, so **admin error reports
+  deliver**, but `DEFAULT_FROM_EMAIL` is still `no-reply@theashantihub.com`,
+  so **password resets, staff invites and verification emails bounce**. The
+  bounces land in the local `no-reply@` mailbox rather than reaching the user.
+  Three ways out, in order of preference: request the Hetzner port-25 unblock
+  and deliver directly under our own DKIM (no third party, and the mail server
+  here is already fully configured for it); add `theashantihub.com` to the
+  Stackmail account; or relay app mail through a transactional provider.
+  Staff mailboxes hosted here hit the same wall when sending outward.
 - **Backups are on the same disk as the database.** A disk failure loses
   both. They should be copied to Hetzner Object Storage or a Storage Box.
