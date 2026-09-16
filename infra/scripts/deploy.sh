@@ -69,17 +69,18 @@ done
 	exit 1
 }
 
+# Must happen before collectstatic, not after: Docker creates a missing bind
+# mount source root-owned, and the container runs as uid 10001, so the first
+# collectstatic into a fresh staticfiles/ fails with EACCES otherwise.
+log "Fixing ownership of the bind-mounted data directories"
+mkdir -p "$APP_DIR/backend/media" "$APP_DIR/backend/staticfiles"
+chown -R 10001:10001 "$APP_DIR/backend/media" "$APP_DIR/backend/staticfiles"
+
 log "Applying migrations"
 "${COMPOSE[@]}" run --rm --no-deps web python manage.py migrate --noinput
 
 log "Collecting static files"
 "${COMPOSE[@]}" run --rm --no-deps web python manage.py collectstatic --noinput
-
-# The bind-mounted host directories must be writable by the image's
-# non-root uid (see backend/Dockerfile.prod), or uploads fail at runtime.
-# Docker creates them root-owned on first mount, hence the chown every time.
-mkdir -p "$APP_DIR/backend/media" "$APP_DIR/backend/staticfiles"
-chown -R 10001:10001 "$APP_DIR/backend/media" "$APP_DIR/backend/staticfiles"
 
 log "Starting the application"
 "${COMPOSE[@]}" up -d web
