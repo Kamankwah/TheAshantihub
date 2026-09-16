@@ -13,7 +13,25 @@
 # The database is dumped before migrations run. That dump is the rollback.
 set -euo pipefail
 
-APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# This script git-resets the very checkout it lives in, and bash reads a
+# script incrementally by byte offset rather than loading it whole. Rewriting
+# this file mid-run therefore makes bash resume at the wrong offset in the new
+# contents and silently skip steps — which is exactly how the first deploy
+# onto this server skipped its chown and failed in collectstatic. Re-exec from
+# a copy outside the checkout so the running file can never change underfoot.
+if [[ "${DEPLOY_REEXEC:-}" != "1" ]]; then
+	_app_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+	_self_copy="$(mktemp /tmp/ashantihub-deploy.XXXXXXXX.sh)"
+	cp "${BASH_SOURCE[0]}" "$_self_copy"
+	export DEPLOY_REEXEC=1 DEPLOY_APP_DIR="$_app_dir" DEPLOY_SELF_COPY="$_self_copy"
+	exec bash "$_self_copy" "$@"
+fi
+
+# Passed by the block above; the copy lives in /tmp, so it cannot derive this
+# from its own location any more.
+APP_DIR="${DEPLOY_APP_DIR:?internal: DEPLOY_APP_DIR not set}"
+trap 'rm -f "${DEPLOY_SELF_COPY:-}"' EXIT
+
 CONF="$APP_DIR/.deploy.conf"
 
 [[ -f "$CONF" ]] || {
