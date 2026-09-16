@@ -24,10 +24,9 @@ server {
 
 	client_max_body_size 25m;
 
-	location ^~ /.well-known/ {
-		root %sdocroot%;
-	}
-
+	# See the note in ashantihub-api.tpl.in: Hestia's ACME challenge is a
+	# regex location injected via the nginx.ssl.conf_* include below, and a
+	# "^~" prefix location here would outrank and break it.
 	location ~ /\.(?!well-known\/) {
 		deny all;
 		return 404;
