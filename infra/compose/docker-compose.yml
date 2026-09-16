@@ -49,6 +49,12 @@ services:
     ports:
       # Bound to loopback on purpose — the only way in is through nginx.
       - "127.0.0.1:${APP_PORT:-8000}:8000"
+    extra_hosts:
+      # Django sends mail through the host's Exim, which queues, signs with
+      # DKIM and relays onward. The bridge gateway IP differs per environment
+      # and can change when a network is recreated, so EMAIL_HOST resolves
+      # this name instead of a hardcoded address.
+      - "host.docker.internal:host-gateway"
     volumes:
       # Uploads and collected static live on the host so nginx can serve them
       # directly; Django never serves either when DEBUG=False.
