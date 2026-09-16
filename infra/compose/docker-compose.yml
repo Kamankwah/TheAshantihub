@@ -1,0 +1,75 @@
+# AshantiHub application stack — one instance per environment.
+#
+#   production  /opt/ashantihub          project "ashantihub"          API on 127.0.0.1:8000
+#   staging     /opt/ashantihub-staging  project "ashantihub-staging"  API on 127.0.0.1:8001
+#
+# Both are started by infra/scripts/deploy.sh, which reads the checkout's own
+# untracked .deploy.conf and passes the project name and port explicitly, so
+# the two stacks never share containers, networks or database volumes.
+#
+# Nothing here is published to the public internet: the API binds to 127.0.0.1
+# and HestiaCP's nginx terminates TLS in front of it (see infra/nginx/).
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    # Same file the app reads, so POSTGRES_* can never drift between the two.
+    env_file: ../../backend/.env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # $$ escapes the variable past Compose's own interpolation so it is the
+      # container's shell that expands it.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-ashantihub} -d $${POSTGRES_DB:-ashantihub}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging: &default-logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  web:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    env_file: ../../backend/.env
+    command:
+      - gunicorn
+      - ashantihub.wsgi:application
+      - --bind=0.0.0.0:8000
+      - --workers=${GUNICORN_WORKERS:-4}
+      - --timeout=60
+      - --access-logfile=-
+      - --error-logfile=-
+    ports:
+      # Bound to loopback on purpose — the only way in is through nginx.
+      - "127.0.0.1:${APP_PORT:-8000}:8000"
+    volumes:
+      # Uploads and collected static live on the host so nginx can serve them
+      # directly; Django never serves either when DEBUG=False.
+      - ../../backend/media:/app/media
+      - ../../backend/staticfiles:/app/staticfiles
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # X-Forwarded-Proto mimics nginx: without it SECURE_SSL_REDIRECT (on
+      # whenever DEBUG=False) answers this loopback probe with a 301 to https
+      # instead of the health payload. DJANGO_ALLOWED_HOSTS must also include
+      # 127.0.0.1, or Django rejects the probe's Host header with a 400.
+      # Quoted as one string on purpose: unquoted, YAML reads the
+      # "X-Forwarded-Proto: https" header as a nested mapping.
+      test: ["CMD-SHELL", "curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/api/health/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging: *default-logging
+
+volumes:
+  pgdata:

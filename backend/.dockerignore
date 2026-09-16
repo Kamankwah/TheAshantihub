@@ -1,0 +1,21 @@
+# Keep the build context small and secrets out of the image.
+#
+# .env matters most: settings.py reads BASE_DIR/.env when the file exists, so
+# a copied-in .env would silently override the environment compose injects —
+# and would bake the production database password into the image layers.
+.env
+.env.*
+
+.venv/
+__pycache__/
+*.py[cod]
+
+# Runtime data lives in host bind mounts (see infra/compose/docker-compose.yml),
+# never in the image.
+media/
+staticfiles/
+db.sqlite3
+
+.git/
+.gitignore
+*.md

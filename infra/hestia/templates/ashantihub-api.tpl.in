@@ -1,0 +1,77 @@
+#=========================================================================#
+# AshantiHub — Django API (reverse proxy to the app container)            #
+#                                                                         #
+# TEMPLATE SOURCE. infra/scripts/install-hestia-templates.sh renders this #
+# once per environment (substituting __APP_DIR__ and __UPSTREAM_PORT__)   #
+# into HestiaCP's template directory. Edit this file, never the rendered  #
+# copies — Hestia rewrites domain configs from templates on every panel   #
+# change, so hand-edits to generated configs are lost.                    #
+#=========================================================================#
+
+server {
+	listen      %ip%:%web_port%;
+	server_name %domain_idn% %alias_idn%;
+	root        %docroot%;
+	access_log  /var/log/nginx/domains/%domain%.log combined;
+	access_log  /var/log/nginx/domains/%domain%.bytes bytes;
+	error_log   /var/log/nginx/domains/%domain%.error.log error;
+
+	include %home%/%user%/conf/web/%domain%/nginx.forcessl.conf*;
+
+	# Photo and document uploads. nginx's 1MB default would reject them as
+	# 413 before the request ever reached Django.
+	client_max_body_size 25m;
+
+	# Served from disk, ahead of the proxy: Let's Encrypt writes its
+	# challenge into the docroot, and proxying it to Django returns 404,
+	# which fails both issuance and every later renewal.
+	location ^~ /.well-known/ {
+		root %docroot%;
+	}
+
+	location ~ /\.(?!well-known\/) {
+		deny all;
+		return 404;
+	}
+
+	# Django does not serve uploads or static files when DEBUG=False
+	# (see backend/ashantihub/urls.py) — nginx does, straight off the
+	# bind-mounted host directories the container writes to.
+	location /media/ {
+		alias   __APP_DIR__/backend/media/;
+		expires 30d;
+		access_log off;
+	}
+
+	location /static/ {
+		alias   __APP_DIR__/backend/staticfiles/;
+		expires max;
+		access_log off;
+	}
+
+	location / {
+		proxy_pass http://127.0.0.1:__UPSTREAM_PORT__;
+
+		proxy_set_header Host              $host;
+		proxy_set_header X-Real-IP         $remote_addr;
+		proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+		proxy_set_header X-Forwarded-Host  $host;
+		# SECURE_PROXY_SSL_HEADER keys off this. On this plain-HTTP vhost it
+		# is "http", which is what makes Django redirect to HTTPS.
+		proxy_set_header X-Forwarded-Proto $scheme;
+
+		# Matches gunicorn's --timeout=60; a shorter value here would turn a
+		# slow request into a 504 while the worker was still handling it.
+		proxy_connect_timeout 60s;
+		proxy_send_timeout    60s;
+		proxy_read_timeout    60s;
+
+		proxy_redirect off;
+	}
+
+	location /error/ {
+		alias %home%/%user%/web/%domain%/document_errors/;
+	}
+
+	include %home%/%user%/conf/web/%domain%/nginx.conf_*;
+}
