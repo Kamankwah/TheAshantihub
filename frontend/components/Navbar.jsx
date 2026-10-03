@@ -222,9 +222,9 @@ export default function Navbar({
     }}>
       <div style={{position:"absolute",top:0,left:0,right:0,height:4,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
       <div style={{maxWidth:1200,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:72,paddingTop:4,gap:16}}>
-        <div style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",flexShrink:0}} onClick={onLogoClick}>
-          <img src={logoIcon} alt="AshantiHub" style={{height:44,width:"auto",display:"block"}}/>
-          <div>
+        <div style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",flexShrink:1,minWidth:0}} onClick={onLogoClick}>
+          <img src={logoIcon} alt="AshantiHub" style={{height:44,width:"auto",display:"block",flexShrink:0}}/>
+          <div style={{minWidth:0}}>
             <div style={{color:C.gold,fontWeight:900,fontSize:"1.15rem",letterSpacing:1,lineHeight:1}}>AshantiHub</div>
             <div style={{color:C.lightGold,fontSize:"0.56rem",letterSpacing:2,opacity:0.8}}>THE MARKETPLACE OF ASHANTI</div>
           </div>

@@ -18,6 +18,20 @@ export default function StaffShellStyles() {
 .staff-shell select:focus-visible, .staff-shell textarea:focus-visible {
   outline: 2px solid ${D.text}; outline-offset: 2px;
 }
+/* Phone baseline for every panel (spec §5 rules 3–4, Review Focus 5).
+   !important appears only where panels set the same property inline. */
+.staff-shell[data-bp="phone"] .staff-content { overflow-wrap: anywhere; }
+.staff-shell[data-bp="phone"] .staff-content button { min-height: 44px; }
+/* "anywhere" shrinks min-content to one glyph, so a button squeezed in a flex
+   row would stack its label letter by letter; buttons break at words only. */
+.staff-shell[data-bp="phone"] .staff-content button { overflow-wrap: normal; }
+.staff-shell[data-bp="phone"] .staff-content input:not([type="checkbox"]):not([type="radio"]),
+.staff-shell[data-bp="phone"] .staff-content select,
+.staff-shell[data-bp="phone"] .staff-content textarea {
+  font-size: 16px !important; min-height: 44px; max-width: 100%; box-sizing: border-box;
+}
+.staff-shell[data-bp="phone"] .staff-content img,
+.staff-shell[data-bp="phone"] .staff-content video { max-width: 100%; height: auto; }
 `}</style>
   );
 }

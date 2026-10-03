@@ -154,3 +154,13 @@ describe('AdminCommandCenter — desktop (default)', () => {
     expect(screen.queryByRole('button', { name: 'Open navigation' })).not.toBeInTheDocument()
   })
 })
+
+describe('AdminCommandCenter — phone baseline CSS', () => {
+  it('ships the phone touch-target, input-zoom and wrapping rules', () => {
+    renderShell()
+    const css = Array.from(document.querySelectorAll('style')).map((s) => s.textContent).join('\n')
+    expect(css).toMatch(/\.staff-shell\[data-bp="phone"\] \.staff-content button \{ min-height: 44px; \}/)
+    expect(css).toMatch(/font-size: 16px !important/)
+    expect(css).toMatch(/overflow-wrap: anywhere/)
+  })
+})
