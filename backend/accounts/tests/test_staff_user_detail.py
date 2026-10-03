@@ -94,3 +94,71 @@ class StaffUserDetailTests(TestCase):
         response = self.client.get(f"/api/accounts/business-owners/{ownerless.id}/")
         self.assertEqual(response.status_code, 200, response.content)
         self.assertIsNone(response.json()["profile"])
+
+
+class PayoutDetailPermissionTests(TestCase):
+    """Payout + TIN are users.manage-only: a users.view-only session's
+    business-owner detail must not carry those keys at all."""
+
+    RESTRICTED = (
+        "tin", "default_payout_method", "payout_verification_status", "payout_bank_name",
+        "payout_bank_account_name", "payout_bank_account_number_masked",
+        "payout_momo_network", "payout_momo_name", "payout_momo_number_masked",
+    )
+
+    # Same fixtures as StaffUserDetailTests (not subclassed, so its tests
+    # don't run twice).
+    _auth = StaffUserDetailTests._auth
+
+    def setUp(self):
+        StaffUserDetailTests.setUp(self)
+        self.support = StaffUser.objects.create(
+            full_name="Support Person", email="support-detail@example.com", password_hash="x",
+            role=Role.objects.get(name="support"),
+        )
+
+    def _auth_support(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.support, 'staff')}")
+
+    def test_view_only_session_gets_no_tin_or_payout_keys(self):
+        self._auth_support()
+        response = self.client.get(f"/api/accounts/business-owners/{self.owner.id}/")
+        self.assertEqual(response.status_code, 200, response.content)
+        profile = response.json()["profile"]
+        self.assertEqual(profile["business_kind"], "product")
+        self.assertEqual(profile["gps_address"], "AK-039-5028")
+        for key in self.RESTRICTED:
+            self.assertNotIn(key, profile)
+        self.assertFalse(any(k.startswith("payout_") for k in profile))
+        raw = response.content.decode()
+        self.assertNotIn("C0001234567", raw)
+        self.assertNotIn("99888", raw)
+
+    def test_manage_session_still_gets_tin_and_masked_payout(self):
+        self._auth()
+        profile = self.client.get(f"/api/accounts/business-owners/{self.owner.id}/").json()["profile"]
+        for key in self.RESTRICTED:
+            self.assertIn(key, profile)
+        self.assertEqual(profile["tin"], "C0001234567")
+        self.assertEqual(profile["payout_momo_number_masked"], "•••••99888")
+
+    def test_view_only_session_keeps_customer_dob_gender_and_payment_history(self):
+        self._auth_support()
+        body = self.client.get(f"/api/accounts/customers/{self.customer.id}/").json()
+        for key in ("gender", "date_of_birth", "payment_history"):
+            self.assertIn(key, body)
+
+    def test_patch_unchanged_manage_ok_and_view_only_forbidden(self):
+        self._auth()
+        response = self.client.patch(
+            f"/api/accounts/business-owners/{self.owner.id}/", {"full_name": "Kwame T."}, format="json"
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["profile"]["payout_momo_number_masked"], "•••••99888")
+        self._auth_support()
+        response = self.client.patch(
+            f"/api/accounts/business-owners/{self.owner.id}/", {"full_name": "Nope"}, format="json"
+        )
+        self.assertEqual(response.status_code, 403)
+        self.owner.refresh_from_db()
+        self.assertEqual(self.owner.full_name, "Kwame T.")

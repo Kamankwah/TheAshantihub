@@ -416,6 +416,15 @@ class StaffBusinessOwnerDetailView(generics.RetrieveUpdateAPIView):
     def get_permissions(self):
         return _users_detail_permissions(self.request)
 
+    def get_serializer_context(self):
+        # Payout + TIN are users.manage-only, read off the same effective
+        # permission set HasRolePermission enforces.
+        context = super().get_serializer_context()
+        context["can_see_payout"] = (
+            "users.manage" in self.request.user.effective_permission_codenames()
+        )
+        return context
+
 
 class StaffCustomerSuspendView(APIView):
     def get_permissions(self):
