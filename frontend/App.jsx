@@ -1551,8 +1551,8 @@ const TRANSLATIONS = {
 // signature (used by StaffDashboard.test.jsx and the `/staff` route below)
 // while delegating to the new shell — same convention as `BusinessDashboard`
 // delegating to `BusinessCommandCenter` just below.
-export function StaffDashboard({auth,onExit}) {
-  return <AdminCommandCenter auth={auth} onExit={onExit} />;
+export function StaffDashboard({auth,onExit,activeTab,onTabChange,exitLabel}) {
+  return <AdminCommandCenter auth={auth} onExit={onExit} activeTab={activeTab} onTabChange={onTabChange} exitLabel={exitLabel} />;
 }
 
 // The business-owner dashboard is the unified light "artisan" Business

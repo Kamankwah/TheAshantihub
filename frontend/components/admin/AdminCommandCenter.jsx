@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Flag from "../Flag.jsx";
 import { useStaffBadges } from "../../hooks/useStaffBadges.js";
 import { D, ROLE_ACCENTS, ROLE_BADGE_TEXT } from "./theme.js";
@@ -28,7 +28,8 @@ import DispatchPanel from "./panels/DispatchPanel.jsx";
 import MessagingPanel from "./panels/MessagingPanel.jsx";
 import PromotionsPanel from "./panels/PromotionsPanel.jsx";
 import AnalyticsPanel from "./panels/AnalyticsPanel.jsx";
-import { buildNavGroups, makeBadgeFor } from "./shell/navModel.js";
+import { buildNavGroups, makeBadgeFor, isPermittedTab } from "./shell/navModel.js";
+import StaffNavList from "./shell/StaffNavList.jsx";
 
 // ─── Admin Command Center ─────────────────────────────────────────────────────
 // The staff dashboard's shell, restyled to match the Business Command
@@ -42,10 +43,14 @@ import { buildNavGroups, makeBadgeFor } from "./shell/navModel.js";
 // No light/dark theme toggle here (a pre-approved, deliberate removal) — the
 // admin dashboard is always-dark, matching BusinessCommandCenter's convention.
 
-export default function AdminCommandCenter({ auth, onExit }) {
+export default function AdminCommandCenter({ auth, onExit, exitLabel = "← Exit", activeTab: activeTabProp, onTabChange }) {
   const { data: staffBadges } = useStaffBadges();
   const badgeFor = makeBadgeFor(staffBadges);
-  const [activeTab, setActiveTab] = useState("overview");
+  // Controlled by App.jsx's /staff/:panel route when activeTab is passed;
+  // otherwise (StaffDashboard.test.jsx renders without a router) it owns the
+  // tab itself, exactly as before.
+  const isControlled = activeTabProp !== undefined;
+  const [internalTab, setInternalTab] = useState("overview");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [saved, setSaved] = useState(false);
   const role = auth.user?.role;
@@ -54,7 +59,29 @@ export default function AdminCommandCenter({ auth, onExit }) {
 
   const navGroups = buildNavGroups(auth);
   const allItems = navGroups.flatMap(g => g.items);
+  const requestedTab = isControlled ? activeTabProp : internalTab;
+  const activeTab = isPermittedTab(navGroups, requestedTab) ? requestedTab : "overview";
   const activeLabel = activeTab === "overview" ? "Overview" : allItems.find(i => i.id === activeTab)?.label;
+
+  // An unpermitted/unknown panel URL (or manifest shortcut) is sent back to
+  // Overview by replacing the history entry, not pushing a new one.
+  useEffect(() => {
+    if (isControlled && requestedTab !== activeTab) onTabChange?.("overview", { replace: true });
+  }, [isControlled, requestedTab, activeTab]);
+
+  const selectTab = (id) => {
+    if (id === activeTab) return;
+    if (isControlled) onTabChange?.(id);
+    else setInternalTab(id);
+  };
+
+  // Each panel starts at the top; skipped on first mount so a reload keeps
+  // the browser's own scroll restoration.
+  const firstTabRender = useRef(true);
+  useEffect(() => {
+    if (firstTabRender.current) { firstTabRender.current = false; return; }
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, [activeTab]);
 
   return (
     <div className="shadcn-scope command-center" style={{ minHeight: "100vh", display: "flex" }}>
@@ -70,50 +97,7 @@ export default function AdminCommandCenter({ auth, onExit }) {
         </div>
         <button onClick={() => setSidebarCollapsed(s => !s)} style={{ background: "none", border: "none", color: D.textDim, cursor: "pointer", padding: "8px 12px", fontSize: "0.7rem", fontFamily: "inherit", width: "100%", textAlign: "left" }}>{sidebarCollapsed ? "→" : "← Collapse"}</button>
 
-        <nav>
-          {/* Overview — pinned, ungrouped, no permission gate */}
-          <button onClick={() => setActiveTab("overview")} style={{
-            display: "flex", alignItems: "center", gap: 10, width: "100%",
-            background: activeTab === "overview" ? `${roleColor}22` : "none",
-            border: "none", borderLeft: activeTab === "overview" ? `3px solid ${roleColor}` : "3px solid transparent",
-            color: D.text, padding: "10px 12px", fontSize: "0.78rem",
-            fontWeight: activeTab === "overview" ? 800 : 600, cursor: "pointer", textAlign: "left", fontFamily: "inherit",
-          }}>
-            <span>📊</span>{!sidebarCollapsed && <span>Overview</span>}
-          </button>
-
-          {navGroups.map(group => (
-            <div key={group.id} style={{ marginTop: 10 }}>
-              {!sidebarCollapsed && <div style={{ color: D.textFaint, fontSize: "0.6rem", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", padding: "6px 12px" }}>{group.label}</div>}
-              {group.items.map(item => {
-                const badgeCount = badgeFor(item.id);
-                return (
-                <button key={item.id} onClick={() => setActiveTab(item.id)} style={{
-                  display: "flex", alignItems: "center", gap: 10, width: "100%",
-                  background: activeTab === item.id ? `${roleColor}22` : "none",
-                  border: "none", borderLeft: activeTab === item.id ? `3px solid ${roleColor}` : "3px solid transparent",
-                  color: D.text, padding: "10px 12px", fontSize: "0.78rem",
-                  fontWeight: activeTab === item.id ? 800 : 600, cursor: "pointer", textAlign: "left", fontFamily: "inherit",
-                }}>
-                  <span style={{ position: "relative", flexShrink: 0 }}>
-                    {item.icon}
-                    {/* Collapsed sidebar: a dot on the icon since the label (and its inline badge) is hidden. */}
-                    {sidebarCollapsed && badgeCount > 0 && (
-                      <span style={{ position: "absolute", top: -4, right: -6, background: D.red, borderRadius: "50%", width: 8, height: 8 }} />
-                    )}
-                  </span>
-                  {!sidebarCollapsed && <span style={{ flex: 1 }}>{item.label}</span>}
-                  {!sidebarCollapsed && badgeCount > 0 && (
-                    <span aria-label={`${badgeCount} pending`} style={{ background: D.red, color: "#fff", borderRadius: 10, minWidth: 18, height: 18, fontSize: "0.62rem", fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px", flexShrink: 0 }}>
-                      {badgeCount > 99 ? "99+" : badgeCount}
-                    </span>
-                  )}
-                </button>
-                );
-              })}
-            </div>
-          ))}
-        </nav>
+        <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={selectTab} collapsed={sidebarCollapsed} badgeFor={badgeFor} roleColor={roleColor} />
       </div>
 
       {/* Main column */}
@@ -126,7 +110,7 @@ export default function AdminCommandCenter({ auth, onExit }) {
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <span style={{ background: roleColor, color: ROLE_BADGE_TEXT[role] || "#fff", borderRadius: 20, padding: "3px 10px", fontSize: "0.62rem", fontWeight: 800, textTransform: "capitalize" }}>{role?.replace("_", " ")}</span>
               <span style={{ color: D.text, fontSize: "0.78rem", fontWeight: 700, whiteSpace: "nowrap" }}>{auth.user?.full_name}</span>
-              <button onClick={onExit} style={{ background: "rgba(44,24,16,0.05)", border: `1px solid ${D.divider}`, color: D.textDim, borderRadius: 20, padding: "5px 13px", fontSize: "0.68rem", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>← Exit</button>
+              <button onClick={onExit} style={{ background: "rgba(44,24,16,0.05)", border: `1px solid ${D.divider}`, color: D.textDim, borderRadius: 20, padding: "5px 13px", fontSize: "0.68rem", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>{exitLabel}</button>
             </div>
           </div>
         </div>

@@ -48,3 +48,10 @@ if (typeof globalThis !== 'undefined' && !globalThis.ResizeObserver) {
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
+
+// jsdom's window.scrollTo only logs "Not implemented". The staff shell scrolls
+// to top on every panel change, so give it a silent no-op; tests that care
+// spy on it with vi.spyOn(window, 'scrollTo').
+if (typeof window !== 'undefined') {
+  window.scrollTo = () => {}
+}
