@@ -36,7 +36,7 @@ cannot reach production data.
 |---|---|
 | `backend/Dockerfile.prod` | Production image: gunicorn, non-root. (`backend/Dockerfile` remains the dev image.) |
 | `infra/compose/docker-compose.yml` | The `web` + `db` stack, parameterised per environment. |
-| `infra/scripts/deploy.sh` | The deploy. Backs up, pulls, builds, migrates, publishes. |
+| `infra/scripts/deploy.sh` | The deploy. Backs up, pulls, builds, migrates, publishes; on production also reinstalls the nginx templates when they changed. |
 | `infra/scripts/backup-db.sh` | Verified gzipped `pg_dump`. Runs before every deploy and nightly. |
 | `infra/scripts/install-hestia-templates.sh` | Installs the nginx templates below into HestiaCP. |
 | `infra/hestia/templates/` | nginx vhost templates (SPA + API, plain and SSL). |
@@ -62,6 +62,16 @@ Staging deploys `main` the same way, via
 The script refuses to run without `.deploy.conf` and `backend/.env`, dumps the
 database before migrating, and fails loudly with the last 60 log lines if the
 API does not answer its health check afterwards.
+
+Production deploys (`SERVE_FRONTEND=yes`) also run
+`install-hestia-templates.sh` automatically when `infra/hestia/templates/`
+differs between the old and new checkout, so template changes (such as the
+no-cache headers for `/sw.js`) take effect without a manual step. Set
+`FORCE_TEMPLATES=1` to reinstall regardless:
+`FORCE_TEMPLATES=1 bash /opt/ashantihub/infra/scripts/deploy.sh`. Staging never
+runs the installer: it installs the SPA templates from whichever checkout runs
+it and rebuilds every domain, so running it from staging would push unreleased
+templates onto the production domain.
 
 ## Provisioning a checkout
 
