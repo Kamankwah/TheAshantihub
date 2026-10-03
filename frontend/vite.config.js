@@ -12,8 +12,9 @@ export default defineConfig({
     // responsive-design.md §2). Registered by lib/staffPwa.js, only on /staff*
     // pages, with scope "/staff" — the public marketplace is never controlled.
     // Precaches the built app shell only: no runtimeCaching, so API responses
-    // are never stored on a staff device. Skipped under Vitest, where
-    // `virtual:pwa-register` is aliased to a stub instead.
+    // are never stored on a staff device. Skipped under Vitest. The page side
+    // uses workbox-window directly (not `virtual:pwa-register`) so that only
+    // the tab that accepted an update reloads.
     !process.env.VITEST && VitePWA({
       registerType: 'prompt',
       injectRegister: false,
@@ -45,8 +46,5 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./test/setup.js'],
     globals: true,
-    alias: {
-      'virtual:pwa-register': path.resolve(__dirname, 'test/stubs/pwa-register.js'),
-    },
   },
 })

@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { Workbox } from "workbox-window";
 
 // Staff PWA runtime (docs/superpowers/specs/2026-10-03-staff-pwa-responsive-
 // design.md §2.2–2.4): the manifest/apple head tags exist only on /staff*
@@ -72,13 +73,16 @@ function detectIOS() {
   return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 }
 
-const initialState = () => ({ needRefresh: false, installPrompt: null, isStandalone: detectStandalone(), isIOS: detectIOS() });
+const initialState = () => ({ needRefresh: false, updatedElsewhere: false, installPrompt: null, isStandalone: detectStandalone(), isIOS: detectIOS() });
 
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
 let state = initialState();
 let started = false;
-let updateServiceWorker = null;
+let workbox = null;
+// Set only when *this* tab's Reload button activated the waiting worker, so
+// only this tab reloads on the resulting `controlling` event.
+let reloadRequestedHere = false;
 const listeners = new Set();
 
 function setState(patch) {
@@ -109,28 +113,43 @@ function onAppInstalled() {
   setState({ installPrompt: null, isStandalone: true });
 }
 
-export async function startStaffPwa({ register, enableServiceWorker = import.meta.env.PROD } = {}) {
+const defaultCreateWorkbox = (url, options) => new Workbox(url, options);
+
+// `createWorkbox` is a test seam only: a factory returning a Workbox-like
+// object (addEventListener / register / messageSkipWaiting).
+export async function startStaffPwa({ createWorkbox, enableServiceWorker = import.meta.env.PROD } = {}) {
   if (started || typeof window === "undefined") return;
   started = true;
   window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
   window.addEventListener("appinstalled", onAppInstalled);
   if (!enableServiceWorker) return;
-  if (!register && !("serviceWorker" in navigator)) return;
+  if (!createWorkbox && !("serviceWorker" in navigator)) return;
   try {
-    const registerSW = register ?? (await import("virtual:pwa-register")).registerSW;
-    updateServiceWorker = registerSW({
-      onNeedRefresh: () => setState({ needRefresh: true }),
-      onRegisterError: (error) => console.warn("AshantiHub Staff: service worker registration failed", error),
-      // An installed app can stay open for days; the browser only re-checks
-      // /sw.js on navigation, so poll hourly to notice deploys (the
-      // UpdateToast then asks — nothing ever auto-reloads). An offline check
-      // rejects; that is expected and silently retried next hour.
-      onRegisteredSW: (_swUrl, registration) => {
-        setInterval(() => {
-          Promise.resolve(registration?.update()).catch(() => {});
-        }, UPDATE_CHECK_INTERVAL_MS);
-      },
+    const wb = (createWorkbox ?? defaultCreateWorkbox)("/sw.js", { scope: "/staff" });
+    workbox = wb;
+    // A deploy's new worker is installed and waiting: ask, never auto-reload.
+    wb.addEventListener("waiting", () => setState({ needRefresh: true }));
+    // workbox-window's own recipe reloads on `controlling` in every tab, which
+    // would throw away unsaved form input in the staffer's other tabs. Only
+    // the tab whose Reload was pressed reloads; any other tab now running on
+    // the new worker just says so and reloads when the staffer chooses.
+    wb.addEventListener("controlling", (event) => {
+      if (reloadRequestedHere) {
+        reloadPage();
+      } else if (event?.isUpdate) {
+        setState({ needRefresh: false, updatedElsewhere: true });
+      }
     });
+    const registration = await wb.register();
+    // An installed app can stay open for days; the browser only re-checks
+    // /sw.js on navigation, so poll hourly to notice deploys (the
+    // UpdateToast then asks — nothing ever auto-reloads). An offline check
+    // rejects; that is expected and silently retried next hour.
+    if (registration) {
+      setInterval(() => {
+        Promise.resolve(registration.update()).catch(() => {});
+      }, UPDATE_CHECK_INTERVAL_MS);
+    }
   } catch (error) {
     console.warn("AshantiHub Staff: service worker registration failed", error);
   }
@@ -148,8 +167,15 @@ export async function promptInstall() {
   }
 }
 
+// Tell the waiting worker to activate; this tab reloads on `controlling`.
 export function applyUpdate() {
-  updateServiceWorker?.(true);
+  if (!workbox) return;
+  reloadRequestedHere = true;
+  workbox.messageSkipWaiting();
+}
+
+export function reloadPage() {
+  window.location.reload();
 }
 
 export function resetStaffPwaForTests(overrides = {}) {
@@ -158,7 +184,8 @@ export function resetStaffPwaForTests(overrides = {}) {
     window.removeEventListener("appinstalled", onAppInstalled);
   }
   started = false;
-  updateServiceWorker = null;
+  workbox = null;
+  reloadRequestedHere = false;
   state = { ...initialState(), ...overrides };
   listeners.forEach((listener) => listener());
 }
