@@ -71,8 +71,13 @@ describe('UpdateToast', () => {
   beforeEach(() => {
     reload = vi.fn()
     locationSpy = vi.spyOn(window, 'location', 'get').mockReturnValue({ ...window.location, reload })
+    // A controlled page (jsdom has no navigator.serviceWorker).
+    Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: { controller: {} } })
   })
-  afterEach(() => locationSpy.mockRestore())
+  afterEach(() => {
+    locationSpy.mockRestore()
+    delete navigator.serviceWorker
+  })
 
   it('appears when a new worker is waiting and, on Reload, activates it and reloads this tab', async () => {
     const wb = fakeWorkbox()

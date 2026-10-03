@@ -1,5 +1,4 @@
 import { useSyncExternalStore } from "react";
-import { Workbox } from "workbox-window";
 
 // Staff PWA runtime (docs/superpowers/specs/2026-10-03-staff-pwa-responsive-
 // design.md §2.2–2.4): the manifest/apple head tags exist only on /staff*
@@ -113,8 +112,6 @@ function onAppInstalled() {
   setState({ installPrompt: null, isStandalone: true });
 }
 
-const defaultCreateWorkbox = (url, options) => new Workbox(url, options);
-
 // `createWorkbox` is a test seam only: a factory returning a Workbox-like
 // object (addEventListener / register / messageSkipWaiting).
 export async function startStaffPwa({ createWorkbox, enableServiceWorker = import.meta.env.PROD } = {}) {
@@ -125,7 +122,15 @@ export async function startStaffPwa({ createWorkbox, enableServiceWorker = impor
   if (!enableServiceWorker) return;
   if (!createWorkbox && !("serviceWorker" in navigator)) return;
   try {
-    const wb = (createWorkbox ?? defaultCreateWorkbox)("/sw.js", { scope: "/staff" });
+    // workbox-window is loaded only here, after the checks above, so it stays
+    // out of the public marketplace bundle (it becomes its own chunk).
+    let wb;
+    if (createWorkbox) {
+      wb = createWorkbox("/sw.js", { scope: "/staff" });
+    } else {
+      const { Workbox } = await import("workbox-window");
+      wb = new Workbox("/sw.js", { scope: "/staff" });
+    }
     workbox = wb;
     // A deploy's new worker is installed and waiting: ask, never auto-reload.
     wb.addEventListener("waiting", () => setState({ needRefresh: true }));
@@ -172,6 +177,11 @@ export function applyUpdate() {
   if (!workbox) return;
   reloadRequestedHere = true;
   workbox.messageSkipWaiting();
+  // An uncontrolled page (e.g. after Shift+Reload) never gets
+  // `controlling`: the worker doesn't clients.claim(). Reload now, or the
+  // button would do nothing (and nothing on a second press either, since
+  // registration.waiting is already gone).
+  if (typeof navigator === "undefined" || !navigator.serviceWorker?.controller) reloadPage();
 }
 
 export function reloadPage() {

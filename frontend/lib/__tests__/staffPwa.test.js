@@ -90,6 +90,12 @@ function fakeWorkbox({ register } = {}) {
   }
 }
 
+// jsdom has no navigator.serviceWorker; a controlled page is the normal case.
+function stubController(controller = {}) {
+  Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: { controller } })
+  return () => { delete navigator.serviceWorker }
+}
+
 function stubReload() {
   const reload = vi.fn()
   const spy = vi.spyOn(window, 'location', 'get').mockReturnValue({ ...window.location, reload })
@@ -101,6 +107,7 @@ describe('service worker updates', () => {
     const wb = fakeWorkbox()
     const createWorkbox = vi.fn(() => wb)
     const { reload, restore } = stubReload()
+    const restoreController = stubController()
     try {
       await startStaffPwa({ createWorkbox, enableServiceWorker: true })
       expect(createWorkbox).toHaveBeenCalledWith('/sw.js', { scope: '/staff' })
@@ -117,6 +124,23 @@ describe('service worker updates', () => {
       expect(reload).toHaveBeenCalledTimes(1)
     } finally {
       restore()
+      restoreController()
+    }
+  })
+
+  it('reloads straight away on an uncontrolled page (after a hard reload no controllerchange ever arrives)', async () => {
+    const wb = fakeWorkbox()
+    const { reload, restore } = stubReload()
+    const restoreController = stubController(null)
+    try {
+      await startStaffPwa({ createWorkbox: () => wb, enableServiceWorker: true })
+      act(() => wb.emit('waiting'))
+      applyUpdate()
+      expect(wb.messageSkipWaiting).toHaveBeenCalledTimes(1)
+      expect(reload).toHaveBeenCalledTimes(1)
+    } finally {
+      restore()
+      restoreController()
     }
   })
 
