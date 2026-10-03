@@ -56,6 +56,7 @@ import AdminCommandCenter from "./components/admin/AdminCommandCenter.jsx";
 import { D, glassCard, ghs } from "./components/dashboard/theme.js";
 import KpiCard from "./components/dashboard/charts/KpiCard.jsx";
 import ChartFrame from "./components/dashboard/charts/ChartFrame.jsx";
+import { ensureStaffHead, isStaffPathname, isStandaloneDisplay, startStaffPwa } from "./lib/staffPwa.js";
 import SpendAreaChart from "./components/dashboard/charts/SpendAreaChart.jsx";
 import ListingsDonut from "./components/dashboard/charts/ListingsDonut.jsx";
 
@@ -2498,6 +2499,15 @@ export default function AshantiHub() {
   // detect "are we on a detail route" and extract the :id param in one shot.
   const businessDetailMatch = useMatch("/business/:id");
   const eventDetailMatch = useMatch("/events/:id");
+  // Staff dashboard panels are URL-addressable (/staff/kyc, /staff/users, …)
+  // so Android's back gesture steps through panels inside the installed app
+  // and manifest shortcuts can deep-link. /staff/activate is its own page
+  // (PATH_TO_PAGE) and is never read as a panel id. AdminCommandCenter
+  // validates the id against the session's permissions and asks for a
+  // replace back to /staff when it isn't one.
+  const staffPanelMatch = useMatch("/staff/:panel");
+  const staffPanel = staffPanelMatch && staffPanelMatch.params.panel !== "activate" ? staffPanelMatch.params.panel : null;
+  const onStaffDashboardPath = location.pathname === "/staff" || location.pathname === "/staff/" || staffPanel !== null;
   // `page` is now derived straight from the URL rather than owned locally —
   // hard reloading on any of these paths renders that page immediately
   // instead of bouncing to home. Unrecognized paths (other than /staff, see
@@ -2515,7 +2525,7 @@ export default function AshantiHub() {
     const path = PAGE_TO_PATH[id] ?? "/";
     if (location.pathname !== path) navigate(path);
   };
-  const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch;
+  const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch && !onStaffDashboardPath;
   const [authModal,setAuthModal]=useState(null);
   const auth=useAuth();
   const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id,registrationStep:auth.user.registration_step,kycStatus:auth.user.kyc_status,kycRejectionReason:auth.user.kyc_rejection_reason,avatar:auth.user.avatar,email:auth.user.email,phone:auth.user.phone} : null;
@@ -2786,14 +2796,14 @@ export default function AshantiHub() {
   useEffect(()=>{
     if(staffLoginPromptShown.current) return;
     if(auth.isLoading) return;
-    if(location.pathname!=="/staff") return;
+    if(!onStaffDashboardPath) return;
     staffLoginPromptShown.current=true;
     if(auth.user?.account_type!=="staff") setAuthModal("staff-login");
   },[auth.isLoading,auth.user,location.pathname]);
 
   useEffect(()=>{
     if(auth.isLoading) return;
-    const shouldBeAdmin = location.pathname==="/staff" && auth.user?.account_type==="staff";
+    const shouldBeAdmin = onStaffDashboardPath && auth.user?.account_type==="staff";
     setIsAdmin((current)=> current===shouldBeAdmin ? current : shouldBeAdmin);
   },[location.pathname,auth.user,auth.isLoading]);
 
@@ -2812,11 +2822,22 @@ export default function AshantiHub() {
     const wasAdmin=wasAdminRef.current;
     wasAdminRef.current=isAdmin;
     if(isAdmin){
-      if(location.pathname!=="/staff") navigate("/staff");
-    }else if(wasAdmin && location.pathname==="/staff"){
+      if(!onStaffDashboardPath) navigate("/staff");
+    }else if(wasAdmin && onStaffDashboardPath && !isStandaloneDisplay()){
+      // Inside the installed staff app there is no marketplace to go "home"
+      // to — sign-out stays on /staff with the staff login open instead.
       navigate("/");
     }
   },[isAdmin]);
+
+  // Staff PWA: the /staff-scoped manifest + apple tags exist only on staff
+  // URLs (so the marketplace is never installable), and entering staff
+  // in-session starts the install-prompt listener / SW registration.
+  useEffect(()=>{
+    const staffPath=isStaffPathname(location.pathname);
+    ensureStaffHead(staffPath);
+    if(staffPath) startStaffPwa();
+  },[location.pathname]);
 
   const handleLogoClick=()=>{
     const n=adminClicks+1;
@@ -2871,7 +2892,17 @@ export default function AshantiHub() {
     (user?.accountType==="business_owner" && user.registrationStep && user.registrationStep!=="complete");
   if(showRegistrationFlow) return <BusinessRegistrationFlow user={user} auth={auth} initialStep={user?.registrationStep} setPage={setPage} setShowBizDash={setShowBizDash}/>;
 
-  if(isAdmin) return <StaffDashboard auth={auth} onExit={()=>setIsAdmin(false)}/>;
+  if(isAdmin){
+    const staffStandalone=isStandaloneDisplay();
+    return <StaffDashboard auth={auth}
+      activeTab={staffPanel ?? "overview"}
+      onTabChange={(id,{replace=false}={})=>{
+        const path=id==="overview" ? "/staff" : `/staff/${id}`;
+        if(location.pathname!==path) navigate(path,{replace});
+      }}
+      exitLabel={staffStandalone ? "Sign out" : "← Exit"}
+      onExit={staffStandalone ? ()=>{auth.logout();setAuthModal("staff-login");} : ()=>setIsAdmin(false)}/>;
+  }
   if(showAccount) return <UserPanel onExit={()=>setShowAccount(false)} user={user} auth={auth} favourites={favourites} toggleFav={toggleFav} lang={lang} setLang={setLang} PaymentComponent={MoMoPayment}/>;
   if(showBizDash||showPayments||showCredit) return <BusinessCommandCenter
     initialTab={showPayments?"payments":showCredit?"credit":"analytics"}
