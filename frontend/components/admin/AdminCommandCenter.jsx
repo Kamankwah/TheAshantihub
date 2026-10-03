@@ -112,6 +112,9 @@ export default function AdminCommandCenter({ auth, onExit, exitLabel = "← Exit
       {!isPhone && (
         <div className="staff-sidebar" style={{
           width: isDesktop ? (sidebarCollapsed ? 60 : 240) : 64, flexShrink: 0, position: "sticky", top: 0, overflowY: "auto", overscrollBehavior: "contain",
+          // Landscape notch (spec §4.4): content-box so the left inset widens
+          // the rail instead of squeezing its 64px of icons.
+          boxSizing: "content-box", paddingLeft: "env(safe-area-inset-left, 0px)",
           background: "rgba(253,246,227,0.95)",
           borderRight: `1px solid ${D.cardBorder}`, transition: "width 0.2s",
         }}>
@@ -124,8 +127,9 @@ export default function AdminCommandCenter({ auth, onExit, exitLabel = "← Exit
         </div>
       )}
 
-      {/* Main column */}
-      <div style={{ flex: 1, minWidth: 0 }}>
+      {/* Main column — carries the right landscape inset, and the left one
+          on phone where there is no sidebar to absorb it (spec §4.4). */}
+      <div style={{ flex: 1, minWidth: 0, paddingRight: "env(safe-area-inset-right, 0px)", ...(isPhone ? { paddingLeft: "env(safe-area-inset-left, 0px)" } : {}) }}>
         <StaffHeader title={activeLabel} role={role} roleColor={roleColor} fullName={auth.user?.full_name}
           onExit={onExit} exitLabel={exitLabel} breakpoint={breakpoint}
           onOpenMenu={() => setDrawerOpen(true)} menuButtonRef={menuButtonRef} drawerOpen={drawerOpen}

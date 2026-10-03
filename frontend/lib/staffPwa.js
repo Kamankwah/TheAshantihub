@@ -21,8 +21,33 @@ export function isStaffPathname(pathname) {
   return pathname === "/staff" || pathname.startsWith("/staff/");
 }
 
+// viewport-fit=cover lets the staff shell paint under the notch / home
+// indicator (it pads itself with env(safe-area-inset-*)). The public pages
+// have no safe-area padding, so it is added to the one existing viewport meta
+// only on /staff* and the original content is restored on the way out.
+const VIEWPORT_FIT = "viewport-fit=cover";
+const VIEWPORT_ORIGINAL_ATTR = "data-staff-pwa-original-content";
+
+function setViewportFit(enabled) {
+  const viewport = document.head.querySelector('meta[name="viewport"]');
+  if (!viewport) return;
+  const stored = viewport.getAttribute(VIEWPORT_ORIGINAL_ATTR);
+  if (enabled) {
+    if (stored !== null) return;
+    const original = viewport.getAttribute("content") ?? "";
+    viewport.setAttribute(VIEWPORT_ORIGINAL_ATTR, original);
+    if (!/viewport-fit\s*=/.test(original)) {
+      viewport.setAttribute("content", original ? `${original}, ${VIEWPORT_FIT}` : VIEWPORT_FIT);
+    }
+  } else if (stored !== null) {
+    viewport.setAttribute("content", stored);
+    viewport.removeAttribute(VIEWPORT_ORIGINAL_ATTR);
+  }
+}
+
 export function ensureStaffHead(enabled) {
   if (typeof document === "undefined") return;
+  setViewportFit(enabled);
   const existing = document.head.querySelectorAll(`[${STAFF_HEAD_ATTR}]`);
   if (!enabled) {
     existing.forEach((el) => el.remove());

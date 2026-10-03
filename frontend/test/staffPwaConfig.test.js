@@ -30,8 +30,8 @@ describe('index.html', () => {
   it('does not link a manifest globally (the staff one is injected on /staff only)', () => {
     expect(html).not.toMatch(/rel="manifest"/)
   })
-  it('lets the staff shell extend under notches', () => {
-    expect(html).toMatch(/viewport-fit=cover/)
+  it('does not extend public pages under notches (viewport-fit=cover is added on /staff only)', () => {
+    expect(html).not.toMatch(/viewport-fit=cover/)
   })
 })
 

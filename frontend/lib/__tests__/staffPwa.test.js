@@ -27,6 +27,30 @@ describe('ensureStaffHead', () => {
     ensureStaffHead(false)
     expect(document.head.querySelector('[data-staff-pwa]')).toBeNull()
   })
+
+  it('adds viewport-fit=cover to the existing viewport meta on staff paths and restores it exactly', () => {
+    const original = 'width=device-width, initial-scale=1.0'
+    let viewport = document.head.querySelector('meta[name="viewport"]')
+    const created = !viewport
+    if (created) {
+      viewport = document.createElement('meta')
+      viewport.setAttribute('name', 'viewport')
+      document.head.appendChild(viewport)
+    }
+    viewport.setAttribute('content', original)
+    try {
+      ensureStaffHead(true)
+      ensureStaffHead(true)
+      expect(document.head.querySelectorAll('meta[name="viewport"]')).toHaveLength(1)
+      expect(viewport.getAttribute('content')).toBe(`${original}, viewport-fit=cover`)
+      ensureStaffHead(false)
+      expect(viewport.getAttribute('content')).toBe(original)
+      ensureStaffHead(false)
+      expect(viewport.getAttribute('content')).toBe(original)
+    } finally {
+      if (created) viewport.remove()
+    }
+  })
 })
 
 describe('install prompt', () => {
