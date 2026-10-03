@@ -94,7 +94,10 @@ function CustomerPaymentHistory({ history }) {
 
 // A business owner's full profile (item 9) — including payout details, whose
 // account/momo numbers arrive already masked to the last 5 from the backend
-// (they're stored unmasked and never leave the server in full).
+// (they're stored unmasked and never leave the server in full). Payout + TIN
+// are users.manage-only: a view-only session's profile simply lacks those
+// keys, so their absence (not a null value) gets one honest note instead of
+// dashes that would read as "no TIN / no payout account".
 function OwnerProfile({ profile }) {
   if (!profile) {
     return (
@@ -104,6 +107,8 @@ function OwnerProfile({ profile }) {
       </>
     );
   }
+  const hasTin = "tin" in profile;
+  const hasPayout = "default_payout_method" in profile;
   return (
     <>
       <SectionTitle>Business profile</SectionTitle>
@@ -112,10 +117,15 @@ function OwnerProfile({ profile }) {
         <DetailField label="Business contact phone" value={profile.business_contact_phone} />
         <DetailField label="Ghana Post (GPS) address" value={profile.gps_address} />
         <DetailField label="Formally registered?" value={profile.is_formal === true ? "Yes" : profile.is_formal === false ? "No" : null} />
-        <DetailField label="TIN" value={profile.tin} />
+        {hasTin && <DetailField label="TIN" value={profile.tin} />}
         <DetailField label="Address verified" value={profile.address_verified ? `Yes${profile.address_verified_by_name ? ` — ${profile.address_verified_by_name}` : ""}` : "No"} />
       </div>
 
+      {!(hasTin && hasPayout) && (
+        <div style={{ color: D.textDim, fontSize: "0.75rem", marginTop: 6 }}>Payout and tax details need the users.manage permission.</div>
+      )}
+
+      {hasPayout && <>
       <SectionTitle>Payout details</SectionTitle>
       <div style={{ color: D.textFaint, fontSize: "0.62rem", marginBottom: 8 }}>Account numbers are masked to the last 5 digits.</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0 20px" }}>
@@ -132,6 +142,7 @@ function OwnerProfile({ profile }) {
           <DetailField label="Account number" value={profile.payout_bank_account_number_masked} />
         </>}
       </div>
+      </>}
     </>
   );
 }
@@ -214,10 +225,11 @@ function UserRow({ user, config, canManage, onChanged }) {
       {mode !== "none" && (
         <div style={{ marginTop: 12, padding: 14, background: D.panelBg2, borderRadius: 12, border: `1px solid ${D.cardBorder}` }}>
           {detail.isLoading && <div style={{ color: D.textDim, fontSize: "0.78rem" }}>Loading…</div>}
-          {/* Reading the detail needs users.view server-side; a 403 is a
-              permission limit (e.g. a revoked grant), so it reads dim, not red. */}
+          {/* Reading the detail needs users.view, which this session held when
+              it loaded (or it couldn't see this panel) — so a 403 means its
+              access changed mid-session. A permission limit, so dim, not red. */}
           {detail.isError && (detail.error?.status === 403
-            ? <div style={{ color: D.textDim, fontSize: "0.78rem" }}>Full account details need the users.view permission — ask a super admin if you need them.</div>
+            ? <div style={{ color: D.textDim, fontSize: "0.78rem" }}>Your access to account details has changed — sign in again or ask a super admin.</div>
             : <div style={{ color: D.red, fontSize: "0.78rem" }}>Could not load this account's details.</div>)}
           {detail.data && mode === "view" && (
             <>
