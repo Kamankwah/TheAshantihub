@@ -188,7 +188,7 @@ describe('AdminCommandCenter — phone baseline CSS', () => {
     renderShell()
     const css = Array.from(document.querySelectorAll('style')).map((s) => s.textContent).join('\n')
     expect(css).toMatch(/\.staff-shell\[data-bp="phone"\] \.staff-content button \{ min-height: 44px; \}/)
-    expect(css).toMatch(/font-size: 16px !important/)
+    expect(css).toMatch(/min-height: 44px; max-width: 100%/)
     expect(css).toMatch(/overflow-wrap: anywhere/)
   })
 })

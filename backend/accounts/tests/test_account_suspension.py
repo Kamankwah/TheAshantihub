@@ -104,10 +104,33 @@ class StaffUserManagementTests(TestCase):
         support = Role.objects.get(name="support")
         self.assertFalse(support.permissions.filter(codename="users.manage").exists())
 
-    def test_support_cannot_view_customer_detail(self):
+    # Reading a detail needs only users.view (support holds it, not
+    # users.manage); every write stays on users.manage.
+    def test_users_view_only_staffer_can_read_customer_and_owner_detail(self):
         self._auth("support")
-        response = self.client.get(f"/api/accounts/customers/{self.customer.id}/")
-        self.assertEqual(response.status_code, 403)
+        customer = self.client.get(f"/api/accounts/customers/{self.customer.id}/")
+        self.assertEqual(customer.status_code, 200)
+        self.assertEqual(customer.json()["full_name"], "Ama Owusu")
+        owner = self.client.get(f"/api/accounts/business-owners/{self.owner.id}/")
+        self.assertEqual(owner.status_code, 200)
+
+    def test_users_view_only_staffer_cannot_edit_customer_or_owner(self):
+        self._auth("support")
+        customer = self.client.patch(
+            f"/api/accounts/customers/{self.customer.id}/", {"full_name": "Changed"}, format="json"
+        )
+        self.assertEqual(customer.status_code, 403)
+        owner = self.client.patch(
+            f"/api/accounts/business-owners/{self.owner.id}/", {"full_name": "Changed"}, format="json"
+        )
+        self.assertEqual(owner.status_code, 403)
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.full_name, "Ama Owusu")
+
+    def test_staffer_without_users_view_or_manage_cannot_read_detail(self):
+        self._auth("marketing")
+        self.assertEqual(self.client.get(f"/api/accounts/customers/{self.customer.id}/").status_code, 403)
+        self.assertEqual(self.client.get(f"/api/accounts/business-owners/{self.owner.id}/").status_code, 403)
 
     def test_support_cannot_suspend_customer(self):
         self._auth("support")

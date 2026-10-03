@@ -22,17 +22,28 @@ export const ROLE_ACCENTS = {
   accountant: C.kente1,
   marketing: C.kente2,
   support: C.ghGreen,
+  // Field roles — each a `C` colour none of the office roles use, so a field
+  // staffer's chip and active-nav highlight never fall back to gold.
+  scout: C.darkBrown,
+  delivery_manager: C.deepGold,
+  dispatch: C.orange,
 };
 
 // Text color for the role badge, keyed by role — ROLE_ACCENTS' backgrounds
 // range from light gold to dark navy/red/green/teal, so a single flat text
 // color doesn't stay legible across all of them.
+// Every pair is >= 4.5:1 (WCAG AA): scout cream on dark brown 15.6:1,
+// delivery_manager dark brown on deep gold 5.2:1, dispatch dark brown on
+// orange 5.0:1 (white on either would be only ~3.3:1).
 export const ROLE_BADGE_TEXT = {
   super_admin: "#1a1205",
   admin: "#fff",
   accountant: "#fff",
   marketing: "#fff",
   support: "#fff",
+  scout: C.cream,
+  delivery_manager: C.darkBrown,
+  dispatch: C.darkBrown,
 };
 
 // ─── Per-panel status-label→color lookup maps ─────────────────────────────

@@ -220,3 +220,14 @@
   background-size: auto, auto, auto, 42px 42px, 42px 42px;
   background-attachment: fixed;
 }
+
+/* iOS/iPadOS Safari zooms the page into any focused form control whose
+   font-size is under 16px and never zooms back out. Inline styles set
+   smaller sizes all over the app, so on touch devices force 16px. Kept at
+   top level (outside every @layer) so !important wins over inline styles
+   and Tailwind utilities alike. Not a reset: desktop typography is untouched. */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  select,
+  textarea { font-size: 16px !important; }
+}

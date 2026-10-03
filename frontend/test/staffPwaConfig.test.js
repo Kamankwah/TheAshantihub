@@ -60,3 +60,20 @@ describe('hosting headers for the staff PWA', () => {
     expect(conf).not.toMatch(/\^~\s*\/\.well-known/)
   })
 })
+
+describe('index.css iOS zoom guard', () => {
+  const css = read('index.css')
+  it('forces 16px on form controls for touch devices, outside any @layer', () => {
+    const m = css.match(/@media \(hover: none\) and \(pointer: coarse\) \{([^}]*)\}/)
+    expect(m).not.toBeNull()
+    expect(m[1]).toMatch(/select,/)
+    expect(m[1]).toMatch(/textarea \{ font-size: 16px !important; /)
+    expect(m[1]).toMatch(/input:not\(\[type="checkbox"\]\)/)
+    // top-level: the text before the rule must have balanced braces
+    const before = css.slice(0, css.indexOf(m[0]))
+    expect((before.match(/\{/g) || []).length).toBe((before.match(/\}/g) || []).length)
+  })
+  it('does not lock viewport zoom', () => {
+    expect(read('index.html')).not.toMatch(/maximum-scale|user-scalable/)
+  })
+})

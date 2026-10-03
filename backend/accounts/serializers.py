@@ -559,7 +559,11 @@ class BusinessOwnerListSerializer(serializers.ModelSerializer):
 
 
 # ── Staff user-management (staff user-management tools) ─────────────────────
-# Detail + edit shapes for the admin Users tab, gated by users.manage. Staff
+# Detail + edit shapes for the admin Users tab. Reading them needs users.view;
+# PATCH (and suspend/unsuspend) needs users.manage, and so does seeing a
+# business owner's payout and tax (TIN) details — a view-only session's
+# business-owner detail omits those keys entirely (see
+# StaffBusinessOwnerDetailSerializer.RESTRICTED_PROFILE_KEYS). Staff
 # may correct core identity fields (a mistyped name/phone/email) but never
 # touch password_hash, suspension state (set via the dedicated suspend/
 # unsuspend actions), or KYC state (its own moderation flow). is_suspended/
@@ -614,6 +618,18 @@ class StaffBusinessOwnerDetailSerializer(serializers.ModelSerializer):
     # have one yet, so every getter tolerates its absence.
     profile = serializers.SerializerMethodField()
 
+    # Payout + tax details are users.manage-only. A session without it (a
+    # users.view-only role such as support/scout) gets a profile WITHOUT these
+    # keys — absent, not nulled — so they never leave the server for it. The
+    # view passes `can_see_payout` in the serializer context from the
+    # session's effective permissions; it defaults to False (fail closed).
+    RESTRICTED_PROFILE_KEYS = (
+        "tin",
+        "default_payout_method", "payout_verification_status", "payout_bank_name",
+        "payout_bank_account_name", "payout_bank_account_number_masked",
+        "payout_momo_network", "payout_momo_name", "payout_momo_number_masked",
+    )
+
     class Meta:
         model = BusinessOwner
         fields = [
@@ -634,6 +650,14 @@ class StaffBusinessOwnerDetailSerializer(serializers.ModelSerializer):
         profile = getattr(obj, "profile", None)
         if profile is None:
             return None
+        if not self.context.get("can_see_payout", False):
+            return {
+                key: value for key, value in self._full_profile(profile).items()
+                if key not in self.RESTRICTED_PROFILE_KEYS
+            }
+        return self._full_profile(profile)
+
+    def _full_profile(self, profile):
         return {
             "business_contact_phone": profile.business_contact_phone,
             "business_kind": profile.business_kind,
