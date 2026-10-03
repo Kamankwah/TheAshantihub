@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { BrowserRouter, MemoryRouter, useLocation } from 'react-router-dom'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import AshantiHub from './App.jsx'
 import { setStoredAuth } from './apiClient.js'
 import { server } from './mocks/server.js'
@@ -534,4 +534,64 @@ describe('AshantiHub routing — /staff/:panel', () => {
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
     await waitFor(() => expect(document.head.querySelector('link[rel="manifest"]')).toBeNull())
   }, 8000)
+})
+
+// Inside the installed staff app (display-mode: standalone) there is no
+// marketplace to fall back to: Sign out stays on the staff URL with the staff
+// sign-in open, wipes the previous staffer's cached panel data, and the
+// sign-in can't be dismissed into the marketplace home.
+describe('AshantiHub — installed staff app (standalone display)', () => {
+  let originalMatchMedia
+  afterEach(() => {
+    setStoredAuth(null)
+    if (originalMatchMedia) window.matchMedia = originalMatchMedia
+    originalMatchMedia = undefined
+  })
+
+  function stubStandalone() {
+    originalMatchMedia = window.matchMedia
+    window.matchMedia = (query) => ({
+      media: query,
+      matches: query === '(display-mode: standalone)',
+      addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {},
+    })
+  }
+
+  it('Sign out stays on /staff/users, clears cached queries, and the staff sign-in cannot be dismissed', async () => {
+    stubStandalone()
+    signInStaff(['messaging.manage', 'users.view'])
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const clearSpy = vi.spyOn(queryClient, 'clear')
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/staff/users']}>
+          <AshantiHub />
+          <LocationProbe />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    await staffNav()
+    const signOut = screen.getByRole('button', { name: 'Sign out' })
+    fireEvent.click(signOut)
+    expect(clearSpy).toHaveBeenCalled()
+    expect(await screen.findByText('Staff Sign In', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.getByTestId('location').textContent).toBe('/staff/users')
+
+    // The ✕ close control must not drop the staffer into the marketplace.
+    fireEvent.click(within(screen.getByTestId('auth-modal-backdrop')).getByRole('button', { name: '✕' }))
+    await waitFor(() => expect(screen.getByText('Staff Sign In')).toBeInTheDocument())
+    // Nor must a backdrop tap.
+    fireEvent.click(screen.getByTestId('auth-modal-backdrop'))
+    await waitFor(() => expect(screen.getByText('Staff Sign In')).toBeInTheDocument())
+    expect(screen.getByTestId('location').textContent).toBe('/staff/users')
+  }, 10000)
+
+  it('a signed-out launch of the installed app keeps the staff sign-in up after dismissal', async () => {
+    stubStandalone()
+    renderStaffAt('/staff')
+    expect(await screen.findByText('Staff Sign In', {}, { timeout: 3000 })).toBeInTheDocument()
+    fireEvent.click(within(screen.getByTestId('auth-modal-backdrop')).getByRole('button', { name: '✕' }))
+    await waitFor(() => expect(screen.getByText('Staff Sign In')).toBeInTheDocument())
+    expect(screen.getByTestId('location').textContent).toBe('/staff')
+  }, 10000)
 })

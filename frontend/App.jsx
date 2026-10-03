@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate, useMatch } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCategories } from "./hooks/useCategories.js";
 import { useZones } from "./hooks/useZones.js";
 import { useListings } from "./hooks/useListings.js";
@@ -2528,6 +2529,7 @@ export default function AshantiHub() {
   const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch && !onStaffDashboardPath;
   const [authModal,setAuthModal]=useState(null);
   const auth=useAuth();
+  const queryClient=useQueryClient();
   const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id,registrationStep:auth.user.registration_step,kycStatus:auth.user.kyc_status,kycRejectionReason:auth.user.kyc_rejection_reason,avatar:auth.user.avatar,email:auth.user.email,phone:auth.user.phone} : null;
   // Site-wide light/dark toggle (docs/UI_MODERNIZATION_ROADMAP.md Phase E) —
   // same useTheme() hook StaffDashboard already uses internally, but lifted
@@ -2864,6 +2866,16 @@ export default function AshantiHub() {
   // behaves identically to a staff login.
   const handleAuthSuccess=(result)=>{setAuthModal(null);if(result.account_type==="staff"){setIsAdmin(true);}};
 
+  // Installed staff app (display-mode: standalone) signed out on a staff
+  // dashboard URL — first launch, expired token, or after "Sign out". There
+  // is no marketplace inside the installed app, so the staff sign-in is
+  // derived rather than stored: closing it (✕ / backdrop → setAuthModal(null))
+  // can't dismiss it into the marketplace home, and it is up from the first
+  // render after the session check settles without waiting on effect 1.
+  const staffAppSignInRequired = !auth.isLoading && onStaffDashboardPath
+    && auth.user?.account_type!=="staff" && isStandaloneDisplay();
+  const shownAuthModal = staffAppSignInRequired ? "staff-login" : authModal;
+
   // A signed-in CUSTOMER can't register a business on their existing account —
   // Customer and BusinessOwner are separate account types. Explain it and offer
   // to sign out and start a business registration (after logout, user becomes
@@ -2892,7 +2904,11 @@ export default function AshantiHub() {
     (user?.accountType==="business_owner" && user.registrationStep && user.registrationStep!=="complete");
   if(showRegistrationFlow) return <BusinessRegistrationFlow user={user} auth={auth} initialStep={user?.registrationStep} setPage={setPage} setShowBizDash={setShowBizDash}/>;
 
-  if(isAdmin){
+  // The user check keeps the dashboard from rendering for the one commit
+  // between logout() and effect 2 flipping isAdmin off — with no session the
+  // shell would treat the current panel as unpermitted and replace the URL
+  // with /staff.
+  if(isAdmin && auth.user?.account_type==="staff"){
     const staffStandalone=isStandaloneDisplay();
     return <StaffDashboard auth={auth}
       activeTab={staffPanel ?? "overview"}
@@ -2901,7 +2917,11 @@ export default function AshantiHub() {
         if(location.pathname!==path) navigate(path,{replace});
       }}
       exitLabel={staffStandalone ? "Sign out" : "← Exit"}
-      onExit={staffStandalone ? ()=>{auth.logout();setAuthModal("staff-login");} : ()=>setIsAdmin(false)}/>;
+      onExit={staffStandalone ? ()=>{
+        // Shared device: the next staffer must not see the previous one's
+        // cached panel data, so sign-out wipes the query cache too.
+        queryClient.clear();auth.logout();setAuthModal("staff-login");
+      } : ()=>setIsAdmin(false)}/>;
   }
   if(showAccount) return <UserPanel onExit={()=>setShowAccount(false)} user={user} auth={auth} favourites={favourites} toggleFav={toggleFav} lang={lang} setLang={setLang} PaymentComponent={MoMoPayment}/>;
   if(showBizDash||showPayments||showCredit) return <BusinessCommandCenter
@@ -2941,7 +2961,7 @@ export default function AshantiHub() {
     <div style={{fontFamily:"'Georgia',serif",background:C.cream,minHeight:"100vh"}}>
       {!cookieDismissed&&<CookieBanner onAccept={()=>{setCookieConsent(true);setCookieDismissed(true);Analytics.track("cookie_accepted");}} onDecline={()=>{setCookieDismissed(true);Analytics.track("cookie_declined");}}/>}
       <OfflineBanner/>
-      {authModal&&<AuthModal authState={authModal} auth={auth} onClose={()=>setAuthModal(null)} onSuccess={handleAuthSuccess}/>}
+      {shownAuthModal&&<AuthModal authState={shownAuthModal} auth={auth} onClose={()=>setAuthModal(null)} onSuccess={handleAuthSuccess}/>}
       {showMessaging&&<MessagingCenter user={user} onClose={()=>{setShowMessaging(false);setMessagingBusiness(null);}} initialBusiness={messagingBusiness}/>}
       {showNotifs&&<NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
       {showFavs&&<FavsDrawer/>}
