@@ -1,6 +1,6 @@
 # PWA Spec — Staff Dashboards
 
-**Status:** Spec only — no code changes made yet.
+**Status:** Implemented — see `docs/superpowers/specs/2026-10-03-staff-pwa-responsive-design.md`.
 
 **Owner agent:** `.claude/agents/frontend-engineer.md`
 
@@ -9,6 +9,8 @@
 Make the staff-facing surfaces — `AdminDashboard`, `BusinessDashboard`, `PaymentDashboard` (`App.jsx:925`), `CreditDashboard` (`App.jsx:91`) — installable as a Progressive Web App, distinct from (or layered on top of) the public marketplace PWA experience, so staff/business-owner users get an app-like, offline-tolerant surface for day-to-day operations (approvals, payment monitoring, credit review).
 
 ## 2. Current state — the core bug to fix first
+
+**Status (2026-10-03):** `vite-plugin-pwa` registration (service worker `/sw.js`, scope `/staff`, prompt-to-update), the icon set, and the `/staff`-scoped `staff.webmanifest` have landed.
 
 - `sw.js` exists (14 lines, cache name `ashantihub-v1`, precaches `["/", "/favicon.svg", "/manifest.json"]`, falls back to cached `/` on failed navigation fetches) but **is never registered**. A repo-wide grep for `serviceWorker`/`register`/`vite-plugin-pwa` found zero matches in `main.jsx` or `App.jsx` — this file is dead code today.
 - `manifest.json` is referenced from `index.html` and has correct theming (`background_color` matches `C.cream`, `theme_color` matches `C.darkBrown`) but only ships **one icon** (`/favicon.svg`, `sizes:"any"`) — most install prompts (especially Android/Chrome) expect a 192×192 and 512×512 PNG set, not SVG-only.
@@ -25,9 +27,13 @@ Make the staff-facing surfaces — `AdminDashboard`, `BusinessDashboard`, `Payme
 
 ## 3. Icon set gap
 
+**Status (2026-10-03):** `vite-plugin-pwa` registration (service worker `/sw.js`, scope `/staff`, prompt-to-update), the icon set, and the `/staff`-scoped `staff.webmanifest` have landed.
+
 Add a proper PWA icon set (192×192, 512×512 PNG, plus a maskable variant) — `vite-plugin-pwa`'s manifest generation can produce these from a single source image if supplied, or they can be exported manually and referenced in `manifest.json`'s `icons` array alongside the existing SVG entry.
 
 ## 4. Staff-scoping question (needs a decision before implementation)
+
+**Status (2026-10-03):** `vite-plugin-pwa` registration (service worker `/sw.js`, scope `/staff`, prompt-to-update), the icon set, and the `/staff`-scoped `staff.webmanifest` have landed.
 
 The app currently has **zero URL routing** — no `react-router`, no `window.history` usage, purely in-memory `useState` (`CLAUDE.md` "Architecture" section). This creates a real design fork for "installable staff dashboard":
 
@@ -42,7 +48,8 @@ The app currently has **zero URL routing** — no `react-router`, no `window.his
 
 ## 5. Offline / staff-specific needs
 
-- Cache the **last-seen** transaction list (`PaymentDashboard`) and credit-score data (`CreditDashboard`) for spotty-connectivity use — staff should be able to see the last known state even if the network drops, clearly marked as "last synced at …" rather than presented as live.
+- **Replaced (2026-10-03 user decision):** the "cache last-seen data" idea below is not being built. The PWA ships the app shell plus an offline notice only, and no staff data is stored on the device.
+- ~~Cache the **last-seen** transaction list (`PaymentDashboard`) and credit-score data (`CreditDashboard`) for spotty-connectivity use — staff should be able to see the last known state even if the network drops, clearly marked as "last synced at …" rather than presented as live.~~
 - Consider background sync (where supported) for payment-status polling once real Hubtel webhook data exists (`docs/HUBTEL_INTEGRATION.md`) — queue a refresh for when connectivity returns rather than silently failing.
 - No offline **write** support planned (e.g. approving a business while offline and syncing later) — that's a materially harder consistency problem, explicitly out of scope for this spec; staff actions require connectivity.
 
