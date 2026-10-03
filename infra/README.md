@@ -36,7 +36,7 @@ cannot reach production data.
 |---|---|
 | `backend/Dockerfile.prod` | Production image: gunicorn, non-root. (`backend/Dockerfile` remains the dev image.) |
 | `infra/compose/docker-compose.yml` | The `web` + `db` stack, parameterised per environment. |
-| `infra/scripts/deploy.sh` | The deploy. Backs up, pulls, builds, migrates, publishes. |
+| `infra/scripts/deploy.sh` | The deploy. Backs up, pulls, builds, migrates, publishes; on production also reinstalls the nginx templates when they changed. |
 | `infra/scripts/backup-db.sh` | Verified gzipped `pg_dump`. Runs before every deploy and nightly. |
 | `infra/scripts/install-hestia-templates.sh` | Installs the nginx templates below into HestiaCP. |
 | `infra/hestia/templates/` | nginx vhost templates (SPA + API, plain and SSL). |
@@ -62,6 +62,30 @@ Staging deploys `main` the same way, via
 The script refuses to run without `.deploy.conf` and `backend/.env`, dumps the
 database before migrating, and fails loudly with the last 60 log lines if the
 API does not answer its health check afterwards.
+
+Production deploys (`SERVE_FRONTEND=yes`) also run
+`install-hestia-templates.sh` automatically when the current
+`infra/hestia/templates/` tree differs from the one recorded in the untracked
+`.templates-installed` marker at the checkout root. The marker is written only
+after a successful install, so a retry after a failed deploy still installs,
+and a missing marker (first run) installs too; installing is idempotent. This
+is how template changes (such as the no-cache headers for `/sw.js`) take effect
+without a manual step. Set `FORCE_TEMPLATES` to `1`, `yes` or `true` (any case)
+to reinstall regardless:
+`FORCE_TEMPLATES=1 bash /opt/ashantihub/infra/scripts/deploy.sh`. If the
+installer fails, the deploy exits non-zero after the app is already live; the
+on-disk vhosts may be invalid, so do not reload nginx until the templates are
+fixed and the deploy re-run.
+
+The first promotion that includes this change still runs the previous deploy.sh (the script re-execs itself before pulling). Afterwards run `bash /opt/ashantihub/infra/scripts/deploy.sh` once more (no marker yet, so it installs), or run `bash /opt/ashantihub/infra/scripts/install-hestia-templates.sh` by hand; then confirm `/opt/ashantihub/.templates-installed` exists.
+
+Staging never runs the installer: it installs the SPA templates from whichever
+checkout runs it and rebuilds every domain, so running it from staging would
+push unreleased templates onto the production domain. Note the reverse
+coupling: a production template install also re-renders the **staging** API
+vhost from the production checkout's `ashantihub-api.tpl.in`, so a staging
+API-template change that has not been promoted can be reverted by a production
+deploy.
 
 ## Provisioning a checkout
 

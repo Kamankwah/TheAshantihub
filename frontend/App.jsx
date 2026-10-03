@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate, useMatch } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCategories } from "./hooks/useCategories.js";
 import { useZones } from "./hooks/useZones.js";
 import { useListings } from "./hooks/useListings.js";
@@ -56,6 +57,8 @@ import AdminCommandCenter from "./components/admin/AdminCommandCenter.jsx";
 import { D, glassCard, ghs } from "./components/dashboard/theme.js";
 import KpiCard from "./components/dashboard/charts/KpiCard.jsx";
 import ChartFrame from "./components/dashboard/charts/ChartFrame.jsx";
+import { ensureStaffHead, isStaffPathname, isStandaloneDisplay, startStaffPwa } from "./lib/staffPwa.js";
+import { subjectLine } from "./lib/conversationSubject.js";
 import SpendAreaChart from "./components/dashboard/charts/SpendAreaChart.jsx";
 import ListingsDonut from "./components/dashboard/charts/ListingsDonut.jsx";
 
@@ -486,7 +489,7 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
       if (activeConv) {
         await apiPost(`/api/messaging/conversations/${activeConv.id}/messages/`, { body: newMessage, ...guestFields });
       } else {
-        const subject = initialBusiness ? `Re: ${initialBusiness.name}` : "";
+        const subject = initialBusiness ? subjectLine(initialBusiness.name) : "";
         const created = await apiPost(`/api/messaging/conversations/`, { subject, body: newMessage, ...guestFields });
         setActiveConvId(created.id);
       }
@@ -575,7 +578,7 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
                       <span style={{fontWeight:800,fontSize:"0.78rem",color:C.darkBrown,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>AshantiHub Support</span>
                       <span style={{fontSize:"0.6rem",color:"#aaa",flexShrink:0,marginLeft:4}}>{formatConvTime(lastMsg?.created_at||conv.updated_at)}</span>
                     </div>
-                    {conv.subject&&<div style={{fontSize:"0.64rem",color:C.deepGold,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>Re: {conv.subject}</div>}
+                    {conv.subject&&<div style={{fontSize:"0.64rem",color:C.deepGold,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>{subjectLine(conv.subject)}</div>}
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                       <span style={{fontSize:"0.68rem",color:"#888",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{lastMsg?.body||"No messages yet"}</span>
                       {attention&&<span style={{width:10,height:10,borderRadius:"50%",background:C.kente2,flexShrink:0,marginLeft:4}}/>}
@@ -617,7 +620,7 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
                 </div>
                 <div style={{flex:1}}>
                   <div style={{fontWeight:900,fontSize:"0.88rem",color:C.darkBrown}}>AshantiHub Support</div>
-                  <div style={{fontSize:"0.68rem",color:C.deepGold,fontWeight:700,marginBottom:1}}>{activeConv?.subject ? `Re: ${activeConv.subject}` : "New conversation"}</div>
+                  <div style={{fontSize:"0.68rem",color:C.deepGold,fontWeight:700,marginBottom:1}}>{activeConv?.subject ? subjectLine(activeConv.subject) : "New conversation"}</div>
                   {/* "Starts once staff replies" status (messaging fixes work) —
                       an open conversation with zero staff messages yet is
                       waiting, not "online"; a brand-new (no activeConv at all)
@@ -1551,8 +1554,8 @@ const TRANSLATIONS = {
 // signature (used by StaffDashboard.test.jsx and the `/staff` route below)
 // while delegating to the new shell — same convention as `BusinessDashboard`
 // delegating to `BusinessCommandCenter` just below.
-export function StaffDashboard({auth,onExit}) {
-  return <AdminCommandCenter auth={auth} onExit={onExit} />;
+export function StaffDashboard({auth,onExit,activeTab,onTabChange,exitLabel}) {
+  return <AdminCommandCenter auth={auth} onExit={onExit} activeTab={activeTab} onTabChange={onTabChange} exitLabel={exitLabel} />;
 }
 
 // The business-owner dashboard is the unified light "artisan" Business
@@ -2498,6 +2501,15 @@ export default function AshantiHub() {
   // detect "are we on a detail route" and extract the :id param in one shot.
   const businessDetailMatch = useMatch("/business/:id");
   const eventDetailMatch = useMatch("/events/:id");
+  // Staff dashboard panels are URL-addressable (/staff/kyc, /staff/users, …)
+  // so Android's back gesture steps through panels inside the installed app
+  // and manifest shortcuts can deep-link. /staff/activate is its own page
+  // (PATH_TO_PAGE) and is never read as a panel id. AdminCommandCenter
+  // validates the id against the session's permissions and asks for a
+  // replace back to /staff when it isn't one.
+  const staffPanelMatch = useMatch("/staff/:panel");
+  const staffPanel = staffPanelMatch && staffPanelMatch.params.panel !== "activate" ? staffPanelMatch.params.panel : null;
+  const onStaffDashboardPath = location.pathname === "/staff" || location.pathname === "/staff/" || staffPanel !== null;
   // `page` is now derived straight from the URL rather than owned locally —
   // hard reloading on any of these paths renders that page immediately
   // instead of bouncing to home. Unrecognized paths (other than /staff, see
@@ -2515,9 +2527,10 @@ export default function AshantiHub() {
     const path = PAGE_TO_PATH[id] ?? "/";
     if (location.pathname !== path) navigate(path);
   };
-  const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch;
+  const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch && !onStaffDashboardPath;
   const [authModal,setAuthModal]=useState(null);
   const auth=useAuth();
+  const queryClient=useQueryClient();
   const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id,registrationStep:auth.user.registration_step,kycStatus:auth.user.kyc_status,kycRejectionReason:auth.user.kyc_rejection_reason,avatar:auth.user.avatar,email:auth.user.email,phone:auth.user.phone} : null;
   // Site-wide light/dark toggle (docs/UI_MODERNIZATION_ROADMAP.md Phase E) —
   // same useTheme() hook StaffDashboard already uses internally, but lifted
@@ -2786,14 +2799,14 @@ export default function AshantiHub() {
   useEffect(()=>{
     if(staffLoginPromptShown.current) return;
     if(auth.isLoading) return;
-    if(location.pathname!=="/staff") return;
+    if(!onStaffDashboardPath) return;
     staffLoginPromptShown.current=true;
     if(auth.user?.account_type!=="staff") setAuthModal("staff-login");
   },[auth.isLoading,auth.user,location.pathname]);
 
   useEffect(()=>{
     if(auth.isLoading) return;
-    const shouldBeAdmin = location.pathname==="/staff" && auth.user?.account_type==="staff";
+    const shouldBeAdmin = onStaffDashboardPath && auth.user?.account_type==="staff";
     setIsAdmin((current)=> current===shouldBeAdmin ? current : shouldBeAdmin);
   },[location.pathname,auth.user,auth.isLoading]);
 
@@ -2812,11 +2825,22 @@ export default function AshantiHub() {
     const wasAdmin=wasAdminRef.current;
     wasAdminRef.current=isAdmin;
     if(isAdmin){
-      if(location.pathname!=="/staff") navigate("/staff");
-    }else if(wasAdmin && location.pathname==="/staff"){
+      if(!onStaffDashboardPath) navigate("/staff");
+    }else if(wasAdmin && onStaffDashboardPath && !isStandaloneDisplay()){
+      // Inside the installed staff app there is no marketplace to go "home"
+      // to — sign-out stays on /staff with the staff login open instead.
       navigate("/");
     }
   },[isAdmin]);
+
+  // Staff PWA: the /staff-scoped manifest + apple tags exist only on staff
+  // URLs (so the marketplace is never installable), and entering staff
+  // in-session starts the install-prompt listener / SW registration.
+  useEffect(()=>{
+    const staffPath=isStaffPathname(location.pathname);
+    ensureStaffHead(staffPath);
+    if(staffPath) startStaffPwa();
+  },[location.pathname]);
 
   const handleLogoClick=()=>{
     const n=adminClicks+1;
@@ -2842,6 +2866,16 @@ export default function AshantiHub() {
   // separately deciding whether to flip isAdmin, so a staff activation
   // behaves identically to a staff login.
   const handleAuthSuccess=(result)=>{setAuthModal(null);if(result.account_type==="staff"){setIsAdmin(true);}};
+
+  // Installed staff app (display-mode: standalone) signed out on a staff
+  // dashboard URL — first launch, expired token, or after "Sign out". There
+  // is no marketplace inside the installed app, so the staff sign-in is
+  // derived rather than stored: closing it (✕ / backdrop → setAuthModal(null))
+  // can't dismiss it into the marketplace home, and it is up from the first
+  // render after the session check settles without waiting on effect 1.
+  const staffAppSignInRequired = !auth.isLoading && onStaffDashboardPath
+    && auth.user?.account_type!=="staff" && isStandaloneDisplay();
+  const shownAuthModal = staffAppSignInRequired ? "staff-login" : authModal;
 
   // A signed-in CUSTOMER can't register a business on their existing account —
   // Customer and BusinessOwner are separate account types. Explain it and offer
@@ -2871,7 +2905,25 @@ export default function AshantiHub() {
     (user?.accountType==="business_owner" && user.registrationStep && user.registrationStep!=="complete");
   if(showRegistrationFlow) return <BusinessRegistrationFlow user={user} auth={auth} initialStep={user?.registrationStep} setPage={setPage} setShowBizDash={setShowBizDash}/>;
 
-  if(isAdmin) return <StaffDashboard auth={auth} onExit={()=>setIsAdmin(false)}/>;
+  // The user check keeps the dashboard from rendering for the one commit
+  // between logout() and effect 2 flipping isAdmin off — with no session the
+  // shell would treat the current panel as unpermitted and replace the URL
+  // with /staff.
+  if(isAdmin && auth.user?.account_type==="staff"){
+    const staffStandalone=isStandaloneDisplay();
+    return <StaffDashboard auth={auth}
+      activeTab={staffPanel ?? "overview"}
+      onTabChange={(id,{replace=false}={})=>{
+        const path=id==="overview" ? "/staff" : `/staff/${id}`;
+        if(location.pathname!==path) navigate(path,{replace});
+      }}
+      exitLabel={staffStandalone ? "Sign out" : "← Exit"}
+      onExit={staffStandalone ? ()=>{
+        // Shared device: the next staffer must not see the previous one's
+        // cached panel data, so sign-out wipes the query cache too.
+        queryClient.clear();auth.logout();setAuthModal("staff-login");
+      } : ()=>setIsAdmin(false)}/>;
+  }
   if(showAccount) return <UserPanel onExit={()=>setShowAccount(false)} user={user} auth={auth} favourites={favourites} toggleFav={toggleFav} lang={lang} setLang={setLang} PaymentComponent={MoMoPayment}/>;
   if(showBizDash||showPayments||showCredit) return <BusinessCommandCenter
     initialTab={showPayments?"payments":showCredit?"credit":"analytics"}
@@ -2910,7 +2962,7 @@ export default function AshantiHub() {
     <div style={{fontFamily:"'Georgia',serif",background:C.cream,minHeight:"100vh"}}>
       {!cookieDismissed&&<CookieBanner onAccept={()=>{setCookieConsent(true);setCookieDismissed(true);Analytics.track("cookie_accepted");}} onDecline={()=>{setCookieDismissed(true);Analytics.track("cookie_declined");}}/>}
       <OfflineBanner/>
-      {authModal&&<AuthModal authState={authModal} auth={auth} onClose={()=>setAuthModal(null)} onSuccess={handleAuthSuccess}/>}
+      {shownAuthModal&&<AuthModal authState={shownAuthModal} auth={auth} onClose={()=>setAuthModal(null)} onSuccess={handleAuthSuccess}/>}
       {showMessaging&&<MessagingCenter user={user} onClose={()=>{setShowMessaging(false);setMessagingBusiness(null);}} initialBusiness={messagingBusiness}/>}
       {showNotifs&&<NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
       {showFavs&&<FavsDrawer/>}

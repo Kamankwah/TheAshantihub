@@ -1,6 +1,6 @@
 # PWA Spec — Staff Dashboards
 
-**Status:** Spec only — no code changes made yet.
+**Status:** Implemented — see `docs/superpowers/specs/2026-10-03-staff-pwa-responsive-design.md`.
 
 **Owner agent:** `.claude/agents/frontend-engineer.md`
 
@@ -9,6 +9,8 @@
 Make the staff-facing surfaces — `AdminDashboard`, `BusinessDashboard`, `PaymentDashboard` (`App.jsx:925`), `CreditDashboard` (`App.jsx:91`) — installable as a Progressive Web App, distinct from (or layered on top of) the public marketplace PWA experience, so staff/business-owner users get an app-like, offline-tolerant surface for day-to-day operations (approvals, payment monitoring, credit review).
 
 ## 2. Current state — the core bug to fix first
+
+**Status (2026-10-03):** `vite-plugin-pwa` registration (service worker `/sw.js`, scope `/staff`, prompt-to-update), the icon set, and the `/staff`-scoped `staff.webmanifest` have landed.
 
 - `sw.js` exists (14 lines, cache name `ashantihub-v1`, precaches `["/", "/favicon.svg", "/manifest.json"]`, falls back to cached `/` on failed navigation fetches) but **is never registered**. A repo-wide grep for `serviceWorker`/`register`/`vite-plugin-pwa` found zero matches in `main.jsx` or `App.jsx` — this file is dead code today.
 - `manifest.json` is referenced from `index.html` and has correct theming (`background_color` matches `C.cream`, `theme_color` matches `C.darkBrown`) but only ships **one icon** (`/favicon.svg`, `sizes:"any"`) — most install prompts (especially Android/Chrome) expect a 192×192 and 512×512 PNG set, not SVG-only.
@@ -25,9 +27,13 @@ Make the staff-facing surfaces — `AdminDashboard`, `BusinessDashboard`, `Payme
 
 ## 3. Icon set gap
 
+**Status (2026-10-03):** `vite-plugin-pwa` registration (service worker `/sw.js`, scope `/staff`, prompt-to-update), the icon set, and the `/staff`-scoped `staff.webmanifest` have landed.
+
 Add a proper PWA icon set (192×192, 512×512 PNG, plus a maskable variant) — `vite-plugin-pwa`'s manifest generation can produce these from a single source image if supplied, or they can be exported manually and referenced in `manifest.json`'s `icons` array alongside the existing SVG entry.
 
 ## 4. Staff-scoping question (needs a decision before implementation)
+
+**Status (2026-10-03):** `vite-plugin-pwa` registration (service worker `/sw.js`, scope `/staff`, prompt-to-update), the icon set, and the `/staff`-scoped `staff.webmanifest` have landed.
 
 The app currently has **zero URL routing** — no `react-router`, no `window.history` usage, purely in-memory `useState` (`CLAUDE.md` "Architecture" section). This creates a real design fork for "installable staff dashboard":
 
@@ -38,11 +44,12 @@ The app currently has **zero URL routing** — no `react-router`, no `window.his
 
 **Recommendation:** Option B is the better product outcome (a real "Staff Dashboard" app icon, not "install the marketplace and then find the hidden staff menu"), but it has a real prerequisite — introducing routing — that should be called out and agreed to explicitly before implementation starts, since it's a bigger architectural change than the PWA wrapper itself. This decision should be confirmed with the user at the start of the implementation session, not assumed here.
 
-**Status update:** the minimal `/staff` entry point half of Option B has now landed. It originally shipped as a narrow, deliberate exception with no router library (`window.location.pathname`/`window.history.pushState`, no other screen URL-addressable). `docs/UI_MODERNIZATION_ROADMAP.md` Phase D subsequently introduced `react-router-dom` app-wide (fixing an unrelated bug — `page` had zero URL sync at all, so hard-reloading on e.g. `/business` always bounced to home) and migrated `/staff` onto it in the same pass; see `CLAUDE.md` "Architecture" for the current mechanism. What's still open from this section: the second manifest + `start_url` scoped to `/staff` (the PWA-installability half of Option B) has not been built yet — the service-worker registration fix in §2 and the icon set in §3 are also still outstanding prerequisites for that.
+**Status update:** the minimal `/staff` entry point half of Option B has now landed. It originally shipped as a narrow, deliberate exception with no router library (`window.location.pathname`/`window.history.pushState`, no other screen URL-addressable). `docs/UI_MODERNIZATION_ROADMAP.md` Phase D subsequently introduced `react-router-dom` app-wide (fixing an unrelated bug — `page` had zero URL sync at all, so hard-reloading on e.g. `/business` always bounced to home) and migrated `/staff` onto it in the same pass; see `CLAUDE.md` "Architecture" for the current mechanism. What was still open from this section has now landed (2026-10-03): the second manifest + `start_url` scoped to `/staff` (the PWA-installability half of Option B), along with the service-worker registration fix in §2 and the icon set in §3 that it depended on.
 
 ## 5. Offline / staff-specific needs
 
-- Cache the **last-seen** transaction list (`PaymentDashboard`) and credit-score data (`CreditDashboard`) for spotty-connectivity use — staff should be able to see the last known state even if the network drops, clearly marked as "last synced at …" rather than presented as live.
+- **Replaced (2026-10-03 user decision):** the "cache last-seen data" idea below is not being built. The PWA ships the app shell plus an offline notice only, and no staff data is stored on the device.
+- ~~Cache the **last-seen** transaction list (`PaymentDashboard`) and credit-score data (`CreditDashboard`) for spotty-connectivity use — staff should be able to see the last known state even if the network drops, clearly marked as "last synced at …" rather than presented as live.~~
 - Consider background sync (where supported) for payment-status polling once real Hubtel webhook data exists (`docs/HUBTEL_INTEGRATION.md`) — queue a refresh for when connectivity returns rather than silently failing.
 - No offline **write** support planned (e.g. approving a business while offline and syncing later) — that's a materially harder consistency problem, explicitly out of scope for this spec; staff actions require connectivity.
 
@@ -50,7 +57,7 @@ The app currently has **zero URL routing** — no `react-router`, no `window.his
 
 1. Fix service worker registration (`vite-plugin-pwa` migration) + icon set — this benefits the whole app, not just staff, and should land regardless of the Option A/B decision.
 2. Resolve the Option A vs. B scoping decision with the user.
-3. If B: introduce minimal routing (scoped narrowly to enabling `/staff` as an entry point — not a full app-wide router rewrite, which is its own separate, larger decision). **Done** — see the status update in §4; the manifest/`start_url` half of Option B is still outstanding.
-4. Build the offline caching behavior for `PaymentDashboard`/`CreditDashboard`.
+3. If B: introduce minimal routing (scoped narrowly to enabling `/staff` as an entry point — not a full app-wide router rewrite, which is its own separate, larger decision). **Done** — see the status update in §4; the manifest/`start_url` half of Option B has since landed (2026-10-03).
+4. ~~Build the offline caching behavior for `PaymentDashboard`/`CreditDashboard`.~~ Replaced (2026-10-03) by the shell + offline-notice decision (see §5); not to be built.
 
 This work has no hard dependency on `docs/HUBTEL_INTEGRATION.md` or `docs/FRONTEND_MODERNIZATION.md` landing first, but sequencing after the React 19 bump (`docs/FRONTEND_MODERNIZATION.md` §6) avoids doing PWA/service-worker verification twice against two different React versions.

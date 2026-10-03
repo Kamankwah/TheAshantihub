@@ -78,7 +78,7 @@ one deliberate pairing across the whole app.
 
 ## Layout
 - **Approach:** Hybrid — grid-disciplined for the marketplace grid and dashboards; editorial moments (hero, empty states) may break the grid.
-- **Grid:** responsive auto-fill card grid (listings `minmax(240px,1fr)`, KPIs `minmax(160px,1fr)`). Mobile-first (70%+ of marketplace traffic is mobile; the ≤760px breakpoint already drives Navbar/Sidebar collapse).
+- **Grid:** responsive auto-fill card grid (listings `minmax(240px,1fr)`, KPIs `minmax(160px,1fr)`). Mobile-first (70%+ of marketplace traffic is mobile; the public Navbar collapses to a hamburger at ≤1024px with a compact inline tier at 1025–1199px; the staff shell keeps its own ≤760 and ≤1199px breakpoints).
 - **Max content width:** ~1120px.
 - **Border radius:** cards/panels 16px, buttons/inputs 10–12px, chips/badges 999px (pill). Matches `D.glassCard` (16) and `--radius: 0.75rem`.
 - **Elevation:** soft warm shadow `0 10px 28px rgba(44,24,16,0.12)` (`D.shadow`); card-hover lifts to `0 16px 36px rgba(44,24,16,0.16)`.

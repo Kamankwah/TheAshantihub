@@ -1,7 +1,8 @@
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { server } from './mocks/server.js'
 import { apiFetch, getStoredAuth, setStoredAuth, apiPost, apiPostForm, apiPatch, apiPatchForm, apiDelete } from './apiClient.js'
+import { getNetworkStatus, resetNetworkStatusForTests } from './lib/networkStatus.js'
 
 describe('apiFetch', () => {
   it('returns parsed JSON on success', async () => {
@@ -160,5 +161,30 @@ describe('apiDelete', () => {
       http.delete('http://localhost:8000/api/cart/items/1/', () => new HttpResponse(null, { status: 404 })),
     )
     await expect(apiDelete('/api/cart/items/1/')).rejects.toThrow()
+  })
+})
+
+describe('network status reporting', () => {
+  afterEach(() => resetNetworkStatusForTests())
+
+  it('marks the network store offline when fetch rejects, rethrowing the original error, and clears it on the next response of any status', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/categories/', () => HttpResponse.error()))
+    let thrown
+    try { await apiFetch('/api/listings/categories/') } catch (error) { thrown = error }
+    expect(thrown).toBeInstanceOf(TypeError)
+    expect(thrown.status).toBeUndefined()
+    expect(getNetworkStatus().offline).toBe(true)
+
+    server.use(http.post('http://localhost:8000/api/listings/', () => new HttpResponse(null, { status: 400 })))
+    await expect(apiPost('/api/listings/', {})).rejects.toMatchObject({ status: 400 })
+    expect(getNetworkStatus().offline).toBe(false)
+
+    server.use(http.delete('http://localhost:8000/api/listings/1/', () => HttpResponse.error()))
+    await expect(apiDelete('/api/listings/1/')).rejects.toBeInstanceOf(TypeError)
+    expect(getNetworkStatus().offline).toBe(true)
+
+    server.use(http.get('http://localhost:8000/api/listings/categories/', () => HttpResponse.json([])))
+    await expect(apiFetch('/api/listings/categories/')).resolves.toEqual([])
+    expect(getNetworkStatus().offline).toBe(false)
   })
 })

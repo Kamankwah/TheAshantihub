@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiFetch, apiPatch, apiPatchForm, apiPost, getStoredAuth, setStoredAuth } from '../apiClient.js'
+import { getNetworkStatus, subscribeNetworkStatus } from '../lib/networkStatus.js'
 
 const LOGIN_PATHS = {
   customer: '/api/accounts/customers/login/',
@@ -19,9 +20,18 @@ export function useAuth() {
     }
     apiFetch('/api/accounts/me/')
       .then((me) => setUser({ ...stored, ...me }))
-      .catch(() => {
-        setStoredAuth(null)
-        setUser(null)
+      .catch((error) => {
+        // Only an auth rejection ends the session. A network failure (no
+        // `.status` — e.g. the installed staff app opened offline) or a server
+        // error keeps the stored session, which already holds the last /me/
+        // payload (login merges it in), so the app can render and show its
+        // own offline/error states instead of silently signing the user out.
+        if (error?.status === 401 || error?.status === 403) {
+          setStoredAuth(null)
+          setUser(null)
+        } else {
+          setUser(stored)
+        }
       })
       .finally(() => setIsLoading(false))
   }, [])
@@ -185,6 +195,32 @@ export function useAuth() {
     })
     return me
   }, [])
+
+  // A session kept through an offline launch (see the restore effect) was
+  // never re-validated. When connectivity comes back (offline → online in
+  // lib/networkStatus.js), re-fetch /me/ so revoked permissions or a
+  // deactivated account are noticed without a reload. Same rule as restore:
+  // only 401/403 ends the session; network/server errors keep it. Skipped
+  // while the restore itself is still in flight (it handles /me/ already).
+  const isLoadingRef = useRef(isLoading)
+  useEffect(() => {
+    isLoadingRef.current = isLoading
+  }, [isLoading])
+  useEffect(() => {
+    let wasOffline = getNetworkStatus().offline
+    return subscribeNetworkStatus(() => {
+      const { offline } = getNetworkStatus()
+      const cameOnline = wasOffline && !offline
+      wasOffline = offline
+      if (!cameOnline || isLoadingRef.current || !getStoredAuth()) return
+      refreshUser().catch((error) => {
+        if (error?.status === 401 || error?.status === 403) {
+          setStoredAuth(null)
+          setUser(null)
+        }
+      })
+    })
+  }, [refreshUser])
 
   const hasPermission = useCallback(
     (codename) => user?.permissions?.includes(codename) ?? false,

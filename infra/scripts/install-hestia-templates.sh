@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 #
 # Install AshantiHub's nginx templates into HestiaCP and rebuild the domain
-# configs from them. Run as root after changing anything in
-# infra/hestia/templates/:
+# configs from them. Production deploys (deploy.sh with SERVE_FRONTEND=yes) run
+# this automatically when the infra/hestia/templates/ tree differs from the
+# .templates-installed marker (or the marker is missing), so run it by hand
+# only for out-of-band installs, as root, from the production checkout:
 #
 #   bash /opt/ashantihub/infra/scripts/install-hestia-templates.sh
+#
+# Never run it from the staging checkout: it installs the SPA templates from
+# whichever checkout runs it and rebuilds every domain.
 #
 # The API template is rendered once per environment because each one proxies
 # to a different port and serves media/static out of a different checkout.

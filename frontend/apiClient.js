@@ -1,3 +1,5 @@
+import { reportApiNetworkFailure, reportApiResponse } from './lib/networkStatus.js'
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 const AUTH_STORAGE_KEY = 'ashantihub.auth'
 
@@ -22,6 +24,23 @@ export function setStoredAuth(auth) {
 function authHeaders() {
   const auth = getStoredAuth()
   return auth?.token ? { Authorization: `Bearer ${auth.token}` } : {}
+}
+
+// Every API call goes through here so the network-status store (and the
+// staff OfflineBanner) learns about real connectivity: a fetch that rejects
+// has no HTTP response at all — DNS/TLS failure, dead uplink, captive portal —
+// which navigator.onLine often misses. Any response, whatever its status,
+// proves the API is reachable. The original error is rethrown unchanged.
+async function request(path, init) {
+  let response
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, init)
+  } catch (error) {
+    reportApiNetworkFailure()
+    throw error
+  }
+  reportApiResponse()
+  return response
 }
 
 async function handleResponse(response, path) {
@@ -52,7 +71,7 @@ async function handleResponse(response, path) {
 }
 
 export async function apiFetch(path) {
-  const response = await fetch(`${API_BASE_URL}${path}`, { headers: authHeaders() })
+  const response = await request(path, { headers: authHeaders() })
   return handleResponse(response, path)
 }
 
@@ -60,7 +79,7 @@ export async function apiFetch(path) {
 // auth header — which a plain <a download> can't send — and triggers a browser
 // download of the response body. Used for the sales-report CSV.
 export async function apiDownload(path, filename) {
-  const response = await fetch(`${API_BASE_URL}${path}`, { headers: authHeaders() })
+  const response = await request(path, { headers: authHeaders() })
   if (!response.ok) {
     const error = new Error(`Download of ${path} failed with status ${response.status}`)
     error.status = response.status
@@ -78,7 +97,7 @@ export async function apiDownload(path, filename) {
 }
 
 export async function apiPost(path, body) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await request(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(body),
@@ -87,7 +106,7 @@ export async function apiPost(path, body) {
 }
 
 export async function apiPatch(path, body) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await request(path, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(body),
@@ -96,7 +115,7 @@ export async function apiPatch(path, body) {
 }
 
 export async function apiPostForm(path, formData) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await request(path, {
     method: 'POST',
     headers: authHeaders(),
     body: formData,
@@ -105,7 +124,7 @@ export async function apiPostForm(path, formData) {
 }
 
 export async function apiPatchForm(path, formData) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await request(path, {
     method: 'PATCH',
     headers: authHeaders(),
     body: formData,
@@ -114,7 +133,7 @@ export async function apiPatchForm(path, formData) {
 }
 
 export async function apiDelete(path) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await request(path, {
     method: 'DELETE',
     headers: authHeaders(),
   })

@@ -80,8 +80,8 @@ function CustomerPaymentHistory({ history }) {
         <div style={{ color: D.textDim, fontSize: "0.75rem" }}>No payments yet.</div>
       ) : (
         history.map((p, i) => (
-          <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "5px 0", borderBottom: `1px solid ${D.divider}`, fontSize: "0.72rem" }}>
-            <span style={{ color: D.text }}>{p.purpose || p.kind}</span>
+          <div key={i} style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "2px 10px", padding: "5px 0", borderBottom: `1px solid ${D.divider}`, fontSize: "0.72rem" }}>
+            <span style={{ color: D.text, flex: "1 1 120px", minWidth: 0, overflowWrap: "anywhere" }}>{p.purpose || p.kind}</span>
             <span style={{ color: D.textDim, whiteSpace: "nowrap" }}>
               GHS {p.amount} • <span style={{ color: p.status === "success" ? D.green : p.status === "failed" ? D.red : D.amber }}>{p.status}</span> • {p.created_at?.slice(0, 10)}
             </span>
@@ -189,7 +189,7 @@ function UserRow({ user, config, canManage, onChanged }) {
         <div>
           <div style={{ color: D.text, fontWeight: 700, fontSize: "0.8rem", display: "flex", alignItems: "center", gap: 8 }}>
             {user.full_name}
-            {user.is_suspended && <span style={{ background: "rgba(248,113,113,0.16)", color: D.red, borderRadius: 20, padding: "1px 8px", fontSize: "0.6rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em" }}>Suspended</span>}
+            {user.is_suspended && <span style={{ background: "rgba(248,113,113,0.16)", color: D.red, borderRadius: 20, padding: "1px 8px", fontSize: "0.6rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em", whiteSpace: "nowrap" }}>Suspended</span>}
           </div>
           <div style={{ color: D.textDim, fontSize: "0.68rem" }}>{secondary}</div>
         </div>

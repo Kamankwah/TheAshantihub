@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { apiFetch } from '../apiClient.js'
 
 // GET /api/accounts/scout-assignments/ — every assignment, for the admin who
-// assigns scouts (item 11, scouts.assign). Paginated ({count, results}).
+// assigns scouts (item 11, scouts.assign). Unpaginated: a plain array.
 export function useScoutAssignments({ enabled = true } = {}) {
   return useQuery({
     queryKey: ['scout-assignments'],

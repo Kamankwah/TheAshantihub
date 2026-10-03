@@ -350,9 +350,7 @@ export const handlers = [
   }),
   // Field operations (item 11) — default handlers, overridden per-test.
   http.get('http://localhost:8000/api/accounts/scouts/', () => HttpResponse.json([])),
-  http.get('http://localhost:8000/api/accounts/scout-assignments/', () => {
-    return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
-  }),
+  http.get('http://localhost:8000/api/accounts/scout-assignments/', () => HttpResponse.json([])),
   http.post('http://localhost:8000/api/accounts/scout-assignments/', () => {
     return HttpResponse.json({ id: 1, status: 'assigned' }, { status: 201 })
   }),

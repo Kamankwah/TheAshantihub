@@ -28,7 +28,10 @@ import logoIcon from "../assets/logo/logo-icon.png";
 // the sum of item quantities. Opens CartDrawer via the setShowCart prop,
 // same boolean-flag-owned-by-AshantiHub convention as setShowNotifs/
 // setShowBizDash/etc.
-const NAV_BREAKPOINT = 760;
+// Hamburger at <=1024px; 1025-1199px is a compact inline tier (see the <style>
+// block); >=1200px is the full header. The row needs ~1,150px uncompacted.
+const NAV_BREAKPOINT = 1024;
+const COMPACT_MAX = 1199;
 const SOLIDIFY_SCROLL_Y = 60;
 
 const NAV_ITEMS = [
@@ -124,13 +127,13 @@ export default function Navbar({
 
   const UtilityActions = ({ stacked = false }) => (
     <>
-      <button onClick={act(() => setLang(l => l === "en" ? "tw" : "en"))} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.25)",borderRadius:24,padding:"8px 14px",fontSize:"0.8rem",fontWeight:700,cursor:"pointer",width:stacked?"100%":"auto"}}>
-        {lang === "en" ? "🇬🇭 Twi" : "🇬🇧 EN"}
+      <button onClick={act(() => setLang(l => l === "en" ? "tw" : "en"))} aria-label={lang === "en" ? "Switch to Twi" : "Switch to English"} title={lang === "en" ? "Switch to Twi" : "Switch to English"} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.25)",borderRadius:24,padding:"8px 14px",fontSize:"0.8rem",fontWeight:700,cursor:"pointer",width:stacked?"100%":"auto"}}>
+        {lang === "en" ? "🇬🇭" : "🇬🇧"}{" "}<span className="ah-lang-label">{lang === "en" ? "Twi" : "EN"}</span>
       </button>
       <button onClick={act(() => toggleTheme())} aria-label="Toggle theme" title="Toggle theme" style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.25)",borderRadius:24,padding:"8px 14px",fontSize:"0.8rem",fontWeight:700,cursor:"pointer",width:stacked?"100%":"auto"}}>
         {theme === "dark" ? "☀️" : "🌙"}
       </button>
-      <button onClick={act(() => setShowNotifs(n => !n))} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.25)",borderRadius:"50%",width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"1.05rem",position:"relative",flexShrink:0}}>
+      <button onClick={act(() => setShowNotifs(n => !n))} aria-label="Notifications" title="Notifications" style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.25)",borderRadius:"50%",width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"1.05rem",position:"relative",flexShrink:0}}>
         🔔
         {user && notifCount > 0 && (
           <span style={{position:"absolute",top:-6,right:-6,background:C.kente1,color:"white",borderRadius:"50%",minWidth:16,height:16,fontSize:"0.6rem",fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px"}}>{notifCount > 99 ? "99+" : notifCount}</span>
@@ -204,7 +207,7 @@ export default function Navbar({
       ) : (
         <>
           <button onClick={act(() => setAuthModal("login"))} style={{background:"transparent",color:"white",border:"1.5px solid rgba(255,255,255,0.4)",borderRadius:24,padding:"8px 16px",fontSize:"0.82rem",fontWeight:700,cursor:"pointer",width:stacked?"100%":"auto"}}>{T.login}</button>
-          <button onClick={act(() => setAuthModal("signup"))} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:24,padding:"8px 16px",fontSize:"0.82rem",fontWeight:900,cursor:"pointer",width:stacked?"100%":"auto"}}>{T.signup}</button>
+          <button className="ah-auth-signup" onClick={act(() => setAuthModal("signup"))} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:24,padding:"8px 16px",fontSize:"0.82rem",fontWeight:900,cursor:"pointer",width:stacked?"100%":"auto"}}>{T.signup}</button>
         </>
       )}
     </>
@@ -222,11 +225,11 @@ export default function Navbar({
     }}>
       <div style={{position:"absolute",top:0,left:0,right:0,height:4,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
       <div style={{maxWidth:1200,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:72,paddingTop:4,gap:16}}>
-        <div style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",flexShrink:0}} onClick={onLogoClick}>
-          <img src={logoIcon} alt="AshantiHub" style={{height:44,width:"auto",display:"block"}}/>
-          <div>
-            <div style={{color:C.gold,fontWeight:900,fontSize:"1.15rem",letterSpacing:1,lineHeight:1}}>AshantiHub</div>
-            <div style={{color:C.lightGold,fontSize:"0.56rem",letterSpacing:2,opacity:0.8}}>THE MARKETPLACE OF ASHANTI</div>
+        <div className="ah-navbar-brand" style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",flexShrink:0,minWidth:0}} onClick={onLogoClick}>
+          <img src={logoIcon} alt="AshantiHub" style={{height:44,width:"auto",display:"block",flexShrink:0}}/>
+          <div style={{minWidth:0}}>
+            <div style={{color:C.gold,fontWeight:900,fontSize:"1.15rem",letterSpacing:1,lineHeight:1,whiteSpace:"nowrap"}}>AshantiHub</div>
+            <div className="ah-navbar-tagline" style={{color:C.lightGold,fontSize:"0.56rem",letterSpacing:2,opacity:0.8}}>THE MARKETPLACE OF ASHANTI</div>
           </div>
         </div>
 
@@ -261,10 +264,19 @@ export default function Navbar({
         .ah-nav-item:hover { border-color: ${C.gold} !important; box-shadow: 0 0 0 3px ${C.gold}22; }
         @media (max-width: ${NAV_BREAKPOINT}px) {
           .ah-navbar-links, .ah-navbar-utility { display: none !important; }
+          /* Only beside the hamburger may the brand shrink (so 320px fits);
+             wider, the links row would squeeze it to nothing. */
+          .ah-navbar-brand { flex-shrink: 1 !important; }
           .ah-navbar-hamburger { display: flex !important; }
         }
         @media (min-width: ${NAV_BREAKPOINT + 1}px) {
           .ah-navbar-mobile-menu { display: none !important; }
+        }
+        /* Compact inline tier. Sign Up is dropped because the login modal
+           has a Sign In / Sign Up tab switch. !important beats inline styles. */
+        @media (min-width: ${NAV_BREAKPOINT + 1}px) and (max-width: ${COMPACT_MAX}px) {
+          .ah-navbar-tagline, .ah-lang-label, .ah-auth-signup { display: none !important; }
+          .ah-navbar-links .ah-nav-item { padding: 9px 12px !important; }
         }
       `}</style>
     </div>
