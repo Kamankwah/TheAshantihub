@@ -2,6 +2,7 @@ import '@testing-library/jest-dom'
 import { createElement } from 'react'
 import { afterAll, afterEach, beforeAll, vi } from 'vitest'
 import { server } from '../mocks/server.js'
+import { resetNetworkStatusForTests } from '../lib/networkStatus.js'
 
 // Leaflet needs a real browser (sized DOM, canvas) and doesn't render under
 // jsdom, so the two map components (item 11) are stubbed for every test. Their
@@ -46,7 +47,13 @@ if (typeof globalThis !== 'undefined' && !globalThis.ResizeObserver) {
 }
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => server.resetHandlers())
+// The network-status store is module-global: a test whose request fails with
+// HttpResponse.error() would otherwise leave every later test in the file
+// "offline" (and the staff OfflineBanner showing).
+afterEach(() => {
+  server.resetHandlers()
+  resetNetworkStatusForTests()
+})
 afterAll(() => server.close())
 
 // jsdom's window.scrollTo only logs "Not implemented". The staff shell scrolls

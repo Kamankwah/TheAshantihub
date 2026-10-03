@@ -4,6 +4,7 @@ import InstallAppButton from '../InstallAppButton.jsx'
 import UpdateToast from '../UpdateToast.jsx'
 import OfflineBanner from '../OfflineBanner.jsx'
 import { resetStaffPwaForTests, startStaffPwa } from '../../../../lib/staffPwa.js'
+import { reportApiNetworkFailure, reportApiResponse, resetNetworkStatusForTests } from '../../../../lib/networkStatus.js'
 
 afterEach(() => {
   resetStaffPwaForTests()
@@ -79,7 +80,7 @@ describe('UpdateToast', () => {
 })
 
 describe('OfflineBanner', () => {
-  afterEach(() => { delete navigator.onLine })
+  afterEach(() => { delete navigator.onLine; resetNetworkStatusForTests() })
 
   it('shows only while the browser is offline', () => {
     let online = true
@@ -89,6 +90,17 @@ describe('OfflineBanner', () => {
     act(() => { online = false; window.dispatchEvent(new Event('offline')) })
     expect(screen.getByRole('status')).toHaveTextContent("You're offline — staff actions need a connection.")
     act(() => { online = true; window.dispatchEvent(new Event('online')) })
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('shows when an API request fails at the network level even though navigator.onLine is true, and hides on the next response', () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true })
+    render(<OfflineBanner bleed={12} />)
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    act(() => reportApiNetworkFailure())
+    expect(screen.getByRole('status')).toHaveTextContent("You're offline — staff actions need a connection.")
+    expect(screen.getByRole('status')).toHaveStyle({ margin: '0 -12px' })
+    act(() => reportApiResponse())
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 })
