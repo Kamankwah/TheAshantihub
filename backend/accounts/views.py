@@ -4,7 +4,7 @@ from django.utils.crypto import get_random_string
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.pagination import PageNumberPagination
-from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
+from rest_framework.permissions import SAFE_METHODS, AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -384,11 +384,19 @@ class StaffListView(generics.ListAPIView):
 
 
 # ── Staff user-management (staff user-management tools) ─────────────────────
-# Detail/edit + suspend/unsuspend for one customer or business owner, all
-# gated by the users.manage permission (seeded onto admin/super_admin). Edit
+# Detail/edit + suspend/unsuspend for one customer or business owner. Reading
+# the detail (GET) needs only users.view — the same permission as the lists,
+# so a read-only role (support, scout) can open the View panel; every write
+# (PATCH, suspend, unsuspend) stays on users.manage (admin/super_admin). Edit
 # is a RetrieveUpdateAPIView (GET the full record, PATCH the correctable
 # identity fields); suspend/unsuspend are dedicated actions that flip
 # is_suspended and notify the affected account.
+
+
+def _users_detail_permissions(request):
+    if request.method in SAFE_METHODS:
+        return [HasRolePermission("users.view")]
+    return [HasRolePermission("users.manage")]
 
 
 class StaffCustomerDetailView(generics.RetrieveUpdateAPIView):
@@ -397,7 +405,7 @@ class StaffCustomerDetailView(generics.RetrieveUpdateAPIView):
     http_method_names = ["get", "patch"]
 
     def get_permissions(self):
-        return [HasRolePermission("users.manage")]
+        return _users_detail_permissions(self.request)
 
 
 class StaffBusinessOwnerDetailView(generics.RetrieveUpdateAPIView):
@@ -406,7 +414,7 @@ class StaffBusinessOwnerDetailView(generics.RetrieveUpdateAPIView):
     http_method_names = ["get", "patch"]
 
     def get_permissions(self):
-        return [HasRolePermission("users.manage")]
+        return _users_detail_permissions(self.request)
 
 
 class StaffCustomerSuspendView(APIView):
