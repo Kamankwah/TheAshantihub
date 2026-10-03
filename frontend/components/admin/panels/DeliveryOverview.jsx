@@ -12,6 +12,12 @@ import KpiCard from "../../dashboard/charts/KpiCard.jsx";
 // status breakdowns can only be counted from the rows actually returned, so
 // when there is a next page each breakdown tile says it covers "newest N of
 // COUNT" rather than passing a page length off as a total.
+//
+// Neither list is a live backlog: Order.status stays "paid" for good (only
+// delivery_status moves), so /delivery/ holds every paid door-to-door order
+// ever placed and /dispatch/ every assignment the courier ever had. The
+// `count` tiles are therefore labelled as all-time totals; the current
+// workload is what the per-status tiles show.
 
 const openBtn = {
   minHeight: 44, border: "none", borderRadius: 20, padding: "0 18px", background: D.gold, color: D.text,
@@ -71,7 +77,7 @@ export function DispatchOverview({ onNavigate }) {
     .slice(0, 3);
 
   const tiles = [
-    { icon: "📦", label: "Assigned to me", value: total, accent: D.gold },
+    { icon: "📦", label: "All-time assignments", value: total, accent: D.gold, sub: "every status, delivered included" },
     { icon: "⏳", label: "Awaiting pickup", value: awaiting, accent: D.amber, sub: partialSub },
     { icon: "🛵", label: "Out for delivery", value: outFor, accent: D.blue, sub: partialSub },
     { icon: "✅", label: "Delivered today", value: deliveredToday, accent: D.green, sub: partialSub },
@@ -96,6 +102,7 @@ export function DispatchOverview({ onNavigate }) {
             ))}
           </ul>
         )}
+        {partialSub && <div style={{ color: D.textFaint, fontSize: "0.68rem", marginTop: 6 }}>{`Picked from the ${partialSub}.`}</div>}
       </div>
     </Section>
   );
@@ -118,7 +125,7 @@ export function DeliveryManagerOverview({ onNavigate }) {
   const { rows, total, partialSub } = pageOf(data);
   const status = o => o.delivery_assignment?.status;
   const tiles = total === 0 ? [riderTile].filter(Boolean) : [
-    { icon: "🚚", label: "Door-to-door orders", value: total, accent: D.gold, sub: "paid, in the queue" },
+    { icon: "🚚", label: "Door-to-door orders (all time)", value: total, accent: D.gold, sub: "paid, every delivery status" },
     { icon: "📝", label: "Unassigned", value: rows.filter(o => !o.delivery_assignment).length, accent: D.amber, sub: partialSub },
     { icon: "⏳", label: "Awaiting pickup", value: rows.filter(o => status(o) === "assigned").length, accent: D.amber, sub: partialSub },
     { icon: "🛣️", label: "In transit", value: rows.filter(o => status(o) === "picked_up").length, accent: D.blue, sub: partialSub },

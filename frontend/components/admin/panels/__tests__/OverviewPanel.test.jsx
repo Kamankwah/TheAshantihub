@@ -29,6 +29,7 @@ function renderOverview(auth, onNavigate = vi.fn()) {
       <OverviewPanel auth={auth} roleColor="#E8621A" onNavigate={onNavigate} />
     </QueryClientProvider>,
   )
+  renderOverview.queryClient = queryClient
   return onNavigate
 }
 
@@ -79,8 +80,8 @@ describe('OverviewPanel — dispatch', () => {
       ],
     })))
     renderOverview(dispatchAuth())
-    await screen.findByText('Assigned to me')
-    expect(tileValue('Assigned to me')).toBe('6')
+    await screen.findByText('All-time assignments')
+    expect(tileValue('All-time assignments')).toBe('6')
     expect(tileValue('Awaiting pickup')).toBe('3')
     expect(tileValue('Out for delivery')).toBe('1')
     expect(tileValue('Delivered today')).toBe('1')
@@ -107,9 +108,36 @@ describe('OverviewPanel — dispatch', () => {
       results: [delivery(1, 'assigned'), delivery(2, 'picked_up')],
     })))
     renderOverview(dispatchAuth())
-    await screen.findByText('Assigned to me')
-    expect(tileValue('Assigned to me')).toBe('45')
+    await screen.findByText('All-time assignments')
+    expect(tileValue('All-time assignments')).toBe('45')
     expect(screen.getAllByText(/newest 2 of 45/).length).toBeGreaterThan(0)
+    // Next up is chosen from that same first page, and says so.
+    expect(screen.getByText('Picked from the newest 2 of 45.')).toBeInTheDocument()
+  })
+
+  it('has no page caption under Next up when everything fits on one page', async () => {
+    server.use(http.get('http://localhost:8000/api/orders/dispatch/', () => HttpResponse.json({
+      count: 1, next: null, previous: null, results: [delivery(1, 'assigned')],
+    })))
+    renderOverview(dispatchAuth())
+    await screen.findByRole('list', { name: 'Next up' })
+    expect(screen.queryByText(/Picked from the newest/)).not.toBeInTheDocument()
+  })
+
+  it('is not shown to a super_admin, who holds delivery.dispatch but can never be assigned a delivery', async () => {
+    let dispatchRequests = 0
+    server.use(http.get('http://localhost:8000/api/orders/dispatch/', () => {
+      dispatchRequests += 1
+      return HttpResponse.json({ count: 0, next: null, previous: null, results: [] })
+    }))
+    const auth = { ...makeAuth('super_admin', []), hasPermission: () => true }
+    renderOverview(auth)
+    // The permission-gated manager section still renders (and settles)…
+    expect(await screen.findByText('No door-to-door orders to coordinate right now.')).toBeInTheDocument()
+    // …but the dispatch one neither renders nor fetches.
+    expect(screen.queryByText('Your deliveries')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Open My Deliveries/ })).not.toBeInTheDocument()
+    expect(dispatchRequests).toBe(0)
   })
 
   it('shows an honest empty state and no zero tiles when nothing is assigned', async () => {
@@ -125,7 +153,7 @@ describe('OverviewPanel — dispatch', () => {
     server.use(http.get('http://localhost:8000/api/orders/dispatch/', () => HttpResponse.json({ detail: 'x' }, { status: 500 })))
     renderOverview(dispatchAuth())
     expect(await screen.findByText('Could not load your deliveries.')).toBeInTheDocument()
-    expect(screen.queryByText('Assigned to me')).not.toBeInTheDocument()
+    expect(screen.queryByText('All-time assignments')).not.toBeInTheDocument()
   })
 })
 
@@ -146,8 +174,8 @@ describe('OverviewPanel — delivery manager', () => {
       ])),
     )
     renderOverview(managerAuth())
-    await screen.findByText('Door-to-door orders')
-    expect(tileValue('Door-to-door orders')).toBe('5')
+    await screen.findByText('Door-to-door orders (all time)')
+    expect(tileValue('Door-to-door orders (all time)')).toBe('5')
     expect(tileValue('Unassigned')).toBe('1')
     expect(tileValue('Awaiting pickup')).toBe('1')
     expect(tileValue('In transit')).toBe('1')
@@ -177,7 +205,7 @@ describe('OverviewPanel — delivery manager', () => {
     )
     renderOverview(managerAuth())
     await screen.findByText('Unassigned')
-    await new Promise(r => setTimeout(r, 50))
+    await waitFor(() => expect(renderOverview.queryClient.getQueryState(['dispatch-staff'])?.status).toBe('error'))
     expect(screen.queryByText('Active dispatch riders')).not.toBeInTheDocument()
   })
 

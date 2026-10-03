@@ -29,7 +29,10 @@ export default function OverviewPanel({ auth, roleColor, onNavigate }) {
   const canDisputes = auth.hasPermission("disputes.flag") || auth.hasPermission("disputes.resolve_financial");
   // The delivery sections mount (and so fetch) only with the permission
   // their endpoint enforces — the same one that shows the role's nav item.
-  const canDispatch = auth.hasPermission("delivery.dispatch");
+  // Dispatch additionally needs the dispatch role: AssignDispatchView only
+  // ever assigns role=dispatch staff, so a super_admin (who holds every
+  // permission) would always get an empty section and a wasted request.
+  const canDispatch = auth.user?.role === "dispatch" && auth.hasPermission("delivery.dispatch");
   const canDeliveryManage = auth.hasPermission("delivery.manage");
 
   // React hooks can't be called conditionally, but useQuery's own `enabled`
