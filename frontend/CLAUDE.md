@@ -42,8 +42,12 @@ monolith holding most components, with extractions living in `components/`,
   registers from `lib/staffPwa.js` with `scope: "/staff"`, and the `staff.webmanifest` link is
   injected only on `/staff*` paths (`ensureStaffHead`). Never add a global `<link rel="manifest">`
   to `index.html` or `runtimeCaching` for API routes — staff data must not persist on devices.
-  Static PWA files live in `frontend/public/`. Under Vitest the plugin is off and
-  `virtual:pwa-register` is aliased to `test/stubs/pwa-register.js`.
+  Static PWA files live in `frontend/public/`. Registration lazy-imports
+  `workbox-window` inside `lib/staffPwa.js` (keeping it out of the public bundle); under Vitest
+  the service worker is off and tests inject a fake via `startStaffPwa({ createWorkbox })`.
+  Offline state comes from `lib/networkStatus.js` (`navigator.onLine` OR a network-level API
+  failure via `apiClient`'s `request()`). An accepted update reloads only the accepting tab;
+  other tabs get an "updated in another tab" notice.
 - **Staff shell breakpoints** come from `hooks/useBreakpoint.js` (phone ≤760, tablet ≤1199,
   else desktop; jsdom → desktop). Phone-only CSS lives in `components/admin/shell/
   StaffShellStyles.jsx`; `scripts/staff-layout-audit.js` is the overflow audit for every panel.

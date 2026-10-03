@@ -1,7 +1,7 @@
 # Staff PWA + Responsive Staff Dashboard — Design
 
 **Date:** 2026-10-03
-**Status:** Approved design, not yet implemented
+**Status:** Implemented 2026-10-03 (branch feature/staff-pwa)
 **Supersedes:** the open items in `docs/PWA_STAFF_DASHBOARD.md` §2–§5 (update that doc when this lands)
 
 ## 1. Goal
@@ -102,9 +102,11 @@ scrolls correctly from 320px phones up to wide desktops.
 
 ### 2.3 Registration — `frontend/lib/staffPwa.js`
 
-- Call `registerSW` from `virtual:pwa-register`. The plugin config sets `scope: "/staff"`, so the
-  generated registration is `navigator.serviceWorker.register("/sw.js", { scope: "/staff" })`.
-  This is narrower than the script's directory, which needs no `Service-Worker-Allowed` header.
+- Register lazily: `lib/staffPwa.js` does `await import("workbox-window")` only after the
+  `/staff` and service-worker-support checks, so it stays out of the public bundle, then calls
+  `new Workbox("/sw.js", { scope: "/staff" })` and `register()`. The scope is narrower than the
+  script's directory, which needs no `Service-Worker-Allowed` header. Tests inject a fake via
+  `startStaffPwa({ createWorkbox })`.
 - Register **only when `location.pathname` starts with `/staff`**. Skip registration in
   `import.meta.env.DEV` unless `devOptions.enabled` is turned on explicitly.
 - Expose a tiny store (module-level subscribe/getSnapshot, consumed via `useSyncExternalStore`)
@@ -128,8 +130,14 @@ These are components under `frontend/components/admin/` and use the inline `D` p
     try/catch.
   - It renders in the header on desktop and tablet, and in the drawer on phones.
 - **`UpdateToast`:** when `needRefresh` is true, shows "New version available" with a
-  **Reload** button that calls `updateSW(true)`. It never auto-reloads.
-- **`OfflineBanner`:** subscribes to `online`/`offline` events and `navigator.onLine`. While
+  **Reload** button that tells the waiting worker to activate. It never auto-reloads. Only the
+  tab whose Reload was pressed reloads; any other tab that ends up on the new worker shows an
+  "updated in another tab" notice and reloads when the staffer chooses. Known limit: a tab left
+  on the old build may fail to lazy-load chunks that no longer exist; reloading resolves it.
+- **`OfflineBanner`:** reads `lib/networkStatus.js`. A client is offline when `navigator.onLine`
+  is false **or** a network-level API failure occurred (`fetch` rejected with no HTTP response,
+  recorded by `apiClient`'s `request()`). The failure flag is cleared by any API response, of any
+  status, or by the window `online` event. While
   offline it shows a non-dismissable strip under the header: "You're offline — staff actions
   need a connection." There is no fabricated data and no "last synced" state, since nothing is
   cached.
@@ -141,6 +149,8 @@ These are components under `frontend/components/admin/` and use the inline `D` p
     payload, permissions included). The shell then renders with the offline banner, and panel
     queries show their normal error states.
   - This applies app-wide; customers benefit the same way.
+  - On reconnect (offline to online) `useAuth` re-fetches `/me/`, so revoked permissions or a
+    deactivated account are noticed without a reload; only 401/403 ends the session.
 - **Standalone exit:** when `isStandalone`, the header's "← Exit" button becomes **"Sign out"**
   (logout, then `/staff`, which shows the staff login). Leaving `/staff` in standalone would drop
   the user into the marketplace with browser chrome.
@@ -191,6 +201,9 @@ desktop : (min-width: 1200px)
 `useBreakpoint()` is built on `matchMedia` with change listeners. It returns `"desktop"` when
 `matchMedia` is missing or the stub reports no match. The `test/setup.js` stub returns
 `matches: false`, so existing tests see today's desktop layout.
+
+These are the **staff shell** breakpoints and are unchanged. The public `Navbar` is separate: it
+now collapses to the hamburger at <=1024px and uses a compact inline tier at 1025-1199px.
 
 ### 4.2 Layout per breakpoint
 
@@ -334,7 +347,7 @@ changes. This is a layout-only pass. `StaffDashboard.test.jsx` must pass unmodif
   - the iOS hint path
   - `OfflineBanner` toggles on `offline`/`online` events
   - `UpdateToast` calls `updateSW(true)`
-  - Mock `virtual:pwa-register` in tests.
+  - Inject a fake workbox via `startStaffPwa({ createWorkbox })` in tests.
 - **Contracts:** `StaffDashboard.test.jsx` and `BusinessDashboard.test.jsx` pass unmodified, and
   so does the full suite.
 
