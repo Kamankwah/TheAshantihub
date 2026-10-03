@@ -74,6 +74,8 @@ function detectIOS() {
 
 const initialState = () => ({ needRefresh: false, installPrompt: null, isStandalone: detectStandalone(), isIOS: detectIOS() });
 
+const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+
 let state = initialState();
 let started = false;
 let updateServiceWorker = null;
@@ -116,7 +118,19 @@ export async function startStaffPwa({ register, enableServiceWorker = import.met
   if (!register && !("serviceWorker" in navigator)) return;
   try {
     const registerSW = register ?? (await import("virtual:pwa-register")).registerSW;
-    updateServiceWorker = registerSW({ onNeedRefresh: () => setState({ needRefresh: true }) });
+    updateServiceWorker = registerSW({
+      onNeedRefresh: () => setState({ needRefresh: true }),
+      onRegisterError: (error) => console.warn("AshantiHub Staff: service worker registration failed", error),
+      // An installed app can stay open for days; the browser only re-checks
+      // /sw.js on navigation, so poll hourly to notice deploys (the
+      // UpdateToast then asks — nothing ever auto-reloads). An offline check
+      // rejects; that is expected and silently retried next hour.
+      onRegisteredSW: (_swUrl, registration) => {
+        setInterval(() => {
+          Promise.resolve(registration?.update()).catch(() => {});
+        }, UPDATE_CHECK_INTERVAL_MS);
+      },
+    });
   } catch (error) {
     console.warn("AshantiHub Staff: service worker registration failed", error);
   }

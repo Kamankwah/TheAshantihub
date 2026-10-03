@@ -91,6 +91,30 @@ describe('service worker updates', () => {
     expect(updateSW).toHaveBeenCalledWith(true)
   })
 
+  it('warns on registration errors and polls for updates hourly once registered', async () => {
+    vi.useFakeTimers()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      let options
+      const register = vi.fn((opts) => { options = opts; return vi.fn() })
+      await startStaffPwa({ register, enableServiceWorker: true })
+      const error = new Error('boom')
+      options.onRegisterError(error)
+      expect(warn).toHaveBeenCalledWith('AshantiHub Staff: service worker registration failed', error)
+      const registration = { update: vi.fn() }
+      options.onRegisteredSW('/sw.js', registration)
+      expect(registration.update).not.toHaveBeenCalled()
+      vi.advanceTimersByTime(60 * 60 * 1000)
+      expect(registration.update).toHaveBeenCalledTimes(1)
+      options.onRegisteredSW('/sw.js', undefined) // no registration: must not throw
+      vi.advanceTimersByTime(60 * 60 * 1000)
+    } finally {
+      warn.mockRestore()
+      vi.clearAllTimers()
+      vi.useRealTimers()
+    }
+  })
+
   it('is idempotent and never registers when disabled', async () => {
     const register = vi.fn(() => vi.fn())
     await startStaffPwa({ register, enableServiceWorker: false })
