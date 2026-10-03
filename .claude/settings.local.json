@@ -47,15 +47,17 @@
       "Bash(gh repo *)"
     ]
   },
-  "enabledMcpjsonServers": [
-    "magic",
-    "postgres",
-    "semgrep"
-  ],
+  "enabledMcpjsonServers": [],
   "enabledPlugins": {
     "code-review@claude-plugins-official": true,
     "superpowers@claude-plugins-official": true,
     "playwright@claude-plugins-official": true,
-    "skill-creator@claude-plugins-official": true
-  }
+    "skill-creator@claude-plugins-official": false,
+    "figma@claude-plugins-official": false
+  },
+  "disabledMcpjsonServers": [
+    "magic",
+    "postgres",
+    "semgrep"
+  ]
 }

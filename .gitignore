@@ -7,6 +7,7 @@ docs/LOCAL_NOTES_*.md
 .playwright-mcp/
 .gstack
 .cred.md
+docs/
 
 # Server-side only, written when a checkout is provisioned (see infra/README.md).
 # .deploy.conf is what tells deploy.sh whether it is deploying production or
@@ -16,4 +17,3 @@ backups/
 # Written by deploy.sh from .deploy.conf so a manual `docker compose up` gets
 # the same port and worker count a deploy would use.
 infra/compose/.env
-
