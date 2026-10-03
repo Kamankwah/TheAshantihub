@@ -214,7 +214,12 @@ function UserRow({ user, config, canManage, onChanged }) {
       {mode !== "none" && (
         <div style={{ marginTop: 12, padding: 14, background: D.panelBg2, borderRadius: 12, border: `1px solid ${D.cardBorder}` }}>
           {detail.isLoading && <div style={{ color: D.textDim, fontSize: "0.78rem" }}>Loading…</div>}
-          {detail.isError && <div style={{ color: D.red, fontSize: "0.78rem" }}>Could not load this account's details.</div>}
+          {/* The detail endpoint is gated on users.manage server-side, so a
+              users.view-only session (support, scout) gets a 403 here — say
+              so instead of reading as a broken load. */}
+          {detail.isError && <div style={{ color: D.red, fontSize: "0.78rem" }}>{detail.error?.status === 403
+            ? "Full account details need the users.manage permission — ask a super admin if you need them."
+            : "Could not load this account's details."}</div>}
           {detail.data && mode === "view" && (
             <>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0 20px" }}>
