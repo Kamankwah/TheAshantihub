@@ -73,6 +73,17 @@ describe('index.css iOS zoom guard', () => {
     const before = css.slice(0, css.indexOf(m[0]))
     expect((before.match(/\{/g) || []).length).toBe((before.match(/\}/g) || []).length)
   })
+  it('also forces 16px for iOS/iPadOS WebKit by feature query (iPad + trackpad reports pointer: fine), outside any @layer', () => {
+    const m = css.match(/@supports \(-webkit-touch-callout: none\) \{([^}]*)\}/)
+    expect(m).not.toBeNull()
+    // Same selectors as the media-query block.
+    const media = css.match(/@media \(hover: none\) and \(pointer: coarse\) \{([^}]*)\}/)
+    expect(m[1].trim()).toBe(media[1].trim())
+    const before = css.slice(0, css.indexOf(m[0]))
+    expect((before.match(/\{/g) || []).length).toBe((before.match(/\}/g) || []).length)
+    // any-pointer: coarse would also enlarge inputs on Windows touchscreen laptops.
+    expect(css.replace(/\/\*[\s\S]*?\*\//g, '')).not.toMatch(/any-pointer:\s*coarse/)
+  })
   it('does not lock viewport zoom', () => {
     expect(read('index.html')).not.toMatch(/maximum-scale|user-scalable/)
   })

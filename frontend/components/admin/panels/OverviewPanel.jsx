@@ -5,7 +5,8 @@ import { useCustomers } from "../../../hooks/useCustomers.js";
 import { useBusinessOwners } from "../../../hooks/useBusinessOwners.js";
 import { useEscrowLedger } from "../../../hooks/useEscrowLedger.js";
 import { useDisputesQueue } from "../../../hooks/useDisputesQueue.js";
-import { D, ghs } from "../theme.js";
+import { D, ghs, kpiGrid } from "../theme.js";
+import { DispatchOverview, DeliveryManagerOverview } from "./DeliveryOverview.jsx";
 import KpiCard from "../../dashboard/charts/KpiCard.jsx";
 import { RoleChip } from "../shell/StaffHeader.jsx";
 
@@ -17,13 +18,22 @@ import { RoleChip } from "../shell/StaffHeader.jsx";
 // guarding principle AdminCommandCenter.jsx's nav already applies), and
 // that KPI tile just isn't rendered when the session lacks it. This must
 // never error/500 for e.g. a support-role session with no kyc.approve.
-export default function OverviewPanel({ auth, roleColor }) {
+// `onNavigate(tabId)` is the shell's own tab switch (AdminCommandCenter's
+// selectTab), threaded down as a prop so a section can open its full panel.
+export default function OverviewPanel({ auth, roleColor, onNavigate }) {
   const canKyc = auth.hasPermission("kyc.approve");
   const canModeration = auth.hasPermission("listings.moderate");
   const canHero = auth.hasPermission("hero_media.approve");
   const canUsers = auth.hasPermission("users.view");
   const canEscrow = auth.hasPermission("escrow.view") || auth.hasPermission("escrow.release") || auth.hasPermission("escrow.refund");
   const canDisputes = auth.hasPermission("disputes.flag") || auth.hasPermission("disputes.resolve_financial");
+  // The delivery sections mount (and so fetch) only with the permission
+  // their endpoint enforces — the same one that shows the role's nav item.
+  // Dispatch additionally needs the dispatch role: AssignDispatchView only
+  // ever assigns role=dispatch staff, so a super_admin (who holds every
+  // permission) would always get an empty section and a wasted request.
+  const canDispatch = auth.user?.role === "dispatch" && auth.hasPermission("delivery.dispatch");
+  const canDeliveryManage = auth.hasPermission("delivery.manage");
 
   // React hooks can't be called conditionally, but useQuery's own `enabled`
   // flag can be — every hook below is always called, its request just never
@@ -66,10 +76,13 @@ export default function OverviewPanel({ auth, roleColor }) {
       </div>
 
       {kpis.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(178px,1fr))", gap: 12, marginBottom: 20 }}>
+        <div style={{ ...kpiGrid, marginBottom: 20 }}>
           {kpis.map(k => <KpiCard key={k.label} {...k} />)}
         </div>
       )}
+
+      {canDeliveryManage && <DeliveryManagerOverview onNavigate={onNavigate} />}
+      {canDispatch && <DispatchOverview onNavigate={onNavigate} />}
     </div>
   );
 }

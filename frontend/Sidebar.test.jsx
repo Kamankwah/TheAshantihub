@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import Sidebar from './components/Sidebar.jsx'
+import { installMatchMedia } from './test/matchMedia.js'
 
 const ZONES = [
   { id: 1, name: 'Manhyia' },
@@ -98,5 +99,34 @@ describe('Sidebar', () => {
   it('does not render a search field when onSearchChange is not passed (Events tab reuse)', () => {
     renderSidebar()
     expect(screen.queryByLabelText('Search')).not.toBeInTheDocument()
+  })
+
+  describe('phone-width closed state', () => {
+    let mm
+    afterEach(() => { mm?.restore(); mm = undefined })
+
+    it('is aria-hidden and inert while closed on a phone, so its links and fields cannot be focused', () => {
+      mm = installMatchMedia(390)
+      renderSidebar({ open: false })
+      const aside = document.querySelector('aside.ah-sidebar')
+      expect(aside).toHaveAttribute('aria-hidden', 'true')
+      expect(aside).toHaveAttribute('inert')
+    })
+
+    it('is neither aria-hidden nor inert once opened on a phone', () => {
+      mm = installMatchMedia(390)
+      renderSidebar({ open: true })
+      const aside = document.querySelector('aside.ah-sidebar')
+      expect(aside).not.toHaveAttribute('aria-hidden')
+      expect(aside).not.toHaveAttribute('inert')
+    })
+
+    it('stays exposed on desktop, where it is an always-visible column', () => {
+      mm = installMatchMedia(1280)
+      renderSidebar({ open: false })
+      const aside = document.querySelector('aside.ah-sidebar')
+      expect(aside).not.toHaveAttribute('aria-hidden')
+      expect(aside).not.toHaveAttribute('inert')
+    })
   })
 })

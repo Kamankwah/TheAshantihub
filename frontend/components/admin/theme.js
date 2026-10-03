@@ -79,3 +79,8 @@ export const STAFF_STATUS_COLORS = {
   suspended: D.red,
   deactivated: D.textFaint,
 };
+
+// Overview's KPI tile grid. `min(160px,100%)` lets a single tile shrink to the
+// column at 320px instead of forcing a horizontal scroll (DESIGN.md: KPIs
+// `minmax(160px,1fr)`).
+export const kpiGrid = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(160px,100%),1fr))", gap: 12, fontVariantNumeric: "tabular-nums" };
