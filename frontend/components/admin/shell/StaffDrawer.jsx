@@ -6,8 +6,10 @@ const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), selec
 
 // Slide-over navigation for phone/tablet: a modal dialog that locks page
 // scroll, traps Tab, closes on Escape or backdrop tap, and hands focus back to
-// whatever opened it (☰ or the bottom bar's More).
-export default function StaffDrawer({ open, onClose, children }) {
+// whatever opened it (☰ or the bottom bar's More). iOS Safari doesn't focus a
+// tapped button, so when the opener is body/gone, focus falls back to
+// `returnFocusRef` (the ☰ button).
+export default function StaffDrawer({ open, onClose, returnFocusRef, children }) {
   const panelRef = useRef(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -35,7 +37,9 @@ export default function StaffDrawer({ open, onClose, children }) {
     return () => {
       document.removeEventListener("keydown", onKeyDown);
       html.style.overflow = previousOverflow;
-      if (opener && typeof opener.focus === "function") opener.focus();
+      const usableOpener = opener && opener !== document.body && opener.isConnected && typeof opener.focus === "function";
+      const target = usableOpener ? opener : returnFocusRef?.current;
+      target?.focus?.();
     };
   }, [open]);
 

@@ -102,6 +102,10 @@ export default function AdminCommandCenter({ auth, onExit, exitLabel = "← Exit
   // (and, via its cleanup, the scroll lock).
   useEffect(() => { if (isDesktop) setDrawerOpen(false); }, [isDesktop]);
 
+  // A panel change from outside the drawer (Android back, a manifest
+  // shortcut) retires it too, so the panel never changes behind it.
+  useEffect(() => { setDrawerOpen(false); }, [activeTab]);
+
   const bottomItems = isPhone ? pickBottomBarItems(navGroups, badgeFor) : [];
 
   return (
@@ -174,7 +178,7 @@ export default function AdminCommandCenter({ auth, onExit, exitLabel = "← Exit
 
       {isPhone && <StaffBottomBar items={bottomItems} activeTab={activeTab} onSelect={selectTab} onMore={() => setDrawerOpen(true)} badgeFor={badgeFor} roleColor={roleColor} />}
 
-      <StaffDrawer open={drawerOpen && !isDesktop} onClose={() => setDrawerOpen(false)}>
+      <StaffDrawer open={drawerOpen && !isDesktop} onClose={() => setDrawerOpen(false)} returnFocusRef={menuButtonRef}>
         <div style={{ padding: "12px 8px 12px 14px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${D.divider}` }}>
           <Flag w={28} h={19} />
           <div style={{ color: D.gold, fontWeight: 900, fontSize: "0.85rem", flex: 1 }}>AshantiHub Staff</div>

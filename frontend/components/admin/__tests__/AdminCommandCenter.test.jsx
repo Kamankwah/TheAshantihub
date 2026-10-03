@@ -118,6 +118,34 @@ describe('AdminCommandCenter — phone', () => {
     expect(onExit).toHaveBeenCalled()
   })
 
+  it('closes the drawer when activeTab changes underneath it (Android back with the drawer open)', () => {
+    mm = installMatchMedia(375)
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const auth = makeAuth()
+    const tree = (activeTab) => (
+      <QueryClientProvider client={queryClient}>
+        <AdminCommandCenter auth={auth} onExit={vi.fn()} activeTab={activeTab} onTabChange={vi.fn()} />
+      </QueryClientProvider>
+    )
+    const { rerender } = render(tree('users'))
+    fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }))
+    expect(screen.getByRole('dialog', { name: 'Staff navigation' })).toBeInTheDocument()
+    rerender(tree('messaging'))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(document.documentElement.style.overflow).toBe('')
+  })
+
+  it('returns focus to the menu button when the opener was never focused (iOS taps do not focus buttons)', () => {
+    mm = installMatchMedia(375)
+    renderShell()
+    document.body.focus()
+    fireEvent.click(screen.getByRole('button', { name: 'Open navigation' })) // click without focus, as on iOS
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open navigation' })).toHaveFocus()
+  })
+
   it('closes the drawer and unlocks scroll when the viewport grows to desktop', () => {
     mm = installMatchMedia(375)
     renderShell()
