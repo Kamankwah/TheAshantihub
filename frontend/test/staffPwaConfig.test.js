@@ -41,3 +41,22 @@ describe('dead pre-PWA files', () => {
     expect(existsSync(path.join(root, 'sw.js'))).toBe(false)
   })
 })
+
+describe('hosting headers for the staff PWA', () => {
+  const vercel = JSON.parse(read('vercel.json'))
+  const headerFor = (source, key) =>
+    vercel.headers.find((h) => h.source === source)?.headers.find((x) => x.key === key)?.value
+
+  it('vercel: the service worker and manifest always revalidate', () => {
+    expect(headerFor('/sw.js', 'Cache-Control')).toBe('no-cache, must-revalidate')
+    expect(headerFor('/staff.webmanifest', 'Cache-Control')).toBe('no-cache, must-revalidate')
+    expect(headerFor('/staff.webmanifest', 'Content-Type')).toBe('application/manifest+json')
+  })
+
+  it.each(['ashantihub-spa.tpl', 'ashantihub-spa.stpl'])('nginx %s: no-cache sw.js + typed manifest, never a ^~ .well-known location', (file) => {
+    const conf = readFileSync(path.join(root, '..', 'infra', 'hestia', 'templates', file), 'utf8')
+    expect(conf).toMatch(/location = \/sw\.js \{[^}]*no-cache, must-revalidate/s)
+    expect(conf).toMatch(/location = \/staff\.webmanifest \{[^}]*application\/manifest\+json[^}]*no-cache, must-revalidate/s)
+    expect(conf).not.toMatch(/\^~\s*\/\.well-known/)
+  })
+})

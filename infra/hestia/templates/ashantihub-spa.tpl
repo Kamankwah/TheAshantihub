@@ -24,8 +24,9 @@ server {
 	# Dotfiles stay hidden, except .well-known: Hestia answers the Let's
 	# Encrypt challenge from a regex location injected through the
 	# nginx.conf_* include at the end of this block, and this deny rule
-	# must not swallow it. Do not add an "^~ /.well-known/" location
-	# either — it would outrank that regex and break renewals.
+	# must not swallow it. Never add a prefix-priority (caret-tilde)
+	# location for the .well-known path either — it would outrank that regex
+	# and break renewals.
 	location ~ /\.(?!well-known\/) {
 		deny all;
 		return 404;
@@ -46,6 +47,20 @@ server {
 	# index.html must never be cached: it names the current asset hashes,
 	# and a stale copy points the browser at files a deploy has deleted.
 	location = /index.html {
+		expires   -1;
+		add_header Cache-Control "no-cache, must-revalidate";
+	}
+
+	# Staff PWA (docs/superpowers/specs/2026-10-03-staff-pwa-responsive-design.md):
+	# the service worker and its manifest must always revalidate, or a deploy's
+	# new precache list waits on the browser's own 24h service-worker check.
+	location = /sw.js {
+		expires   -1;
+		add_header Cache-Control "no-cache, must-revalidate";
+	}
+
+	location = /staff.webmanifest {
+		default_type application/manifest+json;
 		expires   -1;
 		add_header Cache-Control "no-cache, must-revalidate";
 	}

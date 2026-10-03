@@ -43,6 +43,20 @@ server {
 		add_header Cache-Control "no-cache, must-revalidate";
 	}
 
+	# Staff PWA (docs/superpowers/specs/2026-10-03-staff-pwa-responsive-design.md):
+	# the service worker and its manifest must always revalidate, or a deploy's
+	# new precache list waits on the browser's own 24h service-worker check.
+	location = /sw.js {
+		expires   -1;
+		add_header Cache-Control "no-cache, must-revalidate";
+	}
+
+	location = /staff.webmanifest {
+		default_type application/manifest+json;
+		expires   -1;
+		add_header Cache-Control "no-cache, must-revalidate";
+	}
+
 	location /error/ {
 		alias %home%/%user%/web/%domain%/document_errors/;
 	}
