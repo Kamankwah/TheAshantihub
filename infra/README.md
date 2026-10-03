@@ -64,14 +64,26 @@ database before migrating, and fails loudly with the last 60 log lines if the
 API does not answer its health check afterwards.
 
 Production deploys (`SERVE_FRONTEND=yes`) also run
-`install-hestia-templates.sh` automatically when `infra/hestia/templates/`
-differs between the old and new checkout, so template changes (such as the
-no-cache headers for `/sw.js`) take effect without a manual step. Set
-`FORCE_TEMPLATES=1` to reinstall regardless:
-`FORCE_TEMPLATES=1 bash /opt/ashantihub/infra/scripts/deploy.sh`. Staging never
-runs the installer: it installs the SPA templates from whichever checkout runs
-it and rebuilds every domain, so running it from staging would push unreleased
-templates onto the production domain.
+`install-hestia-templates.sh` automatically when the current
+`infra/hestia/templates/` tree differs from the one recorded in the untracked
+`.templates-installed` marker at the checkout root. The marker is written only
+after a successful install, so a retry after a failed deploy still installs,
+and a missing marker (first run) installs too; installing is idempotent. This
+is how template changes (such as the no-cache headers for `/sw.js`) take effect
+without a manual step. Set `FORCE_TEMPLATES` to `1`, `yes` or `true` (any case)
+to reinstall regardless:
+`FORCE_TEMPLATES=1 bash /opt/ashantihub/infra/scripts/deploy.sh`. If the
+installer fails, the deploy exits non-zero after the app is already live; the
+on-disk vhosts may be invalid, so do not reload nginx until the templates are
+fixed and the deploy re-run.
+
+Staging never runs the installer: it installs the SPA templates from whichever
+checkout runs it and rebuilds every domain, so running it from staging would
+push unreleased templates onto the production domain. Note the reverse
+coupling: a production template install also re-renders the **staging** API
+vhost from the production checkout's `ashantihub-api.tpl.in`, so a staging
+API-template change that has not been promoted can be reverted by a production
+deploy.
 
 ## Provisioning a checkout
 

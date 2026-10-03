@@ -12,6 +12,8 @@ docs/LOCAL_NOTES_*.md
 # .deploy.conf is what tells deploy.sh whether it is deploying production or
 # staging, so it must differ per checkout and must never be committed.
 .deploy.conf
+# Written by deploy.sh: the templates tree last installed into HestiaCP.
+.templates-installed
 backups/
 # Written by deploy.sh from .deploy.conf so a manual `docker compose up` gets
 # the same port and worker count a deploy would use.
