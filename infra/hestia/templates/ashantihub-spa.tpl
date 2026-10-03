@@ -52,8 +52,11 @@ server {
 	}
 
 	# Staff PWA (docs/superpowers/specs/2026-10-03-staff-pwa-responsive-design.md):
-	# the service worker and its manifest must always revalidate, or a deploy's
-	# new precache list waits on the browser's own 24h service-worker check.
+	# belt-and-braces. Browsers already bypass the HTTP cache when checking the
+	# top-level service-worker script, so these headers are not what gets a
+	# deploy noticed; they keep proxies/CDNs from serving a stale /sw.js and
+	# make the manifest revalidate on every deploy. Like every edit here, they
+	# take effect only after re-running infra/scripts/install-hestia-templates.sh.
 	location = /sw.js {
 		expires   -1;
 		add_header Cache-Control "no-cache, must-revalidate";
