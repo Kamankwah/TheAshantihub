@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Flag from "../Flag.jsx";
 import { useStaffBadges } from "../../hooks/useStaffBadges.js";
-import { D, ROLE_ACCENTS, ROLE_BADGE_TEXT } from "./theme.js";
+import { D, ROLE_ACCENTS } from "./theme.js";
 import OverviewPanel from "./panels/OverviewPanel.jsx";
 import KYCQueuePanel from "./panels/KYCQueuePanel.jsx";
 import ListingsModerationPanel from "./panels/ListingsModerationPanel.jsx";
@@ -28,6 +28,17 @@ import DispatchPanel from "./panels/DispatchPanel.jsx";
 import MessagingPanel from "./panels/MessagingPanel.jsx";
 import PromotionsPanel from "./panels/PromotionsPanel.jsx";
 import AnalyticsPanel from "./panels/AnalyticsPanel.jsx";
+import { buildNavGroups, makeBadgeFor, isPermittedTab } from "./shell/navModel.js";
+import StaffNavList from "./shell/StaffNavList.jsx";
+import { pickBottomBarItems } from "./shell/navModel.js";
+import useBreakpoint from "../../hooks/useBreakpoint.js";
+import StaffHeader, { RoleChip } from "./shell/StaffHeader.jsx";
+import StaffDrawer from "./shell/StaffDrawer.jsx";
+import StaffBottomBar from "./shell/StaffBottomBar.jsx";
+import StaffShellStyles from "./shell/StaffShellStyles.jsx";
+import InstallAppButton from "./shell/InstallAppButton.jsx";
+import UpdateToast from "./shell/UpdateToast.jsx";
+import OfflineBanner from "./shell/OfflineBanner.jsx";
 
 // ─── Admin Command Center ─────────────────────────────────────────────────────
 // The staff dashboard's shell, restyled to match the Business Command
@@ -41,183 +52,101 @@ import AnalyticsPanel from "./panels/AnalyticsPanel.jsx";
 // No light/dark theme toggle here (a pre-approved, deliberate removal) — the
 // admin dashboard is always-dark, matching BusinessCommandCenter's convention.
 
-// Every `id`/`label`/permission-`show` check below is byte-for-byte identical
-// to App.jsx's old inline NAV_ITEMS array — StaffDashboard.test.jsx depends on
-// exact label text existing/not-existing per permission. Only the grouping is
-// new structure.
-function buildNavGroups(auth) {
-  return [
-    {
-      id: "moderation", label: "Moderation",
-      items: [
-        { id: "kyc", icon: "🪪", label: "KYC Queue", show: auth.hasPermission("kyc.approve") },
-        { id: "moderation", icon: "📋", label: "Listings Moderation", show: auth.hasPermission("listings.moderate") },
-        { id: "hero", icon: "🌟", label: "Hero Approval", show: auth.hasPermission("hero_media.approve") },
-        { id: "events-moderation", icon: "🎉", label: "Events Moderation", show: auth.hasPermission("event.approve") },
-        { id: "reviews", icon: "⭐", label: "Reviews", show: auth.hasPermission("reviews.moderate") },
-      ],
-    },
-    {
-      id: "finance", label: "Finance",
-      items: [
-        { id: "event-pricing", icon: "💵", label: "Event Pricing", show: auth.hasPermission("event_pricing.manage") || auth.hasPermission("event_pricing.approve") },
-        { id: "subscription-plans", icon: "💳", label: "Subscription Plans", show: auth.hasPermission("subscription_plans.manage") },
-        { id: "subscription-plans-approval", icon: "✅", label: "Plan Approvals", show: auth.hasPermission("subscription_plans.approve") },
-        { id: "escrow", icon: "💰", label: "Escrow Ledger", show: auth.hasPermission("escrow.view") || auth.hasPermission("escrow.release") || auth.hasPermission("escrow.refund") },
-        { id: "disputes", icon: "⚖️", label: "Disputes", show: auth.hasPermission("disputes.resolve_financial") || auth.hasPermission("disputes.flag") },
-        { id: "transactions", icon: "📈", label: "Transactions Report", show: auth.hasPermission("transactions.report") },
-        { id: "credit", icon: "💳", label: "Credit & Lending", show: auth.hasPermission("credit.manage") },
-      ],
-    },
-    {
-      id: "users-roles", label: "Users & Roles",
-      items: [
-        { id: "users", icon: "👥", label: "Users", show: auth.hasPermission("users.view") },
-        { id: "staff", icon: "🛡️", label: "Staff Management", show: auth.hasPermission("staff.manage") },
-      ],
-    },
-    {
-      id: "field-ops", label: "Field Operations",
-      items: [
-        { id: "scout-assignments", icon: "🧭", label: "Scout Assignments", show: auth.hasPermission("scouts.assign") },
-        { id: "field-verification", icon: "📋", label: "Field Verification", show: auth.hasPermission("scouts.verify") },
-        { id: "delivery-coordination", icon: "🚚", label: "Delivery Coordination", show: auth.hasPermission("delivery.manage") },
-        { id: "my-deliveries", icon: "📦", label: "My Deliveries", show: auth.hasPermission("delivery.dispatch") },
-      ],
-    },
-    {
-      id: "content", label: "Content",
-      items: [
-        { id: "categories-zones", icon: "🗂️", label: "Categories & Zones", show: auth.hasPermission("categories.manage") || auth.hasPermission("zones.manage") },
-        { id: "promotions", icon: "🎯", label: "Promotions", show: auth.hasPermission("promotions.manage") },
-        { id: "site-settings", icon: "🧭", label: "Site Settings", show: auth.hasPermission("site_settings.manage") },
-      ],
-    },
-    {
-      id: "system", label: "System",
-      items: [
-        { id: "delivery", icon: "🚚", label: "Delivery Management", show: auth.hasPermission("orders.manage_delivery") },
-        { id: "contact-messages", icon: "✉️", label: "Contact Messages", show: auth.hasPermission("contact_messages.manage") },
-        { id: "messaging", icon: "💬", label: "Messaging / Tickets", show: auth.hasPermission("messaging.manage") },
-        { id: "analytics", icon: "📊", label: "Analytics", show: auth.hasPermission("analytics.view") },
-      ],
-    },
-  ]
-    .map(group => ({ ...group, items: group.items.filter(item => item.show) }))
-    .filter(group => group.items.length > 0);
-}
-
-// Maps a nav item id → the key it reads from GET /api/notifications/
-// staff-badges/ (item 10). Only tabs with genuine pending work appear here;
-// a count > 0 renders a small badge next to that tab's label so staff see at
-// a glance which tabs need attention. The badges query polls every 60s (see
-// useStaffBadges) so newly-arrived work surfaces without a manual reload.
-const BADGE_KEY_BY_TAB = {
-  kyc: "kyc",
-  moderation: "listings",
-  hero: "hero",
-  "events-moderation": "events",
-  reviews: "reviews",
-  "subscription-plans-approval": "plan_approvals",
-  "contact-messages": "contact_messages",
-  escrow: "escrow",
-};
-
-export default function AdminCommandCenter({ auth, onExit }) {
+export default function AdminCommandCenter({ auth, onExit, exitLabel = "← Exit", activeTab: activeTabProp, onTabChange }) {
   const { data: staffBadges } = useStaffBadges();
-  const badgeFor = (tabId) => {
-    const key = BADGE_KEY_BY_TAB[tabId];
-    return key ? (staffBadges?.[key] || 0) : 0;
-  };
-  const [activeTab, setActiveTab] = useState("overview");
+  const badgeFor = makeBadgeFor(staffBadges);
+  // Controlled by App.jsx's /staff/:panel route when activeTab is passed;
+  // otherwise (StaffDashboard.test.jsx renders without a router) it owns the
+  // tab itself, exactly as before.
+  const isControlled = activeTabProp !== undefined;
+  const [internalTab, setInternalTab] = useState("overview");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [saved, setSaved] = useState(false);
+  const breakpoint = useBreakpoint();
+  const isPhone = breakpoint === "phone";
+  const isDesktop = breakpoint === "desktop";
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const menuButtonRef = useRef(null);
   const role = auth.user?.role;
   const roleColor = ROLE_ACCENTS[role] || D.gold;
   const showToast = () => { setSaved(true); setTimeout(() => setSaved(false), 2500); };
 
   const navGroups = buildNavGroups(auth);
   const allItems = navGroups.flatMap(g => g.items);
+  const requestedTab = isControlled ? activeTabProp : internalTab;
+  const activeTab = isPermittedTab(navGroups, requestedTab) ? requestedTab : "overview";
   const activeLabel = activeTab === "overview" ? "Overview" : allItems.find(i => i.id === activeTab)?.label;
 
+  // An unpermitted/unknown panel URL (or manifest shortcut) is sent back to
+  // Overview by replacing the history entry, not pushing a new one.
+  useEffect(() => {
+    if (isControlled && requestedTab !== activeTab) onTabChange?.("overview", { replace: true });
+  }, [isControlled, requestedTab, activeTab]);
+
+  const selectTab = (id) => {
+    setDrawerOpen(false);
+    if (id === activeTab) return;
+    if (isControlled) onTabChange?.(id);
+    else setInternalTab(id);
+  };
+
+  // Each panel starts at the top; skipped on first mount so a reload keeps
+  // the browser's own scroll restoration.
+  const firstTabRender = useRef(true);
+  useEffect(() => {
+    if (firstTabRender.current) { firstTabRender.current = false; return; }
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, [activeTab]);
+
+  // Rotating a tablet / widening a window to desktop retires the drawer
+  // (and, via its cleanup, the scroll lock).
+  useEffect(() => { if (isDesktop) setDrawerOpen(false); }, [isDesktop]);
+
+  // A panel change from outside the drawer (Android back, a manifest
+  // shortcut) retires it too, so the panel never changes behind it.
+  useEffect(() => { setDrawerOpen(false); }, [activeTab]);
+
+  const bottomItems = isPhone ? pickBottomBarItems(navGroups, badgeFor) : [];
+
   return (
-    <div className="shadcn-scope command-center" style={{ minHeight: "100vh", display: "flex" }}>
-      {/* Sidebar */}
-      <div style={{
-        width: sidebarCollapsed ? 60 : 240, flexShrink: 0, position: "sticky", top: 0, height: "100vh", overflowY: "auto",
-        background: "rgba(253,246,227,0.95)",
-        borderRight: `1px solid ${D.cardBorder}`, transition: "width 0.2s",
-      }}>
-        <div style={{ padding: "16px 12px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${D.divider}` }}>
-          <Flag w={28} h={19} />
-          {!sidebarCollapsed && <div style={{ color: D.gold, fontWeight: 900, fontSize: "0.85rem" }}>AshantiHub Staff</div>}
-        </div>
-        <button onClick={() => setSidebarCollapsed(s => !s)} style={{ background: "none", border: "none", color: D.textDim, cursor: "pointer", padding: "8px 12px", fontSize: "0.7rem", fontFamily: "inherit", width: "100%", textAlign: "left" }}>{sidebarCollapsed ? "→" : "← Collapse"}</button>
+    <div className="shadcn-scope command-center staff-shell" data-bp={breakpoint} style={{ display: "flex" }}>
+      <StaffShellStyles />
 
-        <nav>
-          {/* Overview — pinned, ungrouped, no permission gate */}
-          <button onClick={() => setActiveTab("overview")} style={{
-            display: "flex", alignItems: "center", gap: 10, width: "100%",
-            background: activeTab === "overview" ? `${roleColor}22` : "none",
-            border: "none", borderLeft: activeTab === "overview" ? `3px solid ${roleColor}` : "3px solid transparent",
-            color: D.text, padding: "10px 12px", fontSize: "0.78rem",
-            fontWeight: activeTab === "overview" ? 800 : 600, cursor: "pointer", textAlign: "left", fontFamily: "inherit",
-          }}>
-            <span>📊</span>{!sidebarCollapsed && <span>Overview</span>}
-          </button>
-
-          {navGroups.map(group => (
-            <div key={group.id} style={{ marginTop: 10 }}>
-              {!sidebarCollapsed && <div style={{ color: D.textFaint, fontSize: "0.6rem", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", padding: "6px 12px" }}>{group.label}</div>}
-              {group.items.map(item => {
-                const badgeCount = badgeFor(item.id);
-                return (
-                <button key={item.id} onClick={() => setActiveTab(item.id)} style={{
-                  display: "flex", alignItems: "center", gap: 10, width: "100%",
-                  background: activeTab === item.id ? `${roleColor}22` : "none",
-                  border: "none", borderLeft: activeTab === item.id ? `3px solid ${roleColor}` : "3px solid transparent",
-                  color: D.text, padding: "10px 12px", fontSize: "0.78rem",
-                  fontWeight: activeTab === item.id ? 800 : 600, cursor: "pointer", textAlign: "left", fontFamily: "inherit",
-                }}>
-                  <span style={{ position: "relative", flexShrink: 0 }}>
-                    {item.icon}
-                    {/* Collapsed sidebar: a dot on the icon since the label (and its inline badge) is hidden. */}
-                    {sidebarCollapsed && badgeCount > 0 && (
-                      <span style={{ position: "absolute", top: -4, right: -6, background: D.red, borderRadius: "50%", width: 8, height: 8 }} />
-                    )}
-                  </span>
-                  {!sidebarCollapsed && <span style={{ flex: 1 }}>{item.label}</span>}
-                  {!sidebarCollapsed && badgeCount > 0 && (
-                    <span aria-label={`${badgeCount} pending`} style={{ background: D.red, color: "#fff", borderRadius: 10, minWidth: 18, height: 18, fontSize: "0.62rem", fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px", flexShrink: 0 }}>
-                      {badgeCount > 99 ? "99+" : badgeCount}
-                    </span>
-                  )}
-                </button>
-                );
-              })}
-            </div>
-          ))}
-        </nav>
-      </div>
-
-      {/* Main column */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        {/* Header */}
-        <div style={{ background: "rgba(253,246,227,0.9)", padding: "0 20px", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 2px 12px rgba(44,24,16,0.08)", backdropFilter: "blur(8px)", borderBottom: `1px solid ${D.cardBorder}` }}>
-          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(90deg,#CC0000 33%,#D4A017 33%,#D4A017 66%,#006400 66%)" }} />
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 60, gap: 10 }}>
-            <div style={{ color: D.text, fontWeight: 800, fontSize: "0.9rem" }}>{activeLabel}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <span style={{ background: roleColor, color: ROLE_BADGE_TEXT[role] || "#fff", borderRadius: 20, padding: "3px 10px", fontSize: "0.62rem", fontWeight: 800, textTransform: "capitalize" }}>{role?.replace("_", " ")}</span>
-              <span style={{ color: D.text, fontSize: "0.78rem", fontWeight: 700, whiteSpace: "nowrap" }}>{auth.user?.full_name}</span>
-              <button onClick={onExit} style={{ background: "rgba(44,24,16,0.05)", border: `1px solid ${D.divider}`, color: D.textDim, borderRadius: 20, padding: "5px 13px", fontSize: "0.68rem", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>← Exit</button>
-            </div>
+      {/* Sidebar — full/collapsible on desktop, a fixed 64px icon rail on tablet, absent on phone */}
+      {!isPhone && (
+        <div className="staff-sidebar" style={{
+          width: isDesktop ? (sidebarCollapsed ? 60 : 240) : 64, flexShrink: 0, position: "sticky", top: 0, overflowY: "auto", overscrollBehavior: "contain",
+          // Landscape notch (spec §4.4): content-box so the left inset widens
+          // the rail instead of squeezing its 64px of icons.
+          boxSizing: "content-box", paddingLeft: "env(safe-area-inset-left, 0px)",
+          background: "rgba(253,246,227,0.95)",
+          borderRight: `1px solid ${D.cardBorder}`, transition: "width 0.2s",
+        }}>
+          <div style={{ padding: "16px 12px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${D.divider}` }}>
+            <Flag w={28} h={19} />
+            {isDesktop && !sidebarCollapsed && <div style={{ color: D.gold, fontWeight: 900, fontSize: "0.85rem" }}>AshantiHub Staff</div>}
           </div>
+          {isDesktop && <button onClick={() => setSidebarCollapsed(s => !s)} style={{ background: "none", border: "none", color: D.textDim, cursor: "pointer", padding: "8px 12px", fontSize: "0.7rem", fontFamily: "inherit", width: "100%", textAlign: "left" }}>{sidebarCollapsed ? "→" : "← Collapse"}</button>}
+          <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={selectTab} collapsed={!isDesktop || sidebarCollapsed} badgeFor={badgeFor} roleColor={roleColor} />
         </div>
+      )}
 
-        {saved && <div style={{ position: "fixed", top: 74, right: 20, background: D.green, color: "#fff", borderRadius: 12, padding: "10px 18px", fontSize: "0.8rem", fontWeight: 800, zIndex: 999, boxShadow: "0 6px 24px rgba(0,100,0,0.28)" }}>✓ Saved!</div>}
+      {/* Main column — carries the right landscape inset, and the left one
+          on phone where there is no sidebar to absorb it (spec §4.4). */}
+      <div style={{ flex: 1, minWidth: 0, paddingRight: "env(safe-area-inset-right, 0px)", ...(isPhone ? { paddingLeft: "env(safe-area-inset-left, 0px)" } : {}) }}>
+        <StaffHeader title={activeLabel} role={role} roleColor={roleColor} fullName={auth.user?.full_name}
+          onExit={onExit} exitLabel={exitLabel} breakpoint={breakpoint}
+          onOpenMenu={() => setDrawerOpen(true)} menuButtonRef={menuButtonRef} drawerOpen={drawerOpen}
+          actions={isPhone ? null : <InstallAppButton variant="header" />}>
+          <OfflineBanner bleed={isPhone ? 12 : 20} />
+        </StaffHeader>
 
-        <div style={{ padding: "22px 20px 72px" }}>
+        {saved && <div role="status" style={{
+          position: "fixed", zIndex: 999, background: D.green, color: "#fff", borderRadius: 12, padding: "10px 18px", fontSize: "0.8rem", fontWeight: 800, boxShadow: "0 6px 24px rgba(0,100,0,0.28)",
+          ...(isPhone ? { left: 12, right: 12, bottom: "calc(80px + env(safe-area-inset-bottom, 0px))", textAlign: "center" } : { top: 74, right: 20 }),
+        }}>✓ Saved!</div>}
+
+        <main className="staff-content" style={{ padding: isPhone ? "16px 12px calc(88px + env(safe-area-inset-bottom, 0px))" : "22px 20px 72px" }}>
           {activeTab === "overview" && <OverviewPanel auth={auth} roleColor={roleColor} />}
           {activeTab === "kyc" && <KYCQueuePanel />}
           {activeTab === "moderation" && <ListingsModerationPanel />}
@@ -244,8 +173,30 @@ export default function AdminCommandCenter({ auth, onExit }) {
           {activeTab === "promotions" && <PromotionsPanel auth={auth} />}
           {activeTab === "analytics" && <AnalyticsPanel />}
           {activeTab === "messaging" && <MessagingPanel />}
-        </div>
+        </main>
       </div>
+
+      {isPhone && <StaffBottomBar items={bottomItems} activeTab={activeTab} onSelect={selectTab} onMore={() => setDrawerOpen(true)} badgeFor={badgeFor} roleColor={roleColor} />}
+
+      <StaffDrawer open={drawerOpen && !isDesktop} onClose={() => setDrawerOpen(false)} returnFocusRef={menuButtonRef}>
+        <div style={{ padding: "12px 8px 12px 14px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${D.divider}` }}>
+          <Flag w={28} h={19} />
+          <div style={{ color: D.gold, fontWeight: 900, fontSize: "0.85rem", flex: 1 }}>AshantiHub Staff</div>
+          <button type="button" aria-label="Close navigation" onClick={() => setDrawerOpen(false)} style={{ minWidth: 44, minHeight: 44, background: "none", border: "none", color: D.textDim, fontSize: "1.1rem", cursor: "pointer", fontFamily: "inherit" }}>✕</button>
+        </div>
+        <div style={{ padding: "12px 14px", borderBottom: `1px solid ${D.divider}`, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ color: D.text, fontWeight: 800, fontSize: "0.85rem" }}>{auth.user?.full_name}</span>
+            <RoleChip role={role} roleColor={roleColor} />
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <InstallAppButton variant="drawer" />
+            <button type="button" onClick={onExit} style={{ minHeight: 44, background: "rgba(44,24,16,0.05)", border: `1px solid ${D.divider}`, color: D.text, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{exitLabel}</button>
+          </div>
+        </div>
+        <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={selectTab} collapsed={false} badgeFor={badgeFor} roleColor={roleColor} itemMinHeight={44} />
+      </StaffDrawer>
+      <UpdateToast bottomOffset={isPhone ? "calc(80px + env(safe-area-inset-bottom, 0px))" : 20} />
     </div>
   );
 }

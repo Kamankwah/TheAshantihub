@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw'
 import { afterEach, describe, expect, it } from 'vitest'
 import { server } from '../../mocks/server.js'
 import { setStoredAuth } from '../../apiClient.js'
+import { getNetworkStatus, reportApiNetworkFailure, reportApiResponse } from '../../lib/networkStatus.js'
 import { useAuth } from '../useAuth.js'
 
 afterEach(() => setStoredAuth(null))
@@ -34,6 +35,33 @@ describe('useAuth', () => {
     const { result } = renderHook(() => useAuth())
     await waitFor(() => expect(result.current.isLoading).toBe(false))
     expect(result.current.user).toBeNull()
+  })
+
+  it('keeps the stored session when /me/ fails with a network error (offline launch)', async () => {
+    const stored = { token: 'abc123', account_type: 'staff', id: 1, full_name: 'Akosua', permissions: ['users.view'] }
+    setStoredAuth(stored)
+    server.use(http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.error()))
+    const { result } = renderHook(() => useAuth())
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.user).toEqual(stored)
+    expect(JSON.parse(localStorage.getItem('ashantihub.auth'))).toEqual(stored)
+  })
+
+  it('keeps the stored session when /me/ fails with a server error', async () => {
+    setStoredAuth({ token: 'abc123', account_type: 'customer', id: 1, full_name: 'Ama' })
+    server.use(http.get('http://localhost:8000/api/accounts/me/', () => new HttpResponse(null, { status: 500 })))
+    const { result } = renderHook(() => useAuth())
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.user).toMatchObject({ token: 'abc123', full_name: 'Ama' })
+  })
+
+  it('clears a stored token that /me/ forbids', async () => {
+    setStoredAuth({ token: 'abc123', account_type: 'staff', id: 1, full_name: 'Akosua' })
+    server.use(http.get('http://localhost:8000/api/accounts/me/', () => new HttpResponse(null, { status: 403 })))
+    const { result } = renderHook(() => useAuth())
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.user).toBeNull()
+    expect(localStorage.getItem('ashantihub.auth')).toBeNull()
   })
 
   it('login stores and returns the authenticated user', async () => {
@@ -253,5 +281,85 @@ describe('hasPermission', () => {
       await result.current.login('customer', '+233241234567', 'secret')
     })
     expect(result.current.hasPermission('messaging.manage')).toBe(false)
+  })
+})
+
+describe('re-checks /me/ when connectivity returns', () => {
+  const stored = { token: 'abc123', account_type: 'staff', id: 1, full_name: 'Akosua', permissions: ['users.view'] }
+
+  async function launchOffline() {
+    setStoredAuth(stored)
+    let calls = 0
+    const responses = []
+    server.use(http.get('http://localhost:8000/api/accounts/me/', () => {
+      calls += 1
+      const next = responses.shift()
+      return next ? next() : HttpResponse.error()
+    }))
+    const hook = renderHook(() => useAuth())
+    await waitFor(() => expect(hook.result.current.isLoading).toBe(false))
+    expect(hook.result.current.user).toEqual(stored)
+    expect(getNetworkStatus().offline).toBe(true)
+    return { hook, responses, calls: () => calls }
+  }
+
+  it('re-fetches /me/ on the offline → online transition and merges the new payload into user + storage', async () => {
+    const { hook, responses, calls } = await launchOffline()
+    expect(calls()).toBe(1)
+    responses.push(() => HttpResponse.json({ account_type: 'staff', id: 1, full_name: 'Akosua', permissions: ['users.view', 'kyc.review'] }))
+    act(() => reportApiResponse())
+    await waitFor(() => expect(hook.result.current.user.permissions).toEqual(['users.view', 'kyc.review']))
+    expect(calls()).toBe(2)
+    expect(hook.result.current.user).toEqual({ ...stored, permissions: ['users.view', 'kyc.review'] })
+    expect(JSON.parse(localStorage.getItem('ashantihub.auth'))).toEqual({ ...stored, permissions: ['users.view', 'kyc.review'] })
+  })
+
+  it('also re-checks on the window online event', async () => {
+    const { hook, responses, calls } = await launchOffline()
+    responses.push(() => HttpResponse.json({ account_type: 'staff', id: 1, full_name: 'Akosua A.', permissions: [] }))
+    act(() => { window.dispatchEvent(new Event('online')) })
+    await waitFor(() => expect(hook.result.current.user.full_name).toBe('Akosua A.'))
+    expect(calls()).toBe(2)
+  })
+
+  it('ends the session when the re-check is forbidden', async () => {
+    const { hook, responses } = await launchOffline()
+    responses.push(() => new HttpResponse(null, { status: 403 }))
+    act(() => reportApiResponse())
+    await waitFor(() => expect(hook.result.current.user).toBeNull())
+    expect(localStorage.getItem('ashantihub.auth')).toBeNull()
+  })
+
+  it('keeps the session when the re-check fails with a server error', async () => {
+    const { hook, responses, calls } = await launchOffline()
+    responses.push(() => new HttpResponse(null, { status: 500 }))
+    act(() => reportApiResponse())
+    await waitFor(() => expect(calls()).toBe(2))
+    await act(async () => {})
+    expect(hook.result.current.user).toEqual(stored)
+    expect(JSON.parse(localStorage.getItem('ashantihub.auth'))).toEqual(stored)
+  })
+
+  it('does not re-check without a transition, or without a stored session', async () => {
+    // Online the whole time: a later response is not a transition.
+    setStoredAuth(stored)
+    let calls = 0
+    server.use(http.get('http://localhost:8000/api/accounts/me/', () => { calls += 1; return HttpResponse.json({ account_type: 'staff' }) }))
+    const { result, unmount } = renderHook(() => useAuth())
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => reportApiResponse())
+    await act(async () => {})
+    expect(calls).toBe(1)
+    unmount()
+
+    // Signed out: a transition does not call /me/.
+    setStoredAuth(null)
+    calls = 0
+    const second = renderHook(() => useAuth())
+    await waitFor(() => expect(second.result.current.isLoading).toBe(false))
+    act(() => reportApiNetworkFailure())
+    act(() => reportApiResponse())
+    await act(async () => {})
+    expect(calls).toBe(0)
   })
 })

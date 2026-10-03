@@ -11,6 +11,13 @@
 # reverse — by mistyping a flag.
 #
 # The database is dumped before migrations run. That dump is the rollback.
+#
+# Production (SERVE_FRONTEND=yes) also reinstalls the HestiaCP nginx templates
+# when they differ from the last installed tree (recorded in the untracked
+# .templates-installed marker; a missing marker reinstalls). Set FORCE_TEMPLATES
+# to 1, yes or true (any case) to reinstall regardless:
+#
+#   FORCE_TEMPLATES=1 bash /opt/ashantihub/infra/scripts/deploy.sh
 set -euo pipefail
 
 # This script git-resets the very checkout it lives in, and bash reads a
@@ -68,6 +75,40 @@ ENVVARS
 COMPOSE=(docker compose -p "$PROJECT" -f "$APP_DIR/infra/compose/docker-compose.yml")
 
 log() { printf '\n\033[1;33m==> %s\033[0m\n' "$*"; }
+
+# Marker recording which infra/hestia/templates/ tree was last installed into
+# HestiaCP (untracked, written only after a successful install). Comparing
+# against it, rather than diffing OLD_SHA..NEW_SHA, survives a failed deploy:
+# the reset to origin/$BRANCH happens early, so on the retry OLD_SHA == NEW_SHA
+# and a diff would silently skip templates that were never installed.
+TEMPLATES_MARKER="$APP_DIR/.templates-installed"
+
+# Succeeds (0) when the HestiaCP templates must be (re)installed: FORCE_TEMPLATES
+# is 1/yes/true (any case), the marker is missing (safe default: the install is
+# idempotent), or the marker differs from the current templates tree. Returns 1
+# for "nothing to do". A git failure aborts the deploy rather than being read as
+# "unchanged", which would silently ship a promotion without its nginx changes.
+templates_changed() {
+	case "${FORCE_TEMPLATES:-}" in
+		1 | [Yy][Ee][Ss] | [Tt][Rr][Uu][Ee]) return 0 ;;
+	esac
+	local tree
+	tree="$(git -C "$APP_DIR" rev-parse HEAD:infra/hestia/templates)" || {
+		echo "FATAL: cannot resolve the infra/hestia/templates tree hash." >&2
+		exit 1
+	}
+	[[ -f "$TEMPLATES_MARKER" && "$(cat "$TEMPLATES_MARKER")" == "$tree" ]] && return 1
+	return 0
+}
+
+# Runs the installer and, only if it succeeds, records the installed tree.
+install_templates() {
+	bash "$APP_DIR/infra/scripts/install-hestia-templates.sh" || {
+		echo "FATAL: nginx template install failed AFTER the app and frontend went live. nginx is still serving its previous config from memory, but the on-disk vhosts may now be invalid — do NOT reload nginx. Fix infra/hestia/templates/, then re-run this deploy (the missing/stale .templates-installed marker makes it reinstall automatically) or set FORCE_TEMPLATES=1." >&2
+		exit 1
+	}
+	git -C "$APP_DIR" rev-parse HEAD:infra/hestia/templates >"$TEMPLATES_MARKER"
+}
 
 log "Deploying $ENV_NAME from origin/$BRANCH ($APP_DIR)"
 
@@ -146,6 +187,19 @@ if [[ "${SERVE_FRONTEND:-no}" == "yes" ]]; then
 	mkdir -p "$WEB_ROOT"
 	rsync -a --delete "$APP_DIR/frontend/dist/" "$WEB_ROOT/"
 	chown -R "$WEB_USER":"$WEB_USER" "$WEB_ROOT"
+
+	# Templates only take effect once installed into HestiaCP, so a template
+	# change (e.g. the no-cache headers for /sw.js) would otherwise ship silently
+	# inert. This lives in the SERVE_FRONTEND branch on purpose: the installer
+	# copies the SPA templates from whichever checkout runs it and rebuilds every
+	# domain, so running it from staging (whose frontend is on Vercel) would push
+	# unreleased templates onto the production domain.
+	if templates_changed; then
+		log "Reinstalling HestiaCP nginx templates (changed since the last install)"
+		install_templates
+	else
+		log "HestiaCP nginx templates unchanged; skipping reinstall"
+	fi
 fi
 
 log "Removing unused images"

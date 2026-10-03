@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
-import { BrowserRouter, MemoryRouter } from 'react-router-dom'
-import { describe, expect, it } from 'vitest'
+import { BrowserRouter, MemoryRouter, useLocation } from 'react-router-dom'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import AshantiHub from './App.jsx'
 import { setStoredAuth } from './apiClient.js'
 import { server } from './mocks/server.js'
@@ -451,4 +451,147 @@ describe('AshantiHub routing — /payment/return', () => {
     },
     8000,
   )
+})
+
+function LocationProbe() {
+  const location = useLocation()
+  return <div data-testid="location">{location.pathname}</div>
+}
+
+function renderStaffAt(path) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[path]}>
+        <AshantiHub />
+        <LocationProbe />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
+
+function signInStaff(permissions) {
+  setStoredAuth({ token: 'test-token', account_type: 'staff', id: 1, full_name: 'Akosua Support' })
+  server.use(
+    http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({
+      account_type: 'staff', id: 1, full_name: 'Akosua Support', role: 'support', permissions,
+    })),
+  )
+}
+
+const staffNav = () => screen.findByRole('navigation', { name: 'Staff panels' }, { timeout: 3000 })
+
+describe('AshantiHub routing — /staff/:panel', () => {
+  afterEach(() => setStoredAuth(null))
+
+  it('mounting at /staff/users opens the Users panel for a permitted staffer', async () => {
+    signInStaff(['messaging.manage', 'users.view'])
+    renderStaffAt('/staff/users')
+    expect(within(await staffNav()).getByRole('button', { name: /Users/ })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByTestId('location')).toHaveTextContent('/staff/users')
+  }, 8000)
+
+  it('an unpermitted panel falls back to Overview and replaces the URL with /staff', async () => {
+    signInStaff(['messaging.manage'])
+    renderStaffAt('/staff/kyc')
+    expect(await screen.findByText(/Akwaaba, Akosua/i, {}, { timeout: 3000 })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/staff'))
+  }, 8000)
+
+  it('an unknown panel id falls back the same way', async () => {
+    signInStaff(['messaging.manage'])
+    renderStaffAt('/staff/not-a-panel')
+    expect(await screen.findByText(/Akwaaba, Akosua/i, {}, { timeout: 3000 })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/staff'))
+  }, 8000)
+
+  it('clicking a nav item pushes /staff/<panel>, and Overview goes back to /staff', async () => {
+    signInStaff(['messaging.manage', 'users.view'])
+    renderStaffAt('/staff')
+    fireEvent.click(within(await staffNav()).getByRole('button', { name: /Users/ }))
+    expect(screen.getByTestId('location').textContent).toBe('/staff/users')
+    fireEvent.click(within(await staffNav()).getByRole('button', { name: /Overview/ }))
+    expect(screen.getByTestId('location').textContent).toBe('/staff')
+  }, 8000)
+
+  it('a signed-out visit to /staff/users opens staff sign-in instead of a 404', async () => {
+    renderStaffAt('/staff/users')
+    expect(await screen.findByText('Staff Sign In', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.getByTestId('location').textContent).toBe('/staff/users')
+  }, 8000)
+
+  it('/staff/activate still renders the activation page, not a panel', async () => {
+    renderStaffAt('/staff/activate?token=abc')
+    expect(await screen.findByText('Activate Your Staff Account', {}, { timeout: 3000 })).toBeInTheDocument()
+  }, 8000)
+
+  it('links the staff manifest on staff paths; Exit to / removes it', async () => {
+    signInStaff(['messaging.manage', 'users.view'])
+    renderStaffAt('/staff/users')
+    await staffNav()
+    expect(document.head.querySelector('link[rel="manifest"]')).toHaveAttribute('href', '/staff.webmanifest')
+    fireEvent.click(screen.getByRole('button', { name: '← Exit' }))
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
+    await waitFor(() => expect(document.head.querySelector('link[rel="manifest"]')).toBeNull())
+  }, 8000)
+})
+
+// Inside the installed staff app (display-mode: standalone) there is no
+// marketplace to fall back to: Sign out stays on the staff URL with the staff
+// sign-in open, wipes the previous staffer's cached panel data, and the
+// sign-in can't be dismissed into the marketplace home.
+describe('AshantiHub — installed staff app (standalone display)', () => {
+  let originalMatchMedia
+  afterEach(() => {
+    setStoredAuth(null)
+    if (originalMatchMedia) window.matchMedia = originalMatchMedia
+    originalMatchMedia = undefined
+  })
+
+  function stubStandalone() {
+    originalMatchMedia = window.matchMedia
+    window.matchMedia = (query) => ({
+      media: query,
+      matches: query === '(display-mode: standalone)',
+      addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {},
+    })
+  }
+
+  it('Sign out stays on /staff/users, clears cached queries, and the staff sign-in cannot be dismissed', async () => {
+    stubStandalone()
+    signInStaff(['messaging.manage', 'users.view'])
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const clearSpy = vi.spyOn(queryClient, 'clear')
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/staff/users']}>
+          <AshantiHub />
+          <LocationProbe />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    await staffNav()
+    const signOut = screen.getByRole('button', { name: 'Sign out' })
+    fireEvent.click(signOut)
+    expect(clearSpy).toHaveBeenCalled()
+    expect(await screen.findByText('Staff Sign In', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.getByTestId('location').textContent).toBe('/staff/users')
+
+    // The ✕ close control must not drop the staffer into the marketplace.
+    fireEvent.click(within(screen.getByTestId('auth-modal-backdrop')).getByRole('button', { name: '✕' }))
+    await waitFor(() => expect(screen.getByText('Staff Sign In')).toBeInTheDocument())
+    // Nor must a backdrop tap.
+    fireEvent.click(screen.getByTestId('auth-modal-backdrop'))
+    await waitFor(() => expect(screen.getByText('Staff Sign In')).toBeInTheDocument())
+    expect(screen.getByTestId('location').textContent).toBe('/staff/users')
+  }, 10000)
+
+  it('a signed-out launch of the installed app keeps the staff sign-in up after dismissal', async () => {
+    stubStandalone()
+    renderStaffAt('/staff')
+    expect(await screen.findByText('Staff Sign In', {}, { timeout: 3000 })).toBeInTheDocument()
+    fireEvent.click(within(screen.getByTestId('auth-modal-backdrop')).getByRole('button', { name: '✕' }))
+    await waitFor(() => expect(screen.getByText('Staff Sign In')).toBeInTheDocument())
+    expect(screen.getByTestId('location').textContent).toBe('/staff')
+  }, 10000)
 })

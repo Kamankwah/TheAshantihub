@@ -31,7 +31,8 @@ export default function ScoutAssignmentsPanel() {
     }
   };
 
-  const rows = assignments.data?.results || [];
+  // Unpaginated endpoint: a plain array (not a DRF envelope).
+  const rows = Array.isArray(assignments.data) ? assignments.data : assignments.data?.results ?? [];
 
   return (
     <div>

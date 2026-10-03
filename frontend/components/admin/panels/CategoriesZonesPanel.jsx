@@ -168,7 +168,7 @@ export default function CategoriesZonesPanel({ auth }) {
   return (
     <div>
       {actionError && <div style={{ color: D.red, fontSize: "0.8rem", marginBottom: 10 }}>{actionError}</div>}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 16 }}>
         <div style={{ ...glassCard, padding: 18 }}>
           <div style={{ color: D.text, fontWeight: 800, fontSize: "0.88rem", marginBottom: 12 }}>Categories</div>
 
@@ -191,11 +191,11 @@ export default function CategoriesZonesPanel({ auth }) {
                 <input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="New category label" style={{ ...inputStyle, flex: 1, minWidth: 120 }} aria-label="New category label" />
                 <input type="color" value={newColor} onChange={e => setNewColor(e.target.value)} style={{ width: 32, height: 30, padding: 0, border: `1.5px solid ${D.cardBorder}`, borderRadius: 8, background: D.panelBg2 }} aria-label="New category color" />
               </div>
-              <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center" }}>
-                <select value={newKind} onChange={e => setNewKind(e.target.value)} style={inputStyle} aria-label="New category kind">
+              <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <select value={newKind} onChange={e => setNewKind(e.target.value)} style={{ ...inputStyle, flex: "1 1 120px", minWidth: 0 }} aria-label="New category kind">
                   {CREATE_KINDS.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
                 </select>
-                <button onClick={addCategory} style={goldBtn}>Add category</button>
+                <button onClick={addCategory} style={{ ...goldBtn, flexShrink: 0 }}>Add category</button>
               </div>
               {newKind === "accommodation" && (
                 <div style={{ color: D.textFaint, fontSize: "0.66rem", marginTop: 6 }}>
@@ -211,9 +211,9 @@ export default function CategoriesZonesPanel({ auth }) {
           {(zones.data || []).map(z => (
             <div key={z.id} style={{ padding: "6px 0", color: D.text, fontSize: "0.8rem" }}>{z.name}</div>
           ))}
-          {canManageZones && <div style={{ marginTop: 12, display: "flex", gap: 6 }}>
-            <input value={newZoneName} onChange={e => setNewZoneName(e.target.value)} placeholder="New zone name" style={{ ...inputStyle, flex: 1 }} />
-            <button onClick={addZone} style={goldBtn}>Add zone</button>
+          {canManageZones && <div style={{ marginTop: 12, display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <input value={newZoneName} onChange={e => setNewZoneName(e.target.value)} placeholder="New zone name" style={{ ...inputStyle, flex: "1 1 140px", minWidth: 0 }} />
+            <button onClick={addZone} style={{ ...goldBtn, flexShrink: 0 }}>Add zone</button>
           </div>}
         </div>
       </div>

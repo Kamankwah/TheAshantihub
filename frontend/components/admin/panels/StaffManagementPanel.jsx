@@ -55,7 +55,7 @@ function PermissionEditor({ staff, roleCodenames, onDone }) {
       {catalog.isLoading && <div style={{ color: D.textDim, fontSize: "0.75rem" }}>Loading permissions…</div>}
       {catalog.isError && <div style={{ color: D.red, fontSize: "0.75rem" }}>Could not load the permission list.</div>}
       {catalog.data && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "2px 16px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(260px, 100%), 1fr))", gap: "2px 16px" }}>
           {catalog.data.map(p => {
             const fromRole = roleCodenames.has(p.codename);
             return (
@@ -131,8 +131,8 @@ function StaffRow({ staff, onResend, resent, resending, onChanged }) {
       {actionError && <div style={{ color: D.red, fontSize: "0.75rem", marginTop: 6 }}>{actionError}</div>}
 
       {suspending && !isSuspended && (
-        <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
-          <input value={suspendReason} onChange={e => setSuspendReason(e.target.value)} placeholder="Reason for suspension" style={{ flex: 1, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
+        <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <input value={suspendReason} onChange={e => setSuspendReason(e.target.value)} placeholder="Reason for suspension" style={{ flex: "1 1 160px", minWidth: 0, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
           <button onClick={() => act("suspend", { reason: suspendReason })} disabled={!suspendReason} style={{ ...pillBtn, background: D.red, color: "#fff", cursor: suspendReason ? "pointer" : "default" }}>Confirm suspend</button>
         </div>
       )}
