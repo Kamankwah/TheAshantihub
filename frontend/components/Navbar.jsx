@@ -222,10 +222,10 @@ export default function Navbar({
     }}>
       <div style={{position:"absolute",top:0,left:0,right:0,height:4,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
       <div style={{maxWidth:1200,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:72,paddingTop:4,gap:16}}>
-        <div style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",flexShrink:1,minWidth:0}} onClick={onLogoClick}>
+        <div className="ah-navbar-brand" style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",flexShrink:0,minWidth:0}} onClick={onLogoClick}>
           <img src={logoIcon} alt="AshantiHub" style={{height:44,width:"auto",display:"block",flexShrink:0}}/>
           <div style={{minWidth:0}}>
-            <div style={{color:C.gold,fontWeight:900,fontSize:"1.15rem",letterSpacing:1,lineHeight:1}}>AshantiHub</div>
+            <div style={{color:C.gold,fontWeight:900,fontSize:"1.15rem",letterSpacing:1,lineHeight:1,whiteSpace:"nowrap"}}>AshantiHub</div>
             <div style={{color:C.lightGold,fontSize:"0.56rem",letterSpacing:2,opacity:0.8}}>THE MARKETPLACE OF ASHANTI</div>
           </div>
         </div>
@@ -261,6 +261,9 @@ export default function Navbar({
         .ah-nav-item:hover { border-color: ${C.gold} !important; box-shadow: 0 0 0 3px ${C.gold}22; }
         @media (max-width: ${NAV_BREAKPOINT}px) {
           .ah-navbar-links, .ah-navbar-utility { display: none !important; }
+          /* Only beside the hamburger may the brand shrink (so 320px fits);
+             wider, the links row would squeeze it to nothing. */
+          .ah-navbar-brand { flex-shrink: 1 !important; }
           .ah-navbar-hamburger { display: flex !important; }
         }
         @media (min-width: ${NAV_BREAKPOINT + 1}px) {
