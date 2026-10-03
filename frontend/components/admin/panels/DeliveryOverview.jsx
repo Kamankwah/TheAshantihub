@@ -119,7 +119,7 @@ export function DeliveryManagerOverview({ onNavigate }) {
   const status = o => o.delivery_assignment?.status;
   const tiles = total === 0 ? [riderTile].filter(Boolean) : [
     { icon: "🚚", label: "Door-to-door orders", value: total, accent: D.gold, sub: "paid, in the queue" },
-    { icon: "📝", label: "Unassigned", value: rows.filter(o => !o.delivery_assignment).length, accent: D.red, sub: partialSub },
+    { icon: "📝", label: "Unassigned", value: rows.filter(o => !o.delivery_assignment).length, accent: D.amber, sub: partialSub },
     { icon: "⏳", label: "Awaiting pickup", value: rows.filter(o => status(o) === "assigned").length, accent: D.amber, sub: partialSub },
     { icon: "🛣️", label: "In transit", value: rows.filter(o => status(o) === "picked_up").length, accent: D.blue, sub: partialSub },
     { icon: "✅", label: "Delivered today", value: rows.filter(o => isToday(o.delivery_assignment?.delivered_at)).length, accent: D.green, sub: partialSub },
