@@ -1,4 +1,5 @@
 import { C, optionStyle } from "../theme.js";
+import useBreakpoint from "../hooks/useBreakpoint.js";
 
 // ─── Sidebar ────────────────────────────────────────────────────────────────
 // Reusable browse-filter sidebar for the Business tab grid (and, per
@@ -43,6 +44,10 @@ export default function Sidebar({
   search,
   onSearchChange,
 }) {
+  // On a phone the closed panel is parked off-canvas; it must also be out of
+  // the accessibility tree and the tab order (aria-hidden + inert), not just
+  // out of sight. On desktop it is an always-visible column, so never hidden.
+  const hiddenOffCanvas = useBreakpoint() === "phone" && !open;
   return (
     <>
       <div
@@ -53,6 +58,8 @@ export default function Sidebar({
       <aside
         className={`ah-sidebar${open ? " ah-sidebar-open" : ""}`}
         aria-label="Filter businesses"
+        aria-hidden={hiddenOffCanvas ? "true" : undefined}
+        inert={hiddenOffCanvas || undefined}
         style={{
           background: C.darkBrown,
           border: `1px solid ${C.gold}33`,
@@ -233,10 +240,21 @@ export default function Sidebar({
             overflow-y: auto;
             z-index: 999;
             transform: translateX(100%);
-            transition: transform 250ms ease-out;
+            /* Closed: slide out, then (once the slide has finished) go
+               visibility:hidden so the parked panel can't be painted, hit,
+               focused or widen iOS Safari's zoomable area. */
+            visibility: hidden;
+            transition: transform 250ms ease-out, visibility 0s linear 250ms;
           }
-          .ah-sidebar.ah-sidebar-open { transform: translateX(0); }
+          .ah-sidebar.ah-sidebar-open {
+            transform: translateX(0);
+            visibility: visible;
+            transition: transform 250ms ease-out, visibility 0s linear 0s;
+          }
           .ah-sidebar-close { display: inline-flex !important; align-items: center; justify-content: center; }
+        }
+        @media (max-width: 760px) and (prefers-reduced-motion: reduce) {
+          .ah-sidebar, .ah-sidebar.ah-sidebar-open { transition: none; }
         }
         @media (min-width: 761px) {
           .ah-sidebar-backdrop { display: none !important; }

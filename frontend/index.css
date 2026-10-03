@@ -231,3 +231,17 @@
   select,
   textarea { font-size: 16px !important; }
 }
+
+/* Same guard, second trigger. An iPad with a trackpad or mouse attached
+   reports `hover: hover` / `pointer: fine`, so it escapes the media query
+   above, yet Safari still zooms on focus. `-webkit-touch-callout` is
+   supported only by iOS/iPadOS WebKit, so this feature query targets exactly
+   that engine whatever pointer is attached. Both blocks are needed: the
+   media query is what covers Android. (Not `any-pointer: coarse` — that would
+   also enlarge inputs on Windows touchscreen laptops.) Top level, outside
+   every @layer, for the same reason as above. */
+@supports (-webkit-touch-callout: none) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  select,
+  textarea { font-size: 16px !important; }
+}

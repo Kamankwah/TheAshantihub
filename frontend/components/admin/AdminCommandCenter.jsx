@@ -147,7 +147,7 @@ export default function AdminCommandCenter({ auth, onExit, exitLabel = "← Exit
         }}>✓ Saved!</div>}
 
         <main className="staff-content" style={{ padding: isPhone ? "16px 12px calc(88px + env(safe-area-inset-bottom, 0px))" : "22px 20px 72px" }}>
-          {activeTab === "overview" && <OverviewPanel auth={auth} roleColor={roleColor} />}
+          {activeTab === "overview" && <OverviewPanel auth={auth} roleColor={roleColor} onNavigate={selectTab} />}
           {activeTab === "kyc" && <KYCQueuePanel />}
           {activeTab === "moderation" && <ListingsModerationPanel />}
           {activeTab === "hero" && <HeroApprovalPanel />}
