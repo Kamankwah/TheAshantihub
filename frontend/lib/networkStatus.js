@@ -76,6 +76,9 @@ export function useNetworkStatus() {
   return useSyncExternalStore(subscribeNetworkStatus, getNetworkStatus, getServerSnapshot);
 }
 
+// Silent on purpose: notifying here would look like an offline → online
+// transition to any still-mounted subscriber (useAuth's /me/ re-check) and
+// fire requests after the test's MSW handlers were reset.
 export function resetNetworkStatusForTests() {
   if (typeof window !== "undefined") {
     window.removeEventListener("online", onOnline);
@@ -85,5 +88,4 @@ export function resetNetworkStatusForTests() {
   navigatorOnline = true;
   apiUnreachable = false;
   snapshot = ONLINE;
-  listeners.forEach((listener) => listener());
 }
