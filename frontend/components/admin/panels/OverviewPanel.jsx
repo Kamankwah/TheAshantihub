@@ -7,6 +7,7 @@ import { useEscrowLedger } from "../../../hooks/useEscrowLedger.js";
 import { useDisputesQueue } from "../../../hooks/useDisputesQueue.js";
 import { D, ghs } from "../theme.js";
 import KpiCard from "../../dashboard/charts/KpiCard.jsx";
+import { RoleChip } from "../shell/StaffHeader.jsx";
 
 // Overview tab — a real KPI dashboard (mirroring BusinessCommandCenter's
 // AnalyticsPanel), replacing the old greeting-only content. Overview has no
@@ -59,7 +60,9 @@ export default function OverviewPanel({ auth, roleColor }) {
     <div>
       <h2 style={{ color: D.text, fontWeight: 900, margin: "0 0 6px", fontSize: "1.1rem" }}>Akwaaba, {auth.user?.full_name?.split(" ")[0]}!</h2>
       <div style={{ color: D.textDim, fontSize: "0.8rem", marginBottom: 20 }}>
-        You're signed in as <span style={{ color: roleColor, fontWeight: 800, textTransform: "capitalize" }}>{auth.user?.role?.replace("_", " ")}</span>.
+        {/* The role renders as the same chip as the header — as bare text in
+            roleColor, gold/deep-gold/orange on cream were only 2.2–3.1:1. */}
+        You're signed in as <RoleChip role={auth.user?.role} roleColor={roleColor} />.
       </div>
 
       {kpis.length > 0 && (

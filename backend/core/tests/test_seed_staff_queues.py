@@ -39,6 +39,14 @@ class SeedStaffQueuesTests(TestCase):
         self.assertIn("DEBUG", str(ctx.exception))
         self.assertFalse(BusinessOwner.objects.filter(login_phone="+233209100001").exists())
 
+    @override_settings(DEBUG=False)
+    def test_seed_dev_data_refuses_to_run_without_debug(self):
+        with self.assertRaises(CommandError) as ctx:
+            call_command("seed_dev_data", stdout=StringIO())
+        self.assertIn("DEBUG", str(ctx.exception))
+        self.assertFalse(StaffUser.objects.filter(email="accountant.staff@theashantihub.com").exists())
+        self.assertFalse(Customer.objects.filter(email="ama@example.com").exists())
+
     @override_settings(DEBUG=True)
     def test_requires_seed_dev_data_first(self):
         with self.assertRaises(CommandError) as ctx:
@@ -109,3 +117,32 @@ class SeedStaffQueuesTests(TestCase):
         call_command("seed_staff_queues", stdout=StringIO())
         after = {m.__name__: m.objects.count() for m in models}
         self.assertEqual(before, after)
+
+    @override_settings(DEBUG=True)
+    def test_every_staff_role_has_a_loggable_seeded_user_with_its_role_permissions(self):
+        # super_admin is create_super_admin-only (single-bootstrap rule); the
+        # dev seeds cover every other role. Together they give one account per
+        # role for auditing the staff dashboard as that role.
+        from django.contrib.auth.hashers import check_password
+
+        from accounts.models import Role
+        from core.management.commands.seed_dev_data import DEV_PASSWORD
+
+        call_command(
+            "create_super_admin", full_name="Seed Super", email="super.seed@example.com",
+            password=DEV_PASSWORD, stdout=StringIO(),
+        )
+        _seed()
+        for role_name, _label in Role.NAME_CHOICES:
+            with self.subTest(role=role_name):
+                role = Role.objects.get(name=role_name)
+                loggable = StaffUser.objects.filter(
+                    role=role, is_active=True, is_suspended=False, invite_token__isnull=True,
+                )
+                self.assertTrue(loggable.exists(), f"no loggable seeded staffer for {role_name}")
+                staff = loggable.first()
+                self.assertTrue(check_password(DEV_PASSWORD, staff.password_hash))
+                # The role mapping, not a hand-picked set: no per-staffer overrides.
+                role_codenames = set(role.permissions.values_list("codename", flat=True))
+                self.assertTrue(role_codenames, f"{role_name} has no permissions seeded")
+                self.assertEqual(staff.effective_permission_codenames(), role_codenames)

@@ -28,7 +28,7 @@ export default function StaffShellStyles() {
 .staff-shell[data-bp="phone"] .staff-content input:not([type="checkbox"]):not([type="radio"]),
 .staff-shell[data-bp="phone"] .staff-content select,
 .staff-shell[data-bp="phone"] .staff-content textarea {
-  font-size: 16px !important; min-height: 44px; max-width: 100%; box-sizing: border-box;
+  min-height: 44px; max-width: 100%; box-sizing: border-box;
 }
 .staff-shell[data-bp="phone"] .staff-content img,
 .staff-shell[data-bp="phone"] .staff-content video { max-width: 100%; height: auto; }

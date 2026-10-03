@@ -9,12 +9,19 @@ rule).
 
 Every seeded account shares the password below so a developer can log in
 as any of them from the frontend.
+
+Safety: refuses to run unless settings.DEBUG is True (same guard as
+seed_staff_queues, no override flag). It creates staff with real money
+permissions (e.g. an accountant holding escrow.release/escrow.refund) under
+a password published in this file, so it must never run against staging or
+production.
 """
 from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth.hashers import make_password
-from django.core.management.base import BaseCommand
+from django.conf import settings
+from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from accounts.models import (
@@ -36,9 +43,16 @@ CUSTOMERS = [
     ("Yaa Asantewaa", "yaa@example.com", "+233240000003"),
 ]
 
+# One active, loggable staffer per office role, each holding exactly its role's
+# migration-seeded permission set (no extra/revoked overrides) so the staff
+# dashboard can be checked as every role. The field roles (scout, dispatch,
+# delivery_manager) are seeded by `seed_staff_queues`, which also gives them
+# queue rows; super_admin stays `create_super_admin`-only.
 STAFF = [
     ("Akosua Support", "support@theashantihub.com", "support"),
     ("Kwame Admin", "admin.staff@theashantihub.com", "admin"),
+    ("Yaw Accountant", "accountant.staff@theashantihub.com", "accountant"),
+    ("Esi Marketing", "marketing.staff@theashantihub.com", "marketing"),
 ]
 
 # (full_name, login_phone, email, business_kind, ghana_card, gps_address)
@@ -120,9 +134,14 @@ EVENTS = [
 
 
 class Command(BaseCommand):
-    help = "Seed the local database with sample customers, staff, business owners, listings and events."
+    help = "DEV ONLY (requires DEBUG=True): seed the local database with sample customers, staff, business owners, listings and events."
 
     def handle(self, *args, **options):
+        if not settings.DEBUG:
+            raise CommandError(
+                "seed_dev_data is a development-only command and refuses to run with "
+                "DEBUG=False. It must never touch staging or production data."
+            )
         now = timezone.now()
         password_hash = make_password(DEV_PASSWORD)
         created = {"customers": 0, "staff": 0, "owners": 0, "listings": 0, "events": 0}

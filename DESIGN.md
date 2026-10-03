@@ -62,6 +62,7 @@ one deliberate pairing across the whole app.
   - `#E8621A` orange (`C.orange`) → **warning / pending**.
 - **Chart series (`--chart-1..5`):** gold, green, navy, purple `#6B4E8E`, deep gold/amber. (`#6B4E8E` is the one non-`C` hex — chart variety only, no purple in the brand.)
 - **Draft/neutral:** `#8A7A6B` (warm gray, listing "draft" status — the other non-`C` hex).
+- **Staff role accents** (`components/admin/theme.js` `ROLE_ACCENTS`, the role chip + active-nav mark) reuse palette tokens — super admin = gold, admin = kente navy, accountant = kente red, marketing = kente green, support = `ghGreen`, scout = dark brown, delivery manager = deep gold, dispatch = orange — and **identify a role, not a status**: a red accountant chip is not an error, an orange dispatch chip is not "pending".
 - **Borders:** gold at low opacity — `#D4A01733` light / `#D4A01740` dark.
 - **Dark mode:** already defined in `index.css` `.dark` — page `#160E08` (`C.void`), text `#F5DEB3`, cards `#2C1810`, same gold primary. Toggle lives on the public Navbar only; dashboards are always-light by design.
 
