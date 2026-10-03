@@ -31,6 +31,7 @@ from django.conf import settings
 from django.contrib.auth.hashers import make_password
 from django.core.files.base import ContentFile
 from django.core.management.base import BaseCommand, CommandError
+from django.db import transaction
 from django.utils import timezone
 
 from accounts.models import (
@@ -72,6 +73,18 @@ LONG_REASON = (
 REQUIRED_CUSTOMER_EMAILS = ["ama@example.com", "kofi@example.com", "yaa@example.com"]
 REQUIRED_OWNER_PHONES = ["+233200000001", "+233200000002", "+233200000003", "+233200000004"]
 REQUIRED_STAFF_EMAILS = ["support@theashantihub.com", "admin.staff@theashantihub.com"]
+# (owner login_phone, listing name) — seed_dev_data listings this command builds on.
+REQUIRED_LISTINGS = [
+    ("+233200000001", "Golden Tulip Kumasi City"),
+    ("+233200000001", "Kumasi Airport Shuttle"),
+    ("+233200000002", "Bonwire Kente Weavers"),
+    ("+233200000002", "Adum Electronics Hub"),
+    ("+233200000002", "Kejetia Fresh Market Basket"),
+    ("+233200000003", "Auntie Muni Waakye"),
+    ("+233200000003", "Royal Asante Wedding Planners"),
+    ("+233200000004", "Adum Central Pharmacy"),
+]
+REQUIRED_EVENTS = ["Kumasi Highlife Night"]
 
 
 def _png(color=(201, 162, 39)):
@@ -98,8 +111,25 @@ class Command(BaseCommand):
         self.now = timezone.now()
         self.password_hash = make_password(DEV_PASSWORD)
         self.created = {}
-        self._load_prerequisites()
+        # One transaction for the whole run: several idempotency keys (a
+        # Transaction/CheckoutSession reference) are written before the rows
+        # that depend on them, so a mid-way failure must leave nothing behind
+        # rather than a key a re-run would treat as "already seeded".
+        with transaction.atomic():
+            self._seed_all()
 
+        summary = ", ".join(f"{n} {k}" for k, n in self.created.items() if n) or "nothing new"
+        self.stdout.write(self.style.SUCCESS(f"Seeded staff queues: {summary}."))
+        self.stdout.write(
+            "Skipped by design: Categories & Zones and Site Settings (migration/singleton data); "
+            "pending/failed Hubtel checkout states (payments are simulated); the super admin's own "
+            "Field Verification / My Deliveries rows (only scout/dispatch-role staff can be assigned "
+            f"— sign in as scout.seed@theashantihub.com or dispatch.seed@theashantihub.com, password "
+            f"{DEV_PASSWORD}, to see those queues)."
+        )
+
+    def _seed_all(self):
+        self._load_prerequisites()
         self._seed_staff()
         self._seed_customers()
         self._seed_kyc_owners()
@@ -119,16 +149,6 @@ class Command(BaseCommand):
         self._seed_contact_messages()
         self._seed_conversations()
 
-        summary = ", ".join(f"{n} {k}" for k, n in self.created.items() if n) or "nothing new"
-        self.stdout.write(self.style.SUCCESS(f"Seeded staff queues: {summary}."))
-        self.stdout.write(
-            "Skipped by design: Categories & Zones and Site Settings (migration/singleton data); "
-            "pending/failed Hubtel checkout states (payments are simulated); the super admin's own "
-            "Field Verification / My Deliveries rows (only scout/dispatch-role staff can be assigned "
-            f"— sign in as scout.seed@theashantihub.com or dispatch.seed@theashantihub.com, password "
-            f"{DEV_PASSWORD}, to see those queues)."
-        )
-
     # ── helpers ─────────────────────────────────────────────────────────────
 
     def _count(self, key, was_created):
@@ -142,10 +162,15 @@ class Command(BaseCommand):
             [e for e in REQUIRED_CUSTOMER_EMAILS if e not in customers]
             + [p for p in REQUIRED_OWNER_PHONES if p not in owners]
             + [e for e in REQUIRED_STAFF_EMAILS if e not in staff]
+            + [
+                f"listing '{name}'" for phone, name in REQUIRED_LISTINGS
+                if not Listing.objects.filter(business_owner__login_phone=phone, name=name).exists()
+            ]
+            + [f"event '{name}'" for name in REQUIRED_EVENTS if not Event.objects.filter(name=name).exists()]
         )
         if missing:
             raise CommandError(
-                "seed_dev_data's accounts are missing (" + ", ".join(missing) + "). "
+                "seed_dev_data's rows are missing (" + ", ".join(missing) + "). "
                 "Run `python manage.py seed_dev_data` first, then re-run seed_staff_queues."
             )
         self.ama = customers["ama@example.com"]
@@ -960,7 +985,9 @@ class Command(BaseCommand):
 
         def loan(owner, lender, amount, purpose, status=LoanApplication.SUBMITTED, notes=""):
             score, _ = compute_naive_credit_score(owner)
-            final = status in LoanApplication.FINAL_STATUSES or status == LoanApplication.UNDER_REVIEW
+            # Only a terminal decision records a reviewer (credit/views.py's
+            # LoanApplicationReviewView); under_review is triage, not a decision.
+            final = status in LoanApplication.FINAL_STATUSES
             _, created = LoanApplication.objects.get_or_create(
                 business_owner=owner, purpose=purpose,
                 defaults={

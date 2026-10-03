@@ -46,6 +46,28 @@ class SeedStaffQueuesTests(TestCase):
         self.assertIn("seed_dev_data", str(ctx.exception))
 
     @override_settings(DEBUG=True)
+    def test_requires_seed_dev_data_listings_and_events(self):
+        call_command("seed_dev_data", stdout=StringIO())
+        Listing.objects.filter(name="Adum Electronics Hub").delete()
+        with self.assertRaises(CommandError) as ctx:
+            call_command("seed_staff_queues", stdout=StringIO())
+        self.assertIn("Adum Electronics Hub", str(ctx.exception))
+        self.assertIn("seed_dev_data", str(ctx.exception))
+        # Atomic and checked up front: nothing was written.
+        self.assertFalse(BusinessOwner.objects.filter(login_phone="+233209100001").exists())
+
+    @override_settings(DEBUG=True)
+    def test_only_terminal_loan_decisions_record_a_reviewer(self):
+        _seed()
+        under_review = LoanApplication.objects.get(status=LoanApplication.UNDER_REVIEW)
+        self.assertIsNone(under_review.reviewed_by)
+        self.assertIsNone(under_review.reviewed_at)
+        for loan in LoanApplication.objects.filter(status__in=LoanApplication.FINAL_STATUSES):
+            self.assertIsNotNone(loan.reviewed_by)
+        for loan in LoanApplication.objects.filter(status=LoanApplication.SUBMITTED):
+            self.assertIsNone(loan.reviewed_by)
+
+    @override_settings(DEBUG=True)
     def test_populates_representative_pending_queues(self):
         _seed()
         self.assertGreaterEqual(BusinessOwner.objects.filter(kyc_status=BusinessOwner.PENDING).count(), 3)
