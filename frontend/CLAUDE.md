@@ -51,7 +51,9 @@ monolith holding most components, with extractions living in `components/`,
   must be read as `data?.results` (`useReviewsModerationQueue`, `useContactMessagesQueue`,
   `useDeliveryQueue`, `useEscrowLedger`, `useDisputesQueue`, `useStaffMessagingQueue`); their
   siblings (`useModerationQueue`, `useHeroModerationQueue`, `useOrders`, `useMyEvents`,
-  `useMyConversations`) return a plain array. Check the backing view before assuming.
+  `useMyConversations`, `useScoutAssignments`, `useScouts`, `useMyScoutAssignments`) return a
+  plain array (`ScoutAssignmentsPanel` once read `.results` on one and always showed "No
+  assignments yet"). Check the backing view before assuming.
   `ModerationQueueTabs`' `itemsOf()` normalizes both, so panels on that shell don't care.
 - **Leaflet does not render under jsdom.** `DeliveryRouteMap.jsx` and `LocationPicker.jsx` are
   `vi.mock`-stubbed globally in `test/setup.js`; their real behaviour is only ever verified
