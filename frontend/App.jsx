@@ -58,6 +58,7 @@ import { D, glassCard, ghs } from "./components/dashboard/theme.js";
 import KpiCard from "./components/dashboard/charts/KpiCard.jsx";
 import ChartFrame from "./components/dashboard/charts/ChartFrame.jsx";
 import { ensureStaffHead, isStaffPathname, isStandaloneDisplay, startStaffPwa } from "./lib/staffPwa.js";
+import { subjectLine } from "./lib/conversationSubject.js";
 import SpendAreaChart from "./components/dashboard/charts/SpendAreaChart.jsx";
 import ListingsDonut from "./components/dashboard/charts/ListingsDonut.jsx";
 
@@ -488,7 +489,7 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
       if (activeConv) {
         await apiPost(`/api/messaging/conversations/${activeConv.id}/messages/`, { body: newMessage, ...guestFields });
       } else {
-        const subject = initialBusiness ? `Re: ${initialBusiness.name}` : "";
+        const subject = initialBusiness ? subjectLine(initialBusiness.name) : "";
         const created = await apiPost(`/api/messaging/conversations/`, { subject, body: newMessage, ...guestFields });
         setActiveConvId(created.id);
       }
@@ -577,7 +578,7 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
                       <span style={{fontWeight:800,fontSize:"0.78rem",color:C.darkBrown,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>AshantiHub Support</span>
                       <span style={{fontSize:"0.6rem",color:"#aaa",flexShrink:0,marginLeft:4}}>{formatConvTime(lastMsg?.created_at||conv.updated_at)}</span>
                     </div>
-                    {conv.subject&&<div style={{fontSize:"0.64rem",color:C.deepGold,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>Re: {conv.subject}</div>}
+                    {conv.subject&&<div style={{fontSize:"0.64rem",color:C.deepGold,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:2}}>{subjectLine(conv.subject)}</div>}
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                       <span style={{fontSize:"0.68rem",color:"#888",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{lastMsg?.body||"No messages yet"}</span>
                       {attention&&<span style={{width:10,height:10,borderRadius:"50%",background:C.kente2,flexShrink:0,marginLeft:4}}/>}
@@ -619,7 +620,7 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
                 </div>
                 <div style={{flex:1}}>
                   <div style={{fontWeight:900,fontSize:"0.88rem",color:C.darkBrown}}>AshantiHub Support</div>
-                  <div style={{fontSize:"0.68rem",color:C.deepGold,fontWeight:700,marginBottom:1}}>{activeConv?.subject ? `Re: ${activeConv.subject}` : "New conversation"}</div>
+                  <div style={{fontSize:"0.68rem",color:C.deepGold,fontWeight:700,marginBottom:1}}>{activeConv?.subject ? subjectLine(activeConv.subject) : "New conversation"}</div>
                   {/* "Starts once staff replies" status (messaging fixes work) —
                       an open conversation with zero staff messages yet is
                       waiting, not "online"; a brand-new (no activeConv at all)

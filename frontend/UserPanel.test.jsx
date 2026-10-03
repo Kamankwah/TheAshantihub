@@ -191,6 +191,26 @@ describe('UserPanel', () => {
       expect(screen.getAllByText('Re: Royal Ashanti Lodge').length).toBeGreaterThan(0)
     })
 
+    it('shows exactly one "Re:" when the stored subject already starts with "Re:"', async () => {
+      // Starting a chat from a business stores subject "Re: <name>"; the UI
+      // used to prefix again and render "Re: Re: <name>".
+      Element.prototype.scrollIntoView = vi.fn()
+      server.use(
+        http.get('http://localhost:8000/api/messaging/conversations/', () => HttpResponse.json([
+          {
+            id: 1, customer: 1, business_owner: null, starter_name: 'Ama Boateng', subject: 'Re: Royal Ashanti Lodge', status: 'open',
+            messages: [{ id: 1, conversation: 1, sender_type: 'staff', body: 'We checked availability for you!', created_at: '2026-07-01T10:00:00Z' }],
+            created_at: '2026-07-01T09:00:00Z', updated_at: '2026-07-01T10:00:00Z',
+          },
+        ])),
+      )
+      renderPanel()
+      fireEvent.click(screen.getAllByText('Messages')[0])
+      await screen.findByText('We checked availability for you!')
+      expect(screen.getAllByText('Re: Royal Ashanti Lodge').length).toBeGreaterThan(0)
+      expect(screen.queryByText(/Re:\s*Re:/i)).not.toBeInTheDocument()
+    })
+
     it('replying within an existing conversation posts to /messages/ and refetches', async () => {
       Element.prototype.scrollIntoView = vi.fn()
       let replyBody = null
