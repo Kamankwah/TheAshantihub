@@ -36,6 +36,33 @@ describe('useAuth', () => {
     expect(result.current.user).toBeNull()
   })
 
+  it('keeps the stored session when /me/ fails with a network error (offline launch)', async () => {
+    const stored = { token: 'abc123', account_type: 'staff', id: 1, full_name: 'Akosua', permissions: ['users.view'] }
+    setStoredAuth(stored)
+    server.use(http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.error()))
+    const { result } = renderHook(() => useAuth())
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.user).toEqual(stored)
+    expect(JSON.parse(localStorage.getItem('ashantihub.auth'))).toEqual(stored)
+  })
+
+  it('keeps the stored session when /me/ fails with a server error', async () => {
+    setStoredAuth({ token: 'abc123', account_type: 'customer', id: 1, full_name: 'Ama' })
+    server.use(http.get('http://localhost:8000/api/accounts/me/', () => new HttpResponse(null, { status: 500 })))
+    const { result } = renderHook(() => useAuth())
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.user).toMatchObject({ token: 'abc123', full_name: 'Ama' })
+  })
+
+  it('clears a stored token that /me/ forbids', async () => {
+    setStoredAuth({ token: 'abc123', account_type: 'staff', id: 1, full_name: 'Akosua' })
+    server.use(http.get('http://localhost:8000/api/accounts/me/', () => new HttpResponse(null, { status: 403 })))
+    const { result } = renderHook(() => useAuth())
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.user).toBeNull()
+    expect(localStorage.getItem('ashantihub.auth')).toBeNull()
+  })
+
   it('login stores and returns the authenticated user', async () => {
     server.use(
       http.post('http://localhost:8000/api/accounts/customers/login/', () => {

@@ -19,9 +19,18 @@ export function useAuth() {
     }
     apiFetch('/api/accounts/me/')
       .then((me) => setUser({ ...stored, ...me }))
-      .catch(() => {
-        setStoredAuth(null)
-        setUser(null)
+      .catch((error) => {
+        // Only an auth rejection ends the session. A network failure (no
+        // `.status` — e.g. the installed staff app opened offline) or a server
+        // error keeps the stored session, which already holds the last /me/
+        // payload (login merges it in), so the app can render and show its
+        // own offline/error states instead of silently signing the user out.
+        if (error?.status === 401 || error?.status === 403) {
+          setStoredAuth(null)
+          setUser(null)
+        } else {
+          setUser(stored)
+        }
       })
       .finally(() => setIsLoading(false))
   }, [])
