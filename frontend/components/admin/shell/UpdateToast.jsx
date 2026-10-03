@@ -8,7 +8,7 @@ export default function UpdateToast({ bottomOffset = 20 }) {
   const { needRefresh } = useStaffPwa();
   const [postponed, setPostponed] = useState(false);
   if (!needRefresh || postponed) return null;
-  const buttonBase = { minHeight: 40, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 800, cursor: "pointer", fontFamily: "inherit" };
+  const buttonBase = { minHeight: 44, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 800, cursor: "pointer", fontFamily: "inherit" };
   return (
     <div role="status" style={{
       position: "fixed", left: 12, right: 12, bottom: bottomOffset, margin: "0 auto", maxWidth: 440, zIndex: 300,
