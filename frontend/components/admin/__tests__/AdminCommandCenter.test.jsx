@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import AdminCommandCenter from '../AdminCommandCenter.jsx'
+import { installMatchMedia } from '../../../test/matchMedia.js'
 
 const PERMS = ['messaging.manage', 'disputes.flag', 'users.view']
 export function makeAuth() {
@@ -63,5 +64,93 @@ describe('AdminCommandCenter — tab control', () => {
   it('uses the exitLabel prop for the exit button', () => {
     renderShell({ exitLabel: 'Sign out' })
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+  })
+})
+
+describe('AdminCommandCenter — phone', () => {
+  let mm
+  afterEach(() => { mm?.restore(); document.documentElement.style.overflow = '' })
+
+  it('replaces the sidebar with a bottom bar of Overview, three panels and More', () => {
+    mm = installMatchMedia(375)
+    renderShell()
+    expect(screen.queryByRole('navigation', { name: 'Staff panels' })).not.toBeInTheDocument()
+    const bar = screen.getByRole('navigation', { name: 'Quick navigation' })
+    const labels = within(bar).getAllByRole('button').map((b) => b.textContent)
+    expect(labels).toEqual(['📊Overview', '⚖️Disputes', '👥Users', '💬Messaging / Tickets', '☰More'])
+  })
+
+  it('opens the drawer from the header, locks scroll, and closes + restores focus on selection', () => {
+    mm = installMatchMedia(375)
+    renderShell()
+    const menu = screen.getByRole('button', { name: 'Open navigation' })
+    menu.focus()
+    fireEvent.click(menu)
+    const dialog = screen.getByRole('dialog', { name: 'Staff navigation' })
+    expect(document.documentElement.style.overflow).toBe('hidden')
+    fireEvent.click(within(dialog).getByRole('button', { name: /Users/ }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(document.documentElement.style.overflow).toBe('')
+    expect(menu).toHaveFocus()
+  })
+
+  it('opens the drawer from More and closes it on Escape and on backdrop tap', () => {
+    mm = installMatchMedia(375)
+    renderShell()
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Quick navigation' })).getByRole('button', { name: /More/ }))
+    expect(screen.getByRole('dialog', { name: 'Staff navigation' })).toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }))
+    fireEvent.click(screen.getByTestId('staff-drawer-backdrop'))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('shows the staffer name and exit action inside the drawer, not the header', () => {
+    mm = installMatchMedia(375)
+    const onExit = vi.fn()
+    renderShell({ onExit })
+    expect(screen.queryByText('Akosua Support')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }))
+    const dialog = screen.getByRole('dialog', { name: 'Staff navigation' })
+    expect(within(dialog).getByText('Akosua Support')).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: '← Exit' }))
+    expect(onExit).toHaveBeenCalled()
+  })
+
+  it('closes the drawer and unlocks scroll when the viewport grows to desktop', () => {
+    mm = installMatchMedia(375)
+    renderShell()
+    fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    act(() => mm.resize(1440))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(document.documentElement.style.overflow).toBe('')
+    expect(screen.getByRole('navigation', { name: 'Staff panels' })).toBeInTheDocument()
+  })
+})
+
+describe('AdminCommandCenter — tablet', () => {
+  let mm
+  afterEach(() => mm?.restore())
+
+  it('shows a collapsed icon rail with labelled buttons and a menu button, no bottom bar', () => {
+    mm = installMatchMedia(1024)
+    renderShell()
+    const rail = screen.getByRole('navigation', { name: 'Staff panels' })
+    expect(within(rail).getByRole('button', { name: 'Users' })).toHaveAttribute('title', 'Users')
+    expect(screen.getByRole('button', { name: 'Open navigation' })).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: 'Quick navigation' })).not.toBeInTheDocument()
+    expect(screen.queryByText('← Collapse')).not.toBeInTheDocument()
+  })
+})
+
+describe('AdminCommandCenter — desktop (default)', () => {
+  it('keeps the full sidebar, collapse control, and header identity with no menu button', () => {
+    renderShell()
+    expect(screen.getByText('← Collapse')).toBeInTheDocument()
+    expect(screen.getByText('AshantiHub Staff')).toBeInTheDocument()
+    expect(screen.getByText('Akosua Support')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open navigation' })).not.toBeInTheDocument()
   })
 })

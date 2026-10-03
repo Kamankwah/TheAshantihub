@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import Flag from "../Flag.jsx";
 import { useStaffBadges } from "../../hooks/useStaffBadges.js";
-import { D, ROLE_ACCENTS, ROLE_BADGE_TEXT } from "./theme.js";
+import { D, ROLE_ACCENTS } from "./theme.js";
 import OverviewPanel from "./panels/OverviewPanel.jsx";
 import KYCQueuePanel from "./panels/KYCQueuePanel.jsx";
 import ListingsModerationPanel from "./panels/ListingsModerationPanel.jsx";
@@ -30,6 +30,12 @@ import PromotionsPanel from "./panels/PromotionsPanel.jsx";
 import AnalyticsPanel from "./panels/AnalyticsPanel.jsx";
 import { buildNavGroups, makeBadgeFor, isPermittedTab } from "./shell/navModel.js";
 import StaffNavList from "./shell/StaffNavList.jsx";
+import { pickBottomBarItems } from "./shell/navModel.js";
+import useBreakpoint from "../../hooks/useBreakpoint.js";
+import StaffHeader, { RoleChip } from "./shell/StaffHeader.jsx";
+import StaffDrawer from "./shell/StaffDrawer.jsx";
+import StaffBottomBar from "./shell/StaffBottomBar.jsx";
+import StaffShellStyles from "./shell/StaffShellStyles.jsx";
 
 // ─── Admin Command Center ─────────────────────────────────────────────────────
 // The staff dashboard's shell, restyled to match the Business Command
@@ -53,6 +59,11 @@ export default function AdminCommandCenter({ auth, onExit, exitLabel = "← Exit
   const [internalTab, setInternalTab] = useState("overview");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [saved, setSaved] = useState(false);
+  const breakpoint = useBreakpoint();
+  const isPhone = breakpoint === "phone";
+  const isDesktop = breakpoint === "desktop";
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const menuButtonRef = useRef(null);
   const role = auth.user?.role;
   const roleColor = ROLE_ACCENTS[role] || D.gold;
   const showToast = () => { setSaved(true); setTimeout(() => setSaved(false), 2500); };
@@ -70,6 +81,7 @@ export default function AdminCommandCenter({ auth, onExit, exitLabel = "← Exit
   }, [isControlled, requestedTab, activeTab]);
 
   const selectTab = (id) => {
+    setDrawerOpen(false);
     if (id === activeTab) return;
     if (isControlled) onTabChange?.(id);
     else setInternalTab(id);
@@ -83,41 +95,44 @@ export default function AdminCommandCenter({ auth, onExit, exitLabel = "← Exit
     window.scrollTo({ top: 0, behavior: "instant" });
   }, [activeTab]);
 
-  return (
-    <div className="shadcn-scope command-center" style={{ minHeight: "100vh", display: "flex" }}>
-      {/* Sidebar */}
-      <div style={{
-        width: sidebarCollapsed ? 60 : 240, flexShrink: 0, position: "sticky", top: 0, height: "100vh", overflowY: "auto",
-        background: "rgba(253,246,227,0.95)",
-        borderRight: `1px solid ${D.cardBorder}`, transition: "width 0.2s",
-      }}>
-        <div style={{ padding: "16px 12px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${D.divider}` }}>
-          <Flag w={28} h={19} />
-          {!sidebarCollapsed && <div style={{ color: D.gold, fontWeight: 900, fontSize: "0.85rem" }}>AshantiHub Staff</div>}
-        </div>
-        <button onClick={() => setSidebarCollapsed(s => !s)} style={{ background: "none", border: "none", color: D.textDim, cursor: "pointer", padding: "8px 12px", fontSize: "0.7rem", fontFamily: "inherit", width: "100%", textAlign: "left" }}>{sidebarCollapsed ? "→" : "← Collapse"}</button>
+  // Rotating a tablet / widening a window to desktop retires the drawer
+  // (and, via its cleanup, the scroll lock).
+  useEffect(() => { if (isDesktop) setDrawerOpen(false); }, [isDesktop]);
 
-        <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={selectTab} collapsed={sidebarCollapsed} badgeFor={badgeFor} roleColor={roleColor} />
-      </div>
+  const bottomItems = isPhone ? pickBottomBarItems(navGroups, badgeFor) : [];
+
+  return (
+    <div className="shadcn-scope command-center staff-shell" data-bp={breakpoint} style={{ display: "flex" }}>
+      <StaffShellStyles />
+
+      {/* Sidebar — full/collapsible on desktop, a fixed 64px icon rail on tablet, absent on phone */}
+      {!isPhone && (
+        <div className="staff-sidebar" style={{
+          width: isDesktop ? (sidebarCollapsed ? 60 : 240) : 64, flexShrink: 0, position: "sticky", top: 0, overflowY: "auto", overscrollBehavior: "contain",
+          background: "rgba(253,246,227,0.95)",
+          borderRight: `1px solid ${D.cardBorder}`, transition: "width 0.2s",
+        }}>
+          <div style={{ padding: "16px 12px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${D.divider}` }}>
+            <Flag w={28} h={19} />
+            {isDesktop && !sidebarCollapsed && <div style={{ color: D.gold, fontWeight: 900, fontSize: "0.85rem" }}>AshantiHub Staff</div>}
+          </div>
+          {isDesktop && <button onClick={() => setSidebarCollapsed(s => !s)} style={{ background: "none", border: "none", color: D.textDim, cursor: "pointer", padding: "8px 12px", fontSize: "0.7rem", fontFamily: "inherit", width: "100%", textAlign: "left" }}>{sidebarCollapsed ? "→" : "← Collapse"}</button>}
+          <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={selectTab} collapsed={!isDesktop || sidebarCollapsed} badgeFor={badgeFor} roleColor={roleColor} />
+        </div>
+      )}
 
       {/* Main column */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        {/* Header */}
-        <div style={{ background: "rgba(253,246,227,0.9)", padding: "0 20px", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 2px 12px rgba(44,24,16,0.08)", backdropFilter: "blur(8px)", borderBottom: `1px solid ${D.cardBorder}` }}>
-          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(90deg,#CC0000 33%,#D4A017 33%,#D4A017 66%,#006400 66%)" }} />
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 60, gap: 10 }}>
-            <div style={{ color: D.text, fontWeight: 800, fontSize: "0.9rem" }}>{activeLabel}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <span style={{ background: roleColor, color: ROLE_BADGE_TEXT[role] || "#fff", borderRadius: 20, padding: "3px 10px", fontSize: "0.62rem", fontWeight: 800, textTransform: "capitalize" }}>{role?.replace("_", " ")}</span>
-              <span style={{ color: D.text, fontSize: "0.78rem", fontWeight: 700, whiteSpace: "nowrap" }}>{auth.user?.full_name}</span>
-              <button onClick={onExit} style={{ background: "rgba(44,24,16,0.05)", border: `1px solid ${D.divider}`, color: D.textDim, borderRadius: 20, padding: "5px 13px", fontSize: "0.68rem", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>{exitLabel}</button>
-            </div>
-          </div>
-        </div>
+        <StaffHeader title={activeLabel} role={role} roleColor={roleColor} fullName={auth.user?.full_name}
+          onExit={onExit} exitLabel={exitLabel} breakpoint={breakpoint}
+          onOpenMenu={() => setDrawerOpen(true)} menuButtonRef={menuButtonRef} drawerOpen={drawerOpen} />
 
-        {saved && <div style={{ position: "fixed", top: 74, right: 20, background: D.green, color: "#fff", borderRadius: 12, padding: "10px 18px", fontSize: "0.8rem", fontWeight: 800, zIndex: 999, boxShadow: "0 6px 24px rgba(0,100,0,0.28)" }}>✓ Saved!</div>}
+        {saved && <div role="status" style={{
+          position: "fixed", zIndex: 999, background: D.green, color: "#fff", borderRadius: 12, padding: "10px 18px", fontSize: "0.8rem", fontWeight: 800, boxShadow: "0 6px 24px rgba(0,100,0,0.28)",
+          ...(isPhone ? { left: 12, right: 12, bottom: "calc(80px + env(safe-area-inset-bottom, 0px))", textAlign: "center" } : { top: 74, right: 20 }),
+        }}>✓ Saved!</div>}
 
-        <div style={{ padding: "22px 20px 72px" }}>
+        <main className="staff-content" style={{ padding: isPhone ? "16px 12px calc(88px + env(safe-area-inset-bottom, 0px))" : "22px 20px 72px" }}>
           {activeTab === "overview" && <OverviewPanel auth={auth} roleColor={roleColor} />}
           {activeTab === "kyc" && <KYCQueuePanel />}
           {activeTab === "moderation" && <ListingsModerationPanel />}
@@ -144,8 +159,28 @@ export default function AdminCommandCenter({ auth, onExit, exitLabel = "← Exit
           {activeTab === "promotions" && <PromotionsPanel auth={auth} />}
           {activeTab === "analytics" && <AnalyticsPanel />}
           {activeTab === "messaging" && <MessagingPanel />}
-        </div>
+        </main>
       </div>
+
+      {isPhone && <StaffBottomBar items={bottomItems} activeTab={activeTab} onSelect={selectTab} onMore={() => setDrawerOpen(true)} badgeFor={badgeFor} roleColor={roleColor} />}
+
+      <StaffDrawer open={drawerOpen && !isDesktop} onClose={() => setDrawerOpen(false)}>
+        <div style={{ padding: "12px 8px 12px 14px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${D.divider}` }}>
+          <Flag w={28} h={19} />
+          <div style={{ color: D.gold, fontWeight: 900, fontSize: "0.85rem", flex: 1 }}>AshantiHub Staff</div>
+          <button type="button" aria-label="Close navigation" onClick={() => setDrawerOpen(false)} style={{ minWidth: 44, minHeight: 44, background: "none", border: "none", color: D.textDim, fontSize: "1.1rem", cursor: "pointer", fontFamily: "inherit" }}>✕</button>
+        </div>
+        <div style={{ padding: "12px 14px", borderBottom: `1px solid ${D.divider}`, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ color: D.text, fontWeight: 800, fontSize: "0.85rem" }}>{auth.user?.full_name}</span>
+            <RoleChip role={role} roleColor={roleColor} />
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" onClick={onExit} style={{ minHeight: 44, background: "rgba(44,24,16,0.05)", border: `1px solid ${D.divider}`, color: D.text, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{exitLabel}</button>
+          </div>
+        </div>
+        <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={selectTab} collapsed={false} badgeFor={badgeFor} roleColor={roleColor} itemMinHeight={44} />
+      </StaffDrawer>
     </div>
   );
 }
