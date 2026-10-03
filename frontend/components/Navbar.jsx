@@ -133,7 +133,7 @@ export default function Navbar({
       <button onClick={act(() => toggleTheme())} aria-label="Toggle theme" title="Toggle theme" style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.25)",borderRadius:24,padding:"8px 14px",fontSize:"0.8rem",fontWeight:700,cursor:"pointer",width:stacked?"100%":"auto"}}>
         {theme === "dark" ? "☀️" : "🌙"}
       </button>
-      <button onClick={act(() => setShowNotifs(n => !n))} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.25)",borderRadius:"50%",width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"1.05rem",position:"relative",flexShrink:0}}>
+      <button onClick={act(() => setShowNotifs(n => !n))} aria-label="Notifications" title="Notifications" style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.25)",borderRadius:"50%",width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"1.05rem",position:"relative",flexShrink:0}}>
         🔔
         {user && notifCount > 0 && (
           <span style={{position:"absolute",top:-6,right:-6,background:C.kente1,color:"white",borderRadius:"50%",minWidth:16,height:16,fontSize:"0.6rem",fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px"}}>{notifCount > 99 ? "99+" : notifCount}</span>

@@ -2,7 +2,8 @@
 #
 # Install AshantiHub's nginx templates into HestiaCP and rebuild the domain
 # configs from them. Production deploys (deploy.sh with SERVE_FRONTEND=yes) run
-# this automatically when infra/hestia/templates/ changed, so run it by hand
+# this automatically when the infra/hestia/templates/ tree differs from the
+# .templates-installed marker (or the marker is missing), so run it by hand
 # only for out-of-band installs, as root, from the production checkout:
 #
 #   bash /opt/ashantihub/infra/scripts/install-hestia-templates.sh

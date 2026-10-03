@@ -133,7 +133,7 @@ These are components under `frontend/components/admin/` and use the inline `D` p
   **Reload** button that tells the waiting worker to activate. It never auto-reloads. Only the
   tab whose Reload was pressed reloads; any other tab that ends up on the new worker shows an
   "updated in another tab" notice and reloads when the staffer chooses. Known limit: a tab left
-  on the old build may fail to lazy-load chunks that no longer exist; reloading resolves it.
+  on the old build may fail to lazy-load chunks that no longer exist; reloading resolves it. Known limit: if a staffer presses Later and a second deploy lands before they reload, that tab won't prompt again until reloaded (workbox-window reports later updates as external); the next reload picks up the newest worker.
 - **`OfflineBanner`:** reads `lib/networkStatus.js`. A client is offline when `navigator.onLine`
   is false **or** a network-level API failure occurred (`fetch` rejected with no HTTP response,
   recorded by `apiClient`'s `request()`). The failure flag is cleared by any API response, of any
@@ -346,7 +346,7 @@ changes. This is a layout-only pass. `StaffDashboard.test.jsx` must pass unmodif
   - `InstallAppButton` is hidden when standalone and shown with a deferred prompt
   - the iOS hint path
   - `OfflineBanner` toggles on `offline`/`online` events
-  - `UpdateToast` calls `updateSW(true)`
+  - Reload activates the waiting worker (`messageSkipWaiting`) and reloads only this tab
   - Inject a fake workbox via `startStaffPwa({ createWorkbox })` in tests.
 - **Contracts:** `StaffDashboard.test.jsx` and `BusinessDashboard.test.jsx` pass unmodified, and
   so does the full suite.

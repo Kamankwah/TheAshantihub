@@ -77,6 +77,8 @@ installer fails, the deploy exits non-zero after the app is already live; the
 on-disk vhosts may be invalid, so do not reload nginx until the templates are
 fixed and the deploy re-run.
 
+The first promotion that includes this change still runs the previous deploy.sh (the script re-execs itself before pulling). Afterwards run `bash /opt/ashantihub/infra/scripts/deploy.sh` once more (no marker yet, so it installs), or run `bash /opt/ashantihub/infra/scripts/install-hestia-templates.sh` by hand; then confirm `/opt/ashantihub/.templates-installed` exists.
+
 Staging never runs the installer: it installs the SPA templates from whichever
 checkout runs it and rebuilds every domain, so running it from staging would
 push unreleased templates onto the production domain. Note the reverse
