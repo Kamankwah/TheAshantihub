@@ -36,6 +36,9 @@ import StaffHeader, { RoleChip } from "./shell/StaffHeader.jsx";
 import StaffDrawer from "./shell/StaffDrawer.jsx";
 import StaffBottomBar from "./shell/StaffBottomBar.jsx";
 import StaffShellStyles from "./shell/StaffShellStyles.jsx";
+import InstallAppButton from "./shell/InstallAppButton.jsx";
+import UpdateToast from "./shell/UpdateToast.jsx";
+import OfflineBanner from "./shell/OfflineBanner.jsx";
 
 // ─── Admin Command Center ─────────────────────────────────────────────────────
 // The staff dashboard's shell, restyled to match the Business Command
@@ -125,7 +128,10 @@ export default function AdminCommandCenter({ auth, onExit, exitLabel = "← Exit
       <div style={{ flex: 1, minWidth: 0 }}>
         <StaffHeader title={activeLabel} role={role} roleColor={roleColor} fullName={auth.user?.full_name}
           onExit={onExit} exitLabel={exitLabel} breakpoint={breakpoint}
-          onOpenMenu={() => setDrawerOpen(true)} menuButtonRef={menuButtonRef} drawerOpen={drawerOpen} />
+          onOpenMenu={() => setDrawerOpen(true)} menuButtonRef={menuButtonRef} drawerOpen={drawerOpen}
+          actions={isPhone ? null : <InstallAppButton variant="header" />}>
+          <OfflineBanner bleed={isPhone ? 12 : 20} />
+        </StaffHeader>
 
         {saved && <div role="status" style={{
           position: "fixed", zIndex: 999, background: D.green, color: "#fff", borderRadius: 12, padding: "10px 18px", fontSize: "0.8rem", fontWeight: 800, boxShadow: "0 6px 24px rgba(0,100,0,0.28)",
@@ -176,11 +182,13 @@ export default function AdminCommandCenter({ auth, onExit, exitLabel = "← Exit
             <RoleChip role={role} roleColor={roleColor} />
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <InstallAppButton variant="drawer" />
             <button type="button" onClick={onExit} style={{ minHeight: 44, background: "rgba(44,24,16,0.05)", border: `1px solid ${D.divider}`, color: D.text, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{exitLabel}</button>
           </div>
         </div>
         <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={selectTab} collapsed={false} badgeFor={badgeFor} roleColor={roleColor} itemMinHeight={44} />
       </StaffDrawer>
+      <UpdateToast bottomOffset={isPhone ? "calc(80px + env(safe-area-inset-bottom, 0px))" : 20} />
     </div>
   );
 }
