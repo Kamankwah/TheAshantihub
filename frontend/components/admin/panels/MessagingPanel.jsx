@@ -94,8 +94,8 @@ export default function MessagingPanel() {
                     ))}
                     {thread.messages?.length === 0 && <div style={{ color: D.textFaint, fontSize: "0.72rem" }}>No messages.</div>}
                   </div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <input value={replyBody} onChange={e => setReplyBody(e.target.value)} placeholder="Reply as AshantiHub Support…" style={{ flex: 1, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelSolid, color: D.text }} />
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <input value={replyBody} onChange={e => setReplyBody(e.target.value)} placeholder="Reply as AshantiHub Support…" style={{ flex: "1 1 160px", minWidth: 0, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelSolid, color: D.text }} />
                     <button onClick={() => sendReply(conv.id)} disabled={!replyBody.trim() || sending} style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "6px 14px", fontSize: "0.72rem", fontWeight: 800, cursor: replyBody.trim() && !sending ? "pointer" : "default", opacity: replyBody.trim() && !sending ? 1 : 0.6 }}>Reply</button>
                   </div>
                 </>

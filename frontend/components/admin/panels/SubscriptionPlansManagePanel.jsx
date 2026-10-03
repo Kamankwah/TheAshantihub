@@ -163,8 +163,8 @@ export default function SubscriptionPlansManagePanel() {
                   <div>
                     <div style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>
                       {p.name} <span style={{ color: D.textDim, fontWeight: 400 }}>({p.tier})</span>
-                      {p.is_recommended && <span style={{ background: `${D.gold}33`, color: D.gold, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6 }}>★ Recommended</span>}
-                      <span style={{ background: `${statusMeta.color}22`, color: statusMeta.color, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6 }}>{statusMeta.label}</span>
+                      {p.is_recommended && <span style={{ background: `${D.gold}33`, color: D.gold, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6, display: "inline-block", whiteSpace: "nowrap" }}>★ Recommended</span>}
+                      <span style={{ background: `${statusMeta.color}22`, color: statusMeta.color, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6, display: "inline-block", whiteSpace: "nowrap" }}>{statusMeta.label}</span>
                     </div>
                     <div style={{ color: D.textDim, fontSize: "0.72rem", margin: "3px 0" }}>{p.kind === "product" ? "Product" : "Service"} · GHS {p.monthly_price}/mo · Max listings: {p.max_active_listings ?? "Unlimited"} · Hero days: {p.hero_days} · Boost credits: {p.boost_credits_per_month}</div>
                     {p.status === "rejected" && p.rejection_reason && <div style={{ color: D.red, fontSize: "0.68rem", marginTop: 2 }}>Rejected: {p.rejection_reason}</div>}

@@ -93,12 +93,12 @@ function ReviewRow({ review, state, canReReview, onDone }) {
       )}
 
       {rejecting && (
-        <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
+        <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
           <input
             value={rejectReason}
             onChange={e => setRejectReason(e.target.value)}
             placeholder="Reason for rejecting"
-            style={{ flex: 1, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }}
+            style={{ flex: "1 1 160px", minWidth: 0, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }}
           />
           <button onClick={reject} disabled={!rejectReason} style={{ background: D.red, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: rejectReason ? "pointer" : "default" }}>Confirm reject</button>
         </div>
