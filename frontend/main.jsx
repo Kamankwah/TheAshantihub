@@ -4,6 +4,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App.jsx'
 import './index.css'
+import { ensureStaffHead, isStaffPathname, startStaffPwa } from './lib/staffPwa.js'
+
+// Staff app: link the /staff-scoped manifest and start listening for the
+// install prompt as early as possible on a staff URL (beforeinstallprompt can
+// fire before React has mounted). App.jsx keeps both in sync on in-app
+// navigation afterwards.
+if (isStaffPathname(window.location.pathname)) {
+  ensureStaffHead(true)
+  startStaffPwa()
+}
 
 const queryClient = new QueryClient()
 
