@@ -50,4 +50,14 @@ describe('DisputesPanel Reject confirmation', () => {
     expect(screen.getByText('✕ Reject')).toBeInTheDocument()
     expect(screen.queryByText(/Reject this dispute\?/)).not.toBeInTheDocument()
   })
+
+  it('never sends a typed refund with a reject', async () => {
+    const bodies = setup()
+    fireEvent.click(await screen.findByText('✓ Resolve'))
+    fireEvent.change(screen.getByPlaceholderText('Refund amount (optional)'), { target: { value: '25.00' } })
+    fireEvent.click(screen.getByText('✕ Reject'))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm reject' }))
+    await waitFor(() => expect(bodies).toHaveLength(1))
+    expect(bodies[0]).toMatchObject({ outcome: 'rejected', refund_amount: null })
+  })
 })

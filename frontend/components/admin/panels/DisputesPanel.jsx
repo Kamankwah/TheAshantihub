@@ -46,7 +46,7 @@ function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
     try {
       await apiPost(`/api/disputes/${dispute.id}/resolve/`, {
         outcome,
-        refund_amount: refund || null,
+        refund_amount: outcome === "resolved" ? (refund || null) : null,
         resolution_notes: notes || "",
       });
       setResolving(false);
@@ -118,7 +118,7 @@ function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
       {/* Rejecting is final from this row's point of view — only a rejected
           dispute can be reopened, from the Rejected tab. */}
       {confirmingReject && (
-        <div style={{ color: D.amber, fontSize: "0.65rem", marginTop: 6 }}>
+        <div style={{ color: D.amber, fontSize: "0.8rem", marginTop: 6 }}>
           Reject this dispute? It moves to the Rejected tab with no refund. You can reopen it from there with "Review Again".
         </div>
       )}

@@ -100,7 +100,9 @@ class DisputeResolveView(APIView):
         data = serializer.validated_data
 
         dispute.status = Dispute.RESOLVED if data["outcome"] == "resolved" else Dispute.REJECTED
-        dispute.refund_amount = data.get("refund_amount")
+        # A rejected dispute never moves money: drop any refund_amount sent
+        # with outcome="rejected" so a Rejected row can't show a refund.
+        dispute.refund_amount = data.get("refund_amount") if data["outcome"] == "resolved" else None
         dispute.resolution_notes = data.get("resolution_notes", "")
         dispute.resolved_by = request.user
         dispute.save(

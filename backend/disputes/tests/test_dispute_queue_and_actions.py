@@ -132,6 +132,19 @@ class DisputeResolveTests(DisputeTestsBase):
         self.assertEqual(self.dispute.resolution_notes, "Refunded half.")
         self.assertEqual(self.dispute.resolved_by, self.accountant)
 
+    def test_reject_discards_any_refund_amount_sent_with_it(self):
+        self._auth_staff(self.accountant)
+        response = self.client.post(
+            self._resolve_url(),
+            {"outcome": "rejected", "refund_amount": "50.00", "resolution_notes": "Not upheld."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.dispute.refresh_from_db()
+        self.assertEqual(self.dispute.status, Dispute.REJECTED)
+        self.assertIsNone(self.dispute.refund_amount)
+        self.assertEqual(self.dispute.resolution_notes, "Not upheld.")
+
     def test_resolve_with_no_body_defaults_to_resolved_with_no_refund(self):
         self._auth_staff(self.accountant)
         response = self.client.post(self._resolve_url())
