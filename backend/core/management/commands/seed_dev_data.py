@@ -36,9 +36,16 @@ CUSTOMERS = [
     ("Yaa Asantewaa", "yaa@example.com", "+233240000003"),
 ]
 
+# One active, loggable staffer per office role, each holding exactly its role's
+# migration-seeded permission set (no extra/revoked overrides) so the staff
+# dashboard can be checked as every role. The field roles (scout, dispatch,
+# delivery_manager) are seeded by `seed_staff_queues`, which also gives them
+# queue rows; super_admin stays `create_super_admin`-only.
 STAFF = [
     ("Akosua Support", "support@theashantihub.com", "support"),
     ("Kwame Admin", "admin.staff@theashantihub.com", "admin"),
+    ("Yaw Accountant", "accountant.staff@theashantihub.com", "accountant"),
+    ("Esi Marketing", "marketing.staff@theashantihub.com", "marketing"),
 ]
 
 # (full_name, login_phone, email, business_kind, ghana_card, gps_address)
