@@ -29,6 +29,7 @@ const DISPUTE_STATUS_META = {
 // have moved money, so it stays final (see DisputeReReviewView).
 function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
   const [resolving, setResolving] = useState(false);
+  const [confirmingReject, setConfirmingReject] = useState(false);
   const [refund, setRefund] = useState("");
   const [notes, setNotes] = useState("");
   const [actionError, setActionError] = useState(null);
@@ -49,6 +50,7 @@ function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
         resolution_notes: notes || "",
       });
       setResolving(false);
+      setConfirmingReject(false);
       onDone();
     } catch { setActionError("Could not resolve this dispute."); }
   };
@@ -90,14 +92,21 @@ function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
             </div>
           )}
         </div>
-        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+        <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>
           {state === "pending" && canFlag && dispute.status === "open" && (
             <button onClick={flag} style={{ background: "rgba(96,165,250,0.16)", color: D.blue, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>🚩 Flag</button>
           )}
           {state === "pending" && canResolve && (
             <>
               <button onClick={() => setResolving(r => !r)} style={{ background: D.green, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✓ Resolve</button>
-              <button onClick={() => resolve("rejected")} style={{ background: "rgba(248,113,113,0.14)", color: D.red, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✕ Reject</button>
+              {confirmingReject ? (
+                <>
+                  <button onClick={() => resolve("rejected")} style={{ background: D.red, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Confirm reject</button>
+                  <button onClick={() => setConfirmingReject(false)} style={{ background: D.panelBg2, color: D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Keep</button>
+                </>
+              ) : (
+                <button onClick={() => setConfirmingReject(true)} style={{ background: "rgba(248,113,113,0.14)", color: D.red, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✕ Reject</button>
+              )}
             </>
           )}
           {state === "rejected" && canResolve && <ReviewAgainButton onClick={reopen} />}
@@ -105,6 +114,14 @@ function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
       </div>
 
       {actionError && <div style={{ color: D.red, fontSize: "0.8rem", marginTop: 8 }}>{actionError}</div>}
+
+      {/* Rejecting is final from this row's point of view — only a rejected
+          dispute can be reopened, from the Rejected tab. */}
+      {confirmingReject && (
+        <div style={{ color: D.amber, fontSize: "0.65rem", marginTop: 6 }}>
+          Reject this dispute? It moves to the Rejected tab with no refund. You can reopen it from there with "Review Again".
+        </div>
+      )}
 
       {resolving && (
         <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
