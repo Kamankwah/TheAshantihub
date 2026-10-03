@@ -28,7 +28,10 @@ import logoIcon from "../assets/logo/logo-icon.png";
 // the sum of item quantities. Opens CartDrawer via the setShowCart prop,
 // same boolean-flag-owned-by-AshantiHub convention as setShowNotifs/
 // setShowBizDash/etc.
-const NAV_BREAKPOINT = 760;
+// Hamburger at <=1024px; 1025-1199px is a compact inline tier (see the <style>
+// block); >=1200px is the full header. The row needs ~1,150px uncompacted.
+const NAV_BREAKPOINT = 1024;
+const COMPACT_MAX = 1199;
 const SOLIDIFY_SCROLL_Y = 60;
 
 const NAV_ITEMS = [
@@ -124,8 +127,8 @@ export default function Navbar({
 
   const UtilityActions = ({ stacked = false }) => (
     <>
-      <button onClick={act(() => setLang(l => l === "en" ? "tw" : "en"))} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.25)",borderRadius:24,padding:"8px 14px",fontSize:"0.8rem",fontWeight:700,cursor:"pointer",width:stacked?"100%":"auto"}}>
-        {lang === "en" ? "🇬🇭 Twi" : "🇬🇧 EN"}
+      <button onClick={act(() => setLang(l => l === "en" ? "tw" : "en"))} aria-label={lang === "en" ? "Switch to Twi" : "Switch to English"} title={lang === "en" ? "Switch to Twi" : "Switch to English"} style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.25)",borderRadius:24,padding:"8px 14px",fontSize:"0.8rem",fontWeight:700,cursor:"pointer",width:stacked?"100%":"auto"}}>
+        {lang === "en" ? "🇬🇭" : "🇬🇧"}{" "}<span className="ah-lang-label">{lang === "en" ? "Twi" : "EN"}</span>
       </button>
       <button onClick={act(() => toggleTheme())} aria-label="Toggle theme" title="Toggle theme" style={{background:"rgba(255,255,255,0.1)",color:"white",border:"1px solid rgba(255,255,255,0.25)",borderRadius:24,padding:"8px 14px",fontSize:"0.8rem",fontWeight:700,cursor:"pointer",width:stacked?"100%":"auto"}}>
         {theme === "dark" ? "☀️" : "🌙"}
@@ -204,7 +207,7 @@ export default function Navbar({
       ) : (
         <>
           <button onClick={act(() => setAuthModal("login"))} style={{background:"transparent",color:"white",border:"1.5px solid rgba(255,255,255,0.4)",borderRadius:24,padding:"8px 16px",fontSize:"0.82rem",fontWeight:700,cursor:"pointer",width:stacked?"100%":"auto"}}>{T.login}</button>
-          <button onClick={act(() => setAuthModal("signup"))} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:24,padding:"8px 16px",fontSize:"0.82rem",fontWeight:900,cursor:"pointer",width:stacked?"100%":"auto"}}>{T.signup}</button>
+          <button className="ah-auth-signup" onClick={act(() => setAuthModal("signup"))} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:24,padding:"8px 16px",fontSize:"0.82rem",fontWeight:900,cursor:"pointer",width:stacked?"100%":"auto"}}>{T.signup}</button>
         </>
       )}
     </>
@@ -226,7 +229,7 @@ export default function Navbar({
           <img src={logoIcon} alt="AshantiHub" style={{height:44,width:"auto",display:"block",flexShrink:0}}/>
           <div style={{minWidth:0}}>
             <div style={{color:C.gold,fontWeight:900,fontSize:"1.15rem",letterSpacing:1,lineHeight:1,whiteSpace:"nowrap"}}>AshantiHub</div>
-            <div style={{color:C.lightGold,fontSize:"0.56rem",letterSpacing:2,opacity:0.8}}>THE MARKETPLACE OF ASHANTI</div>
+            <div className="ah-navbar-tagline" style={{color:C.lightGold,fontSize:"0.56rem",letterSpacing:2,opacity:0.8}}>THE MARKETPLACE OF ASHANTI</div>
           </div>
         </div>
 
@@ -268,6 +271,12 @@ export default function Navbar({
         }
         @media (min-width: ${NAV_BREAKPOINT + 1}px) {
           .ah-navbar-mobile-menu { display: none !important; }
+        }
+        /* Compact inline tier. Sign Up is dropped because the login modal
+           has a Sign In / Sign Up tab switch. !important beats inline styles. */
+        @media (min-width: ${NAV_BREAKPOINT + 1}px) and (max-width: ${COMPACT_MAX}px) {
+          .ah-navbar-tagline, .ah-lang-label, .ah-auth-signup { display: none !important; }
+          .ah-navbar-links .ah-nav-item { padding: 9px 12px !important; }
         }
       `}</style>
     </div>
