@@ -77,6 +77,8 @@ installer fails, the deploy exits non-zero after the app is already live; the
 on-disk vhosts may be invalid, so do not reload nginx until the templates are
 fixed and the deploy re-run.
 
+The installer sets Hestia's environment itself (`HESTIA=/usr/local/hestia`, `$HESTIA/bin` on `PATH`), because a non-login SSH shell has neither, and it fails with `FATAL` if `v-rebuild-web-domains` is missing instead of silently skipping the rebuild.
+
 The first promotion that includes this change still runs the previous deploy.sh (the script re-execs itself before pulling). Afterwards run `bash /opt/ashantihub/infra/scripts/deploy.sh` once more (no marker yet, so it installs), or run `bash /opt/ashantihub/infra/scripts/install-hestia-templates.sh` by hand; then confirm `/opt/ashantihub/.templates-installed` exists.
 
 Staging never runs the installer: it installs the SPA templates from whichever
