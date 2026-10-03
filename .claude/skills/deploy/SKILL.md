@@ -72,5 +72,5 @@ docker compose -p ashantihub -f /opt/ashantihub/infra/compose/docker-compose.yml
 
 These are repeated there on purpose, because they bite during ordinary infra edits when this skill may not be loaded:
 
-- Never add an `^~ /.well-known/` location to a Hestia nginx template — it outranks Hestia's own regex location and breaks Let's Encrypt issuance and every renewal.
+- Never add an `^~ /.well-known/` location to a Hestia nginx template — it outranks Hestia's own regex location and breaks Let's Encrypt issuance and every renewal. The installer sets Hestia's environment (`HESTIA`, `PATH`) itself and fails with `FATAL` if Hestia's CLI is missing, rather than silently skipping the domain rebuild. If a template change ever seems not to apply, check `/etc/nginx/conf.d/domains/<domain>.ssl.conf` for the new location.
 - Do not "simplify" `deploy.sh`'s `/tmp` re-exec away — it already caused two failed deploys.

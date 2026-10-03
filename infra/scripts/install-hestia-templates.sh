@@ -15,6 +15,12 @@
 # to a different port and serves media/static out of a different checkout.
 set -euo pipefail
 
+# Hestia's v-* commands live in $HESTIA/bin and expect HESTIA in the
+# environment. A non-login SSH shell (ssh root@host 'bash ...') has neither, so
+# set both here rather than relying on the caller's shell.
+export HESTIA="${HESTIA:-/usr/local/hestia}"
+export PATH="$HESTIA/bin:$PATH"
+
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/../hestia/templates" && pwd)"
 DST=/usr/local/hestia/data/templates/web/nginx/php-fpm
 HESTIA_USER="${HESTIA_USER:-admin}"
@@ -45,11 +51,15 @@ render ashantihub-api-prod /opt/ashantihub 8000
 render ashantihub-api-staging /opt/ashantihub-staging 8001
 
 # Regenerates every domain's config from its assigned template. Safe to run
-# with no domains yet — it simply has nothing to rebuild.
-if command -v v-rebuild-web-domains >/dev/null; then
-	echo "Rebuilding web domains for user '$HESTIA_USER'"
-	v-rebuild-web-domains "$HESTIA_USER" no
-fi
+# with no domains yet - it simply has nothing to rebuild. Hestia's CLI is
+# required: skipping the rebuild would leave stale vhosts while the install
+# still looked successful.
+[[ -x "$HESTIA/bin/v-rebuild-web-domains" ]] || {
+	echo "FATAL: $HESTIA/bin/v-rebuild-web-domains not found or not executable - is HestiaCP installed?" >&2
+	exit 1
+}
+echo "Rebuilding web domains for user '$HESTIA_USER'"
+v-rebuild-web-domains "$HESTIA_USER" no
 
 echo "Testing nginx configuration"
 nginx -t
