@@ -9,12 +9,19 @@ rule).
 
 Every seeded account shares the password below so a developer can log in
 as any of them from the frontend.
+
+Safety: refuses to run unless settings.DEBUG is True (same guard as
+seed_staff_queues, no override flag). It creates staff with real money
+permissions (e.g. an accountant holding escrow.release/escrow.refund) under
+a password published in this file, so it must never run against staging or
+production.
 """
 from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth.hashers import make_password
-from django.core.management.base import BaseCommand
+from django.conf import settings
+from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from accounts.models import (
@@ -127,9 +134,14 @@ EVENTS = [
 
 
 class Command(BaseCommand):
-    help = "Seed the local database with sample customers, staff, business owners, listings and events."
+    help = "DEV ONLY (requires DEBUG=True): seed the local database with sample customers, staff, business owners, listings and events."
 
     def handle(self, *args, **options):
+        if not settings.DEBUG:
+            raise CommandError(
+                "seed_dev_data is a development-only command and refuses to run with "
+                "DEBUG=False. It must never touch staging or production data."
+            )
         now = timezone.now()
         password_hash = make_password(DEV_PASSWORD)
         created = {"customers": 0, "staff": 0, "owners": 0, "listings": 0, "events": 0}

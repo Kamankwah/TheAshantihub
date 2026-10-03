@@ -39,6 +39,14 @@ class SeedStaffQueuesTests(TestCase):
         self.assertIn("DEBUG", str(ctx.exception))
         self.assertFalse(BusinessOwner.objects.filter(login_phone="+233209100001").exists())
 
+    @override_settings(DEBUG=False)
+    def test_seed_dev_data_refuses_to_run_without_debug(self):
+        with self.assertRaises(CommandError) as ctx:
+            call_command("seed_dev_data", stdout=StringIO())
+        self.assertIn("DEBUG", str(ctx.exception))
+        self.assertFalse(StaffUser.objects.filter(email="accountant.staff@theashantihub.com").exists())
+        self.assertFalse(Customer.objects.filter(email="ama@example.com").exists())
+
     @override_settings(DEBUG=True)
     def test_requires_seed_dev_data_first(self):
         with self.assertRaises(CommandError) as ctx:
