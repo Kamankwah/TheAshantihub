@@ -67,12 +67,44 @@ function detectStandalone() {
   return window.matchMedia?.("(display-mode: standalone)")?.matches === true || window.navigator.standalone === true;
 }
 
-function detectIOS() {
-  if (typeof navigator === "undefined") return false;
-  return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+function isIOSDevice({ userAgent = "", platform = "", maxTouchPoints = 0 }) {
+  // iPadOS Safari reports a desktop Mac user agent; touch points give it away.
+  return /iphone|ipad|ipod/i.test(userAgent) || (platform === "MacIntel" && maxTouchPoints > 1);
 }
 
-const initialState = () => ({ needRefresh: false, updatedElsewhere: false, installPrompt: null, isStandalone: detectStandalone(), isIOS: detectIOS() });
+function detectIOS() {
+  if (typeof navigator === "undefined") return false;
+  return isIOSDevice(navigator);
+}
+
+// Apps whose built-in browser can't install a web app: Facebook/Messenger,
+// Instagram, LinkedIn, LINE, Snapchat, TikTok, X, WhatsApp, and the Google
+// app on iOS. Android web views in general say "; wv)".
+const IN_APP_BROWSER = /FBAN|FBAV|FB_IAB|Instagram|LinkedInApp|Line\/|Snapchat|TikTok|musical_ly|BytedanceWebview|Twitter|WhatsApp|GSA\/|; wv\)/i;
+// iOS browsers other than Safari. They can't reliably add a web app with the
+// staff manifest, so the install page sends their users to Safari.
+const IOS_OTHER_BROWSER = /CriOS|FxiOS|EdgiOS|OPiOS|OPT\/|YaBrowser|DuckDuckGo|GSA\//i;
+
+// Which install instructions /staff/install should lead with. `inApp` covers
+// an app's built-in browser, including an iOS web view, which has no
+// "Safari/" token in its user agent.
+export function detectInstallPlatform({ userAgent = "", platform = "", maxTouchPoints = 0 } = {}) {
+  const ios = isIOSDevice({ userAgent, platform, maxTouchPoints });
+  const os = ios ? "ios" : /android/i.test(userAgent) ? "android" : "desktop";
+  const inApp = IN_APP_BROWSER.test(userAgent) || (ios && !/Safari\//.test(userAgent));
+  return { os, inApp, iosSafari: ios && !inApp && !IOS_OTHER_BROWSER.test(userAgent) };
+}
+
+// An Android intent link that opens `url` in Chrome, for escaping an app's
+// built-in browser (where nothing can be installed).
+export function chromeIntentUrl(url) {
+  const { protocol, host, pathname, search } = new URL(url);
+  return `intent://${host}${pathname}${search}#Intent;scheme=${protocol.replace(":", "")};package=com.android.chrome;end`;
+}
+
+const initialState = () => ({
+  needRefresh: false, updatedElsewhere: false, installPrompt: null, installed: false, isStandalone: detectStandalone(), isIOS: detectIOS(),
+});
 
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
@@ -109,7 +141,7 @@ function onBeforeInstallPrompt(event) {
   setState({ installPrompt: event });
 }
 function onAppInstalled() {
-  setState({ installPrompt: null, isStandalone: true });
+  setState({ installPrompt: null, isStandalone: true, installed: true });
 }
 
 // `createWorkbox` is a test seam only: a factory returning a Workbox-like

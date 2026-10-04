@@ -167,10 +167,42 @@ These are components under `frontend/components/admin/` and use the inline `D` p
 - **Rerunning:** generated PNGs are committed. Rerun with `npm run generate-pwa-assets` whenever
   the SVG changes. Icon design follows `DESIGN.md`.
 
+### 2.6 Install link — `/staff/install` (added 2026-10-04)
+
+A shareable link that walks a staffer through installing the app. No browser lets a page install
+an app by itself; Apple and Google both require the person to confirm. So the page leads with
+whatever the device allows. Implemented in `components/admin/StaffInstallPage.jsx`, with
+detection in `lib/staffPwa.js` (`detectInstallPlatform`, `chromeIntentUrl`).
+
+- **Route:** `/staff/install` is its own page in `PATH_TO_PAGE`, like `/staff/activate`. It is
+  never read as a panel id, and it renders signed out or signed in without bouncing to the
+  dashboard. It sits inside the `/staff` scope, so the staff manifest and service worker apply,
+  which is what lets Chrome offer its install dialog there.
+- **Per device:**
+  - **Android Chrome (or desktop Chrome/Edge):** an "Install AshantiHub Staff" button that calls
+    the deferred `beforeinstallprompt`. Chrome fires that event only after the visitor has tapped
+    the page and spent about 30 seconds on it, so until then the page shows the ⋮ → *Install
+    app* menu steps, which work immediately.
+  - **iPhone/iPad Safari:** Share → Add to Home Screen → Add (with "Open as Web App" left on
+    where iOS shows it).
+  - **iPhone, another browser:** open the link in Safari, with a Copy link control.
+  - **An app's built-in browser** (Facebook, Instagram, WhatsApp, an Android `; wv)` web view, an
+    iOS web view without a `Safari/` token): install is impossible there. Android gets an
+    *Open in Chrome* intent link; iOS gets "Open in Safari" guidance plus Copy link.
+  - **Computer:** "open this link on your phone", with Copy link.
+  - A switch shows the steps for another device, because user-agent detection is a heuristic.
+- **After install:** `appinstalled` sets the store's `installed` flag and the page confirms.
+  Opened standalone (from the home screen) it redirects to `/staff`. This covers an iOS
+  install that keeps the page's own URL as its start URL.
+- **Distribution:** the staff invite email includes `{FRONTEND_BASE_URL}/staff/install`, per
+  environment like the activation link. The Staff panel has a "Staff app link" card with a
+  Copy link button (`components/admin/StaffInstallLink.jsx`) for sharing on WhatsApp.
+
 ## 3. Panel URLs
 
 - **The router mapping lives in `App.jsx`.** A `useMatch("/staff/:panel")` reads the panel, and
-  `/staff/activate` is still matched first via `PATH_TO_PAGE`. `KNOWN_PATHS`/`show404` accept
+  `/staff/activate` and `/staff/install` are still matched first via `PATH_TO_PAGE`
+  (`STAFF_STANDALONE_PAGES`). `KNOWN_PATHS`/`show404` accept
   `/staff` and `/staff/:panel`.
 - **`AdminCommandCenter` stays router-agnostic.** It gains optional `activeTab` and `onTabChange`
   props:

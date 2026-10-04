@@ -46,6 +46,10 @@ The app currently has **zero URL routing** — no `react-router`, no `window.his
 
 **Status update:** the minimal `/staff` entry point half of Option B has now landed. It originally shipped as a narrow, deliberate exception with no router library (`window.location.pathname`/`window.history.pushState`, no other screen URL-addressable). `docs/UI_MODERNIZATION_ROADMAP.md` Phase D subsequently introduced `react-router-dom` app-wide (fixing an unrelated bug — `page` had zero URL sync at all, so hard-reloading on e.g. `/business` always bounced to home) and migrated `/staff` onto it in the same pass; see `CLAUDE.md` "Architecture" for the current mechanism. What was still open from this section has now landed (2026-10-03): the second manifest + `start_url` scoped to `/staff` (the PWA-installability half of Option B), along with the service-worker registration fix in §2 and the icon set in §3 that it depended on.
 
+**Install link (2026-10-04):** staff are sent `/staff/install` (in the invite email, and from the
+Staff panel's "Staff app link" card). It guides each device through installing the app. See the
+staff PWA spec (`docs/superpowers/specs/2026-10-03-staff-pwa-responsive-design.md` §2.6).
+
 ## 5. Offline / staff-specific needs
 
 - **Replaced (2026-10-03 user decision):** the "cache last-seen data" idea below is not being built. The PWA ships the app shell plus an offline notice only, and no staff data is stored on the device.
