@@ -54,6 +54,7 @@ import EventDetailPage from "./components/EventDetailPage.jsx";
 import EventSubmissionPanel from "./components/EventSubmissionPanel.jsx";
 import BusinessCommandCenter from "./components/dashboard/BusinessCommandCenter.jsx";
 import AdminCommandCenter from "./components/admin/AdminCommandCenter.jsx";
+import StaffInstallPage from "./components/admin/StaffInstallPage.jsx";
 import { D, glassCard, ghs } from "./components/dashboard/theme.js";
 import KpiCard from "./components/dashboard/charts/KpiCard.jsx";
 import ChartFrame from "./components/dashboard/charts/ChartFrame.jsx";
@@ -2446,6 +2447,9 @@ const PATH_TO_PAGE = {
   // normal page==="..." JSX switch, since neither needs the surrounding
   // Navbar/Footer chrome.
   "/staff/activate": "staff-activate",
+  // The staff-app install link (invite email, the Staff panel). Inside the
+  // /staff PWA scope, so the staff manifest applies, but not a panel.
+  "/staff/install": "staff-install",
   "/reset-password": "reset-password",
   // Hubtel integration (docs/HUBTEL_INTEGRATION.md, plan Workstream E) — the
   // page a customer/business owner lands back on after Hubtel's hosted
@@ -2464,6 +2468,7 @@ const PAGE_TO_PATH = {
   contact: "/contact",
   register: "/register",
   "staff-activate": "/staff/activate",
+  "staff-install": "/staff/install",
   "reset-password": "/reset-password",
   "payment-return": "/payment/return",
 };
@@ -2490,6 +2495,8 @@ const FLAG_TO_DASH_PATH = {
 // separately via useMatch() below, since a Set of exact strings can't match
 // them.
 const KNOWN_PATHS = new Set([...Object.keys(PATH_TO_PAGE), ...Object.keys(DASH_PATH_TO_FLAG), "/staff"]);
+// /staff/<segment> pages that are not dashboard panels.
+const STAFF_STANDALONE_PAGES = new Set(["activate", "install"]);
 
 export default function AshantiHub() {
   const location = useLocation();
@@ -2503,12 +2510,13 @@ export default function AshantiHub() {
   const eventDetailMatch = useMatch("/events/:id");
   // Staff dashboard panels are URL-addressable (/staff/kyc, /staff/users, …)
   // so Android's back gesture steps through panels inside the installed app
-  // and manifest shortcuts can deep-link. /staff/activate is its own page
-  // (PATH_TO_PAGE) and is never read as a panel id. AdminCommandCenter
-  // validates the id against the session's permissions and asks for a
-  // replace back to /staff when it isn't one.
+  // and manifest shortcuts can deep-link. /staff/activate and /staff/install
+  // are their own pages (PATH_TO_PAGE) and are never read as panel ids, so a
+  // signed-in staffer opening the install link isn't sent to the dashboard.
+  // AdminCommandCenter validates the id against the session's permissions
+  // and asks for a replace back to /staff when it isn't one.
   const staffPanelMatch = useMatch("/staff/:panel");
-  const staffPanel = staffPanelMatch && staffPanelMatch.params.panel !== "activate" ? staffPanelMatch.params.panel : null;
+  const staffPanel = staffPanelMatch && !STAFF_STANDALONE_PAGES.has(staffPanelMatch.params.panel) ? staffPanelMatch.params.panel : null;
   const onStaffDashboardPath = location.pathname === "/staff" || location.pathname === "/staff/" || staffPanel !== null;
   // `page` is now derived straight from the URL rather than owned locally —
   // hard reloading on any of these paths renders that page immediately
@@ -2932,6 +2940,7 @@ export default function AshantiHub() {
   // Staff onboarding + account-recovery work — two more standalone early
   // returns, same convention as showAccount/showBizDash above.
   if(page==="staff-activate") return <StaffActivatePage auth={auth} onSuccess={handleAuthSuccess}/>;
+  if(page==="staff-install") return <StaffInstallPage/>;
   if(page==="reset-password") return <ResetPasswordPage auth={auth} setPage={setPage} setAuthModal={setAuthModal}/>;
   if(page==="payment-return") return <PaymentReturnPage setPage={setPage}/>;
   if(isLoading) return <LoadingScreen/>;

@@ -525,6 +525,23 @@ describe('AshantiHub routing — /staff/:panel', () => {
     expect(await screen.findByText('Activate Your Staff Account', {}, { timeout: 3000 })).toBeInTheDocument()
   }, 8000)
 
+  it('/staff/install renders the install page for a signed-out visitor, with the staff manifest linked', async () => {
+    renderStaffAt('/staff/install')
+    expect(await screen.findByRole('heading', { name: 'Install the AshantiHub Staff app' }, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.queryByText('Staff Sign In')).not.toBeInTheDocument()
+    expect(document.head.querySelector('link[rel="manifest"]')).toHaveAttribute('href', '/staff.webmanifest')
+  }, 8000)
+
+  it('/staff/install stays put for a signed-in staffer instead of opening the dashboard', async () => {
+    signInStaff(['messaging.manage'])
+    renderStaffAt('/staff/install')
+    expect(await screen.findByRole('heading', { name: 'Install the AshantiHub Staff app' }, { timeout: 3000 })).toBeInTheDocument()
+    // Give the session restore time to settle; the URL must not move to /staff.
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    expect(screen.getByTestId('location').textContent).toBe('/staff/install')
+    expect(screen.queryByRole('navigation', { name: 'Staff panels' })).not.toBeInTheDocument()
+  }, 8000)
+
   it('links the staff manifest on staff paths; Exit to / removes it', async () => {
     signInStaff(['messaging.manage', 'users.view'])
     renderStaffAt('/staff/users')
