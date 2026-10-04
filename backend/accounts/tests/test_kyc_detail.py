@@ -61,3 +61,30 @@ class KYCDetailViewTests(TestCase):
         )
         response = self.client.get(f"/api/accounts/kyc/{self.owner.id}/")
         self.assertEqual(response.json()["kyc_rejection_reason"], "Ghana Card image is blurry")
+
+    def test_kyc_review_shows_tin_to_a_reviewer_without_users_manage(self):
+        # Deliberate (user decision, 2026-10-04): the TIN is users.manage-only
+        # on the business-owner detail, but KYC review keeps it, because a
+        # reviewer checks a formally registered business against its TIN.
+        # Only reachable through an individual kyc.approve grant: by role,
+        # every kyc.approve holder (admin, super_admin) has users.manage too.
+        from accounts.models import Permission
+
+        self.profile.is_formal = True
+        self.profile.tin = "C0009876543"
+        self.profile.save()
+        support = StaffUser.objects.create(
+            full_name="Support Reviewer", email="support-kyc@example.com", password_hash="x",
+            role=Role.objects.get(name="support"),
+        )
+        support.extra_permissions.add(Permission.objects.get(codename="kyc.approve"))
+        self.assertNotIn("users.manage", support.effective_permission_codenames())
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(support, 'staff')}")
+
+        kyc = self.client.get(f"/api/accounts/kyc/{self.owner.id}/")
+        self.assertEqual(kyc.status_code, 200, kyc.content)
+        self.assertEqual(kyc.json()["profile"]["tin"], "C0009876543")
+
+        detail = self.client.get(f"/api/accounts/business-owners/{self.owner.id}/")
+        self.assertEqual(detail.status_code, 200, detail.content)
+        self.assertNotIn("tin", detail.json()["profile"])
