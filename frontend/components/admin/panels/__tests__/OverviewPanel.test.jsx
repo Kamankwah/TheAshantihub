@@ -175,6 +175,9 @@ describe('OverviewPanel — delivery manager', () => {
     )
     renderOverview(managerAuth())
     await screen.findByText('Door-to-door orders (all time)')
+    // Every paid door-to-door order ever placed, not a backlog: not a "queue".
+    expect(screen.getByText('Door-to-door deliveries')).toBeInTheDocument()
+    expect(screen.queryByText('Delivery queue')).not.toBeInTheDocument()
     expect(tileValue('Door-to-door orders (all time)')).toBe('5')
     expect(tileValue('Unassigned')).toBe('1')
     expect(tileValue('Awaiting pickup')).toBe('1')
@@ -192,6 +195,7 @@ describe('OverviewPanel — delivery manager', () => {
   it('shows an honest empty state and no zero queue tiles when the queue is empty', async () => {
     renderOverview(managerAuth())
     expect(await screen.findByText('No door-to-door orders to coordinate right now.')).toBeInTheDocument()
+    expect(screen.getByText('Door-to-door deliveries')).toBeInTheDocument()
     expect(screen.queryByText('Unassigned')).not.toBeInTheDocument()
     expect(screen.queryByText('In transit')).not.toBeInTheDocument()
   })
