@@ -239,6 +239,13 @@ class BusinessOwnerKYCSerializer(serializers.ModelSerializer):
 
 
 class BusinessOwnerProfileKYCDetailSerializer(serializers.ModelSerializer):
+    # `tin` is shown to every kyc.approve session, unlike the business-owner
+    # detail, where it is users.manage-only (user decision, 2026-10-04): a
+    # reviewer checks a formally registered business against its TIN, and
+    # already sees the more sensitive Ghana Card number and images here. By
+    # role, every kyc.approve holder has users.manage anyway; only an
+    # individual kyc.approve grant reaches the difference.
+    #
     # Ghana Post address verification (punch-list item 8). address_verified_at
     # being non-null is the "a decision was made" signal the frontend's KYC
     # Approve/Reject gating reads.
@@ -623,6 +630,8 @@ class StaffBusinessOwnerDetailSerializer(serializers.ModelSerializer):
     # keys — absent, not nulled — so they never leave the server for it. The
     # view passes `can_see_payout` in the serializer context from the
     # session's effective permissions; it defaults to False (fail closed).
+    # The KYC review (BusinessOwnerProfileKYCDetailSerializer) still shows the
+    # TIN to kyc.approve on purpose — see the note there.
     RESTRICTED_PROFILE_KEYS = (
         "tin",
         "default_payout_method", "payout_verification_status", "payout_bank_name",
