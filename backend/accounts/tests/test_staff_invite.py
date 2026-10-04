@@ -41,6 +41,9 @@ class StaffInviteTests(TestCase):
         self.assertEqual(sent.to, ["akosua@example.com"])
         self.assertIn(invited.invite_token, sent.body)
         self.assertIn(f"{settings.FRONTEND_BASE_URL}/staff/activate?token=", sent.body)
+        # The staff-app install page (/staff/install), per environment like
+        # the activation link, so a staging invite never points at production.
+        self.assertIn(f"{settings.FRONTEND_BASE_URL}/staff/install", sent.body)
 
     def test_support_staff_cannot_invite_staff(self):
         support = StaffUser.objects.create(
@@ -131,6 +134,7 @@ class StaffInviteTests(TestCase):
         sent = mail.outbox[0]
         self.assertEqual(sent.to, ["waiting@example.com"])
         self.assertIn(invited.invite_token, sent.body)
+        self.assertIn(f"{settings.FRONTEND_BASE_URL}/staff/install", sent.body)
 
     def test_non_super_admin_cannot_invite_super_admin(self):
         # admin doesn't have staff.manage by default; grant it explicitly for

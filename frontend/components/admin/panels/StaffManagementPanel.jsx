@@ -3,6 +3,7 @@ import { apiPost } from "../../../apiClient.js";
 import { useStaffRoster } from "../../../hooks/useStaffRoster.js";
 import { usePermissionCatalog } from "../../../hooks/usePermissionCatalog.js";
 import { D, glassCard, STAFF_STATUS_COLORS } from "../theme.js";
+import StaffInstallLink from "../StaffInstallLink.jsx";
 
 // Staff onboarding work — a staff-roster row can be resent an invite while
 // its status is "invited" (still pending, hasn't activated yet) or
@@ -201,6 +202,12 @@ export default function StaffManagementPanel() {
           </select>
           <button onClick={sendInvite} style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "6px 14px", fontSize: "0.72rem", fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>Send invite</button>
         </div>
+      </div>
+
+      <div style={{ ...glassCard, padding: 18, marginBottom: 16 }}>
+        <div style={{ color: D.text, fontWeight: 800, fontSize: "0.88rem", marginBottom: 4 }}>Staff app link</div>
+        <div style={{ color: D.textDim, fontSize: "0.72rem", marginBottom: 10 }}>Send this to staff (on WhatsApp, for example) to install the AshantiHub Staff app on their phone. Every invite email includes it too.</div>
+        <StaffInstallLink />
       </div>
 
       {isLoading && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading…</div>}

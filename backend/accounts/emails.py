@@ -26,12 +26,18 @@ def _send(subject, message, recipient):
 
 def send_staff_invite_email(staff_user, invite_link):
     subject = "You've been invited to join AshantiHub staff"
+    # The staff-app install page. Per-environment like the invite link, so a
+    # staging invite installs the staging app.
+    install_link = f"{settings.FRONTEND_BASE_URL}/staff/install"
     message = (
         f"Hi {staff_user.full_name},\n\n"
         "You've been invited to join AshantiHub staff. Click the link below to "
         "activate your account and set a password:\n\n"
         f"{invite_link}\n\n"
         "This invite link expires in 7 days.\n\n"
+        "To put the AshantiHub Staff app on your phone, open this link on the "
+        "phone and follow the steps:\n\n"
+        f"{install_link}\n\n"
         "If you weren't expecting this, you can safely ignore this email.\n\n"
         "— AshantiHub"
     )
