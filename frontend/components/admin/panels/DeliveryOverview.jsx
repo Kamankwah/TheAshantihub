@@ -24,6 +24,8 @@ const openBtn = {
   fontSize: "0.8rem", fontWeight: 800, cursor: "pointer", fontFamily: "inherit",
 };
 const note = { color: D.textDim, fontSize: "0.8rem" };
+// Not "queue": /delivery/ holds every paid door-to-door order ever placed.
+const MANAGER_TITLE = "Door-to-door deliveries";
 
 function isToday(iso) {
   if (!iso) return false;
@@ -119,8 +121,8 @@ export function DeliveryManagerOverview({ onNavigate }) {
     ? { icon: "🛵", label: "Active dispatch riders", value: riders.data.length, accent: D.deepGold, sub: "active accounts, not live availability" }
     : null;
 
-  if (isLoading) return <Section title="Delivery queue" action={action}><div style={note}>Loading deliveries…</div></Section>;
-  if (isError) return <Section title="Delivery queue" action={action}><div style={{ ...note, color: D.red }}>Could not load door-to-door orders.</div></Section>;
+  if (isLoading) return <Section title={MANAGER_TITLE} action={action}><div style={note}>Loading deliveries…</div></Section>;
+  if (isError) return <Section title={MANAGER_TITLE} action={action}><div style={{ ...note, color: D.red }}>Could not load door-to-door orders.</div></Section>;
 
   const { rows, total, partialSub } = pageOf(data);
   const status = o => o.delivery_assignment?.status;
@@ -134,7 +136,7 @@ export function DeliveryManagerOverview({ onNavigate }) {
   ].filter(Boolean);
 
   return (
-    <Section title="Delivery queue" action={action}>
+    <Section title={MANAGER_TITLE} action={action}>
       {total === 0 && <div style={{ ...note, marginBottom: tiles.length ? 12 : 0 }}>No door-to-door orders to coordinate right now.</div>}
       {tiles.length > 0 && <div style={kpiGrid}>{tiles.map(t => <KpiCard key={t.label} {...t} />)}</div>}
     </Section>
