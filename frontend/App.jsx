@@ -64,6 +64,8 @@ import { readCookieConsent, saveCookieConsent } from "./lib/cookieConsent.js";
 import useBreakpoint from "./hooks/useBreakpoint.js";
 import SpendAreaChart from "./components/dashboard/charts/SpendAreaChart.jsx";
 import ListingsDonut from "./components/dashboard/charts/ListingsDonut.jsx";
+import RaiseDisputeForm from "./components/RaiseDisputeForm.jsx";
+import TicketQr from "./components/TicketQr.jsx";
 
 // ─── Payment System ───────────────────────────────────────────────────────────
 const MOMO_NETWORKS = [
@@ -2066,6 +2068,7 @@ function OrdersDeliveryTab({ searchQuery }) {
         {o.delivery_assignment_status==="confirmed" && (
           <div style={{marginTop:8,color:D.green,fontSize:"0.72rem",fontWeight:700}}>✓ Receipt confirmed</div>
         )}
+        <RaiseDisputeForm orderId={o.id}/>
       </div>
       );
     })}
@@ -2151,6 +2154,7 @@ function TicketsTab({ searchQuery }) {
               {copiedId===t.id ? "Copied ✓" : "Copy"}
             </button>
           </div>
+          <div style={{marginTop:10}}><TicketQr code={t.code} size={110}/></div>
         </div>
       );
     })}

@@ -2,16 +2,19 @@ import { useState } from "react";
 import { C } from "../theme.js";
 import { apiPost } from "../apiClient.js";
 import { useEventCheckinList } from "../hooks/useEventCheckinList.js";
+import QrScanner from "./QrScanner.jsx";
 
 // ─── EventCheckinPanel ──────────────────────────────────────────────────────
 // Organizer/staff check-in UI (event ticketing + escrow work). Self-fetches
 // useEventCheckinList(eventId, {enabled:true}) — mounted only while
 // EventSubmissionPanel's per-event "✅ Check-in" toggle is open for this
 // event id, same convention as EventTicketTypesPanel/EventAttendeesPanel.
-// Both the code-entry box and each pending row's "Mark Delivered" button call
-// the same POST /api/events/{id}/tickets/checkin/ endpoint — the latter just
-// supplies that row's own `code` (covers the physical hand-off / no-typing
-// path), mirroring the request the code box would otherwise need.
+// The code-entry box, the "📷 Scan QR" camera scanner (QrScanner) and each
+// pending row's "Mark Delivered" button all call the same
+// POST /api/events/{id}/tickets/checkin/ endpoint — a scan supplies the code
+// read from the ticket's QR, and "Mark Delivered" that row's own `code`
+// (covers the physical hand-off / no-typing path), mirroring the request the
+// code box would otherwise need.
 export default function EventCheckinPanel({ eventId }) {
   const { data, isLoading, isError, refetch } = useEventCheckinList(eventId, { enabled: true });
   const tickets = data?.results ?? [];
@@ -21,6 +24,7 @@ export default function EventCheckinPanel({ eventId }) {
   const [checkinError, setCheckinError] = useState(null);
   const [lastCheckedIn, setLastCheckedIn] = useState(null);
   const [markingCode, setMarkingCode] = useState(null);
+  const [scanning, setScanning] = useState(false);
 
   const doCheckin = async (ticketCode) => {
     setCheckinError(null);
@@ -43,6 +47,13 @@ export default function EventCheckinPanel({ eventId }) {
     await doCheckin(code.trim());
     setCheckingIn(false);
     setCode("");
+  };
+
+  // A scanned QR holds the ticket code, so it checks in exactly like a typed code.
+  const handleScanned = async (ticketCode) => {
+    setScanning(false);
+    setLastCheckedIn(null);
+    await doCheckin(ticketCode.trim());
   };
 
   const markDelivered = async (ticketCode) => {
@@ -70,7 +81,15 @@ export default function EventCheckinPanel({ eventId }) {
         >
           {checkingIn ? "Checking in…" : "Check In"}
         </button>
+        <button
+          type="button"
+          onClick={() => { setCheckinError(null); setScanning((open) => !open); }}
+          style={{ background: "rgba(255,255,255,0.08)", color: "white", border: `1px solid ${C.gold}66`, borderRadius: 20, padding: "8px 14px", fontWeight: 800, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}
+        >
+          📷 Scan QR
+        </button>
       </form>
+      {scanning && <QrScanner onDetected={handleScanned} onClose={() => setScanning(false)} />}
 
       {checkinError && <div style={{ marginBottom: 8, color: "#ffb4b4", fontSize: "0.72rem" }}>{checkinError}</div>}
       {lastCheckedIn && (

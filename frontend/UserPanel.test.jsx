@@ -282,4 +282,26 @@ describe('UserPanel', () => {
       expect(screen.getByText('approved')).toBeInTheDocument()
     })
   })
+
+  describe('tickets and orders', () => {
+    it('shows a scannable QR code beside each ticket code in My Tickets', async () => {
+      server.use(http.get('http://localhost:8000/api/events/tickets/mine/', () => HttpResponse.json([{
+        id: 3, code: 'ad3126f8cbc4', price: '50.00', escrow_status: 'held', delivered_at: null, refunded_at: null,
+        event: { name: 'Highlife Night', event_date: '2026-12-20' }, ticket_type: { name: 'Regular' },
+      }])))
+      renderPanel()
+      fireEvent.click(screen.getAllByText('My Tickets')[0])
+      expect(await screen.findByAltText('QR code for ticket ad3126f8cbc4')).toBeInTheDocument()
+    })
+
+    it('offers "Raise a dispute" on every order', async () => {
+      server.use(http.get('http://localhost:8000/api/orders/', () => HttpResponse.json([{
+        id: 42, status: 'paid', placed_at: '2026-10-05T10:00:00Z', total_amount: '250.00',
+        delivery_method: 'pickup', items: [{ id: 1, listing_name: 'Kente stole', quantity: 1, line_total: '250.00' }],
+      }])))
+      renderPanel()
+      fireEvent.click(screen.getAllByText('Orders & Delivery')[0])
+      expect(await screen.findByRole('button', { name: 'Raise a dispute' })).toBeInTheDocument()
+    })
+  })
 })
