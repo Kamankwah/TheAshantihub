@@ -58,6 +58,23 @@ def send_password_reset_email(email, reset_link):
     _send(subject, message, email)
 
 
+def send_new_order_email(email, order_id, lines, subtotal):
+    """Tell a business owner about a paid order. `lines` are only this owner's
+    (quantity, item name, line total) — an order can span several businesses,
+    and no owner sees another's lines or the customer's details."""
+    subject = f"New order #{order_id} on AshantiHub"
+    items = "\n".join(f"  {quantity} × {name} — GHS {total}" for quantity, name, total in lines)
+    message = (
+        f"You have a new paid order on AshantiHub (order #{order_id}):\n\n"
+        f"{items}\n\n"
+        f"Your total: GHS {subtotal}\n\n"
+        "See it and arrange delivery in your dashboard:\n\n"
+        f"{settings.FRONTEND_BASE_URL}/business-dashboard\n\n"
+        "— AshantiHub"
+    )
+    _send(subject, message, email)
+
+
 def send_verification_code_email(email, code):
     subject = "Your AshantiHub verification code"
     message = (
