@@ -206,6 +206,28 @@ class OwnerOrderTests(FulfilmentSpineTestsBase):
         # owner_subtotal covers only this owner's line (50.00), not the 250 total.
         self.assertEqual(row["owner_subtotal"], "50.00")
 
+    def test_owner_sees_customer_name_and_address_but_not_phone(self):
+        # Door-to-door delivery is run by AshantiHub, so the business never
+        # needs the customer's number — and having it would open a direct
+        # business-to-customer channel the platform rules forbid.
+        self._auth(self.customer)
+        self._add_to_cart(self.tracked, 1)
+        response = self.client.post("/api/orders/checkout/", {
+            "delivery_method": "door_to_door",
+            "delivery_address": "Bantama, Kumasi",
+            "delivery_phone": "+233200770055",
+        }, format="json")
+        self.assertEqual(response.status_code, 201, response.content)
+
+        self._auth(self.owner, "business_owner")
+        response = self.client.get("/api/orders/owner/")
+        row = response.json()["results"][0]
+        self.assertEqual(row["customer_name"], "Ama Buyer")
+        self.assertEqual(row["delivery_address"], "Bantama, Kumasi")
+        self.assertNotIn("delivery_phone", row)
+        self.assertNotIn(b"+233200770055", response.content)
+        self.assertNotIn(self.customer.phone.encode(), response.content)
+
     def test_owner_endpoint_requires_a_business_owner(self):
         self._auth(self.customer)  # a customer, not a business owner
         self.assertEqual(self.client.get("/api/orders/owner/").status_code, 403)

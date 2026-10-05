@@ -109,6 +109,9 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
 
       {/* Photo gallery — always visible so the owner can see what customers see */}
       <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
+        {listing.main_photo && (
+          <img src={listing.main_photo} alt="Main photo" title="Main photo" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: `2px solid ${D.gold}` }} />
+        )}
         {photos.map(p => (
           <div key={p.id} style={{ position: "relative" }}>
             <img src={p.image} alt="" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: `1px solid ${D.divider}` }} />
@@ -124,7 +127,7 @@ export default function OwnerListingCard({ listing, onChanged, variant = "produc
           <input ref={fileRef} type="file" accept="image/*" onChange={uploadPhoto} disabled={uploading} style={{ display: "none" }} />
         </label>
       </div>
-      {photos.length === 0 && <div style={{ color: D.textFaint, fontSize: "0.68rem", marginTop: 4 }}>No photos yet — add images so customers can see this listing.</div>}
+      {photos.length === 0 && !listing.main_photo && <div style={{ color: D.textFaint, fontSize: "0.68rem", marginTop: 4 }}>No photos yet — add images so customers can see this listing.</div>}
 
       {actionError && <div style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>{actionError}</div>}
       {lowStock && !restockOpen && <div style={{ color: D.red, fontSize: "0.7rem", marginTop: 6 }}>Running low — restock soon.</div>}

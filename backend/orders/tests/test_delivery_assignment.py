@@ -60,6 +60,13 @@ class DeliveryManagerTests(DeliveryTestsBase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.json()["count"], 1)
 
+    def test_manager_still_sees_the_customers_delivery_phone(self):
+        # Staff run delivery, so the phone the owner no longer sees stays here.
+        self._make_order(method=Order.DOOR_TO_DOOR, status=Order.PAID)
+        self._auth(self.manager)
+        row = self.client.get("/api/orders/delivery/").json()["results"][0]
+        self.assertEqual(row["delivery_phone"], "+233200882200")
+
     def test_delivery_list_requires_delivery_manage(self):
         self._auth(self.dispatch)
         self.assertEqual(self.client.get("/api/orders/delivery/").status_code, 403)

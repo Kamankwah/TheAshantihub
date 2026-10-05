@@ -81,8 +81,8 @@ export function AboutPage() {
             <p>
               We give every business in the Ashanti Region — formal or
               informal, large or small — a verified digital storefront with
-              photos, prices, reviews and instant WhatsApp connection to
-              customers.
+              photos, prices and reviews, and AshantiHub Support handling
+              every customer enquiry on their behalf.
             </p>
             <p>
               For businesses, we deliver customers from across Ghana and

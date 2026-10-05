@@ -42,7 +42,7 @@ export function BusinessCtaBand({ onRegister }: BusinessCtaBandProps) {
                 Own a Business in Ashanti?
               </h3>
               <p className="text-sm text-muted-foreground">
-                First 3 months FREE. Support-backed listings.
+                Your first billing cycle is FREE. Support-backed listings.
               </p>
               <Button onClick={onRegister} size="lg" className="mt-2">
                 Register Your Business →

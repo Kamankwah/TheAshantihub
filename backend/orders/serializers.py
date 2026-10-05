@@ -16,6 +16,10 @@ class OrderItemSerializer(serializers.ModelSerializer):
 DELIVERY_FIELDS = [
     "delivery_method", "delivery_address", "delivery_phone", "delivery_lat", "delivery_lng",
 ]
+# A business owner gets the customer's name and address but never their phone:
+# AshantiHub's delivery team runs door-to-door fulfilment, and a phone number
+# would open the direct business-to-customer channel the platform forbids.
+OWNER_DELIVERY_FIELDS = [f for f in DELIVERY_FIELDS if f != "delivery_phone"]
 
 
 class OrderSerializer(serializers.ModelSerializer):
@@ -56,7 +60,8 @@ class OwnerOrderSerializer(serializers.ModelSerializer):
     F). Exposes ONLY the caller's own line items (a shared order may span
     multiple businesses) and an owner_subtotal over just those lines — not the
     order's full total, which would include other businesses' items. Carries
-    the delivery info the owner needs to fulfil or hand off.
+    the delivery info the owner needs to fulfil or hand off — name and
+    address only, never the customer's phone (see OWNER_DELIVERY_FIELDS).
     """
 
     items = serializers.SerializerMethodField()
@@ -67,7 +72,7 @@ class OwnerOrderSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             "id", "customer_name", "status", "delivery_status", "placed_at",
-            "items", "owner_subtotal", *DELIVERY_FIELDS,
+            "items", "owner_subtotal", *OWNER_DELIVERY_FIELDS,
         ]
 
     def _own_items(self, obj):
