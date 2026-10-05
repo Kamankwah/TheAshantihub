@@ -44,6 +44,10 @@ def _finalize_order_checkout(session):
     order.status = Order.PAID
     order.save(update_fields=["status"])
 
+    from orders.alerts import alert_owners_of_paid_order
+
+    alert_owners_of_paid_order(order)
+
 
 def _fail_order_checkout(session):
     """Rolls back the optimistic stock reservation made at checkout time when

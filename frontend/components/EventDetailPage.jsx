@@ -7,6 +7,7 @@ import { useEventTicketTypes } from "../hooks/useEventTicketTypes.js";
 import { apiDelete, apiPost } from "../apiClient.js";
 import { formatEventDate } from "./EventCard.jsx";
 import { ReviewsList, ReviewWriteForm, starString } from "./ReviewComponents.jsx";
+import TicketQr from "./TicketQr.jsx";
 
 // ─── EventDetailPage ────────────────────────────────────────────────────────
 // Event detail page for the Events tab (docs/BUSINESS_EVENTS_ROADMAP.md
@@ -512,9 +513,12 @@ function EventTicketsSection({ eventId, hasTickets, user, PaymentComponent }) {
                 <div style={{ color: "white", fontSize: "0.78rem", marginBottom: 4 }}>
                   Your ticket code{purchased.length > 1 ? "s" : ""}: <strong>{purchased.map((t) => t.code).join(", ")}</strong>
                 </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", margin: "6px 0" }}>
+                  {purchased.map((t) => <TicketQr key={t.code} code={t.code} size={110} />)}
+                </div>
                 <div style={{ color: "rgba(255,255,255,0.7)", fontSize: "0.74rem" }}>
                   {tt.delivery_method === "digital"
-                    ? "Show this code at check-in."
+                    ? "Show this code or its QR at check-in."
                     : "Present this code to collect your physical ticket."}
                 </div>
                 <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.7rem", marginTop: 4 }}>

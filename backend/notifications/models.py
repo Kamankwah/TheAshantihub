@@ -37,6 +37,7 @@ class Notification(models.Model):
     HERO_REJECTED = "hero_rejected"
     HERO_NEEDS_APPROVAL = "hero_needs_approval"
     ORDER_STATUS = "order_status"
+    NEW_ORDER = "new_order"
     SUPPORT_REPLY = "support_reply"
     NEW_MESSAGE = "new_message"
     CONTACT_MESSAGE = "contact_message"
@@ -54,6 +55,7 @@ class Notification(models.Model):
         (HERO_REJECTED, "Hero submission rejected"),
         (HERO_NEEDS_APPROVAL, "Hero submission needs approval"),
         (ORDER_STATUS, "Order status changed"),
+        (NEW_ORDER, "New order"),
         (SUPPORT_REPLY, "Support reply"),
         (NEW_MESSAGE, "New support message"),
         (CONTACT_MESSAGE, "New contact message"),
