@@ -21,7 +21,7 @@ const FAQS: Faq[] = [
   {
     question: "Is AshantiHub free for businesses to join?",
     answer:
-      "Yes — creating a verified storefront on AshantiHub is free. Optional paid add-ons (like Hero placement or Featured/Boost promotions) exist for businesses that want extra visibility, but a standard listing costs nothing to set up.",
+      "There's nothing to pay when you join — your first billing cycle is free on every plan. After that, your plan's monthly subscription is billed every 1, 3, 6 or 12 months, whichever you choose. Optional paid add-ons (like Hero placement or Featured/Boost promotions) exist for businesses that want extra visibility.",
   },
   {
     question: "How does the Business Credit Score work?",
@@ -39,7 +39,7 @@ const FAQS: Faq[] = [
       "Tap \"Register Your Business\" from the About or Business page, follow the guided form (business details, category, zone and verification documents), and our team will review and verify your submission before it goes live.",
   },
   {
-    question: "How does WhatsApp ordering/connection work for a listing?",
+    question: "How do I order from or ask about a listing?",
     answer:
       "Product and service listings support Add to Cart and checkout directly in-app. For anything else, \"Contact Support\" opens a conversation with AshantiHub Support (not the business) about that listing — we relay the enquiry rather than exposing a direct line.",
   },
