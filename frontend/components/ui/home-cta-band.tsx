@@ -22,7 +22,7 @@ export function HomeCtaBand() {
             Get the AshantiHub App
           </h2>
           <p className="text-sm md:text-base text-primary-foreground/80 max-w-md">
-            Browse, shop, and message support on the go — download AshantiHub today.
+            Our iOS and Android apps are coming soon. Until then, AshantiHub works in your phone's browser — browse, shop, and message support today.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3 mt-3">
             <AppStoreButton variant="secondary" />

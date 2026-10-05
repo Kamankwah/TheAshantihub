@@ -114,6 +114,11 @@ DATABASES = {
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# Ghana time (GMT, no DST). Left unset, Django defaults to America/Chicago and
+# every API timestamp and local-date boundary lands five hours off.
+TIME_ZONE = "Africa/Accra"
+USE_TZ = True
+
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "media/"

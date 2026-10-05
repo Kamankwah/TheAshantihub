@@ -60,6 +60,8 @@ import KpiCard from "./components/dashboard/charts/KpiCard.jsx";
 import ChartFrame from "./components/dashboard/charts/ChartFrame.jsx";
 import { ensureStaffHead, isStaffPathname, isStandaloneDisplay, startStaffPwa } from "./lib/staffPwa.js";
 import { subjectLine } from "./lib/conversationSubject.js";
+import { readCookieConsent, saveCookieConsent } from "./lib/cookieConsent.js";
+import useBreakpoint from "./hooks/useBreakpoint.js";
 import SpendAreaChart from "./components/dashboard/charts/SpendAreaChart.jsx";
 import ListingsDonut from "./components/dashboard/charts/ListingsDonut.jsx";
 
@@ -437,7 +439,7 @@ function formatConvTime(iso) {
 // flow instead, sized to fill its container — used only by UserPanel's
 // Messages tab, where a full floating widget/backdrop makes no sense inside
 // an already-dedicated dashboard tab.
-function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
+export function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
   // Support chat is open to everyone except a staff session (whose inbox is
   // the admin MessagingPanel — /api/messaging/conversations/ 403s a
   // StaffUser). A signed-in Customer/BusinessOwner is scoped by their auth
@@ -458,6 +460,13 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const hasAutoSelectedRef = useRef(false);
+  // A phone can't fit the conversation list beside the chat, so it shows one
+  // pane at a time: the chat first (where "Contact Support" lands), the list
+  // behind a back button in the chat header.
+  const isPhone = useBreakpoint() === "phone";
+  const [phonePane, setPhonePane] = useState("chat");
+  const showList = !isPhone || phonePane === "list";
+  const showChat = !isPhone || phonePane === "chat";
 
   // Auto-pick a starting conversation the first time the list loads —
   // preferring one already "about" the business/listing this was opened
@@ -516,7 +525,9 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
   // page stays visible/usable behind it.
   const wrapperStyle = embedded
     ? undefined
-    : {position:"fixed",bottom:92,right:20,zIndex:2000,width:380,maxWidth:"calc(100vw - 40px)",height:600,maxHeight:"calc(100vh - 120px)"};
+    : isPhone
+      ? {position:"fixed",bottom:92,left:12,right:12,zIndex:2000,height:640,maxHeight:"calc(100vh - 120px)"}
+      : {position:"fixed",bottom:92,right:20,zIndex:2000,width:380,maxWidth:"calc(100vw - 40px)",height:600,maxHeight:"calc(100vh - 120px)"};
   const panelStyle = embedded
     ? {background:"white",borderRadius:20,width:"100%",height:"70vh",display:"flex",overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,0.14)"}
     : {background:"white",borderRadius:20,width:"100%",height:"100%",display:"flex",overflow:"hidden",boxShadow:"0 16px 48px rgba(0,0,0,0.28)"};
@@ -528,7 +539,8 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
         {/* LEFT — Conversation List. Narrower in the floating-widget layout
             (380px total) than the embedded dashboard-tab layout (fills its
             container), so the chat pane itself still has usable room. */}
-        <div style={{width:embedded?260:120,borderRight:`1px solid #f0f0f0`,display:"flex",flexDirection:"column",flexShrink:0}}>
+        {showList && (
+        <div style={{width:isPhone?"100%":embedded?260:120,borderRight:isPhone?"none":`1px solid #f0f0f0`,display:"flex",flexDirection:"column",flexShrink:0}}>
           {/* Header */}
           <div style={{background:`linear-gradient(135deg,${C.darkBrown},${C.kente3})`,padding:"16px",position:"relative"}}>
             <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
@@ -548,7 +560,7 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
               draft and focuses the input: for a caller with no
               conversations yet the compose state is already showing, so
               without the focus jump this click looked like it did nothing. */}
-          <button onClick={()=>{setActiveConvId(null);setNewMessage("");inputRef.current?.focus();}}
+          <button onClick={()=>{setActiveConvId(null);setNewMessage("");setPhonePane("chat");setTimeout(()=>inputRef.current?.focus(),0);}}
             style={{margin:"10px 12px 4px",background:`${C.gold}15`,color:C.deepGold,border:`1.5px dashed ${C.gold}`,borderRadius:12,padding:"9px",fontSize:"0.74rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
             ✉️ Start New Conversation
           </button>
@@ -562,7 +574,7 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
               const lastMsg = conv.messages?.[conv.messages.length-1];
               const attention = needsCustomerAttention(conv);
               return (
-              <div key={conv.id} onClick={()=>setActiveConvId(conv.id)}
+              <div key={conv.id} onClick={()=>{setActiveConvId(conv.id);setPhonePane("chat");}}
                 style={{padding:"12px 14px",cursor:"pointer",borderBottom:"1px solid #f5f5f5",background:activeConvId===conv.id?`${C.gold}12`:"white",transition:"background 0.2s"}}
                 onMouseEnter={e=>{ if(activeConvId!==conv.id) e.currentTarget.style.background="#fafafa"; }}
                 onMouseLeave={e=>{ if(activeConvId!==conv.id) e.currentTarget.style.background="white"; }}>
@@ -602,6 +614,7 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
             </div>
           </div>
         </div>
+        )}
 
         {/* RIGHT — Chat Window. Always rendered — a signed-out visitor sees
             the same chat surface (greeted as "Guest") rather than a sign-in
@@ -610,11 +623,16 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
             business owners, a sign-in button for guests, a pointer to the
             admin MessagingPanel for staff sessions, whose inbox lives there —
             /api/messaging/conversations/ 403s a StaffUser). */}
+        {showChat && (
         <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0}}>
           {(
             <>
               {/* Chat Header */}
               <div style={{padding:"14px 18px",borderBottom:"1px solid #f0f0f0",display:"flex",alignItems:"center",gap:12,background:"white"}}>
+                {isPhone && (
+                  <button type="button" aria-label="Back to conversations" onClick={()=>setPhonePane("list")}
+                    style={{background:"#f0f0f0",border:"none",borderRadius:"50%",width:36,height:36,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"1.2rem",color:C.darkBrown,fontFamily:"inherit"}}>‹</button>
+                )}
                 <div style={{position:"relative"}}>
                   <div style={{width:42,height:42,borderRadius:"50%",background:`${C.gold}20`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.3rem"}}>🎧</div>
                   <div style={{position:"absolute",bottom:1,right:1,width:10,height:10,borderRadius:"50%",background:"#22c55e",border:"2px solid white"}}/>
@@ -770,6 +788,7 @@ function MessagingCenter({ user, onClose, initialBusiness, embedded = false }) {
             </>
           )}
         </div>
+        )}
       </div>
     </div>
   );
@@ -2757,8 +2776,8 @@ export default function AshantiHub() {
   };
 
 
-  const [cookieConsent,setCookieConsent]=useState(false);
-  const [cookieDismissed,setCookieDismissed]=useState(false);
+  const [cookieConsent,setCookieConsent]=useState(()=>readCookieConsent()==="accepted");
+  const [cookieDismissed,setCookieDismissed]=useState(()=>readCookieConsent()!==null);
   const [showMessaging,setShowMessaging]=useState(false);
   const [messagingBusiness,setMessagingBusiness]=useState(null);
   const [isLoading,setIsLoading]=useState(true);
@@ -2969,7 +2988,7 @@ export default function AshantiHub() {
 
   return (
     <div style={{fontFamily:"'Georgia',serif",background:C.cream,minHeight:"100vh"}}>
-      {!cookieDismissed&&<CookieBanner onAccept={()=>{setCookieConsent(true);setCookieDismissed(true);Analytics.track("cookie_accepted");}} onDecline={()=>{setCookieDismissed(true);Analytics.track("cookie_declined");}}/>}
+      {!cookieDismissed&&<CookieBanner onAccept={()=>{saveCookieConsent("accepted");setCookieConsent(true);setCookieDismissed(true);Analytics.track("cookie_accepted");}} onDecline={()=>{saveCookieConsent("essential");setCookieDismissed(true);Analytics.track("cookie_declined");}}/>}
       <OfflineBanner/>
       {shownAuthModal&&<AuthModal authState={shownAuthModal} auth={auth} onClose={()=>setAuthModal(null)} onSuccess={handleAuthSuccess}/>}
       {showMessaging&&<MessagingCenter user={user} onClose={()=>{setShowMessaging(false);setMessagingBusiness(null);}} initialBusiness={messagingBusiness}/>}
