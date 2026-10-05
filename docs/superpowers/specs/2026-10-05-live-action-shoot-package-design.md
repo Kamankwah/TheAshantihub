@@ -79,7 +79,7 @@ One source per fact, so the scripts and the package cannot drift:
 9. **Stills shot list** — §8.
 10. **B-roll** — kept from the current package, extended for the new locations.
 11. **Audio** — natural sound and room tone as now, plus **sync sound for the host**: lav plus a
-    backup recorder, and a 20-minute VO recording block on Day 3.
+    backup recorder, and a 45-minute VO recording block on Day 3.
 12. **Release-form checklist** — §7.
 13. **Post-production** — §10.
 14. **Delivery spec** — kept from the current package (30 fps, 4K preferred, 1/50 or 1/100
@@ -141,7 +141,7 @@ listed on the site, as the customer script already requires.
 | **1 — Kumasi city** | Kejetia rooftop at dawn → Kejetia / Adum stalls → Suame Magazine → chop bar → braider's salon and a barbershop → a residential gate → a family home at dusk | Market aerial (`CP 0–6s`); host hooks for `CC1` and `BC1` with the trader; the trader signing up (`BP 70–80s`); stall montage with cash changing hands (`BC2`); trades montage (`BP 0–6s`); service scenes (`CP 26–38s`, `BP 25–38s`, `BC3`, `CC2`); rider at the gate (`CP 38–50s`); family half of the diaspora split; stills |
 | **2 — Bonwire** | A courtesy visit to the chief first, then Akosua's loom and shop | Weaving beats across `BP`; the scout's visit; host hooks for `BC2` (loan form) and `BC3` ("× 47"); Akosua photographing kente; rider loading a parcel; the closing smile; stills, including the website's kente slot |
 | **3 — Office + Kumasi** | AshantiHub office → a real apartment → a café → Prempeh I Airport | Support agent scenes; every phone insert (controlled light); the host's VO recording; `CC3` hook; demo customer at home; the Hero on a laptop; `CC2` arrivals |
-| **Pickups** | A real AshantiHub-listed event · remote · Manhyia on an Akwasidae day | QR scan at the gate · diaspora half of the split · Akwasidae and palace stills |
+| **Pickups** | A real AshantiHub-listed event · remote · Manhyia on an Akwasidae day · a consenting listed hotel | QR scan at the gate · diaspora half of the split · Akwasidae and palace stills · the hotel still |
 
 The full call sheet in the package gives times per location; Day 1 is the tightest, so the
 barbershop and salon are adjacent setups and the rooftop starts at 06:30.
@@ -189,8 +189,10 @@ New:
   customers' names in inserts. Demo data only.
 - **Demo stores are labelled as portrayals.** A *Demo store* super on every insert showing a
   demo store. The end card of every video that shows one carries one line of fine print per demo
-  store in it: *"Akosua Ntoma is a demonstration store, portrayed by a Bonwire weaver."* (`BP`,
-  `BC2`, `BC3`) and the same form for the second demo store (`BP`, `BC1`).
+  store in it: *"Akosua Ntoma is a demonstration store, portrayed by a Bonwire weaver."*, and the
+  same form, with the name it has on staging, for each other demo store (the Kejetia trader's
+  store, the demo service business). All eight videos show at least one demo store, so every end
+  card carries fine print.
 
 ## 8. Stills
 
@@ -229,8 +231,11 @@ AshantiHub-listed event, and the organiser checks that ticket in at the gate for
 `CP 50–64s` and `CC2`. The organiser consents to the gate and their check-in screen being filmed.
 
 **Insert protocol:**
-- One clean phone, no case, notifications silenced, brightness matched to the scene, shutter
-  1/50 to avoid flicker. Hold each insert 2–3s; keep it centre-safe for the 9:16 crop.
+- One clean phone per character, no case, the same handset in that character's scenes and
+  inserts. Notifications silenced, brightness matched to the scene, shutter 1/50 to avoid
+  flicker. Hold each insert 2–3s; keep it centre-safe for the 9:16 crop.
+- The hands in an insert are that character's own, in the same sleeve as their scenes, so
+  Akosua, the Kejetia trader, the scout and the demo customer attend Day 3 for their inserts.
 - The app runs as the installed PWA, so no browser bar shows `test.theashantihub.com`. The
   laptop runs the browser fullscreen.
 - Demo-store and demo-customer inserts use the staging demo accounts. Real-business inserts use
@@ -247,7 +252,8 @@ AshantiHub-listed event, and the organiser checks that ticket in at the gate for
   commercial use of Eleven Music output.
 - **Edit:** the crew's editor in Resolve or Premiere on 30 fps timelines. The package gives a
   style sheet: Fraunces for headings, Plus Jakarta Sans for supers, gold on deep brown, the
-  kente-edge end card, and the 9:16 and 16:9 safe areas (from DESIGN.md). The existing end card
+  kente-edge end card (palette and fonts from DESIGN.md), with supers kept centre-safe and, in
+  9:16, clear of the bands where Reels, TikTok and Shorts overlay their own controls. The existing end card
   is supplied as a reference render. The Remotion project is not part of the live-action edit.
 - **Masters:** 16 MP4s: 2 promos and 6 clips, each in 16:9 and 9:16. H.264, captions burned in,
   mixed to −14 LUFS integrated with true peaks at or below −1 dBTP. Plus an SRT per video for
