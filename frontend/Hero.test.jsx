@@ -1,6 +1,9 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen } from '@testing-library/react'
+import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import Hero from './components/Hero.jsx'
+import { server } from './mocks/server.js'
 
 const T = {
   signup: 'Create Free Account',
@@ -8,23 +11,53 @@ const T = {
 }
 
 function renderHero(props = {}) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
-    <Hero
-      T={T}
-      user={null}
-      setAuthModal={vi.fn()}
-      setPage={vi.fn()}
-      {...props}
-    />,
+    <QueryClientProvider client={queryClient}>
+      <Hero
+        T={T}
+        user={null}
+        setAuthModal={vi.fn()}
+        setPage={vi.fn()}
+        {...props}
+      />
+    </QueryClientProvider>,
+  )
+}
+
+function mockListingCount(count) {
+  server.use(
+    http.get('http://localhost:8000/api/listings/', () =>
+      HttpResponse.json({ count, next: null, previous: null, results: [] })),
   )
 }
 
 describe('Hero', () => {
-  it('renders the opening Ashanti-stats heading and stats', () => {
+  it('renders the opening heading with live listing and category counts from the API', async () => {
+    mockListingCount(42)
     renderHero()
     expect(screen.getByText(/A Kingdom Wired/)).toBeInTheDocument()
-    expect(screen.getByText('100K+')).toBeInTheDocument()
-    expect(screen.getByText('Annual Visitors')).toBeInTheDocument()
+    expect(await screen.findByText('42')).toBeInTheDocument()
+    expect(screen.getByText('Listings')).toBeInTheDocument()
+    // the shared mock serves two categories
+    expect(await screen.findByText('2')).toBeInTheDocument()
+    expect(screen.getByText('Categories')).toBeInTheDocument()
+  })
+
+  it('never shows invented figures', async () => {
+    mockListingCount(42)
+    renderHero()
+    await screen.findByText('42')
+    expect(screen.queryByText('Annual Visitors')).not.toBeInTheDocument()
+    expect(screen.queryByText(/100K\+/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/65\+/)).not.toBeInTheDocument()
+  })
+
+  it('leaves the listing count out while there are no listings yet', async () => {
+    mockListingCount(0)
+    renderHero()
+    await screen.findByText('Categories')
+    expect(screen.queryByText('Listings')).not.toBeInTheDocument()
   })
 
   it('renders all four section badges for the scroll narrative', () => {

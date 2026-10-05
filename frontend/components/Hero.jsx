@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { C } from "../theme.js";
 import usePrefersReducedMotion from "../hooks/usePrefersReducedMotion.js";
+import { useCategories } from "../hooks/useCategories.js";
+import { useListings } from "../hooks/useListings.js";
 import kenteWeavingPhoto from "../assets/hero/kente-weaving.jpg";
 import kejetiaMarketPhoto from "../assets/hero/kejetia-market.jpg";
 import akwasidaeFestivalPhoto from "../assets/hero/akwasidae-festival.jpg";
@@ -23,7 +25,16 @@ import manhyiaPalacePhoto from "../assets/hero/manhyia-palace.jpg";
 // wrapper, scroll-position section detection via getBoundingClientRect, as
 // the narrative it replaces.
 
-function buildSections() {
+// The opening section's figures come from the live API, never a hardcoded
+// guess: a count is left out until it has loaded and while it is zero.
+function buildStats(listingCount, categoryCount) {
+  const stats = [];
+  if (listingCount > 0) stats.push([String(listingCount), listingCount === 1 ? "Listing" : "Listings"]);
+  if (categoryCount > 0) stats.push([String(categoryCount), "Categories"]);
+  return stats.length ? stats : null;
+}
+
+function buildSections(stats) {
   return [
     {
       id: "ashanti",
@@ -32,7 +43,7 @@ function buildSections() {
       subtitle: "for Growth",
       description: "From deep cultural heritage to a modern economy, Ashanti is humming — gold, cocoa, tourism and a fast-growing digital sector all running through the same network of towns, roads and traders. AshantiHub connects that momentum to the people driving it, backed by a real support team every step of the way.",
       hero: true,
-      stats: [["100K+", "Annual Visitors"], ["15", "Categories"], ["65+", "Businesses"]],
+      stats,
       actionLabel: "Explore Businesses in Ashanti →",
       actionTarget: "business",
       photo: kenteWeavingPhoto,
@@ -45,7 +56,7 @@ function buildSections() {
       subtitle: "Across Ashanti",
       description: "At the heart of that network sits Ashanti — historic seat of the Ashanti Kingdom, home to Kumasi's markets and Bonwire's kente looms. AshantiHub connects that momentum to the people driving it, with AshantiHub Support on hand for every enquiry.",
       features: [
-        { title: "65+ Businesses, One Marketplace", description: "Hotels, chop bars, tour guides, kente weavers, transport and more." },
+        { title: "Every Kind of Business, One Marketplace", description: "Hotels, chop bars, tour guides, kente weavers, transport and more." },
         { title: "Support-Backed Contact", description: "Every enquiry is handled by AshantiHub Support — fast, safe and verified." },
         { title: "Verified & Secure", description: "Every listing checked against Ghana Card, every account protected." },
       ],
@@ -84,7 +95,14 @@ function buildSections() {
 
 export default function Hero({ T, user, setAuthModal, setPage }) {
   const reducedMotion = usePrefersReducedMotion();
-  const sections = useMemo(() => buildSections(), []);
+  const { data: categories } = useCategories();
+  const { data: listingPages } = useListings({});
+  const listingCount = listingPages?.pages?.[0]?.count ?? 0;
+  const categoryCount = Array.isArray(categories) ? categories.length : 0;
+  const sections = useMemo(
+    () => buildSections(buildStats(listingCount, categoryCount)),
+    [listingCount, categoryCount],
+  );
   const [activeIndex, setActiveIndex] = useState(0);
   const sectionRefs = useRef([]);
   const rafId = useRef(null);

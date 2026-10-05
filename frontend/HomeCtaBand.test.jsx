@@ -6,7 +6,12 @@ describe('HomeCtaBand', () => {
   it('renders the billboard heading and copy', () => {
     render(<HomeCtaBand />)
     expect(screen.getByText('Get the AshantiHub App')).toBeInTheDocument()
-    expect(screen.getByText(/download AshantiHub today/i)).toBeInTheDocument()
+    expect(screen.getByText(/coming soon/i)).toBeInTheDocument()
+  })
+
+  it('does not claim the app can be downloaded yet (there is no mobile app)', () => {
+    render(<HomeCtaBand />)
+    expect(screen.queryByText(/download AshantiHub today/i)).not.toBeInTheDocument()
   })
 
   it('renders the App Store and Play Store buttons', () => {
