@@ -41,7 +41,7 @@ women entrepreneurs at the centre of everything we do.
 | 6–15s | Someone scrolling a social-media sale post, frowning. A chat reads "seen", with no reply. **On-screen:** *Is this seller even real?* | We've all seen it. A great price online, a seller you can't check, and money you never see again. |
 | 15–26s | The AshantiHub logo resolves; the app opens on a phone. **On-screen:** *Ghana Card · Digital address · Physical check* | AshantiHub is different. Every business here is verified — Ghana Card, digital address, and a physical check of the business itself. No exceptions. |
 | 26–38s | Quick cuts: kente added to a cart · a hair appointment booked · a concert ticket bought. **On-screen:** *Shop · Book · Get tickets* | Shop from Kumasi's makers and traders. Book a service. Get tickets to the next big event. All in one place. |
-| 38–50s | A delivery rider pulls up at a gate. Then a phone shows a chat headed *AshantiHub Support · Re: Akosua Ntoma*. | We coordinate delivery to your door. And when you have a question, AshantiHub Support handles it for you — so you never hand your number to a stranger. |
+| 38–50s | A delivery rider pulls up at a gate. Then a phone shows a chat headed *AshantiHub Support · Re: Handwoven kente stole*. | We coordinate delivery to your door. And when you have a question, AshantiHub Support handles it for you — so you never hand your number to a stranger. |
 | 50–64s | A review appears with a *Verified Purchase* tag. A ticket QR code is scanned at an event gate. **On-screen:** *Protected, start to finish* | Reviews are checked before they're published. Ticket payments are held safely until you're checked in. And if an order goes wrong, you raise a dispute and our team steps in. |
 | 64–76s | Split screen: a young woman in a winter coat abroad, a family laughing in Kumasi. **On-screen:** *Ahodwo or Amsterdam. Santasi or Seattle.* | Whether you're in Ahodwo or Amsterdam, Santasi or Seattle, AshantiHub keeps you close to the businesses back home. |
 | 76–88s | Logo, gold on deep brown. **On-screen:** *Create your free account — theashantihub.com* | Create your free account today at theashantihub.com. AshantiHub — the Marketplace of Ashanti. |
@@ -81,7 +81,7 @@ you land. 🇬🇭✈️ #AshantiHub #DettyDecember #Diaspora #Kumasi
 | Beat | Visual / on-screen text | Voiceover |
 |---|---|---|
 | Hook, 0–3s | Creator to camera, mock-confused. **On-screen:** *"Why can't I WhatsApp the seller?"* | "Why can't I just WhatsApp the seller?" Good question. |
-| 3–22s | Tap *🎧 Contact Support* on a listing; a chat opens: *AshantiHub Support · Re: Akosua Ntoma*. | On AshantiHub, every question goes through AshantiHub Support. We talk to the business for you, so your number never ends up with a stranger, and there's a record of everything that was promised. |
+| 3–22s | Tap *🎧 Contact Support* on a listing; a chat opens: *AshantiHub Support · Re: Handwoven kente stole*. | On AshantiHub, every question goes through AshantiHub Support. We talk to the business for you, so your number never ends up with a stranger, and there's a record of everything that was promised. |
 | 22–34s | The support chat replies; the customer adds to cart. | It's how we keep fraud out — for you and for the businesses. |
 | CTA, 34–40s | Logo + URL. | Safer shopping, by design. theashantihub.com. |
 

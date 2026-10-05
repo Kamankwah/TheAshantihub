@@ -18,3 +18,7 @@ backups/
 # Written by deploy.sh from .deploy.conf so a manual `docker compose up` gets
 # the same port and worker count a deploy would use.
 infra/compose/.env
+
+# Promo-video workspace (Remotion + ElevenLabs). Not part of the web app and never
+# in a Docker build context (both builds use backend/); kept local only.
+/marketing/
