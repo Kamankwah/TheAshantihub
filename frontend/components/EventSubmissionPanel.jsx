@@ -541,7 +541,6 @@ function EventAttendeesPanel({ eventId }) {
           style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", padding: "6px 0", borderTop: i > 0 ? "1px solid rgba(255,255,255,0.08)" : "none", fontSize: "0.74rem" }}
         >
           <span style={{ color: "white", fontWeight: 700 }}>{a.customer_name}</span>
-          <span style={{ color: "rgba(255,255,255,0.6)" }}>{a.customer_phone}{a.customer_email ? ` · ${a.customer_email}` : ""}</span>
           <span style={{ color: "rgba(255,255,255,0.45)" }}>{formatEventDate(a.rsvp_at)}</span>
         </div>
       ))}

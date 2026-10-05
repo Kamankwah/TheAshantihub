@@ -238,7 +238,7 @@ describe('EventSubmissionPanel — Attendees view (docs/BUSINESS_EVENTS_ROADMAP.
     expect(screen.getByText('👥 Attendees')).toBeInTheDocument()
   })
 
-  it('fetches and lists attendees (name, contact, RSVP date) once "Attendees" is clicked, and can be collapsed again', async () => {
+  it('fetches and lists attendees (name and RSVP date, no contact details) once "Attendees" is clicked, and can be collapsed again', async () => {
     server.use(
       http.get('http://localhost:8000/api/events/mine/', () =>
         HttpResponse.json([{ id: 9, name: 'Kumasi Cultural Festival', status: 'approved', access_level: 'public', paid_at: '2026-07-01T00:00:00Z' }]),
@@ -260,7 +260,10 @@ describe('EventSubmissionPanel — Attendees view (docs/BUSINESS_EVENTS_ROADMAP.
     fireEvent.click(screen.getByText('👥 Attendees'))
     expect(await screen.findByText('Ama Owusu')).toBeInTheDocument()
     expect(screen.getByText('Kwame Mensah')).toBeInTheDocument()
-    expect(screen.getByText(/\+233241234567/)).toBeInTheDocument()
+    // Organizers see who is going by name only — attendee contact stays with
+    // AshantiHub Support, even if the API were to send it.
+    expect(screen.queryByText(/\+233241234567/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/ama@example\.com/)).not.toBeInTheDocument()
     expect(screen.getByText('2 going')).toBeInTheDocument()
 
     fireEvent.click(screen.getByText('▲ Hide Attendees'))

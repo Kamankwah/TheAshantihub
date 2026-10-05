@@ -23,6 +23,19 @@ const PARTNER_TYPE_LABELS = {
   other: "Other",
 };
 
+// Lending partners are a future add-on. Until one is live, every place that
+// would talk about loans says so instead of showing caps or partner counts.
+const PARTNERS_COMING_SOON = "Lending partners are coming soon. When they arrive, your Credit Score is the record you'll apply with.";
+
+function PartnersComingSoon() {
+  return (
+    <div style={{ ...glassCard, borderRadius:18, padding:"36px 24px", textAlign:"center" }}>
+      <div style={{ fontSize:"2.4rem", marginBottom:10 }}>🤝</div>
+      <div style={{ color:D.textDim, fontSize:"0.82rem", lineHeight:1.7, maxWidth:440, margin:"0 auto" }}>{PARTNERS_COMING_SOON}</div>
+    </div>
+  );
+}
+
 // Shared warm gold/cream gradient for the hero banners — matches the light
 // theme's welcome-strip treatment (AnalyticsPanel).
 const HERO_GRADIENT = "linear-gradient(135deg, rgba(212,160,23,0.18), rgba(232,98,26,0.08))";
@@ -151,14 +164,14 @@ export default function CreditPanel({ user }) {
             <div style={{ background:HERO_GRADIENT, border:`1px solid ${D.cardBorder}`, borderRadius:18, padding:"24px", marginBottom:22, color:D.text }}>
               <div style={{ fontWeight:900, fontSize:"1.1rem", color:D.gold, marginBottom:6 }}>🏅 AshantiHub Credit Score System</div>
               <div style={{ fontSize:"0.82rem", opacity:0.9, lineHeight:1.7, marginBottom:14 }}>
-                Every business on AshantiHub earns a <strong style={{ color:D.gold }}>Credit Score (300–1000)</strong> based on their platform activity. This score unlocks access to business loans from our banking and microfinance partners — with no collateral required.
+                Every business on AshantiHub earns a <strong style={{ color:D.gold }}>Credit Score (300–1000)</strong> based on their platform activity — a record of your real trading on AshantiHub. {partners.length > 0 ? "Scored businesses can apply to our lending partners below." : PARTNERS_COMING_SOON}
               </div>
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))", gap:10 }}>
                 {[
                   { icon:"🏅", label:"Your Score", value:score },
                   { icon:"📊", label:"Grade", value:`${scoreData.grade} — ${scoreData.grade_label}` },
                   { icon: loanEligible?"✅":"❌", label:"Loan Status", value: loanEligible?"Eligible":"Not yet eligible" },
-                  { icon:"💰", label:"Max Loan", value: maxLoan>0?`GHS ${maxLoan.toLocaleString()}`:"—" },
+                  { icon:"🤝", label:"Lending partners", value: partners.length > 0 ? `${partners.length} available` : "Coming soon" },
                 ].map(s => (
                   <div key={s.label} style={{ background:"rgba(255,255,255,0.55)", borderRadius:12, padding:"12px", textAlign:"center" }}>
                     <div style={{ fontSize:"1.4rem", marginBottom:4 }}>{s.icon}</div>
@@ -196,23 +209,21 @@ export default function CreditPanel({ user }) {
 
             {/* Score bands */}
             <div style={{ ...glassCard, padding:"20px" }}>
-              <div style={{ ...sectionTitle, marginBottom:14 }}>📊 Score Bands & Loan Access</div>
+              <div style={{ ...sectionTitle, marginBottom:14 }}>📊 Score Bands</div>
               <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                 {[
-                  { range:"800–1000", grade:"A / A+", label:"Exceptional", color:D.green, maxLoan:"Up to GHS 50,000", partners:"All 6 partners" },
-                  { range:"700–799", grade:"B+ / A-", label:"Good", color:D.kente2, maxLoan:"Up to GHS 25,000", partners:"4–5 partners" },
-                  { range:"600–699", grade:"B / B-", label:"Average", color:D.gold, maxLoan:"Up to GHS 10,000", partners:"2–3 partners" },
-                  { range:"500–599", grade:"C / C+", label:"Below Average", color:D.amber, maxLoan:"Up to GHS 5,000", partners:"1–2 partners" },
-                  { range:"300–499", grade:"D", label:"Not Eligible", color:D.red, maxLoan:"Not eligible yet", partners:"Build score first" },
+                  { range:"800–1000", grade:"A / A+", label:"Exceptional", color:D.green },
+                  { range:"700–799", grade:"B+ / A-", label:"Good", color:D.kente2 },
+                  { range:"600–699", grade:"B / B-", label:"Average", color:D.gold },
+                  { range:"500–599", grade:"C / C+", label:"Below Average", color:D.amber },
+                  { range:"300–499", grade:"D", label:"Building", color:D.red },
                 ].map(b => (
                   <div key={b.range} style={{ display:"flex", gap:10, alignItems:"center", padding:"10px 12px", borderRadius:12, background:`${b.color}1e`, border:`1px solid ${b.color}55` }}>
                     <div style={{ width:50, height:50, borderRadius:"50%", background:`${b.color}20`, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, color:b.color, fontSize:"0.82rem", flexShrink:0 }}>{b.grade}</div>
                     <div style={{ flex:1 }}>
                       <div style={{ display:"flex", justifyContent:"space-between", marginBottom:2 }}>
                         <span style={{ fontWeight:800, fontSize:"0.8rem", color:D.text }}>{b.range} — {b.label}</span>
-                        <span style={{ fontWeight:700, color:b.color, fontSize:"0.72rem" }}>{b.maxLoan}</span>
                       </div>
-                      <div style={{ fontSize:"0.68rem", color:D.textDim }}>🤝 {b.partners}</div>
                     </div>
                   </div>
                 ))}
@@ -275,24 +286,10 @@ export default function CreditPanel({ user }) {
           <>
             <div style={{ marginBottom:20 }}>
               <h2 style={{ margin:"0 0 4px", color:D.text, fontWeight:900, fontSize:"1.05rem" }}>🤝 Lending Partners</h2>
-              <p style={{ color:D.textDim, fontSize:"0.78rem", margin:0 }}>AshantiHub-verified financial partners offering loans to scored businesses</p>
+              <p style={{ color:D.textDim, fontSize:"0.78rem", margin:0 }}>AshantiHub-verified financial partners for scored businesses</p>
             </div>
 
-            {/* Revenue model banner */}
-            <div style={{ background:HERO_GRADIENT, border:`1px solid ${D.cardBorder}`, borderRadius:16, padding:"18px 22px", marginBottom:20, color:D.text }}>
-              <div style={{ fontWeight:900, color:D.gold, marginBottom:6, fontSize:"0.88rem" }}>💸 AshantiHub Referral Revenue Model</div>
-              <div style={{ fontSize:"0.76rem", opacity:0.9, lineHeight:1.7 }}>
-                For every business successfully referred to a lending partner, AshantiHub earns a <strong style={{ color:D.gold }}>1–3% referral commission</strong> on the loan value. At 1,000 businesses borrowing an average of GHS 5,000:
-              </div>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginTop:12 }}>
-                {[["GHS 5M","Total Loans"],["GHS 100K","AshantiHub Revenue (2%)"],["GHS 10K","Per Month Projected"]].map(([v,l])=>(
-                  <div key={l} style={{ background:"rgba(255,255,255,0.55)", borderRadius:10, padding:"10px", textAlign:"center" }}>
-                    <div style={{ fontWeight:900, color:D.gold, fontSize:"0.95rem" }}>{v}</div>
-                    <div style={{ fontSize:"0.58rem", opacity:0.8 }}>{l}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {partners.length === 0 && <PartnersComingSoon />}
 
             <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))", gap:14 }}>
               {partners.map(p => (
@@ -338,7 +335,8 @@ export default function CreditPanel({ user }) {
         {creditTab === "apply" && (
           <>
             <h2 style={{ margin:"0 0 16px", color:D.text, fontWeight:900, fontSize:"1.05rem" }}>📋 Loan Application</h2>
-            {!loanEligible && !loanSubmitted && (
+            {partners.length === 0 && !loanSubmitted && <PartnersComingSoon />}
+            {partners.length > 0 && !loanEligible && !loanSubmitted && (
               <div style={{ ...glassCard, borderRadius:18, padding:"40px 24px", textAlign:"center" }}>
                 <div style={{ fontSize:"2.6rem", marginBottom:12 }}>🔒</div>
                 <div style={{ fontWeight:900, color:D.text, fontSize:"1rem", marginBottom:8 }}>Not loan-eligible yet</div>
@@ -390,7 +388,7 @@ export default function CreditPanel({ user }) {
                 </div>
               </div>
             )}
-            {loanEligible && !loanSubmitted && (
+            {partners.length > 0 && loanEligible && !loanSubmitted && (
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, alignItems:"start" }}>
                 {/* Application form */}
                 <div style={{ ...glassCard, padding:"22px" }}>
@@ -503,26 +501,6 @@ export default function CreditPanel({ user }) {
               ))}
             </div>
 
-            {/* Platform economic impact */}
-            <div style={{ background:HERO_GRADIENT, border:`1px solid ${D.cardBorder}`, borderRadius:16, padding:"22px", color:D.text }}>
-              <div style={{ fontWeight:900, color:D.gold, marginBottom:14, fontSize:"0.88rem" }}>🌍 AshantiHub Economic Impact Projection</div>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))", gap:10 }}>
-                {[
-                  { icon:"🏪", val:"200,000", label:"Target Businesses" },
-                  { icon:"👥", val:"2,000,000", label:"Jobs Created" },
-                  { icon:"💰", val:"GHS 1B+", label:"Total Loans Facilitated" },
-                  { icon:"💸", val:"GHS 20M+", label:"AshantiHub Referral Revenue" },
-                  { icon:"🌱", val:"GHS 5B+", label:"SME Economic Output" },
-                  { icon:"🇬🇭", val:"Top 10", label:"Ghana Fintech Impact" },
-                ].map(s => (
-                  <div key={s.label} style={{ background:"rgba(255,255,255,0.55)", borderRadius:12, padding:"14px", textAlign:"center" }}>
-                    <div style={{ fontSize:"1.5rem", marginBottom:4 }}>{s.icon}</div>
-                    <div style={{ fontWeight:900, color:D.gold, fontSize:"0.95rem" }}>{s.val}</div>
-                    <div style={{ fontSize:"0.6rem", opacity:0.8 }}>{s.label}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
           </>
         )}
 

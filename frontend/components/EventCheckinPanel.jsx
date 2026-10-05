@@ -99,7 +99,7 @@ export default function EventCheckinPanel({ eventId }) {
         >
           <div>
             <div style={{ color: "white", fontWeight: 700 }}>{t.code} · {t.ticket_type_name}</div>
-            <div style={{ color: "rgba(255,255,255,0.55)" }}>{t.purchased_by_name}{t.purchased_by_phone ? ` · ${t.purchased_by_phone}` : ""} · {t.delivery_method === "digital" ? "Digital" : "Physical"}</div>
+            <div style={{ color: "rgba(255,255,255,0.55)" }}>{t.purchased_by_name} · {t.delivery_method === "digital" ? "Digital" : "Physical"}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ background: t.delivered_at ? `${C.kente2}33` : "rgba(255,255,255,0.12)", color: t.delivered_at ? C.kente2 : "rgba(255,255,255,0.6)", fontSize: "0.62rem", fontWeight: 700, padding: "2px 9px", borderRadius: 20 }}>

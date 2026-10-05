@@ -33,6 +33,7 @@ from .permissions import (
 )
 from .serializers import (
     EventAttendeeSerializer,
+    StaffEventAttendeeSerializer,
     EventDetailSerializer,
     EventEditSerializer,
     EventMediaSerializer,
@@ -46,6 +47,7 @@ from .serializers import (
     EventTicketTypePublicSerializer,
     EventTicketTypeWriteSerializer,
     EventUnlockSerializer,
+    StaffTicketCheckinListSerializer,
     TicketCheckinListSerializer,
     TicketEscrowLedgerSerializer,
     TicketPurchaseInputSerializer,
@@ -728,13 +730,17 @@ class EventRSVPView(APIView):
 class EventAttendeesListView(generics.ListAPIView):
     """GET /api/events/{id}/rsvps/ — organizer-only (the event's own
     submitter) or staff holding `event.approve`, paginated list of `going`
-    attendees (Phase 7). See EventAttendeeSerializer for the exposed
-    contact-info shape.
+    attendees (Phase 7). Organizers get names only; staff also get the
+    attendee's phone and email (see the two serializers).
     """
 
-    serializer_class = EventAttendeeSerializer
     permission_classes = [IsAuthenticated, IsEventOwnerOrCanApproveEvents]
     pagination_class = EventPagination
+
+    def get_serializer_class(self):
+        if isinstance(self.request.user, StaffUser):
+            return StaffEventAttendeeSerializer
+        return EventAttendeeSerializer
 
     def get_event(self):
         event = generics.get_object_or_404(Event, pk=self.kwargs["pk"])
@@ -917,15 +923,22 @@ class TicketPurchaseView(APIView):
         )
 
 
+def _checkin_serializer_for(user):
+    """Staff see the ticket buyer's phone; an event's organizer never does."""
+    return StaffTicketCheckinListSerializer if isinstance(user, StaffUser) else TicketCheckinListSerializer
+
+
 class EventCheckinListView(generics.ListAPIView):
     """GET /api/events/{id}/tickets/checkin-list/ — organizer/staff-only
     (same gate as GET .../rsvps/) roster of every ticket sold for this
     event, for at-the-door reference.
     """
 
-    serializer_class = TicketCheckinListSerializer
     permission_classes = [IsAuthenticated, IsEventOwnerOrCanApproveEvents]
     pagination_class = EventPagination
+
+    def get_serializer_class(self):
+        return _checkin_serializer_for(self.request.user)
 
     def get_event(self):
         event = generics.get_object_or_404(Event, pk=self.kwargs["pk"])
@@ -971,7 +984,7 @@ class EventCheckinView(APIView):
             update_fields += ["escrow_status", "escrow_released_at"]
 
         ticket.save(update_fields=update_fields)
-        return Response(TicketCheckinListSerializer(ticket).data)
+        return Response(_checkin_serializer_for(request.user)(ticket).data)
 
 
 class EscrowLedgerListView(generics.ListAPIView):
