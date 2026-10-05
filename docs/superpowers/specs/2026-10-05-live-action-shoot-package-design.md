@@ -1,7 +1,7 @@
 # Live-Action Shoot Package — Design
 
 **Date:** 2026-10-05
-**Status:** Approved design, not yet implemented
+**Status:** Implemented 2026-10-05 (branch feature/live-action-shoot-package)
 **Supersedes:** the screen-led approach in `docs/marketing/shoot-package.md` (App, Gap and
 Graphic rows) and the three screen-led Remotion clips (retired, not published)
 
