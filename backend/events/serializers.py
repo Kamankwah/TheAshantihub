@@ -255,22 +255,28 @@ class EventUnlockSerializer(serializers.Serializer):
 
 
 class EventAttendeeSerializer(serializers.ModelSerializer):
-    """Organizer/staff-facing shape for GET /api/events/{id}/rsvps/ (Phase 7).
-    Surfaces the attendee's name + phone/email — reasonable contact info for
-    an event organizer to reach a "going" attendee, without exposing
-    anything beyond what `Customer` already models (no password_hash etc).
+    """Organizer-facing shape for GET /api/events/{id}/rsvps/ (Phase 7): who
+    is going, by name only. Organizers reach attendees through AshantiHub
+    Support, never directly, so no phone or email — the same rule that keeps
+    a customer's number off a business's order view.
     """
 
     customer_name = serializers.CharField(source="customer.full_name", read_only=True)
-    customer_phone = serializers.CharField(source="customer.phone", read_only=True)
-    customer_email = serializers.EmailField(source="customer.email", read_only=True)
 
     class Meta:
         model = EventRSVP
-        fields = [
-            "id", "customer", "customer_name", "customer_phone", "customer_email",
-            "status", "rsvp_at",
-        ]
+        fields = ["id", "customer", "customer_name", "status", "rsvp_at"]
+
+
+class StaffEventAttendeeSerializer(EventAttendeeSerializer):
+    """Staff (`event.approve`) shape for the same list: adds the attendee's
+    phone and email, since AshantiHub Support is who contacts attendees."""
+
+    customer_phone = serializers.CharField(source="customer.phone", read_only=True)
+    customer_email = serializers.EmailField(source="customer.email", read_only=True)
+
+    class Meta(EventAttendeeSerializer.Meta):
+        fields = [*EventAttendeeSerializer.Meta.fields[:3], "customer_phone", "customer_email", "status", "rsvp_at"]
 
 
 class EventTicketTypePublicSerializer(serializers.ModelSerializer):
@@ -366,21 +372,31 @@ class TicketSerializer(serializers.ModelSerializer):
 
 
 class TicketCheckinListSerializer(serializers.ModelSerializer):
-    """Organizer/staff-facing shape for GET /api/events/{id}/tickets/
-    checkin-list/ and the response of POST .../checkin/ — mirrors
-    EventAttendeeSerializer's exact field-sourcing style.
+    """Organizer-facing shape for GET /api/events/{id}/tickets/checkin-list/
+    and the response of POST .../checkin/: the holder's name and ticket code
+    are enough to admit them. No buyer phone — organizers reach buyers
+    through AshantiHub Support (same rule as EventAttendeeSerializer).
     """
 
     ticket_type_name = serializers.CharField(source="ticket_type.name", read_only=True)
     purchased_by_name = serializers.CharField(source="purchased_by.full_name", read_only=True)
-    purchased_by_phone = serializers.CharField(source="purchased_by.phone", read_only=True)
 
     class Meta:
         model = Ticket
         fields = [
             "id", "code", "delivery_method", "delivered_at", "escrow_status",
-            "ticket_type_name", "purchased_by_name", "purchased_by_phone",
+            "ticket_type_name", "purchased_by_name",
         ]
+
+
+class StaffTicketCheckinListSerializer(TicketCheckinListSerializer):
+    """Staff (`event.approve`) shape for the same check-in data: adds the
+    buyer's phone, since AshantiHub Support is who contacts buyers."""
+
+    purchased_by_phone = serializers.CharField(source="purchased_by.phone", read_only=True)
+
+    class Meta(TicketCheckinListSerializer.Meta):
+        fields = [*TicketCheckinListSerializer.Meta.fields, "purchased_by_phone"]
 
 
 class TicketEscrowLedgerSerializer(serializers.ModelSerializer):

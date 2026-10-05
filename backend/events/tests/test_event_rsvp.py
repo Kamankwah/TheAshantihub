@@ -265,8 +265,12 @@ class EventAttendeesListTests(EventRSVPTestsBase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["customer"], self.attendee.id)
         self.assertEqual(results[0]["customer_name"], self.attendee.full_name)
-        self.assertEqual(results[0]["customer_phone"], self.attendee.phone)
         self.assertEqual(results[0]["status"], "going")
+        # Organizers reach attendees through AshantiHub Support, never directly:
+        # the list carries names only, no phone or email.
+        self.assertNotIn("customer_phone", results[0])
+        self.assertNotIn("customer_email", results[0])
+        self.assertNotIn(self.attendee.phone.encode(), response.content)
 
     def test_attendee_list_excludes_cancelled_rsvps(self):
         event = self._make_event()
@@ -287,6 +291,7 @@ class EventAttendeesListTests(EventRSVPTestsBase):
         response = self.client.get(f"/api/events/{event.id}/rsvps/")
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(len(response.json()["results"]), 1)
+        self.assertNotIn("customer_phone", response.json()["results"][0])
 
     def test_staff_with_event_approve_permission_sees_attendee_list(self):
         event = self._make_event()
@@ -297,6 +302,16 @@ class EventAttendeesListTests(EventRSVPTestsBase):
         response = self.client.get(f"/api/events/{event.id}/rsvps/")
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(len(response.json()["results"]), 1)
+
+    def test_staff_still_see_attendee_contact_details(self):
+        event = self._make_event()
+        self._auth(issue_token(self.attendee, "customer"))
+        self.client.post(f"/api/events/{event.id}/rsvp/")
+
+        self._auth(issue_token(self.marketing, "staff"))
+        row = self.client.get(f"/api/events/{event.id}/rsvps/").json()["results"][0]
+        self.assertEqual(row["customer_phone"], self.attendee.phone)
+        self.assertEqual(row["customer_email"], self.attendee.email)
 
     def test_staff_without_event_approve_permission_is_403(self):
         event = self._make_event()
