@@ -99,10 +99,10 @@ composited, mocked-up or animated UI. The only graphics are text supers and the 
 | `CP 15–26s` | Logo resolves, app opens; chips *Ghana Card · Digital address · Physical check* | A real AshantiHub scout visits a shop, checks the GhanaPost GPS plate against the signboard, talks with the owner. Insert: the staff app marking the business **✓ Visited**. The chips become a text super. No Ghana Card is ever legible. |
 | `CP 26–38s` | Quick cuts of app screens: kente to cart · hair booking · ticket | The demo customer at home adds the kente stole to cart (insert: cart) · a braider at work in the salon (insert: a booking confirmation from the demo service business) · the demo customer and friends walking up to the real event's gate (insert: the real ticket). |
 | `CP 38–50s` | Support chat screen | Rider scene unchanged. Insert: the customer's phone showing *AshantiHub Support · Re: Handwoven kente stole*. |
-| `CP 50–64s` | Review, QR scan, dispute screens | Insert: a review with a *Verified Purchase* tag · the QR scan filmed live at a real AshantiHub-listed event: the demo customer holds a real ticket bought on production and is checked in for real (pickup) · a Support agent at a desk reviewing a dispute (insert: the dispute). |
+| `CP 50–64s` | Review, QR scan, dispute screens | Insert: a review with a *Verified Purchase* tag · at a real AshantiHub-listed event, the demo customer shows the code of a real ticket bought on production and the organiser types it in, checking it in for real (pickup; insert: *✓ Checked in*). The app has no QR. · a Support agent at a desk reviewing a dispute in the staff queue (insert: the dispute). |
 | `BP 6–14s` | A phone search where her business isn't there (built in the edit) | Akosua at her stall while foot traffic walks past. VO carries it. The bank line stays VO-only. |
 | `BP 14–25s` | Storefront builds itself on screen | Akosua photographs a finished kente strip in her shop. Insert: her storefront. No rating shown until a real verified review exists (§9). |
-| `BP 25–38s` | Notifications stack up | Her phone buzzes on the loom bench; she glances at it. Insert: the real staging Order #1. *Take bookings* and *sell tickets* become quick live cuts of the braider with a client and an event gate, under the super *Sell · Take bookings · Sell tickets* (a weaver doesn't take bookings, so no booking or ticket inserts on her phone). Rider loading a parcel unchanged. |
+| `BP 25–38s` | Notifications stack up | At the loom bench she opens her dashboard and finds a new order (owners get no new-order notification, so no buzz). Insert: the real staging Order #1. *Take bookings* and *sell tickets* become quick live cuts of the braider with a client and an event gate, under the super *Sell · Take bookings · Sell tickets* (a weaver doesn't take bookings, so no booking or ticket inserts on her phone). Rider loading a parcel unchanged. |
 | `BP 38–48s` | Support agent, screen insert | Unchanged (live), with the insert filmed in camera on the agent's laptop or phone. |
 | `BP 48–60s` | Dashboard with a Credit Score dial climbing | Insert: the real current score and *lending partners coming soon*, as the app shows them. No animated climb. |
 | `BP 60–70s` | Her shop in the homepage Hero (screen) | A customer at a café laptop on the homepage, with a staff-approved Hero placement of the demo store. Laptop fullscreen. |
@@ -110,8 +110,8 @@ composited, mocked-up or animated UI. The only graphics are text supers and the 
 | `BC1` | Host with empty wallet; screen recording of registration; storefront and first order | Host at the Kejetia trader's stall holding an empty wallet, to camera · the trader registers with the host alongside (inserts: account → business details → plan, on the second demo store's staging account, test identity data) · inserts: the storefront live, its first order. |
 | `BC2` | Loan form; market montage; dashboard | At Bonwire: host with Akosua holding a generic loan form, *Financial records* circled in red (prop: no bank name or logo) · the Kejetia stall montage from Day 1, cash changing hands · insert: Akosua's Credit Score with *lending partners coming soon*. |
 | `BC3` | A phone buzzing with the same message; Support handles it; dashboard | At Bonwire: Akosua's phone buzzing on the loom bench, screen unreadable; super *"Is this still available?" × 47*; host hook to camera · she turns it face-down and weaves · Support agent handles it (live + insert) · insert: her orders in the dashboard; a quick live cut of the braider with a client for *book*; rider. |
-| `CC1` | "Pay first, I'll send it" message close-up; scrolling listings; checkout; dispute button | Host reads a message aloud with an eye-roll, screen facing away; super *Pay first?? 🚩* · scout visit footage + insert of a verified listing · inserts: checkout, then *Raise a dispute*. |
-| `CC2` | Kotoka arrivals board; quick app cuts; QR scan | Host at **Prempeh I Airport** (Kumasi) arrivals · barber, braider, caterer (chop bar) and kente cloth, each live; two inserts: a booking with the demo service business and the kente stole in the cart · the real-event QR scan from `CP 50–64s` (pickup). |
+| `CC1` | "Pay first, I'll send it" message close-up; scrolling listings; checkout; dispute button | Host reads a message aloud with an eye-roll, screen facing away; super *Pay first?? 🚩* · scout visit footage + insert of a verified listing · insert: checkout · a Support agent reviewing a dispute in the staff queue. Customers have no dispute button yet, so the voiceover's "you raise a dispute" is blocked until it ships (§9). |
+| `CC2` | Kotoka arrivals board; quick app cuts; QR scan | Host at **Prempeh I Airport** (Kumasi) arrivals · barber, braider, caterer (chop bar) and kente cloth, each live; two inserts: a booking with the demo service business and the kente stole in the cart · the real-event check-in from `CP 50–64s` (pickup). |
 | `CC3` | Creator to camera; Contact Support tap; chat; cart | Host to camera, mock-confused · the demo customer taps *🎧 Contact Support* (insert) · the Support agent replies (live + insert) · insert: added to cart. |
 
 Every row not listed here is already live action or the end card and is unchanged.
@@ -122,7 +122,8 @@ Every row not listed here is already live action or the end card and is unchange
 | --- | --- | --- |
 | Host | Talent: warm, Twi-fluent | All six clip hooks; all VO |
 | "Akosua" | A real Bonwire weaver portraying the fictional demo store (must genuinely weave) | `BP`, `BC2`, `BC3`, stills |
-| Real businesses, as themselves | A Suame mechanic, a chop-bar cook (caterer), a braider, a barber, an event organiser; ideally all listed on AshantiHub | `BP 0–6s`, `CP 26–38s`, `CC2`, stills |
+| Real businesses, as themselves | A Suame mechanic, a chop-bar cook (caterer), a barber, an event organiser; each must be listed and verified on AshantiHub production, since they appear under AshantiHub claims | `BP 0–6s`, `CP 26–38s`, `CC2`, stills |
+| Braider | A real Kumasi braider portraying the demo service business (portrayal release; their own signboard out of frame) | `CP 26–38s`, `BP 25–38s`, `BC3`, `CC2` |
 | Scout | A real AshantiHub scout | `CP 15–26s`, `CC1` |
 | Support agent | A real AshantiHub Support staffer | `CP`, `BP`, `BC3`, `CC3` |
 | Demo customer | Talent; also buys a real ticket on production for the real-event pickup | `CP`, `CC2`, `CC3` |
@@ -139,9 +140,9 @@ listed on the site, as the customer script already requires.
 | Day | Where (in order) | Captures |
 | --- | --- | --- |
 | **1 — Kumasi city** | Kejetia rooftop at dawn → Kejetia / Adum stalls → Suame Magazine → chop bar → braider's salon and a barbershop → a residential gate → a family home at dusk | Market aerial (`CP 0–6s`); host hooks for `CC1` and `BC1` with the trader; the trader signing up (`BP 70–80s`); stall montage with cash changing hands (`BC2`); trades montage (`BP 0–6s`); service scenes (`CP 26–38s`, `BP 25–38s`, `BC3`, `CC2`); rider at the gate (`CP 38–50s`); family half of the diaspora split; stills |
-| **2 — Bonwire** | A courtesy visit to the chief first, then Akosua's loom and shop | Weaving beats across `BP`; the scout's visit; host hooks for `BC2` (loan form) and `BC3` ("× 47"); Akosua photographing kente; rider loading a parcel; the closing smile; stills, including the website's kente slot |
+| **2 — Bonwire** | Greet the chief and elders (permission secured before Day 2 on a courtesy visit), then Akosua's loom and shop | Weaving beats across `BP`; the scout's visit; host hooks for `BC2` (loan form) and `BC3` ("× 47"); Akosua photographing kente; rider loading a parcel; the closing smile; stills, including the website's kente slot |
 | **3 — Office + Kumasi** | AshantiHub office → a real apartment → a café → Prempeh I Airport | Support agent scenes; every phone insert (controlled light); the host's VO recording; `CC3` hook; demo customer at home; the Hero on a laptop; `CC2` arrivals |
-| **Pickups** | A real AshantiHub-listed event · remote · Manhyia on an Akwasidae day · a consenting listed hotel | QR scan at the gate · diaspora half of the split · Akwasidae and palace stills · the hotel still |
+| **Pickups** | A real AshantiHub-listed event · remote · Manhyia on an Akwasidae day · a consenting listed hotel | Ticket check-in at the gate · diaspora half of the split · Akwasidae and palace stills · the hotel still |
 
 The full call sheet in the package gives times per location; Day 1 is the tightest, so the
 barbershop and salon are adjacent setups and the rooftop starts at 06:30.
@@ -171,7 +172,7 @@ barbershop and salon are adjacent setups and the rooftop starts at 06:30.
 | Ghana Airports Company | Prempeh I Airport arrivals |
 | Manhyia Palace | Palace exterior and Akwasidae stills |
 | Bonwire chief and elders | Filming in the village (courtesy visit before Day 2) |
-| Event organiser | The QR scan pickup |
+| Event organiser | The ticket check-in pickup |
 | Each property owner | Shops, chop bar, salon, barbershop, apartment, café |
 
 ### 7.3 On-set rules
@@ -185,8 +186,9 @@ Carried over unchanged from the current package:
 New:
 - **Frame out third-party branding.** MTN MoMo kiosks, bank logos and telecom signboards are
   everywhere at Kejetia. Reframe or move rather than blur.
-- **No real identity data on screen.** No legible Ghana Card, no real phone numbers, no real
-  customers' names in inserts. Demo data only.
+- **No real identity data on screen.** No legible Ghana Card, no real phone numbers, no legible
+  digital address of a real person or business, no real customers' names in inserts. Demo data
+  only.
 - **Demo stores are labelled as portrayals.** A *Demo store* super on every insert showing a
   demo store. The end card of every video that shows one carries one line of fine print per demo
   store in it: *"Akosua Ntoma is a demonstration store, portrayed by a Bonwire weaver."*, and the
@@ -213,14 +215,16 @@ Delivered as full-resolution JPEG plus RAW, with releases logged per frame.
 ## 9. Staging prep for phone inserts
 
 The inserts show the real app, so these must exist on staging before Day 3, created the same way
-as the existing demo data (`seed_demo.py` and real flows). Every insert showing the demo store
+as the existing demo data (the app's own flows, signed in as the demo accounts, with staff approvals). Every insert showing the demo store
 carries the *Demo store* super.
 
 | Needed for | On staging |
 | --- | --- |
 | `CP 26–38s`, `CC2` | A demo service business + listing, booked by the demo customer |
 | `CP 50–64s`, `BP 14–25s` | A real review by the demo customer on Order #1, approved through moderation |
-| `CP 50–64s`, `CC1` | A dispute raised by the demo customer on a demo order |
+| `CP 50–64s`, `CC1` | A dispute on a demo order, raised as the demo customer through the backend endpoint (`POST /api/orders/<id>/dispute/`; the customer app has no dispute button yet, so the voiceover's "you raise a dispute" is blocked until it ships or is reworded) |
+| `BP`, `CP`, `CC1`–`CC3` | Akosua Ntoma's listing images (illustrations today) replaced with real photos of the weaver's own cloth; real listing photos for the second demo store and the demo service business too |
+| `CP`, `CC1`–`CC3` | The demo customer's account renamed to the cast talent's on-screen name |
 | `BP 60–70s` | A Hero submission by Akosua Ntoma, approved by staff |
 | `CP 15–26s`, `CC1` | A scout assignment for a demo business, ready to mark **Visited** on camera |
 | `BC1`, `BP 70–80s` | A throwaway business account for the registration inserts (stopped before submitting), with test identity data |
@@ -236,8 +240,9 @@ AshantiHub-listed event, and the organiser checks that ticket in at the gate for
   flicker. Hold each insert 2–3s; keep it centre-safe for the 9:16 crop.
 - The hands in an insert are that character's own, in the same sleeve as their scenes, so
   Akosua, the Kejetia trader, the scout and the demo customer attend Day 3 for their inserts.
-- The app runs as the installed PWA, so no browser bar shows `test.theashantihub.com`. The
-  laptop runs the browser fullscreen.
+- The customer and business app is a website (only the staff app is installable), so phone
+  inserts are framed below the browser's address bar and the laptop runs the browser fullscreen;
+  `test.theashantihub.com` never shows. Staff inserts can use the installed Staff app.
 - Demo-store and demo-customer inserts use the staging demo accounts. Real-business inserts use
   production, with consent.
 - If an insert is unreadable, reshoot it. Never replace a screen in post.
