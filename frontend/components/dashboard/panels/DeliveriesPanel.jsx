@@ -40,7 +40,7 @@ function OrderRow({ order }) {
 
       {doorToDoor && order.delivery_address && (
         <div style={{ color: D.textDim, fontSize: "0.7rem", marginTop: 6 }}>
-          📍 {order.delivery_address}{order.delivery_phone ? ` · ${order.delivery_phone}` : ""}
+          📍 {order.delivery_address}
         </div>
       )}
 
