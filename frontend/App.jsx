@@ -60,6 +60,7 @@ import KpiCard from "./components/dashboard/charts/KpiCard.jsx";
 import ChartFrame from "./components/dashboard/charts/ChartFrame.jsx";
 import { ensureStaffHead, isStaffPathname, isStandaloneDisplay, startStaffPwa } from "./lib/staffPwa.js";
 import { subjectLine } from "./lib/conversationSubject.js";
+import { readCookieConsent, saveCookieConsent } from "./lib/cookieConsent.js";
 import SpendAreaChart from "./components/dashboard/charts/SpendAreaChart.jsx";
 import ListingsDonut from "./components/dashboard/charts/ListingsDonut.jsx";
 
@@ -2757,8 +2758,8 @@ export default function AshantiHub() {
   };
 
 
-  const [cookieConsent,setCookieConsent]=useState(false);
-  const [cookieDismissed,setCookieDismissed]=useState(false);
+  const [cookieConsent,setCookieConsent]=useState(()=>readCookieConsent()==="accepted");
+  const [cookieDismissed,setCookieDismissed]=useState(()=>readCookieConsent()!==null);
   const [showMessaging,setShowMessaging]=useState(false);
   const [messagingBusiness,setMessagingBusiness]=useState(null);
   const [isLoading,setIsLoading]=useState(true);
@@ -2969,7 +2970,7 @@ export default function AshantiHub() {
 
   return (
     <div style={{fontFamily:"'Georgia',serif",background:C.cream,minHeight:"100vh"}}>
-      {!cookieDismissed&&<CookieBanner onAccept={()=>{setCookieConsent(true);setCookieDismissed(true);Analytics.track("cookie_accepted");}} onDecline={()=>{setCookieDismissed(true);Analytics.track("cookie_declined");}}/>}
+      {!cookieDismissed&&<CookieBanner onAccept={()=>{saveCookieConsent("accepted");setCookieConsent(true);setCookieDismissed(true);Analytics.track("cookie_accepted");}} onDecline={()=>{saveCookieConsent("essential");setCookieDismissed(true);Analytics.track("cookie_declined");}}/>}
       <OfflineBanner/>
       {shownAuthModal&&<AuthModal authState={shownAuthModal} auth={auth} onClose={()=>setAuthModal(null)} onSuccess={handleAuthSuccess}/>}
       {showMessaging&&<MessagingCenter user={user} onClose={()=>{setShowMessaging(false);setMessagingBusiness(null);}} initialBusiness={messagingBusiness}/>}
