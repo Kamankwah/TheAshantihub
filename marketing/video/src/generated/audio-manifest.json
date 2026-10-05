@@ -1,6 +1,240 @@
 {
-  "voiceId": null,
-  "modelId": null,
-  "clips": {},
-  "sfx": {}
+  "voiceId": "feUarJlAD2AMiWax336v",
+  "modelId": "eleven_multilingual_v2",
+  "clips": {
+    "biz-free-start": {
+      "voice": [
+        {
+          "file": "audio/biz-free-start/voice-1.mp3",
+          "start": 0.2,
+          "duration": 3.81
+        },
+        {
+          "file": "audio/biz-free-start/voice-2.mp3",
+          "start": 4.6,
+          "duration": 1.76
+        },
+        {
+          "file": "audio/biz-free-start/voice-3.mp3",
+          "start": 7.8,
+          "duration": 3.2
+        },
+        {
+          "file": "audio/biz-free-start/voice-4.mp3",
+          "start": 11.8,
+          "duration": 3.99
+        },
+        {
+          "file": "audio/biz-free-start/voice-5.mp3",
+          "start": 16.6,
+          "duration": 2.97
+        },
+        {
+          "file": "audio/biz-free-start/voice-6.mp3",
+          "start": 20.2,
+          "duration": 3.9
+        },
+        {
+          "file": "audio/biz-free-start/voice-7.mp3",
+          "start": 24.9,
+          "duration": 3.25
+        }
+      ],
+      "captions": [
+        {
+          "text": "What if putting your business online cost you nothing to start?",
+          "start": 0.2,
+          "end": 4.5
+        },
+        {
+          "text": "Register on AshantiHub,",
+          "start": 4.6,
+          "end": 6.96
+        },
+        {
+          "text": "get verified with your Ghana Card and digital address,",
+          "start": 7.8,
+          "end": 11.6
+        },
+        {
+          "text": "and pick your plan.",
+          "start": 11.8,
+          "end": 12.68
+        },
+        {
+          "text": "Your first billing cycle is completely free.",
+          "start": 12.68,
+          "end": 16.39
+        },
+        {
+          "text": "After that, plans start from ten cedis a month —",
+          "start": 16.6,
+          "end": 20.1
+        },
+        {
+          "text": "and you’re selling to customers across Ghana and the diaspora.",
+          "start": 20.2,
+          "end": 24.7
+        },
+        {
+          "text": "Your first cycle’s on us. theashantihub.com.",
+          "start": 24.9,
+          "end": 28.75
+        }
+      ],
+      "music": "audio/biz-free-start/music.mp3"
+    },
+    "biz-enquiries": {
+      "voice": [
+        {
+          "file": "audio/biz-enquiries/voice-1.mp3",
+          "start": 0.2,
+          "duration": 4.74
+        },
+        {
+          "file": "audio/biz-enquiries/voice-2.mp3",
+          "start": 5.3,
+          "duration": 4.04
+        },
+        {
+          "file": "audio/biz-enquiries/voice-3.mp3",
+          "start": 9.8,
+          "duration": 4.46
+        },
+        {
+          "file": "audio/biz-enquiries/voice-4.mp3",
+          "start": 14.8,
+          "duration": 5.85
+        },
+        {
+          "file": "audio/biz-enquiries/voice-5.mp3",
+          "start": 21.5,
+          "duration": 3.99
+        }
+      ],
+      "captions": [
+        {
+          "text": "How many “Is this still available?” messages did you answer today?",
+          "start": 0.2,
+          "end": 5.2
+        },
+        {
+          "text": "On AshantiHub, Support handles customer enquiries for you.",
+          "start": 5.3,
+          "end": 9.7
+        },
+        {
+          "text": "Your private number stays private,",
+          "start": 9.8,
+          "end": 11.66
+        },
+        {
+          "text": "and the time-wasters never reach you.",
+          "start": 11.66,
+          "end": 14.7
+        },
+        {
+          "text": "Serious customers order and book straight from your page,",
+          "start": 14.8,
+          "end": 18.35
+        },
+        {
+          "text": "and we coordinate the delivery.",
+          "start": 18.35,
+          "end": 21.25
+        },
+        {
+          "text": "Less chasing. More selling. theashantihub.com.",
+          "start": 21.5,
+          "end": 26.09
+        }
+      ],
+      "music": "audio/biz-enquiries/music.mp3"
+    },
+    "cust-why-support": {
+      "voice": [
+        {
+          "file": "audio/cust-why-support/voice-1.mp3",
+          "start": 0.2,
+          "duration": 3.99
+        },
+        {
+          "file": "audio/cust-why-support/voice-2.mp3",
+          "start": 4.6,
+          "duration": 3.81
+        },
+        {
+          "file": "audio/cust-why-support/voice-3.mp3",
+          "start": 9.2,
+          "duration": 4.78
+        },
+        {
+          "file": "audio/cust-why-support/voice-4.mp3",
+          "start": 14.4,
+          "duration": 2.74
+        },
+        {
+          "file": "audio/cust-why-support/voice-5.mp3",
+          "start": 18.2,
+          "duration": 3.62
+        },
+        {
+          "file": "audio/cust-why-support/voice-6.mp3",
+          "start": 22.7,
+          "duration": 4.27
+        }
+      ],
+      "captions": [
+        {
+          "text": "“Why can’t I just WhatsApp the seller?”",
+          "start": 0.2,
+          "end": 2.02
+        },
+        {
+          "text": "Good question.",
+          "start": 2.02,
+          "end": 4.5
+        },
+        {
+          "text": "On AshantiHub, every question goes through AshantiHub Support.",
+          "start": 4.6,
+          "end": 9.01
+        },
+        {
+          "text": "We talk to the business for you,",
+          "start": 9.2,
+          "end": 10.73
+        },
+        {
+          "text": "so your number never ends up with a stranger,",
+          "start": 10.73,
+          "end": 14.3
+        },
+        {
+          "text": "and there’s a record of everything that was promised.",
+          "start": 14.4,
+          "end": 17.74
+        },
+        {
+          "text": "It’s how we keep fraud out —",
+          "start": 18.2,
+          "end": 19.63
+        },
+        {
+          "text": "for you and for the businesses.",
+          "start": 19.63,
+          "end": 22.42
+        },
+        {
+          "text": "Safer shopping, by design. theashantihub.com.",
+          "start": 22.7,
+          "end": 27.57
+        }
+      ],
+      "music": "audio/cust-why-support/music.mp3"
+    }
+  },
+  "sfx": {
+    "tap": "audio/sfx-tap.mp3"
+  }
 }

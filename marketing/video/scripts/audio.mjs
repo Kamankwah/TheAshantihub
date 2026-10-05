@@ -68,12 +68,12 @@ function retimeCaptions(beat, alignment, beatStart, holdUntil) {
   }));
 }
 
-async function voiceLine(clipId, i, beat) {
+async function voiceLine(clipId, i, beat, previousText, nextText) {
   const dir = path.join(audioDir, clipId);
   fs.mkdirSync(dir, { recursive: true });
   const file = `audio/${clipId}/voice-${i + 1}.mp3`;
   const alignFile = path.join(dir, `voice-${i + 1}.alignment.json`);
-  const key = JSON.stringify({ say: beat.say, VOICE_ID, MODEL_ID });
+  const key = JSON.stringify({ say: beat.say, previousText, nextText, VOICE_ID, MODEL_ID });
   if (!FORCE && fs.existsSync(alignFile)) {
     const cached = JSON.parse(fs.readFileSync(alignFile, "utf8"));
     if (cached.key === key) return { file, alignment: cached.alignment };
@@ -82,6 +82,9 @@ async function voiceLine(clipId, i, beat) {
     text: beat.say,
     modelId: MODEL_ID,
     outputFormat: "mp3_44100_128",
+    // Neighbouring lines as context, so separately generated lines flow as one read.
+    previousText,
+    nextText,
     voiceSettings: { stability: 0.5, similarityBoost: 0.8, style: 0.25, useSpeakerBoost: true },
   });
   fs.writeFileSync(path.join(root, "public", file), Buffer.from(res.audioBase64, "base64"));
@@ -128,7 +131,7 @@ for (const clip of clips) {
   const voice = [];
   const captions = [];
   for (const [i, beat] of clip.beats.entries()) {
-    const { file, alignment } = await voiceLine(clip.id, i, beat);
+    const { file, alignment } = await voiceLine(clip.id, i, beat, clip.beats[i - 1]?.say, clip.beats[i + 1]?.say);
     const duration = alignment.characterEndTimesSeconds.at(-1);
     const next = clip.beats[i + 1]?.start ?? clip.duration;
     if (beat.start + duration > next) {

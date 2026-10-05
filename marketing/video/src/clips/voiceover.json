@@ -1,102 +1,244 @@
 {
   "biz-free-start": {
-    "duration": 38,
+    "duration": 30,
     "beats": [
       {
         "start": 0.2,
         "say": "What if putting your business online cost you nothing to start?",
-        "captions": [{ "start": 0.2, "end": 3.4, "text": "What if putting your business online cost you nothing to start?" }]
-      },
-      {
-        "start": 3.6,
-        "say": "Register on AshantiHub, get verified with your Ghana Card and digital address, and pick your plan. Your first billing cycle is completely free.",
         "captions": [
-          { "start": 3.6, "end": 8.9, "text": "Register on AshantiHub," },
-          { "start": 9.0, "end": 14.4, "text": "get verified with your Ghana Card and digital address," },
-          { "start": 14.5, "end": 17.2, "text": "and pick your plan." },
-          { "start": 17.2, "end": 19.9, "text": "Your first billing cycle is completely free." }
+          {
+            "start": 0.2,
+            "end": 4.5,
+            "text": "What if putting your business online cost you nothing to start?"
+          }
         ]
       },
       {
-        "start": 20.1,
-        "say": "After that, plans start from ten cedis a month, and you're selling to customers across Ghana and the diaspora.",
+        "start": 4.6,
+        "say": "Register on AshantiHub.",
         "captions": [
-          { "start": 20.1, "end": 25.9, "text": "After that, plans start from ten cedis a month —" },
-          { "start": 26.0, "end": 31.8, "text": "and you’re selling to customers across Ghana and the diaspora." }
+          {
+            "start": 4.6,
+            "end": 7.7,
+            "text": "Register on AshantiHub,"
+          }
         ]
       },
       {
-        "start": 32.4,
+        "start": 7.8,
+        "say": "Get verified with your Ghana Card and digital address.",
+        "captions": [
+          {
+            "start": 7.8,
+            "end": 11.7,
+            "text": "get verified with your Ghana Card and digital address,"
+          }
+        ]
+      },
+      {
+        "start": 11.8,
+        "say": "And pick your plan. Your first billing cycle is completely free.",
+        "captions": [
+          {
+            "start": 11.8,
+            "end": 14.15,
+            "text": "and pick your plan."
+          },
+          {
+            "start": 14.15,
+            "end": 16.5,
+            "text": "Your first billing cycle is completely free."
+          }
+        ]
+      },
+      {
+        "start": 16.6,
+        "say": "After that, plans start from ten cedis a month,",
+        "captions": [
+          {
+            "start": 16.6,
+            "end": 20.1,
+            "text": "After that, plans start from ten cedis a month —"
+          }
+        ]
+      },
+      {
+        "start": 20.2,
+        "say": "and you're selling to customers across Ghana and the diaspora.",
+        "captions": [
+          {
+            "start": 20.2,
+            "end": 24.8,
+            "text": "and you’re selling to customers across Ghana and the diaspora."
+          }
+        ]
+      },
+      {
+        "start": 24.9,
         "say": "Your first cycle's on us. The Ashanti Hub dot com.",
-        "captions": [{ "start": 32.4, "end": 37.8, "text": "Your first cycle’s on us. theashantihub.com." }]
+        "captions": [
+          {
+            "start": 24.9,
+            "end": 29.8,
+            "text": "Your first cycle’s on us. theashantihub.com."
+          }
+        ]
       }
     ]
   },
   "biz-enquiries": {
-    "duration": 38,
+    "duration": 27,
     "beats": [
       {
         "start": 0.2,
         "say": "How many \"Is this still available?\" messages did you answer today?",
-        "captions": [{ "start": 0.2, "end": 3.9, "text": "How many “Is this still available?” messages did you answer today?" }]
-      },
-      {
-        "start": 4.2,
-        "say": "On AshantiHub, Support handles customer enquiries for you. Your private number stays private, and the time-wasters never reach you.",
         "captions": [
-          { "start": 4.2, "end": 9.5, "text": "On AshantiHub, Support handles customer enquiries for you." },
-          { "start": 9.5, "end": 14.8, "text": "Your private number stays private," },
-          { "start": 14.8, "end": 19.9, "text": "and the time-wasters never reach you." }
+          {
+            "start": 0.2,
+            "end": 5.2,
+            "text": "How many “Is this still available?” messages did you answer today?"
+          }
         ]
       },
       {
-        "start": 20.1,
+        "start": 5.3,
+        "say": "On AshantiHub, Support handles customer enquiries for you.",
+        "captions": [
+          {
+            "start": 5.3,
+            "end": 9.7,
+            "text": "On AshantiHub, Support handles customer enquiries for you."
+          }
+        ]
+      },
+      {
+        "start": 9.8,
+        "say": "Your private number stays private, and the time-wasters never reach you.",
+        "captions": [
+          {
+            "start": 9.8,
+            "end": 12.25,
+            "text": "Your private number stays private,"
+          },
+          {
+            "start": 12.25,
+            "end": 14.7,
+            "text": "and the time-wasters never reach you."
+          }
+        ]
+      },
+      {
+        "start": 14.8,
         "say": "Serious customers order and book straight from your page, and we coordinate the delivery.",
         "captions": [
-          { "start": 20.1, "end": 26.0, "text": "Serious customers order and book straight from your page," },
-          { "start": 26.0, "end": 31.8, "text": "and we coordinate the delivery." }
+          {
+            "start": 14.8,
+            "end": 18.1,
+            "text": "Serious customers order and book straight from your page,"
+          },
+          {
+            "start": 18.1,
+            "end": 21.4,
+            "text": "and we coordinate the delivery."
+          }
         ]
       },
       {
-        "start": 32.4,
+        "start": 21.5,
         "say": "Less chasing. More selling. The Ashanti Hub dot com.",
-        "captions": [{ "start": 32.4, "end": 37.8, "text": "Less chasing. More selling. theashantihub.com." }]
+        "captions": [
+          {
+            "start": 21.5,
+            "end": 26.8,
+            "text": "Less chasing. More selling. theashantihub.com."
+          }
+        ]
       }
     ]
   },
   "cust-why-support": {
-    "duration": 40,
+    "duration": 28,
     "beats": [
       {
         "start": 0.2,
         "say": "\"Why can't I just WhatsApp the seller?\" Good question.",
         "captions": [
-          { "start": 0.2, "end": 1.9, "text": "“Why can’t I just WhatsApp the seller?”" },
-          { "start": 1.9, "end": 3.4, "text": "Good question." }
+          {
+            "start": 0.2,
+            "end": 2.35,
+            "text": "“Why can’t I just WhatsApp the seller?”"
+          },
+          {
+            "start": 2.35,
+            "end": 4.5,
+            "text": "Good question."
+          }
         ]
       },
       {
-        "start": 3.6,
-        "say": "On AshantiHub, every question goes through AshantiHub Support. We talk to the business for you, so your number never ends up with a stranger, and there's a record of everything that was promised.",
+        "start": 4.6,
+        "say": "On AshantiHub, every question goes through AshantiHub Support.",
         "captions": [
-          { "start": 3.6, "end": 8.0, "text": "On AshantiHub, every question goes through AshantiHub Support." },
-          { "start": 8.0, "end": 12.5, "text": "We talk to the business for you," },
-          { "start": 12.5, "end": 17.2, "text": "so your number never ends up with a stranger," },
-          { "start": 17.2, "end": 21.9, "text": "and there’s a record of everything that was promised." }
+          {
+            "start": 4.6,
+            "end": 9.1,
+            "text": "On AshantiHub, every question goes through AshantiHub Support."
+          }
         ]
       },
       {
-        "start": 22.1,
+        "start": 9.2,
+        "say": "We talk to the business for you, so your number never ends up with a stranger,",
+        "captions": [
+          {
+            "start": 9.2,
+            "end": 11.75,
+            "text": "We talk to the business for you,"
+          },
+          {
+            "start": 11.75,
+            "end": 14.3,
+            "text": "so your number never ends up with a stranger,"
+          }
+        ]
+      },
+      {
+        "start": 14.4,
+        "say": "and there's a record of everything that was promised.",
+        "captions": [
+          {
+            "start": 14.4,
+            "end": 18.1,
+            "text": "and there’s a record of everything that was promised."
+          }
+        ]
+      },
+      {
+        "start": 18.2,
         "say": "It's how we keep fraud out, for you and for the businesses.",
         "captions": [
-          { "start": 22.1, "end": 27.9, "text": "It’s how we keep fraud out —" },
-          { "start": 28.0, "end": 33.8, "text": "for you and for the businesses." }
+          {
+            "start": 18.2,
+            "end": 20.4,
+            "text": "It’s how we keep fraud out —"
+          },
+          {
+            "start": 20.4,
+            "end": 22.6,
+            "text": "for you and for the businesses."
+          }
         ]
       },
       {
-        "start": 34.4,
+        "start": 22.7,
         "say": "Safer shopping, by design. The Ashanti Hub dot com.",
-        "captions": [{ "start": 34.4, "end": 39.8, "text": "Safer shopping, by design. theashantihub.com." }]
+        "captions": [
+          {
+            "start": 22.7,
+            "end": 27.8,
+            "text": "Safer shopping, by design. theashantihub.com."
+          }
+        ]
       }
     ]
   }
