@@ -167,6 +167,23 @@ gunzip -c /opt/ashantihub/backups/production-YYYYMMDD-HHMMSS.sql.gz \
 These dumps sit on the same disk as the database. Copying them off the server
 is still outstanding — see below.
 
+## Scheduled jobs
+
+`infra/cron/ashantihub.cron` holds every cron job (backups, `expire_events`,
+and the activity-log check). The activity log (`activity_activityevent`) is
+append-only and hash-chained: Postgres triggers refuse `UPDATE`/`DELETE`, so
+never "fix" a row by hand. `verify_activity_chain` re-checks the chain nightly
+at 01:45 in production, where `--email-seal` also emails the seal to Super
+Admins, and at 01:55 in staging, which only verifies. Output goes to
+`/var/log/ashantihub-cron.log`.
+
+**The cron file must be re-installed on the server after the deploy that
+introduces these lines** (the install line is in the file's header):
+
+```bash
+install -m 644 /opt/ashantihub/infra/cron/ashantihub.cron /etc/cron.d/ashantihub
+```
+
 ## Mail
 
 **Mailboxes live at 20i, not here.** `theashantihub.com` MX points at

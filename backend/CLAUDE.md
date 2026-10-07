@@ -47,6 +47,17 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
 - **Promotions: "expired" is derived from the time window** (`status=active AND ends_at < now`),
   never read off `status` — nothing in this app ever transitions a finished promotion, so a
   status-based filter would show an empty Expired tab forever.
+- **The activity log is append-only and hash-chained.** `activity.services.record()` is the only
+  writer; Postgres triggers refuse `UPDATE`/`DELETE` on `activity_activityevent`, and
+  `verify_activity_chain` re-checks the SHA-256 chain nightly. `StaffActivityMiddleware` wraps
+  every authenticated staff write in a transaction and records it (client IP from nginx's
+  `X-Real-IP`; secrets, including `code`/`pin`/`*_code`, are redacted), so a new staff endpoint is
+  covered automatically; call `record()` yourself (inside the same transaction, and last, because
+  it holds a global advisory lock until commit) when you have a richer before/after story — it
+  marks the request so the middleware doesn't duplicate it.
+- **Team managers act only on their direct reports.** `staff.invite_team` (Operations, Delivery
+  Manager) is checked with `_guard_team_scope`; anything beyond invite/resend/suspend/unsuspend
+  stays `staff.manage`.
 
 ## Test-fixture gotcha
 
