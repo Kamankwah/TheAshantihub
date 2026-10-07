@@ -184,7 +184,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "tasks" && <TasksPanel />}
           {activeTab === "activity" && <ActivityPanel />}
           {activeTab === "calls" && <CallLogPanel />}
-          {activeTab === "my-team" && <MyTeamPanel />}
+          {activeTab === "my-team" && <MyTeamPanel currentStaffId={auth.user?.id} />}
         </main>
       </div>
 

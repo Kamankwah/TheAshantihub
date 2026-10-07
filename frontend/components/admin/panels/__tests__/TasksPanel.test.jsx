@@ -36,6 +36,16 @@ describe('TasksPanel', () => {
     expect(body.due_at).toMatch(/^2026-10-09T/)
   })
 
+  it('shows the server detail when an action is refused', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/tasks/', () => HttpResponse.json([task(1, 'Call Adwoa Fabrics', '2026-10-07T09:00:00Z')])),
+      http.post('http://localhost:8000/api/tasks/1/done/', () => HttpResponse.json({ detail: 'That task is not yours.' }, { status: 403 })),
+    )
+    renderPanel()
+    fireEvent.click(await screen.findByRole('button', { name: 'Mark "Call Adwoa Fabrics" done' }))
+    expect(await screen.findByText('That task is not yours.')).toBeInTheDocument()
+  })
+
   it('shows an honest empty state', async () => {
     renderPanel()
     expect(await screen.findByText('Nothing here.')).toBeInTheDocument()

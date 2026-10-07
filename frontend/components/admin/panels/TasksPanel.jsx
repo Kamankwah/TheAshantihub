@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
 import { useMyTasks } from "../../../hooks/useMyTasks.js";
+import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D, glassCard } from "../theme.js";
 
 const VIEWS = [["today", "Today"], ["overdue", "Overdue"], ["upcoming", "Upcoming"], ["open", "All open"], ["done", "Done"]];
@@ -21,12 +22,12 @@ export default function TasksPanel() {
     try {
       await apiPost("/api/tasks/", { title: title.trim(), due_at: new Date(due).toISOString() });
       setTitle(""); setDue(""); refetch();
-    } catch (err) { setActionError("Could not add the task."); }
+    } catch (err) { setActionError(apiErrorMessage(err, "Could not add the task.")); }
   };
   const finish = async (id) => {
     setActionError(null);
     try { await apiPost(`/api/tasks/${id}/done/`, {}); refetch(); }
-    catch (err) { setActionError("Could not update the task."); }
+    catch (err) { setActionError(apiErrorMessage(err, "Could not update the task.")); }
   };
 
   const tasks = data || [];

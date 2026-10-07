@@ -10,7 +10,7 @@ const field = { border: `1px solid ${D.cardBorder}`, borderRadius: 10, padding: 
 const labelStyle = { display: "flex", flexDirection: "column", gap: 4, fontSize: "0.72rem", fontWeight: 700, color: D.text };
 const smallBtn = (bg, color) => ({ background: bg, color, border: bg === "#fff" ? `1px solid ${D.cardBorder}` : "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" });
 
-export default function MyTeamPanel() {
+export default function MyTeamPanel({ currentStaffId }) {
   const { data: team, isLoading, isError, refetch } = useMyTeam();
   const { data: roles } = useInvitableRoles();
   const [invite, setInvite] = useState({ full_name: "", email: "", role: "" });
@@ -28,7 +28,7 @@ export default function MyTeamPanel() {
     e.preventDefault();
     if (!chosenRole) return;
     run(async () => {
-      await apiPost("/api/accounts/staff/invite/", { full_name: invite.full_name.trim(), email: invite.email.trim(), role: chosenRole });
+      await apiPost("/api/accounts/staff/invite/", { full_name: invite.full_name.trim(), email: invite.email.trim(), role: chosenRole, ...(currentStaffId ? { manager: currentStaffId } : {}) });
       setInvite({ full_name: "", email: "", role: "" });
     }, "Invite sent.", "Could not send the invite. Check the email isn't already used.");
   };

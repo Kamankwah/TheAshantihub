@@ -7,9 +7,9 @@ import MyTeamPanel from '../MyTeamPanel.jsx'
 
 const member = (id, name, status) => ({ id, full_name: name, email: `${id}@example.com`, phone: null, role: 'scout', manager: 2, manager_name: 'Ama', status, is_suspended: status === 'suspended', suspension_reason: '', is_active: true, permissions: [], role_permissions: [], created_at: '2026-10-01T00:00:00Z' })
 
-function renderPanel() {
+function renderPanel(props = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(<QueryClientProvider client={queryClient}><MyTeamPanel /></QueryClientProvider>)
+  render(<QueryClientProvider client={queryClient}><MyTeamPanel {...props} /></QueryClientProvider>)
 }
 
 describe('MyTeamPanel', () => {
@@ -26,6 +26,20 @@ describe('MyTeamPanel', () => {
     fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'support' } })
     fireEvent.click(screen.getByRole('button', { name: 'Send invite' }))
     await waitFor(() => expect(body).toEqual({ full_name: 'Kwame Asante', email: 'kwame@example.com', role: 'support' }))
+  })
+
+  it('sends the signed-in staffer as manager when currentStaffId is given', async () => {
+    let body = null
+    server.use(
+      http.get('http://localhost:8000/api/accounts/staff/invitable-roles/', () => HttpResponse.json(['scout'])),
+      http.post('http://localhost:8000/api/accounts/staff/invite/', async ({ request }) => { body = await request.json(); return HttpResponse.json({ id: 9 }, { status: 201 }) }),
+    )
+    renderPanel({ currentStaffId: 3 })
+    fireEvent.change(await screen.findByLabelText('Full name'), { target: { value: 'Kwame Asante' } })
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'kwame@example.com' } })
+    await screen.findByRole('option', { name: 'Scout' })
+    fireEvent.click(screen.getByRole('button', { name: 'Send invite' }))
+    await waitFor(() => expect(body).toEqual({ full_name: 'Kwame Asante', email: 'kwame@example.com', role: 'scout', manager: 3 }))
   })
 
   it('resends a pending invite and suspends an active member', async () => {
