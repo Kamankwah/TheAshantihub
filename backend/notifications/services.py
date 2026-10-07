@@ -45,7 +45,7 @@ def notify_staff(staff, kind, title, body="", link="", icon=""):
 
 
 def notify_staff_role(permission_codename, kind, title, body="", link="", icon=""):
-    """Fan out one Notification to every StaffUser whose role holds
+    """Fan out one Notification to every active staffer whose effective permissions hold
     `permission_codename` — e.g. everyone who can approve KYC when a new
     submission lands. Best-effort per staffer (a single failed row is logged
     and skipped, the rest still send). Returns the list of created rows.
@@ -53,13 +53,11 @@ def notify_staff_role(permission_codename, kind, title, body="", link="", icon="
     Imported lazily to avoid an import cycle (accounts.models is imported by
     notifications.models, and some accounts views import this module).
     """
-    from accounts.models import StaffUser
+    from accounts.permissions import staff_holding
 
     created = []
     try:
-        recipients = StaffUser.objects.filter(
-            role__permissions__codename=permission_codename
-        ).distinct()
+        recipients = list(staff_holding(permission_codename))
     except Exception:
         logger.exception("Failed to resolve staff for permission %s", permission_codename)
         return created

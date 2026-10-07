@@ -104,7 +104,7 @@ class StaffBadgesView(APIView):
         from listings.models import HeroMediaSubmission, Listing
         from reviews.models import Review
 
-        held = set(user.role.permissions.values_list("codename", flat=True))
+        held = user.effective_permission_codenames()
 
         def count(codename, queryset):
             return queryset.count() if codename in held else 0
