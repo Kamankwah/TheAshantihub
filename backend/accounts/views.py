@@ -12,8 +12,8 @@ from notifications.services import notify_business_owner, notify_customer, notif
 
 from .authentication import issue_token
 from .emails import send_staff_invite_email, send_verification_code_email
-from .models import BusinessOwner, Customer, Permission, ScoutAssignment, StaffUser
-from .permissions import HasRolePermission
+from .models import BusinessOwner, Customer, Permission, Role, RoleInviteRule, ScoutAssignment, StaffUser
+from .permissions import HasAnyRolePermission, HasRolePermission, can_manage_staff
 from .serializers import (
     INVITE_TOKEN_LIFETIME,
     BusinessOwnerKYCDetailSerializer,
@@ -87,7 +87,7 @@ class StaffInviteView(generics.CreateAPIView):
     serializer_class = StaffInviteSerializer
 
     def get_permissions(self):
-        return [HasRolePermission("staff.manage")]
+        return [HasAnyRolePermission(*TEAM_OR_STAFF_MANAGE)]
 
 
 class StaffActivateView(generics.GenericAPIView):
@@ -116,10 +116,13 @@ class BusinessOwnerRegisterView(generics.CreateAPIView):
 
 class StaffResendInviteView(APIView):
     def get_permissions(self):
-        return [HasRolePermission("staff.manage")]
+        return [HasAnyRolePermission(*TEAM_OR_STAFF_MANAGE)]
 
     def post(self, request, pk):
         staff = generics.get_object_or_404(StaffUser, pk=pk)
+        scope = _guard_team_scope(request, staff)
+        if scope:
+            return scope
         if staff.invite_token is None:
             return Response(
                 {"detail": "Cannot resend invite for an already-activated account."},
@@ -383,6 +386,60 @@ class StaffListView(generics.ListAPIView):
         return [HasRolePermission("staff.manage")]
 
 
+class StaffTeamListView(generics.ListAPIView):
+    serializer_class = StaffListSerializer
+    pagination_class = None
+
+    def get_permissions(self):
+        return [HasAnyRolePermission(*TEAM_OR_STAFF_MANAGE)]
+
+    def get_queryset(self):
+        return (
+            StaffUser.objects.filter(manager=self.request.user)
+            .select_related("role", "manager")
+            .order_by("full_name")
+        )
+
+
+class InvitableRolesView(APIView):
+    def get_permissions(self):
+        return [HasAnyRolePermission(*TEAM_OR_STAFF_MANAGE)]
+
+    def get(self, request):
+        user = request.user
+        if can_manage_staff(user):
+            roles = Role.objects.all()
+            if user.role.name != Role.SUPER_ADMIN:
+                roles = roles.exclude(name=Role.SUPER_ADMIN)
+            names = roles.values_list("name", flat=True)
+        else:
+            names = RoleInviteRule.objects.filter(inviter_role=user.role).values_list(
+                "invitee_role__name", flat=True
+            )
+        return Response(sorted(names))
+
+
+class StaffManagerView(APIView):
+    def get_permissions(self):
+        return [HasRolePermission("staff.manage")]
+
+    def post(self, request, pk):
+        staff = generics.get_object_or_404(StaffUser, pk=pk)
+        manager_id = request.data.get("manager")
+        if manager_id in (None, ""):
+            staff.manager = None
+        else:
+            manager = generics.get_object_or_404(StaffUser, pk=manager_id, is_active=True)
+            node = manager
+            while node is not None:
+                if node.pk == staff.pk:
+                    return Response({"detail": "That would make someone their own manager."}, status=400)
+                node = node.manager
+            staff.manager = manager
+        staff.save(update_fields=["manager"])
+        return Response(StaffListSerializer(staff).data)
+
+
 # ── Staff user-management (staff user-management tools) ─────────────────────
 # Detail/edit + suspend/unsuspend for one customer or business owner. Reading
 # the detail (GET) needs only users.view — the same permission as the lists,
@@ -525,15 +582,28 @@ def _guard_self_action(request, staff):
     return None
 
 
+TEAM_OR_STAFF_MANAGE = ("staff.manage", "staff.invite_team")
+
+
+def _guard_team_scope(request, staff):
+    """A team manager may act only on their own direct reports."""
+    if can_manage_staff(request.user) or staff.manager_id == request.user.id:
+        return None
+    return Response({"detail": "You can only manage your own team."}, status=403)
+
+
 class StaffSuspendView(APIView):
     def get_permissions(self):
-        return [HasRolePermission("staff.manage")]
+        return [HasAnyRolePermission(*TEAM_OR_STAFF_MANAGE)]
 
     def post(self, request, pk):
         staff = generics.get_object_or_404(StaffUser, pk=pk)
         guard = _guard_self_action(request, staff)
         if guard:
             return guard
+        scope = _guard_team_scope(request, staff)
+        if scope:
+            return scope
         staff.is_suspended = True
         staff.suspension_reason = request.data.get("reason", "") or ""
         staff.save(update_fields=["is_suspended", "suspension_reason"])
@@ -542,10 +612,13 @@ class StaffSuspendView(APIView):
 
 class StaffUnsuspendView(APIView):
     def get_permissions(self):
-        return [HasRolePermission("staff.manage")]
+        return [HasAnyRolePermission(*TEAM_OR_STAFF_MANAGE)]
 
     def post(self, request, pk):
         staff = generics.get_object_or_404(StaffUser, pk=pk)
+        scope = _guard_team_scope(request, staff)
+        if scope:
+            return scope
         staff.is_suspended = False
         staff.suspension_reason = ""
         staff.save(update_fields=["is_suspended", "suspension_reason"])
@@ -566,6 +639,12 @@ class StaffDeactivateView(APIView):
         guard = _guard_self_action(request, staff)
         if guard:
             return guard
+        active_reports = staff.direct_reports.filter(is_active=True).count()
+        if active_reports:
+            return Response(
+                {"detail": f"Reassign {staff.full_name}'s {active_reports} direct report(s) first."},
+                status=400,
+            )
         staff.is_active = False
         staff.save(update_fields=["is_active"])
         return Response(StaffListSerializer(staff).data)
