@@ -79,3 +79,11 @@ class ActivityApiTests(TestCase):
         customer = Customer.objects.create(full_name="Yaw", phone="0240000001", password_hash="x")
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(customer, 'customer')}")
         self.assertEqual(self.client.get("/api/activity/").status_code, 403)
+
+
+class ActivityBadInputTests(TestCase):
+    def test_unicode_digit_actor_is_400_not_500(self):
+        boss = make_staff("super_admin", "boss@example.com")
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(boss, 'staff')}")
+        self.assertEqual(client.get("/api/activity/?actor=\u00b2").status_code, 400)

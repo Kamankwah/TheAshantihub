@@ -3,7 +3,7 @@ import datetime as dt
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework import generics
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -49,6 +49,8 @@ class CallLogListCreateView(generics.ListCreateAPIView):
             if params.get(field):
                 calls = calls.filter(**{field: params[field]})
         if params.get("staff"):
+            if not (params["staff"].isdecimal() and params["staff"].isascii()):
+                raise ValidationError({"staff": "Use a staff id."})
             calls = calls.filter(staff_id=params["staff"])
         return calls
 

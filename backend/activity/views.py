@@ -73,7 +73,7 @@ class ActivityListView(generics.ListAPIView):
         if params.get("mine") == "1":
             events = events.filter(actor_type=ActivityEvent.STAFF, actor_id=user.id)
         if params.get("actor"):
-            if not params["actor"].isdigit():
+            if not (params["actor"].isdecimal() and params["actor"].isascii()):
                 raise ValidationError({"actor": "Use a staff id."})
             events = events.filter(actor_type=ActivityEvent.STAFF, actor_id=params["actor"])
         if params.get("role"):
