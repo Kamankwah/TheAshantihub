@@ -138,16 +138,27 @@ New app `activity`, model `ActivityEvent`:
   of `activity_activityevent`. A database superuser could still drop the triggers, so the nightly
   job re-verifies the whole chain and emails the latest hash ("the day's seal") to every Super
   Admin; any break raises a Sentry error and a Super Admin alert.
-- **Coverage in phase 1:** every staff write endpoint that exists today records an event
-  (KYC, moderation, users, staff management, escrow, disputes, pricing, plans, credit,
-  promotions, categories/zones, site settings, delivery, contact messages, messaging replies),
-  plus sign-in/sign-out, invites, approvals, reports and exports. A test walks the URL conf and
-  fails if a staff `POST/PATCH/PUT/DELETE` view doesn't record.
+- **Coverage (refined at planning, 2026-10-07):** two layers, both inside the change's
+  transaction.
+  1. `StaffActivityMiddleware` wraps every authenticated **staff** write request
+     (`POST/PUT/PATCH/DELETE`) in `transaction.atomic()` from `process_view`, calls the view, and
+     if the response is 2xx records a baseline event — verb = the URL name (e.g.
+     `kyc-approve`), target from the URL's `pk`, `after` = the redacted request body and
+     response summary. If recording fails, the whole action rolls back. This covers all 61
+     existing staff write endpoints (KYC, moderation, users, staff management, escrow, disputes,
+     pricing, plans, credit, promotions, categories/zones, site settings, delivery, contact
+     messages, messaging replies) and every future one without editing them.
+  2. Domain code calls `activity.record()` itself when it has a richer story (before/after
+     snapshots, semantic verbs like `business.kyc.approved`) — approvals, invites, staff
+     management, reports, exports, and every phase-2+ workflow. An explicit record marks the
+     request so the middleware doesn't add a duplicate.
+  Sign-in and sign-out are recorded explicitly (sign-in is an anonymous request).
 - **Reading:** `GET /api/activity/` with filters (actor, role, verb prefix, target, date
-  range). Scopes: everyone sees their own; `activity.view_team` adds their reports' events;
-  `activity.view_domains` adds events in the verb domains granted to the role (Operations:
-  scouts, support, dispatch, marketing, plus selected accounting and delivery verbs — the exact
-  map lives in code and is listed in phase 2); `activity.view_all` (Super Admin) sees everything.
+  range). Scopes: everyone sees their own; `activity.view_team` adds their direct reports'
+  events; `activity.view_domains` adds events by **actor role** per a map in code (Operations:
+  everything by scouts, support, dispatch and marketing, plus Accounting and Delivery Manager
+  events whose verb starts with a listed prefix — commission, payout, delivery dispute);
+  `activity.view_all` (Super Admin) sees everything.
 
 ### F5 — Approvals engine and inbox
 
@@ -280,8 +291,9 @@ set. Remove the three entries from `docs/STAFF_ROLES.md` "Known gaps" when done.
 ## 4. Testing
 
 - Upgrade: full backend suite and `makemigrations --check` on 5.2.
-- Activity: `UPDATE`/`DELETE` raise; chain verifies; tampering a row makes verification fail; the
-  URL-conf coverage test.
+- Activity: `UPDATE`/`DELETE` raise; chain verifies; tampering a row makes verification fail;
+  a staff write through the middleware records exactly one event and rolls back when recording
+  fails; customer/owner/anonymous writes and failed (4xx/5xx) staff writes record nothing.
 - Approvals: maker ≠ checker; stale `before` blocks approval; escalation moves level and
   notifies; apply runs atomically with the decision.
 - Realtime (`channels.testing.WebsocketCommunicator`): ticket single-use and 30 s expiry; group

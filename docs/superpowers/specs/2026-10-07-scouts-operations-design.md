@@ -199,9 +199,10 @@ commission. Operations owns the queue; Super Admin sees it.
 ### S10 — Operations' visibility
 
 - **Scouts:** all scouts (every team) read-only; act on their own team.
-- **Activity domains** (`activity.view_domains` for Operations): `scout.*`, `business.*`,
-  `support.*`, `dispatch.*`, `delivery.dispute.*`, `marketing.*`, and from Accounting
-  `commission.*` and `payout.*` (who/when/amount, not account numbers).
+- **Activity visibility** (`activity.view_domains` for Operations, by actor role): everything
+  done by scouts, support, dispatch and marketing; from Accounting only verbs starting
+  `commission` or `payout` (who/when/amount, never account numbers); from the Delivery Manager
+  only verbs starting `delivery.dispute`, `order-assign-dispatch` or `order-delivery-status`.
 - **Service issues for portfolio businesses:** contact messages, disputes and returns via the
   order's business, and conversations where the business owner is the participant. Customer
   conversations *about* a business aren't linked structurally until phase 4 — the screen says so.
