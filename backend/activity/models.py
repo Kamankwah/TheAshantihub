@@ -35,7 +35,7 @@ class ActivityEvent(models.Model):
     ip = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.CharField(max_length=300, blank=True, default="")
     request_id = models.CharField(max_length=64, blank=True, default="")
-    prev_hash = models.CharField(max_length=64)
+    prev_hash = models.CharField(max_length=64, unique=True)
     hash = models.CharField(max_length=64, unique=True)
 
     class Meta:

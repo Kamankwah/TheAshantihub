@@ -28,9 +28,11 @@ class Command(BaseCommand):
             logger.error("Activity chain broken at event %s", broken_id)
         if options["email_seal"]:
             recipients = list(
-                StaffUser.objects.filter(role__name="super_admin", is_active=True).values_list("email", flat=True)
+                StaffUser.objects.filter(role__name="super_admin", is_active=True, is_suspended=False).values_list("email", flat=True)
             )
-            if recipients:
+            if not recipients:
+                logger.warning("No active Super Admin to receive the activity seal")
+            else:
                 send_mail(
                     "AshantiHub activity seal",
                     f"{seal}\n\nKeep this email: it lets you prove later that the activity log was not rewritten.",
