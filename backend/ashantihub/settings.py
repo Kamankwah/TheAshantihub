@@ -74,6 +74,7 @@ INSTALLED_APPS = [
     "messaging",
     "payments",
     "notifications",
+    "activity",
 ]
 
 MIDDLEWARE = [
