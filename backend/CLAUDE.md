@@ -50,9 +50,11 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
 - **The activity log is append-only and hash-chained.** `activity.services.record()` is the only
   writer; Postgres triggers refuse `UPDATE`/`DELETE` on `activity_activityevent`, and
   `verify_activity_chain` re-checks the SHA-256 chain nightly. `StaffActivityMiddleware` wraps
-  every authenticated staff write in a transaction and records it (client IP from nginx's
-  `X-Real-IP`; secrets, including `code`/`pin`/`*_code`, are redacted), so a new staff endpoint is
-  covered automatically; call `record()` yourself (inside the same transaction, and last, because
+  every authenticated staff write in a transaction and records it, so a new staff endpoint is
+  covered automatically. The client IP is taken from nginx's `X-Real-IP` and canonicalised (invalid
+  is stored blank); secrets in request bodies are redacted before storing — see `SECRET_MARKERS`
+  and the exact-key/suffix rules in `activity/services.py` (bare `code`/`pin` and `*_code`/`*_pin`
+  keys are redacted, `codename(s)` is not); call `record()` yourself (inside the same transaction, and last, because
   it holds a global advisory lock until commit) when you have a richer before/after story — it
   marks the request so the middleware doesn't duplicate it.
 - **Team managers act only on their direct reports.** `staff.invite_team` (Operations, Delivery
