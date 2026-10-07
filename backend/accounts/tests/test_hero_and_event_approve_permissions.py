@@ -11,7 +11,7 @@ class HeroAndEventApprovePermissionTests(TestCase):
             self.assertTrue(Permission.objects.filter(codename=codename).exists())
 
     def test_admin_and_marketing_have_both_permissions(self):
-        for role_name in ("admin", "marketing"):
+        for role_name in ("operations", "marketing"):
             role = Role.objects.get(name=role_name)
             for codename in NEW_CODENAMES:
                 self.assertTrue(

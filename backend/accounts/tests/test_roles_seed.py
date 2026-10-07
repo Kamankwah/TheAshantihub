@@ -9,7 +9,7 @@ from accounts.models import Permission, Role
 # listed with their own full grants.
 DEFAULT_MATRIX = {
     "super_admin": None,  # None = all permissions
-    "admin": {"kyc.approve", "listings.moderate", "users.view"},
+    "operations": {"kyc.approve", "listings.moderate", "users.view"},
     "accountant": {"escrow.view", "escrow.release", "disputes.resolve_financial", "transactions.report"},
     "marketing": {"promotions.manage", "analytics.view", "categories.manage"},
     "support": {"messaging.manage", "disputes.flag", "users.view"},
@@ -54,7 +54,7 @@ class RoleSeedTests(TestCase):
         # A scout does the field work but doesn't assign — that's supervision.
         scout = Role.objects.get(name="scout")
         self.assertFalse(scout.permissions.filter(codename="scouts.assign").exists())
-        admin = Role.objects.get(name="admin")
+        admin = Role.objects.get(name="operations")
         self.assertTrue(admin.permissions.filter(codename="scouts.assign").exists())
 
     def test_dispatch_cannot_manage_deliveries_and_vice_versa(self):

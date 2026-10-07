@@ -14,7 +14,7 @@ class Permission(models.Model):
 
 class Role(models.Model):
     SUPER_ADMIN = "super_admin"
-    ADMIN = "admin"
+    OPERATIONS = "operations"
     ACCOUNTANT = "accountant"
     MARKETING = "marketing"
     SUPPORT = "support"
@@ -26,7 +26,7 @@ class Role(models.Model):
 
     NAME_CHOICES = [
         (SUPER_ADMIN, "Super Admin"),
-        (ADMIN, "Admin"),
+        (OPERATIONS, "Operations"),
         (ACCOUNTANT, "Accountant"),
         (MARKETING, "Marketing"),
         (SUPPORT, "Support"),

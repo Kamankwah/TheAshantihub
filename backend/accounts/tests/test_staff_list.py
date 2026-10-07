@@ -19,7 +19,7 @@ class StaffListTests(TestCase):
 
         StaffUser.objects.create(
             full_name="Active Person", email="active@example.com", password_hash="realhash",
-            role=Role.objects.get(name="admin"), invite_token=None, invite_expires_at=None,
+            role=Role.objects.get(name="operations"), invite_token=None, invite_expires_at=None,
         )
         StaffUser.objects.create(
             full_name="Invited Person", email="invited@example.com", password_hash="unusable",
@@ -42,7 +42,7 @@ class StaffListTests(TestCase):
     def test_admin_cannot_list_staff(self):
         admin = StaffUser.objects.create(
             full_name="Regular Admin", email="regular-admin@example.com", password_hash="x",
-            role=Role.objects.get(name="admin"),
+            role=Role.objects.get(name="operations"),
         )
         token = issue_token(admin, "staff")
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
@@ -61,7 +61,7 @@ class StaffListTests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
         response = self.client.get("/api/accounts/staff/")
         by_name = {item["full_name"]: item["role"] for item in response.json()["results"]}
-        self.assertEqual(by_name["Active Person"], "admin")
+        self.assertEqual(by_name["Active Person"], "operations")
 
     def test_password_hash_never_leaked(self):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")

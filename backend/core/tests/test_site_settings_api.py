@@ -90,7 +90,7 @@ class SiteSettingsAPITests(TestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_patch_admin_succeeds(self):
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('admin', 1)}")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('operations', 1)}")
         response = self.client.patch(URL, {"contact_email": "new@example.com"}, format="json")
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(SiteSettings.load().contact_email, "new@example.com")
@@ -107,7 +107,7 @@ class SiteSettingsAPITests(TestCase):
             contact_phone="+233 20 000 0000",
             facebook_url="https://facebook.com/theashantihub",
         )
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('admin', 2)}")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('operations', 2)}")
         response = self.client.patch(URL, {"contact_phone": "+233 24 999 9999"}, format="json")
         self.assertEqual(response.status_code, 200, response.content)
 
@@ -117,7 +117,7 @@ class SiteSettingsAPITests(TestCase):
         self.assertEqual(settings.facebook_url, "https://facebook.com/theashantihub")
 
     def test_patch_round_trips_new_social_and_support_fields(self):
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('admin', 4)}")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('operations', 4)}")
         response = self.client.patch(
             URL,
             {
@@ -140,7 +140,7 @@ class SiteSettingsAPITests(TestCase):
         # simulate the "row doesn't exist yet" case this test targets.
         SiteSettings.objects.all().delete()
         self.assertEqual(SiteSettings.objects.count(), 0)
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('admin', 3)}")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('operations', 3)}")
         response = self.client.patch(URL, {"contact_email": "fresh@example.com"}, format="json")
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(SiteSettings.objects.count(), 1)

@@ -192,7 +192,7 @@ export default function StaffManagementPanel() {
           <select value={inviteRole} onChange={e => setInviteRole(e.target.value)} style={{ width: 120, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }}>
             <option value="">Role</option>
             <option value="super_admin">Super Admin</option>
-            <option value="admin">Admin</option>
+            <option value="operations">Operations</option>
             <option value="accountant">Accountant</option>
             <option value="marketing">Marketing</option>
             <option value="support">Support</option>

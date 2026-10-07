@@ -46,7 +46,7 @@ class ReviewModerationTestsBase(TestCase):
         )
         self.admin = StaffUser.objects.create(
             full_name="Admin Person", email="admin-review-mod@example.com", password_hash="x",
-            role=Role.objects.get(name="admin"),
+            role=Role.objects.get(name="operations"),
         )
         self.marketing = StaffUser.objects.create(
             full_name="Marketing Person", email="marketing-review-mod@example.com", password_hash="x",

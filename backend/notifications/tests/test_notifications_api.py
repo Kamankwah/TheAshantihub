@@ -61,7 +61,7 @@ class NotifyServiceTests(TestCase):
         )
         self.admin = StaffUser.objects.create(
             full_name="Admin", email="admin-notify@example.com", password_hash="x",
-            role=Role.objects.get(name="admin"),
+            role=Role.objects.get(name="operations"),
         )
         self.marketing = StaffUser.objects.create(
             full_name="Marketing", email="marketing-notify@example.com", password_hash="x",
