@@ -39,6 +39,26 @@ class CallLogTests(TestCase):
         data.update(overrides)
         return data
 
+    def test_counterpart_phone_is_masked_in_the_activity_log_and_api(self):
+        from activity.models import ActivityEvent
+
+        self.as_(self.scout)
+        self.assertEqual(self.client.post("/api/calls/", self.payload(), format="json").status_code, 201)
+        event = ActivityEvent.objects.get(verb__startswith="call")
+        masked = event.after["request"]["counterpart_phone"]
+        self.assertTrue(masked.endswith("118"))
+        self.assertNotEqual(masked, "0244123118")
+        self.as_(self.ops)
+        rows = self.client.get("/api/activity/").json()["results"]
+        shown = [r for r in rows if r["id"] == event.id][0]
+        self.assertEqual(shown["after"]["request"]["counterpart_phone"], masked)
+
+    def test_non_numeric_staff_filter_is_400(self):
+        self.as_(self.boss)
+        response = self.client.get("/api/calls/?staff=abc")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("staff", response.json())
+
     def test_scout_logs_a_call_with_a_follow_up_task(self):
         self.as_(self.scout)
         follow_up = (timezone.now() + dt.timedelta(days=2)).isoformat()

@@ -3,7 +3,7 @@ from io import StringIO
 
 from django.core import mail
 from django.core.management import CommandError, call_command
-from django.db import InternalError, connection, transaction
+from django.db import IntegrityError, InternalError, connection, transaction
 from django.test import RequestFactory, TestCase, TransactionTestCase
 
 from accounts.models import Role, StaffUser
@@ -25,6 +25,17 @@ class ChainTests(TestCase):
         self.assertEqual(second.prev_hash, first.hash)
         self.assertEqual((first.actor_type, first.actor_role, first.actor_label), ("staff", "operations", "Ama Boateng"))
         self.assertEqual((second.actor_type, second.actor_label), ("system", "System"))
+
+    def test_personal_numbers_are_masked_before_hashing(self):
+        event = services.record(
+            self.staff, "test.mask",
+            after={"counterpart_phone": "0244123118", "nested": {"payout_momo_number": 551234567}, "note": "x", "momo_number": None},
+        )
+        self.assertTrue(event.after["counterpart_phone"].endswith("118"))
+        self.assertNotIn("0244123118", event.after["counterpart_phone"])
+        self.assertTrue(event.after["nested"]["payout_momo_number"].endswith("567"))
+        self.assertEqual((event.after["note"], event.after["momo_number"]), ("x", None))
+        self.assertEqual(services.verify_chain(), (True, None))
 
     def test_target_instance_fills_target_fields(self):
         event = services.record(self.staff, "test.target", target=self.staff)
@@ -108,6 +119,17 @@ class ConcurrentChainTests(TransactionTestCase):
         self.assertEqual(services.verify_chain(), (True, None))
 
 
+class PrevHashUniqueTests(TestCase):
+    def test_a_forked_prev_hash_is_rejected(self):
+        first = services.record(None, "test.first")
+        services.record(None, "test.second")
+        fork = ActivityEvent(
+            occurred_at=first.occurred_at, actor_type="system", verb="test.fork", prev_hash=first.prev_hash, hash="f" * 64,
+        )
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            fork.save(force_insert=True)
+
+
 class VerifyCommandTests(TestCase):
     def test_ok_chain_prints_and_emails_the_seal(self):
         StaffUser.objects.create(
@@ -118,6 +140,15 @@ class VerifyCommandTests(TestCase):
         call_command("verify_activity_chain", "--email-seal", stdout=out)
         self.assertIn("OK · 1 events", out.getvalue())
         self.assertEqual(mail.outbox[0].to, ["boss@example.com"])
+
+    def test_seal_skips_suspended_super_admins_and_warns_when_none(self):
+        role = Role.objects.get(name="super_admin")
+        StaffUser.objects.create(full_name="Gone", email="gone@example.com", password_hash="x", role=role, is_suspended=True)
+        services.record(None, "test.one")
+        with self.assertLogs("activity.management.commands.verify_activity_chain", level="WARNING") as logs:
+            call_command("verify_activity_chain", "--email-seal", stdout=StringIO())
+        self.assertIn("No active Super Admin to receive the activity seal", logs.output[0])
+        self.assertEqual(mail.outbox, [])
 
     def test_broken_chain_fails(self):
         event = services.record(None, "test.one")

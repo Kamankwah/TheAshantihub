@@ -7,6 +7,8 @@ import logging
 from django.db import connection, transaction
 from django.utils import timezone
 
+from accounts.serializers import mask_but_last
+
 from .models import ActivityEvent
 
 logger = logging.getLogger(__name__)
@@ -42,10 +44,29 @@ def redact(value):
     return value
 
 
+MASKED_KEYS = (
+    "counterpart_phone", "payout_momo_number", "payout_bank_account_number",
+    "momo_number", "account_number", "bank_account_number",
+)
+
+
+def _mask_value(value):
+    if isinstance(value, dict):
+        return {
+            k: mask_but_last(str(v), keep=3)
+            if str(k).lower() in MASKED_KEYS and isinstance(v, (str, int)) and not isinstance(v, bool) and str(v)
+            else _mask_value(v)
+            for k, v in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_mask_value(v) for v in value]
+    return value
+
+
 def _bounded(value):
     if value is None:
         return None
-    text = json.dumps(redact(value), default=str, sort_keys=True)
+    text = json.dumps(_mask_value(redact(value)), default=str, sort_keys=True)
     if len(text) > MAX_JSON_CHARS:
         return {"truncated": True, "preview": text[:MAX_JSON_CHARS]}
     return json.loads(text)
