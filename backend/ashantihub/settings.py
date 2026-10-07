@@ -75,6 +75,7 @@ INSTALLED_APPS = [
     "payments",
     "notifications",
     "activity",
+    "staff_tasks",
 ]
 
 MIDDLEWARE = [
