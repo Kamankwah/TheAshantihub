@@ -2,7 +2,9 @@ import { useState } from "react";
 import { C, CURRENCIES } from "../theme.js";
 import { useCart } from "../hooks/useCart.js";
 import { apiPatch, apiPost, apiDelete } from "../apiClient.js";
+import { useStaffGate } from "../hooks/useStaffGate.js";
 import LocationPicker from "./LocationPicker.jsx";
+import StaffGateNotice from "./StaffGateNotice.jsx";
 
 // ─── CartDrawer ─────────────────────────────────────────────────────────────
 // Customer cart (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4). Mirrors App.jsx's
@@ -54,6 +56,10 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   const [deliveryLat, setDeliveryLat] = useState(null);
   const [deliveryLng, setDeliveryLng] = useState(null);
   const doorToDoorReady = deliveryMethod !== "door_to_door" || (deliveryAddress.trim() && deliveryPhone.trim());
+  // App.jsx only ever opens the cart for a customer; this is the
+  // defence-in-depth layer so checkout itself refuses a staff session with
+  // the shared staff notice.
+  const staffGate = useStaffGate(user);
 
   const items = cart?.items || [];
 
@@ -204,9 +210,10 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
                   <span>{formatAmount(cart?.total)}</span>
                 </div>
                 <button
-                  onClick={() => setStep("confirm")}
+                  onClick={() => { if (staffGate.blocked()) return; setStep("confirm"); }}
                   style={{ width: "100%", background: C.gold, color: C.darkBrown, border: "none", borderRadius: 24, padding: "11px", fontWeight: 900, fontSize: "0.82rem", cursor: "pointer", fontFamily: "inherit" }}
                 >Checkout →</button>
+                {staffGate.shownFor && <StaffGateNotice style={{ marginTop: 10 }} />}
               </div>
             )}
           </>
@@ -263,10 +270,11 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
             )}
 
             {checkoutError && <div style={{ background: "#fee2e2", color: "#dc2626", borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>{checkoutError}</div>}
+            {staffGate.shownFor && <StaffGateNotice style={{ marginBottom: 12 }} />}
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={() => setStep("cart")} style={{ flex: 1, background: "#f0f0f0", color: "#666", border: "none", borderRadius: 20, padding: "10px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>← Back</button>
               <button
-                onClick={() => { setCheckoutAmount(parseFloat(cart?.total) || 0); setShowPayment(true); }}
+                onClick={() => { if (staffGate.blocked()) return; setCheckoutAmount(parseFloat(cart?.total) || 0); setShowPayment(true); }}
                 disabled={!doorToDoorReady}
                 style={{ flex: 2, background: doorToDoorReady ? C.kente2 : "#ccc", color: "white", border: "none", borderRadius: 20, padding: "10px", fontWeight: 900, cursor: doorToDoorReady ? "pointer" : "not-allowed", fontFamily: "inherit" }}
               >

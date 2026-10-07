@@ -542,21 +542,22 @@ describe('AshantiHub routing — /staff/:panel', () => {
     expect(screen.queryByRole('navigation', { name: 'Staff panels' })).not.toBeInTheDocument()
   }, 8000)
 
-  it('links the staff manifest on staff paths; Exit to / removes it', async () => {
+  it('links the staff manifest on staff paths; View site to / removes it', async () => {
     signInStaff(['messaging.manage', 'users.view'])
     renderStaffAt('/staff/users')
     await staffNav()
     expect(document.head.querySelector('link[rel="manifest"]')).toHaveAttribute('href', '/staff.webmanifest')
-    fireEvent.click(screen.getByRole('button', { name: '← Exit' }))
+    fireEvent.click(screen.getByRole('button', { name: 'View site' }))
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
     await waitFor(() => expect(document.head.querySelector('link[rel="manifest"]')).toBeNull())
   }, 8000)
 })
 
 // Inside the installed staff app (display-mode: standalone) there is no
-// marketplace to fall back to: Sign out stays on the staff URL with the staff
+// marketplace to fall back to: Sign out lands on /staff with the staff
 // sign-in open, wipes the previous staffer's cached panel data, and the
-// sign-in can't be dismissed into the marketplace home.
+// sign-in can't be dismissed into the marketplace home. The browser-only
+// "View site" and "Go to marketplace" ways out are never offered here.
 describe('AshantiHub — installed staff app (standalone display)', () => {
   let originalMatchMedia
   afterEach(() => {
@@ -574,7 +575,7 @@ describe('AshantiHub — installed staff app (standalone display)', () => {
     })
   }
 
-  it('Sign out stays on /staff/users, clears cached queries, and the staff sign-in cannot be dismissed', async () => {
+  it('Sign out lands on /staff, clears cached queries, and the staff sign-in cannot be dismissed', async () => {
     stubStandalone()
     signInStaff(['messaging.manage', 'users.view'])
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -588,11 +589,12 @@ describe('AshantiHub — installed staff app (standalone display)', () => {
       </QueryClientProvider>,
     )
     await staffNav()
+    expect(screen.queryByRole('button', { name: 'View site' })).not.toBeInTheDocument()
     const signOut = screen.getByRole('button', { name: 'Sign out' })
     fireEvent.click(signOut)
     expect(clearSpy).toHaveBeenCalled()
     expect(await screen.findByText('Staff Sign In', {}, { timeout: 3000 })).toBeInTheDocument()
-    expect(screen.getByTestId('location').textContent).toBe('/staff/users')
+    expect(screen.getByTestId('location').textContent).toBe('/staff')
 
     // The ✕ close control must not drop the staffer into the marketplace.
     fireEvent.click(within(screen.getByTestId('auth-modal-backdrop')).getByRole('button', { name: '✕' }))
@@ -600,13 +602,14 @@ describe('AshantiHub — installed staff app (standalone display)', () => {
     // Nor must a backdrop tap.
     fireEvent.click(screen.getByTestId('auth-modal-backdrop'))
     await waitFor(() => expect(screen.getByText('Staff Sign In')).toBeInTheDocument())
-    expect(screen.getByTestId('location').textContent).toBe('/staff/users')
+    expect(screen.getByTestId('location').textContent).toBe('/staff')
   }, 10000)
 
   it('a signed-out launch of the installed app keeps the staff sign-in up after dismissal', async () => {
     stubStandalone()
     renderStaffAt('/staff')
     expect(await screen.findByText('Staff Sign In', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Go to marketplace' })).not.toBeInTheDocument()
     fireEvent.click(within(screen.getByTestId('auth-modal-backdrop')).getByRole('button', { name: '✕' }))
     await waitFor(() => expect(screen.getByText('Staff Sign In')).toBeInTheDocument())
     expect(screen.getByTestId('location').textContent).toBe('/staff')

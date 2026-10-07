@@ -2,6 +2,8 @@ import { useState } from "react";
 import { C } from "../theme.js";
 import { apiPost } from "../apiClient.js";
 import { useReviewEligibility } from "../hooks/useReviewEligibility.js";
+import { isStaffSession } from "../lib/staffSession.js";
+import StaffGateNotice from "./StaffGateNotice.jsx";
 
 // ─── ReviewComponents ───────────────────────────────────────────────────────
 // Shared review-rendering/write-flow primitives (reviews/ratings/Q&A/tabbed-
@@ -85,10 +87,14 @@ export function ReviewWriteForm({ targetType, targetId, organizerKind, user, onR
   const [hover, setHover] = useState(0);
   const [submitted, setSubmitted] = useState(false);
   const [actionError, setActionError] = useState(null);
-  const eligibility = useReviewEligibility(user ? { targetType, targetId, organizerKind } : {});
+  // A staff session can never review (POST /api/reviews/ is customer-only):
+  // it gets the shared staff notice, and the customer-only eligibility
+  // endpoint is never asked (it would 403 and read as "not eligible yet").
+  const staff = isStaffSession(user);
+  const eligibility = useReviewEligibility(user && !staff ? { targetType, targetId, organizerKind } : {});
 
   const handleSubmit = async () => {
-    if (!user || !newRating || !newText.trim()) return;
+    if (!user || staff || !newRating || !newText.trim()) return;
     setActionError(null);
     try {
       await apiPost("/api/reviews/", {
@@ -120,6 +126,8 @@ export function ReviewWriteForm({ targetType, targetId, organizerKind, user, onR
       <div style={{ fontWeight: 800, color: C.gold, marginBottom: 10, fontSize: "0.82rem" }}>✍️ {label}</div>
       {!user ? (
         <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.55)", textAlign: "center" }}>Sign in to leave a review</div>
+      ) : staff ? (
+        <StaffGateNotice passive />
       ) : eligibility.isLoading ? (
         <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.55)", textAlign: "center" }}>Checking your eligibility…</div>
       ) : eligibility.data?.eligible ? (

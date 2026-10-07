@@ -7,6 +7,8 @@ import { useEventPricingTiers } from "../hooks/useEventPricingTiers.js";
 import { formatEventDate } from "./EventCard.jsx";
 import EventTicketTypesPanel from "./EventTicketTypesPanel.jsx";
 import EventCheckinPanel from "./EventCheckinPanel.jsx";
+import StaffGateNotice from "./StaffGateNotice.jsx";
+import { isStaffSession } from "../lib/staffSession.js";
 
 // The 5 fixed visibility-window durations (event pricing tiers work) —
 // duration set is fixed by product decision (EventPricingTier.DURATION_CHOICES
@@ -246,6 +248,10 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
       </div>
     );
   }
+
+  // App.jsx's "Submit an Event" toggles already refuse a staff session; this
+  // keeps the panel itself from ever offering a staffer the form.
+  if (isStaffSession(user)) return <StaffGateNotice passive />;
 
   return (
     <div>

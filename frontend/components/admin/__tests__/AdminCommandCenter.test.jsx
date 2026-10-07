@@ -61,9 +61,27 @@ describe('AdminCommandCenter — tab control', () => {
     expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'instant' })
   })
 
-  it('uses the exitLabel prop for the exit button', () => {
-    renderShell({ exitLabel: 'Sign out' })
-    expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+  // The header's only way out of the dashboard is a real sign-out, in the
+  // browser and the installed app alike (the old browser "← Exit" left the
+  // staffer signed in on the marketplace).
+  it('always offers Sign out, wired to onExit, and no "← Exit"', () => {
+    const onExit = vi.fn()
+    renderShell({ onExit })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    expect(onExit).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('button', { name: '← Exit' })).not.toBeInTheDocument()
+  })
+
+  it('offers "View site" only when onViewSite is given (the browser, never the installed app)', () => {
+    const { unmount } = renderShell()
+    expect(screen.queryByRole('button', { name: 'View site' })).not.toBeInTheDocument()
+    unmount()
+    const onViewSite = vi.fn()
+    const onExit = vi.fn()
+    renderShell({ onViewSite, onExit })
+    fireEvent.click(screen.getByRole('button', { name: 'View site' }))
+    expect(onViewSite).toHaveBeenCalledTimes(1)
+    expect(onExit).not.toHaveBeenCalled()
   })
 })
 
@@ -106,15 +124,20 @@ describe('AdminCommandCenter — phone', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('shows the staffer name and exit action inside the drawer, not the header', () => {
+  it('shows the staffer name and the Sign out / View site actions inside the drawer, not the header', () => {
     mm = installMatchMedia(375)
     const onExit = vi.fn()
-    renderShell({ onExit })
+    const onViewSite = vi.fn()
+    renderShell({ onExit, onViewSite })
     expect(screen.queryByText('Akosua Support')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }))
     const dialog = screen.getByRole('dialog', { name: 'Staff navigation' })
     expect(within(dialog).getByText('Akosua Support')).toBeInTheDocument()
-    fireEvent.click(within(dialog).getByRole('button', { name: '← Exit' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'View site' }))
+    expect(onViewSite).toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Staff navigation' })).getByRole('button', { name: 'Sign out' }))
     expect(onExit).toHaveBeenCalled()
   })
 

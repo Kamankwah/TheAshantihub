@@ -52,7 +52,11 @@ import OfflineBanner from "./shell/OfflineBanner.jsx";
 // No light/dark theme toggle here (a pre-approved, deliberate removal) — the
 // admin dashboard is always-dark, matching BusinessCommandCenter's convention.
 
-export default function AdminCommandCenter({ auth, onExit, exitLabel = "← Exit", activeTab: activeTabProp, onTabChange }) {
+// `onExit` is the dashboard's only real exit: a staff sign-out, labelled
+// "Sign out" in the browser and the installed app alike. `onViewSite` is the
+// optional keep-the-session alternative ("View site", browser only — App.jsx
+// leaves it undefined inside the installed app, which has no marketplace).
+export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab: activeTabProp, onTabChange }) {
   const { data: staffBadges } = useStaffBadges();
   const badgeFor = makeBadgeFor(staffBadges);
   // Controlled by App.jsx's /staff/:panel route when activeTab is passed;
@@ -135,7 +139,7 @@ export default function AdminCommandCenter({ auth, onExit, exitLabel = "← Exit
           on phone where there is no sidebar to absorb it (spec §4.4). */}
       <div style={{ flex: 1, minWidth: 0, paddingRight: "env(safe-area-inset-right, 0px)", ...(isPhone ? { paddingLeft: "env(safe-area-inset-left, 0px)" } : {}) }}>
         <StaffHeader title={activeLabel} role={role} roleColor={roleColor} fullName={auth.user?.full_name}
-          onExit={onExit} exitLabel={exitLabel} breakpoint={breakpoint}
+          onExit={onExit} onViewSite={onViewSite} breakpoint={breakpoint}
           onOpenMenu={() => setDrawerOpen(true)} menuButtonRef={menuButtonRef} drawerOpen={drawerOpen}
           actions={isPhone ? null : <InstallAppButton variant="header" />}>
           <OfflineBanner bleed={isPhone ? 12 : 20} />
@@ -191,7 +195,8 @@ export default function AdminCommandCenter({ auth, onExit, exitLabel = "← Exit
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <InstallAppButton variant="drawer" />
-            <button type="button" onClick={onExit} style={{ minHeight: 44, background: "rgba(44,24,16,0.05)", border: `1px solid ${D.divider}`, color: D.text, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{exitLabel}</button>
+            {onViewSite && <button type="button" onClick={onViewSite} style={{ minHeight: 44, background: "transparent", border: `1px solid ${D.divider}`, color: D.text, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>View site</button>}
+            <button type="button" onClick={onExit} style={{ minHeight: 44, background: "rgba(44,24,16,0.05)", border: `1px solid ${D.divider}`, color: D.text, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Sign out</button>
           </div>
         </div>
         <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={selectTab} collapsed={false} badgeFor={badgeFor} roleColor={roleColor} itemMinHeight={44} />
