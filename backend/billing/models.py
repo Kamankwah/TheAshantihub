@@ -175,7 +175,7 @@ class Transaction(models.Model):
         ordering = ["-created_at"]
         constraints = [
             models.CheckConstraint(
-                check=(
+                condition=(
                     models.Q(business_owner__isnull=False, customer__isnull=True)
                     | models.Q(business_owner__isnull=True, customer__isnull=False)
                 ),

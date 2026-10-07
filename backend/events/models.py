@@ -155,7 +155,7 @@ class Event(models.Model):
         ordering = ["-created_at"]
         constraints = [
             models.CheckConstraint(
-                check=(
+                condition=(
                     models.Q(submitted_by_customer__isnull=False, submitted_by_business__isnull=True)
                     | models.Q(submitted_by_customer__isnull=True, submitted_by_business__isnull=False)
                 ),

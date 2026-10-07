@@ -43,6 +43,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='conversation',
-            constraint=models.CheckConstraint(check=models.Q(models.Q(('business_owner__isnull', True), ('customer__isnull', False)), models.Q(('business_owner__isnull', False), ('customer__isnull', True)), _connector='OR'), name='conversation_exactly_one_of_customer_or_business_owner'),
+            constraint=models.CheckConstraint(condition=models.Q(models.Q(('business_owner__isnull', True), ('customer__isnull', False)), models.Q(('business_owner__isnull', False), ('customer__isnull', True)), _connector='OR'), name='conversation_exactly_one_of_customer_or_business_owner'),
         ),
     ]

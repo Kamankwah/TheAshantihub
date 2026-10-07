@@ -34,6 +34,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='question',
-            constraint=models.CheckConstraint(check=models.Q(models.Q(('event__isnull', True), ('listing__isnull', False)), models.Q(('event__isnull', False), ('listing__isnull', True)), _connector='OR'), name='question_exactly_one_of_listing_or_event'),
+            constraint=models.CheckConstraint(condition=models.Q(models.Q(('event__isnull', True), ('listing__isnull', False)), models.Q(('event__isnull', False), ('listing__isnull', True)), _connector='OR'), name='question_exactly_one_of_listing_or_event'),
         ),
     ]
