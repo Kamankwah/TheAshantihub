@@ -1,5 +1,7 @@
 import logging
 
+from django.db import transaction
+
 from .models import Notification
 
 logger = logging.getLogger(__name__)
@@ -15,9 +17,10 @@ def _create(recipient, kind, title, body="", link="", icon=""):
     one of customer/business_owner/staff.
     """
     try:
-        return Notification.objects.create(
-            kind=kind, title=title, body=body or "", link=link or "", icon=icon or "", **recipient
-        )
+        with transaction.atomic():  # savepoint: a swallowed DB error must not abort the caller's transaction
+            return Notification.objects.create(
+                kind=kind, title=title, body=body or "", link=link or "", icon=icon or "", **recipient
+            )
     except Exception:
         logger.exception("Failed to create %s notification (title: %s)", kind, title)
         return None
@@ -57,7 +60,8 @@ def notify_staff_role(permission_codename, kind, title, body="", link="", icon="
 
     created = []
     try:
-        recipients = list(staff_holding(permission_codename))
+        with transaction.atomic():
+            recipients = list(staff_holding(permission_codename))
     except Exception:
         logger.exception("Failed to resolve staff for permission %s", permission_codename)
         return created

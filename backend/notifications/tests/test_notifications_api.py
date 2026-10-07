@@ -195,3 +195,27 @@ class StaffBadgesTests(TestCase):
         self.assertEqual(data["kyc"], 0)
         self.assertEqual(data["listings"], 0)
         self.assertEqual(data["contact_messages"], 0)
+
+
+class NotificationFailureIsolationTests(TestCase):
+    def test_swallowed_db_error_does_not_poison_the_outer_transaction(self):
+        from unittest import mock
+
+        from django.db import IntegrityError, transaction
+
+        from accounts.models import Role, StaffUser
+        from notifications.services import notify_staff
+
+        staff = StaffUser.objects.create(
+            full_name="Ama", email="ama-iso@example.com", password_hash="x", role=Role.objects.get(name="operations"),
+        )
+        def broken_create(**kwargs):
+            from django.db import connection
+
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1/0")  # a real DB error aborts the transaction unless savepointed
+
+        with transaction.atomic():
+            with mock.patch("notifications.services.Notification.objects.create", side_effect=broken_create):
+                self.assertIsNone(notify_staff(staff, "info", "t"))
+            self.assertEqual(StaffUser.objects.count(), 1)
