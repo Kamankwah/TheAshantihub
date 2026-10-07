@@ -1,5 +1,6 @@
 import datetime as dt
 import hashlib
+import ipaddress
 import json
 import logging
 
@@ -74,7 +75,7 @@ def hashable_fields(event):
         "summary": event.summary,
         "before": event.before,
         "after": event.after,
-        "ip": event.ip,
+        "ip": _canonical_ip(event.ip),
         "user_agent": event.user_agent,
         "request_id": event.request_id,
     }
@@ -85,9 +86,22 @@ def compute_hash(prev_hash, fields):
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _canonical_ip(value):
+    """Canonical string for an IP, or None if absent/invalid (zone ids included).
+    Used both when recording and when hashing, so Postgres' own normalisation
+    of the stored value can never change an event's hash."""
+    if not value:
+        return None
+    try:
+        return str(ipaddress.ip_address(str(value).strip()))
+    except ValueError:
+        return None
+
+
 def _client_ip(request):
-    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
-    return (forwarded.split(",")[0].strip() if forwarded else request.META.get("REMOTE_ADDR")) or None
+    # X-Real-IP is set by nginx to $remote_addr and cannot be spoofed by the
+    # client; X-Forwarded-For is client-controlled and deliberately ignored.
+    return _canonical_ip(request.META.get("HTTP_X_REAL_IP") or request.META.get("REMOTE_ADDR"))
 
 
 def _notify(event):

@@ -4,7 +4,7 @@ from io import StringIO
 from django.core import mail
 from django.core.management import CommandError, call_command
 from django.db import InternalError, connection, transaction
-from django.test import TestCase, TransactionTestCase
+from django.test import RequestFactory, TestCase, TransactionTestCase
 
 from accounts.models import Role, StaffUser
 from activity import services
@@ -114,3 +114,25 @@ class VerifyCommandTests(TestCase):
             cursor.execute("ALTER TABLE activity_activityevent ENABLE TRIGGER activity_event_no_update")
         with self.assertRaises(CommandError):
             call_command("verify_activity_chain", stdout=StringIO())
+
+
+class RequestCaptureTests(TestCase):
+    def test_ip_comes_from_x_real_ip_canonicalised_and_chain_verifies(self):
+        request = RequestFactory().get(
+            "/", HTTP_X_REAL_IP="2001:DB8:0000::0001", HTTP_X_FORWARDED_FOR="9.9.9.9",
+            HTTP_USER_AGENT="TestAgent/1.0",
+        )
+        request.activity_request_id = "req-123"
+        event = services.record(None, "test.request", request=request)
+        self.assertEqual(event.ip, "2001:db8::1")
+        reloaded = ActivityEvent.objects.get(pk=event.pk)
+        self.assertEqual(reloaded.ip, "2001:db8::1")
+        self.assertEqual(reloaded.user_agent, "TestAgent/1.0")
+        self.assertEqual(reloaded.request_id, "req-123")
+        self.assertEqual(services.verify_chain(), (True, None))
+
+    def test_invalid_ip_is_stored_as_none(self):
+        request = RequestFactory().get("/", HTTP_X_REAL_IP="1.2.3.4:443")
+        event = services.record(None, "test.badip", request=request)
+        self.assertIsNone(ActivityEvent.objects.get(pk=event.pk).ip)
+        self.assertEqual(services.verify_chain(), (True, None))
