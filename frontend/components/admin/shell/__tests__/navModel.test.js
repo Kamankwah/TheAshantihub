@@ -57,7 +57,24 @@ describe('buildNavGroups', () => {
   it('drops groups with no permitted items', () => {
     const auth = { hasPermission: (c) => c === 'messaging.manage' }
     const result = buildNavGroups(auth)
-    expect(result.map((g) => g.id)).toEqual(['system'])
+    expect(result.map((g) => g.id)).toEqual(['system', 'my-work'])
     expect(ids(result[0].items)).toEqual(['messaging'])
+  })
+})
+
+describe('My Work group', () => {
+  const authWith = (perms) => ({ hasPermission: (c) => perms.includes(c) })
+  const myWork = (perms) => buildNavGroups(authWith(perms)).find((g) => g.id === 'my-work')
+
+  it('gives every staffer Tasks and Activity', () => {
+    expect(myWork([]).items.map((i) => i.id)).toEqual(['tasks', 'activity'])
+  })
+
+  it('adds Call Log and My Team for the permissions that unlock them', () => {
+    expect(myWork(['calls.log', 'staff.invite_team']).items.map((i) => i.id)).toEqual(['tasks', 'calls', 'activity', 'my-team'])
+  })
+
+  it('maps the tasks badge to tasks_overdue', () => {
+    expect(makeBadgeFor({ tasks_overdue: 2 })('tasks')).toBe(2)
   })
 })
