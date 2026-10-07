@@ -2924,6 +2924,9 @@ export default function AshantiHub() {
   // never on the marketplace; from /staff/<panel> it replaces the entry so
   // Back can't return to a panel URL.
   const staffSignOut=()=>{
+    // Best-effort audit trail: the token is read synchronously by apiPost
+    // before logout() clears it; a failed call never blocks signing out.
+    apiPost("/api/accounts/staff/logout/",{}).catch(()=>{});
     queryClient.clear();
     auth.logout();
     setAuthModal(null);

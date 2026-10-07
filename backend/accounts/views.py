@@ -10,10 +10,12 @@ from rest_framework.views import APIView
 
 from notifications.services import notify_business_owner, notify_customer, notify_staff_role
 
+from activity.services import record as record_activity
+
 from .authentication import issue_token
 from .emails import send_staff_invite_email, send_verification_code_email
 from .models import BusinessOwner, Customer, Permission, Role, RoleInviteRule, ScoutAssignment, StaffUser
-from .permissions import HasAnyRolePermission, HasRolePermission, can_manage_staff
+from .permissions import HasAnyRolePermission, HasRolePermission, IsStaff, can_manage_staff
 from .serializers import (
     INVITE_TOKEN_LIFETIME,
     BusinessOwnerKYCDetailSerializer,
@@ -180,6 +182,7 @@ class StaffLoginView(generics.GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         account = serializer.account
+        record_activity(account, "staff.signed_in", target=account, method="POST", request=request)
         return Response({
             "token": issue_token(account, "staff"),
             "account_type": "staff",
@@ -188,6 +191,15 @@ class StaffLoginView(generics.GenericAPIView):
             "role": account.role.name,
             "permissions": sorted(account.effective_permission_codenames()),
         })
+
+
+class StaffLogoutView(APIView):
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def post(self, request):
+        record_activity(request.user, "staff.signed_out", target=request.user, method="POST", request=request)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class PasswordResetRequestView(generics.GenericAPIView):

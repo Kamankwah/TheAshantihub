@@ -50,6 +50,7 @@ urlpatterns = [
     ),
     path("business-owners/login/", views.BusinessOwnerLoginView.as_view(), name="business-owner-login"),
     path("staff/login/", views.StaffLoginView.as_view(), name="staff-login"),
+    path("staff/logout/", views.StaffLogoutView.as_view(), name="staff-logout"),
     path(
         "business-owners/register/",
         views.BusinessOwnerRegisterView.as_view(),
