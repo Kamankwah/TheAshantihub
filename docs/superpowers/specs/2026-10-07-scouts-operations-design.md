@@ -21,7 +21,7 @@ level, and resolves service, fraud and return issues — while keeping today's m
 | Question | Decision |
 |---|---|
 | When a registration counts | At **KYC approval**: counts toward the scout's target and earns the registration commission |
-| Extra commission | A bonus after the business's first **3 subscription payments** — rewards proper follow-up |
+| Extra commission | A bonus once the business has **paid for 3 months** of subscription in total (user changed from "3 payments" at spec review) — rewards proper follow-up |
 | Commission safety | 90-day hold; reversed if the business proves fake or duplicate (Claude's addition, accepted) |
 | Owner's login when a scout registers | **Both:** hand-over on the scout's phone when the owner is present; a link otherwise (email now, SMS once a provider is connected) |
 | Scout changes to a business | Go to the scout's Operations lead; new products also count as moderated by that approval; the owner is notified and can object (reverts) |
@@ -146,8 +146,8 @@ exists today); delivery check-ins (phase 3); offline writes.
   time).
 - `TargetPlan(staff, metric, daily_value, effective_from, set_by)` — the daily target for a date
   is the plan value in force if it is a working day for that scout, else 0.
-- **Working days:** per scout, default **Monday–Friday** (configurable per scout, e.g. to add
-  Saturday). `PublicHoliday(date, name)` stores the **observed** date, maintained by Super Admin.
+- **Working days:** per scout, default **Monday–Saturday** (user decision; configurable per
+  scout). `PublicHoliday(date, name)` stores the **observed** date, maintained by Super Admin.
   `Leave(staff, start, end, kind, recorded_by)` recorded by the scout's Operations lead.
 - Week and month targets = sum of the days; **team target = sum of the team's scouts**.
 - `TargetLimit(metric, min_daily, max_daily)` set by Super Admin. Operations changes within the
@@ -171,15 +171,16 @@ exists today); delivery check-ins (phase 3); offline writes.
 ### S8 — Commission records
 
 - `CommissionPolicy(kind, amount, effective_from, proposed_by, approved_by)` — kinds
-  `registration` and `third_payment_bonus`. Accounting proposes, Super Admin approves
+  `registration` and `three_paid_months_bonus`. Accounting proposes, Super Admin approves
   (`commission.policy` approval kind). **No amounts are hard-coded.**
 - `CommissionAccrual(staff, business_owner, kind, amount, policy, earned_at, hold_until, status,
   reversed_reason, source_type/id)`; unique per (business_owner, kind):
   - **Registration:** created when KYC is approved for a business with `registered_by` set; to
     the registering scout.
-  - **Third-payment bonus:** created when the business's **third successful paid subscription
-    payment** is recorded (trials don't count; each payment counts once whatever its cycle
-    length); to the scout who is `account_manager` at that moment.
+  - **Three-paid-months bonus:** created by the successful subscription payment that brings the
+    business's **total paid months to 3 or more** (user decision: count paid months, so 3 monthly
+    payments, one 3-month payment, or a 6- or 12-month payment all qualify; trial time never
+    counts); to the scout who is `account_manager` at that moment.
   - `hold_until = earned_at + 90 days`; status on hold → payable (daily job) → in batch → paid
     (phase 5) or **reversed**.
   - **Reversal:** a confirmed fraud flag of kind fake/duplicate on the business within the hold
@@ -256,7 +257,7 @@ service issues opened/closed, fraud flags, reports acknowledged/returned.
 
 - Scout leaves: deactivation is blocked until Operations reassigns their portfolio; their
   on-hold registration commissions still release to them unless reversed (policy: earned is
-  earned). Bonus goes to the account manager at the third payment, so it follows the portfolio.
+  earned). Bonus goes to the account manager when the 3rd paid month is reached, so it follows the portfolio.
 - Owner objects after apply: revert may fail if the target changed again; then the flag stays
   open for Operations to resolve by hand.
 - Location denied by the browser: check-in can't complete; the scout sees how to enable it. A
@@ -276,7 +277,7 @@ service issues opened/closed, fraud flags, reports acknowledged/returned.
 - Targets: holidays and leave give 0; working-days config; week/month/team sums; limit enforcement;
   mid-month cut needs Super Admin.
 - Overdue: day 0 task and notice, day 15 pause hides listings, payment unpauses; trial expiry.
-- Commission: one accrual per business per kind (idempotent on retries); third-payment counting
+- Commission: one accrual per business per kind (idempotent on retries); paid-months counting
   excludes trials; hold release; reversal on confirmed fraud; bonus goes to the manager at the time.
 - Permissions: scout object scope; Operations acts only on own team but reads all scouts.
 - Frontend: wizard, hand-over (no password in scout state after submit), Today screen, Operations
@@ -290,11 +291,9 @@ already does). Verify on a real phone: registration wizard with location, hand-o
 radius, Today screen. Production only on the user's say-so. Update `docs/STAFF_ROLES.md` (Scout
 and Operations duties, permissions, separation of duties) when it lands.
 
-## 6. Open items for review
+## 6. Review outcome (2026-10-07)
 
-1. Default scout working days: **Monday–Friday** assumed — confirm or change (e.g. Mon–Sat).
-2. Health thresholds (3 listings, 30/60 days) are starting values — confirm.
-3. Commission amounts are set later through Commission policy (no defaults in code).
-4. Third-payment bonus counts **payments**, so a business paying 6 or 12 months upfront reaches
-   the bonus only at its third payment. Alternative: count paid **months** (3 months paid in any
-   combination). Payments assumed — confirm.
+Spec approved by the user with two changes, both applied above: scouts' default working days
+include **Saturday**, and the bonus counts **paid months** (≥ 3), not payments. Health thresholds
+(3 listings, 30/60 days) accepted as starting values; commission amounts come from Commission
+policy (no defaults in code).
