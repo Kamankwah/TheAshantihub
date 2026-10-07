@@ -50,7 +50,10 @@ def _date_param(params, name):
     raw = params.get(name)
     if not raw:
         return None
-    value = parse_date(raw)
+    try:
+        value = parse_date(raw)
+    except ValueError:
+        value = None
     if value is None:
         raise ValidationError({name: "Use YYYY-MM-DD."})
     return value
@@ -70,6 +73,8 @@ class ActivityListView(generics.ListAPIView):
         if params.get("mine") == "1":
             events = events.filter(actor_type=ActivityEvent.STAFF, actor_id=user.id)
         if params.get("actor"):
+            if not params["actor"].isdigit():
+                raise ValidationError({"actor": "Use a staff id."})
             events = events.filter(actor_type=ActivityEvent.STAFF, actor_id=params["actor"])
         if params.get("role"):
             events = events.filter(actor_role=params["role"])

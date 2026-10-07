@@ -34,6 +34,10 @@ class StaffActivityMiddlewareTests(TestCase):
         self.assertEqual(event.target_id, str(self.support.id))
         self.assertEqual(event.after, {"request": {"reason": "investigation"}, "status": 200})
 
+    def test_code_in_a_request_body_is_redacted(self):
+        self.client.post(self.suspend_url, {"code": "123456", "reason": "x"}, format="json")
+        self.assertEqual(ActivityEvent.objects.get().after["request"], {"code": "[redacted]", "reason": "x"})
+
     def test_rejected_staff_write_records_nothing(self):
         response = self.client.post(f"/api/accounts/staff/{self.boss.id}/suspend/", {}, format="json")
         self.assertEqual(response.status_code, 400)

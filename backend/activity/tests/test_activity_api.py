@@ -70,6 +70,11 @@ class ActivityApiTests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.boss, 'staff')}")
         self.assertEqual(self.client.get("/api/activity/?since=yesterday").status_code, 400)
 
+    def test_impossible_dates_and_bad_actor_are_400s(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.boss, 'staff')}")
+        for query in ("since=2026-02-30", "until=2026-13-01", "actor=abc"):
+            self.assertEqual(self.client.get(f"/api/activity/?{query}").status_code, 400, query)
+
     def test_non_staff_is_refused(self):
         customer = Customer.objects.create(full_name="Yaw", phone="0240000001", password_hash="x")
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(customer, 'customer')}")

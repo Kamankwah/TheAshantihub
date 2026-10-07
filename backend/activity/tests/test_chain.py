@@ -42,6 +42,19 @@ class ChainTests(TestCase):
         self.assertEqual(event.after["nested"]["invite_token"], "[redacted]")
         self.assertEqual(event.after["reason"], "ok")
 
+    def test_code_pin_and_credential_keys_are_redacted_but_codenames_kept(self):
+        event = services.record(
+            self.staff, "test.redact2",
+            after={
+                "code": "1", "delivery_code": "2", "pin": "3", "api_key": "4", "Authorization": "5",
+                "codename": "users.view", "codenames": ["a"],
+            },
+        )
+        for key in ("code", "delivery_code", "pin", "api_key", "Authorization"):
+            self.assertEqual(event.after[key], "[redacted]", key)
+        self.assertEqual(event.after["codename"], "users.view")
+        self.assertEqual(event.after["codenames"], ["a"])
+
     def test_large_payloads_are_truncated(self):
         event = services.record(self.staff, "test.big", after={"blob": "x" * 20000})
         self.assertTrue(event.after["truncated"])

@@ -14,7 +14,12 @@ logger = logging.getLogger(__name__)
 GENESIS = "0" * 64
 CHAIN_LOCK_KEY = 72210001  # pg_advisory_xact_lock key serialising chain writes
 MAX_JSON_CHARS = 8000
-SECRET_MARKERS = ("password", "token", "secret", "otp", "totp", "recovery")
+SECRET_MARKERS = (
+    "password", "token", "secret", "otp", "totp", "recovery",
+    "api_key", "apikey", "authorization", "credential",
+)
+SECRET_EXACT_KEYS = ("code", "pin", "cvv")
+SECRET_SUFFIXES = ("_code", "_pin")
 
 # Callables run after commit with each saved event (plan 1B: realtime publish).
 on_recorded = []
@@ -22,7 +27,11 @@ on_recorded = []
 
 def _is_secret_key(key):
     lowered = str(key).lower()
-    return any(marker in lowered for marker in SECRET_MARKERS)
+    return (
+        any(marker in lowered for marker in SECRET_MARKERS)
+        or lowered in SECRET_EXACT_KEYS
+        or lowered.endswith(SECRET_SUFFIXES)
+    )
 
 
 def redact(value):
