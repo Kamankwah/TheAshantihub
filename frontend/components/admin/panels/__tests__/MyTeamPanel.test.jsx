@@ -41,4 +41,23 @@ describe('MyTeamPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Suspend Efua Mensah' }))
     await waitFor(() => expect(calls).toEqual(['resend', 'Investigation']))
   })
+
+  it('shows the server detail when an invite is refused', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/accounts/staff/invitable-roles/', () => HttpResponse.json(['scout'])),
+      http.post('http://localhost:8000/api/accounts/staff/invite/', () => HttpResponse.json({ detail: 'You can only manage your own team.' }, { status: 403 })),
+    )
+    renderPanel()
+    fireEvent.change(await screen.findByLabelText('Full name'), { target: { value: 'K' } })
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'k@example.com' } })
+    await screen.findByRole('option', { name: 'Scout' })
+    fireEvent.click(screen.getByRole('button', { name: 'Send invite' }))
+    expect(await screen.findByText('You can only manage your own team.')).toBeInTheDocument()
+  })
+
+  it('disables inviting when there are no invitable roles', async () => {
+    renderPanel()
+    expect(await screen.findByText("You can't invite anyone yet.")).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send invite' })).toBeDisabled()
+  })
 })

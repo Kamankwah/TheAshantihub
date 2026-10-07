@@ -2,6 +2,7 @@ import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
 import { useCallLogs } from "../../../hooks/useCallLogs.js";
 import { useCallPurposes } from "../../../hooks/useCallPurposes.js";
+import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D, glassCard } from "../theme.js";
 
 const OUTCOMES = [["connected", "Connected"], ["no_answer", "No answer"], ["busy", "Busy"], ["voicemail", "Voicemail"], ["wrong_number", "Wrong number"], ["promised_to_pay", "Promised to pay"], ["callback_requested", "Callback requested"]];
@@ -21,6 +22,8 @@ export default function CallLogPanel() {
     e.preventDefault();
     setActionError(null);
     const { duration_minutes, follow_up_at, started_at, ...rest } = form;
+    if (!started_at) { setActionError("Add when the call started."); return; }
+    if (follow_up_at && new Date(follow_up_at) <= new Date()) { setActionError("Pick a follow-up time in the future."); return; }
     try {
       await apiPost("/api/calls/", {
         ...rest,
@@ -30,7 +33,7 @@ export default function CallLogPanel() {
       });
       setForm(null);
       refetch();
-    } catch (err) { setActionError("Could not save the call. Check the times and try again."); }
+    } catch (err) { setActionError(apiErrorMessage(err, "Could not save the call. Check the times and try again.")); }
   };
 
   const calls = data?.results || [];
@@ -42,7 +45,7 @@ export default function CallLogPanel() {
       </div>
       {actionError && <div style={{ color: D.red, fontSize: "0.8rem" }}>{actionError}</div>}
       {form && (
-        <form onSubmit={save} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10, padding: 12, background: D.pageBg, borderRadius: 12 }}>
+        <form onSubmit={save} noValidate style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10, padding: 12, background: D.pageBg, borderRadius: 12 }}>
           <label style={labelStyle}>Direction<select value={form.direction} onChange={set("direction")} style={field}><option value="out">Outbound</option><option value="in">Inbound</option></select></label>
           <label style={labelStyle}>Channel<select value={form.channel} onChange={set("channel")} style={field}><option value="phone">Phone</option><option value="whatsapp">WhatsApp</option><option value="sms">SMS</option><option value="visit">Visit</option></select></label>
           <label style={labelStyle}>Who<input value={form.counterpart_name} onChange={set("counterpart_name")} style={field} maxLength={150} /></label>
@@ -51,9 +54,9 @@ export default function CallLogPanel() {
           <label style={labelStyle}>Purpose<select value={form.purpose} onChange={set("purpose")} style={field}>{(purposes || []).map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}</select></label>
           <label style={labelStyle}>Outcome<select value={form.outcome} onChange={set("outcome")} style={field}>{OUTCOMES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
           <label style={labelStyle}>How it went<select value={form.sentiment} onChange={set("sentiment")} style={field}><option value="">Not set</option><option value="positive">Positive</option><option value="neutral">Neutral</option><option value="negative">Negative</option></select></label>
-          <label style={labelStyle}>Started<input type="datetime-local" value={form.started_at} onChange={set("started_at")} style={field} /></label>
+          <label style={labelStyle}>Started<input type="datetime-local" required value={form.started_at} onChange={set("started_at")} style={field} /></label>
           <label style={labelStyle}>Minutes<input type="number" min="0" step="1" value={form.duration_minutes} onChange={set("duration_minutes")} style={field} /></label>
-          <label style={labelStyle}>Follow up on<input type="datetime-local" value={form.follow_up_at} onChange={set("follow_up_at")} style={field} /></label>
+          <label style={labelStyle}>Follow up on<input type="datetime-local" min={nowLocal()} value={form.follow_up_at} onChange={set("follow_up_at")} style={field} /></label>
           <label style={{ ...labelStyle, gridColumn: "1 / -1" }}>Notes and feedback<textarea value={form.notes} onChange={set("notes")} rows={3} style={{ ...field, resize: "vertical" }} /></label>
           <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <button type="button" onClick={() => setForm(null)} style={{ background: "#fff", color: D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 10, padding: "8px 14px", fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
