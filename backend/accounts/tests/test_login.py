@@ -139,7 +139,7 @@ class LoginTests(TestCase):
             data["permissions"],
             [
                 "messaging.manage", "disputes.flag", "users.view", "reviews.moderate",
-                "orders.manage_delivery", "contact_messages.manage",
+                "orders.manage_delivery", "contact_messages.manage", "calls.log",
             ],
         )
 

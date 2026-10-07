@@ -76,6 +76,7 @@ INSTALLED_APPS = [
     "notifications",
     "activity",
     "staff_tasks",
+    "calls",
 ]
 
 MIDDLEWARE = [

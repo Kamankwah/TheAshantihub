@@ -13,7 +13,7 @@ DEFAULT_MATRIX = {
     "accountant": {"escrow.view", "escrow.release", "disputes.resolve_financial", "transactions.report"},
     "marketing": {"promotions.manage", "analytics.view", "categories.manage"},
     "support": {"messaging.manage", "disputes.flag", "users.view"},
-    "scout": {"scouts.verify", "users.view"},
+    "scout": {"scouts.verify", "users.view", "calls.log"},
     "delivery_manager": {"delivery.manage", "staff.invite_team", "activity.view_team"},
     "dispatch": {"delivery.dispatch"},
 }
