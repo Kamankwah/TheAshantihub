@@ -599,7 +599,13 @@ TEAM_OR_STAFF_MANAGE = ("staff.manage", "staff.invite_team")
 
 def _guard_team_scope(request, staff):
     """A team manager may act only on their own direct reports."""
-    if can_manage_staff(request.user) or staff.manager_id == request.user.id:
+    if can_manage_staff(request.user):
+        return None
+    if (
+        staff.manager_id == request.user.id
+        and RoleInviteRule.objects.filter(inviter_role=request.user.role, invitee_role=staff.role).exists()
+        and not can_manage_staff(staff)
+    ):
         return None
     return Response({"detail": "You can only manage your own team."}, status=403)
 

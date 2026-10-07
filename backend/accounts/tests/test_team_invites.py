@@ -100,6 +100,21 @@ class TeamScopeTests(Base):
         self.assertEqual(self.post(f"/api/accounts/staff/{self.ops.id}/suspend/").status_code, 400)
         self.assertEqual(self.post(f"/api/accounts/staff/{self.super_admin.id}/suspend/").status_code, 403)
 
+    def test_manager_cannot_act_on_non_invitable_roles_even_if_they_manage_them(self):
+        boss2 = make_staff("super_admin", "boss2@example.com", manager=self.ops)
+        accountant = make_staff("accountant", "acc@example.com", manager=self.ops, invite_token="a" * 43)
+        self.as_(self.ops)
+        for target in (boss2, accountant):
+            for action in ("suspend", "unsuspend", "resend-invite"):
+                response = self.post(f"/api/accounts/staff/{target.id}/{action}/")
+                self.assertEqual(response.status_code, 403, (target.role.name, action))
+
+    def test_manager_cannot_unsuspend_another_teams_report(self):
+        self.other_scout.is_suspended = True
+        self.other_scout.save(update_fields=["is_suspended"])
+        self.as_(self.ops)
+        self.assertEqual(self.post(f"/api/accounts/staff/{self.other_scout.id}/unsuspend/").status_code, 403)
+
     def test_manager_cannot_deactivate(self):
         self.as_(self.ops)
         self.assertEqual(self.post(f"/api/accounts/staff/{self.scout.id}/deactivate/").status_code, 403)
