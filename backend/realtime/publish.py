@@ -47,6 +47,7 @@ QUEUE_INVALIDATIONS = [
         ("portfolio.manage", "businesses.manage_portfolio"),
         ("portfolio", "portfolio-business", "subscriptions-due"),
     ),
+    (("fraud.",), ("fraud.manage", "fraud.flag"), ("fraud-flags", "fraud-flag-counts", "kyc-queue", "portfolio-business", "staff-badges")),
 ]
 # (verb prefixes, extra keys for everyone who receives the feed event)
 FEED_KEYS = [
