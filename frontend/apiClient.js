@@ -88,14 +88,24 @@ export async function apiFetch(path) {
   return handleResponse(response, path)
 }
 
-// Authenticated file download (business item 4's CSV export): fetches with the
-// auth header — which a plain <a download> can't send — and triggers a browser
-// download of the response body. Used for the sales-report CSV.
+// Authenticated file download (the business sales CSV, staff report
+// exports): fetches with the auth header — which a plain <a download> can't
+// send — and saves the body as `filename`. A 202 means the server queued the
+// file to build in the background: nothing is saved and the JSON body
+// ({id, status}) is returned instead.
 export async function apiDownload(path, filename) {
   const response = await request(path, { headers: authHeaders() })
+  if (response.status === 202) return response.json()
   if (!response.ok) {
+    let body = null
+    try {
+      body = await response.clone().json()
+    } catch {
+      // Not JSON — leave body null.
+    }
     const error = new Error(`Download of ${path} failed with status ${response.status}`)
     error.status = response.status
+    error.body = body
     throw error
   }
   const blob = await response.blob()
@@ -107,6 +117,7 @@ export async function apiDownload(path, filename) {
   a.click()
   a.remove()
   URL.revokeObjectURL(url)
+  return null
 }
 
 export async function apiPost(path, body) {

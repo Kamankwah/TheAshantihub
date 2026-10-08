@@ -485,6 +485,16 @@ export const handlers = [
   http.get('http://localhost:8000/api/calls/purposes/', () => HttpResponse.json([{ value: 'other', label: 'Other' }])),
   http.get('http://localhost:8000/api/accounts/staff/team/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/accounts/staff/invitable-roles/', () => HttpResponse.json([])),
+  http.get('http://localhost:8000/api/reports/current/', () => HttpResponse.json({
+    id: null, staff: { id: 1, full_name: 'Staff', role: 'support' }, period: 'day', period_start: '2026-10-07',
+    period_end: '2026-10-07', status: 'draft', submitted_at: null, is_late: false, due_at: '2026-10-07T19:00:00Z',
+    achievements: '', blockers: '', plan_next: [], plan_results: [], linked_targets: [], reviewer: null,
+    reviewed_at: null, review_note: '', similarity: 0, similar_warning: false, can_edit: true, can_review: false,
+    system_is_live: true, system: [],
+  })),
+  http.get('http://localhost:8000/api/reports/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/reports/team/', () => HttpResponse.json({ period: 'day', period_start: '2026-10-07', rows: [] })),
+  http.get('http://localhost:8000/api/reports/exports/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/notifications/staff-badges/', () => {
     return HttpResponse.json({
       kyc: 0, listings: 0, events: 0, hero: 0, reviews: 0,

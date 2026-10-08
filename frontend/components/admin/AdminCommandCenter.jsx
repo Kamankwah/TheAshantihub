@@ -45,6 +45,8 @@ import ActivityPanel from "./panels/ActivityPanel.jsx";
 import CallLogPanel from "./panels/CallLogPanel.jsx";
 import MyTeamPanel from "./panels/MyTeamPanel.jsx";
 import ApprovalsPanel from "./panels/ApprovalsPanel.jsx";
+import ReportsPanel from "./panels/ReportsPanel.jsx";
+import TeamReportsPanel from "./panels/TeamReportsPanel.jsx";
 import StaffShellStyles from "./shell/StaffShellStyles.jsx";
 import InstallAppButton from "./shell/InstallAppButton.jsx";
 import UpdateToast from "./shell/UpdateToast.jsx";
@@ -223,6 +225,8 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "tasks" && <TasksPanel />}
           {activeTab === "activity" && <ActivityPanel />}
           {activeTab === "calls" && <CallLogPanel />}
+          {activeTab === "reports" && <ReportsPanel auth={auth} />}
+          {activeTab === "team-reports" && <TeamReportsPanel auth={auth} />}
           {activeTab === "my-team" && <MyTeamPanel currentStaffId={auth.user?.id} />}
           {activeTab === "approvals" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
         </main>

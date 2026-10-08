@@ -66,12 +66,12 @@ describe('My Work group', () => {
   const authWith = (perms) => ({ hasPermission: (c) => perms.includes(c) })
   const myWork = (perms) => buildNavGroups(authWith(perms)).find((g) => g.id === 'my-work')
 
-  it('gives every staffer Approvals, Tasks and Activity', () => {
-    expect(myWork([]).items.map((i) => i.id)).toEqual(['approvals', 'tasks', 'activity'])
+  it('gives every staffer Approvals, Tasks, My Reports and Activity', () => {
+    expect(myWork([]).items.map((i) => i.id)).toEqual(['approvals', 'tasks', 'reports', 'activity'])
   })
 
-  it('adds Call Log and My Team for the permissions that unlock them', () => {
-    expect(myWork(['calls.log', 'staff.invite_team']).items.map((i) => i.id)).toEqual(['approvals', 'tasks', 'calls', 'activity', 'my-team'])
+  it('adds Call Log, Team Reports and My Team for the permissions that unlock them', () => {
+    expect(myWork(['calls.log', 'staff.invite_team']).items.map((i) => i.id)).toEqual(['approvals', 'tasks', 'calls', 'reports', 'team-reports', 'activity', 'my-team'])
   })
 
   it('maps the approvals badge to approvals_waiting', () => {

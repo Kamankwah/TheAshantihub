@@ -38,6 +38,8 @@ export const NAV_ITEMS = [
   { id: "approvals", icon: "🗳️", label: "Approvals", show: () => true },
   { id: "tasks", icon: "✅", label: "Tasks", show: () => true },
   { id: "calls", icon: "📞", label: "Call Log", show: (auth) => auth.hasPermission("calls.log") },
+  { id: "reports", icon: "📝", label: "My Reports", show: () => true },
+  { id: "team-reports", icon: "🗂️", label: "Team Reports", show: (auth) => auth.hasPermission("staff.invite_team") || auth.hasPermission("reports.view_all") },
   { id: "activity", icon: "🕘", label: "Activity", show: () => true },
   { id: "my-team", icon: "👥", label: "My Team", show: (auth) => auth.hasPermission("staff.invite_team") },
 ];

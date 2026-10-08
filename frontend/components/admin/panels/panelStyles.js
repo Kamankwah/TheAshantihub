@@ -27,3 +27,11 @@ export const pill = (active) => ({ background: active ? D.text : "transparent", 
 export const button = (bg, color, disabled) => ({ background: bg, color, border: bg === D.panelBg ? `1px solid ${D.cardBorder}` : "none", borderRadius: 10, padding: "8px 14px", fontSize: "0.8rem", fontWeight: 800, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.5 : 1, fontFamily: "inherit" });
 
 export const field = { border: `1px solid ${D.cardBorder}`, borderRadius: 10, padding: "8px 10px", fontSize: "0.82rem", fontFamily: "inherit", color: D.text, background: D.panelBg, resize: "vertical" };
+
+// A short warning/notice block in a status colour (D.amber for warnings).
+// Small coloured text fails contrast, so the text stays D.text inside a
+// coloured edge. Non-hex colours fall back to the neutral solid look.
+export const callout = (color) => {
+  const tinted = HEX.test(color);
+  return { background: tinted ? `${color}14` : D.panelBg2, color: D.text, border: `1px solid ${tinted ? color : D.cardBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 700, fontSize: "0.8rem" };
+};
