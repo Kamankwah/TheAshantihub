@@ -788,7 +788,7 @@ class StaffSessionListView(APIView):
         other = request.query_params.get("staff")
         if other:
             if not can_manage_staff(request.user):
-                return Response({"detail": "Only a Super Admin can see someone else's sessions."}, status=403)
+                return Response({"detail": "You need the staff management permission to see other people's sessions."}, status=403)
             if not (other.isdecimal() and other.isascii()):
                 return Response({"staff": "Use a staff id."}, status=400)
             staff = generics.get_object_or_404(StaffUser, pk=other)
@@ -803,15 +803,8 @@ class StaffActiveSessionsView(APIView):
         return [HasRolePermission("staff.manage")]
 
     def get(self, request):
-        now = timezone.now()
         rows = (
-            StaffSession.objects.filter(
-                revoked_at__isnull=True,
-                created_at__gt=now - sessions.ABSOLUTE_LIMIT,
-                last_seen_at__gt=now - sessions.IDLE_LIMIT,
-                staff__is_active=True,
-                staff__is_suspended=False,
-            )
+            sessions.live(StaffSession.objects.filter(staff__is_active=True, staff__is_suspended=False))
             .select_related("staff__role")
             .order_by("staff__full_name", "-last_seen_at")
         )

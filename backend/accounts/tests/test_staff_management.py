@@ -2,8 +2,8 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from accounts.authentication import issue_token
-from accounts.testing import staff_token
 from accounts.models import Permission, Role, StaffUser
+from accounts.testing import staff_token
 
 
 class StaffManagementTestsBase(TestCase):

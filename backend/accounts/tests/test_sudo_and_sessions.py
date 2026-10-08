@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 
 from django.contrib.auth.hashers import make_password
@@ -7,9 +8,11 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
+from accounts import sessions
 from accounts.authentication import issue_token
 from accounts.models import StaffSession
 from accounts.testing import make_staff, session_of
+from activity.models import ActivityEvent
 
 PASSWORD = "correct-horse-1"
 HASHED = make_password(PASSWORD)
@@ -141,3 +144,73 @@ class SessionsApiTests(Base):
         self.assertEqual(
             self.client.post(f"/api/accounts/staff/{self.boss.id}/sign-out-everywhere/", {}, format="json").status_code, 400
         )
+
+
+class SessionScopingTests(Base):
+    def end(self, session):
+        return self.client.post(f"/api/accounts/staff/sessions/{session.pk}/end/", {}, format="json")
+
+    def test_staff_manage_can_end_another_staffers_session(self):
+        esi_session = session_of(issue_token(self.esi, "staff"))
+        boss_token = self.use(issue_token(self.boss, "staff"))
+        response = self.end(esi_session)
+        self.assertEqual(response.status_code, 200)
+        esi_session.refresh_from_db()
+        self.assertIsNotNone(esi_session.revoked_at)
+        self.assertIsNone(session_of(boss_token).revoked_at)
+
+    def test_ending_my_own_current_session(self):
+        token = self.use(issue_token(self.esi, "staff"))
+        response = self.end(session_of(token))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["is_current"])
+        self.assertFalse(response.json()["is_active"])
+        self.assertEqual(self.client.get("/api/accounts/me/").status_code, 401)
+
+    def test_end_others_leaves_other_staffers_sessions_live(self):
+        boss_session = session_of(issue_token(self.boss, "staff"))
+        issue_token(self.esi, "staff")
+        self.use(issue_token(self.esi, "staff"))
+        self.client.post("/api/accounts/staff/sessions/end-others/", {}, format="json")
+        boss_session.refresh_from_db()
+        self.assertIsNone(boss_session.revoked_at)
+
+    def test_my_list_excludes_other_staffers_sessions(self):
+        boss_session = session_of(issue_token(self.boss, "staff"))
+        self.use(issue_token(self.esi, "staff"))
+        ids = [row["id"] for row in self.client.get("/api/accounts/staff/sessions/").json()]
+        self.assertEqual(len(ids), 1)
+        self.assertNotIn(boss_session.pk, ids)
+
+    def test_non_manager_cannot_end_others_and_the_404_is_indistinguishable(self):
+        boss_session = session_of(issue_token(self.boss, "staff"))
+        self.use(issue_token(self.esi, "staff"))
+        real = self.end(boss_session)
+        missing = self.client.post("/api/accounts/staff/sessions/999999999/end/", {}, format="json")
+        self.assertEqual(real.status_code, 404)
+        self.assertEqual(real.json(), missing.json())
+        boss_session.refresh_from_db()
+        self.assertIsNone(boss_session.revoked_at)
+
+
+class LiveSessionBoundaryTests(Base):
+    def test_live_and_end_reason_agree_at_the_limits(self):
+        now = timezone.now()
+        for field, limit in (("last_seen_at", sessions.IDLE_LIMIT), ("created_at", sessions.ABSOLUTE_LIMIT)):
+            for offset, expect_live in ((timedelta(0), True), (timedelta(seconds=1), False)):
+                session = session_of(issue_token(self.esi, "staff"))
+                values = {"created_at": now, "last_seen_at": now}
+                values[field] = now - limit - offset
+                StaffSession.objects.filter(pk=session.pk).update(**values)
+                session.refresh_from_db()
+                listed = sessions.live(StaffSession.objects.filter(pk=session.pk), now).exists()
+                accepted = sessions.end_reason_if_invalid(session, now) is None
+                self.assertEqual((listed, accepted), (expect_live, expect_live), (field, offset))
+
+
+class ReauthRedactionTests(Base):
+    def test_reauth_is_logged_without_the_password(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.boss, 'staff')}")
+        self.client.post("/api/accounts/staff/reauth/", {"password": PASSWORD}, format="json")
+        event = ActivityEvent.objects.get(verb="staff-reauth")
+        self.assertNotIn(PASSWORD, json.dumps([event.before, event.after, event.summary]))

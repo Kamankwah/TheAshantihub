@@ -3,8 +3,8 @@ from django.core.cache import cache
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from accounts.testing import staff_token
 from accounts.models import Role, StaffUser
+from accounts.testing import staff_token
 
 
 def make_staff(role, email, **extra):

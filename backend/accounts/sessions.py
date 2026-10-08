@@ -84,6 +84,17 @@ def end_reason_if_invalid(session, now=None):
     return None
 
 
+def live(queryset, now=None):
+    """Sessions end_reason_if_invalid would accept (same boundaries: a limit
+    is only exceeded once strictly passed)."""
+    now = now or timezone.now()
+    return queryset.filter(
+        revoked_at__isnull=True,
+        created_at__gte=now - ABSOLUTE_LIMIT,
+        last_seen_at__gte=now - IDLE_LIMIT,
+    )
+
+
 def validate(staff, token):
     """The live session behind a staff access token, or AuthenticationFailed."""
     session = StaffSession.objects.filter(jti=token.get("jti", ""), staff_id=staff.pk).first()
