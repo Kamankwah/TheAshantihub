@@ -8,6 +8,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from accounts.models import BusinessOwner, BusinessOwnerProfile
+from accounts.testing import make_staff
 from approvals import registry, services
 from approvals.models import ApprovalRequest
 from approvals.services import STALE_MESSAGE, ApprovalError, StaleRequest
@@ -95,6 +96,7 @@ class BusinessUpdateKindTests(ChangeTestBase):
         self.assertEqual(ApprovalRequest.objects.get(pk=second.pk).status, ApprovalRequest.PENDING)
 
     def test_approving_re_runs_the_duplicate_check(self):
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(claimed_at=None)
         approval = self.propose({"login_phone": "024 555 0101"})
         BusinessOwner.objects.create(full_name="Yaa Asantewaa", login_phone="0245550101", password_hash="x")
         self.as_staff(self.lead)
@@ -105,10 +107,34 @@ class BusinessUpdateKindTests(ChangeTestBase):
         self.assertFalse(AppliedChange.objects.exists())
 
     def test_a_new_sign_in_phone_is_stored_in_plus_233_form(self):
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(claimed_at=None)
         approval = self.propose({"login_phone": "024 555 0101"})
         services.approve(approval.pk, self.lead)
         self.owner.refresh_from_db()
         self.assertEqual(self.owner.login_phone, "+233245550101")
+
+
+class UpdateGuardsAtApprovalTests(ChangeTestBase):
+    def approve_error(self, approval):
+        self.as_staff(self.lead)
+        response = self.client.post(f"/api/approvals/{approval.pk}/approve/", {}, format="json")
+        self.assertEqual(response.status_code, 400)
+        return response.json()["detail"]
+
+    def test_an_owner_who_claims_before_approval_keeps_their_sign_in(self):
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(claimed_at=None)
+        approval = proposals.propose_update(self.scout, self.owner, {"email": "me@example.com"}, reason="Asked")
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(claimed_at=timezone.now())
+        self.assertEqual(self.approve_error(approval), "Sign-in email is changed by the owner once they have a login.")
+        self.owner.refresh_from_db()
+        self.assertIsNone(self.owner.email)
+
+    def test_a_staff_phone_added_after_the_proposal_is_refused(self):
+        approval = proposals.propose_update(
+            self.scout, self.owner, {"business_contact_phone": "0201112223"}, reason="Asked")
+        make_staff("accountant", "pat@example.com", phone="0201112223")
+        self.assertEqual(self.approve_error(approval), proposals.STAFF_PHONE)
+        self.assertFalse(AppliedChange.objects.exists())
 
 
 class ListingCreateKindTests(ChangeTestBase):

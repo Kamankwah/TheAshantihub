@@ -28,7 +28,7 @@ from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from accounts.gps import validate_ashanti_gps
-from accounts.models import BusinessOwner, BusinessOwnerProfile
+from accounts.models import BusinessOwner, BusinessOwnerProfile, StaffUser
 from accounts.phones import normalize_gh_phone
 from activity.services import record
 from approvals.services import ApprovalError, submit
@@ -37,7 +37,7 @@ from listings.models import Category, Listing, ListingPhoto, Zone
 from listings.serializers import LISTING_DECISION_FIELDS, PRODUCT_ANSWER_MESSAGES, validate_listing_for_owner
 from notifications.services import notify_business_owner
 
-from .checks import exact_duplicates
+from .checks import exact_duplicates, staff_phone_matches
 from .models import AppliedChange, StagedPhoto
 
 BUSINESS_UPDATE_KEY = "business.update"
@@ -127,6 +127,12 @@ PHOTOS_UNAVAILABLE = "Some of these photos are missing or already used — take 
 TOO_MANY_PHOTOS = f"Add up to {MAX_PHOTOS} photos at a time."
 NO_PHOTOS = "Add at least one photo."
 LISTING_MOVED = "This listing isn't this business's any more."
+STAFF_PHONE = "That number belongs to a staff member — ask Operations."
+STAFF_EMAIL = "That email belongs to a staff member — ask Operations."
+OWNER_HAS_LOGIN = {
+    "email": "Sign-in email is changed by the owner once they have a login.",
+    "login_phone": "Sign-in phone is changed by the owner once they have a login.",
+}
 UNDO_HINT = "Not you? Press “This wasn't me” in your dashboard within 7 days."
 
 
@@ -500,15 +506,28 @@ def clean_update_fields(owner, fields):
 
 
 def update_duplicate_errors(owner, fields):
-    """The duplicate checks a detail change re-runs at proposal and approval."""
+    """The checks a detail change re-runs at proposal and approval: sign-in
+    details only before the owner has a login, then duplicates, then staff
+    emails and phones (self-dealing)."""
     errors = {}
+    if not owner.needs_claim:
+        for field, message in OWNER_HAS_LOGIN.items():
+            if field in fields:
+                errors[field] = [message]
     for field in PHONE_FIELDS:
-        if fields.get(field) and exact_duplicates(phone=fields[field], exclude_owner_id=owner.pk):
+        if field in errors or not fields.get(field):
+            continue
+        if exact_duplicates(phone=fields[field], exclude_owner_id=owner.pk):
             errors[field] = [DUPLICATE_PHONE]
+        elif staff_phone_matches(fields[field]):
+            errors[field] = [STAFF_PHONE]
     if fields.get("gps_address") and exact_duplicates(gps_address=fields["gps_address"], exclude_owner_id=owner.pk):
         errors["gps_address"] = [DUPLICATE_GPS]
-    if fields.get("email") and BusinessOwner.objects.filter(email__iexact=fields["email"]).exclude(pk=owner.pk).exists():
-        errors["email"] = [DUPLICATE_EMAIL]
+    if fields.get("email") and "email" not in errors:
+        if BusinessOwner.objects.filter(email__iexact=fields["email"]).exclude(pk=owner.pk).exists():
+            errors["email"] = [DUPLICATE_EMAIL]
+        elif StaffUser.objects.filter(email__iexact=fields["email"]).exists():
+            errors["email"] = [STAFF_EMAIL]
     return errors
 
 

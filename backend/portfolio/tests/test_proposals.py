@@ -101,7 +101,11 @@ class ProposeChangeApiTests(ChangeTestBase):
         self.owner.profile.refresh_from_db()
         self.assertEqual(self.owner.profile.business_name, "Abena Kente House")  # nothing changes until approval
 
+    def unclaim(self):
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(claimed_at=None)
+
     def test_phones_are_stored_in_one_form(self):
+        self.unclaim()
         self.as_staff(self.scout)
         response = self.post({"login_phone": "024 555 0101", "business_contact_phone": "0555123456"})
         self.assertEqual(response.status_code, 201, response.content)
@@ -109,6 +113,7 @@ class ProposeChangeApiTests(ChangeTestBase):
         self.assertEqual(fields, {"login_phone": "+233245550101", "business_contact_phone": "+233555123456"})
 
     def test_a_phone_written_differently_is_still_a_duplicate(self):
+        self.unclaim()
         BusinessOwner.objects.create(full_name="Yaa Asantewaa", login_phone="0245550101", password_hash="x")
         self.as_staff(self.scout)
         response = self.post({"login_phone": "+233 24 555 0101"})
@@ -116,12 +121,39 @@ class ProposeChangeApiTests(ChangeTestBase):
         self.assertFalse(ApprovalRequest.objects.exists())
 
     def test_address_and_email_duplicates_are_refused(self):
+        self.unclaim()
         make_business(self.other_scout, phone="+233244900900", name="Kofi Spare Parts", gps="AK-100-2000",
                       email="kofi@example.com")
         self.as_staff(self.scout)
         response = self.post({"gps_address": "ak-100-2000", "email": "KOFI@example.com"})
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json(), {"gps_address": [proposals.DUPLICATE_GPS], "email": [proposals.DUPLICATE_EMAIL]})
+
+    def test_sign_in_details_only_before_the_owner_has_a_login(self):
+        self.as_staff(self.scout)
+        claimed = self.post({"email": "me@example.com", "login_phone": "0245550101"})
+        self.assertEqual((claimed.status_code, claimed.json()), (400, {
+            "email": ["Sign-in email is changed by the owner once they have a login."],
+            "login_phone": ["Sign-in phone is changed by the owner once they have a login."],
+        }))
+        self.unclaim()
+        self.assertEqual(self.post({"email": "me@example.com", "login_phone": "0245550101"}).status_code, 201)
+
+    def test_the_business_phone_is_editable_after_claim(self):
+        self.as_staff(self.scout)
+        self.assertEqual(self.post({"business_contact_phone": "0555123456"}).status_code, 201)
+
+    def test_a_staff_email_or_phone_is_refused(self):
+        make_staff("accountant", "Pat@Example.com", phone="0201112223")
+        self.unclaim()
+        self.as_staff(self.scout)
+        self.assertEqual(self.post({"email": "pat@example.com"}).json(),
+                         {"email": [proposals.STAFF_EMAIL]})
+        self.assertEqual(self.post({"login_phone": "+233 20 111 2223"}).json(),
+                         {"login_phone": [proposals.STAFF_PHONE]})
+        self.assertEqual(self.post({"business_contact_phone": "0201112223"}).json(),
+                         {"business_contact_phone": [proposals.STAFF_PHONE]})
+        self.assertFalse(ApprovalRequest.objects.exists())
 
     def test_bad_values_are_explained(self):
         self.as_staff(self.scout)
