@@ -212,6 +212,7 @@ describe('ApprovalsPanel — scout requests (staff phase 2A)', () => {
     diff: [
       { field: 'Business', before: null, after: "Nana's Chop Bar" },
       { field: 'Registered by', before: null, after: 'Kwame Asante' },
+      { field: 'Ghana Post address', before: null, after: 'AK-039-5128 · not checked yet' },
     ],
     ...overrides,
   })
@@ -242,6 +243,28 @@ describe('ApprovalsPanel — scout requests (staff phase 2A)', () => {
     expect(screen.getByText('Ghana Post address as typed: AK-039-5128')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Address verified' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument()
+  })
+
+  it('refreshes the request table when the address decision is recorded', async () => {
+    let approvalGets = 0
+    server.use(
+      http.get(`${API}/api/approvals/9/`, () => {
+        approvalGets += 1
+        return HttpResponse.json(approvalGets === 1 ? kycRequest() : kycRequest({
+          diff: [
+            { field: 'Business', before: null, after: "Nana's Chop Bar" },
+            { field: 'Ghana Post address', before: null, after: 'AK-039-5128 · verified by Ama Boateng' },
+          ],
+        }))
+      }),
+      http.get(`${API}/api/portfolio/businesses/41/review/`, () => HttpResponse.json(REVIEW)),
+      http.post(`${API}/api/accounts/kyc/41/address-verify/`, () => HttpResponse.json({ id: 41, address_verified: true })),
+    )
+    renderPanel({ detailId: '9' })
+    const table = await screen.findByRole('table', { name: 'What would change' })
+    expect(within(table).getByText('AK-039-5128 · not checked yet')).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Address verified' }))
+    expect(await within(table).findByText('AK-039-5128 · verified by Ama Boateng')).toBeInTheDocument()
   })
 
   it("shows the sheet read-only to someone who can't decide the request", async () => {

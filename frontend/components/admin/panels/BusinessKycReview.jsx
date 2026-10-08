@@ -122,7 +122,8 @@ export default function BusinessKycReview({ businessId, canRecordAddress = false
     try {
       await apiPost(`/api/accounts/kyc/${businessId}/address-verify/`, { verified });
       await refetch();
-      ["kyc-queue", "kyc-detail"].forEach((key) => queryClient.invalidateQueries({ queryKey: [key] }));
+      // "approval" too: the request's own "Ghana Post address" row says "not checked yet" until decided.
+      ["kyc-queue", "kyc-detail", "approval"].forEach((key) => queryClient.invalidateQueries({ queryKey: [key] }));
     } catch (err) {
       setActionError(apiErrorMessage(err, "Could not record the address decision. Please try again."));
     } finally {
