@@ -187,37 +187,6 @@ curl -fsS -H 'X-Forwarded-Proto: https' "http://127.0.0.1:$APP_PORT/api/health/"
 	exit 1
 }
 
-log "Starting the realtime service, worker and scheduler"
-"${COMPOSE[@]}" up -d realtime worker beat
-
-log "Waiting for the realtime service to answer"
-for _ in $(seq 1 45); do
-	if curl -fsS -H 'X-Forwarded-Proto: https' "http://127.0.0.1:$REALTIME_PORT/api/health/" >/dev/null 2>&1; then
-		echo "  realtime healthy on 127.0.0.1:$REALTIME_PORT"
-		break
-	fi
-	sleep 2
-done
-curl -fsS -H 'X-Forwarded-Proto: https' "http://127.0.0.1:$REALTIME_PORT/api/health/" >/dev/null || {
-	echo "FATAL: the realtime service did not come up. Recent logs:" >&2
-	"${COMPOSE[@]}" logs --tail=60 realtime >&2
-	exit 1
-}
-
-log "Waiting for the background worker"
-for _ in $(seq 1 30); do
-	if "${COMPOSE[@]}" exec -T worker celery -A ashantihub inspect ping --timeout 5 >/dev/null 2>&1; then
-		echo "  worker answering"
-		break
-	fi
-	sleep 2
-done
-"${COMPOSE[@]}" exec -T worker celery -A ashantihub inspect ping --timeout 5 >/dev/null || {
-	echo "FATAL: the Celery worker did not answer. Recent logs:" >&2
-	"${COMPOSE[@]}" logs --tail=60 worker >&2
-	exit 1
-}
-
 if [[ "${SERVE_FRONTEND:-no}" == "yes" ]]; then
 	: "${WEB_ROOT:?SERVE_FRONTEND=yes requires WEB_ROOT in .deploy.conf}"
 	: "${WEB_USER:?SERVE_FRONTEND=yes requires WEB_USER in .deploy.conf}"
@@ -249,6 +218,41 @@ if [[ "${SERVE_FRONTEND:-no}" == "yes" ]]; then
 		log "HestiaCP nginx templates unchanged; skipping reinstall"
 	fi
 fi
+
+# Only now, with the API healthy and the frontend that matches it published,
+# start the live-update and background-job processes. A fault in any of them
+# fails the deploy here, after sign-in and the public site already work on
+# the new release — never between the new API and its frontend.
+log "Starting the realtime service, worker and scheduler"
+"${COMPOSE[@]}" up -d realtime worker beat
+
+log "Waiting for the realtime service to answer"
+for _ in $(seq 1 45); do
+	if curl -fsS -H 'X-Forwarded-Proto: https' "http://127.0.0.1:$REALTIME_PORT/api/health/" >/dev/null 2>&1; then
+		echo "  realtime healthy on 127.0.0.1:$REALTIME_PORT"
+		break
+	fi
+	sleep 2
+done
+curl -fsS -H 'X-Forwarded-Proto: https' "http://127.0.0.1:$REALTIME_PORT/api/health/" >/dev/null || {
+	echo "FATAL: the realtime service did not come up. Recent logs:" >&2
+	"${COMPOSE[@]}" logs --tail=60 realtime >&2
+	exit 1
+}
+
+log "Waiting for the background worker"
+for _ in $(seq 1 30); do
+	if "${COMPOSE[@]}" exec -T worker celery -A ashantihub inspect ping --timeout 5 >/dev/null 2>&1; then
+		echo "  worker answering"
+		break
+	fi
+	sleep 2
+done
+"${COMPOSE[@]}" exec -T worker celery -A ashantihub inspect ping --timeout 5 >/dev/null || {
+	echo "FATAL: the Celery worker did not answer. Recent logs:" >&2
+	"${COMPOSE[@]}" logs --tail=60 worker >&2
+	exit 1
+}
 
 log "Removing unused images"
 docker image prune -f >/dev/null

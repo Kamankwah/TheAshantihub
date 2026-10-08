@@ -76,15 +76,22 @@ naming whatever is missing. It also brings up `redis`, `realtime` (the
 WebSocket service, on `APP_PORT + 100`), `worker` and `beat`, and fails if the
 Celery worker does not answer a ping.
 
+The order is fixed: `db` and `redis`, migrations and static files, then `web`
+and its health check; then (production) the frontend build and publish and the
+HestiaCP template install; only then `realtime`, `worker` and `beat` with their
+health check and worker ping. A fault in the job or live-update processes
+therefore stops the deploy after the API and its matching frontend are already
+live, never between them.
+
 ### Rolling out live updates (plan 1B)
 
 Do each environment in turn, staging first.
 
 1. Add `REDIS_PASSWORD`, `REDIS_URL` (the same password inside it) and
    `STAFF_SECRETS_KEY` to `backend/.env`. Generate the password with
-   `openssl rand -hex 32` and the Fernet key with
-   `docker run --rm ashantihub-app python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
-   (use `ashantihub-staging-app` on staging, or any built image).
+   `openssl rand -hex 32` and the Fernet key (32 random bytes, URL-safe
+   base64) with the host's Python, no image needed:
+   `python3 -c "import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())"`
 2. Production only: set `ACTIVITY_SEAL_EMAIL=True`. The old cron passed
    `--email-seal`; beat now reads this setting instead.
 3. Run `deploy.sh`. The first run is still the previous script (it re-execs
