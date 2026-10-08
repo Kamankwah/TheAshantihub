@@ -1,3 +1,4 @@
+import logging
 from datetime import date
 
 from django.db import transaction
@@ -10,7 +11,7 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import StaffUser
+from accounts.models import Role, StaffUser
 from accounts.permissions import IsStaff
 from accounts.serializers import staff_brief
 from accounts.sessions import require_sudo
@@ -20,6 +21,8 @@ from . import exports, services
 from .models import ReportExport, StaffReport
 from .serializers import report_payload
 from .tasks import build_report_export, fail_export
+
+logger = logging.getLogger(__name__)
 
 
 def _period(value):
@@ -228,6 +231,7 @@ def _enqueue(export_id):
     try:
         build_report_export.delay(export_id)
     except Exception:
+        logger.exception("Could not queue report export %s", export_id)
         export = ReportExport.objects.select_related("requester").get(pk=export_id)
         fail_export(export, QUEUE_DOWN)
 
@@ -270,20 +274,23 @@ class ReportRangeExportView(APIView):
         filters = {"from": start.isoformat(), "to": end.isoformat()}
         if params.get("staff"):
             staff = params["staff"]
-            if not (staff.isdecimal() and staff.isascii()) or int(staff) > MAX_STAFF_ID:
+            if not (staff.isdecimal() and staff.isascii()) or not 1 <= int(staff) <= MAX_STAFF_ID:
                 raise ValidationError({"staff": "Use a staff id."})
             if not exports.may_export_staff(request.user, int(staff)):
                 raise PermissionDenied("You can export only your own and your team's reports.")
             filters["staff"] = int(staff)
         if params.get("role"):
-            filters["role"] = params["role"][:50]
+            if "\x00" in params["role"] or not Role.objects.filter(name=params["role"]).exists():
+                raise ValidationError({"role": "Unknown role."})
+            filters["role"] = params["role"]
         if params.get("period"):
             filters["period"] = _period(params["period"])
         reports = exports.export_queryset(request.user, filters)
-        if reports.exclude(staff=request.user).exists():
+        if exports.reaches_others(request.user, filters):
             require_sudo(request)  # other people's reports are personal data
         count = reports.count()
         background = (end - start).days + 1 > exports.BACKGROUND_DAYS or count > exports.BACKGROUND_ROWS
+        background = background or (fmt == "pdf" and count > exports.PDF_SYNC_ROWS)
         after = {"filters": filters, "format": fmt, "rows": count, "background": background}
         if background:
             # record() holds a global lock until commit, so it goes last.
@@ -313,6 +320,7 @@ class ReportExportDownloadView(APIView):
         if not exports.signature_matches(export, request.query_params.get("sig")):
             return Response({"detail": "This download link has expired. Export again."}, status=403)
         path = exports.export_path(export)
-        if export.status != ReportExport.READY or not export.file_name or not path.exists():
+        expired = export.expires_at is None or export.expires_at <= timezone.now()
+        if expired or export.status != ReportExport.READY or not export.file_name or not path.exists():
             return Response({"detail": "This export isn't available any more."}, status=410)
         return FileResponse(open(path, "rb"), as_attachment=True, filename=exports.download_filename(export))

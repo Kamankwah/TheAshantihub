@@ -16,6 +16,7 @@ from django.http import HttpResponse, StreamingHttpResponse
 from django.template.loader import render_to_string
 from django.utils import timezone
 from rest_framework.negotiation import DefaultContentNegotiation
+from weasyprint.urls import URLFetcher
 
 from accounts.models import StaffUser
 
@@ -30,6 +31,8 @@ FORMATS = {
 FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 BACKGROUND_DAYS = 31
 BACKGROUND_ROWS = 5000
+PDF_SYNC_ROWS = 200  # a bigger PDF is built by the job, not inside a 60 s web request
+GENERIC_ERROR = "We couldn't build that file. Try again, or pick a shorter range."
 LINK_SALT = "reports.export-download"
 LINK_MAX_AGE = 24 * 60 * 60
 CHART_WIDTH = 230
@@ -161,10 +164,18 @@ def _pdf_report(report):
     }
 
 
-def refuse_fetch(url, *args, **kwargs):
+class RefusingFetcher(URLFetcher):
     """WeasyPrint's url_fetcher: report text is user-written, so a PDF must
-    never load a URL (no SSRF, no local files, no tracking pixels)."""
-    raise ValueError("Report PDFs do not load external resources.")
+    never load a URL (no SSRF, no local files, no tracking pixels). Every
+    fetch is refused; the URLs asked for are kept in `refused`."""
+
+    def __init__(self):
+        super().__init__()
+        self.refused = []
+
+    def fetch(self, url, headers=None):
+        self.refused.append(url)
+        raise ValueError("Report PDFs do not load external resources.")
 
 
 def pdf_html(reports, title):
@@ -175,10 +186,10 @@ def pdf_html(reports, title):
 
 
 def pdf_bytes(reports, title):
-    from weasyprint import HTML  # loads Pango; imported only when a PDF is made
+    from weasyprint import HTML
 
     # No base_url and a fetcher that refuses everything.
-    return HTML(string=pdf_html(reports, title), url_fetcher=lambda url, *a, **k: refuse_fetch(url)).write_pdf()
+    return HTML(string=pdf_html(reports, title), url_fetcher=RefusingFetcher()).write_pdf()
 
 
 def may_export_staff(requester, staff_id):
@@ -195,7 +206,7 @@ def export_queryset(requester, filters):
     reports = StaffReport.objects.exclude(status=StaffReport.DRAFT).select_related("staff__role", "reviewer__role")
     if services.VIEW_ALL not in requester.effective_permission_codenames():
         reports = reports.filter(Q(staff=requester) | Q(staff__manager=requester))
-    if filters.get("staff"):
+    if "staff" in filters:
         reports = reports.filter(staff_id=filters["staff"])
     if filters.get("role"):
         reports = reports.filter(staff__role__name=filters["role"])
@@ -204,6 +215,16 @@ def export_queryset(requester, filters):
     return reports.filter(period_start__gte=filters["from"], period_end__lte=filters["to"]).order_by(
         "staff__full_name", "period_start", "period"
     )
+
+
+def reaches_others(requester, filters):
+    """True when an export under `filters` can include anyone else's reports:
+    it is then personal data and needs a recent password (sudo)."""
+    if "staff" in filters:
+        return filters["staff"] != requester.pk
+    if services.VIEW_ALL in requester.effective_permission_codenames():
+        return True
+    return StaffUser.objects.filter(manager=requester).exists()
 
 
 def range_title(filters):

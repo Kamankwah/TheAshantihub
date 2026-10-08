@@ -18,7 +18,7 @@ from activity.models import ActivityEvent
 from notifications.models import Notification
 from reports import exports, services
 from reports.models import ReportExport
-from reports.tasks import build_report_export, purge_expired_exports
+from reports.tasks import build_report_export, purge_expired_exports, reap_stuck_exports
 
 NASTY = '=HYPERLINK("http://evil.example","click")'
 BOM = "﻿"
@@ -76,7 +76,7 @@ class ExportTests(TestCase):
         self.assertEqual(pdf["Content-Type"], "application/pdf")
         self.assertTrue(pdf.content.startswith(b"%PDF"))
 
-    def test_the_pdf_never_fetches_a_url_and_shows_markup_as_text(self):
+    def test_the_pdf_shows_markup_as_text(self):
         tag = '<img src="http://example.invalid/x.png">'
         report = self.submitted(self.other_scout, achievements=tag, blockers="<b>bold</b>")
         report = type(report).objects.select_related("staff__role", "reviewer__role").get(pk=report.pk)
@@ -84,15 +84,26 @@ class ExportTests(TestCase):
         self.assertIn("&lt;img src=", html)
         self.assertNotIn("<img", html)
         self.assertNotIn("<b>bold", html)
-        with mock.patch("reports.exports.refuse_fetch", side_effect=AssertionError("fetched")) as fetch:
-            data = exports.pdf_bytes([report], "Title")
-        self.assertTrue(data.startswith(b"%PDF"))
-        fetch.assert_not_called()
+        self.assertTrue(exports.pdf_bytes([report], "Title").startswith(b"%PDF"))
 
-    def test_the_pdf_fetcher_refuses_everything(self):
+    def test_the_pdf_fetcher_refuses_every_url_weasyprint_asks_for(self):
+        markup = (
+            '<html><head><link rel="stylesheet" href="file:///etc/passwd">'
+            "<style>@import url(http://example.invalid/a.css)</style></head>"
+            '<body><img src="http://example.invalid/x.png"></body></html>'
+        )
+        fetcher = exports.RefusingFetcher()
+        with mock.patch("reports.exports.pdf_html", return_value=markup), \
+                mock.patch("reports.exports.RefusingFetcher", return_value=fetcher):
+            data = exports.pdf_bytes([], "T")
+        self.assertTrue(data.startswith(b"%PDF"))
+        for url in ("http://example.invalid/x.png", "file:///etc/passwd", "http://example.invalid/a.css"):
+            self.assertIn(url, fetcher.refused)
+
+    def test_the_fetcher_raises_for_any_url(self):
         for url in ("http://example.invalid/x.png", "file:///etc/passwd", "data:text/plain,hi"):
             with self.assertRaises(ValueError):
-                exports.refuse_fetch(url)
+                exports.RefusingFetcher().fetch(url)
 
     def test_the_template_pulls_in_nothing_external(self):
         html = render_to_string("reports/report_export.html", {"title": "T", "generated_at": timezone.now(), "reports": []})
@@ -215,19 +226,23 @@ class ExportTests(TestCase):
     def test_a_failed_job_serves_nothing_and_says_why(self):
         self.as_(self.scout)
         with mock.patch("reports.exports.write_export_file", side_effect=RuntimeError("disk full")):
-            with self.captureOnCommitCallbacks(execute=True):
-                queued = self.long_range("pdf")
+            with self.assertLogs("reports.tasks", "ERROR") as logs:
+                with self.captureOnCommitCallbacks(execute=True):
+                    queued = self.long_range("pdf")
+        self.assertIn("disk full", "\n".join(logs.output))
         export = ReportExport.objects.get(pk=queued.json()["id"])
-        self.assertEqual((export.status, export.error), ("failed", "disk full"))
-        self.assertTrue(Notification.objects.filter(staff=self.scout, kind="report_export_failed").exists())
+        self.assertEqual((export.status, export.error), ("failed", exports.GENERIC_ERROR))
+        notice = Notification.objects.get(staff=self.scout, kind="report_export_failed")
+        self.assertNotIn("disk full", notice.body)
         self.assertEqual(list(exports.export_dir().glob("*")), [])
         self.assertIsNone(self.client.get("/api/reports/exports/").json()[0]["download_url"])
 
     def test_an_unavailable_queue_marks_the_export_failed(self):
         self.as_(self.scout)
         with mock.patch("reports.views.build_report_export.delay", side_effect=ConnectionError("redis down")):
-            with self.captureOnCommitCallbacks(execute=True):
-                queued = self.long_range()
+            with self.assertLogs("reports.views", "ERROR"):
+                with self.captureOnCommitCallbacks(execute=True):
+                    queued = self.long_range()
         self.assertEqual(queued.status_code, 202)
         export = ReportExport.objects.get(pk=queued.json()["id"])
         self.assertEqual(export.status, "failed")
@@ -254,3 +269,150 @@ class ExportTests(TestCase):
         export.refresh_from_db()
         self.assertEqual(export.status, "expired")
         self.assertFalse(exports.export_path(export).exists())
+
+    def ready_export(self, staff=None, fmt="csv"):
+        self.as_(staff or self.scout)
+        with self.captureOnCommitCallbacks(execute=True):
+            queued = self.long_range(fmt)
+        return ReportExport.objects.get(pk=queued.json()["id"])
+
+    def test_download_refuses_once_the_export_has_expired_even_with_the_file_on_disk(self):
+        export = self.ready_export()
+        link = exports.download_url(export)
+        self.assertEqual(self.client.get(link).status_code, 200)
+        ReportExport.objects.filter(pk=export.pk).update(expires_at=timezone.now() - timedelta(minutes=1))
+        self.assertTrue(exports.export_path(export).exists())
+        self.assertEqual(self.client.get(link).status_code, 410)
+        ReportExport.objects.filter(pk=export.pk).update(expires_at=None)
+        self.assertEqual(self.client.get(link).status_code, 410)
+
+    def test_running_the_job_twice_builds_one_file_and_one_notice(self):
+        export = self.ready_export()
+        build_report_export(export.pk)
+        self.assertEqual(len(list(exports.export_dir().glob("*"))), 1)
+        self.assertEqual(Notification.objects.filter(staff=self.scout, kind="report_export_ready").count(), 1)
+
+    def test_an_expired_export_stays_expired_if_the_job_runs_again(self):
+        export = self.ready_export()
+        ReportExport.objects.filter(pk=export.pk).update(expires_at=timezone.now() - timedelta(minutes=1))
+        purge_expired_exports()
+        build_report_export(export.pk)
+        export.refresh_from_db()
+        self.assertEqual(export.status, "expired")
+        self.assertEqual(list(exports.export_dir().glob("*")), [])
+
+    def test_a_failure_before_writing_still_marks_the_export_failed(self):
+        with tempfile.NamedTemporaryFile() as blocker:
+            with override_settings(PRIVATE_MEDIA_ROOT=blocker.name):
+                self.as_(self.scout)
+                with self.assertLogs("reports.tasks", "ERROR"):
+                    with self.captureOnCommitCallbacks(execute=True):
+                        queued = self.long_range()
+        export = ReportExport.objects.get(pk=queued.json()["id"])
+        self.assertEqual((export.status, export.error), ("failed", exports.GENERIC_ERROR))
+        self.assertTrue(Notification.objects.filter(staff=self.scout, kind="report_export_failed").exists())
+
+    def test_stuck_exports_are_reaped(self):
+        stuck = ReportExport.objects.create(requester=self.scout, filters={"from": "2026-01-01", "to": "2026-03-01"}, format="csv", status="running")
+        fresh = ReportExport.objects.create(requester=self.scout, filters={"from": "2026-01-01", "to": "2026-03-01"}, format="csv", status="running")
+        queued = ReportExport.objects.create(requester=self.scout, filters={"from": "2026-01-01", "to": "2026-03-01"}, format="csv")
+        old = timezone.now() - timedelta(hours=2)
+        ReportExport.objects.filter(pk__in=[stuck.pk, queued.pk]).update(created_at=old)
+        exports.export_dir().mkdir(parents=True, exist_ok=True)
+        partial = exports.export_dir() / "abc.csv.partial"
+        partial.write_text("x")
+        self.assertEqual(reap_stuck_exports(), 2)
+        for row in (stuck, queued, fresh):
+            row.refresh_from_db()
+        self.assertEqual((stuck.status, queued.status, fresh.status), ("failed", "failed", "running"))
+        self.assertEqual(stuck.error, exports.GENERIC_ERROR)
+        self.assertFalse(partial.exists())
+        self.assertEqual(Notification.objects.filter(staff=self.scout, kind="report_export_failed").count(), 2)
+
+    def test_the_beat_schedule_runs_the_reaper(self):
+        from django.conf import settings
+        entry = settings.CELERY_BEAT_SCHEDULE["reports-reap-stuck-exports"]
+        self.assertEqual(entry["task"], "reports.tasks.reap_stuck_exports")
+
+    def test_a_suspended_requester_gets_no_file(self):
+        self.as_(self.scout)
+        queued = self.long_range()
+        StaffUser.objects.filter(pk=self.scout.pk).update(is_suspended=True)
+        with self.assertLogs("reports.tasks", "ERROR"):
+            build_report_export(queued.json()["id"])
+        export = ReportExport.objects.get(pk=queued.json()["id"])
+        self.assertEqual(export.status, "failed")
+        self.assertEqual(list(exports.export_dir().glob("*")), [])
+
+    def test_a_deactivated_requester_gets_no_file(self):
+        self.as_(self.scout)
+        queued = self.long_range()
+        StaffUser.objects.filter(pk=self.scout.pk).update(is_active=False)
+        with self.assertLogs("reports.tasks", "ERROR"):
+            build_report_export(queued.json()["id"])
+        self.assertEqual(ReportExport.objects.get(pk=queued.json()["id"]).status, "failed")
+
+    def test_a_pdf_over_the_sync_row_limit_goes_to_the_background(self):
+        self.as_(self.scout)
+        url = f"/api/reports/export/?from={self.today}&to={self.today}&format="
+        with mock.patch("reports.exports.PDF_SYNC_ROWS", 0):
+            with self.captureOnCommitCallbacks(execute=True):
+                self.assertEqual(self.client.get(url + "pdf").status_code, 202)
+            self.assertEqual(self.client.get(url + "csv").status_code, 200)
+            self.assertEqual(self.client.get(url + "xlsx").status_code, 200)
+        self.assertEqual(self.client.get(url + "pdf").status_code, 200)
+
+    def test_201_rows_of_pdf_are_queued(self):
+        self.assertEqual(exports.PDF_SYNC_ROWS, 200)
+        from accounts.models import Role
+        from reports.models import StaffReport
+        role = Role.objects.get(name="scout")
+        people = StaffUser.objects.bulk_create([
+            StaffUser(full_name=f"Bulk {n}", email=f"bulk{n}@example.com", password_hash="x", role=role, manager=self.lead)
+            for n in range(200)
+        ])
+        template = StaffReport.objects.get(pk=self.report.pk)
+        fields = [f.name for f in template._meta.concrete_fields if f.name not in ("id", "staff")]
+        StaffReport.objects.bulk_create([
+            StaffReport(staff=person, **{name: getattr(template, name) for name in fields}) for person in people
+        ])
+        self.assertEqual(StaffReport.objects.exclude(status="draft").count(), 201)
+        self.as_(self.lead, sudo=True)
+        url = f"/api/reports/export/?from={self.today}&to={self.today}&format="
+        self.assertEqual(self.client.get(url + "csv").status_code, 200)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(self.client.get(url + "pdf").status_code, 202)
+
+    def test_an_unknown_role_is_a_400(self):
+        self.as_(self.lead, sudo=True)
+        base = f"/api/reports/export/?from={self.today}&to={self.today}&format=csv"
+        for role in ("nope", "%00", ""):
+            with self.subTest(role=role):
+                response = self.client.get(f"{base}&role={role}")
+                if role:
+                    self.assertEqual(response.status_code, 400)
+                    self.assertEqual(response.json(), {"role": "Unknown role."})
+        self.assertEqual(self.client.get(f"{base}&role=scout").status_code, 200)
+
+    def test_staff_ids_start_at_one(self):
+        self.as_(self.lead, sudo=True)
+        base = f"/api/reports/export/?from={self.today}&to={self.today}&format=csv"
+        for value in ("0", "00"):
+            self.assertEqual(self.client.get(f"{base}&staff={value}").status_code, 400)
+
+    def test_sudo_follows_the_scope_of_the_export(self):
+        base = f"/api/reports/export/?from={self.today}&to={self.today}&format=csv"
+        # A manager exporting with no staff filter reaches their team: sudo.
+        self.as_(self.lead)
+        self.assertEqual(self.client.get(base).json()["code"], "sudo_required")
+        # Narrowed to their own reports: no sudo.
+        self.assertEqual(self.client.get(f"{base}&staff={self.lead.id}").status_code, 200)
+        # Narrowed to a teammate: sudo.
+        self.assertEqual(self.client.get(f"{base}&staff={self.scout.id}").json()["code"], "sudo_required")
+        # A scout has nobody else in scope: no sudo, even with an empty range.
+        self.as_(self.scout)
+        self.assertEqual(self.client.get(base).status_code, 200)
+        # view_all with no filter and nothing but the requester's own rows still needs sudo.
+        admin = make_staff("super_admin", "admin@example.com")
+        self.as_(admin)
+        self.assertEqual(self.client.get(base).json()["code"], "sudo_required")

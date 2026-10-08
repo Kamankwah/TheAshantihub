@@ -377,6 +377,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "reports.tasks.purge_expired_exports",
         "schedule": crontab(hour=4, minute=0),
     },
+    "reports-reap-stuck-exports": {
+        "task": "reports.tasks.reap_stuck_exports",
+        "schedule": 900.0,  # every 15 minutes
+    },
     "approvals-escalate": {
         "task": "approvals.tasks.escalate_due_approvals",
         "schedule": 300.0,  # every 5 minutes
