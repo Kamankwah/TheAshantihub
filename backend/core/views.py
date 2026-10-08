@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db.models import Count
 from rest_framework import generics
 from rest_framework.decorators import api_view, permission_classes
@@ -24,10 +25,23 @@ def _count_by(queryset, field, keys):
     return {key: counts.get(key, 0) for key in keys}
 
 
+def _redis_state():
+    """For System health (phase 7). The API itself never depends on Redis."""
+    if not settings.REDIS_URL:
+        return "not_configured"
+    try:
+        import redis
+
+        redis.Redis.from_url(settings.REDIS_URL, socket_connect_timeout=1, socket_timeout=1).ping()
+    except Exception:
+        return "down"
+    return "ok"
+
+
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def health_check(request):
-    return Response({"status": "ok"})
+    return Response({"status": "ok", "redis": _redis_state()})
 
 
 class SiteSettingsView(generics.RetrieveUpdateAPIView):

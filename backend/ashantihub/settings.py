@@ -1,6 +1,8 @@
 from pathlib import Path
+import sys
 import environ
 
+from celery.schedules import crontab
 from django.core.exceptions import ImproperlyConfigured
 
 from accounts.mixins import AnonymousUser
@@ -51,6 +53,9 @@ SECURE_HSTS_PRELOAD = not DEBUG
 SILENCED_SYSTEM_CHECKS = ["security.W003"]
 
 INSTALLED_APPS = [
+    # Makes the local `manage.py runserver` serve ASGI, WebSockets included
+    # (staff foundations F2). Production runs gunicorn + uvicorn workers.
+    "daphne",
     "django.contrib.contenttypes",
     # Required transitively: rest_framework_simplejwt.tokens imports AbstractBaseUser at module load time
     "django.contrib.auth",
@@ -277,3 +282,65 @@ REST_FRAMEWORK = {
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": __import__("datetime").timedelta(hours=12),
 }
+
+# ── Live updates and background jobs (staff foundations F2) ─────────────────
+# One Redis per environment (infra/compose/docker-compose.yml) carries the
+# Channels layer, the realtime-ticket cache and the Celery broker. With
+# REDIS_URL unset (plain local dev) — and ALWAYS under `manage.py test`, so
+# the suite never needs Redis — everything runs in-process instead: the
+# in-memory channel layer, a local-memory ticket cache and eager Celery.
+#
+# The "default" cache deliberately stays local-memory even in production:
+# the login throttles read it, and a Redis outage must never take sign-in
+# down (spec §3: "Redis down: sockets fail, polling continues"). Short socket
+# timeouts keep a hung Redis from stalling sign-in or staff writes.
+TESTING = len(sys.argv) > 1 and sys.argv[1] == "test"
+REDIS_URL = env("REDIS_URL", default="")
+USE_REDIS = bool(REDIS_URL) and not TESTING
+
+CACHES = {
+    "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
+    "realtime": (
+        {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_URL,
+            "KEY_PREFIX": "ah",
+            "OPTIONS": {"socket_connect_timeout": 1, "socket_timeout": 2},
+        }
+        if USE_REDIS
+        else {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "realtime"}
+    ),
+}
+CHANNEL_LAYERS = {
+    "default": (
+        {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {"hosts": [{"address": REDIS_URL, "socket_connect_timeout": 1, "socket_timeout": 2}]},
+        }
+        if USE_REDIS
+        else {"BACKEND": "channels.layers.InMemoryChannelLayer"}
+    )
+}
+
+CELERY_BROKER_URL = REDIS_URL if USE_REDIS else "memory://"
+CELERY_TASK_ALWAYS_EAGER = not USE_REDIS
+CELERY_TASK_EAGER_PROPAGATES = True
+CELERY_TASK_IGNORE_RESULT = True
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+# Each job's owning app adds its own entry; core/tests/test_background_jobs.py
+# fails if an entry names a task that doesn't exist. Times are Africa/Accra.
+CELERY_BEAT_SCHEDULE = {
+    "activity-verify-chain": {
+        "task": "activity.tasks.verify_activity_chain_nightly",
+        "schedule": crontab(hour=1, minute=45),
+    },
+}
+
+# Production sets this True so the nightly activity check emails its seal to
+# every Super Admin; staging only verifies.
+ACTIVITY_SEAL_EMAIL = env.bool("ACTIVITY_SEAL_EMAIL", default=False)
+
+# Files only a permission-checked view may serve (report exports, F6). Never
+# under MEDIA_ROOT, which nginx serves to anyone.
+PRIVATE_MEDIA_ROOT = BASE_DIR / "private"

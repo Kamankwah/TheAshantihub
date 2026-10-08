@@ -4,11 +4,33 @@
 #   staging     /opt/ashantihub-staging  project "ashantihub-staging"  API on 127.0.0.1:8001
 #
 # Both are started by infra/scripts/deploy.sh, which reads the checkout's own
-# untracked .deploy.conf and passes the project name and port explicitly, so
-# the two stacks never share containers, networks or database volumes.
+# untracked .deploy.conf and passes the project name, port and image tag
+# explicitly, so the two stacks never share containers, networks, images or
+# database volumes.
 #
 # Nothing here is published to the public internet: the API binds to 127.0.0.1
-# and HestiaCP's nginx terminates TLS in front of it (see infra/nginx/).
+# and HestiaCP's nginx terminates TLS in front of it (see infra/hestia/).
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+# Shared by web, worker and beat. Only `web` builds; worker and beat run the
+# very image web just built (the same APP_IMAGE tag, written per environment
+# by deploy.sh), so the three can never run different code.
+x-app: &app
+  image: ${APP_IMAGE:-ashantihub-app}
+  restart: unless-stopped
+  env_file: ../../backend/.env
+  extra_hosts:
+    # Django sends mail through the host's Exim, which queues, signs with
+    # DKIM and relays onward. The bridge gateway IP differs per environment
+    # and can change when a network is recreated, so EMAIL_HOST resolves
+    # this name instead of a hardcoded address.
+    - "host.docker.internal:host-gateway"
+  logging: *default-logging
 
 services:
   db:
@@ -26,21 +48,35 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-    logging: &default-logging
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
+    logging: *default-logging
+
+  # Channels layer, realtime tickets and the Celery broker (staff foundations
+  # F2). Nothing in it is precious — no persistence — and it is never
+  # published to the host. volatile-lru only ever evicts keys that carry a
+  # TTL (cached tickets, channel messages), never queued Celery jobs.
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    env_file: ../../backend/.env
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\" --maxmemory 128mb --maxmemory-policy volatile-lru --save '' --appendonly no"]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
 
   web:
+    <<: *app
     build:
       context: ../../backend
       dockerfile: Dockerfile.prod
-    restart: unless-stopped
-    env_file: ../../backend/.env
+    # ASGI: HTTP and WebSockets from the same workers. Sync DRF views still
+    # run one at a time per worker, exactly as under the old sync workers.
     command:
       - gunicorn
-      - ashantihub.wsgi:application
+      - ashantihub.asgi:application
+      - --worker-class=uvicorn_worker.UvicornWorker
       - --bind=0.0.0.0:8000
       - --workers=${GUNICORN_WORKERS:-4}
       - --timeout=60
@@ -49,19 +85,17 @@ services:
     ports:
       # Bound to loopback on purpose — the only way in is through nginx.
       - "127.0.0.1:${APP_PORT:-8000}:8000"
-    extra_hosts:
-      # Django sends mail through the host's Exim, which queues, signs with
-      # DKIM and relays onward. The bridge gateway IP differs per environment
-      # and can change when a network is recreated, so EMAIL_HOST resolves
-      # this name instead of a hardcoded address.
-      - "host.docker.internal:host-gateway"
     volumes:
       # Uploads and collected static live on the host so nginx can serve them
-      # directly; Django never serves either when DEBUG=False.
+      # directly; Django never serves either when DEBUG=False. private/ holds
+      # report exports, which only a permission-checked view serves.
       - ../../backend/media:/app/media
       - ../../backend/staticfiles:/app/staticfiles
+      - ../../backend/private:/app/private
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       # X-Forwarded-Proto mimics nginx: without it SECURE_SSL_REDIRECT (on
@@ -75,7 +109,28 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    logging: *default-logging
+
+  # Background jobs: approval escalation, report reminders and exports,
+  # session cleanup, the nightly activity check (see CELERY_BEAT_SCHEDULE).
+  worker:
+    <<: *app
+    command: ["celery", "-A", "ashantihub", "worker", "--loglevel=INFO", "--concurrency=2"]
+    volumes:
+      - ../../backend/media:/app/media
+      - ../../backend/private:/app/private
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Exactly one scheduler per environment, or every job would run twice.
+  beat:
+    <<: *app
+    command: ["celery", "-A", "ashantihub", "beat", "--loglevel=INFO", "--schedule=/tmp/celerybeat-schedule"]
+    depends_on:
+      redis:
+        condition: service_healthy
 
 volumes:
   pgdata:

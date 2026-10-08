@@ -13,6 +13,7 @@ __pycache__/
 # Runtime data lives in host bind mounts (see infra/compose/docker-compose.yml),
 # never in the image.
 media/
+private/
 staticfiles/
 db.sqlite3
 

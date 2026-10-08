@@ -63,6 +63,8 @@ The script refuses to run without `.deploy.conf` and `backend/.env`, dumps the
 database before migrating, and fails loudly with the last 60 log lines if the
 API does not answer its health check afterwards.
 
+Both `REDIS_URL` (a `redis://` URL) and `STAFF_SECRETS_KEY` must be set in each environment's `backend/.env` before deploying; `deploy.sh` exits with a `FATAL` naming whichever is missing. It also brings up the `redis`, `worker` and `beat` services and fails if the Celery worker does not answer a ping.
+
 Production deploys (`SERVE_FRONTEND=yes`) also run
 `install-hestia-templates.sh` automatically when the current
 `infra/hestia/templates/` tree differs from the one recorded in the untracked
