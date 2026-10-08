@@ -268,6 +268,12 @@ if SENTRY_DSN:
 # (see PAYMENTS_PROVIDER below).
 FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", default="http://localhost:5173")
 
+# The AshantiHub Business Agreement version a business owner accepts when they set
+# up a login a scout started (accounts/claims.py records it in OwnerConsent).
+# frontend/components/businessTerms.js shows the same version — change both
+# together.
+OWNER_TERMS_VERSION = "September 2026"
+
 # Hubtel payments (docs/HUBTEL_INTEGRATION.md, plan Workstream E). Every
 # HUBTEL_* var is blank by default — PAYMENTS_PROVIDER is *derived* from
 # whether HUBTEL_CLIENT_ID is actually set, not a separate manually-toggled
@@ -301,6 +307,8 @@ REST_FRAMEWORK = {
         "login": "5/min",
         "two_factor": "10/min",
         "password_reset_request": "5/min",
+        # Public claim page and the scout's hand-over (preview + claim).
+        "owner_claim": "10/min",
         # The Hubtel webhook is a public, unauthenticated endpoint (Hubtel
         # calls it from the internet, not a logged-in app user) — generous
         # but not unlimited, since it's dark/unexercised until HUBTEL_* env

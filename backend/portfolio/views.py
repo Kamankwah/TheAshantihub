@@ -3,14 +3,17 @@ its profile. Writes record their own activity events (record() last), so the
 activity middleware adds nothing on top."""
 import math
 
+from django.db import transaction
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts import claims, sessions
 from accounts.models import BusinessOwner, StaffUser
-from accounts.permissions import HasAnyRolePermission, HasRolePermission
+from accounts.permissions import HasAnyRolePermission, HasRolePermission, IsStaff
+from activity.services import record
 
 from . import checks
 from .registration import RegistrationError, register_business, resubmit_kyc
@@ -113,3 +116,57 @@ class KycResubmitView(APIView):
             {"approval_id": approval.pk if approval else None, "approver_name": approver_name(approval)},
             status=status.HTTP_201_CREATED,
         )
+
+
+OWNER_TARGET_TYPE = "accounts.businessowner"
+
+
+def _claim_refused(exc):
+    return Response({"detail": exc.message, "code": exc.code}, status=exc.status_code)
+
+
+class HandoverView(APIView):
+    """POST businesses/<pk>/handover/ — a 30-minute hand-over token bound to
+    this staff session, for the owner to set a password on this phone. The
+    token goes only into the response; the activity log gets its expiry."""
+
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def post(self, request, pk):
+        owner = get_managed_business(request, pk)
+        try:
+            with transaction.atomic():
+                raw, token = claims.start_handover(owner, request.user, sessions.current(request))
+                record(
+                    request.user, "business.handover_started", target_type=OWNER_TARGET_TYPE,
+                    target_id=str(owner.pk), target_label=owner.display_name,
+                    after={"expires_at": token.expires_at.isoformat()}, request=request,
+                )
+        except claims.ClaimError as exc:
+            return _claim_refused(exc)
+        return Response({"token": raw, "expires_at": token.expires_at}, status=status.HTTP_201_CREATED)
+
+
+class ClaimLinkView(APIView):
+    """POST businesses/<pk>/claim-link/ — email the owner a 7-day claim link
+    (a new link replaces the old). SMS isn't connected, so it needs the
+    owner's email on file."""
+
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def post(self, request, pk):
+        owner = get_managed_business(request, pk)
+        try:
+            with transaction.atomic():
+                token = claims.send_claim_link(owner, request.user)
+                sent_to = claims.mask_email(token.sent_to)
+                record(
+                    request.user, "business.claim_link_sent", target_type=OWNER_TARGET_TYPE,
+                    target_id=str(owner.pk), target_label=owner.display_name,
+                    after={"sent_to": sent_to, "expires_at": token.expires_at.isoformat()}, request=request,
+                )
+        except claims.ClaimError as exc:
+            return _claim_refused(exc)
+        return Response({"sent_to": sent_to, "expires_at": token.expires_at})

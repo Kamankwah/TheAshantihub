@@ -16,7 +16,7 @@ from notifications.services import notify_business_owner, notify_customer, notif
 from activity.services import record as record_activity
 from realtime.publish import force_disconnect_on_commit
 
-from . import kyc, sessions, two_factor
+from . import claims, kyc, sessions, two_factor
 from .authentication import issue_token
 from .emails import send_staff_invite_email, send_two_factor_changed_email, send_verification_code_email
 from .models import (
@@ -203,6 +203,45 @@ class BusinessOwnerLoginView(generics.GenericAPIView):
             "id": account.id,
             "full_name": account.full_name,
         })
+
+
+def _truthy(value):
+    return value is True or (isinstance(value, str) and value.strip().lower() in ("true", "1", "on", "yes"))
+
+
+class BusinessOwnerClaimView(APIView):
+    """GET ?token= previews the business; POST sets the owner's own password
+    (staff phase 2A, S2). Open to whoever holds a live token — a hand-over
+    token also needs the staff session that started it (accounts/claims.py).
+    Never returns a token or the password."""
+
+    permission_classes = [AllowAny]
+    throttle_scope = "owner_claim"
+    # claims.claim() records business.claimed itself, with the owner as actor;
+    # the hand-over's request carries the scout's token, so the middleware
+    # must not log it as a staff action.
+    activity_exempt = True
+
+    def get(self, request):
+        try:
+            return Response(claims.preview(request.query_params.get("token", ""), request))
+        except claims.ClaimError as exc:
+            return Response({"detail": exc.message, "code": exc.code}, status=exc.status_code)
+
+    def post(self, request):
+        body = _body(request)
+        try:
+            owner = claims.claim(
+                body.get("token"),
+                password=body.get("password"),
+                password_confirm=body.get("password_confirm"),
+                email=body.get("email"),
+                accept_terms=_truthy(body.get("accept_terms")),
+                request=request,
+            )
+        except claims.ClaimError as exc:
+            return Response({"detail": exc.message, "code": exc.code}, status=exc.status_code)
+        return Response({"claimed": True, "login_phone": owner.login_phone, "business_name": owner.display_name})
 
 
 def _staff_sign_in_response(account, request, *, two_factor_used=False):

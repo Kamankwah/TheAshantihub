@@ -576,3 +576,64 @@ class PasswordResetToken(models.Model):
 
     def __str__(self):
         return f"{self.account_type}:{self.account_id} reset token"
+
+
+class OwnerClaimToken(models.Model):
+    """A one-time way for a business owner to set their own password after a
+    scout registered the business (staff phase 2A, S2). A hand-over lasts 30
+    minutes and works only from the staff session that started it; a claim
+    link is emailed and lasts 7 days. Only the SHA-256 of the token is kept;
+    a newer token of the same channel revokes the older one, and a claim
+    revokes every other open token (accounts/claims.py)."""
+
+    HANDOVER = "handover"
+    LINK = "link"
+    CHANNEL_CHOICES = [(HANDOVER, "Hand-over on the scout's phone"), (LINK, "Claim link")]
+
+    business_owner = models.ForeignKey(BusinessOwner, on_delete=models.CASCADE, related_name="claim_tokens")
+    channel = models.CharField(max_length=10, choices=CHANNEL_CHOICES)
+    token_hash = models.CharField(max_length=64, unique=True)
+    created_by = models.ForeignKey(StaffUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    staff_session = models.ForeignKey(
+        StaffSession, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    sent_to = models.CharField(max_length=254, blank=True, default="")
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.get_channel_display()} for business owner {self.business_owner_id}"
+
+
+class OwnerConsent(models.Model):
+    """The Business Agreement acceptance behind a login a staff member started:
+    which version, when, how (hand-over or link), which staff member started
+    it, and the device and IP it was accepted from."""
+
+    HANDOVER = OwnerClaimToken.HANDOVER
+    LINK = OwnerClaimToken.LINK
+    SELF = "self"
+    CHANNEL_CHOICES = [
+        (HANDOVER, "Hand-over on the scout's phone"),
+        (LINK, "Claim link"),
+        (SELF, "Registered online"),
+    ]
+
+    business_owner = models.ForeignKey(BusinessOwner, on_delete=models.CASCADE, related_name="consents")
+    terms_version = models.CharField(max_length=40)
+    accepted_at = models.DateTimeField()
+    channel = models.CharField(max_length=10, choices=CHANNEL_CHOICES)
+    staff = models.ForeignKey(StaffUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    user_agent = models.CharField(max_length=300, blank=True, default="")
+    ip = models.GenericIPAddressField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-accepted_at"]
+
+    def __str__(self):
+        return f"Terms {self.terms_version} accepted by business owner {self.business_owner_id}"

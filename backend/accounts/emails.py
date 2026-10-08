@@ -151,3 +151,21 @@ def send_subscription_paused_email(owner):
         "— AshantiHub"
     )
     _send("Your AshantiHub listings are hidden until you renew", message, owner.email)
+
+
+def send_business_claim_email(owner, claim_link):
+    """The link a business owner opens to set their own password after a
+    scout registered the business for them. The link is the only copy of the
+    token; no phone or payout number goes in this email."""
+    who = f"{owner.registered_by.full_name} from AshantiHub" if owner.registered_by else "AshantiHub"
+    message = (
+        f"Hi {owner.full_name},\n\n"
+        f"{who} registered {owner.display_name} on AshantiHub for you. Open the link "
+        "below to read the AshantiHub Business Agreement and set your own password:\n\n"
+        f"{claim_link}\n\n"
+        "The link works once and for 7 days. After that, sign in with your phone "
+        "number and the password you chose.\n\n"
+        "If you don't know this business, ignore this email or tell AshantiHub Support.\n\n"
+        "— AshantiHub"
+    )
+    _send("Set up your AshantiHub business login", message, owner.email)
