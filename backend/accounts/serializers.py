@@ -176,6 +176,10 @@ class PasswordResetRequestSerializer(serializers.Serializer):
             account = ACCOUNT_MODELS[account_type].objects.filter(email=email).first()
             if account is None:
                 continue
+            if account_type == "business_owner" and account.needs_claim:
+                # A scout-registered owner must accept the Business Agreement
+                # through a claim (accounts/claims.py), not a reset.
+                continue
             token = get_random_string(43)
             PasswordResetToken.objects.create(
                 account_type=account_type,

@@ -249,3 +249,33 @@ class ClaimTokenTests(TestCase):
             self.client_for().get(f"{CLAIM_URL}?token=not-a-real-token"), 400, "invalid",
             "This link isn't valid. Check you opened the whole link, or ask your account manager for a new one.",
         )
+
+    def test_edge_spaces_are_trimmed_so_the_owner_can_sign_in(self):
+        raw, _ = self.hand_over()
+        padded = PASSWORD + " "
+        response = self.claim(self.scout_phone, raw, password=padded, password_confirm=padded)
+        self.assertEqual(response.status_code, 200, response.content)
+        for attempt in (PASSWORD, padded):
+            login = self.client_for().post(LOGIN_URL, {"identifier": "+233241234567", "password": attempt}, format="json")
+            self.assertEqual(login.status_code, 200, login.content)
+
+    def test_a_password_of_only_spaces_is_refused(self):
+        raw, _ = self.hand_over()
+        blanks = " " * 10
+        response = self.claim(self.scout_phone, raw, password=blanks, password_confirm=blanks)
+        self.assertEqual((response.status_code, response.json()), (400, {"password": ["Use at least 8 characters."]}))
+
+    def test_password_reset_skips_an_unclaimed_scout_registered_owner(self):
+        from accounts.models import PasswordResetToken
+        url = "/api/accounts/password-reset/request/"
+        unknown = self.client_for().post(url, {"email": "nobody@example.com"}, format="json")
+        response = self.client_for().post(url, {"email": "gifty.a@example.com"}, format="json")
+        self.assertEqual((response.status_code, response.json()), (unknown.status_code, unknown.json()))
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertFalse(PasswordResetToken.objects.exists())
+
+        # Once claimed, the owner can reset like anyone else.
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(claimed_at=timezone.now())
+        self.client_for().post(url, {"email": "gifty.a@example.com"}, format="json")
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertTrue(PasswordResetToken.objects.filter(account_id=self.owner.pk).exists())

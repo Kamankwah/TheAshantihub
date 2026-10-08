@@ -156,6 +156,11 @@ def preview(raw, request):
 
 def _clean_fields(owner, password, password_confirm, email, accept_terms):
     errors = {}
+    # Sign-in trims the password (a DRF CharField), so the claim must too.
+    if isinstance(password, str):
+        password = password.strip()
+    if isinstance(password_confirm, str):
+        password_confirm = password_confirm.strip()
     if not accept_terms:
         errors["accept_terms"] = [TERMS_REQUIRED]
     if not isinstance(password, str) or len(password) < MIN_PASSWORD_LENGTH:
@@ -173,7 +178,7 @@ def _clean_fields(owner, password, password_confirm, email, accept_terms):
                 errors["email"] = [EMAIL_TAKEN]
     if errors:
         raise serializers.ValidationError(errors)
-    return email or None
+    return email or None, password
 
 
 def claim(raw, *, password, password_confirm, email, accept_terms, request):
@@ -186,7 +191,7 @@ def claim(raw, *, password, password_confirm, email, accept_terms, request):
         owner = BusinessOwner.objects.select_for_update().get(pk=token.business_owner_id)
         token.business_owner = owner
         _check_usable(token, request, now)
-        email = _clean_fields(owner, password, password_confirm, email, accept_terms)
+        email, password = _clean_fields(owner, password, password_confirm, email, accept_terms)
 
         owner.password_hash = make_password(password)
         owner.claimed_at = now
