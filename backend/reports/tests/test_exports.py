@@ -319,7 +319,7 @@ class ExportTests(TestCase):
         old = timezone.now() - timedelta(hours=2)
         ReportExport.objects.filter(pk__in=[stuck.pk, queued.pk]).update(created_at=old)
         exports.export_dir().mkdir(parents=True, exist_ok=True)
-        partial = exports.export_dir() / "abc.csv.partial"
+        partial = exports.export_dir() / f"{stuck.pk}-abc.partial"
         partial.write_text("x")
         self.assertEqual(reap_stuck_exports(), 2)
         for row in (stuck, queued, fresh):
@@ -328,6 +328,54 @@ class ExportTests(TestCase):
         self.assertEqual(stuck.error, exports.GENERIC_ERROR)
         self.assertFalse(partial.exists())
         self.assertEqual(Notification.objects.filter(staff=self.scout, kind="report_export_failed").count(), 2)
+
+    def test_a_healthy_jobs_partial_file_survives_a_reap(self):
+        filters = {"from": "2026-01-01", "to": "2026-03-01"}
+        stuck = ReportExport.objects.create(requester=self.scout, filters=filters, format="csv", status="running")
+        healthy = ReportExport.objects.create(requester=self.scout, filters=filters, format="csv", status="running")
+        ReportExport.objects.filter(pk=stuck.pk).update(created_at=timezone.now() - timedelta(hours=2))
+        exports.export_dir().mkdir(parents=True, exist_ok=True)
+        stuck_partial = exports.export_dir() / f"{stuck.pk}-abc.partial"
+        healthy_partial = exports.export_dir() / f"{healthy.pk}-def.partial"
+        for path in (stuck_partial, healthy_partial):
+            path.write_text("x")
+        self.assertEqual(reap_stuck_exports(), 1)
+        self.assertFalse(stuck_partial.exists())
+        self.assertTrue(healthy_partial.exists())
+
+    def queue_without_running(self):
+        self.as_(self.scout)
+        return ReportExport.objects.get(pk=self.long_range().json()["id"])  # no captureOnCommitCallbacks
+
+    def reap_while_writing(self, export, then=None):
+        """A write_export_file stand-in: the reaper fails this row mid-job."""
+        def write(reports, fmt, path, title):
+            ReportExport.objects.filter(pk=export.pk).update(created_at=timezone.now() - timedelta(hours=2))
+            reap_stuck_exports()
+            if then is not None:
+                raise then
+            path.write_text("x")
+        return write
+
+    def test_a_reaped_export_is_not_flipped_back_to_ready(self):
+        export = self.queue_without_running()
+        with mock.patch("reports.exports.write_export_file", side_effect=self.reap_while_writing(export)):
+            build_report_export(export.pk)
+        export.refresh_from_db()
+        self.assertEqual((export.status, export.file_name), ("failed", ""))
+        self.assertEqual(Notification.objects.filter(staff=self.scout, kind="report_export_failed").count(), 1)
+        self.assertFalse(Notification.objects.filter(staff=self.scout, kind="report_export_ready").exists())
+        self.assertEqual(list(exports.export_dir().glob("*")), [])
+
+    def test_a_reaped_export_that_then_fails_gets_one_notice(self):
+        export = self.queue_without_running()
+        writer = self.reap_while_writing(export, then=RuntimeError("late failure"))
+        with mock.patch("reports.exports.write_export_file", side_effect=writer):
+            with self.assertLogs("reports.tasks", "ERROR"):
+                build_report_export(export.pk)
+        export.refresh_from_db()
+        self.assertEqual(export.status, "failed")
+        self.assertEqual(Notification.objects.filter(staff=self.scout, kind="report_export_failed").count(), 1)
 
     def test_the_beat_schedule_runs_the_reaper(self):
         from django.conf import settings

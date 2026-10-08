@@ -92,7 +92,8 @@ class MyReportsView(APIView):
             report = services.save_draft(request.user, period, day, request.data)
         except services.ReportError as exc:
             return _error(exc)
-        return Response(report_payload(report, request.user))
+        # Action responses skip the system numbers: the panels refetch.
+        return Response(report_payload(report, request.user, include_system=False))
 
 
 class CurrentReportView(APIView):
@@ -126,7 +127,7 @@ class ReportDetailView(APIView):
             report = services.save_draft(request.user, report.period, report.period_start, request.data)
         except services.ReportError as exc:
             return _error(exc)
-        return Response(report_payload(report, request.user))
+        return Response(report_payload(report, request.user, include_system=False))
 
 
 class ReportSubmitView(APIView):
@@ -139,7 +140,7 @@ class ReportSubmitView(APIView):
             services.submit(report, http_request=request)
         except services.ReportError as exc:
             return _error(exc)
-        return Response(report_payload(report, request.user))
+        return Response(report_payload(report, request.user, include_system=False))
 
 
 class _ReviewView(APIView):
@@ -159,7 +160,7 @@ class _ReviewView(APIView):
             self.review(report, request)
         except services.ReportError as exc:
             return _error(exc)
-        return Response(report_payload(report, request.user))
+        return Response(report_payload(report, request.user, include_system=False))
 
 
 class ReportAcknowledgeView(_ReviewView):
@@ -190,7 +191,10 @@ class TeamReportsView(APIView):
         if scope == "all":
             if not view_all:
                 raise PermissionDenied("Only a Super Admin can see everyone's reports.")
-            people = StaffUser.objects.filter(is_active=True).exclude(pk=request.user.pk)
+            # Everyone who works here now: not pending invitees, not suspended.
+            people = StaffUser.objects.filter(
+                is_active=True, is_suspended=False, invite_token__isnull=True
+            ).exclude(pk=request.user.pk)
         else:
             people = StaffUser.objects.filter(manager=request.user, is_active=True)
         people = list(people.select_related("role").order_by("full_name"))

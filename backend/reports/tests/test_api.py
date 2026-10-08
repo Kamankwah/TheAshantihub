@@ -91,6 +91,39 @@ class ReportApiTests(TestCase):
         rows = self.client.get("/api/reports/team/?period=day&scope=all").json()["rows"]
         self.assertEqual({row["staff"]["full_name"] for row in rows}, {"Ama", "Kwame", "Efua"})
 
+    def test_everyone_leaves_out_pending_invitees_and_suspended_staff(self):
+        make_staff("scout", "pending@example.com", invite_token="p" * 43)
+        make_staff("scout", "away@example.com", is_suspended=True)
+        self.as_(self.boss)
+        rows = self.client.get("/api/reports/team/?period=day&scope=all").json()["rows"]
+        self.assertEqual({row["staff"]["full_name"] for row in rows}, {"Ama", "Kwame", "Efua"})
+
+    def test_action_responses_leave_out_the_system_numbers(self):
+        # The panels refetch after every action, so these responses skip the
+        # system sections (each one runs every role provider).
+        self.as_(self.scout)
+        saved = self.save()
+        self.assertNotIn("system", saved.json())
+        report_id = saved.json()["id"]
+        patched = self.client.patch(f"/api/reports/{report_id}/", {"blockers": "Network"}, format="json")
+        self.assertEqual(patched.status_code, 200)
+        self.assertNotIn("system", patched.json())
+        submitted = self.client.post(f"/api/reports/{report_id}/submit/", {}, format="json")
+        self.assertEqual(submitted.status_code, 200)
+        self.assertNotIn("system", submitted.json())
+        self.as_(self.lead)
+        returned = self.client.post(f"/api/reports/{report_id}/return/", {"note": "Which weavers?"}, format="json")
+        self.assertEqual(returned.status_code, 200)
+        self.assertNotIn("system", returned.json())
+        self.as_(self.scout)
+        self.client.post(f"/api/reports/{report_id}/submit/", {}, format="json")
+        self.as_(self.lead)
+        acknowledged = self.client.post(f"/api/reports/{report_id}/acknowledge/", {"note": "Thanks"}, format="json")
+        self.assertEqual(acknowledged.status_code, 200)
+        self.assertNotIn("system", acknowledged.json())
+        # Reading one report still carries them.
+        self.assertIn("system", self.client.get(f"/api/reports/{report_id}/").json())
+
     def test_bad_input_is_explained(self):
         self.as_(self.scout)
         self.assertEqual(self.client.get("/api/reports/current/?period=year").status_code, 400)

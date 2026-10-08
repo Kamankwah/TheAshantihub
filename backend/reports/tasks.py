@@ -18,13 +18,27 @@ def send_day_report_reminders():
     return services.send_day_reminders()
 
 
-def fail_export(export, message=exports.GENERIC_ERROR):
-    """Mark an export failed and tell its requester."""
-    ReportExport.objects.filter(pk=export.pk).update(
+UNFINISHED = (ReportExport.QUEUED, ReportExport.RUNNING)
+
+
+def fail_export(export, message=exports.GENERIC_ERROR, *, statuses=UNFINISHED):
+    """Mark an export failed and tell its requester — only if the row is still
+    in one of `statuses`, so a row the reaper (or anyone else) already settled
+    is never failed or notified twice. True if this call failed it."""
+    failed = ReportExport.objects.filter(pk=export.pk, status__in=statuses).update(
         status=ReportExport.FAILED, error=message[:300], finished_at=timezone.now()
     )
+    if failed != 1:
+        return False
     notify_staff(export.requester, "report_export_failed", "Your report export failed",
                  body=message, link="reports", icon="⚠️")
+    return True
+
+
+def partial_files(export_id):
+    """The half-written files of one export (named `<export id>-<uuid>.partial`)."""
+    directory = exports.export_dir()
+    return list(directory.glob(f"{int(export_id)}-*.partial")) if directory.exists() else []
 
 
 @shared_task
@@ -43,17 +57,24 @@ def build_report_export(export_id):
             raise PermissionError("The requester can no longer export.")
         directory = exports.export_dir()
         directory.mkdir(parents=True, exist_ok=True)
-        final_name = f"{uuid.uuid4().hex}.{export.format}"
-        partial = directory / f"{final_name}.partial"
+        token = uuid.uuid4().hex
+        final_name = f"{token}.{export.format}"
+        # Named by export id, so the reaper removes only the files of rows it reaps.
+        partial = directory / f"{export.pk}-{token}.partial"
         final = directory / final_name
         reports = list(exports.export_queryset(requester, export.filters))
         exports.write_export_file(reports, export.format, partial, exports.range_title(export.filters))
         partial.rename(final)
         now = timezone.now()
-        ReportExport.objects.filter(pk=export.pk).update(
+        # Only a row this job still holds: if the reaper failed it meanwhile, it
+        # stays failed (one notice) and the file goes.
+        finished = ReportExport.objects.filter(pk=export.pk, status=ReportExport.RUNNING).update(
             status=ReportExport.READY, file_name=final_name, row_count=len(reports),
             finished_at=now, expires_at=now + timedelta(seconds=exports.LINK_MAX_AGE),
         )
+        if finished != 1:
+            final.unlink(missing_ok=True)
+            return
         notify_staff(requester, "report_export_ready", "Your report export is ready",
                      body="Download it from My Reports within 24 hours.", link="reports", icon="📦")
     except Exception:
@@ -62,7 +83,7 @@ def build_report_export(export_id):
         for leftover in (partial, final):
             if leftover is not None:
                 leftover.unlink(missing_ok=True)
-        fail_export(export)
+        fail_export(export, statuses=(ReportExport.RUNNING,))
 
 
 @shared_task
@@ -75,10 +96,11 @@ def reap_stuck_exports():
     )
     reaped = 0
     for export in stuck:
-        fail_export(export)
+        if not fail_export(export):
+            continue  # settled since the query ran
         reaped += 1
-    if reaped and exports.export_dir().exists():
-        for leftover in exports.export_dir().glob("*.partial"):
+        # Only this row's half-written files: a healthy job's partial stays.
+        for leftover in partial_files(export.pk):
             leftover.unlink(missing_ok=True)
     return reaped
 
