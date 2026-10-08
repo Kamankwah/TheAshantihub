@@ -343,6 +343,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "activity.tasks.verify_activity_chain_nightly",
         "schedule": crontab(hour=1, minute=45),
     },
+    "sessions-cleanup": {
+        "task": "accounts.tasks.cleanup_staff_sessions",
+        "schedule": crontab(hour=3, minute=30),
+    },
 }
 
 # Production sets this True so the nightly activity check emails its seal to

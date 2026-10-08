@@ -7,6 +7,7 @@ from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import serializers
 
+from . import sessions
 from .authentication import ACCOUNT_MODELS
 from .emails import send_password_reset_email, send_staff_invite_email
 from .gps import validate_ashanti_gps
@@ -18,6 +19,7 @@ from .models import (
     Role,
     RoleInviteRule,
     ScoutAssignment,
+    StaffSession,
     StaffUser,
 )
 from .permissions import can_manage_staff
@@ -213,6 +215,10 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         self.account.save(update_fields=["password_hash"])
         self.reset_token.used_at = timezone.now()
         self.reset_token.save(update_fields=["used_at"])
+        if isinstance(self.account, StaffUser):
+            # A reset is often "someone else may have my password": end
+            # every device's session.
+            sessions.revoke_all(self.account, StaffSession.PASSWORD_RESET)
         return self.account
 
 
@@ -724,14 +730,19 @@ class StaffListSerializer(serializers.ModelSerializer):
     # only" view can't tell apart. Not sensitive: a role's permissions are
     # already derivable from the role.
     role_permissions = serializers.SerializerMethodField()
+    # From the session table (F9) — this replaces the missing last_login.
+    last_sign_in_at = serializers.SerializerMethodField()
 
     class Meta:
         model = StaffUser
         fields = [
             "id", "full_name", "email", "phone", "role", "manager", "manager_name", "status",
             "is_suspended", "suspension_reason", "is_active",
-            "permissions", "role_permissions", "created_at",
+            "permissions", "role_permissions", "created_at", "last_sign_in_at",
         ]
+
+    def get_last_sign_in_at(self, obj):
+        return obj.sessions.order_by("-created_at").values_list("created_at", flat=True).first()
 
     def get_status(self, obj):
         # Deactivation and suspension take priority over invite state — a

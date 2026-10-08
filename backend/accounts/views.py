@@ -12,9 +12,19 @@ from notifications.services import notify_business_owner, notify_customer, notif
 
 from activity.services import record as record_activity
 
+from . import sessions
 from .authentication import issue_token
 from .emails import send_staff_invite_email, send_verification_code_email
-from .models import BusinessOwner, Customer, Permission, Role, RoleInviteRule, ScoutAssignment, StaffUser
+from .models import (
+    BusinessOwner,
+    Customer,
+    Permission,
+    Role,
+    RoleInviteRule,
+    ScoutAssignment,
+    StaffSession,
+    StaffUser,
+)
 from .permissions import HasAnyRolePermission, HasRolePermission, IsStaff, can_manage_staff
 from .serializers import (
     INVITE_TOKEN_LIFETIME,
@@ -101,7 +111,7 @@ class StaffActivateView(generics.GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         staff = serializer.save()
-        return Response({"status": "activated", "token": issue_token(staff, "staff")})
+        return Response({"status": "activated", "token": issue_token(staff, "staff", request=request)})
 
 
 class BusinessOwnerRegisterView(generics.CreateAPIView):
@@ -184,7 +194,7 @@ class StaffLoginView(generics.GenericAPIView):
         account = serializer.account
         record_activity(account, "staff.signed_in", target=account, method="POST", request=request)
         return Response({
-            "token": issue_token(account, "staff"),
+            "token": issue_token(account, "staff", request=request),
             "account_type": "staff",
             "id": account.id,
             "full_name": account.full_name,
@@ -198,6 +208,9 @@ class StaffLogoutView(APIView):
         return [IsStaff()]
 
     def post(self, request):
+        session = sessions.current(request)
+        if session is not None:
+            sessions.revoke(session, StaffSession.SIGNED_OUT)
         record_activity(request.user, "staff.signed_out", target=request.user, method="POST", request=request)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -625,6 +638,7 @@ class StaffSuspendView(APIView):
         staff.is_suspended = True
         staff.suspension_reason = request.data.get("reason", "") or ""
         staff.save(update_fields=["is_suspended", "suspension_reason"])
+        sessions.revoke_all(staff, StaffSession.SUSPENDED)
         return Response(StaffListSerializer(staff).data)
 
 
@@ -665,6 +679,7 @@ class StaffDeactivateView(APIView):
             )
         staff.is_active = False
         staff.save(update_fields=["is_active"])
+        sessions.revoke_all(staff, StaffSession.DEACTIVATED)
         return Response(StaffListSerializer(staff).data)
 
 

@@ -134,6 +134,11 @@ def _client_ip(request):
     return _canonical_ip(request.META.get("HTTP_X_REAL_IP") or request.META.get("REMOTE_ADDR"))
 
 
+def client_ip(request):
+    """Public name for the canonical client IP (accounts.sessions reads it)."""
+    return _client_ip(request)
+
+
 def _notify(event):
     for hook in list(on_recorded):
         try:
