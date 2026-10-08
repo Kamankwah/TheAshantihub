@@ -149,7 +149,7 @@ class Review(models.Model):
             # both) since a customer-organized event's organizer has no
             # BusinessOwner row to point at.
             models.CheckConstraint(
-                check=(
+                condition=(
                     models.Q(
                         target_type="listing",
                         listing__isnull=False, event__isnull=True,

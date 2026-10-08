@@ -1,3 +1,4 @@
+from django.db.models import Q
 from rest_framework.permissions import BasePermission
 
 from .models import StaffUser
@@ -37,3 +38,25 @@ class HasAnyRolePermission(BasePermission):
         if not isinstance(user, StaffUser):
             return False
         return bool(set(self.codenames) & user.effective_permission_codenames())
+
+
+def can_manage_staff(user):
+    """Full staff management (Super Admin's staff.manage), as opposed to a
+    team manager's staff.invite_team, which is limited to direct reports."""
+    return isinstance(user, StaffUser) and "staff.manage" in user.effective_permission_codenames()
+
+
+class IsStaff(BasePermission):
+    def has_permission(self, request, view):
+        return isinstance(request.user, StaffUser)
+
+
+def staff_holding(codename):
+    """Active, unsuspended staff whose *effective* permissions include
+    `codename` — the same set HasRolePermission enforces."""
+    return (
+        StaffUser.objects.filter(is_active=True, is_suspended=False)
+        .filter(Q(role__permissions__codename=codename) | Q(extra_permissions__codename=codename))
+        .exclude(revoked_permissions__codename=codename)
+        .distinct()
+    )

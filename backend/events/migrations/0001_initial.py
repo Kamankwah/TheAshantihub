@@ -61,6 +61,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='event',
-            constraint=models.CheckConstraint(check=models.Q(models.Q(('submitted_by_business__isnull', True), ('submitted_by_customer__isnull', False)), models.Q(('submitted_by_business__isnull', False), ('submitted_by_customer__isnull', True)), _connector='OR'), name='event_exactly_one_of_customer_or_business'),
+            constraint=models.CheckConstraint(condition=models.Q(models.Q(('submitted_by_business__isnull', True), ('submitted_by_customer__isnull', False)), models.Q(('submitted_by_business__isnull', False), ('submitted_by_customer__isnull', True)), _connector='OR'), name='event_exactly_one_of_customer_or_business'),
         ),
     ]

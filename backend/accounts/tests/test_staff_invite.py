@@ -140,7 +140,7 @@ class StaffInviteTests(TestCase):
         # admin doesn't have staff.manage by default; grant it explicitly for
         # this test to prove that having staff.manage alone is not enough to
         # mint a super_admin account.
-        admin_role = Role.objects.get(name="admin")
+        admin_role = Role.objects.get(name="operations")
         staff_manage = Permission.objects.get(codename="staff.manage")
         admin_role.permissions.add(staff_manage)
 

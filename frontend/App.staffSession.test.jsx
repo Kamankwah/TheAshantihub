@@ -190,3 +190,18 @@ describe('marketplace sell/create actions are gated for a staff session', () => 
     expect(screen.queryByRole('button', { name: '✕ Close' })).not.toBeInTheDocument()
   }, 10000)
 })
+
+describe('Staff Sign out is recorded', () => {
+  it('posts to /api/accounts/staff/logout/ with the staff token before clearing it', async () => {
+    let authHeader = null
+    server.use(http.post('http://localhost:8000/api/accounts/staff/logout/', ({ request }) => {
+      authHeader = request.headers.get('Authorization')
+      return new HttpResponse(null, { status: 204 })
+    }))
+    signInStaff()
+    renderAt('/staff/users')
+    await staffNav()
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    await waitFor(() => expect(authHeader).toBe('Bearer test-token'))
+  }, 10000)
+})

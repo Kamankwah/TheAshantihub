@@ -86,7 +86,7 @@ class Notification(models.Model):
         ordering = ["-created_at"]
         constraints = [
             models.CheckConstraint(
-                check=(
+                condition=(
                     models.Q(customer__isnull=False, business_owner__isnull=True, staff__isnull=True)
                     | models.Q(customer__isnull=True, business_owner__isnull=False, staff__isnull=True)
                     | models.Q(customer__isnull=True, business_owner__isnull=True, staff__isnull=False)

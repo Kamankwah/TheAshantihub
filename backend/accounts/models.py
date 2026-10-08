@@ -14,7 +14,7 @@ class Permission(models.Model):
 
 class Role(models.Model):
     SUPER_ADMIN = "super_admin"
-    ADMIN = "admin"
+    OPERATIONS = "operations"
     ACCOUNTANT = "accountant"
     MARKETING = "marketing"
     SUPPORT = "support"
@@ -26,7 +26,7 @@ class Role(models.Model):
 
     NAME_CHOICES = [
         (SUPER_ADMIN, "Super Admin"),
-        (ADMIN, "Admin"),
+        (OPERATIONS, "Operations"),
         (ACCOUNTANT, "Accountant"),
         (MARKETING, "Marketing"),
         (SUPPORT, "Support"),
@@ -119,6 +119,12 @@ class StaffUser(AuthenticatableAccountMixin, models.Model):
     invited_by = models.ForeignKey(
         "self", on_delete=models.SET_NULL, null=True, blank=True, related_name="invited"
     )
+    # Reporting line (staff platform foundations F3). PROTECT: a manager with
+    # reports can't be deleted; deactivation is blocked in StaffDeactivateView
+    # until their team is reassigned.
+    manager = models.ForeignKey(
+        "self", on_delete=models.PROTECT, null=True, blank=True, related_name="direct_reports"
+    )
     invite_token = models.CharField(max_length=64, unique=True, null=True, blank=True)
     invite_expires_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -168,6 +174,22 @@ class StaffUser(AuthenticatableAccountMixin, models.Model):
 
     def __str__(self):
         return f"{self.full_name} ({self.role.name})"
+
+
+class RoleInviteRule(models.Model):
+    """Which role may invite which (team invites, foundations F3). Super Admin
+    (staff.manage) bypasses these rules."""
+
+    inviter_role = models.ForeignKey(Role, on_delete=models.CASCADE, related_name="invite_rules")
+    invitee_role = models.ForeignKey(Role, on_delete=models.CASCADE, related_name="+")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["inviter_role", "invitee_role"], name="unique_role_invite_rule")
+        ]
+
+    def __str__(self):
+        return f"{self.inviter_role.name} → {self.invitee_role.name}"
 
 
 class BusinessOwner(AuthenticatableAccountMixin, models.Model):

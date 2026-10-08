@@ -100,6 +100,9 @@ background. These are **specs, not implemented state**; update them when code fr
   implemented.
 - `docs/PWA_STAFF_DASHBOARD.md` — PWA spec for staff dashboards
 - `docs/IMPLEMENTATION_INSTRUCTIONS.md` — master index, sequencing, and what is not done yet
+- `docs/superpowers/specs/2026-10-07-staff-platform-overview-design.md` — the staff-platform
+  rebuild (every role's dashboard): roles and reporting lines, build order, decisions per phase;
+  phase 1–2 specs sit beside it
 
 ## Design System
 

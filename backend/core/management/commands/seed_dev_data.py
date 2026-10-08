@@ -50,7 +50,7 @@ CUSTOMERS = [
 # queue rows; super_admin stays `create_super_admin`-only.
 STAFF = [
     ("Akosua Support", "support@theashantihub.com", "support"),
-    ("Kwame Admin", "admin.staff@theashantihub.com", "admin"),
+    ("Kwame Admin", "admin.staff@theashantihub.com", "operations"),
     ("Yaw Accountant", "accountant.staff@theashantihub.com", "accountant"),
     ("Esi Marketing", "marketing.staff@theashantihub.com", "marketing"),
 ]

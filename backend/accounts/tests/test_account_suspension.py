@@ -93,7 +93,7 @@ class StaffUserManagementTests(TestCase):
 
     # ── Permission gating ──────────────────────────────────────────────────
     def test_admin_has_users_manage_permission(self):
-        admin = Role.objects.get(name="admin")
+        admin = Role.objects.get(name="operations")
         self.assertTrue(admin.permissions.filter(codename="users.manage").exists())
 
     def test_super_admin_has_users_manage_permission(self):
@@ -141,7 +141,7 @@ class StaffUserManagementTests(TestCase):
 
     # ── Detail / edit ──────────────────────────────────────────────────────
     def test_admin_can_view_customer_detail(self):
-        self._auth("admin")
+        self._auth("operations")
         response = self.client.get(f"/api/accounts/customers/{self.customer.id}/")
         self.assertEqual(response.status_code, 200)
         body = response.json()
@@ -150,7 +150,7 @@ class StaffUserManagementTests(TestCase):
         self.assertNotIn("password_hash", body)
 
     def test_admin_can_edit_customer_fields(self):
-        self._auth("admin")
+        self._auth("operations")
         response = self.client.patch(
             f"/api/accounts/customers/{self.customer.id}/",
             {"full_name": "Ama Owusu-Mensah", "phone": "+233249999999"},
@@ -162,7 +162,7 @@ class StaffUserManagementTests(TestCase):
         self.assertEqual(self.customer.phone, "+233249999999")
 
     def test_edit_cannot_change_suspension_via_patch(self):
-        self._auth("admin")
+        self._auth("operations")
         self.client.patch(
             f"/api/accounts/customers/{self.customer.id}/",
             {"is_suspended": True, "suspension_reason": "sneaky"},
@@ -173,7 +173,7 @@ class StaffUserManagementTests(TestCase):
         self.assertEqual(self.customer.suspension_reason, "")
 
     def test_admin_can_view_and_edit_business_owner(self):
-        self._auth("admin")
+        self._auth("operations")
         detail = self.client.get(f"/api/accounts/business-owners/{self.owner.id}/")
         self.assertEqual(detail.status_code, 200)
         self.assertEqual(detail.json()["kyc_status"], "pending")
@@ -187,7 +187,7 @@ class StaffUserManagementTests(TestCase):
 
     # ── Suspend / unsuspend ────────────────────────────────────────────────
     def test_admin_can_suspend_and_unsuspend_customer(self):
-        self._auth("admin")
+        self._auth("operations")
         suspend = self.client.post(
             f"/api/accounts/customers/{self.customer.id}/suspend/",
             {"reason": "Fraudulent activity"}, format="json",
@@ -204,7 +204,7 @@ class StaffUserManagementTests(TestCase):
         self.assertEqual(self.customer.suspension_reason, "")
 
     def test_suspend_customer_creates_notification(self):
-        self._auth("admin")
+        self._auth("operations")
         self.client.post(
             f"/api/accounts/customers/{self.customer.id}/suspend/",
             {"reason": "Abuse"}, format="json",
@@ -214,7 +214,7 @@ class StaffUserManagementTests(TestCase):
         )
 
     def test_admin_can_suspend_business_owner_and_notify(self):
-        self._auth("admin")
+        self._auth("operations")
         response = self.client.post(
             f"/api/accounts/business-owners/{self.owner.id}/suspend/",
             {"reason": "Policy breach"}, format="json",

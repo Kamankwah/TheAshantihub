@@ -8,7 +8,7 @@ class ZonesManagePermissionTests(TestCase):
         self.assertTrue(Permission.objects.filter(codename="zones.manage").exists())
 
     def test_admin_and_marketing_have_zones_manage(self):
-        for role_name in ("admin", "marketing"):
+        for role_name in ("operations", "marketing"):
             role = Role.objects.get(name=role_name)
             self.assertTrue(role.permissions.filter(codename="zones.manage").exists())
 

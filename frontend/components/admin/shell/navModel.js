@@ -59,6 +59,15 @@ export function buildNavGroups(auth) {
         { id: "analytics", icon: "📊", label: "Analytics", show: auth.hasPermission("analytics.view") },
       ],
     },
+    {
+      id: "my-work", label: "My Work",
+      items: [
+        { id: "tasks", icon: "✅", label: "Tasks", show: true },
+        { id: "calls", icon: "📞", label: "Call Log", show: auth.hasPermission("calls.log") },
+        { id: "activity", icon: "🕘", label: "Activity", show: true },
+        { id: "my-team", icon: "👥", label: "My Team", show: auth.hasPermission("staff.invite_team") },
+      ],
+    },
   ]
     .map(group => ({ ...group, items: group.items.filter(item => item.show) }))
     .filter(group => group.items.length > 0);
@@ -71,6 +80,7 @@ export function buildNavGroups(auth) {
 // useStaffBadges) so newly-arrived work surfaces without a manual reload.
 export const BADGE_KEY_BY_TAB = {
   kyc: "kyc",
+  tasks: "tasks_overdue",
   moderation: "listings",
   hero: "hero",
   "events-moderation": "events",

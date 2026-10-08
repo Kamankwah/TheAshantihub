@@ -10,7 +10,7 @@ class SiteSettingsManagePermissionTests(TestCase):
         self.assertTrue(Permission.objects.filter(codename=CODENAME).exists())
 
     def test_admin_has_permission(self):
-        role = Role.objects.get(name="admin")
+        role = Role.objects.get(name="operations")
         self.assertTrue(role.permissions.filter(codename=CODENAME).exists())
 
     def test_super_admin_has_permission(self):

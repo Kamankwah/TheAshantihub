@@ -33,7 +33,7 @@ class OrderDeliveryStatusTestsBase(TestCase):
 
         self.admin = StaffUser.objects.create(
             full_name="Admin Person", email="admin-delivery@example.com", password_hash="x",
-            role=Role.objects.get(name="admin"),
+            role=Role.objects.get(name="operations"),
         )
         self.marketing = StaffUser.objects.create(
             full_name="Marketing Person", email="marketing-delivery@example.com", password_hash="x",

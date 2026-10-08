@@ -11,7 +11,7 @@ class FakeRequest:
 
 class HasRolePermissionTests(TestCase):
     def test_role_with_permission_is_granted(self):
-        admin_role = Role.objects.get(name="admin")
+        admin_role = Role.objects.get(name="operations")
         staff = StaffUser.objects.create(
             full_name="Adwoa Admin", email="adwoa@example.com", password_hash="x", role=admin_role
         )

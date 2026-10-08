@@ -26,7 +26,7 @@ class UsersListTests(TestCase):
         return issue_token(staff, "staff")
 
     def test_admin_can_list_customers(self):
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('admin', 1)}")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('operations', 1)}")
         response = self.client.get("/api/accounts/customers/")
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -45,7 +45,7 @@ class UsersListTests(TestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_admin_can_list_business_owners(self):
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('admin', 2)}")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('operations', 2)}")
         response = self.client.get("/api/accounts/business-owners/")
         self.assertEqual(response.status_code, 200)
         data = response.json()

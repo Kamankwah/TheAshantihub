@@ -16,9 +16,11 @@ from .models import (
     Customer,
     PasswordResetToken,
     Role,
+    RoleInviteRule,
     ScoutAssignment,
     StaffUser,
 )
+from .permissions import can_manage_staff
 
 # Used to pay the same check_password() cost when no account is found, so that
 # login timing does not leak whether an identifier exists (see login serializers below).
@@ -75,16 +77,31 @@ INVITE_TOKEN_LIFETIME = datetime.timedelta(days=7)
 
 class StaffInviteSerializer(serializers.ModelSerializer):
     role = serializers.SlugRelatedField(slug_field="name", queryset=Role.objects.all())
+    manager = serializers.PrimaryKeyRelatedField(
+        queryset=StaffUser.objects.filter(is_active=True), required=False, allow_null=True, write_only=True
+    )
 
     class Meta:
         model = StaffUser
-        fields = ["id", "full_name", "email", "phone", "role"]
+        fields = ["id", "full_name", "email", "phone", "role", "manager"]
 
     def validate_role(self, value):
         requester = self.context["request"].user
         if value.name == Role.SUPER_ADMIN and requester.role.name != Role.SUPER_ADMIN:
             raise serializers.ValidationError("Only a super_admin can invite another super_admin.")
+        if not can_manage_staff(requester) and not RoleInviteRule.objects.filter(
+            inviter_role=requester.role, invitee_role=value
+        ).exists():
+            raise serializers.ValidationError("You can't invite someone to that role.")
         return value
+
+    def validate(self, attrs):
+        # A team manager's invitee always reports to them; only staff.manage
+        # may name a different manager.
+        requester = self.context["request"].user
+        if not can_manage_staff(requester):
+            attrs["manager"] = requester
+        return attrs
 
     def create(self, validated_data):
         # password_hash stays unusable until /staff/activate/ sets a real password.
@@ -695,6 +712,8 @@ class StaffBusinessOwnerDetailSerializer(serializers.ModelSerializer):
 
 class StaffListSerializer(serializers.ModelSerializer):
     role = serializers.CharField(source="role.name", read_only=True)
+    manager = serializers.IntegerField(source="manager_id", read_only=True, allow_null=True)
+    manager_name = serializers.CharField(source="manager.full_name", read_only=True, default=None)
     status = serializers.SerializerMethodField()
     # Effective permissions, so the panel's per-staffer permission editor
     # (item 9) can show what's currently allowed without a second request.
@@ -709,7 +728,7 @@ class StaffListSerializer(serializers.ModelSerializer):
     class Meta:
         model = StaffUser
         fields = [
-            "id", "full_name", "email", "phone", "role", "status",
+            "id", "full_name", "email", "phone", "role", "manager", "manager_name", "status",
             "is_suspended", "suspension_reason", "is_active",
             "permissions", "role_permissions", "created_at",
         ]

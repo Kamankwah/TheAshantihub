@@ -20,7 +20,7 @@ class EventModerationQueueTests(TestCase):
         self.client = APIClient()
         self.admin = StaffUser.objects.create(
             full_name="Admin Person", email="admin-event-queue@example.com", password_hash="x",
-            role=Role.objects.get(name="admin"),
+            role=Role.objects.get(name="operations"),
         )
         self.accountant = StaffUser.objects.create(
             full_name="Accountant Person", email="acct-event-queue@example.com", password_hash="x",

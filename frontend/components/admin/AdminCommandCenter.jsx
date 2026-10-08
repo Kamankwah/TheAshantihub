@@ -35,6 +35,10 @@ import useBreakpoint from "../../hooks/useBreakpoint.js";
 import StaffHeader, { RoleChip } from "./shell/StaffHeader.jsx";
 import StaffDrawer from "./shell/StaffDrawer.jsx";
 import StaffBottomBar from "./shell/StaffBottomBar.jsx";
+import TasksPanel from "./panels/TasksPanel.jsx";
+import ActivityPanel from "./panels/ActivityPanel.jsx";
+import CallLogPanel from "./panels/CallLogPanel.jsx";
+import MyTeamPanel from "./panels/MyTeamPanel.jsx";
 import StaffShellStyles from "./shell/StaffShellStyles.jsx";
 import InstallAppButton from "./shell/InstallAppButton.jsx";
 import UpdateToast from "./shell/UpdateToast.jsx";
@@ -177,6 +181,10 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "promotions" && <PromotionsPanel auth={auth} />}
           {activeTab === "analytics" && <AnalyticsPanel />}
           {activeTab === "messaging" && <MessagingPanel />}
+          {activeTab === "tasks" && <TasksPanel />}
+          {activeTab === "activity" && <ActivityPanel />}
+          {activeTab === "calls" && <CallLogPanel />}
+          {activeTab === "my-team" && <MyTeamPanel currentStaffId={auth.user?.id} />}
         </main>
       </div>
 

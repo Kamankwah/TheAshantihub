@@ -50,6 +50,7 @@ urlpatterns = [
     ),
     path("business-owners/login/", views.BusinessOwnerLoginView.as_view(), name="business-owner-login"),
     path("staff/login/", views.StaffLoginView.as_view(), name="staff-login"),
+    path("staff/logout/", views.StaffLogoutView.as_view(), name="staff-logout"),
     path(
         "business-owners/register/",
         views.BusinessOwnerRegisterView.as_view(),
@@ -101,6 +102,9 @@ urlpatterns = [
         name="staff-business-owner-unsuspend",
     ),
     path("staff/", views.StaffListView.as_view(), name="staff-list"),
+    path("staff/team/", views.StaffTeamListView.as_view(), name="staff-team"),
+    path("staff/invitable-roles/", views.InvitableRolesView.as_view(), name="staff-invitable-roles"),
+    path("staff/<int:pk>/manager/", views.StaffManagerView.as_view(), name="staff-manager"),
     path("staff/<int:pk>/suspend/", views.StaffSuspendView.as_view(), name="staff-suspend"),
     path("staff/<int:pk>/unsuspend/", views.StaffUnsuspendView.as_view(), name="staff-unsuspend"),
     path("staff/<int:pk>/deactivate/", views.StaffDeactivateView.as_view(), name="staff-deactivate"),

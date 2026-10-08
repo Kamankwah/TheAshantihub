@@ -327,6 +327,7 @@ export const handlers = [
   }),
   // Staff account management (item 10) + permission editor (item 9) — default
   // handlers, overridden per-test as needed.
+  http.post('http://localhost:8000/api/accounts/staff/logout/', () => new HttpResponse(null, { status: 204 })),
   http.post('http://localhost:8000/api/accounts/staff/:id/suspend/', ({ params }) => {
     return HttpResponse.json({ id: Number(params.id), status: 'suspended' })
   }),
@@ -473,10 +474,16 @@ export const handlers = [
   http.post('http://localhost:8000/api/notifications/read-all/', () => {
     return HttpResponse.json({ unread_count: 0 })
   }),
+  http.get('http://localhost:8000/api/tasks/', () => HttpResponse.json([])),
+  http.get('http://localhost:8000/api/activity/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/calls/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/calls/purposes/', () => HttpResponse.json([{ value: 'other', label: 'Other' }])),
+  http.get('http://localhost:8000/api/accounts/staff/team/', () => HttpResponse.json([])),
+  http.get('http://localhost:8000/api/accounts/staff/invitable-roles/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/notifications/staff-badges/', () => {
     return HttpResponse.json({
       kyc: 0, listings: 0, events: 0, hero: 0, reviews: 0,
-      plan_approvals: 0, contact_messages: 0, escrow: 0,
+      plan_approvals: 0, contact_messages: 0, escrow: 0, tasks_overdue: 0,
     })
   }),
 ]
