@@ -5,6 +5,7 @@ import sys
 import environ
 
 from celery.schedules import crontab
+from cryptography.fernet import Fernet
 from django.core.exceptions import ImproperlyConfigured
 
 from accounts.mixins import AnonymousUser
@@ -24,13 +25,21 @@ if not DEBUG and SECRET_KEY == "dev-only-insecure-key":
 # Encrypts staff 2-step sign-in secrets at rest (accounts/two_factor.py) and
 # keys the recovery-code hashes. A Fernet key — generate with:
 #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-# Changing it switches off everyone's 2-step sign-in (they set it up again),
-# so set it once and back it up with the database password.
+# Changing it locks every enrolled staffer out of the second step until each is
+# reset with `manage.py reset_staff_two_factor <email>`, so set it once and back
+# it up with the database password.
 STAFF_SECRETS_KEY = env("STAFF_SECRETS_KEY", default="")
 if not STAFF_SECRETS_KEY:
     if not DEBUG:
         raise ImproperlyConfigured("STAFF_SECRETS_KEY must be set when DJANGO_DEBUG=False")
     STAFF_SECRETS_KEY = base64.urlsafe_b64encode(hashlib.sha256(SECRET_KEY.encode()).digest()).decode()
+try:
+    Fernet(STAFF_SECRETS_KEY.encode())
+except ValueError as exc:
+    raise ImproperlyConfigured(
+        "STAFF_SECRETS_KEY is not a valid Fernet key — generate one with: "
+        "python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+    ) from exc
 
 # When True, business-registration GPS addresses are additionally verified as
 # real Ghana Post addresses via the public ghana-api.dev validator (best-effort;
