@@ -371,6 +371,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "accounts.tasks.cleanup_staff_sessions",
         "schedule": crontab(hour=3, minute=30),
     },
+    "approvals-escalate": {
+        "task": "approvals.tasks.escalate_due_approvals",
+        "schedule": 300.0,  # every 5 minutes
+    },
 }
 
 # Production sets this True so the nightly activity check emails its seal to

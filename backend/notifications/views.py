@@ -99,6 +99,7 @@ class StaffBadgesView(APIView):
 
         # Local imports keep this app's import surface small and avoid any
         # load-order coupling to the queue-owning apps.
+        from approvals.services import waiting_for
         from billing.models import SubscriptionPlan
         from contact.models import ContactMessage
         from events.models import Event, Ticket
@@ -160,5 +161,6 @@ class StaffBadgesView(APIView):
                 "tasks_overdue": Task.objects.filter(
                     owner=user, status=Task.OPEN, due_at__lt=timezone.now()
                 ).count(),
+                "approvals_waiting": waiting_for(user).count(),
             }
         )

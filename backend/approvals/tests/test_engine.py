@@ -89,7 +89,7 @@ class DirectApplyTests(Base):
     def test_a_failing_direct_apply_saves_nothing(self):
         registry.register(BROKEN_APPLY)
         self.addCleanup(registry.unregister, BROKEN_APPLY.key)
-        with self.assertRaises(services.ApplyFailed):
+        with self.assertLogs("approvals.services", level="ERROR"), self.assertRaises(services.ApplyFailed):
             self.submit(maker=self.boss, kind=BROKEN_APPLY)
         self.assertFalse(ApprovalRequest.objects.filter(kind=BROKEN_APPLY.key).exists())
 
@@ -151,7 +151,7 @@ class DecisionTests(Base):
         registry.register(BROKEN_APPLY)
         self.addCleanup(registry.unregister, BROKEN_APPLY.key)
         approval = self.submit(kind=BROKEN_APPLY)
-        with self.assertRaises(services.ApplyFailed) as raised:
+        with self.assertLogs("approvals.services", level="ERROR"), self.assertRaises(services.ApplyFailed) as raised:
             services.approve(approval.pk, self.lead)
         self.assertEqual(raised.exception.status_code, 500)
         self.assertEqual(
@@ -263,7 +263,9 @@ class EscalationTests(Base):
         bad = self.submit(maker=self.other_ops, kind=RENAME_STAFF)
         ApprovalRequest.objects.filter(pk=bad.pk).update(kind=bad_kind.key)
         past = max(good.due_at, bad.due_at) + timedelta(hours=1)
-        self.assertEqual(services.escalate_due(now=past), 1)
+        with self.assertLogs("approvals.services", level="ERROR") as logs:
+            self.assertEqual(services.escalate_due(now=past), 1)
+        self.assertIn(f"Escalating approval {bad.pk} failed", logs.output[0])
         good.refresh_from_db()
         self.assertEqual(good.stage, "pool")
 

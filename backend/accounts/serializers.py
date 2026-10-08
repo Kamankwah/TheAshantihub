@@ -801,7 +801,9 @@ class ScoutAssignmentSerializer(serializers.ModelSerializer):
 
 
 def staff_brief(staff):
-    """The compact staff shape shared by serializers."""
+    """The compact staff shape shared by serializers. None in, None out."""
+    if staff is None:
+        return None
     return {"id": staff.id, "full_name": staff.full_name, "role": staff.role.name}
 
 
