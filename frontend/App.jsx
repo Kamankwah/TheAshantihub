@@ -1617,7 +1617,7 @@ function StaffNotificationsSlot({ user }) {
   const [open, setOpen] = useState(false);
   const unread = data?.unread_count ?? 0;
   return <>
-    <button type="button" onClick={()=>setOpen(v=>!v)} aria-label={unread>0?`Notifications (${unread} unread)`:"Notifications"} title="Notifications"
+    <button type="button" onClick={()=>setOpen(v=>!v)} aria-haspopup="dialog" aria-expanded={open} aria-label={unread>0?`Notifications (${unread} unread)`:"Notifications"} title="Notifications"
       style={{position:"relative",background:"none",border:`1px solid ${D.divider}`,borderRadius:10,minWidth:34,height:34,cursor:"pointer",fontSize:"0.9rem",color:D.text,fontFamily:"inherit"}}>
       🔔
       {unread>0&&<span aria-hidden="true" style={{position:"absolute",top:-6,right:-6,background:D.red,color:D.panelBg,borderRadius:20,padding:"1px 5px",fontSize:"0.6rem",fontWeight:800}}>{unread}</span>}

@@ -80,6 +80,66 @@ describe('ApprovalsPanel request', () => {
     await waitFor(() => expect(body).toEqual({ note: 'Checked with the owner' }))
   })
 
+  it('refreshes the counts, staff badges and notifications after a decision', async () => {
+    const hits = { counts: 0, badges: 0, notifications: 0 }
+    server.use(
+      http.get('http://localhost:8000/api/approvals/7/', () => HttpResponse.json(detail())),
+      http.post('http://localhost:8000/api/approvals/7/approve/', () => HttpResponse.json(detail({ status: 'approved', can_decide: false }))),
+      http.get('http://localhost:8000/api/approvals/counts/', () => { hits.counts += 1; return HttpResponse.json({ mine: 0, made: 0, team: 0, decided: 0, can_view_all: false }) }),
+      http.get('http://localhost:8000/api/notifications/staff-badges/', () => { hits.badges += 1; return HttpResponse.json({ approvals_waiting: 0 }) }),
+      http.get('http://localhost:8000/api/notifications/', () => { hits.notifications += 1; return HttpResponse.json({ unread_count: 0, results: [] }) }),
+    )
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { useApprovalCounts } = await import('../../../../hooks/useApprovals.js')
+    const { useStaffBadges } = await import('../../../../hooks/useStaffBadges.js')
+    const { useNotifications } = await import('../../../../hooks/useNotifications.js')
+    function Observers() { useApprovalCounts(); useStaffBadges(); useNotifications(true); return null }
+    render(
+      <QueryClientProvider client={queryClient}>
+        <Observers />
+        <ApprovalsPanel detailId="7" onOpenDetail={() => {}} />
+      </QueryClientProvider>,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve' }))
+    await waitFor(() => expect(hits.counts).toBeGreaterThanOrEqual(2))
+    await waitFor(() => expect(hits.badges).toBeGreaterThanOrEqual(2))
+    await waitFor(() => expect(hits.notifications).toBeGreaterThanOrEqual(2))
+  })
+
+  it('refetches the request after a refused decision, so a decided request loses its buttons', async () => {
+    let gets = 0
+    server.use(
+      http.get('http://localhost:8000/api/approvals/7/', () => {
+        gets += 1
+        return HttpResponse.json(gets === 1 ? detail() : detail({ status: 'approved', can_decide: false, decided_by: { id: 2, full_name: 'Ama Boateng' }, decided_at: new Date().toISOString() }))
+      }),
+      http.post('http://localhost:8000/api/approvals/7/approve/', () => HttpResponse.json({ detail: 'Already decided.' }, { status: 400 })),
+    )
+    renderPanel({ detailId: '7' })
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve' }))
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument())
+    expect(screen.getByRole('alert')).toHaveTextContent('Already decided.')
+    expect(gets).toBe(2)
+  })
+
+  it('says a missing request is missing, and offers a retry for any other load error', async () => {
+    server.use(http.get('http://localhost:8000/api/approvals/7/', () => HttpResponse.json({ detail: 'Not found.' }, { status: 404 })))
+    renderPanel({ detailId: '7' })
+    expect(await screen.findByText("This request doesn't exist, or isn't one you can see.")).toBeInTheDocument()
+  })
+
+  it('shows a retry button when the request fails to load for another reason', async () => {
+    let gets = 0
+    server.use(http.get('http://localhost:8000/api/approvals/7/', () => {
+      gets += 1
+      return gets === 1 ? HttpResponse.json({ detail: 'boom' }, { status: 500 }) : HttpResponse.json(detail())
+    }))
+    renderPanel({ detailId: '7' })
+    expect(await screen.findByText("Couldn't load this request. Try again.")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByRole('table', { name: 'What would change' })).toBeInTheDocument()
+  })
+
   it('needs a note to return a request', async () => {
     let returned = null
     server.use(
@@ -111,7 +171,7 @@ describe('ApprovalsPanel request', () => {
       http.post('http://localhost:8000/api/approvals/7/cancel/', () => { cancelled = true; return HttpResponse.json(detail({ status: 'cancelled', can_cancel: false })) }),
     )
     renderPanel({ detailId: '7' })
-    expect(await screen.findByText("You can't approve your own requests.")).toBeInTheDocument()
+    expect(await screen.findByText("You made this request. You can cancel it while it's waiting.")).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Cancel request' }))
     await waitFor(() => expect(cancelled).toBe(true))

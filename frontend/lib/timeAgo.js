@@ -9,12 +9,17 @@ export function formatDuration(ms) {
 }
 
 export function timeAgo(iso, now = Date.now()) {
-  return formatDuration(now - new Date(iso).getTime())
+  const then = iso ? new Date(iso).getTime() : NaN
+  return Number.isNaN(then) ? '' : formatDuration(now - then)
 }
 
 // A pending approval's clock: when it moves to the next approver, or how
 // long it has been overdue.
 export function describeWait(dueIso, now = Date.now()) {
-  const left = new Date(dueIso).getTime() - now
-  return left >= 0 ? `moves on in ${formatDuration(left)}` : `overdue by ${formatDuration(-left)}`
+  const due = dueIso ? new Date(dueIso).getTime() : NaN
+  if (Number.isNaN(due)) return ''
+  const left = due - now
+  if (left >= 0) return `moves on in ${formatDuration(left)}`
+  const late = formatDuration(-left)
+  return late === 'under a minute' ? 'overdue just now' : `overdue by ${late}`
 }

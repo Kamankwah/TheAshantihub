@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { apiPost } from "../../../apiClient.js";
 import { useApproval, useApprovalCounts, useApprovals } from "../../../hooks/useApprovals.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
@@ -81,10 +82,14 @@ function ApprovalsInbox({ onOpen }) {
 }
 
 function ApprovalRequest({ id, onBack }) {
-  const { data: a, isLoading, isError, refetch } = useApproval(id);
+  const { data: a, isLoading, isError, error, refetch } = useApproval(id);
   const [note, setNote] = useState("");
   const [actionError, setActionError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const queryClient = useQueryClient();
+  // A decision changes the inbox, its box counts, the sidebar badge and the
+  // maker's notifications, so refresh them all.
+  const refreshRelated = () => ['approvals', 'approval-counts', 'staff-badges', 'notifications'].forEach((key) => queryClient.invalidateQueries({ queryKey: [key] }));
 
   const act = async (action, body) => {
     setActionError(null);
@@ -93,8 +98,12 @@ function ApprovalRequest({ id, onBack }) {
       await apiPost(`/api/approvals/${id}/${action}/`, body);
       setNote("");
       refetch();
+      refreshRelated();
     } catch (err) {
       setActionError(apiErrorMessage(err, "Could not save the decision."));
+      // The record may have changed or been decided meanwhile.
+      refetch();
+      refreshRelated();
     } finally {
       setBusy(false);
     }
@@ -103,6 +112,7 @@ function ApprovalRequest({ id, onBack }) {
   const back = <button type="button" onClick={onBack} style={{ ...button(D.panelBg, D.text), alignSelf: "flex-start" }}>← Approvals</button>;
   const card = { ...glassCard, padding: 18, display: "flex", flexDirection: "column", gap: 14 };
   if (isLoading) return <div style={card}>{back}<div style={dim}>Loading…</div></div>;
+  if (isError && error?.status !== 404) return <div style={card}>{back}<div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>Couldn't load this request. Try again.</div><button type="button" onClick={() => refetch()} style={{ ...button(D.panelBg, D.text), alignSelf: "flex-start" }}>Try again</button></div>;
   if (isError || !a) return <div style={card}>{back}<div style={{ color: D.red, fontSize: "0.8rem" }}>This request doesn't exist, or isn't one you can see.</div></div>;
 
   const [statusLabel, statusColor] = STATUS[a.status] || [a.status, D.textDim];
@@ -129,7 +139,7 @@ function ApprovalRequest({ id, onBack }) {
         <tbody>
           {a.diff.map((row) => (
             <tr key={row.field || "value"} style={{ borderTop: `1px solid ${D.divider}`, color: D.text }}>
-              <td style={{ padding: "6px 8px", fontWeight: 700 }}>{row.field.replace(/_/g, " ")}</td>
+              <td style={{ padding: "6px 8px", fontWeight: 700 }}>{String(row.field || "").replace(/_/g, " ")}</td>
               <td style={{ padding: "6px 8px" }}>{show(row.before)}</td>
               <td style={{ padding: "6px 8px" }}>{show(row.after)}</td>
             </tr>
@@ -152,7 +162,7 @@ function ApprovalRequest({ id, onBack }) {
       )}
       {a.status === "pending" && a.can_cancel && (
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <span style={dim}>You can't approve your own requests.</span>
+          <span style={dim}>You made this request. You can cancel it while it's waiting.</span>
           <button type="button" disabled={busy} onClick={() => act("cancel", {})} style={button(D.panelBg, D.text, busy)}>Cancel request</button>
         </div>
       )}

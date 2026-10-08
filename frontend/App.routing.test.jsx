@@ -580,6 +580,8 @@ describe('AshantiHub routing — staff notification bell', () => {
     renderStaffAt('/staff')
     const bell = await screen.findByRole('button', { name: 'Notifications (1 unread)' }, { timeout: 3000 })
     expect(bell).toBeInTheDocument()
+    expect(bell).toHaveAttribute('aria-haspopup', 'dialog')
+    expect(bell).toHaveAttribute('aria-expanded', 'false')
   }, 8000)
 
   it('a staff notification linking approvals/7 opens /staff/approvals/7', async () => {
