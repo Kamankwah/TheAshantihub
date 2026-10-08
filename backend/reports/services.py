@@ -6,12 +6,13 @@ reports.view_all (Super Admin) may review anyone's."""
 import calendar
 from datetime import datetime, time, timedelta
 
-from django.db import connection, transaction
+from django.db import IntegrityError, connection, transaction
 from django.db.models import Q
 from django.utils import timezone
 
 from accounts.models import Role, StaffUser
 from activity.services import record
+from notifications.models import Notification
 from notifications.services import notify_staff
 
 from . import providers
@@ -25,6 +26,7 @@ SIMILARITY_FLAG = 0.8
 MIN_TEXT_FOR_SIMILARITY = 40
 PLAN_RESULTS = ("", "done", "partly", "not_done")
 MAX_LINES = 20
+MAX_NOTE = 2000
 
 
 class ReportError(Exception):
@@ -109,8 +111,10 @@ def _clean_items(value):
 def _clean_results(value):
     if not isinstance(value, list):
         raise ReportError("Mark the previous plan as a list.")
+    if len(value) > MAX_LINES:
+        raise ReportError(f"Keep the plan to {MAX_LINES} lines.")
     cleaned = []
-    for row in value[:MAX_LINES]:
+    for row in value:
         if not isinstance(row, dict) or row.get("result", "") not in PLAN_RESULTS:
             raise ReportError("Mark each plan item done, partly or not done.")
         cleaned.append({"item": str(row.get("item", ""))[:300], "result": row.get("result", "")})
@@ -130,11 +134,16 @@ def _clean_targets(value):
 
 def narrative_similarity(report):
     """Highest pg_trgm similarity (0–1) between this narrative and the
-    staffer's last five other reports; very short text scores 0."""
+    staffer's last five earlier reports of the same period type; very short
+    text scores 0."""
     text = report.narrative_text()
     if len(text) < MIN_TEXT_FOR_SIMILARITY:
         return 0.0
-    earlier = StaffReport.objects.filter(staff=report.staff).exclude(pk=report.pk).order_by("-period_start", "-id")[:5]
+    earlier = (
+        StaffReport.objects.filter(staff=report.staff, period=report.period, period_start__lt=report.period_start)
+        .exclude(pk=report.pk)
+        .order_by("-period_start", "-id")[:5]
+    )
     texts = [t for t in (r.narrative_text() for r in earlier) if t]
     if not texts:
         return 0.0
@@ -143,12 +152,18 @@ def narrative_similarity(report):
         return round(float(cursor.fetchone()[0]), 3)
 
 
-def save_draft(staff, period, day, data):
-    if day > timezone.localdate():
-        raise FuturePeriod("You can't write a report for a day that hasn't started.")
-    report = build(staff, period, day)
-    if report.pk and report.status not in (StaffReport.DRAFT, StaffReport.RETURNED):
-        raise NotEditable("A submitted report is locked.")
+def _locked(pk):
+    return StaffReport.objects.select_for_update(of=("self",)).select_related("staff__role").get(pk=pk)
+
+
+def _sync(target, source):
+    """Copy the locked row's state onto the caller's instance."""
+    for field in StaffReport._meta.concrete_fields:
+        setattr(target, field.attname, getattr(source, field.attname))
+    return target
+
+
+def _apply_draft_fields(report, data):
     for field in ("achievements", "blockers"):
         if field in data:
             setattr(report, field, str(data[field] or "")[:5000])
@@ -159,37 +174,63 @@ def save_draft(staff, period, day, data):
     if "linked_targets" in data:
         report.linked_targets = _clean_targets(data["linked_targets"])
     report.similarity = narrative_similarity(report)
-    report.save()
-    return report
+
+
+DRAFT_FIELDS = ["achievements", "blockers", "plan_next", "plan_results", "linked_targets", "similarity", "updated_at"]
+
+
+def save_draft(staff, period, day, data):
+    start, _ = period_bounds(period, day)
+    if start > timezone.localdate():
+        raise FuturePeriod("You can't write a report for a period that hasn't started.")
+    report = build(staff, period, day)
+    with transaction.atomic():
+        if report.pk is None:
+            try:
+                with transaction.atomic():
+                    _apply_draft_fields(report, data)
+                    report.save()
+                return report
+            except IntegrityError:
+                # Someone created it between our read and write: edit theirs.
+                report = build(staff, period, day)
+        locked = _locked(report.pk)
+        if locked.status not in (StaffReport.DRAFT, StaffReport.RETURNED):
+            raise NotEditable("A submitted report is locked.")
+        _apply_draft_fields(locked, data)
+        locked.save(update_fields=DRAFT_FIELDS)
+        return _sync(report, locked)
 
 
 def submit(report, *, now=None, http_request=None):
     now = now or timezone.now()
-    if report.status not in (StaffReport.DRAFT, StaffReport.RETURNED):
-        raise NotEditable("This report has already been submitted.")
-    if report.period_start > timezone.localdate(now):
-        raise FuturePeriod("You can't submit a report for a period that hasn't started.")
-    if not report.narrative_text():
-        raise ReportError("Write at least one line before you submit.")
     with transaction.atomic():
-        report.system_snapshot = providers.system_sections(report.staff, report.period_start, report.period_end)
-        report.submitted_at = now
-        report.is_late = now > due_at(report)
-        report.status = StaffReport.SUBMITTED
-        report.save(update_fields=["system_snapshot", "submitted_at", "is_late", "status", "updated_at"])
-        manager = report.staff.manager
+        locked = _locked(report.pk)
+        if locked.status not in (StaffReport.DRAFT, StaffReport.RETURNED):
+            raise NotEditable("This report has already been submitted.")
+        if locked.period_start > timezone.localdate(now):
+            raise FuturePeriod("You can't submit a report for a period that hasn't started.")
+        if not locked.narrative_text():
+            raise ReportError("Write at least one line before you submit.")
+        locked.system_snapshot = providers.system_sections(locked.staff, locked.period_start, locked.period_end)
+        if locked.submitted_at is None:  # lateness is decided by the first submission only
+            locked.submitted_at = now
+            locked.is_late = now > due_at(locked)
+        locked.status = StaffReport.SUBMITTED
+        locked.save(update_fields=["system_snapshot", "submitted_at", "is_late", "status", "updated_at"])
+        manager = locked.staff.manager
         if manager is not None and manager.is_active:
             notify_staff(
                 manager, "report_submitted",
-                f"{report.staff.full_name} sent a {report.get_period_display().lower()} report",
-                body="Submitted after the deadline." if report.is_late else "",
+                f"{locked.staff.full_name} sent a {locked.get_period_display().lower()} report",
+                body="Submitted after the deadline." if locked.is_late else "",
                 link="team-reports", icon="📝",
             )
-        record(report.staff, "report.submitted", target=report, after={
-            "period": report.period, "period_start": str(report.period_start),
-            "is_late": report.is_late, "similarity": report.similarity,
+        record(locked.staff, "report.submitted", target=locked, after={
+            "period": locked.period, "period_start": str(locked.period_start),
+            "is_late": locked.is_late, "similarity": locked.similarity,
         }, request=http_request)
-    return report
+        return _sync(report, locked)
 
 
 def can_review(report, staff):
@@ -198,42 +239,46 @@ def can_review(report, staff):
     return report.staff.manager_id == staff.pk or VIEW_ALL in staff.effective_permission_codenames()
 
 
-def _check_reviewable(report, staff):
-    if report.status != StaffReport.SUBMITTED:
-        raise ReportError("Only a submitted report can be reviewed.")
-    if not can_review(report, staff):
-        raise NotReviewable("Only their manager or a Super Admin can review this report.")
+def _decide(report, reviewer, new_status, note, kind, title, icon, verb, http_request):
+    with transaction.atomic():
+        locked = _locked(report.pk)
+        if locked.status != StaffReport.SUBMITTED:
+            if locked.status in (StaffReport.ACKNOWLEDGED, StaffReport.RETURNED):
+                raise ReportError("This report has already been reviewed.")
+            raise ReportError("Only a submitted report can be reviewed.")
+        if not can_review(locked, reviewer):
+            raise NotReviewable("Only their manager or a Super Admin can review this report.")
+        if new_status == StaffReport.RETURNED and not note:
+            raise NoteRequired("Write what needs changing before you return it.")
+        locked.status = new_status
+        locked.reviewer = reviewer
+        locked.reviewed_at = timezone.now()
+        locked.review_note = note
+        locked.save(update_fields=["status", "reviewer", "reviewed_at", "review_note", "updated_at"])
+        notify_staff(locked.staff, kind, title(reviewer), body=note, link="reports", icon=icon)
+        record(reviewer, verb, target=locked, after={"note": note}, request=http_request)
+        return _sync(report, locked)
+
+
+def _clean_note(note):
+    note = (note or "").strip()
+    if len(note) > MAX_NOTE:
+        raise ReportError(f"Keep the note to {MAX_NOTE} characters.")
+    return note
 
 
 def acknowledge(report, reviewer, note="", http_request=None):
-    _check_reviewable(report, reviewer)
-    with transaction.atomic():
-        report.status = StaffReport.ACKNOWLEDGED
-        report.reviewer = reviewer
-        report.reviewed_at = timezone.now()
-        report.review_note = (note or "").strip()
-        report.save(update_fields=["status", "reviewer", "reviewed_at", "review_note", "updated_at"])
-        notify_staff(report.staff, "report_acknowledged", f"{reviewer.full_name} read your report",
-                     body=report.review_note, link="reports", icon="✅")
-        record(reviewer, "report.acknowledged", target=report, after={"note": report.review_note}, request=http_request)
-    return report
+    return _decide(
+        report, reviewer, StaffReport.ACKNOWLEDGED, _clean_note(note), "report_acknowledged",
+        lambda who: f"{who.full_name} read your report", "✅", "report.acknowledged", http_request,
+    )
 
 
 def return_report(report, reviewer, note, http_request=None):
-    note = (note or "").strip()
-    _check_reviewable(report, reviewer)
-    if not note:
-        raise NoteRequired("Write what needs changing before you return it.")
-    with transaction.atomic():
-        report.status = StaffReport.RETURNED
-        report.reviewer = reviewer
-        report.reviewed_at = timezone.now()
-        report.review_note = note
-        report.save(update_fields=["status", "reviewer", "reviewed_at", "review_note", "updated_at"])
-        notify_staff(report.staff, "report_returned", "Your report came back with a note",
-                     body=note, link="reports", icon="↩️")
-        record(reviewer, "report.returned", target=report, after={"note": note}, request=http_request)
-    return report
+    return _decide(
+        report, reviewer, StaffReport.RETURNED, _clean_note(note), "report_returned",
+        lambda who: "Your report came back with a note", "↩️", "report.returned", http_request,
+    )
 
 
 def visible_reports(staff):
@@ -253,11 +298,15 @@ def send_day_reminders(now=None):
         period=StaffReport.DAY, period_start=today,
         status__in=[StaffReport.SUBMITTED, StaffReport.ACKNOWLEDGED],
     ).values("staff_id")
+    already = Notification.objects.filter(
+        kind="report_reminder", created_at__date=today
+    ).values("staff_id")
     recipients = (
         StaffUser.objects.select_related("role")
         .filter(is_active=True, is_suspended=False, invite_token__isnull=True)
         .exclude(role__name=Role.SUPER_ADMIN)
         .exclude(pk__in=done)
+        .exclude(pk__in=already)
     )
     sent = 0
     for staff in recipients:

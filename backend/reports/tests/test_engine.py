@@ -1,6 +1,8 @@
+import threading
 from datetime import date, datetime, time, timedelta
 
-from django.test import TestCase
+from django.db import connection
+from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
 from accounts.testing import make_staff
@@ -185,3 +187,143 @@ class ReminderTests(TestCase):
         recipients = set(Notification.objects.filter(kind="report_reminder").values_list("staff__email", flat=True))
         self.assertEqual(recipients, {"ama@example.com"})
         self.assertEqual(Notification.objects.get(kind="report_reminder").title, "Your day report is due at 19:00")
+
+
+class FixRoundTests(TestCase):
+    def setUp(self):
+        self.lead = make_staff("operations", "ama@example.com")
+        self.scout = make_staff("scout", "kwame@example.com", manager=self.lead)
+        self.today = timezone.localdate()
+
+    def test_a_stale_autosave_cannot_unsubmit_a_report(self):
+        stale = services.save_draft(self.scout, "day", self.today, {"achievements": NARRATIVE})
+        services.submit(StaffReport.objects.get(pk=stale.pk), now=at(self.today, 18))
+        with self.assertRaises(services.NotEditable):
+            services.save_draft(self.scout, "day", self.today, {"achievements": "late edit"})
+        report = StaffReport.objects.get(pk=stale.pk)
+        self.assertEqual(report.status, StaffReport.SUBMITTED)
+        self.assertIsNotNone(report.system_snapshot)
+        # a caller holding an out-of-date instance is refused at submit/review too
+        with self.assertRaises(services.NotEditable):
+            services.submit(stale, now=at(self.today, 18, 5))
+
+    def test_resubmission_keeps_the_first_submission_time_and_lateness(self):
+        report = services.save_draft(self.scout, "day", self.today, {"achievements": NARRATIVE})
+        services.submit(report, now=at(self.today, 18))
+        services.return_report(report, self.lead, note="More detail")
+        report.refresh_from_db()
+        services.submit(report, now=at(self.today, 19, 5))
+        report.refresh_from_db()
+        self.assertFalse(report.is_late)
+        self.assertEqual(report.submitted_at, at(self.today, 18))
+
+    def test_a_week_is_compared_with_earlier_weeks_not_with_days(self):
+        last_monday = self.today - timedelta(days=self.today.weekday() + 7)
+        services.save_draft(self.scout, "week", last_monday, {"achievements": NARRATIVE})
+        services.save_draft(self.scout, "day", self.today - timedelta(days=1), {"achievements": "Different day text about beads and stalls in Kejetia market."})
+        self.assertGreaterEqual(
+            services.save_draft(self.scout, "week", self.today, {"achievements": NARRATIVE}).similarity,
+            services.SIMILARITY_FLAG,
+        )
+
+    def test_a_week_restating_its_own_day_is_not_flagged(self):
+        services.save_draft(self.scout, "day", self.today, {"achievements": NARRATIVE})
+        week = services.save_draft(self.scout, "week", self.today, {"achievements": NARRATIVE})
+        self.assertEqual(week.similarity, 0.0)
+
+    def test_a_week_draft_keyed_by_a_later_day_in_the_current_week_is_accepted(self):
+        later = self.today + timedelta(days=1)
+        if later.weekday() == 0:
+            self.skipTest("tomorrow starts a new week")
+        report = services.save_draft(self.scout, "week", later, {"achievements": NARRATIVE})
+        self.assertEqual(report.period_start, self.today - timedelta(days=self.today.weekday()))
+
+    def test_review_note_is_capped_and_plan_results_are_limited(self):
+        report = services.save_draft(self.scout, "day", self.today, {"achievements": NARRATIVE})
+        services.submit(report, now=at(self.today, 18))
+        with self.assertRaises(services.ReportError):
+            services.acknowledge(report, self.lead, note="x" * 2001)
+        with self.assertRaises(services.ReportError):
+            services.save_draft(self.scout, "week", self.today, {"plan_results": [{"item": "a", "result": ""}] * 21})
+
+    def test_reminders_are_sent_once_a_day(self):
+        send_day_report_reminders()
+        send_day_report_reminders()
+        self.assertEqual(Notification.objects.filter(kind="report_reminder", staff=self.scout).count(), 1)
+        self.assertEqual(Notification.objects.filter(kind="report_reminder", staff=self.lead).count(), 1)
+
+    def test_an_inactive_staffer_gets_no_reminder(self):
+        make_staff("support", "gone@example.com", is_active=False)
+        send_day_report_reminders()
+        self.assertFalse(Notification.objects.filter(kind="report_reminder", staff__email="gone@example.com").exists())
+
+    def test_visibility_and_review_rights(self):
+        other_lead = make_staff("operations", "kojo@example.com")
+        boss = make_staff("super_admin", "boss@example.com")
+        draft = services.save_draft(self.scout, "day", self.today - timedelta(days=1), {"achievements": NARRATIVE})
+        sent = services.save_draft(self.scout, "day", self.today, {"achievements": NARRATIVE})
+        services.submit(sent, now=at(self.today, 18))
+        self.assertEqual(set(services.visible_reports(self.scout)), {draft, sent})
+        self.assertEqual(set(services.visible_reports(self.lead)), {sent})
+        self.assertEqual(set(services.visible_reports(boss)), {sent})
+        self.assertEqual(set(services.visible_reports(other_lead)), set())
+        self.assertTrue(services.can_review(sent, self.lead))
+        self.assertTrue(services.can_review(sent, boss))
+        self.assertFalse(services.can_review(sent, other_lead))
+        self.assertFalse(services.can_review(sent, self.scout))
+
+
+class ConcurrentReviewTests(TransactionTestCase):
+    serialized_rollback = True
+
+    def setUp(self):
+        self.lead = make_staff("operations", "ama@example.com")
+        self.boss = make_staff("super_admin", "boss@example.com")
+        self.scout = make_staff("scout", "kwame@example.com", manager=self.lead)
+        self.today = timezone.localdate()
+        report = services.save_draft(self.scout, "day", self.today, {"achievements": NARRATIVE})
+        self.pk = report.pk
+
+    def race(self, *jobs):
+        results = []
+        barrier = threading.Barrier(len(jobs))
+
+        def run(job):
+            try:
+                barrier.wait()
+                job(StaffReport.objects.get(pk=self.pk))
+                results.append("ok")
+            except services.ReportError:
+                results.append("refused")
+            finally:
+                connection.close()
+
+        threads = [threading.Thread(target=run, args=(job,)) for job in jobs]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        return sorted(results)
+
+    def test_acknowledge_and_return_at_once_decide_exactly_once(self):
+        services.submit(StaffReport.objects.get(pk=self.pk), now=at(self.today, 18))
+        results = self.race(
+            lambda r: services.acknowledge(r, self.lead),
+            lambda r: services.return_report(r, self.boss, note="Redo"),
+        )
+        self.assertEqual(results, ["ok", "refused"])
+        self.assertEqual(
+            Notification.objects.filter(staff=self.scout, kind__in=["report_acknowledged", "report_returned"]).count(), 1
+        )
+        from activity.models import ActivityEvent
+        self.assertEqual(ActivityEvent.objects.filter(verb__in=["report.acknowledged", "report.returned"]).count(), 1)
+
+    def test_a_double_submit_records_one_event_and_one_notification(self):
+        results = self.race(
+            lambda r: services.submit(r, now=at(self.today, 18)),
+            lambda r: services.submit(r, now=at(self.today, 18)),
+        )
+        self.assertEqual(results, ["ok", "refused"])
+        from activity.models import ActivityEvent
+        self.assertEqual(ActivityEvent.objects.filter(verb="report.submitted").count(), 1)
+        self.assertEqual(Notification.objects.filter(staff=self.lead, kind="report_submitted").count(), 1)
