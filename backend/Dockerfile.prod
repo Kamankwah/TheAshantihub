@@ -14,8 +14,10 @@ WORKDIR /app
 
 # libmagic1 backs python-magic (upload content-type sniffing in listings/).
 # curl is used by the container healthcheck in docker-compose.yml.
+# Pango/HarfBuzz + DejaVu fonts render report PDFs (WeasyPrint, reports/exports.py).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libmagic1 curl \
+       libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

@@ -373,6 +373,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "accounts.tasks.cleanup_staff_sessions",
         "schedule": crontab(hour=3, minute=30),
     },
+    "reports-purge-exports": {
+        "task": "reports.tasks.purge_expired_exports",
+        "schedule": crontab(hour=4, minute=0),
+    },
     "approvals-escalate": {
         "task": "approvals.tasks.escalate_due_approvals",
         "schedule": 300.0,  # every 5 minutes

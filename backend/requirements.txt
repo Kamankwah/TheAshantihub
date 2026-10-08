@@ -26,3 +26,7 @@ redis==5.2.1
 # 2-step sign-in for staff (F9): TOTP codes and Fernet-encrypted secrets.
 pyotp==2.10.0
 cryptography==50.0.2
+
+# Report exports (F6): Excel and PDF. WeasyPrint needs Pango (see Dockerfiles).
+XlsxWriter==3.2.9
+weasyprint==70.0

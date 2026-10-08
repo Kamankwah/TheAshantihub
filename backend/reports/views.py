@@ -1,7 +1,9 @@
 from datetime import date
 
-from django.http import QueryDict
+from django.db import transaction
+from django.http import FileResponse, QueryDict
 from django.utils import timezone
+from django.utils.text import slugify
 from rest_framework import generics
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.pagination import PageNumberPagination
@@ -11,10 +13,13 @@ from rest_framework.views import APIView
 from accounts.models import StaffUser
 from accounts.permissions import IsStaff
 from accounts.serializers import staff_brief
+from accounts.sessions import require_sudo
+from activity.services import record
 
-from . import services
-from .models import StaffReport
+from . import exports, services
+from .models import ReportExport, StaffReport
 from .serializers import report_payload
+from .tasks import build_report_export, fail_export
 
 
 def _period(value):
@@ -204,3 +209,110 @@ class TeamReportsView(APIView):
                 for member in people
             ],
         })
+
+
+QUEUE_DOWN = "Background jobs are unavailable right now — try a range of 31 days or less."
+MAX_STAFF_ID = 2**31 - 1
+
+
+def _format(params):
+    fmt = params.get("format", "")
+    if fmt not in exports.FORMATS:
+        raise ValidationError({"format": "Use csv, xlsx or pdf."})
+    return fmt
+
+
+def _enqueue(export_id):
+    """Runs after the export row commits. A broker that is down must not leave
+    the export queued forever: mark it failed and tell the requester."""
+    try:
+        build_report_export.delay(export_id)
+    except Exception:
+        export = ReportExport.objects.select_related("requester").get(pk=export_id)
+        fail_export(export, QUEUE_DOWN)
+
+
+class ReportExportView(APIView):
+    """GET /api/reports/<id>/export/?format= — one report."""
+
+    content_negotiation_class = exports.ExportNegotiation
+
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def get(self, request, pk):
+        fmt = _format(request.query_params)
+        report = generics.get_object_or_404(
+            services.visible_reports(request.user).select_related("staff__role", "reviewer__role"), pk=pk
+        )
+        if report.staff_id != request.user.pk:
+            require_sudo(request)  # someone else's report is personal data
+        record(request.user, "report.exported", target=report, after={"format": fmt, "report": report.pk}, request=request)
+        stem = f"report-{slugify(report.staff.full_name)}-{report.period}-{report.period_start}"
+        return exports.export_response([report], fmt, stem, str(report))
+
+
+class ReportRangeExportView(APIView):
+    """GET /api/reports/export/?from=&to=&format=[&staff=&role=&period=]"""
+
+    content_negotiation_class = exports.ExportNegotiation
+
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def get(self, request):
+        params = request.query_params
+        fmt = _format(params)
+        start = _date(params.get("from"), "from", required=True)
+        end = _date(params.get("to"), "to", required=True)
+        if end < start:
+            raise ValidationError({"to": "Pick an end date on or after the start."})
+        filters = {"from": start.isoformat(), "to": end.isoformat()}
+        if params.get("staff"):
+            staff = params["staff"]
+            if not (staff.isdecimal() and staff.isascii()) or int(staff) > MAX_STAFF_ID:
+                raise ValidationError({"staff": "Use a staff id."})
+            if not exports.may_export_staff(request.user, int(staff)):
+                raise PermissionDenied("You can export only your own and your team's reports.")
+            filters["staff"] = int(staff)
+        if params.get("role"):
+            filters["role"] = params["role"][:50]
+        if params.get("period"):
+            filters["period"] = _period(params["period"])
+        reports = exports.export_queryset(request.user, filters)
+        if reports.exclude(staff=request.user).exists():
+            require_sudo(request)  # other people's reports are personal data
+        count = reports.count()
+        background = (end - start).days + 1 > exports.BACKGROUND_DAYS or count > exports.BACKGROUND_ROWS
+        after = {"filters": filters, "format": fmt, "rows": count, "background": background}
+        if background:
+            # record() holds a global lock until commit, so it goes last.
+            with transaction.atomic():
+                export = ReportExport.objects.create(requester=request.user, filters=filters, format=fmt)
+                transaction.on_commit(lambda: _enqueue(export.pk), robust=True)
+                record(request.user, "report.exported", after={**after, "export": export.pk}, request=request)
+            return Response({"id": export.pk, "status": export.status}, status=202)
+        record(request.user, "report.exported", after=after, request=request)
+        return exports.export_response(list(reports), fmt, f"ashantihub-reports-{start}-{end}", exports.range_title(filters))
+
+
+class ReportExportListView(APIView):
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def get(self, request):
+        return Response([exports.export_payload(e) for e in ReportExport.objects.filter(requester=request.user)[:20]])
+
+
+class ReportExportDownloadView(APIView):
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def get(self, request, pk):
+        export = generics.get_object_or_404(ReportExport, pk=pk, requester=request.user)
+        if not exports.signature_matches(export, request.query_params.get("sig")):
+            return Response({"detail": "This download link has expired. Export again."}, status=403)
+        path = exports.export_path(export)
+        if export.status != ReportExport.READY or not export.file_name or not path.exists():
+            return Response({"detail": "This export isn't available any more."}, status=410)
+        return FileResponse(open(path, "rb"), as_attachment=True, filename=exports.download_filename(export))

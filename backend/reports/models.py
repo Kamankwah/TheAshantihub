@@ -56,3 +56,39 @@ class StaffReport(models.Model):
 
     def __str__(self):
         return f"{self.staff.full_name} · {self.get_period_display()} report · {self.period_start}"
+
+
+class ReportExport(models.Model):
+    """A background report export (staff foundations F6): built by a Celery
+    job into PRIVATE_MEDIA_ROOT and downloadable by its requester through a
+    signed link for 24 hours. A failed job leaves no file behind."""
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    READY = "ready"
+    FAILED = "failed"
+    EXPIRED = "expired"
+    STATUS_CHOICES = [
+        (QUEUED, "Queued"),
+        (RUNNING, "Being prepared"),
+        (READY, "Ready"),
+        (FAILED, "Failed"),
+        (EXPIRED, "Expired"),
+    ]
+
+    requester = models.ForeignKey("accounts.StaffUser", on_delete=models.CASCADE, related_name="report_exports")
+    filters = models.JSONField(default=dict)
+    format = models.CharField(max_length=4)
+    status = models.CharField(max_length=8, choices=STATUS_CHOICES, default=QUEUED)
+    file_name = models.CharField(max_length=120, blank=True, default="")
+    row_count = models.PositiveIntegerField(default=0)
+    error = models.CharField(max_length=300, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"Report export #{self.pk} ({self.format}, {self.status})"
