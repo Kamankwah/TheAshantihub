@@ -10,6 +10,7 @@ from accounts.models import StaffUser
 from accounts.testing import make_staff
 from activity.models import ActivityEvent
 from approvals import registry, services
+from approvals.models import ApprovalRequest
 from approvals.tests.kinds import BROKEN_APPLY, RENAME_STAFF
 from notifications.models import Notification
 
@@ -61,6 +62,75 @@ class SubmitTests(Base):
         self.assertTrue(ActivityEvent.objects.filter(verb="approval.applied_directly").exists())
 
 
+class DirectApplyTests(Base):
+    def test_a_super_admins_change_is_validated_first(self):
+        def refuse(request):
+            raise services.ApprovalError("Not allowed yet.")
+
+        applied = []
+        guarded = replace(RENAME_STAFF, key="test.guarded_direct", validate=refuse,
+                          apply=lambda request: applied.append(request.pk))
+        registry.register(guarded)
+        self.addCleanup(registry.unregister, guarded.key)
+        with self.assertRaises(services.ApprovalError):
+            self.submit(maker=self.boss, kind=guarded)
+        self.assertEqual(applied, [])
+        self.assertFalse(ApprovalRequest.objects.filter(kind=guarded.key).exists())
+
+    def test_apply_receives_a_saved_request_on_the_direct_path(self):
+        seen = []
+        saving = replace(RENAME_STAFF, key="test.saved_direct", apply=lambda request: seen.append(request.pk))
+        registry.register(saving)
+        self.addCleanup(registry.unregister, saving.key)
+        approval = self.submit(maker=self.boss, kind=saving)
+        self.assertEqual(seen, [approval.pk])
+        self.assertIsNotNone(seen[0])
+
+    def test_a_failing_direct_apply_saves_nothing(self):
+        registry.register(BROKEN_APPLY)
+        self.addCleanup(registry.unregister, BROKEN_APPLY.key)
+        with self.assertRaises(services.ApplyFailed):
+            self.submit(maker=self.boss, kind=BROKEN_APPLY)
+        self.assertFalse(ApprovalRequest.objects.filter(kind=BROKEN_APPLY.key).exists())
+
+
+class VisibilityTests(Base):
+    def test_visible_to_and_waiting_for(self):
+        stranger = make_staff("support", "stranger@example.com")
+        approval = self.submit()  # scout -> lead
+        # own, manager's (assigned + waiting), super admin sees all
+        self.assertIn(approval, services.visible_to(self.scout))
+        self.assertIn(approval, services.visible_to(self.lead))
+        self.assertIn(approval, services.waiting_for(self.lead))
+        self.assertIn(approval, services.visible_to(self.boss))
+        self.assertNotIn(approval, services.waiting_for(self.scout))
+        self.assertNotIn(approval, services.visible_to(stranger))
+        self.assertNotIn(approval, services.waiting_for(stranger))
+        # the direct report's request is visible to the manager even once decided by someone else
+        services.approve(approval.pk, self.boss)
+        self.assertIn(approval, services.visible_to(self.lead))
+        self.assertIn(approval, services.visible_to(self.boss))
+        self.assertNotIn(approval, services.waiting_for(self.lead))
+        self.assertNotIn(approval, services.visible_to(self.other_ops))
+
+    def test_decided_by_me_is_visible(self):
+        approval = self.submit(maker=self.other_ops)  # pool stage
+        self.assertIn(approval, services.waiting_for(self.lead))
+        services.approve(approval.pk, self.lead)
+        self.assertIn(approval, services.visible_to(self.lead))
+
+    def test_a_manager_suspended_at_submit_time_starts_the_pool(self):
+        StaffUser.objects.filter(pk=self.lead.pk).update(is_suspended=True)
+        self.scout.refresh_from_db()
+        approval = self.submit()
+        self.assertEqual((approval.stage, approval.assigned_to), ("pool", None))
+
+    def test_the_maker_cannot_reject_their_own_request(self):
+        approval = self.submit(maker=self.other_ops)
+        with self.assertRaises(services.MakerCannotDecide):
+            services.reject(approval.pk, self.other_ops, note="no")
+
+
 class DecisionTests(Base):
     def test_the_maker_can_never_approve_their_own_request(self):
         approval = self.submit(maker=self.other_ops)  # pool stage; the maker holds the pool permission
@@ -81,8 +151,13 @@ class DecisionTests(Base):
         registry.register(BROKEN_APPLY)
         self.addCleanup(registry.unregister, BROKEN_APPLY.key)
         approval = self.submit(kind=BROKEN_APPLY)
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(services.ApplyFailed) as raised:
             services.approve(approval.pk, self.lead)
+        self.assertEqual(raised.exception.status_code, 500)
+        self.assertEqual(
+            raised.exception.message,
+            "Couldn't apply this change, so nothing was changed. Try again, or tell a Super Admin.",
+        )
         approval.refresh_from_db()
         self.assertEqual(approval.status, "pending")
         self.assertFalse(ActivityEvent.objects.filter(verb="approval.approved").exists())
@@ -177,6 +252,21 @@ class EscalationTests(Base):
         approval.refresh_from_db()
         self.assertEqual(approval.stage, "pool")
 
+    def test_one_bad_row_does_not_stop_the_run(self):
+        def broken_chain(request):
+            raise RuntimeError("resolver blew up")
+
+        bad_kind = replace(RENAME_STAFF, key="test.bad_chain", resolve_approver=broken_chain)
+        registry.register(bad_kind)
+        self.addCleanup(registry.unregister, bad_kind.key)
+        good = self.submit()
+        bad = self.submit(maker=self.other_ops, kind=RENAME_STAFF)
+        ApprovalRequest.objects.filter(pk=bad.pk).update(kind=bad_kind.key)
+        past = max(good.due_at, bad.due_at) + timedelta(hours=1)
+        self.assertEqual(services.escalate_due(now=past), 1)
+        good.refresh_from_db()
+        self.assertEqual(good.stage, "pool")
+
     def test_decided_requests_are_left_alone(self):
         approval = self.submit()
         services.approve(approval.pk, self.lead)
@@ -220,3 +310,43 @@ class ConcurrentDecisionTests(TransactionTestCase):
             thread.join()
         self.assertEqual(sorted(results), ["already decided", "approved"])
         self.assertEqual(applied, [approval.pk])
+
+
+class ConcurrentSameTargetTests(TransactionTestCase):
+    """Two pending requests on one target, approved at once: one applies, one is stale."""
+
+    serialized_rollback = True
+
+    def test_only_one_of_two_requests_on_the_same_target_applies(self):
+        registry.register(RENAME_STAFF)
+        self.addCleanup(registry.unregister, RENAME_STAFF.key)
+        lead = make_staff("operations", "ama@example.com")
+        boss = make_staff("super_admin", "boss@example.com")
+        scout = make_staff("scout", "kwame@example.com", manager=lead)
+        esi = make_staff("support", "esi@example.com")
+        first = services.submit(scout, RENAME_STAFF.key, target=esi, title="A", payload={"full_name": "Name A"})
+        second = services.submit(scout, RENAME_STAFF.key, target=esi, title="B", payload={"full_name": "Name B"})
+        results = []
+        barrier = threading.Barrier(2)
+
+        def decide(approval, staff):
+            try:
+                barrier.wait()
+                services.approve(approval.pk, staff)
+                results.append(("approved", approval.payload["full_name"]))
+            except services.StaleRequest as exc:
+                results.append(("stale", exc.status_code))
+            finally:
+                connection.close()
+
+        threads = [threading.Thread(target=decide, args=args) for args in ((first, lead), (second, boss))]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        kinds = sorted(r[0] for r in results)
+        self.assertEqual(kinds, ["approved", "stale"])
+        self.assertIn(("stale", 409), results)
+        winner = [r[1] for r in results if r[0] == "approved"][0]
+        esi.refresh_from_db()
+        self.assertEqual(esi.full_name, winner)

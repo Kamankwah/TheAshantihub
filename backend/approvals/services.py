@@ -3,10 +3,11 @@ with submit(); the inbox decides it with approve()/reject(); the maker may
 cancel(); escalate_due() (Celery, every 5 minutes) reminds and moves requests
 up the chain. The maker never decides their own request."""
 import json
+import logging
 from datetime import timedelta
 
 from django.core.exceptions import ObjectDoesNotExist
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -18,7 +19,13 @@ from notifications.services import notify_staff
 from .models import ApprovalRequest
 from .registry import get_kind
 
+logger = logging.getLogger(__name__)
+
 VIEW_ALL = "approvals.view_all"
+# Fixed namespace for the per-target advisory lock. record()'s chain lock uses
+# the single-bigint form pg_advisory_xact_lock(key); Postgres keeps the one-int8
+# and two-int4 forms in separate key spaces, so these can never collide.
+TARGET_LOCK_NAMESPACE = 50117
 REMIND_AT = 0.75
 DEFAULT_RESPONSE_HOURS = 24
 STALE_MESSAGE = "This changed since it was requested — ask for a fresh request."
@@ -30,6 +37,17 @@ class ApprovalError(Exception):
     def __init__(self, message):
         super().__init__(message)
         self.message = message
+
+
+class ApplyFailed(ApprovalError):
+    status_code = 500
+
+
+APPLY_FAILED_MESSAGE = "Couldn't apply this change, so nothing was changed. Try again, or tell a Super Admin."
+
+
+class _ApplyCrashed(Exception):
+    """Internal: carries a non-ApprovalError out of an atomic block so it rolls back."""
 
 
 class MakerCannotDecide(ApprovalError):
@@ -129,6 +147,31 @@ def visible_to(staff):
     )
 
 
+def _lock_target(approval):
+    """Serialise every decision that touches one target, so two requests on it
+    can't both pass the stale check and apply. Held until the transaction ends."""
+    if approval.target_id:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_advisory_xact_lock(%s, hashtext(%s))",
+                [TARGET_LOCK_NAMESPACE, f"{approval.target_type}:{approval.target_id}"],
+            )
+
+
+def _run_apply(kind, approval):
+    try:
+        kind.apply(approval)
+    except ApprovalError:
+        raise
+    except Exception as exc:
+        raise _ApplyCrashed() from exc
+
+
+def _apply_failed(crash):
+    logger.exception("Approval apply failed", exc_info=crash.__cause__)
+    return ApplyFailed(APPLY_FAILED_MESSAGE)
+
+
 def _link(approval):
     return f"approvals/{approval.pk}"
 
@@ -161,21 +204,32 @@ def submit(maker, kind_key, *, title, payload, target=None, target_type="", targ
     if target is not None:
         target_type, target_id, target_label = target._meta.label_lower, str(target.pk), str(target)
     now = timezone.now()
+    try:
+        return _submit(maker, kind, now, title, payload, target_type, target_id, target_label, maker_note, request)
+    except _ApplyCrashed as crash:
+        raise _apply_failed(crash)
+
+
+def _submit(maker, kind, now, title, payload, target_type, target_id, target_label, maker_note, request):
     with transaction.atomic():
         approval = ApprovalRequest(
             kind=kind.key, title=title[:200], maker=maker, pool_permission=kind.pool_permission,
             target_type=target_type[:50], target_id=str(target_id)[:64], target_label=target_label[:200],
             payload=_normalise(payload), maker_note=maker_note, created_at=now,
         )
+        if maker.role.name == Role.SUPER_ADMIN:
+            _lock_target(approval)
         approval.before = _normalise(kind.current_state(approval))
         if maker.role.name == Role.SUPER_ADMIN:
-            kind.apply(approval)
+            if kind.validate is not None:
+                kind.validate(approval)
             approval.status = ApprovalRequest.APPROVED
             approval.decided_by = maker
             approval.decided_at = now
             approval.decision_note = "Applied directly: a Super Admin's own change."
             _enter_stage(approval, ApprovalRequest.SUPER_ADMIN, None, now)
             approval.save()
+            _run_apply(kind, approval)
             for other in staff_holding(VIEW_ALL).filter(role__name=Role.SUPER_ADMIN).exclude(pk=maker.pk):
                 notify_staff(
                     other, "approval_applied_directly", f"{maker.full_name} applied: {approval.title}",
@@ -224,17 +278,25 @@ def is_stale(approval):
 
 
 def approve(approval_id, staff, note="", http_request=None):
+    try:
+        return _approve(approval_id, staff, note, http_request)
+    except _ApplyCrashed as crash:
+        raise _apply_failed(crash)
+
+
+def _approve(approval_id, staff, note, http_request):
     with transaction.atomic():
         approval = _lock(approval_id)
         _check_decidable(approval, staff)
         kind = get_kind(approval.kind)
         if kind is None:
             raise UnknownKind("This kind of request can no longer be decided.")
+        _lock_target(approval)
         if _state_now(kind, approval) != approval.before:
             raise StaleRequest(STALE_MESSAGE)
         if kind.validate is not None:
             kind.validate(approval)  # e.g. "approve the business's KYC first" — raises ApprovalError
-        kind.apply(approval)
+        _run_apply(kind, approval)
         approval.status = ApprovalRequest.APPROVED
         approval.decided_by = staff
         approval.decided_at = timezone.now()
@@ -290,6 +352,39 @@ def _assignee_gone(approval):
     )
 
 
+def _escalate_one(pk, now):
+    moved = 0
+    with transaction.atomic():
+        approval = (
+            ApprovalRequest.objects.select_for_update(skip_locked=True, of=("self",))
+            .select_related("maker", "assigned_to")
+            .filter(pk=pk, status=ApprovalRequest.PENDING)
+            .first()
+        )
+        if approval is None:
+            return 0
+        if _assignee_gone(approval) or now >= approval.due_at:
+            step = _next_step(approval)
+            if step is None:
+                _enter_stage(approval, approval.stage, approval.assigned_to, now)
+                approval.save()
+                _notify_approvers(approval, "approval_reminder", f"Overdue: {approval.title}")
+                return 0
+            _enter_stage(approval, step[0], step[1], now)
+            approval.escalation_level += 1
+            approval.save()
+            _notify_approvers(approval, "approval_escalated", f"Moved to you: {approval.title}")
+            record(None, "approval.escalated", target=approval,
+                   after={"stage": approval.stage, "level": approval.escalation_level})
+            moved = 1
+        elif approval.reminded_at is None and now >= _remind_at(approval):
+            approval.reminded_at = now
+            approval.save(update_fields=["reminded_at"])
+            _notify_approvers(approval, "approval_reminder", f"Due soon: {approval.title}")
+    return moved
+
+
+
 def escalate_due(now=None):
     """Remind at 75% of the response time; at 100% — or straight away if the
     assigned manager has left or is suspended — move one level up. The last
@@ -299,33 +394,10 @@ def escalate_due(now=None):
     moved = 0
     pending = list(ApprovalRequest.objects.filter(status=ApprovalRequest.PENDING).values_list("pk", flat=True))
     for pk in pending:
-        with transaction.atomic():
-            approval = (
-                ApprovalRequest.objects.select_for_update(skip_locked=True, of=("self",))
-                .select_related("maker", "assigned_to")
-                .filter(pk=pk, status=ApprovalRequest.PENDING)
-                .first()
-            )
-            if approval is None:
-                continue
-            if _assignee_gone(approval) or now >= approval.due_at:
-                step = _next_step(approval)
-                if step is None:
-                    _enter_stage(approval, approval.stage, approval.assigned_to, now)
-                    approval.save()
-                    _notify_approvers(approval, "approval_reminder", f"Overdue: {approval.title}")
-                    continue
-                _enter_stage(approval, step[0], step[1], now)
-                approval.escalation_level += 1
-                approval.save()
-                _notify_approvers(approval, "approval_escalated", f"Moved to you: {approval.title}")
-                record(None, "approval.escalated", target=approval,
-                       after={"stage": approval.stage, "level": approval.escalation_level})
-                moved += 1
-            elif approval.reminded_at is None and now >= _remind_at(approval):
-                approval.reminded_at = now
-                approval.save(update_fields=["reminded_at"])
-                _notify_approvers(approval, "approval_reminder", f"Due soon: {approval.title}")
+        try:
+            moved += _escalate_one(pk, now)
+        except Exception:
+            logger.exception("Escalating approval %s failed", pk)
     return moved
 
 
