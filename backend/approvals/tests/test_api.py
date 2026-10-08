@@ -144,3 +144,23 @@ class ApprovalApiTests(TestCase):
         self.assertEqual(response.json()["detail"], "This request has already been decided.")
         self.as_(make_staff("marketing", "akua@example.com"))
         self.assertEqual(self.client.post(f"/api/approvals/{approval.id}/approve/", {}, format="json").status_code, 404)
+
+    def test_a_non_object_body_is_refused_not_a_500(self):
+        approval = self.submit()
+        self.as_(self.lead)
+        for action in ("approve", "reject"):
+            response = self.client.post(f"/api/approvals/{approval.id}/{action}/", [], format="json")
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(response.json()["detail"], "Send the decision as a JSON object.")
+
+    def test_an_unknown_status_filter_gives_an_empty_page(self):
+        self.submit()
+        self.as_(self.scout)
+        response = self.client.get("/api/approvals/?box=made&status=bogus")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["results"], [])
+
+    def test_the_team_box_is_empty_without_direct_reports(self):
+        self.submit()
+        self.as_(self.other_ops)
+        self.assertEqual(self.ids("team"), [])

@@ -1,4 +1,4 @@
-from django.http import Http404
+from django.http import Http404, QueryDict
 from rest_framework import generics
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.pagination import PageNumberPagination
@@ -86,6 +86,8 @@ class _DecisionView(APIView):
         raise NotImplementedError
 
     def post(self, request, pk):
+        if not isinstance(request.data, (dict, QueryDict)):
+            return Response({"detail": "Send the decision as a JSON object."}, status=400)
         approval = generics.get_object_or_404(ApprovalRequest, pk=pk)
         # A pool approver who lost a race is no longer in waiting_for, but was
         # an eligible approver: let the service answer "already decided".
