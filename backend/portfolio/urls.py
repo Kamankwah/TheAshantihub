@@ -14,4 +14,9 @@ urlpatterns = [
     path("businesses/<int:pk>/reassign/", views.ReassignBusinessView.as_view(), name="portfolio-reassign"),
     path("businesses/<int:pk>/follow-up/", views.BusinessFollowUpView.as_view(), name="portfolio-follow-up"),
     path("subscriptions-due/", views.SubscriptionsDueView.as_view(), name="portfolio-subscriptions-due"),
+    path("businesses/<int:pk>/photos/", views.PhotoStageView.as_view(), name="portfolio-photo-stage"),
+    path("businesses/<int:pk>/changes/", views.ProposeChangeView.as_view(), name="portfolio-propose-change"),
+    path("businesses/<int:pk>/listings/", views.ProposeListingView.as_view(), name="portfolio-propose-listing"),
+    path("listings/<int:pk>/photos/", views.ProposeListingPhotosView.as_view(), name="portfolio-propose-photos"),
+    path("meta/listing-form/", views.ListingFormMetaView.as_view(), name="portfolio-listing-form-meta"),
 ]

@@ -23,6 +23,8 @@ from accounts.phones import filter_by_phone, phone_key
 from accounts.serializers import staff_brief
 from activity.models import ActivityEvent
 from activity.services import record
+from approvals.services import ApprovalError
+from listings.models import Listing
 from notifications.services import notify_staff
 from staff_tasks.services import create_task
 
@@ -32,6 +34,7 @@ from .registration import RegistrationError, register_business, resubmit_kyc
 from .serializers import (
     FollowUpSerializer,
     ReassignSerializer,
+    StagePhotoSerializer,
     business_detail,
     business_review_sheet,
     flag_brief,
@@ -39,6 +42,7 @@ from .serializers import (
     subscription_due_item,
 )
 from .services import approver_name, assign_account_manager
+from .proposals import listing_form_meta, propose_listing, propose_photos, propose_update, stage_photo
 
 
 def get_managed_business(request, pk, *, allow_portfolio_manage=True):
@@ -511,3 +515,118 @@ class SubscriptionsDueView(APIView):
             "paused": [subscription_due_item(row) for row in paused],
             "cleared": _cleared_this_week(owners, now),
         })
+
+
+def _proposal_body(request):
+    return request.data if isinstance(request.data, dict) else None
+
+
+def _proposal_sent(approval):
+    # `status` is "pending" normally and "approved" when a Super Admin's own
+    # proposal applied at once, so the form can say "Applied" instead of "Sent to …".
+    return Response(
+        {"approval_id": approval.pk, "approver_name": approver_name(approval), "status": approval.status},
+        status=201,
+    )
+
+
+class PhotoStageView(APIView):
+    """POST businesses/<pk>/photos/ — the account manager uploads one photo
+    for a later proposal; it reaches the listing only when that is approved."""
+
+    def get_permissions(self):
+        return [HasRolePermission("businesses.manage_portfolio")]
+
+    def post(self, request, pk):
+        owner = get_managed_business(request, pk, allow_portfolio_manage=False)
+        serializer = StagePhotoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        with transaction.atomic():
+            staged = stage_photo(
+                owner, request.user, data["image"],
+                lat=data.get("lat"), lng=data.get("lng"), accuracy_m=data.get("accuracy_m"),
+            )
+            record(request.user, "portfolio.photo_staged", target=owner,
+                   after={"photo_id": staged.pk, "located": staged.taken_lat is not None}, request=request)
+        return Response(
+            {"id": staged.pk, "url": request.build_absolute_uri(staged.image.url), "created_at": staged.created_at},
+            status=201,
+        )
+
+
+class ProposeChangeView(APIView):
+    """POST businesses/<pk>/changes/ {fields, reason} — a business.update request."""
+
+    def get_permissions(self):
+        return [HasRolePermission("businesses.manage_portfolio")]
+
+    def post(self, request, pk):
+        owner = get_managed_business(request, pk, allow_portfolio_manage=False)
+        body = _proposal_body(request)
+        if body is None:
+            return Response({"detail": "Send a JSON object."}, status=400)
+        try:
+            approval = propose_update(
+                request.user, owner, body.get("fields"), reason=body.get("reason"), http_request=request,
+            )
+        except ApprovalError as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
+        return _proposal_sent(approval)
+
+
+class ProposeListingView(APIView):
+    """POST businesses/<pk>/listings/ {listing, main_photo_id, photo_ids, reason} — a listing.create request."""
+
+    def get_permissions(self):
+        return [HasRolePermission("businesses.manage_portfolio")]
+
+    def post(self, request, pk):
+        owner = get_managed_business(request, pk, allow_portfolio_manage=False)
+        body = _proposal_body(request)
+        if body is None:
+            return Response({"detail": "Send a JSON object."}, status=400)
+        try:
+            approval = propose_listing(
+                request.user, owner, body.get("listing"), main_photo_id=body.get("main_photo_id"),
+                photo_ids=body.get("photo_ids"), reason=body.get("reason"), http_request=request,
+            )
+        except ApprovalError as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
+        return _proposal_sent(approval)
+
+
+class ProposeListingPhotosView(APIView):
+    """POST listings/<pk>/photos/ {photo_ids, reason} — a listing.photos request."""
+
+    def get_permissions(self):
+        return [HasRolePermission("businesses.manage_portfolio")]
+
+    def post(self, request, pk):
+        listing = generics.get_object_or_404(Listing, pk=pk)
+        get_managed_business(request, listing.business_owner_id, allow_portfolio_manage=False)
+        body = _proposal_body(request)
+        if body is None:
+            return Response({"detail": "Send a JSON object."}, status=400)
+        try:
+            approval = propose_photos(
+                request.user, listing, photo_ids=body.get("photo_ids"), reason=body.get("reason"),
+                http_request=request,
+            )
+        except ApprovalError as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
+        return _proposal_sent(approval)
+
+
+class ListingFormMetaView(APIView):
+    """GET meta/listing-form/?business=<pk> — the Add-a-product form's choices."""
+
+    def get_permissions(self):
+        return [HasAnyRolePermission("businesses.manage_portfolio", "portfolio.manage")]
+
+    def get(self, request):
+        raw = request.query_params.get("business", "")
+        if not raw.isdigit():
+            return Response({"detail": "Choose a business."}, status=400)
+        owner = get_managed_business(request, int(raw))
+        return Response(listing_form_meta(owner))

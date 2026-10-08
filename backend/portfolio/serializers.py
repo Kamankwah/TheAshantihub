@@ -386,3 +386,13 @@ class FollowUpSerializer(serializers.Serializer):
         if day is None and moment < timezone.now():
             raise serializers.ValidationError("Pick a time that hasn't passed.")
         return moment
+
+
+class StagePhotoSerializer(serializers.Serializer):
+    """POST businesses/<pk>/photos/ — one photo plus where the phone said it
+    was taken (each optional; a phone may not give a position)."""
+
+    image = serializers.ImageField(validators=[validate_image_content_type])
+    lat = serializers.FloatField(required=False, allow_null=True, min_value=-90, max_value=90)
+    lng = serializers.FloatField(required=False, allow_null=True, min_value=-180, max_value=180)
+    accuracy_m = serializers.FloatField(required=False, allow_null=True, min_value=0, max_value=100000)

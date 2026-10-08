@@ -6,6 +6,24 @@ from accounts.models import BusinessOwner, BusinessOwnerProfile
 from approvals.registry import ApprovalKind
 from approvals.services import ApprovalError
 
+from .proposals import (
+    BUSINESS_UPDATE_KEY,
+    LISTING_CREATE_KEY,
+    LISTING_PHOTOS_KEY,
+    apply_listing_create,
+    apply_listing_photos,
+    apply_update,
+    listing_create_diff,
+    listing_create_state,
+    listing_photos_diff,
+    listing_photos_state,
+    update_diff,
+    update_state,
+    validate_listing_create,
+    validate_listing_photos,
+    validate_update,
+)
+
 NOT_WAITING = "This business isn't waiting for KYC any more."
 
 
@@ -70,4 +88,37 @@ BUSINESS_KYC = ApprovalKind(
     validate=_kyc_validate,
 )
 
-KINDS = (BUSINESS_KYC,)
+BUSINESS_UPDATE = ApprovalKind(
+    key=BUSINESS_UPDATE_KEY,
+    label="Business details change",
+    pool_permission="portfolio.manage",
+    current_state=update_state,  # only the fields in the payload: a change to any of them makes it stale
+    apply=apply_update,
+    response_hours=24,
+    render_diff=update_diff,
+    validate=validate_update,  # re-runs the phone / address / email duplicate checks
+)
+
+LISTING_CREATE = ApprovalKind(
+    key=LISTING_CREATE_KEY,
+    label="New product or service",
+    pool_permission="portfolio.manage",
+    current_state=listing_create_state,
+    apply=apply_listing_create,  # publishes: this approval is the listing's moderation
+    response_hours=24,
+    render_diff=listing_create_diff,
+    validate=validate_listing_create,  # KYC approved, subscription live and within its limit, photos unused
+)
+
+LISTING_PHOTOS = ApprovalKind(
+    key=LISTING_PHOTOS_KEY,
+    label="Listing photos",
+    pool_permission="portfolio.manage",
+    current_state=listing_photos_state,
+    apply=apply_listing_photos,
+    response_hours=24,
+    render_diff=listing_photos_diff,
+    validate=validate_listing_photos,
+)
+
+KINDS = (BUSINESS_KYC, BUSINESS_UPDATE, LISTING_CREATE, LISTING_PHOTOS)
