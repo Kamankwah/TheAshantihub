@@ -44,6 +44,7 @@ import TasksPanel from "./panels/TasksPanel.jsx";
 import ActivityPanel from "./panels/ActivityPanel.jsx";
 import CallLogPanel from "./panels/CallLogPanel.jsx";
 import MyTeamPanel from "./panels/MyTeamPanel.jsx";
+import ApprovalsPanel from "./panels/ApprovalsPanel.jsx";
 import StaffShellStyles from "./shell/StaffShellStyles.jsx";
 import InstallAppButton from "./shell/InstallAppButton.jsx";
 import UpdateToast from "./shell/UpdateToast.jsx";
@@ -65,7 +66,7 @@ import OfflineBanner from "./shell/OfflineBanner.jsx";
 // "Sign out" in the browser and the installed app alike. `onViewSite` is the
 // optional keep-the-session alternative ("View site", browser only — App.jsx
 // leaves it undefined inside the installed app, which has no marketplace).
-export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab: activeTabProp, onTabChange }) {
+export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab: activeTabProp, activeDetail, onTabChange, NotificationsSlot }) {
   const { data: staffBadges } = useStaffBadges();
   const badgeFor = makeBadgeFor(staffBadges);
   // Controlled by App.jsx's /staff/:panel route when activeTab is passed;
@@ -73,6 +74,10 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
   // tab itself, exactly as before.
   const isControlled = activeTabProp !== undefined;
   const [internalTab, setInternalTab] = useState("overview");
+  // A record inside the active panel (e.g. one approval): from the
+  // /staff/:panel/:detail URL when controlled, local state otherwise.
+  const [internalDetail, setInternalDetail] = useState(null);
+  const detail = isControlled ? (activeDetail ?? null) : internalDetail;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [saved, setSaved] = useState(false);
   const breakpoint = useBreakpoint();
@@ -122,9 +127,14 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
 
   const selectTab = (id) => {
     setDrawerOpen(false);
-    if (id === activeTab) return;
+    if (id === activeTab && detail == null) return;
+    setInternalDetail(null);
     if (isControlled) onTabChange?.(id);
     else setInternalTab(id);
+  };
+  const openDetail = (id) => {
+    if (isControlled) onTabChange?.(id == null ? activeTab : `${activeTab}/${id}`);
+    else setInternalDetail(id);
   };
 
   // Each panel starts at the top; skipped on first mount so a reload keeps
@@ -174,7 +184,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
         <StaffHeader status={<LiveUpdatesIndicator paused={live.paused} />} title={activeLabel} role={role} roleColor={roleColor} fullName={auth.user?.full_name}
           onExit={onExit} onViewSite={onViewSite} breakpoint={breakpoint}
           onOpenMenu={() => setDrawerOpen(true)} menuButtonRef={menuButtonRef} drawerOpen={drawerOpen}
-          actions={isPhone ? null : <InstallAppButton variant="header" />}>
+          actions={<>{NotificationsSlot ? <NotificationsSlot user={auth.user} /> : null}{isPhone ? null : <InstallAppButton variant="header" />}</>}>
           <OfflineBanner bleed={isPhone ? 12 : 20} />
         </StaffHeader>
 
@@ -214,6 +224,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "activity" && <ActivityPanel />}
           {activeTab === "calls" && <CallLogPanel />}
           {activeTab === "my-team" && <MyTeamPanel currentStaffId={auth.user?.id} />}
+          {activeTab === "approvals" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
         </main>
       </div>
 

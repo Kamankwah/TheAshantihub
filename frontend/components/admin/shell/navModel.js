@@ -35,6 +35,7 @@ export const NAV_ITEMS = [
   { id: "contact-messages", icon: "✉️", label: "Contact Messages", show: (auth) => auth.hasPermission("contact_messages.manage") },
   { id: "messaging", icon: "💬", label: "Messaging / Tickets", show: (auth) => auth.hasPermission("messaging.manage") },
   { id: "analytics", icon: "📊", label: "Analytics", show: (auth) => auth.hasPermission("analytics.view") },
+  { id: "approvals", icon: "🗳️", label: "Approvals", show: () => true },
   { id: "tasks", icon: "✅", label: "Tasks", show: () => true },
   { id: "calls", icon: "📞", label: "Call Log", show: (auth) => auth.hasPermission("calls.log") },
   { id: "activity", icon: "🕘", label: "Activity", show: () => true },
@@ -152,6 +153,7 @@ export function buildNavGroups(auth) {
 // live updates (lib/realtime.js) refresh it sooner when a socket is up.
 export const BADGE_KEY_BY_TAB = {
   kyc: "kyc",
+  approvals: "approvals_waiting",
   tasks: "tasks_overdue",
   moderation: "listings",
   hero: "hero",

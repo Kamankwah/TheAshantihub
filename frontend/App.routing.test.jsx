@@ -551,6 +551,58 @@ describe('AshantiHub routing — /staff/:panel', () => {
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
     await waitFor(() => expect(document.head.querySelector('link[rel="manifest"]')).toBeNull())
   }, 8000)
+
+  it('/staff/approvals/<id> opens that request, and Back returns to the inbox URL', async () => {
+    signInStaff(['messaging.manage'])
+    server.use(http.get('http://localhost:8000/api/approvals/7/', () => HttpResponse.json({
+      id: 7, kind: 'business.update', kind_label: 'Business info change', title: 'Adwoa Fabrics', status: 'pending',
+      stage: 'manager', maker: { id: 3, full_name: 'Kwame Asante', role: 'scout' }, assigned_to: null, pool_permission: '',
+      target: { type: '', id: '', label: '' }, maker_note: '', decided_by: null, decided_at: null, decision_note: '',
+      due_at: '2030-01-01T00:00:00Z', escalation_level: 0, created_at: '2026-10-07T06:46:00Z', can_decide: false,
+      can_cancel: false, payload: {}, before: {}, diff: [], stale: false,
+    })))
+    renderStaffAt('/staff/approvals/7')
+    expect(await screen.findByRole('table', { name: 'What would change' }, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.getByTestId('location').textContent).toBe('/staff/approvals/7')
+    fireEvent.click(screen.getByRole('button', { name: '← Approvals' }))
+    expect(screen.getByTestId('location').textContent).toBe('/staff/approvals')
+  }, 8000)
+})
+
+describe('AshantiHub routing — staff notification bell', () => {
+  afterEach(() => setStoredAuth(null))
+  const notification = { id: 21, title: 'Approval needed', body: 'Kwame asked for a change', icon: '🗳️', link: 'approvals/7', is_read: false, created_at: '2026-10-07T06:46:00Z' }
+  const withNotification = (link) => server.use(http.get('http://localhost:8000/api/notifications/', () => HttpResponse.json({ unread_count: 1, results: [{ ...notification, link }] })))
+
+  it('the staff header shows a bell with the unread count', async () => {
+    signInStaff(['messaging.manage'])
+    withNotification('approvals/7')
+    renderStaffAt('/staff')
+    const bell = await screen.findByRole('button', { name: 'Notifications (1 unread)' }, { timeout: 3000 })
+    expect(bell).toBeInTheDocument()
+  }, 8000)
+
+  it('a staff notification linking approvals/7 opens /staff/approvals/7', async () => {
+    signInStaff(['messaging.manage'])
+    withNotification('approvals/7')
+    server.use(http.get('http://localhost:8000/api/approvals/7/', () => HttpResponse.json({ detail: 'Not found.' }, { status: 404 })))
+    renderStaffAt('/staff')
+    fireEvent.click(await screen.findByRole('button', { name: 'Notifications (1 unread)' }, { timeout: 3000 }))
+    fireEvent.click(await screen.findByText('Approval needed'))
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/staff/approvals/7'))
+  }, 8000)
+
+  it('the public bell still ignores links without a leading slash', async () => {
+    setStoredAuth({ token: 'test-token', account_type: 'customer', id: 5, full_name: 'Esi' })
+    server.use(http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({ account_type: 'customer', id: 5, full_name: 'Esi' })))
+    withNotification('approvals/7')
+    renderStaffAt('/')
+    await within(await screen.findByRole('button', { name: 'Notifications' }, { timeout: 3000 })).findByText('1', {}, { timeout: 3000 })
+    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
+    fireEvent.click(await screen.findByText('Approval needed', {}, { timeout: 3000 }))
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    expect(screen.getByTestId('location').textContent).toBe('/')
+  }, 8000)
 })
 
 // Inside the installed staff app (display-mode: standalone) there is no

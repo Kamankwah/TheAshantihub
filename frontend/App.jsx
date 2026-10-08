@@ -1547,11 +1547,15 @@ function NotificationsPanel({ user, onClose }) {
 
   const onItemClick = (n) => {
     if (!n.is_read) markRead(n.id);
-    // Only in-app paths are routed; staff-tab-id links (no leading slash) are
-    // context for the staff badges, not something the customer bell navigates.
+    // In-app paths are routed. A link with no leading slash is a staff panel
+    // path ("approvals/7"): the staff bell opens it under /staff, while the
+    // customer bell leaves it alone (it is context for the staff badges).
     if (n.link && n.link.startsWith("/")) {
       onClose();
       navigate(n.link);
+    } else if (n.link && user?.account_type === "staff") {
+      onClose();
+      navigate(`/staff/${n.link}`);
     }
   };
 
@@ -1601,8 +1605,25 @@ const TRANSLATIONS = {
 // `onExit` signs the staffer out (labelled "Sign out" everywhere);
 // `onViewSite`, when given, is the browser-only "View site" that keeps the
 // session and opens the view-only marketplace.
-export function StaffDashboard({auth,onExit,onViewSite,activeTab,onTabChange}) {
-  return <AdminCommandCenter auth={auth} onExit={onExit} onViewSite={onViewSite} activeTab={activeTab} onTabChange={onTabChange} />;
+export function StaffDashboard({auth,onExit,onViewSite,activeTab,activeDetail,onTabChange}) {
+  return <AdminCommandCenter auth={auth} onExit={onExit} onViewSite={onViewSite} activeTab={activeTab} activeDetail={activeDetail} onTabChange={onTabChange} NotificationsSlot={StaffNotificationsSlot} />;
+}
+
+// The staff header's notification bell. Lives here (not in components/admin)
+// because NotificationsPanel does; StaffDashboard threads it down as a prop.
+// Notification rows carry no activity event, so this polls once a minute.
+function StaffNotificationsSlot({ user }) {
+  const { data } = useNotifications(true, { refetchInterval: 60000 });
+  const [open, setOpen] = useState(false);
+  const unread = data?.unread_count ?? 0;
+  return <>
+    <button type="button" onClick={()=>setOpen(v=>!v)} aria-label={unread>0?`Notifications (${unread} unread)`:"Notifications"} title="Notifications"
+      style={{position:"relative",background:"none",border:`1px solid ${D.divider}`,borderRadius:10,minWidth:34,height:34,cursor:"pointer",fontSize:"0.9rem",color:D.text,fontFamily:"inherit"}}>
+      🔔
+      {unread>0&&<span aria-hidden="true" style={{position:"absolute",top:-6,right:-6,background:D.red,color:D.panelBg,borderRadius:20,padding:"1px 5px",fontSize:"0.6rem",fontWeight:800}}>{unread}</span>}
+    </button>
+    {open&&<NotificationsPanel user={user} onClose={()=>setOpen(false)}/>}
+  </>;
 }
 
 // The business-owner dashboard is the unified light "artisan" Business
@@ -2564,7 +2585,12 @@ export default function AshantiHub() {
   // AdminCommandCenter validates the id against the session's permissions
   // and asks for a replace back to /staff when it isn't one.
   const staffPanelMatch = useMatch("/staff/:panel");
-  const staffPanel = staffPanelMatch && !STAFF_STANDALONE_PAGES.has(staffPanelMatch.params.panel) ? staffPanelMatch.params.panel : null;
+  // /staff/:panel/:detail — one record inside a panel, e.g. /staff/approvals/12
+  // (notification links deep-link here; the panel re-checks access on load).
+  const staffDetailMatch = useMatch("/staff/:panel/:detail");
+  const staffPanelParam = (staffPanelMatch || staffDetailMatch)?.params.panel;
+  const staffPanel = staffPanelParam && !STAFF_STANDALONE_PAGES.has(staffPanelParam) ? staffPanelParam : null;
+  const staffDetail = staffPanel && staffDetailMatch ? staffDetailMatch.params.detail : null;
   const onStaffDashboardPath = location.pathname === "/staff" || location.pathname === "/staff/" || staffPanel !== null;
   // `page` is now derived straight from the URL rather than owned locally —
   // hard reloading on any of these paths renders that page immediately
@@ -2980,6 +3006,7 @@ export default function AshantiHub() {
   if(isAdmin && auth.user?.account_type==="staff"){
     return <StaffDashboard auth={auth}
       activeTab={staffPanel ?? "overview"}
+      activeDetail={staffDetail}
       onTabChange={(id,{replace=false}={})=>{
         const path=id==="overview" ? "/staff" : `/staff/${id}`;
         if(location.pathname!==path) navigate(path,{replace});
