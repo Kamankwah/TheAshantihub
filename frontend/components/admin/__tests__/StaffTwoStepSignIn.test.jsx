@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { StrictMode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import StaffTwoStepSignIn from '../StaffTwoStepSignIn.jsx'
 
@@ -74,6 +75,52 @@ describe('StaffTwoStepSignIn', () => {
     const auth = { startTwoFactorEnrolment: vi.fn(async () => { throw Object.assign(new Error('400'), { status: 400, body: { detail: 'That sign-in has expired. Sign in again.' } }) }) }
     render(<StaffTwoStepSignIn challenge={{ two_factor_setup_required: true, mfa_token: 'mfa' }} auth={auth} onSuccess={() => {}} onCancel={() => {}} />)
     expect(await screen.findByRole('alert')).toHaveTextContent('That sign-in has expired.')
+  })
+
+  const expired = () => Object.assign(new Error('400'), { status: 400, body: { detail: 'Your sign-in timed out. Enter your password again.', code: 'challenge_expired' } })
+
+  it('sends the person back to the password when the code step has timed out', async () => {
+    const auth = { verifyTwoFactor: vi.fn(async () => { throw expired() }) }
+    const onCancel = vi.fn()
+    render(<StaffTwoStepSignIn challenge={{ two_factor_required: true, mfa_token: 'mfa' }} auth={auth} onSuccess={() => {}} onCancel={onCancel} />)
+    fireEvent.change(screen.getByLabelText('6-digit code'), { target: { value: '123456' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    await waitFor(() => expect(onCancel).toHaveBeenCalledWith('Your sign-in timed out. Enter your password again.'))
+  })
+
+  it('sends a Super Admin back to the password when set-up has timed out (start or confirm)', async () => {
+    const onCancel = vi.fn()
+    const auth = { startTwoFactorEnrolment: vi.fn(async () => { throw expired() }) }
+    render(<StaffTwoStepSignIn challenge={{ two_factor_setup_required: true, mfa_token: 'mfa' }} auth={auth} onSuccess={() => {}} onCancel={onCancel} />)
+    await waitFor(() => expect(onCancel).toHaveBeenCalledWith('Your sign-in timed out. Enter your password again.'))
+
+    const onCancel2 = vi.fn()
+    const auth2 = {
+      startTwoFactorEnrolment: vi.fn(async () => ({ secret: 'JBSWY3DPEHPK3PXP', otpauth_uri: 'otpauth://x' })),
+      confirmTwoFactorEnrolment: vi.fn(async () => { throw expired() }),
+    }
+    render(<StaffTwoStepSignIn challenge={{ two_factor_setup_required: true, mfa_token: 'mfa2' }} auth={auth2} onSuccess={() => {}} onCancel={onCancel2} />)
+    const inputs = await screen.findAllByLabelText('6-digit code from the app')
+    fireEvent.change(inputs[0], { target: { value: '123456' } })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Turn on 2-step sign-in' })[0])
+    await waitFor(() => expect(onCancel2).toHaveBeenCalledWith('Your sign-in timed out. Enter your password again.'))
+  })
+
+  it('disables Start again while a check is in flight', async () => {
+    let release
+    const auth = { verifyTwoFactor: vi.fn(() => new Promise((r) => { release = r })) }
+    render(<StaffTwoStepSignIn challenge={{ two_factor_required: true, mfa_token: 'mfa' }} auth={auth} onSuccess={() => {}} onCancel={() => {}} />)
+    fireEvent.change(screen.getByLabelText('6-digit code'), { target: { value: '123456' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Start again' })).toBeDisabled())
+    release(signedIn)
+  })
+
+  it('starts set-up once even when React runs the effect twice (StrictMode)', async () => {
+    const auth = { startTwoFactorEnrolment: vi.fn(async () => ({ secret: 'JBSWY3DPEHPK3PXP', otpauth_uri: 'otpauth://x' })) }
+    render(<StrictMode><StaffTwoStepSignIn challenge={{ two_factor_setup_required: true, mfa_token: 'mfa' }} auth={auth} onSuccess={() => {}} onCancel={() => {}} /></StrictMode>)
+    expect(await screen.findByLabelText('Setup key')).toBeInTheDocument()
+    expect(auth.startTwoFactorEnrolment).toHaveBeenCalledTimes(1)
   })
 })
 

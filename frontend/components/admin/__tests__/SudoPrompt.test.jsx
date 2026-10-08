@@ -143,4 +143,18 @@ describe('SudoPrompt — edge cases', () => {
     expect(attempts).toBe(2)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
+
+  it('focuses the password field on open and gives focus back on close', async () => {
+    server.use(http.post(SUSPEND, needSudo))
+    render(<><button>opener</button><SudoPrompt /></>)
+    const opener = screen.getByRole('button', { name: 'opener' })
+    opener.focus()
+    const action = apiPost('/api/accounts/staff/9/suspend/', {}).catch(() => {})
+    const input = await screen.findByLabelText('Password')
+    await waitFor(() => expect(input).toHaveFocus())
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await action
+    await waitFor(() => expect(opener).toHaveFocus())
+  })
 })
+

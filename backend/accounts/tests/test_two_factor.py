@@ -119,6 +119,18 @@ class TwoFactorSignInTests(TwoFactorBase):
         with mock.patch("accounts.two_factor.CHALLENGE_MAX_AGE", -1):
             self.assertEqual(self.second_step(token, code="123456").status_code, 400)
 
+    def test_a_timed_out_step_says_so_with_a_code_the_screen_can_act_on(self):
+        self.enrol(self.esi)
+        token = self.password_step("esi@example.com").json()["mfa_token"]
+        with mock.patch("accounts.two_factor.CHALLENGE_MAX_AGE", -1):
+            response = self.second_step(token, code="123456")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], "challenge_expired")
+        for path in ("enrol/start/", "enrol/confirm/"):
+            response = self.client.post(f"/api/accounts/staff/two-factor/{path}", {"mfa_token": "junk", "code": "123456"}, format="json")
+            self.assertEqual(response.status_code, 400, path)
+            self.assertEqual(response.json()["code"], "challenge_expired", path)
+
     def test_failed_codes_are_recorded(self):
         self.enrol(self.esi)
         token = self.password_step("esi@example.com").json()["mfa_token"]

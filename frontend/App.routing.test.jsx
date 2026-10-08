@@ -539,6 +539,34 @@ describe('AshantiHub routing — /staff/:panel', () => {
     expect(localStorage.getItem('ashantihub.auth')).toBeNull()
   }, 8000)
 
+  it('an expired 2-step step on the activation page returns to the password form with a notice', async () => {
+    server.use(
+      http.post('http://localhost:8000/api/accounts/staff/activate/', () => HttpResponse.json({ status: 'activated', two_factor_setup_required: true, mfa_token: 'mfa' })),
+      http.post('http://localhost:8000/api/accounts/staff/two-factor/enrol/start/', () => HttpResponse.json({ detail: 'Your sign-in timed out. Enter your password again.', code: 'challenge_expired' }, { status: 400 })),
+    )
+    renderStaffAt('/staff/activate?token=abc')
+    fireEvent.change(await screen.findByPlaceholderText('Password (min 8 characters)', {}, { timeout: 3000 }), { target: { value: 'a-long-password' } })
+    fireEvent.change(screen.getByPlaceholderText('Confirm password'), { target: { value: 'a-long-password' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Activate Account' }))
+    expect(await screen.findByText('Your sign-in timed out. Enter your password again.', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Activate Account' })).toBeInTheDocument()
+  }, 8000)
+
+  it('"Start again" after activation hides the form and points to the staff sign-in', async () => {
+    server.use(
+      http.post('http://localhost:8000/api/accounts/staff/activate/', () => HttpResponse.json({ status: 'activated', two_factor_setup_required: true, mfa_token: 'mfa' })),
+      http.post('http://localhost:8000/api/accounts/staff/two-factor/enrol/start/', () => HttpResponse.json({ secret: 'JBSWY3DPEHPK3PXP', otpauth_uri: 'otpauth://x' })),
+    )
+    renderStaffAt('/staff/activate?token=abc')
+    fireEvent.change(await screen.findByPlaceholderText('Password (min 8 characters)', {}, { timeout: 3000 }), { target: { value: 'a-long-password' } })
+    fireEvent.change(screen.getByPlaceholderText('Confirm password'), { target: { value: 'a-long-password' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Activate Account' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Start again' }, { timeout: 3000 }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Your account is active. Sign in at the staff sign-in to finish setting up 2-step sign-in.')
+    expect(screen.getByRole('link', { name: 'staff sign-in' })).toHaveAttribute('href', '/staff')
+    expect(screen.queryByRole('button', { name: 'Activate Account' })).not.toBeInTheDocument()
+  }, 8000)
+
   it('/staff/install renders the install page for a signed-out visitor, with the staff manifest linked', async () => {
     renderStaffAt('/staff/install')
     expect(await screen.findByRole('heading', { name: 'Install the AshantiHub Staff app' }, { timeout: 3000 })).toBeInTheDocument()

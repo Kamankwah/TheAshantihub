@@ -34,8 +34,16 @@ describe('TwoFactorSetup', () => {
     expect(onConfirm).toHaveBeenCalledWith('123456')
   })
 
-  it('disables the button while busy', () => {
+  it('labels the key with real text', async () => {
+    render(<TwoFactorSetup secret="JBSWY3DPEHPK3PXP" otpauthUri="otpauth://x" onConfirm={() => {}} />)
+    await screen.findByAltText('QR code for your authenticator app')
+    expect(screen.getByText('Setup key')).toBeVisible()
+    expect(screen.getByLabelText('Setup key')).toHaveTextContent('JBSW Y3DP EHPK 3PXP')
+  })
+
+  it('disables the button while busy', async () => {
     render(<TwoFactorSetup secret="JBSWY3DPEHPK3PXP" otpauthUri="otpauth://x" onConfirm={() => {}} busy />)
+    await screen.findByAltText('QR code for your authenticator app')
     fireEvent.change(screen.getByLabelText('6-digit code from the app'), { target: { value: '123456' } })
     expect(screen.getByRole('button', { name: 'Turn on 2-step sign-in' })).toBeDisabled()
   })

@@ -7,9 +7,10 @@ import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { RecoveryCodes, TwoFactorSetup } from "../TwoFactorSetup.jsx";
 import { D, glassCard } from "../theme.js";
 import { button, chip, dim } from "./panelStyles.js";
+import { SignInHistory, when } from "./sessionParts.jsx";
 
 const heading = { color: D.text, fontWeight: 800, fontSize: "0.95rem", margin: 0 };
-const at = (iso) => new Date(iso).toLocaleString("en-GH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const at = when;
 const KEYS = [["my-sessions"], ["active-sessions"], ["two-factor"]];
 
 // Sign-in & Security (F9) for every staffer: their own sessions and their
@@ -77,6 +78,12 @@ export default function SecurityPanel() {
           <button type="button" disabled={busy} onClick={() => run(() => apiPost("/api/accounts/staff/sessions/end-others/", {}), "Signed out of your other devices.", "Could not sign out your other devices.")} style={{ ...button(D.panelBg, D.text, busy), alignSelf: "flex-start" }}>Sign out other devices</button>
         )}
         {!isLoading && !isError && others.length === 0 && <div style={dim}>No other devices are signed in.</div>}
+      </section>
+
+      <section aria-labelledby="recent-heading" style={{ ...glassCard, padding: 18, display: "flex", flexDirection: "column", gap: 10 }}>
+        <h2 id="recent-heading" style={heading}>Recent sign-ins</h2>
+        <div style={dim}>Every sign-in on your account from the last 90 days, including ones that have ended. If one isn't yours, change your password.</div>
+        {!isLoading && !isError && <SignInHistory sessions={sessions} label="Recent sign-ins" />}
       </section>
 
       <section aria-labelledby="two-step-heading" style={{ ...glassCard, padding: 18, display: "flex", flexDirection: "column", gap: 10 }}>

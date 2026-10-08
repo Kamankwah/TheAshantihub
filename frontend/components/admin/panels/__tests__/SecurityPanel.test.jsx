@@ -125,5 +125,18 @@ describe('SecurityPanel', () => {
     expect(screen.getAllByRole('status').length).toBeGreaterThan(0)
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not load your sessions.')
   })
+
+  it('lists recent sign-ins, ended ones included, apart from the active list', async () => {
+    server.use(http.get('http://localhost:8000/api/accounts/staff/sessions/', () => HttpResponse.json([
+      session(1, { is_current: true }),
+      session(5, { device_label: 'Firefox on Linux computer', is_active: false, revoked_at: '2026-10-06T10:00:00Z', revoked_reason: 'signed_out', created_at: '2026-10-06T08:00:00Z' }),
+    ])))
+    renderPanel()
+    const list = await screen.findByRole('list', { name: 'Recent sign-ins' })
+    expect(list).toHaveTextContent('Firefox on Linux computer')
+    expect(list).toHaveTextContent('Ended: Signed out')
+    // Ended rows never get an End button.
+    expect(screen.queryByRole('button', { name: 'End the session on Firefox on Linux computer' })).not.toBeInTheDocument()
+  })
 })
 

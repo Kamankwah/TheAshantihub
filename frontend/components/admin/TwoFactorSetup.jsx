@@ -27,7 +27,13 @@ export function TwoFactorSetup({ secret, otpauthUri, onConfirm, busy, error }) {
     <form onSubmit={(e) => { e.preventDefault(); if (ready && !busy) onConfirm(bareCode(code)); }} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={text}>Open an authenticator app (Google Authenticator, Microsoft Authenticator or similar) and scan this code.</div>
       {qr && <img src={qr} alt="QR code for your authenticator app" width={168} height={168} style={{ background: D.panelBg, borderRadius: 8, alignSelf: "flex-start" }} />}
-      <div style={text}>Can't scan it? Type this key: <span aria-label="Setup key" style={{ fontFamily: mono, fontWeight: 700 }}>{secret.replace(/(.{4})/g, "$1 ").trim()}</span></div>
+      <div style={text}>
+        Can't scan it? Type this key into the app.
+        <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+          <label htmlFor="two-factor-setup-key" style={{ fontWeight: 700 }}>Setup key</label>
+          <output id="two-factor-setup-key" style={{ fontFamily: mono, fontWeight: 700 }}>{secret.replace(/(.{4})/g, "$1 ").trim()}</output>
+        </div>
+      </div>
       <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.75rem", fontWeight: 700, color: D.text }}>
         6-digit code from the app
         <input value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" autoComplete="one-time-code" maxLength={7} style={codeField} />

@@ -1137,7 +1137,7 @@ class StaffLoginTwoFactorView(APIView):
         body = _body(request)
         account = two_factor.read_challenge(body.get("mfa_token"), two_factor.VERIFY)
         if account is None:
-            return Response({"detail": TIMED_OUT}, status=400)
+            return Response({"detail": TIMED_OUT, "code": "challenge_expired"}, status=400)
         if two_factor.too_many_failures(account):
             minutes = int(two_factor.FAILURE_WINDOW.total_seconds() // 60)
             return Response(
@@ -1170,7 +1170,7 @@ class StaffTwoFactorEnrolStartView(APIView):
     def post(self, request):
         account = two_factor.read_challenge(_body(request).get("mfa_token"), two_factor.ENROL)
         if account is None:
-            return Response({"detail": TIMED_OUT}, status=400)
+            return Response({"detail": TIMED_OUT, "code": "challenge_expired"}, status=400)
         secret, uri = two_factor.begin_enrolment(account)
         return Response({"secret": secret, "otpauth_uri": uri})
 
@@ -1182,7 +1182,7 @@ class StaffTwoFactorEnrolConfirmView(APIView):
     def post(self, request):
         account = two_factor.read_challenge(_body(request).get("mfa_token"), two_factor.ENROL)
         if account is None:
-            return Response({"detail": TIMED_OUT}, status=400)
+            return Response({"detail": TIMED_OUT, "code": "challenge_expired"}, status=400)
         try:
             codes = two_factor.confirm_enrolment(account, _text(_body(request).get("code")))
         except two_factor.SecretUnreadable:

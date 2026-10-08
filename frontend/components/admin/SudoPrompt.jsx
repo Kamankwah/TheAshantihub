@@ -12,6 +12,7 @@ import { D } from "./theme.js";
 // leaving the shell) resolves false, so nothing is retried.
 export default function SudoPrompt() {
   const pending = useRef(null);
+  const returnFocus = useRef(null);
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
@@ -23,6 +24,7 @@ export default function SudoPrompt() {
         let resolve;
         const promise = new Promise((done) => { resolve = done; });
         pending.current = { promise, resolve };
+        returnFocus.current = document.activeElement;
         setPassword("");
         setError(null);
         setOpen(true);
@@ -43,6 +45,10 @@ export default function SudoPrompt() {
     setOpen(false);
     setPassword("");
     current?.resolve(ok);
+    // Put focus back where it was before the prompt opened.
+    const back = returnFocus.current;
+    returnFocus.current = null;
+    if (back && typeof back.focus === "function") setTimeout(() => back.focus(), 0);
   };
 
   const confirm = async (e) => {
@@ -70,7 +76,7 @@ export default function SudoPrompt() {
         <div style={{ color: D.textDim, fontSize: "0.8rem", lineHeight: 1.5 }}>Enter your password to carry on. It unlocks sensitive actions on this device for 10 minutes.</div>
         <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.75rem", fontWeight: 700, color: D.text }}>
           Password
-          <input type="password" autoFocus autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} style={{ ...field, resize: "none" }} />
+          <input ref={(el) => el?.focus()} type="password" autoFocus autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} style={{ ...field, resize: "none" }} />
         </label>
         {error && <div role="alert" style={{ color: D.red, fontSize: "0.78rem" }}>{error}</div>}
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>

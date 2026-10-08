@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiErrorMessage } from "../../lib/apiErrorMessage.js";
 import { button, codeField, field, linkButton } from "./panels/panelStyles.js";
 import { RecoveryCodes, TwoFactorSetup, bareCode } from "./TwoFactorSetup.jsx";
@@ -6,6 +6,11 @@ import { D } from "./theme.js";
 
 const title = { color: D.text, fontWeight: 800, fontSize: "0.95rem" };
 const text = { color: D.text, fontSize: "0.8rem", lineHeight: 1.5 };
+// The server answers an expired or invalid challenge with code
+// "challenge_expired": the second step can't succeed any more, so the person
+// goes back to the password step with the server's message.
+const isExpired = (err) => err?.body?.code === "challenge_expired";
+
 const primary = (disabled) => ({ ...button(D.gold, D.text, disabled), borderRadius: 20, padding: "12px", fontWeight: 900, fontSize: "0.85rem" });
 
 // The second step of a staff sign-in (F9), shown by AuthModal (and the
@@ -33,6 +38,7 @@ function Verify({ challenge, auth, onSuccess, onCancel }) {
       const result = await auth.verifyTwoFactor(challenge.mfa_token, useRecovery ? { recoveryCode: bare } : { code: bare });
       onSuccess(result);
     } catch (err) {
+      if (isExpired(err)) { onCancel(apiErrorMessage(err, "Your sign-in timed out. Enter your password again.")); return; }
       setError(apiErrorMessage(err, "That code isn't right."));
       setBusy(false);
     }
@@ -50,7 +56,7 @@ function Verify({ challenge, auth, onSuccess, onCancel }) {
       <button type="button" disabled={busy} onClick={() => { setUseRecovery(!useRecovery); setValue(""); setError(null); }} style={linkButton}>
         {useRecovery ? "Use the authenticator app instead" : "Lost your phone? Use a recovery code"}
       </button>
-      <button type="button" onClick={onCancel} style={linkButton}>Start again</button>
+      <button type="button" disabled={busy} onClick={() => onCancel()} style={linkButton}>Start again</button>
     </form>
   );
 }
@@ -63,11 +69,22 @@ function Enrol({ challenge, auth, onSuccess, onCancel }) {
   const [busy, setBusy] = useState(false);
   const [finishing, setFinishing] = useState(false);
 
+  // Each start makes a new secret, so run it once per challenge even when
+  // React runs effects twice (StrictMode). The result is kept in the ref's
+  // promise and applied by whichever effect run is still mounted.
+  const started = useRef(null);
   useEffect(() => {
     let live = true;
-    auth.startTwoFactorEnrolment(challenge.mfa_token)
+    if (started.current?.token !== challenge.mfa_token) {
+      started.current = { token: challenge.mfa_token, promise: auth.startTwoFactorEnrolment(challenge.mfa_token) };
+    }
+    started.current.promise
       .then((data) => { if (live) setSetup(data); })
-      .catch((err) => { if (live) setError(apiErrorMessage(err, "Could not start setting up 2-step sign-in.")); });
+      .catch((err) => {
+        if (!live) return;
+        if (isExpired(err)) { onCancel(apiErrorMessage(err, "Your sign-in timed out. Enter your password again.")); return; }
+        setError(apiErrorMessage(err, "Could not start setting up 2-step sign-in."));
+      });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [challenge.mfa_token]);
@@ -80,6 +97,7 @@ function Enrol({ challenge, auth, onSuccess, onCancel }) {
       setCodes(result.recoveryCodes);
       setLogin(result.login);
     } catch (err) {
+      if (isExpired(err)) { onCancel(apiErrorMessage(err, "Your sign-in timed out. Enter your password again.")); return; }
       setError(apiErrorMessage(err, "That code isn't right."));
     } finally {
       setBusy(false);
@@ -113,7 +131,7 @@ function Enrol({ challenge, auth, onSuccess, onCancel }) {
       ) : (
         <div role="status" style={text}>Preparing…</div>
       )}
-      {!codes && <button type="button" onClick={onCancel} style={linkButton}>Start again</button>}
+      {!codes && <button type="button" onClick={() => onCancel()} style={linkButton}>Start again</button>}
     </div>
   );
 }

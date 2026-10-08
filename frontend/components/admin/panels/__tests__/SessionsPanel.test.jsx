@@ -24,7 +24,7 @@ describe('SessionsPanel', () => {
       http.post('http://localhost:8000/api/accounts/staff/2/sign-out-everywhere/', () => { signedOut = 2; return HttpResponse.json({ ended: 2 }) }),
     )
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    render(<QueryClientProvider client={queryClient}><SessionsPanel /></QueryClientProvider>)
+    render(<QueryClientProvider client={queryClient}><SessionsPanel auth={{ user: { id: 1 } }} /></QueryClientProvider>)
     expect(await screen.findByText('3 sessions on 2 people\'s devices')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Sign out all of Simon Peter\'s devices' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Sign out all of Ama Boateng\'s devices' }))
@@ -33,7 +33,7 @@ describe('SessionsPanel', () => {
 
   function renderPanel() {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    render(<QueryClientProvider client={queryClient}><SessionsPanel /></QueryClientProvider>)
+    render(<QueryClientProvider client={queryClient}><SessionsPanel auth={{ user: { id: 1 } }} /></QueryClientProvider>)
     return queryClient
   }
 
@@ -72,6 +72,52 @@ describe('SessionsPanel', () => {
     fireEvent.click(await screen.findByRole('button', { name: "Sign out all of Ama Boateng's devices" }))
     expect(await screen.findByRole('alert')).toHaveTextContent('You cannot do that.')
     await waitFor(() => expect(listed).toBeGreaterThan(1))
+  })
+
+  it('says 1 session on 1 person\'s device in the singular', async () => {
+    server.use(http.get('http://localhost:8000/api/accounts/staff/sessions/active/', () => HttpResponse.json([session(2, ama)])))
+    renderPanel()
+    expect(await screen.findByText("1 session on 1 person's device")).toBeInTheDocument()
+  })
+
+  it("decides who is 'me' from the signed-in staff id, not is_current", async () => {
+    server.use(http.get('http://localhost:8000/api/accounts/staff/sessions/active/', () => HttpResponse.json([session(1, simon), session(2, ama)])))
+    renderPanel()
+    await screen.findByText('Ama Boateng')
+    expect(screen.queryByRole('button', { name: "Sign out all of Simon Peter's devices" })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: "Sign out all of Ama Boateng's devices" })).toBeInTheDocument()
+  })
+
+  it("shows a person's sign-in history, including ended sign-ins with the reason in words", async () => {
+    let asked = null
+    server.use(
+      http.get('http://localhost:8000/api/accounts/staff/sessions/active/', () => HttpResponse.json([session(2, ama)])),
+      http.get('http://localhost:8000/api/accounts/staff/sessions/', ({ request }) => {
+        asked = new URL(request.url).searchParams.get('staff')
+        return HttpResponse.json([
+          session(2, ama),
+          session(7, ama, { device_label: 'Safari on iPhone', ip: '41.0.0.1', is_active: false, revoked_at: '2026-10-05T10:00:00Z', revoked_reason: 'idle', created_at: '2026-10-05T08:00:00Z', last_seen_at: '2026-10-05T09:30:00Z' }),
+          session(8, ama, { device_label: 'Odd device', is_active: false, revoked_at: '2026-10-04T10:00:00Z', revoked_reason: 'mystery', created_at: '2026-10-04T08:00:00Z' }),
+        ])
+      }),
+    )
+    renderPanel()
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign-in history for Ama Boateng' }))
+    const list = await screen.findByRole('list', { name: "Ama Boateng's sign-in history" })
+    expect(asked).toBe('2')
+    expect(list).toHaveTextContent('Safari on iPhone')
+    expect(list).toHaveTextContent('Ended: 30 minutes without activity')
+    expect(list).toHaveTextContent('Ended: mystery')
+  })
+
+  it('has an honest empty state for the history', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/accounts/staff/sessions/active/', () => HttpResponse.json([session(2, ama)])),
+      http.get('http://localhost:8000/api/accounts/staff/sessions/', () => HttpResponse.json([])),
+    )
+    renderPanel()
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign-in history for Ama Boateng' }))
+    expect(await screen.findByText('No sign-ins in the last 90 days.')).toBeInTheDocument()
   })
 })
 

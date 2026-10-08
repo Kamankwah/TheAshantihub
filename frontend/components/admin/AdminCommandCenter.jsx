@@ -231,7 +231,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "reports" && <ReportsPanel auth={auth} />}
           {activeTab === "team-reports" && <TeamReportsPanel auth={auth} />}
           {activeTab === "security" && <SecurityPanel />}
-          {activeTab === "sessions" && <SessionsPanel />}
+          {activeTab === "sessions" && <SessionsPanel auth={auth} />}
           {activeTab === "my-team" && <MyTeamPanel currentStaffId={auth.user?.id} />}
           {activeTab === "approvals" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
         </main>
