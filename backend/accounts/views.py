@@ -103,7 +103,8 @@ class StaffInviteView(generics.CreateAPIView):
     serializer_class = StaffInviteSerializer
 
     def get_permissions(self):
-        return [HasAnyRolePermission(*TEAM_OR_STAFF_MANAGE)]
+        # Every invite (a team invite too) mints an account: password again.
+        return [HasAnyRolePermission(*TEAM_OR_STAFF_MANAGE), RequiresSudo()]
 
 
 class StaffActivateView(generics.GenericAPIView):
@@ -489,6 +490,12 @@ class InvitableRolesView(APIView):
         return Response(sorted(names))
 
 
+def _can_lead(staff):
+    """A manager must be able to run a team (Team Reports, My Team, reviews):
+    a Super Admin, or anyone whose effective permissions hold staff.invite_team."""
+    return staff.role.name == Role.SUPER_ADMIN or "staff.invite_team" in staff.effective_permission_codenames()
+
+
 class StaffManagerView(APIView):
     def get_permissions(self):
         return [HasRolePermission("staff.manage"), RequiresSudo()]
@@ -500,6 +507,8 @@ class StaffManagerView(APIView):
             staff.manager = None
         else:
             manager = generics.get_object_or_404(StaffUser, pk=manager_id, is_active=True)
+            if not _can_lead(manager):
+                return Response({"detail": "Choose a manager who can lead a team."}, status=400)
             node = manager
             while node is not None:
                 if node.pk == staff.pk:
@@ -732,7 +741,7 @@ class StaffDeactivateView(APIView):
 
 class StaffReactivateView(APIView):
     def get_permissions(self):
-        return [HasRolePermission("staff.manage")]
+        return [HasRolePermission("staff.manage"), RequiresSudo()]
 
     def post(self, request, pk):
         staff = generics.get_object_or_404(sessions.with_last_sign_in(StaffUser.objects.all()), pk=pk)
@@ -1157,7 +1166,7 @@ class StaffLoginTwoFactorView(APIView):
             return Response({"detail": WRONG_CODE}, status=400)
         if recovery_code:
             left = two_factor.status(account)["recovery_codes_left"]
-            send_two_factor_changed_email(account, f"A recovery code was used to sign in. {left} recovery codes are left.")
+            _email_after_commit(account, f"A recovery code was used to sign in. {left} recovery codes are left.")
         return Response(_staff_sign_in_response(account, request, two_factor_used=True))
 
 
@@ -1189,8 +1198,8 @@ class StaffTwoFactorEnrolConfirmView(APIView):
             return Response({"detail": UNREADABLE}, status=400)
         if codes is None:
             return Response({"detail": "That code isn't right. Check the app shows AshantiHub and try again."}, status=400)
+        _email_after_commit(account, "2-step sign-in was turned on for your account.")
         record_activity(account, "staff.two_factor_enabled", target=account, method="POST", request=request)
-        send_two_factor_changed_email(account, "2-step sign-in was turned on for your account.")
         return Response({**_staff_sign_in_response(account, request, two_factor_used=True), "recovery_codes": codes})
 
 

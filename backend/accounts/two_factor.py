@@ -145,8 +145,11 @@ def _new_recovery_codes():
 def _match_step(secret, code, after_step, now=None):
     """The 30-second step `code` belongs to (±1 step of clock drift), or None.
     Steps at or before `after_step` are refused, so no code works twice."""
-    digits = "".join(ch for ch in str(code or "") if ch.isdigit())
-    if len(digits) != 6:
+    # Spaces and hyphens a person types are dropped; anything left must be six
+    # ASCII digits. Other scripts' digits pass str.isdigit() but would make
+    # compare_digest raise (a 500), so they are simply a wrong code.
+    digits = "".join(str(code or "").split()).replace("-", "")
+    if len(digits) != 6 or not (digits.isascii() and digits.isdigit()):
         return None
     totp = pyotp.TOTP(secret)
     current = int(now if now is not None else _clock()) // STEP_SECONDS

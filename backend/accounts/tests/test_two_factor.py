@@ -62,7 +62,8 @@ class TwoFactorSignInTests(TwoFactorBase):
             "/api/accounts/staff/two-factor/enrol/start/", {"mfa_token": body["mfa_token"]}, format="json"
         ).json()
         self.assertTrue(start["otpauth_uri"].startswith("otpauth://totp/AshantiHub:"))
-        with self.clock():
+        # The email goes out once committed (OnCommitEmailTests pins the timing).
+        with self.clock(), self.captureOnCommitCallbacks(execute=True):
             done = self.client.post(
                 "/api/accounts/staff/two-factor/enrol/confirm/",
                 {"mfa_token": body["mfa_token"], "code": pyotp.TOTP(start["secret"]).at(self.t0)}, format="json",
@@ -404,6 +405,99 @@ class MinorTests(TwoFactorBase):
         with self.captureOnCommitCallbacks(execute=True):
             self.client.post("/api/accounts/staff/two-factor/disable/", {}, format="json")
         self.assertEqual([m.to for m in mail.outbox], [["esi@example.com"]])
+
+
+class OnCommitEmailTests(TwoFactorBase):
+    """Every 2-step change emails the staffer only once its transaction has
+    committed, never before (and never for a change that rolled back)."""
+
+    def assert_emailed_on_commit(self, send, to):
+        mail.outbox.clear()
+        with self.captureOnCommitCallbacks(execute=False) as callbacks:
+            response = send()
+        self.assertLess(response.status_code, 300, response.content)
+        self.assertEqual(mail.outbox, [])
+        for callback in callbacks:
+            callback()
+        self.assertEqual([m.to for m in mail.outbox], [[to]])
+
+    def test_setting_it_up_at_sign_in_emails_once_committed(self):
+        token = self.password_step("boss@example.com").json()["mfa_token"]
+        secret = self.client.post(
+            "/api/accounts/staff/two-factor/enrol/start/", {"mfa_token": token}, format="json"
+        ).json()["secret"]
+        with self.clock():
+            self.assert_emailed_on_commit(
+                lambda: self.client.post(
+                    "/api/accounts/staff/two-factor/enrol/confirm/",
+                    {"mfa_token": token, "code": pyotp.TOTP(secret).at(self.t0)}, format="json",
+                ),
+                "boss@example.com",
+            )
+
+    def test_signing_in_with_a_recovery_code_emails_once_committed(self):
+        _, codes = self.enrol(self.esi)
+        token = self.password_step("esi@example.com").json()["mfa_token"]
+        self.assert_emailed_on_commit(lambda: self.second_step(token, recovery_code=codes[0]), "esi@example.com")
+
+    def test_setting_it_up_from_settings_emails_once_committed(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(self.esi, sudo=True)}")
+        secret = self.client.post("/api/accounts/staff/two-factor/setup/", {}, format="json").json()["secret"]
+        with self.clock():
+            self.assert_emailed_on_commit(
+                lambda: self.client.post(
+                    "/api/accounts/staff/two-factor/setup/confirm/",
+                    {"code": pyotp.TOTP(secret).at(self.t0)}, format="json",
+                ),
+                "esi@example.com",
+            )
+
+    def test_a_reset_emails_the_staffer_once_committed(self):
+        self.enrol(self.esi)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(self.boss, sudo=True)}")
+        self.assert_emailed_on_commit(
+            lambda: self.client.post(f"/api/accounts/staff/{self.esi.id}/two-factor/reset/", {}, format="json"),
+            "esi@example.com",
+        )
+
+
+class NonAsciiDigitTests(TwoFactorBase):
+    """Codes are ASCII 0-9 only: other scripts' digits are just a wrong code
+    (400), never a 500 from comparing non-ASCII text."""
+
+    ARABIC_INDIC = "\u0661\u0662\u0663\u0664\u0665\u0666"  # "١٢٣٤٥٦"
+
+    def test_the_second_step_refuses_them(self):
+        self.enrol(self.esi)
+        token = self.password_step("esi@example.com").json()["mfa_token"]
+        response = self.second_step(token, code=self.ARABIC_INDIC)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"], "That code isn't right. Check your authenticator app and try again.")
+
+    def test_confirming_set_up_refuses_them(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(self.esi, sudo=True)}")
+        self.client.post("/api/accounts/staff/two-factor/setup/", {}, format="json")
+        response = self.client.post(
+            "/api/accounts/staff/two-factor/setup/confirm/", {"code": self.ARABIC_INDIC}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("isn't right", response.json()["detail"])
+
+    def test_confirming_set_up_at_sign_in_refuses_them(self):
+        token = self.password_step("boss@example.com").json()["mfa_token"]
+        self.client.post("/api/accounts/staff/two-factor/enrol/start/", {"mfa_token": token}, format="json")
+        response = self.client.post(
+            "/api/accounts/staff/two-factor/enrol/confirm/", {"mfa_token": token, "code": self.ARABIC_INDIC},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("isn't right", response.json()["detail"])
+
+    def test_ascii_codes_with_a_space_still_work(self):
+        secret, _ = self.enrol(self.esi)
+        code = pyotp.TOTP(secret).at(self.t0 + 60)
+        with self.clock(60):
+            self.assertTrue(two_factor.verify(self.esi, f"{code[:3]} {code[3:]}"))
 
 
 class ResetGuardTests(TwoFactorBase):

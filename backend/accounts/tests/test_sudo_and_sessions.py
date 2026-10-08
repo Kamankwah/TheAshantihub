@@ -10,7 +10,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from accounts import sessions
 from accounts.authentication import issue_token
-from accounts.models import StaffSession
+from accounts.models import StaffSession, StaffUser
 from accounts.testing import make_staff, session_of
 from activity.models import ActivityEvent
 
@@ -80,6 +80,43 @@ class SudoTests(Base):
         self.reauth()
         for url, body in cases:
             self.assertEqual(self.client.post(url, body, format="json").status_code, 200, url)
+
+    def invite(self, role="support", email="new@example.com"):
+        return self.client.post(
+            "/api/accounts/staff/invite/",
+            {"full_name": "New Person", "email": email, "role": role},
+            format="json",
+        )
+
+    def test_inviting_staff_needs_a_recent_password(self):
+        refused = self.invite("super_admin")
+        self.assertEqual(refused.status_code, 403)
+        self.assertEqual(refused.json().get("code"), "sudo_required")
+        self.assertFalse(StaffUser.objects.filter(email="new@example.com").exists())
+        self.reauth()
+        self.assertEqual(self.invite("super_admin").status_code, 201)
+
+    def test_a_team_invite_needs_a_recent_password_too(self):
+        self.use(issue_token(self.ama, "staff"))
+        refused = self.invite("scout")
+        self.assertEqual(refused.status_code, 403)
+        self.assertEqual(refused.json().get("code"), "sudo_required")
+        self.reauth()
+        self.assertEqual(self.invite("scout").status_code, 201)
+
+    def test_reactivating_staff_needs_a_recent_password(self):
+        self.esi.is_active = False
+        self.esi.save(update_fields=["is_active"])
+        url = f"/api/accounts/staff/{self.esi.id}/reactivate/"
+        refused = self.client.post(url, {}, format="json")
+        self.assertEqual(refused.status_code, 403)
+        self.assertEqual(refused.json().get("code"), "sudo_required")
+        self.esi.refresh_from_db()
+        self.assertFalse(self.esi.is_active)
+        self.reauth()
+        self.assertEqual(self.client.post(url, {}, format="json").status_code, 200)
+        self.esi.refresh_from_db()
+        self.assertTrue(self.esi.is_active)
 
     def test_a_missing_role_permission_is_reported_before_sudo(self):
         self.use(issue_token(staff("marketing", "akua@example.com"), "staff"))
