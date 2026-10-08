@@ -14,7 +14,7 @@ from django.utils import timezone
 
 from activity.services import record
 from approvals.models import ApprovalRequest
-from approvals.services import close_pending_for_target
+from approvals.services import MakerCannotDecide, close_pending_for_target
 from fraud.models import FraudFlag
 from fraud.services import open_flag_exists
 from notifications.services import notify_business_owner
@@ -27,6 +27,8 @@ QUEUE_APPROVE_NOTE = "Approved in the KYC queue."
 ALREADY_DECIDED = "This business has already been decided."
 SELF_DEALING_HOLD = "Decide the self-dealing case in Fraud cases first."
 REASON_REQUIRED = "Write the reason the owner will see."
+ADDRESS_FIRST = "Record the Ghana Post address decision first."
+OWN_REGISTRATION = "You can't approve your own request."
 NOT_FOUND = "We couldn't find that business."
 
 
@@ -41,11 +43,25 @@ def self_dealing_open(owner):
     return open_flag_exists(owner, FraudFlag.SELF_DEALING)
 
 
-def _locked_owner(owner_id):
+def _locked_owner(owner_id, staff):
+    """Lock the owner and refuse the person who registered it: the registrar
+    never decides their own registration, request or not (no exemption)."""
     try:
-        return BusinessOwner.objects.select_for_update().get(pk=owner_id)
+        owner = BusinessOwner.objects.select_for_update().get(pk=owner_id)
     except BusinessOwner.DoesNotExist:
         raise KycError(NOT_FOUND, status_code=404) from None
+    if owner.registered_by_id is not None and owner.registered_by_id == staff.pk:
+        raise MakerCannotDecide(OWN_REGISTRATION)
+    return owner
+
+
+def address_decision_missing(owner):
+    """A scout-registered business needs the Ghana Post address decision before
+    KYC approval, on either door. Self-registered owners keep the old behaviour."""
+    if owner.registration_channel != BusinessOwner.SCOUT:
+        return False
+    profile = getattr(owner, "profile", None)
+    return profile is None or profile.address_verified_at is None
 
 
 def approve_owner(owner_id, staff, *, http_request=None, from_approval=None):
@@ -59,9 +75,11 @@ def approve_owner(owner_id, staff, *, http_request=None, from_approval=None):
                 KYC_KIND, target_type=TARGET_TYPE, target_id=str(owner_id), staff=staff,
                 approved=True, note=QUEUE_APPROVE_NOTE,
             )
-        owner = _locked_owner(owner_id)
+        owner = _locked_owner(owner_id, staff)
         if owner.kyc_status != BusinessOwner.PENDING:
             raise KycError(ALREADY_DECIDED)
+        if address_decision_missing(owner):
+            raise KycError(ADDRESS_FIRST)
         if self_dealing_open(owner):
             raise KycError(SELF_DEALING_HOLD)
         owner.kyc_status = BusinessOwner.VERIFIED
@@ -92,7 +110,7 @@ def reject_owner(owner_id, staff, reason, *, http_request=None):
         closed = close_pending_for_target(
             KYC_KIND, target_type=TARGET_TYPE, target_id=str(owner_id), staff=staff, approved=False, note=reason,
         )
-        owner = _locked_owner(owner_id)
+        owner = _locked_owner(owner_id, staff)
         if owner.kyc_status != BusinessOwner.PENDING:
             raise KycError(ALREADY_DECIDED)
         owner.kyc_status = BusinessOwner.REJECTED

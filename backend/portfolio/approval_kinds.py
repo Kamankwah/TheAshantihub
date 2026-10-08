@@ -1,13 +1,12 @@
 """Approval kinds owned by the portfolio app (plan 2A). PortfolioConfig.ready()
 registers every kind in KINDS. Task 5 adds business.kyc; Task 9 appends the
 three scout change kinds."""
-from accounts.kyc import KYC_KIND, SELF_DEALING_HOLD, KycError, approve_owner, self_dealing_open
+from accounts.kyc import ADDRESS_FIRST, KYC_KIND, SELF_DEALING_HOLD, KycError, approve_owner, self_dealing_open
 from accounts.models import BusinessOwner, BusinessOwnerProfile
 from approvals.registry import ApprovalKind
 from approvals.services import ApprovalError
 
 NOT_WAITING = "This business isn't waiting for KYC any more."
-ADDRESS_FIRST = "Record the Ghana Post address decision first."
 
 
 def _profile(owner_id):

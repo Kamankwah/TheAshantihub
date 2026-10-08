@@ -336,3 +336,88 @@ class KycDoubleDecisionTests(TransactionTestCase):
         self.assertEqual(
             Notification.objects.filter(business_owner=self.owner, kind__in=["kyc_approved", "kyc_rejected"]).count(), 1,
         )
+
+
+class KycMakerAndAddressTests(QueueBase):
+    """Fix round 1: the registrar never decides their own registration, and a
+    scout-registered business needs the address decision on both doors."""
+
+    def setUp(self):
+        super().setUp()
+        self.own = make_business(
+            name="Kojo Spares", owner_name="Yaw Boakye", phone="+233201234567",
+            scout=self.other_ops, address_decided_by=self.lead,
+        )
+
+    def assert_own_refused(self, response):
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json(), {"detail": "You can't approve your own request."})
+        self.own.refresh_from_db()
+        self.assertEqual(self.own.kyc_status, "pending")
+        self.assertFalse(ActivityEvent.objects.filter(verb__startswith="kyc-").exists())
+
+    def test_a_registrar_who_cancelled_their_request_cannot_approve_in_the_queue(self):
+        approval = submit_kyc(self.other_ops, self.own)
+        approvals.cancel(approval.pk, self.other_ops)
+        self.as_(self.other_ops)
+        self.assert_own_refused(self.approve_in_queue(self.own))
+
+    def test_a_registrar_whose_request_was_returned_cannot_approve_in_the_queue(self):
+        approval = submit_kyc(self.other_ops, self.own)
+        approvals.reject(approval.pk, self.lead, note="Retake the photo")
+        self.as_(self.other_ops)
+        self.assert_own_refused(self.approve_in_queue(self.own))
+
+    def test_a_super_admin_registrar_cannot_approve_their_own_registration(self):
+        own = make_business(name="Boss Stores", owner_name="Efua", phone="+233205550000", scout=self.boss)
+        self.as_(self.boss)
+        response = self.approve_in_queue(own)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json(), {"detail": "You can't approve your own request."})
+        own.refresh_from_db()
+        self.assertEqual(own.kyc_status, "pending")
+
+    def test_the_registrar_cannot_reject_either(self):
+        self.as_(self.other_ops)
+        self.assert_own_refused(self.reject_in_queue("Not good", self.own))
+
+    def test_a_refusal_rolls_back_requests_the_queue_door_had_closed(self):
+        approval = submit_kyc(self.scout, self.own)  # someone else's request on the registrar's business
+        self.as_(self.other_ops)
+        self.assert_own_refused(self.approve_in_queue(self.own))
+        approval.refresh_from_db()
+        self.assertEqual(approval.status, "pending")
+
+    def test_the_inbox_door_refuses_the_registrar_with_a_403_too(self):
+        approval = submit_kyc(self.scout, self.own)
+        BusinessOwner.objects.filter(pk=self.own.pk).update(registered_by=self.lead)
+        with self.assertRaises(approvals.MakerCannotDecide) as raised:
+            approvals.approve(approval.pk, self.lead)
+        self.assertEqual((raised.exception.status_code, raised.exception.message), (403, "You can't approve your own request."))
+        approval.refresh_from_db()
+        self.assertEqual(approval.status, "pending")
+
+    def test_a_different_operations_staffer_can_still_approve(self):
+        self.as_(self.lead)
+        self.assertEqual(self.approve_in_queue(self.own).status_code, 200)
+
+    def test_a_scout_business_without_the_address_decision_is_refused_in_the_queue(self):
+        BusinessOwnerProfile.objects.filter(business_owner=self.owner).update(
+            address_verified=False, address_verified_by=None, address_verified_at=None,
+        )
+        self.as_(self.lead)
+        response = self.approve_in_queue()
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"detail": "Record the Ghana Post address decision first."})
+        self.owner.refresh_from_db()
+        self.approval.refresh_from_db()
+        self.assertEqual((self.owner.kyc_status, self.approval.status), ("pending", "pending"))
+        BusinessOwnerProfile.objects.filter(business_owner=self.owner).update(
+            address_verified=True, address_verified_by=self.lead, address_verified_at=timezone.now(),
+        )
+        self.assertEqual(self.approve_in_queue().status_code, 200)
+
+    def test_a_self_registered_owner_without_the_decision_is_still_approved(self):
+        online = make_business(name="Yaa Provisions", owner_name="Yaa Asantewaa", phone="+233207778899")
+        self.as_(self.lead)
+        self.assertEqual(self.approve_in_queue(online).status_code, 200)
