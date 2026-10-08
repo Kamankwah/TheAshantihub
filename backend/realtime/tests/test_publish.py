@@ -36,7 +36,11 @@ class PublishTests(TestCase):
         return channel
 
     def message(self, channel):
-        return async_to_sync(self.layer.receive)(channel)
+        # Bounded, so a missing message fails the test instead of hanging it.
+        async def receive():
+            return await asyncio.wait_for(self.layer.receive(channel), timeout=2)
+
+        return async_to_sync(receive)()
 
     def silent(self, channel):
         async def check():
@@ -76,6 +80,21 @@ class PublishTests(TestCase):
         payload = self.message(queue)["payload"]
         self.assertEqual(set(payload), {"type", "invalidate", "at"})
         self.assertEqual(payload["invalidate"], ["kyc-queue", "kyc-detail", "staff-badges"])
+
+    def test_the_money_delivery_and_promotion_queues_refresh_live(self):
+        cases = [
+            ("dispute-resolve", ["perm.disputes.resolve_financial", "perm.disputes.flag"], ["disputes-queue"]),
+            ("promotion-approve", ["perm.promotions.manage"], ["promotions-queue"]),
+            ("subscription-plan-approve", ["perm.subscription_plans.approve"], ["subscription-plan-pending-queue", "staff-badges"]),
+            ("escrow-release", ["perm.escrow.view"], ["escrow-ledger", "staff-badges"]),
+            ("order-delivery-status-update", ["perm.orders.manage_delivery"], ["delivery-queue"]),
+        ]
+        for verb, groups, keys in cases:
+            for group in groups:
+                with self.subTest(verb=verb, group=group):
+                    queue = self.listen(group)
+                    self.record(self.lead, verb, method="POST", target_type="x", target_id="1")
+                    self.assertEqual(self.message(queue)["payload"]["invalidate"], keys)
 
     def test_system_events_reach_only_super_admins(self):
         boss = self.listen(f"staff.{self.boss.id}")

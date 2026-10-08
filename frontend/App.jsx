@@ -1,3 +1,4 @@
+import { takeSignedOutMessage } from "./lib/signOutReason.js";
 import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate, useMatch } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -1162,6 +1163,8 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
   const [email,setEmail]=useState("");
   const [error,setError]=useState(null);
   const [submitting,setSubmitting]=useState(false);
+  // Why the staff shell just signed this tab out (idle / session ended); read once.
+  const [signedOutNotice]=useState(()=>lockedAccountType ? takeSignedOutMessage() : null);
   // "Forgot password?" (staff onboarding + account-recovery work) — a third
   // inline `mode`, reachable from the login form regardless of
   // lockedAccountType (a staff member locked into "staff-login" needs
@@ -1237,6 +1240,7 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
           <button type="button" onClick={()=>setMode("signup")} style={{flex:1,padding:"8px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:800,fontSize:"0.78rem",background:mode==="signup"?C.gold:"#eee",color:mode==="signup"?C.darkBrown:"#666"}}>Sign Up</button>
         </div>}
 
+        {signedOutNotice && <div role="status" style={{background:C.cream,border:`1px solid ${C.gold}`,color:C.darkBrown,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{signedOutNotice}</div>}
         {error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
 
         {mode==="login" && <form onSubmit={handleLogin}>

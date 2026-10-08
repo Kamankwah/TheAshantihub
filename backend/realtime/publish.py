@@ -33,6 +33,15 @@ QUEUE_INVALIDATIONS = [
     (("contact-message",), ("contact_messages.manage",), ("contact-messages-queue", "staff-badges")),
     (("staff-conversation-",), ("messaging.manage",), ("staff-messaging-queue",)),
     (STAFF_MANAGEMENT_VERBS, ("staff.manage", "staff.invite_team"), ("staff-roster", "my-team")),
+    (("promotion-",), ("promotions.manage",), ("promotions-queue",)),
+    (("subscription-plan-",), ("subscription_plans.approve",), ("subscription-plan-pending-queue", "staff-badges")),
+    (("escrow-",), ("escrow.view",), ("escrow-ledger", "staff-badges")),
+    (("dispute-",), ("disputes.flag", "disputes.resolve_financial"), ("disputes-queue",)),
+    (
+        ("order-delivery-status-update", "order-assign-dispatch", "delivery-pickup", "delivery-deliver"),
+        ("orders.manage_delivery",),
+        ("delivery-queue",),
+    ),
 ]
 # (verb prefixes, extra keys for everyone who receives the feed event)
 FEED_KEYS = [

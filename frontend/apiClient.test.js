@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { server } from './mocks/server.js'
-import { apiFetch, getStoredAuth, setStoredAuth, apiPost, apiPostForm, apiPatch, apiPatchForm, apiDelete } from './apiClient.js'
+import { SESSION_ENDED_EVENT, apiFetch, getStoredAuth, setStoredAuth, apiPost, apiPostForm, apiPatch, apiPatchForm, apiDelete } from './apiClient.js'
 import { getNetworkStatus, resetNetworkStatusForTests } from './lib/networkStatus.js'
 
 describe('apiFetch', () => {
@@ -186,5 +186,18 @@ describe('network status reporting', () => {
     server.use(http.get('http://localhost:8000/api/listings/categories/', () => HttpResponse.json([])))
     await expect(apiFetch('/api/listings/categories/')).resolves.toEqual([])
     expect(getNetworkStatus().offline).toBe(false)
+  })
+})
+
+describe('session-ended event', () => {
+  it('fires on a 401 only when a session was stored', async () => {
+    const heard = vi.fn()
+    window.addEventListener(SESSION_ENDED_EVENT, heard)
+    server.use(http.get('http://localhost:8000/api/accounts/me/', () => new HttpResponse(null, { status: 401 })))
+    setStoredAuth({ token: 'expired', account_type: 'staff', id: 1, full_name: 'Esi' })
+    await expect(apiFetch('/api/accounts/me/')).rejects.toMatchObject({ status: 401 })
+    await expect(apiFetch('/api/accounts/me/')).rejects.toMatchObject({ status: 401 })
+    expect(heard).toHaveBeenCalledTimes(1)
+    window.removeEventListener(SESSION_ENDED_EVENT, heard)
   })
 })

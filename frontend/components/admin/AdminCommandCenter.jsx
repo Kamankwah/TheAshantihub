@@ -1,5 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Flag from "../Flag.jsx";
+import { SESSION_ENDED_EVENT } from "../../apiClient.js";
+import { useIdleSignOut } from "../../hooks/useIdleSignOut.js";
+import { useRealtime } from "../../hooks/useRealtime.js";
+import { noteSignedOutReason } from "../../lib/signOutReason.js";
+import LiveUpdatesIndicator from "./shell/LiveUpdatesIndicator.jsx";
 import { useStaffBadges } from "../../hooks/useStaffBadges.js";
 import { D, ROLE_ACCENTS } from "./theme.js";
 import OverviewPanel from "./panels/OverviewPanel.jsx";
@@ -78,6 +83,21 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
   const role = auth.user?.role;
   const roleColor = ROLE_ACCENTS[role] || D.gold;
   const showToast = () => { setSaved(true); setTimeout(() => setSaved(false), 2500); };
+  const live = useRealtime();
+  // Idle (30 min without input) and "the server ended this session" both
+  // sign out through the normal staff sign-out, which clears cached data.
+  const onExitRef = useRef(onExit);
+  useEffect(() => { onExitRef.current = onExit; }, [onExit]);
+  const signOutBecause = useCallback((reason) => {
+    noteSignedOutReason(reason);
+    onExitRef.current?.();
+  }, []);
+  useIdleSignOut(() => signOutBecause("idle"));
+  useEffect(() => {
+    const ended = () => signOutBecause("ended");
+    window.addEventListener(SESSION_ENDED_EVENT, ended);
+    return () => window.removeEventListener(SESSION_ENDED_EVENT, ended);
+  }, [signOutBecause]);
 
   const navGroups = buildNavGroups(auth);
   const allItems = navGroups.flatMap(g => g.items);
@@ -142,7 +162,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
       {/* Main column — carries the right landscape inset, and the left one
           on phone where there is no sidebar to absorb it (spec §4.4). */}
       <div style={{ flex: 1, minWidth: 0, paddingRight: "env(safe-area-inset-right, 0px)", ...(isPhone ? { paddingLeft: "env(safe-area-inset-left, 0px)" } : {}) }}>
-        <StaffHeader title={activeLabel} role={role} roleColor={roleColor} fullName={auth.user?.full_name}
+        <StaffHeader status={<LiveUpdatesIndicator paused={live.paused} />} title={activeLabel} role={role} roleColor={roleColor} fullName={auth.user?.full_name}
           onExit={onExit} onViewSite={onViewSite} breakpoint={breakpoint}
           onOpenMenu={() => setDrawerOpen(true)} menuButtonRef={menuButtonRef} drawerOpen={drawerOpen}
           actions={isPhone ? null : <InstallAppButton variant="header" />}>

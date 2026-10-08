@@ -1,7 +1,11 @@
 import { reportApiNetworkFailure, reportApiResponse } from './lib/networkStatus.js'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 const AUTH_STORAGE_KEY = 'ashantihub.auth'
+// Fired when the API answers 401 for a signed-in session (an ended, idle or
+// expired staff session, or a revoked token). The staff shell listens and
+// signs out to the staff sign-in instead of failing panel by panel.
+export const SESSION_ENDED_EVENT = 'ashantihub:session-ended'
 
 export function getStoredAuth() {
   const raw = localStorage.getItem(AUTH_STORAGE_KEY)
@@ -45,7 +49,9 @@ async function request(path, init) {
 
 async function handleResponse(response, path) {
   if (response.status === 401) {
+    const hadSession = Boolean(getStoredAuth())
     setStoredAuth(null)
+    if (hadSession && typeof window !== 'undefined') window.dispatchEvent(new Event(SESSION_ENDED_EVENT))
   }
   if (!response.ok) {
     // Attach the raw status + (best-effort) parsed JSON body onto the thrown

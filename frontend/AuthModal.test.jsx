@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { AuthModal } from './App.jsx'
+import { noteSignedOutReason } from './lib/signOutReason.js'
 
 function makeAuth(overrides = {}) {
   return {
@@ -129,5 +130,16 @@ describe('AuthModal', () => {
   it('never shows "Go to marketplace" on the customer/business sign-in', () => {
     render(<AuthModal authState="login" auth={makeAuth()} onClose={vi.fn()} onSuccess={vi.fn()} onGoToMarketplace={vi.fn()} />)
     expect(screen.queryByRole('button', { name: 'Go to marketplace' })).not.toBeInTheDocument()
+  })
+})
+
+describe('AuthModal — signed-out notice', () => {
+  it('the staff sign-in explains an idle sign-out, once', () => {
+    noteSignedOutReason('idle')
+    const { unmount } = render(<AuthModal authState="staff-login" auth={makeAuth()} onClose={() => {}} onSuccess={() => {}} />)
+    expect(screen.getByText('You were signed out after 30 minutes without activity.')).toBeInTheDocument()
+    unmount()
+    render(<AuthModal authState="staff-login" auth={makeAuth()} onClose={() => {}} onSuccess={() => {}} />)
+    expect(screen.queryByText('You were signed out after 30 minutes without activity.')).not.toBeInTheDocument()
   })
 })

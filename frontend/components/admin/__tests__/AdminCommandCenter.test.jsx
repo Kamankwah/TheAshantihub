@@ -95,7 +95,8 @@ describe('AdminCommandCenter — phone', () => {
     expect(screen.queryByRole('navigation', { name: 'Staff panels' })).not.toBeInTheDocument()
     const bar = screen.getByRole('navigation', { name: 'Quick navigation' })
     const labels = within(bar).getAllByRole('button').map((b) => b.textContent)
-    expect(labels).toEqual(['📊Overview', '⚖️Disputes', '👥Users', '💬Messaging / Tickets', '☰More'])
+    // The support menu leads with Inbox (Messaging) per the approved staff design.
+    expect(labels).toEqual(['📊Overview', '💬Messaging / Tickets', '⚖️Disputes', '👥Users', '☰More'])
   })
 
   it('opens the drawer from the header, locks scroll, and closes + restores focus on selection', () => {
