@@ -414,6 +414,14 @@ CELERY_BEAT_SCHEDULE = {
         "task": "billing.tasks.run_subscription_clock",
         "schedule": crontab(minute=5),  # hourly, at five past
     },
+    "portfolio-health-snapshot": {
+        "task": "portfolio.tasks.snapshot_business_health",
+        "schedule": crontab(hour=2, minute=15),
+    },
+    "portfolio-purge-staged-photos": {
+        "task": "portfolio.tasks.purge_staged_photos",
+        "schedule": crontab(hour=4, minute=30),
+    },
 }
 
 # Production sets this True so the nightly activity check emails its seal to

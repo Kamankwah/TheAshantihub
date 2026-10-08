@@ -766,6 +766,11 @@ class StaffDeactivateView(APIView):
                 {"detail": f"Reassign {staff.full_name}'s {active_reports} direct report(s) first."},
                 status=400,
             )
+        # Spec §3: a scout's portfolio is reassigned before they leave.
+        managed = staff.managed_businesses.count()
+        if managed:
+            noun = "business" if managed == 1 else "businesses"
+            return Response({"detail": f"Reassign {staff.full_name}'s {managed} {noun} first."}, status=400)
         staff.is_active = False
         staff.save(update_fields=["is_active"])
         sessions.revoke_all(staff, StaffSession.DEACTIVATED)
