@@ -55,3 +55,19 @@ class DeactivateScoutWithPortfolioTests(TestCase):
 
     def test_a_scout_without_businesses_is_deactivated_as_before(self):
         self.assertEqual(self.deactivate(self.efua).status_code, 200)
+
+    def test_rejected_businesses_do_not_block_deactivation(self):
+        owner = self.business("Gone Shop", self.kwame)
+        BusinessOwner.objects.filter(pk=owner.pk).update(kyc_status=BusinessOwner.REJECTED)
+        response = self.deactivate(self.kwame)
+        self.assertEqual(response.status_code, 200, response.content)
+
+    def test_only_non_rejected_businesses_are_counted(self):
+        gone = self.business("Gone Shop", self.kwame)
+        BusinessOwner.objects.filter(pk=gone.pk).update(kyc_status=BusinessOwner.REJECTED)
+        pending = self.business("Asafo Hair Studio", self.kwame)
+        BusinessOwner.objects.filter(pk=pending.pk).update(kyc_status=BusinessOwner.PENDING)
+        self.business("Adwoa Fabrics", self.kwame)
+        response = self.deactivate(self.kwame)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"detail": "Reassign Kwame's 2 businesses first."})

@@ -767,7 +767,8 @@ class StaffDeactivateView(APIView):
                 status=400,
             )
         # Spec §3: a scout's portfolio is reassigned before they leave.
-        managed = staff.managed_businesses.count()
+        # Rejected businesses appear in no portfolio list, so they can't be reassigned.
+        managed = staff.managed_businesses.exclude(kyc_status=BusinessOwner.REJECTED).count()
         if managed:
             noun = "business" if managed == 1 else "businesses"
             return Response({"detail": f"Reassign {staff.full_name}'s {managed} {noun} first."}, status=400)
