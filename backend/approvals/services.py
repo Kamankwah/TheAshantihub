@@ -147,15 +147,19 @@ def visible_to(staff):
     )
 
 
-def _lock_target(approval):
+def _lock_target_key(target_type, target_id):
     """Serialise every decision that touches one target, so two requests on it
     can't both pass the stale check and apply. Held until the transaction ends."""
-    if approval.target_id:
+    if target_id:
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT pg_advisory_xact_lock(%s, hashtext(%s))",
-                [TARGET_LOCK_NAMESPACE, f"{approval.target_type}:{approval.target_id}"],
+                [TARGET_LOCK_NAMESPACE, f"{target_type}:{target_id}"],
             )
+
+
+def _lock_target(approval):
+    _lock_target_key(approval.target_type, approval.target_id)
 
 
 def _run_apply(kind, approval):
@@ -296,10 +300,12 @@ def _approve(approval_id, staff, note, http_request):
             raise StaleRequest(STALE_MESSAGE)
         if kind.validate is not None:
             kind.validate(approval)  # e.g. "approve the business's KYC first" — raises ApprovalError
-        _run_apply(kind, approval)
-        approval.status = ApprovalRequest.APPROVED
+        # apply may need the decider (business.kyc stamps the owner's reviewed_by
+        # with it), so it is set first; a failed apply rolls the whole block back.
         approval.decided_by = staff
         approval.decided_at = timezone.now()
+        _run_apply(kind, approval)
+        approval.status = ApprovalRequest.APPROVED
         approval.decision_note = (note or "").strip()
         approval.save(update_fields=["status", "decided_by", "decided_at", "decision_note"])
         notify_staff(approval.maker, "approval_decided", f"Approved: {approval.title}",
@@ -324,6 +330,40 @@ def reject(approval_id, staff, note, http_request=None):
                      body=note, link=_link(approval), icon="↩️")
         record(staff, "approval.rejected", target=approval, after={"note": note}, request=http_request)
     return approval
+
+
+def close_pending_for_target(kind_key, *, target_type, target_id, staff, approved, note):
+    """Settle the pending requests of one kind on one target that were decided
+    somewhere else — the KYC queue settling a pending business.kyc request.
+    Locks the requests (oldest first) and refuses a maker before taking the
+    target lock, so the lock order matches approve(): approval rows, then the
+    target. Doesn't run apply and doesn't record(): the caller makes the change
+    itself and records last. Returns the requests it closed."""
+    note = (note or "").strip()
+    target_id = str(target_id)
+    with transaction.atomic():
+        pending = list(
+            ApprovalRequest.objects.select_for_update(of=("self",)).select_related("maker")
+            .filter(kind=kind_key, target_type=target_type, target_id=target_id, status=ApprovalRequest.PENDING)
+            .order_by("pk")
+        )
+        if any(approval.maker_id == staff.pk for approval in pending):
+            raise MakerCannotDecide("You can't approve your own request.")
+        _lock_target_key(target_type, target_id)
+        now = timezone.now()
+        for approval in pending:
+            approval.status = ApprovalRequest.APPROVED if approved else ApprovalRequest.REJECTED
+            approval.decided_by = staff
+            approval.decided_at = now
+            approval.decision_note = note
+            approval.save(update_fields=["status", "decided_by", "decided_at", "decision_note"])
+            if approved:
+                notify_staff(approval.maker, "approval_decided", f"Approved: {approval.title}",
+                             body=note, link=_link(approval), icon="✅")
+            else:
+                notify_staff(approval.maker, "approval_decided", f"Returned: {approval.title}",
+                             body=note, link=_link(approval), icon="↩️")
+    return pending
 
 
 def cancel(approval_id, staff, http_request=None):

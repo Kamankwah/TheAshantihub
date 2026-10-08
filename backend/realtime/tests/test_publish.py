@@ -81,6 +81,32 @@ class PublishTests(TestCase):
         self.assertEqual(set(payload), {"type", "invalidate", "at"})
         self.assertEqual(payload["invalidate"], ["kyc-queue", "kyc-detail", "staff-badges"])
 
+    def drain(self, channel):
+        """Every payload waiting on `channel` (stops after 0.2 s of quiet)."""
+
+        async def collect():
+            payloads = []
+            while True:
+                try:
+                    message = await asyncio.wait_for(self.layer.receive(channel), timeout=0.2)
+                except asyncio.TimeoutError:
+                    return payloads
+                payloads.append(message["payload"])
+
+        return async_to_sync(collect)()
+
+    def test_a_kyc_decision_refreshes_scouts_approvals_lists(self):
+        for verb in ("kyc-approve", "kyc-reject"):
+            with self.subTest(verb=verb):
+                scouts = self.listen("perm.businesses.manage_portfolio")
+                self.record(self.lead, verb, method="POST", target_type="accounts.businessowner", target_id="3", target_label="Adwoa Fabrics")
+                invalidations = [payload["invalidate"] for payload in self.drain(scouts) if payload["type"] == "invalidate"]
+                self.assertIn(["approvals", "approval", "approval-counts"], invalidations)
+        scouts = self.listen("perm.businesses.manage_portfolio")
+        self.record(self.lead, "kyc-address-verify", method="POST", target_type="accounts.businessowner", target_id="3")
+        invalidations = [payload["invalidate"] for payload in self.drain(scouts) if payload["type"] == "invalidate"]
+        self.assertNotIn(["approvals", "approval", "approval-counts"], invalidations)  # only decisions settle requests
+
     def test_the_money_delivery_and_promotion_queues_refresh_live(self):
         cases = [
             ("dispute-resolve", ["perm.disputes.resolve_financial", "perm.disputes.flag"], ["disputes-queue"]),

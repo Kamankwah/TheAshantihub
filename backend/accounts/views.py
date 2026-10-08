@@ -10,12 +10,13 @@ from rest_framework.permissions import SAFE_METHODS, AllowAny, BasePermission, I
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from approvals.services import ApprovalError
 from notifications.services import notify_business_owner, notify_customer, notify_staff_role
 
 from activity.services import record as record_activity
 from realtime.publish import force_disconnect_on_commit
 
-from . import sessions, two_factor
+from . import kyc, sessions, two_factor
 from .authentication import issue_token
 from .emails import send_staff_invite_email, send_two_factor_changed_email, send_verification_code_email
 from .models import (
@@ -319,7 +320,7 @@ class KYCPendingQueueView(generics.ListAPIView):
     def get_queryset(self):
         tab = self.request.query_params.get("status", "pending")
         kyc_status = KYC_STATUS_MAP.get(tab, BusinessOwner.PENDING)
-        queryset = BusinessOwner.objects.filter(kyc_status=kyc_status)
+        queryset = kyc.with_review_data(BusinessOwner.objects.filter(kyc_status=kyc_status))
         # Pending: oldest-first (a work queue). Approved/Rejected: most-recently
         # actioned first (a history), falling back to created_at for legacy
         # rows actioned before reviewed_at existed.
@@ -329,29 +330,28 @@ class KYCPendingQueueView(generics.ListAPIView):
 
 
 class KYCDetailView(generics.RetrieveAPIView):
-    queryset = BusinessOwner.objects.all()
     serializer_class = BusinessOwnerKYCDetailSerializer
 
     def get_permissions(self):
         return [HasRolePermission("kyc.approve")]
 
+    def get_queryset(self):
+        return kyc.with_review_data(BusinessOwner.objects.all())
+
 
 class KYCApproveView(APIView):
+    """Approve from the KYC queue. accounts.kyc.approve_owner settles a pending
+    business.kyc request too, refuses a business already decided, the request's
+    own maker, and an open self-dealing case; it records kyc-approve itself."""
+
     def get_permissions(self):
         return [HasRolePermission("kyc.approve")]
 
     def post(self, request, pk):
-        owner = generics.get_object_or_404(BusinessOwner, pk=pk)
-        owner.kyc_status = BusinessOwner.VERIFIED
-        owner.kyc_rejection_reason = None
-        owner.reviewed_by = request.user
-        owner.reviewed_at = timezone.now()
-        owner.save(update_fields=["kyc_status", "kyc_rejection_reason", "reviewed_by", "reviewed_at"])
-        notify_business_owner(
-            owner, "kyc_approved", "Your business is verified!",
-            body="Your KYC has been approved — you can now publish listings.",
-            link="/business-dashboard", icon="✅",
-        )
+        try:
+            owner = kyc.approve_owner(pk, request.user, http_request=request)
+        except (kyc.KycError, ApprovalError) as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
         return Response({"id": owner.id, "kyc_status": owner.kyc_status})
 
 
@@ -360,18 +360,11 @@ class KYCRejectView(APIView):
         return [HasRolePermission("kyc.approve")]
 
     def post(self, request, pk):
-        reason = request.data.get("reason", "")
-        owner = generics.get_object_or_404(BusinessOwner, pk=pk)
-        owner.kyc_status = BusinessOwner.REJECTED
-        owner.kyc_rejection_reason = reason
-        owner.reviewed_by = request.user
-        owner.reviewed_at = timezone.now()
-        owner.save(update_fields=["kyc_status", "kyc_rejection_reason", "reviewed_by", "reviewed_at"])
-        notify_business_owner(
-            owner, "kyc_rejected", "Your KYC needs attention",
-            body=reason or "Your KYC submission was rejected. Please review and resubmit.",
-            link="/business-dashboard", icon="⚠️",
-        )
+        data = request.data if hasattr(request.data, "get") else {}
+        try:
+            owner = kyc.reject_owner(pk, request.user, str(data.get("reason") or ""), http_request=request)
+        except (kyc.KycError, ApprovalError) as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
         return Response({"id": owner.id, "kyc_status": owner.kyc_status})
 
 

@@ -26,6 +26,10 @@ STAFF_MANAGEMENT_VERBS = (
 # (verb prefixes, permissions whose holders' queues changed, query keys)
 QUEUE_INVALIDATIONS = [
     (("kyc-",), ("kyc.approve",), ("kyc-queue", "kyc-detail", "staff-badges")),
+    # A KYC decision in the queue settles the maker's business.kyc request
+    # without an approval.* event (accounts/kyc.py), so scouts' approvals
+    # lists refresh from the decision itself.
+    (("kyc-approve", "kyc-reject"), ("businesses.manage_portfolio",), ("approvals", "approval", "approval-counts")),
     (("moderation-",), ("listings.moderate",), ("moderation-queue", "staff-badges")),
     (("hero-moderation-",), ("hero_media.approve",), ("hero-moderation-queue", "staff-badges")),
     (("event-moderation-",), ("event.approve",), ("event-moderation-queue", "event-moderation-detail", "staff-badges")),

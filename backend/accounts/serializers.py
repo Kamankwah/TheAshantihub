@@ -258,13 +258,34 @@ class BusinessOwnerKYCSerializer(serializers.ModelSerializer):
     # submission without expanding its detail. kyc_rejection_reason is here for
     # the same reason (the Rejected tab shows it inline).
     reviewed_by_name = serializers.CharField(source="reviewed_by.full_name", read_only=True, default=None)
+    # Plan 2A: who registered it, its open fraud cases and the pending
+    # business.kyc request the queue's Approve/Reject would settle. The
+    # helpers live in accounts/kyc.py, imported lazily (accounts.kyc imports
+    # activity.services, which imports this module).
+    registered_by_name = serializers.CharField(source="registered_by.full_name", read_only=True, default=None)
+    # The registrar's role ("Scout", "Operations"), so the queue never labels an
+    # Operations registrar a scout. Rides on the registered_by__role select_related.
+    registered_by_role = serializers.CharField(source="registered_by.role.get_name_display", read_only=True, default=None)
+    open_fraud_flags = serializers.SerializerMethodField()
+    pending_approval_id = serializers.SerializerMethodField()
 
     class Meta:
         model = BusinessOwner
         fields = [
             "id", "full_name", "login_phone", "kyc_status", "kyc_rejection_reason",
             "created_at", "reviewed_by_name", "reviewed_at",
+            "registration_channel", "registered_by_name", "registered_by_role", "open_fraud_flags", "pending_approval_id",
         ]
+
+    def get_open_fraud_flags(self, obj):
+        from .kyc import open_fraud_flag_rows
+
+        return open_fraud_flag_rows(obj)
+
+    def get_pending_approval_id(self, obj):
+        from .kyc import pending_approval_id
+
+        return pending_approval_id(obj)
 
 
 class BusinessOwnerProfileKYCDetailSerializer(serializers.ModelSerializer):
@@ -292,15 +313,26 @@ class BusinessOwnerProfileKYCDetailSerializer(serializers.ModelSerializer):
         ]
 
 
-class BusinessOwnerKYCDetailSerializer(serializers.ModelSerializer):
+class BusinessOwnerKYCDetailSerializer(BusinessOwnerKYCSerializer):
     profile = BusinessOwnerProfileKYCDetailSerializer(read_only=True)
-    reviewed_by_name = serializers.CharField(source="reviewed_by.full_name", read_only=True, default=None)
+    # The business and its pin (plan 2A). An owner without a profile yet reads
+    # None for each (a missing reverse one-to-one resolves to the default).
+    business_name = serializers.CharField(source="profile.business_name", read_only=True, default=None)
+    business_category_name = serializers.CharField(source="profile.business_category.label", read_only=True, default=None)
+    zone_name = serializers.CharField(source="profile.zone.name", read_only=True, default=None)
+    lat = serializers.DecimalField(source="profile.lat", max_digits=9, decimal_places=6, read_only=True, default=None)
+    lng = serializers.DecimalField(source="profile.lng", max_digits=9, decimal_places=6, read_only=True, default=None)
+    location_accuracy_m = serializers.IntegerField(source="profile.location_accuracy_m", read_only=True, default=None)
+    location_is_manual = serializers.BooleanField(source="profile.location_is_manual", read_only=True, default=None)
+    signboard_photo = serializers.ImageField(source="profile.signboard_photo", read_only=True, default=None)
 
-    class Meta:
-        model = BusinessOwner
+    class Meta(BusinessOwnerKYCSerializer.Meta):
         fields = [
             "id", "full_name", "login_phone", "email", "kyc_status", "kyc_rejection_reason",
             "created_at", "reviewed_by_name", "reviewed_at", "profile",
+            "registration_channel", "registered_by_name", "registered_by_role", "open_fraud_flags", "pending_approval_id",
+            "business_name", "business_category_name", "zone_name", "lat", "lng",
+            "location_accuracy_m", "location_is_manual", "signboard_photo",
         ]
 
 
