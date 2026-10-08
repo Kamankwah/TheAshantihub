@@ -98,6 +98,15 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
     window.addEventListener(SESSION_ENDED_EVENT, ended);
     return () => window.removeEventListener(SESSION_ENDED_EVENT, ended);
   }, [signOutBecause]);
+  // Another tab signed out (idle, or the Sign out button): the shared stored
+  // session is gone, so this tab's next request would carry no token.
+  useEffect(() => {
+    const onStorage = (event) => {
+      if (event.key === "ashantihub.auth" && event.newValue === null) signOutBecause("ended");
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [signOutBecause]);
 
   const navGroups = buildNavGroups(auth);
   const allItems = navGroups.flatMap(g => g.items);

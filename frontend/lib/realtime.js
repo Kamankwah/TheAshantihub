@@ -55,6 +55,7 @@ export function createRealtimeClient({
     try {
       ticket = await getTicket()
     } catch (error) {
+      if (stopped) return
       // 401/403: the session is over; apiClient's 401 handling signs out.
       if (error?.status === 401 || error?.status === 403) { stop(); return }
       down()
@@ -70,10 +71,12 @@ export function createRealtimeClient({
       emit({ live: true, paused: false })
     }
     ws.onmessage = (message) => {
+      if (socket !== ws) return
       let data
       try { data = JSON.parse(message.data) } catch { return }
-      // The server closes right after this; reconnect without backing off.
-      if (data?.type === 'force_disconnect') { attempt = 0; return }
+      // The server closes right after this; onclose reconnects (attempt was
+      // already reset by onopen, so there is no backoff to skip).
+      if (data?.type === 'force_disconnect') return
       if (Array.isArray(data?.invalidate) && data.invalidate.length) onInvalidate(data.invalidate)
       if (data?.type === 'activity') onEvent(data)
     }

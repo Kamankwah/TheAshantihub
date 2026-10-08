@@ -27,3 +27,28 @@ describe('live updates in the staff shell', () => {
     expect(sessionStorage.getItem('ashantihub.signedOutReason')).toBe('ended')
   })
 })
+
+describe('sign-out from another tab', () => {
+  it('signs this tab out when another tab clears the stored session', () => {
+    const onExit = vi.fn()
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    sessionStorage.removeItem('ashantihub.signedOutReason')
+    const { unmount } = render(<QueryClientProvider client={queryClient}><AdminCommandCenter auth={auth} onExit={onExit} /></QueryClientProvider>)
+    act(() => { window.dispatchEvent(new StorageEvent('storage', { key: 'ashantihub.auth', newValue: null })) })
+    expect(onExit).toHaveBeenCalledTimes(1)
+    expect(sessionStorage.getItem('ashantihub.signedOutReason')).toBe('ended')
+    unmount()
+    act(() => { window.dispatchEvent(new StorageEvent('storage', { key: 'ashantihub.auth', newValue: null })) })
+    expect(onExit).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the indicator region mounted and only toggles its text', () => {
+    const { rerender } = render(<LiveUpdatesIndicator paused={false} />)
+    const region = screen.getByRole('status')
+    expect(region).toHaveAttribute('aria-live', 'polite')
+    expect(region).toBeEmptyDOMElement()
+    rerender(<LiveUpdatesIndicator paused />)
+    expect(screen.getByRole('status')).toBe(region)
+    expect(region).toHaveTextContent('Live updates paused')
+  })
+})

@@ -1,4 +1,3 @@
-import { takeSignedOutMessage } from "./lib/signOutReason.js";
 import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate, useMatch } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -61,6 +60,7 @@ import KpiCard from "./components/dashboard/charts/KpiCard.jsx";
 import ChartFrame from "./components/dashboard/charts/ChartFrame.jsx";
 import { ensureStaffHead, isStaffPathname, isStandaloneDisplay, startStaffPwa } from "./lib/staffPwa.js";
 import { subjectLine } from "./lib/conversationSubject.js";
+import { takeSignedOutMessage } from "./lib/signOutReason.js";
 import { readCookieConsent, saveCookieConsent } from "./lib/cookieConsent.js";
 import useBreakpoint from "./hooks/useBreakpoint.js";
 import SpendAreaChart from "./components/dashboard/charts/SpendAreaChart.jsx";

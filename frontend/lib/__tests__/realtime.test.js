@@ -127,3 +127,66 @@ describe('createRealtimeClient', () => {
     expect(FakeSocket.all).toHaveLength(1)
   })
 })
+
+describe('createRealtimeClient — fix round 1', () => {
+  it('backs off further on consecutive failures and resets after a successful open', async () => {
+    const { client, getTicket } = setup()
+    client.start()
+    await vi.advanceTimersByTimeAsync(0)
+    FakeSocket.all[0].drop()
+    await vi.advanceTimersByTimeAsync(BACKOFF_MS[0])
+    FakeSocket.all[1].drop()
+    await vi.advanceTimersByTimeAsync(BACKOFF_MS[1] - 1)
+    expect(FakeSocket.all).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(FakeSocket.all).toHaveLength(3)
+    FakeSocket.all[2].open()
+    FakeSocket.all[2].drop()
+    await vi.advanceTimersByTimeAsync(BACKOFF_MS[0])
+    expect(FakeSocket.all).toHaveLength(4)
+    expect(getTicket).toHaveBeenCalledTimes(4)
+    client.stop()
+  })
+
+  it('stops for good on a 403 from the ticket endpoint', async () => {
+    const getTicket = failing(403)
+    const { client } = setup(getTicket)
+    client.start()
+    await vi.advanceTimersByTimeAsync(60000)
+    expect(getTicket).toHaveBeenCalledTimes(1)
+    expect(client.getStatus().paused).toBe(false)
+  })
+
+  it('retries after a network error that carries no status', async () => {
+    const getTicket = vi.fn(async () => { throw new TypeError('Failed to fetch') })
+    const { client } = setup(getTicket)
+    client.start()
+    await vi.advanceTimersByTimeAsync(BACKOFF_MS[0] + BACKOFF_MS[1])
+    expect(getTicket.mock.calls.length).toBeGreaterThanOrEqual(3)
+    client.stop()
+  })
+
+  it('arms no pause timer when stopped while the ticket request is failing', async () => {
+    let reject
+    const getTicket = vi.fn(() => new Promise((_, r) => { reject = r }))
+    const { client } = setup(getTicket)
+    client.start()
+    client.stop()
+    reject(new Error('late'))
+    await vi.advanceTimersByTimeAsync(PAUSED_AFTER_MS * 2)
+    expect(client.getStatus().paused).toBe(false)
+  })
+
+  it('ignores messages from a socket that is no longer current', async () => {
+    const { client, invalidated } = setup()
+    client.start()
+    await vi.advanceTimersByTimeAsync(0)
+    const old = FakeSocket.all[0]
+    old.open()
+    old.drop()
+    await vi.advanceTimersByTimeAsync(BACKOFF_MS[0])
+    old.push({ type: 'invalidate', invalidate: ['kyc-queue'], at: 'now' })
+    expect(invalidated).toEqual([])
+    client.stop()
+  })
+})

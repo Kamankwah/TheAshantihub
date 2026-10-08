@@ -35,6 +35,8 @@ function authHeaders() {
 // has no HTTP response at all — DNS/TLS failure, dead uplink, captive portal —
 // which navigator.onLine often misses. Any response, whatever its status,
 // proves the API is reachable. The original error is rethrown unchanged.
+const sentAuth = new WeakMap()
+
 async function request(path, init) {
   let response
   try {
@@ -44,13 +46,18 @@ async function request(path, init) {
     throw error
   }
   reportApiResponse()
+  sentAuth.set(response, init?.headers?.Authorization || null)
   return response
 }
 
 async function handleResponse(response, path) {
   if (response.status === 401) {
-    const hadSession = Boolean(getStoredAuth())
-    setStoredAuth(null)
+    // Only the session this request was sent with ends; a stale 401 must not
+    // sign out a newer session (another sign-in, another tab).
+    const stored = getStoredAuth()
+    const sent = sentAuth.get(response)
+    const hadSession = Boolean(stored) && sent === `Bearer ${stored.token}`
+    if (hadSession || !stored) setStoredAuth(null)
     if (hadSession && typeof window !== 'undefined') window.dispatchEvent(new Event(SESSION_ENDED_EVENT))
   }
   if (!response.ok) {

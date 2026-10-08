@@ -201,3 +201,20 @@ describe('session-ended event', () => {
     window.removeEventListener(SESSION_ENDED_EVENT, heard)
   })
 })
+
+describe('session-ended event — stale responses', () => {
+  it('a 401 for an older token does not end a newer session', async () => {
+    const heard = vi.fn()
+    window.addEventListener(SESSION_ENDED_EVENT, heard)
+    server.use(http.get('http://localhost:8000/api/accounts/me/', () => {
+      setStoredAuth({ token: 'newer', account_type: 'staff', id: 1, full_name: 'Esi' })
+      return new HttpResponse(null, { status: 401 })
+    }))
+    setStoredAuth({ token: 'older', account_type: 'staff', id: 1, full_name: 'Esi' })
+    await expect(apiFetch('/api/accounts/me/')).rejects.toMatchObject({ status: 401 })
+    expect(getStoredAuth()).toMatchObject({ token: 'newer' })
+    expect(heard).not.toHaveBeenCalled()
+    window.removeEventListener(SESSION_ENDED_EVENT, heard)
+    setStoredAuth(null)
+  })
+})
