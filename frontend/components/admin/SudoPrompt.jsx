@@ -13,10 +13,17 @@ import { D } from "./theme.js";
 export default function SudoPrompt() {
   const pending = useRef(null);
   const returnFocus = useRef(null);
+  const passwordInput = useRef(null);
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+
+  // Focus the password field once each time the prompt opens (not on every
+  // render, which an inline ref callback would do).
+  useEffect(() => {
+    if (open) passwordInput.current?.focus();
+  }, [open]);
 
   useEffect(() => {
     const unregister = setSudoHandler(() => {
@@ -48,7 +55,8 @@ export default function SudoPrompt() {
     // Put focus back where it was before the prompt opened.
     const back = returnFocus.current;
     returnFocus.current = null;
-    if (back && typeof back.focus === "function") setTimeout(() => back.focus(), 0);
+    // Skipped if the opener has gone (its panel unmounted meanwhile).
+    if (back && back.isConnected && typeof back.focus === "function") setTimeout(() => back.focus(), 0);
   };
 
   const confirm = async (e) => {
@@ -76,7 +84,7 @@ export default function SudoPrompt() {
         <div style={{ color: D.textDim, fontSize: "0.8rem", lineHeight: 1.5 }}>Enter your password to carry on. It unlocks sensitive actions on this device for 10 minutes.</div>
         <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.75rem", fontWeight: 700, color: D.text }}>
           Password
-          <input ref={(el) => el?.focus()} type="password" autoFocus autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} style={{ ...field, resize: "none" }} />
+          <input ref={passwordInput} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} style={{ ...field, resize: "none" }} />
         </label>
         {error && <div role="alert" style={{ color: D.red, fontSize: "0.78rem" }}>{error}</div>}
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>

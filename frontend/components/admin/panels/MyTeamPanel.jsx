@@ -4,6 +4,7 @@ import { useMyTeam } from "../../../hooks/useMyTeam.js";
 import { useInvitableRoles } from "../../../hooks/useInvitableRoles.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D, glassCard } from "../theme.js";
+import { LastSignIn } from "./sessionParts.jsx";
 
 const ROLE_LABELS = { super_admin: "Super Admin", operations: "Operations", accountant: "Accountant", marketing: "Marketing", support: "Support", scout: "Scout", delivery_manager: "Delivery Manager", dispatch: "Dispatch" };
 const field = { border: `1px solid ${D.cardBorder}`, borderRadius: 10, padding: "8px 10px", fontSize: "0.82rem", fontFamily: "inherit", color: D.text, background: "#fff" };
@@ -58,6 +59,7 @@ export default function MyTeamPanel({ currentStaffId }) {
             <div>
               <div style={{ color: D.text, fontWeight: 700, fontSize: "0.85rem" }}>{m.full_name} <span style={{ color: D.textDim, fontWeight: 400 }}>· {ROLE_LABELS[m.role] || m.role} · {m.status}</span></div>
               <div style={{ color: D.textDim, fontSize: "0.72rem" }}>{m.email}</div>
+              <LastSignIn staff={m} />
             </div>
             <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
               {(m.status === "invited" || m.status === "invite_expired") && <button type="button" aria-label={`Resend invite to ${m.full_name}`} onClick={() => run(() => apiPost(`/api/accounts/staff/${m.id}/resend-invite/`, {}), "Invite resent.", "Could not resend the invite.")} style={smallBtn("#fff", D.text)}>Resend invite</button>}

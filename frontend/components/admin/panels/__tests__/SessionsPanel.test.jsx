@@ -104,6 +104,7 @@ describe('SessionsPanel', () => {
     renderPanel()
     fireEvent.click(await screen.findByRole('button', { name: 'Sign-in history for Ama Boateng' }))
     const list = await screen.findByRole('list', { name: "Ama Boateng's sign-in history" })
+    expect(screen.getByText("Ama Boateng's most recent sign-ins (up to 50).")).toBeInTheDocument()
     expect(asked).toBe('2')
     expect(list).toHaveTextContent('Safari on iPhone')
     expect(list).toHaveTextContent('Ended: 30 minutes without activity')

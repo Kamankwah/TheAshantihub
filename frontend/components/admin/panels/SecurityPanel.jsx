@@ -82,7 +82,7 @@ export default function SecurityPanel() {
 
       <section aria-labelledby="recent-heading" style={{ ...glassCard, padding: 18, display: "flex", flexDirection: "column", gap: 10 }}>
         <h2 id="recent-heading" style={heading}>Recent sign-ins</h2>
-        <div style={dim}>Every sign-in on your account from the last 90 days, including ones that have ended. If one isn't yours, change your password.</div>
+        <div style={dim}>Your most recent sign-ins (up to 50), including ones that have ended. If one isn't yours, change your password.</div>
         {!isLoading && !isError && <SignInHistory sessions={sessions} label="Recent sign-ins" />}
       </section>
 

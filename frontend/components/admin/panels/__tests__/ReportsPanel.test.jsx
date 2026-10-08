@@ -176,6 +176,12 @@ describe('ReportsPanel', () => {
     expect(screen.queryByLabelText("Include my team's reports")).not.toBeInTheDocument()
   })
 
+  it("says everyone's reports to a viewer who can see everyone's", async () => {
+    renderPanel({ user: { id: 1 }, hasPermission: (c) => c === 'reports.view_all' || c === 'staff.invite_team' })
+    expect(await screen.findByLabelText("Include everyone's reports")).toBeInTheDocument()
+    expect(screen.queryByLabelText("Include my team's reports")).not.toBeInTheDocument()
+  })
+
   it('exports the whole team when the checkbox is ticked, otherwise only me', async () => {
     const urls = []
     server.use(http.get('http://localhost:8000/api/reports/export/', ({ request }) => { urls.push(request.url); return HttpResponse.json({ id: 1, status: 'queued' }, { status: 202 }) }))

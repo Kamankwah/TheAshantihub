@@ -177,7 +177,8 @@ function RangeExport({ auth }) {
   const [actionError, setActionError] = useState(null);
   const [busy, setBusy] = useState(false);
   const { data: exportsList, refetch } = useReportExports();
-  const canIncludeTeam = auth?.hasPermission?.("staff.invite_team") || auth?.hasPermission?.("reports.view_all");
+  const viewAll = auth?.hasPermission?.("reports.view_all");
+  const canIncludeTeam = auth?.hasPermission?.("staff.invite_team") || viewAll;
 
   const run = async () => {
     if (busy) return;
@@ -219,7 +220,7 @@ function RangeExport({ auth }) {
         <label style={labelStyle}>From<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={field} /></label>
         <label style={labelStyle}>To<input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={field} /></label>
         <label style={labelStyle}>Format<select value={format} onChange={(e) => setFormat(e.target.value)} style={field}><option value="xlsx">Excel</option><option value="csv">CSV</option><option value="pdf">PDF</option></select></label>
-        {canIncludeTeam && <label style={{ ...labelStyle, flexDirection: "row", alignItems: "center" }}><input type="checkbox" checked={includeTeam} onChange={(e) => setIncludeTeam(e.target.checked)} />Include my team's reports</label>}
+        {canIncludeTeam && <label style={{ ...labelStyle, flexDirection: "row", alignItems: "center" }}><input type="checkbox" checked={includeTeam} onChange={(e) => setIncludeTeam(e.target.checked)} />{viewAll ? "Include everyone's reports" : "Include my team's reports"}</label>}
         <button type="button" disabled={busy} onClick={run} style={button(D.gold, D.text, busy)}>Export reports</button>
       </div>
       <div style={dim}>Large ranges are prepared in the background and appear below when ready. Every export is recorded.</div>

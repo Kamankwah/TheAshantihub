@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { apiPost } from '../../../apiClient.js'
@@ -9,6 +9,16 @@ const SUSPEND = 'http://localhost:8000/api/accounts/staff/9/suspend/'
 const PERMISSIONS = 'http://localhost:8000/api/accounts/staff/9/permissions/'
 const REAUTH = 'http://localhost:8000/api/accounts/staff/reauth/'
 const needSudo = () => HttpResponse.json({ detail: 'Re-enter your password to continue.', code: 'sudo_required' }, { status: 403 })
+
+// A correct password closes the prompt from fetch callbacks after the click
+// returns (reauth, then the retry): confirm inside act() and wait there for
+// the actions to settle, so React applies those updates before the test looks.
+async function confirmAndSettle(...actions) {
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+    await Promise.allSettled(actions)
+  })
+}
 
 describe('SudoPrompt', () => {
   it('asks for the password and retries the action once', async () => {
@@ -21,7 +31,7 @@ describe('SudoPrompt', () => {
     render(<SudoPrompt />)
     const action = apiPost('/api/accounts/staff/9/suspend/', { reason: 'x' })
     fireEvent.change(await screen.findByLabelText('Password'), { target: { value: 'correct-horse-1' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+    await confirmAndSettle(action)
     await expect(action).resolves.toEqual({ id: 9, status: 'suspended' })
     expect(reauth).toEqual({ password: 'correct-horse-1' })
     expect(attempts).toBe(2)
@@ -67,7 +77,7 @@ describe('SudoPrompt', () => {
     await waitFor(() => expect(calls.suspend + calls.permissions).toBe(2))
     expect(await screen.findAllByRole('dialog')).toHaveLength(1)
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'correct-horse-1' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+    await confirmAndSettle(both)
     await expect(both).resolves.toEqual([{ ok: 'suspend' }, { ok: 'permissions' }])
     expect(calls).toEqual({ suspend: 2, permissions: 2 })
   })
@@ -93,7 +103,7 @@ describe('SudoPrompt — edge cases', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'right' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+    await confirmAndSettle(action)
     await expect(action).resolves.toEqual({ ok: true })
     expect(tries).toBe(2)
   })
@@ -107,7 +117,7 @@ describe('SudoPrompt — edge cases', () => {
     render(<SudoPrompt />)
     const action = apiPost('/api/accounts/staff/9/suspend/', {})
     fireEvent.change(await screen.findByLabelText('Password'), { target: { value: 'pw' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+    await confirmAndSettle(action)
     await expect(action).rejects.toMatchObject({ status: 403 })
     expect(attempts).toBe(2)
   })
@@ -142,6 +152,19 @@ describe('SudoPrompt — edge cases', () => {
     await expect(apiPost('/api/accounts/staff/9/suspend/', {})).rejects.toMatchObject({ status: 403 })
     expect(attempts).toBe(2)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('focuses the password field once when it opens, not again on every keystroke', async () => {
+    server.use(http.post(SUSPEND, needSudo))
+    render(<SudoPrompt />)
+    apiPost('/api/accounts/staff/9/suspend/', {}).catch(() => {})
+    const input = await screen.findByLabelText('Password')
+    await waitFor(() => expect(input).toHaveFocus())
+    const cancel = screen.getByRole('button', { name: 'Cancel' })
+    cancel.focus()
+    fireEvent.change(input, { target: { value: 'p' } }) // a re-render
+    expect(cancel).toHaveFocus()
+    fireEvent.click(cancel)
   })
 
   it('focuses the password field on open and gives focus back on close', async () => {

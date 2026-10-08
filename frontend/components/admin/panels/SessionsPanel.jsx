@@ -17,7 +17,12 @@ const KEYS = [["active-sessions"], ["my-sessions"], ["staff-roster"]];
 // current session has no End button: ending it is signing out.
 function PersonHistory({ staff }) {
   const { data, isLoading, isError } = useStaffSessionHistory(staff.id);
-  return <SignInHistory sessions={data} label={`${staff.full_name}'s sign-in history`} isLoading={isLoading} isError={isError} />;
+  return (
+    <>
+      <div style={dim}>{staff.full_name}'s most recent sign-ins (up to 50).</div>
+      <SignInHistory sessions={data} label={`${staff.full_name}'s sign-in history`} isLoading={isLoading} isError={isError} />
+    </>
+  );
 }
 
 export default function SessionsPanel({ auth }) {

@@ -133,6 +133,9 @@ describe('SecurityPanel', () => {
     ])))
     renderPanel()
     const list = await screen.findByRole('list', { name: 'Recent sign-ins' })
+    // The server lists at most 50: the copy never claims every sign-in.
+    expect(screen.getByText(/Your most recent sign-ins \(up to 50\), including ones that have ended\./)).toBeInTheDocument()
+    expect(screen.queryByText(/every sign-in/i)).not.toBeInTheDocument()
     expect(list).toHaveTextContent('Firefox on Linux computer')
     expect(list).toHaveTextContent('Ended: Signed out')
     // Ended rows never get an End button.

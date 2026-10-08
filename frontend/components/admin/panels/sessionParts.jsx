@@ -25,8 +25,9 @@ export function when(iso) {
   return sameDay(d, new Date()) ? time : `${d.toLocaleDateString("en-GH", { day: "numeric", month: "short" })}, ${time}`;
 }
 
-// The sign-ins the server keeps (90 days): device, IP, started, last seen and,
-// for an ended one, why it ended. Read-only: no End buttons here.
+// The most recent sign-ins the server lists (up to 50, from the 90 days it
+// keeps): device, IP, started, last seen and, for an ended one, why it ended.
+// Read-only: no End buttons here.
 export function SignInHistory({ sessions, label, isLoading, isError }) {
   if (isLoading) return <div role="status" style={dim}>Loading…</div>;
   if (isError) return <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>Could not load the sign-in history.</div>;
@@ -42,5 +43,17 @@ export function SignInHistory({ sessions, label, isLoading, isError }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+// A roster row's last sign-in (StaffListSerializer.last_sign_in_at, from the
+// sessions the server keeps for 90 days). null means none in that time —
+// never "Never"; a payload without the field shows nothing rather than a guess.
+export function LastSignIn({ staff, style }) {
+  if (!staff || !("last_sign_in_at" in staff)) return null;
+  return (
+    <div style={{ color: D.textDim, fontSize: "0.66rem", ...style }}>
+      {staff.last_sign_in_at ? `Last sign-in ${when(staff.last_sign_in_at)}` : "No sign-in in the last 90 days"}
+    </div>
   );
 }

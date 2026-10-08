@@ -13,6 +13,18 @@ function renderPanel(props = {}) {
 }
 
 describe('MyTeamPanel', () => {
+  it("shows each team member's last sign-in, or that there was none in 90 days", async () => {
+    const when = new Date(2025, 9, 5, 9, 40).toISOString()
+    server.use(http.get('http://localhost:8000/api/accounts/staff/team/', () => HttpResponse.json([
+      { ...member(4, 'Kwame Asante', 'active'), last_sign_in_at: when },
+      { ...member(5, 'Efua Owusu', 'invited'), last_sign_in_at: null },
+    ])))
+    renderPanel()
+    expect(await screen.findByText(/^Last sign-in 5 Oct, 09:40/)).toBeInTheDocument()
+    expect(screen.getByText('No sign-in in the last 90 days')).toBeInTheDocument()
+  })
+
+
   it('invites someone to a role the server allows', async () => {
     let body = null
     server.use(

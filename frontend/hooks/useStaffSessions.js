@@ -11,8 +11,8 @@ export function useActiveSessions() {
   return useQuery({ queryKey: ['active-sessions'], queryFn: () => apiFetch('/api/accounts/staff/sessions/active/') })
 }
 
-// GET /api/accounts/staff/sessions/?staff=<id> — one person's sign-in history
-// (everything the server keeps, 90 days; staff.manage). The key sits under
+// GET /api/accounts/staff/sessions/?staff=<id> — one person's most recent
+// sign-ins (the server lists up to 50 of the 90 days it keeps; staff.manage). The key sits under
 // ['my-sessions'] so invalidating that refreshes it too.
 export function useStaffSessionHistory(staffId, { enabled = true } = {}) {
   return useQuery({
