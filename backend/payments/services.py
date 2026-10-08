@@ -26,6 +26,7 @@ produce identical downstream state.
 from datetime import timedelta
 
 from django.conf import settings
+from django.db import transaction as db_transaction
 from django.utils import timezone
 
 from billing.models import Transaction
@@ -169,7 +170,14 @@ def _finalize_subscription(session):
     the frontend today additionally calls POST /api/billing/subscriptions/me/
     itself right after — update_or_create just re-applies the same plan/
     cycle, no material difference.
+
+    A payment is also the only thing that stops the overdue clock
+    (billing.clock): the renewal and clear_after_payment share one
+    transaction, so a paused business's listings come back in the same commit
+    as its payment (spec S7). POST /api/billing/subscriptions/me/ grants a
+    plan without a payment and never clears it.
     """
+    from billing import clock
     from billing.models import Subscription, SubscriptionPlan
 
     meta = session.metadata
@@ -184,17 +192,20 @@ def _finalize_subscription(session):
 
     now = timezone.now()
     period_length = timedelta(days=30 * int(cycle_months))
-    Subscription.objects.update_or_create(
-        business_owner_id=session.business_owner_id,
-        defaults={
-            "plan": plan,
-            "cycle_months": cycle_months,
-            "is_trial": False,
-            "status": Subscription.ACTIVE,
-            "current_period_start": now,
-            "current_period_end": now + period_length,
-        },
-    )
+    with db_transaction.atomic():
+        subscription, _ = Subscription.objects.update_or_create(
+            business_owner_id=session.business_owner_id,
+            defaults={
+                "plan": plan,
+                "cycle_months": cycle_months,
+                "is_trial": False,
+                "status": Subscription.ACTIVE,
+                "current_period_start": now,
+                "current_period_end": now + period_length,
+            },
+        )
+        # Records subscription.resumed last when it stopped a running clock.
+        clock.clear_after_payment(subscription, now=now)
 
 
 def _finalize_service_request(session):

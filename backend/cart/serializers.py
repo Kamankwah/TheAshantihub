@@ -3,6 +3,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from listings.models import Listing
+from listings.visibility import hidden_business_q
 
 from .models import Cart, CartItem
 
@@ -50,13 +51,25 @@ class CartSerializer(serializers.ModelSerializer):
         return str(total)
 
 
+# A hidden business's listing is out of browse, so only a stale page leads
+# here; the customer is told plainly without being told why.
+HIDDEN_LISTING_MESSAGE = "This item isn't available right now."
+
+
 class CartItemCreateSerializer(serializers.Serializer):
     """Input serializer for POST /api/cart/items/. Only published listings may
     be added — the queryset filter below rejects anything else with a 400
-    "object does not exist" validation error.
+    "object does not exist" validation error. A listing whose business is
+    suspended or paused by the subscription clock (listings.visibility) is
+    refused with HIDDEN_LISTING_MESSAGE.
     """
 
     listing = serializers.PrimaryKeyRelatedField(
         queryset=Listing.objects.filter(status=Listing.PUBLISHED)
     )
     quantity = serializers.IntegerField(min_value=1, default=1)
+
+    def validate_listing(self, listing):
+        if Listing.objects.filter(pk=listing.pk).filter(hidden_business_q()).exists():
+            raise serializers.ValidationError(HIDDEN_LISTING_MESSAGE)
+        return listing

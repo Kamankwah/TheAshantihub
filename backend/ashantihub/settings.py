@@ -401,6 +401,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "reports.tasks.send_day_report_reminders",
         "schedule": crontab(hour=18, minute=0),
     },
+    "billing-subscription-clock": {
+        "task": "billing.tasks.run_subscription_clock",
+        "schedule": crontab(minute=5),  # hourly, at five past
+    },
 }
 
 # Production sets this True so the nightly activity check emails its seal to

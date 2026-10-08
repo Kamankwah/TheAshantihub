@@ -16,6 +16,7 @@ from accounts.models import BusinessOwner, StaffUser
 from accounts.permissions import HasAnyRolePermission, HasRolePermission
 from accounts.views import IsCustomer
 from billing.models import Transaction
+from listings.visibility import hidden_business_q
 from notifications.services import (
     notify_business_owner,
     notify_customer,
@@ -75,11 +76,11 @@ def _live_events_queryset():
     return Event.objects.filter(
         status=Event.APPROVED, paid_at__isnull=False, expires_at__gt=now
     ).exclude(
-        # Suspended organizers' events drop out of public browse (staff
-        # user-management tools) — either a suspended business or a suspended
-        # customer submitter hides the event. Reversed automatically on
-        # unsuspend since it's a query-time filter, not a stored flag.
-        Q(submitted_by_business__is_suspended=True)
+        # Suspended organizers' events, and the events of a business paused by
+        # the subscription clock, drop out of public browse
+        # (listings.visibility). Reversed automatically on unsuspend or
+        # payment since it's a query-time filter, not a stored flag.
+        hidden_business_q("submitted_by_business__")
         | Q(submitted_by_customer__is_suspended=True)
     ).annotate(
         avg_rating=Avg("reviews__rating", filter=Q(reviews__status="published")),

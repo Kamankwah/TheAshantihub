@@ -6,6 +6,7 @@ from rest_framework import serializers
 
 from accounts.models import BusinessOwnerProfile
 
+from .clock import subscription_state
 from .models import Subscription, SubscriptionPlan, Transaction
 
 # python-dateutil is NOT a project dependency (backend/requirements.txt) —
@@ -72,13 +73,19 @@ class SubscriptionPlanAdminSerializer(serializers.ModelSerializer):
 
 class SubscriptionSerializer(serializers.ModelSerializer):
     plan = SubscriptionPlanSerializer(read_only=True)
+    # The overdue clock as the owner's renew banner reads it (billing/clock.py).
+    clock = serializers.SerializerMethodField()
 
     class Meta:
         model = Subscription
         fields = [
             "id", "plan", "cycle_months", "is_trial", "status",
             "current_period_start", "current_period_end", "created_at", "updated_at",
+            "clock",
         ]
+
+    def get_clock(self, obj):
+        return subscription_state(obj)
 
 
 class SubscribeSerializer(serializers.Serializer):

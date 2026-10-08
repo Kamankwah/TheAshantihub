@@ -42,6 +42,11 @@ QUEUE_INVALIDATIONS = [
         ("orders.manage_delivery",),
         ("delivery-queue",),
     ),
+    (
+        ("kyc-", "business.", "portfolio.", "subscription."),
+        ("portfolio.manage", "businesses.manage_portfolio"),
+        ("portfolio", "portfolio-business", "subscriptions-due"),
+    ),
 ]
 # (verb prefixes, extra keys for everyone who receives the feed event)
 FEED_KEYS = [
