@@ -6,6 +6,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from accounts.authentication import issue_token
+from accounts.testing import staff_token
 from accounts.models import Customer, Role, StaffUser
 from activity.models import ActivityEvent
 
@@ -23,7 +24,7 @@ class StaffActivityMiddlewareTests(TestCase):
         self.boss = make_staff("super_admin", "boss@example.com")
         self.support = make_staff("support", "esi@example.com")
         self.client = APIClient()
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.boss, 'staff')}")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(self.boss, sudo=True)}")
         self.suspend_url = f"/api/accounts/staff/{self.support.id}/suspend/"
 
     def test_successful_staff_write_records_one_event(self):

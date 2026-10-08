@@ -60,3 +60,16 @@ def staff_holding(codename):
         .exclude(revoked_permissions__codename=codename)
         .distinct()
     )
+
+
+class RequiresSudo(BasePermission):
+    """Password re-entered on this session within the last 10 minutes (F9).
+    List it AFTER the role permission so a missing permission is reported
+    first; refuses with 403 {"detail": …, "code": "sudo_required"}, which
+    the frontend turns into a password prompt and a retry."""
+
+    def has_permission(self, request, view):
+        from . import sessions
+
+        sessions.require_sudo(request)
+        return True

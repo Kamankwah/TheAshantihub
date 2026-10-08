@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.contrib.auth.hashers import check_password
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import generics, status
@@ -25,7 +26,7 @@ from .models import (
     StaffSession,
     StaffUser,
 )
-from .permissions import HasAnyRolePermission, HasRolePermission, IsStaff, can_manage_staff
+from .permissions import HasAnyRolePermission, HasRolePermission, IsStaff, RequiresSudo, can_manage_staff
 from .serializers import (
     INVITE_TOKEN_LIFETIME,
     BusinessOwnerKYCDetailSerializer,
@@ -52,6 +53,7 @@ from .serializers import (
     StaffInviteSerializer,
     StaffListSerializer,
     StaffLoginSerializer,
+    StaffSessionSerializer,
 )
 
 
@@ -448,7 +450,7 @@ class InvitableRolesView(APIView):
 
 class StaffManagerView(APIView):
     def get_permissions(self):
-        return [HasRolePermission("staff.manage")]
+        return [HasRolePermission("staff.manage"), RequiresSudo()]
 
     def post(self, request, pk):
         staff = generics.get_object_or_404(sessions.with_last_sign_in(StaffUser.objects.all()), pk=pk)
@@ -627,7 +629,7 @@ def _guard_team_scope(request, staff):
 
 class StaffSuspendView(APIView):
     def get_permissions(self):
-        return [HasAnyRolePermission(*TEAM_OR_STAFF_MANAGE)]
+        return [HasAnyRolePermission(*TEAM_OR_STAFF_MANAGE), RequiresSudo()]
 
     def post(self, request, pk):
         staff = generics.get_object_or_404(sessions.with_last_sign_in(StaffUser.objects.all()), pk=pk)
@@ -666,7 +668,7 @@ class StaffDeactivateView(APIView):
     """
 
     def get_permissions(self):
-        return [HasRolePermission("staff.manage")]
+        return [HasRolePermission("staff.manage"), RequiresSudo()]
 
     def post(self, request, pk):
         staff = generics.get_object_or_404(sessions.with_last_sign_in(StaffUser.objects.all()), pk=pk)
@@ -705,7 +707,7 @@ class StaffPermissionsView(APIView):
     """
 
     def get_permissions(self):
-        return [HasRolePermission("staff.manage")]
+        return [HasRolePermission("staff.manage"), RequiresSudo()]
 
     def post(self, request, pk):
         staff = generics.get_object_or_404(sessions.with_last_sign_in(StaffUser.objects.all()), pk=pk)
@@ -753,6 +755,100 @@ class PermissionCatalogView(APIView):
         return Response(
             [{"codename": p.codename, "description": p.description} for p in permissions]
         )
+
+
+# ── Sessions & devices, password re-entry (staff foundations F9) ────────────
+
+
+def _session_context(request):
+    return {"current_session": sessions.current(request)}
+
+
+class StaffReauthView(APIView):
+    """Re-enter your password ("sudo"): unlocks sensitive actions on this
+    session for 10 minutes."""
+
+    throttle_scope = "login"
+
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def post(self, request):
+        if not check_password(request.data.get("password") or "", request.user.password_hash):
+            return Response({"password": ["That password isn't right."]}, status=400)
+        return Response({"sudo_until": sessions.grant_sudo(sessions.current(request))})
+
+
+class StaffSessionListView(APIView):
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def get(self, request):
+        staff = request.user
+        other = request.query_params.get("staff")
+        if other:
+            if not can_manage_staff(request.user):
+                return Response({"detail": "Only a Super Admin can see someone else's sessions."}, status=403)
+            if not (other.isdecimal() and other.isascii()):
+                return Response({"staff": "Use a staff id."}, status=400)
+            staff = generics.get_object_or_404(StaffUser, pk=other)
+        rows = StaffSession.objects.filter(staff=staff).select_related("staff__role")[:50]
+        return Response(StaffSessionSerializer(rows, many=True, context=_session_context(request)).data)
+
+
+class StaffActiveSessionsView(APIView):
+    """Everyone signed in now (Super Admin's Sessions & devices)."""
+
+    def get_permissions(self):
+        return [HasRolePermission("staff.manage")]
+
+    def get(self, request):
+        now = timezone.now()
+        rows = (
+            StaffSession.objects.filter(
+                revoked_at__isnull=True,
+                created_at__gt=now - sessions.ABSOLUTE_LIMIT,
+                last_seen_at__gt=now - sessions.IDLE_LIMIT,
+                staff__is_active=True,
+                staff__is_suspended=False,
+            )
+            .select_related("staff__role")
+            .order_by("staff__full_name", "-last_seen_at")
+        )
+        return Response(StaffSessionSerializer(rows, many=True, context=_session_context(request)).data)
+
+
+class StaffSessionEndView(APIView):
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def post(self, request, pk):
+        scope = StaffSession.objects.all() if can_manage_staff(request.user) else StaffSession.objects.filter(staff=request.user)
+        session = generics.get_object_or_404(scope.select_related("staff__role"), pk=pk)
+        sessions.revoke(session, StaffSession.ENDED)
+        session.refresh_from_db()
+        return Response(StaffSessionSerializer(session, context=_session_context(request)).data)
+
+
+class StaffEndOtherSessionsView(APIView):
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def post(self, request):
+        ended = sessions.revoke_all(request.user, StaffSession.ENDED, except_session=sessions.current(request))
+        return Response({"ended": ended})
+
+
+class StaffSignOutEverywhereView(APIView):
+    def get_permissions(self):
+        return [HasRolePermission("staff.manage")]
+
+    def post(self, request, pk):
+        staff = generics.get_object_or_404(StaffUser, pk=pk)
+        guard = _guard_self_action(request, staff)
+        if guard:
+            return guard
+        return Response({"ended": sessions.revoke_all(staff, StaffSession.SIGNED_OUT_EVERYWHERE)})
 
 
 # ── Scout field verification (punch-list item 11) ──────────────────────────

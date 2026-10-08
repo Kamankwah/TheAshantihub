@@ -798,3 +798,39 @@ class ScoutAssignmentSerializer(serializers.ModelSerializer):
     def get_business_kind(self, obj):
         profile = self._profile(obj)
         return profile.business_kind if profile else None
+
+
+def staff_brief(staff):
+    """The compact staff shape shared by serializers."""
+    return {"id": staff.id, "full_name": staff.full_name, "role": staff.role.name}
+
+
+class StaffSessionSerializer(serializers.ModelSerializer):
+    ends_at = serializers.SerializerMethodField()
+    idle_ends_at = serializers.SerializerMethodField()
+    is_active = serializers.SerializerMethodField()
+    is_current = serializers.SerializerMethodField()
+    staff = serializers.SerializerMethodField()
+
+    class Meta:
+        model = StaffSession
+        fields = [
+            "id", "device_label", "ip", "created_at", "last_seen_at", "ends_at", "idle_ends_at",
+            "revoked_at", "revoked_reason", "is_active", "is_current", "two_factor", "staff",
+        ]
+
+    def get_ends_at(self, obj):
+        return obj.created_at + sessions.ABSOLUTE_LIMIT
+
+    def get_idle_ends_at(self, obj):
+        return obj.last_seen_at + sessions.IDLE_LIMIT
+
+    def get_is_active(self, obj):
+        return sessions.end_reason_if_invalid(obj) is None
+
+    def get_is_current(self, obj):
+        current = self.context.get("current_session")
+        return bool(current and current.pk == obj.pk)
+
+    def get_staff(self, obj):
+        return staff_brief(obj.staff)

@@ -51,6 +51,12 @@ urlpatterns = [
     path("business-owners/login/", views.BusinessOwnerLoginView.as_view(), name="business-owner-login"),
     path("staff/login/", views.StaffLoginView.as_view(), name="staff-login"),
     path("staff/logout/", views.StaffLogoutView.as_view(), name="staff-logout"),
+    path("staff/reauth/", views.StaffReauthView.as_view(), name="staff-reauth"),
+    path("staff/sessions/", views.StaffSessionListView.as_view(), name="staff-sessions"),
+    path("staff/sessions/active/", views.StaffActiveSessionsView.as_view(), name="staff-sessions-active"),
+    path("staff/sessions/end-others/", views.StaffEndOtherSessionsView.as_view(), name="staff-sessions-end-others"),
+    path("staff/sessions/<int:pk>/end/", views.StaffSessionEndView.as_view(), name="staff-session-end"),
+    path("staff/<int:pk>/sign-out-everywhere/", views.StaffSignOutEverywhereView.as_view(), name="staff-sign-out-everywhere"),
     path(
         "business-owners/register/",
         views.BusinessOwnerRegisterView.as_view(),
