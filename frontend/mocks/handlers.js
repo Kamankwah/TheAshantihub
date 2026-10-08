@@ -313,6 +313,18 @@ export const handlers = [
   http.post('http://localhost:8000/api/accounts/customers/:id/unsuspend/', ({ params }) => {
     return HttpResponse.json({ id: Number(params.id), is_suspended: false })
   }),
+  // Owner claim (staff phase 2A) — placed before business-owners/:id/,
+  // which would otherwise read "claim" as an owner id. The preview's
+  // login_phone is masked by the server to its last 3 digits; the claim
+  // reply carries the full number.
+  http.get('http://localhost:8000/api/accounts/business-owners/claim/', () => HttpResponse.json({
+    business_name: 'Asafo Hair & Beauty', owner_name: 'Gifty Asantewaa', login_phone: '••••••••••761',
+    area: 'Asafo', gps_address: 'AK-112-0384', registered_by_name: 'Kwame Asante', registered_at: '2026-10-08T10:52:00Z',
+    terms_version: 'September 2026', channel: 'handover', expires_at: new Date(Date.now() + 30 * 60000).toISOString(),
+  })),
+  http.post('http://localhost:8000/api/accounts/business-owners/claim/', () => HttpResponse.json({
+    claimed: true, login_phone: '+233201234761', business_name: 'Asafo Hair & Beauty',
+  })),
   http.get('http://localhost:8000/api/accounts/business-owners/:id/', ({ params }) => {
     return HttpResponse.json({ id: Number(params.id), full_name: 'Owner', login_phone: '', email: '', kyc_status: 'pending', is_suspended: false })
   }),
@@ -504,4 +516,16 @@ export const handlers = [
       plan_approvals: 0, contact_messages: 0, escrow: 0, tasks_overdue: 0, approvals_waiting: 0,
     })
   }),
+  // Scout registration and owner hand-over (staff phase 2A) — defaults;
+  // tests override per case.
+  http.post('http://localhost:8000/api/portfolio/register/check/', () => HttpResponse.json({ exact: [], similar: [], staff_match: false })),
+  http.post('http://localhost:8000/api/portfolio/register/', () => HttpResponse.json(
+    { id: 41, business_name: 'Asafo Hair & Beauty', approval_id: 7, approver_name: 'Ama Boateng', flags: [], needs_claim: true }, { status: 201 },
+  )),
+  http.post('http://localhost:8000/api/portfolio/businesses/:id/handover/', () => HttpResponse.json(
+    { token: 'handover-token', expires_at: new Date(Date.now() + 30 * 60000).toISOString() }, { status: 201 },
+  )),
+  http.post('http://localhost:8000/api/portfolio/businesses/:id/claim-link/', () => HttpResponse.json(
+    { sent_to: 'gi•••@example.com', expires_at: new Date(Date.now() + 7 * 86400000).toISOString() },
+  )),
 ]

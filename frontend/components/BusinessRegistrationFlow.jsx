@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { C } from "../theme.js";
 import { useSubscriptionPlans } from "../hooks/useSubscriptionPlans.js";
+import { BUSINESS_TERMS_COPY } from "./businessTerms.js";
 
 // ─── BusinessRegistrationFlow ─────────────────────────────────────────────
 // The 5-stage business-owner registration wizard: Personal Information (only
@@ -32,18 +33,6 @@ const CYCLE_OPTIONS = [1, 3, 6, 12];
 const inputStyle={width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:10,border:"1.5px solid #ddd",marginBottom:10,fontSize:"0.82rem",fontFamily:"inherit"};
 const labelStyle={display:"block",fontSize:"0.72rem",fontWeight:700,color:C.darkBrown,marginBottom:10};
 const submitStyle={width:"100%",background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"12px",fontWeight:900,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit",marginTop:4};
-
-const TERMS_COPY = `AshantiHub Business Agreement (summary)
-
-1. Listing Accuracy — Every listing you publish must accurately represent a real, operating business you own or are authorized to represent. Misleading names, prices, or photos may result in listing removal.
-
-2. Customer Contact — For customer safety, all enquiries are routed through AshantiHub Support rather than direct to your phone or WhatsApp. You may discuss and resolve enquiries with AshantiHub Support, but must not attempt to contact customers directly outside the platform, and must not use contact details obtained through AshantiHub for unrelated marketing.
-
-3. Payout Terms — Payouts are made to the bank or mobile money account you provide. You are responsible for keeping these details accurate and up to date; AshantiHub is not liable for payouts sent to details you failed to update. A service fee may apply to processed payouts.
-
-4. KYC Accuracy — The Ghana Card and business details you provide must be accurate and current. Misrepresentation is grounds for account suspension.
-
-5. Suspension & Termination — AshantiHub may suspend or terminate a business account for fraudulent listings, repeated customer complaints, or violation of these terms.`;
 
 export default function BusinessRegistrationFlow({ user, auth, initialStep, prefill, setPage, setShowBizDash }) {
   const [step, setStep] = useState(initialStep || "personal_info");
@@ -392,7 +381,7 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
           <form onSubmit={handleTermsSubmit}>
             <h2 style={{color:C.darkBrown,fontSize:"1.05rem",margin:"0 0 14px"}}>Business Agreement</h2>
             <div style={{background:"#f9f9f9",borderRadius:10,padding:"14px",fontSize:"0.74rem",color:"#444",lineHeight:1.6,whiteSpace:"pre-line",marginBottom:14,maxHeight:260,overflowY:"auto"}}>
-              {TERMS_COPY}
+              {BUSINESS_TERMS_COPY}
             </div>
             <label style={{...labelStyle,display:"flex",alignItems:"center",gap:8}}>
               <input type="checkbox" checked={agreed} onChange={e=>setAgreed(e.target.checked)}/>

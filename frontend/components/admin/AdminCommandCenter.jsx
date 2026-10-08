@@ -40,6 +40,7 @@ import useBreakpoint from "../../hooks/useBreakpoint.js";
 import StaffHeader, { RoleChip } from "./shell/StaffHeader.jsx";
 import StaffDrawer from "./shell/StaffDrawer.jsx";
 import StaffBottomBar from "./shell/StaffBottomBar.jsx";
+import ScoutBottomBar from "./shell/ScoutBottomBar.jsx";
 import TasksPanel from "./panels/TasksPanel.jsx";
 import ActivityPanel from "./panels/ActivityPanel.jsx";
 import CallLogPanel from "./panels/CallLogPanel.jsx";
@@ -49,6 +50,7 @@ import ReportsPanel from "./panels/ReportsPanel.jsx";
 import TeamReportsPanel from "./panels/TeamReportsPanel.jsx";
 import SecurityPanel from "./panels/SecurityPanel.jsx";
 import SessionsPanel from "./panels/SessionsPanel.jsx";
+import RegisterBusinessPanel from "./panels/RegisterBusinessPanel.jsx";
 import SudoPrompt from "./SudoPrompt.jsx";
 import StaffShellStyles from "./shell/StaffShellStyles.jsx";
 import InstallAppButton from "./shell/InstallAppButton.jsx";
@@ -183,7 +185,10 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
   // shortcut) retires it too, so the panel never changes behind it.
   useEffect(() => { setDrawerOpen(false); }, [activeTab]);
 
-  const bottomItems = isPhone ? pickBottomBarItems(navGroups, badgeFor) : [];
+  // A scout's phone gets the field bar (Businesses · Register · Calls · Menu);
+  // every other role keeps Overview, three panels and More.
+  const scoutBar = isPhone && role === "scout";
+  const bottomItems = isPhone && !scoutBar ? pickBottomBarItems(navGroups, badgeFor) : [];
 
   return (
     <div className="shadcn-scope command-center staff-shell" data-bp={breakpoint} style={{ display: "flex" }}>
@@ -259,10 +264,13 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "sessions" && <SessionsPanel auth={auth} />}
           {activeTab === "my-team" && <MyTeamPanel currentStaffId={auth.user?.id} />}
           {activeTab === "approvals" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "register-business" && <RegisterBusinessPanel auth={auth} />}
         </main>
       </div>
 
-      {isPhone && <StaffBottomBar items={bottomItems} activeTab={activeTab} onSelect={selectTab} onMore={() => setDrawerOpen(true)} badgeFor={badgeFor} roleColor={roleColor} />}
+      {isPhone && (scoutBar
+        ? <ScoutBottomBar navGroups={navGroups} activeTab={activeTab} onSelect={selectTab} onMenu={() => setDrawerOpen(true)} badgeFor={badgeFor} roleColor={roleColor} />
+        : <StaffBottomBar items={bottomItems} activeTab={activeTab} onSelect={selectTab} onMore={() => setDrawerOpen(true)} badgeFor={badgeFor} roleColor={roleColor} />)}
 
       <StaffDrawer open={drawerOpen && !isDesktop} onClose={() => setDrawerOpen(false)} returnFocusRef={menuButtonRef}>
         <div style={{ padding: "12px 8px 12px 14px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${D.divider}` }}>

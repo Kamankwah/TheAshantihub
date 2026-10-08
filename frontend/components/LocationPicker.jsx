@@ -42,7 +42,10 @@ async function reverseGeocode(lat, lng) {
 // Reports (lat, lng) up via onChange, and — when an `onAddress` callback is
 // passed — reverse-geocodes the point and reports a text address too, so the
 // delivery-address field can be filled from "Use my location" / a dropped pin.
-export default function LocationPicker({ lat, lng, onChange, onAddress, height = 200 }) {
+// `showLocateButton={false}` hides the built-in "Use my location" for a
+// caller that reads the position itself (the scout's Register wizard needs
+// the fix's accuracy, which this button doesn't report).
+export default function LocationPicker({ lat, lng, onChange, onAddress, height = 200, showLocateButton = true }) {
   const [geoError, setGeoError] = useState(null);
   const [resolving, setResolving] = useState(false);
   const hasPin = lat != null && lng != null;
@@ -73,13 +76,15 @@ export default function LocationPicker({ lat, lng, onChange, onAddress, height =
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
         <span style={{ fontSize: "0.7rem", color: "#666" }}>{resolving ? "🔎 Finding your address…" : hasPin ? "📍 Pin set — tap to move it" : "Tap the map to set your location"}</span>
-        <button
-          type="button"
-          onClick={useMyLocation}
-          style={{ background: "#f0f0f0", border: "none", borderRadius: 14, padding: "4px 10px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
-        >
-          📡 Use my location
-        </button>
+        {showLocateButton && (
+          <button
+            type="button"
+            onClick={useMyLocation}
+            style={{ background: "#f0f0f0", border: "none", borderRadius: 14, padding: "4px 10px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
+          >
+            📡 Use my location
+          </button>
+        )}
       </div>
       <MapContainer center={hasPin ? [lat, lng] : KUMASI} zoom={13} style={{ height, borderRadius: 10 }} scrollWheelZoom={false}>
         <TileLayer

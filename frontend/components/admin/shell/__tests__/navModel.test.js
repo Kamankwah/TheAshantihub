@@ -132,3 +132,46 @@ describe('per-role menus', () => {
     expect(groups.map((g) => g.id)).toEqual(['moderation', 'finance', 'users-roles', 'field-ops', 'content', 'system', 'my-work'])
   })
 })
+
+describe('Register a business (staff phase 2A)', () => {
+  const authAs = (role, perms) => ({ user: { role }, hasPermission: (c) => perms.includes(c) })
+  const groupOf = (groups, itemId) => groups.find((g) => g.items.some((i) => i.id === itemId))?.label
+  const allIds = (groups) => groups.flatMap((g) => g.items.map((i) => i.id))
+
+  it('is shown only with businesses.register', () => {
+    expect(allIds(buildNavGroups(authAs('scout', ['calls.log'])))).not.toContain('register-business')
+    expect(allIds(buildNavGroups(authAs('scout', ['businesses.register'])))).toContain('register-business')
+    expect(NAV_ITEMS.find((i) => i.id === 'register-business')).toMatchObject({ icon: '➕', label: 'Register a business' })
+  })
+
+  it('gives a scout Pipeline, My businesses, Calls, My work and Reports', () => {
+    const groups = buildNavGroups(authAs('scout', ['businesses.register', 'scouts.verify', 'calls.log']))
+    expect(groups.map((g) => g.label)).toEqual(['Pipeline', 'My businesses', 'Calls', 'My work', 'Reports'])
+    expect(groupOf(groups, 'register-business')).toBe('Pipeline')
+    expect(groupOf(groups, 'field-verification')).toBe('My businesses')
+  })
+
+  it("puts it in Operations' Businesses group, right after People", () => {
+    const groups = buildNavGroups(authAs('operations', ['businesses.register', 'staff.invite_team']))
+    const ids = groups.map((g) => g.id)
+    expect(ids.indexOf('businesses')).toBe(ids.indexOf('people') + 1)
+    expect(groupOf(groups, 'register-business')).toBe('Businesses')
+  })
+
+  it('gives Super Admin a Businesses group too', () => {
+    expect(groupOf(buildNavGroups(authAs('super_admin', ['businesses.register'])), 'register-business')).toBe('Businesses')
+  })
+
+  it('sits with the field tools for a session without a known role', () => {
+    expect(groupOf(buildNavGroups({ hasPermission: () => true }), 'register-business')).toBe('Field Operations')
+  })
+
+  it('never names a group after an item, for any role', () => {
+    const itemLabels = new Set(NAV_ITEMS.map((i) => i.label))
+    for (const role of ['super_admin', 'operations', 'accountant', 'marketing', 'support', 'scout', 'delivery_manager', 'dispatch', 'not-a-role']) {
+      for (const group of buildNavGroups({ user: { role }, hasPermission: () => true })) {
+        expect(itemLabels.has(group.label)).toBe(false)
+      }
+    }
+  })
+})

@@ -2,7 +2,14 @@ import { D } from "../theme.js";
 
 const visuallyHidden = { position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" };
 
-function BarButton({ icon, label, active, count = 0, onClick, roleColor }) {
+// Shared by both phone bars: this one and the scout's ScoutBottomBar.
+export const quickNavStyle = {
+  position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 110, display: "flex",
+  background: "rgba(253,246,227,0.97)", borderTop: `1px solid ${D.cardBorder}`, boxShadow: "0 -2px 12px rgba(44,24,16,0.08)",
+  paddingBottom: "env(safe-area-inset-bottom, 0px)", paddingLeft: "env(safe-area-inset-left, 0px)", paddingRight: "env(safe-area-inset-right, 0px)",
+};
+
+export function BarButton({ icon, label, active, count = 0, onClick, roleColor }) {
   return (
     <button type="button" onClick={onClick} aria-current={active ? "page" : undefined} style={{
       flex: 1, minWidth: 0, minHeight: 60, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
@@ -25,11 +32,7 @@ function BarButton({ icon, label, active, count = 0, onClick, roleColor }) {
 export default function StaffBottomBar({ items, activeTab, onSelect, onMore, badgeFor, roleColor }) {
   const inBar = activeTab === "overview" || items.some((item) => item.id === activeTab);
   return (
-    <nav aria-label="Quick navigation" style={{
-      position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 110, display: "flex",
-      background: "rgba(253,246,227,0.97)", borderTop: `1px solid ${D.cardBorder}`, boxShadow: "0 -2px 12px rgba(44,24,16,0.08)",
-      paddingBottom: "env(safe-area-inset-bottom, 0px)", paddingLeft: "env(safe-area-inset-left, 0px)", paddingRight: "env(safe-area-inset-right, 0px)",
-    }}>
+    <nav aria-label="Quick navigation" style={quickNavStyle}>
       <BarButton icon="📊" label="Overview" active={activeTab === "overview"} onClick={() => onSelect("overview")} roleColor={roleColor} />
       {items.map((item) => (
         <BarButton key={item.id} icon={item.icon} label={item.label} active={activeTab === item.id} count={badgeFor(item.id)} onClick={() => onSelect(item.id)} roleColor={roleColor} />
