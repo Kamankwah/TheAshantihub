@@ -237,6 +237,24 @@ class StaffSession(models.Model):
         return f"{self.staff.full_name} · {self.device_label or 'device'} · {self.created_at:%Y-%m-%d %H:%M}"
 
 
+class StaffTwoFactor(models.Model):
+    """2-step sign-in (F9): an authenticator-app (TOTP) secret, Fernet-
+    encrypted with STAFF_SECRETS_KEY, plus HMAC-hashed single-use recovery
+    codes. A pending secret waits for its first code, so moving to a new
+    phone never switches the old one off early. See accounts/two_factor.py."""
+
+    staff = models.OneToOneField(StaffUser, on_delete=models.CASCADE, related_name="two_factor")
+    secret_encrypted = models.TextField(blank=True, default="")
+    pending_secret_encrypted = models.TextField(blank=True, default="")
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    last_used_step = models.BigIntegerField(default=0)
+    recovery_code_hashes = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"2-step for {self.staff.full_name}"
+
+
 class BusinessOwner(AuthenticatableAccountMixin, models.Model):
     PENDING = "pending"
     VERIFIED = "verified"

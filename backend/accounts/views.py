@@ -13,9 +13,9 @@ from notifications.services import notify_business_owner, notify_customer, notif
 
 from activity.services import record as record_activity
 
-from . import sessions
+from . import sessions, two_factor
 from .authentication import issue_token
-from .emails import send_staff_invite_email, send_verification_code_email
+from .emails import send_staff_invite_email, send_two_factor_changed_email, send_verification_code_email
 from .models import (
     BusinessOwner,
     Customer,
@@ -185,6 +185,26 @@ class BusinessOwnerLoginView(generics.GenericAPIView):
         })
 
 
+def _staff_sign_in_response(account, request, *, two_factor_used=False):
+    # Open the session first so a sign-in is never logged without one.
+    token = issue_token(account, "staff", request=request, two_factor=two_factor_used)
+    record_activity(
+        account, "staff.signed_in", target=account, method="POST", request=request,
+        summary="with 2-step sign-in" if two_factor_used else "",
+    )
+    return {
+        "token": token,
+        "account_type": "staff",
+        "id": account.id,
+        "full_name": account.full_name,
+        "role": account.role.name,
+        "permissions": sorted(account.effective_permission_codenames()),
+    }
+
+
+TIMED_OUT = "Your sign-in timed out. Enter your password again."
+
+
 class StaffLoginView(generics.GenericAPIView):
     serializer_class = StaffLoginSerializer
     permission_classes = [AllowAny]
@@ -194,17 +214,12 @@ class StaffLoginView(generics.GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         account = serializer.account
-        # Open the session first so a sign-in is never logged without one.
-        token = issue_token(account, "staff", request=request)
-        record_activity(account, "staff.signed_in", target=account, method="POST", request=request)
-        return Response({
-            "token": token,
-            "account_type": "staff",
-            "id": account.id,
-            "full_name": account.full_name,
-            "role": account.role.name,
-            "permissions": sorted(account.effective_permission_codenames()),
-        })
+        stage = two_factor.challenge_for(account)
+        if stage == two_factor.VERIFY:
+            return Response({"two_factor_required": True, "mfa_token": two_factor.make_challenge(account, stage)})
+        if stage == two_factor.ENROL:
+            return Response({"two_factor_setup_required": True, "mfa_token": two_factor.make_challenge(account, stage)})
+        return Response(_staff_sign_in_response(account, request))
 
 
 class StaffLogoutView(APIView):
@@ -1079,3 +1094,142 @@ class TermsAcceptView(APIView):
             link="kyc", icon="🪪",
         )
         return Response({"registration_step": owner.compute_registration_step()})
+
+
+# ── 2-step sign-in (staff foundations F9) ───────────────────────────────────
+
+
+class StaffLoginTwoFactorView(APIView):
+    permission_classes = [AllowAny]
+    throttle_scope = "two_factor"
+
+    def post(self, request):
+        account = two_factor.read_challenge(request.data.get("mfa_token"), two_factor.VERIFY)
+        if account is None:
+            return Response({"detail": TIMED_OUT}, status=400)
+        if two_factor.too_many_failures(account):
+            return Response({"detail": "Too many wrong codes. Wait 15 minutes, then sign in again."}, status=400)
+        recovery_code = request.data.get("recovery_code")
+        if recovery_code:
+            ok = two_factor.use_recovery_code(account, recovery_code)
+        else:
+            ok = two_factor.verify(account, request.data.get("code"))
+        if not ok:
+            record_activity(account, two_factor.FAILED_VERB, target=account, method="POST", request=request)
+            return Response({"detail": "That code isn't right. Check your authenticator app and try again."}, status=400)
+        if recovery_code:
+            left = two_factor.status(account)["recovery_codes_left"]
+            send_two_factor_changed_email(account, f"A recovery code was used to sign in. {left} recovery codes are left.")
+        return Response(_staff_sign_in_response(account, request, two_factor_used=True))
+
+
+class StaffTwoFactorEnrolStartView(APIView):
+    """Set-up during sign-in, for a Super Admin without 2-step yet."""
+
+    permission_classes = [AllowAny]
+    throttle_scope = "two_factor"
+
+    def post(self, request):
+        account = two_factor.read_challenge(request.data.get("mfa_token"), two_factor.ENROL)
+        if account is None:
+            return Response({"detail": TIMED_OUT}, status=400)
+        secret, uri = two_factor.begin_enrolment(account)
+        return Response({"secret": secret, "otpauth_uri": uri})
+
+
+class StaffTwoFactorEnrolConfirmView(APIView):
+    permission_classes = [AllowAny]
+    throttle_scope = "two_factor"
+
+    def post(self, request):
+        account = two_factor.read_challenge(request.data.get("mfa_token"), two_factor.ENROL)
+        if account is None:
+            return Response({"detail": TIMED_OUT}, status=400)
+        codes = two_factor.confirm_enrolment(account, request.data.get("code"))
+        if codes is None:
+            return Response({"detail": "That code isn't right. Check the app shows AshantiHub and try again."}, status=400)
+        record_activity(account, "staff.two_factor_enabled", target=account, method="POST", request=request)
+        send_two_factor_changed_email(account, "2-step sign-in was turned on for your account.")
+        return Response({**_staff_sign_in_response(account, request, two_factor_used=True), "recovery_codes": codes})
+
+
+class StaffTwoFactorStatusView(APIView):
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def get(self, request):
+        return Response(two_factor.status(request.user))
+
+
+class StaffTwoFactorSetupView(APIView):
+    throttle_scope = "two_factor"
+
+    def get_permissions(self):
+        return [IsStaff(), RequiresSudo()]
+
+    def post(self, request):
+        secret, uri = two_factor.begin_enrolment(request.user)
+        return Response({"secret": secret, "otpauth_uri": uri})
+
+
+class StaffTwoFactorSetupConfirmView(APIView):
+    throttle_scope = "two_factor"
+
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def post(self, request):
+        codes = two_factor.confirm_enrolment(request.user, request.data.get("code"))
+        if codes is None:
+            return Response({"detail": "That code isn't right. Check the app shows AshantiHub and try again."}, status=400)
+        record_activity(request.user, "staff.two_factor_enabled", target=request.user, method="POST", request=request)
+        send_two_factor_changed_email(request.user, "2-step sign-in was set up on a phone for your account.")
+        return Response({"recovery_codes": codes})
+
+
+class StaffRecoveryCodesView(APIView):
+    throttle_scope = "two_factor"
+
+    def get_permissions(self):
+        return [IsStaff(), RequiresSudo()]
+
+    def post(self, request):
+        codes = two_factor.regenerate_recovery_codes(request.user)
+        if codes is None:
+            return Response({"detail": "Turn on 2-step sign-in first."}, status=400)
+        record_activity(request.user, "staff.recovery_codes_renewed", target=request.user, method="POST", request=request)
+        return Response({"recovery_codes": codes})
+
+
+class StaffTwoFactorDisableView(APIView):
+    throttle_scope = "two_factor"
+
+    def get_permissions(self):
+        return [IsStaff(), RequiresSudo()]
+
+    def post(self, request):
+        if two_factor.is_required(request.user):
+            return Response({"detail": "2-step sign-in can't be turned off for a Super Admin."}, status=400)
+        two_factor.disable(request.user)
+        record_activity(request.user, "staff.two_factor_disabled", target=request.user, method="POST", request=request)
+        send_two_factor_changed_email(request.user, "2-step sign-in was turned off for your account.")
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class StaffTwoFactorResetView(APIView):
+    """A Super Admin resets someone who lost their phone and codes."""
+
+    throttle_scope = "two_factor"
+
+    def get_permissions(self):
+        return [HasRolePermission("staff.manage"), RequiresSudo()]
+
+    def post(self, request, pk):
+        staff = generics.get_object_or_404(StaffUser, pk=pk)
+        guard = _guard_self_action(request, staff)
+        if guard:
+            return guard
+        two_factor.disable(staff)
+        record_activity(request.user, "staff.two_factor_reset", target=staff, method="POST", request=request)
+        send_two_factor_changed_email(staff, f"{request.user.full_name} reset your 2-step sign-in.")
+        return Response(status=status.HTTP_204_NO_CONTENT)

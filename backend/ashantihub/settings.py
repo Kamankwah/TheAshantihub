@@ -1,3 +1,5 @@
+import base64
+import hashlib
 from pathlib import Path
 import sys
 import environ
@@ -18,6 +20,17 @@ ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=["*"])
 
 if not DEBUG and SECRET_KEY == "dev-only-insecure-key":
     raise ImproperlyConfigured("DJANGO_SECRET_KEY must be set when DJANGO_DEBUG=False")
+
+# Encrypts staff 2-step sign-in secrets at rest (accounts/two_factor.py) and
+# keys the recovery-code hashes. A Fernet key — generate with:
+#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# Changing it switches off everyone's 2-step sign-in (they set it up again),
+# so set it once and back it up with the database password.
+STAFF_SECRETS_KEY = env("STAFF_SECRETS_KEY", default="")
+if not STAFF_SECRETS_KEY:
+    if not DEBUG:
+        raise ImproperlyConfigured("STAFF_SECRETS_KEY must be set when DJANGO_DEBUG=False")
+    STAFF_SECRETS_KEY = base64.urlsafe_b64encode(hashlib.sha256(SECRET_KEY.encode()).digest()).decode()
 
 # When True, business-registration GPS addresses are additionally verified as
 # real Ghana Post addresses via the public ghana-api.dev validator (best-effort;
@@ -265,6 +278,7 @@ REST_FRAMEWORK = {
         "business_owner_register": "5/min",
         "staff_activate": "5/min",
         "login": "5/min",
+        "two_factor": "10/min",
         "password_reset_request": "5/min",
         # The Hubtel webhook is a public, unauthenticated endpoint (Hubtel
         # calls it from the internet, not a logged-in app user) — generous
