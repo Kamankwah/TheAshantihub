@@ -16,6 +16,11 @@ Frontend, from `frontend/`: `npm install`, `npm run dev`, `npm run build` (what 
 Backend, from the repo root via `docker-compose.yml`. **The compose service is named `web`, not
 `backend`:** `docker compose run --rm web python manage.py <cmd>`.
 
+Production compose runs `db`, `redis`, `web` (sync gunicorn, WSGI), `realtime` (gunicorn with one
+uvicorn worker on `ashantihub.asgi`, serving only `/ws/`), `worker` and `beat` (Celery). Locally,
+`docker compose up` needs no Redis (Django falls back to in-process jobs and an in-memory channel
+layer); `--profile jobs` adds `redis`, `worker` and `beat`.
+
 **Run Vitest from `frontend/`.** From the repo root it globs stale `.worktrees/**` and
 `.claude/worktrees/**` copies that lack `node_modules` and reports a spurious mass failure
 (hundreds of failed files, thousand-second import times). That is an environment artifact, not a
