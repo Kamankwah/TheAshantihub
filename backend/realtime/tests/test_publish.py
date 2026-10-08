@@ -144,6 +144,23 @@ class PublishTests(TestCase):
         self.assertEqual(client.post("/api/realtime/ticket/", {}, format="json").status_code, 403)
 
 
+class TicketCacheOutageTests(TestCase):
+    def test_a_broken_ticket_cache_answers_503_not_500(self):
+        from unittest import mock
+
+        esi = make_staff("support", "esi@example.com")
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(esi)}")
+        broken = mock.Mock()
+        broken.set.side_effect = ConnectionError("Error 111 connecting to redis:6379. Connection refused.")
+        with mock.patch("realtime.tickets._cache", return_value=broken):
+            with self.assertLogs("realtime.views", "ERROR") as logs:
+                response = client.post("/api/realtime/ticket/", {}, format="json")
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json(), {"detail": "Live updates are unavailable right now."})
+        self.assertIn("Connection refused", "\n".join(logs.output))
+
+
 class BoundedPublishingTests(TestCase):
     def setUp(self):
         self.boss = make_staff("super_admin", "boss@example.com")

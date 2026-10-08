@@ -233,6 +233,12 @@ LOGGING = {
             "level": "WARNING",
             "propagate": False,
         },
+        # WeasyPrint logs each PDF's layout steps at INFO (report exports).
+        "weasyprint": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
     },
 }
 
@@ -324,6 +330,10 @@ SIMPLE_JWT = {
 # the channel layer and broker need longer read timeouts, noted where set.
 TESTING = len(sys.argv) > 1 and sys.argv[1] == "test"
 REDIS_URL = env("REDIS_URL", default="")
+# Production without Redis would quietly run jobs inside web requests and keep
+# a separate in-memory channel layer per process (no live updates): refuse.
+if not DEBUG and not TESTING and not REDIS_URL.startswith(("redis://", "rediss://")):
+    raise ImproperlyConfigured("REDIS_URL must be set when DJANGO_DEBUG=False")
 USE_REDIS = bool(REDIS_URL) and not TESTING
 
 CACHES = {
