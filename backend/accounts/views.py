@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 from notifications.services import notify_business_owner, notify_customer, notify_staff_role
 
 from activity.services import record as record_activity
+from realtime.publish import force_disconnect_on_commit
 
 from . import sessions, two_factor
 from .authentication import issue_token
@@ -506,6 +507,8 @@ class StaffManagerView(APIView):
                 node = node.manager
             staff.manager = manager
         staff.save(update_fields=["manager"])
+        # Their socket's permission and team groups are now wrong: reconnect.
+        force_disconnect_on_commit(f"staff.{staff.pk}")
         return Response(StaffListSerializer(staff).data)
 
 
@@ -776,6 +779,8 @@ class StaffPermissionsView(APIView):
 
         staff.extra_permissions.set(grant_perms)
         staff.revoked_permissions.set(revoke_perms)
+        # Their socket's permission and team groups are now wrong: reconnect.
+        force_disconnect_on_commit(f"staff.{staff.pk}")
         return Response(StaffListSerializer(staff).data)
 
 

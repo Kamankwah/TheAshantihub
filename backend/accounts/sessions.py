@@ -123,17 +123,31 @@ def current(request):
     return getattr(getattr(request, "auth", None), "staff_session", None)
 
 
+def _disconnect_sessions(session_ids):
+    # Imported here: realtime imports accounts.
+    from realtime.publish import force_disconnect_on_commit
+
+    for session_id in session_ids:
+        force_disconnect_on_commit(f"session.{session_id}")
+
+
 def revoke(session, reason):
-    return StaffSession.objects.filter(pk=session.pk, revoked_at__isnull=True).update(
+    ended = StaffSession.objects.filter(pk=session.pk, revoked_at__isnull=True).update(
         revoked_at=timezone.now(), revoked_reason=reason
     )
+    if ended:
+        _disconnect_sessions([session.pk])
+    return ended
 
 
 def revoke_all(staff, reason, *, except_session=None):
-    sessions = StaffSession.objects.filter(staff=staff, revoked_at__isnull=True)
+    live = StaffSession.objects.filter(staff=staff, revoked_at__isnull=True)
     if except_session is not None:
-        sessions = sessions.exclude(pk=except_session.pk)
-    return sessions.update(revoked_at=timezone.now(), revoked_reason=reason)
+        live = live.exclude(pk=except_session.pk)
+    ids = list(live.values_list("pk", flat=True))
+    ended = StaffSession.objects.filter(pk__in=ids).update(revoked_at=timezone.now(), revoked_reason=reason)
+    _disconnect_sessions(ids)
+    return ended
 
 
 def grant_sudo(session, now=None):

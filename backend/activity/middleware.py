@@ -63,6 +63,8 @@ class StaffActivityMiddleware:
         return self.get_response(request)
 
     def process_view(self, request, view_func, view_args, view_kwargs):
+        if getattr(getattr(view_func, "cls", None), "activity_exempt", False):
+            return None
         if request.method not in UNSAFE_METHODS or not request.path.startswith("/api/"):
             return None
         staff = _staff_from_header(request)
