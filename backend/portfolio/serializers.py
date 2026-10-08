@@ -18,6 +18,7 @@ from listings.models import Category, Zone
 
 from . import checks
 from .health import calls_about
+from .models import AppliedChange
 from .services import approver_name
 
 GHANA_LAT = (4.5, 11.2)
@@ -396,3 +397,18 @@ class StagePhotoSerializer(serializers.Serializer):
     lat = serializers.FloatField(required=False, allow_null=True, min_value=-90, max_value=90)
     lng = serializers.FloatField(required=False, allow_null=True, min_value=-180, max_value=180)
     accuracy_m = serializers.FloatField(required=False, allow_null=True, min_value=0, max_value=100000)
+
+
+class OwnerChangeSerializer(serializers.ModelSerializer):
+    """A change the owner's account manager made, as the owner's dashboard shows it."""
+
+    made_by_name = serializers.CharField(source="approval.maker.full_name", read_only=True)
+    can_undo = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AppliedChange
+        fields = ["id", "kind", "summary", "made_by_name", "applied_at", "undo_until", "can_undo", "undone_at",
+                  "undo_failed"]
+
+    def get_can_undo(self, obj):
+        return obj.undone_at is None and timezone.now() <= obj.undo_until

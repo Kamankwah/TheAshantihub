@@ -13,11 +13,13 @@ from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.exceptions import ValidationError as ApiValidationError
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts import claims, sessions
 from accounts.models import BusinessOwner, Role, StaffUser
+from accounts.views import IsBusinessOwner
 from accounts.permissions import HasAnyRolePermission, HasRolePermission, IsStaff
 from accounts.phones import filter_by_phone, phone_key
 from accounts.serializers import staff_brief
@@ -33,6 +35,7 @@ from .models import BusinessHealthSnapshot
 from .registration import RegistrationError, register_business, resubmit_kyc
 from .serializers import (
     FollowUpSerializer,
+    OwnerChangeSerializer,
     ReassignSerializer,
     StagePhotoSerializer,
     business_detail,
@@ -42,6 +45,7 @@ from .serializers import (
     subscription_due_item,
 )
 from .services import approver_name, assign_account_manager
+from .undo import UndoError, owner_changes, undo_change
 from .proposals import listing_form_meta, propose_listing, propose_photos, propose_update, stage_photo
 
 
@@ -630,3 +634,25 @@ class ListingFormMetaView(APIView):
             return Response({"detail": "Choose a business."}, status=400)
         owner = get_managed_business(request, int(raw))
         return Response(listing_form_meta(owner))
+
+
+class OwnerChangeListView(APIView):
+    """GET owner/changes/ — the business owner's "Changes by your account manager" (plain array)."""
+
+    permission_classes = [IsAuthenticated, IsBusinessOwner]
+
+    def get(self, request):
+        return Response(OwnerChangeSerializer(owner_changes(request.user), many=True).data)
+
+
+class OwnerChangeUndoView(APIView):
+    """POST owner/changes/<pk>/undo/ — "This wasn't me"."""
+
+    permission_classes = [IsAuthenticated, IsBusinessOwner]
+
+    def post(self, request, pk):
+        try:
+            change = undo_change(pk, request.user, http_request=request)
+        except UndoError as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
+        return Response(OwnerChangeSerializer(change).data)

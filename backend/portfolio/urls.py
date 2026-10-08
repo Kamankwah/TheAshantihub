@@ -19,4 +19,6 @@ urlpatterns = [
     path("businesses/<int:pk>/listings/", views.ProposeListingView.as_view(), name="portfolio-propose-listing"),
     path("listings/<int:pk>/photos/", views.ProposeListingPhotosView.as_view(), name="portfolio-propose-photos"),
     path("meta/listing-form/", views.ListingFormMetaView.as_view(), name="portfolio-listing-form-meta"),
+    path("owner/changes/", views.OwnerChangeListView.as_view(), name="portfolio-owner-changes"),
+    path("owner/changes/<int:pk>/undo/", views.OwnerChangeUndoView.as_view(), name="portfolio-owner-change-undo"),
 ]
