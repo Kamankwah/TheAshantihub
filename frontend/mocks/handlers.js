@@ -528,4 +528,13 @@ export const handlers = [
   http.post('http://localhost:8000/api/portfolio/businesses/:id/claim-link/', () => HttpResponse.json(
     { sent_to: 'gi•••@example.com', expires_at: new Date(Date.now() + 7 * 86400000).toISOString() },
   )),
+  // The owner's subscription — none by default. The business dashboard's
+  // shell reads it for the renew banner on every tab (staff phase 2A).
+  http.get('http://localhost:8000/api/billing/subscriptions/me/', () => HttpResponse.json({})),
+  // What an account manager changed for the owner — nothing by default.
+  http.get('http://localhost:8000/api/portfolio/owner/changes/', () => HttpResponse.json([])),
+  http.post('http://localhost:8000/api/portfolio/owner/changes/:id/undo/', ({ params }) => HttpResponse.json({
+    id: Number(params.id), kind: 'business.update', summary: '', made_by_name: '', applied_at: null, undo_until: null,
+    can_undo: false, undone_at: new Date().toISOString(), undo_failed: '',
+  })),
 ]
