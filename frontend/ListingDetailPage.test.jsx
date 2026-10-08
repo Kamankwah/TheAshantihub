@@ -441,3 +441,80 @@ describe('ListingDetailPage — seller-rating badge', () => {
     expect(screen.queryByText(/Sold by/)).not.toBeInTheDocument()
   })
 })
+
+// A staff session browses the marketplace view-only: the buy box looks the
+// same as a customer's, but every buy/book/request/review action shows the one
+// shared staff notice instead of proceeding (the server 403s staff anyway).
+const STAFF = { id: 3, fullName: 'Akosua Support', accountType: 'staff' }
+const STAFF_NOTICE = "Staff accounts can't shop or sell. Sign out first."
+
+describe('ListingDetailPage — staff session is view-only', () => {
+  it('Add to Cart shows the staff notice instead of adding (not the business-account wording)', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)))
+    const onAddToCart = vi.fn()
+    renderPage({ user: STAFF, onAddToCart })
+    await screen.findByText('Royal Ashanti Lodge')
+    expect(screen.queryByText(/Business accounts can't purchase/i)).not.toBeInTheDocument()
+    const before = screen.queryAllByText(STAFF_NOTICE).length
+    fireEvent.click(screen.getByRole('button', { name: 'Add to Cart' }))
+    expect(screen.getAllByText(STAFF_NOTICE)).toHaveLength(before + 1)
+    expect(onAddToCart).not.toHaveBeenCalled()
+  })
+
+  it('booking a stay shows the staff notice and never POSTs /api/bookings/', async () => {
+    let bookingPosts = 0
+    server.use(
+      http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json({
+        ...LISTING, category: { ...LISTING.category, is_accommodation: true },
+      })),
+      http.post('http://localhost:8000/api/bookings/', () => {
+        bookingPosts += 1
+        return HttpResponse.json({}, { status: 201 })
+      }),
+    )
+    renderPage({ user: STAFF })
+    await screen.findByText('Royal Ashanti Lodge')
+    fireEvent.change(screen.getByLabelText('Check-in'), { target: { value: '2026-11-01' } })
+    fireEvent.change(screen.getByLabelText('Check-out'), { target: { value: '2026-11-03' } })
+    const before = screen.queryAllByText(STAFF_NOTICE).length
+    fireEvent.click(screen.getByRole('button', { name: /^Book/ }))
+    expect(screen.getAllByText(STAFF_NOTICE)).toHaveLength(before + 1)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(bookingPosts).toBe(0)
+  })
+
+  it('requesting a service shows the staff notice and never POSTs a service request', async () => {
+    let requestPosts = 0
+    server.use(
+      http.get('http://localhost:8000/api/listings/2/', () => HttpResponse.json(SERVICE_LISTING)),
+      http.post('http://localhost:8000/api/services/requests/', () => {
+        requestPosts += 1
+        return HttpResponse.json({}, { status: 201 })
+      }),
+    )
+    renderPage({ id: 2, user: STAFF })
+    await screen.findByText('Kumasi City Tour')
+    fireEvent.change(screen.getByPlaceholderText('Describe what you need…'), { target: { value: 'A morning tour' } })
+    const before = screen.queryAllByText(STAFF_NOTICE).length
+    fireEvent.click(screen.getByRole('button', { name: 'Request this service' }))
+    expect(screen.getAllByText(STAFF_NOTICE)).toHaveLength(before + 1)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(requestPosts).toBe(0)
+  })
+
+  it('the write-a-review box shows the staff notice and never asks the customer-only eligibility endpoint', async () => {
+    let eligibilityCalls = 0
+    server.use(
+      http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)),
+      http.get('http://localhost:8000/api/reviews/eligibility/', () => {
+        eligibilityCalls += 1
+        return HttpResponse.json({ eligible: false, already_reviewed: false })
+      }),
+    )
+    renderPage({ user: STAFF })
+    await screen.findByText('Royal Ashanti Lodge')
+    expect(await screen.findByText(STAFF_NOTICE)).toBeInTheDocument()
+    expect(screen.queryByText('You can review this after a completed purchase.')).not.toBeInTheDocument()
+    expect(eligibilityCalls).toBe(0)
+  })
+})

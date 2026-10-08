@@ -1,4 +1,6 @@
 from django.conf import settings
+from django.contrib.auth.hashers import check_password
+from django.db import transaction
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import generics, status
@@ -10,10 +12,30 @@ from rest_framework.views import APIView
 
 from notifications.services import notify_business_owner, notify_customer, notify_staff_role
 
+from activity.services import record as record_activity
+from realtime.publish import force_disconnect_on_commit
+
+from . import sessions, two_factor
 from .authentication import issue_token
-from .emails import send_staff_invite_email, send_verification_code_email
-from .models import BusinessOwner, Customer, Permission, ScoutAssignment, StaffUser
-from .permissions import HasRolePermission
+from .emails import send_staff_invite_email, send_two_factor_changed_email, send_verification_code_email
+from .models import (
+    BusinessOwner,
+    Customer,
+    Permission,
+    Role,
+    RoleInviteRule,
+    ScoutAssignment,
+    StaffSession,
+    StaffUser,
+)
+from .permissions import (
+    HasAnyRolePermission,
+    HasRolePermission,
+    IsStaff,
+    RequiresSudo,
+    can_lead_team,
+    can_manage_staff,
+)
 from .serializers import (
     INVITE_TOKEN_LIFETIME,
     BusinessOwnerKYCDetailSerializer,
@@ -40,6 +62,7 @@ from .serializers import (
     StaffInviteSerializer,
     StaffListSerializer,
     StaffLoginSerializer,
+    StaffSessionSerializer,
 )
 
 
@@ -87,7 +110,8 @@ class StaffInviteView(generics.CreateAPIView):
     serializer_class = StaffInviteSerializer
 
     def get_permissions(self):
-        return [HasRolePermission("staff.manage")]
+        # Every invite (a team invite too) mints an account: password again.
+        return [HasAnyRolePermission(*TEAM_OR_STAFF_MANAGE), RequiresSudo()]
 
 
 class StaffActivateView(generics.GenericAPIView):
@@ -99,7 +123,16 @@ class StaffActivateView(generics.GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         staff = serializer.save()
-        return Response({"status": "activated", "token": issue_token(staff, "staff")})
+        # Same second-step rules as signing in: a Super Admin must not get a
+        # session at activation without 2-step sign-in.
+        stage = two_factor.challenge_for(staff)
+        if stage == two_factor.VERIFY:
+            return Response({"status": "activated", "two_factor_required": True,
+                             "mfa_token": two_factor.make_challenge(staff, stage)})
+        if stage == two_factor.ENROL:
+            return Response({"status": "activated", "two_factor_setup_required": True,
+                             "mfa_token": two_factor.make_challenge(staff, stage)})
+        return Response({"status": "activated", "token": issue_token(staff, "staff", request=request)})
 
 
 class BusinessOwnerRegisterView(generics.CreateAPIView):
@@ -116,10 +149,13 @@ class BusinessOwnerRegisterView(generics.CreateAPIView):
 
 class StaffResendInviteView(APIView):
     def get_permissions(self):
-        return [HasRolePermission("staff.manage")]
+        return [HasAnyRolePermission(*TEAM_OR_STAFF_MANAGE)]
 
     def post(self, request, pk):
         staff = generics.get_object_or_404(StaffUser, pk=pk)
+        scope = _guard_team_scope(request, staff)
+        if scope:
+            return scope
         if staff.invite_token is None:
             return Response(
                 {"detail": "Cannot resend invite for an already-activated account."},
@@ -168,6 +204,41 @@ class BusinessOwnerLoginView(generics.GenericAPIView):
         })
 
 
+def _staff_sign_in_response(account, request, *, two_factor_used=False):
+    # Open the session first so a sign-in is never logged without one.
+    token = issue_token(account, "staff", request=request, two_factor=two_factor_used)
+    record_activity(
+        account, "staff.signed_in", target=account, method="POST", request=request,
+        summary="with 2-step sign-in" if two_factor_used else "",
+    )
+    return {
+        "token": token,
+        "account_type": "staff",
+        "id": account.id,
+        "full_name": account.full_name,
+        "role": account.role.name,
+        "permissions": sorted(account.effective_permission_codenames()),
+    }
+
+
+TIMED_OUT = "Your sign-in timed out. Enter your password again."
+UNREADABLE = "Your 2-step sign-in can't be checked right now. Ask a Super Admin to reset it."
+WRONG_CODE = "That code isn't right. Check your authenticator app and try again."
+
+
+def _body(request):
+    return request.data if isinstance(request.data, dict) else {}
+
+
+def _text(value):
+    """A request value as a string, or None if the client sent anything else."""
+    return value if isinstance(value, str) else None
+
+
+def _email_after_commit(staff, change):
+    transaction.on_commit(lambda: send_two_factor_changed_email(staff, change), robust=True)
+
+
 class StaffLoginView(generics.GenericAPIView):
     serializer_class = StaffLoginSerializer
     permission_classes = [AllowAny]
@@ -177,14 +248,24 @@ class StaffLoginView(generics.GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         account = serializer.account
-        return Response({
-            "token": issue_token(account, "staff"),
-            "account_type": "staff",
-            "id": account.id,
-            "full_name": account.full_name,
-            "role": account.role.name,
-            "permissions": sorted(account.effective_permission_codenames()),
-        })
+        stage = two_factor.challenge_for(account)
+        if stage == two_factor.VERIFY:
+            return Response({"two_factor_required": True, "mfa_token": two_factor.make_challenge(account, stage)})
+        if stage == two_factor.ENROL:
+            return Response({"two_factor_setup_required": True, "mfa_token": two_factor.make_challenge(account, stage)})
+        return Response(_staff_sign_in_response(account, request))
+
+
+class StaffLogoutView(APIView):
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def post(self, request):
+        session = sessions.current(request)
+        if session is not None:
+            sessions.revoke(session, StaffSession.SIGNED_OUT)
+        record_activity(request.user, "staff.signed_out", target=request.user, method="POST", request=request)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class PasswordResetRequestView(generics.GenericAPIView):
@@ -376,11 +457,69 @@ class BusinessOwnerListView(generics.ListAPIView):
 
 class StaffListView(generics.ListAPIView):
     serializer_class = StaffListSerializer
-    queryset = StaffUser.objects.all().order_by("-created_at")
+    queryset = sessions.with_last_sign_in(StaffUser.objects.all()).order_by("-created_at")
     pagination_class = AccountsPagination
 
     def get_permissions(self):
         return [HasRolePermission("staff.manage")]
+
+
+class StaffTeamListView(generics.ListAPIView):
+    serializer_class = StaffListSerializer
+    pagination_class = None
+
+    def get_permissions(self):
+        return [HasAnyRolePermission(*TEAM_OR_STAFF_MANAGE)]
+
+    def get_queryset(self):
+        return (
+            sessions.with_last_sign_in(StaffUser.objects.filter(manager=self.request.user))
+            .select_related("role", "manager")
+            .order_by("full_name")
+        )
+
+
+class InvitableRolesView(APIView):
+    def get_permissions(self):
+        return [HasAnyRolePermission(*TEAM_OR_STAFF_MANAGE)]
+
+    def get(self, request):
+        user = request.user
+        if can_manage_staff(user):
+            roles = Role.objects.all()
+            if user.role.name != Role.SUPER_ADMIN:
+                roles = roles.exclude(name=Role.SUPER_ADMIN)
+            names = roles.values_list("name", flat=True)
+        else:
+            names = RoleInviteRule.objects.filter(inviter_role=user.role).values_list(
+                "invitee_role__name", flat=True
+            )
+        return Response(sorted(names))
+
+
+class StaffManagerView(APIView):
+    def get_permissions(self):
+        return [HasRolePermission("staff.manage"), RequiresSudo()]
+
+    def post(self, request, pk):
+        staff = generics.get_object_or_404(sessions.with_last_sign_in(StaffUser.objects.all()), pk=pk)
+        manager_id = request.data.get("manager")
+        if manager_id in (None, ""):
+            staff.manager = None
+        else:
+            manager = generics.get_object_or_404(StaffUser, pk=manager_id, is_active=True)
+            if not can_lead_team(manager):
+                return Response({"detail": "Choose a manager who can lead a team."}, status=400)
+            node = manager
+            while node is not None:
+                if node.pk == staff.pk:
+                    return Response({"detail": "That would make someone their own manager."}, status=400)
+                node = node.manager
+            staff.manager = manager
+        staff.save(update_fields=["manager"])
+        # Their socket's permission and team groups are now wrong: reconnect.
+        force_disconnect_on_commit(f"staff.{staff.pk}")
+        return Response(StaffListSerializer(staff).data)
 
 
 # ── Staff user-management (staff user-management tools) ─────────────────────
@@ -525,27 +664,50 @@ def _guard_self_action(request, staff):
     return None
 
 
+TEAM_OR_STAFF_MANAGE = ("staff.manage", "staff.invite_team")
+
+
+def _guard_team_scope(request, staff):
+    """A team manager may act only on their own direct reports."""
+    if can_manage_staff(request.user):
+        return None
+    if (
+        staff.manager_id == request.user.id
+        and RoleInviteRule.objects.filter(inviter_role=request.user.role, invitee_role=staff.role).exists()
+        and not can_manage_staff(staff)
+    ):
+        return None
+    return Response({"detail": "You can only manage your own team."}, status=403)
+
+
 class StaffSuspendView(APIView):
     def get_permissions(self):
-        return [HasRolePermission("staff.manage")]
+        return [HasAnyRolePermission(*TEAM_OR_STAFF_MANAGE), RequiresSudo()]
 
     def post(self, request, pk):
-        staff = generics.get_object_or_404(StaffUser, pk=pk)
+        staff = generics.get_object_or_404(sessions.with_last_sign_in(StaffUser.objects.all()), pk=pk)
         guard = _guard_self_action(request, staff)
         if guard:
             return guard
+        scope = _guard_team_scope(request, staff)
+        if scope:
+            return scope
         staff.is_suspended = True
         staff.suspension_reason = request.data.get("reason", "") or ""
         staff.save(update_fields=["is_suspended", "suspension_reason"])
+        sessions.revoke_all(staff, StaffSession.SUSPENDED)
         return Response(StaffListSerializer(staff).data)
 
 
 class StaffUnsuspendView(APIView):
     def get_permissions(self):
-        return [HasRolePermission("staff.manage")]
+        return [HasAnyRolePermission(*TEAM_OR_STAFF_MANAGE)]
 
     def post(self, request, pk):
-        staff = generics.get_object_or_404(StaffUser, pk=pk)
+        staff = generics.get_object_or_404(sessions.with_last_sign_in(StaffUser.objects.all()), pk=pk)
+        scope = _guard_team_scope(request, staff)
+        if scope:
+            return scope
         staff.is_suspended = False
         staff.suspension_reason = ""
         staff.save(update_fields=["is_suspended", "suspension_reason"])
@@ -559,24 +721,31 @@ class StaffDeactivateView(APIView):
     """
 
     def get_permissions(self):
-        return [HasRolePermission("staff.manage")]
+        return [HasRolePermission("staff.manage"), RequiresSudo()]
 
     def post(self, request, pk):
-        staff = generics.get_object_or_404(StaffUser, pk=pk)
+        staff = generics.get_object_or_404(sessions.with_last_sign_in(StaffUser.objects.all()), pk=pk)
         guard = _guard_self_action(request, staff)
         if guard:
             return guard
+        active_reports = staff.direct_reports.filter(is_active=True).count()
+        if active_reports:
+            return Response(
+                {"detail": f"Reassign {staff.full_name}'s {active_reports} direct report(s) first."},
+                status=400,
+            )
         staff.is_active = False
         staff.save(update_fields=["is_active"])
+        sessions.revoke_all(staff, StaffSession.DEACTIVATED)
         return Response(StaffListSerializer(staff).data)
 
 
 class StaffReactivateView(APIView):
     def get_permissions(self):
-        return [HasRolePermission("staff.manage")]
+        return [HasRolePermission("staff.manage"), RequiresSudo()]
 
     def post(self, request, pk):
-        staff = generics.get_object_or_404(StaffUser, pk=pk)
+        staff = generics.get_object_or_404(sessions.with_last_sign_in(StaffUser.objects.all()), pk=pk)
         staff.is_active = True
         staff.save(update_fields=["is_active"])
         return Response(StaffListSerializer(staff).data)
@@ -591,10 +760,10 @@ class StaffPermissionsView(APIView):
     """
 
     def get_permissions(self):
-        return [HasRolePermission("staff.manage")]
+        return [HasRolePermission("staff.manage"), RequiresSudo()]
 
     def post(self, request, pk):
-        staff = generics.get_object_or_404(StaffUser, pk=pk)
+        staff = generics.get_object_or_404(sessions.with_last_sign_in(StaffUser.objects.all()), pk=pk)
         guard = _guard_self_action(request, staff)
         if guard:
             return guard
@@ -620,6 +789,8 @@ class StaffPermissionsView(APIView):
 
         staff.extra_permissions.set(grant_perms)
         staff.revoked_permissions.set(revoke_perms)
+        # Their socket's permission and team groups are now wrong: reconnect.
+        force_disconnect_on_commit(f"staff.{staff.pk}")
         return Response(StaffListSerializer(staff).data)
 
 
@@ -639,6 +810,93 @@ class PermissionCatalogView(APIView):
         return Response(
             [{"codename": p.codename, "description": p.description} for p in permissions]
         )
+
+
+# ── Sessions & devices, password re-entry (staff foundations F9) ────────────
+
+
+def _session_context(request):
+    return {"current_session": sessions.current(request)}
+
+
+class StaffReauthView(APIView):
+    """Re-enter your password ("sudo"): unlocks sensitive actions on this
+    session for 10 minutes."""
+
+    throttle_scope = "login"
+
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def post(self, request):
+        if not check_password(request.data.get("password") or "", request.user.password_hash):
+            return Response({"password": ["That password isn't right."]}, status=400)
+        return Response({"sudo_until": sessions.grant_sudo(sessions.current(request))})
+
+
+class StaffSessionListView(APIView):
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def get(self, request):
+        staff = request.user
+        other = request.query_params.get("staff")
+        if other:
+            if not can_manage_staff(request.user):
+                return Response({"detail": "You need the staff management permission to see other people's sessions."}, status=403)
+            if not (other.isdecimal() and other.isascii()):
+                return Response({"staff": "Use a staff id."}, status=400)
+            staff = generics.get_object_or_404(StaffUser, pk=other)
+        rows = StaffSession.objects.filter(staff=staff).select_related("staff__role")[:50]
+        return Response(StaffSessionSerializer(rows, many=True, context=_session_context(request)).data)
+
+
+class StaffActiveSessionsView(APIView):
+    """Everyone signed in now (Super Admin's Sessions & devices)."""
+
+    def get_permissions(self):
+        return [HasRolePermission("staff.manage")]
+
+    def get(self, request):
+        rows = (
+            sessions.live(StaffSession.objects.filter(staff__is_active=True, staff__is_suspended=False))
+            .select_related("staff__role")
+            .order_by("staff__full_name", "-last_seen_at")
+        )
+        return Response(StaffSessionSerializer(rows, many=True, context=_session_context(request)).data)
+
+
+class StaffSessionEndView(APIView):
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def post(self, request, pk):
+        scope = StaffSession.objects.all() if can_manage_staff(request.user) else StaffSession.objects.filter(staff=request.user)
+        session = generics.get_object_or_404(scope.select_related("staff__role"), pk=pk)
+        sessions.revoke(session, StaffSession.ENDED)
+        session.refresh_from_db()
+        return Response(StaffSessionSerializer(session, context=_session_context(request)).data)
+
+
+class StaffEndOtherSessionsView(APIView):
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def post(self, request):
+        ended = sessions.revoke_all(request.user, StaffSession.ENDED, except_session=sessions.current(request))
+        return Response({"ended": ended})
+
+
+class StaffSignOutEverywhereView(APIView):
+    def get_permissions(self):
+        return [HasRolePermission("staff.manage")]
+
+    def post(self, request, pk):
+        staff = generics.get_object_or_404(StaffUser, pk=pk)
+        guard = _guard_self_action(request, staff)
+        if guard:
+            return guard
+        return Response({"ended": sessions.revoke_all(staff, StaffSession.SIGNED_OUT_EVERYWHERE)})
 
 
 # ── Scout field verification (punch-list item 11) ──────────────────────────
@@ -685,8 +943,8 @@ class ScoutListView(generics.ListAPIView):
         return [HasRolePermission("scouts.assign")]
 
     def get_queryset(self):
-        return StaffUser.objects.filter(
-            role__name="scout", is_active=True, is_suspended=False
+        return sessions.with_last_sign_in(
+            StaffUser.objects.filter(role__name="scout", is_active=True, is_suspended=False)
         ).order_by("full_name")
 
 
@@ -876,3 +1134,156 @@ class TermsAcceptView(APIView):
             link="kyc", icon="🪪",
         )
         return Response({"registration_step": owner.compute_registration_step()})
+
+
+# ── 2-step sign-in (staff foundations F9) ───────────────────────────────────
+
+
+class StaffLoginTwoFactorView(APIView):
+    permission_classes = [AllowAny]
+    throttle_scope = "two_factor"
+
+    def post(self, request):
+        body = _body(request)
+        account = two_factor.read_challenge(body.get("mfa_token"), two_factor.VERIFY)
+        if account is None:
+            return Response({"detail": TIMED_OUT, "code": "challenge_expired"}, status=400)
+        if two_factor.too_many_failures(account):
+            minutes = int(two_factor.FAILURE_WINDOW.total_seconds() // 60)
+            return Response(
+                {"detail": f"Too many wrong codes. Wait {minutes} minutes, then sign in again."}, status=400
+            )
+        recovery_code = body.get("recovery_code")
+        code = body.get("code")
+        try:
+            if recovery_code:
+                ok = _text(recovery_code) is not None and two_factor.use_recovery_code(account, recovery_code)
+            else:
+                ok = _text(code) is not None and two_factor.verify(account, code)
+        except two_factor.SecretUnreadable:
+            return Response({"detail": UNREADABLE}, status=400)
+        if not ok:
+            record_activity(account, two_factor.FAILED_VERB, target=account, method="POST", request=request)
+            return Response({"detail": WRONG_CODE}, status=400)
+        if recovery_code:
+            left = two_factor.status(account)["recovery_codes_left"]
+            _email_after_commit(account, f"A recovery code was used to sign in. {left} recovery codes are left.")
+        return Response(_staff_sign_in_response(account, request, two_factor_used=True))
+
+
+class StaffTwoFactorEnrolStartView(APIView):
+    """Set-up during sign-in, for a Super Admin without 2-step yet."""
+
+    permission_classes = [AllowAny]
+    throttle_scope = "two_factor"
+
+    def post(self, request):
+        account = two_factor.read_challenge(_body(request).get("mfa_token"), two_factor.ENROL)
+        if account is None:
+            return Response({"detail": TIMED_OUT, "code": "challenge_expired"}, status=400)
+        secret, uri = two_factor.begin_enrolment(account)
+        return Response({"secret": secret, "otpauth_uri": uri})
+
+
+class StaffTwoFactorEnrolConfirmView(APIView):
+    permission_classes = [AllowAny]
+    throttle_scope = "two_factor"
+
+    def post(self, request):
+        account = two_factor.read_challenge(_body(request).get("mfa_token"), two_factor.ENROL)
+        if account is None:
+            return Response({"detail": TIMED_OUT, "code": "challenge_expired"}, status=400)
+        try:
+            codes = two_factor.confirm_enrolment(account, _text(_body(request).get("code")))
+        except two_factor.SecretUnreadable:
+            return Response({"detail": UNREADABLE}, status=400)
+        if codes is None:
+            return Response({"detail": "That code isn't right. Check the app shows AshantiHub and try again."}, status=400)
+        _email_after_commit(account, "2-step sign-in was turned on for your account.")
+        record_activity(account, "staff.two_factor_enabled", target=account, method="POST", request=request)
+        return Response({**_staff_sign_in_response(account, request, two_factor_used=True), "recovery_codes": codes})
+
+
+class StaffTwoFactorStatusView(APIView):
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def get(self, request):
+        return Response(two_factor.status(request.user))
+
+
+class StaffTwoFactorSetupView(APIView):
+    throttle_scope = "two_factor"
+
+    def get_permissions(self):
+        return [IsStaff(), RequiresSudo()]
+
+    def post(self, request):
+        secret, uri = two_factor.begin_enrolment(request.user)
+        return Response({"secret": secret, "otpauth_uri": uri})
+
+
+class StaffTwoFactorSetupConfirmView(APIView):
+    throttle_scope = "two_factor"
+
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def post(self, request):
+        try:
+            codes = two_factor.confirm_enrolment(request.user, _text(_body(request).get("code")))
+        except two_factor.SecretUnreadable:
+            return Response({"detail": UNREADABLE}, status=400)
+        if codes is None:
+            return Response({"detail": "That code isn't right. Check the app shows AshantiHub and try again."}, status=400)
+        record_activity(request.user, "staff.two_factor_enabled", target=request.user, method="POST", request=request)
+        _email_after_commit(request.user, "2-step sign-in was set up on a phone for your account.")
+        return Response({"recovery_codes": codes})
+
+
+class StaffRecoveryCodesView(APIView):
+    throttle_scope = "two_factor"
+
+    def get_permissions(self):
+        return [IsStaff(), RequiresSudo()]
+
+    def post(self, request):
+        codes = two_factor.regenerate_recovery_codes(request.user)
+        if codes is None:
+            return Response({"detail": "Turn on 2-step sign-in first."}, status=400)
+        record_activity(request.user, "staff.recovery_codes_renewed", target=request.user, method="POST", request=request)
+        return Response({"recovery_codes": codes})
+
+
+class StaffTwoFactorDisableView(APIView):
+    throttle_scope = "two_factor"
+
+    def get_permissions(self):
+        return [IsStaff(), RequiresSudo()]
+
+    def post(self, request):
+        if two_factor.is_required(request.user):
+            return Response({"detail": "2-step sign-in can't be turned off for a Super Admin."}, status=400)
+        two_factor.disable(request.user)
+        record_activity(request.user, "staff.two_factor_disabled", target=request.user, method="POST", request=request)
+        _email_after_commit(request.user, "2-step sign-in was turned off for your account.")
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class StaffTwoFactorResetView(APIView):
+    """A Super Admin resets someone who lost their phone and codes."""
+
+    throttle_scope = "two_factor"
+
+    def get_permissions(self):
+        return [HasRolePermission("staff.manage"), RequiresSudo()]
+
+    def post(self, request, pk):
+        staff = generics.get_object_or_404(StaffUser, pk=pk)
+        guard = _guard_self_action(request, staff)
+        if guard:
+            return guard
+        two_factor.disable(staff)
+        record_activity(request.user, "staff.two_factor_reset", target=staff, method="POST", request=request)
+        _email_after_commit(staff, f"{request.user.full_name} reset your 2-step sign-in.")
+        return Response(status=status.HTTP_204_NO_CONTENT)

@@ -55,6 +55,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='checkoutsession',
-            constraint=models.CheckConstraint(check=models.Q(models.Q(('business_owner__isnull', False), ('customer__isnull', True)), models.Q(('business_owner__isnull', True), ('customer__isnull', False)), _connector='OR'), name='checkout_session_exactly_one_of_business_owner_or_customer'),
+            constraint=models.CheckConstraint(condition=models.Q(models.Q(('business_owner__isnull', False), ('customer__isnull', True)), models.Q(('business_owner__isnull', True), ('customer__isnull', False)), _connector='OR'), name='checkout_session_exactly_one_of_business_owner_or_customer'),
         ),
     ]

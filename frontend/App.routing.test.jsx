@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { BrowserRouter, MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import AshantiHub from './App.jsx'
-import { setStoredAuth } from './apiClient.js'
+import { apiFetch, getStoredAuth, setStoredAuth } from './apiClient.js'
 import { server } from './mocks/server.js'
 
 // docs/UI_MODERNIZATION_ROADMAP.md Phase D — real URL sync for `page`.
@@ -525,6 +525,48 @@ describe('AshantiHub routing — /staff/:panel', () => {
     expect(await screen.findByText('Activate Your Staff Account', {}, { timeout: 3000 })).toBeInTheDocument()
   }, 8000)
 
+  it('activating a Super Admin invite shows the authenticator setup, not the dashboard', async () => {
+    server.use(
+      http.post('http://localhost:8000/api/accounts/staff/activate/', () => HttpResponse.json({ status: 'activated', two_factor_setup_required: true, mfa_token: 'mfa' })),
+      http.post('http://localhost:8000/api/accounts/staff/two-factor/enrol/start/', () => HttpResponse.json({ secret: 'JBSWY3DPEHPK3PXP', otpauth_uri: 'otpauth://totp/AshantiHub:boss%40example.com?secret=JBSWY3DPEHPK3PXP' })),
+    )
+    renderStaffAt('/staff/activate?token=abc')
+    fireEvent.change(await screen.findByPlaceholderText('Password (min 8 characters)', {}, { timeout: 3000 }), { target: { value: 'a-long-password' } })
+    fireEvent.change(screen.getByPlaceholderText('Confirm password'), { target: { value: 'a-long-password' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Activate Account' }))
+    expect(await screen.findByLabelText('Setup key', {}, { timeout: 3000 })).toHaveTextContent('JBSW Y3DP EHPK 3PXP')
+    expect(screen.queryByRole('navigation', { name: 'Staff panels' })).not.toBeInTheDocument()
+    expect(localStorage.getItem('ashantihub.auth')).toBeNull()
+  }, 8000)
+
+  it('an expired 2-step step on the activation page returns to the password form with a notice', async () => {
+    server.use(
+      http.post('http://localhost:8000/api/accounts/staff/activate/', () => HttpResponse.json({ status: 'activated', two_factor_setup_required: true, mfa_token: 'mfa' })),
+      http.post('http://localhost:8000/api/accounts/staff/two-factor/enrol/start/', () => HttpResponse.json({ detail: 'Your sign-in timed out. Enter your password again.', code: 'challenge_expired' }, { status: 400 })),
+    )
+    renderStaffAt('/staff/activate?token=abc')
+    fireEvent.change(await screen.findByPlaceholderText('Password (min 8 characters)', {}, { timeout: 3000 }), { target: { value: 'a-long-password' } })
+    fireEvent.change(screen.getByPlaceholderText('Confirm password'), { target: { value: 'a-long-password' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Activate Account' }))
+    expect(await screen.findByText('Your sign-in timed out. Enter your password again.', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Activate Account' })).toBeInTheDocument()
+  }, 8000)
+
+  it('"Start again" after activation hides the form and points to the staff sign-in', async () => {
+    server.use(
+      http.post('http://localhost:8000/api/accounts/staff/activate/', () => HttpResponse.json({ status: 'activated', two_factor_setup_required: true, mfa_token: 'mfa' })),
+      http.post('http://localhost:8000/api/accounts/staff/two-factor/enrol/start/', () => HttpResponse.json({ secret: 'JBSWY3DPEHPK3PXP', otpauth_uri: 'otpauth://x' })),
+    )
+    renderStaffAt('/staff/activate?token=abc')
+    fireEvent.change(await screen.findByPlaceholderText('Password (min 8 characters)', {}, { timeout: 3000 }), { target: { value: 'a-long-password' } })
+    fireEvent.change(screen.getByPlaceholderText('Confirm password'), { target: { value: 'a-long-password' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Activate Account' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Start again' }, { timeout: 3000 }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Your account is active. Sign in at the staff sign-in to finish setting up 2-step sign-in.')
+    expect(screen.getByRole('link', { name: 'staff sign-in' })).toHaveAttribute('href', '/staff')
+    expect(screen.queryByRole('button', { name: 'Activate Account' })).not.toBeInTheDocument()
+  }, 8000)
+
   it('/staff/install renders the install page for a signed-out visitor, with the staff manifest linked', async () => {
     renderStaffAt('/staff/install')
     expect(await screen.findByRole('heading', { name: 'Install the AshantiHub Staff app' }, { timeout: 3000 })).toBeInTheDocument()
@@ -542,21 +584,164 @@ describe('AshantiHub routing — /staff/:panel', () => {
     expect(screen.queryByRole('navigation', { name: 'Staff panels' })).not.toBeInTheDocument()
   }, 8000)
 
-  it('links the staff manifest on staff paths; Exit to / removes it', async () => {
+  it('links the staff manifest on staff paths; View site to / removes it', async () => {
     signInStaff(['messaging.manage', 'users.view'])
     renderStaffAt('/staff/users')
     await staffNav()
     expect(document.head.querySelector('link[rel="manifest"]')).toHaveAttribute('href', '/staff.webmanifest')
-    fireEvent.click(screen.getByRole('button', { name: '← Exit' }))
+    fireEvent.click(screen.getByRole('button', { name: 'View site' }))
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
     await waitFor(() => expect(document.head.querySelector('link[rel="manifest"]')).toBeNull())
+  }, 8000)
+
+  it('a session that ended during "View site" shows the staff sign-in on Back to dashboard, not a stuck shell', async () => {
+    signInStaff(['messaging.manage', 'users.view'])
+    renderStaffAt('/staff')
+    await staffNav()
+    fireEvent.click(screen.getByRole('button', { name: 'View site' }))
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
+    // The server ends the session while the staffer browses the marketplace:
+    // the next marketplace call answers 401 and the stored session is cleared,
+    // with no staff shell mounted to hear it.
+    server.use(http.get('http://localhost:8000/api/listings/', () => new HttpResponse(null, { status: 401 })))
+    await expect(apiFetch('/api/listings/')).rejects.toMatchObject({ status: 401 })
+    expect(getStoredAuth()).toBeNull()
+    fireEvent.click(await screen.findByRole('button', { name: 'Back to dashboard' }, { timeout: 3000 }))
+    expect(await screen.findByText('Staff Sign In', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: 'Staff panels' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('location').textContent).toBe('/staff')
+  }, 10000)
+
+  it('/staff/approvals/<id> opens that request, and Back returns to the inbox URL', async () => {
+    signInStaff(['messaging.manage'])
+    server.use(http.get('http://localhost:8000/api/approvals/7/', () => HttpResponse.json({
+      id: 7, kind: 'business.update', kind_label: 'Business info change', title: 'Adwoa Fabrics', status: 'pending',
+      stage: 'manager', maker: { id: 3, full_name: 'Kwame Asante', role: 'scout' }, assigned_to: null, pool_permission: '',
+      target: { type: '', id: '', label: '' }, maker_note: '', decided_by: null, decided_at: null, decision_note: '',
+      due_at: '2030-01-01T00:00:00Z', escalation_level: 0, created_at: '2026-10-07T06:46:00Z', can_decide: false,
+      can_cancel: false, payload: {}, before: {}, diff: [], stale: false,
+    })))
+    renderStaffAt('/staff/approvals/7')
+    expect(await screen.findByRole('table', { name: 'What would change' }, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.getByTestId('location').textContent).toBe('/staff/approvals/7')
+    fireEvent.click(screen.getByRole('button', { name: '← Approvals' }))
+    expect(screen.getByTestId('location').textContent).toBe('/staff/approvals')
+  }, 8000)
+})
+
+// Signing out after the server has already ended the session must not POST
+// a token-less logout: the real StaffLogoutView answers that 401, and a 401
+// with no stored session tells a mounted shell to sign out again — a loop the
+// default 204 logout handler would hide.
+describe('AshantiHub — staff sign-out after the session has already ended', () => {
+  afterEach(() => setStoredAuth(null))
+
+  function trackLogouts() {
+    const logouts = []
+    server.use(http.post('http://localhost:8000/api/accounts/staff/logout/', ({ request }) => {
+      const authorization = request.headers.get('Authorization')
+      logouts.push(authorization)
+      return authorization ? new HttpResponse(null, { status: 204 }) : new HttpResponse(null, { status: 401 })
+    }))
+    return logouts
+  }
+  // Issued after any logout POST the sign-out made, so once it answers, that
+  // POST (and any loop it set off) has reached the server.
+  async function settle() {
+    server.use(http.get('http://localhost:8000/api/settle/', () => HttpResponse.json({})))
+    for (let round = 0; round < 3; round += 1) await apiFetch('/api/settle/').catch(() => {})
+  }
+
+  it('a session ended while the shell is open: staff sign-in, and no logout POST without a token', async () => {
+    const started = Date.now()
+    signInStaff(['messaging.manage', 'users.view'])
+    const logouts = trackLogouts()
+    renderStaffAt('/staff')
+    await staffNav()
+    server.use(http.get('http://localhost:8000/api/x/', () => new HttpResponse(null, { status: 401 })))
+    await expect(apiFetch('/api/x/')).rejects.toMatchObject({ status: 401 })
+    expect(await screen.findByText('Staff Sign In', {}, { timeout: 3000 })).toBeInTheDocument()
+    await settle()
+    expect(logouts).toEqual([])
+    expect(screen.getByTestId('location').textContent).toBe('/staff')
+    expect(Date.now() - started).toBeLessThan(8000)
+  }, 10000)
+
+  it('Back to dashboard after the session ended on the marketplace: no logout POST', async () => {
+    signInStaff(['messaging.manage', 'users.view'])
+    const logouts = trackLogouts()
+    renderStaffAt('/staff')
+    await staffNav()
+    fireEvent.click(screen.getByRole('button', { name: 'View site' }))
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
+    server.use(http.get('http://localhost:8000/api/listings/', () => new HttpResponse(null, { status: 401 })))
+    await expect(apiFetch('/api/listings/')).rejects.toMatchObject({ status: 401 })
+    fireEvent.click(await screen.findByRole('button', { name: 'Back to dashboard' }, { timeout: 3000 }))
+    expect(await screen.findByText('Staff Sign In', {}, { timeout: 3000 })).toBeInTheDocument()
+    await settle()
+    expect(logouts).toEqual([])
+  }, 10000)
+
+  it('Sign out with a live session still posts the logout exactly once, with its token', async () => {
+    signInStaff(['messaging.manage', 'users.view'])
+    const logouts = trackLogouts()
+    renderStaffAt('/staff')
+    await staffNav()
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    expect(await screen.findByText('Staff Sign In', {}, { timeout: 3000 })).toBeInTheDocument()
+    await waitFor(() => expect(logouts).toEqual(['Bearer test-token']))
+    await settle()
+    expect(logouts).toEqual(['Bearer test-token'])
+  }, 10000)
+})
+
+describe('AshantiHub routing — staff notification bell', () => {
+  afterEach(() => setStoredAuth(null))
+  const notification = { id: 21, title: 'Approval needed', body: 'Kwame asked for a change', icon: '🗳️', link: 'approvals/7', is_read: false, created_at: '2026-10-07T06:46:00Z' }
+  const withNotification = (link) => server.use(http.get('http://localhost:8000/api/notifications/', () => HttpResponse.json({ unread_count: 1, results: [{ ...notification, link }] })))
+
+  it('the staff header shows a bell with the unread count', async () => {
+    signInStaff(['messaging.manage'])
+    withNotification('approvals/7')
+    renderStaffAt('/staff')
+    const bell = await screen.findByRole('button', { name: 'Notifications (1 unread)' }, { timeout: 3000 })
+    expect(bell).toBeInTheDocument()
+    expect(bell).toHaveAttribute('aria-haspopup', 'dialog')
+    expect(bell).toHaveAttribute('aria-expanded', 'false')
+  }, 8000)
+
+  it('a staff notification linking approvals/7 opens /staff/approvals/7', async () => {
+    signInStaff(['messaging.manage'])
+    withNotification('approvals/7')
+    server.use(http.get('http://localhost:8000/api/approvals/7/', () => HttpResponse.json({ detail: 'Not found.' }, { status: 404 })))
+    renderStaffAt('/staff')
+    fireEvent.click(await screen.findByRole('button', { name: 'Notifications (1 unread)' }, { timeout: 3000 }))
+    fireEvent.click(await screen.findByText('Approval needed'))
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/staff/approvals/7'))
+  }, 8000)
+
+  it('the public bell still ignores links without a leading slash', async () => {
+    setStoredAuth({ token: 'test-token', account_type: 'customer', id: 5, full_name: 'Esi' })
+    server.use(http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({ account_type: 'customer', id: 5, full_name: 'Esi' })))
+    withNotification('approvals/7')
+    let markedRead = false
+    server.use(http.post('http://localhost:8000/api/notifications/21/read/', () => { markedRead = true; return HttpResponse.json({ id: 21, is_read: true }) }))
+    renderStaffAt('/')
+    await within(await screen.findByRole('button', { name: 'Notifications' }, { timeout: 3000 })).findByText('1', {}, { timeout: 3000 })
+    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
+    fireEvent.click(await screen.findByText('Approval needed', {}, { timeout: 3000 }))
+    // The click has been handled once its read-mark lands; it must not have navigated.
+    await waitFor(() => expect(markedRead).toBe(true))
+    expect(screen.getByTestId('location').textContent).toBe('/')
+    expect(screen.getByText('Approval needed')).toBeInTheDocument()
   }, 8000)
 })
 
 // Inside the installed staff app (display-mode: standalone) there is no
-// marketplace to fall back to: Sign out stays on the staff URL with the staff
+// marketplace to fall back to: Sign out lands on /staff with the staff
 // sign-in open, wipes the previous staffer's cached panel data, and the
-// sign-in can't be dismissed into the marketplace home.
+// sign-in can't be dismissed into the marketplace home. The browser-only
+// "View site" and "Go to marketplace" ways out are never offered here.
 describe('AshantiHub — installed staff app (standalone display)', () => {
   let originalMatchMedia
   afterEach(() => {
@@ -574,7 +759,7 @@ describe('AshantiHub — installed staff app (standalone display)', () => {
     })
   }
 
-  it('Sign out stays on /staff/users, clears cached queries, and the staff sign-in cannot be dismissed', async () => {
+  it('Sign out lands on /staff, clears cached queries, and the staff sign-in cannot be dismissed', async () => {
     stubStandalone()
     signInStaff(['messaging.manage', 'users.view'])
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -588,11 +773,12 @@ describe('AshantiHub — installed staff app (standalone display)', () => {
       </QueryClientProvider>,
     )
     await staffNav()
+    expect(screen.queryByRole('button', { name: 'View site' })).not.toBeInTheDocument()
     const signOut = screen.getByRole('button', { name: 'Sign out' })
     fireEvent.click(signOut)
     expect(clearSpy).toHaveBeenCalled()
     expect(await screen.findByText('Staff Sign In', {}, { timeout: 3000 })).toBeInTheDocument()
-    expect(screen.getByTestId('location').textContent).toBe('/staff/users')
+    expect(screen.getByTestId('location').textContent).toBe('/staff')
 
     // The ✕ close control must not drop the staffer into the marketplace.
     fireEvent.click(within(screen.getByTestId('auth-modal-backdrop')).getByRole('button', { name: '✕' }))
@@ -600,13 +786,14 @@ describe('AshantiHub — installed staff app (standalone display)', () => {
     // Nor must a backdrop tap.
     fireEvent.click(screen.getByTestId('auth-modal-backdrop'))
     await waitFor(() => expect(screen.getByText('Staff Sign In')).toBeInTheDocument())
-    expect(screen.getByTestId('location').textContent).toBe('/staff/users')
+    expect(screen.getByTestId('location').textContent).toBe('/staff')
   }, 10000)
 
   it('a signed-out launch of the installed app keeps the staff sign-in up after dismissal', async () => {
     stubStandalone()
     renderStaffAt('/staff')
     expect(await screen.findByText('Staff Sign In', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Go to marketplace' })).not.toBeInTheDocument()
     fireEvent.click(within(screen.getByTestId('auth-modal-backdrop')).getByRole('button', { name: '✕' }))
     await waitFor(() => expect(screen.getByText('Staff Sign In')).toBeInTheDocument())
     expect(screen.getByTestId('location').textContent).toBe('/staff')

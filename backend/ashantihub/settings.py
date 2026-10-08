@@ -1,6 +1,11 @@
+import base64
+import hashlib
 from pathlib import Path
+import sys
 import environ
 
+from celery.schedules import crontab
+from cryptography.fernet import Fernet
 from django.core.exceptions import ImproperlyConfigured
 
 from accounts.mixins import AnonymousUser
@@ -16,6 +21,25 @@ ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=["*"])
 
 if not DEBUG and SECRET_KEY == "dev-only-insecure-key":
     raise ImproperlyConfigured("DJANGO_SECRET_KEY must be set when DJANGO_DEBUG=False")
+
+# Encrypts staff 2-step sign-in secrets at rest (accounts/two_factor.py) and
+# keys the recovery-code hashes. A Fernet key — generate with:
+#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# Changing it locks every enrolled staffer out of the second step until each is
+# reset with `manage.py reset_staff_two_factor <email>`, so set it once and back
+# it up with the database password.
+STAFF_SECRETS_KEY = env("STAFF_SECRETS_KEY", default="")
+if not STAFF_SECRETS_KEY:
+    if not DEBUG:
+        raise ImproperlyConfigured("STAFF_SECRETS_KEY must be set when DJANGO_DEBUG=False")
+    STAFF_SECRETS_KEY = base64.urlsafe_b64encode(hashlib.sha256(SECRET_KEY.encode()).digest()).decode()
+try:
+    Fernet(STAFF_SECRETS_KEY.encode())
+except ValueError as exc:
+    raise ImproperlyConfigured(
+        "STAFF_SECRETS_KEY is not a valid Fernet key — generate one with: "
+        "python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+    ) from exc
 
 # When True, business-registration GPS addresses are additionally verified as
 # real Ghana Post addresses via the public ghana-api.dev validator (best-effort;
@@ -51,10 +75,14 @@ SECURE_HSTS_PRELOAD = not DEBUG
 SILENCED_SYSTEM_CHECKS = ["security.W003"]
 
 INSTALLED_APPS = [
+    # Makes the local `manage.py runserver` serve ASGI, WebSockets included
+    # (staff foundations F2). Production runs gunicorn + uvicorn workers.
+    "daphne",
     "django.contrib.contenttypes",
     # Required transitively: rest_framework_simplejwt.tokens imports AbstractBaseUser at module load time
     "django.contrib.auth",
     "django.contrib.staticfiles",
+    "django.contrib.postgres",
     "rest_framework",
     "corsheaders",
     "core",
@@ -74,6 +102,12 @@ INSTALLED_APPS = [
     "messaging",
     "payments",
     "notifications",
+    "activity",
+    "staff_tasks",
+    "calls",
+    "approvals",
+    "reports",
+    "realtime",
 ]
 
 MIDDLEWARE = [
@@ -84,6 +118,7 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "activity.middleware.StaffActivityMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
@@ -198,6 +233,12 @@ LOGGING = {
             "level": "WARNING",
             "propagate": False,
         },
+        # WeasyPrint logs each PDF's layout steps at INFO (report exports).
+        "weasyprint": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
     },
 }
 
@@ -256,6 +297,7 @@ REST_FRAMEWORK = {
         "business_owner_register": "5/min",
         "staff_activate": "5/min",
         "login": "5/min",
+        "two_factor": "10/min",
         "password_reset_request": "5/min",
         # The Hubtel webhook is a public, unauthenticated endpoint (Hubtel
         # calls it from the internet, not a logged-in app user) — generous
@@ -273,3 +315,97 @@ REST_FRAMEWORK = {
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": __import__("datetime").timedelta(hours=12),
 }
+
+# ── Live updates and background jobs (staff foundations F2) ─────────────────
+# One Redis per environment (infra/compose/docker-compose.yml) carries the
+# Channels layer, the realtime-ticket cache and the Celery broker. With
+# REDIS_URL unset (plain local dev) — and ALWAYS under `manage.py test`, so
+# the suite never needs Redis — everything runs in-process instead: the
+# in-memory channel layer, a local-memory ticket cache and eager Celery.
+#
+# The "default" cache deliberately stays local-memory even in production:
+# the login throttles read it, and a Redis outage must never take sign-in
+# down (spec §3: "Redis down: sockets fail, polling continues"). Short socket
+# timeouts keep a hung Redis from stalling the ticket cache (staff-only use);
+# the channel layer and broker need longer read timeouts, noted where set.
+TESTING = len(sys.argv) > 1 and sys.argv[1] == "test"
+REDIS_URL = env("REDIS_URL", default="")
+# Production without Redis would quietly run jobs inside web requests and keep
+# a separate in-memory channel layer per process (no live updates): refuse.
+if not DEBUG and not TESTING and not REDIS_URL.startswith(("redis://", "rediss://")):
+    raise ImproperlyConfigured("REDIS_URL must be set when DJANGO_DEBUG=False")
+USE_REDIS = bool(REDIS_URL) and not TESTING
+
+CACHES = {
+    "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
+    "realtime": (
+        {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_URL,
+            "KEY_PREFIX": "ah",
+            "OPTIONS": {"socket_connect_timeout": 1, "socket_timeout": 2},
+        }
+        if USE_REDIS
+        else {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "realtime"}
+    ),
+}
+CHANNEL_LAYERS = {
+    "default": (
+        {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            # channels-redis blocks in BZPOPMIN for 5 s per receive, so the read
+            # timeout must exceed that or idle sockets would error.
+            "CONFIG": {"hosts": [{"address": REDIS_URL, "socket_connect_timeout": 1, "socket_timeout": 10}]},
+        }
+        if USE_REDIS
+        else {"BACKEND": "channels.layers.InMemoryChannelLayer"}
+    )
+}
+
+CELERY_BROKER_URL = REDIS_URL if USE_REDIS else "memory://"
+CELERY_TASK_ALWAYS_EAGER = not USE_REDIS
+CELERY_TASK_EAGER_PROPAGATES = True
+CELERY_TASK_IGNORE_RESULT = True
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+# kombu's Redis transport blocks in BRPOP for 1 s at a time, so a 5 s read
+# timeout never trips on an idle worker. Publishing gives up after one retry
+# instead of hanging a request when Redis is unreachable.
+CELERY_BROKER_TRANSPORT_OPTIONS = {"socket_connect_timeout": 1, "socket_timeout": 5}
+CELERY_TASK_PUBLISH_RETRY_POLICY = {"max_retries": 1, "interval_start": 0, "interval_step": 0.5, "interval_max": 0.5}
+# Each job's owning app adds its own entry; core/tests/test_background_jobs.py
+# fails if an entry names a task that doesn't exist. Times are Africa/Accra.
+CELERY_BEAT_SCHEDULE = {
+    "activity-verify-chain": {
+        "task": "activity.tasks.verify_activity_chain_nightly",
+        "schedule": crontab(hour=1, minute=45),
+    },
+    "sessions-cleanup": {
+        "task": "accounts.tasks.cleanup_staff_sessions",
+        "schedule": crontab(hour=3, minute=30),
+    },
+    "reports-purge-exports": {
+        "task": "reports.tasks.purge_expired_exports",
+        "schedule": crontab(hour=4, minute=0),
+    },
+    "reports-reap-stuck-exports": {
+        "task": "reports.tasks.reap_stuck_exports",
+        "schedule": 900.0,  # every 15 minutes
+    },
+    "approvals-escalate": {
+        "task": "approvals.tasks.escalate_due_approvals",
+        "schedule": 300.0,  # every 5 minutes
+    },
+    "reports-day-reminders": {
+        "task": "reports.tasks.send_day_report_reminders",
+        "schedule": crontab(hour=18, minute=0),
+    },
+}
+
+# Production sets this True so the nightly activity check emails its seal to
+# every Super Admin; staging only verifies.
+ACTIVITY_SEAL_EMAIL = env.bool("ACTIVITY_SEAL_EMAIL", default=False)
+
+# Files only a permission-checked view may serve (report exports, F6). Never
+# under MEDIA_ROOT, which nginx serves to anyone.
+PRIVATE_MEDIA_ROOT = BASE_DIR / "private"

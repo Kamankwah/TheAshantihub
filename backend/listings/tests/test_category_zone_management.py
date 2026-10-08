@@ -39,7 +39,7 @@ class CategoryZoneManagementTests(TestCase):
         self.assertIn("kind", response.json())
 
     def test_admin_cannot_create_category(self):
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('admin', 1)}")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('operations', 1)}")
         response = self.client.post(
             "/api/listings/categories/",
             {"slug": "blocked-cat", "icon": "🚫", "label": "Blocked", "color": "#000000",
@@ -71,7 +71,7 @@ class CategoryZoneManagementTests(TestCase):
         category = Category.objects.create(
             slug="noedit", icon="🔒", label="No Edit", color="#444444", kind=Category.PRODUCT,
         )
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('admin', 5)}")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('operations', 5)}")
         response = self.client.patch(
             f"/api/listings/categories/{category.id}/", {"label": "Hacked"}, format="json",
         )
@@ -105,7 +105,7 @@ class CategoryZoneManagementTests(TestCase):
         self.assertTrue(Category.objects.filter(id=category.id).exists())
 
     def test_admin_can_create_zone(self):
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('admin', 2)}")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('operations', 2)}")
         response = self.client.post("/api/listings/zones/", {"name": "New Zone"}, format="json")
         self.assertEqual(response.status_code, 201, response.content)
         self.assertTrue(Zone.objects.filter(name="New Zone").exists())

@@ -46,7 +46,7 @@ class Conversation(models.Model):
         ordering = ["-updated_at"]
         constraints = [
             models.CheckConstraint(
-                check=(
+                condition=(
                     models.Q(customer__isnull=False, business_owner__isnull=True, guest_token__isnull=True)
                     | models.Q(customer__isnull=True, business_owner__isnull=False, guest_token__isnull=True)
                     | models.Q(customer__isnull=True, business_owner__isnull=True, guest_token__isnull=False)

@@ -83,3 +83,16 @@ def send_verification_code_email(email, code):
         "— AshantiHub"
     )
     _send(subject, message, email)
+
+
+def send_two_factor_changed_email(staff_user, change):
+    """Tells a staffer their 2-step sign-in changed, so a change they didn't
+    make is noticed."""
+    message = (
+        f"Hi {staff_user.full_name},\n\n"
+        f"{change}\n\n"
+        "If this wasn't you, tell a Super Admin straight away: they can reset "
+        "your 2-step sign-in and sign you out of every device.\n\n"
+        "— AshantiHub"
+    )
+    _send("Your AshantiHub 2-step sign-in changed", message, staff_user.email)

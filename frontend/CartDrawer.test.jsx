@@ -40,6 +40,19 @@ const CART_WITH_ITEM = {
   updated_at: '2026-07-10T00:00:00Z',
 }
 
+describe('CartDrawer — staff session is view-only', () => {
+  // App.jsx never opens the cart for staff (it's customer-only), so this is
+  // the defence-in-depth layer: checkout itself refuses a staff session with
+  // the one shared staff notice.
+  it('Checkout shows the staff notice and never reaches the confirm/pay step', async () => {
+    server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)))
+    renderDrawer({ user: { fullName: 'Akosua Support', accountType: 'staff' } })
+    fireEvent.click(await screen.findByRole('button', { name: 'Checkout →' }))
+    expect(screen.getByText("Staff accounts can't shop or sell. Sign out first.")).toBeInTheDocument()
+    expect(screen.queryByText('Confirm your order')).not.toBeInTheDocument()
+  })
+})
+
 describe('CartDrawer', () => {
   it('shows an empty-cart state', async () => {
     server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json({ id: 1, items: [], total: '0.00' })))

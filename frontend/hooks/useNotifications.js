@@ -14,10 +14,13 @@ import { apiFetch } from '../apiClient.js'
 // notification read / read-all are plain apiPost calls in the consuming
 // component's handler (then refetch()), not hooks — the established mutation
 // convention everywhere in this app.
-export function useNotifications(enabled = true) {
+// `refetchInterval` (ms) is optional: the staff bell polls with it, since a
+// notification row has no activity event to trigger a live refresh.
+export function useNotifications(enabled = true, { refetchInterval } = {}) {
   return useQuery({
     queryKey: ['notifications'],
     queryFn: () => apiFetch('/api/notifications/'),
     enabled,
+    refetchInterval,
   })
 }

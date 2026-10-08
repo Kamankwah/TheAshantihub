@@ -1,7 +1,17 @@
+import { saveBlob } from './lib/saveBlob.js'
 import { reportApiNetworkFailure, reportApiResponse } from './lib/networkStatus.js'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 const AUTH_STORAGE_KEY = 'ashantihub.auth'
+// Fired when the API answers 401 for a signed-in session (an ended, idle or
+// expired staff session, or a revoked token). The staff shell listens and
+// signs out to the staff sign-in instead of failing panel by panel.
+export const SESSION_ENDED_EVENT = 'ashantihub:session-ended'
+// Fired instead for a 401 that ended no stored session (nothing was stored,
+// or the 401 was for an older token). A staff shell that is mounted without
+// a stored staff session — it ended while the staffer was on the marketplace
+// — signs out on it rather than sitting there with every panel failing.
+export const UNAUTHORIZED_EVENT = 'ashantihub:unauthorized'
 
 export function getStoredAuth() {
   const raw = localStorage.getItem(AUTH_STORAGE_KEY)
@@ -31,6 +41,8 @@ function authHeaders() {
 // has no HTTP response at all — DNS/TLS failure, dead uplink, captive portal —
 // which navigator.onLine often misses. Any response, whatever its status,
 // proves the API is reachable. The original error is rethrown unchanged.
+const sentAuth = new WeakMap()
+
 async function request(path, init) {
   let response
   try {
@@ -40,13 +52,54 @@ async function request(path, init) {
     throw error
   }
   reportApiResponse()
+  sentAuth.set(response, init?.headers?.Authorization || null)
   return response
 }
 
-async function handleResponse(response, path) {
-  if (response.status === 401) {
-    setStoredAuth(null)
+// Password re-entry (staff foundations F9). The staff shell registers a
+// handler (SudoPrompt) that asks for the password; a 403 {code:
+// "sudo_required"} then prompts and retries the request once. With no
+// handler, or if the prompt is cancelled, the 403 surfaces as usual. The init
+// is rebuilt for the retry so it re-reads the token.
+let sudoHandler = null
+
+export function setSudoHandler(handler) {
+  sudoHandler = handler
+  return () => {
+    if (sudoHandler === handler) sudoHandler = null
   }
+}
+
+async function send(path, makeInit) {
+  let response = await request(path, makeInit())
+  if (response.status === 403 && sudoHandler) {
+    let body = null
+    try {
+      body = await response.clone().json()
+    } catch {
+      body = null
+    }
+    if (body?.code === 'sudo_required' && (await sudoHandler())) {
+      response = await request(path, makeInit())
+    }
+  }
+  return response
+}
+
+// Every helper (apiDownload too) handles a 401 the same way.
+function noteUnauthorized(response) {
+  if (response.status !== 401) return
+  // Only the session this request was sent with ends; a stale 401 must not
+  // sign out a newer session (another sign-in, another tab).
+  const stored = getStoredAuth()
+  const sent = sentAuth.get(response)
+  const hadSession = Boolean(stored) && sent === `Bearer ${stored.token}`
+  if (hadSession || !stored) setStoredAuth(null)
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(hadSession ? SESSION_ENDED_EVENT : UNAUTHORIZED_EVENT))
+}
+
+async function handleResponse(response, path) {
+  noteUnauthorized(response)
   if (!response.ok) {
     // Attach the raw status + (best-effort) parsed JSON body onto the thrown
     // Error so a caller that needs to distinguish *why* a request failed
@@ -71,71 +124,75 @@ async function handleResponse(response, path) {
 }
 
 export async function apiFetch(path) {
-  const response = await request(path, { headers: authHeaders() })
+  const response = await send(path, () => ({ headers: authHeaders() }))
   return handleResponse(response, path)
 }
 
-// Authenticated file download (business item 4's CSV export): fetches with the
-// auth header — which a plain <a download> can't send — and triggers a browser
-// download of the response body. Used for the sales-report CSV.
+// Authenticated file download (the business sales CSV, staff report
+// exports): fetches with the auth header — which a plain <a download> can't
+// send — and saves the body as `filename`. A 202 means the server queued the
+// file to build in the background: nothing is saved and the JSON body
+// ({id, status}) is returned instead.
 export async function apiDownload(path, filename) {
-  const response = await request(path, { headers: authHeaders() })
+  const response = await send(path, () => ({ headers: authHeaders() }))
+  if (response.status === 202) return response.json()
+  noteUnauthorized(response)
   if (!response.ok) {
+    let body = null
+    try {
+      body = await response.clone().json()
+    } catch {
+      // Not JSON — leave body null.
+    }
     const error = new Error(`Download of ${path} failed with status ${response.status}`)
     error.status = response.status
+    error.body = body
     throw error
   }
-  const blob = await response.blob()
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
+  saveBlob(await response.blob(), filename)
+  return null
 }
 
 export async function apiPost(path, body) {
-  const response = await request(path, {
+  const response = await send(path, () => ({
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(body),
-  })
+  }))
   return handleResponse(response, path)
 }
 
 export async function apiPatch(path, body) {
-  const response = await request(path, {
+  const response = await send(path, () => ({
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(body),
-  })
+  }))
   return handleResponse(response, path)
 }
 
 export async function apiPostForm(path, formData) {
-  const response = await request(path, {
+  const response = await send(path, () => ({
     method: 'POST',
     headers: authHeaders(),
     body: formData,
-  })
+  }))
   return handleResponse(response, path)
 }
 
 export async function apiPatchForm(path, formData) {
-  const response = await request(path, {
+  const response = await send(path, () => ({
     method: 'PATCH',
     headers: authHeaders(),
     body: formData,
-  })
+  }))
   return handleResponse(response, path)
 }
 
 export async function apiDelete(path) {
-  const response = await request(path, {
+  const response = await send(path, () => ({
     method: 'DELETE',
     headers: authHeaders(),
-  })
+  }))
   return handleResponse(response, path)
 }

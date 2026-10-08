@@ -26,7 +26,7 @@ class StaffUserDetailTests(TestCase):
         self.client = APIClient()
         self.admin = StaffUser.objects.create(
             full_name="Admin Person", email="admin-detail@example.com", password_hash="x",
-            role=Role.objects.get(name="admin"),
+            role=Role.objects.get(name="operations"),
         )
         self.customer = Customer.objects.create(
             full_name="Ama Buyer", phone="+233241234567", email="ama-detail@example.com",

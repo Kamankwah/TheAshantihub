@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import generics
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
@@ -98,13 +99,15 @@ class StaffBadgesView(APIView):
 
         # Local imports keep this app's import surface small and avoid any
         # load-order coupling to the queue-owning apps.
+        from approvals.services import waiting_for
         from billing.models import SubscriptionPlan
         from contact.models import ContactMessage
         from events.models import Event, Ticket
         from listings.models import HeroMediaSubmission, Listing
         from reviews.models import Review
+        from staff_tasks.models import Task
 
-        held = set(user.role.permissions.values_list("codename", flat=True))
+        held = user.effective_permission_codenames()
 
         def count(codename, queryset):
             return queryset.count() if codename in held else 0
@@ -155,5 +158,9 @@ class StaffBadgesView(APIView):
                 # Escrow "needs attention" = tickets still held (a release/
                 # refund decision outstanding) and not already refunded.
                 "escrow": escrow_count,
+                "tasks_overdue": Task.objects.filter(
+                    owner=user, status=Task.OPEN, due_at__lt=timezone.now()
+                ).count(),
+                "approvals_waiting": waiting_for(user).count(),
             }
         )

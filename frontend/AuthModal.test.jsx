@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { AuthModal } from './App.jsx'
+import { noteSignedOutReason } from './lib/signOutReason.js'
 
 function makeAuth(overrides = {}) {
   return {
@@ -112,4 +113,51 @@ describe('AuthModal', () => {
     fireEvent.click(signInButtons[signInButtons.length - 1])
     await waitFor(() => expect(auth.login).toHaveBeenCalledWith('business_owner', '+233241234567', 'secret'))
   })
+
+  // The /staff sign-in can't be dismissed into the marketplace, so a visitor
+  // who landed there by mistake gets one plain way out.
+  it('offers a "Go to marketplace" link on the staff sign-in only when onGoToMarketplace is given', () => {
+    const onGoToMarketplace = vi.fn()
+    const { unmount } = render(<AuthModal authState="staff-login" auth={makeAuth()} onClose={vi.fn()} onSuccess={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: 'Go to marketplace' })).not.toBeInTheDocument()
+    unmount()
+
+    render(<AuthModal authState="staff-login" auth={makeAuth()} onClose={vi.fn()} onSuccess={vi.fn()} onGoToMarketplace={onGoToMarketplace} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Go to marketplace' }))
+    expect(onGoToMarketplace).toHaveBeenCalledTimes(1)
+  })
+
+  it('never shows "Go to marketplace" on the customer/business sign-in', () => {
+    render(<AuthModal authState="login" auth={makeAuth()} onClose={vi.fn()} onSuccess={vi.fn()} onGoToMarketplace={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: 'Go to marketplace' })).not.toBeInTheDocument()
+  })
 })
+
+describe('AuthModal — signed-out notice', () => {
+  it('the staff sign-in explains an idle sign-out, once', () => {
+    noteSignedOutReason('idle')
+    const { unmount } = render(<AuthModal authState="staff-login" auth={makeAuth()} onClose={() => {}} onSuccess={() => {}} />)
+    expect(screen.getByText('You were signed out after 30 minutes without activity.')).toBeInTheDocument()
+    unmount()
+    render(<AuthModal authState="staff-login" auth={makeAuth()} onClose={() => {}} onSuccess={() => {}} />)
+    expect(screen.queryByText('You were signed out after 30 minutes without activity.')).not.toBeInTheDocument()
+  })
+
+  it('returns to the password with a notice when the 2-step step has timed out', async () => {
+    const expired = Object.assign(new Error('400'), { status: 400, body: { detail: 'Your sign-in timed out. Enter your password again.', code: 'challenge_expired' } })
+    const auth = makeAuth({
+      login: vi.fn().mockResolvedValue({ two_factor_required: true, mfa_token: 'mfa' }),
+      verifyTwoFactor: vi.fn().mockRejectedValue(expired),
+    })
+    render(<AuthModal authState="staff-login" auth={auth} onClose={() => {}} onSuccess={() => {}} />)
+    fireEvent.change(screen.getByPlaceholderText('Phone or email'), { target: { value: 'boss@example.com' } })
+    fireEvent.change(screen.getByPlaceholderText('Password'), { target: { value: 'secret' } })
+    const buttons = screen.getAllByRole('button', { name: 'Sign In' })
+    fireEvent.click(buttons[buttons.length - 1])
+    fireEvent.change(await screen.findByLabelText('6-digit code'), { target: { value: '123456' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Your sign-in timed out. Enter your password again.')
+    expect(screen.getByPlaceholderText('Password')).toBeInTheDocument()
+  })
+})
+

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildNavGroups, isPermittedTab, makeBadgeFor, pickBottomBarItems } from '../navModel.js'
+import { NAV_ITEMS, buildNavGroups, isPermittedTab, makeBadgeFor, pickBottomBarItems } from '../navModel.js'
 
 const groups = [
   { id: 'a', label: 'A', items: [
@@ -57,7 +57,78 @@ describe('buildNavGroups', () => {
   it('drops groups with no permitted items', () => {
     const auth = { hasPermission: (c) => c === 'messaging.manage' }
     const result = buildNavGroups(auth)
-    expect(result.map((g) => g.id)).toEqual(['system'])
+    expect(result.map((g) => g.id)).toEqual(['system', 'my-work'])
     expect(ids(result[0].items)).toEqual(['messaging'])
+  })
+})
+
+describe('My Work group', () => {
+  const authWith = (perms) => ({ hasPermission: (c) => perms.includes(c) })
+  const myWork = (perms) => buildNavGroups(authWith(perms)).find((g) => g.id === 'my-work')
+
+  it('gives every staffer Approvals, Tasks, My Reports, Activity and Sign-in & Security', () => {
+    expect(myWork([]).items.map((i) => i.id)).toEqual(['approvals', 'tasks', 'reports', 'activity', 'security'])
+  })
+
+  it('adds Call Log, Team Reports and My Team for the permissions that unlock them', () => {
+    expect(myWork(['calls.log', 'staff.invite_team']).items.map((i) => i.id)).toEqual(['approvals', 'tasks', 'calls', 'reports', 'team-reports', 'activity', 'my-team', 'security'])
+  })
+
+  it('shows Sessions & Devices to staff.manage only', () => {
+    const ids = (perms) => buildNavGroups({ hasPermission: (c) => perms.includes(c) }).flatMap((g) => g.items.map((i) => i.id))
+    expect(ids([])).not.toContain('sessions')
+    expect(ids(['staff.manage'])).toContain('sessions')
+  })
+
+  it('maps the approvals badge to approvals_waiting', () => {
+    expect(makeBadgeFor({ approvals_waiting: 4 })('approvals')).toBe(4)
+  })
+
+  it('maps the tasks badge to tasks_overdue', () => {
+    expect(makeBadgeFor({ tasks_overdue: 2 })('tasks')).toBe(2)
+  })
+})
+
+describe('per-role menus', () => {
+  const authAs = (role, perms) => ({ user: { role }, hasPermission: (c) => perms.includes(c) })
+  const groupOf = (groups, itemId) => groups.find((g) => g.items.some((i) => i.id === itemId))?.label
+
+  it("places an Operations lead's tools in the groups from the design canvas", () => {
+    const groups = buildNavGroups(authAs('operations', ['kyc.approve', 'listings.moderate', 'calls.log', 'staff.invite_team', 'site_settings.manage', 'messaging.manage']))
+    expect(groupOf(groups, 'kyc')).toBe('Moderation')
+    expect(groupOf(groups, 'my-team')).toBe('People')
+    expect(groupOf(groups, 'messaging')).toBe('Service')
+    expect(groupOf(groups, 'activity')).toBe('Staff activity')
+    expect(groupOf(groups, 'calls')).toBe('My work')
+    expect(groupOf(groups, 'site-settings')).toBe('Settings')
+  })
+
+  it('gives support an Inbox, Calls and Queues', () => {
+    const groups = buildNavGroups(authAs('support', ['messaging.manage', 'calls.log', 'reviews.moderate', 'users.view']))
+    expect(groupOf(groups, 'messaging')).toBe('Inbox')
+    expect(groupOf(groups, 'calls')).toBe('Calls')
+    expect(groupOf(groups, 'reviews')).toBe('Queues')
+    expect(groupOf(groups, 'users')).toBe('People')
+  })
+
+  it("puts a granted tool the role's menu doesn't place under More tools", () => {
+    const groups = buildNavGroups(authAs('support', ['messaging.manage', 'analytics.view']))
+    expect(groupOf(groups, 'analytics')).toBe('More tools')
+    expect(groups.at(-1).id).toBe('more')
+  })
+
+  it('shows every permitted item exactly once and no empty group, for every role', () => {
+    for (const role of ['super_admin', 'operations', 'accountant', 'marketing', 'support', 'scout', 'delivery_manager', 'dispatch']) {
+      const groups = buildNavGroups({ user: { role }, hasPermission: () => true })
+      const ids = groups.flatMap((g) => g.items.map((i) => i.id))
+      expect(new Set(ids).size).toBe(ids.length)
+      expect([...ids].sort()).toEqual(NAV_ITEMS.map((i) => i.id).sort())
+      expect(groups.every((g) => g.items.length > 0)).toBe(true)
+    }
+  })
+
+  it('keeps the original grouping for a session without a known role', () => {
+    const groups = buildNavGroups({ user: { role: 'not-a-role' }, hasPermission: () => true })
+    expect(groups.map((g) => g.id)).toEqual(['moderation', 'finance', 'users-roles', 'field-ops', 'content', 'system', 'my-work'])
   })
 })

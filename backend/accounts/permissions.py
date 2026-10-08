@@ -1,6 +1,7 @@
+from django.db.models import Q
 from rest_framework.permissions import BasePermission
 
-from .models import StaffUser
+from .models import Role, StaffUser
 
 
 class HasRolePermission(BasePermission):
@@ -37,3 +38,46 @@ class HasAnyRolePermission(BasePermission):
         if not isinstance(user, StaffUser):
             return False
         return bool(set(self.codenames) & user.effective_permission_codenames())
+
+
+def can_manage_staff(user):
+    """Full staff management (Super Admin's staff.manage), as opposed to a
+    team manager's staff.invite_team, which is limited to direct reports."""
+    return isinstance(user, StaffUser) and "staff.manage" in user.effective_permission_codenames()
+
+
+def can_lead_team(staff):
+    """Who may be someone's manager (Team Reports, My Team, reviews): a Super
+    Admin, or anyone whose effective permissions hold staff.invite_team."""
+    return isinstance(staff, StaffUser) and (
+        staff.role.name == Role.SUPER_ADMIN or "staff.invite_team" in staff.effective_permission_codenames()
+    )
+
+
+class IsStaff(BasePermission):
+    def has_permission(self, request, view):
+        return isinstance(request.user, StaffUser)
+
+
+def staff_holding(codename):
+    """Active, unsuspended staff whose *effective* permissions include
+    `codename` — the same set HasRolePermission enforces."""
+    return (
+        StaffUser.objects.filter(is_active=True, is_suspended=False)
+        .filter(Q(role__permissions__codename=codename) | Q(extra_permissions__codename=codename))
+        .exclude(revoked_permissions__codename=codename)
+        .distinct()
+    )
+
+
+class RequiresSudo(BasePermission):
+    """Password re-entered on this session within the last 10 minutes (F9).
+    List it AFTER the role permission so a missing permission is reported
+    first; refuses with 403 {"detail": …, "code": "sudo_required"}, which
+    the frontend turns into a password prompt and a retry."""
+
+    def has_permission(self, request, view):
+        from . import sessions
+
+        sessions.require_sudo(request)
+        return True

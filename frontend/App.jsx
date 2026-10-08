@@ -26,7 +26,7 @@ import { useNotifications } from "./hooks/useNotifications.js";
 import { useMyTickets } from "./hooks/useMyTickets.js";
 import { useMyCustomerProfile } from "./hooks/useMyCustomerProfile.js";
 import { useSiteSettings } from "./hooks/useSiteSettings.js";
-import { apiFetch, apiPost, apiPatch } from "./apiClient.js";
+import { apiFetch, apiPost, apiPatch, getStoredAuth } from "./apiClient.js";
 import { C, CURRENCIES } from "./theme.js";
 import Flag from "./components/Flag.jsx";
 import Navbar from "./components/Navbar.jsx";
@@ -55,17 +55,23 @@ import EventSubmissionPanel from "./components/EventSubmissionPanel.jsx";
 import BusinessCommandCenter from "./components/dashboard/BusinessCommandCenter.jsx";
 import AdminCommandCenter from "./components/admin/AdminCommandCenter.jsx";
 import StaffInstallPage from "./components/admin/StaffInstallPage.jsx";
+import StaffTwoStepSignIn from "./components/admin/StaffTwoStepSignIn.jsx";
 import { D, glassCard, ghs } from "./components/dashboard/theme.js";
 import KpiCard from "./components/dashboard/charts/KpiCard.jsx";
 import ChartFrame from "./components/dashboard/charts/ChartFrame.jsx";
 import { ensureStaffHead, isStaffPathname, isStandaloneDisplay, startStaffPwa } from "./lib/staffPwa.js";
 import { subjectLine } from "./lib/conversationSubject.js";
+import { takeSignedOutMessage } from "./lib/signOutReason.js";
 import { readCookieConsent, saveCookieConsent } from "./lib/cookieConsent.js";
 import useBreakpoint from "./hooks/useBreakpoint.js";
 import SpendAreaChart from "./components/dashboard/charts/SpendAreaChart.jsx";
 import ListingsDonut from "./components/dashboard/charts/ListingsDonut.jsx";
 import RaiseDisputeForm from "./components/RaiseDisputeForm.jsx";
 import TicketQr from "./components/TicketQr.jsx";
+import StaffGateNotice from "./components/StaffGateNotice.jsx";
+import StaffViewOnlyBar, { STAFF_VIEW_ONLY_BAR_HEIGHT } from "./components/StaffViewOnlyBar.jsx";
+import { isStaffSession } from "./lib/staffSession.js";
+import { useStaffGate } from "./hooks/useStaffGate.js";
 
 // ─── Payment System ───────────────────────────────────────────────────────────
 const MOMO_NETWORKS = [
@@ -809,7 +815,11 @@ function ReviewsModal({item,user,onClose}) {
   // Only meaningfully fires for a signed-in user — useReviewEligibility's
   // own `enabled` guard (targetType/targetId != null) naturally short-circuits
   // it for a signed-out visitor since we pass an empty object in that case.
-  const eligibility = useReviewEligibility(user ? {targetType:"listing",targetId:item.id} : {});
+  // A staff session can never review (POST /api/reviews/ is customer-only),
+  // so it gets the shared staff notice and the customer-only eligibility
+  // endpoint is never asked.
+  const staffSession = isStaffSession(user);
+  const eligibility = useReviewEligibility(user && !staffSession ? {targetType:"listing",targetId:item.id} : {});
   const reviews = reviewsQuery.data?.results || [];
   const avgRating = reviewsQuery.data?.avg_rating ?? 0;
   const reviewCount = reviewsQuery.data?.review_count ?? 0;
@@ -845,6 +855,8 @@ function ReviewsModal({item,user,onClose}) {
             <div style={{fontWeight:800,color:C.darkBrown,marginBottom:10,fontSize:"0.85rem"}}>✍️ Write a Review</div>
             {!user ? (
               <div style={{fontSize:"0.7rem",color:"#aaa",textAlign:"center"}}>Sign in to leave a review</div>
+            ) : staffSession ? (
+              <StaffGateNotice passive/>
             ) : eligibility.isLoading ? (
               <div style={{fontSize:"0.75rem",color:"#aaa",textAlign:"center"}}>Checking your eligibility…</div>
             ) : eligibility.data?.eligible ? (
@@ -1137,7 +1149,11 @@ function ReferralModal({user,onClose}) {
 const authInputStyle={width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:10,border:"1.5px solid #ddd",marginBottom:10,fontSize:"0.82rem",fontFamily:"inherit"};
 const authSubmitStyle={width:"100%",background:C.gold,color:C.darkBrown,border:"none",borderRadius:20,padding:"12px",fontWeight:900,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit",marginTop:4};
 
-export function AuthModal({authState,auth,onClose,onSuccess}) {
+// `onGoToMarketplace` is passed only for the required /staff sign-in in a
+// normal browser: that sign-in can't be dismissed (✕/backdrop do nothing), so
+// it carries one plain link out to the marketplace instead. The installed
+// staff app has no marketplace and never gets it.
+export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) {
   const lockedAccountType = authState==="staff-login" ? "staff" : null;
   const [mode,setMode]=useState(authState==="staff-login" ? "login" : authState);
   const [accountType,setAccountType]=useState(lockedAccountType || "customer");
@@ -1148,6 +1164,11 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
   const [email,setEmail]=useState("");
   const [error,setError]=useState(null);
   const [submitting,setSubmitting]=useState(false);
+  const [twoStep,setTwoStep]=useState(null);
+  // Set when the 2-step step timed out and sent the person back to the password.
+  const [twoStepNotice,setTwoStepNotice]=useState(null);
+  // Why the staff shell just signed this tab out (idle / session ended); read once.
+  const [signedOutNotice]=useState(()=>lockedAccountType ? takeSignedOutMessage() : null);
   // "Forgot password?" (staff onboarding + account-recovery work) — a third
   // inline `mode`, reachable from the login form regardless of
   // lockedAccountType (a staff member locked into "staff-login" needs
@@ -1163,9 +1184,11 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
   const handleLogin=async(e)=>{
     e.preventDefault();
     setError(null);
+    setTwoStepNotice(null);
     setSubmitting(true);
     try {
       const result=await auth.login(lockedAccountType||accountType,identifier,password);
+      if(result?.two_factor_required||result?.two_factor_setup_required){setTwoStep(result);return;}
       onSuccess(result);
     } catch (err) {
       setError("Invalid credentials. Please check your details and try again.");
@@ -1223,9 +1246,12 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
           <button type="button" onClick={()=>setMode("signup")} style={{flex:1,padding:"8px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:800,fontSize:"0.78rem",background:mode==="signup"?C.gold:"#eee",color:mode==="signup"?C.darkBrown:"#666"}}>Sign Up</button>
         </div>}
 
+        {signedOutNotice && <div role="status" style={{background:C.cream,border:`1px solid ${C.gold}`,color:C.darkBrown,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{signedOutNotice}</div>}
         {error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
 
-        {mode==="login" && <form onSubmit={handleLogin}>
+        {mode==="login" && twoStep && <StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setTwoStepNotice(typeof message==="string"?message:null);}}/>}
+        {mode==="login" && !twoStep && twoStepNotice && <div role="status" style={{background:"#fff8e1",color:"#5d4037",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{twoStepNotice}</div>}
+        {mode==="login" && !twoStep && <form onSubmit={handleLogin}>
           {!lockedAccountType && <div style={{display:"flex",gap:8,marginBottom:12}}>
             <button type="button" onClick={()=>setAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="customer"?C.gold:"white"}}>Customer</button>
             <button type="button" onClick={()=>setAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="business_owner"?C.gold:"white"}}>Business Owner</button>
@@ -1268,6 +1294,10 @@ export function AuthModal({authState,auth,onClose,onSuccess}) {
           <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" required minLength={8} style={authInputStyle}/>
           <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Creating account…":accountType==="business_owner"?"Create Business Account":"Create Free Account"}</button>
         </form>}
+
+        {lockedAccountType==="staff" && onGoToMarketplace && <div style={{textAlign:"center",marginTop:16,paddingTop:12,borderTop:`1px solid ${C.gold}33`}}>
+          <button type="button" onClick={onGoToMarketplace} style={{background:"none",border:"none",color:C.darkBrown,opacity:0.7,fontSize:"0.74rem",fontWeight:600,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit",padding:"6px 8px"}}>Go to marketplace</button>
+        </div>}
       </div>
     </div>
   </div>;
@@ -1286,16 +1316,25 @@ function StaffActivatePage({auth,onSuccess}) {
   const [confirmPassword,setConfirmPassword]=useState("");
   const [error,setError]=useState(null);
   const [submitting,setSubmitting]=useState(false);
+  const [twoStep,setTwoStep]=useState(null);
+  // "expired": the 2-step step timed out (password form returns, with the
+  // message). "active": the person chose Start again; the invite is already
+  // used, so the form stays hidden and they are pointed to the staff sign-in.
+  const [notice,setNotice]=useState(null);
+  const [accountActive,setAccountActive]=useState(false);
 
   const handleSubmit=async(e)=>{
     e.preventDefault();
     setError(null);
+    setNotice(null);
     if(!token){setError("This activation link is missing its token. Please use the link from your invite email.");return;}
     if(password.length<8){setError("Password must be at least 8 characters.");return;}
     if(password!==confirmPassword){setError("Passwords do not match.");return;}
     setSubmitting(true);
     try {
       const result=await auth.activateStaff(token,password);
+      // A Super Admin invitee gets a 2-step challenge instead of a session.
+      if(result?.two_factor_required||result?.two_factor_setup_required){setTwoStep(result);return;}
       onSuccess(result);
     } catch (err) {
       setError("This activation link is invalid or has expired. Please ask an admin to resend your invite.");
@@ -1310,13 +1349,16 @@ function StaffActivatePage({auth,onSuccess}) {
         <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>Activate Your Staff Account</div>
       </div>
       <div style={{padding:"20px 24px"}}>
-        {error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
-        {!token && !error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>No activation token found in this link. Please use the exact link from your invite email.</div>}
-        <form onSubmit={handleSubmit}>
+        {twoStep && <StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setConfirmPassword("");if(typeof message==="string"){setNotice(message);}else{setAccountActive(true);}}}/>}
+        {!twoStep && accountActive && <div role="status" style={{background:"#fff8e1",color:"#5d4037",borderRadius:10,padding:"10px 12px",fontSize:"0.78rem"}}>Your account is active. Sign in at the <a href="/staff" style={{color:"inherit",fontWeight:700}}>staff sign-in</a> to finish setting up 2-step sign-in.</div>}
+        {!twoStep && !accountActive && notice && <div role="status" style={{background:"#fff8e1",color:"#5d4037",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{notice}</div>}
+        {!twoStep && error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
+        {!twoStep && !accountActive && !token && !error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>No activation token found in this link. Please use the exact link from your invite email.</div>}
+        {!twoStep && !accountActive && <form onSubmit={handleSubmit}>
           <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" required minLength={8} style={authInputStyle}/>
           <input value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} type="password" placeholder="Confirm password" required minLength={8} style={authInputStyle}/>
           <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Activating…":"Activate Account"}</button>
-        </form>
+        </form>}
       </div>
     </div>
   </div>;
@@ -1525,11 +1567,15 @@ function NotificationsPanel({ user, onClose }) {
 
   const onItemClick = (n) => {
     if (!n.is_read) markRead(n.id);
-    // Only in-app paths are routed; staff-tab-id links (no leading slash) are
-    // context for the staff badges, not something the customer bell navigates.
+    // In-app paths are routed. A link with no leading slash is a staff panel
+    // path ("approvals/7"): the staff bell opens it under /staff, while the
+    // customer bell leaves it alone (it is context for the staff badges).
     if (n.link && n.link.startsWith("/")) {
       onClose();
       navigate(n.link);
+    } else if (n.link && user?.account_type === "staff") {
+      onClose();
+      navigate(`/staff/${n.link}`);
     }
   };
 
@@ -1576,8 +1622,28 @@ const TRANSLATIONS = {
 // signature (used by StaffDashboard.test.jsx and the `/staff` route below)
 // while delegating to the new shell — same convention as `BusinessDashboard`
 // delegating to `BusinessCommandCenter` just below.
-export function StaffDashboard({auth,onExit,activeTab,onTabChange,exitLabel}) {
-  return <AdminCommandCenter auth={auth} onExit={onExit} activeTab={activeTab} onTabChange={onTabChange} exitLabel={exitLabel} />;
+// `onExit` signs the staffer out (labelled "Sign out" everywhere);
+// `onViewSite`, when given, is the browser-only "View site" that keeps the
+// session and opens the view-only marketplace.
+export function StaffDashboard({auth,onExit,onViewSite,activeTab,activeDetail,onTabChange}) {
+  return <AdminCommandCenter auth={auth} onExit={onExit} onViewSite={onViewSite} activeTab={activeTab} activeDetail={activeDetail} onTabChange={onTabChange} NotificationsSlot={StaffNotificationsSlot} />;
+}
+
+// The staff header's notification bell. Lives here (not in components/admin)
+// because NotificationsPanel does; StaffDashboard threads it down as a prop.
+// Notification rows carry no activity event, so this polls once a minute.
+function StaffNotificationsSlot({ user }) {
+  const { data } = useNotifications(true, { refetchInterval: 60000 });
+  const [open, setOpen] = useState(false);
+  const unread = data?.unread_count ?? 0;
+  return <>
+    <button type="button" onClick={()=>setOpen(v=>!v)} aria-haspopup="dialog" aria-expanded={open} aria-label={unread>0?`Notifications (${unread} unread)`:"Notifications"} title="Notifications"
+      style={{position:"relative",background:"none",border:`1px solid ${D.divider}`,borderRadius:10,minWidth:34,height:34,cursor:"pointer",fontSize:"0.9rem",color:D.text,fontFamily:"inherit"}}>
+      🔔
+      {unread>0&&<span aria-hidden="true" style={{position:"absolute",top:-6,right:-6,background:D.red,color:D.panelBg,borderRadius:20,padding:"1px 5px",fontSize:"0.6rem",fontWeight:800}}>{unread}</span>}
+    </button>
+    {open&&<NotificationsPanel user={user} onClose={()=>setOpen(false)}/>}
+  </>;
 }
 
 // The business-owner dashboard is the unified light "artisan" Business
@@ -2539,7 +2605,12 @@ export default function AshantiHub() {
   // AdminCommandCenter validates the id against the session's permissions
   // and asks for a replace back to /staff when it isn't one.
   const staffPanelMatch = useMatch("/staff/:panel");
-  const staffPanel = staffPanelMatch && !STAFF_STANDALONE_PAGES.has(staffPanelMatch.params.panel) ? staffPanelMatch.params.panel : null;
+  // /staff/:panel/:detail — one record inside a panel, e.g. /staff/approvals/12
+  // (notification links deep-link here; the panel re-checks access on load).
+  const staffDetailMatch = useMatch("/staff/:panel/:detail");
+  const staffPanelParam = (staffPanelMatch || staffDetailMatch)?.params.panel;
+  const staffPanel = staffPanelParam && !STAFF_STANDALONE_PAGES.has(staffPanelParam) ? staffPanelParam : null;
+  const staffDetail = staffPanel && staffDetailMatch ? staffDetailMatch.params.detail : null;
   const onStaffDashboardPath = location.pathname === "/staff" || location.pathname === "/staff/" || staffPanel !== null;
   // `page` is now derived straight from the URL rather than owned locally —
   // hard reloading on any of these paths renders that page immediately
@@ -2725,6 +2796,10 @@ export default function AshantiHub() {
   // render. CartDrawer itself also calls useCart() — same query key, so
   // React Query dedupes/shares the cache rather than double-fetching.
   const isCustomer = user?.accountType === "customer";
+  // A staff session on the marketplace is view-only (lib/staffSession.js):
+  // StaffViewOnlyBar sits above the Navbar, and every buy/sell/book/create
+  // action shows the shared StaffGateNotice instead of proceeding.
+  const staffSession = isStaffSession(user);
   const { data: cart, refetch: refetchCart } = useCart(isCustomer);
   const cartItemCount = cart?.items?.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
 
@@ -2765,6 +2840,15 @@ export default function AshantiHub() {
   // itself too — same query key, so React Query shares this cache.
   const { data: notificationsData } = useNotifications(!auth.isLoading && !!user);
   const unreadNotifs = notificationsData?.unread_count ?? 0;
+
+  // Staff view-only gate for the App-level sell/create CTAs whose buttons live
+  // in shared bands (Register Your Business, Submit an Event, the grocery
+  // concierge order) — the shared notice floats under the top chrome instead.
+  // Called up here for the same rules-of-hooks reason as the hooks above; the
+  // notice is cleared whenever the route changes.
+  const appStaffGate = useStaffGate(user);
+  const staffGated = (action) => (...args) => { if (appStaffGate.blocked()) return; action(...args); };
+  useEffect(()=>{ appStaffGate.dismiss(); },[location.pathname]);
 
   // Add-to-cart (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4) — passed down to
   // ListingDetailPage as `onAddToCart`, same "AshantiHub owns the mutation,
@@ -2807,61 +2891,30 @@ export default function AshantiHub() {
   // 5-click-logo gesture (handleLogoClick) or a successful staff login
   // (AuthModal's onSuccess) while already sitting on some other path.
   //
-  // Three effects:
-  // 1. One-time deep-link prompt — if a visitor lands directly on /staff and
-  //    isn't already a logged-in staff session, open the staff-login modal.
-  //    Gated by a ref so it only ever fires once (matches the old behavior);
-  //    it waits for the session-restore fetch (auth.isLoading) to settle so
-  //    a logged-in staff member refreshing on /staff isn't briefly (and
-  //    incorrectly) sent to the login modal while auth.user is still null.
-  // 2. URL → isAdmin sync — keeps isAdmin consistent with the current path
+  // Two effects (the staff sign-in itself is derived, not an effect — see
+  // `staffSignInRequired` below):
+  // 1. URL → isAdmin sync — keeps isAdmin consistent with the current path
   //    for any navigation react-router already knows about, including
   //    browser back/forward (no manual popstate listener needed — a
   //    location change re-renders this component with the new
   //    `location.pathname`, and this effect just reacts to it). Landing on
   //    /staff already logged in as staff (direct visit or hard reload) also
-  //    flows through here once auth.isLoading settles.
-  // 3. isAdmin → URL sync — whenever isAdmin becomes true via some *other*
-  //    path (the 5-click-logo gesture, or a successful staff login while
-  //    already on /staff from effect 1's modal), navigate to /staff so the
-  //    URL reflects it; whenever it becomes false (StaffDashboard's
-  //    onExit), navigate back to "/".
-  const staffLoginPromptShown=useRef(false);
-  useEffect(()=>{
-    if(staffLoginPromptShown.current) return;
-    if(auth.isLoading) return;
-    if(!onStaffDashboardPath) return;
-    staffLoginPromptShown.current=true;
-    if(auth.user?.account_type!=="staff") setAuthModal("staff-login");
-  },[auth.isLoading,auth.user,location.pathname]);
-
+  //    flows through here once auth.isLoading settles. "View site" (leave
+  //    /staff, keep the session) and a sign-out both turn isAdmin off here.
+  // 2. isAdmin → URL sync — whenever isAdmin becomes true via some *other*
+  //    path (the 5-click-logo gesture, or a successful staff login from the
+  //    marketplace), navigate to /staff so the URL reflects it. isAdmin
+  //    turning false never navigates: a sign-out lands on /staff (staffSignOut
+  //    below) in the browser and the installed app alike — it used to bounce
+  //    a browser staffer to "/" — and "View site" navigates to "/" itself.
   useEffect(()=>{
     if(auth.isLoading) return;
     const shouldBeAdmin = onStaffDashboardPath && auth.user?.account_type==="staff";
     setIsAdmin((current)=> current===shouldBeAdmin ? current : shouldBeAdmin);
   },[location.pathname,auth.user,auth.isLoading]);
 
-  // Tracks the *previous* isAdmin value so the "navigate home" branch below
-  // only fires on a genuine true→false transition (StaffDashboard's onExit),
-  // not merely because isAdmin's initial `useState(false)` value happens to
-  // be false on the very first render. Without this, a not-yet-staff visitor
-  // landing on /staff would get redirected to "/" by this effect in the same
-  // commit that effect #1 opens the login modal in, before effect #2 (URL →
-  // isAdmin sync) even has a chance to settle — silently defeating every
-  // direct /staff visit for a non-staff session, mirroring exactly the race
-  // the old hand-rolled version's `staffUrlHandled` ref guard existed to
-  // prevent. Found via manual browser verification, not caught by tests.
-  const wasAdminRef=useRef(isAdmin);
   useEffect(()=>{
-    const wasAdmin=wasAdminRef.current;
-    wasAdminRef.current=isAdmin;
-    if(isAdmin){
-      if(!onStaffDashboardPath) navigate("/staff");
-    }else if(wasAdmin && onStaffDashboardPath && !isStandaloneDisplay()){
-      // Inside the installed staff app there is no marketplace to go "home"
-      // to — sign-out stays on /staff with the staff login open instead.
-      navigate("/");
-    }
+    if(isAdmin && !onStaffDashboardPath) navigate("/staff");
   },[isAdmin]);
 
   // Staff PWA: the /staff-scoped manifest + apple tags exist only on staff
@@ -2898,15 +2951,45 @@ export default function AshantiHub() {
   // behaves identically to a staff login.
   const handleAuthSuccess=(result)=>{setAuthModal(null);if(result.account_type==="staff"){setIsAdmin(true);}};
 
-  // Installed staff app (display-mode: standalone) signed out on a staff
-  // dashboard URL — first launch, expired token, or after "Sign out". There
-  // is no marketplace inside the installed app, so the staff sign-in is
-  // derived rather than stored: closing it (✕ / backdrop → setAuthModal(null))
-  // can't dismiss it into the marketplace home, and it is up from the first
-  // render after the session check settles without waiting on effect 1.
-  const staffAppSignInRequired = !auth.isLoading && onStaffDashboardPath
-    && auth.user?.account_type!=="staff" && isStandaloneDisplay();
-  const shownAuthModal = staffAppSignInRequired ? "staff-login" : authModal;
+  // /staff is staff-only in every display mode. On a staff dashboard URL
+  // without a staff session — a direct visit, an expired token, a customer
+  // session, or right after "Sign out" — the staff sign-in is derived rather
+  // than stored: closing it (✕ / backdrop → setAuthModal(null)) can't dismiss
+  // it into the marketplace, and it is up from the first render after the
+  // session check settles. In a normal browser it carries a plain "Go to
+  // marketplace" link as the one way out; the installed staff app has no
+  // marketplace, so it gets none.
+  const staffSignInRequired = !auth.isLoading && onStaffDashboardPath
+    && auth.user?.account_type!=="staff";
+  const shownAuthModal = staffSignInRequired ? "staff-login" : authModal;
+  const leaveStaffSignInForMarketplace = staffSignInRequired && !isStandaloneDisplay()
+    ? ()=>{setAuthModal(null);navigate("/");}
+    : undefined;
+
+  // Staff sign-out — the dashboard header/drawer's "Sign out", the view-only
+  // bar's "Sign out" and the Navbar profile menu's, in the browser and the
+  // installed app alike. Shared device: the next staffer must not see the
+  // previous one's cached panel data, so it wipes the query cache too. It
+  // always lands on /staff with the staff sign-in up (staffSignInRequired),
+  // never on the marketplace; from /staff/<panel> it replaces the entry so
+  // Back can't return to a panel URL.
+  const staffSignOut=()=>{
+    // Best-effort audit trail: the token is read synchronously by apiPost
+    // before logout() clears it; a failed call never blocks signing out.
+    // With no staff token stored the server session is already over, and a
+    // token-less logout would only 401 (which a mounted shell reads as "sign
+    // out again"), so it is skipped; everything local below still runs.
+    const stored=getStoredAuth();
+    if(stored?.token&&stored.account_type==="staff") apiPost("/api/accounts/staff/logout/",{}).catch(()=>{});
+    queryClient.clear();
+    auth.logout();
+    setAuthModal(null);
+    if(location.pathname!=="/staff") navigate("/staff",{replace:onStaffDashboardPath});
+  };
+
+  // Sell/create entry points: a staff session gets the shared notice instead.
+  const openRegister=staffGated(()=>setPage("register"));
+  const openEventSubmit=staffGated(()=>setShowEventSubmit(true));
 
   // A signed-in CUSTOMER can't register a business on their existing account —
   // Customer and BusinessOwner are separate account types. Explain it and offer
@@ -2937,23 +3020,23 @@ export default function AshantiHub() {
   if(showRegistrationFlow) return <BusinessRegistrationFlow user={user} auth={auth} initialStep={user?.registrationStep} setPage={setPage} setShowBizDash={setShowBizDash}/>;
 
   // The user check keeps the dashboard from rendering for the one commit
-  // between logout() and effect 2 flipping isAdmin off — with no session the
-  // shell would treat the current panel as unpermitted and replace the URL
-  // with /staff.
+  // between logout() and the URL → isAdmin effect flipping isAdmin off — with
+  // no session the shell would treat the current panel as unpermitted and
+  // replace the URL with /staff.
+  //
+  // "View site" keeps the session and opens the view-only marketplace
+  // (StaffViewOnlyBar). Not offered in the installed app, which has no
+  // marketplace.
   if(isAdmin && auth.user?.account_type==="staff"){
-    const staffStandalone=isStandaloneDisplay();
     return <StaffDashboard auth={auth}
       activeTab={staffPanel ?? "overview"}
+      activeDetail={staffDetail}
       onTabChange={(id,{replace=false}={})=>{
         const path=id==="overview" ? "/staff" : `/staff/${id}`;
         if(location.pathname!==path) navigate(path,{replace});
       }}
-      exitLabel={staffStandalone ? "Sign out" : "← Exit"}
-      onExit={staffStandalone ? ()=>{
-        // Shared device: the next staffer must not see the previous one's
-        // cached panel data, so sign-out wipes the query cache too.
-        queryClient.clear();auth.logout();setAuthModal("staff-login");
-      } : ()=>setIsAdmin(false)}/>;
+      onExit={staffSignOut}
+      onViewSite={isStandaloneDisplay() ? undefined : ()=>navigate("/")}/>;
   }
   if(showAccount) return <UserPanel onExit={()=>setShowAccount(false)} user={user} auth={auth} favourites={favourites} toggleFav={toggleFav} lang={lang} setLang={setLang} PaymentComponent={MoMoPayment}/>;
   if(showBizDash||showPayments||showCredit) return <BusinessCommandCenter
@@ -2990,11 +3073,20 @@ export default function AshantiHub() {
     </div>;
   };
 
+  // A staff session off /staff sees the marketplace view-only, under a fixed
+  // bar. The root is pushed down by the bar's height, and `--ah-top-offset`
+  // tells the sticky Navbar / ScrollSpyTabs (and the floating staff notice)
+  // to sit below it rather than under it.
+  const showStaffBar = staffSession && !onStaffDashboardPath;
+
   return (
-    <div style={{fontFamily:"'Georgia',serif",background:C.cream,minHeight:"100vh"}}>
+    <div style={{fontFamily:"'Georgia',serif",background:C.cream,minHeight:"100vh",
+      ...(showStaffBar ? {"--ah-top-offset":`${STAFF_VIEW_ONLY_BAR_HEIGHT}px`,paddingTop:STAFF_VIEW_ONLY_BAR_HEIGHT} : {})}}>
+      {showStaffBar&&<StaffViewOnlyBar onBackToDashboard={()=>navigate("/staff")} onSignOut={staffSignOut}/>}
+      {appStaffGate.shownFor&&<StaffGateNotice floating onDismiss={appStaffGate.dismiss}/>}
       {!cookieDismissed&&<CookieBanner onAccept={()=>{saveCookieConsent("accepted");setCookieConsent(true);setCookieDismissed(true);Analytics.track("cookie_accepted");}} onDecline={()=>{saveCookieConsent("essential");setCookieDismissed(true);Analytics.track("cookie_declined");}}/>}
       <OfflineBanner/>
-      {shownAuthModal&&<AuthModal authState={shownAuthModal} auth={auth} onClose={()=>setAuthModal(null)} onSuccess={handleAuthSuccess}/>}
+      {shownAuthModal&&<AuthModal key={shownAuthModal} authState={shownAuthModal} auth={auth} onClose={()=>setAuthModal(null)} onSuccess={handleAuthSuccess} onGoToMarketplace={leaveStaffSignInForMarketplace}/>}
       {showMessaging&&<MessagingCenter user={user} onClose={()=>{setShowMessaging(false);setMessagingBusiness(null);}} initialBusiness={messagingBusiness}/>}
       {showNotifs&&<NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
       {showFavs&&<FavsDrawer/>}
@@ -3015,7 +3107,16 @@ export default function AshantiHub() {
         notifCount={unreadNotifs}
         theme={theme} toggleTheme={toggleTheme}
         T={T}
+        onSignOut={staffSession ? staffSignOut : undefined}
       />
+
+      {/* A staff session can't register a business — same notice the
+          "Register Your Business" CTAs show, for a direct /register visit. */}
+      {page==="register"&&staffSession&&(
+        <div style={{maxWidth:560,margin:"0 auto",padding:"48px 16px"}}>
+          <StaffGateNotice passive/>
+        </div>
+      )}
 
       {page==="home"&&(
         <>
@@ -3140,7 +3241,7 @@ export default function AshantiHub() {
                     gets a sign-up prompt button instead of a dead WhatsApp
                     button (in-app chat stays open to everyone). */}
                 {user ? (
-                <button onClick={()=>handleConciergeWA("233244999000","AshantiHub Grocery Concierge")} style={{marginTop:16,background:C.whatsapp,color:"white",border:"none",borderRadius:30,padding:"11px 24px",fontWeight:900,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
+                <button onClick={staffGated(()=>handleConciergeWA("233244999000","AshantiHub Grocery Concierge"))} style={{marginTop:16,background:C.whatsapp,color:"white",border:"none",borderRadius:30,padding:"11px 24px",fontWeight:900,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
                   📱 Order via WhatsApp
                 </button>
                 ) : (
@@ -3227,7 +3328,7 @@ export default function AshantiHub() {
           <div style={{height:10,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
 
           {/* CTA */}
-          <BusinessCtaBand onRegister={()=>setPage("register")}/>
+          <BusinessCtaBand onRegister={openRegister}/>
         </>
       )}
 
@@ -3262,7 +3363,7 @@ export default function AshantiHub() {
           <div style={{background:C.darkBrown,padding:"12px 16px"}}>
             <div style={{maxWidth:1280,margin:"0 auto",display:"flex",justifyContent:"flex-end",gap:8}}>
               <button onClick={()=>setShowEventFilters(f=>!f)} className="ah-event-filter-trigger" style={{background:"rgba(255,255,255,0.12)",color:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer"}} title="Filters">⚙️ Filters & Search</button>
-              <button onClick={()=>setShowEventSubmit(s=>!s)} style={{background:showEventSubmit?C.gold:"rgba(255,255,255,0.12)",color:showEventSubmit?C.darkBrown:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer"}}>
+              <button onClick={showEventSubmit?()=>setShowEventSubmit(false):openEventSubmit} style={{background:showEventSubmit?C.gold:"rgba(255,255,255,0.12)",color:showEventSubmit?C.darkBrown:"white",border:"1px solid rgba(255,255,255,0.3)",borderRadius:20,padding:"6px 14px",fontSize:"0.72rem",fontWeight:700,cursor:"pointer"}}>
                 {showEventSubmit?"✕ Close":"📅 Submit an Event"}
               </button>
             </div>
@@ -3346,7 +3447,7 @@ export default function AshantiHub() {
           </div>
           )}
 
-          <EventsCtaBand imageUrl={KUMASI_PHOTOS.akwasidae} onSubmitEvent={()=>setShowEventSubmit(true)}/>
+          <EventsCtaBand imageUrl={KUMASI_PHOTOS.akwasidae} onSubmitEvent={openEventSubmit}/>
         </>
       )}
 
@@ -3358,7 +3459,7 @@ export default function AshantiHub() {
       </>)}
 
       {page==="about"&&(
-        <AboutCtaBand user={user} onCreateAccount={()=>setAuthModal("signup")} onRegister={()=>setPage("register")}/>
+        <AboutCtaBand user={user} onCreateAccount={()=>setAuthModal("signup")} onRegister={openRegister}/>
       )}
 
       {/* Contact page */}
@@ -3377,7 +3478,7 @@ export default function AshantiHub() {
       )}
 
       {/* Footer — every page except the redesigned full-viewport home landing page */}
-      {page!=="home"&&<Footer2 setPage={setPage} setShowBizDash={setShowBizDash} setLegalDoc={setLegalDoc}/>}
+      {page!=="home"&&<Footer2 setPage={(id)=>id==="register"?openRegister():setPage(id)} setShowBizDash={setShowBizDash} setLegalDoc={setLegalDoc}/>}
 
       {/* Floating chat launcher — opens MessagingCenter (real, DB-backed
           backend.messaging support chat) as its default small bottom-right

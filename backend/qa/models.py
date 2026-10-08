@@ -49,7 +49,7 @@ class Question(models.Model):
         ordering = ["-created_at"]
         constraints = [
             models.CheckConstraint(
-                check=(
+                condition=(
                     models.Q(listing__isnull=False, event__isnull=True)
                     | models.Q(listing__isnull=True, event__isnull=False)
                 ),

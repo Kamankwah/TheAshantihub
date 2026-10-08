@@ -2,6 +2,7 @@ from rest_framework import authentication, exceptions, status
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import AccessToken
 
+from . import sessions
 from .models import BusinessOwner, Customer, StaffUser
 from .mixins import AnonymousUser
 
@@ -12,12 +13,17 @@ ACCOUNT_MODELS = {
 }
 
 
-def issue_token(account, account_type):
+def issue_token(account, account_type, *, request=None, two_factor=False):
+    """A signed access token. A staff token also opens a StaffSession named by
+    the token's jti (foundations F9); `request` supplies its device, IP and
+    user agent, and `two_factor` records that the sign-in passed 2-step."""
     if account_type not in ACCOUNT_MODELS:
         raise ValueError(f"Unknown account_type: {account_type}")
     token = AccessToken()
     token["sub"] = str(account.pk)
     token["account_type"] = account_type
+    if account_type == "staff":
+        sessions.start(account, token["jti"], request, two_factor=two_factor)
     return str(token)
 
 
@@ -54,13 +60,23 @@ class MultiAccountJWTAuthentication(authentication.BaseAuthentication):
         if isinstance(account, StaffUser) and (account.is_suspended or not account.is_active):
             raise exceptions.AuthenticationFailed("This staff account is no longer active")
 
+        if isinstance(account, StaffUser):
+            # Server-side session (F9): revoked, idle-over-30-minutes and
+            # older-than-12-hours sessions are refused here.
+            session = sessions.validate(account, token)
+            sessions.touch(session)
+            token.staff_session = session
+
         return (account, token)
 
 
 def exception_handler(exc, context):
     """
     Custom exception handler that converts 403 PermissionDenied to 401 Unauthorized
-    when the user is not authenticated (UNAUTHENTICATED_USER).
+    when the user is not authenticated (UNAUTHENTICATED_USER). A refused
+    credential (AuthenticationFailed: an ended session, a suspended account, a
+    bad token) is also 401 but keeps its own message, so the client can tell
+    "your session ended" from "you sent no credentials".
     """
     from rest_framework.views import exception_handler as drf_exception_handler
 
@@ -72,6 +88,7 @@ def exception_handler(exc, context):
         and isinstance(context["request"].user, AnonymousUser)
     ):
         response.status_code = status.HTTP_401_UNAUTHORIZED
-        response.data = {"detail": "Authentication credentials were not provided."}
+        if not isinstance(exc, exceptions.AuthenticationFailed):
+            response.data = {"detail": "Authentication credentials were not provided."}
 
     return response

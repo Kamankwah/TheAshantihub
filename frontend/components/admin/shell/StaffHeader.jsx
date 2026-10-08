@@ -10,9 +10,12 @@ export function RoleChip({ role, roleColor }) {
 
 // Sticky staff header. Desktop is the pre-responsive header unchanged; tablet
 // adds the ☰ drawer button; phone keeps only ☰, the panel title and the role
-// chip (name + exit move into the drawer). `children` renders under the bar
-// (the offline banner) so it stays sticky with it.
-export default function StaffHeader({ title, role, roleColor, fullName, onExit, exitLabel, breakpoint, onOpenMenu, menuButtonRef, drawerOpen, actions, children }) {
+// chip (name, View site and Sign out move into the drawer). `children` renders
+// under the bar (the offline banner) so it stays sticky with it.
+// `onExit` is a real sign-out in every display mode; `onViewSite` (browser
+// only — App.jsx omits it in the installed app) leaves for the marketplace
+// with the session kept.
+export default function StaffHeader({ title, role, roleColor, fullName, onExit, onViewSite, breakpoint, onOpenMenu, menuButtonRef, drawerOpen, actions, status, children }) {
   const isPhone = breakpoint === "phone";
   const showMenu = breakpoint !== "desktop";
   return (
@@ -33,10 +36,12 @@ export default function StaffHeader({ title, role, roleColor, fullName, onExit, 
           <div style={{ color: D.text, fontWeight: 800, fontSize: "0.9rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+          {status}
           {actions}
           <RoleChip role={role} roleColor={roleColor} />
           {!isPhone && <span style={{ color: D.text, fontSize: "0.78rem", fontWeight: 700, whiteSpace: "nowrap" }}>{fullName}</span>}
-          {!isPhone && <button type="button" onClick={onExit} style={{ background: "rgba(44,24,16,0.05)", border: `1px solid ${D.divider}`, color: D.textDim, borderRadius: 20, padding: "5px 13px", fontSize: "0.68rem", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>{exitLabel}</button>}
+          {!isPhone && onViewSite && <button type="button" onClick={onViewSite} style={{ background: "transparent", border: `1px solid ${D.divider}`, color: D.textDim, borderRadius: 20, padding: "5px 13px", fontSize: "0.68rem", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>View site</button>}
+          {!isPhone && <button type="button" onClick={onExit} style={{ background: "rgba(44,24,16,0.05)", border: `1px solid ${D.divider}`, color: D.textDim, borderRadius: 20, padding: "5px 13px", fontSize: "0.68rem", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>Sign out</button>}
         </div>
       </div>
       {children}

@@ -30,16 +30,17 @@ HESTIA_USER="${HESTIA_USER:-admin}"
 	exit 1
 }
 
-# render <template-name> <app-dir> <upstream-port>
+# render <template-name> <app-dir> <upstream-port> <realtime-port>
 render() {
-	local name="$1" app_dir="$2" port="$3" ext
+	local name="$1" app_dir="$2" port="$3" rt_port="$4" ext
 	for ext in tpl stpl; do
 		sed -e "s#__APP_DIR__#${app_dir}#g" \
 			-e "s#__UPSTREAM_PORT__#${port}#g" \
+			-e "s#__REALTIME_PORT__#${rt_port}#g" \
 			"$SRC/ashantihub-api.${ext}.in" >"$DST/${name}.${ext}"
 		chmod 644 "$DST/${name}.${ext}"
 	done
-	echo "  rendered ${name}.tpl/.stpl  ->  127.0.0.1:${port}  (${app_dir})"
+	echo "  rendered ${name}.tpl/.stpl  ->  127.0.0.1:${port}, /ws/ -> ${rt_port}  (${app_dir})"
 }
 
 echo "Installing templates into $DST"
@@ -47,8 +48,8 @@ install -m 644 "$SRC/ashantihub-spa.tpl" "$DST/ashantihub-spa.tpl"
 install -m 644 "$SRC/ashantihub-spa.stpl" "$DST/ashantihub-spa.stpl"
 echo "  installed ashantihub-spa.tpl/.stpl"
 
-render ashantihub-api-prod /opt/ashantihub 8000
-render ashantihub-api-staging /opt/ashantihub-staging 8001
+render ashantihub-api-prod /opt/ashantihub 8000 8100
+render ashantihub-api-staging /opt/ashantihub-staging 8001 8101
 
 # Regenerates every domain's config from its assigned template. Safe to run
 # with no domains yet - it simply has nothing to rebuild. Hestia's CLI is

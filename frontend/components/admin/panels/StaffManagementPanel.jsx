@@ -4,6 +4,7 @@ import { useStaffRoster } from "../../../hooks/useStaffRoster.js";
 import { usePermissionCatalog } from "../../../hooks/usePermissionCatalog.js";
 import { D, glassCard, STAFF_STATUS_COLORS } from "../theme.js";
 import StaffInstallLink from "../StaffInstallLink.jsx";
+import { LastSignIn } from "./sessionParts.jsx";
 
 // Staff onboarding work — a staff-roster row can be resent an invite while
 // its status is "invited" (still pending, hasn't activated yet) or
@@ -108,6 +109,7 @@ function StaffRow({ staff, onResend, resent, resending, onChanged }) {
         <div>
           <div style={{ color: D.text, fontWeight: 700, fontSize: "0.8rem" }}>{staff.full_name}</div>
           <div style={{ color: D.textDim, fontSize: "0.68rem" }}>{staff.email} • {staff.role}</div>
+          <LastSignIn staff={staff} />
           {isSuspended && staff.suspension_reason && <div style={{ color: D.red, fontSize: "0.64rem", marginTop: 2 }}>Reason: {staff.suspension_reason}</div>}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
@@ -192,7 +194,7 @@ export default function StaffManagementPanel() {
           <select value={inviteRole} onChange={e => setInviteRole(e.target.value)} style={{ width: 120, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }}>
             <option value="">Role</option>
             <option value="super_admin">Super Admin</option>
-            <option value="admin">Admin</option>
+            <option value="operations">Operations</option>
             <option value="accountant">Accountant</option>
             <option value="marketing">Marketing</option>
             <option value="support">Support</option>

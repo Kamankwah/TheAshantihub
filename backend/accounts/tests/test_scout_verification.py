@@ -10,7 +10,7 @@ class ScoutTestsBase(TestCase):
         self.client = APIClient()
         self.admin = StaffUser.objects.create(
             full_name="Admin Person", email="admin-scout@example.com", password_hash="x",
-            role=Role.objects.get(name="admin"),
+            role=Role.objects.get(name="operations"),
         )
         self.scout = StaffUser.objects.create(
             full_name="Scout Kofi", email="scout@example.com", password_hash="x",

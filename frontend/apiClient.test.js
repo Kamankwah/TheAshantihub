@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { server } from './mocks/server.js'
-import { apiFetch, getStoredAuth, setStoredAuth, apiPost, apiPostForm, apiPatch, apiPatchForm, apiDelete } from './apiClient.js'
+import { SESSION_ENDED_EVENT, UNAUTHORIZED_EVENT, apiFetch, getStoredAuth, setStoredAuth, apiPost, apiPostForm, apiPatch, apiPatchForm, apiDelete, apiDownload, setSudoHandler } from './apiClient.js'
 import { getNetworkStatus, resetNetworkStatusForTests } from './lib/networkStatus.js'
 
 describe('apiFetch', () => {
@@ -186,5 +186,130 @@ describe('network status reporting', () => {
     server.use(http.get('http://localhost:8000/api/listings/categories/', () => HttpResponse.json([])))
     await expect(apiFetch('/api/listings/categories/')).resolves.toEqual([])
     expect(getNetworkStatus().offline).toBe(false)
+  })
+})
+
+describe('session-ended event', () => {
+  it('fires on a 401 only when a session was stored', async () => {
+    const heard = vi.fn()
+    window.addEventListener(SESSION_ENDED_EVENT, heard)
+    server.use(http.get('http://localhost:8000/api/accounts/me/', () => new HttpResponse(null, { status: 401 })))
+    setStoredAuth({ token: 'expired', account_type: 'staff', id: 1, full_name: 'Esi' })
+    await expect(apiFetch('/api/accounts/me/')).rejects.toMatchObject({ status: 401 })
+    await expect(apiFetch('/api/accounts/me/')).rejects.toMatchObject({ status: 401 })
+    expect(heard).toHaveBeenCalledTimes(1)
+    window.removeEventListener(SESSION_ENDED_EVENT, heard)
+  })
+})
+
+describe('session-ended event — stale responses', () => {
+  it('a 401 for an older token does not end a newer session', async () => {
+    const heard = vi.fn()
+    window.addEventListener(SESSION_ENDED_EVENT, heard)
+    server.use(http.get('http://localhost:8000/api/accounts/me/', () => {
+      setStoredAuth({ token: 'newer', account_type: 'staff', id: 1, full_name: 'Esi' })
+      return new HttpResponse(null, { status: 401 })
+    }))
+    setStoredAuth({ token: 'older', account_type: 'staff', id: 1, full_name: 'Esi' })
+    await expect(apiFetch('/api/accounts/me/')).rejects.toMatchObject({ status: 401 })
+    expect(getStoredAuth()).toMatchObject({ token: 'newer' })
+    expect(heard).not.toHaveBeenCalled()
+    window.removeEventListener(SESSION_ENDED_EVENT, heard)
+    setStoredAuth(null)
+  })
+})
+
+describe('unauthorized event', () => {
+  it('fires on a 401 that ended no stored session, and never alongside session-ended', async () => {
+    const ended = vi.fn()
+    const unauthorized = vi.fn()
+    window.addEventListener(SESSION_ENDED_EVENT, ended)
+    window.addEventListener(UNAUTHORIZED_EVENT, unauthorized)
+    server.use(http.get('http://localhost:8000/api/accounts/me/', () => new HttpResponse(null, { status: 401 })))
+    setStoredAuth({ token: 'expired', account_type: 'staff', id: 1, full_name: 'Esi' })
+    await expect(apiFetch('/api/accounts/me/')).rejects.toMatchObject({ status: 401 })
+    expect([ended.mock.calls.length, unauthorized.mock.calls.length]).toEqual([1, 0])
+    await expect(apiFetch('/api/accounts/me/')).rejects.toMatchObject({ status: 401 })
+    expect([ended.mock.calls.length, unauthorized.mock.calls.length]).toEqual([1, 1])
+    window.removeEventListener(SESSION_ENDED_EVENT, ended)
+    window.removeEventListener(UNAUTHORIZED_EVENT, unauthorized)
+  })
+})
+
+describe('apiDownload — a 401', () => {
+  it('ends the stored session and fires session-ended, like the other helpers', async () => {
+    const heard = vi.fn()
+    window.addEventListener(SESSION_ENDED_EVENT, heard)
+    server.use(http.get('http://localhost:8000/api/dl/', () => new HttpResponse(null, { status: 401 })))
+    setStoredAuth({ token: 'expired', account_type: 'staff', id: 1, full_name: 'Esi' })
+    await expect(apiDownload('/api/dl/', 'x.csv')).rejects.toMatchObject({ status: 401 })
+    expect(getStoredAuth()).toBeNull()
+    expect(heard).toHaveBeenCalledTimes(1)
+    window.removeEventListener(SESSION_ENDED_EVENT, heard)
+  })
+
+  it('leaves a newer session alone when the 401 was for an older token', async () => {
+    const heard = vi.fn()
+    window.addEventListener(SESSION_ENDED_EVENT, heard)
+    server.use(http.get('http://localhost:8000/api/dl/', () => {
+      setStoredAuth({ token: 'newer', account_type: 'staff', id: 1, full_name: 'Esi' })
+      return new HttpResponse(null, { status: 401 })
+    }))
+    setStoredAuth({ token: 'older', account_type: 'staff', id: 1, full_name: 'Esi' })
+    await expect(apiDownload('/api/dl/', 'x.csv')).rejects.toMatchObject({ status: 401 })
+    expect(getStoredAuth()).toMatchObject({ token: 'newer' })
+    expect(heard).not.toHaveBeenCalled()
+    window.removeEventListener(SESSION_ENDED_EVENT, heard)
+    setStoredAuth(null)
+  })
+})
+
+describe('apiDownload', () => {
+  it('returns the JSON body when the server queues the file (202)', async () => {
+    server.use(http.get('http://localhost:8000/api/dl/', () => HttpResponse.json({ id: 4, status: 'queued' }, { status: 202 })))
+    expect(await apiDownload('/api/dl/', 'x.csv')).toEqual({ id: 4, status: 'queued' })
+  })
+
+  it('throws an error carrying status and body on a 4xx', async () => {
+    server.use(http.get('http://localhost:8000/api/dl/', () => HttpResponse.json({ detail: 'Nope.' }, { status: 403 })))
+    await expect(apiDownload('/api/dl/', 'x.csv')).rejects.toMatchObject({ status: 403, body: { detail: 'Nope.' } })
+  })
+})
+
+describe('setSudoHandler', () => {
+  const needSudo = () => HttpResponse.json({ detail: 'Re-enter your password to continue.', code: 'sudo_required' }, { status: 403 })
+
+  it('surfaces the 403 untouched when no handler is registered', async () => {
+    server.use(http.post('http://localhost:8000/api/s/', needSudo))
+    await expect(apiPost('/api/s/', {})).rejects.toMatchObject({ status: 403, body: { code: 'sudo_required' } })
+  })
+
+  it('retries once after the handler resolves true, for GETs too', async () => {
+    let calls = 0
+    server.use(http.get('http://localhost:8000/api/s/', () => { calls += 1; return calls === 1 ? needSudo() : HttpResponse.json({ ok: 1 }) }))
+    const off = setSudoHandler(async () => true)
+    await expect(apiFetch('/api/s/')).resolves.toEqual({ ok: 1 })
+    off()
+    expect(calls).toBe(2)
+  })
+
+  it('does not call the handler for an ordinary 403', async () => {
+    const handler = vi.fn(async () => true)
+    server.use(http.post('http://localhost:8000/api/s/', () => HttpResponse.json({ detail: 'No.' }, { status: 403 })))
+    const off = setSudoHandler(handler)
+    await expect(apiPost('/api/s/', {})).rejects.toMatchObject({ status: 403 })
+    off()
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  it('an old unregister does not remove a newer handler', async () => {
+    const off1 = setSudoHandler(async () => false)
+    const handler2 = vi.fn(async () => false)
+    const off2 = setSudoHandler(handler2)
+    off1()
+    server.use(http.post('http://localhost:8000/api/s/', needSudo))
+    await expect(apiPost('/api/s/', {})).rejects.toMatchObject({ status: 403 })
+    off2()
+    expect(handler2).toHaveBeenCalledTimes(1)
   })
 })

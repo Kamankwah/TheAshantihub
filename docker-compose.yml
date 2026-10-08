@@ -20,5 +20,35 @@ services:
       - ./backend/.env
     depends_on:
       - db
+  # Optional: a real Redis and the background-job processes, like production.
+  # Without them (plain `docker compose up`), REDIS_URL stays unset and Django
+  # runs everything in-process — eager Celery, in-memory channel layer — so
+  # live updates still work through runserver. To use them, add
+  # REDIS_URL=redis://redis:6379/0 to backend/.env and run
+  # `docker compose --profile jobs up`. None of these publish a host port.
+  redis:
+    image: redis:7-alpine
+    profiles: ["jobs"]
+  worker:
+    build: ./backend
+    profiles: ["jobs"]
+    command: celery -A ashantihub worker --loglevel=INFO
+    volumes:
+      - ./backend:/app
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - db
+      - redis
+  beat:
+    build: ./backend
+    profiles: ["jobs"]
+    command: celery -A ashantihub beat --loglevel=INFO --schedule=/tmp/celerybeat-schedule
+    volumes:
+      - ./backend:/app
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - redis
 volumes:
   pgdata:

@@ -7,7 +7,9 @@ import { useListingReviews } from "../hooks/useListingReviews.js";
 import { useListingQuestions } from "../hooks/useListingQuestions.js";
 import { useOwnerReviews } from "../hooks/useOwnerReviews.js";
 import { useSiteSettings } from "../hooks/useSiteSettings.js";
+import { useStaffGate } from "../hooks/useStaffGate.js";
 import ScrollSpyTabs from "./ScrollSpyTabs.jsx";
+import StaffGateNotice from "./StaffGateNotice.jsx";
 import { ReviewsList, ReviewWriteForm, starString, textareaStyle, submitBtnStyle } from "./ReviewComponents.jsx";
 
 // ─── ListingDetailPage ──────────────────────────────────────────────────────
@@ -84,6 +86,10 @@ export default function ListingDetailPage({
   const [booking, setBooking] = useState(false);
   const [bookingDone, setBookingDone] = useState(null);
   const [bookingError, setBookingError] = useState(null);
+  // A staff session sees the same buy box a customer does (view-only
+  // marketplace), but Book / Request / Add to Cart show the shared staff
+  // notice instead of proceeding.
+  const staffGate = useStaffGate(user);
 
   if (isLoading) {
     return (
@@ -110,8 +116,9 @@ export default function ListingDetailPage({
   const isService = item.category?.kind === "service";
   // Businesses sell, customers buy — a signed-in business account can't
   // purchase/request/book. Guests (no user) still see the controls, which
-  // prompt them to sign in as a customer.
-  const isBusinessAccount = !!user && user.accountType !== "customer";
+  // prompt them to sign in as a customer. Staff see the controls too, gated
+  // at click time by staffGate above.
+  const isBusinessAccount = !!user && !staffGate.isStaff && user.accountType !== "customer";
   const tabs = isService ? SERVICE_TABS : PRODUCT_TABS;
 
   const displayPrice = () => {
@@ -256,6 +263,7 @@ export default function ListingDetailPage({
                   disabled={booking || !checkIn || !checkOut}
                   onClick={async () => {
                     setBookingError(null);
+                    if (staffGate.blocked()) return;
                     if (!user) { setBookingError("Sign in as a customer to book."); return; }
                     setBooking(true);
                     try {
@@ -302,6 +310,7 @@ export default function ListingDetailPage({
                   disabled={requesting || !requestMessage.trim()}
                   onClick={async () => {
                     setRequestError(null);
+                    if (staffGate.blocked()) return;
                     if (!user) { setRequestError("Sign in as a customer to request a service."); return; }
                     setRequesting(true);
                     try {
@@ -337,6 +346,7 @@ export default function ListingDetailPage({
             onClick={async () => {
               if (!onAddToCart) return;
               setCartError(null);
+              if (staffGate.blocked()) return;
               setAddingToCart(true);
               try {
                 await onAddToCart(item, 1);
@@ -369,6 +379,7 @@ export default function ListingDetailPage({
           )}
           </>
           )}
+          {staffGate.shownFor && <StaffGateNotice style={{ marginTop: 10 }} />}
         </div>
       </div>
 

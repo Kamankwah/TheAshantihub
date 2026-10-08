@@ -21,7 +21,7 @@ class ContactMessageModerationTestsBase(TestCase):
         )
         self.admin = StaffUser.objects.create(
             full_name="Admin Person", email="admin-contact-mod@example.com", password_hash="x",
-            role=Role.objects.get(name="admin"),
+            role=Role.objects.get(name="operations"),
         )
         self.support = StaffUser.objects.create(
             full_name="Support Person", email="support-contact-mod@example.com", password_hash="x",

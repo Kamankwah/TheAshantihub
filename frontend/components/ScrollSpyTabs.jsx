@@ -17,7 +17,9 @@ import usePrefersReducedMotion from "../hooks/usePrefersReducedMotion.js";
 //
 // `STICKY_TOP` is set just below Navbar.jsx's own sticky header (72px tall
 // content + a 4px flag stripe on top = 76px) so the two sticky bars don't
-// visually overlap.
+// visually overlap. App.jsx's `--ah-top-offset` (the staff view-only bar's
+// height, 0 otherwise) is added on top, since the Navbar itself sits that
+// much lower when the bar shows.
 const STICKY_TOP = 76;
 // How long a click's own smooth-scroll is given to finish before the
 // IntersectionObserver is trusted again — long enough for a `scrollIntoView`
@@ -96,7 +98,7 @@ export default function ScrollSpyTabs({ tabs, renderSection }) {
         aria-label="Listing detail sections"
         style={{
           position: "sticky",
-          top: STICKY_TOP,
+          top: `calc(var(--ah-top-offset, 0px) + ${STICKY_TOP}px)`,
           zIndex: 40,
           display: "flex",
           gap: 6,

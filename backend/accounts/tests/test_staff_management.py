@@ -3,6 +3,7 @@ from rest_framework.test import APIClient
 
 from accounts.authentication import issue_token
 from accounts.models import Permission, Role, StaffUser
+from accounts.testing import staff_token
 
 
 class StaffManagementTestsBase(TestCase):
@@ -24,7 +25,7 @@ class StaffManagementTestsBase(TestCase):
         )
 
     def _auth(self, staff):
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(staff, 'staff')}")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(staff, sudo=True)}")
 
 
 class StaffSuspendDeactivateTests(StaffManagementTestsBase):

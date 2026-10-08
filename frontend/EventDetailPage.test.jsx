@@ -378,3 +378,34 @@ describe('EventDetailPage — locked (private, un-unlocked) event', () => {
     expect(screen.getByText('This event is private — enter the code to view details.')).toBeInTheDocument()
   })
 })
+
+// A staff session sees the same ticket controls a customer does, but Buy
+// shows the one shared staff notice instead of opening payment.
+describe('EventDetailPage — staff session is view-only', () => {
+  const STAFF = { id: 3, fullName: 'Akosua Support', accountType: 'staff' }
+  const STAFF_NOTICE = "Staff accounts can't shop or sell. Sign out first."
+  const TICKET_TYPES = [
+    { id: 7, name: 'General Admission', description: '', price: '25.00', delivery_method: 'digital', quantity_remaining: 10 },
+  ]
+
+  it('Buy shows the staff notice and never opens payment or POSTs a ticket purchase', async () => {
+    let purchasePosts = 0
+    server.use(
+      http.get('http://localhost:8000/api/events/1/', () => HttpResponse.json({ ...PUBLIC_DETAIL, has_tickets: true })),
+      http.get('http://localhost:8000/api/events/1/ticket-types/', () => HttpResponse.json(TICKET_TYPES)),
+      http.post('http://localhost:8000/api/events/1/tickets/purchase/', () => {
+        purchasePosts += 1
+        return HttpResponse.json([], { status: 201 })
+      }),
+    )
+    const PaymentComponent = vi.fn(() => <div>payment modal</div>)
+    renderPage({ user: STAFF, PaymentComponent })
+    await screen.findByText('General Admission')
+    expect(screen.queryByText('Only customer accounts can buy tickets.')).not.toBeInTheDocument()
+    const before = screen.queryAllByText(STAFF_NOTICE).length
+    fireEvent.click(screen.getByRole('button', { name: 'Buy' }))
+    expect(screen.getAllByText(STAFF_NOTICE)).toHaveLength(before + 1)
+    expect(PaymentComponent).not.toHaveBeenCalled()
+    expect(purchasePosts).toBe(0)
+  })
+})

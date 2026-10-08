@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ROLE_ACCENTS, ROLE_BADGE_TEXT } from '../theme.js'
 
 // Every backend Role.NAME_CHOICES value (backend/accounts/models.py).
-const ROLES = ['super_admin', 'admin', 'accountant', 'marketing', 'support', 'scout', 'delivery_manager', 'dispatch']
+const ROLES = ['super_admin', 'operations', 'accountant', 'marketing', 'support', 'scout', 'delivery_manager', 'dispatch']
 
 const luminance = (hex) => {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)

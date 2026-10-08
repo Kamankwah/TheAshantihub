@@ -1,6 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { http, HttpResponse } from 'msw'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { SESSION_ENDED_EVENT, UNAUTHORIZED_EVENT, apiFetch, setStoredAuth } from '../../../apiClient.js'
+import { server } from '../../../mocks/server.js'
 import AdminCommandCenter from '../AdminCommandCenter.jsx'
 import { installMatchMedia } from '../../../test/matchMedia.js'
 
@@ -22,7 +25,54 @@ export function renderShell(props = {}) {
 }
 const panelNav = () => screen.getByRole('navigation', { name: 'Staff panels' })
 
-afterEach(() => vi.restoreAllMocks())
+// The shell signs out on mount without a stored staff session, so every test
+// here starts signed in, as the app is.
+const STORED = { token: 't', account_type: 'staff', id: 1, full_name: 'Akosua Support' }
+beforeEach(() => setStoredAuth(STORED))
+afterEach(() => { vi.restoreAllMocks(); setStoredAuth(null) })
+
+describe('AdminCommandCenter — a session that is already gone', () => {
+  it('signs out ("ended") when it mounts without a stored staff session', () => {
+    setStoredAuth(null)
+    sessionStorage.removeItem('ashantihub.signedOutReason')
+    const onExit = vi.fn()
+    renderShell({ onExit })
+    expect(onExit).toHaveBeenCalledTimes(1)
+    expect(sessionStorage.getItem('ashantihub.signedOutReason')).toBe('ended')
+  })
+
+  it('signs out when a 401 arrives while mounted and no staff session is stored', async () => {
+    const onExit = vi.fn()
+    renderShell({ onExit })
+    expect(onExit).not.toHaveBeenCalled()
+    setStoredAuth(null) // gone without a storage event (this same tab)
+    server.use(http.get('http://localhost:8000/api/x/', () => new HttpResponse(null, { status: 401 })))
+    await expect(apiFetch('/api/x/')).rejects.toMatchObject({ status: 401 })
+    expect(onExit).toHaveBeenCalledTimes(1)
+  })
+
+  it('signs out once per mount: a second reason does not call onExit again', () => {
+    const onExit = vi.fn()
+    renderShell({ onExit })
+    act(() => { window.dispatchEvent(new Event(SESSION_ENDED_EVENT)) })
+    setStoredAuth(null)
+    act(() => { window.dispatchEvent(new Event(UNAUTHORIZED_EVENT)) })
+    act(() => { window.dispatchEvent(new Event(SESSION_ENDED_EVENT)) })
+    act(() => { window.dispatchEvent(new StorageEvent('storage', { key: 'ashantihub.auth', newValue: null })) })
+    expect(onExit).toHaveBeenCalledTimes(1)
+  })
+
+  it('a stale 401 leaves a newer stored staff session signed in', async () => {
+    const onExit = vi.fn()
+    renderShell({ onExit })
+    server.use(http.get('http://localhost:8000/api/x/', () => {
+      setStoredAuth({ ...STORED, token: 'newer' })
+      return new HttpResponse(null, { status: 401 })
+    }))
+    await expect(apiFetch('/api/x/')).rejects.toMatchObject({ status: 401 })
+    expect(onExit).not.toHaveBeenCalled()
+  })
+})
 
 describe('AdminCommandCenter — tab control', () => {
   it('uncontrolled: clicking a nav item switches panels and marks it current', () => {
@@ -61,9 +111,27 @@ describe('AdminCommandCenter — tab control', () => {
     expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'instant' })
   })
 
-  it('uses the exitLabel prop for the exit button', () => {
-    renderShell({ exitLabel: 'Sign out' })
-    expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+  // The header's only way out of the dashboard is a real sign-out, in the
+  // browser and the installed app alike (the old browser "← Exit" left the
+  // staffer signed in on the marketplace).
+  it('always offers Sign out, wired to onExit, and no "← Exit"', () => {
+    const onExit = vi.fn()
+    renderShell({ onExit })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    expect(onExit).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('button', { name: '← Exit' })).not.toBeInTheDocument()
+  })
+
+  it('offers "View site" only when onViewSite is given (the browser, never the installed app)', () => {
+    const { unmount } = renderShell()
+    expect(screen.queryByRole('button', { name: 'View site' })).not.toBeInTheDocument()
+    unmount()
+    const onViewSite = vi.fn()
+    const onExit = vi.fn()
+    renderShell({ onViewSite, onExit })
+    fireEvent.click(screen.getByRole('button', { name: 'View site' }))
+    expect(onViewSite).toHaveBeenCalledTimes(1)
+    expect(onExit).not.toHaveBeenCalled()
   })
 })
 
@@ -77,7 +145,8 @@ describe('AdminCommandCenter — phone', () => {
     expect(screen.queryByRole('navigation', { name: 'Staff panels' })).not.toBeInTheDocument()
     const bar = screen.getByRole('navigation', { name: 'Quick navigation' })
     const labels = within(bar).getAllByRole('button').map((b) => b.textContent)
-    expect(labels).toEqual(['📊Overview', '⚖️Disputes', '👥Users', '💬Messaging / Tickets', '☰More'])
+    // The support menu leads with Inbox (Messaging) per the approved staff design.
+    expect(labels).toEqual(['📊Overview', '💬Messaging / Tickets', '⚖️Disputes', '👥Users', '☰More'])
   })
 
   it('opens the drawer from the header, locks scroll, and closes + restores focus on selection', () => {
@@ -106,15 +175,20 @@ describe('AdminCommandCenter — phone', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('shows the staffer name and exit action inside the drawer, not the header', () => {
+  it('shows the staffer name and the Sign out / View site actions inside the drawer, not the header', () => {
     mm = installMatchMedia(375)
     const onExit = vi.fn()
-    renderShell({ onExit })
+    const onViewSite = vi.fn()
+    renderShell({ onExit, onViewSite })
     expect(screen.queryByText('Akosua Support')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }))
     const dialog = screen.getByRole('dialog', { name: 'Staff navigation' })
     expect(within(dialog).getByText('Akosua Support')).toBeInTheDocument()
-    fireEvent.click(within(dialog).getByRole('button', { name: '← Exit' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'View site' }))
+    expect(onViewSite).toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Staff navigation' })).getByRole('button', { name: 'Sign out' }))
     expect(onExit).toHaveBeenCalled()
   })
 

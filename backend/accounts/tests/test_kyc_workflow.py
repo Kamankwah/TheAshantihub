@@ -10,7 +10,7 @@ class KYCWorkflowTests(TestCase):
         self.client = APIClient()
         self.admin = StaffUser.objects.create(
             full_name="Admin Person", email="admin@example.com", password_hash="x",
-            role=Role.objects.get(name="admin"),
+            role=Role.objects.get(name="operations"),
         )
         self.admin_token = issue_token(self.admin, "staff")
 

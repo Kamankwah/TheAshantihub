@@ -57,7 +57,7 @@ class IsEventOwnerOrCanApproveEvents(BasePermission):
     def has_object_permission(self, request, view, obj):
         user = request.user
         if isinstance(user, StaffUser):
-            return user.role.permissions.filter(codename="event.approve").exists()
+            return "event.approve" in user.effective_permission_codenames()
         if isinstance(user, BusinessOwner):
             return obj.submitted_by_business_id == user.id
         if isinstance(user, Customer):

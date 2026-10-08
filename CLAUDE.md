@@ -16,6 +16,11 @@ Frontend, from `frontend/`: `npm install`, `npm run dev`, `npm run build` (what 
 Backend, from the repo root via `docker-compose.yml`. **The compose service is named `web`, not
 `backend`:** `docker compose run --rm web python manage.py <cmd>`.
 
+Production compose runs `db`, `redis`, `web` (sync gunicorn, WSGI), `realtime` (gunicorn with one
+uvicorn worker on `ashantihub.asgi`, serving only `/ws/`), `worker` and `beat` (Celery). Locally,
+`docker compose up` needs no Redis (Django falls back to in-process jobs and an in-memory channel
+layer); `--profile jobs` adds `redis`, `worker` and `beat`.
+
 **Run Vitest from `frontend/`.** From the repo root it globs stale `.worktrees/**` and
 `.claude/worktrees/**` copies that lack `node_modules` and reports a spurious mass failure
 (hundreds of failed files, thousand-second import times). That is an environment artifact, not a
@@ -100,6 +105,9 @@ background. These are **specs, not implemented state**; update them when code fr
   implemented.
 - `docs/PWA_STAFF_DASHBOARD.md` — PWA spec for staff dashboards
 - `docs/IMPLEMENTATION_INSTRUCTIONS.md` — master index, sequencing, and what is not done yet
+- `docs/superpowers/specs/2026-10-07-staff-platform-overview-design.md` — the staff-platform
+  rebuild (every role's dashboard): roles and reporting lines, build order, decisions per phase;
+  phase 1–2 specs sit beside it
 
 ## Design System
 

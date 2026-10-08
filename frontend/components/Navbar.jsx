@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { C } from "../theme.js";
+import { isStaffSession } from "../lib/staffSession.js";
 import logoIcon from "../assets/logo/logo-icon.png";
 
 // ─── Navbar ────────────────────────────────────────────────────────────────
@@ -28,6 +29,12 @@ import logoIcon from "../assets/logo/logo-icon.png";
 // the sum of item quantities. Opens CartDrawer via the setShowCart prop,
 // same boolean-flag-owned-by-AshantiHub convention as setShowNotifs/
 // setShowBizDash/etc.
+//
+// A staff session browsing the marketplace (view-only, under App.jsx's
+// StaffViewOnlyBar) is labelled "Staff · view only", gets no customer-only
+// My Account, and its Sign Out calls `onSignOut` (App.jsx's staff sign-out:
+// cache wipe + land on /staff) instead of a bare auth.logout(). The bar is
+// fixed above this header, so the sticky `top` reads App's `--ah-top-offset`.
 // Hamburger at <=1024px; 1025-1199px is a compact inline tier (see the <style>
 // block); >=1200px is the full header. The row needs ~1,150px uncompacted.
 const NAV_BREAKPOINT = 1024;
@@ -58,6 +65,7 @@ export default function Navbar({
   theme,
   toggleTheme,
   T,
+  onSignOut,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -70,6 +78,9 @@ export default function Navbar({
   // owners have no cart, same "gate on user?.accountType" convention as
   // `isBusiness` above.
   const isCustomer = user?.accountType === "customer";
+  const isStaff = isStaffSession(user);
+  const accountLabel = isBusiness ? "Business Owner" : isStaff ? "Staff · view only" : "Customer";
+  const signOut = onSignOut ?? (() => auth.logout());
   const act = (fn) => (...args) => { fn(...args); setMenuOpen(false); setProfileOpen(false); };
   const goToDashboard = () => (isBusiness ? setShowBizDash(true) : setShowAccount(true));
 
@@ -164,12 +175,12 @@ export default function Navbar({
               </span>
               <div>
                 <div style={{color:"white",fontWeight:800,fontSize:"0.85rem"}}>{user.fullName}</div>
-                <div style={{color:C.lightGold,fontSize:"0.66rem",opacity:0.8}}>{isBusiness ? "Business Owner" : "Customer"}</div>
+                <div style={{color:C.lightGold,fontSize:"0.66rem",opacity:0.8}}>{accountLabel}</div>
               </div>
             </div>
-            <button onClick={act(goToDashboard)} style={{...utilityBtnStyle,width:"100%",justifyContent:"flex-start"}}>{isBusiness ? "🏪 My Dashboard" : "👤 My Account"}</button>
+            {!isStaff && <button onClick={act(goToDashboard)} style={{...utilityBtnStyle,width:"100%",justifyContent:"flex-start"}}>{isBusiness ? "🏪 My Dashboard" : "👤 My Account"}</button>}
             {isBusiness && <button onClick={act(() => setShowPayments(true))} style={{...utilityBtnStyle,width:"100%",justifyContent:"flex-start"}}>💳 Payments</button>}
-            <button onClick={act(() => auth.logout())} style={{...utilityBtnStyle,width:"100%",justifyContent:"flex-start",borderColor:`${C.kente1}66`,color:"#ffb4b4"}}>⏻ Sign Out</button>
+            <button onClick={act(signOut)} style={{...utilityBtnStyle,width:"100%",justifyContent:"flex-start",borderColor:`${C.kente1}66`,color:"#ffb4b4"}}>⏻ Sign Out</button>
           </>
         ) : (
           <>
@@ -188,17 +199,17 @@ export default function Navbar({
                 <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,background:"white",borderRadius:14,boxShadow:"0 10px 40px rgba(0,0,0,0.25)",padding:10,display:"flex",flexDirection:"column",gap:6,minWidth:210,zIndex:200}}>
                   <div style={{padding:"4px 8px 8px",borderBottom:"1px solid #f0f0f0",marginBottom:2}}>
                     <div style={{fontWeight:800,color:C.darkBrown,fontSize:"0.82rem"}}>{user.fullName}</div>
-                    <div style={{color:"#999",fontSize:"0.68rem"}}>{isBusiness ? "Business Owner" : "Customer"}</div>
+                    <div style={{color:"#999",fontSize:"0.68rem"}}>{accountLabel}</div>
                   </div>
                   {isBusiness ? (
                     <>
                       <button onClick={act(() => setShowBizDash(true))} style={menuItemStyle}>🏪 Business Dashboard</button>
                       <button onClick={act(() => setShowPayments(true))} style={menuItemStyle}>💳 Payments</button>
                     </>
-                  ) : (
+                  ) : !isStaff ? (
                     <button onClick={act(() => setShowAccount(true))} style={menuItemStyle}>👤 My Account</button>
-                  )}
-                  <button onClick={act(() => auth.logout())} style={{...menuItemStyle,color:"#dc2626"}}>⏻ Sign Out</button>
+                  ) : null}
+                  <button onClick={act(signOut)} style={{...menuItemStyle,color:"#dc2626"}}>⏻ Sign Out</button>
                 </div>
               )}
             </div>
@@ -219,7 +230,7 @@ export default function Navbar({
       backdropFilter: transparent ? "blur(14px)" : "none",
       WebkitBackdropFilter: transparent ? "blur(14px)" : "none",
       borderBottom: transparent ? "1px solid rgba(255,255,255,0.08)" : "none",
-      padding: "0 20px", position: "sticky", top: 0, zIndex: 100,
+      padding: "0 20px", position: "sticky", top: "var(--ah-top-offset, 0px)", zIndex: 100,
       boxShadow: "0 2px 20px rgba(0,0,0,0.4)",
       transition: "background 0.3s ease, backdrop-filter 0.3s ease",
     }}>

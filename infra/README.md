@@ -11,8 +11,8 @@ ever exist only on the server again.
 Hetzner CX33 (Ubuntu 26.04 LTS) — HestiaCP owns nginx, TLS and the firewall
 │
 ├── theashantihub.com, www      static Vite build   /home/admin/web/theashantihub.com/public_html
-├── api.theashantihub.com       proxy → 127.0.0.1:8000   /opt/ashantihub
-└── api-test.theashantihub.com  proxy → 127.0.0.1:8001   /opt/ashantihub-staging
+├── api.theashantihub.com       proxy → 127.0.0.1:8000 (/ws/ → 8100)   /opt/ashantihub
+└── api-test.theashantihub.com  proxy → 127.0.0.1:8001 (/ws/ → 8101)   /opt/ashantihub-staging
 
 test.theashantihub.com is NOT on this server — Vercel builds it from `main`.
 ```
@@ -21,12 +21,18 @@ Each environment is a full git checkout with its own compose project, its own
 database volume and its own `.env`. They share nothing, so a staging mistake
 cannot reach production data.
 
+Each environment's stack: `db`, `redis` (no host port), `web` (sync gunicorn, WSGI: all HTTP),
+`realtime` (gunicorn with one uvicorn worker on `ashantihub.asgi:application`: `/ws/` only),
+`worker` and `beat`. `web` stays WSGI so a hung view is still killed by `--timeout` and Postgres
+connections stay capped.
+
 | | Production | Staging |
 |---|---|---|
 | Checkout | `/opt/ashantihub` | `/opt/ashantihub-staging` |
 | Branch | `production` | `main` |
 | Compose project | `ashantihub` | `ashantihub-staging` |
 | API port (loopback) | 8000 | 8001 |
+| Realtime port (loopback, `APP_PORT + 100`) | 8100 | 8101 |
 | Gunicorn workers | 4 | 2 |
 | Builds the frontend | yes | no (Vercel does) |
 
@@ -35,7 +41,7 @@ cannot reach production data.
 | Path | Purpose |
 |---|---|
 | `backend/Dockerfile.prod` | Production image: gunicorn, non-root. (`backend/Dockerfile` remains the dev image.) |
-| `infra/compose/docker-compose.yml` | The `web` + `db` stack, parameterised per environment. |
+| `infra/compose/docker-compose.yml` | The `db`, `redis`, `web`, `realtime`, `worker` and `beat` stack, parameterised per environment; all but `db` and `redis` share one image (`APP_IMAGE`, no default). |
 | `infra/scripts/deploy.sh` | The deploy. Backs up, pulls, builds, migrates, publishes; on production also reinstalls the nginx templates when they changed. |
 | `infra/scripts/backup-db.sh` | Verified gzipped `pg_dump`. Runs before every deploy and nightly. |
 | `infra/scripts/install-hestia-templates.sh` | Installs the nginx templates below into HestiaCP. |
@@ -62,6 +68,45 @@ Staging deploys `main` the same way, via
 The script refuses to run without `.deploy.conf` and `backend/.env`, dumps the
 database before migrating, and fails loudly with the last 60 log lines if the
 API does not answer its health check afterwards.
+
+Both `REDIS_URL` (a `redis://` URL) and `STAFF_SECRETS_KEY` must be set in
+each environment's `backend/.env` before deploying (with `REDIS_PASSWORD`, and
+neither still holding a `PASTE_` placeholder); `deploy.sh` exits with a `FATAL`
+naming whatever is missing. It also brings up `redis`, `realtime` (the
+WebSocket service, on `APP_PORT + 100`), `worker` and `beat`, and fails if the
+Celery worker does not answer a ping.
+
+The order is fixed: `db` and `redis`, migrations and static files, then `web`
+and its health check; then (production) the frontend build and publish and the
+HestiaCP template install; only then `realtime`, `worker` and `beat` with their
+health check and worker ping. A fault in the job or live-update processes
+therefore stops the deploy after the API and its matching frontend are already
+live, never between them.
+
+### Rolling out live updates (plan 1B)
+
+Do each environment in turn, staging first.
+
+1. Add `REDIS_PASSWORD`, `REDIS_URL` (the same password inside it) and
+   `STAFF_SECRETS_KEY` to `backend/.env`. Generate the password with
+   `openssl rand -hex 32` and the Fernet key (32 random bytes, URL-safe
+   base64) with the host's Python, no image needed:
+   `python3 -c "import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())"`
+2. Production only: set `ACTIVITY_SEAL_EMAIL=True`. The old cron passed
+   `--email-seal`; beat now reads this setting instead.
+3. Run `deploy.sh`. The first run is still the previous script (it re-execs
+   from a copy), which stops at compose with the `APP_IMAGE` error, by design.
+   Run it again.
+4. Reinstall `infra/cron/ashantihub.cron` by hand
+   (`install -m 644 /opt/ashantihub/infra/cron/ashantihub.cron /etc/cron.d/ashantihub`);
+   the activity-chain lines moved to beat.
+5. Remove the old image: `docker image rm ashantihub-web` (staging:
+   `ashantihub-staging-web`).
+6. `/ws/` needs `install-hestia-templates.sh`, which renders BOTH API vhosts
+   from the production checkout. Installing it for staging therefore also adds
+   an inert `/ws/` to production: it answers 502 until production runs
+   `realtime`, and the staff UI falls back to polling. Needs the owner's
+   go-ahead.
 
 Production deploys (`SERVE_FRONTEND=yes`) also run
 `install-hestia-templates.sh` automatically when the current
@@ -166,6 +211,43 @@ gunzip -c /opt/ashantihub/backups/production-YYYYMMDD-HHMMSS.sql.gz \
 
 These dumps sit on the same disk as the database. Copying them off the server
 is still outstanding — see below.
+
+## Scheduled jobs
+
+`infra/cron/ashantihub.cron` holds the host cron jobs (backups and
+`expire_events`); output goes to `/var/log/ashantihub-cron.log`. The activity
+log (`activity_activityevent`) is append-only and hash-chained: Postgres
+triggers refuse `UPDATE`/`DELETE`, so never "fix" a row by hand. Its nightly
+chain check now runs in Celery beat at 01:45 (`ACTIVITY_SEAL_EMAIL=True` in
+production emails the seal to Super Admins; staging only verifies). Beat also
+runs approval escalation (every 5 minutes), day-report reminders (18:00),
+staff-session cleanup (03:30), expired-export purging (04:00) and the
+stuck-export reaper (every 15 minutes). The schedule is `CELERY_BEAT_SCHEDULE`
+in `backend/ashantihub/settings.py`.
+
+**After the plan 1B deploy, reinstall the cron file on the server** (the
+activity-chain lines were removed from it; the install line is in the file's
+header):
+
+```bash
+install -m 644 /opt/ashantihub/infra/cron/ashantihub.cron /etc/cron.d/ashantihub
+```
+
+## Live updates
+
+- Staff dashboards receive live updates over WebSocket. The API templates
+  carry a `/ws/` location proxying to `127.0.0.1:__REALTIME_PORT__` (the
+  `realtime` service). It is a plain prefix location, never `^~`, and has
+  `access_log off` because the URL carries a single-use ticket. Clients obtain
+  the ticket from `POST /api/realtime/ticket/`.
+- Job processes: `docker compose -p <project> logs -f worker beat`.
+- `backend/private/` holds report exports. It is bind-mounted into `web`
+  and `worker`, and only a permission-checked view serves it.
+- Env vars in `backend/.env`: `REDIS_PASSWORD`, `REDIS_URL`,
+  `STAFF_SECRETS_KEY` (required: the app refuses to start without it when
+  `DJANGO_DEBUG=False`) and `ACTIVITY_SEAL_EMAIL` (production `True`).
+  `deploy.sh` writes `APP_IMAGE`, `APP_PORT` and `REALTIME_PORT` to the
+  compose `.env` itself.
 
 ## Mail
 

@@ -1,5 +1,7 @@
 import logging
 
+from django.db import transaction
+
 from .models import Notification
 
 logger = logging.getLogger(__name__)
@@ -15,9 +17,10 @@ def _create(recipient, kind, title, body="", link="", icon=""):
     one of customer/business_owner/staff.
     """
     try:
-        return Notification.objects.create(
-            kind=kind, title=title, body=body or "", link=link or "", icon=icon or "", **recipient
-        )
+        with transaction.atomic():  # savepoint: a swallowed DB error must not abort the caller's transaction
+            return Notification.objects.create(
+                kind=kind, title=title, body=body or "", link=link or "", icon=icon or "", **recipient
+            )
     except Exception:
         logger.exception("Failed to create %s notification (title: %s)", kind, title)
         return None
@@ -45,7 +48,7 @@ def notify_staff(staff, kind, title, body="", link="", icon=""):
 
 
 def notify_staff_role(permission_codename, kind, title, body="", link="", icon=""):
-    """Fan out one Notification to every StaffUser whose role holds
+    """Fan out one Notification to every active staffer whose effective permissions hold
     `permission_codename` — e.g. everyone who can approve KYC when a new
     submission lands. Best-effort per staffer (a single failed row is logged
     and skipped, the rest still send). Returns the list of created rows.
@@ -53,13 +56,12 @@ def notify_staff_role(permission_codename, kind, title, body="", link="", icon="
     Imported lazily to avoid an import cycle (accounts.models is imported by
     notifications.models, and some accounts views import this module).
     """
-    from accounts.models import StaffUser
+    from accounts.permissions import staff_holding
 
     created = []
     try:
-        recipients = StaffUser.objects.filter(
-            role__permissions__codename=permission_codename
-        ).distinct()
+        with transaction.atomic():
+            recipients = list(staff_holding(permission_codename))
     except Exception:
         logger.exception("Failed to resolve staff for permission %s", permission_codename)
         return created

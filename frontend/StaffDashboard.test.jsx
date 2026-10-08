@@ -117,10 +117,12 @@ describe('StaffDashboard', () => {
     expect(screen.queryByText('Promotions are self-serve')).not.toBeInTheDocument()
   })
 
-  it('calls onExit when the exit button is clicked', () => {
+  // The dashboard's exit is a real "Sign out" everywhere now (it was "← Exit"
+  // in the browser, which left the staffer signed in on the marketplace).
+  it('calls onExit when Sign out is clicked', () => {
     const onExit = vi.fn()
     renderWithQueryClient(<StaffDashboard auth={makeAuth()} onExit={onExit} />)
-    fireEvent.click(screen.getByText('← Exit'))
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
     expect(onExit).toHaveBeenCalled()
   })
 
@@ -429,7 +431,7 @@ describe('StaffDashboard', () => {
     await screen.findByText('Akosua Support')
     fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'New Hire' } })
     fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: 'newhire@example.com' } })
-    fireEvent.change(screen.getByDisplayValue('Role'), { target: { value: 'admin' } })
+    fireEvent.change(screen.getByDisplayValue('Role'), { target: { value: 'operations' } })
     fireEvent.click(screen.getByText('Send invite'))
     await waitFor(() => expect(invited).toBe(true))
   })
@@ -446,7 +448,7 @@ describe('StaffDashboard', () => {
     const roleSelect = await screen.findByDisplayValue('Role')
     expect(roleSelect.tagName).toBe('SELECT')
     const optionValues = Array.from(roleSelect.querySelectorAll('option')).map((o) => o.value)
-    expect(optionValues).toEqual(['', 'super_admin', 'admin', 'accountant', 'marketing', 'support', 'scout', 'delivery_manager', 'dispatch'])
+    expect(optionValues).toEqual(['', 'super_admin', 'operations', 'accountant', 'marketing', 'support', 'scout', 'delivery_manager', 'dispatch'])
   })
 
   it('shows an inline error when approving a KYC submission fails', async () => {
@@ -494,7 +496,7 @@ describe('StaffDashboard', () => {
     fireEvent.click(screen.getByText('Staff Management'))
     fireEvent.change(screen.getByPlaceholderText('Full name'), { target: { value: 'New Hire' } })
     fireEvent.change(screen.getByPlaceholderText('Email'), { target: { value: 'newhire@example.com' } })
-    fireEvent.change(await screen.findByDisplayValue('Role'), { target: { value: 'admin' } })
+    fireEvent.change(await screen.findByDisplayValue('Role'), { target: { value: 'operations' } })
     fireEvent.click(screen.getByText('Send invite'))
     await screen.findByText('Could not send the invite. Check the details and try again.')
   })

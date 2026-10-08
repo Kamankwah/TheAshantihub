@@ -6,6 +6,7 @@ urlpatterns = [
     path("api/", include("core.urls")),
     path("api/", include("contact.urls")),
     path("api/accounts/", include("accounts.urls")),
+    path("api/activity/", include("activity.urls")),
     path("api/listings/", include("listings.urls")),
     path("api/hero/", include("listings.hero_urls")),
     path("api/billing/", include("billing.urls")),
@@ -21,6 +22,11 @@ urlpatterns = [
     path("api/messaging/", include("messaging.urls")),
     path("api/payments/", include("payments.urls")),
     path("api/notifications/", include("notifications.urls")),
+    path("api/tasks/", include("staff_tasks.urls")),
+    path("api/calls/", include("calls.urls")),
+    path("api/approvals/", include("approvals.urls")),
+    path("api/reports/", include("reports.urls")),
+    path("api/realtime/", include("realtime.urls")),
 ]
 
 if settings.DEBUG:
