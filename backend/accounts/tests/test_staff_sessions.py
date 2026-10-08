@@ -7,6 +7,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
+from accounts import sessions
 from accounts.authentication import issue_token
 from accounts.models import Customer, PasswordResetToken, StaffSession
 from accounts.tasks import cleanup_staff_sessions
@@ -58,6 +59,29 @@ class StaffSessionTests(TestCase):
         token["account_type"] = "staff"
         self.use(str(token))
         self.assertEqual(self.me().status_code, 401)
+
+    def test_a_refused_token_says_why(self):
+        token = issue_token(self.esi, "staff")
+        self.use(token)
+        session = session_of(token)
+        sessions.revoke(session, StaffSession.SIGNED_OUT)
+        response = self.me()
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()["detail"], sessions.ENDED_MESSAGE)
+
+    def test_a_token_with_no_session_row_says_the_session_ended(self):
+        token = AccessToken()
+        token["sub"] = str(self.esi.pk)
+        token["account_type"] = "staff"
+        self.use(str(token))
+        response = self.me()
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()["detail"], sessions.ENDED_MESSAGE)
+
+    def test_no_credentials_keeps_the_generic_message(self):
+        response = self.client.get("/api/accounts/staff/")
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()["detail"], "Authentication credentials were not provided.")
 
     def test_thirty_minutes_idle_ends_the_session(self):
         token = issue_token(self.esi, "staff")
@@ -142,3 +166,13 @@ class SessionCleanupTests(TestCase):
         self.assertEqual(idle.revoked_reason, StaffSession.IDLE)
         self.assertIsNone(live.revoked_at)
         self.assertFalse(StaffSession.objects.filter(pk=old.pk).exists())
+
+    def test_cleanup_ends_a_session_past_twelve_hours_even_if_recently_seen(self):
+        member = staff("support", "kojo@example.com")
+        now = timezone.now()
+        long_lived = StaffSession.objects.create(
+            staff=member, jti="d" * 32, created_at=now - timedelta(hours=13), last_seen_at=now
+        )
+        cleanup_staff_sessions()
+        long_lived.refresh_from_db()
+        self.assertEqual(long_lived.revoked_reason, StaffSession.EXPIRED)

@@ -192,9 +192,11 @@ class StaffLoginView(generics.GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         account = serializer.account
+        # Open the session first so a sign-in is never logged without one.
+        token = issue_token(account, "staff", request=request)
         record_activity(account, "staff.signed_in", target=account, method="POST", request=request)
         return Response({
-            "token": issue_token(account, "staff", request=request),
+            "token": token,
             "account_type": "staff",
             "id": account.id,
             "full_name": account.full_name,
@@ -404,7 +406,7 @@ class BusinessOwnerListView(generics.ListAPIView):
 
 class StaffListView(generics.ListAPIView):
     serializer_class = StaffListSerializer
-    queryset = StaffUser.objects.all().order_by("-created_at")
+    queryset = sessions.with_last_sign_in(StaffUser.objects.all()).order_by("-created_at")
     pagination_class = AccountsPagination
 
     def get_permissions(self):
@@ -420,7 +422,7 @@ class StaffTeamListView(generics.ListAPIView):
 
     def get_queryset(self):
         return (
-            StaffUser.objects.filter(manager=self.request.user)
+            sessions.with_last_sign_in(StaffUser.objects.filter(manager=self.request.user))
             .select_related("role", "manager")
             .order_by("full_name")
         )
@@ -449,7 +451,7 @@ class StaffManagerView(APIView):
         return [HasRolePermission("staff.manage")]
 
     def post(self, request, pk):
-        staff = generics.get_object_or_404(StaffUser, pk=pk)
+        staff = generics.get_object_or_404(sessions.with_last_sign_in(StaffUser.objects.all()), pk=pk)
         manager_id = request.data.get("manager")
         if manager_id in (None, ""):
             staff.manager = None
@@ -628,7 +630,7 @@ class StaffSuspendView(APIView):
         return [HasAnyRolePermission(*TEAM_OR_STAFF_MANAGE)]
 
     def post(self, request, pk):
-        staff = generics.get_object_or_404(StaffUser, pk=pk)
+        staff = generics.get_object_or_404(sessions.with_last_sign_in(StaffUser.objects.all()), pk=pk)
         guard = _guard_self_action(request, staff)
         if guard:
             return guard
@@ -647,7 +649,7 @@ class StaffUnsuspendView(APIView):
         return [HasAnyRolePermission(*TEAM_OR_STAFF_MANAGE)]
 
     def post(self, request, pk):
-        staff = generics.get_object_or_404(StaffUser, pk=pk)
+        staff = generics.get_object_or_404(sessions.with_last_sign_in(StaffUser.objects.all()), pk=pk)
         scope = _guard_team_scope(request, staff)
         if scope:
             return scope
@@ -667,7 +669,7 @@ class StaffDeactivateView(APIView):
         return [HasRolePermission("staff.manage")]
 
     def post(self, request, pk):
-        staff = generics.get_object_or_404(StaffUser, pk=pk)
+        staff = generics.get_object_or_404(sessions.with_last_sign_in(StaffUser.objects.all()), pk=pk)
         guard = _guard_self_action(request, staff)
         if guard:
             return guard
@@ -688,7 +690,7 @@ class StaffReactivateView(APIView):
         return [HasRolePermission("staff.manage")]
 
     def post(self, request, pk):
-        staff = generics.get_object_or_404(StaffUser, pk=pk)
+        staff = generics.get_object_or_404(sessions.with_last_sign_in(StaffUser.objects.all()), pk=pk)
         staff.is_active = True
         staff.save(update_fields=["is_active"])
         return Response(StaffListSerializer(staff).data)
@@ -706,7 +708,7 @@ class StaffPermissionsView(APIView):
         return [HasRolePermission("staff.manage")]
 
     def post(self, request, pk):
-        staff = generics.get_object_or_404(StaffUser, pk=pk)
+        staff = generics.get_object_or_404(sessions.with_last_sign_in(StaffUser.objects.all()), pk=pk)
         guard = _guard_self_action(request, staff)
         if guard:
             return guard
@@ -797,8 +799,8 @@ class ScoutListView(generics.ListAPIView):
         return [HasRolePermission("scouts.assign")]
 
     def get_queryset(self):
-        return StaffUser.objects.filter(
-            role__name="scout", is_active=True, is_suspended=False
+        return sessions.with_last_sign_in(
+            StaffUser.objects.filter(role__name="scout", is_active=True, is_suspended=False)
         ).order_by("full_name")
 
 

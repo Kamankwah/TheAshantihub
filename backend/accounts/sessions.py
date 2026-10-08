@@ -8,6 +8,7 @@ on every staff request.
 """
 from datetime import timedelta
 
+from django.db.models import Max
 from django.utils import timezone
 from rest_framework import exceptions
 
@@ -139,6 +140,12 @@ def has_sudo(request):
 def require_sudo(request):
     if not has_sudo(request):
         raise exceptions.PermissionDenied({"detail": SUDO_MESSAGE, "code": "sudo_required"})
+
+
+def with_last_sign_in(queryset):
+    """Annotate a StaffUser queryset with `last_sign_in_at` (newest session
+    start), as StaffListSerializer reads it."""
+    return queryset.annotate(last_sign_in_at=Max("sessions__created_at"))
 
 
 def cleanup(now=None):

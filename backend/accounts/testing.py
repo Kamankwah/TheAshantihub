@@ -1,9 +1,7 @@
 """Helpers for tests across apps (not test cases themselves)."""
-from datetime import timedelta
-
-from django.utils import timezone
 from rest_framework_simplejwt.tokens import AccessToken
 
+from . import sessions
 from .authentication import issue_token
 from .models import Role, StaffSession, StaffUser
 
@@ -29,7 +27,5 @@ def staff_token(staff, *, sudo=False):
     password-protected actions for 10 minutes, as POST staff/reauth/ would."""
     token = issue_token(staff, "staff")
     if sudo:
-        StaffSession.objects.filter(jti=AccessToken(token)["jti"]).update(
-            sudo_until=timezone.now() + timedelta(minutes=10)
-        )
+        sessions.grant_sudo(session_of(token))
     return token

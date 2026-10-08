@@ -73,7 +73,10 @@ class MultiAccountJWTAuthentication(authentication.BaseAuthentication):
 def exception_handler(exc, context):
     """
     Custom exception handler that converts 403 PermissionDenied to 401 Unauthorized
-    when the user is not authenticated (UNAUTHENTICATED_USER).
+    when the user is not authenticated (UNAUTHENTICATED_USER). A refused
+    credential (AuthenticationFailed: an ended session, a suspended account, a
+    bad token) is also 401 but keeps its own message, so the client can tell
+    "your session ended" from "you sent no credentials".
     """
     from rest_framework.views import exception_handler as drf_exception_handler
 
@@ -85,6 +88,7 @@ def exception_handler(exc, context):
         and isinstance(context["request"].user, AnonymousUser)
     ):
         response.status_code = status.HTTP_401_UNAUTHORIZED
-        response.data = {"detail": "Authentication credentials were not provided."}
+        if not isinstance(exc, exceptions.AuthenticationFailed):
+            response.data = {"detail": "Authentication credentials were not provided."}
 
     return response
