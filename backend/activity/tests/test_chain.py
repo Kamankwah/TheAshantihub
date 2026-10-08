@@ -44,6 +44,12 @@ class ChainTests(TestCase):
             ("accounts.staffuser", str(self.staff.pk), str(self.staff)),
         )
 
+    def test_nul_is_stripped_from_the_label_and_summary_before_hashing(self):
+        event = services.record(self.staff, "test.nul", target_label="Bon\x00wire", summary="sum\x00mary")
+        event.refresh_from_db()
+        self.assertEqual((event.target_label, event.summary), ("Bonwire", "summary"))
+        self.assertEqual(services.verify_chain(), (True, None))
+
     def test_secrets_are_redacted(self):
         event = services.record(
             self.staff, "test.redact",
@@ -112,7 +118,8 @@ class ConcurrentChainTests(TransactionTestCase):
         for thread in threads:
             thread.start()
         for thread in threads:
-            thread.join()
+            thread.join(timeout=10)
+            self.assertFalse(thread.is_alive(), "a racing thread hung")
         self.assertEqual(errors, [])
         self.assertEqual(ActivityEvent.objects.count(), 30)
         self.assertEqual(ActivityEvent.objects.values("prev_hash").distinct().count(), 30)

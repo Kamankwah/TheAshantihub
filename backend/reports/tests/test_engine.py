@@ -302,7 +302,8 @@ class ConcurrentReviewTests(TransactionTestCase):
         for t in threads:
             t.start()
         for t in threads:
-            t.join()
+            t.join(timeout=10)
+            self.assertFalse(t.is_alive(), "a racing thread hung")
         return sorted(results)
 
     def test_acknowledge_and_return_at_once_decide_exactly_once(self):

@@ -94,7 +94,8 @@ class ExportTests(TestCase):
         )
         fetcher = exports.RefusingFetcher()
         with mock.patch("reports.exports.pdf_html", return_value=markup), \
-                mock.patch("reports.exports.RefusingFetcher", return_value=fetcher):
+                mock.patch("reports.exports.RefusingFetcher", return_value=fetcher), \
+                self.assertLogs("weasyprint", "ERROR"):  # WeasyPrint logs each refusal
             data = exports.pdf_bytes([], "T")
         self.assertTrue(data.startswith(b"%PDF"))
         for url in ("http://example.invalid/x.png", "file:///etc/passwd", "http://example.invalid/a.css"):

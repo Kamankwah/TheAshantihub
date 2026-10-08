@@ -309,7 +309,8 @@ class ConcurrentDecisionTests(TransactionTestCase):
         for thread in threads:
             thread.start()
         for thread in threads:
-            thread.join()
+            thread.join(timeout=10)
+            self.assertFalse(thread.is_alive(), "a racing thread hung")
         self.assertEqual(sorted(results), ["already decided", "approved"])
         self.assertEqual(applied, [approval.pk])
 
@@ -345,7 +346,8 @@ class ConcurrentSameTargetTests(TransactionTestCase):
         for thread in threads:
             thread.start()
         for thread in threads:
-            thread.join()
+            thread.join(timeout=10)
+            self.assertFalse(thread.is_alive(), "a racing thread hung")
         kinds = sorted(r[0] for r in results)
         self.assertEqual(kinds, ["approved", "stale"])
         self.assertIn(("stale", 409), results)
