@@ -59,7 +59,8 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   marks the request so the middleware doesn't duplicate it.
 - **Team managers act only on their direct reports.** `staff.invite_team` (Operations, Delivery
   Manager) is checked with `_guard_team_scope`; anything beyond invite/resend/suspend/unsuspend
-  stays `staff.manage`.
+  stays `staff.manage`. Only someone who can lead a team — a Super Admin, or anyone whose
+  effective permissions hold `staff.invite_team` — can be set as a manager (`StaffManagerView`).
 - **Staff sessions are server-side.** Every staff JWT names a `StaffSession` by its `jti`;
   `MultiAccountJWTAuthentication` refuses revoked, idle (30 min) and expired (12 h) sessions and
   writes `last_seen_at` at most once a minute. In tests mint staff tokens with `issue_token()` or
@@ -84,7 +85,10 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   `content_negotiation_class = reports.exports.ExportNegotiation`, or DRF answers 404 before the
   view runs.
 - **Exports:** a job claims its row (QUEUED to RUNNING) exactly once, so a redelivered task is a
-  no-op; `reap_stuck_exports` fails rows stuck QUEUED/RUNNING. A PDF above `PDF_SYNC_ROWS` (200)
+  no-op; `reap_stuck_exports` fails rows stuck QUEUED/RUNNING. Every later status change is guarded
+  by the status it expects (the job finishes only a RUNNING row, `fail_export` only an unfinished
+  one) and notifies only if it moved the row, so a reaped export never flips back to READY or gets
+  two notices. Partials are named `<export id>-<uuid>.partial`; the reaper deletes only its rows'. A PDF above `PDF_SYNC_ROWS` (200)
   is built by the job, not in the request. WeasyPrint runs with a URL fetcher that refuses every
   URL (report text is user-written). Sudo is required by scope: `exports.reaches_others()`.
 - **Background jobs and live updates run in-process under `manage.py test`** (eager Celery,
@@ -96,7 +100,9 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   events reach only staff who could read that event through `GET /api/activity/`; permission
   groups get query keys, never labels. An `APIView` with `activity_exempt = True` is skipped by the
   activity middleware (used only for the realtime ticket). Publishing goes through one bounded
-  `_group_send` (2 s), so a dead Redis cannot hang a request. Activity bodies have NUL stripped
+  `_group_send` (2 s), so a dead Redis cannot hang a request; a ticket the cache can't issue
+  answers 503. With `DJANGO_DEBUG=False` (outside `manage.py test`) the settings refuse to load
+  without a `redis://`/`rediss://` `REDIS_URL`. Activity bodies have NUL stripped
   before hashing (Postgres text cannot hold it).
 
 ## Test-fixture gotcha
