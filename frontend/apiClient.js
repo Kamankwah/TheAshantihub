@@ -1,3 +1,4 @@
+import { saveBlob } from './lib/saveBlob.js'
 import { reportApiNetworkFailure, reportApiResponse } from './lib/networkStatus.js'
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
@@ -50,6 +51,36 @@ async function request(path, init) {
   return response
 }
 
+// Password re-entry (staff foundations F9). The staff shell registers a
+// handler (SudoPrompt) that asks for the password; a 403 {code:
+// "sudo_required"} then prompts and retries the request once. With no
+// handler, or if the prompt is cancelled, the 403 surfaces as usual. The init
+// is rebuilt for the retry so it re-reads the token.
+let sudoHandler = null
+
+export function setSudoHandler(handler) {
+  sudoHandler = handler
+  return () => {
+    if (sudoHandler === handler) sudoHandler = null
+  }
+}
+
+async function send(path, makeInit) {
+  let response = await request(path, makeInit())
+  if (response.status === 403 && sudoHandler) {
+    let body = null
+    try {
+      body = await response.clone().json()
+    } catch {
+      body = null
+    }
+    if (body?.code === 'sudo_required' && (await sudoHandler())) {
+      response = await request(path, makeInit())
+    }
+  }
+  return response
+}
+
 async function handleResponse(response, path) {
   if (response.status === 401) {
     // Only the session this request was sent with ends; a stale 401 must not
@@ -84,7 +115,7 @@ async function handleResponse(response, path) {
 }
 
 export async function apiFetch(path) {
-  const response = await request(path, { headers: authHeaders() })
+  const response = await send(path, () => ({ headers: authHeaders() }))
   return handleResponse(response, path)
 }
 
@@ -94,7 +125,7 @@ export async function apiFetch(path) {
 // file to build in the background: nothing is saved and the JSON body
 // ({id, status}) is returned instead.
 export async function apiDownload(path, filename) {
-  const response = await request(path, { headers: authHeaders() })
+  const response = await send(path, () => ({ headers: authHeaders() }))
   if (response.status === 202) return response.json()
   if (!response.ok) {
     let body = null
@@ -108,58 +139,50 @@ export async function apiDownload(path, filename) {
     error.body = body
     throw error
   }
-  const blob = await response.blob()
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
+  saveBlob(await response.blob(), filename)
   return null
 }
 
 export async function apiPost(path, body) {
-  const response = await request(path, {
+  const response = await send(path, () => ({
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(body),
-  })
+  }))
   return handleResponse(response, path)
 }
 
 export async function apiPatch(path, body) {
-  const response = await request(path, {
+  const response = await send(path, () => ({
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(body),
-  })
+  }))
   return handleResponse(response, path)
 }
 
 export async function apiPostForm(path, formData) {
-  const response = await request(path, {
+  const response = await send(path, () => ({
     method: 'POST',
     headers: authHeaders(),
     body: formData,
-  })
+  }))
   return handleResponse(response, path)
 }
 
 export async function apiPatchForm(path, formData) {
-  const response = await request(path, {
+  const response = await send(path, () => ({
     method: 'PATCH',
     headers: authHeaders(),
     body: formData,
-  })
+  }))
   return handleResponse(response, path)
 }
 
 export async function apiDelete(path) {
-  const response = await request(path, {
+  const response = await send(path, () => ({
     method: 'DELETE',
     headers: authHeaders(),
-  })
+  }))
   return handleResponse(response, path)
 }

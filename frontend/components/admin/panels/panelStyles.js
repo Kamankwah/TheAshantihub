@@ -35,3 +35,9 @@ export const callout = (color) => {
   const tinted = HEX.test(color);
   return { background: tinted ? `${color}14` : D.panelBg2, color: D.text, border: `1px solid ${tinted ? color : D.cardBorder}`, borderRadius: 10, padding: "8px 12px", fontWeight: 700, fontSize: "0.8rem" };
 };
+
+// A monospace one-time-code input (6-digit code, recovery code).
+export const codeField = { ...field, resize: "none", padding: "9px 10px", fontSize: "0.95rem", fontFamily: "'JetBrains Mono', ui-monospace, monospace", letterSpacing: "0.12em" };
+
+// Links-as-buttons in forms ("Lost your phone? ...").
+export const linkButton = { background: "none", border: "none", color: D.deepGold, fontSize: "0.75rem", fontWeight: 700, cursor: "pointer", textDecoration: "underline", fontFamily: "inherit", padding: 0, alignSelf: "flex-start" };

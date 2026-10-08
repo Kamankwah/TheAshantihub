@@ -525,6 +525,20 @@ describe('AshantiHub routing — /staff/:panel', () => {
     expect(await screen.findByText('Activate Your Staff Account', {}, { timeout: 3000 })).toBeInTheDocument()
   }, 8000)
 
+  it('activating a Super Admin invite shows the authenticator setup, not the dashboard', async () => {
+    server.use(
+      http.post('http://localhost:8000/api/accounts/staff/activate/', () => HttpResponse.json({ status: 'activated', two_factor_setup_required: true, mfa_token: 'mfa' })),
+      http.post('http://localhost:8000/api/accounts/staff/two-factor/enrol/start/', () => HttpResponse.json({ secret: 'JBSWY3DPEHPK3PXP', otpauth_uri: 'otpauth://totp/AshantiHub:boss%40example.com?secret=JBSWY3DPEHPK3PXP' })),
+    )
+    renderStaffAt('/staff/activate?token=abc')
+    fireEvent.change(await screen.findByPlaceholderText('Password (min 8 characters)', {}, { timeout: 3000 }), { target: { value: 'a-long-password' } })
+    fireEvent.change(screen.getByPlaceholderText('Confirm password'), { target: { value: 'a-long-password' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Activate Account' }))
+    expect(await screen.findByLabelText('Setup key', {}, { timeout: 3000 })).toHaveTextContent('JBSW Y3DP EHPK 3PXP')
+    expect(screen.queryByRole('navigation', { name: 'Staff panels' })).not.toBeInTheDocument()
+    expect(localStorage.getItem('ashantihub.auth')).toBeNull()
+  }, 8000)
+
   it('/staff/install renders the install page for a signed-out visitor, with the staff manifest linked', async () => {
     renderStaffAt('/staff/install')
     expect(await screen.findByRole('heading', { name: 'Install the AshantiHub Staff app' }, { timeout: 3000 })).toBeInTheDocument()

@@ -47,6 +47,9 @@ import MyTeamPanel from "./panels/MyTeamPanel.jsx";
 import ApprovalsPanel from "./panels/ApprovalsPanel.jsx";
 import ReportsPanel from "./panels/ReportsPanel.jsx";
 import TeamReportsPanel from "./panels/TeamReportsPanel.jsx";
+import SecurityPanel from "./panels/SecurityPanel.jsx";
+import SessionsPanel from "./panels/SessionsPanel.jsx";
+import SudoPrompt from "./SudoPrompt.jsx";
 import StaffShellStyles from "./shell/StaffShellStyles.jsx";
 import InstallAppButton from "./shell/InstallAppButton.jsx";
 import UpdateToast from "./shell/UpdateToast.jsx";
@@ -227,6 +230,8 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "calls" && <CallLogPanel />}
           {activeTab === "reports" && <ReportsPanel auth={auth} />}
           {activeTab === "team-reports" && <TeamReportsPanel auth={auth} />}
+          {activeTab === "security" && <SecurityPanel />}
+          {activeTab === "sessions" && <SessionsPanel />}
           {activeTab === "my-team" && <MyTeamPanel currentStaffId={auth.user?.id} />}
           {activeTab === "approvals" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
         </main>
@@ -253,6 +258,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
         </div>
         <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={selectTab} collapsed={false} badgeFor={badgeFor} roleColor={roleColor} itemMinHeight={44} />
       </StaffDrawer>
+      <SudoPrompt />
       <UpdateToast bottomOffset={isPhone ? "calc(80px + env(safe-area-inset-bottom, 0px))" : 20} />
     </div>
   );

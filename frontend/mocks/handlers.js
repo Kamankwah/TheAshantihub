@@ -337,6 +337,9 @@ export const handlers = [
   http.post('http://localhost:8000/api/accounts/staff/:id/unsuspend/', ({ params }) => {
     return HttpResponse.json({ id: Number(params.id), status: 'active' })
   }),
+  http.get('http://localhost:8000/api/accounts/staff/sessions/', () => HttpResponse.json([])),
+  http.get('http://localhost:8000/api/accounts/staff/sessions/active/', () => HttpResponse.json([])),
+  http.get('http://localhost:8000/api/accounts/staff/two-factor/', () => HttpResponse.json({ enabled: false, required: false, enabled_at: null, recovery_codes_left: 0 })),
   http.post('http://localhost:8000/api/accounts/staff/:id/deactivate/', ({ params }) => {
     return HttpResponse.json({ id: Number(params.id), status: 'deactivated' })
   }),

@@ -24,6 +24,7 @@ export const NAV_ITEMS = [
   { id: "credit", icon: "💳", label: "Credit & Lending", show: (auth) => auth.hasPermission("credit.manage") },
   { id: "users", icon: "👥", label: "Users", show: (auth) => auth.hasPermission("users.view") },
   { id: "staff", icon: "🛡️", label: "Staff Management", show: (auth) => auth.hasPermission("staff.manage") },
+  { id: "sessions", icon: "💻", label: "Sessions & Devices", show: (auth) => auth.hasPermission("staff.manage") },
   { id: "scout-assignments", icon: "🧭", label: "Scout Assignments", show: (auth) => auth.hasPermission("scouts.assign") },
   { id: "field-verification", icon: "📋", label: "Field Verification", show: (auth) => auth.hasPermission("scouts.verify") },
   { id: "delivery-coordination", icon: "🚚", label: "Delivery Coordination", show: (auth) => auth.hasPermission("delivery.manage") },
@@ -42,6 +43,7 @@ export const NAV_ITEMS = [
   { id: "team-reports", icon: "🗂️", label: "Team Reports", show: (auth) => auth.hasPermission("staff.invite_team") || auth.hasPermission("reports.view_all") },
   { id: "activity", icon: "🕘", label: "Activity", show: () => true },
   { id: "my-team", icon: "👥", label: "My Team", show: (auth) => auth.hasPermission("staff.invite_team") },
+  { id: "security", icon: "🔐", label: "Sign-in & Security", show: () => true },
 ];
 
 // [group id, group label, item ids]. The original (pre-1B) grouping, used for

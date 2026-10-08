@@ -55,6 +55,7 @@ import EventSubmissionPanel from "./components/EventSubmissionPanel.jsx";
 import BusinessCommandCenter from "./components/dashboard/BusinessCommandCenter.jsx";
 import AdminCommandCenter from "./components/admin/AdminCommandCenter.jsx";
 import StaffInstallPage from "./components/admin/StaffInstallPage.jsx";
+import StaffTwoStepSignIn from "./components/admin/StaffTwoStepSignIn.jsx";
 import { D, glassCard, ghs } from "./components/dashboard/theme.js";
 import KpiCard from "./components/dashboard/charts/KpiCard.jsx";
 import ChartFrame from "./components/dashboard/charts/ChartFrame.jsx";
@@ -1163,6 +1164,7 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
   const [email,setEmail]=useState("");
   const [error,setError]=useState(null);
   const [submitting,setSubmitting]=useState(false);
+  const [twoStep,setTwoStep]=useState(null);
   // Why the staff shell just signed this tab out (idle / session ended); read once.
   const [signedOutNotice]=useState(()=>lockedAccountType ? takeSignedOutMessage() : null);
   // "Forgot password?" (staff onboarding + account-recovery work) — a third
@@ -1183,6 +1185,7 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
     setSubmitting(true);
     try {
       const result=await auth.login(lockedAccountType||accountType,identifier,password);
+      if(result?.two_factor_required||result?.two_factor_setup_required){setTwoStep(result);return;}
       onSuccess(result);
     } catch (err) {
       setError("Invalid credentials. Please check your details and try again.");
@@ -1243,7 +1246,8 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
         {signedOutNotice && <div role="status" style={{background:C.cream,border:`1px solid ${C.gold}`,color:C.darkBrown,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{signedOutNotice}</div>}
         {error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
 
-        {mode==="login" && <form onSubmit={handleLogin}>
+        {mode==="login" && twoStep && <StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={()=>{setTwoStep(null);setPassword("");}}/>}
+        {mode==="login" && !twoStep && <form onSubmit={handleLogin}>
           {!lockedAccountType && <div style={{display:"flex",gap:8,marginBottom:12}}>
             <button type="button" onClick={()=>setAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="customer"?C.gold:"white"}}>Customer</button>
             <button type="button" onClick={()=>setAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="business_owner"?C.gold:"white"}}>Business Owner</button>
@@ -1308,6 +1312,7 @@ function StaffActivatePage({auth,onSuccess}) {
   const [confirmPassword,setConfirmPassword]=useState("");
   const [error,setError]=useState(null);
   const [submitting,setSubmitting]=useState(false);
+  const [twoStep,setTwoStep]=useState(null);
 
   const handleSubmit=async(e)=>{
     e.preventDefault();
@@ -1318,6 +1323,8 @@ function StaffActivatePage({auth,onSuccess}) {
     setSubmitting(true);
     try {
       const result=await auth.activateStaff(token,password);
+      // A Super Admin invitee gets a 2-step challenge instead of a session.
+      if(result?.two_factor_required||result?.two_factor_setup_required){setTwoStep(result);return;}
       onSuccess(result);
     } catch (err) {
       setError("This activation link is invalid or has expired. Please ask an admin to resend your invite.");
@@ -1332,13 +1339,14 @@ function StaffActivatePage({auth,onSuccess}) {
         <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>Activate Your Staff Account</div>
       </div>
       <div style={{padding:"20px 24px"}}>
-        {error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
-        {!token && !error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>No activation token found in this link. Please use the exact link from your invite email.</div>}
-        <form onSubmit={handleSubmit}>
+        {twoStep && <StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={()=>{setTwoStep(null);setPassword("");setConfirmPassword("");setError("Your account is active. Sign in from the staff sign-in page to finish setting up 2-step sign-in.");}}/>}
+        {!twoStep && error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
+        {!twoStep && !token && !error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>No activation token found in this link. Please use the exact link from your invite email.</div>}
+        {!twoStep && <form onSubmit={handleSubmit}>
           <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" required minLength={8} style={authInputStyle}/>
           <input value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} type="password" placeholder="Confirm password" required minLength={8} style={authInputStyle}/>
           <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Activating…":"Activate Account"}</button>
-        </form>
+        </form>}
       </div>
     </div>
   </div>;

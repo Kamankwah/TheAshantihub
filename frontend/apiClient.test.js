@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { server } from './mocks/server.js'
-import { SESSION_ENDED_EVENT, apiFetch, getStoredAuth, setStoredAuth, apiPost, apiPostForm, apiPatch, apiPatchForm, apiDelete, apiDownload } from './apiClient.js'
+import { SESSION_ENDED_EVENT, apiFetch, getStoredAuth, setStoredAuth, apiPost, apiPostForm, apiPatch, apiPatchForm, apiDelete, apiDownload, setSudoHandler } from './apiClient.js'
 import { getNetworkStatus, resetNetworkStatusForTests } from './lib/networkStatus.js'
 
 describe('apiFetch', () => {
@@ -228,5 +228,43 @@ describe('apiDownload', () => {
   it('throws an error carrying status and body on a 4xx', async () => {
     server.use(http.get('http://localhost:8000/api/dl/', () => HttpResponse.json({ detail: 'Nope.' }, { status: 403 })))
     await expect(apiDownload('/api/dl/', 'x.csv')).rejects.toMatchObject({ status: 403, body: { detail: 'Nope.' } })
+  })
+})
+
+describe('setSudoHandler', () => {
+  const needSudo = () => HttpResponse.json({ detail: 'Re-enter your password to continue.', code: 'sudo_required' }, { status: 403 })
+
+  it('surfaces the 403 untouched when no handler is registered', async () => {
+    server.use(http.post('http://localhost:8000/api/s/', needSudo))
+    await expect(apiPost('/api/s/', {})).rejects.toMatchObject({ status: 403, body: { code: 'sudo_required' } })
+  })
+
+  it('retries once after the handler resolves true, for GETs too', async () => {
+    let calls = 0
+    server.use(http.get('http://localhost:8000/api/s/', () => { calls += 1; return calls === 1 ? needSudo() : HttpResponse.json({ ok: 1 }) }))
+    const off = setSudoHandler(async () => true)
+    await expect(apiFetch('/api/s/')).resolves.toEqual({ ok: 1 })
+    off()
+    expect(calls).toBe(2)
+  })
+
+  it('does not call the handler for an ordinary 403', async () => {
+    const handler = vi.fn(async () => true)
+    server.use(http.post('http://localhost:8000/api/s/', () => HttpResponse.json({ detail: 'No.' }, { status: 403 })))
+    const off = setSudoHandler(handler)
+    await expect(apiPost('/api/s/', {})).rejects.toMatchObject({ status: 403 })
+    off()
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  it('an old unregister does not remove a newer handler', async () => {
+    const off1 = setSudoHandler(async () => false)
+    const handler2 = vi.fn(async () => false)
+    const off2 = setSudoHandler(handler2)
+    off1()
+    server.use(http.post('http://localhost:8000/api/s/', needSudo))
+    await expect(apiPost('/api/s/', {})).rejects.toMatchObject({ status: 403 })
+    off2()
+    expect(handler2).toHaveBeenCalledTimes(1)
   })
 })
