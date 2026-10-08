@@ -82,6 +82,7 @@ INSTALLED_APPS = [
     # Required transitively: rest_framework_simplejwt.tokens imports AbstractBaseUser at module load time
     "django.contrib.auth",
     "django.contrib.staticfiles",
+    "django.contrib.postgres",
     "rest_framework",
     "corsheaders",
     "core",
@@ -105,6 +106,7 @@ INSTALLED_APPS = [
     "staff_tasks",
     "calls",
     "approvals",
+    "reports",
 ]
 
 MIDDLEWARE = [
@@ -374,6 +376,10 @@ CELERY_BEAT_SCHEDULE = {
     "approvals-escalate": {
         "task": "approvals.tasks.escalate_due_approvals",
         "schedule": 300.0,  # every 5 minutes
+    },
+    "reports-day-reminders": {
+        "task": "reports.tasks.send_day_report_reminders",
+        "schedule": crontab(hour=18, minute=0),
     },
 }
 
