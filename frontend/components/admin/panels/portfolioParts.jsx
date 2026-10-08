@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiPost } from "../../../apiClient.js";
+import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { useMyTeam } from "../../../hooks/useMyTeam.js";
 import { useReassignableScouts } from "../../../hooks/usePortfolio.js";
 import { D, glassCard } from "../theme.js";
@@ -77,23 +78,8 @@ export function lastContactText(contact) {
 // The list item may carry a count or the cases themselves.
 export const flagCount = (value) => (Array.isArray(value) ? value.length : Number(value || 0));
 
-// apiErrorMessage, one level deeper too: {fields: {login_phone: ["..."]}}.
-export function errorText(err, fallback) {
-  const body = err?.body;
-  if (!body || typeof body !== "object") return fallback;
-  if (typeof body.detail === "string" && body.detail) return body.detail;
-  for (const value of Object.values(body)) {
-    const first = Array.isArray(value) ? value[0] : value;
-    if (typeof first === "string" && first) return first;
-    if (first && typeof first === "object") {
-      for (const inner of Object.values(first)) {
-        const innerFirst = Array.isArray(inner) ? inner[0] : inner;
-        if (typeof innerFirst === "string" && innerFirst) return innerFirst;
-      }
-    }
-  }
-  return fallback;
-}
+// The server's errors are top-level ({detail} or {field: [message]}).
+export const errorText = apiErrorMessage;
 
 // Haversine distance in metres.
 export function distanceMeters(lat1, lng1, lat2, lng2) {

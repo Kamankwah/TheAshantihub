@@ -21,8 +21,9 @@ const business = (overrides = {}) => ({
 })
 
 function renderForm(props = {}, b = business()) {
+  const box = { live: b }
   server.use(
-    http.get(`${API}/api/portfolio/businesses/12/`, () => HttpResponse.json(b)),
+    http.get(`${API}/api/portfolio/businesses/12/`, () => HttpResponse.json(box.live)),
     http.get(`${API}/api/listings/zones/`, () => HttpResponse.json([{ id: 3, name: 'Bantama' }, { id: 4, name: 'Asafo' }])),
   )
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -32,7 +33,10 @@ function renderForm(props = {}, b = business()) {
     </QueryClientProvider>
   )
   const view = render(ui())
-  return { rerender: () => view.rerender(ui()) }
+  return {
+    rerender: () => view.rerender(ui()),
+    serveNext: (next) => { box.live = next; return queryClient.invalidateQueries({ queryKey: ['portfolio-business'] }) },
+  }
 }
 function captureChanges() {
   const box = { body: null }
@@ -123,6 +127,31 @@ describe('ProposeChangeForm', () => {
     expect(screen.queryByLabelText('Sign-in phone')).not.toBeInTheDocument()
     expect(screen.queryByLabelText("Owner's email")).not.toBeInTheDocument()
     expect(screen.getByLabelText('Business phone')).toBeInTheDocument()
+  })
+
+  it('keeps diffing against the business it opened with when it refetches, and says it changed', async () => {
+    const sent = captureChanges()
+    const view = renderForm()
+    fireEvent.change(await screen.findByLabelText('Business name'), { target: { value: 'Adwoa Textiles' } })
+    await view.serveNext(business({ opening_hours: 'Mon–Fri 09:00–17:00', gps_address: 'AK-999-0000' }))
+    expect(await screen.findByText('This business changed while you were editing — check the details before sending.')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Why the change (Operations sees this)'), { target: { value: 'New name' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send 1 change for approval' }))
+    await waitFor(() => expect(sent.body).not.toBeNull())
+    expect(sent.body.fields).toEqual({ business_name: 'Adwoa Textiles' })
+  })
+
+  it('leaves the sign-in fields out when the owner claims while the form is open', async () => {
+    const sent = captureChanges()
+    const view = renderForm()
+    fireEvent.change(await screen.findByLabelText('Sign-in phone'), { target: { value: '055 400 0402' } })
+    fireEvent.change(screen.getByLabelText('Business name'), { target: { value: 'Adwoa Textiles' } })
+    await view.serveNext(business({ needs_claim: false }))
+    expect(await screen.findByText('The owner changes their sign-in phone and email themselves.')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Why the change (Operations sees this)'), { target: { value: 'New name' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send 1 change for approval' }))
+    await waitFor(() => expect(sent.body).not.toBeNull())
+    expect(sent.body.fields).toEqual({ business_name: 'Adwoa Textiles' })
   })
 
   it("shows the server's reason, including a field error", async () => {

@@ -59,7 +59,10 @@ function TextField({ label, type, value, current, onChange, hint }) {
   );
 }
 
-function ChangeForm({ business, onBack, onSent }) {
+function ChangeForm({ business: live, onBack, onSent }) {
+  // The details the form opened with: what is diffed and shown as "Now", so a
+  // background refetch can't turn an untouched field into a change.
+  const [business] = useState(live);
   const { data: zones } = useZones();
   const { position, locate } = useDevicePosition();
   const areaId = useId();
@@ -104,6 +107,9 @@ function ChangeForm({ business, onBack, onSent }) {
   if (zone && zone !== String(business.zone?.id ?? "")) changes.zone_id = Number(zone);
   if (hours && hours !== (business.opening_hours || "")) changes.opening_hours = hours;
   if (description.trim() !== (business.business_description || "").trim()) changes.business_description = description.trim();
+  if (!live.needs_claim) { delete changes.login_phone; delete changes.email; }
+  const changedMeanwhile = [...TEXT_FIELDS.map(([, , , source]) => source), "opening_hours", "business_description", "lat", "lng"]
+    .some((key) => String(live[key] ?? "") !== String(business[key] ?? "")) || (live.zone?.id ?? null) !== (business.zone?.id ?? null);
   let count = Object.keys(changes).length;
   if (pin) {
     Object.assign(changes, {
@@ -159,7 +165,7 @@ function ChangeForm({ business, onBack, onSent }) {
       </div>
       <Section title="Owner and business">{textField("full_name")}{textField("business_name")}</Section>
       <Section title="Phone numbers and email">
-        {business.needs_claim
+        {live.needs_claim
           ? <>{textField("login_phone")}{textField("business_contact_phone")}{textField("email")}</>
           : (
             <>
@@ -227,6 +233,7 @@ function ChangeForm({ business, onBack, onSent }) {
           <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} style={field} />
         </label>
       </Section>
+      {changedMeanwhile && <div role="status" style={callout(D.amber)}>This business changed while you were editing — check the details before sending.</div>}
       <div style={callout(D.amber)}>Payout details can't be changed by scouts. The owner changes them in their dashboard.</div>
       <label style={labelStyle}>Why the change (Operations sees this)
         <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} style={field} />
