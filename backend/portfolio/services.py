@@ -31,3 +31,18 @@ def assign_account_manager(business_owner, scout, *, by, reason):
         business_owner.account_manager = scout
         business_owner.save(update_fields=["account_manager"])
     return assignment
+
+
+def approver_name(approval):
+    """Who a just-submitted request waits for, for "Sent to …": the maker's
+    manager by name, otherwise the Operations pool or a Super Admin. None when
+    there is no request (a Super Admin's own registration)."""
+    from approvals.models import ApprovalRequest
+
+    if approval is None:
+        return None
+    if approval.stage == ApprovalRequest.MANAGER and approval.assigned_to is not None:
+        return approval.assigned_to.full_name
+    if approval.stage == ApprovalRequest.POOL:
+        return "Operations"
+    return "Super Admin"
