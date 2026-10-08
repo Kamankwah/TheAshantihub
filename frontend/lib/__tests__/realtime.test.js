@@ -54,6 +54,25 @@ describe('createRealtimeClient', () => {
     client.stop()
   })
 
+  it('reports a forced reconnect (permissions or team changed) without invalidating anything', async () => {
+    const onForceDisconnect = vi.fn()
+    const invalidated = []
+    const client = createRealtimeClient({
+      apiBase: 'https://api.example.com',
+      getTicket: vi.fn(async () => 'tkt'),
+      createSocket: (url) => new FakeSocket(url),
+      onInvalidate: (keys) => invalidated.push(...keys),
+      onForceDisconnect,
+    })
+    client.start()
+    await vi.advanceTimersByTimeAsync(0)
+    FakeSocket.all[0].open()
+    FakeSocket.all[0].push({ type: 'force_disconnect' })
+    expect(onForceDisconnect).toHaveBeenCalledTimes(1)
+    expect(invalidated).toEqual([])
+    client.stop()
+  })
+
   it('reconnects with backoff after the socket drops', async () => {
     const { client, getTicket } = setup()
     client.start()

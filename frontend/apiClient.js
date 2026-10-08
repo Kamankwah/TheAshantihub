@@ -7,6 +7,11 @@ const AUTH_STORAGE_KEY = 'ashantihub.auth'
 // expired staff session, or a revoked token). The staff shell listens and
 // signs out to the staff sign-in instead of failing panel by panel.
 export const SESSION_ENDED_EVENT = 'ashantihub:session-ended'
+// Fired instead for a 401 that ended no stored session (nothing was stored,
+// or the 401 was for an older token). A staff shell that is mounted without
+// a stored staff session — it ended while the staffer was on the marketplace
+// — signs out on it rather than sitting there with every panel failing.
+export const UNAUTHORIZED_EVENT = 'ashantihub:unauthorized'
 
 export function getStoredAuth() {
   const raw = localStorage.getItem(AUTH_STORAGE_KEY)
@@ -81,16 +86,20 @@ async function send(path, makeInit) {
   return response
 }
 
+// Every helper (apiDownload too) handles a 401 the same way.
+function noteUnauthorized(response) {
+  if (response.status !== 401) return
+  // Only the session this request was sent with ends; a stale 401 must not
+  // sign out a newer session (another sign-in, another tab).
+  const stored = getStoredAuth()
+  const sent = sentAuth.get(response)
+  const hadSession = Boolean(stored) && sent === `Bearer ${stored.token}`
+  if (hadSession || !stored) setStoredAuth(null)
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(hadSession ? SESSION_ENDED_EVENT : UNAUTHORIZED_EVENT))
+}
+
 async function handleResponse(response, path) {
-  if (response.status === 401) {
-    // Only the session this request was sent with ends; a stale 401 must not
-    // sign out a newer session (another sign-in, another tab).
-    const stored = getStoredAuth()
-    const sent = sentAuth.get(response)
-    const hadSession = Boolean(stored) && sent === `Bearer ${stored.token}`
-    if (hadSession || !stored) setStoredAuth(null)
-    if (hadSession && typeof window !== 'undefined') window.dispatchEvent(new Event(SESSION_ENDED_EVENT))
-  }
+  noteUnauthorized(response)
   if (!response.ok) {
     // Attach the raw status + (best-effort) parsed JSON body onto the thrown
     // Error so a caller that needs to distinguish *why* a request failed
@@ -127,6 +136,7 @@ export async function apiFetch(path) {
 export async function apiDownload(path, filename) {
   const response = await send(path, () => ({ headers: authHeaders() }))
   if (response.status === 202) return response.json()
+  noteUnauthorized(response)
   if (!response.ok) {
     let body = null
     try {

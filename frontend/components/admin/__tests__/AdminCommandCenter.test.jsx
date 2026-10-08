@@ -1,6 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { http, HttpResponse } from 'msw'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { apiFetch, setStoredAuth } from '../../../apiClient.js'
+import { server } from '../../../mocks/server.js'
 import AdminCommandCenter from '../AdminCommandCenter.jsx'
 import { installMatchMedia } from '../../../test/matchMedia.js'
 
@@ -22,7 +25,43 @@ export function renderShell(props = {}) {
 }
 const panelNav = () => screen.getByRole('navigation', { name: 'Staff panels' })
 
-afterEach(() => vi.restoreAllMocks())
+// The shell signs out on mount without a stored staff session, so every test
+// here starts signed in, as the app is.
+const STORED = { token: 't', account_type: 'staff', id: 1, full_name: 'Akosua Support' }
+beforeEach(() => setStoredAuth(STORED))
+afterEach(() => { vi.restoreAllMocks(); setStoredAuth(null) })
+
+describe('AdminCommandCenter — a session that is already gone', () => {
+  it('signs out ("ended") when it mounts without a stored staff session', () => {
+    setStoredAuth(null)
+    sessionStorage.removeItem('ashantihub.signedOutReason')
+    const onExit = vi.fn()
+    renderShell({ onExit })
+    expect(onExit).toHaveBeenCalledTimes(1)
+    expect(sessionStorage.getItem('ashantihub.signedOutReason')).toBe('ended')
+  })
+
+  it('signs out when a 401 arrives while mounted and no staff session is stored', async () => {
+    const onExit = vi.fn()
+    renderShell({ onExit })
+    expect(onExit).not.toHaveBeenCalled()
+    setStoredAuth(null) // gone without a storage event (this same tab)
+    server.use(http.get('http://localhost:8000/api/x/', () => new HttpResponse(null, { status: 401 })))
+    await expect(apiFetch('/api/x/')).rejects.toMatchObject({ status: 401 })
+    expect(onExit).toHaveBeenCalledTimes(1)
+  })
+
+  it('a stale 401 leaves a newer stored staff session signed in', async () => {
+    const onExit = vi.fn()
+    renderShell({ onExit })
+    server.use(http.get('http://localhost:8000/api/x/', () => {
+      setStoredAuth({ ...STORED, token: 'newer' })
+      return new HttpResponse(null, { status: 401 })
+    }))
+    await expect(apiFetch('/api/x/')).rejects.toMatchObject({ status: 401 })
+    expect(onExit).not.toHaveBeenCalled()
+  })
+})
 
 describe('AdminCommandCenter — tab control', () => {
   it('uncontrolled: clicking a nav item switches panels and marks it current', () => {

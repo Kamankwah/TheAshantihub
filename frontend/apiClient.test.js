@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { server } from './mocks/server.js'
-import { SESSION_ENDED_EVENT, apiFetch, getStoredAuth, setStoredAuth, apiPost, apiPostForm, apiPatch, apiPatchForm, apiDelete, apiDownload, setSudoHandler } from './apiClient.js'
+import { SESSION_ENDED_EVENT, UNAUTHORIZED_EVENT, apiFetch, getStoredAuth, setStoredAuth, apiPost, apiPostForm, apiPatch, apiPatchForm, apiDelete, apiDownload, setSudoHandler } from './apiClient.js'
 import { getNetworkStatus, resetNetworkStatusForTests } from './lib/networkStatus.js'
 
 describe('apiFetch', () => {
@@ -212,6 +212,51 @@ describe('session-ended event — stale responses', () => {
     }))
     setStoredAuth({ token: 'older', account_type: 'staff', id: 1, full_name: 'Esi' })
     await expect(apiFetch('/api/accounts/me/')).rejects.toMatchObject({ status: 401 })
+    expect(getStoredAuth()).toMatchObject({ token: 'newer' })
+    expect(heard).not.toHaveBeenCalled()
+    window.removeEventListener(SESSION_ENDED_EVENT, heard)
+    setStoredAuth(null)
+  })
+})
+
+describe('unauthorized event', () => {
+  it('fires on a 401 that ended no stored session, and never alongside session-ended', async () => {
+    const ended = vi.fn()
+    const unauthorized = vi.fn()
+    window.addEventListener(SESSION_ENDED_EVENT, ended)
+    window.addEventListener(UNAUTHORIZED_EVENT, unauthorized)
+    server.use(http.get('http://localhost:8000/api/accounts/me/', () => new HttpResponse(null, { status: 401 })))
+    setStoredAuth({ token: 'expired', account_type: 'staff', id: 1, full_name: 'Esi' })
+    await expect(apiFetch('/api/accounts/me/')).rejects.toMatchObject({ status: 401 })
+    expect([ended.mock.calls.length, unauthorized.mock.calls.length]).toEqual([1, 0])
+    await expect(apiFetch('/api/accounts/me/')).rejects.toMatchObject({ status: 401 })
+    expect([ended.mock.calls.length, unauthorized.mock.calls.length]).toEqual([1, 1])
+    window.removeEventListener(SESSION_ENDED_EVENT, ended)
+    window.removeEventListener(UNAUTHORIZED_EVENT, unauthorized)
+  })
+})
+
+describe('apiDownload — a 401', () => {
+  it('ends the stored session and fires session-ended, like the other helpers', async () => {
+    const heard = vi.fn()
+    window.addEventListener(SESSION_ENDED_EVENT, heard)
+    server.use(http.get('http://localhost:8000/api/dl/', () => new HttpResponse(null, { status: 401 })))
+    setStoredAuth({ token: 'expired', account_type: 'staff', id: 1, full_name: 'Esi' })
+    await expect(apiDownload('/api/dl/', 'x.csv')).rejects.toMatchObject({ status: 401 })
+    expect(getStoredAuth()).toBeNull()
+    expect(heard).toHaveBeenCalledTimes(1)
+    window.removeEventListener(SESSION_ENDED_EVENT, heard)
+  })
+
+  it('leaves a newer session alone when the 401 was for an older token', async () => {
+    const heard = vi.fn()
+    window.addEventListener(SESSION_ENDED_EVENT, heard)
+    server.use(http.get('http://localhost:8000/api/dl/', () => {
+      setStoredAuth({ token: 'newer', account_type: 'staff', id: 1, full_name: 'Esi' })
+      return new HttpResponse(null, { status: 401 })
+    }))
+    setStoredAuth({ token: 'older', account_type: 'staff', id: 1, full_name: 'Esi' })
+    await expect(apiDownload('/api/dl/', 'x.csv')).rejects.toMatchObject({ status: 401 })
     expect(getStoredAuth()).toMatchObject({ token: 'newer' })
     expect(heard).not.toHaveBeenCalled()
     window.removeEventListener(SESSION_ENDED_EVENT, heard)

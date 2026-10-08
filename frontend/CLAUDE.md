@@ -98,3 +98,7 @@ monolith holding most components, with extractions living in `components/`,
   (`useAuth`); the caller shows the code step and only the final call stores the session.
 - **Idle sign-out is shared across tabs** (`ashantihub.staffLastInput` in `useIdleSignOut`), and a
   `storage` event that clears `ashantihub.auth` signs the other tabs out.
+- **The staff shell signs out ("ended") when it mounts without a stored staff session**, and on any
+  `UNAUTHORIZED_EVENT` (a 401 that ended no stored session) while none is stored — a session can
+  end during "View site". A test that mounts `AdminCommandCenter` and counts `onExit` must
+  `setStoredAuth({token, account_type: 'staff', …})` first.

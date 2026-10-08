@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Flag from "../Flag.jsx";
-import { SESSION_ENDED_EVENT } from "../../apiClient.js";
+import { SESSION_ENDED_EVENT, UNAUTHORIZED_EVENT, getStoredAuth } from "../../apiClient.js";
 import { useIdleSignOut } from "../../hooks/useIdleSignOut.js";
 import { useRealtime } from "../../hooks/useRealtime.js";
 import { noteSignedOutReason } from "../../lib/signOutReason.js";
@@ -93,7 +93,14 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
   const role = auth.user?.role;
   const roleColor = ROLE_ACCENTS[role] || D.gold;
   const showToast = () => { setSaved(true); setTimeout(() => setSaved(false), 2500); };
-  const live = useRealtime();
+  // A forced reconnect means this staffer's permissions or team changed:
+  // refetch them (GET /api/accounts/me/) so the menus follow.
+  const authRef = useRef(auth);
+  useEffect(() => { authRef.current = auth; }, [auth]);
+  const refetchMe = useCallback(() => {
+    authRef.current?.refreshUser?.()?.catch?.(() => {});
+  }, []);
+  const live = useRealtime(true, { onForceDisconnect: refetchMe });
   // Idle (30 min without input) and "the server ended this session" both
   // sign out through the normal staff sign-out, which clears cached data.
   const onExitRef = useRef(onExit);
@@ -107,6 +114,19 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
     const ended = () => signOutBecause("ended");
     window.addEventListener(SESSION_ENDED_EVENT, ended);
     return () => window.removeEventListener(SESSION_ENDED_EVENT, ended);
+  }, [signOutBecause]);
+  // The session can end while the shell is not mounted ("View site", then a
+  // 401 on the marketplace clears it): on mount, and on any 401 while mounted,
+  // a shell with no stored staff session signs out instead of sitting there
+  // with every panel failing.
+  useEffect(() => {
+    const signedOutUnderneath = () => {
+      const stored = getStoredAuth();
+      if (!stored?.token || stored.account_type !== "staff") signOutBecause("ended");
+    };
+    signedOutUnderneath();
+    window.addEventListener(UNAUTHORIZED_EVENT, signedOutUnderneath);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, signedOutUnderneath);
   }, [signOutBecause]);
   // Another tab signed out (idle, or the Sign out button): the shared stored
   // session is gone, so this tab's next request would carry no token.

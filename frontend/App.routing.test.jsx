@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { BrowserRouter, MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import AshantiHub from './App.jsx'
-import { setStoredAuth } from './apiClient.js'
+import { apiFetch, getStoredAuth, setStoredAuth } from './apiClient.js'
 import { server } from './mocks/server.js'
 
 // docs/UI_MODERNIZATION_ROADMAP.md Phase D — real URL sync for `page`.
@@ -594,6 +594,24 @@ describe('AshantiHub routing — /staff/:panel', () => {
     await waitFor(() => expect(document.head.querySelector('link[rel="manifest"]')).toBeNull())
   }, 8000)
 
+  it('a session that ended during "View site" shows the staff sign-in on Back to dashboard, not a stuck shell', async () => {
+    signInStaff(['messaging.manage', 'users.view'])
+    renderStaffAt('/staff')
+    await staffNav()
+    fireEvent.click(screen.getByRole('button', { name: 'View site' }))
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
+    // The server ends the session while the staffer browses the marketplace:
+    // the next marketplace call answers 401 and the stored session is cleared,
+    // with no staff shell mounted to hear it.
+    server.use(http.get('http://localhost:8000/api/listings/', () => new HttpResponse(null, { status: 401 })))
+    await expect(apiFetch('/api/listings/')).rejects.toMatchObject({ status: 401 })
+    expect(getStoredAuth()).toBeNull()
+    fireEvent.click(await screen.findByRole('button', { name: 'Back to dashboard' }, { timeout: 3000 }))
+    expect(await screen.findByText('Staff Sign In', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: 'Staff panels' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('location').textContent).toBe('/staff')
+  }, 10000)
+
   it('/staff/approvals/<id> opens that request, and Back returns to the inbox URL', async () => {
     signInStaff(['messaging.manage'])
     server.use(http.get('http://localhost:8000/api/approvals/7/', () => HttpResponse.json({
@@ -640,12 +658,16 @@ describe('AshantiHub routing — staff notification bell', () => {
     setStoredAuth({ token: 'test-token', account_type: 'customer', id: 5, full_name: 'Esi' })
     server.use(http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({ account_type: 'customer', id: 5, full_name: 'Esi' })))
     withNotification('approvals/7')
+    let markedRead = false
+    server.use(http.post('http://localhost:8000/api/notifications/21/read/', () => { markedRead = true; return HttpResponse.json({ id: 21, is_read: true }) }))
     renderStaffAt('/')
     await within(await screen.findByRole('button', { name: 'Notifications' }, { timeout: 3000 })).findByText('1', {}, { timeout: 3000 })
     fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
     fireEvent.click(await screen.findByText('Approval needed', {}, { timeout: 3000 }))
-    await new Promise((resolve) => setTimeout(resolve, 200))
+    // The click has been handled once its read-mark lands; it must not have navigated.
+    await waitFor(() => expect(markedRead).toBe(true))
     expect(screen.getByTestId('location').textContent).toBe('/')
+    expect(screen.getByText('Approval needed')).toBeInTheDocument()
   }, 8000)
 })
 

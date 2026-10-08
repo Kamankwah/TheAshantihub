@@ -12,9 +12,12 @@ export function realtimeUrl(apiBase, ticket) {
   return `${origin}/ws/staff/?ticket=${encodeURIComponent(ticket)}`
 }
 
+// `onForceDisconnect` runs when the server drops this socket because the
+// staffer's permissions or team changed (or a session ended): the shell
+// refetches the signed-in staffer so its menus follow.
 export function createRealtimeClient({
   apiBase, getTicket, onInvalidate, onEvent = () => {}, onStatus = () => {},
-  createSocket = (url) => new WebSocket(url),
+  onForceDisconnect = () => {}, createSocket = (url) => new WebSocket(url),
 }) {
   let stopped = true
   let socket = null
@@ -76,7 +79,7 @@ export function createRealtimeClient({
       try { data = JSON.parse(message.data) } catch { return }
       // The server closes right after this; onclose reconnects (attempt was
       // already reset by onopen, so there is no backoff to skip).
-      if (data?.type === 'force_disconnect') return
+      if (data?.type === 'force_disconnect') { onForceDisconnect(); return }
       if (Array.isArray(data?.invalidate) && data.invalidate.length) onInvalidate(data.invalidate)
       if (data?.type === 'activity') onEvent(data)
     }
