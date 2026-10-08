@@ -24,6 +24,7 @@ from .models import (
     StaffUser,
 )
 from .permissions import can_lead_team, can_manage_staff
+from .phones import filter_by_phone
 
 # Used to pay the same check_password() cost when no account is found, so that
 # login timing does not leak whether an identifier exists (see login serializers below).
@@ -423,9 +424,20 @@ class BusinessOwnerLoginSerializer(serializers.Serializer):
     password = serializers.CharField()
 
     def validate(self, attrs):
+        identifier = attrs["identifier"]
         account = BusinessOwner.objects.filter(
-            Q(login_phone=attrs["identifier"]) | Q(email=attrs["identifier"])
+            Q(login_phone=identifier) | Q(email=identifier)
         ).first()
+        if account is None and "@" not in identifier:
+            # The same phone written the other way: "0241234567" for a stored
+            # "+233241234567" (scouts store +233…) or the reverse (owners typed
+            # their own at sign-up). Compared by the last 9 digits, and only an
+            # unambiguous match counts — two old rows sharing those digits
+            # still sign in by their exact spelling only. Stored spaces and
+            # dashes ("024 123-4567") don't matter: digits are compared.
+            matches = list(filter_by_phone(BusinessOwner.objects.all(), "login_phone", identifier)[:2])
+            if len(matches) == 1:
+                account = matches[0]
         password_hash = account.password_hash if account else DUMMY_PASSWORD_HASH
         password_valid = check_password(attrs["password"], password_hash)
         if account is None or not password_valid:

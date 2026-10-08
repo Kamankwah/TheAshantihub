@@ -2,18 +2,28 @@ from django.test import TestCase
 
 from accounts.models import Permission, Role
 
-# The office roles' baseline grants. Later migrations add permissions to some
-# of these (e.g. admin gains scouts.assign in 0027, users.manage in 0022), so
-# this matrix is a subset check, not an exact-equality one, for those roles —
-# see test_baseline_role_permissions below. The field roles (item 11) are
-# listed with their own full grants.
+# The roles' baseline grants. Later migrations add permissions to the office
+# roles (e.g. operations gains scouts.assign in 0027, users.manage in 0022), so
+# their rows are a floor — test_baseline_role_permissions checks a subset. The
+# field roles (scout, delivery_manager, dispatch) are listed with their full
+# grants and checked exactly in test_field_roles_hold_their_own_permissions.
 DEFAULT_MATRIX = {
     "super_admin": None,  # None = all permissions
-    "operations": {"kyc.approve", "listings.moderate", "users.view"},
-    "accountant": {"escrow.view", "escrow.release", "disputes.resolve_financial", "transactions.report"},
+    "operations": {
+        "kyc.approve", "listings.moderate", "users.view",
+        "businesses.register", "portfolio.manage", "targets.manage", "leave.record",
+        "fraud.manage", "fraud.flag",
+    },
+    "accountant": {
+        "escrow.view", "escrow.release", "disputes.resolve_financial", "transactions.report",
+        "commission.view_all", "commission.policy",
+    },
     "marketing": {"promotions.manage", "analytics.view", "categories.manage"},
-    "support": {"messaging.manage", "disputes.flag", "users.view"},
-    "scout": {"scouts.verify", "users.view", "calls.log"},
+    "support": {"messaging.manage", "disputes.flag", "users.view", "fraud.flag"},
+    "scout": {
+        "scouts.verify", "users.view", "calls.log",
+        "businesses.register", "businesses.manage_portfolio", "commission.view_own",
+    },
     "delivery_manager": {"delivery.manage", "staff.invite_team", "activity.view_team"},
     "dispatch": {"delivery.dispatch"},
 }
@@ -23,6 +33,14 @@ class RoleSeedTests(TestCase):
     def test_all_roles_exist(self):
         names = set(Role.objects.values_list("name", flat=True))
         self.assertEqual(names, set(DEFAULT_MATRIX.keys()))
+
+    def test_baseline_role_permissions(self):
+        for role_name, expected in DEFAULT_MATRIX.items():
+            if expected is None:
+                continue
+            with self.subTest(role=role_name):
+                held = set(Role.objects.get(name=role_name).permissions.values_list("codename", flat=True))
+                self.assertLessEqual(expected, held)
 
     def test_super_admin_has_every_permission(self):
         super_admin = Role.objects.get(name="super_admin")
