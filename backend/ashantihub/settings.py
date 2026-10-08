@@ -104,6 +104,7 @@ INSTALLED_APPS = [
     "activity",
     "staff_tasks",
     "calls",
+    "approvals",
 ]
 
 MIDDLEWARE = [
