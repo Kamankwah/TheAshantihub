@@ -265,6 +265,16 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
         (REJECTED, "Rejected"),
     ]
 
+    # How the account started (staff phase 2, spec S1): the owner signed up
+    # online, or a scout registered the business in the field and the owner
+    # sets their own login afterwards (the hand-over or the claim link).
+    SELF = "self"
+    SCOUT = "scout"
+    REGISTRATION_CHANNEL_CHOICES = [
+        (SELF, "Registered online by the owner"),
+        (SCOUT, "Registered by a scout"),
+    ]
+
     full_name = models.CharField(max_length=150)
     login_phone = models.CharField(max_length=20, unique=True)
     email = models.EmailField(unique=True, null=True, blank=True)
@@ -291,12 +301,44 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
     is_suspended = models.BooleanField(default=False)
     suspension_reason = models.CharField(max_length=500, blank=True, default="")
 
+    registration_channel = models.CharField(
+        max_length=10, choices=REGISTRATION_CHANNEL_CHOICES, default=SELF,
+    )
+    registered_by = models.ForeignKey(
+        "StaffUser", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="registered_businesses",
+    )
+    # The scout who manages this business now. Its history lives in
+    # portfolio.AccountManagerAssignment — change it only through
+    # portfolio.services.assign_account_manager().
+    account_manager = models.ForeignKey(
+        "StaffUser", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="managed_businesses",
+    )
+    # When the owner of a scout-registered business set their own password.
+    claimed_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.full_name
 
+    @property
+    def needs_claim(self):
+        """A scout started this account and the owner hasn't set a login yet."""
+        return self.registration_channel == self.SCOUT and self.claimed_at is None
+
+    @property
+    def display_name(self):
+        """The business's name for staff screens and notices — the profile's
+        business_name, or the owner's own name when none is set."""
+        profile = getattr(self, "profile", None)
+        business_name = (profile.business_name or "").strip() if profile is not None else ""
+        return business_name or self.full_name
+
     def compute_registration_step(self):
+        if self.registration_channel == self.SCOUT:
+            return self._scout_registration_step()
         if self.kyc_status in (self.VERIFIED, self.REJECTED):
             return "complete"
         try:
@@ -312,16 +354,23 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
             return "business_info"
         if not profile.business_kind or getattr(self, "subscription", None) is None:
             return "plan_selection"
-        if not profile.default_payout_method:
-            return "payment_info"
-        if (profile.default_payout_method == BusinessOwnerProfile.MOMO
-                and not profile.payout_momo_number):
-            return "payment_info"
-        if (profile.default_payout_method == BusinessOwnerProfile.BANK
-                and not profile.payout_bank_account_number):
+        if not profile.has_payout_details():
             return "payment_info"
         if not profile.terms_accepted_at:
             return "terms"
+        return "complete"
+
+    def _scout_registration_step(self):
+        """A scout captured the business details and the claim records the
+        terms, so a scout-registered owner only sees "pick a plan" and "add
+        payout details" — and only once KYC has verified the business."""
+        if self.kyc_status != self.VERIFIED:
+            return "complete"
+        if getattr(self, "subscription", None) is None:
+            return "plan_selection"
+        profile = getattr(self, "profile", None)
+        if profile is None or not profile.has_payout_details():
+            return "payment_info"
         return "complete"
 
 
@@ -390,6 +439,53 @@ class BusinessOwnerProfile(models.Model):
         related_name="address_verified_profiles",
     )
     address_verified_at = models.DateTimeField(null=True, blank=True)
+
+    # ── Business identity and location (staff phase 2, spec S1) ─────────────
+    # There is no Business model: a business is a BusinessOwner plus this
+    # profile. business_name is what BusinessOwner.display_name shows.
+    business_name = models.CharField(max_length=150, blank=True, default="")
+    business_category = models.ForeignKey(
+        "listings.Category", on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+    zone = models.ForeignKey(
+        "listings.Zone", on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+    business_description = models.TextField(blank=True, default="")
+    opening_hours = models.CharField(max_length=120, blank=True, default="")
+
+    # The map pin: who set it, when, how accurate the device fix was, and
+    # whether it was placed by hand (a fix worse than 100 m is refused unless
+    # the pin is placed by hand).
+    LOCATION_BY_OWNER = "owner"
+    LOCATION_BY_SCOUT = "scout"
+    LOCATION_BY_OPERATIONS = "operations"
+    LOCATION_SET_BY_CHOICES = [
+        (LOCATION_BY_OWNER, "Owner"),
+        (LOCATION_BY_SCOUT, "Scout"),
+        (LOCATION_BY_OPERATIONS, "Operations"),
+    ]
+    lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    lng = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    location_accuracy_m = models.PositiveIntegerField(null=True, blank=True)
+    location_set_by = models.CharField(
+        max_length=10, choices=LOCATION_SET_BY_CHOICES, blank=True, default="",
+    )
+    location_set_at = models.DateTimeField(null=True, blank=True)
+    location_is_manual = models.BooleanField(default=False)
+    signboard_photo = models.ImageField(
+        upload_to="signboards/", validators=[validate_image_content_type], null=True, blank=True,
+    )
+
+    def has_payout_details(self):
+        """The registration's "payment_info" step is done: a payout method is
+        chosen and, for MoMo or bank, its number is filled in."""
+        if not self.default_payout_method:
+            return False
+        if self.default_payout_method == self.MOMO:
+            return bool(self.payout_momo_number)
+        if self.default_payout_method == self.BANK:
+            return bool(self.payout_bank_account_number)
+        return True
 
     def __str__(self):
         return f"Profile for {self.business_owner.full_name}"

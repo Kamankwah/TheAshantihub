@@ -124,8 +124,10 @@ class StartTrialSerializer(serializers.Serializer):
     (accounts.BusinessOwner.compute_registration_step()'s "plan_selection"
     step). Distinct from SubscribeSerializer above: always creates
     is_trial=True and additionally sets BusinessOwnerProfile.business_kind,
-    since this is the one-time moment a business owner first picks their
-    product/service kind.
+    since this is the moment a self-registered owner first picks their
+    product/service kind. A business whose kind is already set (a scout
+    registered it — staff phase 2) keeps it: a plan of the other kind is
+    refused in save(), which is where the owner is known.
     """
 
     business_kind = serializers.ChoiceField(choices=BusinessOwnerProfile.BUSINESS_KIND_CHOICES)
@@ -153,6 +155,13 @@ class StartTrialSerializer(serializers.Serializer):
         period_length = timedelta(days=30 * cycle_months)
 
         profile = business_owner.profile
+        if profile.business_kind and profile.business_kind != plan.kind:
+            raise serializers.ValidationError({
+                "plan": [
+                    f"This plan is for {plan.get_kind_display().lower()} businesses, and yours is "
+                    f"registered as a {profile.get_business_kind_display().lower()} business."
+                ]
+            })
         profile.business_kind = business_kind
         profile.save(update_fields=["business_kind"])
 

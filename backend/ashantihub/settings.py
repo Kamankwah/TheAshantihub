@@ -107,6 +107,7 @@ INSTALLED_APPS = [
     "calls",
     "approvals",
     "reports",
+    "portfolio",
     "realtime",
 ]
 
