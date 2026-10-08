@@ -31,7 +31,7 @@ async (page, options = {}) => {
   const SIGNED_OUT = options.signedOut ?? !options.email;
   const PANELS = ['overview', 'kyc', 'moderation', 'hero', 'events-moderation', 'reviews', 'event-pricing',
     'subscription-plans', 'subscription-plans-approval', 'escrow', 'disputes', 'transactions', 'credit',
-    'users', 'staff', 'scout-assignments', 'field-verification', 'register-business', 'portfolio', 'all-portfolios', 'at-risk', 'delivery-coordination', 'my-deliveries',
+    'users', 'staff', 'scout-assignments', 'field-verification', 'register-business', 'portfolio', 'all-portfolios', 'at-risk', 'subscriptions-due', 'fraud-cases', 'delivery-coordination', 'my-deliveries',
     'categories-zones', 'promotions', 'site-settings', 'delivery', 'contact-messages', 'messaging', 'analytics'];
   const VIEWPORTS = options.viewports || [[320, 640], [375, 812], [768, 1024], [1024, 768], [1440, 900]];
 

@@ -192,7 +192,7 @@ describe('portfolio menus (staff phase 2A)', () => {
     const groups = buildNavGroups(authAs('operations', ['portfolio.manage', 'businesses.register', 'staff.invite_team']))
     const labels = groups.map((g) => g.label)
     expect(labels.indexOf('Businesses')).toBe(labels.indexOf('People') + 1)
-    expect(idsIn(groups, 'Businesses')).toEqual(['all-portfolios', 'at-risk', 'register-business'])
+    expect(idsIn(groups, 'Businesses')).toEqual(['all-portfolios', 'at-risk', 'subscriptions-due', 'register-business'])
   })
 
   it('gives Super Admin a Businesses group and keeps Portfolio under Teams (step in)', () => {
@@ -215,5 +215,58 @@ describe('portfolio menus (staff phase 2A)', () => {
     expect([byId.portfolio.label, byId.portfolio.icon]).toEqual(['Portfolio', '🏪'])
     expect([byId['all-portfolios'].label, byId['all-portfolios'].icon]).toEqual(['All portfolios', '🗂️'])
     expect([byId['at-risk'].label, byId['at-risk'].icon]).toEqual(['At risk', '⚠️'])
+  })
+})
+
+describe('Subscriptions due and Fraud cases (staff phase 2A)', () => {
+  const authAs = (role, perms) => ({ user: { role }, hasPermission: (c) => perms.includes(c) })
+  const everything = (role) => ({ user: { role }, hasPermission: () => true })
+  const groupOf = (groups, itemId) => groups.find((g) => g.items.some((i) => i.id === itemId))?.label
+  const idsIn = (groups, label) => groups.find((g) => g.label === label)?.items.map((i) => i.id)
+  const allIds = (perms) => buildNavGroups({ hasPermission: (c) => perms.includes(c) }).flatMap((g) => g.items.map((i) => i.id))
+
+  it('labels the two items as on the canvas', () => {
+    const byId = Object.fromEntries(NAV_ITEMS.map((i) => [i.id, i]))
+    expect([byId['subscriptions-due'].label, byId['subscriptions-due'].icon]).toEqual(['Subscriptions due', '⏳'])
+    expect([byId['fraud-cases'].label, byId['fraud-cases'].icon]).toEqual(['Fraud cases', '🚩'])
+  })
+
+  it('shows Subscriptions due with portfolio.manage, and Fraud cases with fraud.manage or fraud.flag', () => {
+    expect(allIds(['portfolio.manage'])).toContain('subscriptions-due')
+    expect(allIds(['fraud.flag'])).not.toContain('subscriptions-due')
+    expect(allIds(['fraud.manage'])).toContain('fraud-cases')
+    expect(allIds(['fraud.flag'])).toContain('fraud-cases')
+    expect(allIds(['portfolio.manage'])).not.toContain('fraud-cases')
+  })
+
+  it("puts Subscriptions due in Operations' Businesses group before Register, and Fraud cases at the end of Service", () => {
+    const groups = buildNavGroups(authAs('operations', [
+      'portfolio.manage', 'businesses.register', 'fraud.manage', 'fraud.flag', 'messaging.manage', 'disputes.flag', 'orders.manage_delivery',
+    ]))
+    expect(idsIn(groups, 'Businesses')).toEqual(['all-portfolios', 'at-risk', 'subscriptions-due', 'register-business'])
+    expect(idsIn(groups, 'Service')).toEqual(['messaging', 'disputes', 'delivery', 'fraud-cases'])
+  })
+
+  it("puts Fraud cases at the end of Support's Queues", () => {
+    const groups = buildNavGroups(authAs('support', ['fraud.flag', 'contact_messages.manage', 'reviews.moderate', 'disputes.flag', 'orders.manage_delivery']))
+    expect(idsIn(groups, 'Queues')).toEqual(['contact-messages', 'reviews', 'disputes', 'delivery', 'fraud-cases'])
+  })
+
+  it('gives Super Admin both: Subscriptions due under Businesses, Fraud cases at the end of Marketplace', () => {
+    const groups = buildNavGroups(everything('super_admin'))
+    expect(idsIn(groups, 'Businesses')).toEqual(['all-portfolios', 'at-risk', 'subscriptions-due', 'register-business'])
+    expect(idsIn(groups, 'Marketplace').at(-1)).toBe('fraud-cases')
+  })
+
+  it('keeps both inside the original groups for a session without a known role', () => {
+    const groups = buildNavGroups(everything('not-a-role'))
+    expect(groupOf(groups, 'subscriptions-due')).toBe('Field Operations')
+    expect(groupOf(groups, 'fraud-cases')).toBe('Moderation')
+  })
+
+  it('adds no badge for either', () => {
+    const badgeFor = makeBadgeFor({ kyc: 3, approvals_waiting: 2 })
+    expect(badgeFor('subscriptions-due')).toBe(0)
+    expect(badgeFor('fraud-cases')).toBe(0)
   })
 })

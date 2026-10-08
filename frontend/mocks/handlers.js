@@ -527,6 +527,22 @@ export const handlers = [
     listings: [], pending_requests: [], recent_calls: [], assignments: [], open_flags: [], can_manage: false,
   })),
   http.get('http://localhost:8000/api/portfolio/meta/listing-form/', () => HttpResponse.json({ categories: [], zones: [], required_answers: {} })),
+  // Operations (staff phase 2A) — Subscriptions due, Fraud cases and the KYC
+  // review sheet inside a business.kyc approval; defaults, tests override.
+  http.get('http://localhost:8000/api/portfolio/subscriptions-due/', () => HttpResponse.json({ overdue: [], paused: [], cleared: [] })),
+  http.get('http://localhost:8000/api/portfolio/businesses/:id/review/', () => HttpResponse.json({
+    owner: { full_name: 'Owner', login_phone: '', email: '', ghana_card_number: '', needs_claim: false, claimed_at: null },
+    business: { business_name: 'Business', business_kind: null, category: null, zone: null, opening_hours: '', is_formal: false, tin_given: false },
+    photos: { signboard: null, ghana_card_front: null, ghana_card_back: null },
+    location: {
+      lat: null, lng: null, accuracy_m: null, is_manual: false, set_by: '', set_at: null, gps_address: '',
+      address_verified: false, address_verified_by_name: null, address_verified_at: null,
+    },
+    checks: { exact: [], similar: [], staff_match: false, accuracy_m: null },
+    consent: null, flags: [], registered_by_name: null, created_at: '2026-10-07T00:00:00Z',
+  })),
+  http.get('http://localhost:8000/api/fraud/flags/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/fraud/flags/counts/', () => HttpResponse.json({ open: 0, confirmed: 0, dismissed: 0 })),
   http.get('http://localhost:8000/api/notifications/staff-badges/', () => {
     return HttpResponse.json({
       kyc: 0, listings: 0, events: 0, hero: 0, reviews: 0,

@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.contrib.auth.hashers import check_password
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import generics, status
@@ -37,6 +38,7 @@ from .permissions import (
     can_lead_team,
     can_manage_staff,
 )
+from .phones import filter_by_phone, phone_key
 from .serializers import (
     INVITE_TOKEN_LIFETIME,
     BusinessOwnerKYCDetailSerializer,
@@ -480,11 +482,23 @@ class CustomerListView(generics.ListAPIView):
 
 class BusinessOwnerListView(generics.ListAPIView):
     serializer_class = BusinessOwnerListSerializer
-    queryset = BusinessOwner.objects.all().order_by("-created_at")
     pagination_class = AccountsPagination
 
     def get_permissions(self):
         return [HasRolePermission("users.view")]
+
+    def get_queryset(self):
+        """Newest first. ?search= (staff phase 2A — the Fraud cases business
+        picker) matches the owner's name, the business name, the email, or the
+        sign-in phone however either was written (accounts.phones)."""
+        owners = BusinessOwner.objects.select_related("profile").order_by("-created_at")
+        term = (self.request.query_params.get("search") or "").strip()
+        if not term:
+            return owners
+        matches = Q(full_name__icontains=term) | Q(profile__business_name__icontains=term) | Q(email__iexact=term)
+        if phone_key(term):
+            matches |= Q(pk__in=filter_by_phone(BusinessOwner.objects.all(), "login_phone", term).values("pk"))
+        return owners.filter(matches)
 
 
 class StaffListView(generics.ListAPIView):

@@ -31,6 +31,8 @@ export const NAV_ITEMS = [
   { id: "portfolio", icon: "🏪", label: "Portfolio", show: (auth) => auth.hasPermission("businesses.manage_portfolio") },
   { id: "all-portfolios", icon: "🗂️", label: "All portfolios", show: (auth) => auth.hasPermission("portfolio.manage") },
   { id: "at-risk", icon: "⚠️", label: "At risk", show: (auth) => auth.hasPermission("portfolio.manage") },
+  { id: "subscriptions-due", icon: "⏳", label: "Subscriptions due", show: (auth) => auth.hasPermission("portfolio.manage") },
+  { id: "fraud-cases", icon: "🚩", label: "Fraud cases", show: (auth) => auth.hasPermission("fraud.manage") || auth.hasPermission("fraud.flag") },
   { id: "delivery-coordination", icon: "🚚", label: "Delivery Coordination", show: (auth) => auth.hasPermission("delivery.manage") },
   { id: "my-deliveries", icon: "📦", label: "My Deliveries", show: (auth) => auth.hasPermission("delivery.dispatch") },
   { id: "categories-zones", icon: "🗂️", label: "Categories & Zones", show: (auth) => auth.hasPermission("categories.manage") || auth.hasPermission("zones.manage") },
@@ -53,10 +55,10 @@ export const NAV_ITEMS = [
 // [group id, group label, item ids]. The original (pre-1B) grouping, used for
 // any session whose role has no menu below.
 const DEFAULT_GROUPS = [
-  ["moderation", "Moderation", ["kyc", "moderation", "hero", "events-moderation", "reviews"]],
+  ["moderation", "Moderation", ["kyc", "moderation", "hero", "events-moderation", "reviews", "fraud-cases"]],
   ["finance", "Finance", ["event-pricing", "subscription-plans", "subscription-plans-approval", "escrow", "disputes", "transactions", "credit"]],
   ["users-roles", "Users & Roles", ["users", "staff", "sessions"]],
-  ["field-ops", "Field Operations", ["scout-assignments", "field-verification", "register-business", "delivery-coordination", "my-deliveries", "portfolio", "all-portfolios", "at-risk"]],
+  ["field-ops", "Field Operations", ["scout-assignments", "field-verification", "register-business", "delivery-coordination", "my-deliveries", "portfolio", "all-portfolios", "at-risk", "subscriptions-due"]],
   ["content", "Content", ["categories-zones", "promotions", "site-settings"]],
   ["system", "System", ["delivery", "contact-messages", "messaging", "analytics"]],
   ["my-work", "My Work", ["approvals", "tasks", "calls", "reports", "team-reports", "activity", "my-team", "security"]],
@@ -70,8 +72,8 @@ const ROLE_MENUS = {
     ["home", "Home", ["approvals"]],
     ["people", "People", ["staff", "my-team", "sessions"]],
     ["teams", "Teams (step in)", ["scout-assignments", "field-verification", "portfolio", "delivery-coordination", "my-deliveries"]],
-    ["businesses", "Businesses", ["all-portfolios", "at-risk", "register-business"]],
-    ["marketplace", "Marketplace", ["users", "kyc", "moderation", "hero", "events-moderation", "reviews", "delivery", "disputes", "messaging", "contact-messages"]],
+    ["businesses", "Businesses", ["all-portfolios", "at-risk", "subscriptions-due", "register-business"]],
+    ["marketplace", "Marketplace", ["users", "kyc", "moderation", "hero", "events-moderation", "reviews", "delivery", "disputes", "messaging", "contact-messages", "fraud-cases"]],
     ["money", "Money", ["transactions", "escrow", "credit"]],
     ["insights", "Insights", ["analytics", "reports", "team-reports"]],
     ["security-audit", "Security & audit", ["activity"]],
@@ -81,9 +83,9 @@ const ROLE_MENUS = {
   operations: [
     ["decisions", "Decisions", ["approvals"]],
     ["people", "People", ["my-team", "scout-assignments", "field-verification"]],
-    ["businesses", "Businesses", ["all-portfolios", "at-risk", "register-business"]],
+    ["businesses", "Businesses", ["all-portfolios", "at-risk", "subscriptions-due", "register-business"]],
     ["moderation", "Moderation", ["kyc", "moderation", "hero", "events-moderation", "reviews"]],
-    ["service", "Service", ["messaging", "disputes", "delivery"]],
+    ["service", "Service", ["messaging", "disputes", "delivery", "fraud-cases"]],
     ["oversight", "Staff activity", ["activity"]],
     ["reports", "Reports", ["reports", "team-reports"]],
     ["my-work", "My work", ["tasks", "calls", "security"]],
@@ -108,7 +110,7 @@ const ROLE_MENUS = {
   support: [
     ["inbox", "Inbox", ["messaging"]],
     ["calls", "Calls", ["calls"]],
-    ["queues", "Queues", ["contact-messages", "reviews", "disputes", "delivery"]],
+    ["queues", "Queues", ["contact-messages", "reviews", "disputes", "delivery", "fraud-cases"]],
     ["people", "People", ["users"]],
     ["my-work", "My work", ["approvals", "tasks", "activity", "security"]],
     ["reports", "Reports", ["reports"]],

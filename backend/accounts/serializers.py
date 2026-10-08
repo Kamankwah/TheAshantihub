@@ -633,10 +633,15 @@ class CustomerListSerializer(serializers.ModelSerializer):
 
 
 class BusinessOwnerListSerializer(serializers.ModelSerializer):
+    # The business's name — the profile's, or the owner's own when none is set
+    # (BusinessOwner.display_name). The Fraud cases business picker shows it
+    # (staff phase 2A).
+    business_name = serializers.CharField(source="display_name", read_only=True)
+
     class Meta:
         model = BusinessOwner
         fields = [
-            "id", "full_name", "login_phone", "email", "kyc_status",
+            "id", "full_name", "business_name", "login_phone", "email", "kyc_status",
             "is_suspended", "created_at",
         ]
 

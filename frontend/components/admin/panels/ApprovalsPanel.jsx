@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { apiPost } from "../../../apiClient.js";
+import { API_BASE_URL, apiPost } from "../../../apiClient.js";
 import { useApproval, useApprovalCounts, useApprovals } from "../../../hooks/useApprovals.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { describeWait, timeAgo } from "../../../lib/timeAgo.js";
 import { D, glassCard } from "../theme.js";
 import { button, chip, dim, field, pill } from "./panelStyles.js";
+import BusinessKycReview from "./BusinessKycReview.jsx";
 
 const BOXES = [
   ["mine", "Waiting for me"],
@@ -35,6 +36,30 @@ function stageText(a) {
   if (a.stage === "manager") return `With ${a.assigned_to?.full_name || "their manager"}`;
   if (a.stage === "pool") return "With anyone who can approve this";
   return "With a Super Admin";
+}
+
+// Staged photos come back as server paths (/media/...); the API may live on
+// another host, so a path is joined to API_BASE_URL.
+const imageSrc = (url) => (typeof url === "string" && url.startsWith("/") ? `${API_BASE_URL}${url}` : url);
+
+// One side of a diff row: a photo row ({images: [urls]}) as thumbnails,
+// anything else as text.
+function DiffValue({ value, label }) {
+  const images = value && typeof value === "object" && Array.isArray(value.images) ? value.images : null;
+  if (!images) return show(value);
+  if (images.length === 0) return "—";
+  return (
+    <ul aria-label={label} style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", gap: 6, flexWrap: "wrap" }}>
+      {images.map((url, i) => (
+        <li key={`${i}-${url}`}>
+          <a href={imageSrc(url)} target="_blank" rel="noreferrer">
+            <img src={imageSrc(url)} alt={`${label} ${i + 1} of ${images.length}`}
+              style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: `1px solid ${D.cardBorder}`, display: "block" }} />
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 // /staff/approvals (inbox) and /staff/approvals/<id> (one request).
@@ -140,12 +165,15 @@ function ApprovalRequest({ id, onBack }) {
           {a.diff.map((row) => (
             <tr key={row.field || "value"} style={{ borderTop: `1px solid ${D.divider}`, color: D.text }}>
               <td style={{ padding: "6px 8px", fontWeight: 700 }}>{String(row.field || "").replace(/_/g, " ")}</td>
-              <td style={{ padding: "6px 8px" }}>{show(row.before)}</td>
-              <td style={{ padding: "6px 8px" }}>{show(row.after)}</td>
+              <td style={{ padding: "6px 8px" }}><DiffValue value={row.before} label={String(row.field || "").replace(/_/g, " ")} /></td>
+              <td style={{ padding: "6px 8px" }}><DiffValue value={row.after} label={String(row.field || "").replace(/_/g, " ")} /></td>
             </tr>
           ))}
         </tbody>
       </table>
+      {a.kind === "business.kyc" && a.target?.id && (
+        <BusinessKycReview businessId={a.target.id} canRecordAddress={a.status === "pending" && Boolean(a.can_decide)} />
+      )}
       {a.stale && <div role="alert" style={{ color: D.red, fontWeight: 700, fontSize: "0.8rem" }}>This changed since it was requested — ask for a fresh request.</div>}
       {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>{actionError}</div>}
       {a.can_decide && (

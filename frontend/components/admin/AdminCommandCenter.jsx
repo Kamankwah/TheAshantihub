@@ -47,6 +47,8 @@ import CallLogPanel from "./panels/CallLogPanel.jsx";
 import MyTeamPanel from "./panels/MyTeamPanel.jsx";
 import ApprovalsPanel from "./panels/ApprovalsPanel.jsx";
 import PortfolioPanel from "./panels/PortfolioPanel.jsx";
+import SubscriptionsDuePanel from "./panels/SubscriptionsDuePanel.jsx";
+import FraudCasesPanel from "./panels/FraudCasesPanel.jsx";
 import ReportsPanel from "./panels/ReportsPanel.jsx";
 import TeamReportsPanel from "./panels/TeamReportsPanel.jsx";
 import SecurityPanel from "./panels/SecurityPanel.jsx";
@@ -169,6 +171,13 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
     if (isControlled) onTabChange?.(id == null ? activeTab : `${activeTab}/${id}`);
     else setInternalDetail(id);
   };
+  // "Open" on Subscriptions due and Fraud cases shows the business page under
+  // All portfolios (/staff/all-portfolios/<id>).
+  const openBusiness = (id) => {
+    setDrawerOpen(false);
+    if (isControlled) onTabChange?.(`all-portfolios/${id}`);
+    else { setInternalTab("all-portfolios"); setInternalDetail(String(id)); }
+  };
 
   // Each panel starts at the top; skipped on first mount so a reload keeps
   // the browser's own scroll restoration.
@@ -268,6 +277,8 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "portfolio" && <PortfolioPanel mode="mine" auth={auth} detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "all-portfolios" && <PortfolioPanel mode="all" auth={auth} detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "at-risk" && <PortfolioPanel mode="at-risk" auth={auth} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "subscriptions-due" && <SubscriptionsDuePanel auth={auth} onOpenBusiness={openBusiness} />}
+          {activeTab === "fraud-cases" && <FraudCasesPanel auth={auth} onOpenBusiness={openBusiness} />}
           {activeTab === "register-business" && <RegisterBusinessPanel auth={auth} />}
         </main>
       </div>
