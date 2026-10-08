@@ -1,7 +1,7 @@
 from django.db.models import Q
 from rest_framework.permissions import BasePermission
 
-from .models import StaffUser
+from .models import Role, StaffUser
 
 
 class HasRolePermission(BasePermission):
@@ -44,6 +44,14 @@ def can_manage_staff(user):
     """Full staff management (Super Admin's staff.manage), as opposed to a
     team manager's staff.invite_team, which is limited to direct reports."""
     return isinstance(user, StaffUser) and "staff.manage" in user.effective_permission_codenames()
+
+
+def can_lead_team(staff):
+    """Who may be someone's manager (Team Reports, My Team, reviews): a Super
+    Admin, or anyone whose effective permissions hold staff.invite_team."""
+    return isinstance(staff, StaffUser) and (
+        staff.role.name == Role.SUPER_ADMIN or "staff.invite_team" in staff.effective_permission_codenames()
+    )
 
 
 class IsStaff(BasePermission):

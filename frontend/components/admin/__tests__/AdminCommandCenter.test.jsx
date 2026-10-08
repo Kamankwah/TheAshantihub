@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { apiFetch, setStoredAuth } from '../../../apiClient.js'
+import { SESSION_ENDED_EVENT, UNAUTHORIZED_EVENT, apiFetch, setStoredAuth } from '../../../apiClient.js'
 import { server } from '../../../mocks/server.js'
 import AdminCommandCenter from '../AdminCommandCenter.jsx'
 import { installMatchMedia } from '../../../test/matchMedia.js'
@@ -48,6 +48,17 @@ describe('AdminCommandCenter — a session that is already gone', () => {
     setStoredAuth(null) // gone without a storage event (this same tab)
     server.use(http.get('http://localhost:8000/api/x/', () => new HttpResponse(null, { status: 401 })))
     await expect(apiFetch('/api/x/')).rejects.toMatchObject({ status: 401 })
+    expect(onExit).toHaveBeenCalledTimes(1)
+  })
+
+  it('signs out once per mount: a second reason does not call onExit again', () => {
+    const onExit = vi.fn()
+    renderShell({ onExit })
+    act(() => { window.dispatchEvent(new Event(SESSION_ENDED_EVENT)) })
+    setStoredAuth(null)
+    act(() => { window.dispatchEvent(new Event(UNAUTHORIZED_EVENT)) })
+    act(() => { window.dispatchEvent(new Event(SESSION_ENDED_EVENT)) })
+    act(() => { window.dispatchEvent(new StorageEvent('storage', { key: 'ashantihub.auth', newValue: null })) })
     expect(onExit).toHaveBeenCalledTimes(1)
   })
 

@@ -28,7 +28,14 @@ from .models import (
     StaffSession,
     StaffUser,
 )
-from .permissions import HasAnyRolePermission, HasRolePermission, IsStaff, RequiresSudo, can_manage_staff
+from .permissions import (
+    HasAnyRolePermission,
+    HasRolePermission,
+    IsStaff,
+    RequiresSudo,
+    can_lead_team,
+    can_manage_staff,
+)
 from .serializers import (
     INVITE_TOKEN_LIFETIME,
     BusinessOwnerKYCDetailSerializer,
@@ -490,12 +497,6 @@ class InvitableRolesView(APIView):
         return Response(sorted(names))
 
 
-def _can_lead(staff):
-    """A manager must be able to run a team (Team Reports, My Team, reviews):
-    a Super Admin, or anyone whose effective permissions hold staff.invite_team."""
-    return staff.role.name == Role.SUPER_ADMIN or "staff.invite_team" in staff.effective_permission_codenames()
-
-
 class StaffManagerView(APIView):
     def get_permissions(self):
         return [HasRolePermission("staff.manage"), RequiresSudo()]
@@ -507,7 +508,7 @@ class StaffManagerView(APIView):
             staff.manager = None
         else:
             manager = generics.get_object_or_404(StaffUser, pk=manager_id, is_active=True)
-            if not _can_lead(manager):
+            if not can_lead_team(manager):
                 return Response({"detail": "Choose a manager who can lead a team."}, status=400)
             node = manager
             while node is not None:

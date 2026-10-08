@@ -60,7 +60,8 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
 - **Team managers act only on their direct reports.** `staff.invite_team` (Operations, Delivery
   Manager) is checked with `_guard_team_scope`; anything beyond invite/resend/suspend/unsuspend
   stays `staff.manage`. Only someone who can lead a team — a Super Admin, or anyone whose
-  effective permissions hold `staff.invite_team` — can be set as a manager (`StaffManagerView`).
+  effective permissions hold `staff.invite_team` — can be set as a manager, by `StaffManagerView` or an
+  invite's `manager` field; both use `accounts.permissions.can_lead_team`.
 - **Staff sessions are server-side.** Every staff JWT names a `StaffSession` by its `jti`;
   `MultiAccountJWTAuthentication` refuses revoked, idle (30 min) and expired (12 h) sessions and
   writes `last_seen_at` at most once a minute. In tests mint staff tokens with `issue_token()` or

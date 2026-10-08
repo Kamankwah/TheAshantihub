@@ -73,6 +73,19 @@ class TeamInviteTests(Base):
         self.assertEqual(self.invite("scout", manager=self.other_ops.id).status_code, 201)
         self.assertEqual(StaffUser.objects.get(email="new@example.com").manager, self.other_ops)
 
+    def test_an_invite_names_only_a_manager_who_can_lead(self):
+        # Same rule as StaffManagerView: a Super Admin or staff.invite_team.
+        self.as_(self.super_admin)
+        support = make_staff("support", "esi@example.com")
+        refused = self.invite("scout", manager=support.id)
+        self.assertEqual(refused.status_code, 400)
+        self.assertEqual(refused.json(), {"manager": ["Choose a manager who can lead a team."]})
+        self.assertFalse(StaffUser.objects.filter(email="new@example.com").exists())
+        support.extra_permissions.add(Permission.objects.get(codename="staff.invite_team"))
+        self.assertEqual(self.invite("scout", manager=support.id).status_code, 201)
+        self.assertEqual(self.invite("scout", email="b@example.com", manager=self.super_admin.id).status_code, 201)
+        self.assertEqual(self.invite("scout", email="c@example.com", manager=None).status_code, 201)
+
 
 class TeamScopeTests(Base):
     def setUp(self):

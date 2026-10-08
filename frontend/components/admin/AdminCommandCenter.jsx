@@ -105,7 +105,12 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
   // sign out through the normal staff sign-out, which clears cached data.
   const onExitRef = useRef(onExit);
   useEffect(() => { onExitRef.current = onExit; }, [onExit]);
+  // Once per mount: an idle timer, a session-ended event, a 401 and another
+  // tab's sign-out can all arrive together, and the first one decides.
+  const signedOut = useRef(false);
   const signOutBecause = useCallback((reason) => {
+    if (signedOut.current) return;
+    signedOut.current = true;
     noteSignedOutReason(reason);
     onExitRef.current?.();
   }, []);

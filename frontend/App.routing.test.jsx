@@ -629,6 +629,72 @@ describe('AshantiHub routing — /staff/:panel', () => {
   }, 8000)
 })
 
+// Signing out after the server has already ended the session must not POST
+// a token-less logout: the real StaffLogoutView answers that 401, and a 401
+// with no stored session tells a mounted shell to sign out again — a loop the
+// default 204 logout handler would hide.
+describe('AshantiHub — staff sign-out after the session has already ended', () => {
+  afterEach(() => setStoredAuth(null))
+
+  function trackLogouts() {
+    const logouts = []
+    server.use(http.post('http://localhost:8000/api/accounts/staff/logout/', ({ request }) => {
+      const authorization = request.headers.get('Authorization')
+      logouts.push(authorization)
+      return authorization ? new HttpResponse(null, { status: 204 }) : new HttpResponse(null, { status: 401 })
+    }))
+    return logouts
+  }
+  // Issued after any logout POST the sign-out made, so once it answers, that
+  // POST (and any loop it set off) has reached the server.
+  async function settle() {
+    server.use(http.get('http://localhost:8000/api/settle/', () => HttpResponse.json({})))
+    for (let round = 0; round < 3; round += 1) await apiFetch('/api/settle/').catch(() => {})
+  }
+
+  it('a session ended while the shell is open: staff sign-in, and no logout POST without a token', async () => {
+    const started = Date.now()
+    signInStaff(['messaging.manage', 'users.view'])
+    const logouts = trackLogouts()
+    renderStaffAt('/staff')
+    await staffNav()
+    server.use(http.get('http://localhost:8000/api/x/', () => new HttpResponse(null, { status: 401 })))
+    await expect(apiFetch('/api/x/')).rejects.toMatchObject({ status: 401 })
+    expect(await screen.findByText('Staff Sign In', {}, { timeout: 3000 })).toBeInTheDocument()
+    await settle()
+    expect(logouts).toEqual([])
+    expect(screen.getByTestId('location').textContent).toBe('/staff')
+    expect(Date.now() - started).toBeLessThan(8000)
+  }, 10000)
+
+  it('Back to dashboard after the session ended on the marketplace: no logout POST', async () => {
+    signInStaff(['messaging.manage', 'users.view'])
+    const logouts = trackLogouts()
+    renderStaffAt('/staff')
+    await staffNav()
+    fireEvent.click(screen.getByRole('button', { name: 'View site' }))
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
+    server.use(http.get('http://localhost:8000/api/listings/', () => new HttpResponse(null, { status: 401 })))
+    await expect(apiFetch('/api/listings/')).rejects.toMatchObject({ status: 401 })
+    fireEvent.click(await screen.findByRole('button', { name: 'Back to dashboard' }, { timeout: 3000 }))
+    expect(await screen.findByText('Staff Sign In', {}, { timeout: 3000 })).toBeInTheDocument()
+    await settle()
+    expect(logouts).toEqual([])
+  }, 10000)
+
+  it('Sign out with a live session still posts the logout exactly once, with its token', async () => {
+    signInStaff(['messaging.manage', 'users.view'])
+    const logouts = trackLogouts()
+    renderStaffAt('/staff')
+    await staffNav()
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    expect(await screen.findByText('Staff Sign In', {}, { timeout: 3000 })).toBeInTheDocument()
+    await waitFor(() => expect(logouts).toEqual(['Bearer test-token']))
+    await settle()
+    expect(logouts).toEqual(['Bearer test-token'])
+  }, 10000)
+})
+
 describe('AshantiHub routing — staff notification bell', () => {
   afterEach(() => setStoredAuth(null))
   const notification = { id: 21, title: 'Approval needed', body: 'Kwame asked for a change', icon: '🗳️', link: 'approvals/7', is_read: false, created_at: '2026-10-07T06:46:00Z' }

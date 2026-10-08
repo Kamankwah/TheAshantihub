@@ -23,7 +23,7 @@ from .models import (
     StaffSession,
     StaffUser,
 )
-from .permissions import can_manage_staff
+from .permissions import can_lead_team, can_manage_staff
 
 # Used to pay the same check_password() cost when no account is found, so that
 # login timing does not leak whether an identifier exists (see login serializers below).
@@ -104,6 +104,9 @@ class StaffInviteSerializer(serializers.ModelSerializer):
         requester = self.context["request"].user
         if not can_manage_staff(requester):
             attrs["manager"] = requester
+        elif attrs.get("manager") is not None and not can_lead_team(attrs["manager"]):
+            # Same rule as StaffManagerView: only someone who can lead a team.
+            raise serializers.ValidationError({"manager": ["Choose a manager who can lead a team."]})
         return attrs
 
     def create(self, validated_data):

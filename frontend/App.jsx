@@ -26,7 +26,7 @@ import { useNotifications } from "./hooks/useNotifications.js";
 import { useMyTickets } from "./hooks/useMyTickets.js";
 import { useMyCustomerProfile } from "./hooks/useMyCustomerProfile.js";
 import { useSiteSettings } from "./hooks/useSiteSettings.js";
-import { apiFetch, apiPost, apiPatch } from "./apiClient.js";
+import { apiFetch, apiPost, apiPatch, getStoredAuth } from "./apiClient.js";
 import { C, CURRENCIES } from "./theme.js";
 import Flag from "./components/Flag.jsx";
 import Navbar from "./components/Navbar.jsx";
@@ -2976,7 +2976,11 @@ export default function AshantiHub() {
   const staffSignOut=()=>{
     // Best-effort audit trail: the token is read synchronously by apiPost
     // before logout() clears it; a failed call never blocks signing out.
-    apiPost("/api/accounts/staff/logout/",{}).catch(()=>{});
+    // With no staff token stored the server session is already over, and a
+    // token-less logout would only 401 (which a mounted shell reads as "sign
+    // out again"), so it is skipped; everything local below still runs.
+    const stored=getStoredAuth();
+    if(stored?.token&&stored.account_type==="staff") apiPost("/api/accounts/staff/logout/",{}).catch(()=>{});
     queryClient.clear();
     auth.logout();
     setAuthModal(null);
