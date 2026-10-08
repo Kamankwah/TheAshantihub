@@ -73,6 +73,27 @@ describe('OwnerHandover — the owner-only screen', () => {
   })
 })
 
+describe('OwnerHandover — Back and autofill', () => {
+  it('keeps the owner-only screen up when Back is pressed', async () => {
+    startHandover()
+    renderHandover()
+    await screen.findByText('Asafo Hair & Beauty')
+    const before = window.location.href
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    expect(screen.getByRole('dialog', { name: 'Owner setup' })).toBeInTheDocument()
+    expect(window.location.href).toBe(before)
+  })
+
+  it("stops the browser offering to save the owner's password on the scout's phone", async () => {
+    startHandover()
+    renderHandover()
+    await screen.findByText('Asafo Hair & Beauty')
+    expect(screen.getByLabelText('Set your password')).toHaveAttribute('autocomplete', 'off')
+    expect(screen.getByLabelText('Type it again')).toHaveAttribute('autocomplete', 'off')
+    expect(screen.getByText(/If the phone offers to save it, tap Never/)).toBeInTheDocument()
+  })
+})
+
 describe('OwnerHandover — the password (Review Focus 3)', () => {
   it('posts the claim to /api/accounts/business-owners/claim/ and keeps no copy of the password after submit', async () => {
     startHandover()

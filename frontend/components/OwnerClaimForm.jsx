@@ -56,7 +56,7 @@ export function ClaimSummary({ preview }) {
   );
 }
 
-export default function OwnerClaimForm({ preview, token, onClaimed, submitLabel = "Save my login" }) {
+export default function OwnerClaimForm({ preview, token, onClaimed, submitLabel = "Save my login", handover = false }) {
   const passwordId = useId();
   const confirmId = useId();
   const emailId = useId();
@@ -117,13 +117,13 @@ export default function OwnerClaimForm({ preview, token, onClaimed, submitLabel 
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         <label htmlFor={passwordId} style={labelStyle}>Set your password</label>
         <input id={passwordId} ref={passwordRef} type={show ? "text" : "password"} value={password}
-          onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" aria-describedby={hintId} style={inputStyle} />
+          onChange={(e) => setPassword(e.target.value)} autoComplete={handover ? "off" : "new-password"} aria-describedby={hintId} style={inputStyle} />
         <div id={hintId} style={hintStyle}>At least 8 characters.</div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         <label htmlFor={confirmId} style={labelStyle}>Type it again</label>
         <input id={confirmId} ref={confirmRef} type={show ? "text" : "password"} value={confirm}
-          onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" style={inputStyle} />
+          onChange={(e) => setConfirm(e.target.value)} autoComplete={handover ? "off" : "new-password"} style={inputStyle} />
         {confirm.length > 0 && (matches
           ? <div style={{ ...hintStyle, opacity: 1, color: C.kente2, fontWeight: 800 }}><span aria-hidden="true">✓ </span>Passwords match</div>
           : <div style={hintStyle}>Passwords don't match yet</div>)}

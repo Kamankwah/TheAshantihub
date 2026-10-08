@@ -377,7 +377,7 @@ export default function RegisterBusinessPanel({ auth }) {
             {hhmm(submitted.at)} · {submitted.approver_name ? `${submitted.approver_name} has 24 hours, then any Operations lead.` : "Operations will check it in the KYC queue."} The draft has been cleared from this phone.
           </div>
           {(submitted.flags || []).map((flag) => (
-            <div key={flag.id} style={callout(D.amber)}>Flagged for Operations: {flag.kind_label} — {flag.title}</div>
+            <div key={flag.id} style={callout(D.amber)}>Flagged for Operations: {flag.kind_label}</div>
           ))}
         </div>
         {ownerClaimed ? (

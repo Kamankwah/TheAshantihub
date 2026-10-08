@@ -57,7 +57,14 @@ function useOwnerOnlyScreen(screenRef, focusRef) {
     const overflow = root.style.overflow;
     root.style.overflow = "hidden";
     focusRef.current?.focus();
+    // Back must not leave the owner looking at the scout's staff shell: keep a
+    // same-URL guard entry on top of history and re-push it on every popstate.
+    const pushGuard = () => window.history.pushState({ ...(window.history.state || {}), ownerGuard: true }, "", window.location.href);
+    pushGuard();
+    window.addEventListener("popstate", pushGuard);
     return () => {
+      window.removeEventListener("popstate", pushGuard);
+      if (window.history.state?.ownerGuard) window.history.back();
       for (const [el, ariaHidden, wasInert] of hidden) {
         if (ariaHidden === null) el.removeAttribute("aria-hidden");
         else el.setAttribute("aria-hidden", ariaHidden);
@@ -139,8 +146,8 @@ export default function OwnerHandover({ businessId, ownerFirstName, scoutName, o
           <>
             <p style={{ margin: 0, fontSize: "0.9rem", lineHeight: 1.5 }}>Set your own password here. {scoutName}'s menus stay hidden until you finish.</p>
             <ClaimSummary preview={preview.data} />
-            <OwnerClaimForm preview={preview.data} token={handover.token} onClaimed={setClaimed} submitLabel={`Save — then hand back to ${scoutName}`} />
-            <p style={{ margin: 0, fontSize: "0.78rem", lineHeight: 1.5, opacity: 0.8 }}>Your password goes straight to AshantiHub. It never stays on this phone, and {scoutName} can't sign in as you. This setup closes in {minutesLeft} min.</p>
+            <OwnerClaimForm preview={preview.data} token={handover.token} onClaimed={setClaimed} submitLabel={`Save — then hand back to ${scoutName}`} handover />
+            <p style={{ margin: 0, fontSize: "0.78rem", lineHeight: 1.5, opacity: 0.8 }}>Your password goes straight to AshantiHub. AshantiHub doesn't keep your password on this phone. If the phone offers to save it, tap Never. This setup closes in {minutesLeft} min.</p>
             <button type="button" onClick={handBack} style={quietStyle}>Cancel — hand back to {scoutName}</button>
           </>
         )}

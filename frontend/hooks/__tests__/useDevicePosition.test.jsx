@@ -25,6 +25,13 @@ describe('useDevicePosition', () => {
     expect(result.current.locating).toBe(false)
   })
 
+  it('rounds accuracy up so a 100.4 m fix is not let through as 100', () => {
+    stubGeolocation(vi.fn((ok) => ok(fix(100.4))))
+    const { result } = renderHook(() => useDevicePosition())
+    act(() => result.current.locate())
+    expect(result.current.position.accuracy).toBe(101)
+  })
+
   it('is locating until the phone answers', () => {
     let answer
     stubGeolocation(vi.fn((ok) => { answer = ok }))

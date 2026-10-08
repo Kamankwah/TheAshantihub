@@ -196,6 +196,27 @@ describe('RegisterBusinessPanel — the map pin', () => {
   })
 })
 
+describe('RegisterBusinessPanel — accuracy rounding', () => {
+  it('treats a 100.4 m fix as ±101 m, too rough', async () => {
+    stubGeolocation(100.4)
+    renderPanel()
+    await fillOwnerAndBusiness()
+    fireEvent.click(await screen.findByRole('button', { name: 'Use my location' }))
+    expect(await screen.findByText('Location too rough: ±101 m')).toBeInTheDocument()
+  })
+})
+
+describe('RegisterBusinessPanel — flags', () => {
+  it("shows a flag's kind only, never its title (which can name a staff member)", async () => {
+    mockRegistration({ register: () => HttpResponse.json(
+      { ...REGISTERED, flags: [{ id: 5, kind_label: 'Self-dealing', title: 'Owner phone matches Efua Mensah' }] }, { status: 201 },
+    ) })
+    await submitRegistration()
+    expect(screen.getByText('Flagged for Operations: Self-dealing')).toBeInTheDocument()
+    expect(document.body.textContent).not.toContain('Efua Mensah')
+  })
+})
+
 describe('RegisterBusinessPanel — duplicate and self-dealing checks', () => {
   it('blocks the submit when the phone already belongs to a business', async () => {
     mockRegistration({ check: { exact: ['phone'], similar: [], staff_match: false } })

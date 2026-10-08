@@ -38,7 +38,7 @@ export function useDevicePosition() {
         setPosition({
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
-          accuracy: Math.round(pos.coords.accuracy),
+          accuracy: Math.ceil(pos.coords.accuracy),
           at: new Date(pos.timestamp || Date.now()).toISOString(),
         })
       },
