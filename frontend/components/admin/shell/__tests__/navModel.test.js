@@ -175,3 +175,45 @@ describe('Register a business (staff phase 2A)', () => {
     }
   })
 })
+
+describe('portfolio menus (staff phase 2A)', () => {
+  const authAs = (role, perms) => ({ user: { role }, hasPermission: (c) => perms.includes(c) })
+  const groupOf = (groups, itemId) => groups.find((g) => g.items.some((i) => i.id === itemId))?.label
+  const idsIn = (groups, label) => groups.find((g) => g.label === label)?.items.map((i) => i.id)
+  const allIds = (perms) => buildNavGroups({ hasPermission: (c) => perms.includes(c) }).flatMap((g) => g.items.map((i) => i.id))
+
+  it("puts a scout's Portfolio under My businesses, next to Field Verification", () => {
+    const groups = buildNavGroups(authAs('scout', ['businesses.manage_portfolio', 'businesses.register', 'scouts.verify', 'calls.log']))
+    expect(groups.map((g) => g.label)).toEqual(['Pipeline', 'My businesses', 'Calls', 'My work', 'Reports'])
+    expect(idsIn(groups, 'My businesses')).toEqual(['portfolio', 'field-verification'])
+  })
+
+  it('gives Operations a Businesses group right after People', () => {
+    const groups = buildNavGroups(authAs('operations', ['portfolio.manage', 'businesses.register', 'staff.invite_team']))
+    const labels = groups.map((g) => g.label)
+    expect(labels.indexOf('Businesses')).toBe(labels.indexOf('People') + 1)
+    expect(idsIn(groups, 'Businesses')).toEqual(['all-portfolios', 'at-risk', 'register-business'])
+  })
+
+  it('gives Super Admin a Businesses group and keeps Portfolio under Teams (step in)', () => {
+    const groups = buildNavGroups({ user: { role: 'super_admin' }, hasPermission: () => true })
+    expect(groupOf(groups, 'all-portfolios')).toBe('Businesses')
+    expect(groupOf(groups, 'at-risk')).toBe('Businesses')
+    expect(groupOf(groups, 'register-business')).toBe('Businesses')
+    expect(groupOf(groups, 'portfolio')).toBe('Teams (step in)')
+  })
+
+  it('shows Portfolio to account managers and the Operations screens only with portfolio.manage', () => {
+    expect(allIds(['businesses.manage_portfolio'])).toContain('portfolio')
+    expect(allIds(['businesses.manage_portfolio'])).not.toContain('all-portfolios')
+    expect(allIds(['portfolio.manage'])).toEqual(expect.arrayContaining(['all-portfolios', 'at-risk']))
+    expect(allIds(['portfolio.manage'])).not.toContain('portfolio')
+  })
+
+  it('labels the three items as on the canvas', () => {
+    const byId = Object.fromEntries(NAV_ITEMS.map((i) => [i.id, i]))
+    expect([byId.portfolio.label, byId.portfolio.icon]).toEqual(['Portfolio', '🏪'])
+    expect([byId['all-portfolios'].label, byId['all-portfolios'].icon]).toEqual(['All portfolios', '🗂️'])
+    expect([byId['at-risk'].label, byId['at-risk'].icon]).toEqual(['At risk', '⚠️'])
+  })
+})

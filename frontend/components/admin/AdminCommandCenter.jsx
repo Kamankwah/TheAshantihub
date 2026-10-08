@@ -46,6 +46,7 @@ import ActivityPanel from "./panels/ActivityPanel.jsx";
 import CallLogPanel from "./panels/CallLogPanel.jsx";
 import MyTeamPanel from "./panels/MyTeamPanel.jsx";
 import ApprovalsPanel from "./panels/ApprovalsPanel.jsx";
+import PortfolioPanel from "./panels/PortfolioPanel.jsx";
 import ReportsPanel from "./panels/ReportsPanel.jsx";
 import TeamReportsPanel from "./panels/TeamReportsPanel.jsx";
 import SecurityPanel from "./panels/SecurityPanel.jsx";
@@ -264,6 +265,9 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "sessions" && <SessionsPanel auth={auth} />}
           {activeTab === "my-team" && <MyTeamPanel currentStaffId={auth.user?.id} />}
           {activeTab === "approvals" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "portfolio" && <PortfolioPanel mode="mine" auth={auth} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "all-portfolios" && <PortfolioPanel mode="all" auth={auth} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "at-risk" && <PortfolioPanel mode="at-risk" auth={auth} detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "register-business" && <RegisterBusinessPanel auth={auth} />}
         </main>
       </div>

@@ -510,6 +510,23 @@ export const handlers = [
   http.get('http://localhost:8000/api/reports/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/reports/team/', () => HttpResponse.json({ period: 'day', period_start: '2026-10-07', rows: [] })),
   http.get('http://localhost:8000/api/reports/exports/', () => HttpResponse.json([])),
+  // Portfolio (staff phase 2A) — scouts' and Operations' business lists, one
+  // business, and the Add-a-product form's choices.
+  http.get('http://localhost:8000/api/portfolio/businesses/', () => HttpResponse.json({
+    count: 0, next: null, previous: null, results: [],
+    summary: { total: 0, healthy: 0, needs_attention: 0, at_risk: 0, new: 0, unassigned: 0, at_risk_week_ago: null },
+  })),
+  http.get('http://localhost:8000/api/portfolio/businesses/:id/', ({ params }) => HttpResponse.json({
+    id: Number(params.id), business_name: 'Business', owner_name: 'Owner', login_phone: '', zone: null, kyc_status: 'pending',
+    registration_channel: 'scout', needs_claim: false, claimed_at: null, account_manager: null,
+    health: { rating: 'new', reasons: ['KYC waiting'] }, subscription: { state: 'none' },
+    listings_live: 0, listings_total: 0, listings_waiting: 0, last_order_at: null, last_contact: null, open_fraud_flags: 0,
+    business_kind: 'product', business_category: null, gps_address: '', lat: null, lng: null, location_accuracy_m: null,
+    location_is_manual: false, location_set_by: '', business_contact_phone: '', business_description: '', opening_hours: '',
+    signboard_photo: null, email: '', registered_by: null, created_at: '2026-10-07T00:00:00Z',
+    listings: [], pending_requests: [], recent_calls: [], assignments: [], open_flags: [], can_manage: false,
+  })),
+  http.get('http://localhost:8000/api/portfolio/meta/listing-form/', () => HttpResponse.json({ categories: [], zones: [], required_answers: {} })),
   http.get('http://localhost:8000/api/notifications/staff-badges/', () => {
     return HttpResponse.json({
       kyc: 0, listings: 0, events: 0, hero: 0, reviews: 0,
