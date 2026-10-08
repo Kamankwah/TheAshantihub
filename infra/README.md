@@ -221,9 +221,20 @@ triggers refuse `UPDATE`/`DELETE`, so never "fix" a row by hand. Its nightly
 chain check now runs in Celery beat at 01:45 (`ACTIVITY_SEAL_EMAIL=True` in
 production emails the seal to Super Admins; staging only verifies). Beat also
 runs approval escalation (every 5 minutes), day-report reminders (18:00),
-staff-session cleanup (03:30), expired-export purging (04:00) and the
-stuck-export reaper (every 15 minutes). The schedule is `CELERY_BEAT_SCHEDULE`
-in `backend/ashantihub/settings.py`.
+staff-session cleanup (03:30), expired-export purging (04:00), the
+stuck-export reaper (every 15 minutes), the subscription clock (hourly, at
+minute 5), the nightly business-health snapshot (02:15) and staged-photo
+purging (04:30). The schedule is `CELERY_BEAT_SCHEDULE` in
+`backend/ashantihub/settings.py`.
+
+**Rolling out phase 2A.** No new settings or services. The first
+subscription-clock run marks every lapsed subscription overdue: one that lapsed
+more than a day earlier gets its full 14-day grace from that run (nothing is
+hidden at once), and each owner is told in-app and by email. To give the
+staging scout demo businesses, run once on staging only. First check that
+staging's `SENTRY_ENVIRONMENT` is `staging` (the command refuses otherwise),
+then choose a demo-owner password (never commit it) and pass it:
+`docker compose -p ashantihub-staging -f infra/compose/docker-compose.yml run --rm --no-deps web python manage.py seed_phase2_demo --password '<chosen password>'`
 
 **After the plan 1B deploy, reinstall the cron file on the server** (the
 activity-chain lines were removed from it; the install line is in the file's

@@ -105,6 +105,40 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   answers 503. With `DJANGO_DEBUG=False` (outside `manage.py test`) the settings refuse to load
   without a `redis://`/`rediss://` `REDIS_URL`. Activity bodies have NUL stripped
   before hashing (Postgres text cannot hold it).
+- **A business is a `BusinessOwner` plus its `BusinessOwnerProfile`** - there is no Business
+  model. Show `BusinessOwner.display_name` (business name, else the owner's name). A scout-
+  registered owner (`registration_channel = "scout"`) has an unusable password until they claim
+  their login (`needs_claim`); `compute_registration_step()` treats that channel differently.
+- **Phones are compared by their last 9 digits.** Write owner phones through
+  `accounts.phones.normalize_gh_phone()` (`+233...`) and match stored phones only through
+  `phone_key()` / `filter_by_phone()` (there is no `phone_match_q`), because older rows hold
+  whatever owners typed.
+- **Hidden businesses:** a suspended owner or one whose subscription is paused is hidden from
+  public browse by `listings.visibility.hidden_business_q()`. Every public listing or event
+  queryset, and adding to a cart, must use it.
+- **The subscription clock** (`billing.clock`, hourly) marks overdue, reminds on days 7 and 13 and
+  pauses at day 15. Only `payments.services._finalize_subscription` (a real payment) clears it,
+  through `billing.clock.clear_after_payment()`; `POST /api/billing/subscriptions/me/` must never.
+- **KYC goes through `accounts.kyc`.** The KYC queue and the `business.kyc` approval share
+  `approve_owner()` / `reject_owner()`; a queue decision settles the pending request with
+  `approvals.services.close_pending_for_target()` (never by running `apply` again). `approve()`
+  sets `decided_by` before `apply`, so an `apply` may read it. The business's registrar can never
+  decide its KYC through either door, Super Admin included (403), and a scout-channel business
+  needs the Ghana Post address decision before KYC approval through either door.
+- **Scout changes are approval kinds** in `portfolio.approval_kinds.KINDS` (registered in
+  `PortfolioConfig.ready()`); only the business's account manager may submit them; each applied
+  change writes a `portfolio.AppliedChange` the owner can undo for 7 days
+  (`portfolio.undo.undo_change`), which always opens a fraud case. `email` / `login_phone` are
+  proposable only while the owner `needs_claim`, and a proposed email or phone that belongs to
+  staff is refused. Deactivating a scout counts only their non-rejected managed businesses.
+- **Owner claim tokens** (`accounts.claims`) are stored as SHA-256 hashes; a hand-over token works
+  only on the scout session that started it; the claim view is `activity_exempt` and records
+  `business.claimed` itself, so the password never reaches the activity log. The claim strips
+  password edge spaces (sign-in trims them), and password reset sends nothing to an owner who
+  `needs_claim` - they must claim, so that consent is recorded.
+- **Fraud cases** come from `fraud.services.raise_flag()` (use a `dedupe_key` for system checks).
+  Confirming runs the hooks in `fraud.services.ON_CONFIRMED`; plan 2B adds commission reversal
+  there. The realtime `fraud.` row also invalidates `kyc-queue` and `portfolio-business`.
 
 ## Test-fixture gotcha
 

@@ -1,7 +1,7 @@
 # Staff Platform Phase 2 — Scouts + Operations Design
 
 **Date:** 2026-10-07
-**Status:** Design approved in conversation 2026-10-07 (Section 2). Not implemented.
+**Status:** Design approved in conversation 2026-10-07 (Section 2). Plan 2A implemented (S1–S4, S7, S9, S12 and their screens); plan 2B (S5, S6, S8, S10 service views, S13, the rest of S11) to follow.
 **Parent:** `2026-10-07-staff-platform-overview-design.md`
 **Depends on:** `2026-10-07-staff-foundations-design.md` (activity log, approvals engine, report
 engine, call log + tasks, team invites, live updates)

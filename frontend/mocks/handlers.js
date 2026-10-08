@@ -563,6 +563,8 @@ export const handlers = [
   )),
   // The owner's subscription — none by default. The business dashboard's
   // shell reads it for the renew banner on every tab (staff phase 2A).
+  // Subscription plans — default empty list (useSubscriptionPlans fires on full-app renders).
+  http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/billing/subscriptions/me/', () => HttpResponse.json({})),
   // What an account manager changed for the owner — nothing by default.
   http.get('http://localhost:8000/api/portfolio/owner/changes/', () => HttpResponse.json([])),
