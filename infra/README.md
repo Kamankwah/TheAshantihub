@@ -63,7 +63,37 @@ The script refuses to run without `.deploy.conf` and `backend/.env`, dumps the
 database before migrating, and fails loudly with the last 60 log lines if the
 API does not answer its health check afterwards.
 
-Both `REDIS_URL` (a `redis://` URL) and `STAFF_SECRETS_KEY` must be set in each environment's `backend/.env` before deploying; `deploy.sh` exits with a `FATAL` naming whichever is missing. It also brings up the `redis`, `worker` and `beat` services and fails if the Celery worker does not answer a ping.
+Both `REDIS_URL` (a `redis://` URL) and `STAFF_SECRETS_KEY` must be set in
+each environment's `backend/.env` before deploying (with `REDIS_PASSWORD`, and
+neither still holding a `PASTE_` placeholder); `deploy.sh` exits with a `FATAL`
+naming whatever is missing. It also brings up `redis`, `realtime` (the
+WebSocket service, on `APP_PORT + 100`), `worker` and `beat`, and fails if the
+Celery worker does not answer a ping.
+
+### Rolling out live updates (plan 1B)
+
+Do each environment in turn, staging first.
+
+1. Add `REDIS_PASSWORD`, `REDIS_URL` (the same password inside it) and
+   `STAFF_SECRETS_KEY` to `backend/.env`. Generate the password with
+   `openssl rand -hex 32` and the Fernet key with
+   `docker run --rm ashantihub-app python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+   (use `ashantihub-staging-app` on staging, or any built image).
+2. Production only: set `ACTIVITY_SEAL_EMAIL=True`. The old cron passed
+   `--email-seal`; beat now reads this setting instead.
+3. Run `deploy.sh`. The first run is still the previous script (it re-execs
+   from a copy), which stops at compose with the `APP_IMAGE` error, by design.
+   Run it again.
+4. Reinstall `infra/cron/ashantihub.cron` by hand
+   (`install -m 644 /opt/ashantihub/infra/cron/ashantihub.cron /etc/cron.d/ashantihub`);
+   the activity-chain lines moved to beat.
+5. Remove the old image: `docker image rm ashantihub-web` (staging:
+   `ashantihub-staging-web`).
+6. `/ws/` needs `install-hestia-templates.sh`, which renders BOTH API vhosts
+   from the production checkout. Installing it for staging therefore also adds
+   an inert `/ws/` to production: it answers 502 until production runs
+   `realtime`, and the staff UI falls back to polling. Needs the owner's
+   go-ahead.
 
 Production deploys (`SERVE_FRONTEND=yes`) also run
 `install-hestia-templates.sh` automatically when the current

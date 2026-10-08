@@ -63,10 +63,12 @@ surfaces; no behaviour change intended.
 **Infrastructure** (`infra/compose/docker-compose.yml`, both environments):
 - `redis` service: `redis:7-alpine`, password from `.env`, no host port, `maxmemory 128mb`,
   no persistence (everything in it is rebuildable).
-- `web` switches from WSGI to ASGI: gunicorn with uvicorn workers serving
-  `ashantihub.asgi:application` (HTTP and WebSocket from one process type).
+- `web` stays WSGI (revised in plan 1B Task 1): under ASGI Django runs each sync view in its
+  own thread, which would uncap Postgres connections and stop `--timeout` killing hung views.
+  A separate `realtime` service (gunicorn + uvicorn workers on `ashantihub.asgi:application`,
+  loopback port `APP_PORT + 100`) serves `/ws/` only.
 - `worker` (Celery) and `beat` (Celery beat) services from the same image.
-- `deploy.sh` brings up `redis`, `web`, `worker`, `beat` (today it brings up only `db` and
+- `deploy.sh` brings up `redis`, `web`, `realtime`, `worker`, `beat` (today it brings up only `db` and
   `web`). Keep its `/tmp` re-exec block untouched.
 - nginx: add a `location /ws/` block to `infra/hestia/templates/ashantihub-api.stpl.in` and
   `.tpl.in` with `proxy_http_version 1.1`, `Upgrade`/`Connection` headers and a long read

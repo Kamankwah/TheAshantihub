@@ -293,7 +293,8 @@ SIMPLE_JWT = {
 # The "default" cache deliberately stays local-memory even in production:
 # the login throttles read it, and a Redis outage must never take sign-in
 # down (spec §3: "Redis down: sockets fail, polling continues"). Short socket
-# timeouts keep a hung Redis from stalling sign-in or staff writes.
+# timeouts keep a hung Redis from stalling the ticket cache (staff-only use);
+# the channel layer and broker need longer read timeouts, noted where set.
 TESTING = len(sys.argv) > 1 and sys.argv[1] == "test"
 REDIS_URL = env("REDIS_URL", default="")
 USE_REDIS = bool(REDIS_URL) and not TESTING
@@ -315,7 +316,9 @@ CHANNEL_LAYERS = {
     "default": (
         {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
-            "CONFIG": {"hosts": [{"address": REDIS_URL, "socket_connect_timeout": 1, "socket_timeout": 2}]},
+            # channels-redis blocks in BZPOPMIN for 5 s per receive, so the read
+            # timeout must exceed that or idle sockets would error.
+            "CONFIG": {"hosts": [{"address": REDIS_URL, "socket_connect_timeout": 1, "socket_timeout": 10}]},
         }
         if USE_REDIS
         else {"BACKEND": "channels.layers.InMemoryChannelLayer"}
@@ -328,6 +331,11 @@ CELERY_TASK_EAGER_PROPAGATES = True
 CELERY_TASK_IGNORE_RESULT = True
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+# kombu's Redis transport blocks in BRPOP for 1 s at a time, so a 5 s read
+# timeout never trips on an idle worker. Publishing gives up after one retry
+# instead of hanging a request when Redis is unreachable.
+CELERY_BROKER_TRANSPORT_OPTIONS = {"socket_connect_timeout": 1, "socket_timeout": 5}
+CELERY_TASK_PUBLISH_RETRY_POLICY = {"max_retries": 1, "interval_start": 0, "interval_step": 0.5, "interval_max": 0.5}
 # Each job's owning app adds its own entry; core/tests/test_background_jobs.py
 # fails if an entry names a task that doesn't exist. Times are Africa/Accra.
 CELERY_BEAT_SCHEDULE = {

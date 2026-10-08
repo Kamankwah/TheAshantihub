@@ -2,8 +2,9 @@
 #
 # backend/Dockerfile (the sibling of this file) is the DEVELOPMENT image —
 # it runs `manage.py runserver` with the source bind-mounted. This one bakes
-# the source in and runs gunicorn with uvicorn workers (ASGI) as a non-root user, and is what
-# infra/compose/docker-compose.yml builds on the server.
+# the source in and runs gunicorn (WSGI) as a non-root user, and is what
+# infra/compose/docker-compose.yml builds on the server. The compose
+# `realtime` service runs the same image under uvicorn workers for /ws/.
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -35,8 +36,7 @@ EXPOSE 8000
 
 # docker-compose.yml overrides this with the per-environment worker count;
 # this default keeps a bare `docker run` of the image working.
-CMD ["gunicorn", "ashantihub.asgi:application", \
-     "--worker-class=uvicorn_worker.UvicornWorker", \
+CMD ["gunicorn", "ashantihub.wsgi:application", \
      "--bind=0.0.0.0:8000", \
      "--workers=4", \
      "--timeout=60", \

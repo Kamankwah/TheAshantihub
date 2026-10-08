@@ -17,11 +17,11 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "5"
 
-# Shared by web, worker and beat. Only `web` builds; worker and beat run the
+# Shared by web, realtime, worker and beat. Only `web` builds; realtime, worker and beat run the
 # very image web just built (the same APP_IMAGE tag, written per environment
 # by deploy.sh), so the three can never run different code.
 x-app: &app
-  image: ${APP_IMAGE:-ashantihub-app}
+  image: ${APP_IMAGE:?APP_IMAGE is written by deploy.sh}
   restart: unless-stopped
   env_file: ../../backend/.env
   extra_hosts:
@@ -71,12 +71,13 @@ services:
     build:
       context: ../../backend
       dockerfile: Dockerfile.prod
-    # ASGI: HTTP and WebSockets from the same workers. Sync DRF views still
-    # run one at a time per worker, exactly as under the old sync workers.
+    # HTTP stays WSGI on purpose: under ASGI Django runs each sync view in
+    # its own thread, which would uncap Postgres connections and stop
+    # --timeout from killing hung views. WebSockets are staff-only and live
+    # in the `realtime` service below.
     command:
       - gunicorn
-      - ashantihub.asgi:application
-      - --worker-class=uvicorn_worker.UvicornWorker
+      - ashantihub.wsgi:application
       - --bind=0.0.0.0:8000
       - --workers=${GUNICORN_WORKERS:-4}
       - --timeout=60
@@ -95,8 +96,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      # Started, not healthy: a Redis outage must not stop the API coming up.
       redis:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       # X-Forwarded-Proto mimics nginx: without it SECURE_SSL_REDIRECT (on
       # whenever DEBUG=False) answers this loopback probe with a 301 to https
@@ -104,6 +106,33 @@ services:
       # 127.0.0.1, or Django rejects the probe's Host header with a 400.
       # Quoted as one string on purpose: unquoted, YAML reads the
       # "X-Forwarded-Proto: https" header as a nested mapping.
+      test: ["CMD-SHELL", "curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/api/health/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # WebSockets (Django Channels) for /ws/ only: ASGI under uvicorn workers.
+  # One worker is plenty for staff-only sockets; nginx proxies /ws/ here.
+  realtime:
+    <<: *app
+    command:
+      - gunicorn
+      - ashantihub.asgi:application
+      - --worker-class=uvicorn_worker.UvicornWorker
+      - --bind=0.0.0.0:8000
+      - --workers=1
+      - --timeout=60
+      - --access-logfile=-
+      - --error-logfile=-
+    ports:
+      - "127.0.0.1:${REALTIME_PORT:?run deploy.sh}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
       test: ["CMD-SHELL", "curl -fsS -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/api/health/ || exit 1"]
       interval: 30s
       timeout: 10s

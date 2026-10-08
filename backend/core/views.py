@@ -32,7 +32,8 @@ def _redis_state():
     try:
         import redis
 
-        redis.Redis.from_url(settings.REDIS_URL, socket_connect_timeout=1, socket_timeout=1).ping()
+        with redis.Redis.from_url(settings.REDIS_URL, socket_connect_timeout=1, socket_timeout=1) as client:
+            client.ping()
     except Exception:
         return "down"
     return "ok"

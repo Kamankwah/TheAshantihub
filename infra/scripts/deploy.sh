@@ -62,14 +62,19 @@ source "$CONF"
 # STAFF_SECRETS_KEY is first used by plan 1B Task 4.
 _missing=()
 grep -q '^REDIS_URL=redis' "$APP_DIR/backend/.env" || _missing+=("REDIS_URL")
+grep -q '^REDIS_URL=.*PASTE_' "$APP_DIR/backend/.env" && _missing+=("REDIS_URL (still a PASTE_ placeholder)")
+grep -q '^REDIS_PASSWORD=.' "$APP_DIR/backend/.env" || _missing+=("REDIS_PASSWORD")
 grep -q '^STAFF_SECRETS_KEY=.' "$APP_DIR/backend/.env" || _missing+=("STAFF_SECRETS_KEY")
+grep -q '^STAFF_SECRETS_KEY=.*PASTE_' "$APP_DIR/backend/.env" && _missing+=("STAFF_SECRETS_KEY (still a PASTE_ placeholder)")
 if ((${#_missing[@]})); then
-	echo "FATAL: $APP_DIR/backend/.env is missing: ${_missing[*]} (see infra/env/backend.env.example)." >&2
+	echo "FATAL: $APP_DIR/backend/.env is missing or unset: ${_missing[*]} (see infra/env/backend.env.example)." >&2
 	exit 1
 fi
 
 # Consumed by docker-compose.yml's ${APP_PORT} / ${GUNICORN_WORKERS}.
-export APP_PORT GUNICORN_WORKERS
+# The realtime (WebSocket) service listens 100 above the API: 8100 / 8101.
+REALTIME_PORT=$((APP_PORT + 100))
+export APP_PORT GUNICORN_WORKERS REALTIME_PORT
 
 # Compose automatically reads a .env sitting next to the compose file, so
 # writing this environment's values there makes a plain
@@ -82,6 +87,7 @@ cat > "$APP_DIR/infra/compose/.env" <<ENVVARS
 APP_PORT=$APP_PORT
 GUNICORN_WORKERS=$GUNICORN_WORKERS
 APP_IMAGE=$PROJECT-app
+REALTIME_PORT=$REALTIME_PORT
 ENVVARS
 COMPOSE=(docker compose -p "$PROJECT" -f "$APP_DIR/infra/compose/docker-compose.yml")
 
@@ -164,8 +170,8 @@ log "Applying migrations"
 log "Collecting static files"
 "${COMPOSE[@]}" run --rm --no-deps web python manage.py collectstatic --noinput
 
-log "Starting the application, worker and scheduler"
-"${COMPOSE[@]}" up -d web worker beat
+log "Starting the application"
+"${COMPOSE[@]}" up -d web
 
 log "Waiting for the API to answer"
 for _ in $(seq 1 45); do
@@ -178,6 +184,23 @@ done
 curl -fsS -H 'X-Forwarded-Proto: https' "http://127.0.0.1:$APP_PORT/api/health/" >/dev/null || {
 	echo "FATAL: API did not come up. Recent logs:" >&2
 	"${COMPOSE[@]}" logs --tail=60 web >&2
+	exit 1
+}
+
+log "Starting the realtime service, worker and scheduler"
+"${COMPOSE[@]}" up -d realtime worker beat
+
+log "Waiting for the realtime service to answer"
+for _ in $(seq 1 45); do
+	if curl -fsS -H 'X-Forwarded-Proto: https' "http://127.0.0.1:$REALTIME_PORT/api/health/" >/dev/null 2>&1; then
+		echo "  realtime healthy on 127.0.0.1:$REALTIME_PORT"
+		break
+	fi
+	sleep 2
+done
+curl -fsS -H 'X-Forwarded-Proto: https' "http://127.0.0.1:$REALTIME_PORT/api/health/" >/dev/null || {
+	echo "FATAL: the realtime service did not come up. Recent logs:" >&2
+	"${COMPOSE[@]}" logs --tail=60 realtime >&2
 	exit 1
 }
 
