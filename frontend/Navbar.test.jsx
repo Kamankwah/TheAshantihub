@@ -119,6 +119,22 @@ describe('Navbar', () => {
     expect(logout).toHaveBeenCalledTimes(1)
   })
 
+  // A staff session browsing the marketplace view-only: it is labelled as
+  // staff (not "Customer"), has no customer-only "My Account", and its Sign
+  // Out is the staff sign-out (onSignOut) rather than a bare auth.logout().
+  it('staff profile menu is labelled Staff, has no My Account, and signs out through onSignOut', () => {
+    const logout = vi.fn()
+    const onSignOut = vi.fn()
+    renderNavbar({ user: { fullName: 'Akosua Support', accountType: 'staff' }, auth: { logout }, onSignOut })
+    fireEvent.click(screen.getByLabelText('Account menu'))
+    expect(screen.getByText('Staff · view only')).toBeInTheDocument()
+    expect(screen.queryByText('Customer')).not.toBeInTheDocument()
+    expect(screen.queryByText('👤 My Account')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('⏻ Sign Out'))
+    expect(onSignOut).toHaveBeenCalledTimes(1)
+    expect(logout).not.toHaveBeenCalled()
+  })
+
   it('business owner profile menu offers Business Dashboard and Payments', () => {
     const setShowPayments = vi.fn()
     renderNavbar({ user: { fullName: 'Kojo Mensah', accountType: 'business_owner' }, setShowPayments })

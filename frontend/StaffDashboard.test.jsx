@@ -117,10 +117,12 @@ describe('StaffDashboard', () => {
     expect(screen.queryByText('Promotions are self-serve')).not.toBeInTheDocument()
   })
 
-  it('calls onExit when the exit button is clicked', () => {
+  // The dashboard's exit is a real "Sign out" everywhere now (it was "← Exit"
+  // in the browser, which left the staffer signed in on the marketplace).
+  it('calls onExit when Sign out is clicked', () => {
     const onExit = vi.fn()
     renderWithQueryClient(<StaffDashboard auth={makeAuth()} onExit={onExit} />)
-    fireEvent.click(screen.getByText('← Exit'))
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
     expect(onExit).toHaveBeenCalled()
   })
 

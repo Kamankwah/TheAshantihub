@@ -112,4 +112,22 @@ describe('AuthModal', () => {
     fireEvent.click(signInButtons[signInButtons.length - 1])
     await waitFor(() => expect(auth.login).toHaveBeenCalledWith('business_owner', '+233241234567', 'secret'))
   })
+
+  // The /staff sign-in can't be dismissed into the marketplace, so a visitor
+  // who landed there by mistake gets one plain way out.
+  it('offers a "Go to marketplace" link on the staff sign-in only when onGoToMarketplace is given', () => {
+    const onGoToMarketplace = vi.fn()
+    const { unmount } = render(<AuthModal authState="staff-login" auth={makeAuth()} onClose={vi.fn()} onSuccess={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: 'Go to marketplace' })).not.toBeInTheDocument()
+    unmount()
+
+    render(<AuthModal authState="staff-login" auth={makeAuth()} onClose={vi.fn()} onSuccess={vi.fn()} onGoToMarketplace={onGoToMarketplace} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Go to marketplace' }))
+    expect(onGoToMarketplace).toHaveBeenCalledTimes(1)
+  })
+
+  it('never shows "Go to marketplace" on the customer/business sign-in', () => {
+    render(<AuthModal authState="login" auth={makeAuth()} onClose={vi.fn()} onSuccess={vi.fn()} onGoToMarketplace={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: 'Go to marketplace' })).not.toBeInTheDocument()
+  })
 })

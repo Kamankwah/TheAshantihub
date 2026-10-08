@@ -8,6 +8,8 @@ import { apiDelete, apiPost } from "../apiClient.js";
 import { formatEventDate } from "./EventCard.jsx";
 import { ReviewsList, ReviewWriteForm, starString } from "./ReviewComponents.jsx";
 import TicketQr from "./TicketQr.jsx";
+import StaffGateNotice from "./StaffGateNotice.jsx";
+import { useStaffGate } from "../hooks/useStaffGate.js";
 
 // ─── EventDetailPage ────────────────────────────────────────────────────────
 // Event detail page for the Events tab (docs/BUSINESS_EVENTS_ROADMAP.md
@@ -399,6 +401,10 @@ function EventTicketsSection({ eventId, hasTickets, user, PaymentComponent }) {
   const [payTarget, setPayTarget] = useState(null); // {ticketType, quantity, amount}
   const [payError, setPayError] = useState(null);
   const [purchasedByType, setPurchasedByType] = useState({}); // ticketTypeId -> Ticket[]
+  // A staff session sees the same quantity + Buy controls as a customer
+  // (view-only marketplace); Buy shows the shared staff notice under that
+  // ticket type instead of opening payment.
+  const staffGate = useStaffGate(user);
 
   const isCustomer = user?.accountType === "customer";
 
@@ -483,7 +489,7 @@ function EventTicketsSection({ eventId, hasTickets, user, PaymentComponent }) {
               <div style={{ marginTop: 12 }}>
                 {!user ? (
                   <div style={{ color: C.lightGold, fontSize: "0.76rem" }}>Sign in as a customer to buy tickets.</div>
-                ) : !isCustomer ? (
+                ) : !isCustomer && !staffGate.isStaff ? (
                   <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.76rem" }}>Only customer accounts can buy tickets.</div>
                 ) : (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -497,13 +503,14 @@ function EventTicketsSection({ eventId, hasTickets, user, PaymentComponent }) {
                       style={{ width: 60, padding: "8px 10px", borderRadius: 10, border: "1.5px solid rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.08)", color: "white", fontFamily: "inherit", fontSize: "0.8rem" }}
                     />
                     <button
-                      onClick={() => openPay(tt)}
+                      onClick={() => { if (staffGate.blocked(tt.id)) return; openPay(tt); }}
                       style={{ background: C.gold, color: C.darkBrown, border: "none", borderRadius: 20, padding: "9px 18px", fontWeight: 900, fontSize: "0.78rem", cursor: "pointer", fontFamily: "inherit" }}
                     >
                       Buy
                     </button>
                   </div>
                 )}
+                {staffGate.shownFor === tt.id && <StaffGateNotice style={{ marginTop: 10 }} />}
               </div>
             )}
 
