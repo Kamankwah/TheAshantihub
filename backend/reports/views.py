@@ -19,7 +19,7 @@ from .serializers import report_payload
 
 def _period(value):
     period = value or StaffReport.DAY
-    if period not in dict(StaffReport.PERIOD_CHOICES):
+    if not isinstance(period, str) or period not in dict(StaffReport.PERIOD_CHOICES):
         raise ValidationError({"period": "Use day, week or month."})
     return period
 
@@ -33,6 +33,14 @@ def _date(value, name="date", *, required=False):
         return date.fromisoformat(str(value))
     except ValueError:
         raise ValidationError({name: "Use YYYY-MM-DD."}) from None
+
+
+def _bounds(period, day):
+    """period_bounds, with a far-future or far-past date turned into a 400."""
+    try:
+        return services.period_bounds(period, day)
+    except (OverflowError, ValueError):
+        raise ValidationError({"detail": "That date is out of range."}) from None
 
 
 def _error(exc):
@@ -71,6 +79,7 @@ class MyReportsView(APIView):
             return bad
         period = _period(request.data.get("period"))
         day = _date(request.data.get("date"))
+        _bounds(period, day)
         try:
             report = services.save_draft(request.user, period, day, request.data)
         except services.ReportError as exc:
@@ -85,6 +94,7 @@ class CurrentReportView(APIView):
     def get(self, request):
         period = _period(request.query_params.get("period"))
         day = _date(request.query_params.get("date"))
+        _bounds(period, day)
         if day > timezone.localdate():
             raise ValidationError({"date": "That day hasn't started yet."})
         return Response(report_payload(services.build(request.user, period, day), request.user))
@@ -164,9 +174,13 @@ class TeamReportsView(APIView):
     def get(self, request):
         params = request.query_params
         period = _period(params.get("period"))
-        start, _ = services.period_bounds(period, _date(params.get("date")))
-        if params.get("scope") == "all":
-            if services.VIEW_ALL not in request.user.effective_permission_codenames():
+        start, _ = _bounds(period, _date(params.get("date")))
+        scope = params.get("scope")
+        if scope not in (None, "", "all"):
+            raise ValidationError({"detail": "Use scope=all or leave it out."})
+        view_all = services.VIEW_ALL in request.user.effective_permission_codenames()
+        if scope == "all":
+            if not view_all:
                 raise PermissionDenied("Only a Super Admin can see everyone's reports.")
             people = StaffUser.objects.filter(is_active=True).exclude(pk=request.user.pk)
         else:
@@ -184,7 +198,7 @@ class TeamReportsView(APIView):
             "rows": [
                 {
                     "staff": staff_brief(member),
-                    "report": report_payload(reports[member.pk], request.user, include_system=False)
+                    "report": report_payload(reports[member.pk], request.user, include_system=False, view_all=view_all)
                     if member.pk in reports else None,
                 }
                 for member in people

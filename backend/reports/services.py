@@ -99,10 +99,15 @@ def build(staff, period, day):
     )
 
 
+def _text(value):
+    """str(value) without NUL characters, which Postgres refuses in text."""
+    return str(value).replace("\x00", "")
+
+
 def _clean_items(value):
     if not isinstance(value, list):
         raise ReportError("Write the plan as a list of lines.")
-    items = [str(item).strip()[:300] for item in value if str(item).strip()]
+    items = [_text(item).strip()[:300] for item in value if _text(item).strip()]
     if len(items) > MAX_LINES:
         raise ReportError(f"Keep the plan to {MAX_LINES} lines.")
     return items
@@ -117,7 +122,7 @@ def _clean_results(value):
     for row in value:
         if not isinstance(row, dict) or row.get("result", "") not in PLAN_RESULTS:
             raise ReportError("Mark each plan item done, partly or not done.")
-        cleaned.append({"item": str(row.get("item", ""))[:300], "result": row.get("result", "")})
+        cleaned.append({"item": _text(row.get("item", ""))[:300], "result": row.get("result", "")})
     return cleaned
 
 
@@ -128,7 +133,7 @@ def _clean_targets(value):
     for row in value:
         if not isinstance(row, dict) or not row.get("type") or not row.get("id"):
             raise ReportError("Each link needs a type and an id.")
-        cleaned.append({"type": str(row["type"])[:50], "id": str(row["id"])[:64], "label": str(row.get("label", ""))[:200]})
+        cleaned.append({"type": _text(row["type"])[:50], "id": _text(row["id"])[:64], "label": _text(row.get("label", ""))[:200]})
     return cleaned
 
 
@@ -166,7 +171,7 @@ def _sync(target, source):
 def _apply_draft_fields(report, data):
     for field in ("achievements", "blockers"):
         if field in data:
-            setattr(report, field, str(data[field] or "")[:5000])
+            setattr(report, field, _text(data[field] or "")[:5000])
     if "plan_next" in data:
         report.plan_next = _clean_items(data["plan_next"])
     if "plan_results" in data:
@@ -233,10 +238,16 @@ def submit(report, *, now=None, http_request=None):
         return _sync(report, locked)
 
 
-def can_review(report, staff):
+def can_review(report, staff, *, view_all=None):
+    """`view_all` may carry a precomputed reports.view_all answer for `staff`,
+    so a list of rows costs one permission lookup, not one per row."""
     if staff.pk == report.staff_id:
         return False
-    return report.staff.manager_id == staff.pk or VIEW_ALL in staff.effective_permission_codenames()
+    if report.staff.manager_id == staff.pk:
+        return True
+    if view_all is None:
+        view_all = VIEW_ALL in staff.effective_permission_codenames()
+    return view_all
 
 
 def _decide(report, reviewer, new_status, note, kind, title, icon, verb, http_request):
@@ -261,7 +272,7 @@ def _decide(report, reviewer, new_status, note, kind, title, icon, verb, http_re
 
 
 def _clean_note(note):
-    note = (note or "").strip()
+    note = _text(note or "").strip()
     if len(note) > MAX_NOTE:
         raise ReportError(f"Keep the note to {MAX_NOTE} characters.")
     return note

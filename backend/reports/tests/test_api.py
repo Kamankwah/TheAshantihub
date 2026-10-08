@@ -139,3 +139,56 @@ class ReportApiTests(TestCase):
             self.submit_mine()
         self.as_(self.lead)
         self.assertEqual(count(), before)
+
+    def test_super_admin_everyone_view_query_count_does_not_grow_per_row(self):
+        def count():
+            with CaptureQueriesContext(connection) as ctx:
+                response = self.client.get("/api/reports/team/?period=day&scope=all")
+            self.assertEqual(response.status_code, 200)
+            return len(ctx)
+
+        for staff in (self.scout, self.other_scout):
+            self.as_(staff)
+            self.submit_mine()
+        self.as_(self.boss)
+        before = count()
+        for i in range(4):
+            member = make_staff("scout", f"far{i}@example.com", manager=self.lead)
+            self.as_(member)
+            self.submit_mine()
+        self.as_(self.boss)
+        self.assertEqual(count(), before)
+
+    def test_unhashable_period_is_a_400(self):
+        self.as_(self.scout)
+        for bad in (["x"], {"a": 1}, 5):
+            self.assertEqual(self.save(period=bad).status_code, 400)
+        self.assertEqual(self.client.get("/api/reports/team/?period=%5B%5D").status_code, 400)
+
+    def test_out_of_range_dates_are_a_400(self):
+        self.as_(self.scout)
+        response = self.save(period="week", date="9999-12-31")
+        self.assertEqual((response.status_code, response.json()), (400, {"detail": "That date is out of range."}))
+        self.as_(self.lead)
+        response = self.client.get("/api/reports/team/?period=week&date=9999-12-31")
+        self.assertEqual((response.status_code, response.json()), (400, {"detail": "That date is out of range."}))
+
+    def test_nul_characters_are_stripped(self):
+        self.as_(self.scout)
+        saved = self.save(achievements="a\u0000b", blockers="x\u0000y", plan_next=["p\u0000q"]).json()
+        self.assertEqual((saved["achievements"], saved["blockers"], saved["plan_next"]), ("ab", "xy", ["pq"]))
+        saved = self.save(
+            plan_results=[{"item": "i\u0000j", "result": "done"}],
+            linked_targets=[{"type": "bu\u0000s", "id": "1\u00002", "label": "l\u0000m"}],
+        ).json()
+        self.assertEqual(saved["plan_results"][0]["item"], "ij")
+        self.assertEqual(saved["linked_targets"][0], {"type": "bus", "id": "12", "label": "lm"})
+        self.client.post(f"/api/reports/{saved['id']}/submit/", {}, format="json")
+        self.as_(self.lead)
+        returned = self.client.post(f"/api/reports/{saved['id']}/return/", {"note": "n\u0000o"}, format="json")
+        self.assertEqual(returned.json()["review_note"], "no")
+
+    def test_unknown_scope_is_a_400(self):
+        self.as_(self.lead)
+        response = self.client.get("/api/reports/team/?period=day&scope=everyone")
+        self.assertEqual((response.status_code, response.json()), (400, {"detail": "Use scope=all or leave it out."}))

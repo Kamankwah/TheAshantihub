@@ -63,10 +63,21 @@ def _mask_value(value):
     return value
 
 
+def _without_nul(value):
+    """Postgres jsonb refuses NUL characters; request bodies are untrusted."""
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, dict):
+        return {_without_nul(k): _without_nul(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_without_nul(v) for v in value]
+    return value
+
+
 def _bounded(value):
     if value is None:
         return None
-    text = json.dumps(_mask_value(redact(value)), default=str, sort_keys=True)
+    text = json.dumps(_without_nul(_mask_value(redact(value))), default=str, sort_keys=True)
     if len(text) > MAX_JSON_CHARS:
         return {"truncated": True, "preview": text[:MAX_JSON_CHARS]}
     return json.loads(text)

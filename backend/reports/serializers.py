@@ -4,7 +4,7 @@ from . import providers, services
 from .models import StaffReport
 
 
-def report_payload(report, viewer, *, include_system=True):
+def report_payload(report, viewer, *, include_system=True, view_all=None):
     """One report as the API shows it to `viewer`. A draft or returned report
     shows live system numbers; a submitted one shows the frozen snapshot."""
     live = report.status in (StaffReport.DRAFT, StaffReport.RETURNED) or report.system_snapshot is None
@@ -29,7 +29,7 @@ def report_payload(report, viewer, *, include_system=True):
         "similarity": report.similarity,
         "similar_warning": report.similarity >= services.SIMILARITY_FLAG,
         "can_edit": viewer.pk == report.staff_id and report.status in (StaffReport.DRAFT, StaffReport.RETURNED),
-        "can_review": report.status == StaffReport.SUBMITTED and services.can_review(report, viewer),
+        "can_review": report.status == StaffReport.SUBMITTED and services.can_review(report, viewer, view_all=view_all),
         "system_is_live": live,
     }
     if include_system:
