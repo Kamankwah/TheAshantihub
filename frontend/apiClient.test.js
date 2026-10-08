@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { server } from './mocks/server.js'
-import { SESSION_ENDED_EVENT, apiFetch, getStoredAuth, setStoredAuth, apiPost, apiPostForm, apiPatch, apiPatchForm, apiDelete } from './apiClient.js'
+import { SESSION_ENDED_EVENT, apiFetch, getStoredAuth, setStoredAuth, apiPost, apiPostForm, apiPatch, apiPatchForm, apiDelete, apiDownload } from './apiClient.js'
 import { getNetworkStatus, resetNetworkStatusForTests } from './lib/networkStatus.js'
 
 describe('apiFetch', () => {
@@ -216,5 +216,17 @@ describe('session-ended event — stale responses', () => {
     expect(heard).not.toHaveBeenCalled()
     window.removeEventListener(SESSION_ENDED_EVENT, heard)
     setStoredAuth(null)
+  })
+})
+
+describe('apiDownload', () => {
+  it('returns the JSON body when the server queues the file (202)', async () => {
+    server.use(http.get('http://localhost:8000/api/dl/', () => HttpResponse.json({ id: 4, status: 'queued' }, { status: 202 })))
+    expect(await apiDownload('/api/dl/', 'x.csv')).toEqual({ id: 4, status: 'queued' })
+  })
+
+  it('throws an error carrying status and body on a 4xx', async () => {
+    server.use(http.get('http://localhost:8000/api/dl/', () => HttpResponse.json({ detail: 'Nope.' }, { status: 403 })))
+    await expect(apiDownload('/api/dl/', 'x.csv')).rejects.toMatchObject({ status: 403, body: { detail: 'Nope.' } })
   })
 })

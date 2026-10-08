@@ -35,8 +35,8 @@ export default function TeamReportsPanel({ auth }) {
         </div>
       </div>
       {waiting > 0 && <div style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>Waiting for you · {waiting}</div>}
-      {isLoading && <div style={dim}>Loading…</div>}
-      {isError && <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load the team's reports.</div>}
+      {isLoading && <div role="status" style={dim}>Loading…</div>}
+      {isError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>Could not load the team's reports.</div>}
       {!isLoading && !isError && rows.length === 0 && <div style={dim}>Nobody to show for this period.</div>}
       {rows.map(({ staff, report }) => (
         <div key={staff.id} style={{ borderTop: `1px solid ${D.divider}`, padding: "10px 0", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -69,8 +69,8 @@ function ReportReview({ id }) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState(null);
-  if (isLoading) return <div style={dim}>Loading…</div>;
-  if (isError || !report) return <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not open this report.</div>;
+  if (isLoading) return <div role="status" style={dim}>Loading…</div>;
+  if (isError || !report) return <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>Could not open this report.</div>;
 
   const review = async (action) => {
     if (busy) return;

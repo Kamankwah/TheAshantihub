@@ -18,9 +18,9 @@ const report = (overrides = {}) => ({
 })
 const auth = { user: { id: 3, role: 'scout' }, hasPermission: () => false }
 
-function renderPanel() {
+function renderPanel(authProp = auth) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(<QueryClientProvider client={queryClient}><ReportsPanel auth={auth} /></QueryClientProvider>)
+  render(<QueryClientProvider client={queryClient}><ReportsPanel auth={authProp} /></QueryClientProvider>)
 }
 const current = (body) => http.get('http://localhost:8000/api/reports/current/', () => HttpResponse.json(body))
 
@@ -124,5 +124,65 @@ describe('ReportsPanel', () => {
     renderPanel()
     expect(await screen.findByText('Draft')).toBeInTheDocument()
     expect(screen.queryByRole('group', { name: 'Export' })).not.toBeInTheDocument()
+  })
+
+  it('does not send a range export with an empty date', async () => {
+    let hit = false
+    server.use(http.get('http://localhost:8000/api/reports/export/', () => { hit = true; return HttpResponse.json({}) }))
+    renderPanel()
+    fireEvent.change(await screen.findByLabelText('From'), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Export reports' }))
+    expect(await screen.findByText('Choose a start and an end date.')).toBeInTheDocument()
+    expect(hit).toBe(false)
+  })
+
+  it('does not send a range export that starts after it ends', async () => {
+    let hit = false
+    server.use(http.get('http://localhost:8000/api/reports/export/', () => { hit = true; return HttpResponse.json({}) }))
+    renderPanel()
+    fireEvent.change(await screen.findByLabelText('From'), { target: { value: '2026-10-07' } })
+    fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-10-01' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Export reports' }))
+    expect(await screen.findByText('Choose a start date on or before the end date.')).toBeInTheDocument()
+    expect(hit).toBe(false)
+  })
+
+  it('says a per-report export was queued and refreshes the exports list', async () => {
+    server.use(
+      current(report({ id: 12 })),
+      http.get('http://localhost:8000/api/reports/12/export/', () => HttpResponse.json({ id: 9, status: 'queued' }, { status: 202 })),
+    )
+    renderPanel()
+    fireEvent.click(await screen.findByRole('button', { name: 'Excel' }))
+    expect(await screen.findByText("We're preparing that file. It appears in your exports list when it's ready.")).toBeInTheDocument()
+  })
+
+  it('saves the draft alone with the narrative', async () => {
+    let saved = null
+    server.use(
+      current(report()),
+      http.post('http://localhost:8000/api/reports/', async ({ request }) => { saved = await request.json(); return HttpResponse.json(report({ id: 12 })) }),
+    )
+    renderPanel()
+    fireEvent.change(await screen.findByLabelText('What got in the way'), { target: { value: 'Rain' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }))
+    expect(await screen.findByText('Draft saved.')).toBeInTheDocument()
+    expect(saved).toMatchObject({ blockers: 'Rain' })
+  })
+
+  it('offers the team checkbox only with a team permission', async () => {
+    renderPanel()
+    await screen.findByLabelText('From')
+    expect(screen.queryByLabelText("Include my team's reports")).not.toBeInTheDocument()
+  })
+
+  it('exports the whole team when the checkbox is ticked, otherwise only me', async () => {
+    const urls = []
+    server.use(http.get('http://localhost:8000/api/reports/export/', ({ request }) => { urls.push(request.url); return HttpResponse.json({ id: 1, status: 'queued' }, { status: 202 }) }))
+    renderPanel({ user: { id: 3 }, hasPermission: (c) => c === 'staff.invite_team' })
+    fireEvent.click(await screen.findByLabelText("Include my team's reports"))
+    fireEvent.click(screen.getByRole('button', { name: 'Export reports' }))
+    await waitFor(() => expect(urls).toHaveLength(1))
+    expect(urls[0]).not.toContain('staff=')
   })
 })

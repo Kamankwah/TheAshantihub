@@ -83,4 +83,23 @@ describe('TeamReportsPanel', () => {
     expect(await screen.findByText('Already reviewed.')).toBeInTheDocument()
     await waitFor(() => expect(fetched).toBeGreaterThan(1))
   })
+
+  it('offers no review buttons when the viewer cannot review', async () => {
+    server.use(
+      team([{ staff: yaws.staff, report: { ...yaws, can_review: false } }]),
+      http.get('http://localhost:8000/api/reports/21/', () => HttpResponse.json({ ...yaws, can_review: false, system: [] })),
+    )
+    renderPanel()
+    fireEvent.click(await screen.findByRole('button', { name: "Open Yaw Owusu's report" }))
+    await screen.findByText('Visited three weavers in Bonwire')
+    expect(screen.queryByRole('button', { name: 'Acknowledge' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Return with comment' })).not.toBeInTheDocument()
+  })
+
+  it('hides the Everyone toggle without reports.view_all', async () => {
+    server.use(team([]))
+    renderPanel()
+    await screen.findByText('Nobody to show for this period.')
+    expect(screen.queryByRole('button', { name: 'Everyone' })).not.toBeInTheDocument()
+  })
 })

@@ -1,3 +1,5 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { apiDownload } from "../../../apiClient.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D } from "../theme.js";
@@ -87,18 +89,33 @@ export function ReportNarrative({ report }) {
 const small = { ...button(D.panelBg, D.text), borderRadius: 20, padding: "5px 12px", fontSize: "0.72rem", fontWeight: 700 };
 
 export function ExportButtons({ path, stem, onError }) {
+  const queryClient = useQueryClient();
+  const [pending, setPending] = useState(null);
+  const [notice, setNotice] = useState(null);
   const download = async (format) => {
+    if (pending) return;
+    setPending(format);
+    setNotice(null);
     try {
-      await apiDownload(`${path}${path.includes("?") ? "&" : "?"}format=${format}`, `${stem}.${format}`);
+      const result = await apiDownload(`${path}${path.includes("?") ? "&" : "?"}format=${format}`, `${stem}.${format}`);
+      if (result?.status === "queued") {
+        setNotice("We're preparing that file. It appears in your exports list when it's ready.");
+        queryClient.invalidateQueries({ queryKey: ["report-exports"] });
+      }
     } catch (err) {
       onError?.(downloadErrorMessage(err, "Could not export the report."));
+    } finally {
+      setPending(null);
     }
   };
   return (
-    <div role="group" aria-label="Export" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-      {[["xlsx", "Excel"], ["csv", "CSV"], ["pdf", "PDF"]].map(([format, label]) => (
-        <button key={format} type="button" onClick={() => download(format)} style={small}>{label}</button>
-      ))}
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+      <div role="group" aria-label="Export" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {[["xlsx", "Excel"], ["csv", "CSV"], ["pdf", "PDF"]].map(([format, label]) => (
+          <button key={format} type="button" disabled={Boolean(pending)} onClick={() => download(format)} style={{ ...small, opacity: pending ? 0.5 : 1, cursor: pending ? "not-allowed" : "pointer" }}>{label}</button>
+        ))}
+      </div>
+      {notice && <span role="status" style={{ ...dim, color: D.green }}>{notice}</span>}
     </div>
   );
 }

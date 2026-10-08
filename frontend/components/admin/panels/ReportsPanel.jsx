@@ -26,9 +26,9 @@ export default function ReportsPanel({ auth }) {
             {PERIODS.map(([id, label]) => <button key={id} type="button" aria-pressed={period === id} onClick={() => setPeriod(id)} style={pill(period === id)}>{label}</button>)}
           </div>
         </div>
-        {isLoading && <div style={dim}>Loading…</div>}
-        {isError && <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load your report.</div>}
-        {report && <ReportComposer key={period} report={report} period={period} />}
+        {isLoading && <div role="status" style={dim}>Loading…</div>}
+        {isError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>Could not load your report.</div>}
+        {report && <ReportComposer key={`${period}:${report.period_start}`} report={report} period={period} />}
       </div>
       <History rows={history?.results || []} />
       <RangeExport auth={auth} />
@@ -181,7 +181,10 @@ function RangeExport({ auth }) {
 
   const run = async () => {
     if (busy) return;
-    setMessage(null); setActionError(null); setBusy(true);
+    setMessage(null); setActionError(null);
+    if (!from || !to) { setActionError("Choose a start and an end date."); return; }
+    if (from > to) { setActionError("Choose a start date on or before the end date."); return; }
+    setBusy(true);
     const staff = includeTeam ? "" : `&staff=${auth?.user?.id}`;
     try {
       const queued = await apiDownload(`/api/reports/export/?from=${from}&to=${to}&format=${format}${staff}`, `ashantihub-reports-${from}-${to}.${format}`);
@@ -195,7 +198,19 @@ function RangeExport({ auth }) {
       setBusy(false);
     }
   };
-  const download = (item) => apiDownload(item.download_url, item.file_name).catch((err) => setActionError(downloadErrorMessage(err, "Could not download that file.")));
+  const [downloading, setDownloading] = useState(null);
+  const download = async (item) => {
+    if (downloading) return;
+    setDownloading(item.id);
+    setActionError(null);
+    try {
+      await apiDownload(item.download_url, item.file_name);
+    } catch (err) {
+      setActionError(downloadErrorMessage(err, "Could not download that file."));
+    } finally {
+      setDownloading(null);
+    }
+  };
 
   return (
     <div style={{ ...glassCard, padding: 18, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -213,7 +228,7 @@ function RangeExport({ auth }) {
       {(exportsList || []).map((item) => (
         <div key={item.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", padding: "6px 0", borderTop: `1px solid ${D.divider}`, fontSize: "0.78rem", color: D.text, flexWrap: "wrap" }}>
           <span>{item.file_name} · {item.status === "ready" ? `${item.row_count} reports` : item.status === "failed" ? `Failed: ${item.error}` : item.status}</span>
-          {item.download_url && <button type="button" onClick={() => download(item)} style={button(D.panelBg, D.text)}>Download</button>}
+          {item.download_url && <button type="button" disabled={downloading !== null} onClick={() => download(item)} style={button(D.panelBg, D.text, downloading !== null)}>Download</button>}
         </div>
       ))}
     </div>
