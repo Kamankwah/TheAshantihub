@@ -5,11 +5,11 @@ from channels.testing import WebsocketCommunicator
 from django.core.cache import caches
 from django.test import TransactionTestCase
 from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import AccessToken
 
 from accounts.authentication import issue_token
-from accounts.models import Permission, Role, StaffSession, StaffUser
-from accounts.testing import make_staff, staff_token
+from accounts import sessions
+from accounts.models import Permission, StaffSession
+from accounts.testing import make_staff, session_of, staff_token
 from realtime import tickets
 from realtime.routing import build_websocket_app, websocket_urlpatterns
 
@@ -31,7 +31,7 @@ class ConsumerTests(TransactionTestCase):
         self.scout = make_staff("scout", "kwame@example.com", manager=self.lead)
         self.boss = make_staff("super_admin", "boss@example.com")
         self.token = issue_token(self.scout, "staff")
-        self.session = StaffSession.objects.get(jti=AccessToken(self.token)["jti"])
+        self.session = session_of(self.token)
 
     def ticket(self):
         client = APIClient()
@@ -113,6 +113,34 @@ class ConsumerTests(TransactionTestCase):
             self.assertFalse(connected)
 
         async_to_sync(again)()
+
+    def test_a_manager_change_makes_that_staffers_socket_reconnect(self):
+        ticket = self.ticket()
+        boss = APIClient()
+        boss.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(self.boss, sudo=True)}")
+
+        async def run():
+            socket = self.socket(ticket)
+            await socket.connect()
+            response = await sync_to_async(boss.post)(
+                f"/api/accounts/staff/{self.scout.id}/manager/", {"manager": self.boss.id}, format="json"
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(await socket.receive_json_from(timeout=2), {"type": "force_disconnect"})
+            closed = await socket.receive_output(timeout=2)
+            self.assertEqual((closed["type"], closed["code"]), ("websocket.close", 4000))
+
+        async_to_sync(run)()
+
+    def test_a_ticket_for_a_revoked_session_is_refused(self):
+        ticket = self.ticket()
+        sessions.revoke(self.session, StaffSession.ENDED)
+
+        async def run():
+            connected, _ = await self.socket(ticket).connect()
+            self.assertFalse(connected)
+
+        async_to_sync(run)()
 
     def test_a_foreign_origin_is_refused(self):
         app = build_websocket_app(origins=["https://theashantihub.com"])

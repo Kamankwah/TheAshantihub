@@ -7,6 +7,14 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from . import tickets
 
 RECHECK_SECONDS = 60
+# 4401 / 4403 are sent before accept(), so over a real connection the server
+# answers the handshake with HTTP 403 and a browser reports close code 1006:
+# only in-process tests (WebsocketCommunicator) see these codes. The client
+# relies on the ticket endpoint's 401/403 to learn why it has no access.
+# 4401: bad/used/expired ticket at connect, or the session found ended on the
+# periodic re-check after accept. 4403: connect refused because the staffer is
+# inactive or suspended or the session is ended/missing. 4000 (after accept,
+# so a browser does see it): reconnect.
 CLOSE_UNAUTHORISED = 4401
 CLOSE_FORBIDDEN = 4403
 CLOSE_RECONNECT = 4000
@@ -50,7 +58,11 @@ class StaffConsumer(AsyncJsonWebsocketConsumer):
     """Server-to-client only. Messages arrive from the channel layer as
     "staff.event" (forwarded as-is) or "force.disconnect" (permission change,
     suspension, ended session — the client reconnects and gets a new group
-    set, or is refused)."""
+    set, or is refused).
+
+    A connection refused at connect (bad ticket 4401; inactive, suspended or
+    ended-session staffer 4403) is closed before accept(), which a browser sees
+    as an HTTP 403 / close code 1006, not those codes."""
 
     async def connect(self):
         self.joined = []

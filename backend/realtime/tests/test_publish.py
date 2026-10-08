@@ -5,12 +5,11 @@ from channels.layers import get_channel_layer
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import AccessToken
 
 from accounts import sessions
 from accounts.authentication import issue_token
-from accounts.models import Customer, Role, StaffSession, StaffUser
-from accounts.testing import make_staff, staff_token
+from accounts.models import Customer, StaffSession
+from accounts.testing import make_staff, session_of, staff_token
 from activity import services as activity
 from activity.models import ActivityEvent
 from activity.services import on_recorded
@@ -106,8 +105,8 @@ class PublishTests(TestCase):
         self.assertEqual(self.message(channel), {"type": "force.disconnect"})
 
     def test_ending_a_session_disconnects_that_device_only(self):
-        session = StaffSession.objects.get(jti=AccessToken(issue_token(self.esi, "staff"))["jti"])
-        other = StaffSession.objects.get(jti=AccessToken(issue_token(self.esi, "staff"))["jti"])
+        session = session_of(issue_token(self.esi, "staff"))
+        other = session_of(issue_token(self.esi, "staff"))
         this_device = self.listen(f"session.{session.pk}")
         other_device = self.listen(f"session.{other.pk}")
         with self.captureOnCommitCallbacks(execute=True):
@@ -152,7 +151,8 @@ class BoundedPublishingTests(TestCase):
         layer = get_channel_layer()
         with mock.patch.object(publish, "SEND_TIMEOUT", 0.05), mock.patch.object(layer, "group_send", self.hang()):
             started = time.monotonic()
-            publish.publish_activity(event)
+            with self.assertLogs("realtime.publish", level="WARNING"):
+                publish.publish_activity(event)
             elapsed = time.monotonic() - started
         self.assertEqual(self.calls, 1)
         self.assertLess(elapsed, 0.8)
@@ -164,6 +164,7 @@ class BoundedPublishingTests(TestCase):
 
         layer = get_channel_layer()
         with mock.patch.object(publish, "SEND_TIMEOUT", 0.05), mock.patch.object(layer, "group_send", self.hang()):
-            publish.force_disconnect("staff.1")
+            with self.assertLogs("realtime.publish", level="WARNING"):
+                publish.force_disconnect("staff.1")
         self.assertEqual(self.calls, 1)
 
