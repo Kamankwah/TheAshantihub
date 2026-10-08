@@ -2,11 +2,13 @@ import datetime
 
 from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
+from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import serializers
 
+from . import sessions
 from .authentication import ACCOUNT_MODELS
 from .emails import send_password_reset_email, send_staff_invite_email
 from .gps import validate_ashanti_gps
@@ -18,9 +20,10 @@ from .models import (
     Role,
     RoleInviteRule,
     ScoutAssignment,
+    StaffSession,
     StaffUser,
 )
-from .permissions import can_manage_staff
+from .permissions import can_lead_team, can_manage_staff
 
 # Used to pay the same check_password() cost when no account is found, so that
 # login timing does not leak whether an identifier exists (see login serializers below).
@@ -101,6 +104,9 @@ class StaffInviteSerializer(serializers.ModelSerializer):
         requester = self.context["request"].user
         if not can_manage_staff(requester):
             attrs["manager"] = requester
+        elif attrs.get("manager") is not None and not can_lead_team(attrs["manager"]):
+            # Same rule as StaffManagerView: only someone who can lead a team.
+            raise serializers.ValidationError({"manager": ["Choose a manager who can lead a team."]})
         return attrs
 
     def create(self, validated_data):
@@ -209,10 +215,15 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         return attrs
 
     def save(self):
-        self.account.password_hash = make_password(self.validated_data["password"])
-        self.account.save(update_fields=["password_hash"])
-        self.reset_token.used_at = timezone.now()
-        self.reset_token.save(update_fields=["used_at"])
+        with transaction.atomic():
+            self.account.password_hash = make_password(self.validated_data["password"])
+            self.account.save(update_fields=["password_hash"])
+            self.reset_token.used_at = timezone.now()
+            self.reset_token.save(update_fields=["used_at"])
+            if isinstance(self.account, StaffUser):
+                # A reset is often "someone else may have my password": end
+                # every device's session.
+                sessions.revoke_all(self.account, StaffSession.PASSWORD_RESET)
         return self.account
 
 
@@ -724,13 +735,15 @@ class StaffListSerializer(serializers.ModelSerializer):
     # only" view can't tell apart. Not sensitive: a role's permissions are
     # already derivable from the role.
     role_permissions = serializers.SerializerMethodField()
+    # From the session table (F9) — this replaces the missing last_login.
+    last_sign_in_at = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = StaffUser
         fields = [
             "id", "full_name", "email", "phone", "role", "manager", "manager_name", "status",
             "is_suspended", "suspension_reason", "is_active",
-            "permissions", "role_permissions", "created_at",
+            "permissions", "role_permissions", "created_at", "last_sign_in_at",
         ]
 
     def get_status(self, obj):
@@ -788,3 +801,41 @@ class ScoutAssignmentSerializer(serializers.ModelSerializer):
     def get_business_kind(self, obj):
         profile = self._profile(obj)
         return profile.business_kind if profile else None
+
+
+def staff_brief(staff):
+    """The compact staff shape shared by serializers. None in, None out."""
+    if staff is None:
+        return None
+    return {"id": staff.id, "full_name": staff.full_name, "role": staff.role.name}
+
+
+class StaffSessionSerializer(serializers.ModelSerializer):
+    ends_at = serializers.SerializerMethodField()
+    idle_ends_at = serializers.SerializerMethodField()
+    is_active = serializers.SerializerMethodField()
+    is_current = serializers.SerializerMethodField()
+    staff = serializers.SerializerMethodField()
+
+    class Meta:
+        model = StaffSession
+        fields = [
+            "id", "device_label", "ip", "created_at", "last_seen_at", "ends_at", "idle_ends_at",
+            "revoked_at", "revoked_reason", "is_active", "is_current", "two_factor", "staff",
+        ]
+
+    def get_ends_at(self, obj):
+        return obj.created_at + sessions.ABSOLUTE_LIMIT
+
+    def get_idle_ends_at(self, obj):
+        return obj.last_seen_at + sessions.IDLE_LIMIT
+
+    def get_is_active(self, obj):
+        return sessions.end_reason_if_invalid(obj) is None
+
+    def get_is_current(self, obj):
+        current = self.context.get("current_session")
+        return bool(current and current.pk == obj.pk)
+
+    def get_staff(self, obj):
+        return staff_brief(obj.staff)

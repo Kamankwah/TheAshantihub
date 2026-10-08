@@ -3,8 +3,8 @@ from django.core.cache import cache
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from accounts.authentication import issue_token
-from accounts.models import Role, StaffUser
+from accounts.models import Permission, Role, StaffUser
+from accounts.testing import staff_token
 
 
 def make_staff(role, email, **extra):
@@ -27,7 +27,7 @@ class Base(TestCase):
         self.dm = make_staff("delivery_manager", "adwoa@example.com")
 
     def as_(self, staff):
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(staff, 'staff')}")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(staff, sudo=True)}")
 
 
 class TeamInviteTests(Base):
@@ -72,6 +72,19 @@ class TeamInviteTests(Base):
         self.as_(self.super_admin)
         self.assertEqual(self.invite("scout", manager=self.other_ops.id).status_code, 201)
         self.assertEqual(StaffUser.objects.get(email="new@example.com").manager, self.other_ops)
+
+    def test_an_invite_names_only_a_manager_who_can_lead(self):
+        # Same rule as StaffManagerView: a Super Admin or staff.invite_team.
+        self.as_(self.super_admin)
+        support = make_staff("support", "esi@example.com")
+        refused = self.invite("scout", manager=support.id)
+        self.assertEqual(refused.status_code, 400)
+        self.assertEqual(refused.json(), {"manager": ["Choose a manager who can lead a team."]})
+        self.assertFalse(StaffUser.objects.filter(email="new@example.com").exists())
+        support.extra_permissions.add(Permission.objects.get(codename="staff.invite_team"))
+        self.assertEqual(self.invite("scout", manager=support.id).status_code, 201)
+        self.assertEqual(self.invite("scout", email="b@example.com", manager=self.super_admin.id).status_code, 201)
+        self.assertEqual(self.invite("scout", email="c@example.com", manager=None).status_code, 201)
 
 
 class TeamScopeTests(Base):
@@ -164,6 +177,42 @@ class ManagerAssignmentTests(Base):
         self.assertEqual(self.set_manager(self.ops, self.ops.id).status_code, 400)
         self.set_manager(self.other_ops, self.ops.id)
         self.assertEqual(self.set_manager(self.ops, self.other_ops.id).status_code, 400)
+
+    def test_a_manager_must_be_able_to_lead_a_team(self):
+        self.as_(self.super_admin)
+        scout = make_staff("scout", "kwame@example.com")
+        support = make_staff("support", "esi@example.com")
+        refused = self.set_manager(scout, support.id)
+        self.assertEqual(refused.status_code, 400)
+        self.assertEqual(refused.json(), {"detail": "Choose a manager who can lead a team."})
+        scout.refresh_from_db()
+        self.assertIsNone(scout.manager)
+
+    def test_a_revoked_invite_team_permission_disqualifies_a_manager(self):
+        self.as_(self.super_admin)
+        self.ops.revoked_permissions.add(Permission.objects.get(codename="staff.invite_team"))
+        scout = make_staff("scout", "kwame@example.com")
+        self.assertEqual(self.set_manager(scout, self.ops.id).status_code, 400)
+
+    def test_an_individual_invite_team_grant_qualifies_a_manager(self):
+        self.as_(self.super_admin)
+        support = make_staff("support", "esi@example.com")
+        support.extra_permissions.add(Permission.objects.get(codename="staff.invite_team"))
+        scout = make_staff("scout", "kwame@example.com")
+        self.assertEqual(self.set_manager(scout, support.id).json()["manager"], support.id)
+
+    def test_a_super_admin_can_always_lead(self):
+        self.as_(self.super_admin)
+        boss2 = make_staff("super_admin", "boss2@example.com")
+        scout = make_staff("scout", "kwame@example.com")
+        self.assertEqual(self.set_manager(scout, boss2.id).json()["manager"], boss2.id)
+
+    def test_clearing_a_manager_is_always_allowed(self):
+        scout = make_staff("scout", "kwame@example.com", manager=make_staff("support", "esi@example.com"))
+        self.as_(self.super_admin)
+        response = self.set_manager(scout, None)
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()["manager"])
 
     def test_only_staff_manage_can_set_managers(self):
         self.as_(self.ops)

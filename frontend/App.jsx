@@ -26,7 +26,7 @@ import { useNotifications } from "./hooks/useNotifications.js";
 import { useMyTickets } from "./hooks/useMyTickets.js";
 import { useMyCustomerProfile } from "./hooks/useMyCustomerProfile.js";
 import { useSiteSettings } from "./hooks/useSiteSettings.js";
-import { apiFetch, apiPost, apiPatch } from "./apiClient.js";
+import { apiFetch, apiPost, apiPatch, getStoredAuth } from "./apiClient.js";
 import { C, CURRENCIES } from "./theme.js";
 import Flag from "./components/Flag.jsx";
 import Navbar from "./components/Navbar.jsx";
@@ -55,11 +55,13 @@ import EventSubmissionPanel from "./components/EventSubmissionPanel.jsx";
 import BusinessCommandCenter from "./components/dashboard/BusinessCommandCenter.jsx";
 import AdminCommandCenter from "./components/admin/AdminCommandCenter.jsx";
 import StaffInstallPage from "./components/admin/StaffInstallPage.jsx";
+import StaffTwoStepSignIn from "./components/admin/StaffTwoStepSignIn.jsx";
 import { D, glassCard, ghs } from "./components/dashboard/theme.js";
 import KpiCard from "./components/dashboard/charts/KpiCard.jsx";
 import ChartFrame from "./components/dashboard/charts/ChartFrame.jsx";
 import { ensureStaffHead, isStaffPathname, isStandaloneDisplay, startStaffPwa } from "./lib/staffPwa.js";
 import { subjectLine } from "./lib/conversationSubject.js";
+import { takeSignedOutMessage } from "./lib/signOutReason.js";
 import { readCookieConsent, saveCookieConsent } from "./lib/cookieConsent.js";
 import useBreakpoint from "./hooks/useBreakpoint.js";
 import SpendAreaChart from "./components/dashboard/charts/SpendAreaChart.jsx";
@@ -1162,6 +1164,11 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
   const [email,setEmail]=useState("");
   const [error,setError]=useState(null);
   const [submitting,setSubmitting]=useState(false);
+  const [twoStep,setTwoStep]=useState(null);
+  // Set when the 2-step step timed out and sent the person back to the password.
+  const [twoStepNotice,setTwoStepNotice]=useState(null);
+  // Why the staff shell just signed this tab out (idle / session ended); read once.
+  const [signedOutNotice]=useState(()=>lockedAccountType ? takeSignedOutMessage() : null);
   // "Forgot password?" (staff onboarding + account-recovery work) — a third
   // inline `mode`, reachable from the login form regardless of
   // lockedAccountType (a staff member locked into "staff-login" needs
@@ -1177,9 +1184,11 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
   const handleLogin=async(e)=>{
     e.preventDefault();
     setError(null);
+    setTwoStepNotice(null);
     setSubmitting(true);
     try {
       const result=await auth.login(lockedAccountType||accountType,identifier,password);
+      if(result?.two_factor_required||result?.two_factor_setup_required){setTwoStep(result);return;}
       onSuccess(result);
     } catch (err) {
       setError("Invalid credentials. Please check your details and try again.");
@@ -1237,9 +1246,12 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
           <button type="button" onClick={()=>setMode("signup")} style={{flex:1,padding:"8px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:800,fontSize:"0.78rem",background:mode==="signup"?C.gold:"#eee",color:mode==="signup"?C.darkBrown:"#666"}}>Sign Up</button>
         </div>}
 
+        {signedOutNotice && <div role="status" style={{background:C.cream,border:`1px solid ${C.gold}`,color:C.darkBrown,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{signedOutNotice}</div>}
         {error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
 
-        {mode==="login" && <form onSubmit={handleLogin}>
+        {mode==="login" && twoStep && <StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setTwoStepNotice(typeof message==="string"?message:null);}}/>}
+        {mode==="login" && !twoStep && twoStepNotice && <div role="status" style={{background:"#fff8e1",color:"#5d4037",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{twoStepNotice}</div>}
+        {mode==="login" && !twoStep && <form onSubmit={handleLogin}>
           {!lockedAccountType && <div style={{display:"flex",gap:8,marginBottom:12}}>
             <button type="button" onClick={()=>setAccountType("customer")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="customer"?C.gold:"white"}}>Customer</button>
             <button type="button" onClick={()=>setAccountType("business_owner")} style={{flex:1,padding:"6px",borderRadius:20,border:`1.5px solid ${C.gold}`,cursor:"pointer",fontWeight:700,fontSize:"0.72rem",background:accountType==="business_owner"?C.gold:"white"}}>Business Owner</button>
@@ -1304,16 +1316,25 @@ function StaffActivatePage({auth,onSuccess}) {
   const [confirmPassword,setConfirmPassword]=useState("");
   const [error,setError]=useState(null);
   const [submitting,setSubmitting]=useState(false);
+  const [twoStep,setTwoStep]=useState(null);
+  // "expired": the 2-step step timed out (password form returns, with the
+  // message). "active": the person chose Start again; the invite is already
+  // used, so the form stays hidden and they are pointed to the staff sign-in.
+  const [notice,setNotice]=useState(null);
+  const [accountActive,setAccountActive]=useState(false);
 
   const handleSubmit=async(e)=>{
     e.preventDefault();
     setError(null);
+    setNotice(null);
     if(!token){setError("This activation link is missing its token. Please use the link from your invite email.");return;}
     if(password.length<8){setError("Password must be at least 8 characters.");return;}
     if(password!==confirmPassword){setError("Passwords do not match.");return;}
     setSubmitting(true);
     try {
       const result=await auth.activateStaff(token,password);
+      // A Super Admin invitee gets a 2-step challenge instead of a session.
+      if(result?.two_factor_required||result?.two_factor_setup_required){setTwoStep(result);return;}
       onSuccess(result);
     } catch (err) {
       setError("This activation link is invalid or has expired. Please ask an admin to resend your invite.");
@@ -1328,13 +1349,16 @@ function StaffActivatePage({auth,onSuccess}) {
         <div style={{color:C.gold,fontWeight:900,fontSize:"1.1rem"}}>Activate Your Staff Account</div>
       </div>
       <div style={{padding:"20px 24px"}}>
-        {error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
-        {!token && !error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>No activation token found in this link. Please use the exact link from your invite email.</div>}
-        <form onSubmit={handleSubmit}>
+        {twoStep && <StaffTwoStepSignIn challenge={twoStep} auth={auth} onSuccess={onSuccess} onCancel={(message)=>{setTwoStep(null);setPassword("");setConfirmPassword("");if(typeof message==="string"){setNotice(message);}else{setAccountActive(true);}}}/>}
+        {!twoStep && accountActive && <div role="status" style={{background:"#fff8e1",color:"#5d4037",borderRadius:10,padding:"10px 12px",fontSize:"0.78rem"}}>Your account is active. Sign in at the <a href="/staff" style={{color:"inherit",fontWeight:700}}>staff sign-in</a> to finish setting up 2-step sign-in.</div>}
+        {!twoStep && !accountActive && notice && <div role="status" style={{background:"#fff8e1",color:"#5d4037",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{notice}</div>}
+        {!twoStep && error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>{error}</div>}
+        {!twoStep && !accountActive && !token && !error && <div style={{background:"#fdecea",color:"#b00020",borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:"0.78rem"}}>No activation token found in this link. Please use the exact link from your invite email.</div>}
+        {!twoStep && !accountActive && <form onSubmit={handleSubmit}>
           <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" required minLength={8} style={authInputStyle}/>
           <input value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} type="password" placeholder="Confirm password" required minLength={8} style={authInputStyle}/>
           <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Activating…":"Activate Account"}</button>
-        </form>
+        </form>}
       </div>
     </div>
   </div>;
@@ -1543,11 +1567,15 @@ function NotificationsPanel({ user, onClose }) {
 
   const onItemClick = (n) => {
     if (!n.is_read) markRead(n.id);
-    // Only in-app paths are routed; staff-tab-id links (no leading slash) are
-    // context for the staff badges, not something the customer bell navigates.
+    // In-app paths are routed. A link with no leading slash is a staff panel
+    // path ("approvals/7"): the staff bell opens it under /staff, while the
+    // customer bell leaves it alone (it is context for the staff badges).
     if (n.link && n.link.startsWith("/")) {
       onClose();
       navigate(n.link);
+    } else if (n.link && user?.account_type === "staff") {
+      onClose();
+      navigate(`/staff/${n.link}`);
     }
   };
 
@@ -1597,8 +1625,25 @@ const TRANSLATIONS = {
 // `onExit` signs the staffer out (labelled "Sign out" everywhere);
 // `onViewSite`, when given, is the browser-only "View site" that keeps the
 // session and opens the view-only marketplace.
-export function StaffDashboard({auth,onExit,onViewSite,activeTab,onTabChange}) {
-  return <AdminCommandCenter auth={auth} onExit={onExit} onViewSite={onViewSite} activeTab={activeTab} onTabChange={onTabChange} />;
+export function StaffDashboard({auth,onExit,onViewSite,activeTab,activeDetail,onTabChange}) {
+  return <AdminCommandCenter auth={auth} onExit={onExit} onViewSite={onViewSite} activeTab={activeTab} activeDetail={activeDetail} onTabChange={onTabChange} NotificationsSlot={StaffNotificationsSlot} />;
+}
+
+// The staff header's notification bell. Lives here (not in components/admin)
+// because NotificationsPanel does; StaffDashboard threads it down as a prop.
+// Notification rows carry no activity event, so this polls once a minute.
+function StaffNotificationsSlot({ user }) {
+  const { data } = useNotifications(true, { refetchInterval: 60000 });
+  const [open, setOpen] = useState(false);
+  const unread = data?.unread_count ?? 0;
+  return <>
+    <button type="button" onClick={()=>setOpen(v=>!v)} aria-haspopup="dialog" aria-expanded={open} aria-label={unread>0?`Notifications (${unread} unread)`:"Notifications"} title="Notifications"
+      style={{position:"relative",background:"none",border:`1px solid ${D.divider}`,borderRadius:10,minWidth:34,height:34,cursor:"pointer",fontSize:"0.9rem",color:D.text,fontFamily:"inherit"}}>
+      🔔
+      {unread>0&&<span aria-hidden="true" style={{position:"absolute",top:-6,right:-6,background:D.red,color:D.panelBg,borderRadius:20,padding:"1px 5px",fontSize:"0.6rem",fontWeight:800}}>{unread}</span>}
+    </button>
+    {open&&<NotificationsPanel user={user} onClose={()=>setOpen(false)}/>}
+  </>;
 }
 
 // The business-owner dashboard is the unified light "artisan" Business
@@ -2560,7 +2605,12 @@ export default function AshantiHub() {
   // AdminCommandCenter validates the id against the session's permissions
   // and asks for a replace back to /staff when it isn't one.
   const staffPanelMatch = useMatch("/staff/:panel");
-  const staffPanel = staffPanelMatch && !STAFF_STANDALONE_PAGES.has(staffPanelMatch.params.panel) ? staffPanelMatch.params.panel : null;
+  // /staff/:panel/:detail — one record inside a panel, e.g. /staff/approvals/12
+  // (notification links deep-link here; the panel re-checks access on load).
+  const staffDetailMatch = useMatch("/staff/:panel/:detail");
+  const staffPanelParam = (staffPanelMatch || staffDetailMatch)?.params.panel;
+  const staffPanel = staffPanelParam && !STAFF_STANDALONE_PAGES.has(staffPanelParam) ? staffPanelParam : null;
+  const staffDetail = staffPanel && staffDetailMatch ? staffDetailMatch.params.detail : null;
   const onStaffDashboardPath = location.pathname === "/staff" || location.pathname === "/staff/" || staffPanel !== null;
   // `page` is now derived straight from the URL rather than owned locally —
   // hard reloading on any of these paths renders that page immediately
@@ -2926,7 +2976,11 @@ export default function AshantiHub() {
   const staffSignOut=()=>{
     // Best-effort audit trail: the token is read synchronously by apiPost
     // before logout() clears it; a failed call never blocks signing out.
-    apiPost("/api/accounts/staff/logout/",{}).catch(()=>{});
+    // With no staff token stored the server session is already over, and a
+    // token-less logout would only 401 (which a mounted shell reads as "sign
+    // out again"), so it is skipped; everything local below still runs.
+    const stored=getStoredAuth();
+    if(stored?.token&&stored.account_type==="staff") apiPost("/api/accounts/staff/logout/",{}).catch(()=>{});
     queryClient.clear();
     auth.logout();
     setAuthModal(null);
@@ -2976,6 +3030,7 @@ export default function AshantiHub() {
   if(isAdmin && auth.user?.account_type==="staff"){
     return <StaffDashboard auth={auth}
       activeTab={staffPanel ?? "overview"}
+      activeDetail={staffDetail}
       onTabChange={(id,{replace=false}={})=>{
         const path=id==="overview" ? "/staff" : `/staff/${id}`;
         if(location.pathname!==path) navigate(path,{replace});

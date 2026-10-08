@@ -2,8 +2,9 @@
 #
 # backend/Dockerfile (the sibling of this file) is the DEVELOPMENT image —
 # it runs `manage.py runserver` with the source bind-mounted. This one bakes
-# the source in and runs gunicorn as a non-root user, and is what
-# infra/compose/docker-compose.yml builds on the server.
+# the source in and runs gunicorn (WSGI) as a non-root user, and is what
+# infra/compose/docker-compose.yml builds on the server. The compose
+# `realtime` service runs the same image under uvicorn workers for /ws/.
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -13,8 +14,10 @@ WORKDIR /app
 
 # libmagic1 backs python-magic (upload content-type sniffing in listings/).
 # curl is used by the container healthcheck in docker-compose.yml.
+# Pango/HarfBuzz + DejaVu fonts render report PDFs (WeasyPrint, reports/exports.py).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libmagic1 curl \
+       libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -27,7 +30,7 @@ COPY . .
 # mismatch here shows up as "permission denied" on the first photo upload,
 # not at deploy time.
 RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin ashantihub \
-    && mkdir -p /app/media /app/staticfiles \
+    && mkdir -p /app/media /app/staticfiles /app/private \
     && chown -R ashantihub:ashantihub /app
 USER ashantihub
 

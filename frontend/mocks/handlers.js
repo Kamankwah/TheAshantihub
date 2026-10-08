@@ -327,6 +327,9 @@ export const handlers = [
   }),
   // Staff account management (item 10) + permission editor (item 9) — default
   // handlers, overridden per-test as needed.
+  // The staff shell asks for a live-updates ticket on mount; answering 503
+  // keeps every test off real WebSockets (the client just retries later).
+  http.post('http://localhost:8000/api/realtime/ticket/', () => HttpResponse.json({ detail: 'Live updates are off in tests.' }, { status: 503 })),
   http.post('http://localhost:8000/api/accounts/staff/logout/', () => new HttpResponse(null, { status: 204 })),
   http.post('http://localhost:8000/api/accounts/staff/:id/suspend/', ({ params }) => {
     return HttpResponse.json({ id: Number(params.id), status: 'suspended' })
@@ -334,6 +337,9 @@ export const handlers = [
   http.post('http://localhost:8000/api/accounts/staff/:id/unsuspend/', ({ params }) => {
     return HttpResponse.json({ id: Number(params.id), status: 'active' })
   }),
+  http.get('http://localhost:8000/api/accounts/staff/sessions/', () => HttpResponse.json([])),
+  http.get('http://localhost:8000/api/accounts/staff/sessions/active/', () => HttpResponse.json([])),
+  http.get('http://localhost:8000/api/accounts/staff/two-factor/', () => HttpResponse.json({ enabled: false, required: false, enabled_at: null, recovery_codes_left: 0 })),
   http.post('http://localhost:8000/api/accounts/staff/:id/deactivate/', ({ params }) => {
     return HttpResponse.json({ id: Number(params.id), status: 'deactivated' })
   }),
@@ -474,16 +480,28 @@ export const handlers = [
   http.post('http://localhost:8000/api/notifications/read-all/', () => {
     return HttpResponse.json({ unread_count: 0 })
   }),
+  http.get('http://localhost:8000/api/approvals/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/approvals/counts/', () => HttpResponse.json({ mine: 0, made: 0, team: 0, decided: 0, can_view_all: false })),
   http.get('http://localhost:8000/api/tasks/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/activity/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/calls/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/calls/purposes/', () => HttpResponse.json([{ value: 'other', label: 'Other' }])),
   http.get('http://localhost:8000/api/accounts/staff/team/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/accounts/staff/invitable-roles/', () => HttpResponse.json([])),
+  http.get('http://localhost:8000/api/reports/current/', () => HttpResponse.json({
+    id: null, staff: { id: 1, full_name: 'Staff', role: 'support' }, period: 'day', period_start: '2026-10-07',
+    period_end: '2026-10-07', status: 'draft', submitted_at: null, is_late: false, due_at: '2026-10-07T19:00:00Z',
+    achievements: '', blockers: '', plan_next: [], plan_results: [], linked_targets: [], reviewer: null,
+    reviewed_at: null, review_note: '', similarity: 0, similar_warning: false, can_edit: true, can_review: false,
+    system_is_live: true, system: [],
+  })),
+  http.get('http://localhost:8000/api/reports/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/reports/team/', () => HttpResponse.json({ period: 'day', period_start: '2026-10-07', rows: [] })),
+  http.get('http://localhost:8000/api/reports/exports/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/notifications/staff-badges/', () => {
     return HttpResponse.json({
       kyc: 0, listings: 0, events: 0, hero: 0, reviews: 0,
-      plan_approvals: 0, contact_messages: 0, escrow: 0, tasks_overdue: 0,
+      plan_approvals: 0, contact_messages: 0, escrow: 0, tasks_overdue: 0, approvals_waiting: 0,
     })
   }),
 ]

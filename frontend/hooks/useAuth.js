@@ -36,8 +36,9 @@ export function useAuth() {
       .finally(() => setIsLoading(false))
   }, [])
 
-  const login = useCallback(async (accountType, identifier, password) => {
-    const data = await apiPost(LOGIN_PATHS[accountType], { identifier, password })
+  // Stores a sign-in response and merges /me/ into it (shared by the
+  // password sign-in and the 2-step sign-in's last step).
+  const completeSignIn = useCallback(async (data) => {
     setStoredAuth(data)
     let merged = data
     try {
@@ -51,6 +52,35 @@ export function useAuth() {
     }
     setUser(merged)
     return merged
+  }, [])
+
+  const login = useCallback(async (accountType, identifier, password) => {
+    const data = await apiPost(LOGIN_PATHS[accountType], { identifier, password })
+    // A staffer with 2-step sign-in (or a Super Admin who must set it up)
+    // gets a short-lived challenge instead of a token. Nothing is stored
+    // until the second step succeeds.
+    if (data?.two_factor_required || data?.two_factor_setup_required) return data
+    return completeSignIn(data)
+  }, [completeSignIn])
+
+  const verifyTwoFactor = useCallback(async (mfaToken, { code, recoveryCode } = {}) => {
+    const body = recoveryCode ? { mfa_token: mfaToken, recovery_code: recoveryCode } : { mfa_token: mfaToken, code }
+    return completeSignIn(await apiPost('/api/accounts/staff/login/two-factor/', body))
+  }, [completeSignIn])
+
+  const startTwoFactorEnrolment = useCallback(
+    (mfaToken) => apiPost('/api/accounts/staff/two-factor/enrol/start/', { mfa_token: mfaToken }),
+    [],
+  )
+
+  // Returns the recovery codes and the sign-in payload WITHOUT signing in, so
+  // the codes can be shown before the dashboard replaces the sign-in form;
+  // the caller finishes with completeSignIn(login).
+  const confirmTwoFactorEnrolment = useCallback(async (mfaToken, code) => {
+    const { recovery_codes: recoveryCodes, ...login } = await apiPost(
+      '/api/accounts/staff/two-factor/enrol/confirm/', { mfa_token: mfaToken, code },
+    )
+    return { recoveryCodes, login }
   }, [])
 
   const logout = useCallback(() => {
@@ -152,6 +182,10 @@ export function useAuth() {
   // login would.
   const activateStaff = useCallback(async (token, password) => {
     const data = await apiPost('/api/accounts/staff/activate/', { token, password })
+    // A Super Admin invitee (or anyone a second step is due for) gets a
+    // 2-step challenge and no token. Nothing is stored; the caller shows
+    // StaffTwoStepSignIn, which finishes the sign-in.
+    if (data?.two_factor_setup_required || data?.two_factor_required) return data
     setStoredAuth({ token: data.token, account_type: 'staff' })
     let merged = { token: data.token, account_type: 'staff' }
     try {
@@ -233,5 +267,6 @@ export function useAuth() {
     updateProfile, hasPermission,
     requestSecondaryEmail, confirmSecondaryEmail, requestSecondaryPhone, confirmSecondaryPhone,
     activateStaff, requestPasswordReset, confirmPasswordReset,
+    completeSignIn, verifyTwoFactor, startTwoFactorEnrolment, confirmTwoFactorEnrolment,
   }
 }

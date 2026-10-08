@@ -59,7 +59,52 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   marks the request so the middleware doesn't duplicate it.
 - **Team managers act only on their direct reports.** `staff.invite_team` (Operations, Delivery
   Manager) is checked with `_guard_team_scope`; anything beyond invite/resend/suspend/unsuspend
-  stays `staff.manage`.
+  stays `staff.manage`. Only someone who can lead a team — a Super Admin, or anyone whose
+  effective permissions hold `staff.invite_team` — can be set as a manager, by `StaffManagerView` or an
+  invite's `manager` field; both use `accounts.permissions.can_lead_team`.
+- **Staff sessions are server-side.** Every staff JWT names a `StaffSession` by its `jti`;
+  `MultiAccountJWTAuthentication` refuses revoked, idle (30 min) and expired (12 h) sessions and
+  writes `last_seen_at` at most once a minute. In tests mint staff tokens with `issue_token()` or
+  `accounts.testing.staff_token(staff, sudo=True)` — a hand-built `AccessToken` has no session and
+  401s. Ending sessions goes through `accounts.sessions.revoke()`/`revoke_all()`, which also drop
+  the live socket.
+- **Sensitive staff actions need the password again.** List `RequiresSudo()` after the role
+  permission in `get_permissions`, or call `accounts.sessions.require_sudo(request)` for a
+  conditional case. It answers `403 {"code": "sudo_required"}`, which the frontend turns into a
+  password prompt and one retry.
+- **2-step challenges are bound to their stage and to a fingerprint of the password hash**
+  (`accounts/two_factor.py`), so changing or resetting the password kills every open challenge. An
+  expired challenge (5 min) answers `code: "challenge_expired"`.
+- **Approvals: the maker never decides.** A new kind registers an `ApprovalKind` in its app's
+  `ready()`; `approvals.services.submit()` is the only way in, and `approve()` re-reads the target,
+  refuses a stale one (409) and runs `apply` inside the decision's transaction. Lock order is the
+  approval row, then the target (advisory lock `TARGET_LOCK_NAMESPACE`), then the activity chain
+  lock; keep it. A crash inside `apply` is converted to `ApplyFailed`.
+- **Report state changes go through `reports.services._locked`** (row lock). The first submission
+  fixes `is_late` and `submitted_at`; a resubmission after a return never changes them.
+- **`?format=` is DRF's renderer override.** An endpoint taking `?format=csv|xlsx|pdf` must set
+  `content_negotiation_class = reports.exports.ExportNegotiation`, or DRF answers 404 before the
+  view runs.
+- **Exports:** a job claims its row (QUEUED to RUNNING) exactly once, so a redelivered task is a
+  no-op; `reap_stuck_exports` fails rows stuck QUEUED/RUNNING. Every later status change is guarded
+  by the status it expects (the job finishes only a RUNNING row, `fail_export` only an unfinished
+  one) and notifies only if it moved the row, so a reaped export never flips back to READY or gets
+  two notices. Partials are named `<export id>-<uuid>.partial`; the reaper deletes only its rows'. A PDF above `PDF_SYNC_ROWS` (200)
+  is built by the job, not in the request. WeasyPrint runs with a URL fetcher that refuses every
+  URL (report text is user-written). Sudo is required by scope: `exports.reaches_others()`.
+- **Background jobs and live updates run in-process under `manage.py test`** (eager Celery,
+  in-memory channel layer, local-memory `realtime` cache). On-commit work needs
+  `captureOnCommitCallbacks(execute=True)` in a `TestCase`; consumer tests that read the database
+  need `TransactionTestCase` with `serialized_rollback = True`.
+- **Live updates come from the activity log.** `realtime.publish.publish_activity` runs on commit
+  of every `ActivityEvent`; a queue that should refresh live goes in `QUEUE_INVALIDATIONS`. Feed
+  events reach only staff who could read that event through `GET /api/activity/`; permission
+  groups get query keys, never labels. An `APIView` with `activity_exempt = True` is skipped by the
+  activity middleware (used only for the realtime ticket). Publishing goes through one bounded
+  `_group_send` (2 s), so a dead Redis cannot hang a request; a ticket the cache can't issue
+  answers 503. With `DJANGO_DEBUG=False` (outside `manage.py test`) the settings refuse to load
+  without a `redis://`/`rediss://` `REDIS_URL`. Activity bodies have NUL stripped
+  before hashing (Postgres text cannot hold it).
 
 ## Test-fixture gotcha
 

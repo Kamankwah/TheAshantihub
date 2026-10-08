@@ -1,7 +1,7 @@
 # Staff Platform Phase 1 — Foundations Design
 
 **Date:** 2026-10-07
-**Status:** Design approved in conversation 2026-10-07 (Section 1). Not implemented.
+**Status:** Design approved in conversation 2026-10-07 (Section 1). Implemented: plan 1A (F1, F3, F4, F7, F8) and plan 1B (F2, F5, F6, F9, F10).
 **Parent:** `2026-10-07-staff-platform-overview-design.md`
 **Followed by:** `2026-10-07-scouts-operations-design.md` (phase 2 builds directly on this)
 
@@ -63,10 +63,12 @@ surfaces; no behaviour change intended.
 **Infrastructure** (`infra/compose/docker-compose.yml`, both environments):
 - `redis` service: `redis:7-alpine`, password from `.env`, no host port, `maxmemory 128mb`,
   no persistence (everything in it is rebuildable).
-- `web` switches from WSGI to ASGI: gunicorn with uvicorn workers serving
-  `ashantihub.asgi:application` (HTTP and WebSocket from one process type).
+- `web` stays WSGI (revised in plan 1B Task 1): under ASGI Django runs each sync view in its
+  own thread, which would uncap Postgres connections and stop `--timeout` killing hung views.
+  A separate `realtime` service (gunicorn + uvicorn workers on `ashantihub.asgi:application`,
+  loopback port `APP_PORT + 100`) serves `/ws/` only.
 - `worker` (Celery) and `beat` (Celery beat) services from the same image.
-- `deploy.sh` brings up `redis`, `web`, `worker`, `beat` (today it brings up only `db` and
+- `deploy.sh` brings up `redis`, `web`, `realtime`, `worker`, `beat` (today it brings up only `db` and
   `web`). Keep its `/tmp` re-exec block untouched.
 - nginx: add a `location /ws/` block to `infra/hestia/templates/ashantihub-api.stpl.in` and
   `.tpl.in` with `proxy_http_version 1.1`, `Upgrade`/`Connection` headers and a long read
@@ -321,3 +323,22 @@ set. Remove the three entries from `docs/STAFF_ROLES.md` "Known gaps" when done.
 
 Docs updated as pieces land: `docs/STAFF_ROLES.md` (Operations, invites, known gaps),
 `infra/README.md` (Redis, worker, beat, `/ws/`), root `CLAUDE.md` (compose services).
+
+## 6. Deviations in plan 1B
+
+Justified departures from the text above, decided during execution:
+
+- HTTP stays on sync gunicorn WSGI (`web`); a separate `realtime` service (gunicorn, one uvicorn
+  worker, `ashantihub.asgi`) serves `/ws/` on `APP_PORT + 100` (see F2).
+- A Super Admin invitee enrols 2-step sign-in at activation, since 2-step is required for the role.
+- A per-staffer lockout follows 5 wrong second-step codes in 15 minutes (counted from the
+  activity log).
+- Export sudo is decided by scope: only an export that reaches other people's reports needs the
+  password again.
+- A PDF above 200 rows is built in the background; smaller ones are built in the request.
+- A download by anyone other than the requester answers 404.
+- The first submission of a report fixes `is_late` and `submitted_at`; later resubmissions do not
+  change them.
+- The copy check compares like periods only (day against day, and so on).
+- Five extra queues refresh live beyond the spec's list: promotions, plan approvals, escrow,
+  disputes and delivery.

@@ -24,6 +24,9 @@ urlpatterns = [
     path("api/notifications/", include("notifications.urls")),
     path("api/tasks/", include("staff_tasks.urls")),
     path("api/calls/", include("calls.urls")),
+    path("api/approvals/", include("approvals.urls")),
+    path("api/reports/", include("reports.urls")),
+    path("api/realtime/", include("realtime.urls")),
 ]
 
 if settings.DEBUG:

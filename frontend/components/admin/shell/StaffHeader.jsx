@@ -15,7 +15,7 @@ export function RoleChip({ role, roleColor }) {
 // `onExit` is a real sign-out in every display mode; `onViewSite` (browser
 // only — App.jsx omits it in the installed app) leaves for the marketplace
 // with the session kept.
-export default function StaffHeader({ title, role, roleColor, fullName, onExit, onViewSite, breakpoint, onOpenMenu, menuButtonRef, drawerOpen, actions, children }) {
+export default function StaffHeader({ title, role, roleColor, fullName, onExit, onViewSite, breakpoint, onOpenMenu, menuButtonRef, drawerOpen, actions, status, children }) {
   const isPhone = breakpoint === "phone";
   const showMenu = breakpoint !== "desktop";
   return (
@@ -36,6 +36,7 @@ export default function StaffHeader({ title, role, roleColor, fullName, onExit, 
           <div style={{ color: D.text, fontWeight: 800, fontSize: "0.9rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+          {status}
           {actions}
           <RoleChip role={role} roleColor={roleColor} />
           {!isPhone && <span style={{ color: D.text, fontSize: "0.78rem", fontWeight: 700, whiteSpace: "nowrap" }}>{fullName}</span>}

@@ -1,5 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Flag from "../Flag.jsx";
+import { SESSION_ENDED_EVENT, UNAUTHORIZED_EVENT, getStoredAuth } from "../../apiClient.js";
+import { useIdleSignOut } from "../../hooks/useIdleSignOut.js";
+import { useRealtime } from "../../hooks/useRealtime.js";
+import { noteSignedOutReason } from "../../lib/signOutReason.js";
+import LiveUpdatesIndicator from "./shell/LiveUpdatesIndicator.jsx";
 import { useStaffBadges } from "../../hooks/useStaffBadges.js";
 import { D, ROLE_ACCENTS } from "./theme.js";
 import OverviewPanel from "./panels/OverviewPanel.jsx";
@@ -39,6 +44,12 @@ import TasksPanel from "./panels/TasksPanel.jsx";
 import ActivityPanel from "./panels/ActivityPanel.jsx";
 import CallLogPanel from "./panels/CallLogPanel.jsx";
 import MyTeamPanel from "./panels/MyTeamPanel.jsx";
+import ApprovalsPanel from "./panels/ApprovalsPanel.jsx";
+import ReportsPanel from "./panels/ReportsPanel.jsx";
+import TeamReportsPanel from "./panels/TeamReportsPanel.jsx";
+import SecurityPanel from "./panels/SecurityPanel.jsx";
+import SessionsPanel from "./panels/SessionsPanel.jsx";
+import SudoPrompt from "./SudoPrompt.jsx";
 import StaffShellStyles from "./shell/StaffShellStyles.jsx";
 import InstallAppButton from "./shell/InstallAppButton.jsx";
 import UpdateToast from "./shell/UpdateToast.jsx";
@@ -60,7 +71,7 @@ import OfflineBanner from "./shell/OfflineBanner.jsx";
 // "Sign out" in the browser and the installed app alike. `onViewSite` is the
 // optional keep-the-session alternative ("View site", browser only — App.jsx
 // leaves it undefined inside the installed app, which has no marketplace).
-export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab: activeTabProp, onTabChange }) {
+export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab: activeTabProp, activeDetail, onTabChange, NotificationsSlot }) {
   const { data: staffBadges } = useStaffBadges();
   const badgeFor = makeBadgeFor(staffBadges);
   // Controlled by App.jsx's /staff/:panel route when activeTab is passed;
@@ -68,6 +79,10 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
   // tab itself, exactly as before.
   const isControlled = activeTabProp !== undefined;
   const [internalTab, setInternalTab] = useState("overview");
+  // A record inside the active panel (e.g. one approval): from the
+  // /staff/:panel/:detail URL when controlled, local state otherwise.
+  const [internalDetail, setInternalDetail] = useState(null);
+  const detail = isControlled ? (activeDetail ?? null) : internalDetail;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [saved, setSaved] = useState(false);
   const breakpoint = useBreakpoint();
@@ -78,6 +93,55 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
   const role = auth.user?.role;
   const roleColor = ROLE_ACCENTS[role] || D.gold;
   const showToast = () => { setSaved(true); setTimeout(() => setSaved(false), 2500); };
+  // A forced reconnect means this staffer's permissions or team changed:
+  // refetch them (GET /api/accounts/me/) so the menus follow.
+  const authRef = useRef(auth);
+  useEffect(() => { authRef.current = auth; }, [auth]);
+  const refetchMe = useCallback(() => {
+    authRef.current?.refreshUser?.()?.catch?.(() => {});
+  }, []);
+  const live = useRealtime(true, { onForceDisconnect: refetchMe });
+  // Idle (30 min without input) and "the server ended this session" both
+  // sign out through the normal staff sign-out, which clears cached data.
+  const onExitRef = useRef(onExit);
+  useEffect(() => { onExitRef.current = onExit; }, [onExit]);
+  // Once per mount: an idle timer, a session-ended event, a 401 and another
+  // tab's sign-out can all arrive together, and the first one decides.
+  const signedOut = useRef(false);
+  const signOutBecause = useCallback((reason) => {
+    if (signedOut.current) return;
+    signedOut.current = true;
+    noteSignedOutReason(reason);
+    onExitRef.current?.();
+  }, []);
+  useIdleSignOut(() => signOutBecause("idle"));
+  useEffect(() => {
+    const ended = () => signOutBecause("ended");
+    window.addEventListener(SESSION_ENDED_EVENT, ended);
+    return () => window.removeEventListener(SESSION_ENDED_EVENT, ended);
+  }, [signOutBecause]);
+  // The session can end while the shell is not mounted ("View site", then a
+  // 401 on the marketplace clears it): on mount, and on any 401 while mounted,
+  // a shell with no stored staff session signs out instead of sitting there
+  // with every panel failing.
+  useEffect(() => {
+    const signedOutUnderneath = () => {
+      const stored = getStoredAuth();
+      if (!stored?.token || stored.account_type !== "staff") signOutBecause("ended");
+    };
+    signedOutUnderneath();
+    window.addEventListener(UNAUTHORIZED_EVENT, signedOutUnderneath);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, signedOutUnderneath);
+  }, [signOutBecause]);
+  // Another tab signed out (idle, or the Sign out button): the shared stored
+  // session is gone, so this tab's next request would carry no token.
+  useEffect(() => {
+    const onStorage = (event) => {
+      if (event.key === "ashantihub.auth" && event.newValue === null) signOutBecause("ended");
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [signOutBecause]);
 
   const navGroups = buildNavGroups(auth);
   const allItems = navGroups.flatMap(g => g.items);
@@ -93,9 +157,14 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
 
   const selectTab = (id) => {
     setDrawerOpen(false);
-    if (id === activeTab) return;
+    if (id === activeTab && detail == null) return;
+    setInternalDetail(null);
     if (isControlled) onTabChange?.(id);
     else setInternalTab(id);
+  };
+  const openDetail = (id) => {
+    if (isControlled) onTabChange?.(id == null ? activeTab : `${activeTab}/${id}`);
+    else setInternalDetail(id);
   };
 
   // Each panel starts at the top; skipped on first mount so a reload keeps
@@ -142,10 +211,10 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
       {/* Main column — carries the right landscape inset, and the left one
           on phone where there is no sidebar to absorb it (spec §4.4). */}
       <div style={{ flex: 1, minWidth: 0, paddingRight: "env(safe-area-inset-right, 0px)", ...(isPhone ? { paddingLeft: "env(safe-area-inset-left, 0px)" } : {}) }}>
-        <StaffHeader title={activeLabel} role={role} roleColor={roleColor} fullName={auth.user?.full_name}
+        <StaffHeader status={<LiveUpdatesIndicator paused={live.paused} />} title={activeLabel} role={role} roleColor={roleColor} fullName={auth.user?.full_name}
           onExit={onExit} onViewSite={onViewSite} breakpoint={breakpoint}
           onOpenMenu={() => setDrawerOpen(true)} menuButtonRef={menuButtonRef} drawerOpen={drawerOpen}
-          actions={isPhone ? null : <InstallAppButton variant="header" />}>
+          actions={<>{NotificationsSlot ? <NotificationsSlot user={auth.user} /> : null}{isPhone ? null : <InstallAppButton variant="header" />}</>}>
           <OfflineBanner bleed={isPhone ? 12 : 20} />
         </StaffHeader>
 
@@ -184,7 +253,12 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "tasks" && <TasksPanel />}
           {activeTab === "activity" && <ActivityPanel />}
           {activeTab === "calls" && <CallLogPanel />}
+          {activeTab === "reports" && <ReportsPanel auth={auth} />}
+          {activeTab === "team-reports" && <TeamReportsPanel auth={auth} />}
+          {activeTab === "security" && <SecurityPanel />}
+          {activeTab === "sessions" && <SessionsPanel auth={auth} />}
           {activeTab === "my-team" && <MyTeamPanel currentStaffId={auth.user?.id} />}
+          {activeTab === "approvals" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
         </main>
       </div>
 
@@ -209,6 +283,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
         </div>
         <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={selectTab} collapsed={false} badgeFor={badgeFor} roleColor={roleColor} itemMinHeight={44} />
       </StaffDrawer>
+      <SudoPrompt />
       <UpdateToast bottomOffset={isPhone ? "calc(80px + env(safe-area-inset-bottom, 0px))" : 20} />
     </div>
   );

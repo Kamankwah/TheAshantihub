@@ -7,6 +7,14 @@ they are built.
 **Visual design:** the "AshantiHub Staff Dashboards" design canvas (claude.ai artifact
 `Xfzd46Ru5DMyDMiSM1pbcd`) — platform map, one screen per role, shared report, Staff profile,
 delivery pricing. Numbers on it are illustrative.
+**Screen designs — APPROVED by the owner 2026-10-08:** one canvas per role, every menu screen,
+each opening with an approval sheet (claude.ai/artifact/<id>): Scout `CaAo7HnnkqH2Ew1wrLr1q1`,
+Operations `TYmvvv4FYrxbmkdD7TK8V2`, Support `5xUjKAQXuFZ1XtrsmX4KV6`, Accounting
+`WaCHB48XnDNNnin1r4xZbq`, Marketing `RheksK8bBTJx3kzVCmaK6L`, Delivery Manager
+`SsYTfMDRZghU2Wh3gUDKGW`, Dispatch `GfNFNr8Uhs5rUbX2tvHw7L`, Super Admin (People & Operations)
+`VV9uqqLed1JxZ4hpo5fHMe`, Super Admin (Money, Insights & Settings) `812gaBaYWk6zcK12m8Ciot`.
+Each phase builds its screens to these designs (in the app's inline-`D` style); their numbers
+are illustrative, and the product rules in §4 override anything a screen shows.
 **Phase specs:** `2026-10-07-staff-foundations-design.md` (phase 1),
 `2026-10-07-scouts-operations-design.md` (phase 2).
 

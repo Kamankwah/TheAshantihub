@@ -10,6 +10,7 @@ from rest_framework.test import APIClient
 
 from accounts.authentication import issue_token
 from accounts.models import Permission, Role, StaffUser
+from accounts.testing import staff_token
 
 
 class StaffInviteTests(TestCase):
@@ -22,7 +23,7 @@ class StaffInviteTests(TestCase):
             password_hash="x",
             role=Role.objects.get(name="super_admin"),
         )
-        self.token = issue_token(self.super_admin, "staff")
+        self.token = staff_token(self.super_admin, sudo=True)
 
     def test_super_admin_can_invite_staff(self):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
@@ -150,7 +151,8 @@ class StaffInviteTests(TestCase):
             password_hash="x",
             role=admin_role,
         )
-        token = issue_token(admin_staff, "staff")
+        # With the password re-entered, so the refusal below is the role rule.
+        token = staff_token(admin_staff, sudo=True)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
         response = self.client.post(
             "/api/accounts/staff/invite/",

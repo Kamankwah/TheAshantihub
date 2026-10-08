@@ -78,3 +78,27 @@ monolith holding most components, with extractions living in `components/`,
 - **Businesses cannot be contacted directly** — see the root `CLAUDE.md`. There is no
   business-to-customer WhatsApp link or chat anywhere; "🎧 Contact Support" is always framed as a
   conversation with AshantiHub Support *about* a business.
+- **Staff menus are per role.** A new panel goes into `NAV_ITEMS` in
+  `components/admin/shell/navModel.js` and its id into the right group of each role in
+  `ROLE_MENUS` (and `DEFAULT_GROUPS`); anything a role's menu doesn't place shows under "More
+  tools". Group labels must not repeat an item label.
+- **Live updates refetch by query key.** `lib/realtime.js` (through `hooks/useRealtime.js` in the
+  staff shell) calls `invalidateQueries({queryKey: [key]})` for each key the server names, so a
+  staff hook's first query-key element is what `backend/realtime/publish.py` must send. The MSW
+  default for `/api/realtime/ticket/` answers 503 so tests never open a socket.
+- **Password re-entry is automatic.** A `403 {code: "sudo_required"}` from any `apiClient` call
+  opens `SudoPrompt` and retries once; panels just show their usual error if it's cancelled.
+- **`components/admin/panels/panelStyles.js` is the shared style source for staff panels.**
+  `chip()` never appends alpha to an rgba colour (only to `#hex`); other colours get the neutral
+  tint.
+- **The staff notification bell is a `NotificationsSlot` prop** threaded from `App.jsx`, which is
+  how `components/**` avoids importing `App.jsx`.
+- **`lib/saveBlob.js` is the one file-save helper** (report exports); don't hand-roll anchors.
+- **Staff 2-step and activation flows return a challenge object instead of storing a session**
+  (`useAuth`); the caller shows the code step and only the final call stores the session.
+- **Idle sign-out is shared across tabs** (`ashantihub.staffLastInput` in `useIdleSignOut`), and a
+  `storage` event that clears `ashantihub.auth` signs the other tabs out.
+- **The staff shell signs out ("ended") when it mounts without a stored staff session**, and on any
+  `UNAUTHORIZED_EVENT` (a 401 that ended no stored session) while none is stored — a session can
+  end during "View site". A test that mounts `AdminCommandCenter` and counts `onExit` must
+  `setStoredAuth({token, account_type: 'staff', …})` first.

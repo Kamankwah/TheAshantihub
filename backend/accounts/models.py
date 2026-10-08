@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 from .mixins import AuthenticatableAccountMixin
 from .validators import validate_document_content_type, validate_image_content_type
@@ -190,6 +191,68 @@ class RoleInviteRule(models.Model):
 
     def __str__(self):
         return f"{self.inviter_role.name} → {self.invitee_role.name}"
+
+
+class StaffSession(models.Model):
+    """One signed-in device (staff foundations F9). The access token's `jti`
+    names its row; accounts/sessions.py holds the rules (30-minute idle limit,
+    12-hour absolute limit, password re-entry)."""
+
+    SIGNED_OUT = "signed_out"
+    ENDED = "ended"
+    SIGNED_OUT_EVERYWHERE = "signed_out_everywhere"
+    SUSPENDED = "suspended"
+    DEACTIVATED = "deactivated"
+    PASSWORD_RESET = "password_reset"
+    IDLE = "idle"
+    EXPIRED = "expired"
+    REASON_CHOICES = [
+        (SIGNED_OUT, "Signed out"),
+        (ENDED, "Ended from another device"),
+        (SIGNED_OUT_EVERYWHERE, "Signed out of every device by a Super Admin"),
+        (SUSPENDED, "Account suspended"),
+        (DEACTIVATED, "Account deactivated"),
+        (PASSWORD_RESET, "Password reset"),
+        (IDLE, "30 minutes without activity"),
+        (EXPIRED, "12-hour limit reached"),
+    ]
+
+    staff = models.ForeignKey(StaffUser, on_delete=models.CASCADE, related_name="sessions")
+    jti = models.CharField(max_length=64, unique=True)
+    device_label = models.CharField(max_length=120, blank=True, default="")
+    ip = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=300, blank=True, default="")
+    two_factor = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now)
+    last_seen_at = models.DateTimeField(default=timezone.now)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revoked_reason = models.CharField(max_length=30, blank=True, default="", choices=REASON_CHOICES)
+    sudo_until = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["staff", "revoked_at"])]
+
+    def __str__(self):
+        return f"{self.staff.full_name} · {self.device_label or 'device'} · {self.created_at:%Y-%m-%d %H:%M}"
+
+
+class StaffTwoFactor(models.Model):
+    """2-step sign-in (F9): an authenticator-app (TOTP) secret, Fernet-
+    encrypted with STAFF_SECRETS_KEY, plus HMAC-hashed single-use recovery
+    codes. A pending secret waits for its first code, so moving to a new
+    phone never switches the old one off early. See accounts/two_factor.py."""
+
+    staff = models.OneToOneField(StaffUser, on_delete=models.CASCADE, related_name="two_factor")
+    secret_encrypted = models.TextField(blank=True, default="")
+    pending_secret_encrypted = models.TextField(blank=True, default="")
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    last_used_step = models.BigIntegerField(default=0)
+    recovery_code_hashes = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"2-step for {self.staff.full_name}"
 
 
 class BusinessOwner(AuthenticatableAccountMixin, models.Model):

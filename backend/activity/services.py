@@ -63,10 +63,21 @@ def _mask_value(value):
     return value
 
 
+def _without_nul(value):
+    """Postgres jsonb refuses NUL characters; request bodies are untrusted."""
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, dict):
+        return {_without_nul(k): _without_nul(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_without_nul(v) for v in value]
+    return value
+
+
 def _bounded(value):
     if value is None:
         return None
-    text = json.dumps(_mask_value(redact(value)), default=str, sort_keys=True)
+    text = json.dumps(_without_nul(_mask_value(redact(value))), default=str, sort_keys=True)
     if len(text) > MAX_JSON_CHARS:
         return {"truncated": True, "preview": text[:MAX_JSON_CHARS]}
     return json.loads(text)
@@ -134,6 +145,11 @@ def _client_ip(request):
     return _canonical_ip(request.META.get("HTTP_X_REAL_IP") or request.META.get("REMOTE_ADDR"))
 
 
+def client_ip(request):
+    """Public name for the canonical client IP (accounts.sessions reads it)."""
+    return _client_ip(request)
+
+
 def _notify(event):
     for hook in list(on_recorded):
         try:
@@ -156,8 +172,8 @@ def record(actor, verb, *, target=None, target_type="", target_id="", target_lab
         method=method[:8],
         target_type=target_type[:50],
         target_id=str(target_id)[:64],
-        target_label=target_label[:200],
-        summary=summary[:300],
+        target_label=_without_nul(str(target_label))[:200],
+        summary=_without_nul(str(summary))[:300],
         before=_bounded(before),
         after=_bounded(after),
         ip=_client_ip(django_request) if django_request is not None else None,

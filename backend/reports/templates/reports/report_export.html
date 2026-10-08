@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ title }}</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm;
+    @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8pt; color: #6b5a4e; } }
+  body { font-family: "DejaVu Sans", sans-serif; color: #2C1810; font-size: 10pt; line-height: 1.45; }
+  h1 { font-size: 16pt; margin: 0 0 4pt; }
+  h2 { font-size: 12pt; margin: 0 0 4pt; padding-bottom: 3pt; border-bottom: 1px solid #D4A01766; }
+  h3 { font-size: 10pt; margin: 10pt 0 3pt; }
+  .meta { color: #6b5a4e; font-size: 9pt; margin-bottom: 8pt; }
+  .report + .report { page-break-before: always; }
+  table { border-collapse: collapse; width: 100%; margin-top: 8pt; font-variant-numeric: tabular-nums; }
+  td { padding: 3pt 4pt; vertical-align: top; border-top: 1px solid #2C18101f; }
+  td.label { color: #6b5a4e; width: 30%; }
+  .flag { color: #A33A00; font-weight: bold; }
+</style>
+</head>
+<body>
+  <h1>{{ title }}</h1>
+  <div class="meta">Generated {{ generated_at|date:"j M Y, H:i" }} · from AshantiHub's records</div>
+  {% for r in reports %}
+  <section class="report">
+    <h2>{{ r.staff }} · {{ r.role }} · {{ r.period }} report · {{ r.range }}</h2>
+    <div class="meta">
+      {{ r.status }}{% if r.submitted_at %} · submitted {{ r.submitted_at|date:"j M Y, H:i" }}{% endif %}
+      {% if r.is_late %} · <span class="flag">after the deadline</span>{% endif %}
+      {% if r.similar %} · <span class="flag">reads very like an earlier report</span>{% endif %}
+    </div>
+    {% for s in r.sections %}
+      <h3>{{ s.title }}</h3>
+      <svg xmlns="http://www.w3.org/2000/svg" width="440" height="{{ s.height }}">
+        {% for row in s.rows %}
+          <text x="0" y="{{ row.text_y }}" font-size="8" fill="#2C1810">{{ row.label }}</text>
+          <rect x="190" y="{{ row.y }}" width="{{ row.width }}" height="10" fill="#D4A017"></rect>
+          <text x="{{ row.value_x }}" y="{{ row.text_y }}" font-size="8" fill="#2C1810">{{ row.value }}</text>
+        {% endfor %}
+      </svg>
+    {% empty %}
+      <div class="meta">No system numbers: this report was never submitted.</div>
+    {% endfor %}
+    <table>
+      <tr><td class="label">What went well</td><td>{{ r.achievements|linebreaksbr }}</td></tr>
+      <tr><td class="label">What got in the way</td><td>{{ r.blockers|linebreaksbr }}</td></tr>
+      <tr><td class="label">Plan</td><td>{% for item in r.plan_next %}{{ item }}{% if not forloop.last %}<br>{% endif %}{% endfor %}</td></tr>
+      <tr><td class="label">Previous plan</td><td>{% for row in r.plan_results %}{{ row.item }}: {{ row.result|default:"not marked" }}{% if not forloop.last %}<br>{% endif %}{% endfor %}</td></tr>
+      {% if r.reviewer %}<tr><td class="label">Reviewed by</td><td>{{ r.reviewer }}{% if r.review_note %}: {{ r.review_note }}{% endif %}</td></tr>{% endif %}
+    </table>
+  </section>
+  {% endfor %}
+</body>
+</html>

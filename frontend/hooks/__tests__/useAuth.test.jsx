@@ -362,4 +362,83 @@ describe('re-checks /me/ when connectivity returns', () => {
     await act(async () => {})
     expect(calls).toBe(0)
   })
+
 })
+
+describe('useAuth — 2-step sign-in and activation', () => {
+  it('returns the 2-step challenge from login without storing anything', async () => {
+    server.use(http.post('http://localhost:8000/api/accounts/staff/login/', () => HttpResponse.json({ two_factor_required: true, mfa_token: 'mfa' })))
+    const { result } = renderHook(() => useAuth())
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    let challenge
+    await act(async () => { challenge = await result.current.login('staff', 'boss@example.com', 'pw') })
+    expect(challenge).toEqual({ two_factor_required: true, mfa_token: 'mfa' })
+    expect(result.current.user).toBeNull()
+    expect(localStorage.getItem('ashantihub.auth')).toBeNull()
+  })
+
+  it('finishes a 2-step sign-in with the code', async () => {
+    let body = null
+    server.use(
+      http.post('http://localhost:8000/api/accounts/staff/login/two-factor/', async ({ request }) => {
+        body = await request.json()
+        return HttpResponse.json({ token: 'tok', account_type: 'staff', id: 1, full_name: 'Simon Peter', role: 'super_admin', permissions: [] })
+      }),
+      http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({ account_type: 'staff', id: 1, full_name: 'Simon Peter', role: 'super_admin', permissions: [] })),
+    )
+    const { result } = renderHook(() => useAuth())
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    await act(async () => { await result.current.verifyTwoFactor('mfa', { code: '123456' }) })
+    expect(result.current.user).toMatchObject({ token: 'tok', full_name: 'Simon Peter' })
+    expect(body).toEqual({ mfa_token: 'mfa', code: '123456' })
+  })
+
+  it('sends a recovery code under recovery_code', async () => {
+    let body = null
+    server.use(
+      http.post('http://localhost:8000/api/accounts/staff/login/two-factor/', async ({ request }) => {
+        body = await request.json()
+        return HttpResponse.json({ token: 'tok', account_type: 'staff' })
+      }),
+      http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({ account_type: 'staff', id: 1, full_name: 'Simon Peter', role: 'super_admin', permissions: [] })),
+    )
+    const { result } = renderHook(() => useAuth())
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    await act(async () => { await result.current.verifyTwoFactor('mfa', { recoveryCode: 'abcde-fghjk' }) })
+    expect(body).toEqual({ mfa_token: 'mfa', recovery_code: 'abcde-fghjk' })
+  })
+
+  it('confirming enrolment returns the codes and the sign-in payload without signing in', async () => {
+    server.use(http.post('http://localhost:8000/api/accounts/staff/two-factor/enrol/confirm/', () => HttpResponse.json({ token: 'tok', account_type: 'staff', recovery_codes: ['a', 'b'] })))
+    const { result } = renderHook(() => useAuth())
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    let out
+    await act(async () => { out = await result.current.confirmTwoFactorEnrolment('mfa', '123456') })
+    expect(out).toEqual({ recoveryCodes: ['a', 'b'], login: { token: 'tok', account_type: 'staff' } })
+    expect(result.current.user).toBeNull()
+    expect(localStorage.getItem('ashantihub.auth')).toBeNull()
+  })
+
+  it('activateStaff returns the challenge and stores nothing when a second step is due', async () => {
+    server.use(http.post('http://localhost:8000/api/accounts/staff/activate/', () => HttpResponse.json({ status: 'activated', two_factor_setup_required: true, mfa_token: 'mfa' })))
+    const { result } = renderHook(() => useAuth())
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    let out
+    await act(async () => { out = await result.current.activateStaff('inv', 'a-good-password') })
+    expect(out).toMatchObject({ two_factor_setup_required: true, mfa_token: 'mfa' })
+    expect(result.current.user).toBeNull()
+    expect(localStorage.getItem('ashantihub.auth')).toBeNull()
+  })
+
+  it('activateStaff still stores the session when a token comes back', async () => {
+    server.use(
+      http.post('http://localhost:8000/api/accounts/staff/activate/', () => HttpResponse.json({ status: 'activated', token: 'tok' })),
+      http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({ account_type: 'staff', id: 5, full_name: 'New Staffer', role: 'support', permissions: [] })),
+    )
+    const { result } = renderHook(() => useAuth())
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    await act(async () => { await result.current.activateStaff('inv', 'a-good-password') })
+    expect(result.current.user).toMatchObject({ token: 'tok', full_name: 'New Staffer' })
+  })
+})
+
