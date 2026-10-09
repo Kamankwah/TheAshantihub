@@ -147,6 +147,9 @@ def approve_owner(owner_id, staff, *, http_request=None, from_approval=None):
             body="Your KYC has been approved — you can now publish listings.",
             link="/business-dashboard", icon="✅",
         )
+        from commission import services as commission  # commission imports accounts
+
+        commission.accrue_registration(owner, now=owner.reviewed_at)  # idempotent; nothing without an approved policy
         if from_approval is None:
             after = {"via": "kyc-queue", "approval_ids": [approval.pk for approval in closed]}
         else:

@@ -130,6 +130,17 @@ class PublishTests(TestCase):
                 invalidations = [payload["invalidate"] for payload in self.drain(scouts) if payload["type"] == "invalidate"]
                 self.assertIn(["my-targets"], invalidations)
 
+    def test_commission_events_refresh_the_statement_and_policy_screens_and_a_kyc_approval_the_leaderboard(self):
+        for group in ("perm.commission.view_own", "perm.commission.view_all", "perm.commission.policy"):
+            with self.subTest(group=group):
+                queue = self.listen(group)
+                self.record(self.lead, "commission.reversed", method="POST", target_type="accounts.businessowner", target_id="3")
+                self.assertEqual(self.message(queue)["payload"]["invalidate"], ["my-commission", "commission-accruals", "commission-policies"])
+        scouts = self.listen("perm.businesses.manage_portfolio")
+        self.record(self.lead, "kyc-approve", method="POST", target_type="accounts.businessowner", target_id="3")
+        invalidations = [payload["invalidate"] for payload in self.drain(scouts) if payload["type"] == "invalidate"]
+        self.assertIn(["leaderboard"], invalidations)
+
     def test_a_visit_refreshes_the_scouts_own_targets(self):
         mine = self.listen(f"staff.{self.scout.id}")
         self.record(self.scout, "visit.check_out", method="POST", target_type="field.visitcheckin", target_id="7")

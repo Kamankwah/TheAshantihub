@@ -63,6 +63,10 @@ QUEUE_INVALIDATIONS = [
     # Targets, leave and holidays change what a scout's Targets screen shows; a KYC approval
     # (registrations) and a subscription payment (renewals) change the counts.
     (("targets.", "leave.", "calendar.", "kyc-approve", "subscription."), ("businesses.manage_portfolio",), ("my-targets",)),
+    # A KYC approval may complete an activation (the leaderboard counts it once its first listing is live too).
+    (("kyc-approve",), ("businesses.manage_portfolio",), ("leaderboard",)),
+    # Commission lines are earned, released, reversed and exported by events; a policy change is an approval.
+    (("commission.",), ("commission.view_own", "commission.view_all", "commission.policy"), ("my-commission", "commission-accruals", "commission-policies")),
     (("fraud.",), ("fraud.manage", "fraud.flag"), ("fraud-flags", "fraud-flag-counts", "kyc-queue", "portfolio-business", "staff-badges")),
 ]
 # (verb prefixes, extra keys for everyone who receives the feed event)

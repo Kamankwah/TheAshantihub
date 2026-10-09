@@ -32,7 +32,7 @@ from notifications.services import notify_staff
 from staff_tasks.models import Task
 from staff_tasks.services import create_task
 
-from . import checks, delivery, health
+from . import checks, delivery, health, leaderboard
 from .models import BusinessHealthSnapshot
 from .registration import RegistrationError, register_business, resubmit_kyc
 from .serializers import (
@@ -733,3 +733,18 @@ class OwnerChangeUndoView(APIView):
         except UndoError as exc:
             return Response({"detail": exc.message}, status=exc.status_code)
         return Response(OwnerChangeSerializer(change).data)
+
+
+class LeaderboardView(APIView):
+    """GET /api/portfolio/leaderboard/[?month=YYYY-MM] — the caller's team
+    (the scouts who share their manager), ranked by real activations. Counts
+    only: never another scout's money."""
+
+    def get_permissions(self):
+        return [HasRolePermission(PORTFOLIO_SCOUT)]
+
+    def get(self, request):
+        try:
+            return Response(leaderboard.build(request.user, request.query_params.get("month")))
+        except leaderboard.LeaderboardError as exc:
+            return Response({"detail": str(exc)}, status=400)

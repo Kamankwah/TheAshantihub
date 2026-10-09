@@ -221,6 +221,13 @@ def _finalize_subscription(session):
                 "current_period_end": now + period_length,
             },
         )
+        # The bonus for the 3rd paid month goes to whoever manages the business now (spec S8).
+        from accounts.models import BusinessOwner
+        from commission import services as commission
+
+        commission.accrue_bonus(
+            BusinessOwner.objects.select_related("account_manager").get(pk=session.business_owner_id), session, now=now,
+        )
         # Records subscription.resumed last when it stopped a running clock.
         clock.clear_after_payment(subscription, now=now)
 

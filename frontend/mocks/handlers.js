@@ -526,6 +526,20 @@ export const handlers = [
     })),
     days: [], daily: [], set_by: null, effective_from: null, sunday_off: true, leave: [], holidays: [], lead: null,
   })),
+  // Commission and leaderboard (staff WP5): no policy approved, nothing earned.
+  http.get('http://localhost:8000/api/commission/me/', () => HttpResponse.json({
+    count: 0, next: null, previous: null, results: [],
+    statement: { from: '2026-10-01', to: '2026-10-07' },
+    totals: Object.fromEntries(['on_hold', 'payable', 'in_batch', 'paid', 'reversed'].map((k) => [k, { amount: '0.00', count: 0, registrations: 0, bonuses: 0 }])),
+    bonus: [], bonus_more: 0, policy: { registration: null, three_paid_months_bonus: null },
+  })),
+  http.get('http://localhost:8000/api/commission/policies/', () => HttpResponse.json({
+    current: { registration: null, three_paid_months_bonus: null }, pending: [], history: [],
+  })),
+  http.get('http://localhost:8000/api/commission/accruals/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/portfolio/leaderboard/', () => HttpResponse.json({
+    month: '2026-10', as_of: '2026-10-07', lead: null, rows: [], team_total: 0, my_rank: 1, my_count: 0, gap: null, most_improved: null,
+  })),
   http.get('http://localhost:8000/api/field/visit-targets/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/accounts/staff/team/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/accounts/staff/invitable-roles/', () => HttpResponse.json([])),

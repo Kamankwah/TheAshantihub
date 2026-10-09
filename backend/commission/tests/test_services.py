@@ -1,0 +1,188 @@
+from datetime import timedelta
+from decimal import Decimal
+
+from django.utils import timezone
+
+from accounts.models import BusinessOwner
+from activity.models import ActivityEvent
+from billing.models import Subscription, SubscriptionPlan
+from commission import services
+from commission.models import CommissionAccrual, CommissionPolicy
+from commission.tasks import release_commission_holds
+from fraud import services as fraud
+from fraud.models import FraudFlag
+
+from .base import CommissionBase
+
+
+class RegistrationAccrualTests(CommissionBase):
+    def test_no_policy_means_nothing_accrues_and_nothing_is_backfilled_later(self):
+        owner = self.pending_owner()
+        self.approve(owner)
+        self.assertFalse(CommissionAccrual.objects.exists())
+        self.policy()  # approved afterwards
+        self.assertFalse(CommissionAccrual.objects.exists())
+        # Only a real KYC approval accrues; the earlier one is not revisited.
+        self.assertEqual(self.pending_owner().kyc_status, BusinessOwner.PENDING)
+
+    def test_kyc_approval_accrues_to_the_registrar_at_the_policy_amount_held_90_days(self):
+        self.policy(amount="50.00")
+        owner = self.pending_owner(registrar=self.scout, manager=self.other)
+        self.approve(owner)
+        accrual = CommissionAccrual.objects.get()
+        self.assertEqual((accrual.staff, accrual.business_owner, accrual.kind, accrual.amount, accrual.status),
+                         (self.scout, owner, "registration", Decimal("50.00"), "on_hold"))
+        self.assertEqual(accrual.hold_until - accrual.earned_at, timedelta(days=90))
+        self.assertTrue(ActivityEvent.objects.filter(verb="commission.accrued").exists())
+
+    def test_a_retry_never_double_pays(self):
+        self.policy()
+        owner = self.pending_owner()
+        self.approve(owner)
+        self.assertIsNone(services.accrue_registration(owner))
+        self.assertEqual(CommissionAccrual.objects.count(), 1)
+
+    def test_a_business_nobody_registered_earns_nothing(self):
+        self.policy()
+        owner = self.pending_owner()
+        BusinessOwner.objects.filter(pk=owner.pk).update(registered_by=None)
+        self.approve(owner)
+        self.assertFalse(CommissionAccrual.objects.exists())
+
+    def test_the_policy_in_force_on_the_day_is_used(self):
+        from datetime import date
+
+        self.policy(amount="40.00", effective_from=date(2020, 1, 1))
+        self.policy(amount="60.00", effective_from=date(2020, 6, 1))
+        self.policy(amount="99.00", effective_from=timezone.localdate() + timedelta(days=30))  # not yet
+        owner = self.pending_owner()
+        self.approve(owner)
+        self.assertEqual(CommissionAccrual.objects.get().amount, Decimal("60.00"))
+
+
+class BonusAccrualTests(CommissionBase):
+    def setUp(self):
+        super().setUp()
+        self.policy(CommissionPolicy.BONUS, "100.00")
+        self.owner = self.pending_owner()
+        now = timezone.now()
+        Subscription.objects.create(
+            business_owner=self.owner, plan=SubscriptionPlan.objects.get(tier="product_basic"),
+            current_period_start=now, current_period_end=now + timedelta(days=30),
+        )
+
+    def bonus(self):
+        return CommissionAccrual.objects.filter(kind=CommissionPolicy.BONUS)
+
+    def test_three_monthly_payments_earn_it_on_the_third(self):
+        self.pay(self.owner)
+        self.pay(self.owner)
+        self.assertFalse(self.bonus().exists())
+        self.pay(self.owner)
+        accrual = self.bonus().get()
+        self.assertEqual((accrual.staff, accrual.amount, accrual.status), (self.scout, Decimal("100.00"), "on_hold"))
+
+    def test_a_single_three_month_payment_qualifies(self):
+        self.pay(self.owner, 3)
+        self.assertEqual(self.bonus().count(), 1)
+
+    def test_a_twelve_month_payment_qualifies(self):
+        self.pay(self.owner, 12)
+        self.assertEqual(self.bonus().count(), 1)
+
+    def test_a_fourth_payment_adds_nothing(self):
+        self.pay(self.owner, 6)
+        self.pay(self.owner, 1)
+        self.assertEqual(self.bonus().count(), 1)
+
+    def test_a_trial_never_counts(self):
+        Subscription.objects.filter(business_owner=self.owner).update(is_trial=True)
+        self.assertEqual(services.paid_months(self.owner), 0)
+        self.pay(self.owner, 1)
+        self.pay(self.owner, 1)
+        self.assertFalse(self.bonus().exists())
+
+    def test_it_goes_to_the_manager_at_the_time_of_the_payment(self):
+        self.pay(self.owner, 1)
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(account_manager=self.other)
+        self.pay(self.owner, 2)
+        self.assertEqual(self.bonus().get().staff, self.other)
+
+    def test_no_manager_no_bonus(self):
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(account_manager=None)
+        self.pay(self.owner, 3)
+        self.assertFalse(self.bonus().exists())
+
+    def test_no_policy_no_bonus(self):
+        CommissionPolicy.objects.all().delete()
+        self.pay(self.owner, 3)
+        self.assertFalse(self.bonus().exists())
+
+
+class ReleaseAndReversalTests(CommissionBase):
+    def setUp(self):
+        super().setUp()
+        self.policy()
+        self.owner = self.pending_owner()
+        self.approve(self.owner)
+        self.accrual = CommissionAccrual.objects.get()
+
+    def age(self, days):
+        CommissionAccrual.objects.update(hold_until=timezone.now() - timedelta(days=days))
+
+    def test_release_moves_only_lines_past_their_hold(self):
+        self.assertEqual(release_commission_holds(), 0)
+        self.accrual.refresh_from_db()
+        self.assertEqual(self.accrual.status, "on_hold")
+        self.age(1)
+        self.assertEqual(release_commission_holds(), 1)
+        self.accrual.refresh_from_db()
+        self.assertEqual(self.accrual.status, "payable")
+        self.assertEqual(release_commission_holds(), 0)
+
+    def confirm(self, kind, owner=None):
+        flag = fraud.raise_flag(kind, title="Case", business_owner=owner or self.owner)
+        return fraud.confirm(flag.pk, self.boss, note="Checked")
+
+    def test_each_reversing_kind_reverses_an_unreleased_line(self):
+        for kind in (FraudFlag.DUPLICATE, FraudFlag.SIMILAR_NEARBY, FraudFlag.FAKE_BUSINESS):
+            CommissionAccrual.objects.update(status="on_hold", reversed_reason="", reversed_at=None)
+            self.confirm(kind)
+            self.accrual.refresh_from_db()
+            self.assertEqual((self.accrual.status, self.accrual.reversed_reason), ("reversed", kind))
+            self.assertIsNotNone(self.accrual.reversed_at)
+        self.assertTrue(ActivityEvent.objects.filter(verb="commission.reversed").exists())
+
+    def test_a_payable_line_is_reversed_too(self):
+        self.age(1)
+        release_commission_holds()
+        self.confirm(FraudFlag.FAKE_BUSINESS)
+        self.accrual.refresh_from_db()
+        self.assertEqual(self.accrual.status, "reversed")
+
+    def test_nothing_after_it_is_in_a_batch_or_paid(self):
+        for status in ("in_batch", "paid"):
+            CommissionAccrual.objects.update(status=status)
+            self.confirm(FraudFlag.DUPLICATE)
+            self.accrual.refresh_from_db()
+            self.assertEqual(self.accrual.status, status)
+
+    def test_other_kinds_and_dismissed_cases_leave_it_alone(self):
+        self.confirm(FraudFlag.OTHER)
+        flag = fraud.raise_flag(FraudFlag.DUPLICATE, title="Case", business_owner=self.owner)
+        fraud.dismiss(flag.pk, self.boss, note="Not a duplicate")
+        self.accrual.refresh_from_db()
+        self.assertEqual(self.accrual.status, "on_hold")
+
+    def test_another_business_is_untouched(self):
+        other = self.pending_owner()
+        self.approve(other)
+        self.confirm(FraudFlag.DUPLICATE, owner=other)
+        self.assertEqual(CommissionAccrual.objects.filter(status="reversed").count(), 1)
+        self.accrual.refresh_from_db()
+        self.assertEqual(self.accrual.status, "on_hold")
+
+    def test_a_reversed_line_is_not_earned_again_by_a_retry(self):
+        self.confirm(FraudFlag.DUPLICATE)
+        self.assertIsNone(services.accrue_registration(self.owner))
+        self.assertEqual(CommissionAccrual.objects.count(), 1)

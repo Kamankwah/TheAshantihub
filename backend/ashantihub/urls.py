@@ -29,6 +29,7 @@ urlpatterns = [
     path("api/fraud/", include("fraud.urls")),
     path("api/field/", include("field.urls")),
     path("api/targets/", include("targets.urls")),
+    path("api/commission/", include("commission.urls")),
     path("api/portfolio/", include("portfolio.urls")),
     path("api/realtime/", include("realtime.urls")),
 ]

@@ -18,6 +18,7 @@ urlpatterns = [
     path("businesses/<int:pk>/review/", views.BusinessReviewView.as_view(), name="portfolio-business-review"),
     path("businesses/<int:pk>/reassign/", views.ReassignBusinessView.as_view(), name="portfolio-reassign"),
     path("businesses/<int:pk>/follow-up/", views.BusinessFollowUpView.as_view(), name="portfolio-follow-up"),
+    path("leaderboard/", views.LeaderboardView.as_view(), name="portfolio-leaderboard"),
     path("subscriptions-due/", views.SubscriptionsDueView.as_view(), name="portfolio-subscriptions-due"),
     path("businesses/<int:pk>/photos/", views.PhotoStageView.as_view(), name="portfolio-photo-stage"),
     path("businesses/<int:pk>/changes/", views.ProposeChangeView.as_view(), name="portfolio-propose-change"),

@@ -198,9 +198,20 @@ describe('portfolio menus (staff phase 2A)', () => {
 
   it('gives a scout Targets under Performance, and Operations none', () => {
     const scout = buildNavGroups(authAs('scout', ['businesses.manage_portfolio', 'businesses.register']))
-    expect(idsIn(scout, 'Performance')).toEqual(['targets'])
+    expect(idsIn(scout, 'Performance')).toEqual(['targets', 'leaderboard'])
     expect(NAV_ITEMS.find((i) => i.id === 'targets')).toMatchObject({ icon: '🎯', label: 'Targets' })
     expect(allIds(['portfolio.manage', 'businesses.register'])).not.toContain('targets')
+  })
+
+  it('gives a scout Commission and Leaderboard under Performance, and Accounting and Super Admin the policy panel', () => {
+    const scout = buildNavGroups(authAs('scout', ['businesses.manage_portfolio', 'businesses.register', 'commission.view_own']))
+    expect(idsIn(scout, 'Performance')).toEqual(['targets', 'commission', 'leaderboard'])
+    expect(NAV_ITEMS.find((i) => i.id === 'commission')).toMatchObject({ label: 'Commission' })
+    const accountant = buildNavGroups(authAs('accountant', ['commission.view_all', 'commission.policy', 'subscription_plans.manage']))
+    expect(groupOf(accountant, 'commission-policy')).toBe('Plans & pricing')
+    expect(groupOf(buildNavGroups({ user: { role: 'super_admin' }, hasPermission: () => true }), 'commission-policy')).toBe('Settings')
+    expect(allIds(['portfolio.manage', 'businesses.register'])).not.toContain('commission')
+    expect(allIds(['portfolio.manage', 'businesses.register'])).not.toContain('commission-policy')
   })
 
   it('gives Operations a Businesses group right after People', () => {

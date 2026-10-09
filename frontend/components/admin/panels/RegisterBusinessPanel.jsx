@@ -7,6 +7,7 @@ import { useRegistrationOptions } from "../../../hooks/useRegistrationOptions.js
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import LocationPicker from "../../LocationPicker.jsx";
 import { D, glassCard } from "../theme.js";
+import { useMyCommission } from "../../../hooks/useCommission.js";
 import OwnerHandover, { SendClaimLinkCard } from "./OwnerHandover.jsx";
 import PhotoSlot, { hhmm, revokePreview } from "./PhotoSlot.jsx";
 import { MATCH_LABELS, alreadyBelongsText } from "./registrationCheckCopy.js";
@@ -157,6 +158,10 @@ function CheckResults({ result }) {
 
 export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDetail }) {
   const queryClient = useQueryClient();
+  // "and earns commission" is promised only while a registration amount is approved.
+  const earnsCommission = Boolean(
+    useMyCommission(4, { enabled: Boolean(auth?.hasPermission?.("commission.view_own")) }).data?.policy?.registration,
+  );
   const routeProspect = typeof detailId === "string" ? PROSPECT_ROUTE.exec(detailId) : null;
   const prospectId = routeProspect ? Number(routeProspect[1]) : null;
   const draftKey = draftKeyFor(auth?.user?.id);
@@ -632,7 +637,7 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
               <button type="button" onClick={back} style={button(D.panelBg, D.text)}>Back</button>
               <button type="button" onClick={submit} disabled={!canSubmit} style={button(D.gold, D.text, !canSubmit)}>{submitting ? "Submitting…" : "Submit for KYC"}</button>
             </div>
-            <div style={hintStyle}>It counts as your registration once Operations approves KYC.</div>
+            <div style={hintStyle}>{`It counts as your registration${earnsCommission ? " and earns commission" : ""} once Operations approves KYC.`}</div>
           </>
         )}
       </div>
