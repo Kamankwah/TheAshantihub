@@ -1,6 +1,7 @@
 """Set scouts' daily targets from the command line (staging, until the
 Operations targets editor lands). Nothing is defaulted: the operator types
-every value. The limits Super Admin has set still apply."""
+every value. The limits Super Admin has set still apply. This command bypasses
+the `targets.cut` approval, so it is an operator tool, not a way round it."""
 from datetime import date
 
 from django.core.management.base import BaseCommand, CommandError
@@ -14,14 +15,16 @@ from targets.models import METRICS
 
 
 class Command(BaseCommand):
-    help = "Set the daily targets of one or more staff members, e.g. --staff kwame@x.com --registrations 1 --visits 6 --calls 10 --renewals 1 --set-by ama@x.com"
+    help = "Prints the plan and writes only with --yes. NOTE: this bypasses the targets.cut approval (lowering targets needs no Super Admin sign-off here). Set the daily targets of one or more staff members, e.g. --staff kwame@x.com --registrations 1 --visits 6 --calls 10 --renewals 1 --set-by ama@x.com"
 
     def add_arguments(self, parser):
         parser.add_argument("--staff", action="append", default=[], help="Staff email (repeatable)")
         parser.add_argument("--all-scouts", action="store_true", help="Every active scout")
         parser.add_argument("--set-by", required=True, help="Email of the Operations lead or Super Admin on record")
         parser.add_argument("--effective-from", help="YYYY-MM-DD (default: today)")
-        parser.add_argument("--dry-run", action="store_true")
+        parser.add_argument("--yes", action="store_true", help="Write the plan (without it nothing is written)")
+        parser.add_argument("--allow-past", action="store_true", help="Allow an --effective-from in the past")
+        parser.add_argument("--dry-run", action="store_true", help="Same as leaving out --yes")
         for metric in METRICS:
             parser.add_argument(f"--{metric}", type=int, help=f"Daily {metric} target")
 
@@ -36,6 +39,8 @@ class Command(BaseCommand):
             values = plans.clean_values(values)
             plans.check_limits(values)
             effective_from = date.fromisoformat(opts["effective_from"]) if opts["effective_from"] else timezone.localdate()
+            if effective_from < timezone.localdate() and not opts["allow_past"]:
+                raise CommandError("A target can't start in the past. Pick today or a later day, or pass --allow-past.")
         except StaffUser.DoesNotExist:
             raise CommandError(f"No active staff member {opts['set_by']}.") from None
         except (plans.PlanError, ValueError) as exc:
@@ -53,8 +58,8 @@ class Command(BaseCommand):
 
         for member in staff:
             self.stdout.write(f"{member.full_name} <{member.email}>: " + ", ".join(f"{m} {v}/day" for m, v in sorted(values.items())) + f" from {effective_from}")
-        if opts["dry_run"]:
-            self.stdout.write("Dry run: nothing written.")
+        if opts["dry_run"] or not opts["yes"]:
+            self.stdout.write("Nothing written. Re-run with --yes to write this plan.")
             return
         with transaction.atomic():
             for member in staff:

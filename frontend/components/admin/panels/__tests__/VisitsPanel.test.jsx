@@ -154,6 +154,13 @@ describe('VisitsPanel', () => {
       expect(await screen.findByText('3 of 30')).toBeInTheDocument()
     })
 
+    it('reads the done count from the targets payload, not the visits summary', async () => {
+      serveVisits([], () => page([visit(1)]))
+      server.use(http.get(`${API}/api/targets/me/`, () => HttpResponse.json({ ...targets(30), measures: [{ metric: 'visits', label: 'Visits', how: '', done: 7, target: 30, today_done: 0, today_target: null }] })))
+      renderPanel()
+      expect(await screen.findByText('7 of 30')).toBeInTheDocument()
+    })
+
     it('shows just N and says "No target set" when there is none, never "of 0"', async () => {
       serveVisits([], () => page([visit(1)]))
       server.use(http.get(`${API}/api/targets/me/`, () => HttpResponse.json(targets(null))))

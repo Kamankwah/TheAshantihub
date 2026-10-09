@@ -243,24 +243,52 @@ class SetScoutTargetsCommandTests(TargetsBase):
         call_command("set_scout_targets", *args, stdout=mock.MagicMock())
 
     def test_the_operator_types_every_value(self):
-        self.run_command("--staff", "kwame@example.com", "--calls", "10", "--visits", "6", "--set-by", "ama@example.com")
+        self.run_command("--staff", "kwame@example.com", "--calls", "10", "--visits", "6", "--set-by", "ama@example.com", "--yes")
         self.assertEqual(sorted(TargetPlan.objects.filter(staff=self.kwame).values_list("metric", "daily_value")), [("calls", 10), ("visits", 6)])
         self.assertFalse(TargetPlan.objects.filter(staff=self.efua).exists())
 
     def test_all_scouts_and_a_dry_run(self):
         self.run_command("--all-scouts", "--calls", "10", "--set-by", "ama@example.com", "--dry-run")
         self.assertFalse(TargetPlan.objects.exists())
-        self.run_command("--all-scouts", "--calls", "10", "--set-by", "ama@example.com")
+        self.run_command("--all-scouts", "--calls", "10", "--set-by", "ama@example.com", "--yes")
         self.assertEqual(TargetPlan.objects.count(), 3)
+
+    def test_without_yes_it_only_prints_the_plan(self):
+        self.run_command("--staff", "kwame@example.com", "--calls", "10", "--set-by", "ama@example.com")
+        self.assertFalse(TargetPlan.objects.exists())
+
+    def test_a_past_start_is_refused_unless_allowed(self):
+        args = ("--staff", "kwame@example.com", "--calls", "10", "--set-by", "ama@example.com", "--yes", "--effective-from", "2026-10-01")
+        with self.assertRaises(CommandError):
+            self.run_command(*args)
+        self.assertFalse(TargetPlan.objects.exists())
+        self.run_command(*args, "--allow-past")
+        self.assertEqual(TargetPlan.objects.filter(staff=self.kwame).count(), 1)
 
     def test_nothing_is_defaulted_and_limits_still_apply(self):
         with self.assertRaises(CommandError):
-            self.run_command("--staff", "kwame@example.com", "--set-by", "ama@example.com")
+            self.run_command("--staff", "kwame@example.com", "--set-by", "ama@example.com", "--yes")
         with self.assertRaises(CommandError):
-            self.run_command("--calls", "10", "--set-by", "ama@example.com")
+            self.run_command("--calls", "10", "--set-by", "ama@example.com", "--yes")
         TargetLimit.objects.create(metric="calls", min_daily=5, max_daily=30, set_by=self.admin)
         with self.assertRaises(CommandError):
-            self.run_command("--staff", "kwame@example.com", "--calls", "99", "--set-by", "ama@example.com")
+            self.run_command("--staff", "kwame@example.com", "--calls", "99", "--set-by", "ama@example.com", "--yes")
         with self.assertRaises(CommandError):
-            self.run_command("--staff", "nobody@example.com", "--calls", "10", "--set-by", "ama@example.com")
+            self.run_command("--staff", "nobody@example.com", "--calls", "10", "--set-by", "ama@example.com", "--yes")
         self.assertFalse(TargetPlan.objects.exists())
+
+
+class BadIdTests(TargetsBase):
+    def test_a_non_numeric_staff_id_is_a_400_not_a_500(self):
+        self.as_staff(self.lead)
+        refused = {"detail": "Choose a staff member."}
+        for method, url, body in (
+            ("get", "/api/targets/me/?staff=abc", None),
+            ("get", "/api/targets/leave/?staff=abc", None),
+            ("get", "/api/targets/work-pattern/abc/", None),
+            ("put", "/api/targets/work-pattern/abc/", {"weekdays": [1]}),
+            ("post", "/api/targets/leave/", {"staff": "abc", "start": "2026-10-08", "end": "2026-10-08"}),
+        ):
+            resp = getattr(self.client, method)(url, *([body] if body else []), **({"format": "json"} if body else {}))
+            self.assertEqual(resp.status_code, 400, url)
+            self.assertEqual(resp.json(), refused, url)

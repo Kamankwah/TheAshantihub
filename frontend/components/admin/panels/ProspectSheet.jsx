@@ -109,7 +109,7 @@ export default function ProspectSheet({ prospect = null, onClose, onSaved }) {
               {placing ? "Done placing" : prospect.has_pin || pin ? "Move pin" : "Place pin"}
             </button>
             {placing && (
-              <LocationPicker lat={pin?.lat ?? null} lng={pin?.lng ?? null} onChange={(lat, lng) => setPin({ lat, lng })} height={220} showLocateButton={false} />
+              <LocationPicker lat={pin?.lat ?? prospect?.lat ?? null} lng={pin?.lng ?? prospect?.lng ?? null} onChange={(lat, lng) => setPin({ lat, lng })} height={220} showLocateButton={false} />
             )}
           </div>
         )}

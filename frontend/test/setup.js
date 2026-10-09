@@ -13,9 +13,11 @@ vi.mock('../components/DeliveryRouteMap.jsx', () => ({
   default: () => createElement('div', { 'data-testid': 'route-map' }, 'route map'),
 }))
 vi.mock('../components/LocationPicker.jsx', () => ({
-  default: ({ onChange, onAddress }) =>
+  default: ({ onChange, onAddress, lat, lng }) =>
     createElement('button', {
       type: 'button',
+      'data-lat': lat ?? '',
+      'data-lng': lng ?? '',
       onClick: () => { onChange(6.7, -1.62); if (onAddress) onAddress('KNUST Ave, Kumasi'); },
     }, 'drop-pin'),
 }))

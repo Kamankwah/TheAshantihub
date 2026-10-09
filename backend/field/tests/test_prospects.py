@@ -109,6 +109,8 @@ class ProspectApiTests(ProspectBase):
         self.assertEqual(self.client.patch(url, {"lat": 51.5, "lng": -0.12}, format="json").status_code, 400)
         response = self.client.patch(url, {"lat": PIN[0], "lng": PIN[1]}, format="json")
         self.assertTrue(response.data["has_pin"])
+        self.assertEqual((response.data["lat"], response.data["lng"]), (float(PIN[0]), float(PIN[1])))
+        self.assertIsNone(self.add(name="Other", phone="0243333333").data["lat"])
 
     def test_the_list_counts_orders_and_filters(self):
         self.add(name="Closed", phone="0241111111", status="not_interested")

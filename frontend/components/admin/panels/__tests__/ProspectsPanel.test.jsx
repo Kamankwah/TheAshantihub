@@ -205,6 +205,18 @@ describe('ProspectsPanel', () => {
     expect(body).toMatchObject({ lat: 6.7, lng: -1.62 })
   })
 
+  it('opens the pin picker at the prospect\'s existing pin', async () => {
+    server.use(http.get(`${API}/api/listings/zones/`, () => HttpResponse.json([{ id: 1, name: 'Asafo' }])))
+    serve([prospect({ has_pin: true, lat: 6.69, lng: -1.61 })])
+    renderPanel()
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Ohemaa Waakye Joint' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit prospect' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Move pin' }))
+    const picker = within(dialog).getByRole('button', { name: 'drop-pin' })
+    expect(picker).toHaveAttribute('data-lat', '6.69')
+    expect(picker).toHaveAttribute('data-lng', '-1.61')
+  })
+
   it('shows a Pinned marker once a prospect has a pin, and a ghost Register button', async () => {
     serve([prospect({ has_pin: true })])
     renderPanel()

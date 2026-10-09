@@ -10,5 +10,5 @@ urlpatterns = [
     path("holidays/<int:pk>/", views.HolidayDetailView.as_view(), name="targets-holiday-detail"),
     path("leave/", views.LeaveView.as_view(), name="targets-leave"),
     path("leave/<int:pk>/", views.LeaveDetailView.as_view(), name="targets-leave-detail"),
-    path("work-pattern/<int:staff>/", views.WorkPatternView.as_view(), name="targets-work-pattern"),
+    path("work-pattern/<str:staff>/", views.WorkPatternView.as_view(), name="targets-work-pattern"),
 ]

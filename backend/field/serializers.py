@@ -158,6 +158,8 @@ def prospect_item(prospect):
         "next_follow_up_at": prospect.next_follow_up_at,
         "last_visit_at": getattr(prospect, "last_visit_at", None),
         "has_pin": prospect_pin(prospect) is not None,
+        "lat": float(prospect_pin(prospect)[0]) if prospect_pin(prospect) else None,
+        "lng": float(prospect_pin(prospect)[1]) if prospect_pin(prospect) else None,
         "registered_business_id": prospect.registered_business_id,
         "registered_at": prospect.registered_at,
         "created_at": prospect.created_at,

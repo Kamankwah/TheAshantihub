@@ -67,7 +67,7 @@ describe('TargetsPanel', () => {
   it('builds the leave note from the data and ends with the Sunday sentence only when Sunday is off', async () => {
     serve(() => week())
     renderPanel()
-    expect(await screen.findByText("Leave on Saturday 10 October, recorded by Ama Boateng — those days' targets are 0. Sunday isn't a working day.")).toBeInTheDocument()
+    expect(await screen.findByText("Leave on Saturday 10 October, recorded by Ama Boateng — that day's targets are 0, and so are public holidays. Sunday isn't a working day.")).toBeInTheDocument()
   })
 
   it('lists the daily targets with the date they started', async () => {
@@ -125,6 +125,15 @@ describe('TargetsPanel', () => {
     expect(screen.getByText(/1 public holiday/)).toBeInTheDocument()
   })
 
+  it('draws no progress bar for a target of 0', async () => {
+    const base = week()
+    serve(() => week({ measures: base.measures.map((m, i) => (i === 0 ? { ...m, target: 0 } : m)) }))
+    renderPanel()
+    await screen.findByText('Working days this week')
+    expect(screen.getAllByRole('progressbar').length).toBe(base.measures.length - 1)
+    expect(document.querySelector('[aria-valuemax="0"]')).toBeNull()
+  })
+
   it('shows an error with a retry when the targets cannot load', async () => {
     server.use(http.get(`${API}/api/targets/me/`, () => HttpResponse.json({ detail: 'boom' }, { status: 500 })))
     renderPanel()
@@ -139,6 +148,10 @@ describe('periodLine and calendarNote', () => {
   })
   it('is empty when Sunday is a working day and nothing else is off', () => {
     expect(calendarNote({ leave: [], holidays: [], sunday_off: false })).toBe('')
+  })
+  it('uses the singular canvas wording for one leave day', () => {
+    expect(calendarNote({ leave: [{ start: '2026-10-10', end: '2026-10-10', recorded_by: 'Ama' }], holidays: [], sunday_off: false }))
+      .toBe("Leave on Saturday 10 October, recorded by Ama — that day's targets are 0, and so are public holidays.")
   })
   it('describes a leave that spans several days', () => {
     expect(calendarNote({ leave: [{ start: '2026-10-05', end: '2026-10-07', recorded_by: 'Ama' }], holidays: [], sunday_off: false }))

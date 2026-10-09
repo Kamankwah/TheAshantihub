@@ -36,6 +36,10 @@ def _day(value, name="date"):
 
 def _team_member(user, pk):
     """The staff member `pk` if the caller may act on them, else a refusal Response."""
+    try:
+        pk = int(pk)
+    except (TypeError, ValueError):
+        return None, _error("Choose a staff member.")
     staff = get_object_or_404(StaffUser.objects.select_related("manager", "role"), pk=pk)
     if not plans.in_scope(user, staff):
         return None, _error("You can only do this for your own team.", status.HTTP_403_FORBIDDEN)

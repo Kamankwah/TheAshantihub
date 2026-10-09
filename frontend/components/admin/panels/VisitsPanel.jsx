@@ -58,8 +58,9 @@ function VisitList({ onCheckIn }) {
   const nextDay = data?.next_hidden_at ? new Date(data.next_hidden_at).toLocaleDateString("en-GB", { weekday: "long" }) : "";
   const choose = (next) => { setRange(next); setLimit(PAGE); };
   // "N of T" when Operations has set a visits target; otherwise just N, and the tile says so once the targets have loaded.
-  const visitTarget = week.data?.measures?.find((m) => m.metric === "visits")?.target;
-  const done = summary.done ?? 0;
+  const visitMeasure = week.data?.measures?.find((m) => m.metric === "visits");
+  const visitTarget = visitMeasure?.target;
+  const done = visitTarget != null ? visitMeasure.done : (summary.done ?? 0);
   const tiles = [
     ["This week", visitTarget != null ? `${done} of ${visitTarget}` : String(done), D.text, week.isSuccess && visitTarget == null ? "No target set" : null],
     ["Average stay", summary.avg_minutes != null ? `${summary.avg_minutes} min` : "—", D.text, null],

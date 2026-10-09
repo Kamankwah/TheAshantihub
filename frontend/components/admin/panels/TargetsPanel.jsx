@@ -40,7 +40,10 @@ const spanText = (leave) => (leave.start === leave.end
 // The note under the calendar, built only from what the server returned.
 export function calendarNote(data) {
   const sentences = [];
-  for (const leave of data.leave || []) sentences.push(`${spanText(leave)}, recorded by ${leave.recorded_by} — those days' targets are 0.`);
+  for (const leave of data.leave || []) {
+    const effect = leave.start === leave.end ? "that day's targets are 0, and so are public holidays" : "those days' targets are 0";
+    sentences.push(`${spanText(leave)}, recorded by ${leave.recorded_by} — ${effect}.`);
+  }
   for (const holiday of data.holidays || []) sentences.push(`${longDate(holiday.date)} is a public holiday (${holiday.name}) — that day's target is 0.`);
   if (data.sunday_off) sentences.push("Sunday isn't a working day.");
   return sentences.join(" ");
@@ -66,7 +69,7 @@ function MeasureCard({ measure, period }) {
             : <span style={{ fontSize: "0.78rem", fontWeight: 600, color: D.textDim }}>{" · No target set"}</span>}
         </span>
       </div>
-      {hasTarget && (
+      {hasTarget && measure.target > 0 && (
         <div role="progressbar" aria-label={`${measure.label} progress`} aria-valuemin={0} aria-valuemax={measure.target} aria-valuenow={Math.min(measure.done, measure.target)}
           style={{ height: 8, borderRadius: 999, background: "#EADFC6", overflow: "hidden" }}>
           <div style={{ height: 8, width: `${pct}%`, background: D.text, borderRadius: 999 }} />
