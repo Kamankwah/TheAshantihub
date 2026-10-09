@@ -129,7 +129,7 @@ class KycQueueSettlesApprovalTests(QueueBase):
         self.as_(self.other_ops)
         for response in (self.approve_in_queue(own), self.reject_in_queue("Wrong card", own)):
             self.assertEqual(response.status_code, 403)
-            self.assertEqual(response.json(), {"detail": "You can't approve your own request."})
+            self.assertEqual(response.json(), {"detail": "You supplied or changed this business's details, so someone else decides its KYC."})
         own.refresh_from_db()
         approval.refresh_from_db()
         self.assertEqual((own.kyc_status, approval.status), ("pending", "pending"))
@@ -352,7 +352,7 @@ class KycMakerAndAddressTests(QueueBase):
 
     def assert_own_refused(self, response):
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json(), {"detail": "You can't approve your own request."})
+        self.assertEqual(response.json(), {"detail": "You supplied or changed this business's details, so someone else decides its KYC."})
         self.own.refresh_from_db()
         self.assertEqual(self.own.kyc_status, "pending")
         self.assertFalse(ActivityEvent.objects.filter(verb__startswith="kyc-").exists())
@@ -374,7 +374,7 @@ class KycMakerAndAddressTests(QueueBase):
         self.as_(self.boss)
         response = self.approve_in_queue(own)
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json(), {"detail": "You can't approve your own request."})
+        self.assertEqual(response.json(), {"detail": "You supplied or changed this business's details, so someone else decides its KYC."})
         own.refresh_from_db()
         self.assertEqual(own.kyc_status, "pending")
 
@@ -394,7 +394,7 @@ class KycMakerAndAddressTests(QueueBase):
         BusinessOwner.objects.filter(pk=self.own.pk).update(registered_by=self.lead)
         with self.assertRaises(approvals.MakerCannotDecide) as raised:
             approvals.approve(approval.pk, self.lead)
-        self.assertEqual((raised.exception.status_code, raised.exception.message), (403, "You can't approve your own request."))
+        self.assertEqual((raised.exception.status_code, raised.exception.message), (403, "You supplied or changed this business's details, so someone else decides its KYC."))
         approval.refresh_from_db()
         self.assertEqual(approval.status, "pending")
 
@@ -404,7 +404,7 @@ class KycMakerAndAddressTests(QueueBase):
         )
         self.as_(self.other_ops)
         response = self.client.post(f"/api/accounts/kyc/{self.own.id}/address-verify/", {"verified": True}, format="json")
-        self.assertEqual((response.status_code, response.json()), (403, {"detail": "You can't approve your own request."}))
+        self.assertEqual((response.status_code, response.json()), (403, {"detail": "You supplied or changed this business's details, so someone else decides its KYC."}))
         profile = BusinessOwnerProfile.objects.get(business_owner=self.own)
         self.assertEqual((profile.address_verified, profile.address_verified_at), (False, None))
         self.as_(self.lead)
@@ -430,7 +430,7 @@ class KycMakerAndAddressTests(QueueBase):
         self.assert_own_refused(self.approve_in_queue(self.own))
         self.assert_own_refused(self.reject_in_queue("No good", self.own))
         response = self.client.post(f"/api/accounts/kyc/{self.own.id}/address-verify/", {"verified": True}, format="json")
-        self.assertEqual((response.status_code, response.json()), (403, {"detail": "You can't approve your own request."}))
+        self.assertEqual((response.status_code, response.json()), (403, {"detail": "You supplied or changed this business's details, so someone else decides its KYC."}))
         profile = BusinessOwnerProfile.objects.get(business_owner=self.own)
         self.assertEqual(profile.address_verified_at, None)
 
@@ -454,7 +454,7 @@ class KycMakerAndAddressTests(QueueBase):
         self.as_(manager)
         self.assert_own_refused(self.approve_in_queue(self.own))
         response = self.client.post(f"/api/accounts/kyc/{self.own.id}/address-verify/", {"verified": True}, format="json")
-        self.assertEqual((response.status_code, response.json()), (403, {"detail": "You can't approve your own request."}))
+        self.assertEqual((response.status_code, response.json()), (403, {"detail": "You supplied or changed this business's details, so someone else decides its KYC."}))
 
     def test_the_maker_of_an_approved_business_update_cannot_decide_it(self):
         editor = make_staff("scout", "yaw@example.com", manager=self.lead)
@@ -471,7 +471,7 @@ class KycMakerAndAddressTests(QueueBase):
         BusinessOwner.objects.filter(pk=self.own.pk).update(kyc_status="rejected", kyc_rejection_reason="Blurry")
         self.as_(self.other_ops)
         response = self.client.post(f"/api/accounts/kyc/{self.own.id}/re-review/")
-        self.assertEqual((response.status_code, response.json()), (403, {"detail": "You can't approve your own request."}))
+        self.assertEqual((response.status_code, response.json()), (403, {"detail": "You supplied or changed this business's details, so someone else decides its KYC."}))
         self.own.refresh_from_db()
         self.assertEqual((self.own.kyc_status, self.own.kyc_rejection_reason), ("rejected", "Blurry"))
         self.as_(self.lead)
@@ -534,7 +534,7 @@ class KycAddressCorrectorTests(QueueBase):
         return self.client.post(f"/api/accounts/kyc/{self.owner.id}/address-verify/", {"verified": verified}, format="json")
 
     def assert_refused(self, response):
-        self.assertEqual((response.status_code, response.json()), (403, {"detail": "You can't approve your own request."}))
+        self.assertEqual((response.status_code, response.json()), (403, {"detail": "You supplied or changed this business's details, so someone else decides its KYC."}))
 
     def test_the_scout_who_corrected_the_address_cannot_decide_its_kyc(self):
         response = self.field_report(address_confirmed=False, corrected_address="AK-100-9999", business_legitimate=True)
@@ -597,7 +597,7 @@ class KycDetailsEditorTests(QueueBase):
         response = self.patch_details(self.lead, full_name="Adwoa A. Mensah")
         self.assertEqual(response.status_code, 200, response.content)
         self.assertTrue(kyc.is_kyc_submitter(self.owner, self.lead))
-        refused = (403, {"detail": "You can't approve your own request."})
+        refused = (403, {"detail": "You supplied or changed this business's details, so someone else decides its KYC."})
         response = self.approve_in_queue()
         self.assertEqual((response.status_code, response.json()), refused)
         response = self.reject_in_queue("Not real")

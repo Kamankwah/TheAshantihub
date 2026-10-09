@@ -27,10 +27,10 @@ describe('ScoutPanel — submitting a report', () => {
   it("shows the server's reason when the report is refused", async () => {
     server.use(
       http.get(`${API}/api/accounts/scout-assignments/mine/`, () => HttpResponse.json([ASSIGNMENT])),
-      http.post(`${API}/api/accounts/scout-assignments/3/verify/`, () => HttpResponse.json({ detail: "You can't approve your own request." }, { status: 403 })),
+      http.post(`${API}/api/accounts/scout-assignments/3/verify/`, () => HttpResponse.json({ detail: "You supplied or changed this business's details, so someone else decides its KYC." }, { status: 403 })),
     )
     await submit()
-    expect(await screen.findByText("You can't approve your own request.")).toBeInTheDocument()
+    expect(await screen.findByText("You supplied or changed this business's details, so someone else decides its KYC.")).toBeInTheDocument()
   })
 
   it('keeps the connection message when there is no server reason', async () => {

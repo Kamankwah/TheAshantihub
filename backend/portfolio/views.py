@@ -314,6 +314,8 @@ def _portfolio_summary(rows, now):
         "new": counts[health.NEW],
         "unassigned": sum(1 for row in rows if row.owner.account_manager_id is None),
         "at_risk_week_ago": _at_risk_week_ago([row.owner.pk for row in rows], now),
+        # SUBSCRIPTION_PAUSE_ENABLED: the screens drop the Paused filter and rule while off.
+        "pause_enabled": pause_enabled(),
     }
 
 

@@ -178,7 +178,7 @@ class ScoutIsSubmitterTests(ScoutTestsBase):
             f"/api/accounts/scout-assignments/{mine.id}/verify/",
             {"address_confirmed": False, "corrected_address": "AK-000-0000"}, format="json",
         )
-        self.assertEqual((response.status_code, response.json()), (403, {"detail": "You can't approve your own request."}))
+        self.assertEqual((response.status_code, response.json()), (403, {"detail": "You supplied or changed this business's details, so someone else decides its KYC."}))
         self.profile.refresh_from_db()
         self.assertEqual((self.profile.address_verified_at, self.profile.gps_address), (None, "AK-039-5028"))
         mine.refresh_from_db()

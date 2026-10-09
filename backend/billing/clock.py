@@ -419,7 +419,11 @@ def clear_after_payment(subscription, *, now):
         )
         record(
             owner, "subscription.resumed", target=owner,
-            summary="Paid in the app — pause lifted" if was == PAUSED else "Paid in the app during grace",
+            summary=(
+                "Paid in the app — pause lifted" if was == PAUSED
+                else "Paid in the app during grace" if pause_enabled()
+                else "Paid in the app while overdue"
+            ),
             after={
                 "was": was,
                 "paid_on_day": day_number(overdue_since, now) if overdue_since else None,

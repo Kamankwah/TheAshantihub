@@ -54,7 +54,8 @@ function registrationLine(owner) {
 
 // A refusal (4xx) carries the server's reason — "This business has already
 // been decided.", "Decide the self-dealing case in Fraud cases first.", "You
-// can't approve your own request." …; a server failure keeps the generic text.
+// supplied or changed this business's details, so someone else decides its
+// KYC." …; a server failure keeps the generic text.
 function refusal(err, fallback) {
   return err?.status >= 400 && err?.status < 500 ? apiErrorMessage(err, fallback) : fallback;
 }

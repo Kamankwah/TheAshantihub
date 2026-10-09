@@ -31,7 +31,9 @@ ALREADY_DECIDED = "This business has already been decided."
 SELF_DEALING_HOLD = "Decide the self-dealing case in Fraud cases first."
 REASON_REQUIRED = "Write the reason the owner will see."
 ADDRESS_FIRST = "Record the Ghana Post address decision first."
-OWN_REGISTRATION = "You can't approve your own request."
+# Every KYC door's refusal of a submitter (is_kyc_submitter). The approvals
+# engine's own maker refusal is unchanged; the queue door maps it to this.
+OWN_REGISTRATION = "You supplied or changed this business's details, so someone else decides its KYC."
 NOT_FOUND = "We couldn't find that business."
 
 
@@ -92,6 +94,17 @@ def address_decision_missing(owner):
     return profile is None or profile.address_verified_at is None
 
 
+def _close_pending(owner_id, staff, *, approved, note):
+    """close_pending_for_target for the queue door, with the KYC refusal: the
+    maker of a pending business.kyc request is a KYC submitter."""
+    try:
+        return close_pending_for_target(
+            KYC_KIND, target_type=TARGET_TYPE, target_id=str(owner_id), staff=staff, approved=approved, note=note,
+        )
+    except MakerCannotDecide:
+        raise MakerCannotDecide(OWN_REGISTRATION) from None
+
+
 def approve_owner(owner_id, staff, *, http_request=None, from_approval=None):
     """Verify a pending owner. From the queue (from_approval is None) the
     pending business.kyc requests are settled first — refusing a maker; from
@@ -99,10 +112,7 @@ def approve_owner(owner_id, staff, *, http_request=None, from_approval=None):
     with transaction.atomic():
         closed = []
         if from_approval is None:
-            closed = close_pending_for_target(
-                KYC_KIND, target_type=TARGET_TYPE, target_id=str(owner_id), staff=staff,
-                approved=True, note=QUEUE_APPROVE_NOTE,
-            )
+            closed = _close_pending(owner_id, staff, approved=True, note=QUEUE_APPROVE_NOTE)
         owner = _locked_owner(owner_id, staff)
         if owner.kyc_status != BusinessOwner.PENDING:
             raise KycError(ALREADY_DECIDED)
@@ -135,9 +145,7 @@ def reject_owner(owner_id, staff, reason, *, http_request=None):
     if not reason:
         raise KycError(REASON_REQUIRED)
     with transaction.atomic():
-        closed = close_pending_for_target(
-            KYC_KIND, target_type=TARGET_TYPE, target_id=str(owner_id), staff=staff, approved=False, note=reason,
-        )
+        closed = _close_pending(owner_id, staff, approved=False, note=reason)
         owner = _locked_owner(owner_id, staff)
         if owner.kyc_status != BusinessOwner.PENDING:
             raise KycError(ALREADY_DECIDED)

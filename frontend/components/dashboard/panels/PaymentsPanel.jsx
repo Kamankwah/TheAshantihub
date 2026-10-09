@@ -67,7 +67,12 @@ export default function PaymentsPanel({ user, PaymentComponent, businessKind }) 
     reminders.push({
       icon: subDays < 0 ? "🔴" : "⏰", color: subDays < 0 ? D.red : D.amber,
       title: subDays < 0 ? "Your subscription has lapsed" : `Subscription renews in ${subDays} day${subDays === 1 ? "" : "s"}`,
-      body: "Renew from the plans below to keep your listings live.", action: () => setPayTab("subscription"),
+      // With the subscription pause switched off (clock.pause_enabled false)
+      // an unpaid plan hides nothing, so don't promise to keep listings live.
+      body: subscription.clock?.pause_enabled === false
+        ? "Renew from the plans below to keep your plan."
+        : "Renew from the plans below to keep your listings live.",
+      action: () => setPayTab("subscription"),
     });
   }
   (myEvents || []).filter(e => e.status === "approved" && !e.paid_at).forEach(e => {

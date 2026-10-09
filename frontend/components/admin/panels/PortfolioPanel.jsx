@@ -22,6 +22,13 @@ const AT_RISK_REASONS = [
   ["Confirmed fraud case", "Confirmed fraud", "A fraud case on the business was confirmed"],
 ];
 const HEALTH_NOTE = "Health is worked out from live records and saved nightly for reports.";
+// While the subscription pause is switched off (summary.pause_enabled false,
+// the server's SUBSCRIPTION_PAUSE_ENABLED) nothing is ever paused or hidden,
+// so the Paused filter and the paused at-risk rule are left out. A summary
+// without the field comes from a server that predates the switch (it pauses).
+const pauseOff = (summary) => summary?.pause_enabled === false;
+const subscriptionOptions = (summary) => (pauseOff(summary) ? SUBSCRIPTION_OPTIONS.filter(([v]) => v !== "paused") : SUBSCRIPTION_OPTIONS);
+const legendReasons = (summary) => (pauseOff(summary) ? AT_RISK_REASONS.filter(([reason]) => reason !== "Subscription paused") : AT_RISK_REASONS);
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const defaultScope = (auth) => (auth?.user?.role === "super_admin" ? "all" : "team");
 
@@ -187,7 +194,7 @@ function AllPortfolios({ auth, onOpen }) {
             <select value={filters.health} onChange={setFilter("health")} style={field}>{HEALTH_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
           </label>
           <label style={labelStyle}>Subscription
-            <select value={filters.subscription} onChange={setFilter("subscription")} style={field}>{SUBSCRIPTION_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+            <select value={filters.subscription} onChange={setFilter("subscription")} style={field}>{subscriptionOptions(s).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
           </label>
           <label style={labelStyle}>Area
             <select value={filters.zone} onChange={setFilter("zone")} style={field}>
@@ -270,7 +277,8 @@ function AtRisk({ auth, onOpen }) {
   const { data, isLoading, isError, refetch } = usePortfolio({ scope, health: "at_risk", page });
   const rows = data?.results || [];
   const s = data?.summary;
-  const counts = AT_RISK_REASONS.map(([reason]) => rows.filter((b) => (b.health?.reasons || []).includes(reason)).length);
+  const reasons = legendReasons(s);
+  const counts = reasons.map(([reason]) => rows.filter((b) => (b.health?.reasons || []).includes(reason)).length);
   const show = (id, form) => { setStatus(null); setOpen((o) => (o?.id === id && o.form === form ? null : { id, form })); };
 
   return (
@@ -281,7 +289,7 @@ function AtRisk({ auth, onOpen }) {
         <ScopeToggle scope={scope} setScope={(id) => { setScope(id); setPage(1); }} />
         <h3 style={h3}>A business is at risk when any of these is true</h3>
         <ul aria-label="At-risk reasons" style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 4, fontSize: "0.8rem", color: D.text }}>
-          {AT_RISK_REASONS.map(([reason, short, meaning], i) => (
+          {reasons.map(([reason, short, meaning], i) => (
             <li key={reason}><strong>{`${short} (${counts[i]})`}</strong>{` — ${meaning}`}</li>
           ))}
         </ul>

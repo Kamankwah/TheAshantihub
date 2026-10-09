@@ -234,6 +234,10 @@ hidden for an unpaid subscription, so the first run carries no mass-pause
 risk. Turn it on only when real payments (the planned in-app wallet) can renew
 automatically; while it is on, a business unpaid 14 days after its
 subscription lapsed has its listings and events hidden until it pays.
+Switching it on pauses every subscription already 14+ days overdue on the next
+hourly run, and those owners were never warned about hiding: turn it on only
+together with automatic renewal, or first reset `overdue_since` to the
+switch-on time.
 
 The first subscription-clock run (minute 5 of the first hour after the deploy)
 marks every lapsed subscription overdue (with the pause on, one that lapsed

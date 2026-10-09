@@ -185,6 +185,22 @@ describe('PortfolioPanel — all portfolios (Operations)', () => {
     await waitFor(() => expect(urls.some((u) => param(u, 'scope') === 'all')).toBe(true))
   })
 
+  it('offers the Paused filter only while the pause is on', async () => {
+    recordList([], ROWS, { ...SUMMARY, pause_enabled: true })
+    renderPanel({ mode: 'all', auth: OPS })
+    const subscription = await screen.findByLabelText('Subscription')
+    expect(within(subscription).getByRole('option', { name: 'Paused' })).toBeInTheDocument()
+  })
+
+  it('drops the Paused filter while the pause is switched off', async () => {
+    recordList([], [row()], { ...SUMMARY, pause_enabled: false })
+    renderPanel({ mode: 'all', auth: OPS })
+    await screen.findByRole('table', { name: 'Businesses' })
+    const subscription = screen.getByLabelText('Subscription')
+    expect(within(subscription).queryByRole('option', { name: 'Paused' })).not.toBeInTheDocument()
+    expect(within(subscription).getByRole('option', { name: 'Overdue' })).toBeInTheDocument()
+  })
+
   it('filters to businesses with no account manager', async () => {
     const urls = []
     recordList(urls)
@@ -319,6 +335,25 @@ describe('PortfolioPanel — at risk', () => {
     fireEvent.click(within(card).getByRole('button', { name: 'Create task' }))
     await waitFor(() => expect(body).toMatchObject({ owner: 2 }))
     expect(await screen.findByText('Task created for you.')).toBeInTheDocument()
+  })
+
+  it('keeps the paused rule in the legend while the pause is on', async () => {
+    recordList([], AT_RISK, { ...SUMMARY, at_risk: 2, pause_enabled: true })
+    renderPanel({ mode: 'at-risk', auth: OPS })
+    await screen.findByRole('article', { name: 'Bantama Cold Store' })
+    const reasons = screen.getByRole('list', { name: 'At-risk reasons' })
+    expect(within(reasons).getByText('Paused (1)')).toBeInTheDocument()
+    expect(within(reasons).getByText(/listings hidden/)).toBeInTheDocument()
+  })
+
+  it('drops the paused rule and any hiding wording while the pause is switched off', async () => {
+    recordList([], AT_RISK.slice(1), { ...SUMMARY, at_risk: 1, pause_enabled: false })
+    renderPanel({ mode: 'at-risk', auth: OPS })
+    await screen.findByRole('article', { name: 'Kejetia Phone Hub' })
+    const reasons = screen.getByRole('list', { name: 'At-risk reasons' })
+    expect(within(reasons).getByText('Nothing live (1)')).toBeInTheDocument()
+    expect(within(reasons).queryByText(/Paused/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/hidden/i)).not.toBeInTheDocument()
   })
 
   it('says so when nothing is at risk', async () => {

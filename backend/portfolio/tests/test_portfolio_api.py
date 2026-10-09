@@ -121,7 +121,13 @@ class PortfolioListTests(PortfolioApiBase):
         self.assertEqual(body["summary"], {
             "total": 5, "healthy": 1, "needs_attention": 1, "at_risk": 2, "new": 1, "unassigned": 0,
             "at_risk_week_ago": None,  # no snapshot was taken that day: unknown, not 0
+            "pause_enabled": False,  # SUBSCRIPTION_PAUSE_ENABLED's default
         })
+
+    @override_settings(SUBSCRIPTION_PAUSE_ENABLED=True)
+    def test_the_summary_says_when_the_pause_is_on(self):
+        self.auth(self.lead)
+        self.assertIs(self.client.get(URL).json()["summary"]["pause_enabled"], True)
 
     def test_at_risk_a_week_ago_comes_from_the_snapshot_dated_seven_days_back(self):
         first = make_business("Abe Store", manager=self.kwame)

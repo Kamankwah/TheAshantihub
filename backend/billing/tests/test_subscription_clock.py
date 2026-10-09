@@ -463,6 +463,12 @@ class PaymentClearsTheClockTests(TestCase):
             ActivityEvent.objects.get(verb="subscription.resumed").after["was"], "overdue"
         )
 
+    def test_a_payment_during_grace_says_so_in_the_log(self):
+        Subscription.objects.filter(pk=self.sub.pk).update(paused_at=None)
+        self.sub.refresh_from_db()
+        clock.clear_after_payment(self.sub, now=timezone.now())
+        self.assertEqual(ActivityEvent.objects.get(verb="subscription.resumed").summary, "Paid in the app during grace")
+
     def test_subscribing_without_a_payment_never_lifts_the_pause(self):
         # POST /api/billing/subscriptions/me/ grants a plan with no payment (an
         # existing hole, Decision 9) — it must never stop the clock.
@@ -696,7 +702,9 @@ class PauseSwitchedOffTests(TestCase):
         self.assertIsNone(sub.paused_at)
         note = Notification.objects.get(business_owner=self.owner, kind="subscription_resumed")
         self.assertEqual(note.body, "Thank you — your listings stay visible.")
-        self.assertEqual(ActivityEvent.objects.get(verb="subscription.resumed").after["was"], "overdue")
+        event = ActivityEvent.objects.get(verb="subscription.resumed")
+        self.assertEqual(event.after["was"], "overdue")
+        self.assertEqual(event.summary, "Paid in the app while overdue")
 
     def test_the_owner_sees_pause_enabled_on_their_subscription(self):
         started = timezone.now() - timedelta(days=20)

@@ -121,10 +121,13 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   a cart, must use it.
 - **The subscription clock** (`billing.clock`, hourly) marks overdue, reminds on days 7 and 13 and,
   only with `settings.SUBSCRIPTION_PAUSE_ENABLED` on, pauses at day 15. The setting (env, default
-  **off**) stays off until real payments (the planned in-app wallet) can renew automatically;
-  while off, nothing is paused or hidden, `subscription_state()` never reads `"paused"` (it carries
-  `pause_enabled`, and `overdue_day` isn't capped at 14), and no notice, email, task or screen
-  counts down to a pause or mentions hiding - branch on `billing.clock.pause_enabled()`. Only
+  **off**) stays off until real payments (the planned in-app wallet) can renew automatically.
+  Turning it on pauses every subscription already 14+ days overdue on the next hourly run, and
+  those owners were never warned about hiding - switch it on only together with automatic
+  renewal, or first reset `overdue_since` to the switch-on time. While it is off, nothing is
+  paused or hidden, `subscription_state()` never reads `"paused"` (it carries `pause_enabled`, and
+  `overdue_day` isn't capped at 14), and no notice, email, task or screen counts down to a pause
+  or mentions hiding - branch on `billing.clock.pause_enabled()`. Only
   `payments.services._finalize_subscription` (a real payment) clears the clock, through
   `billing.clock.clear_after_payment()`; `POST /api/billing/subscriptions/me/` must never.
 - **KYC goes through `accounts.kyc`.** The KYC queue and the `business.kyc` approval share
@@ -132,10 +135,13 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   `approvals.services.close_pending_for_target()` (never by running `apply` again). `approve()`
   sets `decided_by` before `apply`, so an `apply` may read it. No KYC submitter
   (`accounts.kyc.is_kyc_submitter` - extend it, never copy it) decides its KYC through either
-  door, Super Admin included (403), or records its Ghana Post address decision: the registrar,
-  the current account manager, the maker of any `business.kyc`/`business.update` request for it,
-  the field scout who corrected its address (one who only confirmed it is not), and any staff
-  member who edited the owner's details directly. That edit (`PATCH business-owners/{id}/`)
+  door, Super Admin included (403, `kyc.OWN_REGISTRATION`), or records its Ghana Post address
+  decision: the registrar, the current account manager, the maker of any
+  `business.kyc`/`business.update` request for it, any staff member who edited the owner's details
+  directly, and a field scout who corrected the address. That scout's report itself records the
+  address decision (`address_verified=False` plus the corrected `gps_address`); one who only
+  confirmed the address is not a submitter. Whether a corrected address needs an independent
+  re-check is an open product decision. That edit (`PATCH business-owners/{id}/`)
   records `business_owner.details_changed` with only the changed fields, payout numbers and TIN
   masked (`accounts.serializers.owner_details_change`); a PATCH that changes nothing records
   nothing. A scout-channel business needs the Ghana Post address decision before KYC approval
