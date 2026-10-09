@@ -24,6 +24,7 @@ from .models import (
     StaffUser,
 )
 from .permissions import can_lead_team, can_manage_staff
+from .phones import filter_by_phone
 
 # Used to pay the same check_password() cost when no account is found, so that
 # login timing does not leak whether an identifier exists (see login serializers below).
@@ -51,6 +52,31 @@ def mask_but_last(value, keep=5):
     if len(digits) <= keep:
         return "•" * len(digits)
     return "•" * (len(digits) - keep) + digits[-keep:]
+
+
+# What a staff edit of a business owner's details may put in the activity log
+# (user decision U2): payout numbers and the TIN only masked, and never a
+# password hash, whichever fields the edit reaches.
+DETAILS_MASKED_FIELDS = ("payout_momo_number", "payout_bank_account_number", "tin")
+DETAILS_NEVER_LOGGED = ("password_hash", "password")
+
+
+def owner_details_change(before, after):
+    """(before, after) holding only the fields whose value changed between the
+    two {field: value} dicts, with DETAILS_MASKED_FIELDS masked to their last 3
+    characters and DETAILS_NEVER_LOGGED left out - what the
+    business_owner.details_changed activity event stores."""
+    def shown(field, value):
+        return mask_but_last(value, keep=3) if field in DETAILS_MASKED_FIELDS else value
+
+    changed = [
+        field for field in after
+        if field not in DETAILS_NEVER_LOGGED and before.get(field) != after[field]
+    ]
+    return (
+        {field: shown(field, before.get(field)) for field in changed},
+        {field: shown(field, after[field]) for field in changed},
+    )
 
 
 class CustomerRegistrationSerializer(serializers.ModelSerializer):
@@ -175,6 +201,10 @@ class PasswordResetRequestSerializer(serializers.Serializer):
             account = ACCOUNT_MODELS[account_type].objects.filter(email=email).first()
             if account is None:
                 continue
+            if account_type == "business_owner" and account.needs_claim:
+                # A scout-registered owner must accept the Business Agreement
+                # through a claim (accounts/claims.py), not a reset.
+                continue
             token = get_random_string(43)
             PasswordResetToken.objects.create(
                 account_type=account_type,
@@ -257,13 +287,34 @@ class BusinessOwnerKYCSerializer(serializers.ModelSerializer):
     # submission without expanding its detail. kyc_rejection_reason is here for
     # the same reason (the Rejected tab shows it inline).
     reviewed_by_name = serializers.CharField(source="reviewed_by.full_name", read_only=True, default=None)
+    # Plan 2A: who registered it, its open fraud cases and the pending
+    # business.kyc request the queue's Approve/Reject would settle. The
+    # helpers live in accounts/kyc.py, imported lazily (accounts.kyc imports
+    # activity.services, which imports this module).
+    registered_by_name = serializers.CharField(source="registered_by.full_name", read_only=True, default=None)
+    # The registrar's role ("Scout", "Operations"), so the queue never labels an
+    # Operations registrar a scout. Rides on the registered_by__role select_related.
+    registered_by_role = serializers.CharField(source="registered_by.role.get_name_display", read_only=True, default=None)
+    open_fraud_flags = serializers.SerializerMethodField()
+    pending_approval_id = serializers.SerializerMethodField()
 
     class Meta:
         model = BusinessOwner
         fields = [
             "id", "full_name", "login_phone", "kyc_status", "kyc_rejection_reason",
             "created_at", "reviewed_by_name", "reviewed_at",
+            "registration_channel", "registered_by_name", "registered_by_role", "open_fraud_flags", "pending_approval_id",
         ]
+
+    def get_open_fraud_flags(self, obj):
+        from .kyc import open_fraud_flag_rows
+
+        return open_fraud_flag_rows(obj)
+
+    def get_pending_approval_id(self, obj):
+        from .kyc import pending_approval_id
+
+        return pending_approval_id(obj)
 
 
 class BusinessOwnerProfileKYCDetailSerializer(serializers.ModelSerializer):
@@ -291,15 +342,26 @@ class BusinessOwnerProfileKYCDetailSerializer(serializers.ModelSerializer):
         ]
 
 
-class BusinessOwnerKYCDetailSerializer(serializers.ModelSerializer):
+class BusinessOwnerKYCDetailSerializer(BusinessOwnerKYCSerializer):
     profile = BusinessOwnerProfileKYCDetailSerializer(read_only=True)
-    reviewed_by_name = serializers.CharField(source="reviewed_by.full_name", read_only=True, default=None)
+    # The business and its pin (plan 2A). An owner without a profile yet reads
+    # None for each (a missing reverse one-to-one resolves to the default).
+    business_name = serializers.CharField(source="profile.business_name", read_only=True, default=None)
+    business_category_name = serializers.CharField(source="profile.business_category.label", read_only=True, default=None)
+    zone_name = serializers.CharField(source="profile.zone.name", read_only=True, default=None)
+    lat = serializers.DecimalField(source="profile.lat", max_digits=9, decimal_places=6, read_only=True, default=None)
+    lng = serializers.DecimalField(source="profile.lng", max_digits=9, decimal_places=6, read_only=True, default=None)
+    location_accuracy_m = serializers.IntegerField(source="profile.location_accuracy_m", read_only=True, default=None)
+    location_is_manual = serializers.BooleanField(source="profile.location_is_manual", read_only=True, default=None)
+    signboard_photo = serializers.ImageField(source="profile.signboard_photo", read_only=True, default=None)
 
-    class Meta:
-        model = BusinessOwner
+    class Meta(BusinessOwnerKYCSerializer.Meta):
         fields = [
             "id", "full_name", "login_phone", "email", "kyc_status", "kyc_rejection_reason",
             "created_at", "reviewed_by_name", "reviewed_at", "profile",
+            "registration_channel", "registered_by_name", "registered_by_role", "open_fraud_flags", "pending_approval_id",
+            "business_name", "business_category_name", "zone_name", "lat", "lng",
+            "location_accuracy_m", "location_is_manual", "signboard_photo",
         ]
 
 
@@ -423,9 +485,20 @@ class BusinessOwnerLoginSerializer(serializers.Serializer):
     password = serializers.CharField()
 
     def validate(self, attrs):
+        identifier = attrs["identifier"]
         account = BusinessOwner.objects.filter(
-            Q(login_phone=attrs["identifier"]) | Q(email=attrs["identifier"])
+            Q(login_phone=identifier) | Q(email=identifier)
         ).first()
+        if account is None and "@" not in identifier:
+            # The same phone written the other way: "0241234567" for a stored
+            # "+233241234567" (scouts store +233…) or the reverse (owners typed
+            # their own at sign-up). Compared by the last 9 digits, and only an
+            # unambiguous match counts — two old rows sharing those digits
+            # still sign in by their exact spelling only. Stored spaces and
+            # dashes ("024 123-4567") don't matter: digits are compared.
+            matches = list(filter_by_phone(BusinessOwner.objects.all(), "login_phone", identifier)[:2])
+            if len(matches) == 1:
+                account = matches[0]
         password_hash = account.password_hash if account else DUMMY_PASSWORD_HASH
         password_valid = check_password(attrs["password"], password_hash)
         if account is None or not password_valid:
@@ -585,10 +658,15 @@ class CustomerListSerializer(serializers.ModelSerializer):
 
 
 class BusinessOwnerListSerializer(serializers.ModelSerializer):
+    # The business's name — the profile's, or the owner's own when none is set
+    # (BusinessOwner.display_name). The Fraud cases business picker shows it
+    # (staff phase 2A).
+    business_name = serializers.CharField(source="display_name", read_only=True)
+
     class Meta:
         model = BusinessOwner
         fields = [
-            "id", "full_name", "login_phone", "email", "kyc_status",
+            "id", "full_name", "business_name", "login_phone", "email", "kyc_status",
             "is_suspended", "created_at",
         ]
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Flag from "../Flag.jsx";
 import BusinessRegistrationFlow from "../BusinessRegistrationFlow.jsx";
 import { useBusinessProfile } from "../../hooks/useBusinessProfile.js";
+import { useMySubscription } from "../../hooks/useMySubscription.js";
 import { D, glassCard } from "./theme.js";
 import AnalyticsPanel from "./panels/AnalyticsPanel.jsx";
 import ListingsPanel from "./panels/ListingsPanel.jsx";
@@ -14,6 +15,8 @@ import CreditPanel from "./panels/CreditPanel.jsx";
 import SubscriptionPanel from "./panels/SubscriptionPanel.jsx";
 import EventsPanel from "./panels/EventsPanel.jsx";
 import ProfilePanel from "./panels/ProfilePanel.jsx";
+import RenewBanner from "./RenewBanner.jsx";
+import ManagerChangesCard from "./ManagerChangesCard.jsx";
 
 // ─── Business Command Center ─────────────────────────────────────────────────
 // The unified "mission-control" dashboard for a business owner, rebuilt onto a
@@ -86,6 +89,9 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
   const isBusinessOwner = user?.accountType === "business_owner";
   const dataReady = !auth.isLoading && isBusinessOwner;
   const { data: profile } = useBusinessProfile(dataReady);
+  // The subscription's overdue/pause clock for the renew banner — the same
+  // ['my-subscription'] cache the Overview and Subscription tabs read.
+  const { data: subscription } = useMySubscription(dataReady);
 
   const isVerified = user?.kycStatus === "verified";
   const isRejected = user?.kycStatus === "rejected";
@@ -206,7 +212,8 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
             {showProfile ? (
               <ProfilePanel user={user} />
             ) : !isVerified ? (
-              <div style={{ ...glassCard, padding: "30px 24px", textAlign: "center" }}>
+              <>
+              <div style={{ ...glassCard, padding: "30px 24px", textAlign: "center", marginBottom: 16 }}>
                 {isRejected ? (
                   <>
                     <div style={{ fontSize: "2rem", marginBottom: 10 }}>⚠️</div>
@@ -222,8 +229,13 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
                   </>
                 )}
               </div>
+              {/* While KYC is pending the owner can still undo an account manager's change. */}
+              {!isRejected && <ManagerChangesCard />}
+              </>
             ) : (
               <>
+                <RenewBanner subscription={subscription} onRenew={() => selectTab("subscription")} />
+                <ManagerChangesCard />
                 {tab === "analytics" && <AnalyticsPanel user={user} onNavigate={selectTab} />}
                 {tab === "listings" && <ListingsPanel user={user} PaymentComponent={PaymentComponent} showToast={showToast} businessKind={profile?.business_kind} />}
                 {tab === "products" && <ProductsPanel />}

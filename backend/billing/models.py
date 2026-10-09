@@ -126,6 +126,17 @@ class Subscription(models.Model):
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=ACTIVE)
     current_period_start = models.DateTimeField()
     current_period_end = models.DateTimeField()
+    # The overdue clock (staff phase 2A; billing/clock.py). Set only by the
+    # hourly job; cleared only by a successful subscription payment
+    # (payments.services._finalize_subscription -> clock.clear_after_payment),
+    # never by POST /api/billing/subscriptions/me/ or the trial start.
+    overdue_since = models.DateTimeField(null=True, blank=True)
+    paused_at = models.DateTimeField(null=True, blank=True)
+    # When each notice went out — the job's de-duplication and the
+    # "notices sent" list on Subscriptions due.
+    overdue_notice_at = models.DateTimeField(null=True, blank=True)
+    reminder_day7_at = models.DateTimeField(null=True, blank=True)
+    reminder_day13_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

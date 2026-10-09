@@ -100,11 +100,70 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   of every `ActivityEvent`; a queue that should refresh live goes in `QUEUE_INVALIDATIONS`. Feed
   events reach only staff who could read that event through `GET /api/activity/`; permission
   groups get query keys, never labels. An `APIView` with `activity_exempt = True` is skipped by the
-  activity middleware (used only for the realtime ticket). Publishing goes through one bounded
+  activity middleware (the realtime ticket, the registration check, and views that record their
+  own event so a raw body never reaches the log: the owner claim and the staff edit of a business
+  owner's details). Publishing goes through one bounded
   `_group_send` (2 s), so a dead Redis cannot hang a request; a ticket the cache can't issue
   answers 503. With `DJANGO_DEBUG=False` (outside `manage.py test`) the settings refuse to load
   without a `redis://`/`rediss://` `REDIS_URL`. Activity bodies have NUL stripped
   before hashing (Postgres text cannot hold it).
+- **A business is a `BusinessOwner` plus its `BusinessOwnerProfile`** - there is no Business
+  model. Show `BusinessOwner.display_name` (business name, else the owner's name). A scout-
+  registered owner (`registration_channel = "scout"`) has an unusable password until they claim
+  their login (`needs_claim`); `compute_registration_step()` treats that channel differently.
+- **Phones are compared by their last 9 digits.** Write owner phones through
+  `accounts.phones.normalize_gh_phone()` (`+233...`) and match stored phones only through
+  `phone_key()` / `filter_by_phone()` (there is no `phone_match_q`), because older rows hold
+  whatever owners typed.
+- **Hidden businesses:** a suspended owner - or, only while `SUBSCRIPTION_PAUSE_ENABLED` is on, one
+  whose subscription is paused - is hidden from public browse by
+  `listings.visibility.hidden_business_q()`. Every public listing or event queryset, and adding to
+  a cart, must use it.
+- **The subscription clock** (`billing.clock`, hourly) marks overdue, reminds on days 7 and 13 and,
+  only with `settings.SUBSCRIPTION_PAUSE_ENABLED` on, pauses at day 15. The setting (env, default
+  **off**) stays off until real payments (the planned in-app wallet) can renew automatically.
+  Turning it on pauses every subscription already 14+ days overdue on the next hourly run, and
+  those owners were never warned about hiding - switch it on only together with automatic
+  renewal, or first reset `overdue_since` to the switch-on time. While it is off, nothing is
+  paused or hidden, `subscription_state()` never reads `"paused"` (it carries `pause_enabled`, and
+  `overdue_day` isn't capped at 14), and no notice, email, task or screen counts down to a pause
+  or mentions hiding - branch on `billing.clock.pause_enabled()`. Only
+  `payments.services._finalize_subscription` (a real payment) clears the clock, through
+  `billing.clock.clear_after_payment()`; `POST /api/billing/subscriptions/me/` must never.
+- **KYC goes through `accounts.kyc`.** The KYC queue and the `business.kyc` approval share
+  `approve_owner()` / `reject_owner()`; a queue decision settles the pending request with
+  `approvals.services.close_pending_for_target()` (never by running `apply` again). `approve()`
+  sets `decided_by` before `apply`, so an `apply` may read it. No KYC submitter
+  (`accounts.kyc.is_kyc_submitter` - extend it, never copy it) decides its KYC through either
+  door, Super Admin included (403, `kyc.OWN_REGISTRATION`), or records its Ghana Post address
+  decision: the registrar, the current account manager, the maker of any
+  `business.kyc`/`business.update` request for it, any staff member who edited the owner's details
+  directly, and a field scout who corrected the address. That scout's report itself records the
+  address decision (`address_verified=False` plus the corrected `gps_address`); one who only
+  confirmed the address is not a submitter. Whether a corrected address needs an independent
+  re-check is an open product decision. That edit (`PATCH business-owners/{id}/`)
+  records `business_owner.details_changed` with only the changed fields, payout numbers and TIN
+  masked (`accounts.serializers.owner_details_change`); a PATCH that changes nothing records
+  nothing. A scout-channel business needs the Ghana Post address decision before KYC approval
+  through either door. A scout's `business.update` that changes `gps_address` clears
+  that decision (kept in `AppliedChange.result`; an undo puts it back with the address).
+- **Scout changes are approval kinds** in `portfolio.approval_kinds.KINDS` (registered in
+  `PortfolioConfig.ready()`); only the business's account manager may submit them; each applied
+  change writes a `portfolio.AppliedChange` the owner can undo for 7 days
+  (`portfolio.undo.undo_change`), which always opens a fraud case. `email` / `login_phone` are
+  proposable only while the owner `needs_claim`, and a proposed email or phone that belongs to
+  staff is refused. Deactivating a scout counts only their non-rejected managed businesses.
+- **Owner claim tokens** (`accounts.claims`) are stored as SHA-256 hashes; a hand-over token works
+  only on the scout session that started it; the claim view is `activity_exempt` and records
+  `business.claimed` itself, so the password never reaches the activity log. The claim strips
+  password edge spaces (sign-in trims them), and password reset sends nothing to an owner who
+  `needs_claim` - they must claim, so that consent is recorded. A staff member's email is refused
+  as an owner's email at registration and at the claim (resets go there). Lock order in `claim()`
+  is owner, then token, as when issuing one. Sentry's scrubber (`ashantihub/sentry.py`) holds the
+  claim secrets' field names - add any new secret field there.
+- **Fraud cases** come from `fraud.services.raise_flag()` (use a `dedupe_key` for system checks).
+  Confirming runs the hooks in `fraud.services.ON_CONFIRMED`; plan 2B adds commission reversal
+  there. The realtime `fraud.` row also invalidates `kyc-queue` and `portfolio-business`.
 
 ## Test-fixture gotcha
 

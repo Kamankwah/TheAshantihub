@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.contrib.auth.hashers import check_password
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import generics, status
@@ -10,12 +11,13 @@ from rest_framework.permissions import SAFE_METHODS, AllowAny, BasePermission, I
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from approvals.services import ApprovalError
 from notifications.services import notify_business_owner, notify_customer, notify_staff_role
 
 from activity.services import record as record_activity
 from realtime.publish import force_disconnect_on_commit
 
-from . import sessions, two_factor
+from . import claims, kyc, sessions, two_factor
 from .authentication import issue_token
 from .emails import send_staff_invite_email, send_two_factor_changed_email, send_verification_code_email
 from .models import (
@@ -36,6 +38,7 @@ from .permissions import (
     can_lead_team,
     can_manage_staff,
 )
+from .phones import filter_by_phone, phone_key
 from .serializers import (
     INVITE_TOKEN_LIFETIME,
     BusinessOwnerKYCDetailSerializer,
@@ -63,6 +66,7 @@ from .serializers import (
     StaffListSerializer,
     StaffLoginSerializer,
     StaffSessionSerializer,
+    owner_details_change,
 )
 
 
@@ -204,6 +208,45 @@ class BusinessOwnerLoginView(generics.GenericAPIView):
         })
 
 
+def _truthy(value):
+    return value is True or (isinstance(value, str) and value.strip().lower() in ("true", "1", "on", "yes"))
+
+
+class BusinessOwnerClaimView(APIView):
+    """GET ?token= previews the business; POST sets the owner's own password
+    (staff phase 2A, S2). Open to whoever holds a live token — a hand-over
+    token also needs the staff session that started it (accounts/claims.py).
+    Never returns a token or the password."""
+
+    permission_classes = [AllowAny]
+    throttle_scope = "owner_claim"
+    # claims.claim() records business.claimed itself, with the owner as actor;
+    # the hand-over's request carries the scout's token, so the middleware
+    # must not log it as a staff action.
+    activity_exempt = True
+
+    def get(self, request):
+        try:
+            return Response(claims.preview(request.query_params.get("token", ""), request))
+        except claims.ClaimError as exc:
+            return Response({"detail": exc.message, "code": exc.code}, status=exc.status_code)
+
+    def post(self, request):
+        body = _body(request)
+        try:
+            owner = claims.claim(
+                body.get("token"),
+                password=body.get("password"),
+                password_confirm=body.get("password_confirm"),
+                email=body.get("email"),
+                accept_terms=_truthy(body.get("accept_terms")),
+                request=request,
+            )
+        except claims.ClaimError as exc:
+            return Response({"detail": exc.message, "code": exc.code}, status=exc.status_code)
+        return Response({"claimed": True, "login_phone": owner.login_phone, "business_name": owner.display_name})
+
+
 def _staff_sign_in_response(account, request, *, two_factor_used=False):
     # Open the session first so a sign-in is never logged without one.
     token = issue_token(account, "staff", request=request, two_factor=two_factor_used)
@@ -319,7 +362,7 @@ class KYCPendingQueueView(generics.ListAPIView):
     def get_queryset(self):
         tab = self.request.query_params.get("status", "pending")
         kyc_status = KYC_STATUS_MAP.get(tab, BusinessOwner.PENDING)
-        queryset = BusinessOwner.objects.filter(kyc_status=kyc_status)
+        queryset = kyc.with_review_data(BusinessOwner.objects.filter(kyc_status=kyc_status))
         # Pending: oldest-first (a work queue). Approved/Rejected: most-recently
         # actioned first (a history), falling back to created_at for legacy
         # rows actioned before reviewed_at existed.
@@ -329,29 +372,28 @@ class KYCPendingQueueView(generics.ListAPIView):
 
 
 class KYCDetailView(generics.RetrieveAPIView):
-    queryset = BusinessOwner.objects.all()
     serializer_class = BusinessOwnerKYCDetailSerializer
 
     def get_permissions(self):
         return [HasRolePermission("kyc.approve")]
 
+    def get_queryset(self):
+        return kyc.with_review_data(BusinessOwner.objects.all())
+
 
 class KYCApproveView(APIView):
+    """Approve from the KYC queue. accounts.kyc.approve_owner settles a pending
+    business.kyc request too, refuses a business already decided, the request's
+    own maker, and an open self-dealing case; it records kyc-approve itself."""
+
     def get_permissions(self):
         return [HasRolePermission("kyc.approve")]
 
     def post(self, request, pk):
-        owner = generics.get_object_or_404(BusinessOwner, pk=pk)
-        owner.kyc_status = BusinessOwner.VERIFIED
-        owner.kyc_rejection_reason = None
-        owner.reviewed_by = request.user
-        owner.reviewed_at = timezone.now()
-        owner.save(update_fields=["kyc_status", "kyc_rejection_reason", "reviewed_by", "reviewed_at"])
-        notify_business_owner(
-            owner, "kyc_approved", "Your business is verified!",
-            body="Your KYC has been approved — you can now publish listings.",
-            link="/business-dashboard", icon="✅",
-        )
+        try:
+            owner = kyc.approve_owner(pk, request.user, http_request=request)
+        except (kyc.KycError, ApprovalError) as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
         return Response({"id": owner.id, "kyc_status": owner.kyc_status})
 
 
@@ -360,18 +402,11 @@ class KYCRejectView(APIView):
         return [HasRolePermission("kyc.approve")]
 
     def post(self, request, pk):
-        reason = request.data.get("reason", "")
-        owner = generics.get_object_or_404(BusinessOwner, pk=pk)
-        owner.kyc_status = BusinessOwner.REJECTED
-        owner.kyc_rejection_reason = reason
-        owner.reviewed_by = request.user
-        owner.reviewed_at = timezone.now()
-        owner.save(update_fields=["kyc_status", "kyc_rejection_reason", "reviewed_by", "reviewed_at"])
-        notify_business_owner(
-            owner, "kyc_rejected", "Your KYC needs attention",
-            body=reason or "Your KYC submission was rejected. Please review and resubmit.",
-            link="/business-dashboard", icon="⚠️",
-        )
+        data = request.data if hasattr(request.data, "get") else {}
+        try:
+            owner = kyc.reject_owner(pk, request.user, str(data.get("reason") or ""), http_request=request)
+        except (kyc.KycError, ApprovalError) as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
         return Response({"id": owner.id, "kyc_status": owner.kyc_status})
 
 
@@ -388,6 +423,8 @@ class KYCReReviewView(APIView):
 
     def post(self, request, pk):
         owner = generics.get_object_or_404(BusinessOwner, pk=pk)
+        if kyc.is_kyc_submitter(owner, request.user):
+            return Response({"detail": kyc.OWN_REGISTRATION}, status=403)
         if owner.kyc_status != BusinessOwner.REJECTED:
             return Response(
                 {"detail": "Only a rejected KYC submission can be sent back for re-review."},
@@ -411,7 +448,8 @@ class KYCAddressVerifyView(APIView):
     staff decision on the business's Ghana Post digital address (punch-list
     item 8), with attribution. Setting either true or false marks a decision as
     having been made (address_verified_at), which is what unblocks the KYC
-    Approve/Reject buttons on the frontend. Gated by kyc.approve.
+    Approve/Reject buttons on the frontend. Gated by kyc.approve; the
+    business's registrar or resubmitter is refused (403), as on Approve and Reject.
     """
 
     def get_permissions(self):
@@ -419,6 +457,9 @@ class KYCAddressVerifyView(APIView):
 
     def post(self, request, pk):
         owner = generics.get_object_or_404(BusinessOwner, pk=pk)
+        # Whoever submitted the KYC evidence never decides any part of it.
+        if kyc.is_kyc_submitter(owner, request.user):
+            return Response({"detail": kyc.OWN_REGISTRATION}, status=403)
         verified = bool(request.data.get("verified", False))
         profile = owner.profile
         profile.address_verified = verified
@@ -448,11 +489,23 @@ class CustomerListView(generics.ListAPIView):
 
 class BusinessOwnerListView(generics.ListAPIView):
     serializer_class = BusinessOwnerListSerializer
-    queryset = BusinessOwner.objects.all().order_by("-created_at")
     pagination_class = AccountsPagination
 
     def get_permissions(self):
         return [HasRolePermission("users.view")]
+
+    def get_queryset(self):
+        """Newest first. ?search= (staff phase 2A — the Fraud cases business
+        picker) matches the owner's name, the business name, the email, or the
+        sign-in phone however either was written (accounts.phones)."""
+        owners = BusinessOwner.objects.select_related("profile").order_by("-created_at")
+        term = (self.request.query_params.get("search") or "").strip()
+        if not term:
+            return owners
+        matches = Q(full_name__icontains=term) | Q(profile__business_name__icontains=term) | Q(email__iexact=term)
+        if phone_key(term):
+            matches |= Q(pk__in=filter_by_phone(BusinessOwner.objects.all(), "login_phone", term).values("pk"))
+        return owners.filter(matches)
 
 
 class StaffListView(generics.ListAPIView):
@@ -548,12 +601,35 @@ class StaffCustomerDetailView(generics.RetrieveUpdateAPIView):
 
 
 class StaffBusinessOwnerDetailView(generics.RetrieveUpdateAPIView):
+    """A PATCH that changes anything records business_owner.details_changed
+    itself - only the changed fields, masked (owner_details_change) - and the
+    editor never decides this owner's KYC (accounts.kyc.is_kyc_submitter).
+    The view is activity_exempt so the middleware never stores the raw
+    request body, and a PATCH that changes nothing records nothing."""
+
     queryset = BusinessOwner.objects.all()
     serializer_class = StaffBusinessOwnerDetailSerializer
     http_method_names = ["get", "patch"]
+    activity_exempt = True
 
     def get_permissions(self):
         return _users_detail_permissions(self.request)
+
+    def perform_update(self, serializer):
+        owner = serializer.instance
+        fields = list(serializer.validated_data)
+        before = {field: getattr(owner, field) for field in fields}
+        with transaction.atomic():
+            serializer.save()
+            changed_before, changed_after = owner_details_change(
+                before, {field: getattr(owner, field) for field in fields},
+            )
+            if changed_after:
+                record_activity(
+                    self.request.user, kyc.DETAILS_CHANGED, method=self.request.method, target=owner,
+                    summary="Changed " + ", ".join(field.replace("_", " ") for field in changed_after),
+                    before=changed_before, after=changed_after, request=self.request,
+                )
 
     def get_serializer_context(self):
         # Payout + TIN are users.manage-only, read off the same effective
@@ -734,6 +810,12 @@ class StaffDeactivateView(APIView):
                 {"detail": f"Reassign {staff.full_name}'s {active_reports} direct report(s) first."},
                 status=400,
             )
+        # Spec §3: a scout's portfolio is reassigned before they leave.
+        # Rejected businesses appear in no portfolio list, so they can't be reassigned.
+        managed = staff.managed_businesses.exclude(kyc_status=BusinessOwner.REJECTED).count()
+        if managed:
+            noun = "business" if managed == 1 else "businesses"
+            return Response({"detail": f"Reassign {staff.full_name}'s {managed} {noun} first."}, status=400)
         staff.is_active = False
         staff.save(update_fields=["is_active"])
         sessions.revoke_all(staff, StaffSession.DEACTIVATED)
@@ -900,6 +982,9 @@ class StaffSignOutEverywhereView(APIView):
 
 
 # ── Scout field verification (punch-list item 11) ──────────────────────────
+ALREADY_ASSIGNED = "That scout is already assigned to this business."
+
+
 class ScoutAssignmentListCreateView(generics.ListCreateAPIView):
     """GET/POST /api/accounts/scout-assignments/ — an admin (scouts.assign)
     lists every assignment and assigns a scout to a business. POST body:
@@ -923,12 +1008,21 @@ class ScoutAssignmentListCreateView(generics.ListCreateAPIView):
         scout = generics.get_object_or_404(StaffUser, pk=scout_id)
         if scout.role.name != "scout":
             return Response({"scout": "That staff member is not a scout."}, status=400)
+        # Checked before the submitter refusal: a scout who corrected this
+        # business's address is a submitter and always already has an assignment.
+        if ScoutAssignment.objects.filter(business_owner=owner, scout=scout).exists():
+            return Response({"detail": ALREADY_ASSIGNED}, status=400)
+        if kyc.is_kyc_submitter(owner, scout):
+            return Response(
+                {"scout": [f"{scout.full_name} registered or manages this business — assign another scout."]},
+                status=400,
+            )
         assignment, created = ScoutAssignment.objects.get_or_create(
             business_owner=owner, scout=scout,
             defaults={"assigned_by": request.user},
         )
         if not created:
-            return Response({"detail": "That scout is already assigned to this business."}, status=400)
+            return Response({"detail": ALREADY_ASSIGNED}, status=400)
         return Response(ScoutAssignmentSerializer(assignment).data, status=201)
 
 
@@ -982,6 +1076,8 @@ class ScoutVerifyView(APIView):
         assignment = generics.get_object_or_404(
             ScoutAssignment, pk=pk, scout=request.user
         )
+        if kyc.is_kyc_submitter(assignment.business_owner, request.user):
+            return Response({"detail": kyc.OWN_REGISTRATION}, status=403)
         address_confirmed = request.data.get("address_confirmed")
         if address_confirmed is None:
             return Response(

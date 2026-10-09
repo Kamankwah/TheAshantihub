@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { server } from '../../../../mocks/server.js'
@@ -33,5 +33,25 @@ describe('ScoutAssignmentsPanel', () => {
     server.use(http.get('http://localhost:8000/api/accounts/scout-assignments/', () => HttpResponse.json([])))
     renderPanel()
     expect(await screen.findByText('No assignments yet.')).toBeInTheDocument()
+  })
+
+  it("shows the server's reason when an assignment is refused", async () => {
+    server.use(
+      http.get('http://localhost:8000/api/accounts/scout-assignments/', () => HttpResponse.json([])),
+      http.get('http://localhost:8000/api/accounts/scouts/', () => HttpResponse.json([{ id: 4, full_name: 'Yaw Boakye' }])),
+      http.get('http://localhost:8000/api/accounts/business-owners/', () => HttpResponse.json({ results: [{ id: 7, full_name: 'Kofi', business_name: 'Kofi Stores' }] })),
+      http.post('http://localhost:8000/api/accounts/scout-assignments/', () => HttpResponse.json(
+        { scout: ['Yaw Boakye registered or manages this business — assign another scout.'] }, { status: 400 },
+      )),
+    )
+    renderPanel()
+    await screen.findByText('No assignments yet.')
+    const [business, scout] = screen.getAllByRole('combobox')
+    await screen.findByRole('option', { name: /Kofi/ })
+    await screen.findByRole('option', { name: /Yaw/ })
+    fireEvent.change(business, { target: { value: '7' } })
+    fireEvent.change(scout, { target: { value: '4' } })
+    fireEvent.click(screen.getByRole('button', { name: /Assign/ }))
+    expect(await screen.findByText('Yaw Boakye registered or manages this business — assign another scout.')).toBeInTheDocument()
   })
 })

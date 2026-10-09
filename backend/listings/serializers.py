@@ -115,6 +115,120 @@ class OwnerListingManageSerializer(serializers.ModelSerializer):
         ]
 
 
+# Owner-facing wording of the listing rules below. portfolio.proposals words
+# the subscription/limit/category refusals for scouts, and the scout's
+# Add-a-product form lists PRODUCT_ANSWER_MESSAGES as the answers it must ask.
+SUBSCRIPTION_INACTIVE_MESSAGE = (
+    "Your subscription isn't active. Choose or renew a plan "
+    "before adding new listings."
+)
+LISTING_LIMIT_MESSAGE = (
+    "You've reached your plan's active-listing limit. "
+    "Upgrade your plan to add more."
+)
+PRODUCT_ANSWER_MESSAGES = {
+    "has_warranty": "State whether this product comes with a warranty.",
+    "has_expiry": "State whether this product has an expiry date.",
+    "return_policy": "A return policy is required for a product listing.",
+}
+
+
+def validate_listing_for_owner(owner, data, *, instance=None, initial_data=None):
+    """The rules a business's listing must meet — shared by the owner's own
+    form (OwnerListingSerializer.validate) and a scout's proposed listing
+    (portfolio.proposals), so the two paths can't drift apart.
+
+    `data` is validated serializer data; `instance` the listing being edited
+    (None on create); `initial_data` the raw input — the product answers
+    check which keys were actually sent (defaults to `data`). Raises
+    serializers.ValidationError; returns `data` unchanged."""
+    if initial_data is None:
+        initial_data = data
+
+    if instance is not None and instance.status == Listing.PUBLISHED:
+        raise serializers.ValidationError(
+            {"status": "Cannot edit a published listing."}
+        )
+
+    profile = getattr(owner, "profile", None)
+
+    # Category-kind restriction — applies to both create and edit, since
+    # an edit can change a listing's category just as easily as a create
+    # can pick the wrong one in the first place.
+    category = data.get("category", getattr(instance, "category", None))
+    if (
+        profile is not None
+        and profile.business_kind
+        and category is not None
+        and category.kind
+        and category.kind != profile.business_kind
+    ):
+        raise serializers.ValidationError(
+            {"category": f"Your business is registered for {profile.business_kind} listings only."}
+        )
+
+    if instance is None:
+        subscription = getattr(owner, "subscription", None)
+        if (
+            subscription is None
+            or subscription.status != Subscription.ACTIVE
+            or subscription.current_period_end < timezone.now()
+        ):
+            raise serializers.ValidationError({"subscription": SUBSCRIPTION_INACTIVE_MESSAGE})
+
+        max_active_listings = subscription.plan.max_active_listings
+        if max_active_listings is not None:
+            active_count = Listing.objects.filter(
+                business_owner=owner, status=Listing.PUBLISHED
+            ).count()
+            if active_count >= max_active_listings:
+                raise serializers.ValidationError({"max_active_listings": LISTING_LIMIT_MESSAGE})
+
+    # ── Product decision-field enforcement (comprehensive listing-
+    # creation work). "Mandatory" here means "the form makes the user
+    # consciously answer at creation time", not "reject pre-existing
+    # rows": a CREATE of a product-kind listing must explicitly provide
+    # has_warranty/has_expiry (booleans the owner must answer either way
+    # — presence is checked against initial_data since a missing
+    # BooleanField would otherwise just silently default) and a non-empty
+    # return_policy. An EDIT only rejects explicitly blanking
+    # return_policy on a product — a PATCH that doesn't touch these
+    # fields keeps working against old rows created before this feature.
+    # warranty_details/expiry_date are only required when their toggle is
+    # actually true (effective value, instance-aware for PATCHes).
+    errors = {}
+    is_product = category is not None and category.kind == Category.PRODUCT
+    if is_product:
+        if instance is None:
+            if "has_warranty" not in initial_data:
+                errors["has_warranty"] = PRODUCT_ANSWER_MESSAGES["has_warranty"]
+            if "has_expiry" not in initial_data:
+                errors["has_expiry"] = PRODUCT_ANSWER_MESSAGES["has_expiry"]
+            if not (data.get("return_policy") or "").strip():
+                errors["return_policy"] = PRODUCT_ANSWER_MESSAGES["return_policy"]
+        elif "return_policy" in data and not (data.get("return_policy") or "").strip():
+            errors["return_policy"] = PRODUCT_ANSWER_MESSAGES["return_policy"]
+
+        has_warranty = data.get("has_warranty", getattr(instance, "has_warranty", False))
+        warranty_details = data.get("warranty_details", getattr(instance, "warranty_details", ""))
+        if has_warranty and not (warranty_details or "").strip():
+            errors["warranty_details"] = (
+                "Describe the warranty since this product comes with one."
+            )
+
+        has_expiry = data.get("has_expiry", getattr(instance, "has_expiry", False))
+        expiry_date = data.get("expiry_date", getattr(instance, "expiry_date", None))
+        if has_expiry and not expiry_date:
+            errors["expiry_date"] = (
+                "Provide the expiry date since this product can expire."
+            )
+
+    if errors:
+        raise serializers.ValidationError(errors)
+
+    return data
+
+
 class OwnerListingSerializer(serializers.ModelSerializer):
     # Read-only nested gallery so a business owner's own listing view (used by
     # the "Submit for Hero" flow to pick a photo) can show the gallery without
@@ -134,107 +248,9 @@ class OwnerListingSerializer(serializers.ModelSerializer):
         extra_kwargs = {"contact_phone": {"required": False}, "units_total": {"required": False}}
 
     def validate(self, data):
-        if self.instance is not None and self.instance.status == Listing.PUBLISHED:
-            raise serializers.ValidationError(
-                {"status": "Cannot edit a published listing."}
-            )
-
-        owner = self.context["request"].user
-        profile = getattr(owner, "profile", None)
-
-        # Category-kind restriction — applies to both create and edit, since
-        # an edit can change a listing's category just as easily as a create
-        # can pick the wrong one in the first place.
-        category = data.get("category", getattr(self.instance, "category", None))
-        if (
-            profile is not None
-            and profile.business_kind
-            and category is not None
-            and category.kind
-            and category.kind != profile.business_kind
-        ):
-            raise serializers.ValidationError(
-                {"category": f"Your business is registered for {profile.business_kind} listings only."}
-            )
-
-        if self.instance is None:
-            subscription = getattr(owner, "subscription", None)
-            if (
-                subscription is None
-                or subscription.status != Subscription.ACTIVE
-                or subscription.current_period_end < timezone.now()
-            ):
-                raise serializers.ValidationError(
-                    {
-                        "subscription": (
-                            "Your subscription isn't active. Choose or renew a plan "
-                            "before adding new listings."
-                        )
-                    }
-                )
-
-            max_active_listings = subscription.plan.max_active_listings
-            if max_active_listings is not None:
-                active_count = Listing.objects.filter(
-                    business_owner=owner, status=Listing.PUBLISHED
-                ).count()
-                if active_count >= max_active_listings:
-                    raise serializers.ValidationError(
-                        {
-                            "max_active_listings": (
-                                "You've reached your plan's active-listing limit. "
-                                "Upgrade your plan to add more."
-                            )
-                        }
-                    )
-
-        # ── Product decision-field enforcement (comprehensive listing-
-        # creation work). "Mandatory" here means "the form makes the user
-        # consciously answer at creation time", not "reject pre-existing
-        # rows": a CREATE of a product-kind listing must explicitly provide
-        # has_warranty/has_expiry (booleans the owner must answer either way
-        # — presence is checked against initial_data since a missing
-        # BooleanField would otherwise just silently default) and a non-empty
-        # return_policy. An EDIT only rejects explicitly blanking
-        # return_policy on a product — a PATCH that doesn't touch these
-        # fields keeps working against old rows created before this feature.
-        # warranty_details/expiry_date are only required when their toggle is
-        # actually true (effective value, instance-aware for PATCHes).
-        errors = {}
-        is_product = category is not None and category.kind == Category.PRODUCT
-        if is_product:
-            if self.instance is None:
-                if "has_warranty" not in self.initial_data:
-                    errors["has_warranty"] = "State whether this product comes with a warranty."
-                if "has_expiry" not in self.initial_data:
-                    errors["has_expiry"] = "State whether this product has an expiry date."
-                if not (data.get("return_policy") or "").strip():
-                    errors["return_policy"] = "A return policy is required for a product listing."
-            elif "return_policy" in data and not (data.get("return_policy") or "").strip():
-                errors["return_policy"] = "A return policy is required for a product listing."
-
-            has_warranty = data.get(
-                "has_warranty", getattr(self.instance, "has_warranty", False)
-            )
-            warranty_details = data.get(
-                "warranty_details", getattr(self.instance, "warranty_details", "")
-            )
-            if has_warranty and not (warranty_details or "").strip():
-                errors["warranty_details"] = (
-                    "Describe the warranty since this product comes with one."
-                )
-
-            has_expiry = data.get("has_expiry", getattr(self.instance, "has_expiry", False))
-            expiry_date = data.get("expiry_date", getattr(self.instance, "expiry_date", None))
-            if has_expiry and not expiry_date:
-                errors["expiry_date"] = (
-                    "Provide the expiry date since this product can expire."
-                )
-
-        if errors:
-            raise serializers.ValidationError(errors)
-
-        return data
+        return validate_listing_for_owner(
+            self.context["request"].user, data, instance=self.instance, initial_data=self.initial_data,
+        )
 
     def create(self, validated_data):
         owner = self.context["request"].user

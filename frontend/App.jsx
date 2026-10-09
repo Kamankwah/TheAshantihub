@@ -47,6 +47,7 @@ import { AboutTestimonialsSection } from "./components/ui/about-testimonials-sec
 import { AboutFaqSection } from "./components/ui/about-faq-section.tsx";
 import { ContactPage } from "./components/ui/contact-page.tsx";
 import BusinessRegistrationFlow from "./components/BusinessRegistrationFlow.jsx";
+import BusinessClaimPage from "./components/BusinessClaimPage.jsx";
 import CartDrawer from "./components/CartDrawer.jsx";
 import EventHeroCarousel from "./components/EventHeroCarousel.jsx";
 import EventCard, { formatEventDate } from "./components/EventCard.jsx";
@@ -2548,6 +2549,11 @@ const PATH_TO_PAGE = {
   // "simulated" until then, so nothing ever redirects here today), but
   // built now per the launch plan.
   "/payment/return": "payment-return",
+  // Staff phase 2A — a business owner whose business a scout registered sets
+  // their password here (?token= from the claim-link email). Standalone
+  // early return like the pages above, and never a listing (see
+  // businessDetailMatch below).
+  "/business/claim": "business-claim",
 };
 const PAGE_TO_PATH = {
   home: "/",
@@ -2560,6 +2566,7 @@ const PAGE_TO_PATH = {
   "staff-install": "/staff/install",
   "reset-password": "/reset-password",
   "payment-return": "/payment/return",
+  "business-claim": "/business/claim",
 };
 // Full-page dashboard "routes" (isAdmin/showBizDash-style early returns) that
 // now have real URLs too. Same two-map convention as PATH_TO_PAGE/
@@ -2595,7 +2602,10 @@ export default function AshantiHub() {
   // <Routes>/<Route> element matching, which would force splitting
   // AshantiHub into route-specific components) is the idiomatic way to both
   // detect "are we on a detail route" and extract the :id param in one shot.
-  const businessDetailMatch = useMatch("/business/:id");
+  // /business/claim is the owner claim page (PATH_TO_PAGE), so "claim" is
+  // never read as a listing id.
+  const businessPathMatch = useMatch("/business/:id");
+  const businessDetailMatch = businessPathMatch?.params.id === "claim" ? null : businessPathMatch;
   const eventDetailMatch = useMatch("/events/:id");
   // Staff dashboard panels are URL-addressable (/staff/kyc, /staff/users, …)
   // so Android's back gesture steps through panels inside the installed app
@@ -3049,6 +3059,7 @@ export default function AshantiHub() {
   if(page==="staff-install") return <StaffInstallPage/>;
   if(page==="reset-password") return <ResetPasswordPage auth={auth} setPage={setPage} setAuthModal={setAuthModal}/>;
   if(page==="payment-return") return <PaymentReturnPage setPage={setPage}/>;
+  if(page==="business-claim") return <BusinessClaimPage onSignIn={()=>{setAuthModal("login");setPage("home");}}/>;
   if(isLoading) return <LoadingScreen/>;
   if(show404) return <NotFoundPage onHome={()=>setPage("home")} user={user}/>;
 

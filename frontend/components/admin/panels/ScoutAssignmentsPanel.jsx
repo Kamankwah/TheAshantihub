@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
+import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { useScoutAssignments } from "../../../hooks/useScoutAssignments.js";
 import { useScouts } from "../../../hooks/useScouts.js";
 import { useBusinessOwners } from "../../../hooks/useBusinessOwners.js";
@@ -27,7 +28,7 @@ export default function ScoutAssignmentsPanel() {
       setBusinessId(""); setScoutId("");
       assignments.refetch();
     } catch (err) {
-      setActionError(err?.body?.detail || "Could not assign that scout. They may already be assigned to this business.");
+      setActionError(apiErrorMessage(err, "Could not assign that scout. They may already be assigned to this business."));
     }
   };
 

@@ -799,3 +799,43 @@ describe('AshantiHub — installed staff app (standalone display)', () => {
     expect(screen.getByTestId('location').textContent).toBe('/staff')
   }, 10000)
 })
+
+// Staff phase 2A — /business/claim also matches /business/:id, but it is
+// the owner's claim page, never a listing whose id is "claim".
+describe('AshantiHub routing — /business/claim', () => {
+  const CLAIM_PREVIEW = {
+    business_name: 'Asafo Hair & Beauty', owner_name: 'Gifty Asantewaa', login_phone: '••••••••••761',
+    area: 'Asafo', gps_address: 'AK-112-0384', registered_by_name: 'Kwame Asante', registered_at: '2026-10-08T10:52:00Z',
+    terms_version: 'September 2026', channel: 'link', expires_at: '2099-01-01T00:00:00Z', email_on_file: 'gi•••@example.com',
+  }
+
+  it('opens the claim page, not a listing called "claim"', async () => {
+    let listingFetched = false
+    server.use(
+      http.get('http://localhost:8000/api/listings/claim/', () => { listingFetched = true; return HttpResponse.json({ detail: 'Not found.' }, { status: 404 }) }),
+      http.get('http://localhost:8000/api/accounts/business-owners/claim/', () => HttpResponse.json(CLAIM_PREVIEW)),
+    )
+    renderStaffAt('/business/claim?token=abc')
+    expect(await screen.findByText('Asafo Hair & Beauty', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.getByTestId('location').textContent).toBe('/business/claim')
+    expect(screen.queryByText('Page Not Found')).not.toBeInTheDocument()
+    expect(screen.queryByText(/business contact is handled by AshantiHub Support/i)).not.toBeInTheDocument()
+    expect(listingFetched).toBe(false)
+  }, 8000)
+
+  it('after the owner sets a password, Sign in goes home to sign in', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/accounts/business-owners/claim/', () => HttpResponse.json(CLAIM_PREVIEW)),
+      http.post('http://localhost:8000/api/accounts/business-owners/claim/', () => HttpResponse.json(
+        { claimed: true, login_phone: '+233201234761', business_name: 'Asafo Hair & Beauty' },
+      )),
+    )
+    renderStaffAt('/business/claim?token=abc')
+    fireEvent.click(await screen.findByLabelText(/I have read and accept/, {}, { timeout: 3000 }))
+    fireEvent.change(screen.getByLabelText('Set your password'), { target: { value: 'akwaaba-2026' } })
+    fireEvent.change(screen.getByLabelText('Type it again'), { target: { value: 'akwaaba-2026' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save my login' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign in' }))
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
+  }, 8000)
+})

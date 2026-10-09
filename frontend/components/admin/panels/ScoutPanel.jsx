@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
+import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { useMyScoutAssignments } from "../../../hooks/useMyScoutAssignments.js";
 import { D, glassCard } from "../theme.js";
 
@@ -54,8 +55,8 @@ function AssignmentCard({ assignment, onDone }) {
         notes,
       });
       onDone();
-    } catch {
-      setActionError("Could not submit the report. Check your connection and try again.");
+    } catch (err) {
+      setActionError(apiErrorMessage(err, "Could not submit the report. Check your connection and try again."));
     } finally {
       setSubmitting(false);
     }

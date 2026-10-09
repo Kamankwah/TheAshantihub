@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 
 from django.conf import settings
 from django.core.mail import send_mail
@@ -96,3 +97,115 @@ def send_two_factor_changed_email(staff_user, change):
         "— AshantiHub"
     )
     _send("Your AshantiHub 2-step sign-in changed", message, staff_user.email)
+
+
+def day_text(day):
+    """How a date reads in notices and emails: 'Wednesday 21 October'."""
+    return f"{day:%A} {day.day} {day:%B}"
+
+
+def send_subscription_overdue_email(owner, renew_by):
+    """Day 1 of the overdue clock (billing.clock). Sent after commit, and only
+    to an owner who has an email."""
+    if not owner.email:
+        return
+    message = (
+        f"Hi {owner.full_name},\n\n"
+        f"The AshantiHub subscription for {owner.display_name} has ended.\n\n"
+        f"Renew by {day_text(renew_by)} to keep your listings visible. You pay in the "
+        "app, from your dashboard — AshantiHub staff never collect cash:\n\n"
+        f"{settings.FRONTEND_BASE_URL}/business-dashboard\n\n"
+        "— AshantiHub"
+    )
+    _send("Your AshantiHub subscription has ended", message, owner.email)
+
+
+def send_subscription_reminder_email(owner, day, renew_by):
+    """The day-7 and day-13 reminders of the overdue clock."""
+    if not owner.email:
+        return
+    hide_on = renew_by + timedelta(days=1)
+    message = (
+        f"Hi {owner.full_name},\n\n"
+        f"This is day {day} of 14 since the AshantiHub subscription for "
+        f"{owner.display_name} ended.\n\n"
+        f"If it's still unpaid, your listings are hidden from the marketplace on "
+        f"{day_text(hide_on)}. Nothing is deleted, and paying brings them back at once.\n\n"
+        f"Renew by {day_text(renew_by)} in the app, from your dashboard:\n\n"
+        f"{settings.FRONTEND_BASE_URL}/business-dashboard\n\n"
+        "— AshantiHub"
+    )
+    _send(f"Reminder: renew your AshantiHub subscription by {day_text(renew_by)}", message, owner.email)
+
+
+def subscription_ended_text(plan_name, ended_on):
+    """Day 1 of the overdue clock while the pause is switched off
+    (settings.SUBSCRIPTION_PAUSE_ENABLED False): no countdown, nothing hidden."""
+    return f"Your {plan_name} subscription ended on {day_text(ended_on)}. Renew in your dashboard to keep your plan."
+
+
+def subscription_not_renewed_text(plan_name, ended_on):
+    """The day-7 and day-13 reminders while the pause is switched off."""
+    return f"Your {plan_name} subscription ended on {day_text(ended_on)} and hasn't been renewed yet."
+
+
+def send_subscription_ended_email(owner, plan_name, ended_on):
+    """Day 1 of the overdue clock with the pause switched off."""
+    if not owner.email:
+        return
+    message = (
+        f"Hi {owner.full_name},\n\n"
+        f"{subscription_ended_text(plan_name, ended_on)}\n\n"
+        f"This is for {owner.display_name}. You pay in the app, from your dashboard — AshantiHub "
+        "staff never collect cash:\n\n"
+        f"{settings.FRONTEND_BASE_URL}/business-dashboard\n\n"
+        "— AshantiHub"
+    )
+    _send("Your AshantiHub subscription has ended", message, owner.email)
+
+
+def send_subscription_not_renewed_email(owner, plan_name, ended_on):
+    """The day-7 and day-13 reminders with the pause switched off."""
+    if not owner.email:
+        return
+    message = (
+        f"Hi {owner.full_name},\n\n"
+        f"{subscription_not_renewed_text(plan_name, ended_on)}\n\n"
+        f"This is for {owner.display_name}. Renew in the app, from your dashboard:\n\n"
+        f"{settings.FRONTEND_BASE_URL}/business-dashboard\n\n"
+        "— AshantiHub"
+    )
+    _send("Reminder: renew your AshantiHub subscription", message, owner.email)
+
+
+def send_subscription_paused_email(owner):
+    """The start of day 15: the business is paused and hidden."""
+    if not owner.email:
+        return
+    message = (
+        f"Hi {owner.full_name},\n\n"
+        f"The AshantiHub subscription for {owner.display_name} wasn't renewed within "
+        "14 days, so its listings and events are now hidden from the marketplace.\n\n"
+        "Nothing has been deleted. Renew in the app and they come back at once:\n\n"
+        f"{settings.FRONTEND_BASE_URL}/business-dashboard\n\n"
+        "— AshantiHub"
+    )
+    _send("Your AshantiHub listings are hidden until you renew", message, owner.email)
+
+
+def send_business_claim_email(owner, claim_link):
+    """The link a business owner opens to set their own password after a
+    scout registered the business for them. The link is the only copy of the
+    token; no phone or payout number goes in this email."""
+    who = f"{owner.registered_by.full_name} from AshantiHub" if owner.registered_by else "AshantiHub"
+    message = (
+        f"Hi {owner.full_name},\n\n"
+        f"{who} registered {owner.display_name} on AshantiHub for you. Open the link "
+        "below to read the AshantiHub Business Agreement and set your own password:\n\n"
+        f"{claim_link}\n\n"
+        "The link works once and for 7 days. After that, sign in with your phone "
+        "number and the password you chose.\n\n"
+        "If you don't know this business, ignore this email or tell AshantiHub Support.\n\n"
+        "— AshantiHub"
+    )
+    _send("Set up your AshantiHub business login", message, owner.email)

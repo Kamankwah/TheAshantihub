@@ -1,5 +1,13 @@
 import { http, HttpResponse } from 'msw'
 
+// A scout's proposal (portfolio): 400 on a blank reason, as the server answers.
+function proposalReply(body) {
+  if (!String(body?.reason ?? '').trim()) {
+    return HttpResponse.json({ reason: ['Say why — the approver sees it.'] }, { status: 400 })
+  }
+  return HttpResponse.json({ approval_id: 33, approver_name: 'Ama Boateng', status: 'pending' }, { status: 201 })
+}
+
 export const handlers = [
   // Listings search/browse (docs/UI_MODERNIZATION_ROADMAP.md Phase D) — a
   // default empty-page handler. AshantiHub's `useListings(filters)` call
@@ -313,6 +321,19 @@ export const handlers = [
   http.post('http://localhost:8000/api/accounts/customers/:id/unsuspend/', ({ params }) => {
     return HttpResponse.json({ id: Number(params.id), is_suspended: false })
   }),
+  // Owner claim (staff phase 2A) — placed before business-owners/:id/,
+  // which would otherwise read "claim" as an owner id. The preview's
+  // login_phone is masked by the server to its last 3 digits (email_on_file
+  // too, as gi•••@example.com); the claim reply carries the full number.
+  http.get('http://localhost:8000/api/accounts/business-owners/claim/', () => HttpResponse.json({
+    business_name: 'Asafo Hair & Beauty', owner_name: 'Gifty Asantewaa', login_phone: '••••••••••761',
+    area: 'Asafo', gps_address: 'AK-112-0384', registered_by_name: 'Kwame Asante', registered_at: '2026-10-08T10:52:00Z',
+    terms_version: 'September 2026', channel: 'handover', expires_at: new Date(Date.now() + 30 * 60000).toISOString(),
+    email_on_file: 'gi•••@example.com',
+  })),
+  http.post('http://localhost:8000/api/accounts/business-owners/claim/', () => HttpResponse.json({
+    claimed: true, login_phone: '+233201234761', business_name: 'Asafo Hair & Beauty',
+  })),
   http.get('http://localhost:8000/api/accounts/business-owners/:id/', ({ params }) => {
     return HttpResponse.json({ id: Number(params.id), full_name: 'Owner', login_phone: '', email: '', kyc_status: 'pending', is_suspended: false })
   }),
@@ -498,10 +519,74 @@ export const handlers = [
   http.get('http://localhost:8000/api/reports/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/reports/team/', () => HttpResponse.json({ period: 'day', period_start: '2026-10-07', rows: [] })),
   http.get('http://localhost:8000/api/reports/exports/', () => HttpResponse.json([])),
+  // Portfolio (staff phase 2A) — scouts' and Operations' business lists, one
+  // business, and the Add-a-product form's choices.
+  http.get('http://localhost:8000/api/portfolio/businesses/', () => HttpResponse.json({
+    count: 0, next: null, previous: null, results: [],
+    summary: { total: 0, healthy: 0, needs_attention: 0, at_risk: 0, new: 0, unassigned: 0, at_risk_week_ago: null },
+  })),
+  http.get('http://localhost:8000/api/portfolio/businesses/:id/', ({ params }) => HttpResponse.json({
+    id: Number(params.id), business_name: 'Business', owner_name: 'Owner', login_phone: '', zone: null, kyc_status: 'pending',
+    registration_channel: 'scout', needs_claim: false, claimed_at: null, account_manager: null,
+    health: { rating: 'new', reasons: ['KYC waiting'] }, subscription: { state: 'none' },
+    listings_live: 0, listings_total: 0, listings_waiting: 0, last_order_at: null, last_contact: null, open_fraud_flags: 0,
+    business_kind: 'product', business_category: null, gps_address: '', lat: null, lng: null, location_accuracy_m: null,
+    location_is_manual: false, location_set_by: '', business_contact_phone: '', business_description: '', opening_hours: '',
+    signboard_photo: null, email: '', registered_by: null, created_at: '2026-10-07T00:00:00Z',
+    listings: [], pending_requests: [], recent_calls: [], assignments: [], open_flags: [], can_manage: false,
+  })),
+  http.get('http://localhost:8000/api/portfolio/meta/listing-form/', () => HttpResponse.json({ categories: [], zones: [], required_answers: {} })),
+  // A scout's new product and listing photos: like the server, a blank
+  // reason is refused (portfolio.proposals.REASON_REQUIRED).
+  http.post('http://localhost:8000/api/portfolio/businesses/:id/listings/', async ({ request }) => proposalReply(await request.json())),
+  http.post('http://localhost:8000/api/portfolio/listings/:id/photos/', async ({ request }) => proposalReply(await request.json())),
+  // Sending a returned KYC request again (multipart; tests override).
+  http.post('http://localhost:8000/api/portfolio/businesses/:id/kyc/', () => HttpResponse.json(
+    { approval_id: 9, approver_name: 'Ama Boateng' }, { status: 201 },
+  )),
+  // Operations (staff phase 2A) — Subscriptions due, Fraud cases and the KYC
+  // review sheet inside a business.kyc approval; defaults, tests override.
+  http.get('http://localhost:8000/api/portfolio/subscriptions-due/', () => HttpResponse.json({ overdue: [], paused: [], cleared: [] })),
+  http.get('http://localhost:8000/api/portfolio/businesses/:id/review/', () => HttpResponse.json({
+    owner: { full_name: 'Owner', login_phone: '', email: '', ghana_card_number: '', needs_claim: false, claimed_at: null },
+    business: { business_name: 'Business', business_kind: null, category: null, zone: null, opening_hours: '', is_formal: false, tin_given: false },
+    photos: { signboard: null, ghana_card_front: null, ghana_card_back: null },
+    location: {
+      lat: null, lng: null, accuracy_m: null, is_manual: false, set_by: '', set_at: null, gps_address: '',
+      address_verified: false, address_verified_by_name: null, address_verified_at: null,
+    },
+    checks: { exact: [], similar: [], staff_match: false, accuracy_m: null },
+    consent: null, flags: [], registered_by_name: null, created_at: '2026-10-07T00:00:00Z',
+  })),
+  http.get('http://localhost:8000/api/fraud/flags/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/fraud/flags/counts/', () => HttpResponse.json({ open: 0, confirmed: 0, dismissed: 0 })),
   http.get('http://localhost:8000/api/notifications/staff-badges/', () => {
     return HttpResponse.json({
       kyc: 0, listings: 0, events: 0, hero: 0, reviews: 0,
       plan_approvals: 0, contact_messages: 0, escrow: 0, tasks_overdue: 0, approvals_waiting: 0,
     })
   }),
+  // Scout registration and owner hand-over (staff phase 2A) — defaults;
+  // tests override per case.
+  http.post('http://localhost:8000/api/portfolio/register/check/', () => HttpResponse.json({ exact: [], similar: [], staff_match: false })),
+  http.post('http://localhost:8000/api/portfolio/register/', () => HttpResponse.json(
+    { id: 41, business_name: 'Asafo Hair & Beauty', approval_id: 7, approver_name: 'Ama Boateng', flags: [], needs_claim: true }, { status: 201 },
+  )),
+  http.post('http://localhost:8000/api/portfolio/businesses/:id/handover/', () => HttpResponse.json(
+    { token: 'handover-token', expires_at: new Date(Date.now() + 30 * 60000).toISOString() }, { status: 201 },
+  )),
+  http.post('http://localhost:8000/api/portfolio/businesses/:id/claim-link/', () => HttpResponse.json(
+    { sent_to: 'gi•••@example.com', expires_at: new Date(Date.now() + 7 * 86400000).toISOString() },
+  )),
+  // The owner's subscription — none by default. The business dashboard's
+  // shell reads it for the renew banner on every tab (staff phase 2A).
+  // Subscription plans — default empty list (useSubscriptionPlans fires on full-app renders).
+  http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json([])),
+  http.get('http://localhost:8000/api/billing/subscriptions/me/', () => HttpResponse.json({})),
+  // What an account manager changed for the owner — nothing by default.
+  http.get('http://localhost:8000/api/portfolio/owner/changes/', () => HttpResponse.json([])),
+  http.post('http://localhost:8000/api/portfolio/owner/changes/:id/undo/', ({ params }) => HttpResponse.json({
+    id: Number(params.id), kind: 'business.update', summary: '', made_by_name: '', applied_at: null, undo_until: null,
+    can_undo: false, undone_at: new Date().toISOString(), undo_failed: '',
+  })),
 ]

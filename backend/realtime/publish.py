@@ -26,6 +26,10 @@ STAFF_MANAGEMENT_VERBS = (
 # (verb prefixes, permissions whose holders' queues changed, query keys)
 QUEUE_INVALIDATIONS = [
     (("kyc-",), ("kyc.approve",), ("kyc-queue", "kyc-detail", "staff-badges")),
+    # A KYC decision in the queue settles the maker's business.kyc request
+    # without an approval.* event (accounts/kyc.py), so scouts' approvals
+    # lists refresh from the decision itself.
+    (("kyc-approve", "kyc-reject"), ("businesses.manage_portfolio",), ("approvals", "approval", "approval-counts")),
     (("moderation-",), ("listings.moderate",), ("moderation-queue", "staff-badges")),
     (("hero-moderation-",), ("hero_media.approve",), ("hero-moderation-queue", "staff-badges")),
     (("event-moderation-",), ("event.approve",), ("event-moderation-queue", "event-moderation-detail", "staff-badges")),
@@ -42,6 +46,14 @@ QUEUE_INVALIDATIONS = [
         ("orders.manage_delivery",),
         ("delivery-queue",),
     ),
+    (
+        ("kyc-", "business.", "portfolio.", "subscription."),
+        ("portfolio.manage", "businesses.manage_portfolio"),
+        ("portfolio", "portfolio-business", "subscriptions-due"),
+    ),
+    # The subscription clock gives the account manager a task (billing.clock).
+    (("subscription.",), ("businesses.manage_portfolio",), ("my-tasks", "staff-badges")),
+    (("fraud.",), ("fraud.manage", "fraud.flag"), ("fraud-flags", "fraud-flag-counts", "kyc-queue", "portfolio-business", "staff-badges")),
 ]
 # (verb prefixes, extra keys for everyone who receives the feed event)
 FEED_KEYS = [

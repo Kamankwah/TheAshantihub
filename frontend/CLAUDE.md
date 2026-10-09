@@ -102,3 +102,24 @@ monolith holding most components, with extractions living in `components/`,
   `UNAUTHORIZED_EVENT` (a 401 that ended no stored session) while none is stored — a session can
   end during "View site". A test that mounts `AdminCommandCenter` and counts `onExit` must
   `setStoredAuth({token, account_type: 'staff', …})` first.
+- **A scout's phone bar is `ScoutBottomBar`** (Businesses, Register, Calls, Menu), chosen in
+  `AdminCommandCenter` for `role === "scout"` on a phone; it shows only slots whose id is in the
+  role's nav. Every other role keeps `StaffBottomBar`.
+- **Menu items arrive with their screen.** Don't add a `NAV_ITEMS` entry for a panel that isn't
+  built yet - `isPermittedTab` would route to it and the menu would show a dead end.
+- **`/business/claim` is a page, not a listing.** `App.jsx` excludes `claim` from the
+  `/business/:id` match. `OwnerClaimForm` (shared by the public claim page and the scout's
+  hand-over) keeps the password in its own state only and clears it after submitting; never lift
+  it into a parent, a query cache or storage. The hand-over overlay holds a same-URL history guard
+  against Back and its password fields use `autocomplete="off"`.
+- **`ProposeChangeForm` diffs against the business it opened with**, not the live query data.
+- **The public claim page retries once after a 401** (`lib/withoutStaleSignIn.js`): an expired
+  sign-in stored in the browser must not block it. Never use that helper on the hand-over, whose
+  token is bound to the scout's session.
+- **Only an explicit staff Sign out clears registration drafts** (`clearRegisterDrafts`); idle and
+  "ended" sign-outs keep them so the scout can carry on.
+- **`useFraudFlags` is an infinite query** (read `data.pages[n].results`; "Show more" fetches DRF's
+  `next`), unlike the other queue hooks.
+- **Never read a multipart request body that holds a jsdom `File` in a test**; spy on
+  `FormData.prototype.append` instead.
+- **Duplicate-match copy lives in `registrationCheckCopy.js`** - don't re-word it per screen.

@@ -90,6 +90,14 @@ class Listing(models.Model):
     )
     reviewed_at = models.DateTimeField(null=True, blank=True)
 
+    # A listing a scout proposed for the business (portfolio `listing.create`,
+    # staff phase 2): the approval that published it is its moderation, and
+    # this keeps who made it. Null for everything the owner made.
+    created_by_staff = models.ForeignKey(
+        "accounts.StaffUser", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="listings_created_for_owners",
+    )
+
     # Structured (not freeform-text) spec table, per the reviews/ratings/Q&A
     # plan's ListingDetailPage "Specs" tab (docs/PROJECT_SCOPE.md) — a list
     # of {"label": ..., "value": ...} dicts so the frontend can render a real

@@ -221,9 +221,55 @@ triggers refuse `UPDATE`/`DELETE`, so never "fix" a row by hand. Its nightly
 chain check now runs in Celery beat at 01:45 (`ACTIVITY_SEAL_EMAIL=True` in
 production emails the seal to Super Admins; staging only verifies). Beat also
 runs approval escalation (every 5 minutes), day-report reminders (18:00),
-staff-session cleanup (03:30), expired-export purging (04:00) and the
-stuck-export reaper (every 15 minutes). The schedule is `CELERY_BEAT_SCHEDULE`
-in `backend/ashantihub/settings.py`.
+staff-session cleanup (03:30), expired-export purging (04:00), the
+stuck-export reaper (every 15 minutes), the subscription clock (hourly, at
+minute 5), the nightly business-health snapshot (02:15) and staged-photo
+purging (04:30). The schedule is `CELERY_BEAT_SCHEDULE` in
+`backend/ashantihub/settings.py`.
+
+**Rolling out phase 2A.** No new services. One new setting,
+`SUBSCRIPTION_PAUSE_ENABLED` (backend env, default `False`): it switches the
+subscription clock's pause. Leave it off - no business is ever paused or
+hidden for an unpaid subscription, so the first run carries no mass-pause
+risk. Turn it on only when real payments (the planned in-app wallet) can renew
+automatically; while it is on, a business unpaid 14 days after its
+subscription lapsed has its listings and events hidden until it pays.
+Switching it on pauses every subscription already 14+ days overdue on the next
+hourly run, and those owners were never warned about hiding: turn it on only
+together with automatic renewal, or first reset `overdue_since` to the
+switch-on time.
+
+The first subscription-clock run (minute 5 of the first hour after the deploy)
+marks every lapsed subscription overdue (with the pause on, one that lapsed
+more than a day earlier gets its full 14-day grace from that run, so nothing
+is hidden at once). Each owner is told in the app, and owners with an email on
+file are emailed on that first run. A business with no working account
+manager (none, or one who left or is suspended) notifies **every
+`portfolio.manage` holder** on days 1, 7 and 13; a managed one gives its
+account manager a task instead.
+
+**Before promoting 2A to production,** count what the first run will touch
+with this read-only query (it changes nothing):
+
+```bash
+docker compose -p ashantihub -f /opt/ashantihub/infra/compose/docker-compose.yml run --rm --no-deps web python manage.py shell -c "from django.db.models import Q; from django.utils import timezone; from billing.models import Subscription; s = Subscription.objects.filter(overdue_since__isnull=True, paused_at__isnull=True, current_period_end__lte=timezone.now()); m = Q(business_owner__account_manager__isnull=True) | Q(business_owner__account_manager__is_active=False) | Q(business_owner__account_manager__is_suspended=True); print('lapsed:', s.count(), '| no working account manager:', s.filter(m).count(), '| owner has an email:', s.exclude(business_owner__email__isnull=True).exclude(business_owner__email='').count())"
+```
+
+`lapsed` subscriptions go overdue on the first run; `owner has an email` is
+how many owner emails that run sends; each one with `no working account
+manager` sends a notification to every Operations lead (and Super Admin) on
+days 1, 7 and 13 — assign scouts first if that number is large. Check that
+`SUBSCRIPTION_PAUSE_ENABLED` is unset or `False` in the environment's backend
+env file before the deploy.
+
+To give the staging scout demo businesses, run once on staging only. First
+check that staging's `SENTRY_ENVIRONMENT` is `staging` (the command refuses
+otherwise), then choose a demo-owner password (never commit it) and pass it:
+
+```bash
+docker compose -p ashantihub-staging -f /opt/ashantihub-staging/infra/compose/docker-compose.yml \
+  run --rm --no-deps web python manage.py seed_phase2_demo --password '<chosen password>'
+```
 
 **After the plan 1B deploy, reinstall the cron file on the server** (the
 activity-chain lines were removed from it; the install line is in the file's

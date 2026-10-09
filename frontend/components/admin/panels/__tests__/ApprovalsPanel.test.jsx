@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { server } from '../../../../mocks/server.js'
@@ -193,5 +193,99 @@ describe('ApprovalsPanel request', () => {
     renderPanel({ detailId: '7', onOpenDetail })
     fireEvent.click(await screen.findByRole('button', { name: '← Approvals' }))
     expect(onOpenDetail).toHaveBeenCalledWith(null)
+  })
+})
+
+describe('ApprovalsPanel — scout requests (staff phase 2A)', () => {
+  const API = 'http://localhost:8000'
+  const REVIEW = {
+    owner: { full_name: 'Nana Adwoa Agyeman', login_phone: '+233245555531', email: null, ghana_card_number: 'GHA-723456741-3', needs_claim: false, claimed_at: '2026-10-07T06:52:00Z' },
+    business: { business_name: "Nana's Chop Bar", business_kind: 'service', category: { id: 4, name: 'Food & drink' }, zone: { id: 3, name: 'Asafo' }, opening_hours: '', is_formal: false, tin_given: false },
+    photos: { signboard: null, ghana_card_front: null, ghana_card_back: null },
+    location: { lat: 6.69, lng: -1.62, accuracy_m: 12, is_manual: false, set_by: 'scout', set_at: '2026-10-07T06:37:00Z', gps_address: 'AK-039-5128', address_verified: false, address_verified_by_name: null, address_verified_at: null },
+    checks: { exact: [], similar: [], staff_match: false, accuracy_m: 12 },
+    consent: null, flags: [], registered_by_name: 'Kwame Asante', created_at: '2026-10-07T06:46:00Z',
+  }
+  const kycRequest = (overrides = {}) => detail({
+    id: 9, kind: 'business.kyc', kind_label: 'New business (KYC)', title: "Nana's Chop Bar", pool_permission: 'kyc.approve',
+    target: { type: 'accounts.businessowner', id: '41', label: "Nana's Chop Bar" }, payload: {}, before: {},
+    diff: [
+      { field: 'Business', before: null, after: "Nana's Chop Bar" },
+      { field: 'Registered by', before: null, after: 'Kwame Asante' },
+      { field: 'Ghana Post address', before: null, after: 'AK-039-5128 · not checked yet' },
+    ],
+    ...overrides,
+  })
+
+  it('shows photo rows as thumbnails', async () => {
+    server.use(http.get(`${API}/api/approvals/7/`, () => HttpResponse.json(detail({
+      kind: 'listing.photos', kind_label: 'Listing photos', title: 'Rice, 50 kg bag',
+      diff: [
+        { field: 'Listing', before: null, after: 'Rice, 50 kg bag' },
+        { field: 'Photos', before: null, after: { images: ['/media/portfolio/staged/a.jpg', 'https://cdn.example.com/b.jpg'] } },
+      ],
+    }))))
+    renderPanel({ detailId: '7' })
+    const table = await screen.findByRole('table', { name: 'What would change' })
+    const photos = within(table).getByRole('list', { name: 'Photos' })
+    expect(within(photos).getByRole('img', { name: 'Photos 1 of 2' })).toHaveAttribute('src', 'http://localhost:8000/media/portfolio/staged/a.jpg')
+    expect(within(photos).getByRole('img', { name: 'Photos 2 of 2' })).toHaveAttribute('src', 'https://cdn.example.com/b.jpg')
+    expect(within(table).queryByText(/images/)).not.toBeInTheDocument()
+  })
+
+  it('shows the KYC review sheet for a new business and lets the decider record the address', async () => {
+    server.use(
+      http.get(`${API}/api/approvals/9/`, () => HttpResponse.json(kycRequest())),
+      http.get(`${API}/api/portfolio/businesses/41/review/`, () => HttpResponse.json(REVIEW)),
+    )
+    renderPanel({ detailId: '9' })
+    expect(await screen.findByRole('heading', { name: 'Duplicate and self-dealing checks' })).toBeInTheDocument()
+    expect(screen.getByText('Ghana Post address as typed: AK-039-5128')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Address verified' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument()
+  })
+
+  it('refreshes the request table when the address decision is recorded', async () => {
+    let approvalGets = 0
+    server.use(
+      http.get(`${API}/api/approvals/9/`, () => {
+        approvalGets += 1
+        return HttpResponse.json(approvalGets === 1 ? kycRequest() : kycRequest({
+          diff: [
+            { field: 'Business', before: null, after: "Nana's Chop Bar" },
+            { field: 'Ghana Post address', before: null, after: 'AK-039-5128 · verified by Ama Boateng' },
+          ],
+        }))
+      }),
+      http.get(`${API}/api/portfolio/businesses/41/review/`, () => HttpResponse.json(REVIEW)),
+      http.post(`${API}/api/accounts/kyc/41/address-verify/`, () => HttpResponse.json({ id: 41, address_verified: true })),
+    )
+    renderPanel({ detailId: '9' })
+    const table = await screen.findByRole('table', { name: 'What would change' })
+    expect(within(table).getByText('AK-039-5128 · not checked yet')).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Address verified' }))
+    expect(await within(table).findByText('AK-039-5128 · verified by Ama Boateng')).toBeInTheDocument()
+  })
+
+  it("shows the sheet read-only to someone who can't decide the request", async () => {
+    server.use(
+      http.get(`${API}/api/approvals/9/`, () => HttpResponse.json(kycRequest({ can_decide: false, can_cancel: true }))),
+      http.get(`${API}/api/portfolio/businesses/41/review/`, () => HttpResponse.json(REVIEW)),
+    )
+    renderPanel({ detailId: '9' })
+    expect(await screen.findByRole('heading', { name: 'Duplicate and self-dealing checks' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Address verified' })).not.toBeInTheDocument()
+  })
+
+  it('asks for no review sheet on other kinds', async () => {
+    let reviews = 0
+    server.use(
+      http.get(`${API}/api/approvals/7/`, () => HttpResponse.json(detail())),
+      http.get(`${API}/api/portfolio/businesses/:id/review/`, () => { reviews += 1; return HttpResponse.json(REVIEW) }),
+    )
+    renderPanel({ detailId: '7' })
+    expect(await screen.findByRole('table', { name: 'What would change' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Duplicate and self-dealing checks' })).not.toBeInTheDocument()
+    expect(reviews).toBe(0)
   })
 })

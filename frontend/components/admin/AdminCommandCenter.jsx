@@ -40,15 +40,20 @@ import useBreakpoint from "../../hooks/useBreakpoint.js";
 import StaffHeader, { RoleChip } from "./shell/StaffHeader.jsx";
 import StaffDrawer from "./shell/StaffDrawer.jsx";
 import StaffBottomBar from "./shell/StaffBottomBar.jsx";
+import ScoutBottomBar from "./shell/ScoutBottomBar.jsx";
 import TasksPanel from "./panels/TasksPanel.jsx";
 import ActivityPanel from "./panels/ActivityPanel.jsx";
 import CallLogPanel from "./panels/CallLogPanel.jsx";
 import MyTeamPanel from "./panels/MyTeamPanel.jsx";
 import ApprovalsPanel from "./panels/ApprovalsPanel.jsx";
+import PortfolioPanel from "./panels/PortfolioPanel.jsx";
+import SubscriptionsDuePanel from "./panels/SubscriptionsDuePanel.jsx";
+import FraudCasesPanel from "./panels/FraudCasesPanel.jsx";
 import ReportsPanel from "./panels/ReportsPanel.jsx";
 import TeamReportsPanel from "./panels/TeamReportsPanel.jsx";
 import SecurityPanel from "./panels/SecurityPanel.jsx";
 import SessionsPanel from "./panels/SessionsPanel.jsx";
+import RegisterBusinessPanel, { clearRegisterDrafts } from "./panels/RegisterBusinessPanel.jsx";
 import SudoPrompt from "./SudoPrompt.jsx";
 import StaffShellStyles from "./shell/StaffShellStyles.jsx";
 import InstallAppButton from "./shell/InstallAppButton.jsx";
@@ -115,6 +120,12 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
     onExitRef.current?.();
   }, []);
   useIdleSignOut(() => signOutBecause("idle"));
+  // The Sign out buttons: an explicit sign-out also clears any registration
+  // draft from this phone (idle and "ended" sign-outs keep it).
+  const signOut = useCallback(() => {
+    clearRegisterDrafts();
+    onExitRef.current?.();
+  }, []);
   useEffect(() => {
     const ended = () => signOutBecause("ended");
     window.addEventListener(SESSION_ENDED_EVENT, ended);
@@ -166,6 +177,13 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
     if (isControlled) onTabChange?.(id == null ? activeTab : `${activeTab}/${id}`);
     else setInternalDetail(id);
   };
+  // "Open" on Subscriptions due and Fraud cases shows the business page under
+  // All portfolios (/staff/all-portfolios/<id>).
+  const openBusiness = (id) => {
+    setDrawerOpen(false);
+    if (isControlled) onTabChange?.(`all-portfolios/${id}`);
+    else { setInternalTab("all-portfolios"); setInternalDetail(String(id)); }
+  };
 
   // Each panel starts at the top; skipped on first mount so a reload keeps
   // the browser's own scroll restoration.
@@ -183,7 +201,10 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
   // shortcut) retires it too, so the panel never changes behind it.
   useEffect(() => { setDrawerOpen(false); }, [activeTab]);
 
-  const bottomItems = isPhone ? pickBottomBarItems(navGroups, badgeFor) : [];
+  // A scout's phone gets the field bar (Businesses · Register · Calls · Menu);
+  // every other role keeps Overview, three panels and More.
+  const scoutBar = isPhone && role === "scout";
+  const bottomItems = isPhone && !scoutBar ? pickBottomBarItems(navGroups, badgeFor) : [];
 
   return (
     <div className="shadcn-scope command-center staff-shell" data-bp={breakpoint} style={{ display: "flex" }}>
@@ -212,7 +233,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           on phone where there is no sidebar to absorb it (spec §4.4). */}
       <div style={{ flex: 1, minWidth: 0, paddingRight: "env(safe-area-inset-right, 0px)", ...(isPhone ? { paddingLeft: "env(safe-area-inset-left, 0px)" } : {}) }}>
         <StaffHeader status={<LiveUpdatesIndicator paused={live.paused} />} title={activeLabel} role={role} roleColor={roleColor} fullName={auth.user?.full_name}
-          onExit={onExit} onViewSite={onViewSite} breakpoint={breakpoint}
+          onExit={signOut} onViewSite={onViewSite} breakpoint={breakpoint}
           onOpenMenu={() => setDrawerOpen(true)} menuButtonRef={menuButtonRef} drawerOpen={drawerOpen}
           actions={<>{NotificationsSlot ? <NotificationsSlot user={auth.user} /> : null}{isPhone ? null : <InstallAppButton variant="header" />}</>}>
           <OfflineBanner bleed={isPhone ? 12 : 20} />
@@ -259,10 +280,18 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "sessions" && <SessionsPanel auth={auth} />}
           {activeTab === "my-team" && <MyTeamPanel currentStaffId={auth.user?.id} />}
           {activeTab === "approvals" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "portfolio" && <PortfolioPanel mode="mine" auth={auth} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "all-portfolios" && <PortfolioPanel mode="all" auth={auth} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "at-risk" && <PortfolioPanel mode="at-risk" auth={auth} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "subscriptions-due" && <SubscriptionsDuePanel auth={auth} onOpenBusiness={openBusiness} />}
+          {activeTab === "fraud-cases" && <FraudCasesPanel auth={auth} onOpenBusiness={openBusiness} />}
+          {activeTab === "register-business" && <RegisterBusinessPanel auth={auth} />}
         </main>
       </div>
 
-      {isPhone && <StaffBottomBar items={bottomItems} activeTab={activeTab} onSelect={selectTab} onMore={() => setDrawerOpen(true)} badgeFor={badgeFor} roleColor={roleColor} />}
+      {isPhone && (scoutBar
+        ? <ScoutBottomBar navGroups={navGroups} activeTab={activeTab} onSelect={selectTab} onMenu={() => setDrawerOpen(true)} badgeFor={badgeFor} roleColor={roleColor} />
+        : <StaffBottomBar items={bottomItems} activeTab={activeTab} onSelect={selectTab} onMore={() => setDrawerOpen(true)} badgeFor={badgeFor} roleColor={roleColor} />)}
 
       <StaffDrawer open={drawerOpen && !isDesktop} onClose={() => setDrawerOpen(false)} returnFocusRef={menuButtonRef}>
         <div style={{ padding: "12px 8px 12px 14px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${D.divider}` }}>
@@ -278,7 +307,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <InstallAppButton variant="drawer" />
             {onViewSite && <button type="button" onClick={onViewSite} style={{ minHeight: 44, background: "transparent", border: `1px solid ${D.divider}`, color: D.text, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>View site</button>}
-            <button type="button" onClick={onExit} style={{ minHeight: 44, background: "rgba(44,24,16,0.05)", border: `1px solid ${D.divider}`, color: D.text, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Sign out</button>
+            <button type="button" onClick={signOut} style={{ minHeight: 44, background: "rgba(44,24,16,0.05)", border: `1px solid ${D.divider}`, color: D.text, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Sign out</button>
           </div>
         </div>
         <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={selectTab} collapsed={false} badgeFor={badgeFor} roleColor={roleColor} itemMinHeight={44} />

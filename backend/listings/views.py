@@ -36,6 +36,7 @@ from .serializers import (
     PublicListingSerializer,
     ZoneSerializer,
 )
+from .visibility import hidden_business_q
 
 
 def _with_rating_annotations(queryset):
@@ -147,12 +148,12 @@ class PublicListingListView(generics.ListAPIView):
     ordering_fields = ["price_amount", "created_at"]
 
     def get_queryset(self):
-        # Suspended owners' listings drop out of public browse (staff
-        # user-management tools) — enforced here rather than at suspend-time
-        # so it's automatically reversed on unsuspend.
+        # Suspended and paused businesses' listings drop out of public browse
+        # (listings.visibility) — enforced here rather than at suspend/pause
+        # time, so unsuspending or paying reverses it at once.
         queryset = (
             Listing.objects.filter(status=Listing.PUBLISHED)
-            .exclude(business_owner__is_suspended=True)
+            .exclude(hidden_business_q())
             .order_by("-created_at")
         )
 
@@ -218,9 +219,7 @@ class PublicListingDetailView(generics.RetrieveAPIView):
 
     def get_queryset(self):
         return _with_rating_annotations(
-            Listing.objects.filter(status=Listing.PUBLISHED).exclude(
-                business_owner__is_suspended=True
-            )
+            Listing.objects.filter(status=Listing.PUBLISHED).exclude(hidden_business_q())
         )
 
 
@@ -244,7 +243,7 @@ class RelatedListingsView(generics.ListAPIView):
         )
         queryset = (
             Listing.objects.filter(status=Listing.PUBLISHED)
-            .exclude(business_owner__is_suspended=True)
+            .exclude(hidden_business_q())
             .filter(Q(category=anchor.category) | Q(zone=anchor.zone))
             .exclude(pk=anchor.pk)
             .order_by("-created_at")
