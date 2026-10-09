@@ -42,6 +42,7 @@ WRONG_DEVICE = "Finish the hand-over on the phone that started it."
 INVALID = "This link isn't valid. Check you opened the whole link, or ask your account manager for a new one."
 TERMS_REQUIRED = "Accept the Business Agreement to continue."
 EMAIL_TAKEN = "That email already belongs to another account."
+STAFF_EMAIL = "That email belongs to a staff member — use your own email."
 
 
 class ClaimError(Exception):
@@ -144,6 +145,8 @@ def preview(raw, request):
         "business_name": owner.display_name,
         "owner_name": owner.full_name,
         "login_phone": mask_but_last(owner.login_phone, keep=3),
+        # Where password resets go now, masked; the form offers to change it.
+        "email_on_file": mask_email(owner.email) or None,
         "area": profile.zone.name if profile is not None and profile.zone is not None else "",
         "gps_address": (profile.gps_address or "") if profile is not None else "",
         "registered_by_name": registered_by.full_name if registered_by is not None else "",
@@ -176,6 +179,9 @@ def _clean_fields(owner, password, password_confirm, email, accept_terms):
         else:
             if BusinessOwner.objects.filter(email__iexact=email).exclude(pk=owner.pk).exists():
                 errors["email"] = [EMAIL_TAKEN]
+            elif StaffUser.objects.filter(email__iexact=email).exists():
+                # Password resets go here; it must be the owner's own.
+                errors["email"] = [STAFF_EMAIL]
     if errors:
         raise serializers.ValidationError(errors)
     return email or None, password

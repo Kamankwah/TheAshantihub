@@ -8,7 +8,7 @@ from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework import serializers
 
 from accounts.gps import validate_ashanti_gps
-from accounts.models import BusinessOwner, BusinessOwnerProfile
+from accounts.models import BusinessOwner, BusinessOwnerProfile, StaffUser
 from accounts.phones import normalize_gh_phone
 from accounts.validators import validate_image_content_type
 from approvals.models import ApprovalRequest
@@ -26,6 +26,7 @@ GHANA_LNG = (-3.3, 1.3)
 MAX_ACCURACY_M = 100
 OUTSIDE_GHANA = "This pin isn't in Ghana. Check the location and try again."
 EMAIL_TAKEN = "That email already belongs to another account."
+STAFF_EMAIL = "That email belongs to a staff member — ask Operations."
 
 
 def flag_brief(flag):
@@ -64,6 +65,10 @@ class ScoutRegistrationSerializer(serializers.Serializer):
             return None
         if BusinessOwner.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError(EMAIL_TAKEN)
+        # Password resets go to this email: a staff member's would keep the
+        # business under their control after the owner claims it.
+        if StaffUser.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError(STAFF_EMAIL)
         return value
 
     def validate_gps_address(self, value):

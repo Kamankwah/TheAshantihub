@@ -181,9 +181,10 @@ def _submit_kyc(maker, owner, business_name, *, maker_note, http_request, resubm
     if maker.role.name == Role.SUPER_ADMIN:
         # Decision 14: a Super Admin's own request applies at once, which
         # would skip the KYC check — the business waits in the KYC queue.
+        what = f"sent {business_name} again" if resubmitted else f"registered {business_name}"
         notify_staff_role(
             "kyc.approve", "kyc_needs_approval", "New KYC submission",
-            body=f"{maker.full_name} registered {business_name}. It needs KYC review.",
+            body=f"{maker.full_name} {what}. It needs KYC review.",
             link="kyc", icon="🪪",
         )
         return None

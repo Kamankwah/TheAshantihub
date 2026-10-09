@@ -5,9 +5,10 @@ from datetime import timedelta
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from accounts.models import BusinessOwner
+from accounts.models import BusinessOwner, BusinessOwnerProfile, Customer
 from accounts.testing import make_staff
 from approvals.models import ApprovalRequest
+from bookings.models import Booking
 from disputes.models import Dispute
 from fraud.models import FraudFlag
 from listings.models import Listing
@@ -26,6 +27,7 @@ from portfolio.tests.health_fixtures import (
     subscribe_overdue,
     subscribe_paused,
 )
+from services.models import ServiceRequest
 
 TEST_MEDIA_ROOT = tempfile.mkdtemp()
 
@@ -120,6 +122,50 @@ class HealthRuleTests(TestCase):
         add_listings(other, 1)
         add_order(other, days_ago=1)  # another business's sale
         self.assertEqual(rated(self.owner), (health.NEEDS_ATTENTION, ["No order in 30 days"]))
+
+    def service_business(self):
+        owner = make_business("Asafo Guest House")
+        BusinessOwnerProfile.objects.filter(business_owner=owner).update(business_kind="service")
+        make_healthy(owner, self.scout, order_days_ago=None)
+        customer = Customer.objects.create(full_name="Kofi Guest", phone="+233209876543", password_hash="x")
+        return owner, owner.listings.order_by("pk").first(), customer
+
+    def test_a_recent_booking_counts_as_an_order(self):
+        owner, listing, customer = self.service_business()
+        today = timezone.localdate()
+        booking = Booking.objects.create(
+            customer=customer, listing=listing, business_owner=owner, check_in=today + timedelta(days=3),
+            check_out=today + timedelta(days=5), nightly_rate="200.00", total_price="400.00",
+            status=Booking.CANCELLED,
+        )
+        self.assertEqual(rated(owner), (health.AT_RISK, ["No order in 60 days"]))  # a cancelled one doesn't
+        Booking.objects.filter(pk=booking.pk).update(status=Booking.CONFIRMED)
+        self.assertEqual(rated(owner), (health.HEALTHY, []))
+        Booking.objects.filter(pk=booking.pk).update(created_at=timezone.now() - timedelta(days=45))
+        self.assertEqual(rated(owner), (health.NEEDS_ATTENTION, ["No order in 30 days"]))
+
+    def test_an_accepted_or_completed_service_request_counts_as_an_order(self):
+        owner, listing, customer = self.service_business()
+        request = ServiceRequest.objects.create(
+            customer=customer, listing=listing, business_owner=owner, message="Braids for Saturday",
+        )
+        for status in (ServiceRequest.REQUESTED, ServiceRequest.DECLINED, ServiceRequest.CANCELLED):
+            ServiceRequest.objects.filter(pk=request.pk).update(status=status)
+            self.assertEqual(rated(owner), (health.AT_RISK, ["No order in 60 days"]), status)
+        for status in (ServiceRequest.ACCEPTED, ServiceRequest.IN_PROGRESS, ServiceRequest.COMPLETED):
+            ServiceRequest.objects.filter(pk=request.pk).update(status=status)
+            self.assertEqual(rated(owner), (health.HEALTHY, []), status)
+
+    def test_the_latest_of_order_booking_and_service_request_wins(self):
+        owner, listing, customer = self.service_business()
+        add_order(owner, days_ago=50)
+        request = ServiceRequest.objects.create(
+            customer=customer, listing=listing, business_owner=owner, message="Hair", status=ServiceRequest.COMPLETED,
+        )
+        ServiceRequest.objects.filter(pk=request.pk).update(created_at=timezone.now() - timedelta(days=2))
+        now = timezone.now()
+        annotated = health.with_health_inputs(BusinessOwner.objects.filter(pk=owner.pk), now).get()
+        self.assertGreater(annotated.last_order_at, now - timedelta(days=3))
 
     def test_an_open_or_investigating_dispute_needs_attention(self):
         self.healthy()

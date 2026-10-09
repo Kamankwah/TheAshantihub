@@ -198,6 +198,18 @@ class RegistrationTests(RegistrationBase):
         )
         self.assertFalse(BusinessOwner.objects.filter(registration_channel="scout").exists())
 
+    def test_a_staff_members_email_is_never_the_owners(self):
+        # Password resets go to the owner's email, so a staff email there would
+        # keep the business under that staff member's control after the claim.
+        for email in ("kwame@example.com", "AMA@Example.com"):
+            with self.subTest(email=email):
+                response = self.register(owner_email=email)
+                self.assertEqual(
+                    (response.status_code, response.json()),
+                    (400, {"owner_email": ["That email belongs to a staff member — ask Operations."]}),
+                )
+        self.assertFalse(BusinessOwner.objects.filter(registration_channel="scout").exists())
+
     def test_only_staff_who_register_businesses(self):
         response = self.register(staff=make_staff("support", "esi@example.com"))
         self.assertEqual(response.status_code, 403)
@@ -364,6 +376,16 @@ class KycResubmitTests(RegistrationBase):
         self.assertEqual((response.status_code, response.json()), (400, {
             "detail": "This business isn't waiting for KYC any more.", "code": "not_pending",
         }))
+
+    def test_a_super_admin_sends_it_again_to_the_kyc_queue(self):
+        reject(self.approval_id, self.lead, "Blurry")
+        boss = make_staff("super_admin", "boss@example.com")
+        self.as_(boss)
+        response = self.client.post(self.url, {"maker_note": "Checked the card by phone"}, format="multipart")
+        self.assertEqual((response.status_code, response.json()), (201, {"approval_id": None, "approver_name": None}))
+        self.assertFalse(ApprovalRequest.objects.filter(status="pending").exists())
+        note = Notification.objects.filter(staff=self.lead, kind="kyc_needs_approval").latest("id")
+        self.assertEqual(note.body, "Boss sent Asafo Hair & Beauty again. It needs KYC review.")
 
     def test_only_the_account_manager_resubmits(self):
         reject(self.approval_id, self.lead, "Blurry")

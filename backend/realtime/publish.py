@@ -51,6 +51,8 @@ QUEUE_INVALIDATIONS = [
         ("portfolio.manage", "businesses.manage_portfolio"),
         ("portfolio", "portfolio-business", "subscriptions-due"),
     ),
+    # The subscription clock gives the account manager a task (billing.clock).
+    (("subscription.",), ("businesses.manage_portfolio",), ("my-tasks", "staff-badges")),
     (("fraud.",), ("fraud.manage", "fraud.flag"), ("fraud-flags", "fraud-flag-counts", "kyc-queue", "portfolio-business", "staff-badges")),
 ]
 # (verb prefixes, extra keys for everyone who receives the feed event)

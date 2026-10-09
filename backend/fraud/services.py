@@ -148,6 +148,8 @@ def confirm(flag_id, staff, *, note, suspend=False, http_request=None):
         _resolve(flag, staff, FraudFlag.CONFIRMED, note)
         if suspend:
             _suspend_owner(flag)
+            # _suspend_owner saved its own copy of the owner; hooks see this one.
+            flag.business_owner.refresh_from_db(fields=["is_suspended", "suspension_reason"])
         for hook in list(ON_CONFIRMED):
             hook(flag, staff)
         record(

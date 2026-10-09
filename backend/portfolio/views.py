@@ -128,14 +128,19 @@ class RegisterBusinessView(APIView):
 
 
 class KycResubmitView(APIView):
-    """POST businesses/<pk>/kyc/ (account manager only) — a fresh
-    business.kyc request after the last one was returned."""
+    """POST businesses/<pk>/kyc/ (the account manager, or a Super Admin) — a
+    fresh business.kyc request after the last one was returned. A Super
+    Admin's goes to the KYC queue (Decision 14), so approval_id and
+    approver_name are null."""
 
     def get_permissions(self):
         return [HasAnyRolePermission("businesses.manage_portfolio", "businesses.register")]
 
     def post(self, request, pk):
-        owner = get_managed_business(request, pk, allow_portfolio_manage=False)
+        if request.user.role.name == Role.SUPER_ADMIN:
+            owner = get_object_or_404(BusinessOwner, pk=pk)
+        else:
+            owner = get_managed_business(request, pk, allow_portfolio_manage=False)
         try:
             approval = resubmit_kyc(owner, request.user, request.data, request.FILES, http_request=request)
         except RegistrationError as exc:
@@ -265,10 +270,20 @@ def _portfolio_choice_param(params, name, choices):
     return value
 
 
+def _at_risk_week_ago(owner_ids, now):
+    """How many of these businesses the nightly snapshot rated at risk 7 days
+    ago — or None when no snapshot was taken that day (unknown, not 0)."""
+    week_ago = timezone.localdate(now) - timedelta(days=7)
+    snapshots = BusinessHealthSnapshot.objects.filter(date=week_ago)
+    if not snapshots.exists():
+        return None
+    if not owner_ids:
+        return 0
+    return snapshots.filter(rating=health.AT_RISK, business_owner_id__in=owner_ids).count()
+
+
 def _portfolio_summary(rows, now):
     counts = Counter(row.rating for row in rows)
-    owner_ids = [row.owner.pk for row in rows]
-    week_ago = timezone.localdate(now) - timedelta(days=7)
     return {
         "total": len(rows),
         "healthy": counts[health.HEALTHY],
@@ -276,9 +291,7 @@ def _portfolio_summary(rows, now):
         "at_risk": counts[health.AT_RISK],
         "new": counts[health.NEW],
         "unassigned": sum(1 for row in rows if row.owner.account_manager_id is None),
-        "at_risk_week_ago": BusinessHealthSnapshot.objects.filter(
-            date=week_ago, rating=health.AT_RISK, business_owner_id__in=owner_ids,
-        ).count() if owner_ids else 0,
+        "at_risk_week_ago": _at_risk_week_ago([row.owner.pk for row in rows], now),
     }
 
 

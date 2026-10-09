@@ -120,7 +120,7 @@ class PortfolioListTests(PortfolioApiBase):
         self.assertEqual([item["id"] for item in body["results"]], [self.risk_a.pk, self.risk_z.pk])
         self.assertEqual(body["summary"], {
             "total": 5, "healthy": 1, "needs_attention": 1, "at_risk": 2, "new": 1, "unassigned": 0,
-            "at_risk_week_ago": 0,
+            "at_risk_week_ago": None,  # no snapshot was taken that day: unknown, not 0
         })
 
     def test_at_risk_a_week_ago_comes_from_the_snapshot_dated_seven_days_back(self):
@@ -136,6 +136,19 @@ class PortfolioListTests(PortfolioApiBase):
         BusinessHealthSnapshot.objects.create(business_owner=elsewhere, date=week_ago, rating=health.AT_RISK, reasons=[])
         self.auth(self.kwame)
         self.assertEqual(self.client.get(URL).json()["summary"]["at_risk_week_ago"], 1)
+
+    def test_at_risk_a_week_ago_is_unknown_when_no_snapshot_was_taken_that_day(self):
+        owner = make_business("Abe Store", manager=self.kwame)
+        week_ago = timezone.localdate() - timedelta(days=7)
+        BusinessHealthSnapshot.objects.create(
+            business_owner=owner, date=week_ago - timedelta(days=1), rating=health.AT_RISK, reasons=[],
+        )
+        self.auth(self.kwame)
+        self.assertIsNone(self.client.get(URL).json()["summary"]["at_risk_week_ago"])
+        # A snapshot that day for any business means the count is known, even when it is 0.
+        other = make_business("Yaw Store", manager=self.yaw)
+        BusinessHealthSnapshot.objects.create(business_owner=other, date=week_ago, rating=health.AT_RISK, reasons=[])
+        self.assertEqual(self.client.get(URL).json()["summary"]["at_risk_week_ago"], 0)
 
     def test_filters_and_search(self):
         adum = Zone.objects.get(name="Adum")

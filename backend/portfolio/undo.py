@@ -4,7 +4,8 @@ For 7 days after a scout's change applied, the business owner can revert it.
 The revert uses the approval request's `before` snapshot and restores only
 what still holds the applied value; anything changed again since is left for
 Operations (`undo_failed`). Every undo opens an "Owner said “This wasn't me”"
-fraud case about the scout and tells the scout and the scout's manager.
+fraud case about the scout and tells the scout and the scout's manager (once:
+a manager who handles fraud cases already has the case's own notice).
 """
 import logging
 from datetime import timedelta
@@ -15,7 +16,7 @@ from django.http import Http404
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from accounts.models import BusinessOwner, BusinessOwnerProfile
+from accounts.models import BusinessOwner, BusinessOwnerProfile, StaffUser
 from accounts.phones import filter_by_phone
 from activity.services import record
 from approvals.services import _lock_target_key
@@ -35,6 +36,7 @@ ALREADY_UNDONE = "You've already undone this."
 PARTLY_REVERTED = "Some details changed again since — Operations will sort them out."
 UNDO_LISTING_REASON = "Removed by the owner within 7 days (“This wasn't me”)."
 CANNOT_UNDO = "This change can't be undone here — contact AshantiHub Support."
+FRAUD_MANAGE = "fraud.manage"
 
 
 class UndoError(Exception):
@@ -97,6 +99,14 @@ def _revert_update(change, approval, owner):
         set_at = change.result.get("location_set_at_before")
         profile.location_set_at = parse_datetime(set_at) if set_at else None
         profile_fields += ["location_set_by", "location_set_at"]
+    if "gps_address" in profile_fields and "address_verified_before" in change.result:
+        # The old address comes back with the decision that was made about it.
+        profile.address_verified = bool(change.result["address_verified_before"])
+        decided_by = change.result.get("address_verified_by_id_before")
+        profile.address_verified_by_id = decided_by if StaffUser.objects.filter(pk=decided_by).exists() else None
+        decided_at = change.result.get("address_verified_at_before")
+        profile.address_verified_at = parse_datetime(decided_at) if decided_at else None
+        profile_fields += ["address_verified", "address_verified_by", "address_verified_at"]
     if owner_fields:
         business.save(update_fields=owner_fields)
     if profile_fields:
@@ -191,7 +201,10 @@ def _tell_staff(change, business, maker):
         link=f"portfolio/{business.pk}", icon="↩️",
     )
     manager = maker.manager
-    if manager is not None and manager.pk != maker.pk:
+    # raise_flag already told every fraud.manage holder about the case; a
+    # manager among them gets that one notice, not a second.
+    if (manager is not None and manager.pk != maker.pk
+            and FRAUD_MANAGE not in manager.effective_permission_codenames()):
         notify_staff(
             manager, "account_manager_change_undone", f"{name} undid {maker.full_name}'s change"[:200],
             body=f"{change.summary}. A fraud case is open in Fraud cases.", link="fraud-cases", icon="↩️",
@@ -215,6 +228,9 @@ def undo_change(change_id, owner, *, http_request=None):
             raise UndoError(CANNOT_UNDO)
         approval = change.approval
         _lock_target_key(approval.target_type, approval.target_id)
+        # Owner row next, for every kind: the appliers lock the owner before a
+        # listing, so a revert taking them the other way round could deadlock.
+        BusinessOwner.objects.select_for_update().get(pk=owner.pk)
         not_reverted = revert(change, approval, owner)
         business = BusinessOwner.objects.select_related("profile").get(pk=owner.pk)
         maker = approval.maker

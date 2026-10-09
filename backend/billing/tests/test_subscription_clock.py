@@ -30,6 +30,7 @@ from billing.tasks import run_subscription_clock
 from listings.models import Category, Listing, Zone
 from notifications.models import Notification
 from payments.models import CheckoutSession
+from payments.services import _finalize_subscription
 from staff_tasks.models import Task
 
 # A Thursday. Africa/Accra is UTC+0, so local dates equal UTC dates.
@@ -422,6 +423,33 @@ class PaymentClearsTheClockTests(TestCase):
         self.assertIn(self.listing.id, public_listing_ids())
         self.assertEqual(ActivityEvent.objects.filter(verb="subscription.resumed").count(), 1)
 
+    def test_a_payment_while_the_tiers_plan_awaits_approval_renews_on_the_current_plan(self):
+        # An edited plan waits for approval with no ACTIVE row for its tier; a
+        # paid owner must still come back, not stay paused.
+        SubscriptionPlan.objects.filter(tier="product_basic").update(status=SubscriptionPlan.PENDING_APPROVAL)
+        session = CheckoutSession.objects.create(
+            business_owner=self.owner, kind=CheckoutSession.SUBSCRIPTION, amount="10.00",
+            purpose="AshantiHub Product Basic — 1 month", metadata={"plan": "product_basic", "cycle_months": 1},
+        )
+        with self.assertLogs("payments.services", level="WARNING") as logs:
+            _finalize_subscription(session)
+        self.assertIn("renewed on its current plan", logs.output[0])
+        self.assert_clock_cleared()
+        self.assertEqual(self.sub.plan.tier, "product_basic")
+        self.assertGreater(self.sub.current_period_end, timezone.now() + timedelta(days=29))
+        self.assertIn(self.listing.id, public_listing_ids())
+
+    def test_a_payment_with_no_plan_to_renew_changes_nothing_and_says_so(self):
+        SubscriptionPlan.objects.filter(tier="product_unlimited").update(status=SubscriptionPlan.PENDING_APPROVAL)
+        other = make_owner("Asafo Fresh")
+        session = CheckoutSession.objects.create(
+            business_owner=other, kind=CheckoutSession.SUBSCRIPTION, amount="10.00",
+            purpose="AshantiHub Product Unlimited — 1 month", metadata={"plan": "product_unlimited", "cycle_months": 1},
+        )
+        with self.assertLogs("payments.services", level="WARNING"):
+            _finalize_subscription(session)
+        self.assertFalse(Subscription.objects.filter(business_owner=other).exists())
+
     def test_a_payment_during_grace_reports_overdue_and_a_stopped_clock_reports_nothing(self):
         Subscription.objects.filter(pk=self.sub.pk).update(paused_at=None)
         self.sub.refresh_from_db()
@@ -501,6 +529,8 @@ class ClockLiveUpdateTests(TestCase):
             clock.tick(now=NOW)
         self.assertEqual(self.message(operations)["payload"]["invalidate"], self.KEYS)
         self.assertEqual(self.message(scouts)["payload"]["invalidate"], self.KEYS)
+        # The clock gives the account manager a task, so their task list and badges refresh too.
+        self.assertEqual(self.message(scouts)["payload"]["invalidate"], ["my-tasks", "staff-badges"])
 
     def test_kyc_business_portfolio_and_subscription_verbs_all_refresh_them(self):
         for verb in ("kyc-approve", "business.registered", "portfolio.photo_staged", "subscription.resumed"):

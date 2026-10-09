@@ -247,6 +247,15 @@ class OnConfirmedHookTests(Base):
         services.confirm(flag.pk, self.lead, note="One shop", suspend=True)
         self.assertEqual(seen, [("confirmed", self.lead, self.lead, True)])
 
+    def test_hooks_see_the_suspension_on_the_cases_business(self):
+        seen = []
+        hook = lambda flag, staff: seen.append((flag.business_owner.is_suspended, flag.business_owner.suspension_reason))  # noqa: E731
+        services.ON_CONFIRMED.append(hook)
+        self.addCleanup(services.ON_CONFIRMED.remove, hook)
+        flag = self.duplicate()
+        services.confirm(flag.pk, self.lead, note="One shop", suspend=True)
+        self.assertEqual(seen, [(True, f"Confirmed fraud case: {flag.title}")])
+
     def test_a_failing_hook_undoes_the_whole_confirmation(self):
         def hook(flag, staff):
             raise RuntimeError("commission reversal failed")

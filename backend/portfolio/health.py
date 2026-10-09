@@ -1,7 +1,8 @@
 """Business health (spec S3; plan 2A Task 8, Decision 12).
 
 Worked out live from records on every read — the subscription clock,
-listings, paid orders, open disputes, fraud cases and logged calls — and saved
+listings, sales (paid orders, bookings and service requests taken on), open
+disputes, fraud cases and logged calls — and saved
 nightly into BusinessHealthSnapshot for reports and the "a week ago"
 comparison. Nobody marks a business by hand.
 
@@ -15,17 +16,19 @@ from datetime import timedelta
 
 from django.db.models import CharField, IntegerField, OuterRef, Q, Subquery
 from django.db.models.fields.json import KeyTextTransform
-from django.db.models.functions import Cast
+from django.db.models.functions import Cast, Greatest
 from django.utils import timezone
 
 from accounts.models import BusinessOwner
 from approvals.models import ApprovalRequest
 from billing.clock import subscription_state
+from bookings.models import Booking
 from calls.models import CallLog
 from disputes.models import Dispute
 from fraud.models import FraudFlag
 from listings.models import Listing
 from orders.models import Order
+from services.models import ServiceRequest
 
 from .models import BusinessHealthSnapshot
 
@@ -54,6 +57,9 @@ AT_RISK_WITHOUT_ORDER = timedelta(days=60)
 ATTENTION_WITHOUT_ORDER = timedelta(days=30)
 ATTENTION_WITHOUT_CONTACT = timedelta(days=30)
 OPEN_DISPUTE_STATUSES = (Dispute.OPEN, Dispute.INVESTIGATING)
+# A service business's "orders": a service request the owner took on (accepted,
+# then paid and in progress, or done) — not one still asked, declined or cancelled.
+TAKEN_SERVICE_REQUEST_STATUSES = (ServiceRequest.ACCEPTED, ServiceRequest.IN_PROGRESS, ServiceRequest.COMPLETED)
 BUSINESS_OWNER = "business_owner"  # CallLog.related_type / counterpart_type for a business
 LISTING_CREATE = "listing.create"
 SNAPSHOT_BATCH = 500
@@ -97,9 +103,18 @@ def with_health_inputs(queryset, now):
         .annotate(_business=KeyTextTransform("business_owner_id", "payload"))
         .filter(_business=_outer_pk_text())
     )
+    # The last "order" is the latest of a paid order with a line from this
+    # business, a booking that wasn't cancelled, and a service request the
+    # owner took on — one correlated subquery each.
     paid_orders = Order.objects.filter(
         status=Order.PAID, items__listing__business_owner=OuterRef("pk"), placed_at__lte=now,
     ).order_by("-placed_at")
+    bookings = Booking.objects.filter(
+        listing__business_owner=OuterRef("pk"), created_at__lte=now,
+    ).exclude(status=Booking.CANCELLED).order_by("-created_at")
+    service_requests = ServiceRequest.objects.filter(
+        listing__business_owner=OuterRef("pk"), status__in=TAKEN_SERVICE_REQUEST_STATUSES, created_at__lte=now,
+    ).order_by("-created_at")
     open_disputes = Dispute.objects.filter(
         status__in=OPEN_DISPUTE_STATUSES, order__items__listing__business_owner=OuterRef("pk"),
     )
@@ -113,7 +128,12 @@ def with_health_inputs(queryset, now):
         live_listings=_count(listings.filter(status=Listing.PUBLISHED)),
         total_listings=_count(listings),
         listings_waiting=_count(listings.filter(status=Listing.PENDING_REVIEW)) + _count(proposed),
-        last_order_at=Subquery(paid_orders.values("placed_at")[:1]),
+        # Postgres GREATEST skips NULLs, so a business with one kind of sale still gets its date.
+        last_order_at=Greatest(
+            Subquery(paid_orders.values("placed_at")[:1]),
+            Subquery(bookings.values("created_at")[:1]),
+            Subquery(service_requests.values("created_at")[:1]),
+        ),
         open_disputes=_count(open_disputes),
         confirmed_fraud=_count(flags.filter(status=FraudFlag.CONFIRMED)),
         open_fraud_flags=_count(flags.filter(status=FraudFlag.OPEN)),

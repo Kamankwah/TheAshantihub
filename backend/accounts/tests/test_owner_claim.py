@@ -220,6 +220,25 @@ class ClaimTokenTests(TestCase):
         self.assertTrue(self.owner.needs_claim)
         self.assertFalse(OwnerConsent.objects.exists())
 
+    def test_a_staff_members_email_is_refused(self):
+        raw, token = self.hand_over()
+        response = self.claim(self.scout_phone, raw, email="Kwame@Example.com")
+        self.assertEqual(
+            (response.status_code, response.json()),
+            (400, {"email": ["That email belongs to a staff member — use your own email."]}),
+        )
+        token.refresh_from_db()
+        self.assertIsNone(token.used_at)
+        self.owner.refresh_from_db()
+        self.assertEqual(self.owner.email, "gifty.a@example.com")
+
+    def test_the_preview_shows_the_email_on_file_masked(self):
+        raw, _ = self.hand_over()
+        preview = self.scout_phone.get(f"{CLAIM_URL}?token={raw}").json()
+        self.assertEqual(preview["email_on_file"], "gi•••@example.com")
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(email=None)
+        self.assertIsNone(self.scout_phone.get(f"{CLAIM_URL}?token={raw}").json()["email_on_file"])
+
     def test_no_token_for_an_owner_who_already_has_a_login(self):
         BusinessOwner.objects.filter(pk=self.owner.pk).update(claimed_at=timezone.now())
         self.owner.refresh_from_db()

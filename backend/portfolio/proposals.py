@@ -587,6 +587,19 @@ def apply_update(approval):
         profile.location_set_by = "scout"
         profile.location_set_at = now
         profile_fields += ["location_set_by", "location_set_at"]
+    if "gps_address" in fields:
+        # The address decision was about the old address; a new one needs its
+        # own (a scout business can't be KYC-approved without it). Kept so an
+        # undo can put the decision back with the address.
+        result.update({
+            "address_verified_before": profile.address_verified,
+            "address_verified_by_id_before": profile.address_verified_by_id,
+            "address_verified_at_before": profile.address_verified_at.isoformat() if profile.address_verified_at else None,
+        })
+        profile.address_verified = False
+        profile.address_verified_by = None
+        profile.address_verified_at = None
+        profile_fields += ["address_verified", "address_verified_by", "address_verified_at"]
     for field in ordered_fields(fields):
         value = model_value(field, fields[field])
         if field in OWNER_FIELDS:

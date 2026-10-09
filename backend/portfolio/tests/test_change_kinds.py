@@ -113,6 +113,54 @@ class BusinessUpdateKindTests(ChangeTestBase):
         self.owner.refresh_from_db()
         self.assertEqual(self.owner.login_phone, "+233245550101")
 
+    def decide_address(self):
+        decided_at = timezone.now() - timedelta(days=3)
+        BusinessOwnerProfile.objects.filter(business_owner=self.owner).update(
+            address_verified=True, address_verified_by=self.lead, address_verified_at=decided_at,
+        )
+        return decided_at
+
+    def test_a_new_ghana_post_address_clears_the_address_decision(self):
+        decided_at = self.decide_address()
+        approval = self.propose({"gps_address": "ak-041-7788"})
+        services.approve(approval.pk, self.lead)
+        profile = self.profile()
+        self.assertEqual(
+            (profile.gps_address, profile.address_verified, profile.address_verified_by, profile.address_verified_at),
+            ("AK-041-7788", False, None, None),
+        )
+        self.assertEqual(AppliedChange.objects.get(approval=approval).result, {
+            "address_verified_before": True,
+            "address_verified_by_id_before": self.lead.pk,
+            "address_verified_at_before": decided_at.isoformat(),
+        })
+
+    def test_other_changes_keep_the_address_decision(self):
+        decided_at = self.decide_address()
+        approval = self.propose({"business_name": "Abena Kente Palace"})
+        services.approve(approval.pk, self.lead)
+        profile = self.profile()
+        self.assertEqual(
+            (profile.address_verified, profile.address_verified_by, profile.address_verified_at),
+            (True, self.lead, decided_at),
+        )
+        self.assertEqual(AppliedChange.objects.get(approval=approval).result, {})
+
+    def test_kyc_waits_for_a_decision_on_the_new_address(self):
+        # A scout-registered business still waiting for KYC: the new address
+        # must be decided again before either door approves it.
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(kyc_status=BusinessOwner.PENDING)
+        self.decide_address()
+        approval = self.propose({"gps_address": "AK-041-7788"})
+        services.approve(approval.pk, self.lead)
+        self.as_staff(self.lead)
+        response = self.client.post(f"/api/accounts/kyc/{self.owner.pk}/approve/", {}, format="json")
+        self.assertEqual(
+            (response.status_code, response.json()), (400, {"detail": "Record the Ghana Post address decision first."}),
+        )
+        self.owner.refresh_from_db()
+        self.assertEqual(self.owner.kyc_status, BusinessOwner.PENDING)
+
 
 class UpdateGuardsAtApprovalTests(ChangeTestBase):
     def approve_error(self, approval):

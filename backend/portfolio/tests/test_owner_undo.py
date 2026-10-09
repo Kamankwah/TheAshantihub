@@ -1,10 +1,12 @@
 """Owner undo — "This wasn't me" (Task 10, Review Focus 5)."""
 from datetime import timedelta
 
+from django.db import connection
 from django.http import Http404
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
-from accounts.models import BusinessOwner, BusinessOwnerProfile
+from accounts.models import BusinessOwner, BusinessOwnerProfile, Permission
 from activity.models import ActivityEvent
 from approvals import services
 from fraud.models import FraudFlag
@@ -74,6 +76,39 @@ class OwnerUndoTests(UndoTestBase):
         self.owner.refresh_from_db()
         self.assertEqual(self.owner.login_phone, "+233245550101")
 
+    def test_undoing_a_new_address_brings_back_its_decision(self):
+        decided_at = timezone.now() - timedelta(days=3)
+        BusinessOwnerProfile.objects.filter(business_owner=self.owner).update(
+            address_verified=True, address_verified_by=self.lead, address_verified_at=decided_at,
+        )
+        change = self.applied_update({"gps_address": "AK-041-7788"})
+        self.assertIsNone(self.profile().address_verified_at)
+        self.as_owner(self.owner)
+        self.assertEqual(self.client.post(self.undo_url(change)).json()["undo_failed"], "")
+        profile = self.profile()
+        self.assertEqual(
+            (profile.gps_address, profile.address_verified, profile.address_verified_by, profile.address_verified_at),
+            ("AK-039-5028", True, self.lead, decided_at),
+        )
+
+    def test_an_address_changed_again_keeps_its_own_decision(self):
+        BusinessOwnerProfile.objects.filter(business_owner=self.owner).update(
+            address_verified=True, address_verified_by=self.lead, address_verified_at=timezone.now(),
+        )
+        change = self.applied_update({"gps_address": "AK-041-7788"})
+        decided_again = timezone.now()
+        BusinessOwnerProfile.objects.filter(business_owner=self.owner).update(
+            gps_address="AK-050-1111", address_verified=False, address_verified_by=self.lead,
+            address_verified_at=decided_again,
+        )
+        self.as_owner(self.owner)
+        self.assertEqual(self.client.post(self.undo_url(change)).json()["undo_failed"], undo.PARTLY_REVERTED)
+        profile = self.profile()
+        self.assertEqual(
+            (profile.gps_address, profile.address_verified, profile.address_verified_at),
+            ("AK-050-1111", False, decided_again),
+        )
+
     def test_after_seven_days_the_owner_is_pointed_to_support(self):
         change = self.applied_update({"business_name": "Abena Kente Palace"})
         AppliedChange.objects.filter(pk=change.pk).update(undo_until=timezone.now() - timedelta(minutes=1))
@@ -134,14 +169,42 @@ class OwnerUndoTests(UndoTestBase):
         listing.refresh_from_db()
         self.assertFalse(listing.main_photo)  # the main photo this change set is cleared
 
-    def test_the_maker_and_their_manager_are_told(self):
+    def test_the_maker_and_their_manager_are_told_once_each(self):
         change = self.applied_update({"business_name": "Abena Kente Palace"})
+        before = Notification.objects.order_by("-id").values_list("id", flat=True).first() or 0
         self.as_owner(self.owner)
         self.client.post(self.undo_url(change))
         to_scout = Notification.objects.get(staff=self.scout, kind="account_manager_change_undone")
-        to_lead = Notification.objects.get(staff=self.lead, kind="account_manager_change_undone")
         self.assertEqual((to_scout.title, to_scout.link), ("Abena Kente House undid your change", f"portfolio/{self.owner.pk}"))
-        self.assertEqual((to_lead.title, to_lead.link), ("Abena Kente House undid Kwame's change", "fraud-cases"))
+        # Ama (Operations) handles fraud cases, so the case's own notice is her one notice.
+        to_lead = list(Notification.objects.filter(staff=self.lead, id__gt=before))
+        self.assertEqual([(note.kind, note.link) for note in to_lead], [("fraud_flag_raised", "fraud-cases")])
+
+    def test_a_manager_who_does_not_handle_fraud_cases_gets_the_undo_notice(self):
+        self.lead.revoked_permissions.add(Permission.objects.get(codename="fraud.manage"))
+        change = self.applied_update({"business_name": "Abena Kente Palace"})
+        before = Notification.objects.order_by("-id").values_list("id", flat=True).first() or 0
+        self.as_owner(self.owner)
+        self.client.post(self.undo_url(change))
+        to_lead = list(Notification.objects.filter(staff=self.lead, id__gt=before))
+        self.assertEqual(
+            [(note.kind, note.title, note.link) for note in to_lead],
+            [("account_manager_change_undone", "Abena Kente House undid Kwame's change", "fraud-cases")],
+        )
+
+    def test_the_owner_row_is_locked_before_the_listing(self):
+        # The same order as the appliers (owner, then listing), so an undo and an
+        # approval on the same business can't deadlock.
+        approval = proposals.propose_listing(self.scout, self.owner, product_body(), main_photo_id=self.staged().pk,
+                                             photo_ids=[], reason="Owner showed me the stock")
+        services.approve(approval.pk, self.lead)
+        change = AppliedChange.objects.get(approval=approval)
+        with CaptureQueriesContext(connection) as queries:
+            undo.undo_change(change.pk, self.owner)
+        locks = [query["sql"] for query in queries.captured_queries if "FOR UPDATE" in query["sql"]]
+        owner_lock = next(i for i, sql in enumerate(locks) if 'FROM "accounts_businessowner"' in sql)
+        listing_lock = next(i for i, sql in enumerate(locks) if 'FROM "listings_listing"' in sql)
+        self.assertLess(owner_lock, listing_lock)
 
     def test_the_undo_is_recorded_with_the_owner_as_actor(self):
         change = self.applied_update({"business_name": "Abena Kente Palace"})

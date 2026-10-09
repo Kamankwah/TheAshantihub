@@ -23,6 +23,7 @@ kind-specific "what actually happens on confirmed payment" step (e.g.
 webhook path (views.HubtelWebhookView), so simulated and real payments
 produce identical downstream state.
 """
+import logging
 from datetime import timedelta
 
 from django.conf import settings
@@ -34,6 +35,7 @@ from billing.models import Transaction
 from . import hubtel_client
 from .models import CheckoutSession
 
+logger = logging.getLogger(__name__)
 
 def _finalize_order_checkout(session):
     from orders.models import Order
@@ -175,7 +177,9 @@ def _finalize_subscription(session):
     (billing.clock): the renewal and clear_after_payment share one
     transaction, so a paused business's listings come back in the same commit
     as its payment (spec S7). POST /api/billing/subscriptions/me/ grants a
-    plan without a payment and never clears it.
+    plan without a payment and never clears it. When the paid tier has no
+    ACTIVE plan (an edit awaiting approval), the subscription renews on its
+    current plan, with a warning logged.
     """
     from billing import clock
     from billing.models import Subscription, SubscriptionPlan
@@ -185,10 +189,23 @@ def _finalize_subscription(session):
     cycle_months = meta.get("cycle_months")
     if not plan_tier or not cycle_months or not session.business_owner_id:
         return
-    try:
-        plan = SubscriptionPlan.objects.get(tier=plan_tier, status=SubscriptionPlan.ACTIVE_STATUS)
-    except SubscriptionPlan.DoesNotExist:
-        return
+    plan = SubscriptionPlan.objects.filter(tier=plan_tier, status=SubscriptionPlan.ACTIVE_STATUS).first()
+    if plan is None:
+        # The tier has no ACTIVE plan right now (e.g. an edit is waiting for
+        # approval). The owner paid, so they must never stay overdue or
+        # paused: renew on the plan they already have.
+        current = Subscription.objects.select_related("plan").filter(business_owner_id=session.business_owner_id).first()
+        if current is None:
+            logger.warning(
+                "Subscription payment %s for business owner %s: no active %r plan and no subscription to renew",
+                session.reference, session.business_owner_id, plan_tier,
+            )
+            return
+        logger.warning(
+            "Subscription payment %s for business owner %s: no active %r plan, renewed on its current plan %r",
+            session.reference, session.business_owner_id, plan_tier, current.plan.tier,
+        )
+        plan = current.plan
 
     now = timezone.now()
     period_length = timedelta(days=30 * int(cycle_months))
