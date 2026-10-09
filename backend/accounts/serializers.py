@@ -54,6 +54,31 @@ def mask_but_last(value, keep=5):
     return "•" * (len(digits) - keep) + digits[-keep:]
 
 
+# What a staff edit of a business owner's details may put in the activity log
+# (user decision U2): payout numbers and the TIN only masked, and never a
+# password hash, whichever fields the edit reaches.
+DETAILS_MASKED_FIELDS = ("payout_momo_number", "payout_bank_account_number", "tin")
+DETAILS_NEVER_LOGGED = ("password_hash", "password")
+
+
+def owner_details_change(before, after):
+    """(before, after) holding only the fields whose value changed between the
+    two {field: value} dicts, with DETAILS_MASKED_FIELDS masked to their last 3
+    characters and DETAILS_NEVER_LOGGED left out - what the
+    business_owner.details_changed activity event stores."""
+    def shown(field, value):
+        return mask_but_last(value, keep=3) if field in DETAILS_MASKED_FIELDS else value
+
+    changed = [
+        field for field in after
+        if field not in DETAILS_NEVER_LOGGED and before.get(field) != after[field]
+    ]
+    return (
+        {field: shown(field, before.get(field)) for field in changed},
+        {field: shown(field, after[field]) for field in changed},
+    )
+
+
 class CustomerRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
 

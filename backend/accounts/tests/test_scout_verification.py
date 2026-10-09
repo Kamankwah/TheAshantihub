@@ -188,3 +188,18 @@ class ScoutIsSubmitterTests(ScoutTestsBase):
             f"/api/accounts/scout-assignments/{theirs.id}/verify/", {"address_confirmed": True}, format="json",
         )
         self.assertEqual(response.status_code, 200, response.content)
+
+    def test_assigning_the_scout_who_corrected_the_address_again_says_already_assigned(self):
+        # User decision U1 makes the corrector a submitter; assigning them
+        # again still gets the accurate refusal, not "registered or manages".
+        ScoutAssignment.objects.create(
+            business_owner=self.owner, scout=self.scout, assigned_by=self.admin, status=ScoutAssignment.VISITED,
+            address_confirmed=False, corrected_address="AK-100-9999",
+        )
+        self._auth(self.admin)
+        response = self.client.post(
+            "/api/accounts/scout-assignments/",
+            {"business_owner": self.owner.id, "scout": self.scout.id}, format="json",
+        )
+        self.assertEqual((response.status_code, response.json()), (400, {"detail": "That scout is already assigned to this business."}))
+        self.assertEqual(ScoutAssignment.objects.count(), 1)

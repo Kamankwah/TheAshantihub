@@ -12,6 +12,7 @@ from django.db.models import CharField, OuterRef, Prefetch, Subquery
 from django.db.models.functions import Cast
 from django.utils import timezone
 
+from activity.models import ActivityEvent
 from activity.services import record
 from approvals.models import ApprovalRequest
 from approvals.services import MakerCannotDecide, close_pending_for_target
@@ -19,10 +20,12 @@ from fraud.models import FraudFlag
 from fraud.services import open_flag_exists
 from notifications.services import notify_business_owner
 
-from .models import BusinessOwner
+from .models import BusinessOwner, ScoutAssignment
 
 KYC_KIND = "business.kyc"
 TARGET_TYPE = "accounts.businessowner"
+# A staff member's direct edit to an owner's details (StaffBusinessOwnerDetailView).
+DETAILS_CHANGED = "business_owner.details_changed"
 QUEUE_APPROVE_NOTE = "Approved in the KYC queue."
 ALREADY_DECIDED = "This business has already been decided."
 SELF_DEALING_HOLD = "Decide the self-dealing case in Fraud cases first."
@@ -44,14 +47,27 @@ def self_dealing_open(owner):
 
 
 def is_kyc_submitter(owner, staff):
-    """True for anyone who put this business's KYC evidence or address forward:
-    its registrar, its current account manager, or the maker of any
-    business.kyc or business.update request for it (any status). They never
-    decide it, nor record its address decision."""
+    """True for anyone who put this business's KYC evidence, address or
+    details forward: its registrar, its current account manager, the maker of
+    any business.kyc or business.update request for it (any status), the field
+    scout who corrected its Ghana Post address (their ScoutAssignment report
+    marks the address wrong and gives the correction - one who only confirmed
+    it, or marked it wrong without a correction, is not), and any staff member who
+    edited the owner's details directly (a business_owner.details_changed
+    event). They never decide it, nor record its address decision."""
     if owner.registered_by_id == staff.pk or owner.account_manager_id == staff.pk:
         return True
-    return ApprovalRequest.objects.filter(
+    if ApprovalRequest.objects.filter(
         kind__in=(KYC_KIND, "business.update"), target_type=TARGET_TYPE, target_id=str(owner.pk), maker=staff,
+    ).exists():
+        return True
+    if ScoutAssignment.objects.filter(
+        business_owner=owner, scout=staff, address_confirmed=False,
+    ).exclude(corrected_address="").exists():
+        return True
+    return ActivityEvent.objects.filter(
+        verb=DETAILS_CHANGED, actor_type=ActivityEvent.STAFF, actor_id=staff.pk,
+        target_type=TARGET_TYPE, target_id=str(owner.pk),
     ).exists()
 
 

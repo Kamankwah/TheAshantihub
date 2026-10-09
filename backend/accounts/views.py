@@ -66,6 +66,7 @@ from .serializers import (
     StaffListSerializer,
     StaffLoginSerializer,
     StaffSessionSerializer,
+    owner_details_change,
 )
 
 
@@ -600,12 +601,35 @@ class StaffCustomerDetailView(generics.RetrieveUpdateAPIView):
 
 
 class StaffBusinessOwnerDetailView(generics.RetrieveUpdateAPIView):
+    """A PATCH that changes anything records business_owner.details_changed
+    itself - only the changed fields, masked (owner_details_change) - and the
+    editor never decides this owner's KYC (accounts.kyc.is_kyc_submitter).
+    The view is activity_exempt so the middleware never stores the raw
+    request body, and a PATCH that changes nothing records nothing."""
+
     queryset = BusinessOwner.objects.all()
     serializer_class = StaffBusinessOwnerDetailSerializer
     http_method_names = ["get", "patch"]
+    activity_exempt = True
 
     def get_permissions(self):
         return _users_detail_permissions(self.request)
+
+    def perform_update(self, serializer):
+        owner = serializer.instance
+        fields = list(serializer.validated_data)
+        before = {field: getattr(owner, field) for field in fields}
+        with transaction.atomic():
+            serializer.save()
+            changed_before, changed_after = owner_details_change(
+                before, {field: getattr(owner, field) for field in fields},
+            )
+            if changed_after:
+                record_activity(
+                    self.request.user, kyc.DETAILS_CHANGED, method=self.request.method, target=owner,
+                    summary="Changed " + ", ".join(field.replace("_", " ") for field in changed_after),
+                    before=changed_before, after=changed_after, request=self.request,
+                )
 
     def get_serializer_context(self):
         # Payout + TIN are users.manage-only, read off the same effective
@@ -958,6 +982,9 @@ class StaffSignOutEverywhereView(APIView):
 
 
 # ── Scout field verification (punch-list item 11) ──────────────────────────
+ALREADY_ASSIGNED = "That scout is already assigned to this business."
+
+
 class ScoutAssignmentListCreateView(generics.ListCreateAPIView):
     """GET/POST /api/accounts/scout-assignments/ — an admin (scouts.assign)
     lists every assignment and assigns a scout to a business. POST body:
@@ -981,6 +1008,10 @@ class ScoutAssignmentListCreateView(generics.ListCreateAPIView):
         scout = generics.get_object_or_404(StaffUser, pk=scout_id)
         if scout.role.name != "scout":
             return Response({"scout": "That staff member is not a scout."}, status=400)
+        # Checked before the submitter refusal: a scout who corrected this
+        # business's address is a submitter and always already has an assignment.
+        if ScoutAssignment.objects.filter(business_owner=owner, scout=scout).exists():
+            return Response({"detail": ALREADY_ASSIGNED}, status=400)
         if kyc.is_kyc_submitter(owner, scout):
             return Response(
                 {"scout": [f"{scout.full_name} registered or manages this business — assign another scout."]},
@@ -991,7 +1022,7 @@ class ScoutAssignmentListCreateView(generics.ListCreateAPIView):
             defaults={"assigned_by": request.user},
         )
         if not created:
-            return Response({"detail": "That scout is already assigned to this business."}, status=400)
+            return Response({"detail": ALREADY_ASSIGNED}, status=400)
         return Response(ScoutAssignmentSerializer(assignment).data, status=201)
 
 

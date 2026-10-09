@@ -1,10 +1,14 @@
+import json
+
 from django.contrib.auth.hashers import make_password
 from django.test import TestCase
 from rest_framework.test import APIClient
 
 from accounts.authentication import issue_token
 from accounts.models import BusinessOwner, BusinessOwnerProfile, Customer, Role, StaffUser
-from accounts.serializers import mask_but_last
+from accounts.serializers import mask_but_last, owner_details_change
+from accounts.testing import staff_token
+from activity.models import ActivityEvent
 from payments.models import CheckoutSession
 
 
@@ -162,3 +166,88 @@ class PayoutDetailPermissionTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.owner.refresh_from_db()
         self.assertEqual(self.owner.full_name, "Kwame T.")
+
+
+class OwnerDetailsAuditTests(TestCase):
+    """User decision U2: a staff edit to a business owner's details records one
+    business_owner.details_changed event holding only the changed fields,
+    masked — never the raw request body."""
+
+    def setUp(self):
+        StaffUserDetailTests.setUp(self)
+        self.boss = StaffUser.objects.create(
+            full_name="Boss Person", email="boss-detail@example.com", password_hash="x",
+            role=Role.objects.get(name="super_admin"),
+        )
+
+    def _auth(self, staff=None):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(staff or self.admin)}")
+
+    def patch(self, body):
+        self._auth()
+        return self.client.patch(f"/api/accounts/business-owners/{self.owner.id}/", body, format="json")
+
+    def test_an_edit_records_one_event_with_only_the_changed_fields(self):
+        response = self.patch({
+            "full_name": "Kwame A. Trader", "email": "kwame.new@example.com",
+            "login_phone": "+233201112233",  # unchanged
+            "profile": {"payout_momo_number": "0244999888", "tin": "C0001234567"},  # read-only, ignored
+        })
+        self.assertEqual(response.status_code, 200, response.content)
+        event = ActivityEvent.objects.get()
+        self.assertEqual(event.verb, "business_owner.details_changed")
+        self.assertEqual((event.actor_type, event.actor_id), (ActivityEvent.STAFF, self.admin.pk))
+        self.assertEqual((event.target_type, event.target_id), ("accounts.businessowner", str(self.owner.pk)))
+        self.assertEqual(event.method, "PATCH")
+        self.assertEqual(event.before, {"full_name": "Kwame Trader", "email": "kwame-detail@example.com"})
+        self.assertEqual(event.after, {"full_name": "Kwame A. Trader", "email": "kwame.new@example.com"})
+        self.owner.refresh_from_db()
+        self.assertEqual(self.owner.full_name, "Kwame A. Trader")
+
+    def test_no_raw_payout_number_or_tin_reaches_the_activity_log(self):
+        self.patch({"full_name": "Kwame A. Trader", "profile": {"payout_momo_number": "0244999888", "tin": "C0001234567"}})
+        self.patch({"full_name": "Kwame A. Trader", "payout_momo_number": "0244999888"})  # a no-op
+        stored = json.dumps(list(ActivityEvent.objects.values("before", "after", "summary")))
+        self.assertNotIn("0244999888", stored)
+        self.assertNotIn("C0001234567", stored)
+        self.assertNotIn('"request"', stored)
+
+    def test_a_patch_that_changes_nothing_records_nothing(self):
+        response = self.patch({"full_name": "Kwame Trader", "login_phone": "+233201112233"})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(ActivityEvent.objects.exists())
+
+    def test_a_refused_patch_records_nothing_and_changes_nothing(self):
+        response = self.patch({"email": "not-an-email"})
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(ActivityEvent.objects.exists())
+
+    def test_the_change_shows_in_the_owners_activity_log(self):
+        self.patch({"full_name": "Kwame A. Trader"})
+        self._auth(self.boss)
+        response = self.client.get(
+            f"/api/activity/?target_type=accounts.businessowner&target_id={self.owner.pk}",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        rows = response.json()["results"]
+        self.assertEqual([row["verb"] for row in rows], ["business_owner.details_changed"])
+        self.assertEqual(rows[0]["after"], {"full_name": "Kwame A. Trader"})
+        self.assertEqual(rows[0]["summary"], "Changed full name")
+
+    def test_sensitive_values_are_masked_and_a_password_hash_never_kept(self):
+        before = {
+            "full_name": "Kwame Trader", "payout_momo_number": "0244999888",
+            "payout_bank_account_number": "1234567890123", "tin": "C0001234567", "password_hash": "pbkdf2$old",
+        }
+        after = {
+            "full_name": "Kwame Trader", "payout_momo_number": "0244111222",
+            "payout_bank_account_number": "9876543210987", "tin": "C0009999999", "password_hash": "pbkdf2$new",
+        }
+        changed_before, changed_after = owner_details_change(before, after)
+        self.assertEqual(changed_before, {
+            "payout_momo_number": "•••••••888", "payout_bank_account_number": "••••••••••123", "tin": "••••••••567",
+        })
+        self.assertEqual(changed_after, {
+            "payout_momo_number": "•••••••222", "payout_bank_account_number": "••••••••••987", "tin": "••••••••999",
+        })
+        self.assertEqual(owner_details_change({"full_name": "A"}, {"full_name": "A"}), ({}, {}))

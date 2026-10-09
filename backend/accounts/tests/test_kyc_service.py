@@ -8,7 +8,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts import kyc
-from accounts.models import BusinessOwner, BusinessOwnerProfile
+from accounts.models import BusinessOwner, BusinessOwnerProfile, ScoutAssignment
 from accounts.testing import make_staff, staff_token
 from activity.models import ActivityEvent
 from approvals import services as approvals
@@ -503,3 +503,130 @@ class KycMakerAndAddressTests(QueueBase):
         online = make_business(name="Yaa Provisions", owner_name="Yaa Asantewaa", phone="+233207778899")
         self.as_(self.lead)
         self.assertEqual(self.approve_in_queue(online).status_code, 200)
+
+
+def grant_kyc_approve(staff):
+    from accounts.models import Permission
+
+    staff.extra_permissions.add(Permission.objects.get(codename="kyc.approve"))
+    assert "kyc.approve" in staff.effective_permission_codenames()
+
+
+class KycAddressCorrectorTests(QueueBase):
+    """User decision U1: the field scout who corrects a business's Ghana Post
+    address put that address forward, so they never decide its KYC. A scout
+    who only confirms the address, or says it's wrong without a correction,
+    is not a submitter."""
+
+    def setUp(self):
+        super().setUp()
+        self.field_scout = make_staff("scout", "efua@example.com", manager=self.lead)
+        grant_kyc_approve(self.field_scout)
+        self.assignment = ScoutAssignment.objects.create(
+            business_owner=self.owner, scout=self.field_scout, assigned_by=self.lead,
+        )
+
+    def field_report(self, **report):
+        self.as_(self.field_scout)
+        return self.client.post(f"/api/accounts/scout-assignments/{self.assignment.id}/verify/", report, format="json")
+
+    def address_verify(self, verified=True):
+        return self.client.post(f"/api/accounts/kyc/{self.owner.id}/address-verify/", {"verified": verified}, format="json")
+
+    def assert_refused(self, response):
+        self.assertEqual((response.status_code, response.json()), (403, {"detail": "You can't approve your own request."}))
+
+    def test_the_scout_who_corrected_the_address_cannot_decide_its_kyc(self):
+        response = self.field_report(address_confirmed=False, corrected_address="AK-100-9999", business_legitimate=True)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(BusinessOwnerProfile.objects.get(business_owner=self.owner).gps_address, "AK-100-9999")
+        self.assertTrue(kyc.is_kyc_submitter(self.owner, self.field_scout))
+        self.assert_refused(self.approve_in_queue())
+        self.assert_refused(self.reject_in_queue("Wrong shop"))
+        self.assert_refused(self.address_verify())
+        self.owner.refresh_from_db()
+        self.assertEqual(self.owner.kyc_status, "pending")
+        self.assertFalse(ActivityEvent.objects.filter(verb__startswith="kyc-").exists())
+        # Their correction stands: they can't send the report again either.
+        self.assert_refused(self.field_report(address_confirmed=True))
+        self.assignment.refresh_from_db()
+        self.assertEqual((self.assignment.address_confirmed, self.assignment.corrected_address), (False, "AK-100-9999"))
+
+    def test_an_unrelated_operations_lead_still_decides_after_a_correction(self):
+        self.field_report(address_confirmed=False, corrected_address="AK-100-9999")
+        self.as_(self.other_ops)
+        self.assertEqual(self.address_verify().status_code, 200)
+        self.assertEqual(self.approve_in_queue().status_code, 200)
+        self.owner.refresh_from_db()
+        self.assertEqual(self.owner.kyc_status, "verified")
+
+    def test_a_scout_who_only_confirmed_the_address_can_still_decide(self):
+        response = self.field_report(address_confirmed=True, business_legitimate=True)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(kyc.is_kyc_submitter(self.owner, self.field_scout))
+        self.assertEqual(self.address_verify().status_code, 200)
+        self.assertEqual(self.approve_in_queue().status_code, 200)
+
+    def test_a_scout_who_said_wrong_without_a_correction_is_not_a_submitter(self):
+        response = self.field_report(address_confirmed=False, corrected_address="  ")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(BusinessOwnerProfile.objects.get(business_owner=self.owner).gps_address, "AK-039-5028")
+        self.assertFalse(kyc.is_kyc_submitter(self.owner, self.field_scout))
+        self.assertEqual(self.address_verify().status_code, 200)
+
+    def test_a_correction_on_another_business_does_not_count(self):
+        other = make_business(name="Kojo Spares", owner_name="Yaw Boakye", phone="+233201234567")
+        ScoutAssignment.objects.create(
+            business_owner=other, scout=self.field_scout, status=ScoutAssignment.VISITED,
+            address_confirmed=False, corrected_address="AK-000-1111",
+        )
+        self.assertFalse(kyc.is_kyc_submitter(self.owner, self.field_scout))
+        self.assertTrue(kyc.is_kyc_submitter(other, self.field_scout))
+
+
+class KycDetailsEditorTests(QueueBase):
+    """User decision U2: whoever edits a business owner's details directly
+    (PATCH business-owners/{id}/, users.manage) never decides that owner's
+    KYC; a PATCH that changes nothing doesn't count."""
+
+    def patch_details(self, staff, owner=None, **fields):
+        self.as_(staff)
+        return self.client.patch(f"/api/accounts/business-owners/{(owner or self.owner).id}/", fields, format="json")
+
+    def test_the_editor_cannot_decide_that_owners_kyc_on_any_door(self):
+        response = self.patch_details(self.lead, full_name="Adwoa A. Mensah")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(kyc.is_kyc_submitter(self.owner, self.lead))
+        refused = (403, {"detail": "You can't approve your own request."})
+        response = self.approve_in_queue()
+        self.assertEqual((response.status_code, response.json()), refused)
+        response = self.reject_in_queue("Not real")
+        self.assertEqual((response.status_code, response.json()), refused)
+        response = self.client.post(f"/api/accounts/kyc/{self.owner.id}/address-verify/", {"verified": True}, format="json")
+        self.assertEqual((response.status_code, response.json()), refused)
+        with self.assertRaises(approvals.MakerCannotDecide):
+            approvals.approve(self.approval.pk, self.lead)
+        self.owner.refresh_from_db()
+        self.approval.refresh_from_db()
+        self.assertEqual((self.owner.kyc_status, self.approval.status), ("pending", "pending"))
+
+    def test_another_operations_lead_still_decides(self):
+        self.patch_details(self.lead, full_name="Adwoa A. Mensah")
+        self.assertFalse(kyc.is_kyc_submitter(self.owner, self.other_ops))
+        self.as_(self.other_ops)
+        self.assertEqual(self.approve_in_queue().status_code, 200)
+
+    def test_an_edit_to_another_owner_does_not_count(self):
+        other = make_business(name="Kojo Spares", owner_name="Yaw Boakye", phone="+233201234567")
+        self.assertEqual(self.patch_details(self.lead, other, full_name="Yaw K. Boakye").status_code, 200)
+        self.assertTrue(kyc.is_kyc_submitter(other, self.lead))
+        self.assertFalse(kyc.is_kyc_submitter(self.owner, self.lead))
+        self.as_(self.lead)
+        self.assertEqual(self.approve_in_queue().status_code, 200)
+
+    def test_a_patch_that_changes_nothing_does_not_bar_the_lead(self):
+        response = self.patch_details(self.lead, full_name="Adwoa Mensah", login_phone="+233244123118")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(kyc.is_kyc_submitter(self.owner, self.lead))
+        self.as_(self.lead)
+        self.assertEqual(self.approve_in_queue().status_code, 200)

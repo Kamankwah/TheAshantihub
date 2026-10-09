@@ -100,7 +100,9 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   of every `ActivityEvent`; a queue that should refresh live goes in `QUEUE_INVALIDATIONS`. Feed
   events reach only staff who could read that event through `GET /api/activity/`; permission
   groups get query keys, never labels. An `APIView` with `activity_exempt = True` is skipped by the
-  activity middleware (used only for the realtime ticket). Publishing goes through one bounded
+  activity middleware (the realtime ticket, the registration check, and views that record their
+  own event so a raw body never reaches the log: the owner claim and the staff edit of a business
+  owner's details). Publishing goes through one bounded
   `_group_send` (2 s), so a dead Redis cannot hang a request; a ticket the cache can't issue
   answers 503. With `DJANGO_DEBUG=False` (outside `manage.py test`) the settings refuse to load
   without a `redis://`/`rediss://` `REDIS_URL`. Activity bodies have NUL stripped
@@ -122,10 +124,16 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
 - **KYC goes through `accounts.kyc`.** The KYC queue and the `business.kyc` approval share
   `approve_owner()` / `reject_owner()`; a queue decision settles the pending request with
   `approvals.services.close_pending_for_target()` (never by running `apply` again). `approve()`
-  sets `decided_by` before `apply`, so an `apply` may read it. The business's registrar can never
-  decide its KYC through either door, Super Admin included (403) - nor record its Ghana Post
-  address decision - and a scout-channel business needs the Ghana Post address decision before
-  KYC approval through either door. A scout's `business.update` that changes `gps_address` clears
+  sets `decided_by` before `apply`, so an `apply` may read it. No KYC submitter
+  (`accounts.kyc.is_kyc_submitter` - extend it, never copy it) decides its KYC through either
+  door, Super Admin included (403), or records its Ghana Post address decision: the registrar,
+  the current account manager, the maker of any `business.kyc`/`business.update` request for it,
+  the field scout who corrected its address (one who only confirmed it is not), and any staff
+  member who edited the owner's details directly. That edit (`PATCH business-owners/{id}/`)
+  records `business_owner.details_changed` with only the changed fields, payout numbers and TIN
+  masked (`accounts.serializers.owner_details_change`); a PATCH that changes nothing records
+  nothing. A scout-channel business needs the Ghana Post address decision before KYC approval
+  through either door. A scout's `business.update` that changes `gps_address` clears
   that decision (kept in `AppliedChange.result`; an undo puts it back with the address).
 - **Scout changes are approval kinds** in `portfolio.approval_kinds.KINDS` (registered in
   `PortfolioConfig.ready()`); only the business's account manager may submit them; each applied
