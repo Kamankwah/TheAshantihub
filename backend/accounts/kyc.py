@@ -43,14 +43,25 @@ def self_dealing_open(owner):
     return open_flag_exists(owner, FraudFlag.SELF_DEALING)
 
 
+def is_kyc_submitter(owner, staff):
+    """True for whoever put this business's KYC evidence forward: its registrar,
+    or the maker of any business.kyc request for it (returned and cancelled ones
+    count). They never decide it, nor record its address decision."""
+    if owner.registered_by_id is not None and owner.registered_by_id == staff.pk:
+        return True
+    return ApprovalRequest.objects.filter(
+        kind=KYC_KIND, target_type=TARGET_TYPE, target_id=str(owner.pk), maker=staff,
+    ).exists()
+
+
 def _locked_owner(owner_id, staff):
-    """Lock the owner and refuse the person who registered it: the registrar
-    never decides their own registration, request or not (no exemption)."""
+    """Lock the owner and refuse whoever submitted its KYC evidence (see
+    is_kyc_submitter): no exemption, on either door, approve or reject."""
     try:
         owner = BusinessOwner.objects.select_for_update().get(pk=owner_id)
     except BusinessOwner.DoesNotExist:
         raise KycError(NOT_FOUND, status_code=404) from None
-    if owner.registered_by_id is not None and owner.registered_by_id == staff.pk:
+    if is_kyc_submitter(owner, staff):
         raise MakerCannotDecide(OWN_REGISTRATION)
     return owner
 

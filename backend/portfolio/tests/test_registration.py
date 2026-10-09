@@ -304,7 +304,6 @@ class RegistrationFlagTests(RegistrationBase):
         flag = FraudFlag.objects.get()
         self.assertEqual(response.json()["flags"], [{
             "id": flag.pk, "kind": "similar_nearby", "kind_label": "Similar business nearby",
-            "title": "Adwoa Fabric is 30 m from Adwoa Fabrics",
         }])
         owner = BusinessOwner.objects.get(pk=response.json()["id"])
         self.assertEqual(
@@ -322,10 +321,20 @@ class RegistrationFlagTests(RegistrationBase):
         flag = FraudFlag.objects.get()
         self.assertEqual(response.json()["flags"], [{
             "id": flag.pk, "kind": "self_dealing", "kind_label": "Self-dealing",
-            "title": "Owner's phone matches staff member Esi",
         }])
         self.assertEqual((flag.staff_subject, flag.business_owner_id), (esi, response.json()["id"]))
         self.assertEqual(ActivityEvent.objects.get(verb="business.registered").after["flags"], [flag.pk])
+
+    def test_fraud_case_titles_go_only_to_whoever_holds_portfolio_manage(self):
+        make_staff("support", "esi@example.com", phone="055 900 0111")
+        kojo = make_staff("operations", "kojo@example.com")
+        response = self.register(staff=kojo, owner_phone="0559000111")
+        self.assertEqual(response.status_code, 201, response.content)
+        flag = FraudFlag.objects.get()
+        self.assertEqual(response.json()["flags"], [{
+            "id": flag.pk, "kind": "self_dealing", "kind_label": "Self-dealing",
+            "title": "Owner's phone matches staff member Esi",
+        }])
 
 
 class RegisterCheckTests(RegistrationBase):
@@ -435,15 +444,59 @@ class KycResubmitTests(RegistrationBase):
             "detail": "This business isn't waiting for KYC any more.", "code": "not_pending",
         }))
 
-    def test_a_super_admin_sends_it_again_to_the_kyc_queue(self):
+    def test_a_super_admin_who_is_the_account_manager_sends_it_again_to_the_kyc_queue(self):
         reject(self.approval_id, self.lead, "Blurry")
         boss = make_staff("super_admin", "boss@example.com")
+        boss_owner = self.owner
+        BusinessOwner.objects.filter(pk=boss_owner.pk).update(registered_by=boss, account_manager=boss)
         self.as_(boss)
-        response = self.client.post(self.url, {"maker_note": "Checked the card by phone"}, format="multipart")
+        response = self.client.post(
+            f"/api/portfolio/businesses/{boss_owner.pk}/kyc/", {"maker_note": "Checked the card by phone"},
+            format="multipart",
+        )
         self.assertEqual((response.status_code, response.json()), (201, {"approval_id": None, "approver_name": None}))
         self.assertFalse(ApprovalRequest.objects.filter(status="pending").exists())
-        note = Notification.objects.filter(staff=self.lead, kind="kyc_needs_approval").latest("id")
-        self.assertEqual(note.body, "Boss sent Asafo Hair & Beauty again. It needs KYC review.")
+
+    def test_a_super_admin_who_is_not_the_account_manager_gets_a_404_and_changes_nothing(self):
+        reject(self.approval_id, self.lead, "Blurry")
+        profile = BusinessOwnerProfile.objects.get(business_owner=self.owner)
+        signboard, card = profile.signboard_photo.name, profile.ghana_card_front_image.name
+        self.as_(make_staff("super_admin", "boss@example.com"))
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                self.url, {"signboard_photo": png("swap.png"), "ghana_card_front": png("swap2.png")},
+                format="multipart",
+            )
+        self.assertEqual(response.status_code, 404)
+        profile.refresh_from_db()
+        self.assertEqual((profile.signboard_photo.name, profile.ghana_card_front_image.name), (signboard, card))
+        self.assertTrue(default_storage.exists(signboard))
+        self.assertTrue(default_storage.exists(card))
+        self.assertFalse(ApprovalRequest.objects.filter(status="pending").exists())
+
+    def test_a_business_that_registered_itself_online_is_refused_even_with_a_scout_manager(self):
+        owner = existing_business("Kofi Electronics", phone="0201112223", gps="AK-039-5028")
+        owner.kyc_status = BusinessOwner.PENDING
+        owner.account_manager = self.scout
+        owner.save(update_fields=["kyc_status", "account_manager"])
+        profile = BusinessOwnerProfile.objects.get(business_owner=owner)
+        profile.signboard_photo.save("old-sign.png", png("old-sign.png"))
+        profile.ghana_card_front_image.save("old-card.png", png("old-card.png"))
+        signboard, card = profile.signboard_photo.name, profile.ghana_card_front_image.name
+        self.as_(self.scout)
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                f"/api/portfolio/businesses/{owner.pk}/kyc/",
+                {"signboard_photo": png("swap.png"), "ghana_card_front": png("swap2.png")}, format="multipart",
+            )
+        self.assertEqual((response.status_code, response.json()), (400, {
+            "detail": "KYC for a business that registered itself online is handled in the KYC queue.",
+            "code": "not_scout",
+        }))
+        profile.refresh_from_db()
+        self.assertEqual((profile.signboard_photo.name, profile.ghana_card_front_image.name), (signboard, card))
+        self.assertTrue(default_storage.exists(signboard))
+        self.assertTrue(default_storage.exists(card))
 
     def test_only_the_account_manager_resubmits(self):
         reject(self.approval_id, self.lead, "Blurry")

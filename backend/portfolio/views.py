@@ -131,30 +131,31 @@ class RegisterBusinessView(APIView):
         except RegistrationError as exc:
             return _refused(exc)
         owner, approval = result["business_owner"], result["approval"]
+        shows_titles = "portfolio.manage" in request.user.effective_permission_codenames()
         return Response({
             "id": owner.pk,
             "business_name": owner.profile.business_name,
             "approval_id": approval.pk if approval else None,
             "approver_name": approver_name(approval),
-            "flags": [flag_brief(flag) for flag in result["flags"]],
+            "flags": [
+                flag_brief(flag) if shows_titles else {k: v for k, v in flag_brief(flag).items() if k != "title"}
+                for flag in result["flags"]
+            ],
             "needs_claim": owner.needs_claim,
         }, status=status.HTTP_201_CREATED)
 
 
 class KycResubmitView(APIView):
-    """POST businesses/<pk>/kyc/ (the account manager, or a Super Admin) — a
-    fresh business.kyc request after the last one was returned. A Super
-    Admin's goes to the KYC queue (Decision 14), so approval_id and
-    approver_name are null."""
+    """POST businesses/<pk>/kyc/ (the account manager only, and only for a
+    scout-registered business) — a fresh business.kyc request after the last
+    one was returned. A Super Admin who is the account manager goes to the KYC
+    queue (Decision 14), so approval_id and approver_name are null."""
 
     def get_permissions(self):
         return [HasAnyRolePermission("businesses.manage_portfolio", "businesses.register")]
 
     def post(self, request, pk):
-        if request.user.role.name == Role.SUPER_ADMIN:
-            owner = get_object_or_404(BusinessOwner, pk=pk)
-        else:
-            owner = get_managed_business(request, pk, allow_portfolio_manage=False)
+        owner = get_managed_business(request, pk, allow_portfolio_manage=False)
         refused = _not_fields(request)
         if refused is not None:
             return refused

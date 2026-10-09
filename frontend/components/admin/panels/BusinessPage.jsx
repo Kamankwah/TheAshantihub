@@ -38,9 +38,9 @@ export default function BusinessPage({ businessId, auth, onBack }) {
   const [notice, setNotice] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [kycSent, setKycSent] = useState(null); // the "Sent to …" line once a KYC request went; hides the form for good
 
   const isOps = Boolean(auth?.hasPermission?.("portfolio.manage"));
-  const isSuperAdmin = auth?.user?.role === "super_admin";
   const canCall = Boolean(auth?.hasPermission?.("calls.log"));
   const refreshAll = () => {
     refetch();
@@ -73,10 +73,11 @@ export default function BusinessPage({ businessId, auth, onBack }) {
   const subscribed = ["active", "trial"].includes(b.subscription?.state);
   const canAddProduct = verified && subscribed;
   const canHandOver = b.can_manage || isOps;
-  // A returned KYC request is otherwise a dead end: the account manager (or a
-  // Super Admin, whose request goes to the KYC queue) sends a fresh one.
+  // A returned KYC request is otherwise a dead end: the account manager of a
+  // scout-registered business sends a fresh one (the server refuses anyone
+  // else, and online self-registrations — those are the KYC queue's).
   const kycWaiting = (b.pending_requests || []).some((r) => r.kind === "business.kyc");
-  const canResendKyc = (b.can_manage || isSuperAdmin) && b.kyc_status === "pending" && !kycWaiting;
+  const canResendKyc = b.can_manage && b.registration_channel === "scout" && b.kyc_status === "pending" && !kycWaiting && !kycSent;
   const [kycLabel, kycColor] = KYC[b.kyc_status] || [b.kyc_status, D.textFaint];
   const reasons = b.health?.reasons || [];
   const toggle = (name) => { setNotice(null); setActionError(null); setPanel((p) => (p === name ? null : name)); };
@@ -150,6 +151,7 @@ export default function BusinessPage({ businessId, auth, onBack }) {
           {isOps && actionButton("Reassign to another scout", () => toggle("reassign"))}
           {isOps && actionButton("Create follow-up task", () => toggle("follow-up"))}
         </div>
+        {kycSent && b.kyc_status === "pending" && <div role="status" style={callout(D.green)}>{kycSent}</div>}
         {canResendKyc && <div style={dim}>{`No KYC request is waiting for ${b.business_name}. If Operations returned it, retake what they asked for and send it again.`}</div>}
         {b.can_manage && !verified && <div style={dim}>Products can be added once KYC is approved.</div>}
         {b.can_manage && verified && !subscribed && <div style={dim}>{`Products can be added once ${owner} has an active subscription.`}</div>}
@@ -176,7 +178,7 @@ export default function BusinessPage({ businessId, auth, onBack }) {
         {panel === "kyc" && canResendKyc && (
           <KycResendForm business={b} onCancel={() => setPanel(null)} onSent={(result) => {
             setPanel(null);
-            setNotice(result?.approver_name ? `Sent to ${result.approver_name}` : "Sent to the KYC queue");
+            setKycSent(result?.approver_name ? `Sent to ${result.approver_name}` : "Sent to the KYC queue");
             refreshAll();
           }} />
         )}

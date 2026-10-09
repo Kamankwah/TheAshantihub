@@ -250,7 +250,7 @@ SENTRY_DSN = env("SENTRY_DSN", default="")
 if SENTRY_DSN:
     import sentry_sdk
 
-    from ashantihub.sentry import event_scrubber
+    from ashantihub.sentry import event_scrubber, redact_claim_token
 
     sentry_sdk.init(
         dsn=SENTRY_DSN,
@@ -263,6 +263,9 @@ if SENTRY_DSN:
         send_default_pii=False,
         # The default denylist plus the owner-claim secrets, at any depth.
         event_scrubber=event_scrubber(),
+        # A claim link's ?token= in the URL or query string (the scrubber skips both).
+        before_send=redact_claim_token,
+        before_send_transaction=redact_claim_token,
     )
 
 # Public base URL of the deployed frontend (e.g. https://theashantihub.com) —

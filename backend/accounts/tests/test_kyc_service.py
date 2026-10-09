@@ -410,6 +410,39 @@ class KycMakerAndAddressTests(QueueBase):
         response = self.client.post(f"/api/accounts/kyc/{self.own.id}/address-verify/", {"verified": True}, format="json")
         self.assertEqual(response.status_code, 200, response.content)
 
+    def grant_kyc_approve(self, staff):
+        from accounts.models import Permission
+
+        staff.extra_permissions.add(Permission.objects.get(codename="kyc.approve"))
+        self.assertIn("kyc.approve", staff.effective_permission_codenames())
+
+    def test_a_resubmitter_who_did_not_register_it_cannot_decide_it_either(self):
+        # The account manager (not the registrar) sent the evidence: the request was returned.
+        resubmitter = make_staff("scout", "yaw@example.com", manager=self.lead)
+        self.grant_kyc_approve(resubmitter)
+        BusinessOwnerProfile.objects.filter(business_owner=self.own).update(
+            address_verified=False, address_verified_by=None, address_verified_at=None,
+        )
+        approval = submit_kyc(resubmitter, self.own)
+        approvals.reject(approval.pk, self.lead, note="Retake the photo")
+        self.as_(resubmitter)
+        self.assert_own_refused(self.approve_in_queue(self.own))
+        self.assert_own_refused(self.reject_in_queue("No good", self.own))
+        response = self.client.post(f"/api/accounts/kyc/{self.own.id}/address-verify/", {"verified": True}, format="json")
+        self.assertEqual((response.status_code, response.json()), (403, {"detail": "You can't approve your own request."}))
+        profile = BusinessOwnerProfile.objects.get(business_owner=self.own)
+        self.assertEqual(profile.address_verified_at, None)
+
+    def test_a_cancelled_request_still_marks_its_maker_as_the_submitter(self):
+        resubmitter = make_staff("scout", "yaw@example.com", manager=self.lead)
+        self.grant_kyc_approve(resubmitter)
+        approval = submit_kyc(resubmitter, self.own)
+        approvals.cancel(approval.pk, resubmitter)
+        self.as_(resubmitter)
+        self.assert_own_refused(self.approve_in_queue(self.own))
+        self.as_(self.lead)
+        self.assertEqual(self.approve_in_queue(self.own).status_code, 200)
+
     def test_a_different_operations_staffer_can_still_approve(self):
         self.as_(self.lead)
         self.assertEqual(self.approve_in_queue(self.own).status_code, 200)

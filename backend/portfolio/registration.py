@@ -227,6 +227,10 @@ def resubmit_kyc(owner, staff, data, files, *, http_request=None):
     values = serializer.validated_data
     with transaction.atomic():
         owner = BusinessOwner.objects.select_for_update().get(pk=owner.pk)
+        if owner.registration_channel != BusinessOwner.SCOUT:
+            raise RegistrationError(
+                "KYC for a business that registered itself online is handled in the KYC queue.", code="not_scout",
+            )
         if owner.kyc_status != BusinessOwner.PENDING:
             raise RegistrationError(NOT_WAITING_MESSAGE, code="not_pending")
         if _pending_kyc_request(owner).exists():

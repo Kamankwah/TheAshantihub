@@ -273,10 +273,18 @@ describe('BusinessPage — sending KYC again', () => {
     expect(screen.queryByRole('button', { name: 'Send KYC again' })).not.toBeInTheDocument()
   })
 
-  it('offers it to a Super Admin who does not manage the business', async () => {
+  it('does not offer it to a Super Admin who does not manage the business', async () => {
     serve(returned({ can_manage: false }))
     renderPage({ auth: BOSS })
-    expect(await screen.findByRole('button', { name: 'Send KYC again' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Adwoa Fabrics' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Send KYC again' })).not.toBeInTheDocument()
+  })
+
+  it('does not offer it for a business that registered itself online', async () => {
+    serve(returned({ registration_channel: 'self' }))
+    renderPage()
+    expect(await screen.findByRole('heading', { name: 'Adwoa Fabrics' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Send KYC again' })).not.toBeInTheDocument()
   })
 
   it('sends the retaken photos and a note in one multipart request and says who it went to', async () => {
@@ -298,13 +306,16 @@ describe('BusinessPage — sending KYC again', () => {
     await waitFor(() => expect(gets()).toBeGreaterThanOrEqual(2))
   })
 
-  it('says the KYC queue when nobody in particular decides it', async () => {
-    serve(returned({ can_manage: false }))
+  it('says the KYC queue when nobody in particular decides it, and cannot be sent twice', async () => {
+    serve(returned())
     answerKyc({ approval_id: null, approver_name: null })
     renderPage({ auth: BOSS })
     fireEvent.click(await screen.findByRole('button', { name: 'Send KYC again' }))
     fireEvent.click(screen.getByRole('button', { name: 'Send the KYC request' }))
     expect(await screen.findByText('Sent to the KYC queue')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Send KYC again' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('form', { name: 'Send KYC again' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/No KYC request is waiting/)).not.toBeInTheDocument()
   })
 
   it("shows the server's reason when it can't be sent", async () => {

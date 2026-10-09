@@ -51,6 +51,15 @@ class PhotoStageTests(ChangeTestBase):
         self.assertEqual(response.status_code, 201, response.content)
         self.assertIsNone(StagedPhoto.objects.get(pk=response.json()["id"]).taken_lat)
 
+    def test_a_location_that_is_not_a_finite_number_is_refused(self):
+        self.as_staff(self.scout)
+        for field in ("lat", "lng", "accuracy_m"):
+            for bad in ("nan", "inf", "-inf"):
+                response = self.client.post(self.url(), {"image": jpeg(), field: bad}, format="multipart")
+                self.assertEqual(response.status_code, 400, (field, bad))
+                self.assertIn(field, response.json())
+        self.assertFalse(StagedPhoto.objects.exists())
+
     def test_only_an_image_is_accepted(self):
         self.as_staff(self.scout)
         not_an_image = SimpleUploadedFile("notes.jpg", b"not an image", content_type="image/jpeg")

@@ -416,9 +416,9 @@ class StagePhotoSerializer(serializers.Serializer):
     was taken (each optional; a phone may not give a position)."""
 
     image = serializers.ImageField(validators=[validate_image_content_type])
-    lat = serializers.FloatField(required=False, allow_null=True, min_value=-90, max_value=90)
-    lng = serializers.FloatField(required=False, allow_null=True, min_value=-180, max_value=180)
-    accuracy_m = serializers.FloatField(required=False, allow_null=True, min_value=0, max_value=100000)
+    lat = FiniteFloatField(required=False, allow_null=True, min_value=-90, max_value=90)
+    lng = FiniteFloatField(required=False, allow_null=True, min_value=-180, max_value=180)
+    accuracy_m = FiniteFloatField(required=False, allow_null=True, min_value=0, max_value=100000)
 
 
 class OwnerChangeSerializer(serializers.ModelSerializer):

@@ -6,12 +6,12 @@ import PhotoSlot, { revokePreview, takenPhoto } from "./PhotoSlot.jsx";
 import { errorStyle, errorText, labelStyle } from "./portfolioParts.jsx";
 
 // "Send KYC again" on the business page (staff phase 2A): after Operations
-// returned a business.kyc request, the account manager (or a Super Admin)
-// sends a fresh one — POST /api/portfolio/businesses/<id>/kyc/, multipart,
+// returned a business.kyc request, the account manager of a scout-registered
+// business sends a fresh one — POST /api/portfolio/businesses/<id>/kyc/, multipart,
 // with optional retakes of the signboard and the Ghana Card front and a note.
 // The photos stay in this form's state only. onSent gets the server's reply
-// ({approval_id, approver_name}; a Super Admin's goes to the KYC queue, so
-// approver_name is null).
+// ({approval_id, approver_name}; a Super Admin account manager's goes to the
+// KYC queue, so approver_name is null).
 
 const NO_PHOTOS = { signboard_photo: null, ghana_card_front: null };
 

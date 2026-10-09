@@ -35,3 +35,28 @@ class SentryScrubberTests(SimpleTestCase):
 def shown(value):
     """What Sentry would send: a scrubbed value is an AnnotatedValue."""
     return getattr(value, "value", value)
+
+
+class RedactClaimTokenTests(SimpleTestCase):
+    def test_a_token_in_the_url_and_query_string_is_filtered(self):
+        from ashantihub.sentry import redact_claim_token
+
+        event = {"request": {
+            "url": "https://api.example.com/api/accounts/claim/?token=abc123&x=1",
+            "query_string": "token=abc123&x=1",
+        }}
+        out = redact_claim_token(event, {})
+        self.assertEqual(out["request"]["url"], "https://api.example.com/api/accounts/claim/?token=[Filtered]&x=1")
+        self.assertEqual(out["request"]["query_string"], "token=[Filtered]&x=1")
+
+    def test_list_and_dict_query_strings_and_missing_keys(self):
+        from ashantihub.sentry import redact_claim_token
+
+        out = redact_claim_token({"request": {"query_string": [["token", "abc"], ["x", "1"]]}}, {})
+        self.assertEqual(out["request"]["query_string"], [["token", "[Filtered]"], ["x", "1"]])
+        out = redact_claim_token({"request": {"query_string": {"token": "abc", "x": "1"}}}, {})
+        self.assertEqual(out["request"]["query_string"], {"token": "[Filtered]", "x": "1"})
+        self.assertEqual(redact_claim_token({}, {}), {})
+        self.assertEqual(redact_claim_token({"request": {}}, {}), {"request": {}})
+        self.assertEqual(redact_claim_token({"request": {"url": "https://a/b", "query_string": ""}}, {})["request"],
+                         {"url": "https://a/b", "query_string": ""})
