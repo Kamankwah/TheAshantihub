@@ -53,17 +53,33 @@ QUEUE_INVALIDATIONS = [
     ),
     # The subscription clock gives the account manager a task (billing.clock).
     (("subscription.",), ("businesses.manage_portfolio",), ("my-tasks", "staff-badges")),
+    # A visit changes a business's "last contact" and its recent visits.
+    (("visit.",), ("portfolio.manage", "businesses.manage_portfolio"), ("portfolio", "portfolio-business")),
+    # The prospect list (and the people a call can be logged about) follow
+    # prospect edits, visits (last visit) and a registration that links one.
+    (("prospect.", "visit.", "business.registered"), ("businesses.register",), ("prospects", "call-counterparts", "my-tasks")),
+    # A scout's delivery flag gives every Delivery Manager a task (portfolio/delivery.py).
+    (("delivery.problem_flagged",), ("delivery.manage",), ("my-tasks", "staff-badges")),
+    # Targets, leave and holidays change what a scout's Targets screen shows; a KYC approval
+    # (registrations) and a subscription payment (renewals) change the counts.
+    (("targets.", "leave.", "calendar.", "kyc-approve", "subscription."), ("businesses.manage_portfolio",), ("my-targets",)),
+    # A KYC approval may complete an activation (the leaderboard counts it once its first listing is live too).
+    (("kyc-approve",), ("businesses.manage_portfolio",), ("leaderboard",)),
+    # Commission lines are earned, released, reversed and exported by events; a policy change is an approval.
+    (("commission.",), ("commission.view_own", "commission.view_all", "commission.policy"), ("my-commission", "commission-accruals", "commission-policies")),
     (("fraud.",), ("fraud.manage", "fraud.flag"), ("fraud-flags", "fraud-flag-counts", "kyc-queue", "portfolio-business", "staff-badges")),
 ]
 # (verb prefixes, extra keys for everyone who receives the feed event)
 FEED_KEYS = [
     (("task-",), ("my-tasks", "staff-badges")),
-    (("call-",), ("call-logs",)),
-    (("approval.",), ("approvals", "approval", "approval-counts", "staff-badges")),
-    (("report.",), ("my-reports", "report", "team-reports")),
+    (("call-",), ("call-logs", "my-targets")),
+    (("visit.",), ("visits", "visit-open", "my-targets")),
+    # A returned request gives its maker a follow-up task (portfolio/approval_kinds.py).
+    (("approval.",), ("approvals", "approval", "approval-counts", "staff-badges", "my-tasks")),
+    (("report.",), ("my-reports", "report", "team-reports", "staff-badges")),
 ]
 APPROVAL_KEYS = ["approvals", "approval", "approval-counts", "staff-badges"]
-REPORT_KEYS = ["my-reports", "report", "team-reports"]
+REPORT_KEYS = ["my-reports", "report", "team-reports", "staff-badges"]
 
 
 def _group_send(group, message):

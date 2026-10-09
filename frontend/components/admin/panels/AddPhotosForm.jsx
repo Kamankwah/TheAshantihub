@@ -4,7 +4,7 @@ import { usePortfolioBusiness } from "../../../hooks/usePortfolio.js";
 import { D } from "../theme.js";
 import { button, dim, field } from "./panelStyles.js";
 import PhotoCapture from "./PhotoCapture.jsx";
-import { SentNotice, card, errorStyle, errorText, h2, labelStyle } from "./portfolioParts.jsx";
+import { SentNotice, card, errorStyle, errorText, firstName, h2, labelStyle } from "./portfolioParts.jsx";
 
 const STATUS = { published: "live", pending_review: "waiting for review", draft: "draft", rejected: "rejected" };
 // The server's own words for a missing reason (portfolio.proposals.REASON_REQUIRED).
@@ -12,7 +12,7 @@ const REASON_NEEDED = "Say why — the approver sees it.";
 
 // A scout adds photos to one of the business's listings (portfolio
 // listing.photos). They are attached only when the Operations lead approves.
-export default function AddPhotosForm({ businessId, onBack, onSent }) {
+export default function AddPhotosForm({ businessId, onBack, onSent, leadName }) {
   const { data: business, isLoading, isError } = usePortfolioBusiness(businessId);
   const [listingId, setListingId] = useState("");
   const [photos, setPhotos] = useState([]);
@@ -71,12 +71,12 @@ export default function AddPhotosForm({ businessId, onBack, onSent }) {
         </select>
       </label>
       <PhotoCapture businessId={business.id} max={8} onStaged={setPhotos} />
-      <label style={labelStyle}>Why these photos (Operations sees this)<textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} style={field} /></label>
+      <label style={labelStyle}>Why these photos ({leadName ? firstName(leadName) : "Operations"} sees this)<textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} style={field} /></label>
       {!reasonGiven && <div style={dim}>{REASON_NEEDED}</div>}
-      <div style={dim}>Goes to your Operations lead for approval. The owner is told and can undo it for 7 days.</div>
+      <div style={dim}>{`Goes to ${leadName || "your Operations lead"} for approval. The owner is told and can undo it for 7 days.`}</div>
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
       <button type="submit" disabled={!ready} style={{ ...button(D.gold, D.text, !ready), alignSelf: "flex-start" }}>
-        {n > 0 ? `Send ${n} ${n === 1 ? "photo" : "photos"} for approval` : "Send photos for approval"}
+        {n > 0 ? `Send ${n} ${n === 1 ? "photo" : "photos"} ${leadName ? `to ${leadName}` : "for approval"}` : leadName ? `Send photos to ${leadName}` : "Send photos for approval"}
       </button>
     </form>
   );

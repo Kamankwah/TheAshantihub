@@ -27,6 +27,11 @@ export const NAV_ITEMS = [
   { id: "sessions", icon: "💻", label: "Sessions & Devices", show: (auth) => auth.hasPermission("staff.manage") },
   { id: "scout-assignments", icon: "🧭", label: "Scout Assignments", show: (auth) => auth.hasPermission("scouts.assign") },
   { id: "field-verification", icon: "📋", label: "Field Verification", show: (auth) => auth.hasPermission("scouts.verify") },
+  { id: "targets", icon: "🎯", label: "Targets", show: (auth) => auth.hasPermission("businesses.manage_portfolio") },
+  { id: "commission", icon: "💷", label: "Commission", show: (auth) => auth.hasPermission("commission.view_own") },
+  { id: "leaderboard", icon: "🏆", label: "Leaderboard", show: (auth) => auth.hasPermission("businesses.manage_portfolio") },
+  { id: "commission-policy", icon: "🧾", label: "Commission policy", show: (auth) => auth.hasPermission("commission.policy") || auth.hasPermission("commission.view_all") },
+  { id: "prospects", icon: "🌱", label: "Prospects", show: (auth) => auth.hasPermission("businesses.register") && auth.hasPermission("businesses.manage_portfolio") },
   { id: "register-business", icon: "➕", label: "Register a business", show: (auth) => auth.hasPermission("businesses.register") },
   { id: "portfolio", icon: "🏪", label: "Portfolio", show: (auth) => auth.hasPermission("businesses.manage_portfolio") },
   { id: "all-portfolios", icon: "🗂️", label: "All portfolios", show: (auth) => auth.hasPermission("portfolio.manage") },
@@ -45,6 +50,7 @@ export const NAV_ITEMS = [
   { id: "approvals", icon: "🗳️", label: "Approvals", show: () => true },
   { id: "tasks", icon: "✅", label: "Tasks", show: () => true },
   { id: "calls", icon: "📞", label: "Call Log", show: (auth) => auth.hasPermission("calls.log") },
+  { id: "visits", icon: "🧭", label: "Visits", show: (auth) => auth.hasPermission("businesses.manage_portfolio") || auth.hasPermission("scouts.verify") },
   { id: "reports", icon: "📝", label: "My Reports", show: () => true },
   { id: "team-reports", icon: "🗂️", label: "Team Reports", show: (auth) => auth.hasPermission("staff.invite_team") || auth.hasPermission("reports.view_all") },
   { id: "activity", icon: "🕘", label: "Activity", show: () => true },
@@ -56,9 +62,9 @@ export const NAV_ITEMS = [
 // any session whose role has no menu below.
 const DEFAULT_GROUPS = [
   ["moderation", "Moderation", ["kyc", "moderation", "hero", "events-moderation", "reviews", "fraud-cases"]],
-  ["finance", "Finance", ["event-pricing", "subscription-plans", "subscription-plans-approval", "escrow", "disputes", "transactions", "credit"]],
+  ["finance", "Finance", ["event-pricing", "subscription-plans", "subscription-plans-approval", "commission-policy", "escrow", "disputes", "transactions", "credit"]],
   ["users-roles", "Users & Roles", ["users", "staff", "sessions"]],
-  ["field-ops", "Field Operations", ["scout-assignments", "field-verification", "register-business", "delivery-coordination", "my-deliveries", "portfolio", "all-portfolios", "at-risk", "subscriptions-due"]],
+  ["field-ops", "Field Operations", ["scout-assignments", "field-verification", "visits", "targets", "commission", "leaderboard", "prospects", "register-business", "delivery-coordination", "my-deliveries", "portfolio", "all-portfolios", "at-risk", "subscriptions-due"]],
   ["content", "Content", ["categories-zones", "promotions", "site-settings"]],
   ["system", "System", ["delivery", "contact-messages", "messaging", "analytics"]],
   ["my-work", "My Work", ["approvals", "tasks", "calls", "reports", "team-reports", "activity", "my-team", "security"]],
@@ -77,7 +83,7 @@ const ROLE_MENUS = {
     ["money", "Money", ["transactions", "escrow", "credit"]],
     ["insights", "Insights", ["analytics", "reports", "team-reports"]],
     ["security-audit", "Security & audit", ["activity"]],
-    ["settings", "Settings", ["subscription-plans", "subscription-plans-approval", "event-pricing", "promotions", "categories-zones", "site-settings"]],
+    ["settings", "Settings", ["subscription-plans", "subscription-plans-approval", "event-pricing", "commission-policy", "promotions", "categories-zones", "site-settings"]],
     ["my-work", "My work", ["tasks", "calls", "security"]],
   ],
   operations: [
@@ -95,7 +101,7 @@ const ROLE_MENUS = {
     ["decisions", "Decisions", ["approvals"]],
     ["money-in", "Money in", ["escrow"]],
     ["controls", "Controls", ["disputes", "transactions"]],
-    ["plans-pricing", "Plans & pricing", ["subscription-plans", "subscription-plans-approval", "event-pricing", "credit"]],
+    ["plans-pricing", "Plans & pricing", ["subscription-plans", "subscription-plans-approval", "event-pricing", "commission-policy", "credit"]],
     ["reports", "Reports", ["reports", "team-reports"]],
     ["my-work", "My work", ["tasks", "activity", "security"]],
   ],
@@ -116,11 +122,12 @@ const ROLE_MENUS = {
     ["reports", "Reports", ["reports"]],
   ],
   scout: [
-    ["pipeline", "Pipeline", ["register-business"]],
-    ["my-businesses", "My businesses", ["portfolio", "field-verification"]],
-    ["calls", "Calls", ["calls"]],
-    ["my-work", "My work", ["approvals", "tasks", "activity", "security"]],
+    ["pipeline", "Pipeline", ["prospects", "register-business"]],
+    ["my-businesses", "My businesses", ["portfolio", "tasks", "approvals"]],
+    ["activity", "Activity", ["calls", "visits", "field-verification"]],
+    ["performance", "Performance", ["targets", "commission", "leaderboard"]],
     ["reports", "Reports", ["reports"]],
+    ["account", "Account", ["security", "activity"]],
   ],
   delivery_manager: [
     ["live", "Live", ["delivery-coordination", "delivery"]],
@@ -138,7 +145,17 @@ const ROLE_MENUS = {
 };
 
 const ITEM_BY_ID = Object.fromEntries(NAV_ITEMS.map((item) => [item.id, item]));
-const toNavItem = ({ id, icon, label }) => ({ id, icon, label });
+// Labels a role reads differently (the item ids and NAV_ITEMS labels stay as they are).
+// The scout's menu reads in the canvas's words; the Overview item (pinned, not
+// in NAV_ITEMS) is "Today" for a scout (see overviewLabel).
+const ROLE_LABELS = {
+  scout: {
+    tasks: "Follow-ups", calls: "Calls", approvals: "Sent for approval", reports: "Day, week & month",
+    security: "Profile & sign out", activity: "My activity",
+  },
+};
+export const overviewLabel = (role) => (role === "scout" ? "Today" : "Overview");
+const toNavItem = ({ id, icon, label }, role) => ({ id, icon, label: ROLE_LABELS[role]?.[id] || label });
 
 export function buildNavGroups(auth) {
   const layout = ROLE_MENUS[auth.user?.role] || DEFAULT_GROUPS;
@@ -149,11 +166,11 @@ export function buildNavGroups(auth) {
       const item = ITEM_BY_ID[itemId];
       if (!item || placed.has(itemId) || !item.show(auth)) continue;
       placed.add(itemId);
-      items.push(toNavItem(item));
+      items.push(toNavItem(item, auth.user?.role));
     }
     return { id, label, items };
   });
-  const leftovers = NAV_ITEMS.filter((item) => !placed.has(item.id) && item.show(auth)).map(toNavItem);
+  const leftovers = NAV_ITEMS.filter((item) => !placed.has(item.id) && item.show(auth)).map((item) => toNavItem(item, auth.user?.role));
   if (leftovers.length) groups.push({ id: "more", label: "More tools", items: leftovers });
   return groups.filter((group) => group.items.length > 0);
 }

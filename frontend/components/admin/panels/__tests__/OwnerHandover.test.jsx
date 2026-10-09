@@ -68,6 +68,7 @@ describe('OwnerHandover — the owner-only screen', () => {
     expect(screen.getByText(/Akwaaba, Gifty/)).toBeInTheDocument()
     expect(screen.getByText(/Kwame's menus stay hidden until you finish/)).toBeInTheDocument()
     expect(screen.getByText(/This setup closes in 30 min/)).toBeInTheDocument()
+    expect(screen.getByText(/Kwame can't sign in as you/)).toBeInTheDocument()
     expect(seen.starts).toBe(1)
     expect(seen.previewToken).toBe('handover-tok')
     closeHandover()

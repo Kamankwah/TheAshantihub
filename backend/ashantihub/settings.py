@@ -109,6 +109,9 @@ INSTALLED_APPS = [
     "reports",
     "portfolio",
     "fraud",
+    "field",
+    "targets",
+    "commission",
     "realtime",
 ]
 
@@ -435,6 +438,14 @@ CELERY_BEAT_SCHEDULE = {
     "portfolio-health-snapshot": {
         "task": "portfolio.tasks.snapshot_business_health",
         "schedule": crontab(hour=2, minute=15),
+    },
+    "field-close-abandoned-visits": {
+        "task": "field.tasks.close_abandoned_visits",
+        "schedule": crontab(minute=20),  # hourly, at twenty past
+    },
+    "commission-release-holds": {
+        "task": "commission.tasks.release_commission_holds",
+        "schedule": crontab(hour=2, minute=45),
     },
     "portfolio-purge-staged-photos": {
         "task": "portfolio.tasks.purge_staged_photos",

@@ -1,4 +1,5 @@
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.authentication import issue_token
@@ -118,11 +119,39 @@ class ScoutVerifyTests(ScoutTestsBase):
         )
         self.assertEqual(response.status_code, 200, response.content)
         self.profile.refresh_from_db()
-        # A "wrong" decision still records that a decision was made (gate opens).
-        self.assertFalse(self.profile.address_verified)
-        self.assertIsNotNone(self.profile.address_verified_at)
-        # The correction is written onto the profile's Ghana Post address.
+        # U6: the correction is written onto the profile's Ghana Post address
+        # and clears the address decision - someone else re-checks it.
         self.assertEqual(self.profile.gps_address, "AK-100-9999")
+        self.assertEqual(
+            (self.profile.address_verified, self.profile.address_verified_by, self.profile.address_verified_at),
+            (False, None, None),
+        )
+
+    def test_a_correction_clears_an_earlier_desk_decision(self):
+        self.profile.address_verified = True
+        self.profile.address_verified_by = self.admin
+        self.profile.address_verified_at = timezone.now()
+        self.profile.save()
+        self._auth(self.scout)
+        response = self.client.post(
+            f"/api/accounts/scout-assignments/{self.assignment.id}/verify/",
+            {"address_confirmed": False, "corrected_address": "AK-100-9999"}, format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.profile.refresh_from_db()
+        self.assertEqual((self.profile.address_verified_by, self.profile.address_verified_at), (None, None))
+
+    def test_wrong_without_a_correction_still_records_the_decision(self):
+        self._auth(self.scout)
+        response = self.client.post(
+            f"/api/accounts/scout-assignments/{self.assignment.id}/verify/",
+            {"address_confirmed": False, "corrected_address": ""}, format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.profile.refresh_from_db()
+        self.assertEqual((self.profile.address_verified, self.profile.address_verified_by), (False, self.scout))
+        self.assertIsNotNone(self.profile.address_verified_at)
+        self.assertEqual(self.profile.gps_address, "AK-039-5028")
 
     def test_verify_requires_an_address_decision(self):
         self._auth(self.scout)

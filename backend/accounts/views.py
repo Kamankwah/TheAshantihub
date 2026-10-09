@@ -70,6 +70,14 @@ from .serializers import (
 )
 
 
+def _scout_portfolio_summary(scout):
+    """The scout's businesses (not rejected) and the two areas holding most of them."""
+    owned = BusinessOwner.objects.filter(account_manager=scout).exclude(kyc_status=BusinessOwner.REJECTED)
+    from portfolio.areas import scout_areas
+
+    return {"areas": scout_areas([scout])[scout.pk], "portfolio_count": owned.count()}
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def me(request):
@@ -85,6 +93,10 @@ def me(request):
         # role permissions — must match what HasRolePermission enforces, or
         # the UI gates on a different set than the server (punch-list item 9).
         data["permissions"] = sorted(request.user.effective_permission_codenames())
+        manager = request.user.manager
+        data["manager"] = {"id": manager.pk, "full_name": manager.full_name, "role": manager.role.name} if manager else None
+        if request.user.role.name == Role.SCOUT:
+            data.update(_scout_portfolio_summary(request.user))
     if isinstance(request.user, BusinessOwner):
         data["kyc_status"] = request.user.kyc_status
         data["kyc_rejection_reason"] = request.user.kyc_rejection_reason
@@ -1066,7 +1078,10 @@ class ScoutVerifyView(APIView):
     Approve/Reject gate reads — so a scout's field visit satisfies that gate
     just like a desk staffer's own toggle does ("either can verify", item 8).
     If the scout marks the stated address wrong and supplies a correction, the
-    profile's gps_address is updated to the corrected value.
+    profile's gps_address is updated to the corrected value and the address
+    decision is cleared instead (user decision U6): someone other than the
+    corrector - a lead through KYCAddressVerifyView, or another scout's later
+    visit - re-checks a corrected address before KYC (accounts.kyc).
     """
 
     def get_permissions(self):
@@ -1100,13 +1115,17 @@ class ScoutVerifyView(APIView):
         # registration, so it exists for any real business).
         profile = getattr(assignment.business_owner, "profile", None)
         if profile is not None:
-            profile.address_verified = bool(address_confirmed)
-            profile.address_verified_by = request.user
-            profile.address_verified_at = now
             update_fields = ["address_verified", "address_verified_by", "address_verified_at"]
             if not address_confirmed and corrected:
                 profile.gps_address = corrected
+                profile.address_verified = False
+                profile.address_verified_by = None
+                profile.address_verified_at = None
                 update_fields.append("gps_address")
+            else:
+                profile.address_verified = bool(address_confirmed)
+                profile.address_verified_by = request.user
+                profile.address_verified_at = now
             profile.save(update_fields=update_fields)
 
         return Response(ScoutAssignmentSerializer(assignment).data)

@@ -31,6 +31,7 @@ KYC_KIND = "business.kyc"
 OWNER_TARGET_TYPE = "accounts.businessowner"
 MANAGES_PORTFOLIO = "businesses.manage_portfolio"
 DUPLICATE_MESSAGE = "Already registered — ask Operations."
+PROSPECT_GONE_MESSAGE = "That prospect isn't on your list any more."
 NOT_WAITING_MESSAGE = "This business isn't waiting for KYC any more."
 ALREADY_WAITING_MESSAGE = "A KYC request for this business is already waiting for a decision."
 
@@ -88,14 +89,25 @@ def register_business(scout, data, files, *, http_request=None):
         raise RegistrationError(DUPLICATE_MESSAGE, code="duplicate", matched=matched)
     name = values["business_name"]
     with transaction.atomic():
+        prospect = None
+        if values.get("prospect_id"):
+            from field import prospects  # late: field.serializers imports this package
+
+            prospect = prospects.registrable(scout, values["prospect_id"])
+            if prospect is None:
+                raise RegistrationError(PROSPECT_GONE_MESSAGE, code="prospect", status_code=404)
         owner = _create_business(scout, values, identity)
+        if prospect is not None:
+            prospects.link_registration(prospect, owner, name)
         if MANAGES_PORTFOLIO in scout.effective_permission_codenames():
             assign_account_manager(owner, scout, by=scout, reason="Registered the business")
         flags = _raise_flags(scout, owner, values)
         approval = _submit_kyc(scout, owner, name, maker_note=values.get("maker_note", ""), http_request=http_request)
         record(
             scout, "business.registered", target_type=OWNER_TARGET_TYPE, target_id=str(owner.pk), target_label=name,
-            after={"business_name": name, "flags": [flag.pk for flag in flags]}, request=http_request,
+            after={"business_name": name, "flags": [flag.pk for flag in flags],
+                   **({"prospect_id": prospect.pk} if prospect is not None else {})},
+            request=http_request,
         )
     return {"business_owner": owner, "approval": approval, "flags": flags}
 

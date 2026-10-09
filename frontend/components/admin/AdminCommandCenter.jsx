@@ -33,7 +33,7 @@ import DispatchPanel from "./panels/DispatchPanel.jsx";
 import MessagingPanel from "./panels/MessagingPanel.jsx";
 import PromotionsPanel from "./panels/PromotionsPanel.jsx";
 import AnalyticsPanel from "./panels/AnalyticsPanel.jsx";
-import { buildNavGroups, makeBadgeFor, isPermittedTab } from "./shell/navModel.js";
+import { buildNavGroups, makeBadgeFor, isPermittedTab, overviewLabel } from "./shell/navModel.js";
 import StaffNavList from "./shell/StaffNavList.jsx";
 import { pickBottomBarItems } from "./shell/navModel.js";
 import useBreakpoint from "../../hooks/useBreakpoint.js";
@@ -41,9 +41,18 @@ import StaffHeader, { RoleChip } from "./shell/StaffHeader.jsx";
 import StaffDrawer from "./shell/StaffDrawer.jsx";
 import StaffBottomBar from "./shell/StaffBottomBar.jsx";
 import ScoutBottomBar from "./shell/ScoutBottomBar.jsx";
+import { ScoutDevices, ScoutProfileBlock } from "./shell/ScoutProfile.jsx";
+import ScoutTodayPanel from "./panels/ScoutTodayPanel.jsx";
+import FollowUpsPanel from "./panels/FollowUpsPanel.jsx";
 import TasksPanel from "./panels/TasksPanel.jsx";
 import ActivityPanel from "./panels/ActivityPanel.jsx";
 import CallLogPanel from "./panels/CallLogPanel.jsx";
+import TargetsPanel from "./panels/TargetsPanel.jsx";
+import CommissionPanel from "./panels/CommissionPanel.jsx";
+import LeaderboardPanel from "./panels/LeaderboardPanel.jsx";
+import CommissionPolicyPanel from "./panels/CommissionPolicyPanel.jsx";
+import VisitsPanel from "./panels/VisitsPanel.jsx";
+import ProspectsPanel from "./panels/ProspectsPanel.jsx";
 import MyTeamPanel from "./panels/MyTeamPanel.jsx";
 import ApprovalsPanel from "./panels/ApprovalsPanel.jsx";
 import PortfolioPanel from "./panels/PortfolioPanel.jsx";
@@ -79,6 +88,11 @@ import OfflineBanner from "./shell/OfflineBanner.jsx";
 export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab: activeTabProp, activeDetail, onTabChange, NotificationsSlot }) {
   const { data: staffBadges } = useStaffBadges();
   const badgeFor = makeBadgeFor(staffBadges);
+  // A scout's Reports item carries a neutral "Due 19:00" while today's day report is unsubmitted.
+  const noteFor = (id) => {
+    if (auth.user?.role !== "scout" || id !== "reports" || !staffBadges?.report_due_at) return null;
+    return `Due ${new Date(staffBadges.report_due_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`;
+  };
   // Controlled by App.jsx's /staff/:panel route when activeTab is passed;
   // otherwise (StaffDashboard.test.jsx renders without a router) it owns the
   // tab itself, exactly as before.
@@ -97,6 +111,8 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
   const menuButtonRef = useRef(null);
   const role = auth.user?.role;
   const roleColor = ROLE_ACCENTS[role] || D.gold;
+  // The reporting line from GET /api/accounts/me/ (a scout's Operations lead).
+  const leadName = auth.user?.manager?.full_name;
   const showToast = () => { setSaved(true); setTimeout(() => setSaved(false), 2500); };
   // A forced reconnect means this staffer's permissions or team changed:
   // refetch them (GET /api/accounts/me/) so the menus follow.
@@ -158,7 +174,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
   const allItems = navGroups.flatMap(g => g.items);
   const requestedTab = isControlled ? activeTabProp : internalTab;
   const activeTab = isPermittedTab(navGroups, requestedTab) ? requestedTab : "overview";
-  const activeLabel = activeTab === "overview" ? "Overview" : allItems.find(i => i.id === activeTab)?.label;
+  const activeLabel = activeTab === "overview" ? overviewLabel(auth.user?.role) : allItems.find(i => i.id === activeTab)?.label;
 
   // An unpermitted/unknown panel URL (or manifest shortcut) is sent back to
   // Overview by replacing the history entry, not pushing a new one.
@@ -185,6 +201,41 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
     else { setInternalTab("all-portfolios"); setInternalDetail(String(id)); }
   };
 
+  // A follow-up's business opens its page under My businesses (/staff/portfolio/<id>).
+  const openMyBusiness = (id) => {
+    if (isControlled) onTabChange?.(`portfolio/${id}`);
+    else { setInternalTab("portfolio"); setInternalDetail(String(id)); }
+  };
+
+  // "Check in" on a business page opens the check-in screen with that
+  // business picked (/staff/visits/check-in-<id>).
+  const openCheckIn = (id) => {
+    if (isControlled) onTabChange?.(`visits/check-in-${id}`);
+    else { setInternalTab("visits"); setInternalDetail(`check-in-${id}`); }
+  };
+
+  // "Register" on a prospect opens the wizard filled in from it
+  // (/staff/register-business/prospect-<id>).
+  const openRegisterFromProspect = (prospect) => {
+    if (isControlled) onTabChange?.(`register-business/prospect-${prospect.id}`);
+    else { setInternalTab("register-business"); setInternalDetail(`prospect-${prospect.id}`); }
+  };
+
+  // Today's "Check in" opens the check-in screen (/staff/visits/check-in) and
+  // "See all" on Waiting for <lead> opens the Made by me box (/staff/approvals/made).
+  const openCheckInScreen = () => {
+    if (isControlled) onTabChange?.("visits/check-in");
+    else { setInternalTab("visits"); setInternalDetail("check-in"); }
+  };
+  const openMadeApprovals = () => {
+    setDrawerOpen(false);
+    if (isControlled) onTabChange?.("approvals/made");
+    else { setInternalTab("approvals"); setInternalDetail("made"); }
+  };
+
+  // A scout's "Sent for approval" is the Made by me box.
+  const navSelect = (id) => (role === "scout" && id === "approvals" ? openMadeApprovals() : selectTab(id));
+
   // Each panel starts at the top; skipped on first mount so a reload keeps
   // the browser's own scroll restoration.
   const firstTabRender = useRef(true);
@@ -204,6 +255,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
   // A scout's phone gets the field bar (Businesses · Register · Calls · Menu);
   // every other role keeps Overview, three panels and More.
   const scoutBar = isPhone && role === "scout";
+  const isScout = role === "scout";
   const bottomItems = isPhone && !scoutBar ? pickBottomBarItems(navGroups, badgeFor) : [];
 
   return (
@@ -225,7 +277,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
             {isDesktop && !sidebarCollapsed && <div style={{ color: D.gold, fontWeight: 900, fontSize: "0.85rem" }}>AshantiHub Staff</div>}
           </div>
           {isDesktop && <button onClick={() => setSidebarCollapsed(s => !s)} style={{ background: "none", border: "none", color: D.textDim, cursor: "pointer", padding: "8px 12px", fontSize: "0.7rem", fontFamily: "inherit", width: "100%", textAlign: "left" }}>{sidebarCollapsed ? "→" : "← Collapse"}</button>}
-          <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={selectTab} collapsed={!isDesktop || sidebarCollapsed} badgeFor={badgeFor} roleColor={roleColor} />
+          <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={navSelect} collapsed={!isDesktop || sidebarCollapsed} badgeFor={badgeFor} roleColor={roleColor} overviewLabel={overviewLabel(role)} noteFor={noteFor} />
         </div>
       )}
 
@@ -245,7 +297,9 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
         }}>✓ Saved!</div>}
 
         <main className="staff-content" style={{ padding: isPhone ? "16px 12px calc(88px + env(safe-area-inset-bottom, 0px))" : "22px 20px 72px" }}>
-          {activeTab === "overview" && <OverviewPanel auth={auth} roleColor={roleColor} onNavigate={selectTab} />}
+          {activeTab === "overview" && (role === "scout"
+            ? <ScoutTodayPanel auth={auth} onNavigate={selectTab} onCheckIn={openCheckInScreen} onRegister={() => selectTab("register-business")} onSeeApprovals={openMadeApprovals} onOpenBusiness={openMyBusiness} />
+            : <OverviewPanel auth={auth} roleColor={roleColor} onNavigate={selectTab} />)}
           {activeTab === "kyc" && <KYCQueuePanel />}
           {activeTab === "moderation" && <ListingsModerationPanel />}
           {activeTab === "hero" && <HeroApprovalPanel />}
@@ -271,26 +325,34 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "promotions" && <PromotionsPanel auth={auth} />}
           {activeTab === "analytics" && <AnalyticsPanel />}
           {activeTab === "messaging" && <MessagingPanel />}
-          {activeTab === "tasks" && <TasksPanel />}
+          {activeTab === "tasks" && (role === "scout"
+            ? <FollowUpsPanel onOpenBusiness={openMyBusiness} onOpenProspects={() => selectTab("prospects")} leadName={leadName} />
+            : <TasksPanel />)}
           {activeTab === "activity" && <ActivityPanel />}
-          {activeTab === "calls" && <CallLogPanel />}
+          {activeTab === "calls" && <CallLogPanel auth={auth} />}
+          {activeTab === "prospects" && <ProspectsPanel onRegister={openRegisterFromProspect} />}
+          {activeTab === "targets" && <TargetsPanel />}
+          {activeTab === "commission" && <CommissionPanel />}
+          {activeTab === "leaderboard" && <LeaderboardPanel />}
+          {activeTab === "commission-policy" && <CommissionPolicyPanel canPropose={auth.hasPermission("commission.policy")} />}
+          {activeTab === "visits" && <VisitsPanel auth={auth} detailId={detail} onOpenDetail={openDetail} leadName={leadName} />}
           {activeTab === "reports" && <ReportsPanel auth={auth} />}
           {activeTab === "team-reports" && <TeamReportsPanel auth={auth} />}
           {activeTab === "security" && <SecurityPanel />}
           {activeTab === "sessions" && <SessionsPanel auth={auth} />}
           {activeTab === "my-team" && <MyTeamPanel currentStaffId={auth.user?.id} />}
           {activeTab === "approvals" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
-          {activeTab === "portfolio" && <PortfolioPanel mode="mine" auth={auth} detailId={detail} onOpenDetail={openDetail} />}
-          {activeTab === "all-portfolios" && <PortfolioPanel mode="all" auth={auth} detailId={detail} onOpenDetail={openDetail} />}
-          {activeTab === "at-risk" && <PortfolioPanel mode="at-risk" auth={auth} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "portfolio" && <PortfolioPanel mode="mine" auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
+          {activeTab === "all-portfolios" && <PortfolioPanel mode="all" auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
+          {activeTab === "at-risk" && <PortfolioPanel mode="at-risk" auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
           {activeTab === "subscriptions-due" && <SubscriptionsDuePanel auth={auth} onOpenBusiness={openBusiness} />}
           {activeTab === "fraud-cases" && <FraudCasesPanel auth={auth} onOpenBusiness={openBusiness} />}
-          {activeTab === "register-business" && <RegisterBusinessPanel auth={auth} />}
+          {activeTab === "register-business" && <RegisterBusinessPanel auth={auth} detailId={detail} onOpenDetail={openDetail} />}
         </main>
       </div>
 
       {isPhone && (scoutBar
-        ? <ScoutBottomBar navGroups={navGroups} activeTab={activeTab} onSelect={selectTab} onMenu={() => setDrawerOpen(true)} badgeFor={badgeFor} roleColor={roleColor} />
+        ? <ScoutBottomBar navGroups={navGroups} activeTab={activeTab} onSelect={navSelect} onMenu={() => setDrawerOpen(true)} badgeFor={badgeFor} roleColor={roleColor} />
         : <StaffBottomBar items={bottomItems} activeTab={activeTab} onSelect={selectTab} onMore={() => setDrawerOpen(true)} badgeFor={badgeFor} roleColor={roleColor} />)}
 
       <StaffDrawer open={drawerOpen && !isDesktop} onClose={() => setDrawerOpen(false)} returnFocusRef={menuButtonRef}>
@@ -299,7 +361,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           <div style={{ color: D.gold, fontWeight: 900, fontSize: "0.85rem", flex: 1 }}>AshantiHub Staff</div>
           <button type="button" aria-label="Close navigation" onClick={() => setDrawerOpen(false)} style={{ minWidth: 44, minHeight: 44, background: "none", border: "none", color: D.textDim, fontSize: "1.1rem", cursor: "pointer", fontFamily: "inherit" }}>✕</button>
         </div>
-        <div style={{ padding: "12px 14px", borderBottom: `1px solid ${D.divider}`, display: "flex", flexDirection: "column", gap: 8 }}>
+        {isScout ? <ScoutProfileBlock user={auth.user} roleColor={roleColor} /> : <div style={{ padding: "12px 14px", borderBottom: `1px solid ${D.divider}`, display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={{ color: D.text, fontWeight: 800, fontSize: "0.85rem" }}>{auth.user?.full_name}</span>
             <RoleChip role={role} roleColor={roleColor} />
@@ -309,8 +371,16 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
             {onViewSite && <button type="button" onClick={onViewSite} style={{ minHeight: 44, background: "transparent", border: `1px solid ${D.divider}`, color: D.text, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>View site</button>}
             <button type="button" onClick={signOut} style={{ minHeight: 44, background: "rgba(44,24,16,0.05)", border: `1px solid ${D.divider}`, color: D.text, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Sign out</button>
           </div>
-        </div>
-        <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={selectTab} collapsed={false} badgeFor={badgeFor} roleColor={roleColor} itemMinHeight={44} />
+        </div>}
+        <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={navSelect} collapsed={false} badgeFor={badgeFor} roleColor={roleColor} itemMinHeight={44} overviewLabel={overviewLabel(role)} noteFor={noteFor} />
+        {isScout && <ScoutDevices />}
+        {isScout && (
+          <div style={{ padding: "0 14px 16px", display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <InstallAppButton variant="drawer" />
+            {onViewSite && <button type="button" onClick={onViewSite} style={{ minHeight: 44, background: "transparent", border: `1px solid ${D.divider}`, color: D.text, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>View site</button>}
+            <button type="button" onClick={signOut} style={{ minHeight: 44, background: "rgba(44,24,16,0.05)", border: `1px solid ${D.divider}`, color: D.text, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Sign out</button>
+          </div>
+        )}
       </StaffDrawer>
       <SudoPrompt />
       <UpdateToast bottomOffset={isPhone ? "calc(80px + env(safe-area-inset-bottom, 0px))" : 20} />

@@ -9,7 +9,7 @@ import { SentNotice, card, errorStyle, errorText, firstName, h2, h3, labelStyle,
 // A scout adds a product or service as the business (portfolio
 // listing.create). The Operations lead's approval is its moderation. The
 // product questions are the ones the owner's own listing form must answer.
-export default function AddListingForm({ businessId, onBack, onSent }) {
+export default function AddListingForm({ businessId, onBack, onSent, leadName }) {
   const business = usePortfolioBusiness(businessId);
   const meta = useListingFormMeta(businessId);
   if (business.isLoading || meta.isLoading) return <div style={card}><div style={dim}>Loading…</div></div>;
@@ -21,7 +21,7 @@ export default function AddListingForm({ businessId, onBack, onSent }) {
       </div>
     );
   }
-  return <ListingForm business={business.data} meta={meta.data || {}} onBack={onBack} onSent={onSent} />;
+  return <ListingForm business={business.data} meta={meta.data || {}} onBack={onBack} onSent={onSent} leadName={leadName} />;
 }
 
 function YesNo({ legend, name, value, onChange }) {
@@ -41,7 +41,7 @@ const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(mi
 // The server's own words for a missing reason (portfolio.proposals.REASON_REQUIRED).
 const REASON_NEEDED = "Say why — the approver sees it.";
 
-function ListingForm({ business, meta, onBack, onSent }) {
+function ListingForm({ business, meta, onBack, onSent, leadName }) {
   const isService = business.business_kind === "service";
   const [photos, setPhotos] = useState([]);
   const [name, setName] = useState("");
@@ -168,12 +168,14 @@ function ListingForm({ business, meta, onBack, onSent }) {
           <div style={dim}>{`${business.business_name} · ${business.kyc_status === "verified" ? "Verified business" : "KYC waiting"}`}</div>
         </div>
       </section>
-      <label style={labelStyle}>Why add it (Operations sees this)<textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} style={field} /></label>
+      <label style={labelStyle}>Why add it ({leadName ? firstName(leadName) : "Operations"} sees this)<textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} style={field} /></label>
       {!reasonGiven && <div style={dim}>{REASON_NEEDED}</div>}
-      <div style={dim}>{`Your Operations lead's approval is this listing's moderation: it goes live when they approve it. ${owner} is told and can undo it for 7 days.`}</div>
+      <div style={dim}>{leadName
+        ? `${firstName(leadName)}'s approval is this listing's moderation. It goes live when ${leadName} approves it. ${owner} is told and can undo it for 7 days.`
+        : `Your Operations lead's approval is this listing's moderation: it goes live when they approve it. ${owner} is told and can undo it for 7 days.`}</div>
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
       {!ready && !busy && <div style={dim}>{`Take at least one photo, fill in every field${isService ? "" : " (including the three questions)"} and say why, to send it.`}</div>}
-      <button type="submit" disabled={!ready} style={{ ...button(D.gold, D.text, !ready), alignSelf: "flex-start" }}>Send for approval</button>
+      <button type="submit" disabled={!ready} style={{ ...button(D.gold, D.text, !ready), alignSelf: "flex-start" }}>{leadName ? `Send to ${leadName}` : "Send for approval"}</button>
     </form>
   );
 }

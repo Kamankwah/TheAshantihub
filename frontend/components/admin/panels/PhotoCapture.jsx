@@ -4,6 +4,7 @@ import { useDevicePosition } from "../../../hooks/useDevicePosition.js";
 import { D } from "../theme.js";
 import { button, dim, linkButton } from "./panelStyles.js";
 import { errorStyle, errorText, formatDateTime } from "./portfolioParts.jsx";
+import { timeOf } from "./visitParts.jsx";
 
 // A position older than this isn't "where the photo was taken".
 const FRESH_MS = 5 * 60 * 1000;
@@ -13,10 +14,14 @@ const FRESH_MS = 5 * 60 * 1000;
 // the server's time and, when the phone shares it, where it was taken. The
 // location is read when the camera opens — never in between. onStaged(photos)
 // gets the whole list after every change.
-export default function PhotoCapture({ businessId, onStaged, max = 8 }) {
+//
+// uploadUrl posts to a different place (a visit's photos, POST
+// visits/<id>/photos/); initial lists photos already stored there, and
+// removable={false} hides Remove where the server keeps what was uploaded.
+export default function PhotoCapture({ businessId, onStaged, max = 8, uploadUrl, initial = [], removable = true }) {
   const { position, locate } = useDevicePosition();
-  const listRef = useRef([]);
-  const [photos, setPhotos] = useState([]);
+  const listRef = useRef(initial);
+  const [photos, setPhotos] = useState(initial);
   const [uploading, setUploading] = useState(false);
   const [actionError, setActionError] = useState(null);
   const full = photos.length >= max;
@@ -42,7 +47,7 @@ export default function PhotoCapture({ businessId, onStaged, max = 8 }) {
       if (position.accuracy != null) form.append("accuracy_m", String(Math.round(position.accuracy)));
     }
     try {
-      const staged = await apiPostForm(`/api/portfolio/businesses/${businessId}/photos/`, form);
+      const staged = await apiPostForm(uploadUrl || `/api/portfolio/businesses/${businessId}/photos/`, form);
       update([...listRef.current, staged]);
     } catch (err) {
       setActionError(errorText(err, "Could not upload the photo. Check your connection and try again."));
@@ -64,8 +69,8 @@ export default function PhotoCapture({ businessId, onStaged, max = 8 }) {
           {photos.map((photo, i) => (
             <li key={photo.id} style={{ width: 96 }}>
               <img src={photo.url} alt={`Photo ${i + 1}`} style={{ width: 96, height: 96, objectFit: "cover", borderRadius: 10, border: `1px solid ${D.cardBorder}`, display: "block" }} />
-              <div style={{ ...dim, fontSize: "0.64rem" }}>{formatDateTime(photo.created_at)}</div>
-              <button type="button" aria-label={`Remove photo ${i + 1}`} onClick={() => update(listRef.current.filter((p) => p.id !== photo.id))} style={linkButton}>Remove</button>
+              <div style={{ ...dim, fontSize: "0.64rem" }}>{uploadUrl ? timeOf(photo.taken_at || photo.created_at) : formatDateTime(photo.created_at || photo.taken_at)}</div>
+              {removable && <button type="button" aria-label={`Remove photo ${i + 1}`} onClick={() => update(listRef.current.filter((p) => p.id !== photo.id))} style={linkButton}>Remove</button>}
             </li>
           ))}
         </ul>

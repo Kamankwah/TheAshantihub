@@ -168,7 +168,8 @@ class ProviderTests(TestCase):
         providers.register_provider("scout", scout_numbers)
         self.addCleanup(providers.unregister_provider, "scout", scout_numbers)
         keys = [s["key"] for s in providers.system_sections(self.scout, self.today, self.today)]
-        self.assertEqual(keys, ["activity", "approvals", "calls", "tasks", "visits"])
+        self.assertEqual(keys[:4], ["activity", "approvals", "calls", "tasks"])
+        self.assertEqual(keys[-1], "visits")  # registered providers run in order, after the real scout one
         lead = make_staff("operations", "ama@example.com")
         self.assertNotIn("visits", [s["key"] for s in providers.system_sections(lead, self.today, self.today)])
 
@@ -216,6 +217,7 @@ class FixRoundTests(TestCase):
         report.refresh_from_db()
         self.assertFalse(report.is_late)
         self.assertEqual(report.submitted_at, at(self.today, 18))
+        self.assertEqual(report.snapshot_at, at(self.today, 19, 5))  # the snapshot is as of the latest submission
 
     def test_a_week_is_compared_with_earlier_weeks_not_with_days(self):
         last_monday = self.today - timedelta(days=self.today.weekday() + 7)

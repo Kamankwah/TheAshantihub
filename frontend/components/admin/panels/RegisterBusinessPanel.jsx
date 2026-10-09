@@ -1,10 +1,13 @@
 import { Fragment, cloneElement, useEffect, useId, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { apiPost, apiPostForm } from "../../../apiClient.js";
 import { useDevicePosition } from "../../../hooks/useDevicePosition.js";
+import { useProspects } from "../../../hooks/useProspects.js";
 import { useRegistrationOptions } from "../../../hooks/useRegistrationOptions.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import LocationPicker from "../../LocationPicker.jsx";
 import { D, glassCard } from "../theme.js";
+import { useMyCommission } from "../../../hooks/useCommission.js";
 import OwnerHandover, { SendClaimLinkCard } from "./OwnerHandover.jsx";
 import PhotoSlot, { hhmm, revokePreview } from "./PhotoSlot.jsx";
 import { MATCH_LABELS, alreadyBelongsText } from "./registrationCheckCopy.js";
@@ -29,6 +32,7 @@ const BLANK = {
   zone: "", gps_address: "",
   lat: "", lng: "", location_accuracy_m: "", location_is_manual: false, location_at: "",
   ghana_card_number: "", maker_note: "",
+  prospect_id: "", prospect_name: "", // set when the scout starts from the prospect list
 };
 const NO_PHOTOS = { signboard_photo: null, ghana_card_front: null };
 const IDLE = { state: "idle", result: null, error: null };
@@ -90,6 +94,10 @@ function removeDraft(key) {
   }
 }
 
+// /staff/register-business/prospect-<id> starts the wizard from that prospect.
+const PROSPECT_ROUTE = /^prospect-(\d+)$/;
+const hasTyped = (form) => Boolean(form.owner_full_name || form.owner_phone || form.business_name);
+
 const firstName = (name) => (name || "").trim().split(/\s+/)[0] || "";
 
 function Field({ label, hint, children }) {
@@ -148,7 +156,14 @@ function CheckResults({ result }) {
   );
 }
 
-export default function RegisterBusinessPanel({ auth }) {
+export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDetail }) {
+  const queryClient = useQueryClient();
+  // "and earns commission" is promised only while a registration amount is approved.
+  const earnsCommission = Boolean(
+    useMyCommission(4, { enabled: Boolean(auth?.hasPermission?.("commission.view_own")) }).data?.policy?.registration,
+  );
+  const routeProspect = typeof detailId === "string" ? PROSPECT_ROUTE.exec(detailId) : null;
+  const prospectId = routeProspect ? Number(routeProspect[1]) : null;
   const draftKey = draftKeyFor(auth?.user?.id);
   const scoutFirstName = firstName(auth?.user?.full_name) || "your scout";
   const [restored] = useState(() => readDraft(draftKey));
@@ -172,6 +187,29 @@ export default function RegisterBusinessPanel({ auth }) {
   const firstStepRender = useRef(true);
   const { position, error: locationError, locating, locate } = useDevicePosition();
   const options = useRegistrationOptions(form.business_kind);
+  const prospectList = useProspects("all", { enabled: prospectId != null });
+  const prospect = prospectId != null ? (prospectList.data?.results || []).find((p) => p.id === prospectId) : null;
+  const [askProspect, setAskProspect] = useState(false);
+
+  const startFromProspect = (p) => {
+    dirty.current = true;
+    setForm({
+      ...BLANK, business_name: p.name, owner_phone: p.phone || "", zone: p.zone ? String(p.zone.id) : "",
+      prospect_id: String(p.id), prospect_name: p.name,
+    });
+    setStep(0);
+    setCheck(IDLE);
+    setStepError(null);
+    setSavedForLater(false);
+    setAskProspect(false);
+  };
+  // Opening Register from a prospect fills the first step in. A half-typed
+  // registration is never replaced without asking.
+  useEffect(() => {
+    if (!prospect || String(form.prospect_id) === String(prospect.id)) return;
+    if (hasTyped(form)) setAskProspect(true);
+    else startFromProspect(prospect);
+  }, [prospect?.id]);
 
   useEffect(() => { photosRef.current = photos; }, [photos]);
   useEffect(() => () => { Object.values(photosRef.current).forEach(revokePreview); }, []);
@@ -340,8 +378,11 @@ export default function RegisterBusinessPanel({ auth }) {
     fd.append("ghana_card_front", photos.ghana_card_front.file);
     put("ghana_card_number", form.ghana_card_number.trim());
     put("maker_note", form.maker_note.trim());
+    put("prospect_id", form.prospect_id);
     try {
       const result = await apiPostForm("/api/portfolio/register/", fd);
+      for (const key of ["prospects", "call-counterparts", "portfolio"]) queryClient.invalidateQueries({ queryKey: [key] });
+      onOpenDetail?.(null);
       const owner = { ownerFirstName: firstName(form.owner_full_name), ownerEmail: form.owner_email.trim() };
       resetWizard();
       setSubmitted({ ...result, ...owner, at: new Date().toISOString() });
@@ -351,6 +392,11 @@ export default function RegisterBusinessPanel({ auth }) {
         setActionError(!storageFailed && savedAt
           ? "No connection — nothing was sent. Your draft is still on this phone; submit again when you're back online."
           : "No connection — nothing was sent. This phone isn't keeping a draft, so keep this screen open and submit again when you're back online.");
+      } else if (err.body?.code === "prospect") {
+        // The prospect in the draft is gone (registered elsewhere or removed): drop the link and say so.
+        dirty.current = true;
+        setForm((f) => ({ ...f, prospect_id: "", prospect_name: "" }));
+        setActionError("That prospect is no longer on your list, so this registration is no longer linked to one. Nothing else changed. Submit again to register it as a new business.");
       } else if (err.body?.code === "duplicate") {
         setDuplicate({ detail: err.body.detail || "Already registered — ask Operations.", matched: err.body.matched || [] });
       } else {
@@ -422,6 +468,23 @@ export default function RegisterBusinessPanel({ auth }) {
               ? `Draft saved on this phone · ${hhmm(savedAt)}`
               : "Nothing leaves this phone until you submit on step 4, and submitting needs a connection."}
         </div>
+        {askProspect && prospect && (
+          <div role="alert" style={callout(D.amber)}>
+            <div style={{ fontWeight: 900 }}>You have a registration in progress.</div>
+            <div style={{ fontWeight: 600, marginTop: 4 }}>{`Start from ${prospect.name} instead? What you typed so far on this phone is replaced.`}</div>
+            <div style={{ ...actions, marginTop: 8 }}>
+              <button type="button" onClick={() => startFromProspect(prospect)} style={button(D.gold, D.text)}>{`Start from ${prospect.name}`}</button>
+              <button type="button" onClick={() => { setAskProspect(false); onOpenDetail?.(null); }} style={button(D.panelBg, D.text)}>Keep my draft</button>
+            </div>
+          </div>
+        )}
+        {form.prospect_id && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={chip(D.green)}>From prospect list</span>
+            <span style={{ ...dim, fontSize: "0.72rem" }}>{form.prospect_name}</span>
+            <button type="button" onClick={() => { dirty.current = true; setForm((f) => ({ ...f, prospect_id: "", prospect_name: "" })); }} style={linkButton}>Not from the list</button>
+          </div>
+        )}
         {retakePhotos && !photos.signboard_photo && !photos.ghana_card_front && (
           <div style={callout(D.amber)}>Photos aren't kept in the draft — take them again on step 3.</div>
         )}
@@ -574,7 +637,7 @@ export default function RegisterBusinessPanel({ auth }) {
               <button type="button" onClick={back} style={button(D.panelBg, D.text)}>Back</button>
               <button type="button" onClick={submit} disabled={!canSubmit} style={button(D.gold, D.text, !canSubmit)}>{submitting ? "Submitting…" : "Submit for KYC"}</button>
             </div>
-            <div style={hintStyle}>It counts as your registration once Operations approves KYC.</div>
+            <div style={hintStyle}>{`It counts as your registration${earnsCommission ? " and earns commission" : ""} once Operations approves KYC.`}</div>
           </>
         )}
       </div>

@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { server } from '../../../../mocks/server.js'
 import KYCQueuePanel from '../KYCQueuePanel.jsx'
+import { formatDay } from '../portfolioParts.jsx'
 
 const API = 'http://localhost:8000'
 const owner = (overrides = {}) => ({
@@ -48,6 +49,48 @@ async function openApproveReady(name) {
 }
 
 describe('KYCQueuePanel (staff phase 2A)', () => {
+  it('says when a field scout corrected the address, and that the decision is needed again', async () => {
+    const o = owner()
+    mockQueue([o], {
+      41: detailOf(o, {
+        profile: { ...detailOf(o).profile, gps_address: 'AK-100-9999', address_verified: false, address_verified_by_name: null, address_verified_at: null },
+        address_correction: { scout_name: 'Efua Mensah', corrected_address: 'AK-100-9999', at: '2026-10-08T09:30:00Z' },
+      }),
+    })
+    renderPanel()
+    const row = await screen.findByRole('group', { name: 'Nana Adwoa Agyeman' })
+    fireEvent.click(within(row).getByText('👁️ View Details'))
+    expect(await within(row).findByText(
+      `Address corrected by field scout Efua Mensah on ${formatDay('2026-10-08T09:30:00Z')} to AK-100-9999 — record the address decision before approving.`,
+    )).toBeInTheDocument()
+    expect(within(row).getByText('✓ Approve')).toBeDisabled()
+  })
+
+  it('drops the record-the-decision suffix once another lead recorded the address decision', async () => {
+    const o = owner()
+    mockQueue([o], {
+      41: detailOf(o, {
+        profile: { ...detailOf(o).profile, gps_address: 'AK-100-9999', address_verified: true, address_verified_by_name: 'Ama Boateng', address_verified_at: '2026-10-09T08:00:00Z' },
+        address_correction: { scout_name: 'Efua Mensah', corrected_address: 'AK-100-9999', at: '2026-10-08T09:30:00Z' },
+      }),
+    })
+    renderPanel()
+    const row = await screen.findByRole('group', { name: 'Nana Adwoa Agyeman' })
+    fireEvent.click(within(row).getByText('👁️ View Details'))
+    expect(await within(row).findByText(
+      `Address corrected by field scout Efua Mensah on ${formatDay('2026-10-08T09:30:00Z')} to AK-100-9999`,
+    )).toBeInTheDocument()
+    expect(within(row).queryByText(/record the address decision before approving/)).not.toBeInTheDocument()
+  })
+
+  it('shows no correction line without one', async () => {
+    const o = owner()
+    mockQueue([o], { 41: detailOf(o, { address_correction: null }) })
+    renderPanel()
+    const row = await openApproveReady('Nana Adwoa Agyeman')
+    expect(within(row).queryByText(/Address corrected by field scout/)).not.toBeInTheDocument()
+  })
+
   it('says who registered each business, whether it is also in Approvals, and its open fraud cases', async () => {
     mockQueue([
       owner({ open_fraud_flags: [{ id: 3, kind: 'similar_nearby', kind_label: 'Similar business nearby', title: 'Nana Chop Bar & Drinks is 38 m away' }] }),

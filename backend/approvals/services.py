@@ -176,6 +176,19 @@ def _apply_failed(crash):
     return ApplyFailed(APPLY_FAILED_MESSAGE)
 
 
+def _after_rejected(approval):
+    """The kind's on_rejected hook (e.g. a follow-up task for the maker). A
+    failing hook is logged and never blocks the decision."""
+    kind = get_kind(approval.kind)
+    if kind is None or kind.on_rejected is None:
+        return
+    try:
+        with transaction.atomic():
+            kind.on_rejected(approval)
+    except Exception:
+        logger.exception("on_rejected hook failed for approval %s", approval.pk)
+
+
 def _link(approval):
     return f"approvals/{approval.pk}"
 
@@ -328,6 +341,7 @@ def reject(approval_id, staff, note, http_request=None):
         approval.save(update_fields=["status", "decided_by", "decided_at", "decision_note"])
         notify_staff(approval.maker, "approval_decided", f"Returned: {approval.title}",
                      body=note, link=_link(approval), icon="↩️")
+        _after_rejected(approval)
         record(staff, "approval.rejected", target=approval, after={"note": note}, request=http_request)
     return approval
 
@@ -363,6 +377,7 @@ def close_pending_for_target(kind_key, *, target_type, target_id, staff, approve
             else:
                 notify_staff(approval.maker, "approval_decided", f"Returned: {approval.title}",
                              body=note, link=_link(approval), icon="↩️")
+                _after_rejected(approval)
     return pending
 
 

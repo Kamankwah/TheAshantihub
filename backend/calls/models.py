@@ -2,10 +2,11 @@ from django.db import models
 
 COMMON_PURPOSES = [("other", "Other")]
 PURPOSES_BY_ROLE = {
+    # The values stay (history stays valid); the labels are the scout canvas's words.
     "scout": [
-        ("prospecting", "Prospecting"), ("onboarding", "Onboarding"), ("photos_listings", "Photos and listings"),
-        ("subscription_payment", "Subscription payment"), ("delivery_follow_up", "Delivery follow-up"),
-        ("info_update", "Business info update"),
+        ("subscription_payment", "Subscription reminder"), ("onboarding", "Onboarding help"),
+        ("photos_listings", "Photos & listings"), ("delivery_follow_up", "Delivery follow-up"),
+        ("info_update", "Info update"), ("prospecting", "Prospecting"),
     ],
     "support": [
         ("order_question", "Order question"), ("delivery", "Delivery"), ("payment", "Payment"),
@@ -30,7 +31,8 @@ class CallLog(models.Model):
     DIRECTION_CHOICES = [("in", "Inbound"), ("out", "Outbound")]
     CHANNEL_CHOICES = [("phone", "Phone"), ("whatsapp", "WhatsApp"), ("sms", "SMS"), ("visit", "Visit")]
     COUNTERPART_CHOICES = [
-        ("customer", "Customer"), ("business_owner", "Business owner"), ("guest", "Guest"), ("other", "Other"),
+        ("customer", "Customer"), ("business_owner", "Business owner"), ("prospect", "Prospect"),
+        ("guest", "Guest"), ("other", "Other"),
     ]
     OUTCOME_CHOICES = [
         ("connected", "Connected"), ("no_answer", "No answer"), ("busy", "Busy"), ("voicemail", "Voicemail"),

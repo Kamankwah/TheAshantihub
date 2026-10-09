@@ -139,6 +139,7 @@ class FollowUpTests(TeamBase):
             (task.owner, task.created_by, task.source_type, task.source_id, task.notes, task.due_at),
             (self.kwame, self.lead, "accounts.businessowner", str(self.owner.pk), "Bring the price list", due),
         )
+        self.assertEqual((task.kind, task.business_owner), (Task.OPS_FOLLOW_UP, self.owner))
         self.assertTrue(Notification.objects.filter(staff=self.kwame, kind="follow_up_assigned", link="tasks").exists())
         event = ActivityEvent.objects.get(verb="business.follow_up_created")
         self.assertEqual((event.actor_id, event.target_id), (self.lead.pk, str(self.owner.pk)))
@@ -149,6 +150,7 @@ class FollowUpTests(TeamBase):
         response = self.follow_up(self.lead, owner=self.lead.pk, title="Call the owner", due_at=self.tomorrow().isoformat())
         self.assertEqual(response.status_code, 201, response.content)
         self.assertEqual(Task.objects.get().owner, self.lead)
+        self.assertEqual(Task.objects.get().kind, Task.MANUAL)
         self.assertFalse(Notification.objects.filter(kind="follow_up_assigned").exists())
 
     def test_a_date_alone_is_due_at_five_in_the_afternoon(self):

@@ -44,6 +44,7 @@ from accounts.emails import (
 )
 from activity.services import record
 from notifications.services import notify_business_owner, notify_staff_role
+from staff_tasks.models import Task
 from staff_tasks.services import create_task
 
 from .models import Subscription
@@ -215,7 +216,7 @@ def _follow_up(subscription, owner, now, *, day):
             f"Subscription overdue — {name} (since {day_text(timezone.localdate(subscription.overdue_since))})",
             now + TASK_DUE_IN,
             notes="The owner pays in the app — scouts never collect cash.",
-            source=subscription,
+            source=subscription, kind=Task.SUBSCRIPTION_OVERDUE, business=owner,
         )
         return manager
     hide_on = _hide_on(subscription.overdue_since)
@@ -234,7 +235,7 @@ def _follow_up(subscription, owner, now, *, day):
         min(now + TASK_DUE_IN, _pause_at(subscription.overdue_since)),
         notes=(f"Listings are hidden on {day_text(hide_on)} if still unpaid. "
                "The owner pays in the app — scouts never collect cash."),
-        source=subscription,
+        source=subscription, kind=Task.SUBSCRIPTION_OVERDUE, business=owner,
     )
     return manager
 

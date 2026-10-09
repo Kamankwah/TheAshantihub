@@ -5,6 +5,7 @@ from django.utils.dateparse import parse_date
 from rest_framework import generics, status
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -253,6 +254,13 @@ class TransactionMineListCreateView(generics.ListAPIView):
         input_serializer.is_valid(raise_exception=True)
         data = input_serializer.validated_data
         metadata = data.get("metadata") or {}
+        if metadata.get("cycle_months") not in (None, ""):
+            try:
+                valid_cycle = int(metadata["cycle_months"]) in dict(Subscription.CYCLE_CHOICES)
+            except (TypeError, ValueError):
+                valid_cycle = False
+            if not valid_cycle:
+                raise ValidationError({"metadata": {"cycle_months": "Pick a billing cycle we offer."}})
 
         # Never trust a client-reported amount at face value
         # (docs/HUBTEL_INTEGRATION.md §8) — when the metadata a "subscription"
@@ -271,11 +279,21 @@ class TransactionMineListCreateView(generics.ListAPIView):
             plan = SubscriptionPlan.objects.filter(
                 tier=plan_tier, status=SubscriptionPlan.ACTIVE_STATUS
             ).first()
-            if plan is not None:
-                try:
-                    amount = plan.monthly_price * int(cycle_months)
-                except (TypeError, ValueError):
-                    pass
+            if plan is None:
+                # The tier has no ACTIVE plan (an edit awaits approval): price the
+                # renewal off the plan the owner is on now, if it is that tier.
+                current = (
+                    Subscription.objects.select_related("plan")
+                    .filter(business_owner=request.user, plan__tier=plan_tier)
+                    .first()
+                )
+                plan = current.plan if current is not None else None
+            if plan is None:
+                raise ValidationError({"metadata": {"plan": "That plan is not available to pay for right now."}})
+            try:
+                amount = plan.monthly_price * int(cycle_months)
+            except (TypeError, ValueError):
+                pass
 
         result = process_payment(
             kind=data["kind"],

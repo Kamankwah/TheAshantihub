@@ -104,27 +104,35 @@ describe('BusinessPage', () => {
     expect(within(health).getByText(/Listings are hidden on .* if still unpaid\./)).toBeInTheDocument()
   })
 
-  it('logs a call that counts as contact with this business', async () => {
+  it('logs a call about this business from the Log a call sheet', async () => {
     let body = null
     const gets = serve()
     server.use(
-      http.get(`${API}/api/calls/purposes/`, () => HttpResponse.json([{ value: 'subscription_payment', label: 'Subscription payment' }, { value: 'other', label: 'Other' }])),
+      http.get(`${API}/api/calls/purposes/`, () => HttpResponse.json([{ value: 'subscription_payment', label: 'Subscription reminder' }, { value: 'other', label: 'Other' }])),
+      http.get(`${API}/api/calls/counterparts/`, () => HttpResponse.json({
+        businesses: [{ id: 12, business_name: 'Adwoa Fabrics', owner_name: 'Adwoa Frimpong', phone_masked: '024 *** 118' }], prospects: [],
+      })),
       http.post(`${API}/api/calls/`, async ({ request }) => { body = await request.json(); return HttpResponse.json({ id: 1 }, { status: 201 }) }),
     )
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Log a call' }))
-    await screen.findByRole('option', { name: 'Subscription payment' })
-    fireEvent.change(screen.getByLabelText('Purpose'), { target: { value: 'subscription_payment' } })
-    fireEvent.change(screen.getByLabelText('Outcome'), { target: { value: 'promised_to_pay' } })
-    fireEvent.change(screen.getByLabelText('Notes'), { target: { value: 'Will pay Friday' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save call' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Log a call' })
+    // the business is already picked, and its phone shows masked from the record
+    expect(await within(dialog).findByText('Phone 024 *** 118 · from the business record')).toBeInTheDocument()
+    expect(within(dialog).queryByText(/244000118/)).not.toBeInTheDocument()
+    await within(dialog).findByRole('option', { name: 'Subscription reminder' })
+    fireEvent.change(within(dialog).getByLabelText('Purpose'), { target: { value: 'subscription_payment' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Promised to pay' }))
+    fireEvent.change(within(dialog).getByLabelText('Notes'), { target: { value: 'Will pay Friday' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save call' }))
     await waitFor(() => expect(body).not.toBeNull())
+    // the server fills in the name, phone and business from the record
     expect(body).toMatchObject({
-      direction: 'out', channel: 'phone',
-      counterpart_type: 'business_owner', counterpart_id: 12, counterpart_name: 'Adwoa Frimpong', counterpart_phone: '+233244000118',
-      related_type: 'business_owner', related_id: '12', related_label: 'Adwoa Fabrics',
+      direction: 'out', channel: 'phone', counterpart_type: 'business_owner', counterpart_id: 12,
       purpose: 'subscription_payment', outcome: 'promised_to_pay', notes: 'Will pay Friday',
     })
+    expect(body).not.toHaveProperty('counterpart_phone')
+    expect(body).not.toHaveProperty('started_at')
     expect(await screen.findByText('Call saved.')).toBeInTheDocument()
     await waitFor(() => expect(gets()).toBeGreaterThanOrEqual(2))
   })
@@ -351,5 +359,213 @@ describe('BusinessPage — sending KYC again', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Send KYC again' }))
     fireEvent.click(screen.getByRole('button', { name: 'Send the KYC request' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('A KYC request for this business is already waiting for a decision.')
+  })
+})
+
+describe('BusinessPage — visits (staff WP1)', () => {
+  const recent = {
+    recent_calls: [{ id: 1, direction: 'out', outcome: 'promised_to_pay', purpose: 'subscription_payment', started_at: '2026-10-07T16:10:00Z', staff_name: 'Kwame Asante' }],
+    recent_visits: [
+      { id: 2, purpose: 'subscription_follow_up', purpose_label: 'Subscription follow-up', status: 'done', minutes: 22, checked_in_at: '2026-10-03T10:00:00Z', outside_radius: false, distance_m: 20, staff_name: 'Kwame Asante' },
+      { id: 3, purpose: 'prospecting', purpose_label: 'Prospecting', status: 'done', minutes: 15, checked_in_at: '2026-10-09T09:00:00Z', outside_radius: true, distance_m: 160, staff_name: 'Kwame Asante' },
+    ],
+  }
+
+  it('lists calls and visits together, newest first, with the flag on a flagged visit', async () => {
+    serve(business(recent))
+    renderPage()
+    const section = await screen.findByRole('region', { name: 'Recent calls and visits' })
+    expect(within(section).getByRole('heading', { name: 'Recent calls & visits' })).toBeInTheDocument()
+    const rows = within(section).getAllByText(/^(Call in|Call out|Visit)$/).map((kind) => kind.parentElement)
+    expect(rows).toHaveLength(3)
+    expect(rows[0]).toHaveTextContent(/^Visit · Prospecting · 15 min/)
+    expect(rows[1]).toHaveTextContent(/^Call out · subscription payment · promised to pay/)
+    expect(rows[2]).toHaveTextContent(/^Visit · Subscription follow-up · 22 min/)
+    expect(within(section).getByText('🚩 Outside the 100 m radius · 160 m')).toBeInTheDocument()
+    // Two parts, as on the canvas: what on the left, when on the right.
+    expect(rows[0].nextElementSibling).toHaveTextContent(/\d/)
+  })
+
+  it('says so when there are no calls or visits', async () => {
+    serve(business({ recent_calls: [], recent_visits: [] }))
+    renderPage()
+    expect(await screen.findByText('No calls or visits logged yet.')).toBeInTheDocument()
+  })
+
+  it('shows an open visit as in progress', async () => {
+    serve(business({ recent_calls: [], recent_visits: [{ ...recent.recent_visits[0], status: 'open', minutes: null }] }))
+    renderPage()
+    expect(await screen.findByText(/^· Subscription follow-up · in progress/)).toBeInTheDocument()
+  })
+
+  it("offers Check in to the account manager, opening the check-in with this business", async () => {
+    serve(business())
+    const onCheckIn = vi.fn()
+    renderPage({ onCheckIn })
+    fireEvent.click(await screen.findByRole('button', { name: /Check in/ }))
+    expect(onCheckIn).toHaveBeenCalledWith(12)
+  })
+
+  it('offers no Check in to someone who does not manage the business', async () => {
+    serve(business({ can_manage: false }))
+    renderPage({ onCheckIn: vi.fn(), auth: OPS })
+    await screen.findByRole('heading', { name: 'Adwoa Fabrics' })
+    expect(screen.queryByRole('button', { name: /Check in/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('BusinessPage — orders and delivery problems (staff WP3)', () => {
+  const order = (over = {}) => ({
+    id: 27, number: '#27', placed_at: '2026-10-05T10:00:00Z', items: [{ name: 'Ankara wrap skirt', quantity: 1 }], status: 'paid',
+    delivery_status: 'delivered', delivered_at: '2026-10-07T12:00:00Z', dispute: null, problem_flagged: false, ...over,
+  })
+  const page = (results, count = results.length) => ({ count, next: null, previous: null, results })
+  function serveOrders(results, count, sizes = []) {
+    server.use(http.get(`${API}/api/portfolio/businesses/12/orders/`, ({ request }) => {
+      const size = new URL(request.url).searchParams.get('page_size')
+      sizes.push(size)
+      return HttpResponse.json(page(Number(size) > 2 ? results : results.slice(0, 2), count))
+    }))
+  }
+
+  it('lists the two latest orders read-only, with status chips and no customer', async () => {
+    serve(business())
+    serveOrders([
+      order({ id: 31, number: '#31', items: [{ name: 'Batik fabric, 6 yards', quantity: 2 }], delivery_status: 'out_for_delivery', delivered_at: null, dispute: { reason: 'delivery_issue', reason_label: 'Delivery Issue', status: 'open' } }),
+      order(),
+    ])
+    renderPage()
+    const section = await screen.findByRole('region', { name: 'Orders and deliveries' })
+    expect(within(section).getByRole('heading', { name: 'Orders & deliveries' })).toBeInTheDocument()
+    expect(within(section).getByText('Read-only')).toBeInTheDocument()
+    expect(await within(section).findByText('#31')).toBeInTheDocument()
+    expect(within(section).getByText(/Batik fabric, 6 yards ×2/)).toBeInTheDocument()
+    expect(within(section).getByText('Delivery Issue open')).toBeInTheDocument()
+    expect(within(section).getByText('Out for delivery')).toBeInTheDocument()
+    expect(within(section).getByText('Delivered 7 Oct')).toBeInTheDocument()
+    expect(within(section).queryByRole('button', { name: /^See all/ })).not.toBeInTheDocument()
+  })
+
+  it('says so when there are no paid orders', async () => {
+    serve(business())
+    renderPage()
+    expect(await screen.findByText('No paid orders yet.')).toBeInTheDocument()
+  })
+
+  it('offers See all, which asks for a bigger page', async () => {
+    serve(business())
+    const sizes = []
+    serveOrders([order({ id: 31, number: '#31' }), order(), order({ id: 25, number: '#25' })], 3, sizes)
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'See all 3' }))
+    await waitFor(() => expect(sizes).toContain('20'))
+    expect(await screen.findByText('#25')).toBeInTheDocument()
+  })
+
+  it('flags a delivery problem: picks the order, sends the note, and says the Delivery Manager takes it', async () => {
+    serve(business())
+    serveOrders([order({ id: 31, number: '#31' }), order()])
+    const sent = []
+    server.use(http.post(`${API}/api/portfolio/businesses/12/orders/:orderId/delivery-problem/`, async ({ request, params }) => {
+      sent.push({ order: params.orderId, body: await request.json() })
+      return HttpResponse.json({ flagged: true, already: false, told: 2 }, { status: 201 })
+    }))
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Flag a delivery problem' }))
+    const form = await screen.findByRole('form', { name: 'Flag a delivery problem' })
+    await waitFor(() => expect(within(form).getByRole('combobox')).toHaveValue('31'))
+    fireEvent.change(within(form).getByLabelText('What went wrong'), { target: { value: 'Rider never reached the shop' } })
+    expect(within(form).getByText('The Delivery Manager is told and takes it from here.')).toBeInTheDocument()
+    fireEvent.click(within(form).getByRole('button', { name: 'Tell the Delivery Manager' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('The Delivery Manager is told and takes it from here.')
+    expect(sent).toEqual([{ order: '31', body: { note: 'Rider never reached the shop' } }])
+    expect(screen.queryByRole('form', { name: 'Flag a delivery problem' })).not.toBeInTheDocument()
+  })
+
+  it('needs a note, and shows the server reason when it is refused', async () => {
+    serve(business())
+    serveOrders([order()])
+    server.use(http.post(`${API}/api/portfolio/businesses/12/orders/27/delivery-problem/`, () => HttpResponse.json({ detail: 'No Delivery Manager is on duty to take this. Tell Operations.' }, { status: 409 })))
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Flag a delivery problem' }))
+    const form = await screen.findByRole('form', { name: 'Flag a delivery problem' })
+    await waitFor(() => expect(within(form).getByRole('combobox')).toHaveValue('27'))
+    fireEvent.click(within(form).getByRole('button', { name: 'Tell the Delivery Manager' }))
+    expect(await within(form).findByRole('alert')).toHaveTextContent('Say what went wrong')
+    fireEvent.change(within(form).getByLabelText('What went wrong'), { target: { value: 'Late' } })
+    fireEvent.click(within(form).getByRole('button', { name: 'Tell the Delivery Manager' }))
+    expect(await within(form).findByRole('alert')).toHaveTextContent('No Delivery Manager is on duty')
+  })
+
+  it('tells a second report it was already reported', async () => {
+    serve(business())
+    serveOrders([order()])
+    server.use(http.post(`${API}/api/portfolio/businesses/12/orders/27/delivery-problem/`, () => HttpResponse.json({ flagged: true, already: true, told: 0 })))
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Flag a delivery problem' }))
+    const form = await screen.findByRole('form', { name: 'Flag a delivery problem' })
+    await waitFor(() => expect(within(form).getByRole('combobox')).toHaveValue('27'))
+    fireEvent.change(within(form).getByLabelText('What went wrong'), { target: { value: 'Late again' } })
+    fireEvent.click(within(form).getByRole('button', { name: 'Tell the Delivery Manager' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('already reported')
+  })
+
+  it('shows an already-reported order as reported', async () => {
+    serve(business())
+    serveOrders([order({ problem_flagged: true })])
+    renderPage()
+    expect(await screen.findByText('Reported to the Delivery Manager')).toBeInTheDocument()
+  })
+
+  it('offers no flag to Operations, who do not manage the business', async () => {
+    serve(business({ can_manage: false }))
+    serveOrders([order()])
+    renderPage({ auth: OPS })
+    expect(await screen.findByText('#27')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Flag a delivery problem' })).not.toBeInTheDocument()
+  })
+
+  describe('for a scout with a lead', () => {
+    const LEAD_SCOUT = { ...SCOUT, user: { ...SCOUT.user, manager: { id: 2, full_name: 'Ama Boateng', role: 'operations' } } }
+
+    it('masks the phones as 024 *** 118 and keeps the full number in the tel: link', async () => {
+      serve()
+      renderPage({ auth: LEAD_SCOUT })
+      const links = await screen.findAllByRole('link', { name: 'Call 024 *** 118' })
+      expect(links[0]).toHaveAttribute('href', 'tel:+233244000118')
+      expect(screen.queryByText('+233244000118')).not.toBeInTheDocument()
+    })
+
+    it('shows operations the full phone', async () => {
+      serve()
+      renderPage({ auth: OPS })
+      expect(await screen.findAllByText('+233244000118')).not.toHaveLength(0)
+    })
+
+    it('names the lead and the time they have', async () => {
+      const due = new Date(Date.now() + 3 * 3600 * 1000).toISOString()
+      serve(business({ pending_requests: [{ id: 3, kind: 'business.update', title: 'Phone, opening hours and map pin', created_at: new Date(Date.now() - 2 * 3600 * 1000).toISOString(), due_at: due, waiting_for: 'Ama Boateng' }] }))
+      renderPage({ auth: LEAD_SCOUT })
+      expect(await screen.findByRole('heading', { name: 'Waiting for Ama Boateng' })).toBeInTheDocument()
+      expect(screen.getByText(/Sent 2 h ago · Ama has until \d{2}:\d{2}, then any Operations lead · Adwoa can undo it for 7 days once applied/)).toBeInTheDocument()
+    })
+
+    it('does not promise an undo for a KYC request', async () => {
+      const due = new Date(Date.now() + 3 * 3600 * 1000).toISOString()
+      serve(business({ pending_requests: [{ id: 4, kind: 'business.kyc', title: 'New business', created_at: new Date(Date.now() - 2 * 3600 * 1000).toISOString(), due_at: due, waiting_for: 'Ama Boateng' }] }))
+      renderPage({ auth: LEAD_SCOUT })
+      expect(await screen.findByText(/Sent 2 h ago · Ama has until \d{2}:\d{2}, then any Operations lead$/)).toBeInTheDocument()
+    })
+
+    it('shows the listings as a strip of four, then +N and See all', async () => {
+      const listings = [1, 2, 3, 4, 5, 6].map((n) => ({ id: n, name: `Item ${n}`, status: 'published', main_photo: null, photos_count: 1, price_amount: '10.00' }))
+      serve(business({ listings, listings_live: 6 }))
+      renderPage({ auth: LEAD_SCOUT })
+      expect(await screen.findByText('Item 4')).toBeInTheDocument()
+      expect(screen.queryByText('Item 5')).not.toBeInTheDocument()
+      expect(screen.getByText('+2')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'See all' }))
+      expect(screen.getByText('Item 6')).toBeInTheDocument()
+    })
   })
 })

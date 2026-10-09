@@ -190,6 +190,13 @@ def _finalize_subscription(session):
     if not plan_tier or not cycle_months or not session.business_owner_id:
         return
     plan = SubscriptionPlan.objects.filter(tier=plan_tier, status=SubscriptionPlan.ACTIVE_STATUS).first()
+    try:
+        valid_cycle = int(cycle_months) in dict(Subscription.CYCLE_CHOICES)
+    except (TypeError, ValueError):
+        valid_cycle = False
+    # Only months the server priced count towards commission (spec S8): the tier
+    # resolved to an ACTIVE plan and the cycle is one we sell. Never the client's word.
+    counted = plan is not None and valid_cycle
     if plan is None:
         # The tier has no ACTIVE plan right now (e.g. an edit is waiting for
         # approval). The owner paid, so they must never stay overdue or
@@ -204,6 +211,13 @@ def _finalize_subscription(session):
         logger.warning(
             "Subscription payment %s for business owner %s: no active %r plan, renewed on its current plan %r",
             session.reference, session.business_owner_id, plan_tier, current.plan.tier,
+        )
+        # The fallback renewal counts only for the plan's own tier (an edit waiting
+        # for approval), never for an unknown tier, and only with a valid cycle.
+        # Only a session the server priced off that plan counts (see the view).
+        counted = (
+            valid_cycle and current.plan.tier == plan_tier
+            and session.amount == current.plan.monthly_price * int(cycle_months)
         )
         plan = current.plan
 
@@ -220,6 +234,16 @@ def _finalize_subscription(session):
                 "current_period_start": now,
                 "current_period_end": now + period_length,
             },
+        )
+        if counted:
+            session.metadata = {**session.metadata, "paid_months": int(cycle_months)}
+            session.save(update_fields=["metadata", "updated_at"])
+        # The bonus for the 3rd paid month goes to whoever manages the business now (spec S8).
+        from accounts.models import BusinessOwner
+        from commission import services as commission
+
+        commission.accrue_bonus(
+            BusinessOwner.objects.select_related("account_manager").get(pk=session.business_owner_id), session, now=now,
         )
         # Records subscription.resumed last when it stopped a running clock.
         clock.clear_after_payment(subscription, now=now)

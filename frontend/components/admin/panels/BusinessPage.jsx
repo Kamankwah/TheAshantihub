@@ -1,19 +1,21 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiPost } from "../../../apiClient.js";
-import { useCallPurposes } from "../../../hooks/useCallPurposes.js";
 import { usePortfolioBusiness } from "../../../hooks/usePortfolio.js";
+import { maskPhone } from "../../../lib/maskPhone.js";
 import { describeWait, timeAgo } from "../../../lib/timeAgo.js";
 import { D } from "../theme.js";
-import { button, callout, chip, dim, field } from "./panelStyles.js";
+import { button, callout, chip, dim } from "./panelStyles.js";
 import AddListingForm from "./AddListingForm.jsx";
 import AddPhotosForm from "./AddPhotosForm.jsx";
 import KycResendForm from "./KycResendForm.jsx";
+import LogCallSheet from "./LogCallSheet.jsx";
+import OrdersSection, { FlagForm } from "./OrdersSection.jsx";
 import OwnerHandover from "./OwnerHandover.jsx";
 import ProposeChangeForm from "./ProposeChangeForm.jsx";
 import {
   FollowUpForm, HealthChip, ReassignForm, card, errorStyle, errorText, firstName, formatDateTime, formatDay,
-  h2, h3, labelStyle, money, subscriptionText,
+  h2, h3, money, subscriptionText,
 } from "./portfolioParts.jsx";
 
 const KYC = { verified: ["KYC verified", D.green], pending: ["KYC waiting", D.blue], rejected: ["KYC rejected", D.red] };
@@ -22,14 +24,14 @@ const REQUEST_KIND = {
   "listing.create": "New product or service", "listing.photos": "Listing photos",
 };
 const LISTING_STATUS = { published: ["Live", D.green], pending_review: ["Waiting for review", D.amber], draft: ["Draft", D.textFaint], rejected: ["Rejected", D.red] };
-const OUTCOMES = [["connected", "Connected"], ["no_answer", "No answer"], ["busy", "Busy"], ["voicemail", "Voicemail"], ["wrong_number", "Wrong number"], ["promised_to_pay", "Promised to pay"], ["callback_requested", "Callback requested"]];
+const STRIP = 4;
 const words = (code) => String(code || "").replace(/_/g, " ");
 const row = { padding: "8px 0", borderTop: `1px solid ${D.divider}`, fontSize: "0.8rem", color: D.text };
 const figures = { fontVariantNumeric: "tabular-nums" }; // DESIGN.md: numbers line up
 
 // One business, for its account manager (scout) or Operations. Sub-screens
 // (propose a change, add a product, add photos) are local views, not URLs.
-export default function BusinessPage({ businessId, auth, onBack }) {
+export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
   const { data: b, isLoading, isError, error, refetch } = usePortfolioBusiness(businessId);
   const queryClient = useQueryClient();
   const [view, setView] = useState(null); // null | "propose" | "add" | "photos"
@@ -41,6 +43,10 @@ export default function BusinessPage({ businessId, auth, onBack }) {
   const [kycSent, setKycSent] = useState(null); // the "Sent to …" line once a KYC request went; hides the form for good
 
   const isOps = Boolean(auth?.hasPermission?.("portfolio.manage"));
+  const isScout = auth?.user?.role === "scout";
+  // The scout's own lead, named wherever the approver is meant (canvas 03, 04, 05).
+  const leadName = isScout ? auth?.user?.manager?.full_name : undefined;
+  const [allListings, setAllListings] = useState(false);
   const canCall = Boolean(auth?.hasPermission?.("calls.log"));
   const refreshAll = () => {
     refetch();
@@ -61,9 +67,9 @@ export default function BusinessPage({ businessId, auth, onBack }) {
   if (isError || !b) return <div style={card}>{back}<div style={errorStyle}>This business doesn't exist, or isn't one you can see.</div></div>;
 
   const backToPage = () => setView(null);
-  if (view === "propose") return <ProposeChangeForm businessId={b.id} onBack={backToPage} onSent={refreshAll} />;
-  if (view === "add") return <AddListingForm businessId={b.id} onBack={backToPage} onSent={refreshAll} />;
-  if (view === "photos") return <AddPhotosForm businessId={b.id} onBack={backToPage} onSent={refreshAll} />;
+  if (view === "propose") return <ProposeChangeForm businessId={b.id} onBack={backToPage} onSent={refreshAll} leadName={leadName} maskPhones={isScout} />;
+  if (view === "add") return <AddListingForm businessId={b.id} onBack={backToPage} onSent={refreshAll} leadName={leadName} />;
+  if (view === "photos") return <AddPhotosForm businessId={b.id} onBack={backToPage} onSent={refreshAll} leadName={leadName} />;
 
   const owner = firstName(b.owner_name);
   const verified = b.kyc_status === "verified";
@@ -80,6 +86,20 @@ export default function BusinessPage({ businessId, auth, onBack }) {
   const canResendKyc = b.can_manage && b.registration_channel === "scout" && b.kyc_status === "pending" && !kycWaiting && !kycSent;
   const [kycLabel, kycColor] = KYC[b.kyc_status] || [b.kyc_status, D.textFaint];
   const reasons = b.health?.reasons || [];
+  // Calls and visits in one list, newest first.
+  const contacts = [
+    ...(b.recent_calls || []).map((c) => ({
+      key: `call-${c.id}`, at: c.started_at, kind: c.direction === "in" ? "Call in" : "Call out",
+      what: `${words(c.purpose)} · ${words(c.outcome)}${c.staff_name ? ` · ${c.staff_name}` : ""}`,
+      when: formatDateTime(c.started_at),
+    })),
+    ...(b.recent_visits || []).map((v) => ({
+      key: `visit-${v.id}`, at: v.checked_in_at, kind: "Visit",
+      what: `${v.purpose_label}${v.status === "open" ? " · in progress" : v.minutes != null ? ` · ${v.minutes} min` : ""}${v.staff_name ? ` · ${v.staff_name}` : ""}`,
+      when: formatDateTime(v.checked_in_at),
+      flag: v.outside_radius ? `Outside the 100 m radius · ${v.distance_m} m` : null,
+    })),
+  ].sort((x, y) => new Date(y.at) - new Date(x.at));
   const toggle = (name) => { setNotice(null); setActionError(null); setPanel((p) => (p === name ? null : name)); };
 
   const sendClaimLink = async () => {
@@ -100,8 +120,12 @@ export default function BusinessPage({ businessId, auth, onBack }) {
     ? `${Number(b.lat).toFixed(5)}, ${Number(b.lng).toFixed(5)}${b.location_accuracy_m != null ? ` · ±${b.location_accuracy_m} m` : ""}${b.location_is_manual ? " · placed by hand" : ""}`
     : "No map pin yet";
   const registered = `${formatDay(b.created_at)}${b.registered_by ? ` by ${b.registered_by.full_name}` : b.registration_channel === "self" ? " online by the owner" : ""}`;
+  // Scouts see a phone as "024 *** 118"; the tel: link keeps the number so they can still call.
+  const phoneCell = (value) => (isScout && value
+    ? <a href={`tel:${value}`} aria-label={`Call ${maskPhone(value)}`} style={{ color: D.text }}>{maskPhone(value)}</a>
+    : value);
   const details = [
-    ["Sign-in phone", b.login_phone], ["Business phone", b.business_contact_phone], ["Email", b.email || "Not given"],
+    ["Sign-in phone", phoneCell(b.login_phone)], ["Business phone", phoneCell(b.business_contact_phone)], ["Email", b.email || "Not given"],
     ["Kind", b.business_kind === "service" ? "Service" : "Product"], ["Category", b.business_category?.name],
     ["Area", b.zone?.name], ["Ghana Post address", b.gps_address], ["Map pin", pin], ["Opening hours", b.opening_hours],
     ["Description", b.business_description], ["Registered", registered], ["Account manager", b.account_manager?.full_name || "None"],
@@ -140,10 +164,12 @@ export default function BusinessPage({ businessId, auth, onBack }) {
         {notice && <div role="status" style={callout(D.green)}>{notice}</div>}
         {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {canCall && actionButton("Log a call", () => toggle("call"), { primary: true })}
+          {b.can_manage && onCheckIn && actionButton("📍 Check in", () => onCheckIn(b.id), { primary: true })}
+          {canCall && actionButton("Log a call", () => toggle("call"), { primary: !(b.can_manage && onCheckIn) })}
           {b.can_manage && actionButton("Propose a change", () => setView("propose"))}
           {b.can_manage && actionButton("Add a product", () => setView("add"), { disabled: !canAddProduct })}
           {b.can_manage && actionButton("Add photos", () => setView("photos"))}
+          {b.can_manage && actionButton("Flag a delivery problem", () => toggle("delivery"))}
           {canResendKyc && actionButton("Send KYC again", () => toggle("kyc"))}
           {b.needs_claim && canHandOver && actionButton(`Hand the phone to ${owner}`, () => setHandover(true))}
           {b.needs_claim && canHandOver && actionButton("Send claim link", sendClaimLink, { disabled: busy })}
@@ -161,12 +187,14 @@ export default function BusinessPage({ businessId, auth, onBack }) {
         )}
         {!b.needs_claim && <div style={dim}>{`Claim link not needed — ${owner} set their own login${b.claimed_at ? ` on ${formatDay(b.claimed_at)}` : ""}.`}</div>}
         {panel === "call" && (
-          <CallForm business={b} onCancel={() => setPanel(null)} onSaved={() => {
+          <LogCallSheet preset={{ type: "business_owner", id: b.id, label: b.business_name, ownerName: b.owner_name }} onClose={() => setPanel(null)} onSaved={() => {
             setPanel(null);
             setNotice("Call saved.");
             refreshAll();
-            queryClient.invalidateQueries({ queryKey: ["call-logs"] });
           }} />
+        )}
+        {panel === "delivery" && b.can_manage && (
+          <FlagForm businessId={b.id} onCancel={() => setPanel(null)} onDone={(message) => { setPanel(null); setNotice(message); }} />
         )}
         {panel === "reassign" && (
           <ReassignForm businesses={[{ id: b.id, business_name: b.business_name }]} auth={auth} onCancel={() => setPanel(null)}
@@ -186,17 +214,17 @@ export default function BusinessPage({ businessId, auth, onBack }) {
 
       {(b.pending_requests || []).length > 0 && (
         <section aria-label="Waiting for approval" style={card}>
-          <h3 style={h3}>Waiting for approval</h3>
+          <h3 style={h3}>{leadName ? `Waiting for ${leadName}` : "Waiting for approval"}</h3>
           {b.pending_requests.map((r) => (
             <div key={r.id} style={row}>
               <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                 <span style={chip(D.gold)}>{REQUEST_KIND[r.kind] || r.kind}</span>
                 <span style={{ fontWeight: 700 }}>{r.title}</span>
               </div>
-              <div style={dim}>{`Sent ${timeAgo(r.created_at)} ago · waiting for ${r.waiting_for || "Operations"} · ${describeWait(r.due_at)}`}</div>
+              <div style={dim}>{waitLine(r, leadName, owner)}</div>
             </div>
           ))}
-          <div style={dim}>{`${owner} can undo a scout's change for 7 days once it's applied.`}</div>
+          {!leadName && <div style={dim}>{`${owner} can undo a scout's change for 7 days once it's applied.`}</div>}
         </section>
       )}
 
@@ -214,8 +242,40 @@ export default function BusinessPage({ businessId, auth, onBack }) {
       </section>
 
       <section aria-label="Listings and photos" style={card}>
-        <h3 style={h3}>{`Listings & photos · ${b.listings_live ?? 0} live`}</h3>
-        {(b.listings || []).length === 0 ? <div style={dim}>No listings yet.</div> : b.listings.map((l) => {
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+          <h3 style={h3}>{`Listings & photos · ${b.listings_live ?? 0} live`}</h3>
+          {(b.listings || []).length > STRIP && (
+            <button type="button" onClick={() => setAllListings((v) => !v)}
+              style={{ background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.8rem", fontWeight: 700, color: D.deepGold }}>
+              {allListings ? "Show fewer" : "See all"}
+            </button>
+          )}
+        </div>
+        {(b.listings || []).length === 0 ? <div style={dim}>No listings yet.</div> : null}
+        {(b.listings || []).length > 0 && !allListings && (
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+            {b.listings.slice(0, STRIP).map((l) => {
+              const [statusLabel, statusColor] = LISTING_STATUS[l.status] || [l.status, D.textFaint];
+              return (
+                <div key={l.id} style={{ width: 72, display: "flex", flexDirection: "column", gap: 3, fontSize: "0.68rem", color: D.text }}>
+                  {l.main_photo
+                    ? <img src={l.main_photo} alt={l.name} style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8 }} />
+                    : <div style={{ width: 72, height: 72, borderRadius: 8, background: D.panelBg2 }} />}
+                  <span style={{ fontWeight: 700, overflowWrap: "anywhere" }}>{l.name}</span>
+                  {l.price_amount != null && <span style={figures}>{money(l.price_amount)}</span>}
+                  <span style={chip(statusColor)}>{statusLabel}</span>
+                </div>
+              );
+            })}
+            {b.listings.length > STRIP && (
+              <div style={{ width: 72, height: 72, borderRadius: 8, background: D.panelBg2, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: D.text, ...figures }}>
+                {`+${b.listings.length - STRIP}`}
+              </div>
+            )}
+          </div>
+        )}
+        {(b.listings || []).length > 0 && allListings && b.listings.map((l) => {
+
           const [statusLabel, statusColor] = LISTING_STATUS[l.status] || [l.status, D.textFaint];
           return (
             <div key={l.id} style={{ ...row, display: "flex", gap: 10, alignItems: "center" }}>
@@ -232,11 +292,17 @@ export default function BusinessPage({ businessId, auth, onBack }) {
         })}
       </section>
 
-      <section aria-label="Recent calls" style={card}>
-        <h3 style={h3}>Recent calls</h3>
-        {(b.recent_calls || []).length === 0 ? <div style={dim}>No calls logged yet.</div> : b.recent_calls.map((c) => (
-          <div key={c.id} style={row}>
-            {`${c.direction === "in" ? "Call in" : "Call out"} · ${words(c.purpose)} · ${words(c.outcome)} — ${formatDateTime(c.started_at)}${c.staff_name ? ` · ${c.staff_name}` : ""}`}
+      <OrdersSection businessId={b.id} canFlag={b.can_manage} />
+
+      <section aria-label="Recent calls and visits" style={card}>
+        <h3 style={h3}>Recent calls &amp; visits</h3>
+        {contacts.length === 0 ? <div style={dim}>No calls or visits logged yet.</div> : contacts.map((c) => (
+          <div key={c.key} style={row}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+              <span><span style={{ fontWeight: 800 }}>{c.kind}</span>{` · ${c.what}`}</span>
+              <span style={{ ...dim, whiteSpace: "nowrap" }}>{c.when}</span>
+            </div>
+            {c.flag && <div style={{ ...dim, color: D.text }}>{`🚩 ${c.flag}`}</div>}
           </div>
         ))}
       </section>
@@ -258,6 +324,20 @@ export default function BusinessPage({ businessId, auth, onBack }) {
       )}
     </div>
   );
+}
+
+const clock = (iso) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+
+// "Sent 2 h ago · Ama has until 15:20, then any Operations lead · Adwoa can undo it for 7 days once applied"
+function waitLine(r, leadName, owner) {
+  if (!leadName) return `Sent ${timeAgo(r.created_at)} ago · waiting for ${r.waiting_for || "Operations"} · ${describeWait(r.due_at)}`;
+  const who = firstName(r.waiting_for || leadName);
+  const sent = `Sent ${timeAgo(r.created_at)} ago`;
+  const due = r.due_at ? new Date(r.due_at).getTime() : NaN;
+  const clause = Number.isNaN(due) ? `${who} decides first` : due > Date.now() ? `${who} has until ${clock(r.due_at)}, then any Operations lead` : `${who}'s time has passed, so any Operations lead can decide`;
+  // A KYC decision is not a change an owner can undo.
+  if (r.kind === "business.kyc") return `${sent} · ${clause}`;
+  return `${sent} · ${clause} · ${owner} can undo it for 7 days once applied`;
 }
 
 // With the pause switched off (pause_enabled false) an overdue business is
@@ -283,65 +363,5 @@ function SubscriptionStrip({ sub, kycStatus, owner }) {
       )}
       {note && <div>{note}</div>}
     </div>
-  );
-}
-
-// An inline call log for this business (POST /api/calls/). The business owner
-// is both the counterpart and the related record, so the call counts as
-// contact in the business's health.
-function CallForm({ business, onSaved, onCancel }) {
-  const { data: purposes } = useCallPurposes();
-  const [form, setForm] = useState({ direction: "out", purpose: "other", outcome: "connected", duration_minutes: "", notes: "", follow_up_at: "" });
-  const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState(null);
-  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
-
-  const save = async (e) => {
-    e.preventDefault();
-    setActionError(null);
-    if (form.follow_up_at && new Date(form.follow_up_at) <= new Date()) { setActionError("Pick a follow-up time in the future."); return; }
-    const minutes = Number(form.duration_minutes || 0);
-    setBusy(true);
-    try {
-      await apiPost("/api/calls/", {
-        direction: form.direction, channel: "phone",
-        counterpart_type: "business_owner", counterpart_id: business.id,
-        counterpart_name: business.owner_name || "", counterpart_phone: business.login_phone || "",
-        related_type: "business_owner", related_id: String(business.id), related_label: business.business_name || "",
-        purpose: form.purpose, outcome: form.outcome, sentiment: "", notes: form.notes,
-        started_at: new Date(Date.now() - minutes * 60000).toISOString(),
-        duration_seconds: Math.round(minutes * 60),
-        ...(form.follow_up_at ? { follow_up_at: new Date(form.follow_up_at).toISOString() } : {}),
-      });
-      onSaved();
-    } catch (err) {
-      setActionError(errorText(err, "Could not save the call. Try again."));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <form onSubmit={save} noValidate style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(170px, 100%), 1fr))", gap: 10, padding: 12, background: D.panelBg2, borderRadius: 12 }}>
-      <label style={labelStyle}>Direction
-        <select value={form.direction} onChange={set("direction")} style={field}><option value="out">Outbound</option><option value="in">Inbound</option></select>
-      </label>
-      <label style={labelStyle}>Purpose
-        <select value={form.purpose} onChange={set("purpose")} style={field}>
-          {(purposes || [{ value: "other", label: "Other" }]).map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-        </select>
-      </label>
-      <label style={labelStyle}>Outcome
-        <select value={form.outcome} onChange={set("outcome")} style={field}>{OUTCOMES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-      </label>
-      <label style={labelStyle}>Minutes<input type="number" min="0" step="1" value={form.duration_minutes} onChange={set("duration_minutes")} style={field} /></label>
-      <label style={labelStyle}>Follow up on<input type="datetime-local" value={form.follow_up_at} onChange={set("follow_up_at")} style={field} /></label>
-      <label style={{ ...labelStyle, gridColumn: "1 / -1" }}>Notes<textarea value={form.notes} onChange={set("notes")} rows={2} style={field} /></label>
-      {actionError && <div role="alert" style={{ ...errorStyle, gridColumn: "1 / -1" }}>{actionError}</div>}
-      <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8, justifyContent: "flex-end" }}>
-        <button type="button" onClick={onCancel} style={button(D.panelBg, D.text)}>Cancel</button>
-        <button type="submit" disabled={busy} style={button(D.gold, D.text, busy)}>Save call</button>
-      </div>
-    </form>
   );
 }

@@ -1,10 +1,10 @@
 import { D } from "../theme.js";
 
-// The grouped staff nav (Overview pinned first, then permission-filtered
+// The grouped staff nav (Overview — "Today" for a scout — pinned first, then permission-filtered
 // groups). Shared by the desktop sidebar, the tablet icon rail (collapsed),
 // and the phone/tablet drawer — markup/text is the pre-extraction sidebar's,
 // unchanged, because StaffDashboard.test.jsx asserts on these labels.
-export default function StaffNavList({ navGroups, activeTab, onSelect, collapsed, badgeFor, roleColor, itemMinHeight }) {
+export default function StaffNavList({ navGroups, activeTab, onSelect, collapsed, badgeFor, roleColor, itemMinHeight, overviewLabel = "Overview", noteFor }) {
   const itemStyle = (active) => ({
     display: "flex", alignItems: "center", gap: 10, width: "100%", minHeight: itemMinHeight,
     background: active ? `${roleColor}22` : "none",
@@ -16,8 +16,8 @@ export default function StaffNavList({ navGroups, activeTab, onSelect, collapsed
     <nav aria-label="Staff panels">
       {/* Overview — pinned, ungrouped, no permission gate */}
       <button type="button" onClick={() => onSelect("overview")} aria-current={activeTab === "overview" ? "page" : undefined}
-        aria-label={collapsed ? "Overview" : undefined} title={collapsed ? "Overview" : undefined} style={itemStyle(activeTab === "overview")}>
-        <span>📊</span>{!collapsed && <span>Overview</span>}
+        aria-label={collapsed ? overviewLabel : undefined} title={collapsed ? overviewLabel : undefined} style={itemStyle(activeTab === "overview")}>
+        <span>📊</span>{!collapsed && <span>{overviewLabel}</span>}
       </button>
 
       {navGroups.map(group => (
@@ -26,6 +26,7 @@ export default function StaffNavList({ navGroups, activeTab, onSelect, collapsed
           {group.items.map(item => {
             const badgeCount = badgeFor(item.id);
             const active = activeTab === item.id;
+            const note = noteFor?.(item.id);
             const collapsedName = badgeCount > 0 ? `${item.label}, ${badgeCount} pending` : item.label;
             return (
               <button key={item.id} type="button" onClick={() => onSelect(item.id)} aria-current={active ? "page" : undefined}
@@ -38,6 +39,9 @@ export default function StaffNavList({ navGroups, activeTab, onSelect, collapsed
                   )}
                 </span>
                 {!collapsed && <span style={{ flex: 1 }}>{item.label}</span>}
+                {!collapsed && note && badgeCount === 0 && (
+                  <span style={{ background: "#FBF3DC", color: "#6A4A00", borderRadius: 10, height: 18, fontSize: "0.62rem", fontWeight: 800, display: "flex", alignItems: "center", padding: "0 7px", flexShrink: 0 }}>{note}</span>
+                )}
                 {!collapsed && badgeCount > 0 && (
                   <span aria-label={`${badgeCount} pending`} style={{ background: D.red, color: "#fff", borderRadius: 10, minWidth: 18, height: 18, fontSize: "0.62rem", fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px", flexShrink: 0 }}>
                     {badgeCount > 99 ? "99+" : badgeCount}

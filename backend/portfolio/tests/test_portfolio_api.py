@@ -42,7 +42,7 @@ ITEM_KEYS = {
 DETAIL_KEYS = ITEM_KEYS | {
     "business_kind", "business_category", "gps_address", "lat", "lng", "location_accuracy_m",
     "location_is_manual", "location_set_by", "business_contact_phone", "business_description", "opening_hours",
-    "signboard_photo", "email", "registered_by", "created_at", "listings", "pending_requests", "recent_calls",
+    "signboard_photo", "email", "registered_by", "created_at", "listings", "pending_requests", "recent_calls", "recent_visits",
     "assignments", "open_flags", "can_manage",
 }
 
@@ -389,7 +389,10 @@ class BusinessReviewTests(PortfolioApiBase):
         sheet = response.json()
         self.assertEqual(
             set(sheet),
-            {"owner", "business", "photos", "location", "checks", "consent", "flags", "registered_by_name", "created_at"},
+            {
+                "owner", "business", "photos", "location", "checks", "consent", "flags", "registered_by_name", "created_at",
+                "address_correction",
+            },
         )
         self.assertEqual(sheet["owner"]["ghana_card_number"], "GHA-712345678-2")
         self.assertTrue(sheet["owner"]["needs_claim"])

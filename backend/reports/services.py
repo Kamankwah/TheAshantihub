@@ -218,11 +218,12 @@ def submit(report, *, now=None, http_request=None):
         if not locked.narrative_text():
             raise ReportError("Write at least one line before you submit.")
         locked.system_snapshot = providers.system_sections(locked.staff, locked.period_start, locked.period_end)
+        locked.snapshot_at = now
         if locked.submitted_at is None:  # lateness is decided by the first submission only
             locked.submitted_at = now
             locked.is_late = now > due_at(locked)
         locked.status = StaffReport.SUBMITTED
-        locked.save(update_fields=["system_snapshot", "submitted_at", "is_late", "status", "updated_at"])
+        locked.save(update_fields=["system_snapshot", "snapshot_at", "submitted_at", "is_late", "status", "updated_at"])
         manager = locked.staff.manager
         if manager is not None and manager.is_active:
             notify_staff(

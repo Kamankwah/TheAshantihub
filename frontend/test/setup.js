@@ -1,8 +1,13 @@
 import '@testing-library/jest-dom'
+import { configure } from '@testing-library/react'
 import { createElement } from 'react'
 import { afterAll, afterEach, beforeAll, vi } from 'vitest'
 import { server } from '../mocks/server.js'
 import { resetNetworkStatusForTests } from '../lib/networkStatus.js'
+
+// findBy*/waitFor poll up to 5 s (the default 1 s is too tight when the whole suite
+// runs in parallel); they still return the moment the element is there.
+configure({ asyncUtilTimeout: 5000 })
 
 // Leaflet needs a real browser (sized DOM, canvas) and doesn't render under
 // jsdom, so the two map components (item 11) are stubbed for every test. Their
@@ -13,11 +18,18 @@ vi.mock('../components/DeliveryRouteMap.jsx', () => ({
   default: () => createElement('div', { 'data-testid': 'route-map' }, 'route map'),
 }))
 vi.mock('../components/LocationPicker.jsx', () => ({
-  default: ({ onChange, onAddress }) =>
+  default: ({ onChange, onAddress, lat, lng }) =>
     createElement('button', {
       type: 'button',
+      'data-lat': lat ?? '',
+      'data-lng': lng ?? '',
       onClick: () => { onChange(6.7, -1.62); if (onAddress) onAddress('KNUST Ave, Kumasi'); },
     }, 'drop-pin'),
+}))
+
+// The scout's check-in map (Leaflet) is stubbed the same way.
+vi.mock('../components/admin/panels/VisitMap.jsx', () => ({
+  default: ({ label }) => createElement('div', { 'data-testid': 'visit-map', role: 'img', 'aria-label': label }, 'visit map'),
 }))
 
 // jsdom does not implement matchMedia; stub it so hooks like useTheme (which

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { NAV_ITEMS, buildNavGroups, isPermittedTab, makeBadgeFor, pickBottomBarItems } from '../navModel.js'
+import { NAV_ITEMS, buildNavGroups, isPermittedTab, makeBadgeFor, overviewLabel, pickBottomBarItems } from '../navModel.js'
 
 const groups = [
   { id: 'a', label: 'A', items: [
@@ -144,11 +144,19 @@ describe('Register a business (staff phase 2A)', () => {
     expect(NAV_ITEMS.find((i) => i.id === 'register-business')).toMatchObject({ icon: '➕', label: 'Register a business' })
   })
 
-  it('gives a scout Pipeline, My businesses, Calls, My work and Reports', () => {
+  it("shows a scout's tasks as Follow-ups under My businesses; other roles keep Tasks", () => {
+    const scout = buildNavGroups(authAs('scout', ['businesses.manage_portfolio', 'calls.log']))
+    expect(scout.flatMap((g) => g.items).find((i) => i.id === 'tasks').label).toBe('Follow-ups')
+    expect(groupOf(scout, 'tasks')).toBe('My businesses')
+    const ops = buildNavGroups(authAs('operations', ['portfolio.manage']))
+    expect(ops.flatMap((g) => g.items).find((i) => i.id === 'tasks').label).toBe('Tasks')
+  })
+
+  it('gives a scout Pipeline, Activity, Reports and Account', () => {
     const groups = buildNavGroups(authAs('scout', ['businesses.register', 'scouts.verify', 'calls.log']))
-    expect(groups.map((g) => g.label)).toEqual(['Pipeline', 'My businesses', 'Calls', 'My work', 'Reports'])
+    expect(groups.map((g) => g.label)).toEqual(['Pipeline', 'My businesses', 'Activity', 'Reports', 'Account'])
     expect(groupOf(groups, 'register-business')).toBe('Pipeline')
-    expect(groupOf(groups, 'field-verification')).toBe('My businesses')
+    expect(groupOf(groups, 'field-verification')).toBe('Activity')
   })
 
   it("puts it in Operations' Businesses group, right after People", () => {
@@ -167,9 +175,11 @@ describe('Register a business (staff phase 2A)', () => {
   })
 
   it('never names a group after an item, for any role', () => {
-    const itemLabels = new Set(NAV_ITEMS.map((i) => i.label))
     for (const role of ['super_admin', 'operations', 'accountant', 'marketing', 'support', 'scout', 'delivery_manager', 'dispatch', 'not-a-role']) {
-      for (const group of buildNavGroups({ user: { role }, hasPermission: () => true })) {
+      const built = buildNavGroups({ user: { role }, hasPermission: () => true })
+      // The labels this role actually reads (a scout's relabels included, plus the pinned Overview / Today).
+      const itemLabels = new Set([overviewLabel(role), ...built.flatMap((g) => g.items.map((i) => i.label))])
+      for (const group of built) {
         expect(itemLabels.has(group.label)).toBe(false)
       }
     }
@@ -184,8 +194,27 @@ describe('portfolio menus (staff phase 2A)', () => {
 
   it("puts a scout's Portfolio under My businesses, next to Field Verification", () => {
     const groups = buildNavGroups(authAs('scout', ['businesses.manage_portfolio', 'businesses.register', 'scouts.verify', 'calls.log']))
-    expect(groups.map((g) => g.label)).toEqual(['Pipeline', 'My businesses', 'Calls', 'My work', 'Reports'])
-    expect(idsIn(groups, 'My businesses')).toEqual(['portfolio', 'field-verification'])
+    expect(groups.map((g) => g.label)).toEqual(['Pipeline', 'My businesses', 'Activity', 'Performance', 'Reports', 'Account'])
+    expect(idsIn(groups, 'My businesses')).toEqual(['portfolio', 'tasks', 'approvals'])
+    expect(idsIn(groups, 'Activity')).toEqual(['calls', 'visits', 'field-verification'])
+  })
+
+  it('gives a scout Targets under Performance, and Operations none', () => {
+    const scout = buildNavGroups(authAs('scout', ['businesses.manage_portfolio', 'businesses.register']))
+    expect(idsIn(scout, 'Performance')).toEqual(['targets', 'leaderboard'])
+    expect(NAV_ITEMS.find((i) => i.id === 'targets')).toMatchObject({ icon: '🎯', label: 'Targets' })
+    expect(allIds(['portfolio.manage', 'businesses.register'])).not.toContain('targets')
+  })
+
+  it('gives a scout Commission and Leaderboard under Performance, and Accounting and Super Admin the policy panel', () => {
+    const scout = buildNavGroups(authAs('scout', ['businesses.manage_portfolio', 'businesses.register', 'commission.view_own']))
+    expect(idsIn(scout, 'Performance')).toEqual(['targets', 'commission', 'leaderboard'])
+    expect(NAV_ITEMS.find((i) => i.id === 'commission')).toMatchObject({ label: 'Commission' })
+    const accountant = buildNavGroups(authAs('accountant', ['commission.view_all', 'commission.policy', 'subscription_plans.manage']))
+    expect(groupOf(accountant, 'commission-policy')).toBe('Plans & pricing')
+    expect(groupOf(buildNavGroups({ user: { role: 'super_admin' }, hasPermission: () => true }), 'commission-policy')).toBe('Settings')
+    expect(allIds(['portfolio.manage', 'businesses.register'])).not.toContain('commission')
+    expect(allIds(['portfolio.manage', 'businesses.register'])).not.toContain('commission-policy')
   })
 
   it('gives Operations a Businesses group right after People', () => {
@@ -268,5 +297,69 @@ describe('Subscriptions due and Fraud cases (staff phase 2A)', () => {
     const badgeFor = makeBadgeFor({ kyc: 3, approvals_waiting: 2 })
     expect(badgeFor('subscriptions-due')).toBe(0)
     expect(badgeFor('fraud-cases')).toBe(0)
+  })
+})
+
+describe('Visits (staff WP1)', () => {
+  const authAs = (role, perms) => ({ user: { role }, hasPermission: (c) => perms.includes(c) })
+  const idsOf = (auth) => buildNavGroups(auth).flatMap((g) => g.items.map((i) => i.id))
+
+  it('is shown to a scout who manages a portfolio or verifies, and to no one else', () => {
+    expect(idsOf(authAs('scout', ['businesses.manage_portfolio']))).toContain('visits')
+    expect(idsOf(authAs('scout', ['scouts.verify']))).toContain('visits')
+    expect(idsOf(authAs('scout', ['calls.log']))).not.toContain('visits')
+    expect(idsOf(authAs('support', ['calls.log']))).not.toContain('visits')
+  })
+
+  it("sits beside Calls in a scout's menu", () => {
+    const groups = buildNavGroups(authAs('scout', ['businesses.manage_portfolio', 'scouts.verify', 'calls.log']))
+    expect(groups.find((g) => g.items.some((i) => i.id === 'visits')).items.map((i) => i.id)).toEqual(['calls', 'visits', 'field-verification'])
+    expect(NAV_ITEMS.find((i) => i.id === 'visits')).toMatchObject({ icon: '🧭', label: 'Visits' })
+  })
+})
+
+
+describe('Prospects menu item', () => {
+  const authAs = (role, perms) => ({ user: { role }, hasPermission: (c) => perms.includes(c) })
+  const idsOf = (auth) => buildNavGroups(auth).flatMap((g) => g.items.map((i) => i.id))
+  it('is scout-only: it needs both registering and managing a portfolio', () => {
+    expect(idsOf(authAs('scout', ['businesses.register', 'businesses.manage_portfolio']))).toContain('prospects')
+    expect(idsOf(authAs('scout', ['businesses.register']))).not.toContain('prospects')
+    expect(idsOf(authAs('operations', ['businesses.manage_portfolio']))).not.toContain('prospects')
+    expect(idsOf(authAs('scout', ['calls.log']))).not.toContain('prospects')
+  })
+  it('opens a scout\'s Pipeline, before Register a business', () => {
+    const pipeline = buildNavGroups(authAs('scout', ['businesses.register', 'businesses.manage_portfolio', 'calls.log'])).find((g) => g.id === 'pipeline')
+    expect(pipeline.items.map((i) => i.id)).toEqual(['prospects', 'register-business'])
+  })
+})
+
+describe("the scout's menu in the canvas's words (staff WP6)", () => {
+  const PERMS = ['businesses.register', 'businesses.manage_portfolio', 'scouts.verify', 'calls.log', 'commission.view_own']
+  const scout = () => buildNavGroups({ user: { role: 'scout' }, hasPermission: (c) => PERMS.includes(c) })
+  const labelsIn = (groups, label) => groups.find((g) => g.label === label)?.items.map((i) => i.label)
+
+  it('lays out the canvas groups with scout-only labels', () => {
+    const groups = scout()
+    expect(groups.map((g) => g.label)).toEqual(['Pipeline', 'My businesses', 'Activity', 'Performance', 'Reports', 'Account'])
+    expect(labelsIn(groups, 'Pipeline')).toEqual(['Prospects', 'Register a business'])
+    expect(labelsIn(groups, 'My businesses')).toEqual(['Portfolio', 'Follow-ups', 'Sent for approval'])
+    expect(labelsIn(groups, 'Activity')).toEqual(['Calls', 'Visits', 'Field Verification'])
+    expect(labelsIn(groups, 'Performance')).toEqual(['Targets', 'Commission', 'Leaderboard'])
+    expect(labelsIn(groups, 'Reports')).toEqual(['Day, week & month'])
+    expect(labelsIn(groups, 'Account')).toEqual(['Profile & sign out', 'My activity'])
+  })
+
+  it('calls the scout\'s Overview "Today" and everyone else\'s "Overview"', () => {
+    expect(overviewLabel('scout')).toBe('Today')
+    for (const role of ['super_admin', 'operations', 'accountant', 'marketing', 'support', 'delivery_manager', 'dispatch']) expect(overviewLabel(role)).toBe('Overview')
+  })
+
+  it('leaves the shared labels, and every other role\'s, as they were', () => {
+    const base = Object.fromEntries(NAV_ITEMS.map((i) => [i.id, i.label]))
+    expect(base).toMatchObject({ approvals: 'Approvals', calls: 'Call Log', reports: 'My Reports', security: 'Sign-in & Security', activity: 'Activity', tasks: 'Tasks' })
+    const ops = buildNavGroups({ user: { role: 'operations' }, hasPermission: () => true }).flatMap((g) => g.items)
+    expect(ops.find((i) => i.id === 'reports').label).toBe('My Reports')
+    expect(ops.find((i) => i.id === 'security').label).toBe('Sign-in & Security')
   })
 })

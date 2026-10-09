@@ -12,6 +12,7 @@ export const STATUS_META = {
   submitted: { label: "Submitted", color: D.blue },
   acknowledged: { label: "Acknowledged", color: D.green },
   returned: { label: "Returned", color: D.amber },
+  late: { label: "Late", color: D.amber },
 };
 const RESULT_TEXT = { done: "Done", partly: "Partly done", not_done: "Not done", "": "Not marked" };
 const humanise = (label) => String(label).replace(/[._-]+/g, " ").trim();
@@ -39,22 +40,53 @@ export function StatusChip({ status }) {
   return <span style={chip(meta.color)}>{meta.label}</span>;
 }
 
+export function LateChip() {
+  return <span style={chip(STATUS_META.late.color)}>{STATUS_META.late.label}</span>;
+}
+
+const clock = (iso) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+
+// A row with a target reads "done / target" with a bar; without one it is just the number.
+function Row({ row }) {
+  const hasTarget = row.target !== undefined && row.target !== null;
+  const ratio = hasTarget && row.target > 0 ? Math.min(1, Number(row.value) / row.target) : 0;
+  return (
+    <div style={{ color: D.text, fontSize: "0.75rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+        <span>{humanise(row.label)}</span>
+        <span style={{ fontWeight: 700 }}>{hasTarget ? `${row.value} / ${row.target}` : row.value}</span>
+      </div>
+      {hasTarget && row.target > 0 && (
+        <div role="progressbar" aria-label={`${humanise(row.label)}: ${row.value} of ${row.target}`} aria-valuemin={0} aria-valuemax={row.target} aria-valuenow={Math.min(Number(row.value), row.target)}
+          style={{ height: 6, borderRadius: 999, background: "#EADFC6", margin: "3px 0 5px", overflow: "hidden" }}>
+          <div style={{ width: `${ratio * 100}%`, height: "100%", background: ratio >= 1 ? D.green : D.gold }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // "From the system": numbers counted from AshantiHub's records, never typed.
-export function SystemSections({ sections, live }) {
+// `lockedAt` is when the snapshot was taken (the latest submission) once frozen.
+export function SystemSections({ sections: given, live, lockedAt, onlyTargets = false }) {
+  // The measures against their targets read first. A scout's report shows just
+  // that card (the four measures and the summary line) when it exists.
+  let sections = [...(given || [])].sort((a, b) => (b.key === "targets") - (a.key === "targets"));
+  if (onlyTargets && sections.some((s) => s.key === "targets")) sections = sections.filter((s) => s.key === "targets");
   return (
     <section aria-label="From the system" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ color: D.text, fontWeight: 800, fontSize: "0.85rem" }}>From the system</div>
-      <div style={dim}>{live ? "Counted live from AshantiHub's records and updated until you submit. You can't edit these." : "Frozen when the report was submitted."}</div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+        <span style={{ color: D.text, fontWeight: 800, fontSize: "0.85rem" }}>From the system</span>
+        {live !== undefined && <span style={dim}>{live ? "Counted live" : lockedAt ? `Locked · as of ${clock(lockedAt)}` : "Locked"}</span>}
+      </div>
+      <div style={dim}>{live ? "Counted from AshantiHub's records and updated until you submit. You can't edit these." : "Frozen when the report was submitted."}</div>
       {(sections || []).length === 0 && <div style={dim}>Nothing recorded for this period.</div>}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(200px,100%),1fr))", gap: 10, fontVariantNumeric: "tabular-nums" }}>
         {(sections || []).map((section) => (
           <div key={section.key} style={{ background: D.panelBg2, borderRadius: 12, padding: "10px 12px" }}>
             <div style={{ color: D.text, fontWeight: 700, fontSize: "0.78rem", marginBottom: 4 }}>{section.title}</div>
-            {section.rows.map((row) => (
-              <div key={row.label} style={{ display: "flex", justifyContent: "space-between", gap: 8, color: D.text, fontSize: "0.75rem" }}>
-                <span>{humanise(row.label)}</span><span style={{ fontWeight: 700 }}>{row.value}</span>
-              </div>
-            ))}
+            {section.rows.map((row) => <Row key={row.label} row={row} />)}
+            {section.summary && <div style={{ ...dim, color: D.text, marginTop: 6, lineHeight: 1.4 }}>{section.summary}</div>}
           </div>
         ))}
       </div>

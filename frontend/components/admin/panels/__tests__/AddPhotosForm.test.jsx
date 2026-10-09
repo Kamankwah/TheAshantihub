@@ -33,11 +33,11 @@ function stagePhotos(uploads) {
   }))
 }
 const shot = () => new File(['jpeg-bytes'], 'shot.jpg', { type: 'image/jpeg' })
-function renderForm() {
+function renderForm(props = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={queryClient}>
-      <AddPhotosForm businessId="12" onBack={() => {}} onSent={() => {}} />
+      <AddPhotosForm businessId="12" onBack={() => {}} onSent={() => {}} {...props} />
     </QueryClientProvider>,
   )
 }
@@ -116,5 +116,14 @@ describe('AddPhotosForm', () => {
     renderForm()
     fireEvent.change(await screen.findByLabelText(/Take photo/), { target: { files: [shot()] } })
     expect(await screen.findByRole('alert')).toHaveTextContent('Upload a valid image.')
+  })
+
+  it('names the lead who approves the photos', async () => {
+    serve()
+    renderForm({ leadName: 'Ama Boateng' })
+    await screen.findByLabelText('Which listing')
+    expect(screen.getByText('Goes to Ama Boateng for approval. The owner is told and can undo it for 7 days.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send photos to Ama Boateng' })).toBeInTheDocument()
+    expect(screen.getByLabelText(/Why these photos \(Ama sees this\)/)).toBeInTheDocument()
   })
 })

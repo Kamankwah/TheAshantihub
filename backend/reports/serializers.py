@@ -16,6 +16,7 @@ def report_payload(report, viewer, *, include_system=True, view_all=None):
         "period_end": report.period_end,
         "status": report.status,
         "submitted_at": report.submitted_at,
+        "snapshot_at": report.snapshot_at or (report.submitted_at if report.system_snapshot is not None else None),
         "is_late": report.is_late,
         "due_at": services.due_at(report),
         "achievements": report.achievements,

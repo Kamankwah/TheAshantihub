@@ -4,31 +4,51 @@ import { apiDownload, apiPost } from "../../../apiClient.js";
 import { useCurrentReport, useMyReports, useReportExports } from "../../../hooks/useReports.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D, glassCard } from "../theme.js";
-import { button, callout, chip, dim, field, pill } from "./panelStyles.js";
-import { ExportButtons, PERIODS, StatusChip, SystemSections, downloadErrorMessage, localISODate, refreshReportCaches } from "./reportParts.jsx";
+import { button, callout, dim, field, pill } from "./panelStyles.js";
+import { ExportButtons, LateChip, PERIODS, StatusChip, SystemSections, downloadErrorMessage, localISODate, refreshReportCaches } from "./reportParts.jsx";
 
 const labelStyle = { display: "flex", flexDirection: "column", gap: 4, fontSize: "0.75rem", fontWeight: 700, color: D.text };
 const PERIOD_TITLE = { day: "End of day report", week: "Week report", month: "Month report" };
 const range = (r) => (r.period_start === r.period_end ? r.period_start : `${r.period_start} to ${r.period_end}`);
-const lateChip = chip(D.amber);
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const longDay = (iso) => { const [y, m, d] = iso.split("-").map(Number); return `${WEEKDAYS[new Date(y, m - 1, d).getDay()]} ${d} ${MONTHS[m - 1]}`; };
+
+const hhmm = (iso) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+// The line under a history row: who acknowledged it, why it came back, or when it went in.
+function historySub(r) {
+  if (r.status === "acknowledged") return `Acknowledged by ${r.reviewer?.full_name || "your manager"}`;
+  if (r.status === "returned") return r.review_note ? `Returned: “${r.review_note}”` : "Returned";
+  if (r.status === "submitted" && r.submitted_at) return `Submitted ${hhmm(r.submitted_at)}`;
+  return "";
+}
 
 export default function ReportsPanel({ auth }) {
   const [period, setPeriod] = useState("day");
   const today = localISODate();
   const { data: report, isLoading, isError } = useCurrentReport(period, today);
   const { data: history } = useMyReports(period);
+  const isScout = auth?.user?.role === "scout";
+  // Scouts see the day report first; "Week & month" reveals the period switch.
+  const [more, setMore] = useState(false);
+  const showSwitch = !isScout || more || period !== "day";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ ...glassCard, padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <div style={{ color: D.text, fontWeight: 800, fontSize: "0.95rem" }}>My reports</div>
-          <div role="group" aria-label="Report period" style={{ display: "flex", gap: 6 }}>
-            {PERIODS.map(([id, label]) => <button key={id} type="button" aria-pressed={period === id} onClick={() => setPeriod(id)} style={pill(period === id)}>{label}</button>)}
-          </div>
+          {showSwitch ? (
+            <div role="group" aria-label="Report period" style={{ display: "flex", gap: 6 }}>
+              {PERIODS.map(([id, label]) => <button key={id} type="button" aria-pressed={period === id} onClick={() => setPeriod(id)} style={pill(period === id)}>{label}</button>)}
+            </div>
+          ) : (
+            <button type="button" onClick={() => setMore(true)}
+              style={{ background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.8rem", fontWeight: 700, color: D.deepGold }}>Week &amp; month</button>
+          )}
         </div>
         {isLoading && <div role="status" style={dim}>Loading…</div>}
         {isError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>Could not load your report.</div>}
-        {report && <ReportComposer key={`${period}:${report.period_start}`} report={report} period={period} />}
+        {report && <ReportComposer key={`${period}:${report.period_start}`} report={report} period={period} leadName={isScout ? auth?.user?.manager?.full_name : undefined} isScout={isScout} />}
       </div>
       <History rows={history?.results || []} />
       <RangeExport auth={auth} />
@@ -36,7 +56,7 @@ export default function ReportsPanel({ auth }) {
   );
 }
 
-function ReportComposer({ report, period }) {
+function ReportComposer({ report, period, leadName, isScout }) {
   const queryClient = useQueryClient();
   const [achievements, setAchievements] = useState(report.achievements);
   const [blockers, setBlockers] = useState(report.blockers);
@@ -46,7 +66,7 @@ function ReportComposer({ report, period }) {
   const [actionError, setActionError] = useState(null);
   const [busy, setBusy] = useState(false);
   const locked = !report.can_edit;
-  const due = new Date(report.due_at).toLocaleTimeString("en-GH", { hour: "2-digit", minute: "2-digit" });
+  const due = new Date(report.due_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
   const body = () => ({
     period, date: report.period_start, achievements, blockers,
@@ -93,20 +113,23 @@ function ReportComposer({ report, period }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <span style={{ color: D.text, fontWeight: 800 }}>{PERIOD_TITLE[report.period]} · {range(report)}</span>
+        <span style={{ color: D.text, fontWeight: 800 }}>{isScout && report.period === "day" ? PERIOD_TITLE.day : `${PERIOD_TITLE[report.period]} · ${range(report)}`}</span>
         <StatusChip status={report.status} />
-        {report.is_late && <span style={lateChip}>Late</span>}
-        {!locked && <span style={dim}>Due by {due}</span>}
+        {report.is_late && <LateChip />}
+        {!isScout && !locked && <span style={dim}>Due by {due}</span>}
       </div>
+      {isScout && report.period === "day" && (
+        <div style={dim}>{longDay(report.period_start)}{leadName ? ` · to ${leadName}` : ""} · due {due}</div>
+      )}
       {report.status === "returned" && report.review_note && (
         <div style={{ background: D.panelBg2, borderRadius: 10, padding: "8px 12px", fontSize: "0.8rem", color: D.text }}>
           Returned by {report.reviewer?.full_name || "your manager"}: “{report.review_note}”
         </div>
       )}
-      <SystemSections sections={report.system} live={report.system_is_live} />
+      <SystemSections sections={report.system} live={report.system_is_live} lockedAt={report.snapshot_at || report.submitted_at} onlyTargets={isScout} />
       {results.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <div style={{ color: D.text, fontWeight: 800, fontSize: "0.85rem" }}>Your last plan — how did it go?</div>
+          <div style={{ color: D.text, fontWeight: 800, fontSize: "0.85rem" }}>{isScout && report.period === "day" ? "Yesterday's plan" : "Your last plan — how did it go?"}</div>
           {results.map((row, index) => (
             <label key={row.item} style={{ ...labelStyle, flexDirection: "row", alignItems: "center", justifyContent: "space-between", fontWeight: 600 }}>
               <span>{row.item}</span>
@@ -122,7 +145,7 @@ function ReportComposer({ report, period }) {
       <label style={labelStyle}>What went well<textarea value={achievements} readOnly={locked} onChange={(e) => setAchievements(e.target.value)} rows={4} style={field} /></label>
       <label style={labelStyle}>What got in the way<textarea value={blockers} readOnly={locked} onChange={(e) => setBlockers(e.target.value)} rows={3} style={field} /></label>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <div style={labelStyle}>Plan for next {report.period}</div>
+        <div style={labelStyle}>{isScout && report.period === "day" ? "Plan for tomorrow" : `Plan for next ${report.period}`}</div>
         {plan.map((line, index) => (
           <input key={index} aria-label={`Plan line ${index + 1}`} value={line} readOnly={locked}
             onChange={(e) => setPlan(plan.map((l, i) => (i === index ? e.target.value : l)))} style={field} maxLength={300} />
@@ -138,7 +161,7 @@ function ReportComposer({ report, period }) {
       {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>{actionError}</div>}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         {!locked && <button type="button" disabled={busy} onClick={save} style={button(D.panelBg, D.text, busy)}>Save draft</button>}
-        {!locked && <button type="button" disabled={busy} onClick={submit} style={button(D.gold, D.text, busy)}>Submit</button>}
+        {!locked && <button type="button" disabled={busy} onClick={submit} style={button(D.gold, D.text, busy)}>{leadName ? `Submit to ${leadName}` : "Submit"}</button>}
         {report.id && <ExportButtons path={`/api/reports/${report.id}/export/`} stem={`report-${report.period}-${report.period_start}`} onError={setActionError} />}
       </div>
     </div>
@@ -154,13 +177,15 @@ function History({ rows }) {
       {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>{actionError}</div>}
       {rows.map((r) => (
         <div key={r.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", padding: "8px 0", borderTop: `1px solid ${D.divider}`, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <span style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>{range(r)}</span>
-            <StatusChip status={r.status} />
-            {r.is_late && <span style={lateChip}>Late</span>}
-            {r.review_note && <span style={dim}>“{r.review_note}”</span>}
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <span style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>{r.period === "day" ? longDay(r.period_start) : range(r)}</span>
+            {historySub(r) && <span style={dim}>{historySub(r)}</span>}
           </div>
-          <ExportButtons path={`/api/reports/${r.id}/export/`} stem={`report-${r.period}-${r.period_start}`} onError={setActionError} />
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <StatusChip status={r.status} />
+            {r.is_late && <LateChip />}
+            <ExportButtons path={`/api/reports/${r.id}/export/`} stem={`report-${r.period}-${r.period_start}`} onError={setActionError} />
+          </div>
         </div>
       ))}
     </div>

@@ -109,6 +109,19 @@ class StaffBadgesView(APIView):
 
         held = user.effective_permission_codenames()
 
+        # Today's day report, while it is not yet submitted: the moment it is due.
+        from reports import services as report_services
+        from reports.models import StaffReport
+
+        today = timezone.localdate()
+        todays = StaffReport.objects.filter(staff=user, period=StaffReport.DAY, period_start=today).first()
+        if todays is not None and todays.status in (StaffReport.SUBMITTED, StaffReport.ACKNOWLEDGED):
+            report_due_at = None
+        else:
+            report_due_at = report_services.due_at(
+                todays or StaffReport(staff=user, period=StaffReport.DAY, period_start=today, period_end=today)
+            ).isoformat()
+
         def count(codename, queryset):
             return queryset.count() if codename in held else 0
 
@@ -162,5 +175,6 @@ class StaffBadgesView(APIView):
                     owner=user, status=Task.OPEN, due_at__lt=timezone.now()
                 ).count(),
                 "approvals_waiting": waiting_for(user).count(),
+                "report_due_at": report_due_at,
             }
         )

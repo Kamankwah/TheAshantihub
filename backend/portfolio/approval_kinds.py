@@ -1,10 +1,16 @@
 """Approval kinds owned by the portfolio app (plan 2A). PortfolioConfig.ready()
 registers every kind in KINDS. Task 5 adds business.kyc; Task 9 appends the
 three scout change kinds."""
+from datetime import timedelta
+
+from django.utils import timezone
+
 from accounts.kyc import ADDRESS_FIRST, KYC_KIND, SELF_DEALING_HOLD, KycError, approve_owner, self_dealing_open
 from accounts.models import BusinessOwner, BusinessOwnerProfile
 from approvals.registry import ApprovalKind
 from approvals.services import ApprovalError
+from staff_tasks.models import Task
+from staff_tasks.services import create_task
 
 from .proposals import (
     BUSINESS_UPDATE_KEY,
@@ -77,6 +83,34 @@ def _kyc_diff(request):
     ]
 
 
+RETURNED_DUE_IN = timedelta(hours=24)
+
+
+def _business_of(request):
+    """The business a request is about: its target for KYC and detail changes,
+    the listing's business for product and photo requests."""
+    if request.target_type == "listings.listing":
+        from listings.models import Listing
+
+        listing = Listing.objects.select_related("business_owner").filter(pk=request.target_id).first()
+        return listing.business_owner if listing is not None else None
+    return BusinessOwner.objects.filter(pk=request.target_id).first() if str(request.target_id).isdigit() else None
+
+
+def returned_task(request):
+    """A returned request becomes the maker's follow-up: due in 24 hours, with
+    the decider's note, so it gets fixed and sent again."""
+    business = _business_of(request)
+    note = (request.decision_note or "").strip()
+    who = request.decided_by.full_name if request.decided_by_id else "Operations"
+    name = business.display_name if business is not None else request.target_label
+    create_task(
+        request.maker, f"Returned: {request.title}"[:200], timezone.now() + RETURNED_DUE_IN,
+        notes=f"{who} returned this for {name}." + (f" “{note}”" if note else ""),
+        source=request, created_by=request.decided_by, kind=Task.RETURNED_APPROVAL, business=business,
+    )
+
+
 BUSINESS_KYC = ApprovalKind(
     key=KYC_KIND,
     label="New business (KYC)",
@@ -86,6 +120,7 @@ BUSINESS_KYC = ApprovalKind(
     response_hours=24,
     render_diff=_kyc_diff,
     validate=_kyc_validate,
+    on_rejected=returned_task,
 )
 
 BUSINESS_UPDATE = ApprovalKind(
@@ -97,6 +132,7 @@ BUSINESS_UPDATE = ApprovalKind(
     response_hours=24,
     render_diff=update_diff,
     validate=validate_update,  # re-runs the phone / address / email duplicate checks
+    on_rejected=returned_task,
 )
 
 LISTING_CREATE = ApprovalKind(
@@ -108,6 +144,7 @@ LISTING_CREATE = ApprovalKind(
     response_hours=24,
     render_diff=listing_create_diff,
     validate=validate_listing_create,  # KYC approved, subscription live and within its limit, photos unused
+    on_rejected=returned_task,
 )
 
 LISTING_PHOTOS = ApprovalKind(
@@ -119,6 +156,7 @@ LISTING_PHOTOS = ApprovalKind(
     response_hours=24,
     render_diff=listing_photos_diff,
     validate=validate_listing_photos,
+    on_rejected=returned_task,
 )
 
 KINDS = (BUSINESS_KYC, BUSINESS_UPDATE, LISTING_CREATE, LISTING_PHOTOS)

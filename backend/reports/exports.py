@@ -64,8 +64,11 @@ def escape_cell(value):
 def _system_text(sections):
     parts = []
     for section in sections or []:
-        rows = ", ".join(f"{row.get('label', '')} {row.get('value', '')}" for row in section.get("rows", []))
-        parts.append(f"{section.get('title', '')}: {rows}")
+        rows = ", ".join(
+            f"{row.get('label', '')} {row.get('value', '')}" + (f" of {row['target']}" if row.get("target") is not None else "")
+            for row in section.get("rows", [])
+        )
+        parts.append(f"{section.get('title', '')}: {rows}" + (f" ({section['summary']})" if section.get("summary") else ""))
     return "; ".join(parts)
 
 
@@ -134,10 +137,17 @@ def _chart(section):
     drawn = []
     for index, row in enumerate(rows):
         value = row.get("value") if isinstance(row.get("value"), (int, float)) else 0
-        width = round(CHART_WIDTH * value / top)
+        target = row.get("target")
+        if isinstance(target, (int, float)) and not isinstance(target, bool) and target > 0:
+            # A measure with a target reads "done of target" and fills against it, like CSV and Excel.
+            width = round(CHART_WIDTH * min(value, target) / target)
+            shown = f"{row.get('value', '')} of {target}"
+        else:
+            width = round(CHART_WIDTH * value / top)
+            shown = row.get("value", "")
         y = index * 16
         drawn.append({
-            "label": str(row.get("label", ""))[:40], "value": row.get("value", ""),
+            "label": str(row.get("label", ""))[:40], "value": shown,
             "y": y, "text_y": y + 9, "width": width, "value_x": 190 + width + 6,
         })
     return {"title": section.get("title", ""), "rows": drawn, "height": max(len(rows) * 16, 16)}

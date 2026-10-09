@@ -247,6 +247,27 @@ describe('RegisterBusinessPanel — duplicate and self-dealing checks', () => {
     expect(screen.getByRole('button', { name: 'Submit for KYC' })).toBeDisabled()
   })
 
+  it('promises commission on the review step only while a registration amount is approved', async () => {
+    for (const [registration, expected] of [
+      [null, 'It counts as your registration once Operations approves KYC.'],
+      [{ amount: '50.00', effective_from: '2026-01-01' }, 'It counts as your registration and earns commission once Operations approves KYC.'],
+    ]) {
+      server.use(http.get('http://localhost:8000/api/commission/me/', () => HttpResponse.json({
+        count: 0, next: null, previous: null, results: [], statement: { from: '2026-10-01', to: '2026-10-07' }, totals: {}, bonus: [], bonus_more: 0,
+        policy: { registration, three_paid_months_bonus: null },
+      })))
+      mockRegistration()
+      const view = renderPanel()
+      await fillOwnerAndBusiness()
+      await fillLocation()
+      takePhotos()
+      await screen.findByText(/No exact match/)
+      expect(await screen.findByText(expected)).toBeInTheDocument()
+      view.unmount()
+      window.localStorage.clear()
+    }
+  })
+
   it('warns about a similar business nearby and a staff phone, but still lets the scout submit', async () => {
     mockRegistration({ check: {
       exact: [], staff_match: true,

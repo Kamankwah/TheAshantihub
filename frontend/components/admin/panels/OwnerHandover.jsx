@@ -150,7 +150,7 @@ export default function OwnerHandover({ businessId, ownerFirstName, scoutName, o
             <p style={{ margin: 0, fontSize: "0.9rem", lineHeight: 1.5 }}>Set your own password here. {scoutName}'s menus stay hidden until you finish.</p>
             <ClaimSummary preview={preview.data} />
             <OwnerClaimForm preview={preview.data} token={handover.token} onClaimed={setClaimed} submitLabel={`Save — then hand back to ${scoutName}`} handover />
-            <p style={{ margin: 0, fontSize: "0.78rem", lineHeight: 1.5, opacity: 0.8 }}>Your password goes straight to AshantiHub. AshantiHub doesn't keep your password on this phone. If the phone offers to save it, tap Never. This setup closes in {minutesLeft} min.</p>
+            <p style={{ margin: 0, fontSize: "0.78rem", lineHeight: 1.5, opacity: 0.8 }}>Your password goes straight to AshantiHub. AshantiHub doesn't keep your password on this phone, and {scoutName} can't sign in as you. If the phone offers to save it, tap Never. This setup closes in {minutesLeft} min.</p>
             <button type="button" onClick={handBack} style={quietStyle}>Cancel — hand back to {scoutName}</button>
           </>
         )}

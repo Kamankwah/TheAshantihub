@@ -32,6 +32,26 @@ function renderPanel(props = {}) {
 }
 
 describe('ApprovalsPanel inbox', () => {
+  it('opens on the "Made by me" box when the detail is the box name (Today\'s See all)', async () => {
+    let lastUrl = ''
+    server.use(http.get('http://localhost:8000/api/approvals/', ({ request }) => { lastUrl = request.url; return HttpResponse.json({ count: 0, next: null, previous: null, results: [] }) }))
+    renderPanel({ detailId: 'made' })
+    await waitFor(() => expect(lastUrl).toContain('box=made'))
+    expect(screen.getByRole('button', { name: /Made by me/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByText('Could not load approval.')).not.toBeInTheDocument()
+  })
+
+
+  it('re-applies the box when the entry changes while mounted', async () => {
+    server.use(http.get('http://localhost:8000/api/approvals/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })))
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const ui = (detailId) => <QueryClientProvider client={queryClient}><ApprovalsPanel detailId={detailId} onOpenDetail={() => {}} /></QueryClientProvider>
+    const { rerender } = render(ui(null))
+    expect(await screen.findByRole('button', { name: /Waiting for me/ })).toHaveAttribute('aria-pressed', 'true')
+    rerender(ui('made'))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Made by me/ })).toHaveAttribute('aria-pressed', 'true'))
+  })
+
   it('shows counts on the boxes and opens a waiting request', async () => {
     const onOpenDetail = vi.fn()
     server.use(

@@ -26,19 +26,19 @@ const bar = () => screen.getByRole('navigation', { name: 'Quick navigation' })
 const labels = () => within(bar()).getAllByRole('button').map((b) => b.textContent)
 
 describe('ScoutBottomBar', () => {
-  it('shows Register, Calls and Menu while the scout has no Portfolio yet', () => {
+  it('shows Today, Register, Calls and Menu while the scout has no Portfolio yet', () => {
     renderBar()
-    expect(labels()).toEqual(['➕Register', '📞Calls', '☰Menu'])
+    expect(labels()).toEqual(['📊Today', '➕Register', '📞Calls', '☰Menu'])
   })
 
-  it('leads with Businesses once Portfolio is in the menu', () => {
+  it('puts Businesses after Today once Portfolio is in the menu', () => {
     renderBar({ navGroups: groupsOf([PORTFOLIO, REGISTER, CALLS]) })
-    expect(labels()).toEqual(['🏪Businesses', '➕Register', '📞Calls', '☰Menu'])
+    expect(labels()).toEqual(['📊Today', '🏪Businesses', '➕Register', '📞Calls', '☰Menu'])
   })
 
   it('leaves out a slot the scout may not open', () => {
     renderBar({ navGroups: groupsOf([CALLS]) })
-    expect(labels()).toEqual(['📞Calls', '☰Menu'])
+    expect(labels()).toEqual(['📊Today', '📞Calls', '☰Menu'])
   })
 
   it('marks the open slot current, opens a panel and opens the drawer', () => {
@@ -49,6 +49,14 @@ describe('ScoutBottomBar', () => {
     expect(onSelect).toHaveBeenCalledWith('calls')
     fireEvent.click(within(bar()).getByRole('button', { name: /Menu/ }))
     expect(onMenu).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens Today (the scout\'s overview) and marks it current', () => {
+    const { onSelect } = renderBar({ activeTab: 'overview' })
+    expect(within(bar()).getByRole('button', { name: /Today/ })).toHaveAttribute('aria-current', 'page')
+    expect(within(bar()).getByRole('button', { name: /Menu/ })).not.toHaveAttribute('aria-current')
+    fireEvent.click(within(bar()).getByRole('button', { name: /Today/ }))
+    expect(onSelect).toHaveBeenCalledWith('overview')
   })
 
   it('reads as Menu when the open panel is not on the bar', () => {
@@ -80,10 +88,10 @@ describe('ScoutBottomBar in the staff shell', () => {
     render(<QueryClientProvider client={queryClient}><AdminCommandCenter auth={scoutAuth()} onExit={vi.fn()} /></QueryClientProvider>)
   }
 
-  it("gives a scout's phone Register · Calls · Menu, and Menu opens the drawer", () => {
+  it("gives a scout's phone Today · Register · Calls · Menu, and Menu opens the drawer", () => {
     mm = installMatchMedia(375)
     renderShell()
-    expect(within(bar()).getAllByRole('button').map((b) => b.textContent)).toEqual(['➕Register', '📞Calls', '☰Menu'])
+    expect(within(bar()).getAllByRole('button').map((b) => b.textContent)).toEqual(['📊Today', '➕Register', '📞Calls', '☰Menu'])
     fireEvent.click(within(bar()).getByRole('button', { name: /Menu/ }))
     expect(screen.getByRole('dialog', { name: 'Staff navigation' })).toBeInTheDocument()
   })

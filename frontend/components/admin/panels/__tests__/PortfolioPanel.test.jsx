@@ -136,6 +136,16 @@ describe("PortfolioPanel — a scout's portfolio", () => {
     expect(onOpenDetail).toHaveBeenCalledWith(12)
   })
 
+  it('opens the business from a tap anywhere on its card, once', async () => {
+    const onOpenDetail = vi.fn()
+    recordList([])
+    renderPanel({ onOpenDetail })
+    fireEvent.click(await screen.findByRole('article', { name: 'Adwoa Fabrics' }))
+    expect(onOpenDetail).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Open Adwoa Fabrics' }))
+    expect(onOpenDetail).toHaveBeenCalledTimes(2)
+  })
+
   it('shows the business page for a detail id and goes back to the list', async () => {
     const onOpenDetail = vi.fn()
     server.use(http.get(`${API}/api/portfolio/businesses/12/`, () => HttpResponse.json(detailOf(row()))))

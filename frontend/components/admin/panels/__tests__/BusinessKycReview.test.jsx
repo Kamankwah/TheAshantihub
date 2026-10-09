@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { server } from '../../../../mocks/server.js'
 import BusinessKycReview from '../BusinessKycReview.jsx'
-import { formatDateTime } from '../portfolioParts.jsx'
+import { formatDateTime, formatDay } from '../portfolioParts.jsx'
 
 const API = 'http://localhost:8000'
 const LOCATION = {
@@ -143,6 +143,33 @@ describe('BusinessKycReview', () => {
     renderReview({ canRecordAddress: true })
     fireEvent.click(await screen.findByRole('button', { name: 'Address wrong' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('You do not have permission to perform this action.')
+  })
+
+  it('says when a field scout corrected the address', async () => {
+    serve(sheet({ address_correction: { scout_name: 'Efua Mensah', corrected_address: 'AK-100-9999', at: '2026-10-08T09:30:00Z' } }))
+    renderReview()
+    expect(await screen.findByText(
+      `Address corrected by field scout Efua Mensah on ${formatDay('2026-10-08T09:30:00Z')} to AK-100-9999 — record the address decision before approving.`,
+    )).toBeInTheDocument()
+  })
+
+  it('drops the record-the-decision suffix once the address decision is recorded', async () => {
+    serve(sheet({
+      address_correction: { scout_name: 'Efua Mensah', corrected_address: 'AK-100-9999', at: '2026-10-08T09:30:00Z' },
+      location: { ...LOCATION, address_verified: true, address_verified_by_name: 'Ama Boateng', address_verified_at: '2026-10-09T08:00:00Z' },
+    }))
+    renderReview()
+    expect(await screen.findByText(
+      `Address corrected by field scout Efua Mensah on ${formatDay('2026-10-08T09:30:00Z')} to AK-100-9999`,
+    )).toBeInTheDocument()
+    expect(screen.queryByText(/record the address decision before approving/)).not.toBeInTheDocument()
+  })
+
+  it('shows no correction line without one', async () => {
+    serve(sheet({ address_correction: null }))
+    renderReview()
+    await screen.findByRole('heading', { name: 'Owner' })
+    expect(screen.queryByText(/Address corrected by field scout/)).not.toBeInTheDocument()
   })
 
   it('tells someone who may not open the sheet so', async () => {

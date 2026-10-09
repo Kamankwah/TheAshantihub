@@ -305,7 +305,7 @@ export const handlers = [
   // KYC detail (staff dashboard review tools) — default handler, overridden
   // per-test where a specific applicant's full detail is asserted.
   http.get('http://localhost:8000/api/accounts/kyc/:id/', ({ params }) => {
-    return HttpResponse.json({ id: Number(params.id), full_name: 'Owner', login_phone: '', email: '', kyc_status: 'pending', profile: {} })
+    return HttpResponse.json({ id: Number(params.id), full_name: 'Owner', login_phone: '', email: '', kyc_status: 'pending', profile: {}, address_correction: null })
   }),
   // Staff user-management detail/edit/suspend (staff dashboard review tools)
   // — default handlers, overridden per-test as needed.
@@ -507,6 +507,40 @@ export const handlers = [
   http.get('http://localhost:8000/api/activity/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/calls/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/calls/purposes/', () => HttpResponse.json([{ value: 'other', label: 'Other' }])),
+  // Scout prospects and the Log a call sheet (staff WP2).
+  http.get('http://localhost:8000/api/field/prospects/', () => HttpResponse.json({
+    counts: { all: 0, new: 0, interested: 0, follow_up: 0, not_interested: 0, registered: 0 }, signed_up_this_month: 0, results: [],
+  })),
+  http.get('http://localhost:8000/api/calls/counterparts/', () => HttpResponse.json({ businesses: [], prospects: [] })),
+  // Scout visits (staff WP1): the week list, the open visit and the check-in places.
+  http.get('http://localhost:8000/api/field/visits/', () => HttpResponse.json({
+    count: 0, next: null, previous: null, results: [], summary: { done: 0, avg_minutes: null, flagged: 0 },
+  })),
+  http.get('http://localhost:8000/api/field/visits/open/', () => HttpResponse.json({ visit: null })),
+  // Scout targets (staff WP4): no targets set, nothing done.
+  http.get('http://localhost:8000/api/targets/me/', () => HttpResponse.json({
+    period: 'week', label: 'Mon 5 – Sun 11 October', start: '2026-10-05', end: '2026-10-11', today: '2026-10-07',
+    working_days: 6, leave_days: 0, holiday_days: 0, has_targets: false,
+    measures: ['registrations', 'visits', 'calls', 'renewals'].map((metric) => ({
+      metric, label: metric[0].toUpperCase() + metric.slice(1), how: '', done: 0, target: null, today_done: 0, today_target: null,
+    })),
+    days: [], daily: [], set_by: null, effective_from: null, sunday_off: true, leave: [], holidays: [], lead: null,
+  })),
+  // Commission and leaderboard (staff WP5): no policy approved, nothing earned.
+  http.get('http://localhost:8000/api/commission/me/', () => HttpResponse.json({
+    count: 0, next: null, previous: null, results: [],
+    statement: { from: '2026-10-01', to: '2026-10-07' },
+    totals: Object.fromEntries(['on_hold', 'payable', 'in_batch', 'paid', 'reversed'].map((k) => [k, { amount: '0.00', count: 0, registrations: 0, bonuses: 0 }])),
+    bonus: [], bonus_more: 0, policy: { registration: null, three_paid_months_bonus: null },
+  })),
+  http.get('http://localhost:8000/api/commission/policies/', () => HttpResponse.json({
+    current: { registration: null, three_paid_months_bonus: null }, pending: [], history: [],
+  })),
+  http.get('http://localhost:8000/api/commission/accruals/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/portfolio/leaderboard/', () => HttpResponse.json({
+    month: '2026-10', as_of: '2026-10-07', lead: null, rows: [], team_total: 0, my_rank: 1, my_count: 0, gap: null, most_improved: null,
+  })),
+  http.get('http://localhost:8000/api/field/visit-targets/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/accounts/staff/team/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/accounts/staff/invitable-roles/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/reports/current/', () => HttpResponse.json({
@@ -533,8 +567,9 @@ export const handlers = [
     business_kind: 'product', business_category: null, gps_address: '', lat: null, lng: null, location_accuracy_m: null,
     location_is_manual: false, location_set_by: '', business_contact_phone: '', business_description: '', opening_hours: '',
     signboard_photo: null, email: '', registered_by: null, created_at: '2026-10-07T00:00:00Z',
-    listings: [], pending_requests: [], recent_calls: [], assignments: [], open_flags: [], can_manage: false,
+    listings: [], pending_requests: [], recent_calls: [], recent_visits: [], assignments: [], open_flags: [], can_manage: false,
   })),
+  http.get('http://localhost:8000/api/portfolio/businesses/:id/orders/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/portfolio/meta/listing-form/', () => HttpResponse.json({ categories: [], zones: [], required_answers: {} })),
   // A scout's new product and listing photos: like the server, a blank
   // reason is refused (portfolio.proposals.REASON_REQUIRED).
@@ -556,14 +591,14 @@ export const handlers = [
       address_verified: false, address_verified_by_name: null, address_verified_at: null,
     },
     checks: { exact: [], similar: [], staff_match: false, accuracy_m: null },
-    consent: null, flags: [], registered_by_name: null, created_at: '2026-10-07T00:00:00Z',
+    consent: null, flags: [], registered_by_name: null, created_at: '2026-10-07T00:00:00Z', address_correction: null,
   })),
   http.get('http://localhost:8000/api/fraud/flags/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/fraud/flags/counts/', () => HttpResponse.json({ open: 0, confirmed: 0, dismissed: 0 })),
   http.get('http://localhost:8000/api/notifications/staff-badges/', () => {
     return HttpResponse.json({
       kyc: 0, listings: 0, events: 0, hero: 0, reviews: 0,
-      plan_approvals: 0, contact_messages: 0, escrow: 0, tasks_overdue: 0, approvals_waiting: 0,
+      plan_approvals: 0, contact_messages: 0, escrow: 0, tasks_overdue: 0, approvals_waiting: 0, report_due_at: null,
     })
   }),
   // Scout registration and owner hand-over (staff phase 2A) — defaults;

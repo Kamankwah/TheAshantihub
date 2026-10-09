@@ -324,6 +324,20 @@ class OrderDeliveryStatusUpdateView(generics.UpdateAPIView):
         )
 
 
+def _task_the_account_managers(dispute):
+    """A delivery dispute tasks the business's account manager. Best effort: a
+    failure here never costs the customer their dispute."""
+    import logging
+
+    from portfolio.delivery import task_for_dispute
+
+    try:
+        with db_transaction.atomic():
+            task_for_dispute(dispute)
+    except Exception:
+        logging.getLogger(__name__).exception("Delivery-problem task for dispute %s failed", dispute.pk)
+
+
 class OrderDisputeCreateView(APIView):
     """POST /api/orders/{id}/dispute/ — a signed-in customer who owns this
     order raises a dispute against it (reason + description). 404s for
@@ -350,6 +364,7 @@ class OrderDisputeCreateView(APIView):
             description=serializer.validated_data["description"],
             status=Dispute.OPEN,
         )
+        _task_the_account_managers(dispute)
         return Response(DisputeSerializer(dispute).data, status=status.HTTP_201_CREATED)
 
 

@@ -191,4 +191,95 @@ describe('ReportsPanel', () => {
     await waitFor(() => expect(urls).toHaveLength(1))
     expect(urls[0]).not.toContain('staff=')
   })
+
+  describe('for a scout', () => {
+    const lead = { id: 2, full_name: 'Ama Boateng' }
+    const scout = { user: { id: 3, role: 'scout', manager: lead }, hasPermission: () => false }
+    const targetSections = [
+      {
+        key: 'targets', title: 'Targets',
+        rows: [{ label: 'Registrations', value: 1, target: 2 }, { label: 'Visits', value: 4, target: 6 }, { label: 'Calls', value: 9 }],
+        summary: 'Follow-ups 4 of 6 done · 1 registration waiting for KYC · GH₵ 50.00 commission earned, on hold',
+      },
+      ...sections,
+    ]
+
+    it('names the lead and the due time, and shows the measures as value / target bars with the summary', async () => {
+      server.use(current(report({ system: [...sections, ...targetSections.slice(0, 1)] })))
+      renderPanel(scout)
+      expect(await screen.findByText(/Wednesday 7 October · to Ama Boateng · due \d{2}:\d{2}/)).toBeInTheDocument()
+      expect(screen.getByText('1 / 2')).toBeInTheDocument()
+      expect(screen.getByText('4 / 6')).toBeInTheDocument()
+      expect(screen.getByRole('progressbar', { name: 'Visits: 4 of 6' })).toBeInTheDocument()
+      expect(screen.getByText('9')).toBeInTheDocument() // no plan, so no target and no bar
+      expect(screen.queryByRole('progressbar', { name: /Calls/ })).not.toBeInTheDocument()
+      expect(screen.getByText(/Follow-ups 4 of 6 done · 1 registration waiting for KYC · GH₵ 50\.00 commission earned, on hold/)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Submit to Ama Boateng' })).toBeInTheDocument()
+      expect(screen.getByText('Counted live')).toBeInTheDocument()
+    })
+
+    it('shows only the targets card under From the system, with no generic cards beside it', async () => {
+      server.use(current(report({ system: [...sections, ...targetSections.slice(0, 1)] })))
+      renderPanel(scout)
+      const region = await screen.findByRole('region', { name: 'From the system' })
+      expect(region.textContent).toContain('Targets')
+      expect(region.textContent).not.toContain('Activity')
+      expect(region.textContent).not.toContain('Calls logged')
+    })
+
+    it('uses the canvas words and a 24-hour due time', async () => {
+      server.use(current(report({ due_at: '2026-10-07T19:00:00', plan_results: [{ item: 'Visit Ejisu', result: '' }] })))
+      renderPanel(scout)
+      expect(await screen.findByText("Yesterday's plan")).toBeInTheDocument()
+      expect(screen.getByText('Plan for tomorrow')).toBeInTheDocument()
+      expect(screen.getByText(/due 19:00$/)).toBeInTheDocument()
+    })
+
+    it('locks as of the snapshot time, not the first submission', async () => {
+      server.use(
+        current(report({ id: 5, status: 'submitted', can_edit: false, system_is_live: false, submitted_at: '2026-10-07T09:05:00', snapshot_at: '2026-10-07T21:40:00' })),
+      )
+      renderPanel(scout)
+      expect(await screen.findByText('Locked · as of 21:40')).toBeInTheDocument()
+    })
+
+    it('lists history as a long date with who acknowledged it or when it was submitted', async () => {
+      server.use(
+        current(report()),
+        http.get('http://localhost:8000/api/reports/', () => HttpResponse.json({ count: 2, next: null, previous: null, results: [
+          { id: 7, period: 'day', period_start: '2026-10-06', period_end: '2026-10-06', status: 'acknowledged', is_late: false, reviewer: { id: 2, full_name: 'Ama Boateng' }, review_note: '', submitted_at: '2026-10-06T18:00:00' },
+          { id: 6, period: 'day', period_start: '2026-10-02', period_end: '2026-10-02', status: 'submitted', is_late: true, reviewer: null, review_note: '', submitted_at: '2026-10-02T21:40:00' },
+        ] })),
+      )
+      renderPanel(scout)
+      expect(await screen.findByText('Tuesday 6 October')).toBeInTheDocument()
+      expect(screen.getByText('Acknowledged by Ama Boateng')).toBeInTheDocument()
+      expect(screen.getByText('Friday 2 October')).toBeInTheDocument()
+      expect(screen.getByText('Submitted 21:40')).toBeInTheDocument()
+    })
+
+    it('says Locked once submitted and shows the Late chip', async () => {
+      server.use(
+        current(report({ id: 5, status: 'submitted', can_edit: false, is_late: true, system_is_live: false, submitted_at: '2026-10-07T18:30:00Z' })),
+        http.get('http://localhost:8000/api/reports/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+      )
+      renderPanel(scout)
+      expect(await screen.findByText(/^Locked · as of \d{2}:\d{2}$/)).toBeInTheDocument()
+      expect(screen.getByText('Late')).toBeInTheDocument()
+    })
+
+    it('keeps week and month behind a link', async () => {
+      server.use(current(report()))
+      renderPanel(scout)
+      expect(screen.queryByRole('group', { name: 'Report period' })).not.toBeInTheDocument()
+      fireEvent.click(await screen.findByRole('button', { name: 'Week & month' }))
+      expect(screen.getByRole('group', { name: 'Report period' })).toBeInTheDocument()
+    })
+
+    it('falls back to a plain Submit when /me has no manager', async () => {
+      server.use(current(report()))
+      renderPanel({ user: { id: 3, role: 'scout' }, hasPermission: () => false })
+      expect(await screen.findByRole('button', { name: 'Submit' })).toBeInTheDocument()
+    })
+  })
 })
