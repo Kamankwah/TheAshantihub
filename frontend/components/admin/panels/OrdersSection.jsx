@@ -3,7 +3,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { apiPost } from "../../../apiClient.js";
 import { useBusinessOrders } from "../../../hooks/useBusinessOrders.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
-import { shortDay } from "../../../lib/followUp.js";
 import { D } from "../theme.js";
 import { button, callout, chip, dim, field } from "./panelStyles.js";
 import { card, errorStyle, h3 } from "./portfolioParts.jsx";
@@ -24,7 +23,7 @@ export function statusChips(order) {
     chips.push([`${order.dispute.reason_label} ${order.dispute.status === "investigating" ? "being looked at" : "open"}`, D.amber]);
   }
   if (order.delivery_status === "delivered") {
-    chips.push([order.delivered_at ? `Delivered ${shortDay(order.delivered_at).replace(/^\w+ /, "")}` : "Delivered", D.green]);
+    chips.push([order.delivered_at ? `Delivered ${new Date(order.delivered_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : "Delivered", D.green]);
   } else {
     chips.push([DELIVERY[order.delivery_status] || order.delivery_status, D.blue]);
   }

@@ -63,11 +63,11 @@ def order_item(order, owner, flagged_ids=()):
 
 
 def flagged_order_ids(owner, order_ids):
-    """Orders a scout already reported to the Delivery Managers (an open or done flag task)."""
+    """Orders with a scout-raised flag task still open (clears once the Delivery Manager closes it)."""
     return set(
         int(source_id) for source_id in Task.objects.filter(
             kind=Task.DELIVERY_PROBLEM, business_owner=owner, source_type=ORDER_TARGET_TYPE,
-            source_id__in=[str(pk) for pk in order_ids], created_by__isnull=False,
+            source_id__in=[str(pk) for pk in order_ids], created_by__isnull=False, status=Task.OPEN,
         ).values_list("source_id", flat=True)
     )
 
@@ -86,21 +86,28 @@ def task_for_dispute(dispute):
     names the order, never the customer or what they wrote."""
     if dispute.reason != Dispute.DELIVERY_ISSUE or dispute.order_id is None:
         return []
-    order = Order.objects.prefetch_related("items__listing__business_owner__account_manager").get(pk=dispute.order_id)
-    owners = {i.listing.business_owner for i in order.items.all()}
     created = []
-    for owner in owners:
-        manager = owner.account_manager
-        if manager is None or not manager.is_active or manager.is_suspended or _open_task_exists(manager, order, owner):
-            continue
-        created.append(create_task(
-            manager, f"Delivery problem — Order #{order.pk} · {owner.display_name}"[:200],
-            timezone.now() + TASK_DUE_IN,
-            notes="A customer reported a problem with this delivery. The Delivery Manager is handling it; "
-                  "check with them before you tell the owner anything.",
-            source=order, kind=Task.DELIVERY_PROBLEM, business=owner,
-        ))
+    with transaction.atomic():
+        # Lock the order so two concurrent disputes can't both pass the dedupe.
+        Order.objects.select_for_update().get(pk=dispute.order_id)
+        order = Order.objects.prefetch_related("items__listing__business_owner__account_manager").get(pk=dispute.order_id)
+        owners = {i.listing.business_owner for i in order.items.all()}
+        for owner in owners:
+            created.extend(_task_for_owner(order, owner))
     return created
+
+
+def _task_for_owner(order, owner):
+    manager = owner.account_manager
+    if manager is None or not manager.is_active or manager.is_suspended or _open_task_exists(manager, order, owner):
+        return []
+    return [create_task(
+        manager, f"Delivery problem — Order #{order.pk} · {owner.display_name}"[:200],
+        timezone.now() + TASK_DUE_IN,
+        notes="A customer reported a problem with this delivery. The Delivery Manager is handling it; "
+              "check with them before you tell the owner anything.",
+        source=order, kind=Task.DELIVERY_PROBLEM, business=owner,
+    )]
 
 
 def flag_delivery_problem(scout, owner, order_id, note, *, request=None):
@@ -121,6 +128,7 @@ def flag_delivery_problem(scout, owner, order_id, note, *, request=None):
     name = owner.display_name
     title = f"Delivery problem — Order #{order.pk} · {name}"
     with transaction.atomic():
+        Order.objects.select_for_update().get(pk=order.pk)  # serialise concurrent flags on this order
         fresh = [m for m in managers if not _open_task_exists(m, order)]
         for manager in fresh:
             create_task(

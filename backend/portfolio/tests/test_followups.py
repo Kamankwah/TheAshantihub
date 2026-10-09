@@ -191,6 +191,17 @@ class FlagDeliveryProblemTests(ChangeTestBase):
         self.assertEqual(Task.objects.filter(kind=Task.DELIVERY_PROBLEM).count(), 2)
         self.assertEqual(Notification.objects.filter(kind="delivery_problem_flagged").count(), 2)
 
+    def test_the_order_row_is_locked_before_the_dedupe_check(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        self.as_staff(self.scout)
+        with CaptureQueriesContext(connection) as queries:
+            self.client.post(self.url(), {"note": "Late"}, format="json")
+        sql = [q["sql"] for q in queries.captured_queries]
+        lock = next(i for i, q in enumerate(sql) if "FOR UPDATE" in q and "orders_order" in q)
+        first_task_read = next(i for i, q in enumerate(sql) if "staff_tasks_task" in q and q.startswith("SELECT"))
+        self.assertLess(lock, first_task_read)
+
     def test_a_note_is_required(self):
         self.as_staff(self.scout)
         self.assertEqual(self.client.post(self.url(), {"note": "  "}, format="json").status_code, 400)
@@ -264,6 +275,16 @@ class BusinessOrdersTests(ChangeTestBase):
         self.assertFalse(self.client.get(self.url()).json()["results"][0]["problem_flagged"])
         self.client.post(f"{self.url()}{order.pk}/delivery-problem/", {"note": "Late"}, format="json")
         self.assertTrue(self.client.get(self.url()).json()["results"][0]["problem_flagged"])
+
+    def test_the_flag_clears_once_the_delivery_manager_closes_it(self):
+        make_staff("delivery_manager", "dm1@example.com", manager=self.lead)
+        order = make_order(self.owner)
+        self.as_staff(self.scout)
+        self.client.post(f"{self.url()}{order.pk}/delivery-problem/", {"note": "Late"}, format="json")
+        Task.objects.filter(kind=Task.DELIVERY_PROBLEM).update(status=Task.DONE)
+        self.assertFalse(self.client.get(self.url()).json()["results"][0]["problem_flagged"])
+        again = self.client.post(f"{self.url()}{order.pk}/delivery-problem/", {"note": "Late again"}, format="json")
+        self.assertFalse(again.json()["already"])
 
     def test_pages_and_see_all(self):
         for day in range(7):
