@@ -21,6 +21,15 @@ from realtime.publish import publish_activity
 FEED_FIELDS = {"type", "verb", "target", "actor", "at", "invalidate"}
 
 
+class ReportBadgeKeysTests(TestCase):
+    def test_a_report_event_also_refreshes_the_header_badges(self):
+        from realtime import publish
+
+        feed = dict(publish.FEED_KEYS)
+        self.assertIn("staff-badges", feed[("report.",)])
+        self.assertIn("staff-badges", publish.REPORT_KEYS)
+
+
 class PublishTests(TestCase):
     def setUp(self):
         self.layer = get_channel_layer()

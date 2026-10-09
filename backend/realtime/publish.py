@@ -76,10 +76,10 @@ FEED_KEYS = [
     (("visit.",), ("visits", "visit-open", "my-targets")),
     # A returned request gives its maker a follow-up task (portfolio/approval_kinds.py).
     (("approval.",), ("approvals", "approval", "approval-counts", "staff-badges", "my-tasks")),
-    (("report.",), ("my-reports", "report", "team-reports")),
+    (("report.",), ("my-reports", "report", "team-reports", "staff-badges")),
 ]
 APPROVAL_KEYS = ["approvals", "approval", "approval-counts", "staff-badges"]
-REPORT_KEYS = ["my-reports", "report", "team-reports"]
+REPORT_KEYS = ["my-reports", "report", "team-reports", "staff-badges"]
 
 
 def _group_send(group, message):

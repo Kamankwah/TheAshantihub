@@ -234,11 +234,11 @@ export default function ScoutTodayPanel({ auth, onNavigate, onCheckIn, onRegiste
         <h2 style={{ color: D.text, fontSize: "1.4rem", fontWeight: 800, margin: "2px 0 0" }}>{`${greeting(new Date().getHours())}${first ? `, ${first}` : ""}`}</h2>
         <div style={{ ...dim, fontSize: "0.85rem" }}>{areas ? `${date} · ${areas}` : date}</div>
       </div>
-      <TargetsCard lead={lead} onOpen={() => onNavigate("targets")} />
+      {auth.hasPermission("businesses.manage_portfolio") && <TargetsCard lead={lead} onOpen={() => onNavigate("targets")} />}
       <ActionsCard canCheckIn={canCheckIn} canRegister={canRegister} onCheckIn={onCheckIn} onRegister={onRegister} />
       <FollowUpsCard onOpenBusiness={onOpenBusiness} onOpen={() => onNavigate("tasks")} />
       <WaitingCard lead={lead} onSeeAll={onSeeApprovals} />
-      <CommissionCard onOpen={() => onNavigate("commission")} />
+      {auth.hasPermission("commission.view_own") && <CommissionCard onOpen={() => onNavigate("commission")} />}
     </div>
   );
 }

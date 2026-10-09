@@ -14,6 +14,15 @@ const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Frida
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const longDay = (iso) => { const [y, m, d] = iso.split("-").map(Number); return `${WEEKDAYS[new Date(y, m - 1, d).getDay()]} ${d} ${MONTHS[m - 1]}`; };
 
+const hhmm = (iso) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+// The line under a history row: who acknowledged it, why it came back, or when it went in.
+function historySub(r) {
+  if (r.status === "acknowledged") return `Acknowledged by ${r.reviewer?.full_name || "your manager"}`;
+  if (r.status === "returned") return r.review_note ? `Returned: “${r.review_note}”` : "Returned";
+  if (r.status === "submitted" && r.submitted_at) return `Submitted ${hhmm(r.submitted_at)}`;
+  return "";
+}
+
 export default function ReportsPanel({ auth }) {
   const [period, setPeriod] = useState("day");
   const today = localISODate();
@@ -57,7 +66,7 @@ function ReportComposer({ report, period, leadName, isScout }) {
   const [actionError, setActionError] = useState(null);
   const [busy, setBusy] = useState(false);
   const locked = !report.can_edit;
-  const due = new Date(report.due_at).toLocaleTimeString("en-GH", { hour: "2-digit", minute: "2-digit" });
+  const due = new Date(report.due_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
   const body = () => ({
     period, date: report.period_start, achievements, blockers,
@@ -117,10 +126,10 @@ function ReportComposer({ report, period, leadName, isScout }) {
           Returned by {report.reviewer?.full_name || "your manager"}: “{report.review_note}”
         </div>
       )}
-      <SystemSections sections={report.system} live={report.system_is_live} lockedAt={report.submitted_at} />
+      <SystemSections sections={report.system} live={report.system_is_live} lockedAt={report.snapshot_at || report.submitted_at} onlyTargets={isScout} />
       {results.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <div style={{ color: D.text, fontWeight: 800, fontSize: "0.85rem" }}>Your last plan — how did it go?</div>
+          <div style={{ color: D.text, fontWeight: 800, fontSize: "0.85rem" }}>{isScout && report.period === "day" ? "Yesterday's plan" : "Your last plan — how did it go?"}</div>
           {results.map((row, index) => (
             <label key={row.item} style={{ ...labelStyle, flexDirection: "row", alignItems: "center", justifyContent: "space-between", fontWeight: 600 }}>
               <span>{row.item}</span>
@@ -136,7 +145,7 @@ function ReportComposer({ report, period, leadName, isScout }) {
       <label style={labelStyle}>What went well<textarea value={achievements} readOnly={locked} onChange={(e) => setAchievements(e.target.value)} rows={4} style={field} /></label>
       <label style={labelStyle}>What got in the way<textarea value={blockers} readOnly={locked} onChange={(e) => setBlockers(e.target.value)} rows={3} style={field} /></label>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <div style={labelStyle}>Plan for next {report.period}</div>
+        <div style={labelStyle}>{isScout && report.period === "day" ? "Plan for tomorrow" : `Plan for next ${report.period}`}</div>
         {plan.map((line, index) => (
           <input key={index} aria-label={`Plan line ${index + 1}`} value={line} readOnly={locked}
             onChange={(e) => setPlan(plan.map((l, i) => (i === index ? e.target.value : l)))} style={field} maxLength={300} />
@@ -168,13 +177,15 @@ function History({ rows }) {
       {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>{actionError}</div>}
       {rows.map((r) => (
         <div key={r.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", padding: "8px 0", borderTop: `1px solid ${D.divider}`, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <span style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>{r.period === "day" ? longDay(r.period_start) : range(r)}</span>
+            {historySub(r) && <span style={dim}>{historySub(r)}</span>}
+          </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <span style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>{range(r)}</span>
             <StatusChip status={r.status} />
             {r.is_late && <LateChip />}
-            {r.review_note && <span style={dim}>“{r.review_note}”</span>}
+            <ExportButtons path={`/api/reports/${r.id}/export/`} stem={`report-${r.period}-${r.period_start}`} onError={setActionError} />
           </div>
-          <ExportButtons path={`/api/reports/${r.id}/export/`} stem={`report-${r.period}-${r.period_start}`} onError={setActionError} />
         </div>
       ))}
     </div>

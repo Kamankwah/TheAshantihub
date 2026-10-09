@@ -67,7 +67,7 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
   if (isError || !b) return <div style={card}>{back}<div style={errorStyle}>This business doesn't exist, or isn't one you can see.</div></div>;
 
   const backToPage = () => setView(null);
-  if (view === "propose") return <ProposeChangeForm businessId={b.id} onBack={backToPage} onSent={refreshAll} leadName={leadName} />;
+  if (view === "propose") return <ProposeChangeForm businessId={b.id} onBack={backToPage} onSent={refreshAll} leadName={leadName} maskPhones={isScout} />;
   if (view === "add") return <AddListingForm businessId={b.id} onBack={backToPage} onSent={refreshAll} leadName={leadName} />;
   if (view === "photos") return <AddPhotosForm businessId={b.id} onBack={backToPage} onSent={refreshAll} leadName={leadName} />;
 
@@ -335,6 +335,8 @@ function waitLine(r, leadName, owner) {
   const sent = `Sent ${timeAgo(r.created_at)} ago`;
   const due = r.due_at ? new Date(r.due_at).getTime() : NaN;
   const clause = Number.isNaN(due) ? `${who} decides first` : due > Date.now() ? `${who} has until ${clock(r.due_at)}, then any Operations lead` : `${who}'s time has passed, so any Operations lead can decide`;
+  // A KYC decision is not a change an owner can undo.
+  if (r.kind === "business.kyc") return `${sent} · ${clause}`;
   return `${sent} · ${clause} · ${owner} can undo it for 7 days once applied`;
 }
 

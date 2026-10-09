@@ -218,11 +218,44 @@ describe('ReportsPanel', () => {
       expect(screen.getByText('Counted live')).toBeInTheDocument()
     })
 
-    it('puts the targets section first', async () => {
+    it('shows only the targets card under From the system, with no generic cards beside it', async () => {
       server.use(current(report({ system: [...sections, ...targetSections.slice(0, 1)] })))
       renderPanel(scout)
       const region = await screen.findByRole('region', { name: 'From the system' })
-      expect(region.textContent.indexOf('Targets')).toBeLessThan(region.textContent.indexOf('Activity'))
+      expect(region.textContent).toContain('Targets')
+      expect(region.textContent).not.toContain('Activity')
+      expect(region.textContent).not.toContain('Calls logged')
+    })
+
+    it('uses the canvas words and a 24-hour due time', async () => {
+      server.use(current(report({ due_at: '2026-10-07T19:00:00', plan_results: [{ item: 'Visit Ejisu', result: '' }] })))
+      renderPanel(scout)
+      expect(await screen.findByText("Yesterday's plan")).toBeInTheDocument()
+      expect(screen.getByText('Plan for tomorrow')).toBeInTheDocument()
+      expect(screen.getByText(/due 19:00$/)).toBeInTheDocument()
+    })
+
+    it('locks as of the snapshot time, not the first submission', async () => {
+      server.use(
+        current(report({ id: 5, status: 'submitted', can_edit: false, system_is_live: false, submitted_at: '2026-10-07T09:05:00', snapshot_at: '2026-10-07T21:40:00' })),
+      )
+      renderPanel(scout)
+      expect(await screen.findByText('Locked · as of 21:40')).toBeInTheDocument()
+    })
+
+    it('lists history as a long date with who acknowledged it or when it was submitted', async () => {
+      server.use(
+        current(report()),
+        http.get('http://localhost:8000/api/reports/', () => HttpResponse.json({ count: 2, next: null, previous: null, results: [
+          { id: 7, period: 'day', period_start: '2026-10-06', period_end: '2026-10-06', status: 'acknowledged', is_late: false, reviewer: { id: 2, full_name: 'Ama Boateng' }, review_note: '', submitted_at: '2026-10-06T18:00:00' },
+          { id: 6, period: 'day', period_start: '2026-10-02', period_end: '2026-10-02', status: 'submitted', is_late: true, reviewer: null, review_note: '', submitted_at: '2026-10-02T21:40:00' },
+        ] })),
+      )
+      renderPanel(scout)
+      expect(await screen.findByText('Tuesday 6 October')).toBeInTheDocument()
+      expect(screen.getByText('Acknowledged by Ama Boateng')).toBeInTheDocument()
+      expect(screen.getByText('Friday 2 October')).toBeInTheDocument()
+      expect(screen.getByText('Submitted 21:40')).toBeInTheDocument()
     })
 
     it('says Locked once submitted and shows the Late chip', async () => {

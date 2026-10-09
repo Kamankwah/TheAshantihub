@@ -73,6 +73,13 @@ describe("a scout's shell", () => {
     for (const label of ['Follow-ups', 'Sent for approval', 'Calls', 'Day, week & month', 'Profile & sign out', 'My activity']) expect(within(nav).getByText(label, { selector: 'span' })).toBeInTheDocument()
   })
 
+  it('opens Sent for approval on the Made by me box', async () => {
+    renderShell()
+    const drawer = await openMenu()
+    fireEvent.click(within(within(drawer).getByRole('navigation', { name: 'Staff panels' })).getByText('Sent for approval', { selector: 'span' }))
+    expect(await screen.findByRole('button', { name: /Made by me/ })).toHaveAttribute('aria-pressed', 'true')
+  })
+
   it('puts a neutral "Due 19:00" on Reports while today\'s report is unsubmitted', async () => {
     const due = new Date(); due.setHours(19, 0, 0, 0)
     server.use(http.get(`${API}/api/notifications/staff-badges/`, () => HttpResponse.json({ tasks_overdue: 0, approvals_waiting: 0, report_due_at: due.toISOString() })))

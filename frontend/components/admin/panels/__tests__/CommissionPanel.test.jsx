@@ -71,6 +71,12 @@ describe('CommissionPanel', () => {
     expect(seen).toContain('100')
   })
 
+  it('keeps the button at All N and says how many are shown once past 100', async () => {
+    renderPanel(() => statement({ count: 150 }))
+    fireEvent.click(await screen.findByRole('button', { name: 'All 150' }))
+    expect(await screen.findByText('Showing the latest 100 of 150')).toBeInTheDocument()
+  })
+
   it('draws the bonus bar and a note per business, and warns about an overdue renewal', async () => {
     renderPanel()
     expect(await screen.findByText('3-paid-months bonus · GH₵ 100.00')).toBeInTheDocument()

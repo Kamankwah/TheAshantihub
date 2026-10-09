@@ -228,9 +228,13 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
     else { setInternalTab("visits"); setInternalDetail("check-in"); }
   };
   const openMadeApprovals = () => {
+    setDrawerOpen(false);
     if (isControlled) onTabChange?.("approvals/made");
     else { setInternalTab("approvals"); setInternalDetail("made"); }
   };
+
+  // A scout's "Sent for approval" is the Made by me box.
+  const navSelect = (id) => (role === "scout" && id === "approvals" ? openMadeApprovals() : selectTab(id));
 
   // Each panel starts at the top; skipped on first mount so a reload keeps
   // the browser's own scroll restoration.
@@ -273,7 +277,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
             {isDesktop && !sidebarCollapsed && <div style={{ color: D.gold, fontWeight: 900, fontSize: "0.85rem" }}>AshantiHub Staff</div>}
           </div>
           {isDesktop && <button onClick={() => setSidebarCollapsed(s => !s)} style={{ background: "none", border: "none", color: D.textDim, cursor: "pointer", padding: "8px 12px", fontSize: "0.7rem", fontFamily: "inherit", width: "100%", textAlign: "left" }}>{sidebarCollapsed ? "→" : "← Collapse"}</button>}
-          <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={selectTab} collapsed={!isDesktop || sidebarCollapsed} badgeFor={badgeFor} roleColor={roleColor} overviewLabel={overviewLabel(role)} noteFor={noteFor} />
+          <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={navSelect} collapsed={!isDesktop || sidebarCollapsed} badgeFor={badgeFor} roleColor={roleColor} overviewLabel={overviewLabel(role)} noteFor={noteFor} />
         </div>
       )}
 
@@ -348,7 +352,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
       </div>
 
       {isPhone && (scoutBar
-        ? <ScoutBottomBar navGroups={navGroups} activeTab={activeTab} onSelect={selectTab} onMenu={() => setDrawerOpen(true)} badgeFor={badgeFor} roleColor={roleColor} />
+        ? <ScoutBottomBar navGroups={navGroups} activeTab={activeTab} onSelect={navSelect} onMenu={() => setDrawerOpen(true)} badgeFor={badgeFor} roleColor={roleColor} />
         : <StaffBottomBar items={bottomItems} activeTab={activeTab} onSelect={selectTab} onMore={() => setDrawerOpen(true)} badgeFor={badgeFor} roleColor={roleColor} />)}
 
       <StaffDrawer open={drawerOpen && !isDesktop} onClose={() => setDrawerOpen(false)} returnFocusRef={menuButtonRef}>
@@ -368,7 +372,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
             <button type="button" onClick={signOut} style={{ minHeight: 44, background: "rgba(44,24,16,0.05)", border: `1px solid ${D.divider}`, color: D.text, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Sign out</button>
           </div>
         </div>}
-        <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={selectTab} collapsed={false} badgeFor={badgeFor} roleColor={roleColor} itemMinHeight={44} overviewLabel={overviewLabel(role)} noteFor={noteFor} />
+        <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={navSelect} collapsed={false} badgeFor={badgeFor} roleColor={roleColor} itemMinHeight={44} overviewLabel={overviewLabel(role)} noteFor={noteFor} />
         {isScout && <ScoutDevices />}
         {isScout && (
           <div style={{ padding: "0 14px 16px", display: "flex", gap: 8, flexWrap: "wrap" }}>

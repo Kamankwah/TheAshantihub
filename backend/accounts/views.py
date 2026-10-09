@@ -72,14 +72,10 @@ from .serializers import (
 
 def _scout_portfolio_summary(scout):
     """The scout's businesses (not rejected) and the two areas holding most of them."""
-    from django.db.models import Count
-
     owned = BusinessOwner.objects.filter(account_manager=scout).exclude(kyc_status=BusinessOwner.REJECTED)
-    zones = (
-        owned.filter(profile__zone__isnull=False).values("profile__zone__name")
-        .annotate(n=Count("pk")).order_by("-n", "profile__zone__name")[:2]
-    )
-    return {"areas": [row["profile__zone__name"] for row in zones], "portfolio_count": owned.count()}
+    from portfolio.areas import scout_areas
+
+    return {"areas": scout_areas([scout])[scout.pk], "portfolio_count": owned.count()}
 
 
 @api_view(["GET"])

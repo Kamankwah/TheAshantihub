@@ -90,7 +90,7 @@ function ReportReview({ id }) {
 
   return (
     <div style={{ background: D.pageBg, borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
-      <SystemSections sections={report.system} live={report.system_is_live} lockedAt={report.submitted_at} />
+      <SystemSections sections={report.system} live={report.system_is_live} lockedAt={report.snapshot_at || report.submitted_at} />
       <ReportNarrative report={report} />
       {report.similar_warning && <div style={flag}>Copy check: the narrative reads {Math.round(report.similarity * 100)}% like one of their earlier reports.</div>}
       {report.is_late && <div style={flag}>Submitted after the deadline.</div>}

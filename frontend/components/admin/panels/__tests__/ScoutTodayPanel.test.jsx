@@ -7,7 +7,7 @@ import ScoutTodayPanel, { bonusLine, greeting, waitingLine } from '../ScoutToday
 
 const API = 'http://localhost:8000'
 const hours = (n) => new Date(Date.now() + n * 3600000).toISOString()
-const PERMS = ['businesses.register', 'businesses.manage_portfolio', 'calls.log']
+const PERMS = ['businesses.register', 'businesses.manage_portfolio', 'calls.log', 'commission.view_own']
 const user = (over = {}) => ({ id: 9, full_name: 'Kwame Asante', role: 'scout', areas: ['Asafo', 'Bantama'], portfolio_count: 14, manager: { id: 2, full_name: 'Ama Boateng', role: 'operations' }, ...over })
 const authOf = (u = user(), perms = PERMS) => ({ user: u, hasPermission: (c) => perms.includes(c) })
 
@@ -198,5 +198,14 @@ describe('waitingLine and bonusLine', () => {
   it('only says "would complete it" at 2 of 3 with a renewal to come', () => {
     expect(bonusLine({ business: 'A', paid_months: 2, state: { kind: 'next_renewal', date: '2026-11-02' } })).toBe('A is at 2 of 3 — its next renewal would complete it.')
     expect(bonusLine({ business: 'A', paid_months: 1, state: { kind: 'overdue', day: 3 } })).toBe('A is at 1 of 3.')
+  })
+
+  it('hides the Commission and Targets cards, with no error card, without their permissions', async () => {
+    serve()
+    renderPanel({ auth: authOf(user(), ['calls.log']) })
+    expect(await screen.findByRole('region', { name: 'Due follow-ups' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'My commission' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: "Today's targets" })).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })

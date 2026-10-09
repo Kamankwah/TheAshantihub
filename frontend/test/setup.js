@@ -1,8 +1,13 @@
 import '@testing-library/jest-dom'
+import { configure } from '@testing-library/react'
 import { createElement } from 'react'
 import { afterAll, afterEach, beforeAll, vi } from 'vitest'
 import { server } from '../mocks/server.js'
 import { resetNetworkStatusForTests } from '../lib/networkStatus.js'
+
+// findBy*/waitFor poll up to 5 s (the default 1 s is too tight when the whole suite
+// runs in parallel); they still return the moment the element is there.
+configure({ asyncUtilTimeout: 5000 })
 
 // Leaflet needs a real browser (sized DOM, canvas) and doesn't render under
 // jsdom, so the two map components (item 11) are stubbed for every test. Their

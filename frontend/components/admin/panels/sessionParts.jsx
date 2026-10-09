@@ -21,7 +21,7 @@ const sameDay = (a, b) => a.toDateString() === b.toDateString();
 export function when(iso) {
   if (!iso) return "";
   const d = new Date(iso);
-  const time = d.toLocaleTimeString("en-GH", { hour: "2-digit", minute: "2-digit" });
+  const time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   return sameDay(d, new Date()) ? time : `${d.toLocaleDateString("en-GH", { day: "numeric", month: "short" })}, ${time}`;
 }
 

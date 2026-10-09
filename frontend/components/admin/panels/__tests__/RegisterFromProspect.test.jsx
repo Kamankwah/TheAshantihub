@@ -43,13 +43,13 @@ describe('Register a business from a prospect', () => {
   it('fills the first step in from the prospect and shows the "From prospect list" chip', async () => {
     serveProspects()
     renderPanel()
-    expect(await screen.findByText('From prospect list')).toBeInTheDocument()
-    expect(screen.getByLabelText('Business name (as on the signboard)')).toHaveValue('Asafo Hair & Beauty')
+    // The prospect arrives over the network: wait for the field it fills, then check the rest.
+    await waitFor(() => expect(screen.getByLabelText('Business name (as on the signboard)')).toHaveValue('Asafo Hair & Beauty'))
+    expect(screen.getByText('From prospect list')).toBeInTheDocument()
     expect(screen.getByLabelText("Owner's phone")).toHaveValue('+233201234761')
     // the owner's own name is never guessed from the business name
     expect(screen.getByLabelText("Owner's full name (as on Ghana Card)")).toHaveValue('')
-    const draft = JSON.parse(localStorage.getItem('ashantihub.registerDraft.9'))
-    expect(draft.form).toMatchObject({ prospect_id: '3', zone: '1' })
+    await waitFor(() => expect(JSON.parse(localStorage.getItem('ashantihub.registerDraft.9')).form).toMatchObject({ prospect_id: '3', zone: '1' }))
   })
 
   it('shows no chip for a plain registration', () => {
@@ -102,7 +102,7 @@ describe('Register a business from a prospect', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Use my location' }))
     expect(await screen.findByText('Accuracy ±12 m')).toBeInTheDocument()
     await screen.findByRole('option', { name: 'Manhyia' })
-    expect(screen.getByLabelText('Area')).toHaveValue('1') // from the prospect
+    await waitFor(() => expect(screen.getByLabelText('Area')).toHaveValue('1')) // from the prospect
     type('Ghana Post address', 'AK-112-0384')
     fireEvent.click(screen.getByRole('button', { name: 'Next: Photos' }))
     fireEvent.change(screen.getByLabelText('Signboard photo'), { target: { files: [new File(['s'], 's.jpg', { type: 'image/jpeg' })] } })

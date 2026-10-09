@@ -550,6 +550,13 @@ describe('BusinessPage — orders and delivery problems (staff WP3)', () => {
       expect(screen.getByText(/Sent 2 h ago · Ama has until \d{2}:\d{2}, then any Operations lead · Adwoa can undo it for 7 days once applied/)).toBeInTheDocument()
     })
 
+    it('does not promise an undo for a KYC request', async () => {
+      const due = new Date(Date.now() + 3 * 3600 * 1000).toISOString()
+      serve(business({ pending_requests: [{ id: 4, kind: 'business.kyc', title: 'New business', created_at: new Date(Date.now() - 2 * 3600 * 1000).toISOString(), due_at: due, waiting_for: 'Ama Boateng' }] }))
+      renderPage({ auth: LEAD_SCOUT })
+      expect(await screen.findByText(/Sent 2 h ago · Ama has until \d{2}:\d{2}, then any Operations lead$/)).toBeInTheDocument()
+    })
+
     it('shows the listings as a strip of four, then +N and See all', async () => {
       const listings = [1, 2, 3, 4, 5, 6].map((n) => ({ id: n, name: `Item ${n}`, status: 'published', main_photo: null, photos_count: 1, price_amount: '10.00' }))
       serve(business({ listings, listings_live: 6 }))

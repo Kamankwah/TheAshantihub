@@ -4,7 +4,6 @@ listing is published; it counts on the later of those two review dates. Leave
 days and holidays never count against anyone — they are shown, not subtracted.
 No money, and nothing about another team, is ever returned."""
 import calendar
-from collections import Counter
 from datetime import date, timedelta
 
 from django.db.models import Count, Min, Q
@@ -12,6 +11,7 @@ from django.utils import timezone
 
 from accounts.models import BusinessOwner, Role, StaffUser
 from listings.models import Listing
+from portfolio.areas import scout_areas
 from targets.services import ON_LEAVE, Calendar
 
 
@@ -60,17 +60,6 @@ def activation_days(scouts):
     return days
 
 
-def _areas(scouts):
-    zones = {s.pk: Counter() for s in scouts}
-    rows = (
-        BusinessOwner.objects.filter(account_manager__in=scouts, profile__zone__isnull=False)
-        .values_list("account_manager_id", "profile__zone__name")
-    )
-    for scout_id, zone in rows:
-        zones[scout_id][zone] += 1
-    return {pk: [name for name, _ in sorted(c.items(), key=lambda kv: (-kv[1], kv[0]))[:2]] for pk, c in zones.items()}
-
-
 def _ranks(counts):
     """Competition ranking: equal counts share a rank (1, 2, 2, 4)."""
     ordered = sorted(counts.values(), reverse=True)
@@ -87,7 +76,7 @@ def build(user, month_value=None, *, today=None):
 
     scouts = team_of(user)
     days = activation_days(scouts)
-    areas = _areas(scouts)
+    areas = scout_areas(scouts)
     now_counts = {s.pk: sum(1 for d in days[s.pk] if first <= d <= upto) for s in scouts}
     then_counts = {s.pk: sum(1 for d in days[s.pk] if before_first <= d <= before_upto) for s in scouts}
     ranks = _ranks(now_counts)

@@ -120,10 +120,11 @@ export default function CommissionPanel() {
               {data.count > 4 && (
                 <button type="button" onClick={() => setAll((v) => !v)}
                   style={{ background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.8rem", fontWeight: 700, color: D.deepGold }}>
-                  {all ? "Show fewer" : data.count > 100 ? "Showing the latest 100" : `All ${data.count}`}
+                  {all ? "Show fewer" : `All ${data.count}`}
                 </button>
               )}
             </div>
+            {all && data.count > 100 && <div style={{ ...dim, padding: "2px 0 6px" }}>{`Showing the latest 100 of ${data.count}`}</div>}
             {data.results.length === 0 && <div style={{ ...dim, padding: "8px 0" }}>{policy?.registration ? "No commission lines yet. A registration earns one when Operations approves its KYC." : "No commission lines yet."}</div>}
             {data.results.map((line) => {
               const [bg, fg] = STATUS_STYLE[line.status] || STATUS_STYLE.paid;

@@ -217,6 +217,7 @@ class FixRoundTests(TestCase):
         report.refresh_from_db()
         self.assertFalse(report.is_late)
         self.assertEqual(report.submitted_at, at(self.today, 18))
+        self.assertEqual(report.snapshot_at, at(self.today, 19, 5))  # the snapshot is as of the latest submission
 
     def test_a_week_is_compared_with_earlier_weeks_not_with_days(self):
         last_monday = self.today - timedelta(days=self.today.weekday() + 7)

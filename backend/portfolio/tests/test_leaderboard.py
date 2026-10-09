@@ -109,6 +109,11 @@ class LeaderboardTests(TestCase):
         self.assertEqual(next(r for r in body["rows"] if r["is_me"])["areas"], ["Manhyia"])
         self.assertEqual(next(r for r in body["rows"] if r["name"] == self.yaw.full_name)["areas"], [])
 
+    def test_a_rejected_business_is_not_one_of_the_areas(self):
+        owner = self.activate(self.kwame, date(2026, 10, 2))
+        BusinessOwner.objects.filter(pk=owner.pk).update(kyc_status=BusinessOwner.REJECTED)
+        self.assertEqual(next(r for r in self.get(self.kwame).json()["rows"] if r["is_me"])["areas"], [])
+
     def test_a_past_month_and_bad_months(self):
         self.activate(self.kwame, date(2026, 9, 10))
         body = self.get(self.kwame, "?month=2026-09").json()

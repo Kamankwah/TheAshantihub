@@ -25,7 +25,7 @@ const MAX_ACCURACY_M = 100;
 // The scout proposes changes to a business they manage (portfolio
 // business.update). Only changed fields are sent; payout details are never
 // offered. Goes to the scout's Operations lead; the owner can undo for 7 days.
-export default function ProposeChangeForm({ businessId, onBack, onSent, leadName }) {
+export default function ProposeChangeForm({ businessId, onBack, onSent, leadName, maskPhones = false }) {
   const { data: business, isLoading, isError } = usePortfolioBusiness(businessId);
   if (isLoading) return <div style={card}><div style={dim}>Loading…</div></div>;
   if (isError || !business) {
@@ -36,7 +36,7 @@ export default function ProposeChangeForm({ businessId, onBack, onSent, leadName
       </div>
     );
   }
-  return <ChangeForm business={business} onBack={onBack} onSent={onSent} leadName={leadName} />;
+  return <ChangeForm business={business} onBack={onBack} onSent={onSent} leadName={leadName} maskPhones={maskPhones} />;
 }
 
 function Section({ title, children }) {
@@ -48,11 +48,11 @@ function Section({ title, children }) {
   );
 }
 
-function TextField({ label, type, value, current, onChange, hint }) {
+function TextField({ label, type, value, current, onChange, hint, mask }) {
   const id = useId();
-  // A phone is shown masked ("024 *** 118"); the box starts empty and stays
-  // "no change" until the scout types a new number.
-  const shown = type === "tel" ? maskPhone(current) : current;
+  // For a scout a phone is shown masked ("024 *** 118"); the box starts empty and
+  // stays "no change" until a new number is typed.
+  const shown = type === "tel" && mask ? maskPhone(current) : current;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       <label htmlFor={id} style={labelStyle}>{label}</label>
@@ -64,7 +64,7 @@ function TextField({ label, type, value, current, onChange, hint }) {
   );
 }
 
-function ChangeForm({ business: live, onBack, onSent, leadName }) {
+function ChangeForm({ business: live, onBack, onSent, leadName, maskPhones }) {
   // The details the form opened with: what is diffed and shown as "Now", so a
   // background refetch can't turn an untouched field into a change.
   const [business] = useState(live);
@@ -162,7 +162,7 @@ function ChangeForm({ business: live, onBack, onSent, leadName }) {
   const setValue = (key) => (value) => setValues((v) => ({ ...v, [key]: value }));
   const textField = (key) => {
     const [, label, type, source] = TEXT_FIELDS.find(([k]) => k === key);
-    return <TextField key={key} label={label} type={type} value={values[key]} current={business[source]} onChange={setValue(key)} hint={type === "tel" ? phoneHint(leadName ? firstName(leadName) : "Operations") : null} />;
+    return <TextField key={key} mask={maskPhones} label={label} type={type} value={values[key]} current={business[source]} onChange={setValue(key)} hint={type === "tel" ? phoneHint(leadName ? firstName(leadName) : "Operations") : null} />;
   };
 
   return (

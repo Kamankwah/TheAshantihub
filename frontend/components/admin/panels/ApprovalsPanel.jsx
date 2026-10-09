@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { API_BASE_URL, apiPost } from "../../../apiClient.js";
 import { useApproval, useApprovalCounts, useApprovals } from "../../../hooks/useApprovals.js";
@@ -73,6 +73,8 @@ export default function ApprovalsPanel({ detailId, onOpenDetail }) {
 
 function ApprovalsInbox({ onOpen, initialBox = "mine" }) {
   const [box, setBox] = useState(initialBox);
+  // Moving between approvals entries while mounted re-applies the box the entry names.
+  useEffect(() => { setBox(initialBox); }, [initialBox]);
   const { data: counts } = useApprovalCounts();
   const { data, isLoading, isError } = useApprovals(box);
   const rows = data?.results || [];

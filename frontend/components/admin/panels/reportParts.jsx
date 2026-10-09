@@ -67,10 +67,12 @@ function Row({ row }) {
 }
 
 // "From the system": numbers counted from AshantiHub's records, never typed.
-// `lockedAt` is when the snapshot was taken (the submission time) once frozen.
-export function SystemSections({ sections: given, live, lockedAt }) {
-  // The measures against their targets read first.
-  const sections = [...(given || [])].sort((a, b) => (b.key === "targets") - (a.key === "targets"));
+// `lockedAt` is when the snapshot was taken (the latest submission) once frozen.
+export function SystemSections({ sections: given, live, lockedAt, onlyTargets = false }) {
+  // The measures against their targets read first. A scout's report shows just
+  // that card (the four measures and the summary line) when it exists.
+  let sections = [...(given || [])].sort((a, b) => (b.key === "targets") - (a.key === "targets"));
+  if (onlyTargets && sections.some((s) => s.key === "targets")) sections = sections.filter((s) => s.key === "targets");
   return (
     <section aria-label="From the system" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>

@@ -181,9 +181,15 @@ describe('ProposeChangeForm — finding the phone\'s location', () => {
     expect(screen.queryByText('Finding your location…')).not.toBeInTheDocument()
   })
 
+  it('shows the full phone to anyone who is not a scout', async () => {
+    renderForm({ leadName: 'Ama Boateng' })
+    expect((await screen.findAllByText('Now: +233244000118')).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/\*\*\*/)).not.toBeInTheDocument()
+  })
+
   it('names the lead, masks the phone and treats an untouched phone box as no change', async () => {
     const box = captureChanges()
-    renderForm({ leadName: 'Ama Boateng' })
+    renderForm({ leadName: 'Ama Boateng', maskPhones: true })
     expect((await screen.findAllByText(/before Ama sees it/)).length).toBeGreaterThan(0)
     expect(screen.getAllByText('Now: 024 *** 118').length).toBeGreaterThan(0)
     expect(screen.queryByText(/\+233244000118/)).not.toBeInTheDocument()

@@ -7,6 +7,11 @@ describe('maskPhone', () => {
     expect(maskPhone('+233241234118')).toBe('024 *** 118')
     expect(maskPhone('233 24 123 4118')).toBe('024 *** 118')
   })
+  it('masks on the last 9 digits for legacy formats', () => {
+    expect(maskPhone('00233241234118')).toBe('024 *** 118')
+    expect(maskPhone('241234118')).toBe('024 *** 118')
+    expect(maskPhone('0233241234118')).toBe('024 *** 118')
+  })
   it('leaves what it cannot read, and empty input, alone', () => {
     expect(maskPhone('')).toBe('')
     expect(maskPhone(null)).toBe('')

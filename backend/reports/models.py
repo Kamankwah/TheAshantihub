@@ -29,6 +29,7 @@ class StaffReport(models.Model):
     submitted_at = models.DateTimeField(null=True, blank=True)
     is_late = models.BooleanField(default=False)
     system_snapshot = models.JSONField(null=True, blank=True)
+    snapshot_at = models.DateTimeField(null=True, blank=True)
     achievements = models.TextField(blank=True, default="")
     blockers = models.TextField(blank=True, default="")
     plan_next = models.JSONField(default=list, blank=True)

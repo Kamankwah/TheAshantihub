@@ -76,6 +76,14 @@ class ExportTests(TestCase):
         self.assertEqual(pdf["Content-Type"], "application/pdf")
         self.assertTrue(pdf.content.startswith(b"%PDF"))
 
+    def test_the_pdf_chart_reads_done_of_target(self):
+        chart = exports._chart({"title": "Targets", "rows": [
+            {"label": "Visits", "value": 3, "target": 6}, {"label": "Calls", "value": 12, "target": 10}, {"label": "Other", "value": 4},
+        ]})
+        visits, calls, other = chart["rows"]
+        self.assertEqual((visits["value"], calls["value"], other["value"]), ("3 of 6", "12 of 10", 4))
+        self.assertEqual((visits["width"], calls["width"]), (round(exports.CHART_WIDTH / 2), exports.CHART_WIDTH))
+
     def test_the_pdf_shows_markup_as_text(self):
         tag = '<img src="http://example.invalid/x.png">'
         report = self.submitted(self.other_scout, achievements=tag, blockers="<b>bold</b>")
