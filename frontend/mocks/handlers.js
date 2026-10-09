@@ -517,6 +517,15 @@ export const handlers = [
     count: 0, next: null, previous: null, results: [], summary: { done: 0, avg_minutes: null, flagged: 0 },
   })),
   http.get('http://localhost:8000/api/field/visits/open/', () => HttpResponse.json({ visit: null })),
+  // Scout targets (staff WP4): no targets set, nothing done.
+  http.get('http://localhost:8000/api/targets/me/', () => HttpResponse.json({
+    period: 'week', label: 'Mon 5 – Sun 11 October', start: '2026-10-05', end: '2026-10-11', today: '2026-10-07',
+    working_days: 6, leave_days: 0, holiday_days: 0, has_targets: false,
+    measures: ['registrations', 'visits', 'calls', 'renewals'].map((metric) => ({
+      metric, label: metric[0].toUpperCase() + metric.slice(1), how: '', done: 0, target: null, today_done: 0, today_target: null,
+    })),
+    days: [], daily: [], set_by: null, effective_from: null, sunday_off: true, leave: [], holidays: [], lead: null,
+  })),
   http.get('http://localhost:8000/api/field/visit-targets/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/accounts/staff/team/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/accounts/staff/invitable-roles/', () => HttpResponse.json([])),

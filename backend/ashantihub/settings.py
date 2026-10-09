@@ -110,6 +110,7 @@ INSTALLED_APPS = [
     "portfolio",
     "fraud",
     "field",
+    "targets",
     "realtime",
 ]
 

@@ -192,8 +192,15 @@ describe('portfolio menus (staff phase 2A)', () => {
 
   it("puts a scout's Portfolio under My businesses, next to Field Verification", () => {
     const groups = buildNavGroups(authAs('scout', ['businesses.manage_portfolio', 'businesses.register', 'scouts.verify', 'calls.log']))
-    expect(groups.map((g) => g.label)).toEqual(['Pipeline', 'My businesses', 'Calls', 'My work', 'Reports'])
+    expect(groups.map((g) => g.label)).toEqual(['Pipeline', 'My businesses', 'Calls', 'Performance', 'My work', 'Reports'])
     expect(idsIn(groups, 'My businesses')).toEqual(['portfolio', 'tasks', 'field-verification'])
+  })
+
+  it('gives a scout Targets under Performance, and Operations none', () => {
+    const scout = buildNavGroups(authAs('scout', ['businesses.manage_portfolio', 'businesses.register']))
+    expect(idsIn(scout, 'Performance')).toEqual(['targets'])
+    expect(NAV_ITEMS.find((i) => i.id === 'targets')).toMatchObject({ icon: '🎯', label: 'Targets' })
+    expect(allIds(['portfolio.manage', 'businesses.register'])).not.toContain('targets')
   })
 
   it('gives Operations a Businesses group right after People', () => {

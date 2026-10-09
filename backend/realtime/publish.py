@@ -60,13 +60,16 @@ QUEUE_INVALIDATIONS = [
     (("prospect.", "visit.", "business.registered"), ("businesses.register",), ("prospects", "call-counterparts", "my-tasks")),
     # A scout's delivery flag gives every Delivery Manager a task (portfolio/delivery.py).
     (("delivery.problem_flagged",), ("delivery.manage",), ("my-tasks", "staff-badges")),
+    # Targets, leave and holidays change what a scout's Targets screen shows; a KYC approval
+    # (registrations) and a subscription payment (renewals) change the counts.
+    (("targets.", "leave.", "calendar.", "kyc-approve", "subscription."), ("businesses.manage_portfolio",), ("my-targets",)),
     (("fraud.",), ("fraud.manage", "fraud.flag"), ("fraud-flags", "fraud-flag-counts", "kyc-queue", "portfolio-business", "staff-badges")),
 ]
 # (verb prefixes, extra keys for everyone who receives the feed event)
 FEED_KEYS = [
     (("task-",), ("my-tasks", "staff-badges")),
-    (("call-",), ("call-logs",)),
-    (("visit.",), ("visits", "visit-open")),
+    (("call-",), ("call-logs", "my-targets")),
+    (("visit.",), ("visits", "visit-open", "my-targets")),
     # A returned request gives its maker a follow-up task (portfolio/approval_kinds.py).
     (("approval.",), ("approvals", "approval", "approval-counts", "staff-badges", "my-tasks")),
     (("report.",), ("my-reports", "report", "team-reports")),

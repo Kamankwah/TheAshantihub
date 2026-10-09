@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTargets } from "../../../hooks/useTargets.js";
 import { useOpenVisit, useVisits } from "../../../hooks/useVisits.js";
 import { D, glassCard } from "../theme.js";
 import { button, dim, pill } from "./panelStyles.js";
@@ -49,16 +50,20 @@ function VisitList({ onCheckIn }) {
   const [limit, setLimit] = useState(PAGE);
   const { data, isLoading, isError, refetch } = useVisits(range, limit);
   const { data: openData } = useOpenVisit();
+  const week = useTargets("week");
   const month = new Date().toLocaleDateString("en-GB", { month: "long" });
   const results = data?.results || [];
   const summary = data?.summary || {};
   const hidden = Math.max(0, (data?.count || 0) - results.length);
   const nextDay = data?.next_hidden_at ? new Date(data.next_hidden_at).toLocaleDateString("en-GB", { weekday: "long" }) : "";
   const choose = (next) => { setRange(next); setLimit(PAGE); };
+  // "N of T" when Operations has set a visits target; otherwise just N, and the tile says so once the targets have loaded.
+  const visitTarget = week.data?.measures?.find((m) => m.metric === "visits")?.target;
+  const done = summary.done ?? 0;
   const tiles = [
-    ["This week", String(summary.done ?? 0), D.text],
-    ["Average stay", summary.avg_minutes != null ? `${summary.avg_minutes} min` : "—", D.text],
-    ["Flagged", String(summary.flagged ?? 0), summary.flagged ? D.amber : D.text],
+    ["This week", visitTarget != null ? `${done} of ${visitTarget}` : String(done), D.text, week.isSuccess && visitTarget == null ? "No target set" : null],
+    ["Average stay", summary.avg_minutes != null ? `${summary.avg_minutes} min` : "—", D.text, null],
+    ["Flagged", String(summary.flagged ?? 0), summary.flagged ? D.amber : D.text, null],
   ];
   const empty = range === "flagged" ? "No flagged visits." : range === "month" ? `No visits in ${month} yet.` : "No visits this week yet.";
 
@@ -70,10 +75,11 @@ function VisitList({ onCheckIn }) {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
-        {tiles.map(([label, value, color]) => (
+        {tiles.map(([label, value, color, note]) => (
           <div key={label} style={{ ...glassCard, padding: "10px 12px" }}>
             <div style={{ ...dim, fontWeight: 600 }}>{label}</div>
             <div style={{ fontSize: "1.1rem", fontWeight: 800, color, ...figures }}>{value}</div>
+            {note && <div style={{ ...dim, fontSize: "0.68rem" }}>{note}</div>}
           </div>
         ))}
       </div>

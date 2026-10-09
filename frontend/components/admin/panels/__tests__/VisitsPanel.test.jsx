@@ -139,4 +139,28 @@ describe('VisitsPanel', () => {
     renderPanel({ detailId: 'check-in-12' })
     expect(await screen.findByText('check-in screen 12')).toBeInTheDocument()
   })
+
+  describe('the week tile and the visits target', () => {
+    const targets = (target) => ({
+      period: 'week', label: 'x', start: '2026-10-05', end: '2026-10-11', today: '2026-10-07', working_days: 6, leave_days: 0, holiday_days: 0,
+      has_targets: target != null, days: [], daily: [], set_by: null, effective_from: null, sunday_off: true, leave: [], holidays: [], lead: null,
+      measures: [{ metric: 'visits', label: 'Visits', how: '', done: 3, target, today_done: 0, today_target: null }],
+    })
+
+    it('reads "N of T" when Operations has set a visits target', async () => {
+      serveVisits([], () => page([visit(1)]))
+      server.use(http.get(`${API}/api/targets/me/`, () => HttpResponse.json(targets(30))))
+      renderPanel()
+      expect(await screen.findByText('3 of 30')).toBeInTheDocument()
+    })
+
+    it('shows just N and says "No target set" when there is none, never "of 0"', async () => {
+      serveVisits([], () => page([visit(1)]))
+      server.use(http.get(`${API}/api/targets/me/`, () => HttpResponse.json(targets(null))))
+      renderPanel()
+      expect(await screen.findByText('No target set')).toBeInTheDocument()
+      expect(screen.queryByText(/ of 0/)).not.toBeInTheDocument()
+      expect(screen.getAllByText('This week')[0].nextSibling).toHaveTextContent('3')
+    })
+  })
 })

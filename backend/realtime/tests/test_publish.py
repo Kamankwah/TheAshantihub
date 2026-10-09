@@ -69,7 +69,7 @@ class PublishTests(TestCase):
         self.assertEqual(set(payload), FEED_FIELDS)
         self.assertEqual(payload["target"], {"type": "calls.calllog", "id": "7", "label": "Adwoa Fabrics"})
         self.assertEqual(payload["actor"], {"id": self.scout.id, "name": "Kwame", "role": "scout"})
-        self.assertEqual(payload["invalidate"], ["activity", "call-logs"])
+        self.assertEqual(payload["invalidate"], ["activity", "call-logs", "my-targets"])
         self.assertEqual(self.message(manager)["payload"]["verb"], "call-list")
         self.assertEqual(self.message(boss)["payload"]["verb"], "call-list")
         self.assertTrue(self.silent(outsider))
@@ -121,6 +121,19 @@ class PublishTests(TestCase):
                     queue = self.listen(group)
                     self.record(self.lead, verb, method="POST", target_type="x", target_id="1")
                     self.assertEqual(self.message(queue)["payload"]["invalidate"], keys)
+
+    def test_target_leave_and_holiday_changes_refresh_scouts_targets_screens(self):
+        for verb in ("targets.plan_set", "leave.recorded", "calendar.holiday_added"):
+            with self.subTest(verb=verb):
+                scouts = self.listen("perm.businesses.manage_portfolio")
+                self.record(self.lead, verb, method="PUT", target_type="accounts.staffuser", target_id="3")
+                invalidations = [payload["invalidate"] for payload in self.drain(scouts) if payload["type"] == "invalidate"]
+                self.assertIn(["my-targets"], invalidations)
+
+    def test_a_visit_refreshes_the_scouts_own_targets(self):
+        mine = self.listen(f"staff.{self.scout.id}")
+        self.record(self.scout, "visit.check_out", method="POST", target_type="field.visitcheckin", target_id="7")
+        self.assertIn("my-targets", self.message(mine)["payload"]["invalidate"])
 
     def test_system_events_reach_only_super_admins(self):
         boss = self.listen(f"staff.{self.boss.id}")
