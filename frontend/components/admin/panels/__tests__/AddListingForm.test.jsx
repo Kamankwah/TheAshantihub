@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { apiPost } from '../../../../apiClient.js'
 import { server } from '../../../../mocks/server.js'
 import AddListingForm from '../AddListingForm.jsx'
 
@@ -54,6 +55,7 @@ async function fillProduct() {
   fireEvent.click(within(screen.getByRole('group', { name: 'Comes with a warranty?' })).getByRole('radio', { name: 'No' }))
   fireEvent.click(within(screen.getByRole('group', { name: 'Can it expire?' })).getByRole('radio', { name: 'No' }))
   fireEvent.change(screen.getByLabelText('Return policy'), { target: { value: 'Exchange within 7 days if unworn' } })
+  fireEvent.change(screen.getByLabelText('Why add it (Operations sees this)'), { target: { value: 'Owner showed me the new stock' } })
 }
 
 let append
@@ -98,9 +100,32 @@ describe('AddListingForm', () => {
         stock_quantity: 4, has_warranty: false, warranty_details: '', has_expiry: false, expiry_date: null,
         return_policy: 'Exchange within 7 days if unworn',
       },
-      main_photo_id: 101, photo_ids: [], reason: '',
+      main_photo_id: 101, photo_ids: [], reason: 'Owner showed me the new stock',
     })
     expect(await screen.findByText('Sent to Ama Boateng')).toBeInTheDocument()
+  })
+
+  it('needs a reason for the approver before it can be sent', async () => {
+    serve()
+    stagePhotos([])
+    renderForm()
+    await fillProduct()
+    fireEvent.change(screen.getByLabelText('Why add it (Operations sees this)'), { target: { value: '   ' } })
+    expect(screen.getByRole('button', { name: 'Send for approval' })).toBeDisabled()
+    expect(screen.getByText('Say why — the approver sees it.')).toBeInTheDocument()
+    // The preview's price is set in tabular figures (DESIGN.md).
+    const preview = screen.getByRole('region', { name: 'How customers will see it' })
+    expect(within(preview).getByText(/GH₵ 180\.00/).style.fontVariantNumeric).toBe('tabular-nums')
+    fireEvent.change(screen.getByLabelText('Why add it (Operations sees this)'), { target: { value: 'New stock' } })
+    expect(screen.getByRole('button', { name: 'Send for approval' })).toBeEnabled()
+    expect(screen.queryByText('Say why — the approver sees it.')).not.toBeInTheDocument()
+  })
+
+  it('the default mock refuses a blank reason the way the server does', async () => {
+    await expect(apiPost('/api/portfolio/businesses/12/listings/', { listing: {}, reason: ' ' }))
+      .rejects.toMatchObject({ status: 400, body: { reason: ['Say why — the approver sees it.'] } })
+    await expect(apiPost('/api/portfolio/businesses/12/listings/', { listing: {}, reason: 'New stock' }))
+      .resolves.toMatchObject({ status: 'pending' })
   })
 
   it('asks a service business how long it takes instead of the product questions', async () => {

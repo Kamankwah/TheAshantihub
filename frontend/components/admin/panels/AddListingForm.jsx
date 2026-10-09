@@ -38,6 +38,8 @@ function YesNo({ legend, name, value, onChange }) {
 }
 
 const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(180px, 100%), 1fr))", gap: 10 };
+// The server's own words for a missing reason (portfolio.proposals.REASON_REQUIRED).
+const REASON_NEEDED = "Say why — the approver sees it.";
 
 function ListingForm({ business, meta, onBack, onSent }) {
   const isService = business.business_kind === "service";
@@ -66,7 +68,8 @@ function ListingForm({ business, meta, onBack, onSent }) {
   const productAnswered = isService || Boolean(
     warranty !== null && (!warranty || warrantyDetails.trim()) && expiry !== null && (!expiry || expiryDate) && returnPolicy.trim(),
   );
-  const ready = Boolean(photos.length > 0 && name.trim() && category && zone && priceOk && description.trim() && productAnswered) && !busy;
+  const reasonGiven = note.trim().length > 0;
+  const ready = Boolean(photos.length > 0 && name.trim() && category && zone && priceOk && description.trim() && productAnswered && reasonGiven) && !busy;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -161,14 +164,15 @@ function ListingForm({ business, meta, onBack, onSent }) {
           : <div style={{ width: 64, height: 64, borderRadius: 8, background: D.panelBg2, flexShrink: 0 }} />}
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 800 }}>{name.trim() || "Product name"}</div>
-          <div>{priceOk ? money(price) : "Price"}{isService && priceUnit.trim() ? ` ${priceUnit.trim()}` : ""}</div>
+          <div style={{ fontVariantNumeric: "tabular-nums" }}>{priceOk ? money(price) : "Price"}{isService && priceUnit.trim() ? ` ${priceUnit.trim()}` : ""}</div>
           <div style={dim}>{`${business.business_name} · ${business.kyc_status === "verified" ? "Verified business" : "KYC waiting"}`}</div>
         </div>
       </section>
-      <label style={labelStyle}>Note for your Operations lead (optional)<textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} style={field} /></label>
+      <label style={labelStyle}>Why add it (Operations sees this)<textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} style={field} /></label>
+      {!reasonGiven && <div style={dim}>{REASON_NEEDED}</div>}
       <div style={dim}>{`Your Operations lead's approval is this listing's moderation: it goes live when they approve it. ${owner} is told and can undo it for 7 days.`}</div>
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
-      {!ready && !busy && <div style={dim}>{`Take at least one photo and fill in every field${isService ? "" : ", including the three questions,"} to send it.`}</div>}
+      {!ready && !busy && <div style={dim}>{`Take at least one photo, fill in every field${isService ? "" : " (including the three questions)"} and say why, to send it.`}</div>}
       <button type="submit" disabled={!ready} style={{ ...button(D.gold, D.text, !ready), alignSelf: "flex-start" }}>Send for approval</button>
     </form>
   );

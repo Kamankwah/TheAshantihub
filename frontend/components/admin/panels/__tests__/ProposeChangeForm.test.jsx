@@ -5,9 +5,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../../../../mocks/server.js'
 import ProposeChangeForm from '../ProposeChangeForm.jsx'
 
-const geo = vi.hoisted(() => ({ locate: vi.fn(), position: null }))
+const geo = vi.hoisted(() => ({ locate: vi.fn(), position: null, error: null, locating: false }))
 vi.mock('../../../../hooks/useDevicePosition.js', () => ({
-  useDevicePosition: () => ({ position: geo.position, error: null, locating: false, locate: geo.locate }),
+  useDevicePosition: () => ({ position: geo.position, error: geo.error, locating: geo.locating, locate: geo.locate }),
 }))
 
 const API = 'http://localhost:8000'
@@ -47,7 +47,7 @@ function captureChanges() {
   return box
 }
 
-beforeEach(() => { geo.position = null; geo.locate.mockClear() })
+beforeEach(() => { geo.position = null; geo.error = null; geo.locating = false; geo.locate.mockClear() })
 
 describe('ProposeChangeForm', () => {
   it('sends only what changed, with the reason, and says who it went to', async () => {
@@ -161,5 +161,23 @@ describe('ProposeChangeForm', () => {
     fireEvent.change(screen.getByLabelText('Why the change (Operations sees this)'), { target: { value: 'New phone' } })
     fireEvent.click(screen.getByRole('button', { name: 'Send 1 change for approval' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Already registered — ask Operations.')
+  })
+})
+
+describe('ProposeChangeForm — finding the phone\'s location', () => {
+  it('says it is finding the location while the phone works it out', async () => {
+    geo.locating = true
+    renderForm()
+    fireEvent.click(await screen.findByRole('button', { name: 'Use my location here' }))
+    expect(geo.locate).toHaveBeenCalled()
+    expect(screen.getByText('Finding your location…')).toBeInTheDocument()
+  })
+
+  it("says why the phone couldn't give a location, and that the pin can go in by hand", async () => {
+    geo.error = 'Location is blocked for AshantiHub on this phone.'
+    renderForm()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Location is blocked for AshantiHub on this phone.')
+    expect(screen.getByRole('alert')).toHaveTextContent('You can also place the pin by hand on the map below')
+    expect(screen.queryByText('Finding your location…')).not.toBeInTheDocument()
   })
 })

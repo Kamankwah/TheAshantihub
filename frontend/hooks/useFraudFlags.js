@@ -1,14 +1,22 @@
-import { useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { apiFetch } from '../apiClient.js'
 
-// GET /api/fraud/flags/?status= — a DRF page (read data?.results), newest
-// first, 25 a page. status: open | confirmed | dismissed. A fraud.manage
-// holder sees every case; someone who can only flag (Support) sees the ones
-// they raised. Live updates refresh it through the "fraud-flags" key.
+// GET /api/fraud/flags/?status=&page= — DRF pages of 25, newest first, read
+// as data.pages[n].results; fetchNextPage() asks for the page DRF's `next`
+// names, so no case is hidden past the first 25. status: open | confirmed |
+// dismissed. A fraud.manage holder sees every case; someone who can only
+// flag (Support) sees the ones they raised. Live updates refresh every
+// loaded page through the "fraud-flags" key.
 export function useFraudFlags(status = 'open') {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ['fraud-flags', status],
-    queryFn: () => apiFetch(`/api/fraud/flags/?status=${encodeURIComponent(status)}`),
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams({ status })
+      if (pageParam) params.set('page', pageParam)
+      return apiFetch(`/api/fraud/flags/?${params.toString()}`)
+    },
+    initialPageParam: undefined,
+    getNextPageParam: (lastPage) => (lastPage?.next ? new URL(lastPage.next).searchParams.get('page') || undefined : undefined),
   })
 }
 

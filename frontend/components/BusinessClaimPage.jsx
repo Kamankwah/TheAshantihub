@@ -11,7 +11,9 @@ import OwnerClaimForm, { ClaimSummary } from "./OwnerClaimForm.jsx";
 // has no session yet. Shows what was registered, then the same terms +
 // password form as the hand-over. It never signs the owner in — on success
 // they sign in normally (onSignIn opens the sign-in form). A used, replaced
-// or expired link shows the server's message and no form.
+// or expired link shows the server's message and no form; no connection or a
+// server fault offers Try again. An expired sign-in stored in this browser
+// doesn't block the page (useClaimPreview's publicLink).
 
 const when = (iso) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "");
 const pageStyle = { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: `linear-gradient(135deg, ${C.kente1}, ${C.kente3})`, padding: 16, boxSizing: "border-box" };
@@ -24,10 +26,12 @@ const mutedStyle = { fontSize: "0.76rem", opacity: 0.75, lineHeight: 1.5 };
 export default function BusinessClaimPage({ onSignIn }) {
   const location = useLocation();
   const token = new URLSearchParams(location.search).get("token") || "";
-  const preview = useClaimPreview(token);
+  const preview = useClaimPreview(token, { publicLink: true });
   const [claimed, setClaimed] = useState(null);
   const refusal = preview.isError ? preview.error : null;
   const linkUsed = refusal?.body?.code === "used";
+  // No answer (offline) or a server fault says nothing about the link itself.
+  const couldNotLoad = Boolean(refusal) && (refusal.status === undefined || refusal.status >= 500);
 
   return (
     <div style={pageStyle}>
@@ -43,6 +47,11 @@ export default function BusinessClaimPage({ onSignIn }) {
             </>
           ) : !token ? (
             <div role="alert" style={noticeStyle(C.kente1)}>This link is missing its token. Ask your account manager to send a new one.</div>
+          ) : couldNotLoad ? (
+            <>
+              <div role="alert" style={noticeStyle(C.kente1)}>We couldn't load this link right now. Check your connection and try again.</div>
+              <button type="button" onClick={() => preview.refetch()} disabled={preview.isFetching} style={{ ...primaryStyle, opacity: preview.isFetching ? 0.6 : 1 }}>Try again</button>
+            </>
           ) : refusal ? (
             <>
               <div role="alert" style={noticeStyle(C.kente1)}>{apiErrorMessage(refusal, "This link can't be used. Ask your account manager to send a new one.")}</div>

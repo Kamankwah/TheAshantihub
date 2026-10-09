@@ -64,7 +64,7 @@ function ChangeForm({ business: live, onBack, onSent }) {
   // background refetch can't turn an untouched field into a change.
   const [business] = useState(live);
   const { data: zones } = useZones();
-  const { position, locate } = useDevicePosition();
+  const { position, locate, locating, error: locationError } = useDevicePosition();
   const areaId = useId();
   const daysId = useId();
   const opensId = useId();
@@ -212,6 +212,13 @@ function ChangeForm({ business: live, onBack, onSent }) {
             : "Now: no map pin yet"}
         </div>
         <button type="button" onClick={() => { setPinWarning(null); setPinAskedAt(Date.now()); locate?.(); }} style={{ ...button(D.panelBg, D.text), alignSelf: "flex-start" }}>Use my location here</button>
+        {locating && <div role="status" style={dim}>Finding your location…</div>}
+        {locationError && !locating && (
+          <div role="alert" style={callout(D.amber)}>
+            {locationError}
+            <div style={{ fontWeight: 400 }}>You can also place the pin by hand on the map below — it will be marked “placed by hand” for Operations.</div>
+          </div>
+        )}
         {pinWarning && (
           <div role="status" style={callout(D.amber)}>
             {pinWarning}

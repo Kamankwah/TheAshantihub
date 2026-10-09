@@ -56,6 +56,8 @@ function useOwnerOnlyScreen(screenRef, focusRef) {
     const root = document.documentElement;
     const overflow = root.style.overflow;
     root.style.overflow = "hidden";
+    // Whatever opened the hand-over ("Hand the phone to …") gets focus back.
+    const opener = document.activeElement;
     focusRef.current?.focus();
     // Back must not leave the owner looking at the scout's staff shell: keep a
     // same-URL guard entry on top of history and re-push it on every popstate.
@@ -71,6 +73,7 @@ function useOwnerOnlyScreen(screenRef, focusRef) {
         if (!wasInert) el.removeAttribute("inert");
       }
       root.style.overflow = overflow;
+      if (opener && opener !== document.body && opener.isConnected && typeof opener.focus === "function") opener.focus();
     };
   }, [screenRef, focusRef]);
 }

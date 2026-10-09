@@ -1,7 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it, vi } from 'vitest'
+import { useState } from 'react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { setStoredAuth } from '../../../../apiClient.js'
 import { server } from '../../../../mocks/server.js'
 import OwnerHandover from '../OwnerHandover.jsx'
 
@@ -13,8 +15,9 @@ const preview = (overrides = {}) => ({
   business_name: 'Asafo Hair & Beauty', owner_name: 'Gifty Asantewaa', login_phone: '••••••••••761',
   area: 'Asafo', gps_address: 'AK-112-0384', registered_by_name: 'Kwame Asante',
   registered_at: '2026-10-08T10:52:00Z', terms_version: 'September 2026', channel: 'handover',
-  expires_at: inMinutes(30), ...overrides,
+  expires_at: inMinutes(30), email_on_file: 'gi•••@example.com', ...overrides,
 })
+afterEach(() => setStoredAuth(null))
 
 function startHandover({ expiresAt = inMinutes(30), start } = {}) {
   const seen = { starts: 0, previewToken: null }
@@ -90,6 +93,9 @@ describe('OwnerHandover — Back and autofill', () => {
     await screen.findByText('Asafo Hair & Beauty')
     expect(screen.getByLabelText('Set your password')).toHaveAttribute('autocomplete', 'off')
     expect(screen.getByLabelText('Type it again')).toHaveAttribute('autocomplete', 'off')
+    // The scout's phone mustn't offer the scout's own saved email either.
+    expect(screen.getByLabelText('Email (optional)')).toHaveAttribute('autocomplete', 'off')
+    expect(screen.getByText("Password resets go to gi•••@example.com. If that isn't your email, enter yours below.")).toBeInTheDocument()
     expect(screen.getByText(/If the phone offers to save it, tap Never/)).toBeInTheDocument()
   })
 })
@@ -175,5 +181,50 @@ describe('OwnerHandover — when it cannot go ahead', () => {
     const { onDone } = renderHandover()
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel — hand back to Kwame' }))
     expect(onDone).toHaveBeenCalledWith({ claimed: false })
+  })
+})
+
+describe('OwnerHandover — the scout\'s session and focus', () => {
+  it("keeps sending the scout's token, which the hand-over is bound to", async () => {
+    setStoredAuth({ token: 'staff-tok', account_type: 'staff' })
+    const sent = { preview: null, claims: [] }
+    server.use(
+      http.post(HANDOVER_URL, () => HttpResponse.json({ token: 'handover-tok', expires_at: inMinutes(30) }, { status: 201 })),
+      http.get(CLAIM_URL, ({ request }) => { sent.preview = request.headers.get('authorization'); return HttpResponse.json(preview()) }),
+      http.post(CLAIM_URL, ({ request }) => {
+        sent.claims.push(request.headers.get('authorization'))
+        return HttpResponse.json({ detail: 'Finish the hand-over on the phone that started it.', code: 'wrong_device' }, { status: 403 })
+      }),
+    )
+    renderHandover()
+    await screen.findByText('Asafo Hair & Beauty')
+    fillClaimForm()
+    fireEvent.click(saveButton())
+    expect(await screen.findByText('Finish the hand-over on the phone that started it.')).toBeInTheDocument()
+    expect(sent.preview).toBe('Bearer staff-tok')
+    expect(sent.claims).toEqual(['Bearer staff-tok'])
+  })
+
+  it('returns focus to the button that opened it once the phone is handed back', async () => {
+    startHandover()
+    function Page() {
+      const [open, setOpen] = useState(false)
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>Hand the phone to Gifty</button>
+          {open && <OwnerHandover businessId={41} ownerFirstName="Gifty" scoutName="Kwame" onDone={() => setOpen(false)} />}
+        </>
+      )
+    }
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={queryClient}><Page /></QueryClientProvider>)
+    const opener = screen.getByRole('button', { name: 'Hand the phone to Gifty' })
+    opener.focus()
+    fireEvent.click(opener)
+    expect(await screen.findByRole('dialog', { name: 'Owner setup' })).toBeInTheDocument()
+    expect(document.activeElement).not.toBe(opener)
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel — hand back to Kwame' }))
+    expect(screen.queryByRole('dialog', { name: 'Owner setup' })).not.toBeInTheDocument()
+    expect(document.activeElement).toBe(opener)
   })
 })

@@ -8,6 +8,7 @@ import { D } from "../theme.js";
 import { button, callout, chip, dim, field } from "./panelStyles.js";
 import AddListingForm from "./AddListingForm.jsx";
 import AddPhotosForm from "./AddPhotosForm.jsx";
+import KycResendForm from "./KycResendForm.jsx";
 import OwnerHandover from "./OwnerHandover.jsx";
 import ProposeChangeForm from "./ProposeChangeForm.jsx";
 import {
@@ -24,6 +25,7 @@ const LISTING_STATUS = { published: ["Live", D.green], pending_review: ["Waiting
 const OUTCOMES = [["connected", "Connected"], ["no_answer", "No answer"], ["busy", "Busy"], ["voicemail", "Voicemail"], ["wrong_number", "Wrong number"], ["promised_to_pay", "Promised to pay"], ["callback_requested", "Callback requested"]];
 const words = (code) => String(code || "").replace(/_/g, " ");
 const row = { padding: "8px 0", borderTop: `1px solid ${D.divider}`, fontSize: "0.8rem", color: D.text };
+const figures = { fontVariantNumeric: "tabular-nums" }; // DESIGN.md: numbers line up
 
 // One business, for its account manager (scout) or Operations. Sub-screens
 // (propose a change, add a product, add photos) are local views, not URLs.
@@ -31,13 +33,14 @@ export default function BusinessPage({ businessId, auth, onBack }) {
   const { data: b, isLoading, isError, error, refetch } = usePortfolioBusiness(businessId);
   const queryClient = useQueryClient();
   const [view, setView] = useState(null); // null | "propose" | "add" | "photos"
-  const [panel, setPanel] = useState(null); // null | "call" | "reassign" | "follow-up"
+  const [panel, setPanel] = useState(null); // null | "call" | "reassign" | "follow-up" | "kyc"
   const [handover, setHandover] = useState(false);
   const [notice, setNotice] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const isOps = Boolean(auth?.hasPermission?.("portfolio.manage"));
+  const isSuperAdmin = auth?.user?.role === "super_admin";
   const canCall = Boolean(auth?.hasPermission?.("calls.log"));
   const refreshAll = () => {
     refetch();
@@ -70,6 +73,10 @@ export default function BusinessPage({ businessId, auth, onBack }) {
   const subscribed = ["active", "trial"].includes(b.subscription?.state);
   const canAddProduct = verified && subscribed;
   const canHandOver = b.can_manage || isOps;
+  // A returned KYC request is otherwise a dead end: the account manager (or a
+  // Super Admin, whose request goes to the KYC queue) sends a fresh one.
+  const kycWaiting = (b.pending_requests || []).some((r) => r.kind === "business.kyc");
+  const canResendKyc = (b.can_manage || isSuperAdmin) && b.kyc_status === "pending" && !kycWaiting;
   const [kycLabel, kycColor] = KYC[b.kyc_status] || [b.kyc_status, D.textFaint];
   const reasons = b.health?.reasons || [];
   const toggle = (name) => { setNotice(null); setActionError(null); setPanel((p) => (p === name ? null : name)); };
@@ -113,7 +120,8 @@ export default function BusinessPage({ businessId, auth, onBack }) {
             <span style={chip(kycColor)}>{kycLabel}</span>
             <HealthChip rating={b.health?.rating} />
             {b.needs_claim && <span style={chip(D.amber)}>🔒 Owner hasn't set a login yet</span>}
-            {(b.open_flags || []).map((f) => <span key={f.id} title={f.title} style={chip(D.red)}>{`🚩 ${f.kind_label}`}</span>)}
+            {/* The server sends a case's title only to portfolio.manage holders (it can name a staff member). */}
+            {(b.open_flags || []).map((f) => <span key={f.id} title={f.title || undefined} style={chip(D.red)}>{`🚩 ${f.kind_label}`}</span>)}
           </div>
         </div>
       </div>
@@ -135,12 +143,14 @@ export default function BusinessPage({ businessId, auth, onBack }) {
           {b.can_manage && actionButton("Propose a change", () => setView("propose"))}
           {b.can_manage && actionButton("Add a product", () => setView("add"), { disabled: !canAddProduct })}
           {b.can_manage && actionButton("Add photos", () => setView("photos"))}
+          {canResendKyc && actionButton("Send KYC again", () => toggle("kyc"))}
           {b.needs_claim && canHandOver && actionButton(`Hand the phone to ${owner}`, () => setHandover(true))}
           {b.needs_claim && canHandOver && actionButton("Send claim link", sendClaimLink, { disabled: busy })}
           {!b.needs_claim && actionButton("Resend claim link", () => {}, { disabled: true })}
           {isOps && actionButton("Reassign to another scout", () => toggle("reassign"))}
           {isOps && actionButton("Create follow-up task", () => toggle("follow-up"))}
         </div>
+        {canResendKyc && <div style={dim}>{`No KYC request is waiting for ${b.business_name}. If Operations returned it, retake what they asked for and send it again.`}</div>}
         {b.can_manage && !verified && <div style={dim}>Products can be added once KYC is approved.</div>}
         {b.can_manage && verified && !subscribed && <div style={dim}>{`Products can be added once ${owner} has an active subscription.`}</div>}
         {b.needs_claim && canHandOver && <div style={dim}>The claim link goes to the owner's email and works for 7 days; sending a new one replaces it. Text messages (SMS): not connected yet.</div>}
@@ -162,6 +172,13 @@ export default function BusinessPage({ businessId, auth, onBack }) {
         )}
         {panel === "follow-up" && (
           <FollowUpForm business={b} auth={auth} onCancel={() => setPanel(null)} onDone={(message) => { setPanel(null); setNotice(message); }} />
+        )}
+        {panel === "kyc" && canResendKyc && (
+          <KycResendForm business={b} onCancel={() => setPanel(null)} onSent={(result) => {
+            setPanel(null);
+            setNotice(result?.approver_name ? `Sent to ${result.approver_name}` : "Sent to the KYC queue");
+            refreshAll();
+          }} />
         )}
       </section>
 
@@ -205,7 +222,7 @@ export default function BusinessPage({ businessId, auth, onBack }) {
                 : <div style={{ width: 48, height: 48, borderRadius: 8, background: D.panelBg2, flexShrink: 0 }} />}
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontWeight: 700 }}>{l.name}</div>
-                <div style={dim}>{[l.price_amount != null ? money(l.price_amount) : null, `${l.photos_count} ${l.photos_count === 1 ? "photo" : "photos"}`].filter(Boolean).join(" · ")}</div>
+                <div style={{ ...dim, ...figures }}>{[l.price_amount != null ? money(l.price_amount) : null, `${l.photos_count} ${l.photos_count === 1 ? "photo" : "photos"}`].filter(Boolean).join(" · ")}</div>
               </div>
               <span style={chip(statusColor)}>{statusLabel}</span>
             </div>
@@ -251,7 +268,7 @@ function SubscriptionStrip({ sub, kycStatus, owner }) {
   const color = s.state === "paused" ? D.red : s.state === "overdue" ? D.amber : s.state === "active" || s.state === "trial" ? D.green : D.blue;
   return (
     <div style={{ ...callout(color), fontWeight: 400, display: "flex", flexDirection: "column", gap: 6 }}>
-      <div style={{ fontWeight: 800 }}>{`Subscription · ${subscriptionText(s, kycStatus)}${price}`}</div>
+      <div style={{ fontWeight: 800, ...figures }}>{`Subscription · ${subscriptionText(s, kycStatus)}${price}`}</div>
       {s.state === "overdue" && s.overdue_day != null && (
         <div role="progressbar" aria-label="Grace days used" aria-valuemin={0} aria-valuemax={14} aria-valuenow={s.overdue_day}
           style={{ height: 6, background: D.panelBg2, borderRadius: 6, overflow: "hidden" }}>

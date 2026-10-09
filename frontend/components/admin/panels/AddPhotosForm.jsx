@@ -7,6 +7,8 @@ import PhotoCapture from "./PhotoCapture.jsx";
 import { SentNotice, card, errorStyle, errorText, h2, labelStyle } from "./portfolioParts.jsx";
 
 const STATUS = { published: "live", pending_review: "waiting for review", draft: "draft", rejected: "rejected" };
+// The server's own words for a missing reason (portfolio.proposals.REASON_REQUIRED).
+const REASON_NEEDED = "Say why — the approver sees it.";
 
 // A scout adds photos to one of the business's listings (portfolio
 // listing.photos). They are attached only when the Operations lead approves.
@@ -38,7 +40,8 @@ export default function AddPhotosForm({ businessId, onBack, onSent }) {
 
   const chosen = listingId || String(listings[0].id);
   const n = photos.length;
-  const ready = n > 0 && !busy;
+  const reasonGiven = note.trim().length > 0;
+  const ready = n > 0 && reasonGiven && !busy;
   const submit = async (e) => {
     e.preventDefault();
     if (!ready) return;
@@ -68,7 +71,8 @@ export default function AddPhotosForm({ businessId, onBack, onSent }) {
         </select>
       </label>
       <PhotoCapture businessId={business.id} max={8} onStaged={setPhotos} />
-      <label style={labelStyle}>Note for your Operations lead (optional)<textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} style={field} /></label>
+      <label style={labelStyle}>Why these photos (Operations sees this)<textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} style={field} /></label>
+      {!reasonGiven && <div style={dim}>{REASON_NEEDED}</div>}
       <div style={dim}>Goes to your Operations lead for approval. The owner is told and can undo it for 7 days.</div>
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
       <button type="submit" disabled={!ready} style={{ ...button(D.gold, D.text, !ready), alignSelf: "flex-start" }}>

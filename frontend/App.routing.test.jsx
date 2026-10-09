@@ -806,7 +806,7 @@ describe('AshantiHub routing — /business/claim', () => {
   const CLAIM_PREVIEW = {
     business_name: 'Asafo Hair & Beauty', owner_name: 'Gifty Asantewaa', login_phone: '••••••••••761',
     area: 'Asafo', gps_address: 'AK-112-0384', registered_by_name: 'Kwame Asante', registered_at: '2026-10-08T10:52:00Z',
-    terms_version: 'September 2026', channel: 'link', expires_at: '2099-01-01T00:00:00Z',
+    terms_version: 'September 2026', channel: 'link', expires_at: '2099-01-01T00:00:00Z', email_on_file: 'gi•••@example.com',
   }
 
   it('opens the claim page, not a listing called "claim"', async () => {

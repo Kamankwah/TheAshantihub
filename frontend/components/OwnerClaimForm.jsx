@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { apiPost } from "../apiClient.js";
 import { apiErrorMessage } from "../lib/apiErrorMessage.js";
+import { withoutStaleSignIn } from "../lib/withoutStaleSignIn.js";
 import { C } from "../theme.js";
 import { BUSINESS_TERMS_COPY, BUSINESS_TERMS_VERSION } from "./businessTerms.js";
 
@@ -87,10 +88,12 @@ export default function OwnerClaimForm({ preview, token, onClaimed, submitLabel 
     if (password.length < 8) { setError("Use at least 8 characters for your password."); return; }
     if (password !== confirm) { setError("The two passwords don't match."); return; }
     setSubmitting(true);
+    const post = () => apiPost("/api/accounts/business-owners/claim/", {
+      token, password, password_confirm: confirm, email: email.trim(), accept_terms: true,
+    });
     try {
-      const result = await apiPost("/api/accounts/business-owners/claim/", {
-        token, password, password_confirm: confirm, email: email.trim(), accept_terms: true,
-      });
+      // The emailed link is public; a hand-over must carry the scout's session.
+      const result = handover ? await post() : await withoutStaleSignIn(post);
       setPassword("");
       setConfirm("");
       setShow(false);
@@ -130,9 +133,11 @@ export default function OwnerClaimForm({ preview, token, onClaimed, submitLabel 
       </div>
       <button type="button" onClick={() => setShow((s) => !s)} aria-pressed={show} style={toggleStyle}>{show ? "Hide password" : "Show password"}</button>
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {/* The email on file (masked) may be one the scout typed: resets go there until the owner changes it. */}
+        {preview?.email_on_file && <div style={hintStyle}>Password resets go to {preview.email_on_file}. If that isn't your email, enter yours below.</div>}
         <label htmlFor={emailId} style={labelStyle}>Email (optional)</label>
         <input id={emailId} type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-          autoComplete="email" placeholder="For receipts and password resets" style={inputStyle} />
+          autoComplete={handover ? "off" : "email"} placeholder="For receipts and password resets" style={inputStyle} />
       </div>
       {error && <div role="alert" style={problemStyle}>{error}</div>}
       <button type="submit" disabled={submitting} style={{ ...primaryStyle, opacity: submitting ? 0.6 : 1 }}>{submitting ? "Saving…" : submitLabel}</button>

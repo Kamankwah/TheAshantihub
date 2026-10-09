@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { server } from '../../../mocks/server.js'
+import BusinessCommandCenter from '../BusinessCommandCenter.jsx'
 import ManagerChangesCard from '../ManagerChangesCard.jsx'
 
 const DAY = 86400000
@@ -60,6 +61,8 @@ describe('ManagerChangesCard', () => {
     renderCard()
     fireEvent.click(await screen.findByRole('button', { name: "This wasn't me" }))
     expect(screen.getByText(/Undo “Added 4 photos to Adweneasa kente stole” and tell AshantiHub it wasn't you\?/)).toBeInTheDocument()
+    // Undoing a sign-in change brings the earlier details back, so the owner is told before confirming.
+    expect(screen.getByText('If this changed your sign-in phone or email, the earlier one comes back.')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Yes, undo it' }))
     expect(await screen.findByText(/Undone on/)).toBeInTheDocument()
     expect(seen.undone).toEqual(['5'])
@@ -90,5 +93,29 @@ describe('ManagerChangesCard', () => {
     serveChanges([change({ can_undo: false, undone_at: new Date().toISOString(), undo_failed: 'Some details changed again since — Operations will sort them out.' })])
     renderCard()
     expect(await screen.findByText(/Some details changed again since — Operations will sort them out\./)).toBeInTheDocument()
+  })
+})
+
+describe('ManagerChangesCard on the dashboard', () => {
+  function renderDashboard(kycStatus) {
+    server.use(
+      http.get('http://localhost:8000/api/accounts/business-owners/me/profile/', () => HttpResponse.json({ business_kind: 'product' })),
+      http.get('http://localhost:8000/api/billing/subscriptions/me/', () => HttpResponse.json({})),
+    )
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <BusinessCommandCenter onExit={vi.fn()} auth={{ isLoading: false, logout: vi.fn() }}
+          user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus }} />
+      </QueryClientProvider>,
+    )
+  }
+
+  it('lets an owner whose KYC is still under review undo a change', async () => {
+    serveChanges([change({ kind: 'business.update', summary: 'Changed sign-in phone' })])
+    renderDashboard('pending')
+    expect(screen.getByText(/under review/i)).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Changes by your account manager' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: "This wasn't me" })).toBeInTheDocument()
   })
 })

@@ -96,6 +96,8 @@ describe("PortfolioPanel — a scout's portfolio", () => {
     renderPanel()
     const atRisk = await screen.findByRole('button', { name: 'At risk · 1' })
     expect(screen.getByRole('button', { name: 'All · 3' })).toHaveAttribute('aria-pressed', 'true')
+    // DESIGN.md: counts in tabular figures.
+    expect(atRisk.style.fontVariantNumeric).toBe('tabular-nums')
     fireEvent.click(atRisk)
     await waitFor(() => expect(urls.some((u) => param(u, 'health') === 'at_risk')).toBe(true))
     expect(screen.getByRole('button', { name: 'At risk · 1' })).toHaveAttribute('aria-pressed', 'true')
@@ -143,6 +145,7 @@ describe('PortfolioPanel — all portfolios (Operations)', () => {
     expect(param(urls[0], 'scope')).toBe('team')
     expect(screen.getByText('3 businesses')).toBeInTheDocument()
     expect(screen.getByText('1 without a scout')).toBeInTheDocument()
+    expect(screen.getByLabelText('Summary').style.fontVariantNumeric).toBe('tabular-nums')
     expect(screen.queryByRole('button', { name: /Export/ })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'All businesses' }))
     await waitFor(() => expect(urls.some((u) => param(u, 'scope') === 'all')).toBe(true))

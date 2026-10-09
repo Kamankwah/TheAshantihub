@@ -6,6 +6,7 @@ import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import LocationPicker from "../../LocationPicker.jsx";
 import { D, glassCard } from "../theme.js";
 import OwnerHandover, { SendClaimLinkCard } from "./OwnerHandover.jsx";
+import PhotoSlot, { hhmm, revokePreview } from "./PhotoSlot.jsx";
 import { MATCH_LABELS, alreadyBelongsText } from "./registrationCheckCopy.js";
 import { button, callout, chip, dim, field, linkButton } from "./panelStyles.js";
 
@@ -40,9 +41,24 @@ const eyebrow = { color: D.textDim, fontSize: "0.68rem", fontWeight: 800, letter
 const labelStyle = { fontSize: "0.76rem", fontWeight: 800, color: D.text };
 const hintStyle = { fontSize: "0.72rem", color: D.textDim, lineHeight: 1.45 };
 const input = { ...field, width: "100%", boxSizing: "border-box", minHeight: 44, fontSize: "1rem", resize: "none" };
-const coverInput = { position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer" };
+const DRAFT_PREFIX = "ashantihub.registerDraft.";
+const draftKeyFor = (staffId) => (staffId == null ? null : `${DRAFT_PREFIX}${staffId}`);
 
-const draftKeyFor = (staffId) => (staffId == null ? null : `ashantihub.registerDraft.${staffId}`);
+// An explicit sign-out leaves no registration draft (owners' names and
+// phones) on the phone; an idle sign-out keeps it, so the scout carries on
+// after signing back in. Storage may be unavailable: then nothing was kept.
+export function clearRegisterDrafts() {
+  try {
+    const keys = [];
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i);
+      if (key && key.startsWith(DRAFT_PREFIX)) keys.push(key);
+    }
+    keys.forEach((key) => window.localStorage.removeItem(key));
+  } catch {
+    // no storage, no draft
+  }
+}
 
 // Storage can be full, disabled or private: every access is guarded and the
 // wizard works the same without it.
@@ -74,13 +90,7 @@ function removeDraft(key) {
   }
 }
 
-function hhmm(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "" : date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-}
 const firstName = (name) => (name || "").trim().split(/\s+/)[0] || "";
-const revokePreview = (photo) => { if (photo?.url && typeof URL.revokeObjectURL === "function") URL.revokeObjectURL(photo.url); };
 
 function Field({ label, hint, children }) {
   const id = useId();
@@ -90,25 +100,6 @@ function Field({ label, hint, children }) {
       <label htmlFor={id} style={labelStyle}>{label}</label>
       {cloneElement(children, { id, "aria-describedby": hint ? hintId : undefined })}
       {hint && <div id={hintId} style={hintStyle}>{hint}</div>}
-    </div>
-  );
-}
-
-function PhotoSlot({ title, inputLabel, photo, onTake, tips }) {
-  return (
-    <div style={{ border: `1px solid ${D.cardBorder}`, borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <span style={{ fontWeight: 800, color: D.text, fontSize: "0.85rem" }}>{title}</span>
-        <span style={chip(photo ? D.green : D.textDim)}>{photo ? `Taken ${hhmm(photo.at)}` : "Not taken yet"}</span>
-      </div>
-      {photo?.url && <img src={photo.url} alt={`${title} as taken`} style={{ width: "100%", maxHeight: 220, objectFit: "cover", borderRadius: 10 }} />}
-      <label style={{ ...button(photo ? D.panelBg : D.gold, D.text), position: "relative", overflow: "hidden", display: "inline-flex", alignItems: "center", justifyContent: "center", minHeight: 44, alignSelf: "flex-start" }}>
-        {photo ? "Retake" : "Take photo"}
-        <input type="file" accept="image/*" capture="environment" aria-label={inputLabel} onChange={onTake} style={coverInput} />
-      </label>
-      <ul style={{ margin: 0, paddingLeft: 18, color: D.textDim, fontSize: "0.74rem", lineHeight: 1.5 }}>
-        {tips.map((tip) => <li key={tip}>{tip}</li>)}
-      </ul>
     </div>
   );
 }
@@ -356,7 +347,10 @@ export default function RegisterBusinessPanel({ auth }) {
       setSubmitted({ ...result, ...owner, at: new Date().toISOString() });
     } catch (err) {
       if (err?.status === undefined) {
-        setActionError("No connection — nothing was sent. Your draft is still on this phone; submit again when you're back online.");
+        // Only say the draft is kept when this phone actually kept it.
+        setActionError(!storageFailed && savedAt
+          ? "No connection — nothing was sent. Your draft is still on this phone; submit again when you're back online."
+          : "No connection — nothing was sent. This phone isn't keeping a draft, so keep this screen open and submit again when you're back online.");
       } else if (err.body?.code === "duplicate") {
         setDuplicate({ detail: err.body.detail || "Already registered — ask Operations.", matched: err.body.matched || [] });
       } else {
@@ -515,7 +509,7 @@ export default function RegisterBusinessPanel({ auth }) {
               </select>
             </Field>
             <Field label="Ghana Post address" hint="From the owner's GhanaPost GPS app or the signboard. Must not belong to another business.">
-              <input value={form.gps_address} onChange={update("gps_address")} autoCapitalize="characters" autoComplete="off" placeholder="AK-112-0384" maxLength={30} style={input} />
+              <input value={form.gps_address} onChange={update("gps_address")} autoCapitalize="characters" autoComplete="off" placeholder="AK-112-0384" maxLength={20} style={input} />
             </Field>
             <div style={actions}>
               <button type="button" onClick={back} style={button(D.panelBg, D.text)}>Back</button>

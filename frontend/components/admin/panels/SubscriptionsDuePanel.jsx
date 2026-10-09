@@ -13,13 +13,14 @@ import { FollowUpForm, card, errorStyle, formatDay, h2, h3, lastContactText, mon
 
 const SCOPES = [["team", "My team"], ["all", "All businesses"]];
 const CLOCK_STEPS = [
-  ["Day 1 · overdue", "The owner is told in the app and by email; a follow-up task goes to the account manager."],
+  ["Day 1 · overdue", "The owner is told in the app, and by email when they have one; a follow-up task goes to the account manager."],
   ["Days 1–14 · grace", "Listings stay live; the owner sees a renew banner."],
   ["Day 7 and day 13", "Reminders to the owner, and a task for the account manager."],
   ["After day 14 · paused", "Listings and events are hidden — not deleted."],
   ["Paid in the app", "The pause lifts at once and the listings reappear."],
 ];
-const NOTICE_CHANNELS = "In-app and email · SMS: not connected";
+// How the clock's notices reached this owner: email only when one is on file.
+const noticeChannels = (ownerHasEmail) => (ownerHasEmail ? "In-app and email · SMS: not connected" : "In-app only · SMS: not connected");
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const th = { padding: "6px 8px", textAlign: "left", color: D.textDim, fontSize: "0.7rem", fontWeight: 800, whiteSpace: "nowrap" };
 const td = { padding: "8px", verticalAlign: "top", fontSize: "0.8rem", color: D.text };
@@ -39,13 +40,13 @@ function clearedText(row) {
   return `${row.business_name} — paid in the app${day} (${formatDay(row.at)})`;
 }
 
-function Notices({ notices }) {
+function Notices({ notices, ownerHasEmail }) {
   return (
     <div style={column}>
       {notices?.length
         ? notices.map((notice) => <div key={`${notice.label}-${notice.at}`}>{`${notice.label} · ${formatDay(notice.at)}`}</div>)
         : <div>None sent yet</div>}
-      <div style={dim}>{NOTICE_CHANNELS}</div>
+      <div style={dim}>{noticeChannels(ownerHasEmail)}</div>
     </div>
   );
 }
@@ -97,7 +98,7 @@ function DueTable({ label, rows, paused = false, auth, openId, toggle, onOpen, o
                       </div>
                     )}
                   </td>
-                  <td style={td}><Notices notices={b.notices} /></td>
+                  <td style={td}><Notices notices={b.notices} ownerHasEmail={Boolean(b.owner_has_email)} /></td>
                   <td style={td}><Manager business={b} /></td>
                   <td style={td}>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -157,7 +158,7 @@ export default function SubscriptionsDuePanel({ auth, onOpenBusiness }) {
         <ol style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 4, fontSize: "0.8rem", color: D.text }}>
           {CLOCK_STEPS.map(([when, what]) => <li key={when}><strong>{when}</strong>{` — ${what}`}</li>)}
         </ol>
-        <div style={dim}>SMS isn't connected yet, so every notice goes in the app and by email. Only a payment in the app clears the clock.</div>
+        <div style={dim}>SMS isn't connected yet, so every notice goes in the app, and by email when the owner has one. Only a payment in the app clears the clock.</div>
       </div>
 
       {status && <div role="status" style={callout(D.green)}>{status}</div>}

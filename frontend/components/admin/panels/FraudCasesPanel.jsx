@@ -98,8 +98,9 @@ function CaseCard({ flag, me, canDecide, onOpen, onDone, onRefused }) {
       {!open && <div style={dim}>{decisionLine(flag)}</div>}
       {onOpen && (business || related) && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {business && <button type="button" aria-label={`Open ${business.display_name}`} onClick={() => onOpen(business.id)} style={button(D.panelBg, D.text)}>Open business</button>}
-          {related && <button type="button" aria-label={`Open ${related.display_name}`} onClick={() => onOpen(related.id)} style={button(D.panelBg, D.text)}>Open the other business</button>}
+          {/* The visible text is the accessible name (WCAG 2.5.3 Label in Name). */}
+          {business && <button type="button" onClick={() => onOpen(business.id)} style={button(D.panelBg, D.text)}>{`Open ${business.display_name}`}</button>}
+          {related && <button type="button" onClick={() => onOpen(related.id)} style={button(D.panelBg, D.text)}>{`Open ${related.display_name}`}</button>}
         </div>
       )}
       {open && canDecide && aboutMe && <div style={callout(D.amber)}>This case is about you — someone else decides it.</div>}
@@ -210,8 +211,9 @@ export default function FraudCasesPanel({ auth, onOpenBusiness }) {
   const [notice, setNotice] = useState(null); // {ok, text}
   const queryClient = useQueryClient();
   const { data: counts } = useFraudFlagCounts();
-  const { data, isLoading, isError, refetch } = useFraudFlags(status);
-  const cases = data?.results || [];
+  const { data, isLoading, isError, refetch, hasNextPage, fetchNextPage, isFetchingNextPage } = useFraudFlags(status);
+  const cases = (data?.pages || []).flatMap((page) => page?.results || []);
+  const total = data?.pages?.[0]?.count ?? cases.length;
   const refresh = () => REFRESH_KEYS.forEach((key) => queryClient.invalidateQueries({ queryKey: [key] }));
   // A refusal also refreshes: the case may have been decided meanwhile.
   const done = (text) => { setNotice({ ok: true, text }); refresh(); };
@@ -251,7 +253,14 @@ export default function FraudCasesPanel({ auth, onOpenBusiness }) {
       {cases.map((flag) => (
         <CaseCard key={flag.id} flag={flag} me={auth?.user} canDecide={canDecide} onOpen={canOpen ? onOpenBusiness : null} onDone={done} onRefused={refused} />
       ))}
-      {data?.next && <div style={dim}>{`Showing the newest ${cases.length} of ${data.count}.`}</div>}
+      {hasNextPage && (
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={dim}>{`Showing the newest ${cases.length} of ${total}.`}</div>
+          <button type="button" onClick={() => fetchNextPage()} disabled={isFetchingNextPage} style={button(D.panelBg, D.text, isFetchingNextPage)}>
+            {isFetchingNextPage ? "Loading…" : "Show more"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

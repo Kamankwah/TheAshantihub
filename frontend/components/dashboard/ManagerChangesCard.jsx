@@ -63,6 +63,7 @@ export default function ManagerChangesCard() {
               confirming === row.id ? (
                 <div role="group" aria-label="Confirm undo" style={{ background: D.panelBg2, borderRadius: 12, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
                   <div style={{ fontSize: "0.78rem", color: D.text, fontWeight: 700 }}>Undo “{row.summary}” and tell AshantiHub it wasn't you?</div>
+                  <div style={{ fontSize: "0.74rem", color: D.textDim }}>If this changed your sign-in phone or email, the earlier one comes back.</div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <button type="button" disabled={busy === row.id} onClick={() => undo(row)} style={smallButton(D.red, "#fff")}>{busy === row.id ? "Undoing…" : "Yes, undo it"}</button>
                     <button type="button" onClick={() => setConfirming(null)} style={smallButton(D.panelBg, D.text)}>Keep it</button>

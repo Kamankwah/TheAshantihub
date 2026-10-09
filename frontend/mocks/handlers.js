@@ -1,5 +1,13 @@
 import { http, HttpResponse } from 'msw'
 
+// A scout's proposal (portfolio): 400 on a blank reason, as the server answers.
+function proposalReply(body) {
+  if (!String(body?.reason ?? '').trim()) {
+    return HttpResponse.json({ reason: ['Say why — the approver sees it.'] }, { status: 400 })
+  }
+  return HttpResponse.json({ approval_id: 33, approver_name: 'Ama Boateng', status: 'pending' }, { status: 201 })
+}
+
 export const handlers = [
   // Listings search/browse (docs/UI_MODERNIZATION_ROADMAP.md Phase D) — a
   // default empty-page handler. AshantiHub's `useListings(filters)` call
@@ -315,12 +323,13 @@ export const handlers = [
   }),
   // Owner claim (staff phase 2A) — placed before business-owners/:id/,
   // which would otherwise read "claim" as an owner id. The preview's
-  // login_phone is masked by the server to its last 3 digits; the claim
-  // reply carries the full number.
+  // login_phone is masked by the server to its last 3 digits (email_on_file
+  // too, as gi•••@example.com); the claim reply carries the full number.
   http.get('http://localhost:8000/api/accounts/business-owners/claim/', () => HttpResponse.json({
     business_name: 'Asafo Hair & Beauty', owner_name: 'Gifty Asantewaa', login_phone: '••••••••••761',
     area: 'Asafo', gps_address: 'AK-112-0384', registered_by_name: 'Kwame Asante', registered_at: '2026-10-08T10:52:00Z',
     terms_version: 'September 2026', channel: 'handover', expires_at: new Date(Date.now() + 30 * 60000).toISOString(),
+    email_on_file: 'gi•••@example.com',
   })),
   http.post('http://localhost:8000/api/accounts/business-owners/claim/', () => HttpResponse.json({
     claimed: true, login_phone: '+233201234761', business_name: 'Asafo Hair & Beauty',
@@ -527,6 +536,14 @@ export const handlers = [
     listings: [], pending_requests: [], recent_calls: [], assignments: [], open_flags: [], can_manage: false,
   })),
   http.get('http://localhost:8000/api/portfolio/meta/listing-form/', () => HttpResponse.json({ categories: [], zones: [], required_answers: {} })),
+  // A scout's new product and listing photos: like the server, a blank
+  // reason is refused (portfolio.proposals.REASON_REQUIRED).
+  http.post('http://localhost:8000/api/portfolio/businesses/:id/listings/', async ({ request }) => proposalReply(await request.json())),
+  http.post('http://localhost:8000/api/portfolio/listings/:id/photos/', async ({ request }) => proposalReply(await request.json())),
+  // Sending a returned KYC request again (multipart; tests override).
+  http.post('http://localhost:8000/api/portfolio/businesses/:id/kyc/', () => HttpResponse.json(
+    { approval_id: 9, approver_name: 'Ama Boateng' }, { status: 201 },
+  )),
   // Operations (staff phase 2A) — Subscriptions due, Fraud cases and the KYC
   // review sheet inside a business.kyc approval; defaults, tests override.
   http.get('http://localhost:8000/api/portfolio/subscriptions-due/', () => HttpResponse.json({ overdue: [], paused: [], cleared: [] })),

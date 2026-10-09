@@ -27,7 +27,7 @@ const item = (overrides = {}) => ({
   claimed_at: '2026-06-01T10:00:00Z', account_manager: { id: 9, full_name: 'Efua Mensah' },
   health: { rating: 'needs_attention', reasons: ['Subscription overdue'] }, subscription: overdueClock(),
   listings_live: 4, listings_total: 4, listings_waiting: 0, last_order_at: null,
-  last_contact: { kind: 'call', at: '2026-10-07T09:05:00Z' }, open_fraud_flags: 0,
+  last_contact: { kind: 'call', at: '2026-10-07T09:05:00Z' }, open_fraud_flags: 0, owner_has_email: true,
   notices: [
     { label: 'Overdue notice', at: '2026-09-24T10:05:00Z' },
     { label: 'Day 7 reminder', at: '2026-09-30T10:05:00Z' },
@@ -38,7 +38,7 @@ const DUE = {
   overdue: [
     item(),
     item({
-      id: 22, business_name: 'Suame Auto Parts', account_manager: null, last_contact: null, notices: [],
+      id: 22, business_name: 'Suame Auto Parts', account_manager: null, last_contact: null, notices: [], owner_has_email: false,
       subscription: overdueClock({
         plan_name: 'Quarterly', overdue_since: '2026-10-06T09:00:00Z', overdue_day: 2,
         pause_at: '2026-10-20T09:00:00Z', hide_on: '2026-10-20', renew_by: '2026-10-19',
@@ -105,7 +105,9 @@ describe('SubscriptionsDuePanel', () => {
     const suame = within(table).getByRole('row', { name: /Suame Auto Parts/ })
     expect(within(suame).getByText('Day 2 of 14')).toBeInTheDocument()
     expect(within(suame).getByText('None sent yet')).toBeInTheDocument()
-    expect(within(suame).getByText('In-app and email · SMS: not connected')).toBeInTheDocument()
+    // No email on file: the clock's notices reach this owner in the app only.
+    expect(within(suame).getByText('In-app only · SMS: not connected')).toBeInTheDocument()
+    expect(within(suame).queryByText('In-app and email · SMS: not connected')).not.toBeInTheDocument()
     expect(within(suame).getByText('No account manager')).toBeInTheDocument()
   })
 

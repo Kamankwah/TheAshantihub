@@ -2,7 +2,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { getStoredAuth, setStoredAuth } from '../../apiClient.js'
 import { server } from '../../mocks/server.js'
 import BusinessClaimPage from '../BusinessClaimPage.jsx'
 
@@ -11,8 +12,11 @@ const PASSWORD = 'akwaaba-2026'
 const preview = (overrides = {}) => ({
   business_name: 'Asafo Hair & Beauty', owner_name: 'Gifty Asantewaa', login_phone: '••••••••••761',
   area: 'Asafo', gps_address: 'AK-112-0384', registered_by_name: 'Kwame Asante', registered_at: '2026-10-08T10:52:00Z',
-  terms_version: 'September 2026', channel: 'link', expires_at: new Date(Date.now() + 6 * 86400000).toISOString(), ...overrides,
+  terms_version: 'September 2026', channel: 'link', expires_at: new Date(Date.now() + 6 * 86400000).toISOString(),
+  email_on_file: 'gi•••@example.com', ...overrides,
 })
+const LOAD_PROBLEM = "We couldn't load this link right now. Check your connection and try again."
+afterEach(() => setStoredAuth(null))
 
 function renderAt(path) {
   const onSignIn = vi.fn()
@@ -98,5 +102,63 @@ describe('BusinessClaimPage', () => {
     fillAndSave()
     expect(await screen.findByText('That email already belongs to another account.')).toBeInTheDocument()
     expect(screen.getByLabelText('Set your password')).toBeInTheDocument()
+  })
+
+  it('says where password resets go now, so the owner can put in their own email', async () => {
+    server.use(http.get(CLAIM_URL, () => HttpResponse.json(preview())))
+    renderAt('/business/claim?token=link-tok')
+    expect(await screen.findByText("Password resets go to gi•••@example.com. If that isn't your email, enter yours below.")).toBeInTheDocument()
+    expect(screen.getByLabelText('Email (optional)')).toHaveAttribute('autocomplete', 'email')
+  })
+
+  it('says nothing about resets when there is no email on file', async () => {
+    server.use(http.get(CLAIM_URL, () => HttpResponse.json(preview({ email_on_file: null }))))
+    renderAt('/business/claim?token=link-tok')
+    await screen.findByText('Asafo Hair & Beauty')
+    expect(screen.queryByText(/Password resets go to/)).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['a server error', () => HttpResponse.json({ detail: 'Server Error' }, { status: 502 })],
+    ['no connection', () => HttpResponse.error()],
+  ])("offers Try again on %s, instead of calling the link unusable", async (_what, failure) => {
+    let calls = 0
+    server.use(http.get(CLAIM_URL, () => { calls += 1; return calls === 1 ? failure() : HttpResponse.json(preview()) }))
+    renderAt('/business/claim?token=link-tok')
+    expect(await screen.findByText(LOAD_PROBLEM)).toBeInTheDocument()
+    expect(screen.queryByText(/This link can't be used/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByText('Asafo Hair & Beauty')).toBeInTheDocument()
+    expect(screen.getByLabelText('Set your password')).toBeInTheDocument()
+  })
+
+  it('still opens with an expired sign-in stored in this browser', async () => {
+    // The server refuses any request carrying an expired token (401), even on
+    // this public page: the page asks once more without it.
+    setStoredAuth({ token: 'expired-token', account_type: 'customer' })
+    const sentAuth = []
+    server.use(http.get(CLAIM_URL, ({ request }) => {
+      const auth = request.headers.get('authorization')
+      sentAuth.push(auth)
+      return auth ? HttpResponse.json({ detail: 'Token is invalid or expired' }, { status: 401 }) : HttpResponse.json(preview())
+    }))
+    renderAt('/business/claim?token=link-tok')
+    expect(await screen.findByText('Asafo Hair & Beauty')).toBeInTheDocument()
+    expect(sentAuth).toEqual(['Bearer expired-token', null])
+    expect(getStoredAuth()).toBeNull()
+  })
+
+  it('saves the login even when an expired sign-in turns up before the claim', async () => {
+    server.use(
+      http.get(CLAIM_URL, () => HttpResponse.json(preview())),
+      http.post(CLAIM_URL, ({ request }) => (request.headers.get('authorization')
+        ? HttpResponse.json({ detail: 'Token is invalid or expired' }, { status: 401 })
+        : HttpResponse.json({ claimed: true, login_phone: '+233201234761', business_name: 'Asafo Hair & Beauty' }))),
+    )
+    renderAt('/business/claim?token=link-tok')
+    await screen.findByText('Asafo Hair & Beauty')
+    setStoredAuth({ token: 'expired-token', account_type: 'customer' })
+    fillAndSave()
+    expect(await screen.findByText(/You're all set — sign in with \+233201234761/)).toBeInTheDocument()
   })
 })

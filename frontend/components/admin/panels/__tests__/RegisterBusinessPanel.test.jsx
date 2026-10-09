@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../../../../mocks/server.js'
-import RegisterBusinessPanel from '../RegisterBusinessPanel.jsx'
+import RegisterBusinessPanel, { clearRegisterDrafts } from '../RegisterBusinessPanel.jsx'
 
 const DRAFT_KEY = 'ashantihub.registerDraft.9'
 const auth = { user: { id: 9, full_name: 'Kwame Asante', role: 'scout' }, hasPermission: () => true }
@@ -164,6 +164,24 @@ describe('RegisterBusinessPanel — the draft on this phone', () => {
     expect(screen.getByLabelText("Owner's full name (as on Ghana Card)")).toHaveValue('')
   })
 
+  it('takes a Ghana Post address no longer than the server keeps (20)', async () => {
+    renderPanel()
+    await fillOwnerAndBusiness()
+    expect(await screen.findByLabelText('Ghana Post address')).toHaveAttribute('maxlength', '20')
+  })
+
+  it('an explicit sign-out clears every registration draft on the phone', () => {
+    localStorage.setItem(DRAFT_KEY, '{"form":{}}')
+    localStorage.setItem('ashantihub.registerDraft.12', '{"form":{}}')
+    localStorage.setItem('ashantihub.other', 'kept')
+    clearRegisterDrafts()
+    expect(localStorage.getItem(DRAFT_KEY)).toBeNull()
+    expect(localStorage.getItem('ashantihub.registerDraft.12')).toBeNull()
+    expect(localStorage.getItem('ashantihub.other')).toBe('kept')
+    vi.spyOn(Storage.prototype, 'key').mockImplementation(() => { throw new Error('SecurityError') })
+    expect(() => clearRegisterDrafts()).not.toThrow()
+  })
+
   it('still works when the phone will not store a draft', async () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('QuotaExceededError') })
     renderPanel()
@@ -241,6 +259,30 @@ describe('RegisterBusinessPanel — duplicate and self-dealing checks', () => {
     expect(await screen.findByText('A business with a similar name is 40 m away — Asafo Hair Studio. You can still submit; Operations will review.')).toBeInTheDocument()
     expect(screen.getByText(/matches an AshantiHub staff member's phone/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Submit for KYC' })).toBeEnabled()
+  })
+
+  it('says the draft is kept after a dropped connection only when the phone kept it', async () => {
+    mockRegistration({ register: () => HttpResponse.error() })
+    renderPanel()
+    await fillOwnerAndBusiness()
+    await fillLocation()
+    takePhotos()
+    await screen.findByText(/No exact match/)
+    fireEvent.click(screen.getByRole('button', { name: 'Submit for KYC' }))
+    expect(await screen.findByText("No connection — nothing was sent. Your draft is still on this phone; submit again when you're back online.")).toBeInTheDocument()
+  })
+
+  it('does not claim a draft is kept when the phone would not store one', async () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('QuotaExceededError') })
+    mockRegistration({ register: () => HttpResponse.error() })
+    renderPanel()
+    await fillOwnerAndBusiness()
+    await fillLocation()
+    takePhotos()
+    await screen.findByText(/No exact match/)
+    fireEvent.click(screen.getByRole('button', { name: 'Submit for KYC' }))
+    expect(await screen.findByText("No connection — nothing was sent. This phone isn't keeping a draft, so keep this screen open and submit again when you're back online.")).toBeInTheDocument()
+    expect(screen.queryByText(/Your draft is still on this phone/)).not.toBeInTheDocument()
   })
 
   it("shows the server's duplicate refusal and keeps the draft", async () => {

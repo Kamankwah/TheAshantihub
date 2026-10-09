@@ -98,7 +98,7 @@ function MyPortfolio({ onOpen }) {
         </label>
         <div role="group" aria-label="Health" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {MINE_CHIPS.filter(([id]) => id !== "new" || (summary?.new || 0) > 0 || health === "new").map(([id, label, key]) => (
-            <button key={id || "all"} type="button" aria-pressed={health === id} onClick={() => { setHealth(id); setPage(1); }} style={pill(health === id)}>
+            <button key={id || "all"} type="button" aria-pressed={health === id} onClick={() => { setHealth(id); setPage(1); }} style={{ ...pill(health === id), fontVariantNumeric: "tabular-nums" }}>
               {summary ? `${label} · ${summary[key] ?? 0}` : label}
             </button>
           ))}
@@ -166,7 +166,7 @@ function AllPortfolios({ auth, onOpen }) {
         <h2 style={h2}>All portfolios</h2>
         <ScopeToggle scope={scope} setScope={(id) => { setScope(id); setPage(1); }} />
         {s && (
-          <div aria-label="Summary" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <div aria-label="Summary" style={{ display: "flex", gap: 6, flexWrap: "wrap", fontVariantNumeric: "tabular-nums" }}>
             <span style={chip(D.textFaint)}>{plural(s.total, "business", "businesses")}</span>
             <span style={chip(D.green)}>{`${s.healthy} healthy`}</span>
             <span style={chip(D.amber)}>{`${s.needs_attention} need attention`}</span>

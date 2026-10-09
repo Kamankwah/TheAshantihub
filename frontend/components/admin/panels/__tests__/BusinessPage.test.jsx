@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../../../../mocks/server.js'
 import BusinessPage from '../BusinessPage.jsx'
 
@@ -31,6 +31,7 @@ const OPS = {
   user: { id: 2, full_name: 'Ama Boateng', role: 'operations' },
   hasPermission: (c) => ['portfolio.manage', 'calls.log', 'staff.invite_team'].includes(c),
 }
+const BOSS = { user: { id: 1, full_name: 'Simon Peter', role: 'super_admin' }, hasPermission: () => true }
 const business = (overrides = {}) => ({
   id: 12, business_name: 'Adwoa Fabrics', owner_name: 'Adwoa Frimpong', login_phone: '+233244000118',
   zone: { id: 3, name: 'Bantama' }, kyc_status: 'verified', registration_channel: 'scout', needs_claim: false,
@@ -205,5 +206,113 @@ describe('BusinessPage', () => {
     server.use(http.get(`${API}/api/portfolio/businesses/12/`, () => HttpResponse.json({ detail: 'Not found.' }, { status: 404 })))
     renderPage()
     expect(await screen.findByText("This business doesn't exist, or isn't one you can see.")).toBeInTheDocument()
+  })
+})
+
+describe('BusinessPage — open fraud cases', () => {
+  it("shows a scout only a case's kind, and Operations its title too", async () => {
+    serve(business({ open_flags: [{ id: 5, kind: 'self_dealing', kind_label: 'Self-dealing' }] }))
+    renderPage()
+    const chip = await screen.findByText('🚩 Self-dealing')
+    expect(chip).not.toHaveAttribute('title')
+  })
+
+  it('gives Operations the title as the tooltip', async () => {
+    serve(business({ can_manage: false, open_flags: [{ id: 5, kind: 'self_dealing', kind_label: 'Self-dealing', title: "Owner's phone matches staff member Efua" }] }))
+    renderPage({ auth: OPS })
+    expect(await screen.findByText('🚩 Self-dealing')).toHaveAttribute('title', "Owner's phone matches staff member Efua")
+  })
+})
+
+describe('BusinessPage — numbers line up', () => {
+  it('sets prices, the plan price and the grace day in tabular figures', async () => {
+    serve()
+    renderPage()
+    const listings = await screen.findByRole('region', { name: 'Listings and photos' })
+    expect(within(listings).getByText(/GH₵ 180\.00/).style.fontVariantNumeric).toBe('tabular-nums')
+    const health = screen.getByRole('region', { name: 'Health' })
+    expect(within(health).getByText(/Overdue · day 4 of 14 · GH₵ 120\.00 \/ month/).style.fontVariantNumeric).toBe('tabular-nums')
+  })
+})
+
+describe('BusinessPage — sending KYC again', () => {
+  // A scout registration whose business.kyc request Operations returned.
+  const returned = (overrides = {}) => business({ kyc_status: 'pending', subscription: { state: 'none' }, pending_requests: [], ...overrides })
+  const KYC_URL = `${API}/api/portfolio/businesses/12/kyc/`
+  let append
+  beforeEach(() => { append = vi.spyOn(FormData.prototype, 'append') })
+  afterEach(() => append.mockRestore())
+
+  // Reading a multipart body that holds a jsdom File hangs here (see
+  // EventSubmissionPanel.test.jsx), so the handler records only the content
+  // type; the fields come from FormData.prototype.append.
+  function answerKyc(reply) {
+    const seen = { calls: 0, contentType: null }
+    server.use(http.post(KYC_URL, ({ request }) => {
+      seen.calls += 1
+      seen.contentType = request.headers.get('content-type')
+      return HttpResponse.json(reply, { status: 201 })
+    }))
+    return seen
+  }
+
+  it('offers it to the account manager when no KYC request is waiting', async () => {
+    serve(returned())
+    renderPage()
+    expect(await screen.findByRole('button', { name: 'Send KYC again' })).toBeInTheDocument()
+  })
+
+  it.each([
+    ['a KYC request is already waiting', returned({ pending_requests: [{ id: 3, kind: 'business.kyc', title: 'New business: Adwoa Fabrics', created_at: '2026-10-08T10:00:00Z', due_at: '2026-10-09T10:00:00Z', stage: 'manager', waiting_for: 'Ama Boateng' }] }), SCOUT],
+    ['KYC is already approved', business({ kyc_status: 'verified' }), SCOUT],
+    ['the viewer is Operations, not its account manager', returned({ can_manage: false }), OPS],
+  ])('does not offer it when %s', async (_why, b, auth) => {
+    serve(b)
+    renderPage({ auth })
+    expect(await screen.findByRole('heading', { name: 'Adwoa Fabrics' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Send KYC again' })).not.toBeInTheDocument()
+  })
+
+  it('offers it to a Super Admin who does not manage the business', async () => {
+    serve(returned({ can_manage: false }))
+    renderPage({ auth: BOSS })
+    expect(await screen.findByRole('button', { name: 'Send KYC again' })).toBeInTheDocument()
+  })
+
+  it('sends the retaken photos and a note in one multipart request and says who it went to', async () => {
+    const gets = serve(returned())
+    const seen = answerKyc({ approval_id: 9, approver_name: 'Ama Boateng' })
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Send KYC again' }))
+    const form = screen.getByRole('form', { name: 'Send KYC again' })
+    fireEvent.change(within(form).getByLabelText('New signboard photo'), { target: { files: [new File(['sign'], 'daylight.jpg', { type: 'image/jpeg' })] } })
+    fireEvent.change(within(form).getByLabelText('Note for the approver (optional)'), { target: { value: 'Retook the signboard in daylight' } })
+    fireEvent.click(within(form).getByRole('button', { name: 'Send the KYC request' }))
+    expect(await screen.findByText('Sent to Ama Boateng')).toBeInTheDocument()
+    expect(seen.calls).toBe(1)
+    expect(seen.contentType).toMatch(/^multipart\/form-data/)
+    const fields = Object.fromEntries(append.mock.calls.map(([key, value]) => [key, value]))
+    expect(fields.signboard_photo).toBeInstanceOf(File)
+    expect(fields.maker_note).toBe('Retook the signboard in daylight')
+    expect(fields).not.toHaveProperty('ghana_card_front')
+    await waitFor(() => expect(gets()).toBeGreaterThanOrEqual(2))
+  })
+
+  it('says the KYC queue when nobody in particular decides it', async () => {
+    serve(returned({ can_manage: false }))
+    answerKyc({ approval_id: null, approver_name: null })
+    renderPage({ auth: BOSS })
+    fireEvent.click(await screen.findByRole('button', { name: 'Send KYC again' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send the KYC request' }))
+    expect(await screen.findByText('Sent to the KYC queue')).toBeInTheDocument()
+  })
+
+  it("shows the server's reason when it can't be sent", async () => {
+    serve(returned())
+    server.use(http.post(KYC_URL, () => HttpResponse.json({ detail: 'A KYC request for this business is already waiting for a decision.', code: 'already_pending' }, { status: 400 })))
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Send KYC again' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send the KYC request' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('A KYC request for this business is already waiting for a decision.')
   })
 })

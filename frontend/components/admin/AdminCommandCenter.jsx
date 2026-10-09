@@ -53,7 +53,7 @@ import ReportsPanel from "./panels/ReportsPanel.jsx";
 import TeamReportsPanel from "./panels/TeamReportsPanel.jsx";
 import SecurityPanel from "./panels/SecurityPanel.jsx";
 import SessionsPanel from "./panels/SessionsPanel.jsx";
-import RegisterBusinessPanel from "./panels/RegisterBusinessPanel.jsx";
+import RegisterBusinessPanel, { clearRegisterDrafts } from "./panels/RegisterBusinessPanel.jsx";
 import SudoPrompt from "./SudoPrompt.jsx";
 import StaffShellStyles from "./shell/StaffShellStyles.jsx";
 import InstallAppButton from "./shell/InstallAppButton.jsx";
@@ -120,6 +120,12 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
     onExitRef.current?.();
   }, []);
   useIdleSignOut(() => signOutBecause("idle"));
+  // The Sign out buttons: an explicit sign-out also clears any registration
+  // draft from this phone (idle and "ended" sign-outs keep it).
+  const signOut = useCallback(() => {
+    clearRegisterDrafts();
+    onExitRef.current?.();
+  }, []);
   useEffect(() => {
     const ended = () => signOutBecause("ended");
     window.addEventListener(SESSION_ENDED_EVENT, ended);
@@ -227,7 +233,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           on phone where there is no sidebar to absorb it (spec §4.4). */}
       <div style={{ flex: 1, minWidth: 0, paddingRight: "env(safe-area-inset-right, 0px)", ...(isPhone ? { paddingLeft: "env(safe-area-inset-left, 0px)" } : {}) }}>
         <StaffHeader status={<LiveUpdatesIndicator paused={live.paused} />} title={activeLabel} role={role} roleColor={roleColor} fullName={auth.user?.full_name}
-          onExit={onExit} onViewSite={onViewSite} breakpoint={breakpoint}
+          onExit={signOut} onViewSite={onViewSite} breakpoint={breakpoint}
           onOpenMenu={() => setDrawerOpen(true)} menuButtonRef={menuButtonRef} drawerOpen={drawerOpen}
           actions={<>{NotificationsSlot ? <NotificationsSlot user={auth.user} /> : null}{isPhone ? null : <InstallAppButton variant="header" />}</>}>
           <OfflineBanner bleed={isPhone ? 12 : 20} />
@@ -301,7 +307,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <InstallAppButton variant="drawer" />
             {onViewSite && <button type="button" onClick={onViewSite} style={{ minHeight: 44, background: "transparent", border: `1px solid ${D.divider}`, color: D.text, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>View site</button>}
-            <button type="button" onClick={onExit} style={{ minHeight: 44, background: "rgba(44,24,16,0.05)", border: `1px solid ${D.divider}`, color: D.text, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Sign out</button>
+            <button type="button" onClick={signOut} style={{ minHeight: 44, background: "rgba(44,24,16,0.05)", border: `1px solid ${D.divider}`, color: D.text, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Sign out</button>
           </div>
         </div>
         <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={selectTab} collapsed={false} badgeFor={badgeFor} roleColor={roleColor} itemMinHeight={44} />

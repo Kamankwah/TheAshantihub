@@ -74,6 +74,29 @@ describe('AdminCommandCenter — a session that is already gone', () => {
   })
 })
 
+describe('AdminCommandCenter — a registration draft on a shared phone', () => {
+  const DRAFT = 'ashantihub.registerDraft.1'
+  afterEach(() => localStorage.removeItem(DRAFT))
+
+  it('Sign out clears the draft', () => {
+    localStorage.setItem(DRAFT, '{"form":{"owner_full_name":"Gifty"}}')
+    const onExit = vi.fn()
+    renderShell({ onExit })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    expect(onExit).toHaveBeenCalledTimes(1)
+    expect(localStorage.getItem(DRAFT)).toBeNull()
+  })
+
+  it('an idle or ended sign-out keeps it, so the scout can carry on', () => {
+    localStorage.setItem(DRAFT, '{"form":{"owner_full_name":"Gifty"}}')
+    const onExit = vi.fn()
+    renderShell({ onExit })
+    act(() => { window.dispatchEvent(new Event(SESSION_ENDED_EVENT)) })
+    expect(onExit).toHaveBeenCalledTimes(1)
+    expect(localStorage.getItem(DRAFT)).not.toBeNull()
+  })
+})
+
 describe('AdminCommandCenter — tab control', () => {
   it('uncontrolled: clicking a nav item switches panels and marks it current', () => {
     renderShell()

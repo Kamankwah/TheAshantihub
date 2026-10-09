@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { apiPost } from '../../../../apiClient.js'
 import { server } from '../../../../mocks/server.js'
 import AddPhotosForm from '../AddPhotosForm.jsx'
 
@@ -62,9 +63,20 @@ describe('AddPhotosForm', () => {
     fireEvent.change(await screen.findByLabelText(/Take photo/), { target: { files: [shot()] } })
     await screen.findByRole('img', { name: 'Photo 2' })
     expect(screen.getByText('2 of up to 8')).toBeInTheDocument()
+    // The approver needs a reason: the send waits for one.
+    expect(screen.getByRole('button', { name: 'Send 2 photos for approval' })).toBeDisabled()
+    expect(screen.getByText('Say why — the approver sees it.')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Why these photos (Operations sees this)'), { target: { value: 'Better light today' } })
     fireEvent.click(screen.getByRole('button', { name: 'Send 2 photos for approval' }))
-    await waitFor(() => expect(body).toEqual({ photo_ids: [101, 102], reason: '' }))
+    await waitFor(() => expect(body).toEqual({ photo_ids: [101, 102], reason: 'Better light today' }))
     expect(await screen.findByText('Sent to Ama Boateng')).toBeInTheDocument()
+  })
+
+  it('the default mock refuses a blank reason the way the server does', async () => {
+    await expect(apiPost('/api/portfolio/listings/41/photos/', { photo_ids: [1], reason: '' }))
+      .rejects.toMatchObject({ status: 400, body: { reason: ['Say why — the approver sees it.'] } })
+    await expect(apiPost('/api/portfolio/listings/41/photos/', { photo_ids: [1], reason: 'Better light' }))
+      .resolves.toMatchObject({ status: 'pending' })
   })
 
   it('uploads without a place when the phone shares no location', async () => {

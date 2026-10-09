@@ -212,7 +212,8 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
             {showProfile ? (
               <ProfilePanel user={user} />
             ) : !isVerified ? (
-              <div style={{ ...glassCard, padding: "30px 24px", textAlign: "center" }}>
+              <>
+              <div style={{ ...glassCard, padding: "30px 24px", textAlign: "center", marginBottom: 16 }}>
                 {isRejected ? (
                   <>
                     <div style={{ fontSize: "2rem", marginBottom: 10 }}>⚠️</div>
@@ -228,6 +229,9 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
                   </>
                 )}
               </div>
+              {/* While KYC is pending the owner can still undo an account manager's change. */}
+              {!isRejected && <ManagerChangesCard />}
+              </>
             ) : (
               <>
                 <RenewBanner subscription={subscription} onRenew={() => selectTab("subscription")} />

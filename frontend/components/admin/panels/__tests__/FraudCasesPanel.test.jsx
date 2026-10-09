@@ -178,8 +178,38 @@ describe('FraudCasesPanel — Operations', () => {
     mockCases()
     const onOpenBusiness = vi.fn()
     renderPanel({ onOpenBusiness })
-    fireEvent.click(await screen.findByRole('button', { name: 'Open Suame Auto Parts' }))
+    const other = await screen.findByRole('button', { name: 'Open Suame Auto Parts' })
+    // Label in Name (WCAG 2.5.3): the accessible name is the visible text.
+    expect(other).toHaveTextContent('Open Suame Auto Parts')
+    expect(other).not.toHaveAttribute('aria-label')
+    expect(screen.getByRole('button', { name: 'Open Suame Spare Parts Centre' })).toHaveTextContent('Open Suame Spare Parts Centre')
+    fireEvent.click(other)
     expect(onOpenBusiness).toHaveBeenCalledWith(32)
+  })
+
+  it('shows the cases beyond the first 25 on request', async () => {
+    const first = Array.from({ length: 25 }, (_, i) => flag({ id: 100 + i, title: `Case ${i + 1}` }))
+    const second = [flag({ id: 200, title: 'Case 26' })]
+    const pages = []
+    server.use(
+      http.get(`${API}/api/fraud/flags/counts/`, () => HttpResponse.json({ open: 26, confirmed: 0, dismissed: 0 })),
+      http.get(`${API}/api/fraud/flags/`, ({ request }) => {
+        const url = new URL(request.url)
+        pages.push(url.searchParams.get('page'))
+        return url.searchParams.get('page') === '2'
+          ? HttpResponse.json({ count: 26, next: null, previous: `${API}/api/fraud/flags/?status=open`, results: second })
+          : HttpResponse.json({ count: 26, next: `${API}/api/fraud/flags/?page=2&status=open`, previous: null, results: first })
+      }),
+    )
+    renderPanel()
+    expect(await screen.findByRole('article', { name: 'Case 25' })).toBeInTheDocument()
+    expect(screen.queryByRole('article', { name: 'Case 26' })).not.toBeInTheDocument()
+    expect(screen.getByText('Showing the newest 25 of 26.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }))
+    expect(await screen.findByRole('article', { name: 'Case 26' })).toBeInTheDocument()
+    expect(screen.getAllByRole('article')).toHaveLength(26)
+    expect(screen.queryByRole('button', { name: 'Show more' })).not.toBeInTheDocument()
+    expect(pages).toEqual([null, '2'])
   })
 })
 
