@@ -445,7 +445,8 @@ class KYCAddressVerifyView(APIView):
     staff decision on the business's Ghana Post digital address (punch-list
     item 8), with attribution. Setting either true or false marks a decision as
     having been made (address_verified_at), which is what unblocks the KYC
-    Approve/Reject buttons on the frontend. Gated by kyc.approve.
+    Approve/Reject buttons on the frontend. Gated by kyc.approve; the
+    business's registrar is refused (403), as on Approve and Reject.
     """
 
     def get_permissions(self):
@@ -453,6 +454,9 @@ class KYCAddressVerifyView(APIView):
 
     def post(self, request, pk):
         owner = generics.get_object_or_404(BusinessOwner, pk=pk)
+        # The registrar never decides any part of their own registration's KYC.
+        if owner.registered_by_id is not None and owner.registered_by_id == request.user.pk:
+            return Response({"detail": kyc.OWN_REGISTRATION}, status=403)
         verified = bool(request.data.get("verified", False))
         profile = owner.profile
         profile.address_verified = verified

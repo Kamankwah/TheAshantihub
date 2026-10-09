@@ -78,6 +78,17 @@ def _number(value):
     return number if math.isfinite(number) else None
 
 
+NOT_FIELDS = "Send the form's fields."
+
+
+def _not_fields(request):
+    """A 400 for a body that isn't a set of fields (e.g. a JSON array) — the
+    register and KYC-resubmit forms read it as a dict."""
+    if isinstance(request.data, dict):
+        return None
+    return Response({"detail": NOT_FIELDS}, status=status.HTTP_400_BAD_REQUEST)
+
+
 def _refused(exc):
     body = {"detail": exc.message, "code": exc.code}
     if exc.code == "duplicate":
@@ -112,6 +123,9 @@ class RegisterBusinessView(APIView):
         return [HasRolePermission("businesses.register")]
 
     def post(self, request):
+        refused = _not_fields(request)
+        if refused is not None:
+            return refused
         try:
             result = register_business(request.user, request.data, request.FILES, http_request=request)
         except RegistrationError as exc:
@@ -141,6 +155,9 @@ class KycResubmitView(APIView):
             owner = get_object_or_404(BusinessOwner, pk=pk)
         else:
             owner = get_managed_business(request, pk, allow_portfolio_manage=False)
+        refused = _not_fields(request)
+        if refused is not None:
+            return refused
         try:
             approval = resubmit_kyc(owner, request.user, request.data, request.FILES, http_request=request)
         except RegistrationError as exc:
@@ -184,7 +201,10 @@ class HandoverView(APIView):
 class ClaimLinkView(APIView):
     """POST businesses/<pk>/claim-link/ — email the owner a 7-day claim link
     (a new link replaces the old). SMS isn't connected, so it needs the
-    owner's email on file."""
+    owner's email on file. Throttled ("claim_link", 5 an hour per staff
+    member) so nobody can email an address over and over."""
+
+    throttle_scope = "claim_link"
 
     def get_permissions(self):
         return [IsStaff()]
@@ -643,7 +663,7 @@ class ListingFormMetaView(APIView):
 
     def get(self, request):
         raw = request.query_params.get("business", "")
-        if not raw.isdigit():
+        if not raw.isdecimal():  # isdigit() also takes "²", which int() can't read
             return Response({"detail": "Choose a business."}, status=400)
         owner = get_managed_business(request, int(raw))
         return Response(listing_form_meta(owner))

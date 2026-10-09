@@ -5,6 +5,7 @@ from unittest import mock
 
 from django.contrib.auth.hashers import is_password_usable
 from django.core.cache import cache
+from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from PIL import Image
@@ -210,6 +211,23 @@ class RegistrationTests(RegistrationBase):
                 )
         self.assertFalse(BusinessOwner.objects.filter(registration_channel="scout").exists())
 
+    def test_a_non_finite_or_absurd_accuracy_is_refused(self):
+        for value in ("nan", "inf", "-inf", "Infinity"):
+            with self.subTest(value=value):
+                response = self.register(location_accuracy_m=value)
+                self.assertEqual(
+                    (response.status_code, response.json()), (400, {"location_accuracy_m": ["Enter a number."]}),
+                )
+        response = self.register(location_accuracy_m="100001", location_is_manual="true")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("location_accuracy_m", response.json())
+        self.assertFalse(BusinessOwner.objects.filter(registration_channel="scout").exists())
+
+    def test_a_body_that_is_not_a_set_of_fields_is_refused(self):
+        self.as_(self.scout)
+        response = self.client.post(REGISTER_URL, ["owner_phone", "0241234567"], format="json")
+        self.assertEqual((response.status_code, response.json()), (400, {"detail": "Send the form's fields."}))
+
     def test_only_staff_who_register_businesses(self):
         response = self.register(staff=make_staff("support", "esi@example.com"))
         self.assertEqual(response.status_code, 403)
@@ -363,6 +381,46 @@ class KycResubmitTests(RegistrationBase):
             (event.verb, event.after),
             ("business.kyc_resubmitted", {"photos": ["signboard_photo"], "approval_id": new.pk}),
         )
+
+    def test_replaced_photos_are_deleted_once_the_request_is_saved(self):
+        reject(self.approval_id, self.lead, "Both photos are blurry")
+        profile = BusinessOwnerProfile.objects.get(business_owner=self.owner)
+        old_signboard, old_card = profile.signboard_photo.name, profile.ghana_card_front_image.name
+        self.assertTrue(default_storage.exists(old_signboard))
+        self.assertTrue(default_storage.exists(old_card))
+        self.as_(self.scout)
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                self.url, {"signboard_photo": png("daylight.png"), "ghana_card_front": png("card-again.png")},
+                format="multipart",
+            )
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertFalse(default_storage.exists(old_signboard))
+        self.assertFalse(default_storage.exists(old_card))
+        profile.refresh_from_db()
+        self.assertTrue(default_storage.exists(profile.signboard_photo.name))
+        self.assertTrue(default_storage.exists(profile.ghana_card_front_image.name))
+        event = ActivityEvent.objects.order_by("-id").first()
+        self.assertEqual(event.after["photos"], ["signboard_photo", "ghana_card_front"])
+
+    def test_a_replaced_photo_that_cannot_be_deleted_is_logged(self):
+        reject(self.approval_id, self.lead, "Blurry")
+        self.as_(self.scout)
+        storage = mock.Mock()
+        storage.delete.side_effect = OSError("disk full")
+        with mock.patch("portfolio.registration.default_storage", storage), \
+                self.assertLogs("portfolio.registration", level="ERROR"), \
+                self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(self.url, {"signboard_photo": png("again.png")}, format="multipart")
+        self.assertEqual(response.status_code, 201, response.content)
+        storage.delete.assert_called_once()
+
+    def test_a_resubmit_body_that_is_not_a_set_of_fields_is_refused(self):
+        reject(self.approval_id, self.lead, "Blurry")
+        self.as_(self.scout)
+        response = self.client.post(self.url, ["maker_note"], format="json")
+        self.assertEqual((response.status_code, response.json()), (400, {"detail": "Send the form's fields."}))
+        self.assertFalse(ApprovalRequest.objects.filter(status="pending").exists())
 
     def test_refused_while_a_request_waits_or_once_kyc_is_decided(self):
         self.as_(self.scout)

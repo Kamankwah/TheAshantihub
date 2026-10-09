@@ -286,6 +286,31 @@ class ProposeListingApiTests(ChangeTestBase):
         self.assertIn("name", self.post(product_body(name="")).json())
         self.assertFalse(ApprovalRequest.objects.exists())
 
+    def test_the_contact_phone_is_stored_in_one_form_and_never_a_staff_phone(self):
+        self.as_staff(self.scout)
+        response = self.post(product_body(contact_phone="024 555 0101"))
+        self.assertEqual(response.status_code, 201, response.content)
+        approval = ApprovalRequest.objects.get(pk=response.json()["approval_id"])
+        self.assertEqual(approval.payload["listing"]["contact_phone"], "+233245550101")
+        self.assertEqual(
+            self.post(product_body(contact_phone="12345")).json(),
+            {"contact_phone": ["Enter a Ghana phone number, for example 024 123 4567."]},
+        )
+        make_staff("accountant", "pat@example.com", phone="0201112223")
+        self.assertEqual(
+            self.post(product_body(contact_phone="+233 20 111 2223")).json(), {"contact_phone": [proposals.STAFF_PHONE]},
+        )
+        self.assertEqual(ApprovalRequest.objects.count(), 1)
+
+    def test_a_staff_contact_phone_added_after_the_proposal_is_refused_at_approval(self):
+        self.as_staff(self.scout)
+        approval_id = self.post(product_body(contact_phone="0201112223")).json()["approval_id"]
+        make_staff("accountant", "pat@example.com", phone="0201112223")
+        self.as_staff(self.lead)
+        response = self.client.post(f"/api/approvals/{approval_id}/approve/", {}, format="json")
+        self.assertEqual((response.status_code, response.json()["detail"]), (400, proposals.STAFF_PHONE))
+        self.assertFalse(Listing.objects.filter(business_owner=self.owner).exists())
+
     def test_photos_must_be_this_businesss_unused_ones(self):
         other = make_business(self.other_scout, phone="+233244900900", name="Kofi Spare Parts", gps="AK-100-2000")
         theirs = self.staged(owner=other, by=self.other_scout)
@@ -355,3 +380,5 @@ class ListingFormMetaTests(ChangeTestBase):
         self.as_staff(self.other_scout)
         self.assertEqual(self.client.get(f"/api/portfolio/meta/listing-form/?business={self.owner.pk}").status_code, 404)
         self.assertEqual(self.client.get("/api/portfolio/meta/listing-form/").status_code, 400)
+        # "²" is a digit to str.isdigit() but not a number int() reads.
+        self.assertEqual(self.client.get("/api/portfolio/meta/listing-form/?business=²").status_code, 400)

@@ -7,7 +7,9 @@ from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
 from django.core import mail
 from django.core.cache import cache
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -127,10 +129,8 @@ class ClaimTokenTests(TestCase):
         )
         self.assertFalse(ActivityEvent.objects.filter(verb="business-owner-claim").exists())
         logged = json.dumps(list(ActivityEvent.objects.values("summary", "before", "after")), default=str)
-        noticed = json.dumps(list(Notification.objects.values("title", "body")))
         for secret in (PASSWORD, raw):
             self.assertNotIn(secret, logged)
-            self.assertNotIn(secret, noticed)
 
         login = self.client_for().post(LOGIN_URL, {"identifier": "+233241234567", "password": PASSWORD}, format="json")
         self.assertEqual(login.status_code, 200, login.content)
@@ -180,6 +180,10 @@ class ClaimTokenTests(TestCase):
         self.assertEqual((consent.channel, consent.staff), ("link", self.scout))
         self.assertEqual(ActivityEvent.objects.get(verb="business.claimed").after, {"channel": "link"})
         self.assertEqual(Notification.objects.filter(staff=self.scout, kind="business_claimed").count(), 1)
+        # A link claim notifies the account manager: the notice carries no secret.
+        noticed = json.dumps(list(Notification.objects.values("title", "body", "link")))
+        for secret in (PASSWORD, raw):
+            self.assertNotIn(secret, noticed)
 
     def test_a_newer_link_replaces_the_old_one(self):
         first, _ = self.send_link()
@@ -231,6 +235,25 @@ class ClaimTokenTests(TestCase):
         self.assertIsNone(token.used_at)
         self.owner.refresh_from_db()
         self.assertEqual(self.owner.email, "gifty.a@example.com")
+
+    def test_an_email_longer_than_254_characters_is_refused(self):
+        raw, token = self.hand_over()
+        email = f"{'a' * 64}@{'b' * 63}.{'c' * 63}.{'d' * 60}.com"  # 257 characters, otherwise well-formed
+        response = self.claim(self.scout_phone, raw, email=email)
+        self.assertEqual((response.status_code, response.json()), (400, {"email": ["Enter a valid email address."]}))
+        token.refresh_from_db()
+        self.assertIsNone(token.used_at)
+
+    def test_the_owner_row_is_locked_before_the_token(self):
+        # The same order as issuing a token (owner, then tokens), so a claim
+        # and a new link at the same moment can't deadlock.
+        raw, _ = self.hand_over()
+        with CaptureQueriesContext(connection) as queries:
+            self.assertEqual(self.claim(self.scout_phone, raw).status_code, 200)
+        locks = [query["sql"] for query in queries.captured_queries if "FOR UPDATE" in query["sql"]]
+        owner_lock = next(i for i, sql in enumerate(locks) if 'FROM "accounts_businessowner"' in sql)
+        token_lock = next(i for i, sql in enumerate(locks) if 'FROM "accounts_ownerclaimtoken"' in sql)
+        self.assertLess(owner_lock, token_lock)
 
     def test_the_preview_shows_the_email_on_file_masked(self):
         raw, _ = self.hand_over()

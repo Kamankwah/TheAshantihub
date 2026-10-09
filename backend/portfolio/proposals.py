@@ -674,6 +674,8 @@ def check_listing(owner, listing):
     if not serializer.is_valid():
         return None, dict(serializer.errors)
     data = dict(serializer.validated_data)
+    if data.get("contact_phone") and staff_phone_matches(data["contact_phone"]):
+        return None, {"contact_phone": [STAFF_PHONE]}
     try:
         validate_listing_for_owner(owner, data, initial_data=listing)
     except ValidationError as exc:
@@ -693,6 +695,13 @@ def propose_listing(scout, owner, listing_data, *, main_photo_id, photo_ids, rea
     if not isinstance(listing_data, dict):
         raise ValidationError({"listing": ["Send the product's details."]})
     listing = {key: listing_data[key] for key in PROPOSED_LISTING_FIELDS if key in listing_data}
+    if listing.get("contact_phone") not in (None, ""):
+        # Stored +233… like every phone this plan writes; check_listing then
+        # refuses a staff member's number, now and again at approval.
+        try:
+            listing["contact_phone"] = _phone(listing["contact_phone"])
+        except _Invalid as exc:
+            raise ValidationError({"contact_phone": [str(exc)]})
     main_id = _one_photo_id(main_photo_id, "main_photo_id")
     gallery = _photo_id_list(photo_ids, "photo_ids")
     every_photo = _listing_photo_ids({"main_photo_id": main_id, "photo_ids": gallery})

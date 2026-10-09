@@ -397,6 +397,19 @@ class KycMakerAndAddressTests(QueueBase):
         approval.refresh_from_db()
         self.assertEqual(approval.status, "pending")
 
+    def test_the_registrar_cannot_decide_the_address_either(self):
+        BusinessOwnerProfile.objects.filter(business_owner=self.own).update(
+            address_verified=False, address_verified_by=None, address_verified_at=None,
+        )
+        self.as_(self.other_ops)
+        response = self.client.post(f"/api/accounts/kyc/{self.own.id}/address-verify/", {"verified": True}, format="json")
+        self.assertEqual((response.status_code, response.json()), (403, {"detail": "You can't approve your own request."}))
+        profile = BusinessOwnerProfile.objects.get(business_owner=self.own)
+        self.assertEqual((profile.address_verified, profile.address_verified_at), (False, None))
+        self.as_(self.lead)
+        response = self.client.post(f"/api/accounts/kyc/{self.own.id}/address-verify/", {"verified": True}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+
     def test_a_different_operations_staffer_can_still_approve(self):
         self.as_(self.lead)
         self.assertEqual(self.approve_in_queue(self.own).status_code, 200)

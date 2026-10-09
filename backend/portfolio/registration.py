@@ -5,9 +5,11 @@ in one transaction creates the owner (with an unusable password until they
 claim the login), the profile, the account-manager assignment, any fraud
 cases (similar business nearby, self-dealing) and the business.kyc approval
 request, and records business.registered last."""
+import logging
 from decimal import Decimal
 
 from django.contrib.auth.hashers import make_password
+from django.core.files.storage import default_storage
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
@@ -22,6 +24,8 @@ from notifications.services import notify_staff_role
 from . import checks
 from .serializers import KycResubmitSerializer, ScoutRegistrationSerializer
 from .services import assign_account_manager
+
+logger = logging.getLogger(__name__)
 
 KYC_KIND = "business.kyc"
 OWNER_TARGET_TYPE = "accounts.businessowner"
@@ -46,13 +50,24 @@ class RegistrationError(Exception):
 
 def _as_dict(data, files=None):
     """One plain dict from request.data (a QueryDict for multipart) and
-    request.FILES — or from plain dicts in tests."""
+    request.FILES — or from plain dicts in tests. Anything that isn't a set
+    of fields (a JSON array) adds nothing; the views refuse it first."""
     values = {}
     for source in (data, files):
-        if source is not None:
+        if isinstance(source, dict):
             for key in source.keys():
                 values[key] = source.get(key)
     return values
+
+
+def _delete_replaced(names):
+    """Delete photo files a resubmit replaced (after commit: a rollback keeps
+    them). A file that can't be deleted is logged, never raised."""
+    for name in names:
+        try:
+            default_storage.delete(name)
+        except Exception:
+            logger.exception("Couldn't delete replaced KYC photo %s", name)
 
 
 def _six(value):
@@ -217,15 +232,21 @@ def resubmit_kyc(owner, staff, data, files, *, http_request=None):
         if _pending_kyc_request(owner).exists():
             raise RegistrationError(ALREADY_WAITING_MESSAGE, code="already_pending")
         profile = BusinessOwnerProfile.objects.get(business_owner=owner)
-        photos = []
-        if values.get("signboard_photo") is not None:
-            profile.signboard_photo = values["signboard_photo"]
-            photos.append("signboard_photo")
-        if values.get("ghana_card_front") is not None:
-            profile.ghana_card_front_image = values["ghana_card_front"]
-            photos.append("ghana_card_front_image")
-        if photos:
-            profile.save(update_fields=photos)
+        photos, fields, replaced = [], [], []
+        # (request field, profile field): the activity log names what was sent.
+        for sent, field in (("signboard_photo", "signboard_photo"), ("ghana_card_front", "ghana_card_front_image")):
+            if values.get(sent) is None:
+                continue
+            old = getattr(profile, field)
+            if old:
+                replaced.append(old.name)
+            setattr(profile, field, values[sent])
+            photos.append(sent)
+            fields.append(field)
+        if fields:
+            profile.save(update_fields=fields)
+        if replaced:
+            transaction.on_commit(lambda: _delete_replaced(replaced))
         name = profile.business_name or owner.full_name
         approval = _submit_kyc(
             staff, owner, name, maker_note=values.get("maker_note", ""), http_request=http_request, resubmitted=True,

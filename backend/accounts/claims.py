@@ -30,6 +30,7 @@ from .serializers import mask_but_last
 HANDOVER_TTL = timedelta(minutes=30)
 LINK_TTL = timedelta(days=7)
 MIN_PASSWORD_LENGTH = 8
+MAX_EMAIL_LENGTH = 254
 
 ALREADY_CLAIMED = "This owner already has a login."
 NO_EMAIL = "Add the owner's email first — text messages (SMS) aren't connected yet."
@@ -104,14 +105,11 @@ def send_claim_link(owner, staff):
     return token
 
 
-def _find(raw, *, lock=False):
+def _find(raw):
     raw = raw.strip() if isinstance(raw, str) else ""
     if not raw:
         raise ClaimError(INVALID, code="invalid")
-    tokens = OwnerClaimToken.objects.select_related("business_owner")
-    if lock:
-        tokens = tokens.select_for_update(of=("self",))
-    token = tokens.filter(token_hash=hash_token(raw)).first()
+    token = OwnerClaimToken.objects.select_related("business_owner").filter(token_hash=hash_token(raw)).first()
     if token is None:
         raise ClaimError(INVALID, code="invalid")
     return token
@@ -173,6 +171,8 @@ def _clean_fields(owner, password, password_confirm, email, accept_terms):
     email = email.strip() if isinstance(email, str) else ""
     if email:
         try:
+            if len(email) > MAX_EMAIL_LENGTH:  # the column's size; validate_email allows up to 320
+                raise DjangoValidationError("too long")
             validate_email(email)
         except DjangoValidationError:
             errors["email"] = ["Enter a valid email address."]
@@ -193,8 +193,13 @@ def claim(raw, *, password, password_confirm, email, accept_terms, request):
     and change nothing."""
     with transaction.atomic():
         now = timezone.now()
-        token = _find(raw, lock=True)
-        owner = BusinessOwner.objects.select_for_update().get(pk=token.business_owner_id)
+        # Lock order owner -> tokens, the same as _issue: find the token
+        # without a lock, lock its owner, then lock the token and re-check it.
+        found = _find(raw)
+        owner = BusinessOwner.objects.select_for_update().get(pk=found.business_owner_id)
+        token = OwnerClaimToken.objects.select_for_update().filter(pk=found.pk).first()
+        if token is None:
+            raise ClaimError(INVALID, code="invalid")
         token.business_owner = owner
         _check_usable(token, request, now)
         email, password = _clean_fields(owner, password, password_confirm, email, accept_terms)

@@ -315,9 +315,20 @@ class PortfolioDetailTests(PortfolioApiBase):
             {key: body["assignments"][0][key] for key in ("scout_name", "assigned_by_name", "reason", "ended_at")},
             {"scout_name": "Kwame", "assigned_by_name": "Ama", "reason": "Registered by Kwame", "ended_at": None},
         )
+        # A case's title can name a staff member (self-dealing), so a scout sees only its kind.
         self.assertEqual(body["open_flags"], [{
             "id": FraudFlag.objects.get().pk, "kind": "similar_nearby", "kind_label": "Similar business nearby",
-            "title": "Similar business nearby",
+        }])
+
+    def test_operations_see_each_open_cases_title(self):
+        flag = FraudFlag.objects.create(
+            kind=FraudFlag.SELF_DEALING, source=FraudFlag.SYSTEM, title="Owner's phone matches staff member Efua",
+            business_owner=self.owner,
+        )
+        self.auth(self.lead)
+        self.assertEqual(self.client.get(self.url()).json()["open_flags"], [{
+            "id": flag.pk, "kind": "self_dealing", "kind_label": flag.get_kind_display(),
+            "title": "Owner's phone matches staff member Efua",
         }])
 
     def test_another_scouts_business_is_not_found(self):
@@ -418,7 +429,7 @@ class SubscriptionsDueTests(PortfolioApiBase):
     def test_overdue_most_urgent_first_paused_and_cleared_this_week(self):
         now = timezone.now()
         late = make_healthy(
-            make_business("Kumasi Leather Works", manager=self.efua), self.efua,
+            make_business("Kumasi Leather Works", manager=self.efua, email="leather@example.com"), self.efua,
             subscription=lambda owner: subscribe_overdue(owner, now - timedelta(days=12, hours=1)),
         )
         Subscription.objects.filter(business_owner=late).update(
@@ -454,7 +465,10 @@ class SubscriptionsDueTests(PortfolioApiBase):
         self.assertEqual(response.status_code, 200, response.content)
         body = response.json()
         self.assertEqual([row["id"] for row in body["overdue"]], [late.pk, recent.pk, unmarked.pk])
-        self.assertEqual(set(body["overdue"][0]), ITEM_KEYS | {"notices"})
+        self.assertEqual(set(body["overdue"][0]), ITEM_KEYS | {"notices", "owner_has_email"})
+        # Whether the clock's notices also went by email (SMS isn't connected).
+        self.assertEqual([row["owner_has_email"] for row in body["overdue"]], [True, False, False])
+        self.assertEqual(body["paused"][0]["owner_has_email"], False)
         self.assertEqual([notice["label"] for notice in body["overdue"][0]["notices"]], ["Overdue notice", "Day 7 reminder"])
         self.assertEqual(body["overdue"][1]["notices"], [])
         self.assertEqual(body["overdue"][0]["subscription"]["state"], "overdue")

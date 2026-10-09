@@ -158,6 +158,16 @@ class FollowUpTests(TeamBase):
         due = timezone.localtime(Task.objects.get().due_at)
         self.assertEqual((due.date(), due.hour, due.minute), (day, 17, 0))
 
+    def test_the_title_fits_the_assignees_notification(self):
+        too_long = self.follow_up(self.lead, owner=self.kwame.pk, title="x" * 186, due_at=self.tomorrow().isoformat())
+        self.assertEqual(too_long.status_code, 400)
+        self.assertIn("title", too_long.json())
+        title = "Visit " + "x" * 179  # 185 characters: "Follow-up: …" is 196
+        response = self.follow_up(self.lead, owner=self.kwame.pk, title=title, due_at=self.tomorrow().isoformat())
+        self.assertEqual(response.status_code, 201, response.content)
+        note = Notification.objects.get(staff=self.kwame, kind="follow_up_assigned")
+        self.assertEqual(note.title, f"Follow-up: {title}")
+
     def test_only_yourself_or_someone_on_your_team(self):
         response = self.follow_up(self.lead, owner=self.yaw.pk, title="Visit", due_at=self.tomorrow().isoformat())
         self.assertEqual(response.status_code, 400)

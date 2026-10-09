@@ -35,10 +35,21 @@ def flag_brief(flag):
     return {"id": flag.pk, "kind": flag.kind, "kind_label": flag.get_kind_display(), "title": flag.title}
 
 
+class FiniteFloatField(serializers.FloatField):
+    """A FloatField that refuses NaN and ±infinity ("nan", "inf" parse as
+    floats) before its min/max validators run."""
+
+    def to_internal_value(self, data):
+        value = super().to_internal_value(data)
+        if not math.isfinite(value):
+            raise serializers.ValidationError("Enter a number.")
+        return value
+
+
 class ScoutRegistrationSerializer(serializers.Serializer):
     owner_full_name = serializers.CharField(max_length=150)
     owner_phone = serializers.CharField(max_length=40)
-    owner_email = serializers.EmailField(required=False, allow_blank=True)
+    owner_email = serializers.EmailField(required=False, allow_blank=True, max_length=254)
     business_name = serializers.CharField(max_length=150)
     business_kind = serializers.ChoiceField(choices=BusinessOwnerProfile.BUSINESS_KIND_CHOICES)
     business_category = serializers.PrimaryKeyRelatedField(queryset=Category.objects.all())
@@ -46,7 +57,7 @@ class ScoutRegistrationSerializer(serializers.Serializer):
     gps_address = serializers.CharField(max_length=20)
     lat = serializers.FloatField()
     lng = serializers.FloatField()
-    location_accuracy_m = serializers.FloatField(required=False, allow_null=True, min_value=0)
+    location_accuracy_m = FiniteFloatField(required=False, allow_null=True, min_value=0, max_value=100000)
     location_is_manual = serializers.BooleanField(required=False, default=False)
     signboard_photo = serializers.ImageField(validators=[validate_image_content_type])
     ghana_card_front = serializers.ImageField(validators=[validate_image_content_type])
@@ -195,14 +206,19 @@ def subscription_due_item(row):
         for field, label in NOTICE_FIELDS
         if getattr(subscription, field) is not None
     ]
+    # The clock emails only owners with an email on file (SMS isn't connected).
+    item["owner_has_email"] = bool(row.owner.email)
     return item
 
 
 def business_detail(row, request):
     """The business page: the list item plus details, listings, waiting
     requests, recent calls, assignment history and open fraud cases.
-    can_manage — the caller is the account manager, who may propose changes."""
+    can_manage — the caller is the account manager, who may propose changes.
+    An open case's title can name a staff member (a self-dealing match), so
+    only portfolio.manage holders get it; others see its kind."""
     owner = row.owner
+    shows_titles = "portfolio.manage" in request.user.effective_permission_codenames()
     profile = _portfolio_profile(owner)
     listings = owner.listings.annotate(photos_count=Count("photos")).order_by("-created_at", "-id")
     pending = (
@@ -277,7 +293,7 @@ def business_detail(row, request):
             for assignment in owner.manager_assignments.select_related("scout", "assigned_by")
         ],
         "open_flags": [
-            flag_brief(flag)
+            flag_brief(flag) if shows_titles else {key: value for key, value in flag_brief(flag).items() if key != "title"}
             for flag in FraudFlag.objects.filter(business_owner=owner, status=FraudFlag.OPEN).order_by("-created_at", "-id")
         ],
         "can_manage": owner.account_manager_id == request.user.pk,
@@ -367,7 +383,8 @@ class ReassignSerializer(serializers.Serializer):
 
 class FollowUpSerializer(serializers.Serializer):
     owner = serializers.IntegerField()
-    title = serializers.CharField(max_length=200)
+    # 185 so the assignee's notification, "Follow-up: {title}", fits its 200.
+    title = serializers.CharField(max_length=185)
     due_at = serializers.CharField()
     notes = serializers.CharField(required=False, allow_blank=True, default="")
 

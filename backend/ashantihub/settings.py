@@ -250,6 +250,8 @@ SENTRY_DSN = env("SENTRY_DSN", default="")
 if SENTRY_DSN:
     import sentry_sdk
 
+    from ashantihub.sentry import event_scrubber
+
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         # Tells staging errors apart from production ones in the same project.
@@ -259,6 +261,8 @@ if SENTRY_DSN:
         traces_sample_rate=0.0,
         # Never ship user emails/phone numbers/request bodies to Sentry.
         send_default_pii=False,
+        # The default denylist plus the owner-claim secrets, at any depth.
+        event_scrubber=event_scrubber(),
     )
 
 # Public base URL of the deployed frontend (e.g. https://theashantihub.com) —
@@ -309,6 +313,8 @@ REST_FRAMEWORK = {
         "password_reset_request": "5/min",
         # Public claim page and the scout's hand-over (preview + claim).
         "owner_claim": "10/min",
+        # A staff member emailing owners claim links (portfolio.views.ClaimLinkView).
+        "claim_link": "5/hour",
         # The Hubtel webhook is a public, unauthenticated endpoint (Hubtel
         # calls it from the internet, not a logged-in app user) — generous
         # but not unlimited, since it's dark/unexercised until HUBTEL_* env

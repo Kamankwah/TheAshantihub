@@ -1,6 +1,7 @@
 import json
 import re
 
+from django.conf import settings
 from django.contrib.auth.hashers import make_password
 from django.core import mail
 from django.core.cache import cache
@@ -12,6 +13,7 @@ from accounts.models import BusinessOwner, BusinessOwnerProfile, OwnerClaimToken
 from accounts.testing import make_staff, session_of, staff_token
 from activity.models import ActivityEvent
 from listings.models import Zone
+from portfolio.views import ClaimLinkView
 
 CLAIM_URL = "/api/accounts/business-owners/claim/"
 PASSWORD = "Akwaaba-Asafo-2026"
@@ -103,6 +105,17 @@ class HandoverApiTests(TestCase):
         self.assertIsNotNone(old.revoked_at)
         self.assertIsNone(new.revoked_at)
         self.assertEqual(len(mail.outbox), 2)
+
+    def test_claim_links_are_limited_to_5_an_hour(self):
+        # A scout can't email an address over and over.
+        self.assertEqual(ClaimLinkView.throttle_scope, "claim_link")
+        self.assertEqual(settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["claim_link"], "5/hour")
+        self.as_(self.scout)
+        with self.captureOnCommitCallbacks(execute=True):
+            for _ in range(5):
+                self.assertEqual(self.client.post(self.link_url, {}, format="json").status_code, 200)
+            self.assertEqual(self.client.post(self.link_url, {}, format="json").status_code, 429)
+        self.assertEqual(len(mail.outbox), 5)
 
     def test_a_claim_link_needs_the_owners_email(self):
         BusinessOwner.objects.filter(pk=self.owner.pk).update(email=None)
