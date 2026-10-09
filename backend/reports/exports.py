@@ -64,8 +64,11 @@ def escape_cell(value):
 def _system_text(sections):
     parts = []
     for section in sections or []:
-        rows = ", ".join(f"{row.get('label', '')} {row.get('value', '')}" for row in section.get("rows", []))
-        parts.append(f"{section.get('title', '')}: {rows}")
+        rows = ", ".join(
+            f"{row.get('label', '')} {row.get('value', '')}" + (f" of {row['target']}" if row.get("target") is not None else "")
+            for row in section.get("rows", [])
+        )
+        parts.append(f"{section.get('title', '')}: {rows}" + (f" ({section['summary']})" if section.get("summary") else ""))
     return "; ".join(parts)
 
 

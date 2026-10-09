@@ -64,7 +64,8 @@ function Fact({ label, value }) {
 
 function BusinessCard({ business: b, onOpen }) {
   return (
-    <article aria-label={b.business_name} style={{ ...glassCard, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+    // The whole card opens the business (canvas 02); the Open button stays as the keyboard path.
+    <article aria-label={b.business_name} onClick={() => onOpen(b.id)} style={{ ...glassCard, padding: 14, display: "flex", flexDirection: "column", gap: 10, cursor: "pointer" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ color: D.text, fontWeight: 800, fontSize: "0.9rem" }}>{b.business_name}</div>
@@ -78,7 +79,7 @@ function BusinessCard({ business: b, onOpen }) {
         <Fact label="Last contact" value={lastContactText(b.last_contact)} />
       </div>
       {b.needs_claim && <span style={{ ...chip(D.amber), alignSelf: "flex-start" }}>🔒 Owner hasn't set a login yet</span>}
-      <button type="button" aria-label={`Open ${b.business_name}`} onClick={() => onOpen(b.id)} style={{ ...button(D.panelBg, D.text), alignSelf: "flex-start" }}>Open ›</button>
+      <button type="button" aria-label={`Open ${b.business_name}`} onClick={(e) => { e.stopPropagation(); onOpen(b.id); }} style={{ ...button(D.panelBg, D.text), alignSelf: "flex-start" }}>Open ›</button>
     </article>
   );
 }

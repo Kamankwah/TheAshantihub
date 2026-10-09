@@ -155,4 +155,11 @@ describe('AddListingForm', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send for approval' }))
     expect(await screen.findByRole('alert')).toHaveTextContent("Approve the business's KYC first.")
   })
+
+  it("names the lead as the moderator", async () => {
+    serve()
+    renderForm({ leadName: 'Ama Boateng' })
+    expect(await screen.findByText(/Ama's approval is this listing's moderation\. It goes live when Ama Boateng approves it\./)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send to Ama Boateng' })).toBeInTheDocument()
+  })
 })

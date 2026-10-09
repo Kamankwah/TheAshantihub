@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiPost } from "../../../apiClient.js";
 import { usePortfolioBusiness } from "../../../hooks/usePortfolio.js";
+import { maskPhone } from "../../../lib/maskPhone.js";
 import { describeWait, timeAgo } from "../../../lib/timeAgo.js";
 import { D } from "../theme.js";
 import { button, callout, chip, dim } from "./panelStyles.js";
@@ -23,6 +24,7 @@ const REQUEST_KIND = {
   "listing.create": "New product or service", "listing.photos": "Listing photos",
 };
 const LISTING_STATUS = { published: ["Live", D.green], pending_review: ["Waiting for review", D.amber], draft: ["Draft", D.textFaint], rejected: ["Rejected", D.red] };
+const STRIP = 4;
 const words = (code) => String(code || "").replace(/_/g, " ");
 const row = { padding: "8px 0", borderTop: `1px solid ${D.divider}`, fontSize: "0.8rem", color: D.text };
 const figures = { fontVariantNumeric: "tabular-nums" }; // DESIGN.md: numbers line up
@@ -41,6 +43,10 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
   const [kycSent, setKycSent] = useState(null); // the "Sent to …" line once a KYC request went; hides the form for good
 
   const isOps = Boolean(auth?.hasPermission?.("portfolio.manage"));
+  const isScout = auth?.user?.role === "scout";
+  // The scout's own lead, named wherever the approver is meant (canvas 03, 04, 05).
+  const leadName = isScout ? auth?.user?.manager?.full_name : undefined;
+  const [allListings, setAllListings] = useState(false);
   const canCall = Boolean(auth?.hasPermission?.("calls.log"));
   const refreshAll = () => {
     refetch();
@@ -61,9 +67,9 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
   if (isError || !b) return <div style={card}>{back}<div style={errorStyle}>This business doesn't exist, or isn't one you can see.</div></div>;
 
   const backToPage = () => setView(null);
-  if (view === "propose") return <ProposeChangeForm businessId={b.id} onBack={backToPage} onSent={refreshAll} />;
-  if (view === "add") return <AddListingForm businessId={b.id} onBack={backToPage} onSent={refreshAll} />;
-  if (view === "photos") return <AddPhotosForm businessId={b.id} onBack={backToPage} onSent={refreshAll} />;
+  if (view === "propose") return <ProposeChangeForm businessId={b.id} onBack={backToPage} onSent={refreshAll} leadName={leadName} />;
+  if (view === "add") return <AddListingForm businessId={b.id} onBack={backToPage} onSent={refreshAll} leadName={leadName} />;
+  if (view === "photos") return <AddPhotosForm businessId={b.id} onBack={backToPage} onSent={refreshAll} leadName={leadName} />;
 
   const owner = firstName(b.owner_name);
   const verified = b.kyc_status === "verified";
@@ -114,8 +120,12 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
     ? `${Number(b.lat).toFixed(5)}, ${Number(b.lng).toFixed(5)}${b.location_accuracy_m != null ? ` · ±${b.location_accuracy_m} m` : ""}${b.location_is_manual ? " · placed by hand" : ""}`
     : "No map pin yet";
   const registered = `${formatDay(b.created_at)}${b.registered_by ? ` by ${b.registered_by.full_name}` : b.registration_channel === "self" ? " online by the owner" : ""}`;
+  // Scouts see a phone as "024 *** 118"; the tel: link keeps the number so they can still call.
+  const phoneCell = (value) => (isScout && value
+    ? <a href={`tel:${value}`} aria-label={`Call ${maskPhone(value)}`} style={{ color: D.text }}>{maskPhone(value)}</a>
+    : value);
   const details = [
-    ["Sign-in phone", b.login_phone], ["Business phone", b.business_contact_phone], ["Email", b.email || "Not given"],
+    ["Sign-in phone", phoneCell(b.login_phone)], ["Business phone", phoneCell(b.business_contact_phone)], ["Email", b.email || "Not given"],
     ["Kind", b.business_kind === "service" ? "Service" : "Product"], ["Category", b.business_category?.name],
     ["Area", b.zone?.name], ["Ghana Post address", b.gps_address], ["Map pin", pin], ["Opening hours", b.opening_hours],
     ["Description", b.business_description], ["Registered", registered], ["Account manager", b.account_manager?.full_name || "None"],
@@ -204,17 +214,17 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
 
       {(b.pending_requests || []).length > 0 && (
         <section aria-label="Waiting for approval" style={card}>
-          <h3 style={h3}>Waiting for approval</h3>
+          <h3 style={h3}>{leadName ? `Waiting for ${leadName}` : "Waiting for approval"}</h3>
           {b.pending_requests.map((r) => (
             <div key={r.id} style={row}>
               <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                 <span style={chip(D.gold)}>{REQUEST_KIND[r.kind] || r.kind}</span>
                 <span style={{ fontWeight: 700 }}>{r.title}</span>
               </div>
-              <div style={dim}>{`Sent ${timeAgo(r.created_at)} ago · waiting for ${r.waiting_for || "Operations"} · ${describeWait(r.due_at)}`}</div>
+              <div style={dim}>{waitLine(r, leadName, owner)}</div>
             </div>
           ))}
-          <div style={dim}>{`${owner} can undo a scout's change for 7 days once it's applied.`}</div>
+          {!leadName && <div style={dim}>{`${owner} can undo a scout's change for 7 days once it's applied.`}</div>}
         </section>
       )}
 
@@ -232,8 +242,40 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
       </section>
 
       <section aria-label="Listings and photos" style={card}>
-        <h3 style={h3}>{`Listings & photos · ${b.listings_live ?? 0} live`}</h3>
-        {(b.listings || []).length === 0 ? <div style={dim}>No listings yet.</div> : b.listings.map((l) => {
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+          <h3 style={h3}>{`Listings & photos · ${b.listings_live ?? 0} live`}</h3>
+          {(b.listings || []).length > STRIP && (
+            <button type="button" onClick={() => setAllListings((v) => !v)}
+              style={{ background: "none", border: 0, padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "0.8rem", fontWeight: 700, color: D.deepGold }}>
+              {allListings ? "Show fewer" : "See all"}
+            </button>
+          )}
+        </div>
+        {(b.listings || []).length === 0 ? <div style={dim}>No listings yet.</div> : null}
+        {(b.listings || []).length > 0 && !allListings && (
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+            {b.listings.slice(0, STRIP).map((l) => {
+              const [statusLabel, statusColor] = LISTING_STATUS[l.status] || [l.status, D.textFaint];
+              return (
+                <div key={l.id} style={{ width: 72, display: "flex", flexDirection: "column", gap: 3, fontSize: "0.68rem", color: D.text }}>
+                  {l.main_photo
+                    ? <img src={l.main_photo} alt={l.name} style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8 }} />
+                    : <div style={{ width: 72, height: 72, borderRadius: 8, background: D.panelBg2 }} />}
+                  <span style={{ fontWeight: 700, overflowWrap: "anywhere" }}>{l.name}</span>
+                  {l.price_amount != null && <span style={figures}>{money(l.price_amount)}</span>}
+                  <span style={chip(statusColor)}>{statusLabel}</span>
+                </div>
+              );
+            })}
+            {b.listings.length > STRIP && (
+              <div style={{ width: 72, height: 72, borderRadius: 8, background: D.panelBg2, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: D.text, ...figures }}>
+                {`+${b.listings.length - STRIP}`}
+              </div>
+            )}
+          </div>
+        )}
+        {(b.listings || []).length > 0 && allListings && b.listings.map((l) => {
+
           const [statusLabel, statusColor] = LISTING_STATUS[l.status] || [l.status, D.textFaint];
           return (
             <div key={l.id} style={{ ...row, display: "flex", gap: 10, alignItems: "center" }}>
@@ -282,6 +324,18 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
       )}
     </div>
   );
+}
+
+const clock = (iso) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+
+// "Sent 2 h ago · Ama has until 15:20, then any Operations lead · Adwoa can undo it for 7 days once applied"
+function waitLine(r, leadName, owner) {
+  if (!leadName) return `Sent ${timeAgo(r.created_at)} ago · waiting for ${r.waiting_for || "Operations"} · ${describeWait(r.due_at)}`;
+  const who = firstName(r.waiting_for || leadName);
+  const sent = `Sent ${timeAgo(r.created_at)} ago`;
+  const due = r.due_at ? new Date(r.due_at).getTime() : NaN;
+  const clause = Number.isNaN(due) ? `${who} decides first` : due > Date.now() ? `${who} has until ${clock(r.due_at)}, then any Operations lead` : `${who}'s time has passed, so any Operations lead can decide`;
+  return `${sent} · ${clause} · ${owner} can undo it for 7 days once applied`;
 }
 
 // With the pause switched off (pause_enabled false) an overdue business is

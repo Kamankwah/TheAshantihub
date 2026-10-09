@@ -39,7 +39,9 @@ class ReportApiTests(TestCase):
         self.as_(self.scout)
         current = self.client.get("/api/reports/current/?period=day").json()
         self.assertEqual((current["id"], current["status"], current["system_is_live"]), (None, "draft", True))
-        self.assertEqual([s["key"] for s in current["system"]], ["activity", "approvals", "calls", "tasks"])
+        keys = [s["key"] for s in current["system"]]
+        self.assertEqual(keys[:4], ["activity", "approvals", "calls", "tasks"])
+        self.assertIn("targets", keys)  # the scout provider adds the four measures
         saved = self.save(blockers="Network").json()
         self.assertTrue(saved["can_edit"])
         patched = self.client.patch(f"/api/reports/{saved['id']}/", {"blockers": "Network was poor in Bonwire"}, format="json")

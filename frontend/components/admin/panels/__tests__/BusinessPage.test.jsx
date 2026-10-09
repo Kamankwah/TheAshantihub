@@ -524,4 +524,41 @@ describe('BusinessPage — orders and delivery problems (staff WP3)', () => {
     expect(await screen.findByText('#27')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Flag a delivery problem' })).not.toBeInTheDocument()
   })
+
+  describe('for a scout with a lead', () => {
+    const LEAD_SCOUT = { ...SCOUT, user: { ...SCOUT.user, manager: { id: 2, full_name: 'Ama Boateng', role: 'operations' } } }
+
+    it('masks the phones as 024 *** 118 and keeps the full number in the tel: link', async () => {
+      serve()
+      renderPage({ auth: LEAD_SCOUT })
+      const links = await screen.findAllByRole('link', { name: 'Call 024 *** 118' })
+      expect(links[0]).toHaveAttribute('href', 'tel:+233244000118')
+      expect(screen.queryByText('+233244000118')).not.toBeInTheDocument()
+    })
+
+    it('shows operations the full phone', async () => {
+      serve()
+      renderPage({ auth: OPS })
+      expect(await screen.findAllByText('+233244000118')).not.toHaveLength(0)
+    })
+
+    it('names the lead and the time they have', async () => {
+      const due = new Date(Date.now() + 3 * 3600 * 1000).toISOString()
+      serve(business({ pending_requests: [{ id: 3, kind: 'business.update', title: 'Phone, opening hours and map pin', created_at: new Date(Date.now() - 2 * 3600 * 1000).toISOString(), due_at: due, waiting_for: 'Ama Boateng' }] }))
+      renderPage({ auth: LEAD_SCOUT })
+      expect(await screen.findByRole('heading', { name: 'Waiting for Ama Boateng' })).toBeInTheDocument()
+      expect(screen.getByText(/Sent 2 h ago · Ama has until \d{2}:\d{2}, then any Operations lead · Adwoa can undo it for 7 days once applied/)).toBeInTheDocument()
+    })
+
+    it('shows the listings as a strip of four, then +N and See all', async () => {
+      const listings = [1, 2, 3, 4, 5, 6].map((n) => ({ id: n, name: `Item ${n}`, status: 'published', main_photo: null, photos_count: 1, price_amount: '10.00' }))
+      serve(business({ listings, listings_live: 6 }))
+      renderPage({ auth: LEAD_SCOUT })
+      expect(await screen.findByText('Item 4')).toBeInTheDocument()
+      expect(screen.queryByText('Item 5')).not.toBeInTheDocument()
+      expect(screen.getByText('+2')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'See all' }))
+      expect(screen.getByText('Item 6')).toBeInTheDocument()
+    })
+  })
 })

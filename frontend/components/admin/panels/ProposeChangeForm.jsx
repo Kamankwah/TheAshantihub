@@ -5,8 +5,9 @@ import { usePortfolioBusiness } from "../../../hooks/usePortfolio.js";
 import { useZones } from "../../../hooks/useZones.js";
 import LocationPicker from "../../LocationPicker.jsx";
 import { D } from "../theme.js";
+import { maskPhone } from "../../../lib/maskPhone.js";
 import { button, callout, dim, field } from "./panelStyles.js";
-import { SentNotice, card, distanceMeters, errorStyle, errorText, h2, h3, labelStyle } from "./portfolioParts.jsx";
+import { SentNotice, card, distanceMeters, errorStyle, errorText, firstName, h2, h3, labelStyle } from "./portfolioParts.jsx";
 
 // [payload field, label, input type, field on the business page payload]
 const TEXT_FIELDS = [
@@ -17,14 +18,14 @@ const TEXT_FIELDS = [
   ["email", "Owner's email", "email", "email"],
   ["gps_address", "Ghana Post address", "text", "gps_address"],
 ];
-const PHONE_HINT = "A new phone is checked against every other business before Operations sees it.";
+const phoneHint = (who) => `A new phone is checked against every other business before ${who} sees it.`;
 const DAYS = ["Mon–Sat", "Every day", "Mon–Fri"];
 const MAX_ACCURACY_M = 100;
 
 // The scout proposes changes to a business they manage (portfolio
 // business.update). Only changed fields are sent; payout details are never
 // offered. Goes to the scout's Operations lead; the owner can undo for 7 days.
-export default function ProposeChangeForm({ businessId, onBack, onSent }) {
+export default function ProposeChangeForm({ businessId, onBack, onSent, leadName }) {
   const { data: business, isLoading, isError } = usePortfolioBusiness(businessId);
   if (isLoading) return <div style={card}><div style={dim}>Loading…</div></div>;
   if (isError || !business) {
@@ -35,7 +36,7 @@ export default function ProposeChangeForm({ businessId, onBack, onSent }) {
       </div>
     );
   }
-  return <ChangeForm business={business} onBack={onBack} onSent={onSent} />;
+  return <ChangeForm business={business} onBack={onBack} onSent={onSent} leadName={leadName} />;
 }
 
 function Section({ title, children }) {
@@ -49,17 +50,21 @@ function Section({ title, children }) {
 
 function TextField({ label, type, value, current, onChange, hint }) {
   const id = useId();
+  // A phone is shown masked ("024 *** 118"); the box starts empty and stays
+  // "no change" until the scout types a new number.
+  const shown = type === "tel" ? maskPhone(current) : current;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       <label htmlFor={id} style={labelStyle}>{label}</label>
-      <input id={id} type={type} value={value} onChange={(e) => onChange(e.target.value)} inputMode={type === "tel" ? "tel" : undefined} style={field} />
-      <div style={{ ...dim, fontSize: "0.68rem" }}>{`Now: ${current || "Not given"}`}</div>
+      <input id={id} type={type} value={value} onChange={(e) => onChange(e.target.value)} inputMode={type === "tel" ? "tel" : undefined}
+        placeholder={type === "tel" && shown ? `Keep ${shown}` : undefined} style={field} />
+      <div style={{ ...dim, fontSize: "0.68rem" }}>{`Now: ${shown || "Not given"}`}</div>
       {hint && <div style={{ ...dim, fontSize: "0.68rem" }}>{hint}</div>}
     </div>
   );
 }
 
-function ChangeForm({ business: live, onBack, onSent }) {
+function ChangeForm({ business: live, onBack, onSent, leadName }) {
   // The details the form opened with: what is diffed and shown as "Now", so a
   // background refetch can't turn an untouched field into a change.
   const [business] = useState(live);
@@ -69,7 +74,7 @@ function ChangeForm({ business: live, onBack, onSent }) {
   const daysId = useId();
   const opensId = useId();
   const closesId = useId();
-  const [values, setValues] = useState(() => Object.fromEntries(TEXT_FIELDS.map(([key, , , source]) => [key, business[source] ?? ""])));
+  const [values, setValues] = useState(() => Object.fromEntries(TEXT_FIELDS.map(([key, , type, source]) => [key, type === "tel" ? "" : business[source] ?? ""])));
   const [zone, setZone] = useState(String(business.zone?.id ?? ""));
   const [days, setDays] = useState("");
   const [opens, setOpens] = useState("");
@@ -101,7 +106,8 @@ function ChangeForm({ business: live, onBack, onSent }) {
 
   const hours = days && opens && closes ? `${days} ${opens}–${closes}` : "";
   const changes = {};
-  for (const [key, , , source] of TEXT_FIELDS) {
+  for (const [key, , type, source] of TEXT_FIELDS) {
+    if (type === "tel" && !values[key].trim()) continue; // an untouched phone box means no change
     if (values[key].trim() !== String(business[source] ?? "").trim()) changes[key] = values[key].trim();
   }
   if (zone && zone !== String(business.zone?.id ?? "")) changes.zone_id = Number(zone);
@@ -119,7 +125,10 @@ function ChangeForm({ business: live, onBack, onSent }) {
     count += 1;
   }
   const ready = count > 0 && reason.trim().length > 0 && !busy;
-  const sendLabel = count > 0 ? `Send ${count} ${count === 1 ? "change" : "changes"} for approval` : "Send for approval";
+  const who = leadName || "your Operations lead";
+  const sendLabel = count > 0
+    ? `Send ${count} ${count === 1 ? "change" : "changes"} ${leadName ? `to ${leadName}` : "for approval"}`
+    : leadName ? `Send to ${leadName}` : "Send for approval";
 
   const currentPin = business.lat != null && business.lng != null ? { lat: Number(business.lat), lng: Number(business.lng) } : null;
   const moved = pin && currentPin ? Math.round(distanceMeters(currentPin.lat, currentPin.lng, pin.lat, pin.lng)) : null;
@@ -153,7 +162,7 @@ function ChangeForm({ business: live, onBack, onSent }) {
   const setValue = (key) => (value) => setValues((v) => ({ ...v, [key]: value }));
   const textField = (key) => {
     const [, label, type, source] = TEXT_FIELDS.find(([k]) => k === key);
-    return <TextField key={key} label={label} type={type} value={values[key]} current={business[source]} onChange={setValue(key)} hint={type === "tel" ? PHONE_HINT : null} />;
+    return <TextField key={key} label={label} type={type} value={values[key]} current={business[source]} onChange={setValue(key)} hint={type === "tel" ? phoneHint(leadName ? firstName(leadName) : "Operations") : null} />;
   };
 
   return (
@@ -242,10 +251,10 @@ function ChangeForm({ business: live, onBack, onSent }) {
       </Section>
       {changedMeanwhile && <div role="status" style={callout(D.amber)}>This business changed while you were editing — check the details before sending.</div>}
       <div style={callout(D.amber)}>Payout details can't be changed by scouts. The owner changes them in their dashboard.</div>
-      <label style={labelStyle}>Why the change (Operations sees this)
+      <label style={labelStyle}>Why the change ({leadName ? firstName(leadName) : "Operations"} sees this)
         <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} style={field} />
       </label>
-      <div style={dim}>Goes to your Operations lead for approval. The owner is told and can undo it for 7 days.</div>
+      <div style={dim}>{`Goes to ${who} for approval. The owner is told and can undo it for 7 days.`}</div>
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
       <button type="submit" disabled={!ready} style={{ ...button(D.gold, D.text, !ready), alignSelf: "flex-start" }}>{sendLabel}</button>
     </form>
