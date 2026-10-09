@@ -29,7 +29,7 @@ const figures = { fontVariantNumeric: "tabular-nums" }; // DESIGN.md: numbers li
 
 // One business, for its account manager (scout) or Operations. Sub-screens
 // (propose a change, add a product, add photos) are local views, not URLs.
-export default function BusinessPage({ businessId, auth, onBack }) {
+export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
   const { data: b, isLoading, isError, error, refetch } = usePortfolioBusiness(businessId);
   const queryClient = useQueryClient();
   const [view, setView] = useState(null); // null | "propose" | "add" | "photos"
@@ -80,6 +80,18 @@ export default function BusinessPage({ businessId, auth, onBack }) {
   const canResendKyc = b.can_manage && b.registration_channel === "scout" && b.kyc_status === "pending" && !kycWaiting && !kycSent;
   const [kycLabel, kycColor] = KYC[b.kyc_status] || [b.kyc_status, D.textFaint];
   const reasons = b.health?.reasons || [];
+  // Calls and visits in one list, newest first.
+  const contacts = [
+    ...(b.recent_calls || []).map((c) => ({
+      key: `call-${c.id}`, at: c.started_at,
+      text: `${c.direction === "in" ? "Call in" : "Call out"} · ${words(c.purpose)} · ${words(c.outcome)} — ${formatDateTime(c.started_at)}${c.staff_name ? ` · ${c.staff_name}` : ""}`,
+    })),
+    ...(b.recent_visits || []).map((v) => ({
+      key: `visit-${v.id}`, at: v.checked_in_at,
+      text: `Visit · ${v.purpose_label}${v.status === "open" ? " · in progress" : v.minutes != null ? ` · ${v.minutes} min` : ""} — ${formatDateTime(v.checked_in_at)}${v.staff_name ? ` · ${v.staff_name}` : ""}`,
+      flag: v.outside_radius ? `Outside the 100 m radius · ${v.distance_m} m` : null,
+    })),
+  ].sort((x, y) => new Date(y.at) - new Date(x.at));
   const toggle = (name) => { setNotice(null); setActionError(null); setPanel((p) => (p === name ? null : name)); };
 
   const sendClaimLink = async () => {
@@ -140,7 +152,8 @@ export default function BusinessPage({ businessId, auth, onBack }) {
         {notice && <div role="status" style={callout(D.green)}>{notice}</div>}
         {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {canCall && actionButton("Log a call", () => toggle("call"), { primary: true })}
+          {b.can_manage && onCheckIn && actionButton("📍 Check in", () => onCheckIn(b.id), { primary: true })}
+          {canCall && actionButton("Log a call", () => toggle("call"), { primary: !(b.can_manage && onCheckIn) })}
           {b.can_manage && actionButton("Propose a change", () => setView("propose"))}
           {b.can_manage && actionButton("Add a product", () => setView("add"), { disabled: !canAddProduct })}
           {b.can_manage && actionButton("Add photos", () => setView("photos"))}
@@ -232,11 +245,12 @@ export default function BusinessPage({ businessId, auth, onBack }) {
         })}
       </section>
 
-      <section aria-label="Recent calls" style={card}>
-        <h3 style={h3}>Recent calls</h3>
-        {(b.recent_calls || []).length === 0 ? <div style={dim}>No calls logged yet.</div> : b.recent_calls.map((c) => (
-          <div key={c.id} style={row}>
-            {`${c.direction === "in" ? "Call in" : "Call out"} · ${words(c.purpose)} · ${words(c.outcome)} — ${formatDateTime(c.started_at)}${c.staff_name ? ` · ${c.staff_name}` : ""}`}
+      <section aria-label="Recent calls and visits" style={card}>
+        <h3 style={h3}>Recent calls &amp; visits</h3>
+        {contacts.length === 0 ? <div style={dim}>No calls or visits logged yet.</div> : contacts.map((c) => (
+          <div key={c.key} style={row}>
+            {c.text}
+            {c.flag && <div style={{ ...dim, color: D.text }}>{`🚩 ${c.flag}`}</div>}
           </div>
         ))}
       </section>

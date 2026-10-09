@@ -53,12 +53,15 @@ QUEUE_INVALIDATIONS = [
     ),
     # The subscription clock gives the account manager a task (billing.clock).
     (("subscription.",), ("businesses.manage_portfolio",), ("my-tasks", "staff-badges")),
+    # A visit changes a business's "last contact" and its recent visits.
+    (("visit.",), ("portfolio.manage", "businesses.manage_portfolio"), ("portfolio", "portfolio-business")),
     (("fraud.",), ("fraud.manage", "fraud.flag"), ("fraud-flags", "fraud-flag-counts", "kyc-queue", "portfolio-business", "staff-badges")),
 ]
 # (verb prefixes, extra keys for everyone who receives the feed event)
 FEED_KEYS = [
     (("task-",), ("my-tasks", "staff-badges")),
     (("call-",), ("call-logs",)),
+    (("visit.",), ("visits", "visit-open")),
     (("approval.",), ("approvals", "approval", "approval-counts", "staff-badges")),
     (("report.",), ("my-reports", "report", "team-reports")),
 ]

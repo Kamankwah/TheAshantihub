@@ -24,6 +24,7 @@ from approvals.models import ApprovalRequest
 from billing.clock import subscription_state
 from bookings.models import Booking
 from calls.models import CallLog
+from field.models import VisitCheckIn
 from disputes.models import Dispute
 from fraud.models import FraudFlag
 from listings.models import Listing
@@ -85,8 +86,8 @@ def _outer_pk_text():
 
 
 def calls_about(owner_id):
-    """Calls with this business's owner, or logged about the business. In 2A a
-    logged call is what counts as contact (plan 2B adds visits)."""
+    """Calls with this business's owner, or logged about the business. A logged
+    call, like a completed visit, counts as scout contact."""
     return Q(related_type=BUSINESS_OWNER, related_id=str(owner_id)) | Q(
         counterpart_type=BUSINESS_OWNER, counterpart_id=owner_id
     )
@@ -124,6 +125,9 @@ def with_health_inputs(queryset, now):
         started_at__lte=now,
     ).order_by("-started_at")
     flags = FraudFlag.objects.filter(business_owner=OuterRef("pk"))
+    visits = VisitCheckIn.objects.filter(
+        business_owner=OuterRef("pk"), status=VisitCheckIn.DONE, checked_out_at__lte=now,
+    ).order_by("-checked_out_at")
     return queryset.select_related("subscription__plan").annotate(
         live_listings=_count(listings.filter(status=Listing.PUBLISHED)),
         total_listings=_count(listings),
@@ -138,7 +142,24 @@ def with_health_inputs(queryset, now):
         confirmed_fraud=_count(flags.filter(status=FraudFlag.CONFIRMED)),
         open_fraud_flags=_count(flags.filter(status=FraudFlag.OPEN)),
         last_call_at=Subquery(calls.values("started_at")[:1]),
+        last_visit_at=Subquery(visits.values("checked_out_at")[:1]),
     )
+
+
+def last_contact(owner):
+    """{kind, at} of the later of the scout's last logged call and last
+    completed visit, or None. Needs an owner annotated by with_health_inputs()."""
+    call, visit = owner.last_call_at, owner.last_visit_at
+    if call is None and visit is None:
+        return None
+    if visit is not None and (call is None or visit >= call):
+        return {"kind": "visit", "at": visit}
+    return {"kind": "call", "at": call}
+
+
+def last_contact_at(owner):
+    contact = last_contact(owner)
+    return contact["at"] if contact else None
 
 
 def _missing_or_before(moment, cutoff):
@@ -173,7 +194,7 @@ def rate(owner, now):
         attention.append(NO_ORDER_30)
     if owner.open_disputes:
         attention.append(OPEN_DISPUTE)
-    if _missing_or_before(owner.last_call_at, now - ATTENTION_WITHOUT_CONTACT):
+    if _missing_or_before(last_contact_at(owner), now - ATTENTION_WITHOUT_CONTACT):
         attention.append(NO_CONTACT)
     if at_risk:
         return AT_RISK, at_risk + attention

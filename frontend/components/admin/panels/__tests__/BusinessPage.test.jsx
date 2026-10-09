@@ -353,3 +353,53 @@ describe('BusinessPage — sending KYC again', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('A KYC request for this business is already waiting for a decision.')
   })
 })
+
+describe('BusinessPage — visits (staff WP1)', () => {
+  const recent = {
+    recent_calls: [{ id: 1, direction: 'out', outcome: 'promised_to_pay', purpose: 'subscription_payment', started_at: '2026-10-07T16:10:00Z', staff_name: 'Kwame Asante' }],
+    recent_visits: [
+      { id: 2, purpose: 'subscription_follow_up', purpose_label: 'Subscription follow-up', status: 'done', minutes: 22, checked_in_at: '2026-10-03T10:00:00Z', outside_radius: false, distance_m: 20, staff_name: 'Kwame Asante' },
+      { id: 3, purpose: 'prospecting', purpose_label: 'Prospecting', status: 'done', minutes: 15, checked_in_at: '2026-10-09T09:00:00Z', outside_radius: true, distance_m: 160, staff_name: 'Kwame Asante' },
+    ],
+  }
+
+  it('lists calls and visits together, newest first, with the flag on a flagged visit', async () => {
+    serve(business(recent))
+    renderPage()
+    const section = await screen.findByRole('region', { name: 'Recent calls and visits' })
+    expect(within(section).getByRole('heading', { name: 'Recent calls & visits' })).toBeInTheDocument()
+    const rows = within(section).getAllByText(/^(Call|Visit) /)
+    expect(rows).toHaveLength(3)
+    expect(rows[0]).toHaveTextContent(/^Visit · Prospecting · 15 min/)
+    expect(rows[1]).toHaveTextContent(/^Call out · subscription payment · promised to pay/)
+    expect(rows[2]).toHaveTextContent(/^Visit · Subscription follow-up · 22 min/)
+    expect(within(section).getByText('🚩 Outside the 100 m radius · 160 m')).toBeInTheDocument()
+  })
+
+  it('says so when there are no calls or visits', async () => {
+    serve(business({ recent_calls: [], recent_visits: [] }))
+    renderPage()
+    expect(await screen.findByText('No calls or visits logged yet.')).toBeInTheDocument()
+  })
+
+  it('shows an open visit as in progress', async () => {
+    serve(business({ recent_calls: [], recent_visits: [{ ...recent.recent_visits[0], status: 'open', minutes: null }] }))
+    renderPage()
+    expect(await screen.findByText(/Visit · Subscription follow-up · in progress/)).toBeInTheDocument()
+  })
+
+  it("offers Check in to the account manager, opening the check-in with this business", async () => {
+    serve(business())
+    const onCheckIn = vi.fn()
+    renderPage({ onCheckIn })
+    fireEvent.click(await screen.findByRole('button', { name: /Check in/ }))
+    expect(onCheckIn).toHaveBeenCalledWith(12)
+  })
+
+  it('offers no Check in to someone who does not manage the business', async () => {
+    serve(business({ can_manage: false }))
+    renderPage({ onCheckIn: vi.fn(), auth: OPS })
+    await screen.findByRole('heading', { name: 'Adwoa Fabrics' })
+    expect(screen.queryByRole('button', { name: /Check in/ })).not.toBeInTheDocument()
+  })
+})

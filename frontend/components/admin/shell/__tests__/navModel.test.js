@@ -270,3 +270,21 @@ describe('Subscriptions due and Fraud cases (staff phase 2A)', () => {
     expect(badgeFor('fraud-cases')).toBe(0)
   })
 })
+
+describe('Visits (staff WP1)', () => {
+  const authAs = (role, perms) => ({ user: { role }, hasPermission: (c) => perms.includes(c) })
+  const idsOf = (auth) => buildNavGroups(auth).flatMap((g) => g.items.map((i) => i.id))
+
+  it('is shown to a scout who manages a portfolio or verifies, and to no one else', () => {
+    expect(idsOf(authAs('scout', ['businesses.manage_portfolio']))).toContain('visits')
+    expect(idsOf(authAs('scout', ['scouts.verify']))).toContain('visits')
+    expect(idsOf(authAs('scout', ['calls.log']))).not.toContain('visits')
+    expect(idsOf(authAs('support', ['calls.log']))).not.toContain('visits')
+  })
+
+  it("sits beside Calls in a scout's menu", () => {
+    const groups = buildNavGroups(authAs('scout', ['businesses.manage_portfolio', 'scouts.verify', 'calls.log']))
+    expect(groups.find((g) => g.items.some((i) => i.id === 'visits')).items.map((i) => i.id)).toEqual(['calls', 'visits'])
+    expect(NAV_ITEMS.find((i) => i.id === 'visits')).toMatchObject({ icon: '🧭', label: 'Visits' })
+  })
+})

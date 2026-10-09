@@ -14,11 +14,12 @@ from accounts.phones import normalize_gh_phone
 from accounts.validators import validate_image_content_type
 from approvals.models import ApprovalRequest
 from calls.models import CallLog
+from field.models import VisitCheckIn
 from fraud.models import FraudFlag
 from listings.models import Category, Zone
 
 from . import checks
-from .health import calls_about
+from .health import calls_about, last_contact
 from .models import AppliedChange
 from .services import approver_name
 
@@ -135,6 +136,7 @@ class KycResubmitSerializer(serializers.Serializer):
 FOLLOW_UP_DUE_TIME = dt.time(17, 0)
 REASON_REQUIRED = "Write the reason — it's kept on the record."
 RECENT_CALLS_SHOWN = 10
+RECENT_VISITS_SHOWN = 5
 NOTICE_FIELDS = (
     ("overdue_notice_at", "Overdue notice"),
     ("reminder_day7_at", "Day 7 reminder"),
@@ -193,7 +195,7 @@ def portfolio_item(row):
         "listings_total": owner.total_listings,
         "listings_waiting": owner.listings_waiting,
         "last_order_at": owner.last_order_at,
-        "last_contact": {"kind": "call", "at": owner.last_call_at} if owner.last_call_at else None,
+        "last_contact": last_contact(owner),
         "open_fraud_flags": owner.open_fraud_flags,
     }
 
@@ -232,6 +234,9 @@ def business_detail(row, request):
         .order_by("due_at", "id")
     )
     calls = CallLog.objects.filter(calls_about(owner.pk)).select_related("staff").order_by("-started_at", "-id")
+    visits = (
+        owner.visits.exclude(status=VisitCheckIn.ABANDONED).select_related("scout").order_by("-checked_in_at", "-id")
+    )
     data = portfolio_item(row)
     data.update({
         "business_kind": getattr(profile, "business_kind", None),
@@ -282,6 +287,20 @@ def business_detail(row, request):
                 "staff_name": call.staff.full_name,
             }
             for call in calls[:RECENT_CALLS_SHOWN]
+        ],
+        "recent_visits": [
+            {
+                "id": visit.pk,
+                "purpose": visit.purpose,
+                "purpose_label": visit.get_purpose_display(),
+                "status": visit.status,
+                "minutes": visit.minutes,
+                "checked_in_at": visit.checked_in_at,
+                "outside_radius": visit.outside_radius,
+                "distance_m": visit.distance_m,
+                "staff_name": visit.scout.full_name,
+            }
+            for visit in visits[:RECENT_VISITS_SHOWN]
         ],
         "assignments": [
             {

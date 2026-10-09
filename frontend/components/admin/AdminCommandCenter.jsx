@@ -44,6 +44,7 @@ import ScoutBottomBar from "./shell/ScoutBottomBar.jsx";
 import TasksPanel from "./panels/TasksPanel.jsx";
 import ActivityPanel from "./panels/ActivityPanel.jsx";
 import CallLogPanel from "./panels/CallLogPanel.jsx";
+import VisitsPanel from "./panels/VisitsPanel.jsx";
 import MyTeamPanel from "./panels/MyTeamPanel.jsx";
 import ApprovalsPanel from "./panels/ApprovalsPanel.jsx";
 import PortfolioPanel from "./panels/PortfolioPanel.jsx";
@@ -185,6 +186,13 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
     else { setInternalTab("all-portfolios"); setInternalDetail(String(id)); }
   };
 
+  // "Check in" on a business page opens the check-in screen with that
+  // business picked (/staff/visits/check-in-<id>).
+  const openCheckIn = (id) => {
+    if (isControlled) onTabChange?.(`visits/check-in-${id}`);
+    else { setInternalTab("visits"); setInternalDetail(`check-in-${id}`); }
+  };
+
   // Each panel starts at the top; skipped on first mount so a reload keeps
   // the browser's own scroll restoration.
   const firstTabRender = useRef(true);
@@ -274,15 +282,16 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "tasks" && <TasksPanel />}
           {activeTab === "activity" && <ActivityPanel />}
           {activeTab === "calls" && <CallLogPanel />}
+          {activeTab === "visits" && <VisitsPanel auth={auth} detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "reports" && <ReportsPanel auth={auth} />}
           {activeTab === "team-reports" && <TeamReportsPanel auth={auth} />}
           {activeTab === "security" && <SecurityPanel />}
           {activeTab === "sessions" && <SessionsPanel auth={auth} />}
           {activeTab === "my-team" && <MyTeamPanel currentStaffId={auth.user?.id} />}
           {activeTab === "approvals" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
-          {activeTab === "portfolio" && <PortfolioPanel mode="mine" auth={auth} detailId={detail} onOpenDetail={openDetail} />}
-          {activeTab === "all-portfolios" && <PortfolioPanel mode="all" auth={auth} detailId={detail} onOpenDetail={openDetail} />}
-          {activeTab === "at-risk" && <PortfolioPanel mode="at-risk" auth={auth} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "portfolio" && <PortfolioPanel mode="mine" auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
+          {activeTab === "all-portfolios" && <PortfolioPanel mode="all" auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
+          {activeTab === "at-risk" && <PortfolioPanel mode="at-risk" auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
           {activeTab === "subscriptions-due" && <SubscriptionsDuePanel auth={auth} onOpenBusiness={openBusiness} />}
           {activeTab === "fraud-cases" && <FraudCasesPanel auth={auth} onOpenBusiness={openBusiness} />}
           {activeTab === "register-business" && <RegisterBusinessPanel auth={auth} />}

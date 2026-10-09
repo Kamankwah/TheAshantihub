@@ -507,6 +507,12 @@ export const handlers = [
   http.get('http://localhost:8000/api/activity/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/calls/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/calls/purposes/', () => HttpResponse.json([{ value: 'other', label: 'Other' }])),
+  // Scout visits (staff WP1): the week list, the open visit and the check-in places.
+  http.get('http://localhost:8000/api/field/visits/', () => HttpResponse.json({
+    count: 0, next: null, previous: null, results: [], summary: { done: 0, avg_minutes: null, flagged: 0 },
+  })),
+  http.get('http://localhost:8000/api/field/visits/open/', () => HttpResponse.json({ visit: null })),
+  http.get('http://localhost:8000/api/field/visit-targets/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/accounts/staff/team/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/accounts/staff/invitable-roles/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/reports/current/', () => HttpResponse.json({
@@ -533,7 +539,7 @@ export const handlers = [
     business_kind: 'product', business_category: null, gps_address: '', lat: null, lng: null, location_accuracy_m: null,
     location_is_manual: false, location_set_by: '', business_contact_phone: '', business_description: '', opening_hours: '',
     signboard_photo: null, email: '', registered_by: null, created_at: '2026-10-07T00:00:00Z',
-    listings: [], pending_requests: [], recent_calls: [], assignments: [], open_flags: [], can_manage: false,
+    listings: [], pending_requests: [], recent_calls: [], recent_visits: [], assignments: [], open_flags: [], can_manage: false,
   })),
   http.get('http://localhost:8000/api/portfolio/meta/listing-form/', () => HttpResponse.json({ categories: [], zones: [], required_answers: {} })),
   // A scout's new product and listing photos: like the server, a blank
