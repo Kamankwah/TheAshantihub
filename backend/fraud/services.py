@@ -19,6 +19,7 @@ ON_CONFIRMED = []
 NOTE_REQUIRED = "Write a note — confirming or dismissing always needs one."
 ALREADY_DECIDED = "This case has already been decided."
 CANNOT_SUSPEND = "This kind of case can't suspend a business."
+NOT_YOUR_BUSINESS = "A case about a business you registered or manage is decided by someone else."
 NOT_YOUR_CASE = "A case about you is decided by someone else."
 NOT_FOUND = "We couldn't find that case."
 SUSPENDED_BODY = (
@@ -111,6 +112,11 @@ def _check_decidable(flag, staff, note):
         raise FraudError(ALREADY_DECIDED)
     if flag.staff_subject_id is not None and flag.staff_subject_id == staff.pk:
         raise FraudError(NOT_YOUR_CASE, status_code=403)
+    if flag.business_owner_id is not None:
+        from accounts.kyc import is_kyc_submitter  # accounts.kyc imports this app
+
+        if is_kyc_submitter(flag.business_owner, staff):
+            raise FraudError(NOT_YOUR_BUSINESS, status_code=403)
     if not note:
         raise FraudError(NOTE_REQUIRED)
 

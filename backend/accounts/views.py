@@ -422,6 +422,8 @@ class KYCReReviewView(APIView):
 
     def post(self, request, pk):
         owner = generics.get_object_or_404(BusinessOwner, pk=pk)
+        if kyc.is_kyc_submitter(owner, request.user):
+            return Response({"detail": kyc.OWN_REGISTRATION}, status=403)
         if owner.kyc_status != BusinessOwner.REJECTED:
             return Response(
                 {"detail": "Only a rejected KYC submission can be sent back for re-review."},

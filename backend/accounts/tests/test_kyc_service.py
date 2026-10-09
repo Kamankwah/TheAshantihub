@@ -467,6 +467,18 @@ class KycMakerAndAddressTests(QueueBase):
         self.as_(editor)
         self.assert_own_refused(self.approve_in_queue(self.own))
 
+    def test_the_registrar_cannot_reopen_their_own_rejected_registration(self):
+        BusinessOwner.objects.filter(pk=self.own.pk).update(kyc_status="rejected", kyc_rejection_reason="Blurry")
+        self.as_(self.other_ops)
+        response = self.client.post(f"/api/accounts/kyc/{self.own.id}/re-review/")
+        self.assertEqual((response.status_code, response.json()), (403, {"detail": "You can't approve your own request."}))
+        self.own.refresh_from_db()
+        self.assertEqual((self.own.kyc_status, self.own.kyc_rejection_reason), ("rejected", "Blurry"))
+        self.as_(self.lead)
+        self.assertEqual(self.client.post(f"/api/accounts/kyc/{self.own.id}/re-review/").status_code, 200)
+        self.own.refresh_from_db()
+        self.assertEqual(self.own.kyc_status, "pending")
+
     def test_a_different_operations_staffer_can_still_approve(self):
         self.as_(self.lead)
         self.assertEqual(self.approve_in_queue(self.own).status_code, 200)

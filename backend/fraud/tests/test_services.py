@@ -229,6 +229,42 @@ class DecisionTests(Base):
         services.dismiss(flag.pk, self.boss, note="The shop moved; Ama re-pinned it")
 
 
+class OwnBusinessCaseTests(Base):
+    """Whoever registered or manages a business never decides a case about it."""
+
+    def case(self, registrar):
+        owner = make_business("Boss Stores", "+233205550000")
+        BusinessOwner.objects.filter(pk=owner.pk).update(registered_by=registrar)
+        owner.refresh_from_db()
+        return services.raise_flag(
+            FraudFlag.SELF_DEALING, title="Owner's phone matches staff member Esi", business_owner=owner,
+            staff_subject=self.esi,
+        )
+
+    def test_the_registrar_is_refused_on_confirm_and_dismiss(self):
+        flag = self.case(self.lead)
+        message = "A case about a business you registered or manage is decided by someone else."
+        for decide in (services.confirm, services.dismiss):
+            with self.assertRaises(services.FraudError) as raised:
+                decide(flag.pk, self.lead, note="Fine")
+            self.assertEqual((raised.exception.message, raised.exception.status_code), (message, 403))
+        flag.refresh_from_db()
+        self.assertEqual(flag.status, FraudFlag.OPEN)
+
+    def test_the_account_manager_is_refused_too(self):
+        flag = self.case(self.boss)
+        BusinessOwner.objects.filter(pk=flag.business_owner_id).update(account_manager=self.lead)
+        with self.assertRaises(services.FraudError):
+            services.dismiss(flag.pk, self.lead, note="Fine")
+
+    def test_another_operations_lead_can_decide_it(self):
+        flag = self.case(self.lead)
+        other = make_staff("operations", "kojo@example.com")
+        services.dismiss(flag.pk, other, note="Cleared by phone")
+        flag.refresh_from_db()
+        self.assertEqual(flag.status, FraudFlag.DISMISSED)
+
+
 class OnConfirmedHookTests(Base):
     def test_hooks_run_after_the_status_change_and_the_suspension(self):
         seen = []
