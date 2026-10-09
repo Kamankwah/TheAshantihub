@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from django.utils import timezone
 
+from accounts import kyc
 from accounts.models import BusinessOwner
 from activity.models import ActivityEvent
 from billing.models import Subscription, SubscriptionPlan
@@ -101,11 +102,13 @@ class BonusAccrualTests(CommissionBase):
         self.pay(self.owner, 1)
         self.pay(self.owner, 1)
         self.assertFalse(self.bonus().exists())
+        self.pay(self.owner, 1)  # the third paid month, after the trial
+        self.assertEqual(self.bonus().count(), 1)
 
     def test_it_goes_to_the_manager_at_the_time_of_the_payment(self):
         self.pay(self.owner, 1)
         BusinessOwner.objects.filter(pk=self.owner.pk).update(account_manager=self.other)
-        self.pay(self.owner, 2)
+        self.pay(self.owner, 3)
         self.assertEqual(self.bonus().get().staff, self.other)
 
     def test_no_manager_no_bonus(self):
@@ -117,6 +120,106 @@ class BonusAccrualTests(CommissionBase):
         CommissionPolicy.objects.all().delete()
         self.pay(self.owner, 3)
         self.assertFalse(self.bonus().exists())
+
+    def test_a_policy_approved_after_three_paid_months_is_not_backfilled_by_the_next_payment(self):
+        CommissionPolicy.objects.all().delete()
+        self.pay(self.owner, 3)
+        self.policy(CommissionPolicy.BONUS, "100.00")
+        self.pay(self.owner, 1)
+        self.assertFalse(self.bonus().exists())
+
+    def test_a_manager_assigned_after_three_paid_months_earns_nothing_on_the_next_payment(self):
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(account_manager=None)
+        self.pay(self.owner, 3)
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(account_manager=self.scout)
+        self.pay(self.owner, 1)
+        self.assertFalse(self.bonus().exists())
+
+    def test_the_normal_path_accrues_exactly_once(self):
+        self.pay(self.owner, 1)
+        self.pay(self.owner, 1)
+        self.pay(self.owner, 1)
+        self.pay(self.owner, 1)
+        self.assertEqual(self.bonus().count(), 1)
+
+    def test_progress_list_omits_a_business_already_past_three_months_without_a_bonus(self):
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(account_manager=None)
+        self.pay(self.owner, 3)
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(account_manager=self.scout)
+        from commission.views import bonus_rows
+
+        rows, _more = bonus_rows(self.scout, timezone.now())
+        self.assertNotIn(self.owner.pk, [r["business_id"] for r in rows])
+
+    def test_only_scouts_earn(self):
+        for role_staff in (self.lead, self.boss):
+            owner = self.pending_owner(registrar=role_staff, manager=role_staff, name="Role")
+            Subscription.objects.create(
+                business_owner=owner, plan=SubscriptionPlan.objects.get(tier="product_basic"),
+                current_period_start=timezone.now(), current_period_end=timezone.now() + timedelta(days=30),
+            )
+            self.policy(CommissionPolicy.REGISTRATION, "50.00")
+            kyc.approve_owner(owner.pk, self.boss if role_staff is self.lead else self.lead)
+            self.pay(owner, 3)
+        self.assertFalse(CommissionAccrual.objects.exists())
+
+    def test_no_bonus_for_a_business_with_a_confirmed_reversing_case(self):
+        fraud.confirm(fraud.raise_flag(FraudFlag.DUPLICATE, title="Case", business_owner=self.owner).pk, self.boss, note="Checked")
+        self.pay(self.owner, 3)
+        self.assertFalse(self.bonus().exists())
+
+    def test_no_registration_commission_for_a_business_with_a_confirmed_reversing_case(self):
+        self.policy(CommissionPolicy.REGISTRATION, "50.00")
+        fraud.confirm(fraud.raise_flag(FraudFlag.FAKE_BUSINESS, title="Case", business_owner=self.owner).pk, self.boss, note="Checked")
+        self.approve(self.owner)
+        self.assertFalse(CommissionAccrual.objects.exists())
+
+    def test_a_dismissed_case_does_not_block(self):
+        flag = fraud.raise_flag(FraudFlag.DUPLICATE, title="Case", business_owner=self.owner)
+        fraud.dismiss(flag.pk, self.boss, note="Fine")
+        self.pay(self.owner, 3)
+        self.assertEqual(self.bonus().count(), 1)
+
+
+class ServerPricedMonthsTests(CommissionBase):
+    def setUp(self):
+        super().setUp()
+        self.owner = self.pending_owner()
+
+    def raw_pay(self, plan, months, amount="0.01"):
+        from payments.models import CheckoutSession
+        from payments.services import process_payment
+
+        return process_payment(
+            kind=CheckoutSession.SUBSCRIPTION, amount=Decimal(amount), purpose="Subscription", business_owner=self.owner,
+            metadata={"plan": plan, "cycle_months": months},
+        )
+
+    def test_an_unknown_plan_adds_no_paid_months(self):
+        self.raw_pay("no_such_plan", 3)
+        self.assertEqual(services.paid_months(self.owner), 0)
+
+    def test_an_invalid_cycle_adds_no_paid_months(self):
+        self.raw_pay("product_basic", 5)
+        self.assertEqual(services.paid_months(self.owner), 0)
+
+    def test_a_valid_three_month_payment_adds_three(self):
+        self.raw_pay("product_basic", 3, "100.00")
+        self.assertEqual(services.paid_months(self.owner), 3)
+
+    def test_the_endpoint_refuses_an_invalid_cycle(self):
+        from rest_framework.test import APIClient
+        from accounts.authentication import issue_token
+
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.owner, 'business_owner')}")
+        response = client.post(
+            "/api/billing/transactions/mine/",
+            {"kind": "subscription", "amount": "0.01", "purpose": "x", "metadata": {"plan": "product_basic", "cycle_months": 5}},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("metadata", response.json())
 
 
 class ReleaseAndReversalTests(CommissionBase):

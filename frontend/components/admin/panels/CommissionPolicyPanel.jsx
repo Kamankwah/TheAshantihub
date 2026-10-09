@@ -60,7 +60,7 @@ export default function CommissionPolicyPanel({ canPropose = false }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 720 }}>
       <div>
-        <div style={eyebrow}>Plans & pricing</div>
+        <div style={eyebrow}>Commission</div>
         <h2 style={{ color: D.text, fontSize: "1.4rem", fontWeight: 800, margin: "2px 0 0" }}>Commission policy</h2>
         <div style={dim}>What scouts earn for a registration and for the 3-paid-months bonus. Each line is held 90 days; payout batches aren't built yet.</div>
       </div>

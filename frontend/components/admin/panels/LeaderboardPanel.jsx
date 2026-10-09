@@ -78,7 +78,7 @@ export default function LeaderboardPanel() {
               {data.rows.map((row) => {
                 const { text, tag } = rowLine(row);
                 return (
-                  <li key={row.name} aria-current={row.is_me ? "true" : undefined}
+                  <li key={row.id} aria-current={row.is_me ? "true" : undefined}
                     style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 8px", margin: "0 -8px", borderRadius: 10, background: row.is_me ? "#F5ECD8" : "transparent", borderTop: `1px solid ${D.divider}` }}>
                     <span aria-label={`Rank ${row.rank}`} style={{ width: 26, height: 26, flex: "none", borderRadius: 999, background: "#F5ECD8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem", fontWeight: 800, color: D.text, ...figures }}>{row.rank}</span>
                     <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>

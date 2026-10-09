@@ -11,6 +11,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from accounts.models import Role
 from activity.services import record
 from fraud.models import FraudFlag
 
@@ -60,7 +61,9 @@ def _accrue(staff, owner, kind, *, source_type, source_id, now=None):
     """The one accrual for (owner, kind) at the policy in force, or None when
     there is no policy, no recipient, or one already exists. Runs inside the
     caller's transaction; records its activity event."""
-    if staff is None or not staff.is_active:
+    if staff is None or not staff.is_active or staff.role.name != Role.SCOUT:
+        return None  # only scouts earn commission
+    if FraudFlag.objects.filter(business_owner=owner, status=FraudFlag.CONFIRMED, kind__in=REVERSING_KINDS).exists():
         return None
     now = now or timezone.now()
     policy = policy_in_force(kind, timezone.localtime(now).date())
@@ -94,9 +97,18 @@ def accrue_registration(owner, *, now=None):
     return _accrue(owner.registered_by, owner, CommissionPolicy.REGISTRATION, source_type="accounts.businessowner", source_id=owner.pk, now=now)
 
 
+def _stamped(meta):
+    """The months the server priced for one payment (payments.services stamps
+    `paid_months`); never the client's own `cycle_months`."""
+    try:
+        return max(0, int((meta or {}).get("paid_months") or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 def paid_months(owner):
-    """The months this business has paid for: cycle_months summed over its
-    successful subscription payments. A trial is not a payment."""
+    """The months this business has paid for: the server-stamped months summed
+    over its successful subscription payments. A trial is not a payment."""
     from payments.models import CheckoutSession
 
     total = 0
@@ -104,10 +116,7 @@ def paid_months(owner):
         business_owner=owner, kind=CheckoutSession.SUBSCRIPTION, status=CheckoutSession.SUCCESS,
     ).values_list("metadata", flat=True)
     for meta in sessions:
-        try:
-            total += max(0, int((meta or {}).get("cycle_months") or 0))
-        except (TypeError, ValueError):
-            continue
+        total += _stamped(meta)
     return total
 
 
@@ -119,17 +128,18 @@ def paid_months_by_owner(owner_ids):
         business_owner_id__in=owner_ids, kind=CheckoutSession.SUBSCRIPTION, status=CheckoutSession.SUCCESS,
     ).values_list("business_owner_id", "metadata")
     for pk, meta in rows:
-        try:
-            totals[pk] += max(0, int((meta or {}).get("cycle_months") or 0))
-        except (TypeError, ValueError):
-            continue
+        totals[pk] += _stamped(meta)
     return totals
 
 
 def accrue_bonus(owner, session=None, *, now=None):
     """A subscription payment just landed: once the business has paid for 3
     months in total, whoever is its account manager now earns the bonus."""
-    if paid_months(owner) < PAID_MONTHS_FOR_BONUS:
+    total = paid_months(owner)
+    this = _stamped(getattr(session, "metadata", None))
+    # Only the payment that crosses the 3-month line earns it: a business already
+    # past it before a policy or a manager existed can no longer earn it.
+    if not (total - this < PAID_MONTHS_FOR_BONUS <= total):
         return None
     return _accrue(
         owner.account_manager, owner, CommissionPolicy.BONUS,

@@ -131,6 +131,9 @@ class PolicyTests(CommissionBase):
         approvals.approve(response.json()["approval_id"], self.boss, "OK")
         policy = CommissionPolicy.objects.get()
         self.assertEqual((policy.kind, policy.amount, policy.proposed_by, policy.approved_by), ("registration", Decimal("55.00"), self.accountant, self.boss))
+        from activity.models import ActivityEvent
+
+        self.assertTrue(ActivityEvent.objects.filter(verb="commission.policy_applied").exists())
 
     def test_an_approved_policy_is_never_retroactive(self):
         owner = self.pending_owner()

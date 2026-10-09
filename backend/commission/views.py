@@ -95,6 +95,8 @@ def bonus_rows(staff, now):
     months = services.paid_months_by_owner([o.pk for o in owners])
     rows = []
     for owner in owners:
+        if months[owner.pk] >= services.PAID_MONTHS_FOR_BONUS:
+            continue  # already past 3 paid months without a bonus line: it can no longer be earned
         sub = getattr(owner, "subscription", None)
         if sub is None:
             state = {"kind": "none"}

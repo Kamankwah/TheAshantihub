@@ -5,6 +5,7 @@ from django.utils.dateparse import parse_date
 from rest_framework import generics, status
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -253,6 +254,13 @@ class TransactionMineListCreateView(generics.ListAPIView):
         input_serializer.is_valid(raise_exception=True)
         data = input_serializer.validated_data
         metadata = data.get("metadata") or {}
+        if metadata.get("cycle_months") not in (None, ""):
+            try:
+                valid_cycle = int(metadata["cycle_months"]) in dict(Subscription.CYCLE_CHOICES)
+            except (TypeError, ValueError):
+                valid_cycle = False
+            if not valid_cycle:
+                raise ValidationError({"metadata": {"cycle_months": "Pick a billing cycle we offer."}})
 
         # Never trust a client-reported amount at face value
         # (docs/HUBTEL_INTEGRATION.md §8) — when the metadata a "subscription"

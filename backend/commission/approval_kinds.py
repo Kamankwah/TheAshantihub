@@ -6,6 +6,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.utils import timezone
 
+from activity.services import record
 from approvals.models import ApprovalRequest
 from approvals.registry import ApprovalKind
 from approvals.services import ApprovalError
@@ -33,9 +34,15 @@ def apply(request):
     payload = request.payload
     amount = Decimal(str(payload["amount"]))
     effective_from = max(date.fromisoformat(payload["effective_from"]), timezone.localdate())
-    CommissionPolicy.objects.create(
+    policy = CommissionPolicy.objects.create(
         kind=payload["kind"], amount=amount, effective_from=effective_from,
         proposed_by=request.maker, approved_by=request.decided_by or request.maker, approval_id=request.pk,
+    )
+    # Last: the event refreshes every open statement and policy screen live.
+    record(
+        request.decided_by or request.maker, "commission.policy_applied", target=policy,
+        summary=f"{KIND_LABELS.get(policy.kind, policy.kind)} commission set to GH₵ {amount} from {effective_from.isoformat()}",
+        after={"kind": policy.kind, "amount": str(amount), "effective_from": effective_from.isoformat()},
     )
 
 

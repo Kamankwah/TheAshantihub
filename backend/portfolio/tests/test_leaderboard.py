@@ -115,6 +115,8 @@ class LeaderboardTests(TestCase):
         self.assertEqual((body["month"], body["team_total"], str(body["as_of"])), ("2026-09", 1, "2026-09-30"))
         self.assertEqual(self.get(self.kwame, "?month=2026-12").status_code, 400)
         self.assertEqual(self.get(self.kwame, "?month=nope").status_code, 400)
+        self.assertEqual(self.get(self.kwame, "?month=1999-01").status_code, 400)
+        self.assertEqual(self.get(self.kwame, "?month=2101-01").status_code, 400)
 
     def test_a_scout_with_no_manager_sees_only_themselves(self):
         solo = make_staff("scout", "solo@example.com")

@@ -27,6 +27,8 @@ def parse_month(value, today):
         first = date(int(year), int(month), 1)
     except ValueError:
         raise LeaderboardError("Use YYYY-MM for the month.") from None
+    if not 2020 <= first.year <= 2100:
+        raise LeaderboardError("Pick a month between 2020 and 2100.")
     if first > today.replace(day=1):
         raise LeaderboardError("That month hasn't started yet.")
     return first
@@ -97,6 +99,7 @@ def build(user, month_value=None, *, today=None):
     for s in sorted(scouts, key=lambda s: (-now_counts[s.pk], s.full_name)):
         leave = Calendar(s, first, upto)
         rows.append({
+            "id": s.pk,
             "name": s.full_name,
             "areas": areas[s.pk],
             "activations": now_counts[s.pk],

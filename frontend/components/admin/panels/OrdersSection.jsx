@@ -13,6 +13,9 @@ const DELIVERY = { processing: "Processing", shipped: "Shipped", out_for_deliver
 const row = { padding: "8px 0", borderTop: `1px solid ${D.divider}`, fontSize: "0.8rem", color: D.text };
 const figures = { fontVariantNumeric: "tabular-nums" };
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const shortDate = (iso) => { const d = new Date(iso); return `${d.getDate()} ${MONTHS[d.getMonth()]}`; };
+
 const itemText = (order) => order.items.map((i) => (i.quantity > 1 ? `${i.name} ×${i.quantity}` : i.name)).join(", ") || "Order";
 
 // The status chips of one order, in the canvas's words: "Return open · wrong size"
@@ -23,7 +26,7 @@ export function statusChips(order) {
     chips.push([`${order.dispute.reason_label} ${order.dispute.status === "investigating" ? "being looked at" : "open"}`, D.amber]);
   }
   if (order.delivery_status === "delivered") {
-    chips.push([order.delivered_at ? `Delivered ${new Date(order.delivered_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : "Delivered", D.green]);
+    chips.push([order.delivered_at ? `Delivered ${shortDate(order.delivered_at)}` : "Delivered", D.green]);
   } else {
     chips.push([DELIVERY[order.delivery_status] || order.delivery_status, D.blue]);
   }

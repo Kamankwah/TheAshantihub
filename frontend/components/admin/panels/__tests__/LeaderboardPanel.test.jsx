@@ -6,7 +6,7 @@ import { server } from '../../../../mocks/server.js'
 import LeaderboardPanel, { headline, ordinal, summary } from '../LeaderboardPanel.jsx'
 
 const API = 'http://localhost:8000'
-const row = (name, activations, rank, over = {}) => ({ name, areas: [], activations, leave_days: 0, rank, is_me: false, most_improved: false, ...over })
+const row = (name, activations, rank, over = {}) => ({ id: rank, name, areas: [], activations, leave_days: 0, rank, is_me: false, most_improved: false, ...over })
 const board = (over = {}) => ({
   month: '2026-10', as_of: '2026-10-07', lead: { id: 2, name: 'Ama Boateng' },
   rows: [
