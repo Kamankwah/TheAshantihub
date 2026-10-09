@@ -60,9 +60,16 @@ class HealthRuleTests(TestCase):
         owner = make_business("Gone Shop", kyc=BusinessOwner.REJECTED)
         self.assertEqual(rated(owner), (health.NEW, []))
 
+    @override_settings(SUBSCRIPTION_PAUSE_ENABLED=True)
     def test_a_paused_subscription_is_at_risk(self):
         self.healthy(subscription=subscribe_paused)
         self.assertEqual(rated(self.owner), (health.AT_RISK, ["Subscription paused"]))
+
+    @override_settings(SUBSCRIPTION_PAUSE_ENABLED=False)
+    def test_with_the_pause_off_a_paused_row_is_only_overdue(self):
+        # User decision U3: "Subscription paused" can't occur while pausing is off.
+        self.healthy(subscription=subscribe_paused)
+        self.assertEqual(rated(self.owner), (health.NEEDS_ATTENTION, ["Subscription overdue"]))
 
     def test_no_listing_live_is_at_risk_and_not_also_fewer_than_three(self):
         self.healthy(live_listings=0)
@@ -195,6 +202,7 @@ class HealthRuleTests(TestCase):
         log_call(self.owner, self.scout, days_ago=2, about_only=True)
         self.assertEqual(rated(self.owner), (health.HEALTHY, []))
 
+    @override_settings(SUBSCRIPTION_PAUSE_ENABLED=True)
     def test_at_risk_reasons_come_first(self):
         self.healthy(subscription=subscribe_paused, live_listings=2, call_days_ago=40)
         Dispute.objects.create(

@@ -227,15 +227,22 @@ minute 5), the nightly business-health snapshot (02:15) and staged-photo
 purging (04:30). The schedule is `CELERY_BEAT_SCHEDULE` in
 `backend/ashantihub/settings.py`.
 
-**Rolling out phase 2A.** No new settings or services. The first
-subscription-clock run (minute 5 of the first hour after the deploy) marks
-every lapsed subscription overdue: one that lapsed more than a day earlier
-gets its full 14-day grace from that run (nothing is hidden at once). Each
-owner is told in the app, and owners with an email on file are emailed on
-that first run. A business with no working account manager (none, or one who
-left or is suspended) notifies **every `portfolio.manage` holder** on days 1,
-7 and 13 of its grace; a managed one gives its account manager a task
-instead.
+**Rolling out phase 2A.** No new services. One new setting,
+`SUBSCRIPTION_PAUSE_ENABLED` (backend env, default `False`): it switches the
+subscription clock's pause. Leave it off - no business is ever paused or
+hidden for an unpaid subscription, so the first run carries no mass-pause
+risk. Turn it on only when real payments (the planned in-app wallet) can renew
+automatically; while it is on, a business unpaid 14 days after its
+subscription lapsed has its listings and events hidden until it pays.
+
+The first subscription-clock run (minute 5 of the first hour after the deploy)
+marks every lapsed subscription overdue (with the pause on, one that lapsed
+more than a day earlier gets its full 14-day grace from that run, so nothing
+is hidden at once). Each owner is told in the app, and owners with an email on
+file are emailed on that first run. A business with no working account
+manager (none, or one who left or is suspended) notifies **every
+`portfolio.manage` holder** on days 1, 7 and 13; a managed one gives its
+account manager a task instead.
 
 **Before promoting 2A to production,** count what the first run will touch
 with this read-only query (it changes nothing):
@@ -247,7 +254,9 @@ docker compose -p ashantihub -f /opt/ashantihub/infra/compose/docker-compose.yml
 `lapsed` subscriptions go overdue on the first run; `owner has an email` is
 how many owner emails that run sends; each one with `no working account
 manager` sends a notification to every Operations lead (and Super Admin) on
-days 1, 7 and 13 — assign scouts first if that number is large.
+days 1, 7 and 13 — assign scouts first if that number is large. Check that
+`SUBSCRIPTION_PAUSE_ENABLED` is unset or `False` in the environment's backend
+env file before the deploy.
 
 To give the staging scout demo businesses, run once on staging only. First
 check that staging's `SENTRY_ENVIRONMENT` is `staging` (the command refuses

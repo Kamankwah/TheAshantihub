@@ -167,6 +167,11 @@ exists today); delivery check-ins (phase 3); offline writes.
 - Trials end into the same clock. Owner sees a banner in their dashboard during grace ("Renew by
   21 Oct to keep your listings visible") and a notice when paused. In-app + email now; SMS later.
 - Status for screens: active / overdue (day n of 14) / paused.
+- **Switched off for now (user decision 2026-10-09):** the pause runs only while
+  `SUBSCRIPTION_PAUSE_ENABLED` is on (env, default off), because an in-app wallet will renew
+  automatically later. While off, the clock still marks overdue, reminds on days 7 and 13 and tasks
+  the account manager, but nothing is paused or hidden, and no notice, banner or screen counts down
+  to a pause ("Your subscription ended on {date}. Renew to keep your plan.").
 
 ### S8 — Commission records
 

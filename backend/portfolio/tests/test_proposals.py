@@ -5,6 +5,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
 
@@ -268,6 +269,7 @@ class ProposeListingApiTests(ChangeTestBase):
         response = self.post()
         self.assertEqual((response.status_code, response.json()), (400, {"business": ["Approve the business's KYC first."]}))
 
+    @override_settings(SUBSCRIPTION_PAUSE_ENABLED=True)
     def test_a_paused_subscription_is_refused(self):
         now = timezone.now()
         Subscription.objects.filter(business_owner=self.owner).update(
@@ -276,6 +278,16 @@ class ProposeListingApiTests(ChangeTestBase):
         )
         self.as_staff(self.scout)
         self.assertEqual(self.post().json(), {"subscription": [proposals.SUBSCRIPTION_PAUSED]})
+
+    @override_settings(SUBSCRIPTION_PAUSE_ENABLED=False)
+    def test_with_the_pause_off_a_paused_row_is_refused_as_ended_not_paused(self):
+        now = timezone.now()
+        Subscription.objects.filter(business_owner=self.owner).update(
+            current_period_end=now - timedelta(days=16), overdue_since=now - timedelta(days=16),
+            paused_at=now - timedelta(days=2),
+        )
+        self.as_staff(self.scout)
+        self.assertEqual(self.post().json(), {"subscription": [proposals.SUBSCRIPTION_INACTIVE]})
 
     def test_an_ended_subscription_and_a_full_plan_are_refused_in_scout_words(self):
         for n in range(5):

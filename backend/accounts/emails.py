@@ -138,6 +138,46 @@ def send_subscription_reminder_email(owner, day, renew_by):
     _send(f"Reminder: renew your AshantiHub subscription by {day_text(renew_by)}", message, owner.email)
 
 
+def subscription_ended_text(plan_name, ended_on):
+    """Day 1 of the overdue clock while the pause is switched off
+    (settings.SUBSCRIPTION_PAUSE_ENABLED False): no countdown, nothing hidden."""
+    return f"Your {plan_name} subscription ended on {day_text(ended_on)}. Renew in your dashboard to keep your plan."
+
+
+def subscription_not_renewed_text(plan_name, ended_on):
+    """The day-7 and day-13 reminders while the pause is switched off."""
+    return f"Your {plan_name} subscription ended on {day_text(ended_on)} and hasn't been renewed yet."
+
+
+def send_subscription_ended_email(owner, plan_name, ended_on):
+    """Day 1 of the overdue clock with the pause switched off."""
+    if not owner.email:
+        return
+    message = (
+        f"Hi {owner.full_name},\n\n"
+        f"{subscription_ended_text(plan_name, ended_on)}\n\n"
+        f"This is for {owner.display_name}. You pay in the app, from your dashboard — AshantiHub "
+        "staff never collect cash:\n\n"
+        f"{settings.FRONTEND_BASE_URL}/business-dashboard\n\n"
+        "— AshantiHub"
+    )
+    _send("Your AshantiHub subscription has ended", message, owner.email)
+
+
+def send_subscription_not_renewed_email(owner, plan_name, ended_on):
+    """The day-7 and day-13 reminders with the pause switched off."""
+    if not owner.email:
+        return
+    message = (
+        f"Hi {owner.full_name},\n\n"
+        f"{subscription_not_renewed_text(plan_name, ended_on)}\n\n"
+        f"This is for {owner.display_name}. Renew in the app, from your dashboard:\n\n"
+        f"{settings.FRONTEND_BASE_URL}/business-dashboard\n\n"
+        "— AshantiHub"
+    )
+    _send("Reminder: renew your AshantiHub subscription", message, owner.email)
+
+
 def send_subscription_paused_email(owner):
     """The start of day 15: the business is paused and hidden."""
     if not owner.email:

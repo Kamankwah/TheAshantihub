@@ -24,6 +24,7 @@ class SeedPhase2DemoTests(TestCase):
         call_command("seed_phase2_demo", *args, stdout=out)
         return out.getvalue()
 
+    @override_settings(SUBSCRIPTION_PAUSE_ENABLED=True)
     def test_seeds_demo_businesses_for_the_scout_under_the_operations_lead(self):
         self.run_seed()
         self.scout.refresh_from_db()
@@ -40,6 +41,13 @@ class SeedPhase2DemoTests(TestCase):
         self.assertIsNotNone(overdue.subscription.overdue_since)
         paused = demo.get(login_phone="+233550000204")
         self.assertIsNotNone(paused.subscription.paused_at)
+
+    @override_settings(SUBSCRIPTION_PAUSE_ENABLED=False)
+    def test_with_the_pause_off_the_would_be_paused_business_is_seeded_overdue(self):
+        self.run_seed()
+        spares = BusinessOwner.objects.get(login_phone="+233550000204")
+        self.assertIsNone(spares.subscription.paused_at)
+        self.assertIsNotNone(spares.subscription.overdue_since)
 
     def test_running_twice_changes_nothing(self):
         self.run_seed()

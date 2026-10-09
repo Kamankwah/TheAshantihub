@@ -1,6 +1,8 @@
 """Seed phase-2 demo data on staging: put the staging scout under the staging
 Operations lead and give the scout four fictional businesses in four states
 (KYC waiting with an approval request, healthy on a trial, overdue, paused).
+With settings.SUBSCRIPTION_PAUSE_ENABLED off (the default) the fourth is
+seeded overdue (20 days, no paused_at) instead of paused.
 
 Everything is fictional and uses example.com emails and +2335500002xx phones,
 like the staging demo store. Idempotent: rows are looked up by login phone.
@@ -112,5 +114,5 @@ class Command(BaseCommand):
             current_period_start=end - timedelta(days=30), current_period_end=end,
             overdue_since=end if state in ("overdue", "paused") else None,
             overdue_notice_at=end if state in ("overdue", "paused") else None,
-            paused_at=(end + timedelta(days=14)) if state == "paused" else None,
+            paused_at=(end + timedelta(days=14)) if state == "paused" and settings.SUBSCRIPTION_PAUSE_ENABLED else None,
         )

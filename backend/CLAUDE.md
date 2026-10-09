@@ -115,12 +115,18 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   `accounts.phones.normalize_gh_phone()` (`+233...`) and match stored phones only through
   `phone_key()` / `filter_by_phone()` (there is no `phone_match_q`), because older rows hold
   whatever owners typed.
-- **Hidden businesses:** a suspended owner or one whose subscription is paused is hidden from
-  public browse by `listings.visibility.hidden_business_q()`. Every public listing or event
-  queryset, and adding to a cart, must use it.
-- **The subscription clock** (`billing.clock`, hourly) marks overdue, reminds on days 7 and 13 and
-  pauses at day 15. Only `payments.services._finalize_subscription` (a real payment) clears it,
-  through `billing.clock.clear_after_payment()`; `POST /api/billing/subscriptions/me/` must never.
+- **Hidden businesses:** a suspended owner - or, only while `SUBSCRIPTION_PAUSE_ENABLED` is on, one
+  whose subscription is paused - is hidden from public browse by
+  `listings.visibility.hidden_business_q()`. Every public listing or event queryset, and adding to
+  a cart, must use it.
+- **The subscription clock** (`billing.clock`, hourly) marks overdue, reminds on days 7 and 13 and,
+  only with `settings.SUBSCRIPTION_PAUSE_ENABLED` on, pauses at day 15. The setting (env, default
+  **off**) stays off until real payments (the planned in-app wallet) can renew automatically;
+  while off, nothing is paused or hidden, `subscription_state()` never reads `"paused"` (it carries
+  `pause_enabled`, and `overdue_day` isn't capped at 14), and no notice, email, task or screen
+  counts down to a pause or mentions hiding - branch on `billing.clock.pause_enabled()`. Only
+  `payments.services._finalize_subscription` (a real payment) clears the clock, through
+  `billing.clock.clear_after_payment()`; `POST /api/billing/subscriptions/me/` must never.
 - **KYC goes through `accounts.kyc`.** The KYC queue and the `business.kyc` approval share
   `approve_owner()` / `reject_owner()`; a queue decision settles the pending request with
   `approvals.services.close_pending_for_target()` (never by running `apply` again). `approve()`

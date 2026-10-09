@@ -16,19 +16,31 @@ without a payment) and the trial start never do.
 Day N is `(now - overdue_since).days + 1`. Every step stamps its timestamp in
 the same transaction as the notices it stands for, so the hourly job
 (`billing.tasks.run_subscription_clock`) can run any number of times.
+
+The pause is switched by settings.SUBSCRIPTION_PAUSE_ENABLED, off by default
+(user decision 2026-10-09: the in-app wallet will renew automatically later).
+While it is off the clock still marks overdue, reminds on days 7 and 13 and
+tasks the account manager, but never pauses anyone, hides nothing
+(`hidden_business_q`), reads a paused row as overdue, and no notice, email or
+task counts down to a pause or mentions hiding.
 """
 import logging
 from datetime import timedelta
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
 from accounts.emails import (
     day_text,
+    send_subscription_ended_email,
+    send_subscription_not_renewed_email,
     send_subscription_overdue_email,
     send_subscription_paused_email,
     send_subscription_reminder_email,
+    subscription_ended_text,
+    subscription_not_renewed_text,
 )
 from activity.services import record
 from notifications.services import notify_business_owner, notify_staff_role
@@ -49,6 +61,11 @@ OWNER_LINK = "/business-dashboard"
 CLOCK_FIELDS = ("overdue_since", "paused_at", "overdue_notice_at", "reminder_day7_at", "reminder_day13_at")
 
 NONE, TRIAL, ACTIVE, OVERDUE, PAUSED = "none", "trial", "active", "overdue", "paused"
+
+
+def pause_enabled():
+    """settings.SUBSCRIPTION_PAUSE_ENABLED: whether day 15 pauses and hides."""
+    return bool(settings.SUBSCRIPTION_PAUSE_ENABLED)
 
 
 def _iso(value):
@@ -78,11 +95,12 @@ def _renew_by(overdue_since):
     return _hide_on(overdue_since) - timedelta(days=1)
 
 
-def _empty_state():
+def _empty_state(enabled):
     return {
         "state": NONE, "is_trial": False, "plan_name": None, "monthly_price": None,
         "current_period_end": None, "overdue_since": None, "overdue_day": None,
         "pause_at": None, "hide_on": None, "renew_by": None, "paused_at": None,
+        "pause_enabled": enabled,
     }
 
 
@@ -91,8 +109,14 @@ def subscription_state(subscription, now=None):
     Subscriptions due). A period that has ended but that the hourly job hasn't
     marked yet already reads as overdue, from the moment the job will record.
     Paused: `pause_at`/`hide_on` say when the pause took effect; there is no
-    `overdue_day` or `renew_by` any more."""
-    state = _empty_state()
+    `overdue_day` or `renew_by` any more.
+
+    `pause_enabled` says whether the pause is switched on. While it is off the
+    state is never "paused" (a paused row reads as overdue), `pause_at`,
+    `hide_on`, `renew_by` and `paused_at` are None, and `overdue_day` is the
+    day of being overdue, not capped at 14."""
+    enabled = pause_enabled()
+    state = _empty_state(enabled)
     if subscription is None:
         return state
     now = now or timezone.now()
@@ -103,7 +127,7 @@ def subscription_state(subscription, now=None):
         monthly_price=str(plan.monthly_price),
         current_period_end=_iso(subscription.current_period_end),
     )
-    if subscription.paused_at is not None:
+    if subscription.paused_at is not None and enabled:
         state.update(
             state=PAUSED,
             overdue_since=_iso(subscription.overdue_since),
@@ -115,6 +139,9 @@ def subscription_state(subscription, now=None):
     overdue_since = subscription.overdue_since
     if overdue_since is None and subscription.current_period_end <= now:
         overdue_since = clock_start(subscription.current_period_end, now)
+    if overdue_since is not None and not enabled:
+        state.update(state=OVERDUE, overdue_since=_iso(overdue_since), overdue_day=day_number(overdue_since, now))
+        return state
     if overdue_since is not None:
         state.update(
             state=OVERDUE,
@@ -163,12 +190,35 @@ def _working_manager(owner):
     return None
 
 
+def _ended_on(subscription):
+    """The day the unpaid period ended, as the owner's notices name it."""
+    return timezone.localdate(subscription.current_period_end)
+
+
 def _follow_up(subscription, owner, now, *, day):
     """The account manager's task (day 1, 7 and 13) — or, with no working
     account manager, a notice to everyone who manages portfolios."""
     name = owner.display_name
-    hide_on = _hide_on(subscription.overdue_since)
     manager = _working_manager(owner)
+    if not pause_enabled():
+        if manager is None:
+            notify_staff_role(
+                "portfolio.manage", "subscription_overdue_unmanaged",
+                f"{name}: subscription overdue, no account manager",
+                body=(f"Its {subscription.plan.name} subscription ended on {day_text(_ended_on(subscription))} "
+                      "and hasn't been renewed. Assign a scout or follow it up."),
+                link="subscriptions-due", icon="⏳",
+            )
+            return None
+        create_task(
+            manager,
+            f"Subscription overdue — {name} (since {day_text(timezone.localdate(subscription.overdue_since))})",
+            now + TASK_DUE_IN,
+            notes="The owner pays in the app — scouts never collect cash.",
+            source=subscription,
+        )
+        return manager
+    hide_on = _hide_on(subscription.overdue_since)
     if manager is None:
         notify_staff_role(
             "portfolio.manage", "subscription_overdue_unmanaged",
@@ -196,6 +246,24 @@ def _mark_overdue(subscription, now):
     subscription.overdue_notice_at = now
     subscription.save(update_fields=["overdue_since", "overdue_notice_at"])
     owner = subscription.business_owner
+    if not pause_enabled():
+        plan_name, ended_on = subscription.plan.name, _ended_on(subscription)
+        notify_business_owner(
+            owner, "subscription_overdue", "Your subscription has ended",
+            body=subscription_ended_text(plan_name, ended_on), link=OWNER_LINK, icon="⏳",
+        )
+        _email_on_commit(owner, send_subscription_ended_email, plan_name, ended_on)
+        manager = _follow_up(subscription, owner, now, day=day_number(subscription.overdue_since, now))
+        record(
+            None, "subscription.overdue", target=owner,
+            summary=f"Subscription overdue — ended on {day_text(ended_on)}",
+            after={
+                "overdue_since": _iso(subscription.overdue_since),
+                "started_late": started_late,
+                "account_manager_id": getattr(manager, "pk", None),
+            },
+        )
+        return True
     renew_by = _renew_by(subscription.overdue_since)
     notify_business_owner(
         owner, "subscription_overdue", "Your subscription has ended",
@@ -231,6 +299,19 @@ def _send_reminder(subscription, now):
     setattr(subscription, field, now)
     subscription.save(update_fields=[field])
     owner = subscription.business_owner
+    if not pause_enabled():
+        plan_name, ended_on = subscription.plan.name, _ended_on(subscription)
+        notify_business_owner(
+            owner, "subscription_reminder", "Reminder: renew your subscription",
+            body=subscription_not_renewed_text(plan_name, ended_on), link=OWNER_LINK, icon="⏰",
+        )
+        _email_on_commit(owner, send_subscription_not_renewed_email, plan_name, ended_on)
+        _follow_up(subscription, owner, now, day=day)
+        record(
+            None, "subscription.reminder_sent", target=owner,
+            summary=f"Day {which} renewal reminder sent", after={"day": which},
+        )
+        return True
     renew_by = _renew_by(subscription.overdue_since)
     hide_on = _hide_on(subscription.overdue_since)
     notify_business_owner(
@@ -282,7 +363,7 @@ def _each(condition, handle, now):
             with transaction.atomic():
                 subscription = (
                     Subscription.objects.select_for_update(skip_locked=True, of=("self",))
-                    .select_related("business_owner__account_manager")
+                    .select_related("business_owner__account_manager", "plan")
                     .filter(condition, pk=pk)
                     .first()
                 )
@@ -295,12 +376,13 @@ def _each(condition, handle, now):
 
 def tick(now=None):
     """One run of the hourly job: mark lapsed periods overdue, send the day-7
-    and day-13 reminders, pause at the start of day 15. Idempotent."""
+    and day-13 reminders, pause at the start of day 15 — the pause only while
+    SUBSCRIPTION_PAUSE_ENABLED is on. Idempotent."""
     now = now or timezone.now()
     return {
         "overdue": _each(_overdue_due(now), _mark_overdue, now),
         "reminders": _each(_reminder_due(now), _send_reminder, now),
-        "paused": _each(_pause_due(now), _pause, now),
+        "paused": _each(_pause_due(now), _pause, now) if pause_enabled() else 0,
     }
 
 
@@ -315,7 +397,11 @@ def clear_after_payment(subscription, *, now):
     subscription.resumed is recorded, last — else None."""
     with transaction.atomic():
         locked = Subscription.objects.select_for_update().get(pk=subscription.pk)
-        was = PAUSED if locked.paused_at else OVERDUE if locked.overdue_since else None
+        # With the pause off a row paused before the switch was never hidden.
+        if locked.paused_at and pause_enabled():
+            was = PAUSED
+        else:
+            was = OVERDUE if locked.overdue_since or locked.paused_at else None
         overdue_since, paused_at = locked.overdue_since, locked.paused_at
         if any(getattr(locked, field) is not None for field in CLOCK_FIELDS):
             for field in CLOCK_FIELDS:

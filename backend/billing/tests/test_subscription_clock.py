@@ -71,10 +71,11 @@ def public_listing_ids():
 
 STATE_KEYS = {
     "state", "is_trial", "plan_name", "monthly_price", "current_period_end", "overdue_since",
-    "overdue_day", "pause_at", "hide_on", "renew_by", "paused_at",
+    "overdue_day", "pause_at", "hide_on", "renew_by", "paused_at", "pause_enabled",
 }
 
 
+@override_settings(SUBSCRIPTION_PAUSE_ENABLED=True)
 class SubscriptionStateTests(TestCase):
     def setUp(self):
         self.owner = make_owner()
@@ -83,7 +84,7 @@ class SubscriptionStateTests(TestCase):
         self.assertEqual(clock.subscription_state(None, now=NOW), {
             "state": "none", "is_trial": False, "plan_name": None, "monthly_price": None,
             "current_period_end": None, "overdue_since": None, "overdue_day": None,
-            "pause_at": None, "hide_on": None, "renew_by": None, "paused_at": None,
+            "pause_at": None, "hide_on": None, "renew_by": None, "paused_at": None, "pause_enabled": True,
         })
 
     def test_a_running_period_is_active_or_trial(self):
@@ -166,6 +167,7 @@ class SubscriptionStateTests(TestCase):
         self.assertEqual(response.json()["clock"]["overdue_day"], 4)
 
 
+@override_settings(SUBSCRIPTION_PAUSE_ENABLED=True)
 class SubscriptionClockTests(TestCase):
     def setUp(self):
         self.lead = make_staff("operations", "ama@example.com")
@@ -363,7 +365,7 @@ class SubscriptionClockScheduleTests(TestCase):
         self.assertEqual(run_subscription_clock(), {"overdue": 1, "reminders": 0, "paused": 0})
 
 
-@override_settings(PAYMENTS_PROVIDER="simulated", HUBTEL_WEBHOOK_SECRET=WEBHOOK_SECRET)
+@override_settings(PAYMENTS_PROVIDER="simulated", HUBTEL_WEBHOOK_SECRET=WEBHOOK_SECRET, SUBSCRIPTION_PAUSE_ENABLED=True)
 class PaymentClearsTheClockTests(TestCase):
     CLOCK_FIELDS = ("overdue_since", "paused_at", "overdue_notice_at", "reminder_day7_at", "reminder_day13_at")
 
@@ -539,3 +541,167 @@ class ClockLiveUpdateTests(TestCase):
                 with self.captureOnCommitCallbacks(execute=True):
                     record(None, verb, target_type="accounts.businessowner", target_id="1")
                 self.assertEqual(self.message(operations)["payload"]["invalidate"], self.KEYS)
+
+
+class PauseSettingTests(TestCase):
+    def test_the_pause_is_off_unless_the_environment_turns_it_on(self):
+        # User decision U3: off until an in-app wallet can renew automatically.
+        self.assertIs(settings.SUBSCRIPTION_PAUSE_ENABLED, False)
+
+
+@override_settings(SUBSCRIPTION_PAUSE_ENABLED=False, PAYMENTS_PROVIDER="simulated")
+class PauseSwitchedOffTests(TestCase):
+    """User decision U3: with SUBSCRIPTION_PAUSE_ENABLED off the clock still
+    marks overdue, reminds on days 7 and 13 and tasks the account manager, but
+    never pauses or hides, and no message counts down to a pause."""
+
+    # Copy the owner sees or staff read: none of it may count down or threaten hiding.
+    PAUSE_WORDS = ("hidden", "hide", "of 14", "visible", "Renew by", "renew by", "paused")
+
+    def setUp(self):
+        self.lead = make_staff("operations", "ama@example.com")
+        self.scout = make_staff("scout", "kwame@example.com", manager=self.lead)
+        self.owner = make_owner("Adwoa Fabrics", email="adwoa@example.com", manager=self.scout)
+
+    def assert_no_pause_words(self, *texts):
+        for text in texts:
+            for word in self.PAUSE_WORDS:
+                self.assertNotIn(word, text, text)
+
+    def test_the_state_never_reads_paused_and_counts_days_past_14(self):
+        sub = make_subscription(
+            self.owner, period_end=NOW - timedelta(days=21),
+            overdue_since=NOW - timedelta(days=20, hours=3), paused_at=NOW - timedelta(days=6),
+        )
+        state = clock.subscription_state(sub, now=NOW)
+        self.assertEqual(set(state), STATE_KEYS)
+        self.assertEqual(state["state"], "overdue")
+        self.assertIs(state["pause_enabled"], False)
+        self.assertEqual(state["overdue_day"], 21)
+        self.assertEqual(parse_datetime(state["overdue_since"]), NOW - timedelta(days=20, hours=3))
+        for key in ("pause_at", "hide_on", "renew_by", "paused_at"):
+            self.assertIsNone(state[key], key)
+        self.assertIs(clock.subscription_state(None, now=NOW)["pause_enabled"], False)
+
+    def test_a_fresh_lapse_reads_as_day_one_without_dates_to_hide_on(self):
+        sub = make_subscription(self.owner, period_end=NOW - timedelta(hours=3))
+        state = clock.subscription_state(sub, now=NOW)
+        self.assertEqual((state["state"], state["overdue_day"]), ("overdue", 1))
+        self.assertEqual((state["pause_at"], state["hide_on"], state["renew_by"]), (None, None, None))
+
+    def test_nothing_is_paused_or_hidden_after_14_days(self):
+        sub = make_subscription(
+            self.owner, period_end=NOW - timedelta(days=30),
+            overdue_since=NOW - timedelta(days=20), overdue_notice_at=NOW - timedelta(days=20),
+            reminder_day7_at=NOW - timedelta(days=14), reminder_day13_at=NOW - timedelta(days=8),
+        )
+        listing = make_listing(self.owner)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(clock.tick(now=NOW), {"overdue": 0, "reminders": 0, "paused": 0})
+        sub.refresh_from_db()
+        self.assertIsNone(sub.paused_at)
+        self.assertIn(listing.id, public_listing_ids())
+        self.assertFalse(Notification.objects.filter(kind="subscription_paused").exists())
+        self.assertFalse(ActivityEvent.objects.filter(verb="subscription.paused").exists())
+        self.assertEqual(mail.outbox, [])
+
+    def test_a_row_paused_before_the_switch_stays_visible(self):
+        make_subscription(
+            self.owner, period_end=NOW - timedelta(days=30),
+            overdue_since=NOW - timedelta(days=20), paused_at=NOW - timedelta(days=6),
+        )
+        listing = make_listing(self.owner)
+        self.assertIn(listing.id, public_listing_ids())
+
+    def test_the_overdue_notice_task_and_email_say_when_it_ended_and_nothing_about_hiding(self):
+        sub = make_subscription(self.owner, period_end=NOW - timedelta(hours=3))
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(clock.tick(now=NOW), {"overdue": 1, "reminders": 0, "paused": 0})
+        sub.refresh_from_db()
+        self.assertEqual(sub.overdue_since, NOW - timedelta(hours=3))
+        note = Notification.objects.get(business_owner=self.owner, kind="subscription_overdue")
+        self.assertEqual(note.title, "Your subscription has ended")
+        self.assertEqual(
+            note.body, "Your Product Basic subscription ended on Thursday 8 October. Renew in your dashboard to keep your plan.",
+        )
+        task = Task.objects.get(owner=self.scout)
+        self.assertEqual(task.title, "Subscription overdue — Adwoa Fabrics (since Thursday 8 October)")
+        self.assertEqual(task.notes, "The owner pays in the app — scouts never collect cash.")
+        self.assertEqual(task.due_at, NOW + timedelta(days=1))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, "Your AshantiHub subscription has ended")
+        self.assertIn(
+            "Your Product Basic subscription ended on Thursday 8 October. Renew in your dashboard to keep your plan.",
+            mail.outbox[0].body,
+        )
+        event = ActivityEvent.objects.get(verb="subscription.overdue")
+        self.assertEqual(event.summary, "Subscription overdue — ended on Thursday 8 October")
+        self.assertNotIn("hide_on", event.after)
+        self.assert_no_pause_words(note.title, note.body, task.title, task.notes, mail.outbox[0].subject,
+                                   mail.outbox[0].body, event.summary)
+
+    def test_the_day_7_and_day_13_reminders_drop_the_countdown(self):
+        make_subscription(
+            self.owner, period_end=NOW - timedelta(days=6),
+            overdue_since=NOW - timedelta(days=6), overdue_notice_at=NOW - timedelta(days=6),
+        )
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(clock.tick(now=NOW)["reminders"], 1)  # day 7
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(clock.tick(now=NOW + timedelta(days=6))["reminders"], 1)  # day 13
+        reminders = list(Notification.objects.filter(business_owner=self.owner, kind="subscription_reminder"))
+        self.assertEqual(len(reminders), 2)
+        for note in reminders:
+            self.assertEqual(note.title, "Reminder: renew your subscription")
+            self.assertEqual(note.body, "Your Product Basic subscription ended on Friday 2 October and hasn't been renewed yet.")
+        self.assertEqual(
+            [message.subject for message in mail.outbox],
+            ["Reminder: renew your AshantiHub subscription"] * 2,
+        )
+        for message in mail.outbox:
+            self.assertIn("Your Product Basic subscription ended on Friday 2 October and hasn't been renewed yet.", message.body)
+        tasks = list(Task.objects.filter(owner=self.scout))
+        self.assertEqual(
+            [task.title for task in tasks], ["Subscription overdue — Adwoa Fabrics (since Friday 2 October)"] * 2,
+        )
+        events = list(ActivityEvent.objects.filter(verb="subscription.reminder_sent"))
+        self.assertEqual(sorted(event.after["day"] for event in events), [7, 13])
+        self.assertFalse(any("hide_on" in event.after for event in events))
+        self.assert_no_pause_words(
+            *[text for note in reminders for text in (note.title, note.body)],
+            *[text for message in mail.outbox for text in (message.subject, message.body)],
+            *[text for task in tasks for text in (task.title, task.notes)],
+        )
+
+    def test_an_unmanaged_business_tells_operations_without_a_countdown(self):
+        owner = make_owner("Suame Auto Parts")
+        make_subscription(owner, period_end=NOW - timedelta(hours=2))
+        clock.tick(now=NOW)
+        note = Notification.objects.get(staff=self.lead, kind="subscription_overdue_unmanaged")
+        self.assertEqual(note.title, "Suame Auto Parts: subscription overdue, no account manager")
+        self.assertEqual(
+            note.body,
+            "Its Product Basic subscription ended on Thursday 8 October and hasn't been renewed. "
+            "Assign a scout or follow it up.",
+        )
+        self.assert_no_pause_words(note.title, note.body)
+
+    def test_paying_a_row_paused_before_the_switch_reports_overdue(self):
+        sub = make_subscription(
+            self.owner, period_end=NOW - timedelta(days=30),
+            overdue_since=NOW - timedelta(days=20), paused_at=NOW - timedelta(days=6),
+        )
+        self.assertEqual(clock.clear_after_payment(sub, now=NOW), "overdue")
+        sub.refresh_from_db()
+        self.assertIsNone(sub.paused_at)
+        note = Notification.objects.get(business_owner=self.owner, kind="subscription_resumed")
+        self.assertEqual(note.body, "Thank you — your listings stay visible.")
+        self.assertEqual(ActivityEvent.objects.get(verb="subscription.resumed").after["was"], "overdue")
+
+    def test_the_owner_sees_pause_enabled_on_their_subscription(self):
+        started = timezone.now() - timedelta(days=20)
+        make_subscription(self.owner, period_end=started, overdue_since=started, paused_at=started + timedelta(days=14))
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.owner, 'business_owner')}")
+        body = client.get("/api/billing/subscriptions/me/").json()["clock"]
+        self.assertEqual((body["state"], body["pause_enabled"], body["overdue_day"]), ("overdue", False, 21))

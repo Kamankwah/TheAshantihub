@@ -426,6 +426,7 @@ class BusinessReviewTests(PortfolioApiBase):
 class SubscriptionsDueTests(PortfolioApiBase):
     DUE_URL = "/api/portfolio/subscriptions-due/"
 
+    @override_settings(SUBSCRIPTION_PAUSE_ENABLED=True)
     def test_overdue_most_urgent_first_paused_and_cleared_this_week(self):
         now = timezone.now()
         late = make_healthy(
@@ -483,6 +484,35 @@ class SubscriptionsDueTests(PortfolioApiBase):
         everything = self.client.get(self.DUE_URL, {"scope": "all"}).json()
         self.assertIn(elsewhere.pk, [row["id"] for row in everything["overdue"]])
         self.assertEqual({row["id"] for row in everything["cleared"]}, {paid.pk, yaw_paid.pk})
+
+    @override_settings(SUBSCRIPTION_PAUSE_ENABLED=True)
+    def test_it_says_the_pause_is_on(self):
+        self.auth(self.lead)
+        self.assertIs(self.client.get(self.DUE_URL).json()["pause_enabled"], True)
+
+    @override_settings(SUBSCRIPTION_PAUSE_ENABLED=False)
+    def test_with_the_pause_off_nothing_is_listed_as_paused(self):
+        # User decision U3: a row the clock paused before the switch is overdue.
+        now = timezone.now()
+        overdue = make_healthy(
+            make_business("Suame Auto Parts", manager=self.kwame), self.kwame,
+            subscription=lambda owner: subscribe_overdue(owner, now - timedelta(days=3)),
+        )
+        paused = make_healthy(
+            make_business("Bantama Shoe Palace", manager=self.kwame), self.kwame, subscription=subscribe_paused,
+        )
+        self.auth(self.lead)
+        body = self.client.get(self.DUE_URL).json()
+        self.assertIs(body["pause_enabled"], False)
+        self.assertEqual(body["paused"], [])
+        self.assertEqual([row["id"] for row in body["overdue"]], [paused.pk, overdue.pk])
+        state = body["overdue"][0]["subscription"]
+        self.assertEqual((state["state"], state["overdue_day"], state["pause_enabled"]), ("overdue", 21, False))
+        self.assertEqual((state["hide_on"], state["renew_by"], state["paused_at"]), (None, None, None))
+        self.assertEqual(body["overdue"][0]["health"]["reasons"], ["Subscription overdue"])
+        self.auth(self.lead)
+        listed = self.client.get(URL, {"scope": "team", "subscription": "paused"})
+        self.assertEqual(self.ids(listed), [])
 
     def test_scouts_cannot_open_subscriptions_due(self):
         self.auth(self.kwame)

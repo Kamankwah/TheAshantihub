@@ -281,6 +281,15 @@ FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", default="http://localhost:5173")
 # together.
 OWNER_TERMS_VERSION = "September 2026"
 
+# The subscription clock's pause (billing/clock.py, staff phase 2A): when True,
+# a business still unpaid 14 days after its subscription lapsed is paused and
+# its listings and events drop out of public browse until it pays. Off by
+# default (user decision, 2026-10-09): the clock still marks overdue and sends
+# the day-7 and day-13 reminders, but nothing is paused or hidden and no
+# message counts down to a pause. Turn it on only when real payments (the
+# planned in-app wallet) can renew automatically.
+SUBSCRIPTION_PAUSE_ENABLED = env.bool("SUBSCRIPTION_PAUSE_ENABLED", default=False)
+
 # Hubtel payments (docs/HUBTEL_INTEGRATION.md, plan Workstream E). Every
 # HUBTEL_* var is blank by default — PAYMENTS_PROVIDER is *derived* from
 # whether HUBTEL_CLIENT_ID is actually set, not a separate manually-toggled

@@ -26,6 +26,7 @@ from accounts.serializers import staff_brief
 from activity.models import ActivityEvent
 from activity.services import record
 from approvals.services import ApprovalError
+from billing.clock import pause_enabled
 from listings.models import Listing
 from notifications.services import notify_staff
 from staff_tasks.services import create_task
@@ -523,7 +524,9 @@ def _cleared_this_week(owners, now):
 
 class SubscriptionsDueView(APIView):
     """GET /api/portfolio/subscriptions-due/?scope=team|all — overdue (most
-    urgent first), paused, and cleared this week."""
+    urgent first), paused, and cleared this week, with `pause_enabled`
+    (settings.SUBSCRIPTION_PAUSE_ENABLED). While the pause is off the clock
+    reads every lapsed row as overdue, so `paused` is always empty."""
 
     def get_permissions(self):
         return [HasRolePermission(PORTFOLIO_MANAGE)]
@@ -549,6 +552,7 @@ class SubscriptionsDueView(APIView):
         ))
         paused.sort(key=lambda row: (row.owner.subscription.paused_at, row.owner.pk))
         return Response({
+            "pause_enabled": pause_enabled(),
             "overdue": [subscription_due_item(row) for row in overdue],
             "paused": [subscription_due_item(row) for row in paused],
             "cleared": _cleared_this_week(owners, now),

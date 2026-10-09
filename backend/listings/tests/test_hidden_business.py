@@ -23,6 +23,7 @@ _phones = count(100)
 NOT_AVAILABLE = {"listing": ["This item isn't available right now."]}
 
 
+@override_settings(SUBSCRIPTION_PAUSE_ENABLED=True)
 class HiddenBusinessTests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -157,3 +158,40 @@ class HiddenBusinessTests(TestCase):
     def test_customer_organised_events_are_unaffected(self):
         event = self.make_event(None, "Ama's naming ceremony", customer=self.customer)
         self.assertIn(event.id, self.event_ids())
+
+
+@override_settings(SUBSCRIPTION_PAUSE_ENABLED=False)
+class PauseSwitchedOffVisibilityTests(TestCase):
+    """User decision U3: with the pause switched off nothing is hidden for an
+    unpaid subscription - not even a row the clock paused before the switch.
+    A suspended business is still hidden."""
+
+    setUp = HiddenBusinessTests.setUp
+    make_owner = HiddenBusinessTests.make_owner
+    make_subscription = HiddenBusinessTests.make_subscription
+    make_listing = HiddenBusinessTests.make_listing
+    make_event = HiddenBusinessTests.make_event
+    listing_ids = HiddenBusinessTests.listing_ids
+    event_ids = HiddenBusinessTests.event_ids
+    add_to_cart = HiddenBusinessTests.add_to_cart
+
+    def test_a_paused_row_stays_in_list_detail_related_events_and_carts(self):
+        self.assertIn(self.paused_listing.id, self.listing_ids())
+        self.assertEqual(self.client.get(f"/api/listings/{self.paused_listing.id}/").status_code, 200)
+        related = [item["id"] for item in self.client.get(f"/api/listings/{self.anchor.id}/related/").json()]
+        self.assertIn(self.paused_listing.id, related)
+        self.assertIn(self.paused_event.id, self.event_ids())
+        self.assertEqual(self.client.get(f"/api/events/{self.paused_event.id}/").status_code, 200)
+        self.assertEqual(self.add_to_cart(self.paused_listing).status_code, 201)
+
+    def test_the_helper_matches_suspended_businesses_only(self):
+        suspended = self.make_owner("Suame Auto Parts")
+        suspended.is_suspended = True
+        suspended.save(update_fields=["is_suspended"])
+        mine = [self.unsubscribed.pk, self.paused.pk, self.overdue.pk, suspended.pk]
+        hidden = set(
+            BusinessOwner.objects.filter(pk__in=mine).filter(hidden_business_q("")).values_list("pk", flat=True)
+        )
+        self.assertEqual(hidden, {suspended.pk})
+        self.assertFalse(Listing.objects.filter(hidden_business_q()).exists())
+        self.assertEqual(self.add_to_cart(self.make_listing(suspended, "Suame room")).json(), NOT_AVAILABLE)
