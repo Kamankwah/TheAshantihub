@@ -51,11 +51,14 @@ export const money = (value) => `GH₵ ${Number(value || 0).toLocaleString("en-G
 
 export const firstName = (name) => (name || "").trim().split(/\s+/)[0] || "The owner";
 
-// One line for a billing.clock.subscription_state() dict.
+// One line for a billing.clock.subscription_state() dict. With the pause
+// switched off (pause_enabled false) there is no 14-day countdown to show.
 export function subscriptionText(sub, kycStatus) {
   const s = sub || {};
   switch (s.state) {
-    case "overdue": return s.overdue_day != null ? `Overdue · day ${s.overdue_day} of 14` : "Overdue";
+    case "overdue":
+      if (s.pause_enabled === false) return s.overdue_since ? `Overdue since ${formatDay(s.overdue_since)}` : "Overdue";
+      return s.overdue_day != null ? `Overdue · day ${s.overdue_day} of 14` : "Overdue";
     case "paused": return "Paused — listings hidden";
     case "trial": return "Active · trial";
     case "active": return s.current_period_end ? `Active · renews ${formatDay(s.current_period_end)}` : "Active";

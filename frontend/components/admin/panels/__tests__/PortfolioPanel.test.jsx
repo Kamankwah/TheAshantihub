@@ -6,6 +6,7 @@ import { setStoredAuth } from '../../../../apiClient.js'
 import { server } from '../../../../mocks/server.js'
 import AdminCommandCenter from '../../AdminCommandCenter.jsx'
 import PortfolioPanel from '../PortfolioPanel.jsx'
+import { formatDay } from '../portfolioParts.jsx'
 
 const API = 'http://localhost:8000'
 const SCOUT = {
@@ -71,6 +72,16 @@ function recordList(urls, results = ROWS, summary = SUMMARY) {
 const param = (url, key) => new URL(url).searchParams.get(key)
 
 describe("PortfolioPanel — a scout's portfolio", () => {
+  it('with the pause switched off, an overdue card says since when, with no countdown', async () => {
+    recordList([], [row({
+      subscription: { state: 'overdue', overdue_day: 21, overdue_since: '2026-09-18T00:00:00Z', hide_on: null, pause_enabled: false, plan_name: 'Monthly', monthly_price: '120.00' },
+    })])
+    renderPanel()
+    const card = await screen.findByRole('article', { name: 'Adwoa Fabrics' })
+    expect(within(card).getByText(`Overdue since ${formatDay('2026-09-18T00:00:00Z')}`)).toBeInTheDocument()
+    expect(within(card).queryByText(/of 14/)).not.toBeInTheDocument()
+  })
+
   it('lists the businesses with health, subscription, listings and last contact', async () => {
     const urls = []
     recordList(urls)

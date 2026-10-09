@@ -14,23 +14,31 @@ function calendarDay(isoDate) {
 // shows only while that clock runs (overdue) or has paused the business —
 // never for an active, trial or absent subscription. `subscription.clock`
 // is billing.clock.subscription_state() from GET /api/billing/subscriptions/me/.
+// With the pause switched off (`clock.pause_enabled === false`, the server's
+// SUBSCRIPTION_PAUSE_ENABLED) nothing is hidden, so the banner says when the
+// plan ended and nothing about a countdown or hiding. A clock without the
+// field comes from a server that predates the switch, which always pauses.
 export default function RenewBanner({ subscription, onRenew }) {
   const clock = subscription?.clock;
   if (clock?.state !== "overdue" && clock?.state !== "paused") return null;
   const paused = clock.state === "paused";
+  const pauseOff = clock.pause_enabled === false;
   const color = paused ? D.red : D.amber;
-  const message = paused
-    ? "Your listings are hidden until you renew. Nothing has been deleted."
-    : clock.renew_by
-      ? `Your subscription has ended. Renew by ${calendarDay(clock.renew_by)} to keep your listings visible.`
-      : "Your subscription has ended. Renew now to keep your listings visible.";
+  let message;
+  if (paused) message = "Your listings are hidden until you renew. Nothing has been deleted.";
+  else if (pauseOff) {
+    message = clock.current_period_end
+      ? `Your subscription ended on ${calendarDay(clock.current_period_end)}. Renew to keep your plan.`
+      : "Your subscription has ended. Renew to keep your plan.";
+  } else if (clock.renew_by) message = `Your subscription has ended. Renew by ${calendarDay(clock.renew_by)} to keep your listings visible.`;
+  else message = "Your subscription has ended. Renew now to keep your listings visible.";
   return (
     <section aria-label="Renew your subscription" style={{
       ...glassCard, padding: "14px 16px", marginBottom: 16, borderLeft: `4px solid ${color}`,
       display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
     }}>
       <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-        {!paused && clock.overdue_day != null && (
+        {!paused && !pauseOff && clock.overdue_day != null && (
           <span style={{ display: "inline-block", background: `${color}1f`, border: `1px solid ${color}55`, borderRadius: 999, padding: "2px 9px", fontSize: "0.66rem", fontWeight: 800, color: D.text, marginBottom: 6 }}>
             Day {clock.overdue_day} of 14
           </span>

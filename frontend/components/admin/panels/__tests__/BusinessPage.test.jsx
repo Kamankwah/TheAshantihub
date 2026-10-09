@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../../../../mocks/server.js'
 import BusinessPage from '../BusinessPage.jsx'
+import { formatDay, money } from '../portfolioParts.jsx'
 
 // The hand-over itself is Task 11's OwnerHandover (tested there); here it is a
 // stub that shows what it was given and can finish.
@@ -76,6 +77,31 @@ describe('BusinessPage', () => {
     expect(within(health).getByText('Subscription overdue')).toBeInTheDocument()
     expect(within(health).getByText(/Overdue · day 4 of 14 · GH₵ 120\.00 \/ month/)).toBeInTheDocument()
     expect(within(health).getByText(/if still unpaid\. Adwoa pays in the app — scouts never collect cash\./)).toBeInTheDocument()
+  })
+
+  it('with the pause switched off, shows overdue since a date with no hide date or grace bar', async () => {
+    serve(business({
+      subscription: {
+        state: 'overdue', is_trial: false, plan_name: 'Monthly', monthly_price: '120.00', current_period_end: '2026-10-04T00:00:00Z',
+        overdue_since: '2026-10-04T00:00:00Z', overdue_day: 21, pause_at: null, hide_on: null, renew_by: null, paused_at: null,
+        pause_enabled: false,
+      },
+    }))
+    renderPage()
+    const health = await screen.findByRole('region', { name: 'Health' })
+    expect(within(health).getByText(`Subscription · Overdue since ${formatDay('2026-10-04T00:00:00Z')} · ${money('120.00')} / month`)).toBeInTheDocument()
+    expect(within(health).getByText('Adwoa pays in the app — scouts never collect cash.')).toBeInTheDocument()
+    expect(within(health).queryByText(/hidden|of 14/)).not.toBeInTheDocument()
+    expect(within(health).queryByRole('progressbar')).not.toBeInTheDocument()
+  })
+
+  it('keeps the grace bar and the hide date when the pause is on', async () => {
+    const b = business()
+    serve(business({ subscription: { ...b.subscription, pause_enabled: true } }))
+    renderPage()
+    const health = await screen.findByRole('region', { name: 'Health' })
+    expect(within(health).getByRole('progressbar', { name: 'Grace days used' })).toBeInTheDocument()
+    expect(within(health).getByText(/Listings are hidden on .* if still unpaid\./)).toBeInTheDocument()
   })
 
   it('logs a call that counts as contact with this business', async () => {

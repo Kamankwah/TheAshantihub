@@ -125,6 +125,38 @@ describe('SubscriptionsDuePanel', () => {
     expect(within(cleared).getByText(`Akosua Ntoma Kente — paid in the app on day 6 (${formatDay('2026-10-03T12:00:00Z')})`)).toBeInTheDocument()
   })
 
+  it('explains the pause when the server says it is on', async () => {
+    recordDue([], { ...DUE, pause_enabled: true })
+    renderPanel()
+    expect(await screen.findByRole('table', { name: 'Paused subscriptions' })).toBeInTheDocument()
+    expect(screen.getByText('After day 14 · paused')).toBeInTheDocument()
+    expect(screen.queryByText(/Pausing is switched off/)).not.toBeInTheDocument()
+  })
+
+  it('with the pause switched off, says so and drops the hiding line and the Paused section', async () => {
+    const off = { pause_enabled: false, overdue_day: 21, pause_at: null, hide_on: null, renew_by: null }
+    recordDue([], {
+      pause_enabled: false,
+      overdue: [item({ subscription: overdueClock(off) })],
+      paused: [],
+      cleared: DUE.cleared,
+    })
+    renderPanel()
+    const table = await screen.findByRole('table', { name: 'Overdue subscriptions' })
+    expect(screen.getByText('Pausing is switched off — overdue businesses stay visible. Owners get reminders on day 7 and day 13.')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Overdue · listings stay visible' })).toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: 'Overdue' })).toBeInTheDocument()
+    const kumasi = within(table).getByRole('row', { name: /Kumasi Leather Works/ })
+    expect(within(kumasi).getByText('Overdue · day 21')).toBeInTheDocument()
+    expect(within(kumasi).getByText(`Monthly plan · ${money('120.00')} / month · overdue since ${formatDay('2026-09-24T09:00:00Z')}`)).toBeInTheDocument()
+    expect(screen.queryByText(/Listings hidden from/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/of 14/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/hidden/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /Paused/ })).not.toBeInTheDocument()
+    expect(screen.queryByText('No business is paused.')).not.toBeInTheDocument()
+    expect(screen.getByRole('list', { name: 'Cleared this week' })).toBeInTheDocument()
+  })
+
   it('says so when nothing is due', async () => {
     renderPanel()
     expect(await screen.findByText('No subscription is overdue right now.')).toBeInTheDocument()

@@ -13,6 +13,9 @@ const clock = (overrides = {}) => ({
   current_period_end: '2026-10-07T00:00:00Z', overdue_since: '2026-10-07T00:00:00Z', overdue_day: 4,
   pause_at: '2026-10-21T00:00:00Z', hide_on: '2026-10-21', renew_by: '2026-10-20', paused_at: null, ...overrides,
 })
+// The same lapse with SUBSCRIPTION_PAUSE_ENABLED off: no pause dates, and the
+// day of being overdue isn't capped at 14.
+const PAUSE_OFF = { pause_enabled: false, overdue_day: 21, pause_at: null, hide_on: null, renew_by: null }
 const subscription = (clockOverrides = {}) => ({
   id: 5, plan: { name: 'Growth', tier: 'growth' }, cycle_months: 1, is_trial: false, status: 'active',
   current_period_start: '2026-09-07T00:00:00Z', current_period_end: '2026-10-07T00:00:00Z', clock: clock(clockOverrides),
@@ -36,6 +39,22 @@ describe('RenewBanner', () => {
     expect(onRenew).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps the countdown when the server says the pause is on', () => {
+    render(<RenewBanner subscription={subscription({ pause_enabled: true })} onRenew={vi.fn()} />)
+    expect(screen.getByText('Your subscription has ended. Renew by 20 Oct to keep your listings visible.')).toBeInTheDocument()
+    expect(screen.getByText('Day 4 of 14')).toBeInTheDocument()
+  })
+
+  it('with the pause switched off, says when it ended and nothing about a countdown or hiding', () => {
+    const onRenew = vi.fn()
+    render(<RenewBanner subscription={subscription(PAUSE_OFF)} onRenew={onRenew} />)
+    expect(screen.getByText('Your subscription ended on 7 Oct. Renew to keep your plan.')).toBeInTheDocument()
+    expect(screen.queryByText(/of 14/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/hidden|visible/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Renew now' }))
+    expect(onRenew).toHaveBeenCalledTimes(1)
+  })
+
   it('tells a paused owner their listings are hidden, not deleted', () => {
     render(<RenewBanner subscription={subscription({ state: 'paused', overdue_day: null, paused_at: '2026-10-21T00:05:00Z' })} onRenew={vi.fn()} />)
     expect(screen.getByText('Your listings are hidden until you renew. Nothing has been deleted.')).toBeInTheDocument()
@@ -45,6 +64,13 @@ describe('RenewBanner', () => {
 })
 
 describe('RenewBanner in the business dashboard', () => {
+  it('has no countdown when the pause is switched off', async () => {
+    mockDashboard(subscription(PAUSE_OFF))
+    renderDashboard('verified')
+    expect(await screen.findByText('Your subscription ended on 7 Oct. Renew to keep your plan.')).toBeInTheDocument()
+    expect(screen.queryByText(/Day \d+ of 14/)).not.toBeInTheDocument()
+  })
+
   function mockDashboard(sub) {
     const seen = { subscription: false }
     server.use(

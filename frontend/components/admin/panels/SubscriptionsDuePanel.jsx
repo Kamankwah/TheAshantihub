@@ -10,6 +10,10 @@ import { FollowUpForm, card, errorStyle, formatDay, h2, h3, lastContactText, mon
 // the last 7 days. Every date and count is the server's. Nobody here collects
 // money: owners pay in the app, and payments stay simulated until Hubtel is
 // connected. "Open" shows the business page under All portfolios.
+// With the pause switched off (`pause_enabled: false`, the server's
+// SUBSCRIPTION_PAUSE_ENABLED) nothing is hidden: no grace countdown, no hide
+// date and no Paused section. A response without the field comes from a
+// server that predates the switch, which always pauses.
 
 const SCOPES = [["team", "My team"], ["all", "All businesses"]];
 const CLOCK_STEPS = [
@@ -19,6 +23,12 @@ const CLOCK_STEPS = [
   ["After day 14 · paused", "Listings and events are hidden — not deleted."],
   ["Paid in the app", "The pause lifts at once and the listings reappear."],
 ];
+const CLOCK_STEPS_PAUSE_OFF = [
+  ["Day 1 · overdue", "The owner is told in the app, and by email when they have one; a follow-up task goes to the account manager."],
+  ["Day 7 and day 13", "Reminders to the owner, and a task for the account manager."],
+  ["Paid in the app", "The clock stops."],
+];
+const PAUSE_OFF_NOTE = "Pausing is switched off — overdue businesses stay visible. Owners get reminders on day 7 and day 13.";
 // How the clock's notices reached this owner: email only when one is on file.
 const noticeChannels = (ownerHasEmail) => (ownerHasEmail ? "In-app and email · SMS: not connected" : "In-app only · SMS: not connected");
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -62,14 +72,14 @@ function Manager({ business }) {
   );
 }
 
-function DueTable({ label, rows, paused = false, auth, openId, toggle, onOpen, onCreated }) {
+function DueTable({ label, rows, paused = false, pauseOff = false, auth, openId, toggle, onOpen, onCreated }) {
   return (
     <div style={{ overflowX: "auto" }}>
       <table aria-label={label} style={tableStyle}>
         <thead>
           <tr>
             <th style={th}>Business</th>
-            <th style={th}>{paused ? "Paused" : "Overdue clock"}</th>
+            <th style={th}>{paused ? "Paused" : pauseOff ? "Overdue" : "Overdue clock"}</th>
             <th style={th}>Notices sent to the owner</th>
             <th style={th}>Account manager</th>
             <th style={th}>Actions</th>
@@ -91,6 +101,8 @@ function DueTable({ label, rows, paused = false, auth, openId, toggle, onOpen, o
                         <div style={{ fontWeight: 800 }}>{`Paused since ${formatDay(sub.paused_at)}`}</div>
                         <div style={dim}>Listings and events hidden — not deleted</div>
                       </div>
+                    ) : pauseOff ? (
+                      <div style={{ fontWeight: 800 }}>{sub.overdue_day != null ? `Overdue · day ${sub.overdue_day}` : "Overdue"}</div>
                     ) : (
                       <div style={column}>
                         <div style={{ fontWeight: 800 }}>{sub.overdue_day != null ? `Day ${sub.overdue_day} of 14` : "Overdue"}</div>
@@ -134,6 +146,7 @@ export default function SubscriptionsDuePanel({ auth, onOpenBusiness }) {
   const overdue = data?.overdue || [];
   const paused = data?.paused || [];
   const cleared = data?.cleared || [];
+  const pauseOff = data?.pause_enabled === false;
   const toggle = (id) => { setStatus(null); setOpenId((current) => (current === id ? null : id)); };
   const created = (message) => { setOpenId(null); setStatus(message); };
   const tableProps = { auth, openId, toggle, onOpen: onOpenBusiness, onCreated: created };
@@ -156,8 +169,9 @@ export default function SubscriptionsDuePanel({ auth, onOpenBusiness }) {
       <div style={card}>
         <h3 style={h3}>The overdue clock</h3>
         <ol style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 4, fontSize: "0.8rem", color: D.text }}>
-          {CLOCK_STEPS.map(([when, what]) => <li key={when}><strong>{when}</strong>{` — ${what}`}</li>)}
+          {(pauseOff ? CLOCK_STEPS_PAUSE_OFF : CLOCK_STEPS).map(([when, what]) => <li key={when}><strong>{when}</strong>{` — ${what}`}</li>)}
         </ol>
+        {pauseOff && <div style={callout(D.blue)}>{PAUSE_OFF_NOTE}</div>}
         <div style={dim}>SMS isn't connected yet, so every notice goes in the app, and by email when the owner has one. Only a payment in the app clears the clock.</div>
       </div>
 
@@ -173,16 +187,18 @@ export default function SubscriptionsDuePanel({ auth, onOpenBusiness }) {
       {data && (
         <>
           <div style={card}>
-            <h3 style={h3}>Overdue · listings still visible</h3>
-            <div style={dim}>{overdue.length ? `${plural(overdue.length, "business", "businesses")} · most urgent first` : "No subscription is overdue right now."}</div>
-            {overdue.length > 0 && <DueTable label="Overdue subscriptions" rows={overdue} {...tableProps} />}
+            <h3 style={h3}>{pauseOff ? "Overdue · listings stay visible" : "Overdue · listings still visible"}</h3>
+            <div style={dim}>{overdue.length ? `${plural(overdue.length, "business", "businesses")} · ${pauseOff ? "longest overdue first" : "most urgent first"}` : "No subscription is overdue right now."}</div>
+            {overdue.length > 0 && <DueTable label="Overdue subscriptions" rows={overdue} pauseOff={pauseOff} {...tableProps} />}
           </div>
-          <div style={card}>
-            <h3 style={h3}>Paused · listings hidden</h3>
-            <div style={dim}>{paused.length ? plural(paused.length, "business", "businesses") : "No business is paused."}</div>
-            {paused.length > 0 && <DueTable label="Paused subscriptions" rows={paused} paused {...tableProps} />}
-            <div style={dim}>Reversible: the moment the owner pays in the app, the pause lifts and the listings reappear.</div>
-          </div>
+          {!pauseOff && (
+            <div style={card}>
+              <h3 style={h3}>Paused · listings hidden</h3>
+              <div style={dim}>{paused.length ? plural(paused.length, "business", "businesses") : "No business is paused."}</div>
+              {paused.length > 0 && <DueTable label="Paused subscriptions" rows={paused} paused {...tableProps} />}
+              <div style={dim}>Reversible: the moment the owner pays in the app, the pause lifts and the listings reappear.</div>
+            </div>
+          )}
           <div style={card}>
             <h3 style={h3}>Cleared this week</h3>
             {cleared.length === 0 ? (

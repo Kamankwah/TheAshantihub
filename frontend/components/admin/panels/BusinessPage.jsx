@@ -260,18 +260,22 @@ export default function BusinessPage({ businessId, auth, onBack }) {
   );
 }
 
+// With the pause switched off (pause_enabled false) an overdue business is
+// never hidden, so there is no hide date and no grace bar.
 function SubscriptionStrip({ sub, kycStatus, owner }) {
   const s = sub || {};
+  const pauseOff = s.pause_enabled === false;
   const price = s.monthly_price ? ` · ${money(s.monthly_price)} / month` : "";
   let note = null;
-  if (s.state === "overdue") note = `${s.hide_on ? `Listings are hidden on ${formatDay(s.hide_on)}` : "Listings are hidden after day 14"} if still unpaid. ${owner} pays in the app — scouts never collect cash.`;
+  if (s.state === "overdue" && pauseOff) note = `${owner} pays in the app — scouts never collect cash.`;
+  else if (s.state === "overdue") note = `${s.hide_on ? `Listings are hidden on ${formatDay(s.hide_on)}` : "Listings are hidden after day 14"} if still unpaid. ${owner} pays in the app — scouts never collect cash.`;
   else if (s.state === "paused") note = `Listings are hidden from the marketplace — not deleted. They come back as soon as ${owner} pays in the app; scouts never collect cash.`;
   else if (!s.state || s.state === "none") note = kycStatus === "verified" ? `${owner} hasn't picked a plan yet. Owners pay in the app — scouts never collect cash.` : "The subscription starts after KYC is approved.";
   const color = s.state === "paused" ? D.red : s.state === "overdue" ? D.amber : s.state === "active" || s.state === "trial" ? D.green : D.blue;
   return (
     <div style={{ ...callout(color), fontWeight: 400, display: "flex", flexDirection: "column", gap: 6 }}>
       <div style={{ fontWeight: 800, ...figures }}>{`Subscription · ${subscriptionText(s, kycStatus)}${price}`}</div>
-      {s.state === "overdue" && s.overdue_day != null && (
+      {s.state === "overdue" && !pauseOff && s.overdue_day != null && (
         <div role="progressbar" aria-label="Grace days used" aria-valuemin={0} aria-valuemax={14} aria-valuenow={s.overdue_day}
           style={{ height: 6, background: D.panelBg2, borderRadius: 6, overflow: "hidden" }}>
           <div style={{ width: `${Math.min(100, (s.overdue_day / 14) * 100)}%`, height: "100%", background: D.amber }} />
