@@ -507,6 +507,11 @@ export const handlers = [
   http.get('http://localhost:8000/api/activity/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/calls/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/calls/purposes/', () => HttpResponse.json([{ value: 'other', label: 'Other' }])),
+  // Scout prospects and the Log a call sheet (staff WP2).
+  http.get('http://localhost:8000/api/field/prospects/', () => HttpResponse.json({
+    counts: { all: 0, new: 0, interested: 0, follow_up: 0, not_interested: 0, registered: 0 }, signed_up_this_month: 0, results: [],
+  })),
+  http.get('http://localhost:8000/api/calls/counterparts/', () => HttpResponse.json({ businesses: [], prospects: [] })),
   // Scout visits (staff WP1): the week list, the open visit and the check-in places.
   http.get('http://localhost:8000/api/field/visits/', () => HttpResponse.json({
     count: 0, next: null, previous: null, results: [], summary: { done: 0, avg_minutes: null, flagged: 0 },

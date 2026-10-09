@@ -69,58 +69,87 @@ def _decimal(value):
 
 
 def open_visit(scout):
-    return VisitCheckIn.objects.select_related("business_owner", "business_owner__profile").filter(
+    return VisitCheckIn.objects.select_related("business_owner", "business_owner__profile", "prospect").filter(
         scout=scout, status=VisitCheckIn.OPEN,
     ).first()
 
 
-def visit_target(scout, *, business_owner_id=None, scout_assignment_id=None):
-    """(business_owner, assignment) the scout may check in at, else a 404 —
-    so a scout can't learn which other businesses exist. A managed business
-    needs businesses.manage_portfolio; a verification needs scouts.verify and
-    the scout's own open assignment."""
+def visit_target(scout, *, business_owner_id=None, scout_assignment_id=None, prospect_id=None):
+    """(business_owner, assignment, prospect) the scout may check in at, else
+    a 404 — so a scout can't learn which other places exist. A managed
+    business needs businesses.manage_portfolio; a verification needs
+    scouts.verify and the scout's own open assignment; a prospect needs
+    businesses.register and to be the scout's own, not yet registered."""
     perms = scout.effective_permission_codenames()
+    if prospect_id:
+        from .models import Prospect
+
+        prospect = Prospect.objects.filter(pk=prospect_id, scout=scout).exclude(status=Prospect.REGISTERED).first()
+        if prospect is None or "businesses.register" not in perms:
+            raise VisitError("We couldn't find that place.", 404, "not_found")
+        return None, None, prospect
     if scout_assignment_id:
         assignment = ScoutAssignment.objects.select_related("business_owner__profile").filter(
             pk=scout_assignment_id, scout=scout, status=ScoutAssignment.ASSIGNED,
         ).first()
         if assignment is None or "scouts.verify" not in perms:
             raise VisitError("We couldn't find that place.", 404, "not_found")
-        return assignment.business_owner, assignment
+        return assignment.business_owner, assignment, None
     owner = BusinessOwner.objects.select_related("profile").filter(
         pk=business_owner_id, account_manager=scout,
     ).exclude(kyc_status=BusinessOwner.REJECTED).first()
     if owner is None or "businesses.manage_portfolio" not in perms:
         raise VisitError("We couldn't find that place.", 404, "not_found")
-    return owner, None
+    return owner, None, None
 
 
-def check_in(scout, *, business_owner_id=None, scout_assignment_id=None, purpose, lat, lng, accuracy_m, request=None):
+def prospect_pin(prospect):
+    """(lat, lng) of a prospect's pin, or None. A pin at 0,0 is never real."""
+    lat, lng = prospect.lat, prospect.lng
+    if lat is None or lng is None or (float(lat) == 0 and float(lng) == 0):
+        return None
+    return lat, lng
+
+
+def check_in(scout, *, business_owner_id=None, scout_assignment_id=None, prospect_id=None, purpose, lat, lng,
+             accuracy_m, request=None):
     if lat is None or lng is None or accuracy_m is None:
         raise VisitError(LOCATION_NEEDED)
-    owner, assignment = visit_target(
+    owner, assignment, prospect = visit_target(
         scout, business_owner_id=business_owner_id, scout_assignment_id=scout_assignment_id,
+        prospect_id=prospect_id,
     )
     if assignment is not None:
         purpose = VisitCheckIn.VERIFICATION
     elif purpose == VisitCheckIn.VERIFICATION:
         raise VisitError("A verification visit starts from a verification assignment.")
     now = timezone.now()
-    distance, outside = measure(owner, lat, lng)
+    if prospect is not None:
+        pin = prospect_pin(prospect)
+        distance = round(haversine_m(lat, lng, pin[0], pin[1])) if pin else None
+        outside = distance is not None and distance > RADIUS_M
+    else:
+        distance, outside = measure(owner, lat, lng)
     try:
         with transaction.atomic():
             current = VisitCheckIn.objects.select_for_update().filter(scout=scout, status=VisitCheckIn.OPEN).first()
             if current is not None:
                 raise VisitError(f"Check out of {_place(current)} first", 409, "open_visit")
             visit = VisitCheckIn.objects.create(
-                scout=scout, business_owner=owner, scout_assignment=assignment, purpose=purpose,
+                scout=scout, business_owner=owner, scout_assignment=assignment, prospect=prospect, purpose=purpose,
                 checked_in_at=now, lat=_decimal(lat), lng=_decimal(lng), accuracy_m=round(accuracy_m),
                 distance_m=distance, outside_radius=outside,
             )
+            if prospect is not None and prospect_pin(prospect) is None:
+                # The first check-in at a prospect gives it its map pin.
+                prospect.lat, prospect.lng, prospect.accuracy_m = _decimal(lat), _decimal(lng), round(accuracy_m)
+                prospect.save(update_fields=["lat", "lng", "accuracy_m", "updated_at"])
             if outside:
                 _maybe_open_review(scout, visit, now)
             record(scout, "visit.check_in", target=visit,
-                   after={"business_owner_id": owner.pk, "purpose": purpose, "distance_m": distance,
+                   after={"business_owner_id": owner.pk if owner else None,
+                          "prospect_id": prospect.pk if prospect else None, "purpose": purpose,
+                          "distance_m": distance,
                           "outside_radius": outside}, request=request)
     except IntegrityError:
         # Two check-ins at once: the partial unique constraint kept the first.
@@ -129,7 +158,15 @@ def check_in(scout, *, business_owner_id=None, scout_assignment_id=None, purpose
 
 
 def _place(visit):
-    return visit.business_owner.display_name if visit.business_owner_id else "your open visit"
+    if visit.business_owner_id:
+        return visit.business_owner.display_name
+    return visit.prospect.name if visit.prospect_id else "your open visit"
+
+
+def _place_name(visit):
+    if visit.business_owner_id:
+        return visit.business_owner.display_name
+    return visit.prospect.name if visit.prospect_id else "Visit"
 
 
 def _maybe_open_review(scout, visit, now):
@@ -137,7 +174,7 @@ def _maybe_open_review(scout, visit, now):
     once. An open case for this scout stands in for any later ones."""
     recent = VisitCheckIn.objects.filter(
         scout=scout, outside_radius=True, checked_in_at__gte=now - FLAG_WINDOW,
-    ).exclude(status=VisitCheckIn.ABANDONED).select_related("business_owner").order_by("checked_in_at", "id")
+    ).exclude(status=VisitCheckIn.ABANDONED).select_related("business_owner", "prospect").order_by("checked_in_at", "id")
     rows = list(recent)
     if len(rows) < FLAGS_BEFORE_REVIEW:
         return None
@@ -147,7 +184,7 @@ def _maybe_open_review(scout, visit, now):
         return None
     third = rows[FLAGS_BEFORE_REVIEW - 1]
     evidence = [
-        f"{row.business_owner.display_name if row.business_owner_id else 'Visit'} · {row.distance_m} m · "
+        f"{_place_name(row)} · {row.distance_m} m · "
         f"{timezone.localtime(row.checked_in_at):%d %b %H:%M}"
         for row in rows[-5:]
     ]

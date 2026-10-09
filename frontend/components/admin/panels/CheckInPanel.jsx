@@ -15,8 +15,10 @@ import { FlagChip, LOCATION_RULE, PURPOSES, RADIUS_M, timeOf } from "./visitPart
 const MAX_ACCURACY_M = 100; // the server refuses a rougher fix
 const STALE_MS = 2 * 60 * 1000; // a fix older than this is read again before checking in
 const figures = { fontVariantNumeric: "tabular-nums" };
+const NO_PROSPECT_PIN = "This prospect has no map pin yet. Checking in gives it one, so later visits can be measured.";
 const NO_PIN = "No map pin for this business yet, so the distance can't be measured.";
-const keyOf = (target) => (target.kind === "verification" ? `v-${target.scout_assignment}` : `b-${target.business_owner}`);
+const keyOf = (target) => (target.kind === "verification" ? `v-${target.scout_assignment}` : target.kind === "prospect" ? `p-${target.prospect}` : `b-${target.business_owner}`);
+const placeBody = (target) => (target.kind === "verification" ? { scout_assignment: target.scout_assignment } : target.kind === "prospect" ? { prospect: target.prospect } : { business_owner: target.business_owner });
 
 // 11 Check in — two steps in one screen: pick where you are (step A), then,
 // once an open visit exists, the visit itself (step B). The location is read
@@ -99,7 +101,7 @@ function StartCheckIn({ presetBusinessId }) {
     setBusy(true);
     try {
       await apiPost("/api/field/visits/", {
-        ...(verification ? { scout_assignment: picked.scout_assignment } : { business_owner: picked.business_owner }),
+        ...placeBody(picked),
         purpose: effectivePurpose, lat: position.lat, lng: position.lng, accuracy_m: position.accuracy,
       });
       refreshVisits(queryClient);
@@ -138,7 +140,7 @@ function StartCheckIn({ presetBusinessId }) {
           {isLoading && <div style={dim}>Loading your places…</div>}
           {isError && <div role="alert" style={errorStyle}>Couldn't load your places. Try again.</div>}
           {!isLoading && !isError && places.length === 0 && (
-            <div style={dim}>You don't manage any businesses yet and have no verification assigned, so there is nowhere to check in.</div>
+            <div style={dim}>You don't manage any businesses yet, have no prospects and no verification assigned, so there is nowhere to check in.</div>
           )}
           <div role="radiogroup" aria-label="Where are you visiting?" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {places.map((place) => {
@@ -148,7 +150,7 @@ function StartCheckIn({ presetBusinessId }) {
                   <input type="radio" name="visit-place" checked={on} onChange={() => setChoice(place.key)} />
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: "block", fontWeight: 700, fontSize: "0.85rem", color: D.text }}>{place.name}</span>
-                    <span style={dim}>{[place.kind === "verification" ? "Verification" : null, place.area].filter(Boolean).join(" · ")}</span>
+                    <span style={dim}>{[place.kind === "verification" ? "Verification" : place.kind === "prospect" ? "Prospect" : null, place.area].filter(Boolean).join(" · ")}</span>
                   </span>
                   <span style={{ fontSize: "0.8rem", fontWeight: 800, color: D.text, whiteSpace: "nowrap", ...figures }}>
                     {place.distance != null ? formatDistance(place.distance) : "No pin"}
@@ -158,7 +160,7 @@ function StartCheckIn({ presetBusinessId }) {
             })}
           </div>
 
-          {picked && !picked.has_pin && <div style={dim}>{NO_PIN}</div>}
+          {picked && !picked.has_pin && <div style={dim}>{picked.kind === "prospect" ? NO_PROSPECT_PIN : NO_PIN}</div>}
           {farBy != null && (
             <div role="status" style={callout(D.amber)}>{`You are about ${farBy} m from the pin. You can still check in — the visit is saved and flagged.`}</div>
           )}
@@ -196,7 +198,7 @@ function OpenVisit({ visit, onDone }) {
   }, []);
 
   const minutes = Math.max(0, Math.round((now - new Date(visit.checked_in_at).getTime()) / 60000));
-  const name = visit.business?.name || "this place";
+  const name = visit.business?.name || visit.prospect?.name || "this place";
   const verification = Boolean(visit.scout_assignment_id);
   const radius = visit.radius_m || RADIUS_M;
 
@@ -249,9 +251,9 @@ function OpenVisit({ visit, onDone }) {
           <h3 style={{ ...h3, fontSize: "1.05rem" }}>{name}</h3>
           <span style={{ fontSize: "0.8rem", fontWeight: 700, color: D.green, ...figures }}>{`● Checked in ${timeOf(visit.checked_in_at)} · ${minutes} min`}</span>
         </div>
-        {visit.business?.area && <div style={dim}>{visit.business.area}</div>}
+        {(visit.business?.area || visit.prospect?.area) && <div style={dim}>{visit.business?.area || visit.prospect?.area}</div>}
         {visit.distance_m == null ? (
-          <div style={dim}>{NO_PIN}</div>
+          <div style={dim}>{visit.prospect ? "This check-in is now this prospect's map pin. Later visits are measured from it." : NO_PIN}</div>
         ) : visit.outside_radius ? (
           <>
             <FlagChip>{`Outside the ${radius} m radius — saved and flagged`}</FlagChip>

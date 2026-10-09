@@ -1,19 +1,19 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiPost } from "../../../apiClient.js";
-import { useCallPurposes } from "../../../hooks/useCallPurposes.js";
 import { usePortfolioBusiness } from "../../../hooks/usePortfolio.js";
 import { describeWait, timeAgo } from "../../../lib/timeAgo.js";
 import { D } from "../theme.js";
-import { button, callout, chip, dim, field } from "./panelStyles.js";
+import { button, callout, chip, dim } from "./panelStyles.js";
 import AddListingForm from "./AddListingForm.jsx";
 import AddPhotosForm from "./AddPhotosForm.jsx";
 import KycResendForm from "./KycResendForm.jsx";
+import LogCallSheet from "./LogCallSheet.jsx";
 import OwnerHandover from "./OwnerHandover.jsx";
 import ProposeChangeForm from "./ProposeChangeForm.jsx";
 import {
   FollowUpForm, HealthChip, ReassignForm, card, errorStyle, errorText, firstName, formatDateTime, formatDay,
-  h2, h3, labelStyle, money, subscriptionText,
+  h2, h3, money, subscriptionText,
 } from "./portfolioParts.jsx";
 
 const KYC = { verified: ["KYC verified", D.green], pending: ["KYC waiting", D.blue], rejected: ["KYC rejected", D.red] };
@@ -22,7 +22,6 @@ const REQUEST_KIND = {
   "listing.create": "New product or service", "listing.photos": "Listing photos",
 };
 const LISTING_STATUS = { published: ["Live", D.green], pending_review: ["Waiting for review", D.amber], draft: ["Draft", D.textFaint], rejected: ["Rejected", D.red] };
-const OUTCOMES = [["connected", "Connected"], ["no_answer", "No answer"], ["busy", "Busy"], ["voicemail", "Voicemail"], ["wrong_number", "Wrong number"], ["promised_to_pay", "Promised to pay"], ["callback_requested", "Callback requested"]];
 const words = (code) => String(code || "").replace(/_/g, " ");
 const row = { padding: "8px 0", borderTop: `1px solid ${D.divider}`, fontSize: "0.8rem", color: D.text };
 const figures = { fontVariantNumeric: "tabular-nums" }; // DESIGN.md: numbers line up
@@ -174,11 +173,10 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
         )}
         {!b.needs_claim && <div style={dim}>{`Claim link not needed — ${owner} set their own login${b.claimed_at ? ` on ${formatDay(b.claimed_at)}` : ""}.`}</div>}
         {panel === "call" && (
-          <CallForm business={b} onCancel={() => setPanel(null)} onSaved={() => {
+          <LogCallSheet preset={{ type: "business_owner", id: b.id, label: b.business_name, ownerName: b.owner_name }} onClose={() => setPanel(null)} onSaved={() => {
             setPanel(null);
             setNotice("Call saved.");
             refreshAll();
-            queryClient.invalidateQueries({ queryKey: ["call-logs"] });
           }} />
         )}
         {panel === "reassign" && (
@@ -297,65 +295,5 @@ function SubscriptionStrip({ sub, kycStatus, owner }) {
       )}
       {note && <div>{note}</div>}
     </div>
-  );
-}
-
-// An inline call log for this business (POST /api/calls/). The business owner
-// is both the counterpart and the related record, so the call counts as
-// contact in the business's health.
-function CallForm({ business, onSaved, onCancel }) {
-  const { data: purposes } = useCallPurposes();
-  const [form, setForm] = useState({ direction: "out", purpose: "other", outcome: "connected", duration_minutes: "", notes: "", follow_up_at: "" });
-  const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState(null);
-  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
-
-  const save = async (e) => {
-    e.preventDefault();
-    setActionError(null);
-    if (form.follow_up_at && new Date(form.follow_up_at) <= new Date()) { setActionError("Pick a follow-up time in the future."); return; }
-    const minutes = Number(form.duration_minutes || 0);
-    setBusy(true);
-    try {
-      await apiPost("/api/calls/", {
-        direction: form.direction, channel: "phone",
-        counterpart_type: "business_owner", counterpart_id: business.id,
-        counterpart_name: business.owner_name || "", counterpart_phone: business.login_phone || "",
-        related_type: "business_owner", related_id: String(business.id), related_label: business.business_name || "",
-        purpose: form.purpose, outcome: form.outcome, sentiment: "", notes: form.notes,
-        started_at: new Date(Date.now() - minutes * 60000).toISOString(),
-        duration_seconds: Math.round(minutes * 60),
-        ...(form.follow_up_at ? { follow_up_at: new Date(form.follow_up_at).toISOString() } : {}),
-      });
-      onSaved();
-    } catch (err) {
-      setActionError(errorText(err, "Could not save the call. Try again."));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <form onSubmit={save} noValidate style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(170px, 100%), 1fr))", gap: 10, padding: 12, background: D.panelBg2, borderRadius: 12 }}>
-      <label style={labelStyle}>Direction
-        <select value={form.direction} onChange={set("direction")} style={field}><option value="out">Outbound</option><option value="in">Inbound</option></select>
-      </label>
-      <label style={labelStyle}>Purpose
-        <select value={form.purpose} onChange={set("purpose")} style={field}>
-          {(purposes || [{ value: "other", label: "Other" }]).map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-        </select>
-      </label>
-      <label style={labelStyle}>Outcome
-        <select value={form.outcome} onChange={set("outcome")} style={field}>{OUTCOMES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-      </label>
-      <label style={labelStyle}>Minutes<input type="number" min="0" step="1" value={form.duration_minutes} onChange={set("duration_minutes")} style={field} /></label>
-      <label style={labelStyle}>Follow up on<input type="datetime-local" value={form.follow_up_at} onChange={set("follow_up_at")} style={field} /></label>
-      <label style={{ ...labelStyle, gridColumn: "1 / -1" }}>Notes<textarea value={form.notes} onChange={set("notes")} rows={2} style={field} /></label>
-      {actionError && <div role="alert" style={{ ...errorStyle, gridColumn: "1 / -1" }}>{actionError}</div>}
-      <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8, justifyContent: "flex-end" }}>
-        <button type="button" onClick={onCancel} style={button(D.panelBg, D.text)}>Cancel</button>
-        <button type="submit" disabled={busy} style={button(D.gold, D.text, busy)}>Save call</button>
-      </div>
-    </form>
   );
 }

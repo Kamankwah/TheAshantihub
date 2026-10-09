@@ -45,6 +45,7 @@ import TasksPanel from "./panels/TasksPanel.jsx";
 import ActivityPanel from "./panels/ActivityPanel.jsx";
 import CallLogPanel from "./panels/CallLogPanel.jsx";
 import VisitsPanel from "./panels/VisitsPanel.jsx";
+import ProspectsPanel from "./panels/ProspectsPanel.jsx";
 import MyTeamPanel from "./panels/MyTeamPanel.jsx";
 import ApprovalsPanel from "./panels/ApprovalsPanel.jsx";
 import PortfolioPanel from "./panels/PortfolioPanel.jsx";
@@ -193,6 +194,13 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
     else { setInternalTab("visits"); setInternalDetail(`check-in-${id}`); }
   };
 
+  // "Register" on a prospect opens the wizard filled in from it
+  // (/staff/register-business/prospect-<id>).
+  const openRegisterFromProspect = (prospect) => {
+    if (isControlled) onTabChange?.(`register-business/prospect-${prospect.id}`);
+    else { setInternalTab("register-business"); setInternalDetail(`prospect-${prospect.id}`); }
+  };
+
   // Each panel starts at the top; skipped on first mount so a reload keeps
   // the browser's own scroll restoration.
   const firstTabRender = useRef(true);
@@ -281,7 +289,8 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "messaging" && <MessagingPanel />}
           {activeTab === "tasks" && <TasksPanel />}
           {activeTab === "activity" && <ActivityPanel />}
-          {activeTab === "calls" && <CallLogPanel />}
+          {activeTab === "calls" && <CallLogPanel auth={auth} />}
+          {activeTab === "prospects" && <ProspectsPanel onRegister={openRegisterFromProspect} />}
           {activeTab === "visits" && <VisitsPanel auth={auth} detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "reports" && <ReportsPanel auth={auth} />}
           {activeTab === "team-reports" && <TeamReportsPanel auth={auth} />}
@@ -294,7 +303,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "at-risk" && <PortfolioPanel mode="at-risk" auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
           {activeTab === "subscriptions-due" && <SubscriptionsDuePanel auth={auth} onOpenBusiness={openBusiness} />}
           {activeTab === "fraud-cases" && <FraudCasesPanel auth={auth} onOpenBusiness={openBusiness} />}
-          {activeTab === "register-business" && <RegisterBusinessPanel auth={auth} />}
+          {activeTab === "register-business" && <RegisterBusinessPanel auth={auth} detailId={detail} onOpenDetail={openDetail} />}
         </main>
       </div>
 

@@ -65,6 +65,8 @@ class ScoutRegistrationSerializer(serializers.Serializer):
     ghana_card_front = serializers.ImageField(validators=[validate_image_content_type])
     ghana_card_number = serializers.CharField(required=False, allow_blank=True, max_length=30)
     maker_note = serializers.CharField(required=False, allow_blank=True, max_length=1000)
+    # The scout's own prospect this registration comes from (checked on submit).
+    prospect_id = serializers.IntegerField(required=False, allow_null=True, min_value=1)
 
     def validate_owner_phone(self, value):
         try:

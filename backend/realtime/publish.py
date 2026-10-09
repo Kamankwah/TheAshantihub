@@ -55,6 +55,9 @@ QUEUE_INVALIDATIONS = [
     (("subscription.",), ("businesses.manage_portfolio",), ("my-tasks", "staff-badges")),
     # A visit changes a business's "last contact" and its recent visits.
     (("visit.",), ("portfolio.manage", "businesses.manage_portfolio"), ("portfolio", "portfolio-business")),
+    # The prospect list (and the people a call can be logged about) follow
+    # prospect edits, visits (last visit) and a registration that links one.
+    (("prospect.", "visit.", "business.registered"), ("businesses.register",), ("prospects", "call-counterparts")),
     (("fraud.",), ("fraud.manage", "fraud.flag"), ("fraud-flags", "fraud-flag-counts", "kyc-queue", "portfolio-business", "staff-badges")),
 ]
 # (verb prefixes, extra keys for everyone who receives the feed event)

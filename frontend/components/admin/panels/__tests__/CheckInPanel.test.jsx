@@ -121,6 +121,29 @@ describe('CheckInPanel — step A, picking where you are', () => {
     expect(bodies[0].business_owner).toBeUndefined()
   })
 
+  it('checks in at a prospect by its id, and says the first check-in sets its pin', async () => {
+    useTargets([
+      ...TARGETS,
+      { kind: 'prospect', business_owner: null, scout_assignment: null, prospect: 8, business_id: null, name: 'Ohemaa Waakye Joint', area: 'Asafo', lat: null, lng: null, has_pin: false },
+    ])
+    const bodies = []
+    server.use(http.post(`${API}/api/field/visits/`, async ({ request }) => {
+      bodies.push(await request.json())
+      return HttpResponse.json(openVisit({ business: null, prospect: { id: 8, name: 'Ohemaa Waakye Joint', area: 'Asafo', has_pin: true }, distance_m: null, pin: { lat: PIN.lat, lng: PIN.lng } }), { status: 201 })
+    }))
+    renderPanel()
+    fireEvent.click(await screen.findByRole('button', { name: 'Use my location' }))
+    fireEvent.click(await screen.findByRole('radio', { name: /Ohemaa Waakye Joint/ }))
+    expect(screen.getByText(/This prospect has no map pin yet/)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Purpose of the visit'), { target: { value: 'prospecting' } })
+    useOpen(openVisit({ business: null, prospect: { id: 8, name: 'Ohemaa Waakye Joint', area: 'Asafo', has_pin: true }, distance_m: null }))
+    fireEvent.click(screen.getByRole('button', { name: 'Check in at Ohemaa Waakye Joint' }))
+    await waitFor(() => expect(bodies).toHaveLength(1))
+    expect(bodies[0]).toMatchObject({ prospect: 8, purpose: 'prospecting' })
+    expect(bodies[0].business_owner).toBeUndefined()
+    expect(await screen.findByText("This check-in is now this prospect's map pin. Later visits are measured from it.")).toBeInTheDocument()
+  })
+
   it('pre-selects the business the scout came from', async () => {
     useTargets()
     renderPanel({ presetBusinessId: 15 })

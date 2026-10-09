@@ -104,27 +104,35 @@ describe('BusinessPage', () => {
     expect(within(health).getByText(/Listings are hidden on .* if still unpaid\./)).toBeInTheDocument()
   })
 
-  it('logs a call that counts as contact with this business', async () => {
+  it('logs a call about this business from the Log a call sheet', async () => {
     let body = null
     const gets = serve()
     server.use(
-      http.get(`${API}/api/calls/purposes/`, () => HttpResponse.json([{ value: 'subscription_payment', label: 'Subscription payment' }, { value: 'other', label: 'Other' }])),
+      http.get(`${API}/api/calls/purposes/`, () => HttpResponse.json([{ value: 'subscription_payment', label: 'Subscription reminder' }, { value: 'other', label: 'Other' }])),
+      http.get(`${API}/api/calls/counterparts/`, () => HttpResponse.json({
+        businesses: [{ id: 12, business_name: 'Adwoa Fabrics', owner_name: 'Adwoa Frimpong', phone_masked: '024 *** 118' }], prospects: [],
+      })),
       http.post(`${API}/api/calls/`, async ({ request }) => { body = await request.json(); return HttpResponse.json({ id: 1 }, { status: 201 }) }),
     )
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Log a call' }))
-    await screen.findByRole('option', { name: 'Subscription payment' })
-    fireEvent.change(screen.getByLabelText('Purpose'), { target: { value: 'subscription_payment' } })
-    fireEvent.change(screen.getByLabelText('Outcome'), { target: { value: 'promised_to_pay' } })
-    fireEvent.change(screen.getByLabelText('Notes'), { target: { value: 'Will pay Friday' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save call' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Log a call' })
+    // the business is already picked, and its phone shows masked from the record
+    expect(await within(dialog).findByText('Phone 024 *** 118 · from the business record')).toBeInTheDocument()
+    expect(within(dialog).queryByText(/244000118/)).not.toBeInTheDocument()
+    await within(dialog).findByRole('option', { name: 'Subscription reminder' })
+    fireEvent.change(within(dialog).getByLabelText('Purpose'), { target: { value: 'subscription_payment' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Promised to pay' }))
+    fireEvent.change(within(dialog).getByLabelText('Notes'), { target: { value: 'Will pay Friday' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save call' }))
     await waitFor(() => expect(body).not.toBeNull())
+    // the server fills in the name, phone and business from the record
     expect(body).toMatchObject({
-      direction: 'out', channel: 'phone',
-      counterpart_type: 'business_owner', counterpart_id: 12, counterpart_name: 'Adwoa Frimpong', counterpart_phone: '+233244000118',
-      related_type: 'business_owner', related_id: '12', related_label: 'Adwoa Fabrics',
+      direction: 'out', channel: 'phone', counterpart_type: 'business_owner', counterpart_id: 12,
       purpose: 'subscription_payment', outcome: 'promised_to_pay', notes: 'Will pay Friday',
     })
+    expect(body).not.toHaveProperty('counterpart_phone')
+    expect(body).not.toHaveProperty('started_at')
     expect(await screen.findByText('Call saved.')).toBeInTheDocument()
     await waitFor(() => expect(gets()).toBeGreaterThanOrEqual(2))
   })

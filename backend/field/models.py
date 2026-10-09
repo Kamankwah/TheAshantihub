@@ -1,4 +1,4 @@
-"""Scout field work (spec S5): visit check-ins. WP2 adds prospects here."""
+"""Scout field work (spec S5): visit check-ins and the prospect list."""
 from django.db import models
 from django.db.models import Q
 
@@ -39,6 +39,11 @@ class VisitCheckIn(models.Model):
     )
     scout_assignment = models.ForeignKey(
         "accounts.ScoutAssignment", on_delete=models.SET_NULL, null=True, blank=True, related_name="visits",
+    )
+    # A prospecting visit to someone not registered yet. Registering the
+    # prospect backfills business_owner; the prospect link stays.
+    prospect = models.ForeignKey(
+        "field.Prospect", on_delete=models.SET_NULL, null=True, blank=True, related_name="visits",
     )
     purpose = models.CharField(max_length=30, choices=PURPOSE_CHOICES)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=OPEN)
@@ -87,3 +92,48 @@ class VisitPhoto(models.Model):
 
     class Meta:
         ordering = ["taken_at", "id"]
+
+
+class Prospect(models.Model):
+    """A business a scout has met but not registered yet. The pin comes from a
+    visit check-in or is placed by hand; adding a prospect never reads the
+    phone's location."""
+
+    NEW = "new"
+    INTERESTED = "interested"
+    FOLLOW_UP = "follow_up"
+    REGISTERED = "registered"
+    NOT_INTERESTED = "not_interested"
+    STATUS_CHOICES = [
+        (NEW, "New"), (INTERESTED, "Interested"), (FOLLOW_UP, "Follow up"),
+        (REGISTERED, "Registered"), (NOT_INTERESTED, "Not interested"),
+    ]
+    # What a scout can set by hand: "registered" only comes from registering.
+    SETTABLE = (NEW, INTERESTED, FOLLOW_UP, NOT_INTERESTED)
+
+    scout = models.ForeignKey("accounts.StaffUser", on_delete=models.PROTECT, related_name="prospects")
+    name = models.CharField(max_length=150)
+    phone = models.CharField(max_length=20)
+    zone = models.ForeignKey("listings.Zone", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    lng = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    accuracy_m = models.PositiveIntegerField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=NEW)
+    note = models.TextField(blank=True, default="")
+    next_follow_up_at = models.DateTimeField(null=True, blank=True)
+    follow_up_task = models.ForeignKey(
+        "staff_tasks.Task", on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+    registered_business = models.ForeignKey(
+        "accounts.BusinessOwner", on_delete=models.SET_NULL, null=True, blank=True, related_name="prospect_records",
+    )
+    registered_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["scout", "status"])]
+
+    def __str__(self):
+        return f"Prospect {self.pk}"

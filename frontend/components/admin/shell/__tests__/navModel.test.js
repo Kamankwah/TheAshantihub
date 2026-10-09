@@ -288,3 +288,17 @@ describe('Visits (staff WP1)', () => {
     expect(NAV_ITEMS.find((i) => i.id === 'visits')).toMatchObject({ icon: '🧭', label: 'Visits' })
   })
 })
+
+
+describe('Prospects menu item', () => {
+  const authAs = (role, perms) => ({ user: { role }, hasPermission: (c) => perms.includes(c) })
+  const idsOf = (auth) => buildNavGroups(auth).flatMap((g) => g.items.map((i) => i.id))
+  it('is shown to whoever may register businesses, and to no one else', () => {
+    expect(idsOf(authAs('scout', ['businesses.register']))).toContain('prospects')
+    expect(idsOf(authAs('scout', ['calls.log']))).not.toContain('prospects')
+  })
+  it('opens a scout\'s Pipeline, before Register a business', () => {
+    const pipeline = buildNavGroups(authAs('scout', ['businesses.register', 'calls.log'])).find((g) => g.id === 'pipeline')
+    expect(pipeline.items.map((i) => i.id)).toEqual(['prospects', 'register-business'])
+  })
+})

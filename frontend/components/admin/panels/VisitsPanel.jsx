@@ -107,7 +107,7 @@ function VisitList({ onCheckIn }) {
             const body = (
               <>
                 <span style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                  <span style={{ fontWeight: 700, fontSize: "0.85rem", color: D.text }}>{visit.business?.name || "Visit"}</span>
+                  <span style={{ fontWeight: 700, fontSize: "0.85rem", color: D.text }}>{visit.business?.name || visit.prospect?.name || "Visit"}</span>
                   <span style={{ fontSize: "0.8rem", fontWeight: 800, whiteSpace: "nowrap", color: visit.status === "open" ? D.green : D.text, ...figures }}>{ageOf(visit)}</span>
                 </span>
                 <span style={{ ...dim, ...figures }}>

@@ -3,7 +3,7 @@
 own, on their own open visit."""
 from datetime import timedelta
 
-from django.db.models import Avg, DurationField, ExpressionWrapper, F
+from django.db.models import Avg, Count, DurationField, ExpressionWrapper, F
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -13,15 +13,18 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import BusinessOwner, ScoutAssignment
-from accounts.permissions import HasAnyRolePermission
+from accounts.permissions import HasAnyRolePermission, HasRolePermission
 
+from . import prospects as prospects_module
 from . import services
-from .models import VisitCheckIn
+from .models import Prospect, VisitCheckIn
 from .serializers import (
     CheckInSerializer,
     CheckOutSerializer,
     VisitPhotoSerializer,
+    ProspectSerializer,
     VisitUpdateSerializer,
+    prospect_item,
     visit_item,
 )
 from .services import VisitError
@@ -42,7 +45,7 @@ def _invalid(serializer):
 
 
 def _with_related(queryset):
-    return queryset.select_related("scout", "business_owner__profile__zone").prefetch_related("photos")
+    return queryset.select_related("scout", "business_owner__profile__zone", "prospect__zone").prefetch_related("photos")
 
 
 class VisitTargetsView(APIView):
@@ -73,6 +76,16 @@ class VisitTargetsView(APIView):
                     "verification", owner, services.business_pin(owner), getattr(owner, "profile", None),
                     scout_assignment=assignment.pk,
                 ))
+        if "businesses.register" in perms:
+            for prospect in Prospect.objects.filter(scout=request.user).exclude(
+                status=Prospect.REGISTERED).select_related("zone").order_by("pk"):
+                pin = services.prospect_pin(prospect)
+                items.append({
+                    "kind": "prospect", "business_owner": None, "scout_assignment": None, "prospect": prospect.pk,
+                    "business_id": None, "name": prospect.name, "area": prospect.zone.name if prospect.zone_id else None,
+                    "lat": float(pin[0]) if pin else None, "lng": float(pin[1]) if pin else None,
+                    "has_pin": pin is not None,
+                })
         items.sort(key=lambda item: item["name"].lower())
         return Response(items)
 
@@ -170,7 +183,8 @@ class VisitListCreateView(APIView):
         try:
             visit = services.check_in(
                 request.user, business_owner_id=data.get("business_owner"),
-                scout_assignment_id=data.get("scout_assignment"), purpose=data.get("purpose"),
+                scout_assignment_id=data.get("scout_assignment"), prospect_id=data.get("prospect"),
+                purpose=data.get("purpose"),
                 lat=data.get("lat"), lng=data.get("lng"), accuracy_m=data.get("accuracy_m"), request=request,
             )
         except VisitError as error:
@@ -260,3 +274,76 @@ class VisitPhotoView(APIView):
             {"id": photo.pk, "url": request.build_absolute_uri(photo.image.url), "taken_at": photo.taken_at},
             status=201,
         )
+
+
+# ── Prospects ──────────────────────────────────────────────────────────────
+
+def _month_start_local(now):
+    return timezone.localtime(now).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+def _prospect_order(prospect, now):
+    """Open prospects first, overdue follow-ups at the top, then the soonest;
+    closed ones last."""
+    closed = prospect.status == Prospect.NOT_INTERESTED
+    due = prospect.next_follow_up_at
+    return (closed, due is None, due or now, -prospect.pk)
+
+
+class ProspectListCreateView(APIView):
+    """GET prospects/ — the scout's own, not yet registered (?status= narrows;
+    status=registered lists the signed-up ones), with counts per status and
+    how many signed up this month. POST adds one: no location is read."""
+
+    def get_permissions(self):
+        return [HasRolePermission("businesses.register")]
+
+    def get(self, request):
+        now = timezone.now()
+        own = Prospect.objects.filter(scout=request.user)
+        counts = {code: 0 for code, _ in Prospect.STATUS_CHOICES}
+        for row in own.values("status").annotate(n=Count("pk")):
+            counts[row["status"]] = row["n"]
+        counts["all"] = sum(n for code, n in counts.items() if code != Prospect.REGISTERED)
+        wanted = request.query_params.get("status", "all")
+        listed = own.filter(status=wanted) if wanted in counts and wanted != "all" else own.exclude(status=Prospect.REGISTERED)
+        rows = sorted(prospects_module.with_last_visit(listed)[:500], key=lambda p: _prospect_order(p, now))
+        return Response({
+            "counts": counts,
+            "signed_up_this_month": own.filter(registered_at__gte=_month_start_local(now)).count(),
+            "results": [prospect_item(prospect) for prospect in rows],
+        })
+
+    def post(self, request):
+        serializer = ProspectSerializer(data=request.data if isinstance(request.data, dict) else {})
+        if not serializer.is_valid():
+            return _invalid(serializer)
+        data = serializer.validated_data
+        try:
+            prospect = prospects_module.create_prospect(request.user, data, request=request)
+        except VisitError as error:
+            return _refused(error)
+        prospect = prospects_module.with_last_visit(Prospect.objects.filter(pk=prospect.pk)).get()
+        return Response(prospect_item(prospect), status=201)
+
+
+class ProspectDetailView(APIView):
+    def get_permissions(self):
+        return [HasRolePermission("businesses.register")]
+
+    def _own(self, request, pk):
+        return get_object_or_404(prospects_module.with_last_visit(Prospect.objects.filter(scout=request.user)), pk=pk)
+
+    def get(self, request, pk):
+        return Response(prospect_item(self._own(request, pk)))
+
+    def patch(self, request, pk):
+        prospect = self._own(request, pk)
+        serializer = ProspectSerializer(data=request.data if isinstance(request.data, dict) else {}, partial=True)
+        if not serializer.is_valid():
+            return _invalid(serializer)
+        try:
+            prospects_module.update_prospect(prospect, serializer.validated_data, request=request)
+        except VisitError as error:
+            return _refused(error)
+        return Response(prospect_item(self._own(request, pk)))
