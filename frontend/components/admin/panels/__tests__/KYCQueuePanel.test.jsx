@@ -66,6 +66,23 @@ describe('KYCQueuePanel (staff phase 2A)', () => {
     expect(within(row).getByText('✓ Approve')).toBeDisabled()
   })
 
+  it('drops the record-the-decision suffix once another lead recorded the address decision', async () => {
+    const o = owner()
+    mockQueue([o], {
+      41: detailOf(o, {
+        profile: { ...detailOf(o).profile, gps_address: 'AK-100-9999', address_verified: true, address_verified_by_name: 'Ama Boateng', address_verified_at: '2026-10-09T08:00:00Z' },
+        address_correction: { scout_name: 'Efua Mensah', corrected_address: 'AK-100-9999', at: '2026-10-08T09:30:00Z' },
+      }),
+    })
+    renderPanel()
+    const row = await screen.findByRole('group', { name: 'Nana Adwoa Agyeman' })
+    fireEvent.click(within(row).getByText('👁️ View Details'))
+    expect(await within(row).findByText(
+      `Address corrected by field scout Efua Mensah on ${formatDay('2026-10-08T09:30:00Z')} to AK-100-9999`,
+    )).toBeInTheDocument()
+    expect(within(row).queryByText(/record the address decision before approving/)).not.toBeInTheDocument()
+  })
+
   it('shows no correction line without one', async () => {
     const o = owner()
     mockQueue([o], { 41: detailOf(o, { address_correction: null }) })

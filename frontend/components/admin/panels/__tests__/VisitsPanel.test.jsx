@@ -109,9 +109,10 @@ describe('VisitsPanel', () => {
 
   it('offers Show N more and asks for a bigger page', async () => {
     const urls = []
-    serveVisits(urls, (params) => page([visit(1), visit(2)], { count: 7 }))
+    serveVisits(urls, (params) => page([visit(1), visit(2)], { count: 7, next_hidden_at: '2026-10-05T09:00:00Z' }))
     renderPanel()
-    fireEvent.click(await screen.findByRole('button', { name: 'Show 5 more' }))
+    // 5 Oct 2026 is a Monday: the footer names the day of the next hidden group.
+    fireEvent.click(await screen.findByRole('button', { name: 'Show 5 more from Monday' }))
     await waitFor(() => expect(urls.at(-1).searchParams.get('page_size')).toBe('100'))
   })
 

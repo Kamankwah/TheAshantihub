@@ -191,6 +191,7 @@ function OpenVisit({ visit, onDone }) {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState(null);
   const wantsOut = useRef(false);
+  const [roughFix, setRoughFix] = useState(null); // accuracy (m) of a fix too rough to check out with
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30000);
@@ -230,6 +231,10 @@ function OpenVisit({ visit, onDone }) {
   useEffect(() => {
     if (wantsOut.current && position) {
       wantsOut.current = false;
+      if (position.accuracy > MAX_ACCURACY_M) {
+        setRoughFix(position.accuracy);
+        return;
+      }
       checkOut(position);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -240,6 +245,7 @@ function OpenVisit({ visit, onDone }) {
 
   const startCheckOut = () => {
     setActionError(null);
+    setRoughFix(null);
     wantsOut.current = true;
     locate();
   };
@@ -286,9 +292,12 @@ function OpenVisit({ visit, onDone }) {
       </section>
 
       {locationError && <div role="alert" style={errorStyle}>{locationError}</div>}
+      {roughFix != null && (
+        <div role="alert" style={callout(D.amber)}>{`Your phone's location is rough (about ${roughFix} m). Step outside, away from walls, then try again — a check-out needs ${MAX_ACCURACY_M} m or better.`}</div>
+      )}
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
       <button type="button" onClick={startCheckOut} disabled={busy || locating} style={{ ...button(D.gold, D.text, busy || locating), minHeight: 52, fontSize: "1rem" }}>
-        {locating ? "Finding your location…" : busy ? "Checking out…" : "Check out"}
+        {locating ? "Finding your location…" : busy ? "Checking out…" : roughFix != null ? "Try again" : "Check out"}
       </button>
     </>
   );

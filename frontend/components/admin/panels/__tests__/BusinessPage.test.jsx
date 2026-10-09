@@ -376,12 +376,14 @@ describe('BusinessPage — visits (staff WP1)', () => {
     renderPage()
     const section = await screen.findByRole('region', { name: 'Recent calls and visits' })
     expect(within(section).getByRole('heading', { name: 'Recent calls & visits' })).toBeInTheDocument()
-    const rows = within(section).getAllByText(/^(Call|Visit) /)
+    const rows = within(section).getAllByText(/^(Call in|Call out|Visit)$/).map((kind) => kind.parentElement)
     expect(rows).toHaveLength(3)
     expect(rows[0]).toHaveTextContent(/^Visit · Prospecting · 15 min/)
     expect(rows[1]).toHaveTextContent(/^Call out · subscription payment · promised to pay/)
     expect(rows[2]).toHaveTextContent(/^Visit · Subscription follow-up · 22 min/)
     expect(within(section).getByText('🚩 Outside the 100 m radius · 160 m')).toBeInTheDocument()
+    // Two parts, as on the canvas: what on the left, when on the right.
+    expect(rows[0].nextElementSibling).toHaveTextContent(/\d/)
   })
 
   it('says so when there are no calls or visits', async () => {
@@ -393,7 +395,7 @@ describe('BusinessPage — visits (staff WP1)', () => {
   it('shows an open visit as in progress', async () => {
     serve(business({ recent_calls: [], recent_visits: [{ ...recent.recent_visits[0], status: 'open', minutes: null }] }))
     renderPage()
-    expect(await screen.findByText(/Visit · Subscription follow-up · in progress/)).toBeInTheDocument()
+    expect(await screen.findByText(/^· Subscription follow-up · in progress/)).toBeInTheDocument()
   })
 
   it("offers Check in to the account manager, opening the check-in with this business", async () => {

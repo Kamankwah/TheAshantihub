@@ -45,9 +45,10 @@ export function formatDay(value) {
 // U6: a field scout's address correction ({scout_name, corrected_address, at}
 // from GET kyc/<id>/ and the review sheet) cleared the address decision, so
 // someone else records it again before KYC can be approved.
-export function addressCorrectionText(correction) {
+export function addressCorrectionText(correction, decided = false) {
   if (!correction) return null;
-  return `Address corrected by field scout ${correction.scout_name} on ${formatDay(correction.at)} to ${correction.corrected_address} — record the address decision before approving.`;
+  const text = `Address corrected by field scout ${correction.scout_name} on ${formatDay(correction.at)} to ${correction.corrected_address}`;
+  return decided ? text : `${text} — record the address decision before approving.`;
 }
 
 export function formatDateTime(value) {

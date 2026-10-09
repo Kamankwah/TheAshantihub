@@ -297,6 +297,46 @@ class VisitPhotoTests(VisitApiBase):
         self.assertEqual(response.status_code, 404)
 
 
+class VisitLockTests(VisitApiBase):
+    """The services re-read the visit under a row lock, so a stale copy (as a
+    parallel request holds) can't write to a closed visit or pass the cap."""
+
+    def test_a_stale_open_copy_cannot_add_a_photo_after_check_out(self):
+        visit_id = self.check_in().data["id"]
+        stale = VisitCheckIn.objects.get(pk=visit_id)
+        self.client.post(f"{VISITS}{visit_id}/check-out/", fix(30), format="json")
+        with self.assertRaises(services.VisitError) as raised:
+            services.add_photo(stale, image())
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(stale.photos.count(), 0)
+
+    def test_a_stale_copy_cannot_pass_the_ten_photo_cap(self):
+        visit_id = self.check_in().data["id"]
+        stale = VisitCheckIn.objects.get(pk=visit_id)
+        for _ in range(services.MAX_PHOTOS):
+            services.add_photo(VisitCheckIn.objects.get(pk=visit_id), image())
+        with self.assertRaises(services.VisitError):
+            services.add_photo(stale, image())
+        self.assertEqual(stale.photos.count(), services.MAX_PHOTOS)
+
+    def test_a_stale_open_copy_cannot_edit_a_closed_visit(self):
+        visit_id = self.check_in().data["id"]
+        stale = VisitCheckIn.objects.get(pk=visit_id)
+        self.client.post(f"{VISITS}{visit_id}/check-out/", fix(30), format="json")
+        with self.assertRaises(services.VisitError):
+            services.update_open_visit(stale, notes="too late")
+        self.assertNotEqual(VisitCheckIn.objects.get(pk=visit_id).notes, "too late")
+
+    def test_an_edit_reads_the_row_it_changes(self):
+        visit_id = self.check_in().data["id"]
+        stale = VisitCheckIn.objects.get(pk=visit_id)
+        VisitCheckIn.objects.filter(pk=visit_id).update(notes="from another request")
+        services.update_open_visit(stale, purpose="info_update")
+        row = VisitCheckIn.objects.get(pk=visit_id)
+        self.assertEqual(row.purpose, "info_update")
+        self.assertEqual(row.notes, "from another request")
+
+
 class AbandonedVisitTests(VisitApiBase):
     def test_a_visit_open_for_12_hours_becomes_abandoned(self):
         stale = VisitCheckIn.objects.get(pk=self.check_in().data["id"])
@@ -440,6 +480,13 @@ class VisitListTests(VisitApiBase):
         body = self.get(self.kwame, "?page_size=2").data
         self.assertEqual(len(body["results"]), 2)
         self.assertEqual(body["count"], 3)
+
+    def test_the_page_says_when_the_first_hidden_visit_happened(self):
+        visits = [self.done_visit(self.adwoa, minutes=10 + i) for i in range(3)]
+        body = self.get(self.kwame, "?page_size=2").data
+        oldest = min(visits, key=lambda v: v.checked_in_at)
+        self.assertEqual(body["next_hidden_at"], oldest.checked_in_at)
+        self.assertIsNone(self.get(self.kwame, "?page_size=3").data["next_hidden_at"])
 
     def test_operations_reads_a_scouts_visits_read_only(self):
         self.done_visit(self.adwoa)

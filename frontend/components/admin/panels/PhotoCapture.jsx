@@ -4,6 +4,7 @@ import { useDevicePosition } from "../../../hooks/useDevicePosition.js";
 import { D } from "../theme.js";
 import { button, dim, linkButton } from "./panelStyles.js";
 import { errorStyle, errorText, formatDateTime } from "./portfolioParts.jsx";
+import { timeOf } from "./visitParts.jsx";
 
 // A position older than this isn't "where the photo was taken".
 const FRESH_MS = 5 * 60 * 1000;
@@ -68,7 +69,7 @@ export default function PhotoCapture({ businessId, onStaged, max = 8, uploadUrl,
           {photos.map((photo, i) => (
             <li key={photo.id} style={{ width: 96 }}>
               <img src={photo.url} alt={`Photo ${i + 1}`} style={{ width: 96, height: 96, objectFit: "cover", borderRadius: 10, border: `1px solid ${D.cardBorder}`, display: "block" }} />
-              <div style={{ ...dim, fontSize: "0.64rem" }}>{formatDateTime(photo.created_at || photo.taken_at)}</div>
+              <div style={{ ...dim, fontSize: "0.64rem" }}>{uploadUrl ? timeOf(photo.taken_at || photo.created_at) : formatDateTime(photo.created_at || photo.taken_at)}</div>
               {removable && <button type="button" aria-label={`Remove photo ${i + 1}`} onClick={() => update(listRef.current.filter((p) => p.id !== photo.id))} style={linkButton}>Remove</button>}
             </li>
           ))}

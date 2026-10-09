@@ -53,6 +53,7 @@ function VisitList({ onCheckIn }) {
   const results = data?.results || [];
   const summary = data?.summary || {};
   const hidden = Math.max(0, (data?.count || 0) - results.length);
+  const nextDay = data?.next_hidden_at ? new Date(data.next_hidden_at).toLocaleDateString("en-GB", { weekday: "long" }) : "";
   const choose = (next) => { setRange(next); setLimit(PAGE); };
   const tiles = [
     ["This week", String(summary.done ?? 0), D.text],
@@ -125,7 +126,7 @@ function VisitList({ onCheckIn }) {
       ))}
 
       {hidden > 0 && (
-        <button type="button" onClick={() => setLimit((n) => n + PAGE)} style={{ ...button(D.panelBg, D.text), minHeight: 44 }}>{`Show ${hidden} more`}</button>
+        <button type="button" onClick={() => setLimit((n) => n + PAGE)} style={{ ...button(D.panelBg, D.text), minHeight: 44 }}>{nextDay ? `Show ${hidden} more from ${nextDay}` : `Show ${hidden} more`}</button>
       )}
       <div style={{ ...dim, textAlign: "center", lineHeight: 1.45 }}>{FOOTER_RULE}</div>
     </div>

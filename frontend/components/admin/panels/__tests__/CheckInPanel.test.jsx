@@ -261,6 +261,23 @@ describe('CheckInPanel — step B, the open visit', () => {
     expect(onBack).not.toHaveBeenCalled()
   })
 
+  it('refuses a rough fix at check-out without calling the server, and offers Try again', async () => {
+    useOpen(openVisit())
+    let posted = false
+    server.use(http.post(`${API}/api/field/visits/5/check-out/`, () => { posted = true; return HttpResponse.json(openVisit()) }))
+    const bodies = []
+    renderPanel()
+    device.fix = { lat: north(0), lng: PIN.lng, accuracy: 450 }
+    fireEvent.click(await screen.findByRole('button', { name: 'Check out' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('rough (about 450 m)')
+    expect(posted).toBe(false)
+    server.use(http.post(`${API}/api/field/visits/5/check-out/`, async ({ request }) => { bodies.push(await request.json()); return HttpResponse.json(openVisit({ status: 'done' })) }))
+    device.fix = { lat: north(0), lng: PIN.lng, accuracy: 12 }
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(bodies).toHaveLength(1))
+    expect(bodies[0].accuracy_m).toBe(12)
+  })
+
   it('does not check out when the location is denied', async () => {
     useOpen(openVisit())
     device.error = 'Location is blocked for AshantiHub on this phone.'
@@ -294,6 +311,8 @@ describe('CheckInPanel — step B, the open visit', () => {
     useOpen(openVisit({ photos: [{ id: 1, url: 'http://localhost:8000/media/a.jpg', taken_at: '2026-10-07T11:09:00Z' }] }))
     renderPanel()
     expect(await screen.findByAltText('Photo 1')).toBeInTheDocument()
+    // The chip shows the capture time as HH:MM (24 h), not a date.
+    expect(within(screen.getByRole('list', { name: 'Photos taken' })).getByText(/^\d\d:\d\d$/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Remove photo/ })).not.toBeInTheDocument()
   })
 

@@ -116,6 +116,10 @@ class VisitPagination(PageNumberPagination):
     def get_paginated_response(self, data):
         response = super().get_paginated_response(data)
         response.data["summary"] = self.summary
+        # The time of the first visit still hidden, so the screen can say "Show 3 more from Monday".
+        end = self.page.end_index()
+        rows = list(self.page.paginator.object_list[end:end + 1]) if end < self.page.paginator.count else []
+        response.data["next_hidden_at"] = rows[0].checked_in_at if rows else None
         return response
 
 
@@ -266,10 +270,13 @@ class VisitPhotoView(APIView):
         if not serializer.is_valid():
             return _invalid(serializer)
         data = serializer.validated_data
-        photo = services.add_photo(
-            visit, data["image"], lat=data.get("lat"), lng=data.get("lng"), accuracy_m=data.get("accuracy_m"),
-            request=request,
-        )
+        try:
+            photo = services.add_photo(
+                visit, data["image"], lat=data.get("lat"), lng=data.get("lng"), accuracy_m=data.get("accuracy_m"),
+                request=request,
+            )
+        except VisitError as error:
+            return _refused(error)
         return Response(
             {"id": photo.pk, "url": request.build_absolute_uri(photo.image.url), "taken_at": photo.taken_at},
             status=201,

@@ -153,6 +153,18 @@ describe('BusinessKycReview', () => {
     )).toBeInTheDocument()
   })
 
+  it('drops the record-the-decision suffix once the address decision is recorded', async () => {
+    serve(sheet({
+      address_correction: { scout_name: 'Efua Mensah', corrected_address: 'AK-100-9999', at: '2026-10-08T09:30:00Z' },
+      location: { ...LOCATION, address_verified: true, address_verified_by_name: 'Ama Boateng', address_verified_at: '2026-10-09T08:00:00Z' },
+    }))
+    renderReview()
+    expect(await screen.findByText(
+      `Address corrected by field scout Efua Mensah on ${formatDay('2026-10-08T09:30:00Z')} to AK-100-9999`,
+    )).toBeInTheDocument()
+    expect(screen.queryByText(/record the address decision before approving/)).not.toBeInTheDocument()
+  })
+
   it('shows no correction line without one', async () => {
     serve(sheet({ address_correction: null }))
     renderReview()

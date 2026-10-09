@@ -82,12 +82,14 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
   // Calls and visits in one list, newest first.
   const contacts = [
     ...(b.recent_calls || []).map((c) => ({
-      key: `call-${c.id}`, at: c.started_at,
-      text: `${c.direction === "in" ? "Call in" : "Call out"} · ${words(c.purpose)} · ${words(c.outcome)} — ${formatDateTime(c.started_at)}${c.staff_name ? ` · ${c.staff_name}` : ""}`,
+      key: `call-${c.id}`, at: c.started_at, kind: c.direction === "in" ? "Call in" : "Call out",
+      what: `${words(c.purpose)} · ${words(c.outcome)}${c.staff_name ? ` · ${c.staff_name}` : ""}`,
+      when: formatDateTime(c.started_at),
     })),
     ...(b.recent_visits || []).map((v) => ({
-      key: `visit-${v.id}`, at: v.checked_in_at,
-      text: `Visit · ${v.purpose_label}${v.status === "open" ? " · in progress" : v.minutes != null ? ` · ${v.minutes} min` : ""} — ${formatDateTime(v.checked_in_at)}${v.staff_name ? ` · ${v.staff_name}` : ""}`,
+      key: `visit-${v.id}`, at: v.checked_in_at, kind: "Visit",
+      what: `${v.purpose_label}${v.status === "open" ? " · in progress" : v.minutes != null ? ` · ${v.minutes} min` : ""}${v.staff_name ? ` · ${v.staff_name}` : ""}`,
+      when: formatDateTime(v.checked_in_at),
       flag: v.outside_radius ? `Outside the 100 m radius · ${v.distance_m} m` : null,
     })),
   ].sort((x, y) => new Date(y.at) - new Date(x.at));
@@ -247,7 +249,10 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
         <h3 style={h3}>Recent calls &amp; visits</h3>
         {contacts.length === 0 ? <div style={dim}>No calls or visits logged yet.</div> : contacts.map((c) => (
           <div key={c.key} style={row}>
-            {c.text}
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+              <span><span style={{ fontWeight: 800 }}>{c.kind}</span>{` · ${c.what}`}</span>
+              <span style={{ ...dim, whiteSpace: "nowrap" }}>{c.when}</span>
+            </div>
             {c.flag && <div style={{ ...dim, color: D.text }}>{`🚩 ${c.flag}`}</div>}
           </div>
         ))}

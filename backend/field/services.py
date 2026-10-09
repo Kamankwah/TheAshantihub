@@ -198,22 +198,23 @@ def _maybe_open_review(scout, visit, now):
 
 
 def update_open_visit(visit, *, purpose=None, notes=None, request=None):
-    if visit.status != VisitCheckIn.OPEN:
-        raise VisitError(VISIT_CLOSED, 409, "closed")
-    before = {"purpose": visit.purpose, "notes": visit.notes}
-    if purpose is not None:
-        if visit.scout_assignment_id and purpose != VisitCheckIn.VERIFICATION:
-            raise VisitError("A verification visit keeps its purpose.")
-        if purpose == VisitCheckIn.VERIFICATION and not visit.scout_assignment_id:
-            raise VisitError("A verification visit starts from a verification assignment.")
-        visit.purpose = purpose
-    if notes is not None:
-        visit.notes = notes
     with transaction.atomic():
-        visit.save(update_fields=["purpose", "notes"])
-        record(visit.scout, "visit.update", target=visit, before={"purpose": before["purpose"]},
-               after={"purpose": visit.purpose}, request=request)
-    return visit
+        locked = VisitCheckIn.objects.select_for_update().get(pk=visit.pk)
+        if locked.status != VisitCheckIn.OPEN:
+            raise VisitError(VISIT_CLOSED, 409, "closed")
+        before = {"purpose": locked.purpose, "notes": locked.notes}
+        if purpose is not None:
+            if locked.scout_assignment_id and purpose != VisitCheckIn.VERIFICATION:
+                raise VisitError("A verification visit keeps its purpose.")
+            if purpose == VisitCheckIn.VERIFICATION and not locked.scout_assignment_id:
+                raise VisitError("A verification visit starts from a verification assignment.")
+            locked.purpose = purpose
+        if notes is not None:
+            locked.notes = notes
+        locked.save(update_fields=["purpose", "notes"])
+        record(locked.scout, "visit.update", target=locked, before={"purpose": before["purpose"]},
+               after={"purpose": locked.purpose}, request=request)
+    return locked
 
 
 def check_out(visit, *, lat, lng, accuracy_m, notes=None, request=None):
@@ -246,6 +247,13 @@ def add_photo(visit, image, *, lat=None, lng=None, accuracy_m=None, request=None
     from .models import VisitPhoto
 
     with transaction.atomic():
+        # Locked so parallel uploads can't pass the cap together or land on a
+        # visit that was just checked out.
+        locked = VisitCheckIn.objects.select_for_update().get(pk=visit.pk)
+        if locked.status != VisitCheckIn.OPEN:
+            raise VisitError(VISIT_CLOSED, 409, "closed")
+        if locked.photos.count() >= MAX_PHOTOS:
+            raise VisitError(f"A visit holds up to {MAX_PHOTOS} photos.")
         photo = VisitPhoto.objects.create(
             visit=visit, image=image,
             lat=_decimal(lat) if lat is not None else None, lng=_decimal(lng) if lng is not None else None,
