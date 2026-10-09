@@ -79,4 +79,23 @@ describe('CallLogPanel — the scout layout', () => {
     renderPanel({ user: { id: 2, role: 'support' }, hasPermission: () => true })
     expect(await screen.findByText('Call Log')).toBeInTheDocument()
   })
+
+  it('lists only earlier calls that can still be edited', async () => {
+    server.use(
+      http.get(`${API}/api/calls/`, ({ request }) => {
+        const today = new URL(request.url).searchParams.get('day') === 'today'
+        const results = today
+          ? [call()]
+          : [call(), call({ id: 5, related_label: 'Yesterday Call', created_at: new Date(Date.now() - 20 * 3600000).toISOString() }),
+            call({ id: 6, related_label: 'Ancient Call', created_at: new Date(Date.now() - 80 * 3600000).toISOString() })]
+        return HttpResponse.json({ count: results.length, next: null, previous: null, summary: { logged: 1, connected: 1 }, results })
+      }),
+      http.get(`${API}/api/calls/purposes/`, () => HttpResponse.json([{ value: 'other', label: 'Other' }])),
+    )
+    renderPanel()
+    fireEvent.click(await screen.findByRole('button', { name: 'Show earlier calls you can still edit' }))
+    expect(await screen.findByText('Yesterday Call')).toBeInTheDocument()
+    expect(screen.queryByText('Ancient Call')).not.toBeInTheDocument()
+    expect(screen.getByText('Earlier · last 24 hours')).toBeInTheDocument()
+  })
 })

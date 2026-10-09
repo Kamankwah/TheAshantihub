@@ -387,6 +387,11 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
         setActionError(!storageFailed && savedAt
           ? "No connection — nothing was sent. Your draft is still on this phone; submit again when you're back online."
           : "No connection — nothing was sent. This phone isn't keeping a draft, so keep this screen open and submit again when you're back online.");
+      } else if (err.body?.code === "prospect") {
+        // The prospect in the draft is gone (registered elsewhere or removed): drop the link and say so.
+        dirty.current = true;
+        setForm((f) => ({ ...f, prospect_id: "", prospect_name: "" }));
+        setActionError("That prospect is no longer on your list, so this registration is no longer linked to one. Nothing else changed. Submit again to register it as a new business.");
       } else if (err.body?.code === "duplicate") {
         setDuplicate({ detail: err.body.detail || "Already registered — ask Operations.", matched: err.body.matched || [] });
       } else {

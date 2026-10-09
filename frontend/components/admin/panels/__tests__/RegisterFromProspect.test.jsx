@@ -116,4 +116,30 @@ describe('Register a business from a prospect', () => {
     expect(sent).toMatchObject({ prospect_id: '3', business_name: 'Asafo Hair & Beauty', owner_phone: '+233201234761' })
     await waitFor(() => expect(onOpenDetail).toHaveBeenCalledWith(null))
   })
+
+  it('drops a stale prospect from the draft when the server says it is gone, and says so', async () => {
+    serveProspects()
+    server.use(
+      http.post(`${API}/api/portfolio/register/check/`, () => HttpResponse.json({ exact: [], similar: [], staff_match: false })),
+      http.post(`${API}/api/portfolio/register/`, () => HttpResponse.json({ detail: 'That prospect is gone.', code: 'prospect' }, { status: 404 })),
+    )
+    renderPanel()
+    await screen.findByText('From prospect list')
+    type("Owner's full name (as on Ghana Card)", 'Gifty Asantewaa')
+    type('Kind of business', 'service')
+    await screen.findByRole('option', { name: 'Hotels' })
+    type('Category', '1')
+    fireEvent.click(screen.getByRole('button', { name: 'Next: Location' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Use my location' }))
+    expect(await screen.findByText('Accuracy ±12 m')).toBeInTheDocument()
+    type('Ghana Post address', 'AK-112-0384')
+    fireEvent.click(screen.getByRole('button', { name: 'Next: Photos' }))
+    fireEvent.change(screen.getByLabelText('Signboard photo'), { target: { files: [new File(['s'], 's.jpg', { type: 'image/jpeg' })] } })
+    fireEvent.change(screen.getByLabelText('Ghana Card front photo'), { target: { files: [new File(['c'], 'c.jpg', { type: 'image/jpeg' })] } })
+    fireEvent.click(screen.getByRole('button', { name: 'Next: Review' }))
+    await screen.findByText(/No exact match/)
+    fireEvent.click(screen.getByRole('button', { name: 'Submit for KYC' }))
+    expect(await screen.findByText(/no longer on your list/)).toBeInTheDocument()
+    await waitFor(() => expect(JSON.parse(localStorage.getItem('ashantihub.registerDraft.9')).form.prospect_id).toBe(''))
+  })
 })

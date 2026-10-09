@@ -5,6 +5,7 @@ import { useZones } from "../../../hooks/useZones.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { dateInputValue, followUpIso, longDay } from "../../../lib/followUp.js";
 import { D } from "../theme.js";
+import LocationPicker from "../../LocationPicker.jsx";
 import BottomSheet from "./BottomSheet.jsx";
 import { button, dim, field } from "./panelStyles.js";
 import { errorStyle } from "./portfolioParts.jsx";
@@ -28,6 +29,8 @@ export default function ProspectSheet({ prospect = null, onClose, onSaved }) {
   }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [pin, setPin] = useState(null); // {lat, lng} placed by hand in this sheet
+  const [placing, setPlacing] = useState(false);
   const onField = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
   const today = dateInputValue();
   const closed = form.status === "not_interested";
@@ -37,13 +40,17 @@ export default function ProspectSheet({ prospect = null, onClose, onSaved }) {
     setError(null);
     if (!form.name.trim()) { setError("Add the business name."); return; }
     if (!form.phone.trim()) { setError("Add a phone number."); return; }
-    if (form.follow_up && form.follow_up < today) { setError("Pick a follow-up day from today on."); return; }
+    const initialFollowUp = localDate(prospect?.next_follow_up_at);
+    // An overdue date left as it was is not a new choice; only a changed date must be from today on.
+    if (!closed && form.follow_up && form.follow_up !== initialFollowUp && form.follow_up < today) { setError("Pick a follow-up day from today on."); return; }
     const body = {
       name: form.name.trim(), phone: form.phone.trim(), zone: form.zone ? Number(form.zone) : null, note: form.note.trim(),
     };
     if (editing) {
       body.status = form.status;
-      if (form.follow_up !== localDate(prospect.next_follow_up_at)) body.next_follow_up_at = form.follow_up ? followUpIso(form.follow_up) : null;
+      if (closed) { if (initialFollowUp) body.next_follow_up_at = null; }
+      else if (form.follow_up !== initialFollowUp) body.next_follow_up_at = form.follow_up ? followUpIso(form.follow_up) : null;
+      if (pin) { body.lat = pin.lat; body.lng = pin.lng; }
     } else if (form.follow_up) {
       body.next_follow_up_at = followUpIso(form.follow_up);
     }
@@ -92,6 +99,20 @@ export default function ProspectSheet({ prospect = null, onClose, onSaved }) {
             {closed ? "A closed prospect has no follow-up. Reopen it to set one." : form.follow_up ? `Creates a follow-up task for ${longDay(form.follow_up)}` : ""}
           </span>
         </div>
+        {editing && (
+          <div style={labelStyle}>
+            <span>Pin on the map</span>
+            <span style={{ ...dim, fontWeight: 500 }}>
+              {pin ? "New pin placed by hand. Save to keep it." : prospect.has_pin ? "This prospect has a pin." : "No pin yet. Check in at the prospect, or place one by hand."}
+            </span>
+            <button type="button" onClick={() => setPlacing((v) => !v)} aria-expanded={placing} style={{ ...button(D.panelBg, D.text), minHeight: 44, alignSelf: "flex-start" }}>
+              {placing ? "Done placing" : prospect.has_pin || pin ? "Move pin" : "Place pin"}
+            </button>
+            {placing && (
+              <LocationPicker lat={pin?.lat ?? null} lng={pin?.lng ?? null} onChange={(lat, lng) => setPin({ lat, lng })} height={220} showLocateButton={false} />
+            )}
+          </div>
+        )}
         {error && <div role="alert" style={errorStyle}>{error}</div>}
         <button type="submit" disabled={busy} style={{ ...button(D.gold, D.text, busy), minHeight: 48, fontSize: "0.95rem" }}>{busy ? "Saving…" : editing ? "Save changes" : "Add prospect"}</button>
         <div style={{ ...dim, textAlign: "center", lineHeight: 1.45 }}>Adding a prospect doesn't use your location. Check in at the prospect to put it on the map.</div>

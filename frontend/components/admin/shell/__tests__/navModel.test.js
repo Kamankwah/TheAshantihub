@@ -301,12 +301,14 @@ describe('Visits (staff WP1)', () => {
 describe('Prospects menu item', () => {
   const authAs = (role, perms) => ({ user: { role }, hasPermission: (c) => perms.includes(c) })
   const idsOf = (auth) => buildNavGroups(auth).flatMap((g) => g.items.map((i) => i.id))
-  it('is shown to whoever may register businesses, and to no one else', () => {
-    expect(idsOf(authAs('scout', ['businesses.register']))).toContain('prospects')
+  it('is scout-only: it needs both registering and managing a portfolio', () => {
+    expect(idsOf(authAs('scout', ['businesses.register', 'businesses.manage_portfolio']))).toContain('prospects')
+    expect(idsOf(authAs('scout', ['businesses.register']))).not.toContain('prospects')
+    expect(idsOf(authAs('operations', ['businesses.manage_portfolio']))).not.toContain('prospects')
     expect(idsOf(authAs('scout', ['calls.log']))).not.toContain('prospects')
   })
   it('opens a scout\'s Pipeline, before Register a business', () => {
-    const pipeline = buildNavGroups(authAs('scout', ['businesses.register', 'calls.log'])).find((g) => g.id === 'pipeline')
+    const pipeline = buildNavGroups(authAs('scout', ['businesses.register', 'businesses.manage_portfolio', 'calls.log'])).find((g) => g.id === 'pipeline')
     expect(pipeline.items.map((i) => i.id)).toEqual(['prospects', 'register-business'])
   })
 })

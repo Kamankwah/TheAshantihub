@@ -45,6 +45,25 @@ function Pills({ label, value, options, onChange, allowClear = false }) {
   );
 }
 
+// Segmented control as drawn on the canvas: a cream track, the chosen segment dark.
+const segTrack = { background: "#F5ECD8", borderRadius: 12, padding: 3, gap: 3 };
+const segStyle = (on, minHeight) => ({
+  minHeight, padding: "0 12px", border: 0, borderRadius: 9, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, fontSize: "0.82rem",
+  background: on ? D.text : "transparent", color: on ? "#FDF6E3" : D.text,
+});
+function Segmented({ label, value, options, onChange, allowClear = false, inline = false, minHeight = 42 }) {
+  const group = (
+    <div role="group" aria-label={label} style={{ ...segTrack, display: inline ? "flex" : "grid", gridTemplateColumns: inline ? undefined : `repeat(${options.length}, minmax(0, 1fr))` }}>
+      {options.map(([id, text]) => (
+        <button key={id} type="button" aria-pressed={value === id} onClick={() => onChange(allowClear && value === id ? "" : id)} style={segStyle(value === id, minHeight)}>{text}</button>
+      ))}
+    </div>
+  );
+  return inline
+    ? <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><span style={labelStyle}>{label}</span>{group}</div>
+    : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><span style={labelStyle}>{label}</span>{group}</div>;
+}
+
 const localDate = (iso) => (iso ? dateInputValue(new Date(iso)) : "");
 
 // preset: {type: "business_owner" | "prospect", id, label?, ownerName?} picks the "Who" up front.
@@ -82,7 +101,8 @@ export default function LogCallSheet({ preset = null, call = null, onClose, onSa
     e.preventDefault();
     setError(null);
     if (!editing && !chosen) { setError("Choose who you spoke to."); return; }
-    if (form.follow_up && form.follow_up < today) { setError("Pick a follow-up day from today on."); return; }
+    // Only a changed date must be from today on; an edited call may keep a date that has passed.
+    if (form.follow_up && form.follow_up !== localDate(call?.follow_up_at) && form.follow_up < today) { setError("Pick a follow-up day from today on."); return; }
     const minutes = Number(form.duration_minutes || 0);
     if (!Number.isFinite(minutes) || minutes < 0) { setError("Minutes can't be negative."); return; }
     const common = {
@@ -114,8 +134,8 @@ export default function LogCallSheet({ preset = null, call = null, onClose, onSa
   return (
     <BottomSheet title={editing ? "Edit call" : "Log a call"} titleId={TITLE_ID} onClose={onClose}>
       <form onSubmit={save} noValidate style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 12, alignItems: "end" }}>
-          <Pills label="Direction" value={form.direction} options={[["out", "Out"], ["in", "In"]]} onChange={set("direction")} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, alignItems: "end" }}>
+          <Segmented label="Direction" value={form.direction} options={[["out", "Out"], ["in", "In"]]} onChange={set("direction")} />
           <label style={labelStyle}>Channel
             <select value={form.channel} onChange={onField("channel")} style={input}>{CHANNELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
           </label>
@@ -154,7 +174,7 @@ export default function LogCallSheet({ preset = null, call = null, onClose, onSa
           <select value={purpose} onChange={onField("purpose")} style={input}>{purposeOptions.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}</select>
         </label>
         <Pills label="Outcome" value={form.outcome} options={OUTCOMES} onChange={set("outcome")} />
-        <Pills label="How it went" value={form.sentiment} options={FEELINGS} onChange={set("sentiment")} allowClear />
+        <Segmented label="How it went" value={form.sentiment} options={FEELINGS} onChange={set("sentiment")} allowClear inline minHeight={40} />
 
         <label style={labelStyle}>How long (minutes, optional)
           <input type="number" inputMode="numeric" min="0" step="1" value={form.duration_minutes} onChange={onField("duration_minutes")} style={input} />

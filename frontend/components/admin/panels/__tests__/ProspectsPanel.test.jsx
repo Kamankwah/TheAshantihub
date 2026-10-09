@@ -144,6 +144,76 @@ describe('ProspectsPanel', () => {
     expect(body).not.toHaveProperty('next_follow_up_at')
   })
 
+  describe('an overdue prospect', () => {
+    const overdue = () => prospect({ status: 'follow_up', status_label: 'Follow up', next_follow_up_at: day(-4) })
+    const open = async (patch) => {
+      let body = null
+      server.use(
+        http.get(`${API}/api/listings/zones/`, () => HttpResponse.json([{ id: 1, name: 'Asafo' }])),
+        http.patch(`${API}/api/field/prospects/1/`, async ({ request }) => { body = await request.json(); patch?.(body); return HttpResponse.json(prospect()) }),
+      )
+      serve([overdue()])
+      renderPanel()
+      fireEvent.click(await screen.findByRole('button', { name: 'Edit Ohemaa Waakye Joint' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Edit prospect' })
+      return { dialog, body: () => body }
+    }
+
+    it('can have its note edited while the follow-up date stays as it was', async () => {
+      const { dialog, body } = await open()
+      fireEvent.change(within(dialog).getByLabelText('Note'), { target: { value: 'Will call back Friday' } })
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+      await waitFor(() => expect(body()).not.toBeNull())
+      expect(body()).toMatchObject({ note: 'Will call back Friday' })
+      expect(body()).not.toHaveProperty('next_follow_up_at')
+      expect(screen.queryByText('Pick a follow-up day from today on.')).not.toBeInTheDocument()
+    })
+
+    it('still refuses a newly picked date in the past', async () => {
+      const { dialog, body } = await open()
+      fireEvent.change(within(dialog).getByLabelText('Follow-up date'), { target: { value: '2020-01-01' } })
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+      expect(await within(dialog).findByText('Pick a follow-up day from today on.')).toBeInTheDocument()
+      expect(body()).toBeNull()
+    })
+
+    it('can be marked Not interested, which clears the overdue follow-up', async () => {
+      const { dialog, body } = await open()
+      fireEvent.change(within(dialog).getByLabelText('Status'), { target: { value: 'not_interested' } })
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+      await waitFor(() => expect(body()).not.toBeNull())
+      expect(body()).toMatchObject({ status: 'not_interested', next_follow_up_at: null })
+    })
+  })
+
+  it('places a pin by hand and sends lat and lng with the edit', async () => {
+    let body = null
+    server.use(
+      http.get(`${API}/api/listings/zones/`, () => HttpResponse.json([{ id: 1, name: 'Asafo' }])),
+      http.patch(`${API}/api/field/prospects/1/`, async ({ request }) => { body = await request.json(); return HttpResponse.json(prospect()) }),
+    )
+    serve([prospect({ has_pin: false })])
+    renderPanel()
+    expect(screen.queryByText('Pinned')).not.toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Ohemaa Waakye Joint' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit prospect' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Place pin' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'drop-pin' })) // LocationPicker stub (test/setup.js)
+    expect(within(dialog).getByText('New pin placed by hand. Save to keep it.')).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(body).not.toBeNull())
+    expect(body).toMatchObject({ lat: 6.7, lng: -1.62 })
+  })
+
+  it('shows a Pinned marker once a prospect has a pin, and a ghost Register button', async () => {
+    serve([prospect({ has_pin: true })])
+    renderPanel()
+    const card = await screen.findByRole('article', { name: 'Ohemaa Waakye Joint' })
+    expect(within(card).getByText('Pinned')).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: 'Register' })).toHaveStyle({ background: '#FDF6E3' })
+    expect(card.textContent).not.toContain('📞')
+  })
+
   it('the Call button dials the prospect and opens Log a call for them', async () => {
     server.use(
       http.get(`${API}/api/calls/counterparts/`, () => HttpResponse.json({ businesses: [], prospects: [{ id: 1, name: 'Ohemaa Waakye Joint', phone_masked: '024 *** 567', status: 'interested' }] })),

@@ -76,7 +76,10 @@ export default function ProspectsPanel({ onRegister }) {
                 style={{ background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit", fontWeight: 800, fontSize: "0.95rem", color: D.text, textDecoration: "underline", textDecorationColor: D.cardBorderStrong }}>
                 {p.name}
               </button>
-              <span style={{ background: bg, color: fg, borderRadius: 999, padding: "2px 10px", fontSize: "0.7rem", fontWeight: 800, whiteSpace: "nowrap" }}>{p.status_label}</span>
+              <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                {p.has_pin && <span title="Has a pin on the map" style={{ fontSize: "0.7rem", fontWeight: 700, color: D.textDim }}>Pinned</span>}
+                <span style={{ background: bg, color: fg, borderRadius: 999, padding: "2px 10px", fontSize: "0.7rem", fontWeight: 800, whiteSpace: "nowrap" }}>{p.status_label}</span>
+              </span>
             </div>
             <div style={dim}>{[p.area || "No area set", p.last_visit_at ? `last visit ${shortDay(p.last_visit_at)}` : "no visit yet"].join(" · ")}</div>
             {p.note && <div style={{ fontSize: "0.82rem", color: D.text, lineHeight: 1.4 }}>{p.note}</div>}
@@ -86,9 +89,9 @@ export default function ProspectsPanel({ onRegister }) {
                 <span style={{ display: "inline-flex", gap: 8 }}>
                   <a href={`tel:${p.phone}`} aria-label={`Call ${p.name}`} onClick={() => { setNotice(null); setSheet({ type: "call", prospect: p }); }}
                     style={{ ...button(D.panelBg, D.text), minHeight: 44, minWidth: 44, display: "inline-flex", alignItems: "center", justifyContent: "center", textDecoration: "none", boxSizing: "border-box" }}>
-                    <span aria-hidden="true">📞</span>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z" /></svg>
                   </a>
-                  <button type="button" onClick={() => onRegister?.(p)} style={{ ...button(D.gold, D.text), minHeight: 44 }}>Register</button>
+                  <button type="button" onClick={() => onRegister?.(p)} style={{ ...button("#FDF6E3", D.text), border: "1px solid #2C181033", minHeight: 44 }}>Register</button>
                 </span>
               )}
             </div>

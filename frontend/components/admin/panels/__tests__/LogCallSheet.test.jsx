@@ -141,4 +141,27 @@ describe('LogCallSheet', () => {
     expect(body).not.toHaveProperty('follow_up_at')
     expect(body).not.toHaveProperty('counterpart_id')
   })
+
+  it('lets a call whose follow-up date has passed be edited, but refuses a newly picked past date', async () => {
+    let body = null
+    server.use(http.patch(`${API}/api/calls/9/`, async ({ request }) => { body = await request.json(); return HttpResponse.json({ id: 9 }) }))
+    const call = {
+      id: 9, direction: 'out', channel: 'phone', purpose: 'other', outcome: 'busy', sentiment: '', notes: '', duration_seconds: 0,
+      related_label: 'Adwoa Fabrics', counterpart_name: 'Adwoa Frimpong', follow_up_at: new Date(Date.now() - 3 * 86400000).toISOString(),
+    }
+    const { onSaved } = renderSheet({ call })
+    const dialog = await screen.findByRole('dialog', { name: 'Edit call' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Voicemail' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save call' }))
+    await waitFor(() => expect(onSaved).toHaveBeenCalled())
+    expect(body).toMatchObject({ outcome: 'voicemail' })
+    expect(body).not.toHaveProperty('follow_up_at')
+  })
+
+  it('draws Direction and How it went as segmented controls', async () => {
+    renderSheet()
+    const dialog = await screen.findByRole('dialog', { name: 'Log a call' })
+    expect(within(dialog).getByRole('group', { name: 'Direction' })).toHaveStyle({ background: '#F5ECD8' })
+    expect(within(dialog).getByRole('group', { name: 'How it went' })).toHaveStyle({ background: '#F5ECD8' })
+  })
 })

@@ -132,7 +132,7 @@ function ScoutCalls() {
   const calls = today.data?.results || [];
   const summary = today.data?.summary || { logged: calls.length, connected: calls.filter((c) => c.outcome === "connected").length };
   const todayIds = new Set(calls.map((c) => c.id));
-  const before = (all.data?.results || []).filter((c) => !todayIds.has(c.id));
+  const before = (all.data?.results || []).filter((c) => !todayIds.has(c.id) && canEdit(c));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 720 }}>
@@ -159,13 +159,13 @@ function ScoutCalls() {
       )}
 
       {!earlier
-        ? <button type="button" onClick={() => setEarlier(true)} style={{ ...pill(false), minHeight: 44, alignSelf: "flex-start" }}>Show earlier calls</button>
+        ? <button type="button" onClick={() => setEarlier(true)} style={{ ...pill(false), minHeight: 44, alignSelf: "flex-start" }}>Show earlier calls you can still edit</button>
         : (
           <section aria-label="Earlier calls" style={{ ...glassCard, padding: "10px 14px 8px" }}>
-            <div style={{ fontWeight: 800, fontSize: "0.88rem", color: D.text }}>Earlier</div>
+            <div style={{ fontWeight: 800, fontSize: "0.88rem", color: D.text }}>Earlier · last 24 hours</div>
             {all.isLoading && <div style={dim}>Loading…</div>}
             {all.isError && <div role="alert" style={errorStyle}>Couldn't load earlier calls.</div>}
-            {!all.isLoading && !all.isError && before.length === 0 && <div style={dim}>No earlier calls.</div>}
+            {!all.isLoading && !all.isError && before.length === 0 && <div style={dim}>No earlier calls in the last 24 hours.</div>}
             {before.map((call) => <CallRow key={call.id} call={call} showDay onEdit={(c) => setSheet({ call: c })} />)}
           </section>
         )}
