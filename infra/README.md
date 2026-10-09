@@ -228,13 +228,35 @@ purging (04:30). The schedule is `CELERY_BEAT_SCHEDULE` in
 `backend/ashantihub/settings.py`.
 
 **Rolling out phase 2A.** No new settings or services. The first
-subscription-clock run marks every lapsed subscription overdue: one that lapsed
-more than a day earlier gets its full 14-day grace from that run (nothing is
-hidden at once), and each owner is told in-app and by email. To give the
-staging scout demo businesses, run once on staging only. First check that
-staging's `SENTRY_ENVIRONMENT` is `staging` (the command refuses otherwise),
-then choose a demo-owner password (never commit it) and pass it:
-`docker compose -p ashantihub-staging -f infra/compose/docker-compose.yml run --rm --no-deps web python manage.py seed_phase2_demo --password '<chosen password>'`
+subscription-clock run (minute 5 of the first hour after the deploy) marks
+every lapsed subscription overdue: one that lapsed more than a day earlier
+gets its full 14-day grace from that run (nothing is hidden at once). Each
+owner is told in the app, and owners with an email on file are emailed on
+that first run. A business with no working account manager (none, or one who
+left or is suspended) notifies **every `portfolio.manage` holder** on days 1,
+7 and 13 of its grace; a managed one gives its account manager a task
+instead.
+
+**Before promoting 2A to production,** count what the first run will touch
+with this read-only query (it changes nothing):
+
+```bash
+docker compose -p ashantihub -f /opt/ashantihub/infra/compose/docker-compose.yml run --rm --no-deps web python manage.py shell -c "from django.db.models import Q; from django.utils import timezone; from billing.models import Subscription; s = Subscription.objects.filter(overdue_since__isnull=True, paused_at__isnull=True, current_period_end__lte=timezone.now()); m = Q(business_owner__account_manager__isnull=True) | Q(business_owner__account_manager__is_active=False) | Q(business_owner__account_manager__is_suspended=True); print('lapsed:', s.count(), '| no working account manager:', s.filter(m).count(), '| owner has an email:', s.exclude(business_owner__email__isnull=True).exclude(business_owner__email='').count())"
+```
+
+`lapsed` subscriptions go overdue on the first run; `owner has an email` is
+how many owner emails that run sends; each one with `no working account
+manager` sends a notification to every Operations lead (and Super Admin) on
+days 1, 7 and 13 — assign scouts first if that number is large.
+
+To give the staging scout demo businesses, run once on staging only. First
+check that staging's `SENTRY_ENVIRONMENT` is `staging` (the command refuses
+otherwise), then choose a demo-owner password (never commit it) and pass it:
+
+```bash
+docker compose -p ashantihub-staging -f /opt/ashantihub-staging/infra/compose/docker-compose.yml \
+  run --rm --no-deps web python manage.py seed_phase2_demo --password '<chosen password>'
+```
 
 **After the plan 1B deploy, reinstall the cron file on the server** (the
 activity-chain lines were removed from it; the install line is in the file's

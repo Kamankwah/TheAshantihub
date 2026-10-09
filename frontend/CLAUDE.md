@@ -113,6 +113,13 @@ monolith holding most components, with extractions living in `components/`,
   it into a parent, a query cache or storage. The hand-over overlay holds a same-URL history guard
   against Back and its password fields use `autocomplete="off"`.
 - **`ProposeChangeForm` diffs against the business it opened with**, not the live query data.
+- **The public claim page retries once after a 401** (`lib/withoutStaleSignIn.js`): an expired
+  sign-in stored in the browser must not block it. Never use that helper on the hand-over, whose
+  token is bound to the scout's session.
+- **Only an explicit staff Sign out clears registration drafts** (`clearRegisterDrafts`); idle and
+  "ended" sign-outs keep them so the scout can carry on.
+- **`useFraudFlags` is an infinite query** (read `data.pages[n].results`; "Show more" fetches DRF's
+  `next`), unlike the other queue hooks.
 - **Never read a multipart request body that holds a jsdom `File` in a test**; spy on
   `FormData.prototype.append` instead.
 - **Duplicate-match copy lives in `registrationCheckCopy.js`** - don't re-word it per screen.

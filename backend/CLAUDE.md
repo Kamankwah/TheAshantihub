@@ -123,8 +123,10 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   `approve_owner()` / `reject_owner()`; a queue decision settles the pending request with
   `approvals.services.close_pending_for_target()` (never by running `apply` again). `approve()`
   sets `decided_by` before `apply`, so an `apply` may read it. The business's registrar can never
-  decide its KYC through either door, Super Admin included (403), and a scout-channel business
-  needs the Ghana Post address decision before KYC approval through either door.
+  decide its KYC through either door, Super Admin included (403) - nor record its Ghana Post
+  address decision - and a scout-channel business needs the Ghana Post address decision before
+  KYC approval through either door. A scout's `business.update` that changes `gps_address` clears
+  that decision (kept in `AppliedChange.result`; an undo puts it back with the address).
 - **Scout changes are approval kinds** in `portfolio.approval_kinds.KINDS` (registered in
   `PortfolioConfig.ready()`); only the business's account manager may submit them; each applied
   change writes a `portfolio.AppliedChange` the owner can undo for 7 days
@@ -135,7 +137,10 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   only on the scout session that started it; the claim view is `activity_exempt` and records
   `business.claimed` itself, so the password never reaches the activity log. The claim strips
   password edge spaces (sign-in trims them), and password reset sends nothing to an owner who
-  `needs_claim` - they must claim, so that consent is recorded.
+  `needs_claim` - they must claim, so that consent is recorded. A staff member's email is refused
+  as an owner's email at registration and at the claim (resets go there). Lock order in `claim()`
+  is owner, then token, as when issuing one. Sentry's scrubber (`ashantihub/sentry.py`) holds the
+  claim secrets' field names - add any new secret field there.
 - **Fraud cases** come from `fraud.services.raise_flag()` (use a `dedupe_key` for system checks).
   Confirming runs the hooks in `fraud.services.ON_CONFIRMED`; plan 2B adds commission reversal
   there. The realtime `fraud.` row also invalidates `kyc-queue` and `portfolio-business`.
