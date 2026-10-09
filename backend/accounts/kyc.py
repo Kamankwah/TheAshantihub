@@ -85,10 +85,27 @@ def _locked_owner(owner_id, staff):
     return owner
 
 
+def _corrections(owner):
+    """Field reports that marked the address wrong and gave a correction
+    (ScoutVerifyView rewrote gps_address from them)."""
+    return ScoutAssignment.objects.filter(business_owner=owner, address_confirmed=False).exclude(corrected_address="")
+
+
+def address_correction(owner):
+    """The latest field correction as the KYC screens show it, or None."""
+    latest = _corrections(owner).select_related("scout").order_by("-visited_at", "-id").first()
+    if latest is None:
+        return None
+    return {"scout_name": latest.scout.full_name, "corrected_address": latest.corrected_address, "at": latest.visited_at}
+
+
 def address_decision_missing(owner):
-    """A scout-registered business needs the Ghana Post address decision before
-    KYC approval, on either door. Self-registered owners keep the old behaviour."""
-    if owner.registration_channel != BusinessOwner.SCOUT:
+    """The Ghana Post address decision is needed before KYC approval, on either
+    door, for a scout-registered business and for any business whose address a
+    field scout corrected (the correction cleared the decision, so someone
+    other than the corrector re-checks it). Other self-registered owners keep
+    the old behaviour."""
+    if owner.registration_channel != BusinessOwner.SCOUT and not _corrections(owner).exists():
         return False
     profile = getattr(owner, "profile", None)
     return profile is None or profile.address_verified_at is None

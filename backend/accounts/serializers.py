@@ -354,6 +354,8 @@ class BusinessOwnerKYCDetailSerializer(BusinessOwnerKYCSerializer):
     location_accuracy_m = serializers.IntegerField(source="profile.location_accuracy_m", read_only=True, default=None)
     location_is_manual = serializers.BooleanField(source="profile.location_is_manual", read_only=True, default=None)
     signboard_photo = serializers.ImageField(source="profile.signboard_photo", read_only=True, default=None)
+    # U6: the latest field correction of the Ghana Post address, or None.
+    address_correction = serializers.SerializerMethodField()
 
     class Meta(BusinessOwnerKYCSerializer.Meta):
         fields = [
@@ -361,8 +363,13 @@ class BusinessOwnerKYCDetailSerializer(BusinessOwnerKYCSerializer):
             "created_at", "reviewed_by_name", "reviewed_at", "profile",
             "registration_channel", "registered_by_name", "registered_by_role", "open_fraud_flags", "pending_approval_id",
             "business_name", "business_category_name", "zone_name", "lat", "lng",
-            "location_accuracy_m", "location_is_manual", "signboard_photo",
+            "location_accuracy_m", "location_is_manual", "signboard_photo", "address_correction",
         ]
+
+    def get_address_correction(self, obj):
+        from .kyc import address_correction
+
+        return address_correction(obj)
 
 
 class PayoutDetailSerializer(serializers.ModelSerializer):

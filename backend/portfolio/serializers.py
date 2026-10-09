@@ -8,6 +8,7 @@ from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework import serializers
 
 from accounts.gps import validate_ashanti_gps
+from accounts.kyc import address_correction
 from accounts.models import BusinessOwner, BusinessOwnerProfile, StaffUser
 from accounts.phones import normalize_gh_phone
 from accounts.validators import validate_image_content_type
@@ -371,6 +372,8 @@ def business_review_sheet(owner, request):
         ],
         "registered_by_name": owner.registered_by.full_name if owner.registered_by else None,
         "created_at": owner.created_at,
+        # U6: the latest field correction of the Ghana Post address, or None.
+        "address_correction": address_correction(owner),
     }
 
 

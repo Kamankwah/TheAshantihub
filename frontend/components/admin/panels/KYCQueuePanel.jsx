@@ -9,7 +9,8 @@ import ModerationQueueTabs, {
   RejectedReason,
   ReviewAgainButton,
 } from "../ModerationQueueTabs.jsx";
-import { chip, dim } from "./panelStyles.js";
+import { callout, chip, dim } from "./panelStyles.js";
+import { addressCorrectionText } from "./portfolioParts.jsx";
 
 // A single labelled field in the detail view. Renders a "—" for empty values
 // so a missing/incomplete KYC field is visible rather than silently blank.
@@ -198,6 +199,9 @@ function KYCRow({ owner, state, onDone }) {
               {/* Item 8: Ghana Post address verification control. */}
               <div style={{ color: D.gold, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", margin: "14px 0 8px" }}>Ghana Post address verification</div>
               <div style={{ color: D.textDim, fontSize: "0.72rem", marginBottom: 8 }}>Confirm the digital address <strong style={{ color: D.text }}>{p?.gps_address || "—"}</strong> before approving or rejecting.</div>
+              {detail.data.address_correction && (
+                <div style={{ ...callout(D.amber), fontSize: "0.72rem", marginBottom: 8 }}>{addressCorrectionText(detail.data.address_correction)}</div>
+              )}
               {addressDecided && (
                 <div style={{ color: addressVerified ? D.green : D.red, fontSize: "0.72rem", fontWeight: 700, marginBottom: 8 }}>
                   {addressVerified ? "✓ Address verified" : "✗ Address marked wrong"}

@@ -1,10 +1,12 @@
 import threading
+from datetime import timedelta
 from decimal import Decimal
 
 from django.core.cache import cache
 from django.db import connection
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework.test import APIClient
 
 from accounts import kyc
@@ -574,6 +576,73 @@ class KycAddressCorrectorTests(QueueBase):
         self.assertFalse(kyc.is_kyc_submitter(self.owner, self.field_scout))
         self.assertEqual(self.address_verify().status_code, 200)
 
+    def assert_address_first(self, response):
+        self.assertEqual((response.status_code, response.json()), (400, {"detail": "Record the Ghana Post address decision first."}))
+
+    def test_a_correction_clears_the_address_decision_until_another_lead_records_one(self):
+        # U6: a corrected address gets an independent re-check before KYC.
+        self.field_report(address_confirmed=False, corrected_address="AK-100-9999")
+        profile = BusinessOwnerProfile.objects.get(business_owner=self.owner)
+        self.assertEqual(
+            (profile.gps_address, profile.address_verified, profile.address_verified_by, profile.address_verified_at),
+            ("AK-100-9999", False, None, None),
+        )
+        self.assertTrue(kyc.address_decision_missing(BusinessOwner.objects.get(pk=self.owner.pk)))
+        self.as_(self.other_ops)
+        self.assert_address_first(self.approve_in_queue())
+        self.as_(self.lead)  # the request waits for the scout's lead in the inbox
+        inbox = self.client.post(f"/api/approvals/{self.approval.id}/approve/", {}, format="json")
+        self.assert_address_first(inbox)
+        self.as_(self.other_ops)
+        self.owner.refresh_from_db()
+        self.assertEqual(self.owner.kyc_status, "pending")
+        self.assertEqual(self.address_verify().status_code, 200)
+        self.assertEqual(self.approve_in_queue().status_code, 200)
+        self.owner.refresh_from_db()
+        self.assertEqual(self.owner.kyc_status, "verified")
+
+    def test_a_self_registered_business_with_a_correction_needs_the_decision_too(self):
+        online = make_business(name="Yaa Provisions", owner_name="Yaa Asantewaa", phone="+233207778899")
+        BusinessOwnerProfile.objects.filter(business_owner=online).update(
+            address_verified=True, address_verified_by=self.lead, address_verified_at=timezone.now(),
+        )
+        self.assignment = ScoutAssignment.objects.create(business_owner=online, scout=self.field_scout, assigned_by=self.lead)
+        self.assertEqual(self.field_report(address_confirmed=False, corrected_address="AK-200-1234").status_code, 200)
+        self.assertIsNone(BusinessOwnerProfile.objects.get(business_owner=online).address_verified_at)
+        self.as_(self.other_ops)
+        self.assert_address_first(self.approve_in_queue(online))
+        self.as_(self.field_scout)  # the corrector can't record it
+        self.assert_refused(self.client.post(f"/api/accounts/kyc/{online.id}/address-verify/", {"verified": True}, format="json"))
+        self.as_(self.other_ops)
+        response = self.client.post(f"/api/accounts/kyc/{online.id}/address-verify/", {"verified": True}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(self.approve_in_queue(online).status_code, 200)
+
+    def test_another_scouts_later_confirmation_records_the_decision(self):
+        self.field_report(address_confirmed=False, corrected_address="AK-100-9999")
+        second = make_staff("scout", "abena@example.com", manager=self.lead)
+        visit = ScoutAssignment.objects.create(business_owner=self.owner, scout=second, assigned_by=self.lead)
+        self.as_(second)
+        response = self.client.post(
+            f"/api/accounts/scout-assignments/{visit.id}/verify/", {"address_confirmed": True}, format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        profile = BusinessOwnerProfile.objects.get(business_owner=self.owner)
+        self.assertEqual((profile.address_verified, profile.address_verified_by), (True, second))
+        self.as_(self.other_ops)
+        self.assertEqual(self.approve_in_queue().status_code, 200)
+
+    def test_a_confirm_only_report_records_the_decision_and_approval_proceeds(self):
+        BusinessOwnerProfile.objects.filter(business_owner=self.owner).update(
+            address_verified=False, address_verified_by=None, address_verified_at=None,
+        )
+        self.assertEqual(self.field_report(address_confirmed=True).status_code, 200)
+        profile = BusinessOwnerProfile.objects.get(business_owner=self.owner)
+        self.assertEqual((profile.address_verified, profile.address_verified_by), (True, self.field_scout))
+        self.assertIsNotNone(profile.address_verified_at)
+        self.as_(self.other_ops)
+        self.assertEqual(self.approve_in_queue().status_code, 200)
+
     def test_a_correction_on_another_business_does_not_count(self):
         other = make_business(name="Kojo Spares", owner_name="Yaw Boakye", phone="+233201234567")
         ScoutAssignment.objects.create(
@@ -582,6 +651,44 @@ class KycAddressCorrectorTests(QueueBase):
         )
         self.assertFalse(kyc.is_kyc_submitter(self.owner, self.field_scout))
         self.assertTrue(kyc.is_kyc_submitter(other, self.field_scout))
+
+
+class AddressCorrectionFieldTests(QueueBase):
+    """U6: the KYC detail and the review sheet show the latest field
+    correction, or null."""
+
+    def review(self):
+        return self.client.get(f"/api/portfolio/businesses/{self.owner.id}/review/").json()
+
+    def detail(self):
+        return self.client.get(f"/api/accounts/kyc/{self.owner.id}/").json()
+
+    def test_null_without_a_correction(self):
+        ScoutAssignment.objects.create(
+            business_owner=self.owner, scout=make_staff("scout", "efua@example.com"), status=ScoutAssignment.VISITED,
+            address_confirmed=True, visited_at=timezone.now(),
+        )
+        self.as_(self.lead)
+        self.assertIsNone(self.detail()["address_correction"])
+        self.assertIsNone(self.review()["address_correction"])
+
+    def test_the_latest_correction_on_both_endpoints(self):
+        now = timezone.now()
+        ScoutAssignment.objects.create(
+            business_owner=self.owner, scout=make_staff("scout", "efua@example.com"), status=ScoutAssignment.VISITED,
+            address_confirmed=False, corrected_address="AK-100-1111", visited_at=now - timedelta(days=2),
+        )
+        ScoutAssignment.objects.create(
+            business_owner=self.owner, scout=make_staff("scout", "abena@example.com"), status=ScoutAssignment.VISITED,
+            address_confirmed=False, corrected_address="AK-100-2222", visited_at=now,
+        )
+        self.as_(self.lead)
+        for body in (self.detail(), self.review()):
+            correction = body["address_correction"]
+            self.assertEqual(
+                (correction["scout_name"], correction["corrected_address"]), ("Abena", "AK-100-2222"),
+            )
+            self.assertEqual(parse_datetime(correction["at"]), now)
 
 
 class KycDetailsEditorTests(QueueBase):

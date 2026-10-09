@@ -389,7 +389,10 @@ class BusinessReviewTests(PortfolioApiBase):
         sheet = response.json()
         self.assertEqual(
             set(sheet),
-            {"owner", "business", "photos", "location", "checks", "consent", "flags", "registered_by_name", "created_at"},
+            {
+                "owner", "business", "photos", "location", "checks", "consent", "flags", "registered_by_name", "created_at",
+                "address_correction",
+            },
         )
         self.assertEqual(sheet["owner"]["ghana_card_number"], "GHA-712345678-2")
         self.assertTrue(sheet["owner"]["needs_claim"])

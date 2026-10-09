@@ -6,7 +6,7 @@ import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D } from "../theme.js";
 import { button, callout, chip, dim } from "./panelStyles.js";
 import { alreadyBelongsText } from "./registrationCheckCopy.js";
-import { errorStyle, eyebrow, formatDateTime, h3 } from "./portfolioParts.jsx";
+import { addressCorrectionText, errorStyle, eyebrow, formatDateTime, h3 } from "./portfolioParts.jsx";
 
 // The KYC review sheet inside a business.kyc approval (/staff/approvals/<id>),
 // read from GET /api/portfolio/businesses/<id>/review/: the owner, the
@@ -207,6 +207,7 @@ export default function BusinessKycReview({ businessId, canRecordAddress = false
             target="_blank" rel="noreferrer" style={{ color: D.deepGold, fontSize: "0.78rem", fontWeight: 700, alignSelf: "flex-start" }}>Open the pin on a map</a>
         )}
         <div style={text}>{`Ghana Post address as typed: ${location.gps_address || "—"}`}</div>
+        {sheet.address_correction && <div style={callout(D.amber)}>{addressCorrectionText(sheet.address_correction)}</div>}
         <div style={callout(decided ? (verified ? D.green : D.red) : D.amber)}>{addressStatus}</div>
         {canRecordAddress && (
           <div role="group" aria-label="Ghana Post address decision" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>

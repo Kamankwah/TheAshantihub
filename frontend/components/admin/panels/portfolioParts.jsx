@@ -42,6 +42,14 @@ export function formatDay(value) {
   return date ? date.toLocaleDateString("en-GH", { weekday: "short", day: "numeric", month: "short" }) : "";
 }
 
+// U6: a field scout's address correction ({scout_name, corrected_address, at}
+// from GET kyc/<id>/ and the review sheet) cleared the address decision, so
+// someone else records it again before KYC can be approved.
+export function addressCorrectionText(correction) {
+  if (!correction) return null;
+  return `Address corrected by field scout ${correction.scout_name} on ${formatDay(correction.at)} to ${correction.corrected_address} — record the address decision before approving.`;
+}
+
 export function formatDateTime(value) {
   const date = toDate(value);
   return date ? date.toLocaleString("en-GH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";

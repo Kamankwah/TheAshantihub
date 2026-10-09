@@ -305,7 +305,7 @@ export const handlers = [
   // KYC detail (staff dashboard review tools) — default handler, overridden
   // per-test where a specific applicant's full detail is asserted.
   http.get('http://localhost:8000/api/accounts/kyc/:id/', ({ params }) => {
-    return HttpResponse.json({ id: Number(params.id), full_name: 'Owner', login_phone: '', email: '', kyc_status: 'pending', profile: {} })
+    return HttpResponse.json({ id: Number(params.id), full_name: 'Owner', login_phone: '', email: '', kyc_status: 'pending', profile: {}, address_correction: null })
   }),
   // Staff user-management detail/edit/suspend (staff dashboard review tools)
   // — default handlers, overridden per-test as needed.
@@ -556,7 +556,7 @@ export const handlers = [
       address_verified: false, address_verified_by_name: null, address_verified_at: null,
     },
     checks: { exact: [], similar: [], staff_match: false, accuracy_m: null },
-    consent: null, flags: [], registered_by_name: null, created_at: '2026-10-07T00:00:00Z',
+    consent: null, flags: [], registered_by_name: null, created_at: '2026-10-07T00:00:00Z', address_correction: null,
   })),
   http.get('http://localhost:8000/api/fraud/flags/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/fraud/flags/counts/', () => HttpResponse.json({ open: 0, confirmed: 0, dismissed: 0 })),

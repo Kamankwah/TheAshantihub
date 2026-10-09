@@ -1050,11 +1050,13 @@ class Command(BaseCommand):
         )
         self._count("scout_assignments", created)
         if created:
+            # As ScoutVerifyView does (user decision U6): the correction is
+            # written and the address decision cleared, for someone else to re-check.
             profile = self.pending_owner_3.profile
             profile.gps_address = visited.corrected_address
-            profile.address_verified = True
-            profile.address_verified_by = self.scout
-            profile.address_verified_at = self.now
+            profile.address_verified = False
+            profile.address_verified_by = None
+            profile.address_verified_at = None
             profile.save(update_fields=[
                 "gps_address", "address_verified", "address_verified_by", "address_verified_at",
             ])

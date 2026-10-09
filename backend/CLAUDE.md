@@ -138,15 +138,16 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   door, Super Admin included (403, `kyc.OWN_REGISTRATION`), or records its Ghana Post address
   decision: the registrar, the current account manager, the maker of any
   `business.kyc`/`business.update` request for it, any staff member who edited the owner's details
-  directly, and a field scout who corrected the address. That scout's report itself records the
-  address decision (`address_verified=False` plus the corrected `gps_address`); one who only
-  confirmed the address is not a submitter. Whether a corrected address needs an independent
-  re-check is an open product decision. That edit (`PATCH business-owners/{id}/`)
-  records `business_owner.details_changed` with only the changed fields, payout numbers and TIN
-  masked (`accounts.serializers.owner_details_change`); a PATCH that changes nothing records
-  nothing. A scout-channel business needs the Ghana Post address decision before KYC approval
-  through either door. A scout's `business.update` that changes `gps_address` clears
-  that decision (kept in `AppliedChange.result`; an undo puts it back with the address).
+  directly (`PATCH business-owners/{id}/` records `business_owner.details_changed` with only the
+  changed fields, payout numbers and TIN masked by `accounts.serializers.owner_details_change`; a
+  PATCH that changes nothing records nothing), and a field scout who corrected the address (one
+  who only confirmed it is not). A correction rewrites `gps_address` and clears the address
+  decision, so someone else re-checks it - a lead through address-verify or another scout's later
+  visit; `GET kyc/{id}/` and the review sheet show it as `address_correction`.
+  `kyc.address_decision_missing()` makes a scout-channel business, or any business with a field
+  correction, wait for the Ghana Post address decision before KYC approval through either door. A
+  scout's `business.update` that changes `gps_address` clears that decision too (kept in
+  `AppliedChange.result`; an undo puts it back with the address).
 - **Scout changes are approval kinds** in `portfolio.approval_kinds.KINDS` (registered in
   `PortfolioConfig.ready()`); only the business's account manager may submit them; each applied
   change writes a `portfolio.AppliedChange` the owner can undo for 7 days
