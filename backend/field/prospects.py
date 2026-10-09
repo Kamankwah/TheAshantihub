@@ -66,7 +66,8 @@ def sync_follow_up(prospect):
     if wanted:
         title = f"Follow up: {prospect.name}"[:200]
         if task is None:
-            task = create_task(prospect.scout, title, prospect.next_follow_up_at, source=prospect, created_by=prospect.scout)
+            task = create_task(prospect.scout, title, prospect.next_follow_up_at, source=prospect, created_by=prospect.scout,
+                               kind=Task.PROSPECT_FOLLOW_UP)
             prospect.follow_up_task = task
             prospect.save(update_fields=["follow_up_task"])
         elif task.due_at != prospect.next_follow_up_at or task.title != title:

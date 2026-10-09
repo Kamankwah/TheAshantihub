@@ -41,6 +41,7 @@ import StaffHeader, { RoleChip } from "./shell/StaffHeader.jsx";
 import StaffDrawer from "./shell/StaffDrawer.jsx";
 import StaffBottomBar from "./shell/StaffBottomBar.jsx";
 import ScoutBottomBar from "./shell/ScoutBottomBar.jsx";
+import FollowUpsPanel from "./panels/FollowUpsPanel.jsx";
 import TasksPanel from "./panels/TasksPanel.jsx";
 import ActivityPanel from "./panels/ActivityPanel.jsx";
 import CallLogPanel from "./panels/CallLogPanel.jsx";
@@ -187,6 +188,12 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
     else { setInternalTab("all-portfolios"); setInternalDetail(String(id)); }
   };
 
+  // A follow-up's business opens its page under My businesses (/staff/portfolio/<id>).
+  const openMyBusiness = (id) => {
+    if (isControlled) onTabChange?.(`portfolio/${id}`);
+    else { setInternalTab("portfolio"); setInternalDetail(String(id)); }
+  };
+
   // "Check in" on a business page opens the check-in screen with that
   // business picked (/staff/visits/check-in-<id>).
   const openCheckIn = (id) => {
@@ -287,7 +294,9 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "promotions" && <PromotionsPanel auth={auth} />}
           {activeTab === "analytics" && <AnalyticsPanel />}
           {activeTab === "messaging" && <MessagingPanel />}
-          {activeTab === "tasks" && <TasksPanel />}
+          {activeTab === "tasks" && (role === "scout"
+            ? <FollowUpsPanel onOpenBusiness={openMyBusiness} onOpenProspects={() => selectTab("prospects")} />
+            : <TasksPanel />)}
           {activeTab === "activity" && <ActivityPanel />}
           {activeTab === "calls" && <CallLogPanel auth={auth} />}
           {activeTab === "prospects" && <ProspectsPanel onRegister={openRegisterFromProspect} />}

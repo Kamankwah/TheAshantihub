@@ -119,9 +119,9 @@ const ROLE_MENUS = {
   ],
   scout: [
     ["pipeline", "Pipeline", ["prospects", "register-business"]],
-    ["my-businesses", "My businesses", ["portfolio", "field-verification"]],
+    ["my-businesses", "My businesses", ["portfolio", "tasks", "field-verification"]],
     ["calls", "Calls", ["calls", "visits"]],
-    ["my-work", "My work", ["approvals", "tasks", "activity", "security"]],
+    ["my-work", "My work", ["approvals", "activity", "security"]],
     ["reports", "Reports", ["reports"]],
   ],
   delivery_manager: [
@@ -140,7 +140,9 @@ const ROLE_MENUS = {
 };
 
 const ITEM_BY_ID = Object.fromEntries(NAV_ITEMS.map((item) => [item.id, item]));
-const toNavItem = ({ id, icon, label }) => ({ id, icon, label });
+// Labels a role reads differently (the item ids and NAV_ITEMS labels stay as they are).
+const ROLE_LABELS = { scout: { tasks: "Follow-ups" } };
+const toNavItem = ({ id, icon, label }, role) => ({ id, icon, label: ROLE_LABELS[role]?.[id] || label });
 
 export function buildNavGroups(auth) {
   const layout = ROLE_MENUS[auth.user?.role] || DEFAULT_GROUPS;
@@ -151,11 +153,11 @@ export function buildNavGroups(auth) {
       const item = ITEM_BY_ID[itemId];
       if (!item || placed.has(itemId) || !item.show(auth)) continue;
       placed.add(itemId);
-      items.push(toNavItem(item));
+      items.push(toNavItem(item, auth.user?.role));
     }
     return { id, label, items };
   });
-  const leftovers = NAV_ITEMS.filter((item) => !placed.has(item.id) && item.show(auth)).map(toNavItem);
+  const leftovers = NAV_ITEMS.filter((item) => !placed.has(item.id) && item.show(auth)).map((item) => toNavItem(item, auth.user?.role));
   if (leftovers.length) groups.push({ id: "more", label: "More tools", items: leftovers });
   return groups.filter((group) => group.items.length > 0);
 }

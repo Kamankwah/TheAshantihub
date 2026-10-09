@@ -72,6 +72,7 @@ class ProspectApiTests(ProspectBase):
         task = Task.objects.get(owner=self.kwame)
         self.assertEqual(task.title, "Follow up: Ohemaa Waakye Joint")
         self.assertEqual(task.source_type, "field.prospect")
+        self.assertEqual((task.kind, task.business_owner), (Task.PROSPECT_FOLLOW_UP, None))
         later = timezone.now() + timedelta(days=5)
         response = self.client.patch(f"{PROSPECTS}{created.data['id']}/", {"next_follow_up_at": later.isoformat()}, format="json")
         self.assertEqual(response.status_code, 200)

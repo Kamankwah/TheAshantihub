@@ -57,7 +57,9 @@ QUEUE_INVALIDATIONS = [
     (("visit.",), ("portfolio.manage", "businesses.manage_portfolio"), ("portfolio", "portfolio-business")),
     # The prospect list (and the people a call can be logged about) follow
     # prospect edits, visits (last visit) and a registration that links one.
-    (("prospect.", "visit.", "business.registered"), ("businesses.register",), ("prospects", "call-counterparts")),
+    (("prospect.", "visit.", "business.registered"), ("businesses.register",), ("prospects", "call-counterparts", "my-tasks")),
+    # A scout's delivery flag gives every Delivery Manager a task (portfolio/delivery.py).
+    (("delivery.problem_flagged",), ("delivery.manage",), ("my-tasks", "staff-badges")),
     (("fraud.",), ("fraud.manage", "fraud.flag"), ("fraud-flags", "fraud-flag-counts", "kyc-queue", "portfolio-business", "staff-badges")),
 ]
 # (verb prefixes, extra keys for everyone who receives the feed event)
@@ -65,7 +67,8 @@ FEED_KEYS = [
     (("task-",), ("my-tasks", "staff-badges")),
     (("call-",), ("call-logs",)),
     (("visit.",), ("visits", "visit-open")),
-    (("approval.",), ("approvals", "approval", "approval-counts", "staff-badges")),
+    # A returned request gives its maker a follow-up task (portfolio/approval_kinds.py).
+    (("approval.",), ("approvals", "approval", "approval-counts", "staff-badges", "my-tasks")),
     (("report.",), ("my-reports", "report", "team-reports")),
 ]
 APPROVAL_KEYS = ["approvals", "approval", "approval-counts", "staff-badges"]

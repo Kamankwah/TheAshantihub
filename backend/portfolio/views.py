@@ -29,9 +29,10 @@ from approvals.services import ApprovalError
 from billing.clock import pause_enabled
 from listings.models import Listing
 from notifications.services import notify_staff
+from staff_tasks.models import Task
 from staff_tasks.services import create_task
 
-from . import checks, health
+from . import checks, delivery, health
 from .models import BusinessHealthSnapshot
 from .registration import RegistrationError, register_business, resubmit_kyc
 from .serializers import (
@@ -382,6 +383,41 @@ class PortfolioBusinessDetailView(APIView):
         return Response(business_detail(row, request))
 
 
+class BusinessOrdersView(APIView):
+    """GET /api/portfolio/businesses/<pk>/orders/ — the business's paid orders,
+    read-only, with only its own lines. No customer details, ever."""
+
+    def get_permissions(self):
+        return [HasAnyRolePermission(PORTFOLIO_SCOUT, PORTFOLIO_MANAGE)]
+
+    def get(self, request, pk):
+        owner = get_managed_business(request, pk)
+        paginator = PortfolioPagination()
+        paginator.page_size = 5
+        paginator.page_size_query_param = "page_size"
+        paginator.max_page_size = 50
+        page = paginator.paginate_queryset(delivery.business_orders(owner), request, view=self)
+        flagged = delivery.flagged_order_ids(owner, [order.pk for order in page])
+        return paginator.get_paginated_response([delivery.order_item(order, owner, flagged) for order in page])
+
+
+class DeliveryProblemView(APIView):
+    """POST /api/portfolio/businesses/<pk>/orders/<order_id>/delivery-problem/ {note}
+    — the account manager (only) tells the Delivery Managers about an order."""
+
+    def get_permissions(self):
+        return [HasRolePermission(PORTFOLIO_SCOUT)]
+
+    def post(self, request, pk, order_id):
+        owner = get_managed_business(request, pk, allow_portfolio_manage=False)
+        body = request.data if isinstance(request.data, dict) else {}
+        try:
+            result = delivery.flag_delivery_problem(request.user, owner, order_id, body.get("note"), request=request)
+        except delivery.DeliveryProblemError as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
+        return Response(result, status=201 if not result["already"] else 200)
+
+
 class BusinessReviewView(APIView):
     """GET /api/portfolio/businesses/<pk>/review/ — the KYC review sheet."""
 
@@ -469,6 +505,7 @@ class BusinessFollowUpView(APIView):
         with transaction.atomic():
             task = create_task(
                 assignee, data["title"], data["due_at"], notes=data["notes"], source=business, created_by=user,
+                kind=Task.OPS_FOLLOW_UP if assignee.pk != user.pk else Task.MANUAL, business=business,
             )
             if assignee.pk != user.pk:
                 notify_staff(

@@ -9,6 +9,7 @@ import AddListingForm from "./AddListingForm.jsx";
 import AddPhotosForm from "./AddPhotosForm.jsx";
 import KycResendForm from "./KycResendForm.jsx";
 import LogCallSheet from "./LogCallSheet.jsx";
+import OrdersSection, { FlagForm } from "./OrdersSection.jsx";
 import OwnerHandover from "./OwnerHandover.jsx";
 import ProposeChangeForm from "./ProposeChangeForm.jsx";
 import {
@@ -158,6 +159,7 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
           {b.can_manage && actionButton("Propose a change", () => setView("propose"))}
           {b.can_manage && actionButton("Add a product", () => setView("add"), { disabled: !canAddProduct })}
           {b.can_manage && actionButton("Add photos", () => setView("photos"))}
+          {b.can_manage && actionButton("Flag a delivery problem", () => toggle("delivery"))}
           {canResendKyc && actionButton("Send KYC again", () => toggle("kyc"))}
           {b.needs_claim && canHandOver && actionButton(`Hand the phone to ${owner}`, () => setHandover(true))}
           {b.needs_claim && canHandOver && actionButton("Send claim link", sendClaimLink, { disabled: busy })}
@@ -180,6 +182,9 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
             setNotice("Call saved.");
             refreshAll();
           }} />
+        )}
+        {panel === "delivery" && b.can_manage && (
+          <FlagForm businessId={b.id} onCancel={() => setPanel(null)} onDone={(message) => { setPanel(null); setNotice(message); }} />
         )}
         {panel === "reassign" && (
           <ReassignForm businesses={[{ id: b.id, business_name: b.business_name }]} auth={auth} onCancel={() => setPanel(null)}
@@ -244,6 +249,8 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
           );
         })}
       </section>
+
+      <OrdersSection businessId={b.id} canFlag={b.can_manage} />
 
       <section aria-label="Recent calls and visits" style={card}>
         <h3 style={h3}>Recent calls &amp; visits</h3>

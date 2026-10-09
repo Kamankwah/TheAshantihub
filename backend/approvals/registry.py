@@ -15,6 +15,7 @@ class ApprovalKind:
     resolve_approver: Optional[Callable] = None  # (request) -> [(stage, StaffUser | None), …]
     render_diff: Optional[Callable] = None       # (request) -> [{"field", "before", "after"}, …]
     validate: Optional[Callable] = None          # (request) -> None; raise ApprovalError(message) to refuse
+    on_rejected: Optional[Callable] = None       # (request) -> None; runs when a decider returns it (the maker's follow-up task)
 
 
 _KINDS = {}

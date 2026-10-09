@@ -144,6 +144,14 @@ describe('Register a business (staff phase 2A)', () => {
     expect(NAV_ITEMS.find((i) => i.id === 'register-business')).toMatchObject({ icon: '➕', label: 'Register a business' })
   })
 
+  it("shows a scout's tasks as Follow-ups under My businesses; other roles keep Tasks", () => {
+    const scout = buildNavGroups(authAs('scout', ['businesses.manage_portfolio', 'calls.log']))
+    expect(scout.flatMap((g) => g.items).find((i) => i.id === 'tasks').label).toBe('Follow-ups')
+    expect(groupOf(scout, 'tasks')).toBe('My businesses')
+    const ops = buildNavGroups(authAs('operations', ['portfolio.manage']))
+    expect(ops.flatMap((g) => g.items).find((i) => i.id === 'tasks').label).toBe('Tasks')
+  })
+
   it('gives a scout Pipeline, My businesses, Calls, My work and Reports', () => {
     const groups = buildNavGroups(authAs('scout', ['businesses.register', 'scouts.verify', 'calls.log']))
     expect(groups.map((g) => g.label)).toEqual(['Pipeline', 'My businesses', 'Calls', 'My work', 'Reports'])
@@ -185,7 +193,7 @@ describe('portfolio menus (staff phase 2A)', () => {
   it("puts a scout's Portfolio under My businesses, next to Field Verification", () => {
     const groups = buildNavGroups(authAs('scout', ['businesses.manage_portfolio', 'businesses.register', 'scouts.verify', 'calls.log']))
     expect(groups.map((g) => g.label)).toEqual(['Pipeline', 'My businesses', 'Calls', 'My work', 'Reports'])
-    expect(idsIn(groups, 'My businesses')).toEqual(['portfolio', 'field-verification'])
+    expect(idsIn(groups, 'My businesses')).toEqual(['portfolio', 'tasks', 'field-verification'])
   })
 
   it('gives Operations a Businesses group right after People', () => {

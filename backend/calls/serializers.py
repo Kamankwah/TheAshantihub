@@ -110,7 +110,11 @@ class CallLogSerializer(serializers.ModelSerializer):
             return
         label = call.related_label or call.counterpart_name or "call"
         if task is None:
-            call.follow_up_task = create_task(staff, f"Follow up: {label}", call.follow_up_at, source=call, created_by=staff)
+            business = BusinessOwner.objects.filter(pk=call.related_id).first() if call.related_type == "business_owner" and call.related_id.isdigit() else None
+            call.follow_up_task = create_task(
+                staff, f"Follow up: {label}", call.follow_up_at, source=call, created_by=staff,
+                kind=Task.CALL_FOLLOW_UP, business=business,
+            )
             call.save(update_fields=["follow_up_task"])
         elif task.due_at != call.follow_up_at:
             task.due_at = call.follow_up_at

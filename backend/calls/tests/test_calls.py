@@ -190,6 +190,7 @@ class ScoutCallSheetTests(TestCase):
         future = timezone.now() + dt.timedelta(days=2)
         call_id = self.sheet(follow_up_at=future.isoformat()).json()["id"]
         task = Task.objects.get()
+        self.assertEqual((task.kind, task.business_owner), (Task.CALL_FOLLOW_UP, self.business))
         later = timezone.now() + dt.timedelta(days=4)
         self.assertEqual(self.client.patch(f"/api/calls/{call_id}/", {"follow_up_at": later.isoformat()}, format="json").status_code, 200)
         task.refresh_from_db()

@@ -197,6 +197,7 @@ class SubscriptionClockTests(TestCase):
         task = Task.objects.get(owner=self.scout)
         self.assertEqual((task.source_type, task.source_id), ("billing.subscription", str(sub.pk)))
         self.assertEqual(task.due_at, NOW + timedelta(days=1))
+        self.assertEqual((task.kind, task.business_owner), (Task.SUBSCRIPTION_OVERDUE, self.owner))
         self.assertIsNone(task.created_by)
         self.assertIn("Adwoa Fabrics", task.title)
         self.assertIn("day 1 of 14", task.title)

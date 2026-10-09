@@ -413,3 +413,115 @@ describe('BusinessPage — visits (staff WP1)', () => {
     expect(screen.queryByRole('button', { name: /Check in/ })).not.toBeInTheDocument()
   })
 })
+
+describe('BusinessPage — orders and delivery problems (staff WP3)', () => {
+  const order = (over = {}) => ({
+    id: 27, number: '#27', placed_at: '2026-10-05T10:00:00Z', items: [{ name: 'Ankara wrap skirt', quantity: 1 }], status: 'paid',
+    delivery_status: 'delivered', delivered_at: '2026-10-07T12:00:00Z', dispute: null, problem_flagged: false, ...over,
+  })
+  const page = (results, count = results.length) => ({ count, next: null, previous: null, results })
+  function serveOrders(results, count, sizes = []) {
+    server.use(http.get(`${API}/api/portfolio/businesses/12/orders/`, ({ request }) => {
+      const size = new URL(request.url).searchParams.get('page_size')
+      sizes.push(size)
+      return HttpResponse.json(page(Number(size) > 2 ? results : results.slice(0, 2), count))
+    }))
+  }
+
+  it('lists the two latest orders read-only, with status chips and no customer', async () => {
+    serve(business())
+    serveOrders([
+      order({ id: 31, number: '#31', items: [{ name: 'Batik fabric, 6 yards', quantity: 2 }], delivery_status: 'out_for_delivery', delivered_at: null, dispute: { reason: 'delivery_issue', reason_label: 'Delivery Issue', status: 'open' } }),
+      order(),
+    ])
+    renderPage()
+    const section = await screen.findByRole('region', { name: 'Orders and deliveries' })
+    expect(within(section).getByRole('heading', { name: 'Orders & deliveries' })).toBeInTheDocument()
+    expect(within(section).getByText('Read-only')).toBeInTheDocument()
+    expect(await within(section).findByText('#31')).toBeInTheDocument()
+    expect(within(section).getByText(/Batik fabric, 6 yards ×2/)).toBeInTheDocument()
+    expect(within(section).getByText('Delivery Issue open')).toBeInTheDocument()
+    expect(within(section).getByText('Out for delivery')).toBeInTheDocument()
+    expect(within(section).getByText('Delivered 7 Oct')).toBeInTheDocument()
+    expect(within(section).queryByRole('button', { name: /^See all/ })).not.toBeInTheDocument()
+  })
+
+  it('says so when there are no paid orders', async () => {
+    serve(business())
+    renderPage()
+    expect(await screen.findByText('No paid orders yet.')).toBeInTheDocument()
+  })
+
+  it('offers See all, which asks for a bigger page', async () => {
+    serve(business())
+    const sizes = []
+    serveOrders([order({ id: 31, number: '#31' }), order(), order({ id: 25, number: '#25' })], 3, sizes)
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'See all 3' }))
+    await waitFor(() => expect(sizes).toContain('20'))
+    expect(await screen.findByText('#25')).toBeInTheDocument()
+  })
+
+  it('flags a delivery problem: picks the order, sends the note, and says the Delivery Manager takes it', async () => {
+    serve(business())
+    serveOrders([order({ id: 31, number: '#31' }), order()])
+    const sent = []
+    server.use(http.post(`${API}/api/portfolio/businesses/12/orders/:orderId/delivery-problem/`, async ({ request, params }) => {
+      sent.push({ order: params.orderId, body: await request.json() })
+      return HttpResponse.json({ flagged: true, already: false, told: 2 }, { status: 201 })
+    }))
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Flag a delivery problem' }))
+    const form = await screen.findByRole('form', { name: 'Flag a delivery problem' })
+    await waitFor(() => expect(within(form).getByRole('combobox')).toHaveValue('31'))
+    fireEvent.change(within(form).getByLabelText('What went wrong'), { target: { value: 'Rider never reached the shop' } })
+    expect(within(form).getByText('The Delivery Manager is told and takes it from here.')).toBeInTheDocument()
+    fireEvent.click(within(form).getByRole('button', { name: 'Tell the Delivery Manager' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('The Delivery Manager is told and takes it from here.')
+    expect(sent).toEqual([{ order: '31', body: { note: 'Rider never reached the shop' } }])
+    expect(screen.queryByRole('form', { name: 'Flag a delivery problem' })).not.toBeInTheDocument()
+  })
+
+  it('needs a note, and shows the server reason when it is refused', async () => {
+    serve(business())
+    serveOrders([order()])
+    server.use(http.post(`${API}/api/portfolio/businesses/12/orders/27/delivery-problem/`, () => HttpResponse.json({ detail: 'No Delivery Manager is on duty to take this. Tell Operations.' }, { status: 409 })))
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Flag a delivery problem' }))
+    const form = await screen.findByRole('form', { name: 'Flag a delivery problem' })
+    await waitFor(() => expect(within(form).getByRole('combobox')).toHaveValue('27'))
+    fireEvent.click(within(form).getByRole('button', { name: 'Tell the Delivery Manager' }))
+    expect(await within(form).findByRole('alert')).toHaveTextContent('Say what went wrong')
+    fireEvent.change(within(form).getByLabelText('What went wrong'), { target: { value: 'Late' } })
+    fireEvent.click(within(form).getByRole('button', { name: 'Tell the Delivery Manager' }))
+    expect(await within(form).findByRole('alert')).toHaveTextContent('No Delivery Manager is on duty')
+  })
+
+  it('tells a second report it was already reported', async () => {
+    serve(business())
+    serveOrders([order()])
+    server.use(http.post(`${API}/api/portfolio/businesses/12/orders/27/delivery-problem/`, () => HttpResponse.json({ flagged: true, already: true, told: 0 })))
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Flag a delivery problem' }))
+    const form = await screen.findByRole('form', { name: 'Flag a delivery problem' })
+    await waitFor(() => expect(within(form).getByRole('combobox')).toHaveValue('27'))
+    fireEvent.change(within(form).getByLabelText('What went wrong'), { target: { value: 'Late again' } })
+    fireEvent.click(within(form).getByRole('button', { name: 'Tell the Delivery Manager' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('already reported')
+  })
+
+  it('shows an already-reported order as reported', async () => {
+    serve(business())
+    serveOrders([order({ problem_flagged: true })])
+    renderPage()
+    expect(await screen.findByText('Reported to the Delivery Manager')).toBeInTheDocument()
+  })
+
+  it('offers no flag to Operations, who do not manage the business', async () => {
+    serve(business({ can_manage: false }))
+    serveOrders([order()])
+    renderPage({ auth: OPS })
+    expect(await screen.findByText('#27')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Flag a delivery problem' })).not.toBeInTheDocument()
+  })
+})

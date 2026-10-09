@@ -546,6 +546,7 @@ export const handlers = [
     signboard_photo: null, email: '', registered_by: null, created_at: '2026-10-07T00:00:00Z',
     listings: [], pending_requests: [], recent_calls: [], recent_visits: [], assignments: [], open_flags: [], can_manage: false,
   })),
+  http.get('http://localhost:8000/api/portfolio/businesses/:id/orders/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/portfolio/meta/listing-form/', () => HttpResponse.json({ categories: [], zones: [], required_answers: {} })),
   // A scout's new product and listing photos: like the server, a blank
   // reason is refused (portfolio.proposals.REASON_REQUIRED).
