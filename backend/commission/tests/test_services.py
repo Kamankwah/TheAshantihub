@@ -222,6 +222,111 @@ class ServerPricedMonthsTests(CommissionBase):
         self.assertIn("metadata", response.json())
 
 
+class FallbackRenewalPricingTests(CommissionBase):
+    """The tier's plan is awaiting approval, so the renewal prices off the owner's current plan."""
+
+    def setUp(self):
+        super().setUp()
+        from accounts.authentication import issue_token
+        from payments.models import CheckoutSession
+        from rest_framework.test import APIClient
+
+        self.CheckoutSession = CheckoutSession
+        self.owner = self.pending_owner()
+        self.plan = SubscriptionPlan.objects.get(tier="product_basic")
+        now = timezone.now()
+        self.sub = Subscription.objects.create(
+            business_owner=self.owner, plan=self.plan, current_period_start=now,
+            current_period_end=now - timedelta(days=1), status=Subscription.ACTIVE,
+        )
+        SubscriptionPlan.objects.filter(pk=self.plan.pk).update(status=SubscriptionPlan.PENDING_APPROVAL)
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.owner, 'business_owner')}")
+
+    def post(self, amount="0.01", plan="product_basic", cycle=3):
+        return self.client.post(
+            "/api/billing/transactions/mine/",
+            {"kind": "subscription", "amount": amount, "purpose": "x", "metadata": {"plan": plan, "cycle_months": cycle}},
+            format="json",
+        )
+
+    def test_the_client_amount_is_replaced_by_the_current_plans_price(self):
+        response = self.post()
+        self.assertIn(response.status_code, (200, 201), response.content)
+        session = self.CheckoutSession.objects.get(business_owner=self.owner)
+        self.assertEqual(session.amount, self.plan.monthly_price * 3)
+        self.assertEqual(session.status, self.CheckoutSession.SUCCESS)
+        self.assertEqual(services.paid_months(self.owner), 3)
+        self.sub.refresh_from_db()
+        self.assertGreater(self.sub.current_period_end, timezone.now() + timedelta(days=80))
+
+    def test_a_tier_that_resolves_to_no_plan_is_refused(self):
+        response = self.post(plan="no_such_plan")
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertFalse(self.CheckoutSession.objects.exists())
+
+    def test_a_cheap_fallback_session_still_renews_but_adds_no_paid_months(self):
+        # A session that was not priced by the server (0.01 for 3 months) renews but never counts.
+        from payments.services import process_payment
+
+        process_payment(
+            kind=self.CheckoutSession.SUBSCRIPTION, amount=Decimal("0.01"), purpose="Subscription",
+            business_owner=self.owner, metadata={"plan": "product_basic", "cycle_months": 3},
+        )
+        self.sub.refresh_from_db()
+        self.assertGreater(self.sub.current_period_end, timezone.now() + timedelta(days=80))
+        self.assertEqual(services.paid_months(self.owner), 0)
+
+
+class LegacyPaidMonthsTests(CommissionBase):
+    def make(self, owner, meta, status="success"):
+        from payments.models import CheckoutSession
+
+        return CheckoutSession.objects.create(
+            business_owner=owner, kind=CheckoutSession.SUBSCRIPTION, amount="30.00", purpose="x", status=status, metadata=meta,
+        )
+
+    def test_the_helper_stamps_valid_leaves_stamped_and_zeroes_invalid(self):
+        from payments.legacy import stamp_legacy_paid_months
+        from payments.models import CheckoutSession
+
+        owner = self.pending_owner()
+        valid = self.make(owner, {"plan": "product_basic", "cycle_months": 3})
+        stamped = self.make(owner, {"plan": "product_basic", "cycle_months": 3, "paid_months": 1})
+        invalid = self.make(owner, {"plan": "product_basic", "cycle_months": 5})
+        junk = self.make(owner, {"plan": "product_basic", "cycle_months": "abc"})
+        none = self.make(owner, {})
+        failed = self.make(owner, {"cycle_months": 3}, status="failed")
+        stamp_legacy_paid_months(CheckoutSession)
+        for obj in (valid, stamped, invalid, junk, none, failed):
+            obj.refresh_from_db()
+        self.assertEqual(valid.metadata["paid_months"], 3)
+        self.assertEqual(stamped.metadata["paid_months"], 1)
+        self.assertEqual(invalid.metadata["paid_months"], 0)
+        self.assertEqual(junk.metadata["paid_months"], 0)
+        self.assertEqual(none.metadata["paid_months"], 0)
+        self.assertNotIn("paid_months", failed.metadata)
+
+    def test_a_business_with_three_legacy_months_earns_no_bonus_and_is_not_listed_as_zero(self):
+        from payments.legacy import stamp_legacy_paid_months
+        from payments.models import CheckoutSession
+
+        self.policy(CommissionPolicy.BONUS, "100.00")
+        owner = self.pending_owner()
+        now = timezone.now()
+        Subscription.objects.create(
+            business_owner=owner, plan=SubscriptionPlan.objects.get(tier="product_basic"),
+            current_period_start=now, current_period_end=now + timedelta(days=30),
+        )
+        self.make(owner, {"plan": "product_basic", "cycle_months": 3})
+        self.assertEqual(services.paid_months(owner), 0)  # unstamped legacy row
+        stamp_legacy_paid_months(CheckoutSession)
+        self.assertEqual(services.paid_months(owner), 3)
+        self.assertEqual(services.paid_months_by_owner([owner.pk])[owner.pk], 3)
+        self.pay(owner, 1)
+        self.assertFalse(CommissionAccrual.objects.filter(kind=CommissionPolicy.BONUS).exists())
+
+
 class ReleaseAndReversalTests(CommissionBase):
     def setUp(self):
         super().setUp()

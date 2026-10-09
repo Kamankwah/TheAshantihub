@@ -279,11 +279,21 @@ class TransactionMineListCreateView(generics.ListAPIView):
             plan = SubscriptionPlan.objects.filter(
                 tier=plan_tier, status=SubscriptionPlan.ACTIVE_STATUS
             ).first()
-            if plan is not None:
-                try:
-                    amount = plan.monthly_price * int(cycle_months)
-                except (TypeError, ValueError):
-                    pass
+            if plan is None:
+                # The tier has no ACTIVE plan (an edit awaits approval): price the
+                # renewal off the plan the owner is on now, if it is that tier.
+                current = (
+                    Subscription.objects.select_related("plan")
+                    .filter(business_owner=request.user, plan__tier=plan_tier)
+                    .first()
+                )
+                plan = current.plan if current is not None else None
+            if plan is None:
+                raise ValidationError({"metadata": {"plan": "That plan is not available to pay for right now."}})
+            try:
+                amount = plan.monthly_price * int(cycle_months)
+            except (TypeError, ValueError):
+                pass
 
         result = process_payment(
             kind=data["kind"],

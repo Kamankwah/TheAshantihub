@@ -214,7 +214,11 @@ def _finalize_subscription(session):
         )
         # The fallback renewal counts only for the plan's own tier (an edit waiting
         # for approval), never for an unknown tier, and only with a valid cycle.
-        counted = valid_cycle and current.plan.tier == plan_tier
+        # Only a session the server priced off that plan counts (see the view).
+        counted = (
+            valid_cycle and current.plan.tier == plan_tier
+            and session.amount == current.plan.monthly_price * int(cycle_months)
+        )
         plan = current.plan
 
     now = timezone.now()
