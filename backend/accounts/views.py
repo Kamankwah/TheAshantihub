@@ -979,6 +979,11 @@ class ScoutAssignmentListCreateView(generics.ListCreateAPIView):
         scout = generics.get_object_or_404(StaffUser, pk=scout_id)
         if scout.role.name != "scout":
             return Response({"scout": "That staff member is not a scout."}, status=400)
+        if kyc.is_kyc_submitter(owner, scout):
+            return Response(
+                {"scout": [f"{scout.full_name} registered or manages this business — assign another scout."]},
+                status=400,
+            )
         assignment, created = ScoutAssignment.objects.get_or_create(
             business_owner=owner, scout=scout,
             defaults={"assigned_by": request.user},
@@ -1038,6 +1043,8 @@ class ScoutVerifyView(APIView):
         assignment = generics.get_object_or_404(
             ScoutAssignment, pk=pk, scout=request.user
         )
+        if kyc.is_kyc_submitter(assignment.business_owner, request.user):
+            return Response({"detail": kyc.OWN_REGISTRATION}, status=403)
         address_confirmed = request.data.get("address_confirmed")
         if address_confirmed is None:
             return Response(

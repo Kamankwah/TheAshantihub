@@ -147,3 +147,44 @@ class ScoutVerifyTests(ScoutTestsBase):
             {"address_confirmed": True}, format="json",
         )
         self.assertEqual(response.status_code, 403)
+
+
+class ScoutIsSubmitterTests(ScoutTestsBase):
+    """The scout who registered or manages a business never records its address decision."""
+
+    def test_the_registering_scout_is_refused_at_assignment(self):
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(
+            registered_by=self.scout, account_manager=self.scout, registration_channel=BusinessOwner.SCOUT,
+        )
+        self._auth(self.admin)
+        response = self.client.post(
+            "/api/accounts/scout-assignments/",
+            {"business_owner": self.owner.id, "scout": self.scout.id}, format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {
+            "scout": ["Scout Kofi registered or manages this business — assign another scout."],
+        })
+        self.assertFalse(ScoutAssignment.objects.exists())
+
+    def test_a_submitter_with_an_assignment_is_refused_at_verify_and_another_scout_succeeds(self):
+        BusinessOwner.objects.filter(pk=self.owner.pk).update(
+            registered_by=self.scout, account_manager=self.scout, registration_channel=BusinessOwner.SCOUT,
+        )
+        mine = ScoutAssignment.objects.create(business_owner=self.owner, scout=self.scout, assigned_by=self.admin)
+        theirs = ScoutAssignment.objects.create(business_owner=self.owner, scout=self.other_scout, assigned_by=self.admin)
+        self._auth(self.scout)
+        response = self.client.post(
+            f"/api/accounts/scout-assignments/{mine.id}/verify/",
+            {"address_confirmed": False, "corrected_address": "AK-000-0000"}, format="json",
+        )
+        self.assertEqual((response.status_code, response.json()), (403, {"detail": "You can't approve your own request."}))
+        self.profile.refresh_from_db()
+        self.assertEqual((self.profile.address_verified_at, self.profile.gps_address), (None, "AK-039-5028"))
+        mine.refresh_from_db()
+        self.assertNotEqual(mine.status, ScoutAssignment.VISITED)
+        self._auth(self.other_scout)
+        response = self.client.post(
+            f"/api/accounts/scout-assignments/{theirs.id}/verify/", {"address_confirmed": True}, format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)

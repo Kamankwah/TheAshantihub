@@ -133,6 +133,29 @@ describe("PortfolioPanel — a scout's portfolio", () => {
     fireEvent.click(screen.getByRole('button', { name: '← Back' }))
     expect(onOpenDetail).toHaveBeenCalledWith(null)
   })
+
+  it("does not carry one business's sent-KYC state to the next business", async () => {
+    const returned = (id, name) => detailOf(row({ id, business_name: name, kyc_status: 'pending', registration_channel: 'scout', subscription: { state: 'none' } }))
+    server.use(
+      http.get(`${API}/api/portfolio/businesses/12/`, () => HttpResponse.json(returned(12, 'Adwoa Fabrics'))),
+      http.get(`${API}/api/portfolio/businesses/13/`, () => HttpResponse.json(returned(13, 'Kofi Stores'))),
+      http.post(`${API}/api/portfolio/businesses/12/kyc/`, () => HttpResponse.json({ approval_id: null, approver_name: null }, { status: 201 })),
+    )
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const tree = (id) => (
+      <QueryClientProvider client={queryClient}>
+        <PortfolioPanel mode="mine" auth={SCOUT} detailId={id} onOpenDetail={() => {}} />
+      </QueryClientProvider>
+    )
+    const { rerender } = render(tree('12'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Send KYC again' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send the KYC request' }))
+    expect(await screen.findByText('Sent to the KYC queue')).toBeInTheDocument()
+    rerender(tree('13'))
+    expect(await screen.findByRole('heading', { name: 'Kofi Stores' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send KYC again' })).toBeInTheDocument()
+    expect(screen.queryByText('Sent to the KYC queue')).not.toBeInTheDocument()
+  })
 })
 
 describe('PortfolioPanel — all portfolios (Operations)', () => {

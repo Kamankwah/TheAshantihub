@@ -29,7 +29,7 @@ const defaultScope = (auth) => (auth?.user?.role === "super_admin" ? "all" : "te
 // (Operations); /staff/<tab>/<id> opens the business page.
 export default function PortfolioPanel({ mode = "mine", auth, detailId, onOpenDetail }) {
   const open = (id) => onOpenDetail?.(id);
-  if (detailId != null) return <BusinessPage businessId={detailId} auth={auth} onBack={() => onOpenDetail?.(null)} />;
+  if (detailId != null) return <BusinessPage key={detailId} businessId={detailId} auth={auth} onBack={() => onOpenDetail?.(null)} />;
   if (mode === "all") return <AllPortfolios auth={auth} onOpen={open} />;
   if (mode === "at-risk") return <AtRisk auth={auth} onOpen={open} />;
   return <MyPortfolio onOpen={open} />;

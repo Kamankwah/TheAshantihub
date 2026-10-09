@@ -12,6 +12,7 @@ from accounts.models import BusinessOwner, BusinessOwnerProfile
 from accounts.testing import make_staff, staff_token
 from activity.models import ActivityEvent
 from approvals import services as approvals
+from approvals.models import ApprovalRequest
 from fraud import services as fraud
 from fraud.models import FraudFlag
 from listings.models import Category, Zone
@@ -442,6 +443,29 @@ class KycMakerAndAddressTests(QueueBase):
         self.assert_own_refused(self.approve_in_queue(self.own))
         self.as_(self.lead)
         self.assertEqual(self.approve_in_queue(self.own).status_code, 200)
+
+    def test_a_reassigned_account_manager_cannot_decide_it(self):
+        manager = make_staff("scout", "efua@example.com", manager=self.lead)
+        self.grant_kyc_approve(manager)
+        BusinessOwner.objects.filter(pk=self.own.pk).update(account_manager=manager)
+        BusinessOwnerProfile.objects.filter(business_owner=self.own).update(
+            address_verified=False, address_verified_by=None, address_verified_at=None,
+        )
+        self.as_(manager)
+        self.assert_own_refused(self.approve_in_queue(self.own))
+        response = self.client.post(f"/api/accounts/kyc/{self.own.id}/address-verify/", {"verified": True}, format="json")
+        self.assertEqual((response.status_code, response.json()), (403, {"detail": "You can't approve your own request."}))
+
+    def test_the_maker_of_an_approved_business_update_cannot_decide_it(self):
+        editor = make_staff("scout", "yaw@example.com", manager=self.lead)
+        self.grant_kyc_approve(editor)
+        update = approvals.submit(
+            editor, "business.update", title="Change address", payload={"business_owner_id": self.own.pk},
+            target_type="accounts.businessowner", target_id=str(self.own.pk),
+        )
+        ApprovalRequest.objects.filter(pk=update.pk).update(status="approved")
+        self.as_(editor)
+        self.assert_own_refused(self.approve_in_queue(self.own))
 
     def test_a_different_operations_staffer_can_still_approve(self):
         self.as_(self.lead)

@@ -60,3 +60,33 @@ class RedactClaimTokenTests(SimpleTestCase):
         self.assertEqual(redact_claim_token({"request": {}}, {}), {"request": {}})
         self.assertEqual(redact_claim_token({"request": {"url": "https://a/b", "query_string": ""}}, {})["request"],
                          {"url": "https://a/b", "query_string": ""})
+
+
+class RedactFrameVarsTests(SimpleTestCase):
+    def test_a_token_in_stack_frame_variables_is_filtered(self):
+        from ashantihub.sentry import redact_claim_token
+
+        repr_ = "<Request: GET '/api/accounts/business-owners/claim/?token=abc123'>"
+        frame = {"vars": {
+            "request": repr_, "n": 3,
+            "nested": {"urls": ["/claim/?token=abc123&x=1", {"deep": "?token=zzz"}]},
+        }}
+        event = {
+            "exception": {"values": [{"stacktrace": {"frames": [frame]}}, {"stacktrace": None}, {}]},
+            "threads": {"values": [{"stacktrace": {"frames": [{"vars": {"u": "/c/?token=abc123"}}, {}]}}]},
+        }
+        for hook in (redact_claim_token,):
+            out = hook(event, {})
+        vars_ = out["exception"]["values"][0]["stacktrace"]["frames"][0]["vars"]
+        self.assertEqual(vars_["request"], "<Request: GET '/api/accounts/business-owners/claim/?token=[Filtered]'>")
+        self.assertEqual(vars_["n"], 3)
+        self.assertEqual(vars_["nested"]["urls"][0], "/claim/?token=[Filtered]&x=1")
+        self.assertEqual(vars_["nested"]["urls"][1], {"deep": "?token=[Filtered]"})
+        self.assertEqual(out["threads"]["values"][0]["stacktrace"]["frames"][0]["vars"]["u"], "/c/?token=[Filtered]")
+
+    def test_it_never_raises(self):
+        from ashantihub.sentry import redact_claim_token
+
+        for event in ({"exception": "x"}, {"exception": {"values": None}}, {"threads": {"values": [1, None]}},
+                      {"exception": {"values": [{"stacktrace": {"frames": [{"vars": 5}, 7]}}]}}):
+            redact_claim_token(event, {})

@@ -44,13 +44,14 @@ def self_dealing_open(owner):
 
 
 def is_kyc_submitter(owner, staff):
-    """True for whoever put this business's KYC evidence forward: its registrar,
-    or the maker of any business.kyc request for it (returned and cancelled ones
-    count). They never decide it, nor record its address decision."""
-    if owner.registered_by_id is not None and owner.registered_by_id == staff.pk:
+    """True for anyone who put this business's KYC evidence or address forward:
+    its registrar, its current account manager, or the maker of any
+    business.kyc or business.update request for it (any status). They never
+    decide it, nor record its address decision."""
+    if owner.registered_by_id == staff.pk or owner.account_manager_id == staff.pk:
         return True
     return ApprovalRequest.objects.filter(
-        kind=KYC_KIND, target_type=TARGET_TYPE, target_id=str(owner.pk), maker=staff,
+        kind__in=(KYC_KIND, "business.update"), target_type=TARGET_TYPE, target_id=str(owner.pk), maker=staff,
     ).exists()
 
 
