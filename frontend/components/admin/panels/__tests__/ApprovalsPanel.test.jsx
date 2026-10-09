@@ -32,6 +32,16 @@ function renderPanel(props = {}) {
 }
 
 describe('ApprovalsPanel inbox', () => {
+  it('opens on the "Made by me" box when the detail is the box name (Today\'s See all)', async () => {
+    let lastUrl = ''
+    server.use(http.get('http://localhost:8000/api/approvals/', ({ request }) => { lastUrl = request.url; return HttpResponse.json({ count: 0, next: null, previous: null, results: [] }) }))
+    renderPanel({ detailId: 'made' })
+    await waitFor(() => expect(lastUrl).toContain('box=made'))
+    expect(screen.getByRole('button', { name: /Made by me/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByText('Could not load approval.')).not.toBeInTheDocument()
+  })
+
+
   it('shows counts on the boxes and opens a waiting request', async () => {
     const onOpenDetail = vi.fn()
     server.use(

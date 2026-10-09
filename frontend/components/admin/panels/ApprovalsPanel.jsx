@@ -15,6 +15,7 @@ const BOXES = [
   ["decided", "Decided by me"],
   ["all", "Everything"],
 ];
+const BOX_IDS = new Set(BOXES.map(([id]) => id));
 const EMPTY = {
   mine: "Nothing is waiting for your decision.",
   made: "You haven't asked for any approvals.",
@@ -64,12 +65,14 @@ function DiffValue({ value, label }) {
 
 // /staff/approvals (inbox) and /staff/approvals/<id> (one request).
 export default function ApprovalsPanel({ detailId, onOpenDetail }) {
+  // /staff/approvals/made opens the inbox on a box (Today's "See all").
+  if (BOX_IDS.has(detailId)) return <ApprovalsInbox initialBox={detailId} onOpen={(id) => onOpenDetail(id)} />;
   if (detailId != null) return <ApprovalRequest id={detailId} onBack={() => onOpenDetail(null)} />;
   return <ApprovalsInbox onOpen={(id) => onOpenDetail(id)} />;
 }
 
-function ApprovalsInbox({ onOpen }) {
-  const [box, setBox] = useState("mine");
+function ApprovalsInbox({ onOpen, initialBox = "mine" }) {
+  const [box, setBox] = useState(initialBox);
   const { data: counts } = useApprovalCounts();
   const { data, isLoading, isError } = useApprovals(box);
   const rows = data?.results || [];

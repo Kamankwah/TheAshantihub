@@ -196,6 +196,21 @@ class StaffBadgesTests(TestCase):
         self.assertEqual(data["listings"], 0)
         self.assertEqual(data["contact_messages"], 0)
 
+    def test_report_due_at_is_todays_day_report_until_it_is_submitted(self):
+        from datetime import datetime, time
+        from django.utils import timezone
+        from reports.models import StaffReport
+
+        self._auth(self.marketing)
+        today = timezone.localdate()
+        expected = timezone.make_aware(datetime.combine(today, time(19, 0))).isoformat()
+        self.assertEqual(self.client.get(BADGES_URL).json()["report_due_at"], expected)
+        report = StaffReport.objects.create(staff=self.marketing, period="day", period_start=today, period_end=today)
+        self.assertEqual(self.client.get(BADGES_URL).json()["report_due_at"], expected)
+        report.status = StaffReport.SUBMITTED
+        report.save()
+        self.assertIsNone(self.client.get(BADGES_URL).json()["report_due_at"])
+
 
 class NotificationFailureIsolationTests(TestCase):
     def test_swallowed_db_error_does_not_poison_the_outer_transaction(self):

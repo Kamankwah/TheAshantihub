@@ -12,7 +12,7 @@ import { errorStyle, eyebrow } from "./portfolioParts.jsx";
 // A scout's open tasks in three sections. They are added automatically from
 // overdue subscriptions, delivery problems, returned approvals, call follow-up
 // dates and prospect follow-up dates, plus a lead's follow-ups and your own.
-const SOURCE = {
+export const SOURCE = {
   subscription_overdue: ["Subscription overdue", "#FFF4E5", "#6B2E07"],
   delivery_problem: ["Delivery problem", "#FBF3DC", "#6A4A00"],
   returned_approval: ["Returned approval", "#FDE8E8", "#A30000"],
@@ -66,7 +66,7 @@ function TaskRow({ task, section, onOpenBusiness, onOpenProspects, onDone }) {
   );
 }
 
-export default function FollowUpsPanel({ onOpenBusiness, onOpenProspects }) {
+export default function FollowUpsPanel({ onOpenBusiness, onOpenProspects, leadName }) {
   const queryClient = useQueryClient();
   const overdue = useMyTasks("overdue");
   const today = useMyTasks("due_today");
@@ -154,7 +154,7 @@ export default function FollowUpsPanel({ onOpenBusiness, onOpenProspects }) {
         );
       })}
 
-      <div style={{ ...dim, lineHeight: 1.45 }}>Added automatically from overdue subscriptions, delivery problems, approvals your lead returns, and follow-up dates you set.</div>
+      <div style={{ ...dim, lineHeight: 1.45 }}>{`Added automatically from overdue subscriptions, delivery problems, approvals ${leadName || "your lead"} returns, and follow-up dates you set.`}</div>
     </div>
   );
 }

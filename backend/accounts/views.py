@@ -70,6 +70,18 @@ from .serializers import (
 )
 
 
+def _scout_portfolio_summary(scout):
+    """The scout's businesses (not rejected) and the two areas holding most of them."""
+    from django.db.models import Count
+
+    owned = BusinessOwner.objects.filter(account_manager=scout).exclude(kyc_status=BusinessOwner.REJECTED)
+    zones = (
+        owned.filter(profile__zone__isnull=False).values("profile__zone__name")
+        .annotate(n=Count("pk")).order_by("-n", "profile__zone__name")[:2]
+    )
+    return {"areas": [row["profile__zone__name"] for row in zones], "portfolio_count": owned.count()}
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def me(request):
@@ -85,6 +97,10 @@ def me(request):
         # role permissions — must match what HasRolePermission enforces, or
         # the UI gates on a different set than the server (punch-list item 9).
         data["permissions"] = sorted(request.user.effective_permission_codenames())
+        manager = request.user.manager
+        data["manager"] = {"id": manager.pk, "full_name": manager.full_name, "role": manager.role.name} if manager else None
+        if request.user.role.name == Role.SCOUT:
+            data.update(_scout_portfolio_summary(request.user))
     if isinstance(request.user, BusinessOwner):
         data["kyc_status"] = request.user.kyc_status
         data["kyc_rejection_reason"] = request.user.kyc_rejection_reason

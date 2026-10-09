@@ -23,7 +23,7 @@ const placeBody = (target) => (target.kind === "verification" ? { scout_assignme
 // 11 Check in — two steps in one screen: pick where you are (step A), then,
 // once an open visit exists, the visit itself (step B). The location is read
 // only on a tap (check-in, check-out, a photo), never in between.
-export default function CheckInPanel({ presetBusinessId = null, onBack }) {
+export default function CheckInPanel({ presetBusinessId = null, onBack, leadName }) {
   const { data, isLoading, isError, refetch } = useOpenVisit();
   const header = (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -43,7 +43,7 @@ export default function CheckInPanel({ presetBusinessId = null, onBack }) {
         <button type="button" onClick={() => refetch()} style={{ ...button(D.panelBg, D.text), padding: "4px 10px" }}>Try again</button>
       </div>
     );
-  } else if (data?.visit) body = <OpenVisit visit={data.visit} onDone={onBack} />;
+  } else if (data?.visit) body = <OpenVisit visit={data.visit} onDone={onBack} leadName={leadName} />;
   else body = <StartCheckIn presetBusinessId={presetBusinessId} />;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 560 }}>
@@ -182,7 +182,7 @@ function StartCheckIn({ presetBusinessId }) {
 }
 
 // Step B: the open visit — distance, map, purpose, notes, photos, check out.
-function OpenVisit({ visit, onDone }) {
+function OpenVisit({ visit, onDone, leadName }) {
   const queryClient = useQueryClient();
   const { position, error: locationError, locating, locate } = useDevicePosition();
   const [now, setNow] = useState(() => Date.now());
@@ -263,7 +263,7 @@ function OpenVisit({ visit, onDone }) {
         ) : visit.outside_radius ? (
           <>
             <FlagChip>{`Outside the ${radius} m radius — saved and flagged`}</FlagChip>
-            <div style={{ ...dim, lineHeight: 1.45 }}>{`${visit.distance_m} m from the pin. The visit still counts and Operations sees the flag. Three flagged check-ins in 7 days open a review by Operations.`}</div>
+            <div style={{ ...dim, lineHeight: 1.45 }}>{`${visit.distance_m} m from the pin. The visit still counts and ${leadName || "Operations"} sees the flag. Three flagged check-ins in 7 days open a review by Operations.`}</div>
           </>
         ) : (
           <span style={{ ...chip(D.green), alignSelf: "flex-start", ...figures }}>{`✓ ${visit.distance_m} m from the business pin`}</span>

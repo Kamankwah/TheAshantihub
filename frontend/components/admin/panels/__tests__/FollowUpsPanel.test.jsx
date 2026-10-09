@@ -50,6 +50,12 @@ describe('dueLabel', () => {
 })
 
 describe('FollowUpsPanel', () => {
+  it('names the lead in the footer once /me carries it, and falls back to "your lead"', async () => {
+    serve()
+    renderPanel({ leadName: 'Ama Boateng' })
+    expect(await screen.findByText(/approvals Ama Boateng returns, and follow-up dates you set\./)).toBeInTheDocument()
+  })
+
   it('splits Overdue / Today / Coming up from the three views and counts them', async () => {
     const seen = []
     serve({

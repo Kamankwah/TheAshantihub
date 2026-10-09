@@ -123,11 +123,11 @@ const ROLE_MENUS = {
   ],
   scout: [
     ["pipeline", "Pipeline", ["prospects", "register-business"]],
-    ["my-businesses", "My businesses", ["portfolio", "tasks", "field-verification"]],
-    ["calls", "Calls", ["calls", "visits"]],
+    ["my-businesses", "My businesses", ["portfolio", "tasks", "approvals"]],
+    ["activity", "Activity", ["calls", "visits", "field-verification"]],
     ["performance", "Performance", ["targets", "commission", "leaderboard"]],
-    ["my-work", "My work", ["approvals", "activity", "security"]],
     ["reports", "Reports", ["reports"]],
+    ["account", "Account", ["security", "activity"]],
   ],
   delivery_manager: [
     ["live", "Live", ["delivery-coordination", "delivery"]],
@@ -146,7 +146,15 @@ const ROLE_MENUS = {
 
 const ITEM_BY_ID = Object.fromEntries(NAV_ITEMS.map((item) => [item.id, item]));
 // Labels a role reads differently (the item ids and NAV_ITEMS labels stay as they are).
-const ROLE_LABELS = { scout: { tasks: "Follow-ups" } };
+// The scout's menu reads in the canvas's words; the Overview item (pinned, not
+// in NAV_ITEMS) is "Today" for a scout (see overviewLabel).
+const ROLE_LABELS = {
+  scout: {
+    tasks: "Follow-ups", calls: "Calls", approvals: "Sent for approval", reports: "Day, week & month",
+    security: "Profile & sign out", activity: "My activity",
+  },
+};
+export const overviewLabel = (role) => (role === "scout" ? "Today" : "Overview");
 const toNavItem = ({ id, icon, label }, role) => ({ id, icon, label: ROLE_LABELS[role]?.[id] || label });
 
 export function buildNavGroups(auth) {

@@ -39,9 +39,9 @@ const countText = (visits) => {
 };
 
 // 13 Visits — the scout's own check-ins, newest first, grouped by day.
-export default function VisitsPanel({ detailId, onOpenDetail }) {
+export default function VisitsPanel({ detailId, onOpenDetail, leadName }) {
   const checkIn = typeof detailId === "string" ? CHECK_IN.exec(detailId) : null;
-  if (checkIn) return <CheckInPanel presetBusinessId={checkIn[1] ? Number(checkIn[1]) : null} onBack={() => onOpenDetail?.(null)} />;
+  if (checkIn) return <CheckInPanel presetBusinessId={checkIn[1] ? Number(checkIn[1]) : null} onBack={() => onOpenDetail?.(null)} leadName={leadName} />;
   return <VisitList onCheckIn={() => onOpenDetail?.("check-in")} />;
 }
 

@@ -225,6 +225,12 @@ describe('CheckInPanel — step B, the open visit', () => {
     expect(screen.getByText(/Three flagged check-ins in 7 days open a review by Operations/)).toBeInTheDocument()
   })
 
+  it('names the lead who sees an outside-radius flag, and falls back to Operations', async () => {
+    useOpen(openVisit({ distance_m: 180, outside_radius: true }))
+    renderPanel({ leadName: 'Ama Boateng' })
+    expect(await screen.findByText(/The visit still counts and Ama Boateng sees the flag\. Three flagged check-ins in 7 days open a review by Operations/)).toBeInTheDocument()
+  })
+
   it("says the distance can't be measured, and draws no map, when there is no pin", async () => {
     useOpen(openVisit({ distance_m: null, pin: null, business: { id: 12, name: 'Adwoa Fabrics', area: null, has_pin: false } }))
     renderPanel()
