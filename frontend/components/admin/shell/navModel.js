@@ -9,6 +9,15 @@
 //
 // Every id, label and permission check below is byte-for-byte what
 // StaffDashboard.test.jsx relies on; only the grouping varies by role.
+//
+// The Operations canvas (2026-10-12) draws screens that are not built yet. Each
+// has its NAV_ITEMS entry now, marked `placeholder: true`, so the menu is exactly
+// the canvas and AdminCommandCenter opens a clearly-marked "This screen is being
+// built" panel; the package that builds a screen swaps the panel and drops the
+// flag. They are shown to Operations only (opsOnly) so no other role's menu or
+// "More tools" list gains a placeholder.
+const opsOnly = (auth, ...perms) => auth.user?.role === "operations" && perms.some((perm) => auth.hasPermission(perm));
+
 export const NAV_ITEMS = [
   { id: "kyc", icon: "🪪", label: "KYC Queue", show: (auth) => auth.hasPermission("kyc.approve") },
   { id: "moderation", icon: "📋", label: "Listings Moderation", show: (auth) => auth.hasPermission("listings.moderate") },
@@ -27,7 +36,7 @@ export const NAV_ITEMS = [
   { id: "sessions", icon: "💻", label: "Sessions & Devices", show: (auth) => auth.hasPermission("staff.manage") },
   { id: "scout-assignments", icon: "🧭", label: "Scout Assignments", show: (auth) => auth.hasPermission("scouts.assign") },
   { id: "field-verification", icon: "📋", label: "Field Verification", show: (auth) => auth.hasPermission("scouts.verify") },
-  { id: "targets", icon: "🎯", label: "Targets", show: (auth) => auth.hasPermission("businesses.manage_portfolio") },
+  { id: "targets", icon: "🎯", label: "Targets", show: (auth) => auth.hasPermission("businesses.manage_portfolio") || auth.hasPermission("targets.manage") },
   { id: "commission", icon: "💷", label: "Commission", show: (auth) => auth.hasPermission("commission.view_own") },
   { id: "leaderboard", icon: "🏆", label: "Leaderboard", show: (auth) => auth.hasPermission("businesses.manage_portfolio") },
   { id: "commission-policy", icon: "🧾", label: "Commission policy", show: (auth) => auth.hasPermission("commission.policy") || auth.hasPermission("commission.view_all") },
@@ -56,7 +65,20 @@ export const NAV_ITEMS = [
   { id: "activity", icon: "🕘", label: "Activity", show: () => true },
   { id: "my-team", icon: "👥", label: "My Team", show: (auth) => auth.hasPermission("staff.invite_team") },
   { id: "security", icon: "🔐", label: "Sign-in & Security", show: () => true },
+  // Operations canvas screens (see the note above NAV_ITEMS).
+  { id: "ops-scouts", icon: "🧑‍🌾", label: "Scouts", show: (auth) => opsOnly(auth, "portfolio.manage") },
+  { id: "support-team", icon: "🎧", label: "Support team", show: (auth) => opsOnly(auth, "staff.invite_team") },
+  { id: "leave", icon: "🏖️", label: "Leave & calendar", show: (auth) => opsOnly(auth, "leave.record") },
+  { id: "hero-events", icon: "🌟", label: "Hero & events", show: (auth) => opsOnly(auth, "hero_media.approve", "event.approve") },
+  { id: "support-issues", icon: "🛎️", label: "Support issues", show: (auth) => opsOnly(auth, "service_issues.view") },
+  { id: "deliveries-returns", icon: "📦", label: "Deliveries & returns", show: (auth) => opsOnly(auth, "service_issues.view") },
+  { id: "visit-map", icon: "🗺️", label: "Visit map", show: (auth) => opsOnly(auth, "portfolio.manage") },
+  { id: "zones", icon: "📍", label: "Zones", show: (auth) => opsOnly(auth, "zones.manage") },
 ];
+
+// Nav ids whose screen is not built yet; AdminCommandCenter renders the
+// "being built" panel for them.
+export const PLACEHOLDER_TABS = new Set(NAV_ITEMS.filter((item) => item.placeholder).map((item) => item.id));
 
 // [group id, group label, item ids]. The original (pre-1B) grouping, used for
 // any session whose role has no menu below.
@@ -86,16 +108,21 @@ const ROLE_MENUS = {
     ["settings", "Settings", ["subscription-plans", "subscription-plans-approval", "event-pricing", "commission-policy", "promotions", "categories-zones", "site-settings"]],
     ["my-work", "My work", ["tasks", "calls", "security"]],
   ],
+  // Operations, exactly as the approved canvas draws it (Overview is pinned
+  // above the groups). Users, Scout Assignments, Register a business, Field
+  // Verification and Delivery Management are not in this menu (Sign-in & Security is kept
+  // so a lead can still manage their own sign-in); their panels and
+  // permissions are untouched (see EXHAUSTIVE_MENU_ROLES).
   operations: [
-    ["decisions", "Decisions", ["approvals"]],
-    ["people", "People", ["my-team", "scout-assignments", "field-verification"]],
-    ["businesses", "Businesses", ["all-portfolios", "at-risk", "subscriptions-due", "register-business"]],
-    ["moderation", "Moderation", ["kyc", "moderation", "hero", "events-moderation", "reviews"]],
-    ["service", "Service", ["messaging", "disputes", "delivery", "fraud-cases"]],
-    ["oversight", "Staff activity", ["activity"]],
+    ["approvals", "Approvals", ["approvals"]],
+    ["people", "People", ["ops-scouts", "support-team", "my-team", "targets", "leave"]],
+    ["businesses", "Businesses", ["all-portfolios", "at-risk", "subscriptions-due"]],
+    ["moderation", "Moderation", ["kyc", "moderation", "hero-events", "reviews"]],
+    ["service", "Service", ["support-issues", "deliveries-returns", "fraud-cases"]],
+    ["activity", "Activity", ["activity", "visit-map"]],
     ["reports", "Reports", ["reports", "team-reports"]],
     ["my-work", "My work", ["tasks", "calls", "security"]],
-    ["settings", "Settings", ["categories-zones", "site-settings", "contact-messages"]],
+    ["settings", "Settings", ["zones", "site-settings", "contact-messages"]],
   ],
   accountant: [
     ["decisions", "Decisions", ["approvals"]],
@@ -144,6 +171,10 @@ const ROLE_MENUS = {
   ],
 };
 
+// Roles whose menu is the whole menu: a screen the canvas leaves out is not
+// offered under "More tools" either (its permission and panel stay).
+const EXHAUSTIVE_MENU_ROLES = new Set(["operations"]);
+
 const ITEM_BY_ID = Object.fromEntries(NAV_ITEMS.map((item) => [item.id, item]));
 // Labels a role reads differently (the item ids and NAV_ITEMS labels stay as they are).
 // The scout's menu reads in the canvas's words; the Overview item (pinned, not
@@ -152,6 +183,11 @@ const ROLE_LABELS = {
   scout: {
     tasks: "Follow-ups", calls: "Calls", approvals: "Sent for approval", reports: "Day, week & month",
     security: "Profile & sign out", activity: "My activity",
+  },
+  operations: {
+    approvals: "Approvals inbox", "my-team": "Invite", kyc: "KYC queue", moderation: "Listings",
+    activity: "Staff activity", reports: "My reports", "team-reports": "My team", calls: "Call log",
+    "site-settings": "Site settings", "contact-messages": "Contact messages",
   },
 };
 export const overviewLabel = (role) => (role === "scout" ? "Today" : "Overview");
@@ -170,7 +206,7 @@ export function buildNavGroups(auth) {
     }
     return { id, label, items };
   });
-  const leftovers = NAV_ITEMS.filter((item) => !placed.has(item.id) && item.show(auth)).map((item) => toNavItem(item, auth.user?.role));
+  const leftovers = EXHAUSTIVE_MENU_ROLES.has(auth.user?.role) ? [] : NAV_ITEMS.filter((item) => !placed.has(item.id) && item.show(auth)).map((item) => toNavItem(item, auth.user?.role));
   if (leftovers.length) groups.push({ id: "more", label: "More tools", items: leftovers });
   return groups.filter((group) => group.items.length > 0);
 }
@@ -184,7 +220,7 @@ export function buildNavGroups(auth) {
 export const BADGE_KEY_BY_TAB = {
   kyc: "kyc",
   approvals: "approvals_waiting",
-  tasks: "tasks_overdue",
+  tasks: "tasks_due",
   moderation: "listings",
   hero: "hero",
   "events-moderation": "events",
@@ -192,6 +228,14 @@ export const BADGE_KEY_BY_TAB = {
   "subscription-plans-approval": "plan_approvals",
   "contact-messages": "contact_messages",
   escrow: "escrow",
+  // Operations canvas badges (open service issues; open disputes).
+  "at-risk": "at_risk",
+  "subscriptions-due": "subscriptions_due",
+  "fraud-cases": "fraud_open",
+  "team-reports": "team_reports_waiting",
+  "support-issues": "support_issues",
+  "deliveries-returns": "deliveries_open",
+  "hero-events": ["hero", "events"],
 };
 
 // Badge lookup for a tab id against the GET /api/notifications/staff-badges/
@@ -199,7 +243,9 @@ export const BADGE_KEY_BY_TAB = {
 export function makeBadgeFor(staffBadges) {
   return (tabId) => {
     const key = BADGE_KEY_BY_TAB[tabId];
-    return key ? (staffBadges?.[key] || 0) : 0;
+    if (!key) return 0;
+    // A tab fed by two queues (Hero & events) shows their sum.
+    return [].concat(key).reduce((total, k) => total + (staffBadges?.[k] || 0), 0);
   };
 }
 

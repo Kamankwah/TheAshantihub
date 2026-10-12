@@ -20,7 +20,7 @@ from rest_framework.views import APIView
 from accounts import claims, sessions
 from accounts.models import BusinessOwner, Role, StaffUser
 from accounts.views import IsBusinessOwner
-from accounts.permissions import HasAnyRolePermission, HasRolePermission, IsStaff
+from accounts.permissions import HasAnyRolePermission, HasRolePermission, IsStaff, RequiresSudo
 from accounts.phones import filter_by_phone, phone_key
 from accounts.serializers import staff_brief
 from activity.models import ActivityEvent
@@ -320,6 +320,11 @@ def _portfolio_summary(rows, now):
     }
 
 
+def _masks_phones(user):
+    """Operations sees owners' sign-in phones masked (the reveal is recorded)."""
+    return PORTFOLIO_MANAGE in user.effective_permission_codenames()
+
+
 def _portfolio_sort_key(row):
     return (health.SORT_RANK[row.rating], row.owner.display_name.casefold(), row.owner.pk)
 
@@ -361,7 +366,8 @@ class PortfolioListView(APIView):
         rows.sort(key=_portfolio_sort_key)
         paginator = PortfolioPagination()
         page = paginator.paginate_queryset(rows, request, view=self)
-        response = paginator.get_paginated_response([portfolio_item(row) for row in page])
+        masked = _masks_phones(request.user)
+        response = paginator.get_paginated_response([portfolio_item(row, masked) for row in page])
         response.data["summary"] = summary
         return response
 
@@ -434,6 +440,24 @@ class BusinessReviewView(APIView):
         return Response(business_review_sheet(owner, request))
 
 
+class RevealOwnerPhoneView(APIView):
+    """POST /api/portfolio/businesses/<pk>/reveal-phone/ — the owner's full
+    sign-in phone number, for a reviewer who needs it. Password re-entry
+    (sudo) first; every reveal is written to the activity log (who, whose),
+    never the number itself."""
+
+    def get_permissions(self):
+        return [HasAnyRolePermission("kyc.approve", PORTFOLIO_MANAGE), RequiresSudo()]
+
+    def post(self, request, pk):
+        owner = generics.get_object_or_404(BusinessOwner, pk=pk)
+        record(
+            request.user, "business.phone_revealed", target=owner,
+            summary=f"Showed the full sign-in phone of {owner.display_name}", request=request,
+        )
+        return Response({"login_phone": owner.login_phone})
+
+
 class ReassignBusinessView(APIView):
     """POST /api/portfolio/businesses/<pk>/reassign/ {scout, reason}. Outside
     Super Admin, only to a scout on the caller's team and only from a scout on
@@ -480,7 +504,7 @@ class ReassignBusinessView(APIView):
                 request=request,
             )
         row = health.rate_all(BusinessOwner.objects.filter(pk=owner.pk), timezone.now())[0]
-        return Response(portfolio_item(row))
+        return Response(portfolio_item(row, _masks_phones(user)))
 
 
 class BusinessFollowUpView(APIView):
@@ -590,10 +614,11 @@ class SubscriptionsDueView(APIView):
             row.owner.subscription.overdue_since or row.owner.subscription.current_period_end, row.owner.pk,
         ))
         paused.sort(key=lambda row: (row.owner.subscription.paused_at, row.owner.pk))
+        masked = _masks_phones(request.user)
         return Response({
             "pause_enabled": pause_enabled(),
-            "overdue": [subscription_due_item(row) for row in overdue],
-            "paused": [subscription_due_item(row) for row in paused],
+            "overdue": [subscription_due_item(row, masked) for row in overdue],
+            "paused": [subscription_due_item(row, masked) for row in paused],
             "cleared": _cleared_this_week(owners, now),
         })
 

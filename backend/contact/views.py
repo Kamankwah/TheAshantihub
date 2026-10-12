@@ -9,7 +9,7 @@ from accounts.permissions import HasRolePermission
 from notifications.services import notify_staff_role
 
 from .models import ContactMessage
-from .serializers import ContactMessageSerializer, ContactMessageSubmitSerializer
+from .serializers import ContactMessageSerializer, ContactMessageStaffSerializer, ContactMessageSubmitSerializer
 
 
 class ContactMessageSubmitView(APIView):
@@ -41,9 +41,21 @@ class ContactMessageListView(generics.ListAPIView):
     status, staff-only (contact_messages.manage).
     """
 
-    serializer_class = ContactMessageSerializer
-    queryset = ContactMessage.objects.all()
+    serializer_class = ContactMessageStaffSerializer
     pagination_class = ContactMessagePagination
+
+    def get_queryset(self):
+        """?status=new|read|resolved|open (open = not resolved) and ?category=."""
+        queryset = ContactMessage.objects.select_related("resolved_by")
+        status = self.request.query_params.get("status")
+        if status == "open":
+            queryset = queryset.exclude(status=ContactMessage.RESOLVED)
+        elif status in dict(ContactMessage.STATUS_CHOICES):
+            queryset = queryset.filter(status=status)
+        category = self.request.query_params.get("category")
+        if category in dict(ContactMessage.CATEGORY_CHOICES):
+            queryset = queryset.filter(category=category)
+        return queryset
 
     def get_permissions(self):
         return [HasRolePermission("contact_messages.manage")]

@@ -171,6 +171,15 @@ export async function apiPatch(path, body) {
   return handleResponse(response, path)
 }
 
+export async function apiPut(path, body) {
+  const response = await send(path, () => ({
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(body),
+  }))
+  return handleResponse(response, path)
+}
+
 export async function apiPostForm(path, formData) {
   const response = await send(path, () => ({
     method: 'POST',

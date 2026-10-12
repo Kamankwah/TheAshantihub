@@ -1,3 +1,5 @@
+import re
+
 from rest_framework import serializers
 
 from .models import Review
@@ -51,6 +53,15 @@ class ReviewSubmitSerializer(serializers.Serializer):
         return data
 
 
+_PHONE_RUN = re.compile(r"\+?\d[\d\s\-.()]{7,}\d")
+
+
+def contains_phone_number(text):
+    """True when the text holds a run of at least 9 digits (spaces, dashes and
+    dots between them allowed): a Ghana number written the usual ways."""
+    return any(sum(ch.isdigit() for ch in run) >= 9 for run in _PHONE_RUN.findall(text or ""))
+
+
 class ReviewModerationSerializer(serializers.ModelSerializer):
     """Staff-facing shape for the moderation queue — everything
     ReviewSerializer has, plus the id(s) of whichever target it points at
@@ -68,6 +79,12 @@ class ReviewModerationSerializer(serializers.ModelSerializer):
     # Enough context to identify what is being reviewed without a second
     # request — the raw target ids alone are unreadable in a queue.
     target_name = serializers.SerializerMethodField()
+    reviewed_by_role = serializers.CharField(source="reviewed_by.role.get_name_display", read_only=True, default=None)
+    # Flags for the moderator, computed from the record: the comment carries
+    # something that reads as a phone number, and the author has a dispute still
+    # open on an order with this business.
+    contains_phone = serializers.SerializerMethodField()
+    open_dispute_order = serializers.SerializerMethodField()
 
     class Meta:
         model = Review
@@ -75,9 +92,33 @@ class ReviewModerationSerializer(serializers.ModelSerializer):
             "id", "target_type", "listing", "event", "business_owner", "organizer_customer",
             "author", "author_name", "rating", "comment", "verified", "status",
             "hidden_reason", "hidden_by", "hidden_by_name",
-            "reviewed_by_name", "reviewed_at", "target_name", "created_at",
+            "reviewed_by_name", "reviewed_by_role", "reviewed_at", "target_name", "created_at",
+            "contains_phone", "open_dispute_order",
         ]
         read_only_fields = fields
+
+    def get_contains_phone(self, obj):
+        return contains_phone_number(obj.comment)
+
+    def get_open_dispute_order(self, obj):
+        """The id of the author's order, with the reviewed business, that has an
+        open dispute (open or investigating), or None."""
+        from disputes.models import Dispute
+
+        if obj.listing_id:
+            owner_id = obj.listing.business_owner_id
+        elif obj.business_owner_id and obj.target_type == Review.SELLER:
+            owner_id = obj.business_owner_id
+        else:
+            return None
+        dispute = (
+            Dispute.objects.filter(
+                status__in=[Dispute.OPEN, Dispute.INVESTIGATING],
+                order__customer_id=obj.author_id, order__items__listing__business_owner_id=owner_id,
+            )
+            .order_by("-created_at").values_list("order_id", flat=True).first()
+        )
+        return dispute
 
     def get_target_name(self, obj):
         if obj.listing_id:

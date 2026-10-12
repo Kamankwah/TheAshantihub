@@ -145,3 +145,37 @@ class SiteSettingsAPITests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(SiteSettings.objects.count(), 1)
         self.assertEqual(SiteSettings.load().contact_email, "fresh@example.com")
+
+
+class SiteSettingsHistoryTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        staff = StaffUser.objects.create(
+            full_name="Ops Person", email="ops-hist@example.com", password_hash="x",
+            role=Role.objects.get(name="operations"),
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(staff, 'staff')}")
+
+    def test_no_history_until_a_change_is_saved(self):
+        self.assertEqual(self.client.get(URL + "history/").json(), [])
+
+    def test_save_records_only_changed_fields_with_before_after(self):
+        self.client.patch(URL, {"support_hours": "Mon-Sat 7pm"}, format="json")
+        r = self.client.patch(URL, {"support_hours": "Mon-Sat 8pm", "contact_address": ""}, format="json")
+        self.assertEqual(r.status_code, 200)
+        history = self.client.get(URL + "history/").json()
+        self.assertEqual(len(history), 2)
+        self.assertEqual(history[0]["who"], "Ops Person")
+        self.assertEqual(
+            history[0]["changes"],
+            [{"field": "support_hours", "label": "Support hours", "before": "Mon-Sat 7pm", "after": "Mon-Sat 8pm"}],
+        )
+
+    def test_unchanged_save_records_nothing(self):
+        self.client.patch(URL, {"support_hours": "x"}, format="json")
+        self.client.patch(URL, {"support_hours": "x"}, format="json")
+        self.assertEqual(len(self.client.get(URL + "history/").json()), 1)
+
+    def test_history_requires_permission(self):
+        self.client.credentials()
+        self.assertIn(self.client.get(URL + "history/").status_code, (401, 403))

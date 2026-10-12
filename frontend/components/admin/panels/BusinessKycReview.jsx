@@ -115,6 +115,20 @@ export default function BusinessKycReview({ businessId, canRecordAddress = false
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState(null);
+  // The owner's phone arrives masked; the full number is one recorded step away
+  // (password re-entry first, handled by apiClient's sudo prompt).
+  const [fullPhone, setFullPhone] = useState(null);
+  const [phoneError, setPhoneError] = useState(null);
+
+  const revealPhone = async () => {
+    setPhoneError(null);
+    try {
+      const result = await apiPost(`/api/portfolio/businesses/${businessId}/reveal-phone/`, {});
+      setFullPhone(result.login_phone);
+    } catch (err) {
+      setPhoneError(apiErrorMessage(err, "Could not show the phone number."));
+    }
+  };
 
   const recordAddress = async (verified) => {
     setActionError(null);
@@ -170,10 +184,15 @@ export default function BusinessKycReview({ businessId, canRecordAddress = false
         <h3 style={h3}>Owner</h3>
         <Facts rows={[
           ["Full name", owner.full_name || "—"],
-          ["Login phone", owner.login_phone || "—"],
+          ["Login phone", fullPhone || owner.login_phone || "—"],
           ["Email", owner.email || "Not given"],
           ["Ghana Card number", owner.ghana_card_number || "Not given"],
         ]} />
+        {owner.login_phone && !fullPhone && (
+          <button type="button" onClick={revealPhone} style={{ ...button(D.panelBg, D.text), alignSelf: "flex-start" }}>Show full phone number (recorded)</button>
+        )}
+        {fullPhone && <div style={dim}>Shown in full for you; this was recorded in the activity log.</div>}
+        {phoneError && <div role="alert" style={errorStyle}>{phoneError}</div>}
       </div>
 
       <div style={section}>

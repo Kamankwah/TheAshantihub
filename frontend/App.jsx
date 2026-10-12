@@ -1324,6 +1324,13 @@ function StaffActivatePage({auth,onSuccess}) {
   const [notice,setNotice]=useState(null);
   const [accountActive,setAccountActive]=useState(false);
 
+  // Tell the server the invite link was opened (Operations' Invite screen shows
+  // "Opened · password not set"). Best effort: a failure changes nothing here.
+  useEffect(()=>{
+    if(!token) return;
+    apiPost("/api/accounts/staff/activate/opened/",{token}).catch(()=>{});
+  },[token]);
+
   const handleSubmit=async(e)=>{
     e.preventDefault();
     setError(null);

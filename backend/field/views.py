@@ -12,7 +12,9 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import BusinessOwner, ScoutAssignment
+from django.utils.dateparse import parse_date
+
+from accounts.models import BusinessOwner, ScoutAssignment, StaffUser
 from accounts.permissions import HasAnyRolePermission, HasRolePermission
 
 from . import prospects as prospects_module
@@ -195,6 +197,68 @@ class VisitListCreateView(APIView):
             return _refused(error)
         visit = _with_related(VisitCheckIn.objects.filter(pk=visit.pk)).get()
         return Response(visit_item(visit, request), status=201)
+
+
+TEAM_VISIT_CAP = 300
+
+
+class TeamVisitsView(APIView):
+    """GET visits/team/?day=today|YYYY-MM-DD[&scout=&purpose=&flagged=1] — the
+    check-ins of the lead's own team on one day, for the Visit map (a Super
+    Admin sees every scout). Visit records, not live positions: a point is the
+    fix taken at check-in. Read-only; a check-in is opened through visits/<id>/
+    ... for the scout only, so the screen shows the record it already has."""
+
+    def get_permissions(self):
+        return [HasRolePermission(OPS_PERM)]
+
+    def get(self, request):
+        params = request.query_params
+        today = timezone.localdate()
+        raw_day = params.get("day", "today")
+        if raw_day == "today":
+            day = today
+        else:
+            day = parse_date(raw_day) if len(raw_day) == 10 else None
+            if day is None:
+                return Response({"detail": "Use day=today or YYYY-MM-DD."}, status=400)
+        if request.user.role.name == "super_admin":
+            scouts = StaffUser.objects.filter(role__name="scout", is_active=True)
+        else:
+            scouts = StaffUser.objects.filter(role__name="scout", is_active=True, manager=request.user)
+        scouts = list(scouts.order_by("full_name"))
+        scout_ids = [scout.pk for scout in scouts]
+        visits = VisitCheckIn.objects.exclude(status=VisitCheckIn.ABANDONED).filter(
+            scout_id__in=scout_ids, checked_in_at__date=day,
+        )
+        day_visits = visits
+        if params.get("scout"):
+            if not (params["scout"].isdecimal() and params["scout"].isascii()):
+                return Response({"detail": "Use a staff id."}, status=400)
+            visits = visits.filter(scout_id=params["scout"])
+        if params.get("purpose"):
+            if params["purpose"] not in dict(VisitCheckIn.PURPOSE_CHOICES):
+                return Response({"detail": "Unknown purpose."}, status=400)
+            visits = visits.filter(purpose=params["purpose"])
+        if params.get("flagged") == "1":
+            visits = visits.filter(outside_radius=True)
+        total = visits.count()
+        listed = _with_related(visits.order_by("-checked_in_at"))[:TEAM_VISIT_CAP]
+        return Response({
+            "day": day.isoformat(),
+            "is_today": day == today,
+            "radius_m": services.RADIUS_M,
+            "scouts": [{"id": scout.pk, "name": scout.full_name} for scout in scouts],
+            "summary": {
+                "total": total,
+                "still_there": visits.filter(status=VisitCheckIn.OPEN).count(),
+                "checked_out": visits.filter(status=VisitCheckIn.DONE).count(),
+                "flagged": visits.filter(outside_radius=True).count(),
+                "team_total": day_visits.count(),
+            },
+            "truncated": total > TEAM_VISIT_CAP,
+            "results": [visit_item(visit, request) for visit in listed],
+        })
 
 
 class OpenVisitView(APIView):

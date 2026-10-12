@@ -23,3 +23,14 @@ export function describeWait(dueIso, now = Date.now()) {
   const late = formatDuration(-left)
   return late === 'under a minute' ? 'overdue just now' : `overdue by ${late}`
 }
+
+// "Mon 5 Oct" and "09:10" in Ghana's format, for queue rows and timelines.
+export function shortDay(iso) {
+  const date = iso ? new Date(iso) : null
+  return date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString('en-GH', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '') : ''
+}
+
+export function clockTime(iso) {
+  const date = iso ? new Date(iso) : null
+  return date && !Number.isNaN(date.getTime()) ? date.toLocaleTimeString('en-GH', { hour: '2-digit', minute: '2-digit', hour12: false }) : ''
+}

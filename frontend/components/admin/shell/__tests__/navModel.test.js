@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { NAV_ITEMS, buildNavGroups, isPermittedTab, makeBadgeFor, overviewLabel, pickBottomBarItems } from '../navModel.js'
+import { NAV_ITEMS, PLACEHOLDER_TABS, buildNavGroups, isPermittedTab, makeBadgeFor, overviewLabel, pickBottomBarItems } from '../navModel.js'
 
 const groups = [
   { id: 'a', label: 'A', items: [
@@ -84,10 +84,12 @@ describe('My Work group', () => {
     expect(makeBadgeFor({ approvals_waiting: 4 })('approvals')).toBe(4)
   })
 
-  it('maps the tasks badge to tasks_overdue', () => {
-    expect(makeBadgeFor({ tasks_overdue: 2 })('tasks')).toBe(2)
+  it('maps the tasks badge to tasks_due (overdue plus due today)', () => {
+    expect(makeBadgeFor({ tasks_due: 2, tasks_overdue: 1 })('tasks')).toBe(2)
   })
 })
+
+const OPS_ONLY = ['ops-scouts', 'support-team', 'leave', 'hero-events', 'support-issues', 'deliveries-returns', 'visit-map', 'zones']
 
 describe('per-role menus', () => {
   const authAs = (role, perms) => ({ user: { role }, hasPermission: (c) => perms.includes(c) })
@@ -97,8 +99,7 @@ describe('per-role menus', () => {
     const groups = buildNavGroups(authAs('operations', ['kyc.approve', 'listings.moderate', 'calls.log', 'staff.invite_team', 'site_settings.manage', 'messaging.manage']))
     expect(groupOf(groups, 'kyc')).toBe('Moderation')
     expect(groupOf(groups, 'my-team')).toBe('People')
-    expect(groupOf(groups, 'messaging')).toBe('Service')
-    expect(groupOf(groups, 'activity')).toBe('Staff activity')
+    expect(groupOf(groups, 'activity')).toBe('Activity')
     expect(groupOf(groups, 'calls')).toBe('My work')
     expect(groupOf(groups, 'site-settings')).toBe('Settings')
   })
@@ -117,12 +118,13 @@ describe('per-role menus', () => {
     expect(groups.at(-1).id).toBe('more')
   })
 
-  it('shows every permitted item exactly once and no empty group, for every role', () => {
-    for (const role of ['super_admin', 'operations', 'accountant', 'marketing', 'support', 'scout', 'delivery_manager', 'dispatch']) {
+  it('shows every permitted item exactly once and no empty group, for every role but Operations', () => {
+    for (const role of ['super_admin', 'accountant', 'marketing', 'support', 'scout', 'delivery_manager', 'dispatch']) {
       const groups = buildNavGroups({ user: { role }, hasPermission: () => true })
       const ids = groups.flatMap((g) => g.items.map((i) => i.id))
       expect(new Set(ids).size).toBe(ids.length)
-      expect([...ids].sort()).toEqual(NAV_ITEMS.map((i) => i.id).sort())
+      // The Operations canvas screens appear for no other role.
+      expect([...ids].sort()).toEqual(NAV_ITEMS.filter((i) => !OPS_ONLY.includes(i.id)).map((i) => i.id).sort())
       expect(groups.every((g) => g.items.length > 0)).toBe(true)
     }
   })
@@ -159,11 +161,9 @@ describe('Register a business (staff phase 2A)', () => {
     expect(groupOf(groups, 'field-verification')).toBe('Activity')
   })
 
-  it("puts it in Operations' Businesses group, right after People", () => {
+  it("is not in Operations' menu (the 2026-10-12 canvas leaves it out; the permission stays)", () => {
     const groups = buildNavGroups(authAs('operations', ['businesses.register', 'staff.invite_team']))
-    const ids = groups.map((g) => g.id)
-    expect(ids.indexOf('businesses')).toBe(ids.indexOf('people') + 1)
-    expect(groupOf(groups, 'register-business')).toBe('Businesses')
+    expect(allIds(groups)).not.toContain('register-business')
   })
 
   it('gives Super Admin a Businesses group too', () => {
@@ -221,7 +221,7 @@ describe('portfolio menus (staff phase 2A)', () => {
     const groups = buildNavGroups(authAs('operations', ['portfolio.manage', 'businesses.register', 'staff.invite_team']))
     const labels = groups.map((g) => g.label)
     expect(labels.indexOf('Businesses')).toBe(labels.indexOf('People') + 1)
-    expect(idsIn(groups, 'Businesses')).toEqual(['all-portfolios', 'at-risk', 'subscriptions-due', 'register-business'])
+    expect(idsIn(groups, 'Businesses')).toEqual(['all-portfolios', 'at-risk', 'subscriptions-due'])
   })
 
   it('gives Super Admin a Businesses group and keeps Portfolio under Teams (step in)', () => {
@@ -268,12 +268,13 @@ describe('Subscriptions due and Fraud cases (staff phase 2A)', () => {
     expect(allIds(['portfolio.manage'])).not.toContain('fraud-cases')
   })
 
-  it("puts Subscriptions due in Operations' Businesses group before Register, and Fraud cases at the end of Service", () => {
+  it("puts Subscriptions due in Operations' Businesses group, and Fraud cases in Service", () => {
     const groups = buildNavGroups(authAs('operations', [
       'portfolio.manage', 'businesses.register', 'fraud.manage', 'fraud.flag', 'messaging.manage', 'disputes.flag', 'orders.manage_delivery',
     ]))
-    expect(idsIn(groups, 'Businesses')).toEqual(['all-portfolios', 'at-risk', 'subscriptions-due', 'register-business'])
-    expect(idsIn(groups, 'Service')).toEqual(['messaging', 'disputes', 'delivery', 'fraud-cases'])
+    expect(idsIn(groups, 'Businesses')).toEqual(['all-portfolios', 'at-risk', 'subscriptions-due'])
+    // Messaging, Disputes and Delivery Management are not in the Operations menu; the two service screens need service_issues.view.
+    expect(idsIn(groups, 'Service')).toEqual(['fraud-cases'])
   })
 
   it("puts Fraud cases at the end of Support's Queues", () => {
@@ -359,7 +360,62 @@ describe("the scout's menu in the canvas's words (staff WP6)", () => {
     const base = Object.fromEntries(NAV_ITEMS.map((i) => [i.id, i.label]))
     expect(base).toMatchObject({ approvals: 'Approvals', calls: 'Call Log', reports: 'My Reports', security: 'Sign-in & Security', activity: 'Activity', tasks: 'Tasks' })
     const ops = buildNavGroups({ user: { role: 'operations' }, hasPermission: () => true }).flatMap((g) => g.items)
-    expect(ops.find((i) => i.id === 'reports').label).toBe('My Reports')
+    expect(ops.find((i) => i.id === 'reports').label).toBe('My reports')
     expect(ops.find((i) => i.id === 'security').label).toBe('Sign-in & Security')
+  })
+})
+
+describe('Operations menu (canvas 2026-10-12)', () => {
+  const OPS = [
+    'kyc.approve', 'scouts.assign', 'listings.moderate', 'hero_media.approve', 'event.approve', 'reviews.moderate', 'users.view', 'users.manage',
+    'orders.manage_delivery', 'site_settings.manage', 'zones.manage', 'contact_messages.manage', 'staff.invite_team', 'activity.view_team',
+    'calls.log', 'businesses.register', 'portfolio.manage', 'targets.manage', 'leave.record', 'fraud.manage', 'fraud.flag', 'service_issues.view',
+  ]
+  const auth = { user: { role: 'operations' }, hasPermission: (c) => OPS.includes(c) }
+  const groups = buildNavGroups(auth)
+
+  it('has exactly the canvas groups and items, in order', () => {
+    expect(groups.map((g) => [g.label, g.items.map((i) => i.label)])).toEqual([
+      ['Approvals', ['Approvals inbox']],
+      ['People', ['Scouts', 'Support team', 'Invite', 'Targets', 'Leave & calendar']],
+      ['Businesses', ['All portfolios', 'At risk', 'Subscriptions due']],
+      ['Moderation', ['KYC queue', 'Listings', 'Hero & events', 'Reviews']],
+      ['Service', ['Support issues', 'Deliveries & returns', 'Fraud cases']],
+      ['Activity', ['Staff activity', 'Visit map']],
+      ['Reports', ['My reports', 'My team']],
+      ['My work', ['Tasks', 'Call log', 'Sign-in & Security']],
+      ['Settings', ['Zones', 'Site settings', 'Contact messages']],
+    ])
+  })
+
+  it('drops Users, Scout Assignments, Register a business, Field Verification and Delivery Management, with no More tools', () => {
+    const ids = groups.flatMap((g) => g.items.map((i) => i.id))
+    for (const gone of ['users', 'scout-assignments', 'register-business', 'field-verification', 'delivery']) expect(ids).not.toContain(gone)
+    expect(groups.some((g) => g.id === 'more')).toBe(false)
+  })
+
+  it('shows Targets to Operations through targets.manage', () => {
+    expect(buildNavGroups({ user: { role: 'operations' }, hasPermission: (c) => c === 'targets.manage' }).flatMap((g) => g.items.map((i) => i.id))).toContain('targets')
+  })
+
+  it('shows the service screens only with service_issues.view', () => {
+    const without = buildNavGroups({ user: { role: 'operations' }, hasPermission: (c) => OPS.includes(c) && c !== 'service_issues.view' }).flatMap((g) => g.items.map((i) => i.id))
+    expect(without).not.toContain('support-issues')
+    expect(without).not.toContain('deliveries-returns')
+  })
+
+  it('has no placeholder screens left: every Operations canvas screen is built', () => {
+    expect([...PLACEHOLDER_TABS]).toEqual([])
+  })
+
+  it('maps the canvas badges to staff-badges keys, summing Hero & events', () => {
+    const badgeFor = makeBadgeFor({ at_risk: 4, subscriptions_due: 3, fraud_open: 4, team_reports_waiting: 5, support_issues: 0, deliveries_open: 0, hero: 1, events: 1 })
+    expect(badgeFor('at-risk')).toBe(4)
+    expect(badgeFor('subscriptions-due')).toBe(3)
+    expect(badgeFor('fraud-cases')).toBe(4)
+    expect(badgeFor('team-reports')).toBe(5)
+    expect(badgeFor('support-issues')).toBe(0)
+    expect(badgeFor('deliveries-returns')).toBe(0)
+    expect(badgeFor('hero-events')).toBe(2)
   })
 })

@@ -3,9 +3,10 @@ import logging
 from django.conf import settings
 from django.core.mail import send_mail
 from django.core.management.base import BaseCommand, CommandError
+from django.utils import timezone
 
 from accounts.models import StaffUser
-from activity.models import ActivityEvent
+from activity.models import ActivityEvent, ChainCheck
 from activity.services import GENESIS, verify_chain
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,7 @@ class Command(BaseCommand):
         ok, broken_id = verify_chain()
         last = ActivityEvent.objects.order_by("-id").first()
         count = ActivityEvent.objects.count()
+        ChainCheck.objects.create(checked_at=timezone.now(), ok=ok, events=count, broken_at_id=None if ok else broken_id)
         if ok:
             seal = f"OK · {count} events · last #{last.pk if last else 0} · {last.hash if last else GENESIS}"
         else:

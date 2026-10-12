@@ -8,6 +8,15 @@ import { apiFetch } from '../apiClient.js'
 // call_follow_up | prospect_follow_up | ops_follow_up | manual), the business
 // {id, name} and prospect {id, name} it is about, order_id, and, for a
 // subscription task, overdue {day, pause_enabled, hide_on, grace_days}.
-export function useMyTasks(view = 'open') {
-  return useQuery({ queryKey: ['my-tasks', view], queryFn: () => apiFetch(`/api/tasks/?view=${view}`) })
+// scope 'team' asks for my direct reports' tasks instead (each row also carries owner {id, name}).
+export function useMyTasks(view = 'open', scope = 'mine') {
+  return useQuery({
+    queryKey: ['my-tasks', view, scope],
+    queryFn: () => apiFetch(`/api/tasks/?view=${view}${scope === 'team' ? '&scope=team' : ''}`),
+  })
+}
+
+// GET /api/tasks/team-summary/ — [{id, name, role, overdue, oldest_days|null, state: working|off|holiday|leave}], most overdue first.
+export function useTeamTaskSummary({ enabled = true } = {}) {
+  return useQuery({ queryKey: ['my-tasks', 'team-summary'], queryFn: () => apiFetch('/api/tasks/team-summary/'), enabled })
 }

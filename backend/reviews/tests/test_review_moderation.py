@@ -260,3 +260,55 @@ class ReviewModerationListTests(ReviewModerationTestsBase):
         response = self.client.get("/api/reviews/moderation/?status=nonsense")
         ids = [r["id"] for r in response.json()["results"]]
         self.assertEqual(ids, [self.pending_review.id])
+
+
+class ReviewModerationFlagTests(ReviewModerationTestsBase):
+    """OP-2: flags computed from the record, shown to the moderator."""
+
+    def setUp(self):
+        super().setUp()
+        self.mod = StaffUser.objects.create(
+            full_name="Mod", email="mod-flags@example.com", password_hash="x", role=Role.objects.get(name="operations"),
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.mod, 'staff')}")
+
+    def rows(self, status="pending"):
+        return {r["id"]: r for r in self.client.get(f"/api/reviews/moderation/?status={status}").json()["results"]}
+
+    def test_a_comment_with_a_phone_number_is_flagged(self):
+        from reviews.serializers import contains_phone_number
+
+        self.assertTrue(contains_phone_number("Call 0244 123 456 for the real ones"))
+        self.assertTrue(contains_phone_number("whatsapp +233 24 412 5531"))
+        self.assertFalse(contains_phone_number("Paid GH₵ 2,350.00 on 7 Oct, 4 photos"))
+        self.assertFalse(contains_phone_number("Order 15, size 42"))
+        review = Review.objects.create(
+            target_type=Review.SELLER, business_owner=self.owner, author=self.third_author,
+            rating=2, comment="Fake! Call 0244123456", verified=False,
+        )
+        self.assertTrue(self.rows()[review.id]["contains_phone"])
+
+    def test_an_open_dispute_on_the_authors_order_with_this_business_is_flagged(self):
+        from decimal import Decimal
+
+        from disputes.models import Dispute
+        from orders.models import Order, OrderItem
+
+        order = Order.objects.create(customer=self.third_author, status=Order.PAID, total_amount=Decimal("100.00"))
+        OrderItem.objects.create(order=order, listing=self.listing, quantity=1, unit_price=Decimal("100.00"), line_total=Decimal("100.00"))
+        dispute = Dispute.objects.create(order=order, raised_by=self.third_author, reason=Dispute.QUALITY_ISSUE, description="Wrong size")
+        review = Review.objects.create(
+            target_type=Review.SELLER, business_owner=self.owner, author=self.third_author, rating=1, comment="Bad", verified=True,
+        )
+        self.assertEqual(self.rows()[review.id]["open_dispute_order"], order.id)
+        Dispute.objects.filter(pk=dispute.pk).update(status=Dispute.RESOLVED)
+        self.assertIsNone(self.rows()[review.id]["open_dispute_order"])
+
+    def test_the_hidden_row_names_who_hid_it_and_their_role(self):
+        from django.utils import timezone
+
+        Review.objects.filter(pk=self.review_1.pk).update(
+            status=Review.HIDDEN, hidden_reason="Payment outside the app", reviewed_by=self.mod, reviewed_at=timezone.now(),
+        )
+        row = self.rows("rejected")[self.review_1.id]
+        self.assertEqual((row["reviewed_by_name"], row["reviewed_by_role"]), ("Mod", "Operations"))

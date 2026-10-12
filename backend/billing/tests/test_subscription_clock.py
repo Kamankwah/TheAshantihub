@@ -513,7 +513,7 @@ class ClockLiveUpdateTests(TestCase):
     """The clock's verbs (and kyc-, business., portfolio.) refresh the
     portfolio screens of everyone who manages portfolios."""
 
-    KEYS = ["portfolio", "portfolio-business", "subscriptions-due"]
+    KEYS = ["portfolio", "portfolio-business", "subscriptions-due", "staff-badges"]
 
     def setUp(self):
         self.layer = get_channel_layer()

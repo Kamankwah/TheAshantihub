@@ -7,11 +7,17 @@ import { noteSignedOutReason } from "../../lib/signOutReason.js";
 import LiveUpdatesIndicator from "./shell/LiveUpdatesIndicator.jsx";
 import { useStaffBadges } from "../../hooks/useStaffBadges.js";
 import { D, ROLE_ACCENTS } from "./theme.js";
+import OperationsOverviewPanel from "./panels/OperationsOverviewPanel.jsx";
 import OverviewPanel from "./panels/OverviewPanel.jsx";
+import ServiceIssuesPanel from "./panels/ServiceIssuesPanel.jsx";
+import DeliveriesReturnsPanel from "./panels/DeliveriesReturnsPanel.jsx";
+import SupportTeamPanel from "./panels/SupportTeamPanel.jsx";
+import ScreenBuildingPanel from "./panels/ScreenBuildingPanel.jsx";
 import KYCQueuePanel from "./panels/KYCQueuePanel.jsx";
 import ListingsModerationPanel from "./panels/ListingsModerationPanel.jsx";
 import HeroApprovalPanel from "./panels/HeroApprovalPanel.jsx";
 import EventsModerationPanel from "./panels/EventsModerationPanel.jsx";
+import HeroEventsPanel from "./panels/HeroEventsPanel.jsx";
 import EventPricingPanel from "./panels/EventPricingPanel.jsx";
 import ReviewsModerationPanel from "./panels/ReviewsModerationPanel.jsx";
 import SubscriptionPlansManagePanel from "./panels/SubscriptionPlansManagePanel.jsx";
@@ -20,6 +26,7 @@ import DeliveryManagementPanel from "./panels/DeliveryManagementPanel.jsx";
 import ContactMessagesPanel from "./panels/ContactMessagesPanel.jsx";
 import UsersPanel from "./panels/UsersPanel.jsx";
 import CategoriesZonesPanel from "./panels/CategoriesZonesPanel.jsx";
+import ZonesPanel from "./panels/ZonesPanel.jsx";
 import SiteSettingsPanel from "./panels/SiteSettingsPanel.jsx";
 import StaffManagementPanel from "./panels/StaffManagementPanel.jsx";
 import EscrowLedgerPanel from "./panels/EscrowLedgerPanel.jsx";
@@ -33,7 +40,7 @@ import DispatchPanel from "./panels/DispatchPanel.jsx";
 import MessagingPanel from "./panels/MessagingPanel.jsx";
 import PromotionsPanel from "./panels/PromotionsPanel.jsx";
 import AnalyticsPanel from "./panels/AnalyticsPanel.jsx";
-import { buildNavGroups, makeBadgeFor, isPermittedTab, overviewLabel } from "./shell/navModel.js";
+import { buildNavGroups, makeBadgeFor, isPermittedTab, overviewLabel, PLACEHOLDER_TABS } from "./shell/navModel.js";
 import StaffNavList from "./shell/StaffNavList.jsx";
 import { pickBottomBarItems } from "./shell/navModel.js";
 import useBreakpoint from "../../hooks/useBreakpoint.js";
@@ -46,6 +53,8 @@ import ScoutTodayPanel from "./panels/ScoutTodayPanel.jsx";
 import FollowUpsPanel from "./panels/FollowUpsPanel.jsx";
 import TasksPanel from "./panels/TasksPanel.jsx";
 import ActivityPanel from "./panels/ActivityPanel.jsx";
+import StaffActivityPanel from "./panels/StaffActivityPanel.jsx";
+import TeamVisitMapPanel from "./panels/TeamVisitMapPanel.jsx";
 import CallLogPanel from "./panels/CallLogPanel.jsx";
 import TargetsPanel from "./panels/TargetsPanel.jsx";
 import CommissionPanel from "./panels/CommissionPanel.jsx";
@@ -54,6 +63,10 @@ import CommissionPolicyPanel from "./panels/CommissionPolicyPanel.jsx";
 import VisitsPanel from "./panels/VisitsPanel.jsx";
 import ProspectsPanel from "./panels/ProspectsPanel.jsx";
 import MyTeamPanel from "./panels/MyTeamPanel.jsx";
+import InvitePanel from "./panels/InvitePanel.jsx";
+import LeavePanel from "./panels/LeavePanel.jsx";
+import OpsScoutsPanel from "./panels/OpsScoutsPanel.jsx";
+import OpsTargetsPanel from "./panels/OpsTargetsPanel.jsx";
 import ApprovalsPanel from "./panels/ApprovalsPanel.jsx";
 import PortfolioPanel from "./panels/PortfolioPanel.jsx";
 import SubscriptionsDuePanel from "./panels/SubscriptionsDuePanel.jsx";
@@ -182,7 +195,11 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
     if (isControlled && requestedTab !== activeTab) onTabChange?.("overview", { replace: true });
   }, [isControlled, requestedTab, activeTab]);
 
+  // The scoreboard's Open / View: All portfolios filtered to one scout.
+  const [scoutFilter, setScoutFilter] = useState(null);
+  const openScoutPortfolio = (scoutId) => { selectTab("all-portfolios"); setScoutFilter(scoutId); };
   const selectTab = (id) => {
+    setScoutFilter(null);
     setDrawerOpen(false);
     if (id === activeTab && detail == null) return;
     setInternalDetail(null);
@@ -231,6 +248,13 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
     setDrawerOpen(false);
     if (isControlled) onTabChange?.("approvals/made");
     else { setInternalTab("approvals"); setInternalDetail("made"); }
+  };
+
+  // The overview's "Open request" shows the request under Approvals (/staff/approvals/<id>).
+  const openApproval = (id) => {
+    setDrawerOpen(false);
+    if (isControlled) onTabChange?.(`approvals/${id}`);
+    else { setInternalTab("approvals"); setInternalDetail(String(id)); }
   };
 
   // A scout's "Sent for approval" is the Made by me box.
@@ -299,8 +323,10 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
         <main className="staff-content" style={{ padding: isPhone ? "16px 12px calc(88px + env(safe-area-inset-bottom, 0px))" : "22px 20px 72px" }}>
           {activeTab === "overview" && (role === "scout"
             ? <ScoutTodayPanel auth={auth} onNavigate={selectTab} onCheckIn={openCheckInScreen} onRegister={() => selectTab("register-business")} onSeeApprovals={openMadeApprovals} onOpenBusiness={openMyBusiness} />
-            : <OverviewPanel auth={auth} roleColor={roleColor} onNavigate={selectTab} />)}
-          {activeTab === "kyc" && <KYCQueuePanel />}
+            : role === "operations" && auth.hasPermission("portfolio.manage")
+              ? <OperationsOverviewPanel auth={auth} onNavigate={selectTab} onOpenApproval={openApproval} onOpenBusiness={openBusiness} />
+              : <OverviewPanel auth={auth} roleColor={roleColor} onNavigate={selectTab} />)}
+          {activeTab === "kyc" && <KYCQueuePanel auth={auth} />}
           {activeTab === "moderation" && <ListingsModerationPanel />}
           {activeTab === "hero" && <HeroApprovalPanel />}
           {activeTab === "events-moderation" && <EventsModerationPanel />}
@@ -309,7 +335,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "subscription-plans" && <SubscriptionPlansManagePanel />}
           {activeTab === "subscription-plans-approval" && <SubscriptionPlanApprovalPanel />}
           {activeTab === "delivery" && <DeliveryManagementPanel />}
-          {activeTab === "contact-messages" && <ContactMessagesPanel />}
+          {activeTab === "contact-messages" && <ContactMessagesPanel auth={auth} />}
           {activeTab === "users" && <UsersPanel auth={auth} />}
           {activeTab === "categories-zones" && <CategoriesZonesPanel auth={auth} />}
           {activeTab === "site-settings" && <SiteSettingsPanel showToast={showToast} />}
@@ -327,11 +353,20 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "messaging" && <MessagingPanel />}
           {activeTab === "tasks" && (role === "scout"
             ? <FollowUpsPanel onOpenBusiness={openMyBusiness} onOpenProspects={() => selectTab("prospects")} leadName={leadName} />
-            : <TasksPanel />)}
-          {activeTab === "activity" && <ActivityPanel />}
+            : <TasksPanel auth={auth} />)}
+          {activeTab === "activity" && (role === "operations" ? <StaffActivityPanel live={live.live} /> : <ActivityPanel />)}
+          {activeTab === "visit-map" && <TeamVisitMapPanel onOpenBusiness={openBusiness} />}
           {activeTab === "calls" && <CallLogPanel auth={auth} />}
           {activeTab === "prospects" && <ProspectsPanel onRegister={openRegisterFromProspect} />}
-          {activeTab === "targets" && <TargetsPanel />}
+          {activeTab === "targets" && (auth.hasPermission("businesses.manage_portfolio") ? <TargetsPanel /> : auth.hasPermission("targets.manage") ? <OpsTargetsPanel /> : <ScreenBuildingPanel title="Team targets" />)}
+          {activeTab === "ops-scouts" && <OpsScoutsPanel auth={auth} onNavigate={selectTab} onOpenScout={openScoutPortfolio} />}
+          {activeTab === "leave" && <LeavePanel auth={auth} />}
+          {activeTab === "support-issues" && <ServiceIssuesPanel auth={auth} onOpenBusiness={openBusiness} />}
+          {activeTab === "deliveries-returns" && <DeliveriesReturnsPanel auth={auth} />}
+          {activeTab === "support-team" && <SupportTeamPanel onNavigate={selectTab} />}
+          {PLACEHOLDER_TABS.has(activeTab) && <ScreenBuildingPanel title={activeLabel} />}
+          {activeTab === "hero-events" && <HeroEventsPanel auth={auth} />}
+          {activeTab === "zones" && <ZonesPanel />}
           {activeTab === "commission" && <CommissionPanel />}
           {activeTab === "leaderboard" && <LeaderboardPanel />}
           {activeTab === "commission-policy" && <CommissionPolicyPanel canPropose={auth.hasPermission("commission.policy")} />}
@@ -340,10 +375,10 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "team-reports" && <TeamReportsPanel auth={auth} />}
           {activeTab === "security" && <SecurityPanel />}
           {activeTab === "sessions" && <SessionsPanel auth={auth} />}
-          {activeTab === "my-team" && <MyTeamPanel currentStaffId={auth.user?.id} />}
+          {activeTab === "my-team" && (role === "operations" ? <InvitePanel auth={auth} /> : <MyTeamPanel currentStaffId={auth.user?.id} />)}
           {activeTab === "approvals" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "portfolio" && <PortfolioPanel mode="mine" auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
-          {activeTab === "all-portfolios" && <PortfolioPanel mode="all" auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
+          {activeTab === "all-portfolios" && <PortfolioPanel key={scoutFilter ?? "any"} mode="all" initialScout={scoutFilter} auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
           {activeTab === "at-risk" && <PortfolioPanel mode="at-risk" auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
           {activeTab === "subscriptions-due" && <SubscriptionsDuePanel auth={auth} onOpenBusiness={openBusiness} />}
           {activeTab === "fraud-cases" && <FraudCasesPanel auth={auth} onOpenBusiness={openBusiness} />}

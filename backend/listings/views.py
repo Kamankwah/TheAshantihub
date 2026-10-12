@@ -5,6 +5,7 @@ from decimal import Decimal
 from django.core.files.base import ContentFile
 from django.db import transaction as db_transaction
 from django.db.models import Avg, Count, Exists, OuterRef, Q
+from django.db.models import ProtectedError
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import filters, generics, serializers
@@ -14,6 +15,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import BusinessOwner
+from activity.services import record as activity_record
 from accounts.permissions import HasRolePermission
 from accounts.views import IsBusinessOwner
 from billing.models import Transaction
@@ -133,6 +135,129 @@ class ZoneListView(generics.ListCreateAPIView):
         if self.request.method == "POST":
             return [HasRolePermission("zones.manage")]
         return [AllowAny()]
+
+    def perform_create(self, serializer):
+        zone = serializer.save()
+        activity_record(
+            self.request.user, "zone.created", target=zone, summary=f"Added {zone.name}",
+            after={"name": zone.name}, method="POST", request=self.request,
+        )
+
+
+def _zone_usage(zone):
+    """What still depends on a zone: its listings, the businesses whose profile
+    sits in it, and the scouts invited to work it."""
+    from accounts.models import BusinessOwner, StaffUser
+    from field.models import Prospect
+
+    return {
+        "listings": zone.listings.count(),
+        "events": zone.events.count(),
+        # Every business, rejected ones included: deleting the zone would blank their profile.
+        "businesses": BusinessOwner.objects.filter(profile__zone=zone).count(),
+        "prospects": Prospect.objects.filter(zone=zone).count(),
+        "invited_scouts": StaffUser.areas.through.objects.filter(zone=zone).count(),
+    }
+
+
+class ZoneDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """PATCH renames, DELETE removes a zone nothing uses (409 otherwise)."""
+
+    queryset = Zone.objects.all()
+    serializer_class = ZoneSerializer
+    http_method_names = ["get", "patch", "delete"]
+
+    def get_permissions(self):
+        if self.request.method in ("PATCH", "DELETE"):
+            return [HasRolePermission("zones.manage")]
+        return [AllowAny()]
+
+    def perform_update(self, serializer):
+        before = serializer.instance.name
+        zone = serializer.save()
+        if zone.name != before:
+            activity_record(
+                self.request.user, "zone.renamed", target=zone,
+                summary=f"Renamed \u201c{before}\u201d to {zone.name}",
+                before={"name": before}, after={"name": zone.name}, method="PATCH", request=self.request,
+            )
+
+    def destroy(self, request, *args, **kwargs):
+        zone = self.get_object()
+        usage = _zone_usage(zone)
+        if any(usage.values()):
+            parts = []
+            if usage["listings"]:
+                parts.append(f"{usage['listings']} listing{'s' if usage['listings'] != 1 else ''}")
+            if usage["events"]:
+                parts.append(f"{usage['events']} event{'s' if usage['events'] != 1 else ''}")
+            if usage["prospects"]:
+                parts.append(f"{usage['prospects']} prospect{'s' if usage['prospects'] != 1 else ''}")
+            if usage["businesses"]:
+                parts.append(f"{usage['businesses']} business{'es' if usage['businesses'] != 1 else ''}")
+            if usage["invited_scouts"]:
+                parts.append(f"{usage['invited_scouts']} scout invite{'s' if usage['invited_scouts'] != 1 else ''}")
+            return Response(
+                {"detail": f"{zone.name} is still used by {', '.join(parts)}. Rename it instead."},
+                status=409,
+            )
+        name, pk = zone.name, zone.pk
+        try:
+            zone.delete()
+        except ProtectedError:
+            return Response({"detail": f"{name} is still used by listings or events. Rename it instead."}, status=409)
+        activity_record(
+            request.user, "zone.deleted", target_type="listings.zone", target_id=pk, target_label=name,
+            summary=f"Deleted {name}", before={"name": name}, method="DELETE", request=request,
+        )
+        return Response(status=204)
+
+
+class ZoneSummaryView(APIView):
+    """GET /api/listings/zones/summary/ -- the Zones screen: every zone with its
+    listing and business counts and the scouts working it (derived from the
+    zones their businesses sit in, portfolio.areas), plus the recorded changes."""
+
+    def get_permissions(self):
+        return [HasRolePermission("zones.manage")]
+
+    def get(self, request):
+        from accounts.models import BusinessOwner, StaffUser
+        from activity.models import ActivityEvent
+        from portfolio.areas import scout_areas
+
+        listing_counts = dict(
+            Zone.objects.annotate(n=Count("listings")).values_list("pk", "n")
+        )
+        business_counts = {}
+        for zone_id in (
+            BusinessOwner.objects.filter(profile__zone__isnull=False)
+            .exclude(kyc_status=BusinessOwner.REJECTED)
+            .values_list("profile__zone_id", flat=True)
+        ):
+            business_counts[zone_id] = business_counts.get(zone_id, 0) + 1
+        scouts = list(StaffUser.objects.filter(role__name="scout", is_active=True, is_suspended=False))
+        by_zone = {}
+        areas = scout_areas(scouts)
+        for scout in scouts:
+            for name in areas.get(scout.pk, []):
+                by_zone.setdefault(name, []).append(scout.full_name)
+        zones = [
+            {
+                "id": z.pk, "name": z.name,
+                "listings": listing_counts.get(z.pk, 0),
+                "businesses": business_counts.get(z.pk, 0),
+                "scouts": sorted(by_zone.get(z.name, [])),
+            }
+            for z in Zone.objects.order_by("name")
+        ]
+        events = ActivityEvent.objects.filter(verb__in=("zone.created", "zone.renamed", "zone.deleted")).order_by("-id")[:10]
+        changes = [
+            {"id": e.pk, "what": e.summary, "who": e.actor_label, "at": e.occurred_at,
+             "mine": e.actor_type == ActivityEvent.STAFF and e.actor_id == request.user.pk}
+            for e in events
+        ]
+        return Response({"zones": zones, "changes": changes})
 
 
 class ListingPagination(PageNumberPagination):
@@ -452,13 +577,32 @@ class ModerationPendingQueueView(generics.ListAPIView):
     def get_queryset(self):
         tab = self.request.query_params.get("status", "pending")
         listing_status = LISTING_STATUS_MAP.get(tab, Listing.PENDING_REVIEW)
-        queryset = Listing.objects.filter(status=listing_status)
+        queryset = Listing.objects.filter(status=listing_status).select_related(
+            "business_owner__subscription__plan", "reviewed_by",
+        )
         # Item 2: group by owning business so a reviewer sees a business's
         # listings together. Within a business, pending is oldest-first (work
         # queue); approved/rejected are most-recently-actioned first (history).
         if listing_status == Listing.PENDING_REVIEW:
             return queryset.order_by("business_owner__full_name", "created_at")
         return queryset.order_by("business_owner__full_name", "-reviewed_at", "-created_at")
+
+
+class ModerationStatsView(APIView):
+    """GET /api/listings/moderation/stats/ — listings published and rejected
+    since Monday (the queue's "This week" line)."""
+
+    def get_permissions(self):
+        return [HasRolePermission("listings.moderate")]
+
+    def get(self, request):
+        monday = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+        monday -= timedelta(days=monday.weekday())
+        week = Listing.objects.filter(reviewed_at__gte=monday)
+        return Response({
+            "week_published": week.filter(status=Listing.PUBLISHED).count(),
+            "week_rejected": week.filter(status=Listing.REJECTED).count(),
+        })
 
 
 class ModerationListingDetailView(generics.RetrieveAPIView):

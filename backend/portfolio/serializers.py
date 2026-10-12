@@ -10,7 +10,7 @@ from rest_framework import serializers
 from accounts.gps import validate_ashanti_gps
 from accounts.kyc import address_correction
 from accounts.models import BusinessOwner, BusinessOwnerProfile, StaffUser
-from accounts.phones import normalize_gh_phone
+from accounts.phones import mask_phone, normalize_gh_phone
 from accounts.validators import validate_image_content_type
 from approvals.models import ApprovalRequest
 from calls.models import CallLog
@@ -176,15 +176,18 @@ def _portfolio_mask_ip(ip):
     return ".".join(parts[:2] + ["x", "x"]) if len(parts) == 4 else ip
 
 
-def portfolio_item(row):
-    """One business in a portfolio list (row: health.RatedBusiness)."""
+def portfolio_item(row, masked=False):
+    """One business in a portfolio list (row: health.RatedBusiness). For a
+    portfolio.manage holder (masked=True) (Operations) gets the sign-in phone masked, as in
+    the KYC serializers; the full number is the recorded reveal endpoint. A
+    scout keeps it for the businesses they manage (they call them)."""
     owner = row.owner
     profile = _portfolio_profile(owner)
     return {
         "id": owner.pk,
         "business_name": owner.display_name,
         "owner_name": owner.full_name,
-        "login_phone": owner.login_phone,
+        "login_phone": mask_phone(owner.login_phone) if masked else owner.login_phone,
         "zone": _portfolio_named(getattr(profile, "zone", None)),
         "kyc_status": owner.kyc_status,
         "registration_channel": owner.registration_channel,
@@ -202,9 +205,9 @@ def portfolio_item(row):
     }
 
 
-def subscription_due_item(row):
+def subscription_due_item(row, masked=False):
     """A Subscriptions-due row: the list item plus the notices the clock sent."""
-    item = portfolio_item(row)
+    item = portfolio_item(row, masked)
     subscription = row.owner.subscription
     item["notices"] = [
         {"label": label, "at": getattr(subscription, field)}
@@ -239,7 +242,7 @@ def business_detail(row, request):
     visits = (
         owner.visits.exclude(status=VisitCheckIn.ABANDONED).select_related("scout").order_by("-checked_in_at", "-id")
     )
-    data = portfolio_item(row)
+    data = portfolio_item(row, shows_titles)
     data.update({
         "business_kind": getattr(profile, "business_kind", None),
         "business_category": _portfolio_named(getattr(profile, "business_category", None), "label"),
@@ -346,7 +349,8 @@ def business_review_sheet(owner, request):
     return {
         "owner": {
             "full_name": owner.full_name,
-            "login_phone": owner.login_phone,
+            # Masked; "Show full phone number" is the recorded reveal endpoint.
+            "login_phone": mask_phone(owner.login_phone),
             "email": owner.email,
             "ghana_card_number": getattr(profile, "ghana_card_number", None),
             "needs_claim": owner.needs_claim,

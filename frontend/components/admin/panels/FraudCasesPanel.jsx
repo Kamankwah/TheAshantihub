@@ -5,7 +5,7 @@ import { useBusinessOwnerSearch, useFraudFlagCounts, useFraudFlags } from "../..
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D } from "../theme.js";
 import { button, callout, chip, dim, field, pill } from "./panelStyles.js";
-import { card, errorStyle, formatDateTime, h2, h3, labelStyle, useDebounced } from "./portfolioParts.jsx";
+import { card, errorStyle, formatDateTime, formatDay, h2, h3, labelStyle, money, useDebounced } from "./portfolioParts.jsx";
 
 // /staff/fraud-cases. Operations and Super Admin (fraud.manage) work the
 // queue: every decision needs a note, and confirming a case about a business
@@ -22,7 +22,7 @@ const EMPTY_MINE = {
   confirmed: "None of the cases you raised has been confirmed.",
   dismissed: "None of the cases you raised has been dismissed.",
 };
-const INTRO_MANAGE = "Raised automatically by the registration checks and by owners pressing “This wasn't me”, or by hand by Support and Operations. Confirming or dismissing always needs a note.";
+const INTRO_MANAGE = "Raised automatically by registration checks, owners' “This wasn't me” and check-ins — or by hand by Support and Operations. Super Admin sees this queue too. Confirming or dismissing always needs a note.";
 const INTRO_FLAG = "You can raise a case about a business. Operations decides it; here you see the cases you raised.";
 const REFRESH_KEYS = ["fraud-flags", "fraud-flag-counts", "staff-badges"];
 
@@ -50,6 +50,36 @@ function ScopeLines({ flag }) {
   if (flag.staff_subject) lines.push(`About a staff member: ${flag.staff_subject.full_name}`);
   if (!lines.length) return null;
   return <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>{lines.map((line) => <div key={line} style={dim}>{line}</div>)}</div>;
+}
+
+// What deciding does, read from the case and the commission lines it would
+// reverse. Confirming may suspend the business (a choice) and reverses its
+// commission that has not been paid out (automatic); dismissing changes nothing else.
+function Consequences({ flag, suspend, onSuspend }) {
+  const business = flag.business_owner;
+  const reversal = flag.commission_reversal;
+  const suspendable = flag.can_suspend && business;
+  return (
+    <div aria-label="What deciding does" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ ...dim, fontWeight: 800 }}>When you confirm</div>
+      {suspendable && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: "0.8rem", fontWeight: 700, color: D.text }}>
+            <input type="checkbox" checked={suspend} onChange={(e) => onSuspend(e.target.checked)} />
+            {`Suspend ${business.display_name}`}
+          </label>
+          <div style={dim}>Its listings and events are hidden and the owner is told why.</div>
+        </div>
+      )}
+      {reversal && (
+        <div style={{ fontSize: "0.8rem", color: D.text }}>
+          {`The registration commission on this business is reversed — ${money(reversal.amount)}${reversal.staff?.length ? ` for ${reversal.staff.join(", ")}` : ""}${reversal.hold_until ? `, still on hold until ${formatDay(reversal.hold_until)}` : ""}. Commission already in a payout is not touched.`}
+        </div>
+      )}
+      {!suspendable && !reversal && <div style={dim}>Confirming only records the decision and your note.</div>}
+      <div style={dim}>Dismissing closes the case; nothing else changes.</div>
+    </div>
+  );
 }
 
 function CaseCard({ flag, me, canDecide, onOpen, onDone, onRefused }) {
@@ -109,15 +139,7 @@ function CaseCard({ flag, me, canDecide, onOpen, onDone, onRefused }) {
           <label style={labelStyle}>Note (required)
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} maxLength={2000} style={field} />
           </label>
-          {flag.can_suspend && business && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: "0.8rem", fontWeight: 700, color: D.text }}>
-                <input type="checkbox" checked={suspend} onChange={(e) => setSuspend(e.target.checked)} />
-                {`Suspend ${business.display_name}`}
-              </label>
-              <div style={dim}>Only when you confirm: its listings and events are hidden and the owner is told why.</div>
-            </div>
-          )}
+          <Consequences flag={flag} suspend={suspend} onSuspend={setSuspend} />
           {!note.trim() && <div style={dim}>Write a note to confirm or dismiss.</div>}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button type="button" disabled={!ready} onClick={() => decide("dismiss")} style={button(D.panelBg, D.text, !ready)}>Dismiss</button>

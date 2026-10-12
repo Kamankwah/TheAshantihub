@@ -24,6 +24,15 @@ HOW = {
 WORKING, OFF, HOLIDAY, ON_LEAVE = "working", "off", "holiday", "leave"
 
 
+SUPPORT_WEEKDAYS = [0, 1, 2, 3, 4]  # Monday to Friday
+
+
+def default_weekdays(staff):
+    """The working weekdays without a saved pattern: Monday to Saturday for scouts
+    and everyone else, Monday to Friday for Support (set per person from there)."""
+    return SUPPORT_WEEKDAYS if staff.role.name == "support" else DEFAULT_WEEKDAYS
+
+
 class Calendar:
     """What the targets of one staff member look like over start..end, read
     from the database once so a month of days costs a handful of queries."""
@@ -31,7 +40,7 @@ class Calendar:
     def __init__(self, staff, start, end):
         self.staff, self.start, self.end = staff, start, end
         pattern = WorkPattern.objects.filter(staff=staff).first()
-        self.weekdays = set(pattern.weekdays) if pattern is not None else set(DEFAULT_WEEKDAYS)
+        self.weekdays = set(pattern.weekdays) if pattern is not None else set(default_weekdays(staff))
         self.holidays = {h.date: h.name for h in PublicHoliday.objects.filter(date__gte=start, date__lte=end)}
         self.leaves = list(Leave.objects.filter(staff=staff, start__lte=end, end__gte=start).select_related("recorded_by"))
         self.plans = {metric: [] for metric in METRICS}
@@ -193,15 +202,21 @@ def _period_label(period, start, end):
     return f"{start:%B %Y}"
 
 
-def month_total_with(staff, metric, new_value, effective_from, today):
-    """The scout's total for the month of `today` if a plan of `new_value`
-    started on `effective_from`, against what it is now: (before, after)."""
-    start, end = period_bounds("month", today)
-    calendar = Calendar(staff, start, end)
-    before = calendar.total(metric)
+def total_with(calendar, metric, new_value, effective_from, start, end):
+    """The total over start..end if a plan of `new_value` started on
+    `effective_from`, against what it is now: (before, after). Leave and
+    holidays stay zero days either way."""
+    before = calendar.total(metric, start, end)
     after = 0
-    for day in calendar.days():
+    for day in calendar.days(start, end):
         if calendar.state(day) != WORKING:
             continue
         after += new_value if day >= effective_from else calendar.daily(metric, day)
     return before, after
+
+
+def month_total_with(staff, metric, new_value, effective_from, today):
+    """The scout's total for the month of `today` if a plan of `new_value`
+    started on `effective_from`, against what it is now: (before, after)."""
+    start, end = period_bounds("month", today)
+    return total_with(Calendar(staff, start, end), metric, new_value, effective_from, start, end)

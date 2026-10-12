@@ -262,7 +262,7 @@ describe('ApprovalsPanel — scout requests (staff phase 2A)', () => {
     expect(await screen.findByRole('heading', { name: 'Duplicate and self-dealing checks' })).toBeInTheDocument()
     expect(screen.getByText('Ghana Post address as typed: AK-039-5128')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Address verified' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Approve KYC' })).toBeInTheDocument()
   })
 
   it('refreshes the request table when the address decision is recorded', async () => {

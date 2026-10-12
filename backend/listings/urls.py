@@ -15,6 +15,7 @@ urlpatterns = [
         name="listing-photo-delete",
     ),
     path("moderation/pending/", views.ModerationPendingQueueView.as_view(), name="moderation-pending"),
+    path("moderation/stats/", views.ModerationStatsView.as_view(), name="moderation-stats"),
     path("moderation/<int:pk>/", views.ModerationListingDetailView.as_view(), name="moderation-detail"),
     path("moderation/<int:pk>/approve/", views.ModerationApproveView.as_view(), name="moderation-approve"),
     path("moderation/<int:pk>/reject/", views.ModerationRejectView.as_view(), name="moderation-reject"),
@@ -27,6 +28,8 @@ urlpatterns = [
     path("categories/", views.CategoryListView.as_view(), name="category-list"),
     path("categories/<int:pk>/", views.CategoryDetailView.as_view(), name="category-detail"),
     path("zones/", views.ZoneListView.as_view(), name="zone-list"),
+    path("zones/summary/", views.ZoneSummaryView.as_view(), name="zone-summary"),
+    path("zones/<int:pk>/", views.ZoneDetailView.as_view(), name="zone-detail"),
     # Before the `<int:pk>/` patterns below, so "promotions" is never parsed
     # as a listing id.
     path("promotions/", views.PromotionAdminListView.as_view(), name="promotion-admin-list"),

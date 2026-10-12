@@ -15,6 +15,7 @@ urlpatterns = [
         "businesses/<int:pk>/orders/<int:order_id>/delivery-problem/",
         views.DeliveryProblemView.as_view(), name="portfolio-delivery-problem",
     ),
+    path("businesses/<int:pk>/reveal-phone/", views.RevealOwnerPhoneView.as_view(), name="portfolio-business-reveal-phone"),
     path("businesses/<int:pk>/review/", views.BusinessReviewView.as_view(), name="portfolio-business-review"),
     path("businesses/<int:pk>/reassign/", views.ReassignBusinessView.as_view(), name="portfolio-reassign"),
     path("businesses/<int:pk>/follow-up/", views.BusinessFollowUpView.as_view(), name="portfolio-follow-up"),

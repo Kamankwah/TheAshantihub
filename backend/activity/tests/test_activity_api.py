@@ -3,6 +3,7 @@ from rest_framework.test import APIClient
 
 from accounts.authentication import issue_token
 from accounts.models import Customer, Role, StaffUser
+from accounts.testing import staff_token
 from activity import services
 
 
@@ -87,3 +88,69 @@ class ActivityBadInputTests(TestCase):
         client = APIClient()
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(boss, 'staff')}")
         self.assertEqual(client.get("/api/activity/?actor=\u00b2").status_code, 400)
+
+
+class ActivityFiltersExportAndChainTests(ActivityApiTests):
+    def test_several_verb_prefixes_filter_together(self):
+        rows = self.verbs_for(self.boss, "?verb=kyc,commission.")
+        self.assertEqual(sorted(verb for _, verb in rows), ["commission.batch_prepared", "kyc-approve"])
+
+    def test_the_person_list_is_only_who_the_caller_can_see(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.ops, 'staff')}")
+        names = {row["name"] for row in self.client.get("/api/activity/people/").json()}
+        self.assertIn("Kwame", names)
+        self.assertNotIn("Boss", names)
+        self.assertIn("Efua", names)  # Operations sees every scout, not only their own team
+
+
+    def test_the_export_is_the_callers_filtered_view_and_is_itself_recorded(self):
+        from activity.models import ActivityEvent
+
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(self.ops, sudo=True)}")
+        response = self.client.get("/api/activity/export/?format=csv&role=scout&actor=" + str(self.scout.pk))
+        self.assertEqual(response.status_code, 200)
+        text = response.content.decode("utf-8-sig")
+        self.assertIn("Kwame", text)
+        self.assertNotIn("Efua", text)  # filtered to one person
+        self.assertIn("Time,Role,Who,Action,On,Detail", text)
+        export_event = ActivityEvent.objects.filter(verb="report.exported").latest("id")
+        self.assertEqual(export_event.actor_id, self.ops.pk)
+        self.assertEqual(export_event.after["kind"], "staff-activity")
+
+    def test_a_cell_that_starts_like_a_formula_is_escaped(self):
+        from activity import services as activity_services
+
+        activity_services.record(self.ops, "=cmd", summary="@SUM(1)")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(self.ops, sudo=True)}")
+        text = self.client.get("/api/activity/export/?format=csv").content.decode("utf-8-sig")
+        self.assertIn("'=cmd", text)
+        self.assertIn("'@SUM(1)", text)
+
+    def test_the_export_can_be_an_excel_file_and_other_formats_are_refused(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(self.ops, sudo=True)}")
+        xlsx = self.client.get("/api/activity/export/?format=xlsx")
+        self.assertEqual(xlsx.status_code, 200)
+        self.assertTrue(xlsx.content.startswith(b"PK"))
+        self.assertEqual(self.client.get("/api/activity/export/?format=pdf").status_code, 400)
+
+    def test_exporting_other_peoples_activity_needs_the_password_but_your_own_does_not(self):
+        from activity.models import ActivityEvent
+
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(self.ops)}")
+        refused = self.client.get("/api/activity/export/?format=csv")
+        self.assertEqual((refused.status_code, refused.json()["code"]), (403, "sudo_required"))
+        self.assertFalse(ActivityEvent.objects.filter(verb="report.exported").exists())
+        self.assertEqual(self.client.get("/api/activity/export/?format=csv&mine=1").status_code, 200)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(self.scout)}")
+        self.assertEqual(self.client.get("/api/activity/export/?format=csv").status_code, 200)
+
+def test_chain_status_says_nothing_until_a_check_has_run(self):
+        from django.core.management import call_command
+
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.ops, 'staff')}")
+        self.assertEqual(self.client.get("/api/activity/chain-status/").json(), {"checked": False})
+        call_command("verify_activity_chain")
+        body = self.client.get("/api/activity/chain-status/").json()
+        self.assertTrue(body["checked"])
+        self.assertTrue(body["ok"])
+        self.assertGreaterEqual(body["events"], 9)

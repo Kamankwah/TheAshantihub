@@ -17,7 +17,7 @@ from notifications.models import Notification
 FIELDS = {
     "id", "kind", "kind_label", "status", "source", "title", "detail", "evidence", "business_owner",
     "related_business_owner", "staff_subject", "raised_by_name", "created_at", "resolved_by_name",
-    "resolved_at", "resolution_note", "can_suspend",
+    "resolved_at", "resolution_note", "can_suspend", "commission_reversal",
 }
 
 

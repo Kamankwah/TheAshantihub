@@ -1,14 +1,24 @@
+import csv
+import io
+
 from django.db.models import Q
+from django.http import HttpResponse
+from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework import generics
+from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework.exceptions import ValidationError
 from rest_framework.pagination import PageNumberPagination
 
 from accounts.models import StaffUser
 from accounts.permissions import IsStaff
+from accounts.sessions import require_sudo
+from reports.exports import ExportNegotiation, FORMATS
 
-from .models import ActivityEvent
+from .models import ActivityEvent, ChainCheck
 from .serializers import ActivityEventSerializer
+from .services import record
 
 # activity.view_domains: what each overseeing role sees beyond its own team.
 ROLE_ACTIVITY_VISIBILITY = {
@@ -59,14 +69,10 @@ def _date_param(params, name):
     return value
 
 
-class ActivityListView(generics.ListAPIView):
-    serializer_class = ActivityEventSerializer
-    pagination_class = ActivityPagination
+class FilteredEventsMixin:
+    """The filters every activity view shares, applied to what the caller may see."""
 
-    def get_permissions(self):
-        return [IsStaff()]
-
-    def get_queryset(self):
+    def filtered_events(self):
         user = self.request.user
         params = self.request.query_params
         events = visible_events(user)
@@ -79,7 +85,13 @@ class ActivityListView(generics.ListAPIView):
         if params.get("role"):
             events = events.filter(actor_role=params["role"])
         if params.get("verb"):
-            events = events.filter(verb__startswith=params["verb"])
+            # Comma-separated prefixes: an action group on the screen is several verb families.
+            prefixes = [part for part in params["verb"].split(",") if part][:12]
+            if prefixes:
+                match = Q()
+                for prefix in prefixes:
+                    match |= Q(verb__startswith=prefix)
+                events = events.filter(match)
         if params.get("target_type"):
             events = events.filter(target_type=params["target_type"])
         if params.get("target_id"):
@@ -91,3 +103,128 @@ class ActivityListView(generics.ListAPIView):
         if until:
             events = events.filter(occurred_at__date__lte=until)
         return events.order_by("-id")
+
+
+class ActivityListView(FilteredEventsMixin, generics.ListAPIView):
+    serializer_class = ActivityEventSerializer
+    pagination_class = ActivityPagination
+
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def get_queryset(self):
+        return self.filtered_events()
+
+
+EXPORT_LIMIT = 5000
+EXPORT_COLUMNS = ["Time", "Role", "Who", "Action", "On", "Detail"]
+FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _cell(value):
+    text = "" if value is None else str(value)
+    return "'" + text if text.startswith(FORMULA_PREFIXES) else text
+
+
+def _export_row(event):
+    local = timezone.localtime(event.occurred_at)
+    on = " ".join(part for part in (event.target_type, event.target_label) if part)
+    return [local.strftime("%Y-%m-%d %H:%M:%S"), event.actor_role, event.actor_label, event.verb, on, event.summary]
+
+
+def reaches_others(user, params):
+    """True when an export under these filters can include anyone but the
+    caller: it is then personal data and needs a recent password (sudo), as
+    reports.exports.reaches_others does."""
+    if params.get("mine") == "1" or params.get("actor") == str(user.pk):
+        return False
+    perms = user.effective_permission_codenames()
+    if "activity.view_all" in perms:
+        return True
+    if "activity.view_domains" in perms and ROLE_ACTIVITY_VISIBILITY.get(user.role.name, {}).get("roles"):
+        return True
+    return "activity.view_team" in perms and StaffUser.objects.filter(manager=user).exists()
+
+
+class ActivityExportView(FilteredEventsMixin, APIView):
+    """GET activity/export/?format=csv|xlsx plus the list's filters: the same
+    view the caller sees, newest first, at most 5,000 rows (the response says
+    when it was cut). The export is itself recorded as report.exported."""
+
+    content_negotiation_class = ExportNegotiation
+
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def get(self, request):
+        fmt = request.query_params.get("format", "csv")
+        if fmt not in ("csv", "xlsx"):
+            raise ValidationError({"format": "Use csv or xlsx."})
+        if reaches_others(request.user, request.query_params):
+            require_sudo(request)  # other people's activity is personal data
+        events = list(self.filtered_events()[: EXPORT_LIMIT + 1])
+        truncated = len(events) > EXPORT_LIMIT
+        events = events[:EXPORT_LIMIT]
+        # Recorded after the read, so the export does not list itself.
+        record(request.user, "report.exported", after={"format": fmt, "kind": "staff-activity", "rows": len(events), "truncated": truncated}, request=request)
+        rows = [_export_row(event) for event in events]
+        stem = f"ashantihub-staff-activity-{timezone.localdate().isoformat()}"
+        if fmt == "csv":
+            buffer = io.StringIO()
+            writer = csv.writer(buffer)
+            writer.writerow(EXPORT_COLUMNS)
+            for row in rows:
+                writer.writerow([_cell(value) for value in row])
+            response = HttpResponse("\ufeff" + buffer.getvalue(), content_type=FORMATS["csv"])
+        else:
+            import xlsxwriter
+
+            target = io.BytesIO()
+            workbook = xlsxwriter.Workbook(target, {"in_memory": True, "strings_to_formulas": False, "strings_to_urls": False, "strings_to_numbers": False})
+            sheet = workbook.add_worksheet("Staff activity")
+            bold = workbook.add_format({"bold": True})
+            for col, label in enumerate(EXPORT_COLUMNS):
+                sheet.write_string(0, col, label, bold)
+            for number, row in enumerate(rows, start=1):
+                for col, value in enumerate(row):
+                    sheet.write_string(number, col, str(value))
+            workbook.close()
+            response = HttpResponse(target.getvalue(), content_type=FORMATS["xlsx"])
+        response["Content-Disposition"] = f'attachment; filename="{stem}.{fmt}"'
+        response["X-Export-Truncated"] = "1" if truncated else "0"
+        return response
+
+
+class ActivityPeopleView(APIView):
+    """GET activity/people/ — the staff whose actions the caller can see, for
+    the Person filter. Only people who have an event in the visible record."""
+
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def get(self, request):
+        rows = (
+            visible_events(request.user).filter(actor_type=ActivityEvent.STAFF, actor_id__isnull=False)
+            .values("actor_id", "actor_label", "actor_role").distinct().order_by("actor_label")
+        )
+        seen, people = set(), []
+        for row in rows[:500]:
+            if row["actor_id"] in seen:
+                continue
+            seen.add(row["actor_id"])
+            people.append({"id": row["actor_id"], "name": row["actor_label"], "role": row["actor_role"]})
+        return Response(people)
+
+
+class ChainStatusView(APIView):
+    """GET activity/chain-status/ — the last stored result of the nightly chain
+    check, or {checked: false} when none has run. Never a guess."""
+
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def get(self, request):
+        check = ChainCheck.objects.first()
+        if check is None:
+            return Response({"checked": False})
+        return Response({"checked": True, "checked_at": check.checked_at, "ok": check.ok, "events": check.events})

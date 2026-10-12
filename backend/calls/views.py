@@ -33,11 +33,14 @@ class CallPagination(PageNumberPagination):
     page_size = 50
 
     summary = None
+    extra = None
 
     def get_paginated_response(self, data):
         response = super().get_paginated_response(data)
         if self.summary is not None:
             response.data["summary"] = self.summary
+        if self.extra is not None:
+            response.data.update(self.extra)
         return response
 
 
@@ -65,12 +68,29 @@ class CallLogListCreateView(generics.ListCreateAPIView):
             if not (params["staff"].isdecimal() and params["staff"].isascii()):
                 raise ValidationError({"staff": "Use a staff id."})
             calls = calls.filter(staff_id=params["staff"])
+        # scope=mine: only my own calls; scope=team: only my direct reports'
+        # (calls.view_team), never mine. visible_calls already bounds both.
+        user = self.request.user
+        scope = params.get("scope")
+        if scope == "mine":
+            calls = calls.filter(staff=user)
+        elif scope == "team":
+            calls = calls.filter(staff__manager=user)
         if params.get("day") == "today":
             start, end = today_bounds(timezone.now())
             calls = calls.filter(started_at__gte=start, started_at__lt=end)
             self.paginator.summary = {
                 "logged": calls.count(), "connected": calls.filter(outcome="connected").count(),
             }
+            # The Call log screen's strip: my own day, and my team's count.
+            own = visible_calls(user).filter(staff=user, started_at__gte=start, started_at__lt=end)
+            self.paginator.extra = {"strip": {
+                "mine": own.count(), "out": own.filter(direction="out").count(), "in": own.filter(direction="in").count(),
+                "connected": own.filter(outcome="connected").count(), "no_answer": own.filter(outcome="no_answer").count(),
+                "follow_ups": own.filter(follow_up_task__isnull=False).count(),
+                "team": visible_calls(user).filter(staff__manager=user, started_at__gte=start, started_at__lt=end).count()
+                if "calls.view_team" in user.effective_permission_codenames() else None,
+            }}
         return calls
 
 

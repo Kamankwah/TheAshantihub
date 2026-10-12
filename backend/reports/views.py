@@ -1,5 +1,5 @@
 import logging
-from datetime import date
+from datetime import date, timedelta
 
 from django.db import transaction
 from django.http import FileResponse, QueryDict
@@ -16,6 +16,7 @@ from accounts.permissions import IsStaff
 from accounts.serializers import staff_brief
 from accounts.sessions import require_sudo
 from activity.services import record
+from notifications.models import Notification
 
 from . import exports, services
 from .models import ReportExport, StaffReport
@@ -218,8 +219,64 @@ class TeamReportsView(APIView):
         })
 
 
-QUEUE_DOWN = "Background jobs are unavailable right now — try a range of 31 days or less."
 MAX_STAFF_ID = 2**31 - 1
+
+
+class TeamMissingView(APIView):
+    """GET /api/reports/team/missing/?from=&to= — the days my direct reports
+    owed a day report and never sent one (default: the last five days before
+    today). Leave, holidays and days off are not counted."""
+
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def get(self, request):
+        params = request.query_params
+        today = timezone.localdate()
+        end = _date(params.get("to")) if params.get("to") else today - timedelta(days=1)
+        start = _date(params.get("from")) if params.get("from") else end - timedelta(days=services.MISSING_DAYS - 1)
+        if end < start:
+            raise ValidationError({"to": "Pick an end date on or after the start."})
+        if (end - start).days + 1 > services.MAX_MISSING_SPAN:
+            raise ValidationError({"from": f"Look at {services.MAX_MISSING_SPAN} days or fewer."})
+        rows = services.missing_day_reports(request.user, start, end, today=today)
+        reminded = set(
+            Notification.objects.filter(
+                kind="report_nudge", created_at__date=today, staff__in=[member for member, _ in rows]
+            ).values_list("staff_id", "body")
+        )
+        return Response({
+            "from": start, "to": min(end, today - timedelta(days=1)),
+            "rows": [
+                {"staff": staff_brief(member), "date": day, "reminded_today": (member.pk, day.isoformat()) in reminded}
+                for member, day in rows
+            ],
+        })
+
+
+class TeamRemindView(APIView):
+    """POST /api/reports/team/remind/ {staff, date} — nudge one direct report
+    for a missing day report (in-app notification, recorded in the activity log)."""
+
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def post(self, request):
+        if (bad := _not_an_object(request)) is not None:
+            return bad
+        raw = request.data.get("staff")
+        if not (str(raw).isdecimal() and str(raw).isascii()) or int(raw) > MAX_STAFF_ID:
+            raise ValidationError({"staff": "Use a staff id."})
+        day = _date(request.data.get("date"), required=True)
+        member = generics.get_object_or_404(StaffUser, pk=int(raw), manager=request.user, is_active=True)
+        try:
+            services.remind(request.user, member, day, http_request=request)
+        except services.ReportError as exc:
+            return _error(exc)
+        return Response({"reminded": True})
+
+
+QUEUE_DOWN = "Background jobs are unavailable right now — try a range of 31 days or less."
 
 
 def _format(params):

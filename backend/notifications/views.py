@@ -80,6 +80,23 @@ class NotificationReadAllView(APIView):
         return Response({"unread_count": 0})
 
 
+def _cached_badge(user, name, compute):
+    """Badge counts that rate every business are kept for STAFF_BADGE_CACHE_SECONDS
+    per staff member: the nav polls them and they need not be exact to the second."""
+    from django.conf import settings
+    from django.core.cache import cache
+
+    ttl = settings.STAFF_BADGE_CACHE_SECONDS
+    if not ttl:
+        return compute()
+    key = f"staff-badge:{name}:{user.pk}"
+    value = cache.get(key)
+    if value is None:
+        value = compute()
+        cache.set(key, value, ttl)
+    return value
+
+
 class StaffBadgesView(APIView):
     """GET /api/notifications/staff-badges/ — per-tab counts of *current
     pending work* for the staff dashboard's nav badges. Deliberately computed
@@ -122,8 +139,55 @@ class StaffBadgesView(APIView):
                 todays or StaffReport(staff=user, period=StaffReport.DAY, period_start=today, period_end=today)
             ).isoformat()
 
+        import datetime as dt
+
+        end_of_today = timezone.make_aware(dt.datetime.combine(today + dt.timedelta(days=1), dt.time.min))
+
         def count(codename, queryset):
             return queryset.count() if codename in held else 0
+
+        # Operations' work-queue counts. Each is gated by the permission that
+        # opens its screen, and only counts where a real record source exists:
+        # Support issues counts the open items of operations.service_issues on
+        # the caller's businesses; Deliveries counts the open disputes.
+        at_risk = subscriptions_due = fraud_open = team_reports_waiting = 0
+        if "portfolio.manage" in held:
+            from django.db.models import Q
+
+            from portfolio import health
+            from portfolio.views import portfolio_queryset
+
+            def rated_at_risk():
+                now = timezone.now()
+                team = portfolio_queryset(user, "team")
+                return sum(1 for row in health.rate_all(team, now) if row.rating == health.AT_RISK)
+
+            def overdue_count():
+                now = timezone.now()
+                lapsed = portfolio_queryset(user, "team").filter(
+                    Q(subscription__current_period_end__lt=now)
+                    | Q(subscription__overdue_since__isnull=False)
+                    | Q(subscription__paused_at__isnull=False)
+                )
+                return sum(1 for row in health.rate_all(lapsed, now) if row.subscription["state"] == "overdue")
+
+            at_risk = _cached_badge(user, "at_risk", rated_at_risk)
+            subscriptions_due = _cached_badge(user, "subscriptions_due", overdue_count)
+        if "fraud.manage" in held:
+            from fraud.models import FraudFlag
+            from fraud.views import visible_flags
+
+            fraud_open = visible_flags(user).filter(status=FraudFlag.OPEN).count()
+        support_issues = deliveries_open = 0
+        if "service_issues.view" in held:
+            from operations import service_issues
+
+            support_issues = _cached_badge(user, "support_issues", lambda: service_issues.open_issue_count(user))
+            deliveries_open = service_issues.deliveries_open_count()
+        if "staff.invite_team" in held:
+            team_reports_waiting = StaffReport.objects.filter(
+                staff__manager=user, staff__is_active=True, status=StaffReport.SUBMITTED
+            ).count()
 
         # Escrow tab is gated by any of view/release/refund (see
         # AdminCommandCenter's nav), so its badge is too.
@@ -174,7 +238,15 @@ class StaffBadgesView(APIView):
                 "tasks_overdue": Task.objects.filter(
                     owner=user, status=Task.OPEN, due_at__lt=timezone.now()
                 ).count(),
+                # Tasks to do now: overdue, plus due before midnight.
+                "tasks_due": Task.objects.filter(owner=user, status=Task.OPEN, due_at__lt=end_of_today).count(),
                 "approvals_waiting": waiting_for(user).count(),
+                "at_risk": at_risk,
+                "subscriptions_due": subscriptions_due,
+                "fraud_open": fraud_open,
+                "team_reports_waiting": team_reports_waiting,
+                "support_issues": support_issues,
+                "deliveries_open": deliveries_open,
                 "report_due_at": report_due_at,
             }
         )

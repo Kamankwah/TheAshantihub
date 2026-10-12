@@ -1,11 +1,15 @@
 import datetime as dt
 
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import generics
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.models import StaffUser
 from accounts.permissions import IsStaff
+from notifications.services import notify_staff
 
 from .models import Task
 from .serializers import TaskSerializer, _subscription_states
@@ -27,9 +31,13 @@ class TaskListCreateView(generics.ListCreateAPIView):
         return [IsStaff()]
 
     def get_queryset(self):
-        mine = Task.objects.filter(owner=self.request.user).select_related(
-            "business_owner__profile", "created_by"
-        )
+        # scope=team: the open or done tasks of the caller's direct reports
+        # (nobody's, for someone who leads no one), never the caller's own.
+        if self.request.query_params.get("scope") == "team":
+            owners = Task.objects.filter(owner__manager=self.request.user, owner__is_active=True)
+        else:
+            owners = Task.objects.filter(owner=self.request.user)
+        mine = owners.select_related("business_owner__profile", "created_by", "owner")
         view = self.request.query_params.get("view", "open")
         now = timezone.now()
         if view == "done":
@@ -61,9 +69,26 @@ class TaskListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         data = serializer.validated_data
+        owner = self._owner(self.request.data.get("owner"))
         serializer.instance = create_task(
-            self.request.user, data["title"], data["due_at"], notes=data.get("notes", ""), created_by=self.request.user
+            owner, data["title"], data["due_at"], notes=data.get("notes", ""), created_by=self.request.user
         )
+        if owner.pk != self.request.user.pk:
+            notify_staff(
+                owner, "task_assigned", f"{self.request.user.full_name} gave you a task",
+                body=data["title"], link="tasks", icon="✅",
+            )
+
+    def _owner(self, value):
+        """Who the task is for: the caller, or one of their direct reports."""
+        if value in (None, "", self.request.user.pk):
+            return self.request.user
+        if not str(value).isdigit() or int(value) > 2**31 - 1:
+            raise ValidationError({"owner": "Pick someone from your team."})
+        owner = StaffUser.objects.filter(pk=int(value), manager=self.request.user, is_active=True).first()
+        if owner is None:
+            raise ValidationError({"owner": "You can give tasks only to yourself or your direct reports."})
+        return owner
 
 
 class _TaskStatusView(APIView):
@@ -73,7 +98,10 @@ class _TaskStatusView(APIView):
         return [IsStaff()]
 
     def post(self, request, pk):
-        task = generics.get_object_or_404(Task, pk=pk, owner=request.user)
+        # The owner, or the manager of the owner, may close it.
+        task = generics.get_object_or_404(
+            Task.objects.filter(Q(owner=request.user) | Q(owner__manager=request.user)), pk=pk
+        )
         task.status = self.new_status
         task.done_at = timezone.now() if self.new_status == Task.DONE else None
         task.save(update_fields=["status", "done_at"])
@@ -86,3 +114,28 @@ class TaskDoneView(_TaskStatusView):
 
 class TaskCancelView(_TaskStatusView):
     new_status = Task.CANCELLED
+
+
+class TeamTaskSummaryView(APIView):
+    """GET team-summary/ — for each direct report, how many open tasks are
+    overdue and how old the oldest is (canvas screen 23's side list)."""
+
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def get(self, request):
+        from targets.services import Calendar
+
+        now = timezone.now()
+        today = timezone.localdate(now)
+        rows = []
+        for member in StaffUser.objects.filter(manager=request.user, is_active=True, invite_token__isnull=True).select_related("role").order_by("full_name"):
+            overdue = Task.objects.filter(owner=member, status=Task.OPEN, due_at__lt=now).order_by("due_at")
+            first = overdue.first()
+            rows.append({
+                "id": member.pk, "name": member.full_name, "role": member.role.name, "overdue": overdue.count(),
+                "oldest_days": (now - first.due_at).days if first else None,
+                "state": Calendar(member, today, today).state(today),
+            })
+        rows.sort(key=lambda row: (-row["overdue"], row["name"]))
+        return Response(rows)

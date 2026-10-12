@@ -87,7 +87,7 @@ export default function ModerationQueueTabs({
         <div style={{ color: D.text, fontWeight: 800, fontSize: "0.88rem", marginBottom: 12 }}>{title}</div>
       )}
 
-      <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+      <div role="group" aria-label="Queue state" style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
         {tabs.map((key) => {
           const isActive = key === tab;
           // Show a count only for a tab whose data has actually loaded, so a
@@ -96,6 +96,7 @@ export default function ModerationQueueTabs({
           return (
             <button
               key={key}
+              aria-pressed={isActive}
               onClick={() => onTab(key)}
               style={{
                 background: isActive ? D.gold : D.panelBg2,
@@ -108,7 +109,7 @@ export default function ModerationQueueTabs({
                 cursor: "pointer",
               }}
             >
-              {resolvedLabels[key]}{count != null ? ` (${count})` : ""}
+              {resolvedLabels[key]}{count != null ? ` · ${count}` : ""}
             </button>
           );
         })}

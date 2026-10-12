@@ -111,6 +111,7 @@ INSTALLED_APPS = [
     "fraud",
     "field",
     "targets",
+    "operations",
     "commission",
     "realtime",
 ]
@@ -323,6 +324,7 @@ REST_FRAMEWORK = {
         "customer_register": "5/min",
         "business_owner_register": "5/min",
         "staff_activate": "5/min",
+        "staff_activate_opened": "30/min",
         "login": "5/min",
         "two_factor": "10/min",
         "password_reset_request": "5/min",
@@ -366,6 +368,9 @@ REDIS_URL = env("REDIS_URL", default="")
 if not DEBUG and not TESTING and not REDIS_URL.startswith(("redis://", "rediss://")):
     raise ImproperlyConfigured("REDIS_URL must be set when DJANGO_DEBUG=False")
 USE_REDIS = bool(REDIS_URL) and not TESTING
+# Seconds the Operations badge counts that rate every business (at risk, subscriptions due,
+# support issues) are kept per staff member; 0 (always under `manage.py test`) computes each poll.
+STAFF_BADGE_CACHE_SECONDS = 0 if TESTING else 60
 
 CACHES = {
     "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},

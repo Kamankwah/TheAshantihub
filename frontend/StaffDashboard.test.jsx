@@ -619,7 +619,7 @@ describe('StaffDashboard', () => {
     await screen.findByPlaceholderText('hello@ashantihub.com')
     fireEvent.change(screen.getByPlaceholderText('hello@ashantihub.com'), { target: { value: 'new@ashantihub.com' } })
     fireEvent.change(screen.getByPlaceholderText('https://facebook.com/ashantihub'), { target: { value: 'https://facebook.com/newpage' } })
-    fireEvent.click(screen.getByText('Save'))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[0])
     await waitFor(() => expect(patchBody).toMatchObject({
       contact_email: 'new@ashantihub.com',
       facebook_url: 'https://facebook.com/newpage',
@@ -643,8 +643,9 @@ describe('StaffDashboard', () => {
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('Site Settings'))
     await screen.findByPlaceholderText('hello@ashantihub.com')
-    fireEvent.click(screen.getByText('Save'))
-    await screen.findByText('Could not save site settings. Please try again.')
+    fireEvent.change(screen.getByPlaceholderText('hello@ashantihub.com'), { target: { value: 'new@ashantihub.com' } })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[0])
+    await screen.findByText('Server error')
   })
 
   it('renders the two new policy fields as textareas and saves them', async () => {
@@ -673,7 +674,7 @@ describe('StaffDashboard', () => {
     const disputeField = screen.getByDisplayValue('Contact Support within 48 hours.')
     expect(disputeField.tagName).toBe('TEXTAREA')
     fireEvent.change(returnsField, { target: { value: 'Returns within 14 days.' } })
-    fireEvent.click(screen.getByText('Save'))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[0])
     await waitFor(() => expect(patchBody).toMatchObject({ warranty_returns_policy: 'Returns within 14 days.' }))
     await screen.findByText('✓ Saved!')
   })
@@ -913,8 +914,9 @@ describe('StaffDashboard Contact Messages', () => {
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('Contact Messages'))
     await screen.findByText('"My order is late"')
-    expect(screen.getByText('New')).toBeInTheDocument()
-    expect(screen.getByText('Resolved')).toBeInTheDocument()
+    // The tab buttons and the row chips share these words.
+    expect(screen.getAllByText('New').length).toBeGreaterThan(1)
+    expect(screen.getAllByText('Resolved').length).toBeGreaterThan(1)
     expect(screen.getByText(/Resolved by Akosua Support/)).toBeInTheDocument()
   })
 
@@ -1211,7 +1213,7 @@ describe('StaffDashboard Subscription Plans Management', () => {
     fireEvent.click(screen.getByText('✏️ Edit'))
     const priceInputs = screen.getAllByPlaceholderText('Monthly price (GHS)')
     fireEvent.change(priceInputs[priceInputs.length - 1], { target: { value: '12.00' } })
-    fireEvent.click(screen.getByText('Save'))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[0])
     await waitFor(() => expect(patchBody.monthly_price).toBe('12.00'))
   })
 
@@ -1912,7 +1914,7 @@ describe('StaffDashboard Credit & Lending (item 16)', () => {
     fireEvent.click(screen.getByText('⚖️ Adjust'))
     fireEvent.change(screen.getByPlaceholderText('+/- points'), { target: { value: '40' } })
     fireEvent.change(screen.getByPlaceholderText('Reason (required)'), { target: { value: 'Long relationship' } })
-    fireEvent.click(screen.getByText('Save'))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[0])
     await waitFor(() => expect(adjustBody).toEqual({ adjustment: 40, reason: 'Long relationship' }))
   })
 

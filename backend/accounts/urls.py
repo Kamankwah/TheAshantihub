@@ -7,6 +7,8 @@ urlpatterns = [
     path("customers/register/", views.CustomerRegisterView.as_view(), name="customer-register"),
     path("staff/invite/", views.StaffInviteView.as_view(), name="staff-invite"),
     path("staff/activate/", views.StaffActivateView.as_view(), name="staff-activate"),
+    path("staff/activate/opened/", views.StaffInviteOpenedView.as_view(), name="staff-activate-opened"),
+    path("staff/<int:pk>/cancel-invite/", views.StaffCancelInviteView.as_view(), name="staff-cancel-invite"),
     path(
         "staff/<int:pk>/resend-invite/",
         views.StaffResendInviteView.as_view(),
@@ -80,6 +82,7 @@ urlpatterns = [
     ),
     path("business-owners/me/terms/", views.TermsAcceptView.as_view(), name="business-owner-terms"),
     path("kyc/pending/", views.KYCPendingQueueView.as_view(), name="kyc-pending"),
+    path("kyc/stats/", views.KYCStatsView.as_view(), name="kyc-stats"),
     path("kyc/<int:pk>/", views.KYCDetailView.as_view(), name="kyc-detail"),
     path("kyc/<int:pk>/approve/", views.KYCApproveView.as_view(), name="kyc-approve"),
     path("kyc/<int:pk>/reject/", views.KYCRejectView.as_view(), name="kyc-reject"),

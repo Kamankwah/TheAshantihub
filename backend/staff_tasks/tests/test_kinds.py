@@ -94,7 +94,7 @@ class TaskKindTests(TestCase):
         self.assertEqual(row["order_id"], 31)
         self.assertEqual(set(row), {
             "id", "title", "notes", "due_at", "status", "done_at", "kind", "business", "prospect", "order_id",
-            "overdue", "created_by_name", "source_type", "source_id", "created_at",
+            "overdue", "owner", "created_by_name", "source_type", "source_id", "created_at",
         })
 
     def test_a_task_added_by_hand_is_manual_and_cannot_set_its_kind(self):

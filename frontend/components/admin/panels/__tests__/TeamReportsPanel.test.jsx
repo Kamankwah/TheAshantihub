@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { server } from '../../../../mocks/server.js'
@@ -101,5 +101,67 @@ describe('TeamReportsPanel', () => {
     renderPanel()
     await screen.findByText('Nobody to show for this period.')
     expect(screen.queryByRole('button', { name: 'Everyone' })).not.toBeInTheDocument()
+  })
+
+  it('counts the reports in, the late ones and the copy-check flags', async () => {
+    server.use(team([
+      { staff: yaws.staff, report: yaws },
+      { staff: { id: 6, full_name: 'Efua Mensah', role: 'scout' }, report: { ...yaws, id: 22, staff: { id: 6, full_name: 'Efua Mensah' }, is_late: false, similar_warning: false, status: 'acknowledged', can_review: false } },
+      { staff: { id: 7, full_name: 'Nana Yaa Ofori', role: 'support' }, report: null },
+    ]))
+    renderPanel()
+    expect(await screen.findByText('Not submitted yet')).toBeInTheDocument()
+    expect(within(screen.getByRole('group', { name: 'Reports in' })).getByText('2 of 3')).toBeInTheDocument()
+    expect(within(screen.getByRole('group', { name: 'Late reports' })).getByText('1')).toBeInTheDocument()
+    expect(within(screen.getByRole('group', { name: 'Copy-check flags' })).getByText('1')).toBeInTheDocument()
+    expect(within(screen.getByRole('group', { name: 'To review' })).getByText('1')).toBeInTheDocument()
+  })
+
+  it('lists the days nobody reported and sends one reminder per person and day', async () => {
+    let posted = null
+    server.use(
+      team([]),
+      http.get('http://localhost:8000/api/reports/team/missing/', () => HttpResponse.json({
+        from: '2026-10-02', to: '2026-10-06',
+        rows: [{ staff: { id: 5, full_name: 'Yaw Owusu', role: 'scout' }, date: '2026-10-02', reminded_today: false }, { staff: { id: 7, full_name: 'Nana Yaa Ofori', role: 'support' }, date: '2026-10-03', reminded_today: true }],
+      })),
+      http.post('http://localhost:8000/api/reports/team/remind/', async ({ request }) => { posted = await request.json(); return HttpResponse.json({ reminded: true }) }),
+    )
+    renderPanel({ hasPermission: (c) => c === 'staff.invite_team' })
+    expect(await screen.findByText(/Not in · Fri 2 Oct – Tue 6 Oct/)).toBeInTheDocument()
+    expect(screen.getByText("Leave and days off aren't counted")).toBeInTheDocument()
+    expect(screen.getByText('Reminded today')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Remind Yaw Owusu about Fri 2 Oct' }))
+    await waitFor(() => expect(posted).toEqual({ staff: 5, date: '2026-10-02' }))
+    expect(await screen.findAllByText('Reminded today')).toHaveLength(2)
+  })
+
+  it('shows the server message when a reminder is refused', async () => {
+    server.use(
+      team([]),
+      http.get('http://localhost:8000/api/reports/team/missing/', () => HttpResponse.json({ from: '2026-10-02', to: '2026-10-06', rows: [{ staff: { id: 5, full_name: 'Yaw Owusu', role: 'scout' }, date: '2026-10-02', reminded_today: false }] })),
+      http.post('http://localhost:8000/api/reports/team/remind/', () => HttpResponse.json({ detail: 'You already reminded them about that day today.' }, { status: 409 })),
+    )
+    renderPanel({ hasPermission: (c) => c === 'staff.invite_team' })
+    fireEvent.click(await screen.findByRole('button', { name: /Remind Yaw Owusu/ }))
+    expect(await screen.findByText('You already reminded them about that day today.')).toBeInTheDocument()
+  })
+
+  it('says how late a report was', async () => {
+    server.use(
+      team([{ staff: yaws.staff, report: yaws }]),
+      http.get('http://localhost:8000/api/reports/21/', () => HttpResponse.json({ ...yaws, system: [] })),
+    )
+    renderPanel()
+    fireEvent.click(await screen.findByRole('button', { name: "Open Yaw Owusu's report" }))
+    expect(await screen.findByText('Submitted 2 h after the deadline.')).toBeInTheDocument()
+  })
+
+  it('does not ask for the missing days without a team to lead', async () => {
+    let asked = false
+    server.use(team([]), http.get('http://localhost:8000/api/reports/team/missing/', () => { asked = true; return HttpResponse.json({ rows: [] }) }))
+    renderPanel()
+    await screen.findByText('Nobody to show for this period.')
+    expect(asked).toBe(false)
   })
 })

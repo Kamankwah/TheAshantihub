@@ -66,6 +66,31 @@ function Row({ row }) {
   );
 }
 
+// A section with `columns` (the Operations report's scouts) is a small table: one row per
+// person, one cell per column. The frozen snapshot holds the same rows.
+function SectionTable({ section }) {
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "0.72rem", color: D.text }}>
+        <thead>
+          <tr>
+            <th scope="col" style={{ textAlign: "left", padding: "3px 6px 3px 0", color: D.textDim }}>Person</th>
+            {section.columns.map((column) => <th key={column} scope="col" style={{ textAlign: "left", padding: "3px 6px", color: D.textDim, whiteSpace: "nowrap" }}>{column}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {section.rows.map((row) => (
+            <tr key={row.label}>
+              <th scope="row" style={{ textAlign: "left", padding: "3px 6px 3px 0", fontWeight: 700, whiteSpace: "nowrap" }}>{row.label}</th>
+              {(row.cells || []).map((cell, index) => <td key={index} style={{ padding: "3px 6px", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{cell}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // "From the system": numbers counted from AshantiHub's records, never typed.
 // `lockedAt` is when the snapshot was taken (the latest submission) once frozen.
 export function SystemSections({ sections: given, live, lockedAt, onlyTargets = false }) {
@@ -83,9 +108,11 @@ export function SystemSections({ sections: given, live, lockedAt, onlyTargets = 
       {(sections || []).length === 0 && <div style={dim}>Nothing recorded for this period.</div>}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(200px,100%),1fr))", gap: 10, fontVariantNumeric: "tabular-nums" }}>
         {(sections || []).map((section) => (
-          <div key={section.key} style={{ background: D.panelBg2, borderRadius: 12, padding: "10px 12px" }}>
+          <div key={section.key} style={{ background: D.panelBg2, borderRadius: 12, padding: "10px 12px", ...(section.columns ? { gridColumn: "1 / -1" } : {}) }}>
             <div style={{ color: D.text, fontWeight: 700, fontSize: "0.78rem", marginBottom: 4 }}>{section.title}</div>
-            {section.rows.map((row) => <Row key={row.label} row={row} />)}
+            {section.columns
+              ? <SectionTable section={section} />
+              : section.rows.map((row) => <Row key={row.label} row={row} />)}
             {section.summary && <div style={{ ...dim, color: D.text, marginTop: 6, lineHeight: 1.4 }}>{section.summary}</div>}
           </div>
         ))}

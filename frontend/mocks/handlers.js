@@ -287,6 +287,8 @@ export const handlers = [
   // here so a test that doesn't care about these panels' content doesn't
   // trip MSW's `onUnhandledRequest: 'error'`; overridden per-test via
   // server.use() where specific queue content is asserted.
+  // Before the ':id' routes below, which would otherwise swallow 'stats'.
+  http.get('http://localhost:8000/api/accounts/kyc/stats/', () => HttpResponse.json({ week_verified: 0, week_rejected: 0 })),
   http.get('http://localhost:8000/api/accounts/kyc/pending/', () => {
     return HttpResponse.json([])
   }),
@@ -502,7 +504,9 @@ export const handlers = [
     return HttpResponse.json({ unread_count: 0 })
   }),
   http.get('http://localhost:8000/api/approvals/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
-  http.get('http://localhost:8000/api/approvals/counts/', () => HttpResponse.json({ mine: 0, made: 0, team: 0, decided: 0, can_view_all: false })),
+  http.get('http://localhost:8000/api/approvals/counts/', () => HttpResponse.json({ mine: 0, made: 0, team: 0, decided: 0, escalated_to_me: 0, makers: [], kinds: [], can_view_all: false })),
+  http.get('http://localhost:8000/api/approvals/stats/', () => HttpResponse.json({ decided_today: 0, approved_today: 0, returned_today: 0, median_minutes: null })),
+  http.get('http://localhost:8000/api/listings/moderation/stats/', () => HttpResponse.json({ week_published: 0, week_rejected: 0 })),
   http.get('http://localhost:8000/api/tasks/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/activity/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
   http.get('http://localhost:8000/api/calls/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
@@ -541,6 +545,8 @@ export const handlers = [
     month: '2026-10', as_of: '2026-10-07', lead: null, rows: [], team_total: 0, my_rank: 1, my_count: 0, gap: null, most_improved: null,
   })),
   http.get('http://localhost:8000/api/field/visit-targets/', () => HttpResponse.json([])),
+  // The staff activation page tells the server the invite link was opened.
+  http.post('http://localhost:8000/api/accounts/staff/activate/opened/', () => HttpResponse.json({ state: 'valid' })),
   http.get('http://localhost:8000/api/accounts/staff/team/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/accounts/staff/invitable-roles/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/reports/current/', () => HttpResponse.json({
@@ -551,6 +557,8 @@ export const handlers = [
     system_is_live: true, system: [],
   })),
   http.get('http://localhost:8000/api/reports/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/reports/team/missing/', () => HttpResponse.json({ from: '2026-10-02', to: '2026-10-06', rows: [] })),
+  http.get('http://localhost:8000/api/tasks/team-summary/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/reports/team/', () => HttpResponse.json({ period: 'day', period_start: '2026-10-07', rows: [] })),
   http.get('http://localhost:8000/api/reports/exports/', () => HttpResponse.json([])),
   // Portfolio (staff phase 2A) — scouts' and Operations' business lists, one
@@ -598,7 +606,7 @@ export const handlers = [
   http.get('http://localhost:8000/api/notifications/staff-badges/', () => {
     return HttpResponse.json({
       kyc: 0, listings: 0, events: 0, hero: 0, reviews: 0,
-      plan_approvals: 0, contact_messages: 0, escrow: 0, tasks_overdue: 0, approvals_waiting: 0, report_due_at: null,
+      plan_approvals: 0, contact_messages: 0, escrow: 0, tasks_overdue: 0, tasks_due: 0, approvals_waiting: 0, report_due_at: null,
     })
   }),
   // Scout registration and owner hand-over (staff phase 2A) — defaults;

@@ -49,3 +49,20 @@ class ActivityEvent(models.Model):
 
     def __str__(self):
         return f"#{self.id} {self.actor_label} {self.verb}"
+
+
+class ChainCheck(models.Model):
+    """The result of one run of verify_activity_chain (the nightly job), so the
+    Staff activity screen can say when the chain was last checked and whether
+    it held. Only a check that actually ran is recorded; nothing is inferred."""
+
+    checked_at = models.DateTimeField()
+    ok = models.BooleanField()
+    events = models.PositiveBigIntegerField()
+    broken_at_id = models.BigIntegerField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-id"]
+
+    def __str__(self):
+        return f"Chain check {self.checked_at:%Y-%m-%d %H:%M}: {'intact' if self.ok else 'BROKEN'}"

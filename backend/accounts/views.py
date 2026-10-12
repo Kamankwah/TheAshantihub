@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.conf import settings
 from django.contrib.auth.hashers import check_password
 from django.db import transaction
@@ -41,6 +43,7 @@ from .permissions import (
 from .phones import filter_by_phone, phone_key
 from .serializers import (
     INVITE_TOKEN_LIFETIME,
+    invite_state,
     BusinessOwnerKYCDetailSerializer,
     BusinessOwnerKYCSerializer,
     BusinessOwnerListSerializer,
@@ -179,11 +182,64 @@ class StaffResendInviteView(APIView):
             )
         staff.invite_token = get_random_string(43)
         staff.invite_expires_at = timezone.now() + INVITE_TOKEN_LIFETIME
-        staff.save(update_fields=["invite_token", "invite_expires_at"])
+        staff.invite_sent_at = timezone.now()
+        staff.invite_opened_at = None  # the new link has not been opened yet
+        staff.save(update_fields=["invite_token", "invite_expires_at", "invite_sent_at", "invite_opened_at"])
         send_staff_invite_email(
             staff, f"{settings.FRONTEND_BASE_URL}/staff/activate?token={staff.invite_token}"
         )
         return Response({"status": "invite resent"})
+
+
+class StaffCancelInviteView(APIView):
+    """POST staff/<id>/cancel-invite/ — withdraw an invite that was never accepted.
+    The unused account is deleted (so the email can be invited again) and the
+    cancel is recorded in the activity log. A team lead cancels only their own
+    team's invites; an accepted account is suspended or deactivated instead."""
+
+    def get_permissions(self):
+        return [HasAnyRolePermission(*TEAM_OR_STAFF_MANAGE)]
+
+    def post(self, request, pk):
+        staff = generics.get_object_or_404(StaffUser.objects.select_related("role"), pk=pk)
+        guard = _guard_self_action(request, staff) or _guard_team_scope(request, staff)
+        if guard:
+            return guard
+        if staff.invite_token is None:
+            return Response({"detail": "Cannot cancel the invite of an already-activated account."}, status=400)
+        before = {"full_name": staff.full_name, "email": staff.email, "role": staff.role.name, "invite_state": invite_state(staff)}
+        try:
+            with transaction.atomic():
+                record_activity(
+                    request.user, "staff.invite_cancelled", target=staff, before=before,
+                    summary=f"Cancelled the invite to {staff.full_name} ({staff.role.name})", request=request,
+                )
+                staff.delete()
+        except ProtectedError:
+            return Response({"detail": "This account already has records and can't be removed. Deactivate it instead."}, status=409)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class StaffInviteOpenedView(APIView):
+    """POST staff/activate/opened/ {token} — the activation page tells us the
+    link was opened (the Invite screen's "Opened · password not set"). Answers
+    only whether the link is still usable; nothing else about the account."""
+
+    permission_classes = [AllowAny]
+    throttle_scope = "staff_activate_opened"
+    activity_exempt = True
+
+    def post(self, request):
+        token = str(request.data.get("token", "")) if isinstance(request.data, dict) else ""
+        staff = StaffUser.objects.filter(invite_token=token).first() if token else None
+        if staff is None:
+            return Response({"state": "invalid"})
+        if staff.invite_expires_at is None or staff.invite_expires_at < timezone.now():
+            return Response({"state": "expired"})
+        if staff.invite_opened_at is None:
+            staff.invite_opened_at = timezone.now()
+            staff.save(update_fields=["invite_opened_at"])
+        return Response({"state": "valid"})
 
 
 class CustomerLoginView(generics.GenericAPIView):
@@ -383,6 +439,23 @@ class KYCPendingQueueView(generics.ListAPIView):
         return queryset.order_by("-reviewed_at", "-created_at")
 
 
+class KYCStatsView(APIView):
+    """GET /api/accounts/kyc/stats/ — businesses verified and rejected since
+    Monday (the queue's "This week" line)."""
+
+    def get_permissions(self):
+        return [HasRolePermission("kyc.approve")]
+
+    def get(self, request):
+        monday = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+        monday -= timedelta(days=monday.weekday())
+        week = BusinessOwner.objects.filter(reviewed_at__gte=monday)
+        return Response({
+            "week_verified": week.filter(kyc_status=BusinessOwner.VERIFIED).count(),
+            "week_rejected": week.filter(kyc_status=BusinessOwner.REJECTED).count(),
+        })
+
+
 class KYCDetailView(generics.RetrieveAPIView):
     serializer_class = BusinessOwnerKYCDetailSerializer
 
@@ -540,6 +613,7 @@ class StaffTeamListView(generics.ListAPIView):
         return (
             sessions.with_last_sign_in(StaffUser.objects.filter(manager=self.request.user))
             .select_related("role", "manager")
+            .prefetch_related("areas")
             .order_by("full_name")
         )
 
