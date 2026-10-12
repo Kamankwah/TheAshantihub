@@ -90,3 +90,34 @@ export function useOpsOverview(period = 'today') {
     placeholderData: keepPreviousData,
   })
 }
+
+// Operations' Service screens (16, 17, 05), all read-only. Keys match backend/realtime/publish.py.
+// GET /api/operations/service-issues/?type=contact|dispute|chat&manager=<id>&status=open|resolved —
+//   {issues: [{key, type, type_label, id, business, business_id, account_manager, account_manager_id, what, detail, from,
+//      handled_by, opened_at, open_seconds, status, resolved_at}], open_total, counts: {contact, dispute, chat},
+//      resolved_this_week, managers: [{id, name}]}
+export function useServiceIssues({ type = 'all', manager = '', status = 'open' } = {}) {
+  const params = new URLSearchParams({ status })
+  if (type !== 'all') params.set('type', type)
+  if (manager) params.set('manager', manager)
+  return useQuery({
+    queryKey: ['service-issues', type, manager, status],
+    queryFn: () => apiFetch(`/api/operations/service-issues/?${params}`),
+    placeholderData: keepPreviousData,
+  })
+}
+
+// GET /api/operations/deliveries/ — {today, assignments: [{id, order_id, businesses: [{id, name}], to, rider, status,
+//   status_label, delivery_status, delivery_status_label, last_update, last_update_label}], assignments_total,
+//   assigned_today, disputes: [{id, order_id, businesses, reason, status, status_label, description, raised_by,
+//   handled_by, opened_at, open_seconds}], dispute_total, delivery_status_choices: [{value, label}]}
+export function useDeliveries() {
+  return useQuery({ queryKey: ['ops-deliveries'], queryFn: () => apiFetch('/api/operations/deliveries/') })
+}
+
+// GET /api/operations/support-team/ — {agents: [{id, name, suspended, last_sign_in_at, calls_today, report_today,
+//   last_report: {date, status}|null}], queue: {open, awaiting_reply, oldest_waiting_seconds|null, closed_this_week,
+//   closed_total, by_starter: {customers, business_owners, guests}}}
+export function useSupportTeam() {
+  return useQuery({ queryKey: ['ops-support-team'], queryFn: () => apiFetch('/api/operations/support-team/') })
+}

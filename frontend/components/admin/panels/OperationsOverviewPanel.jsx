@@ -12,8 +12,8 @@ import { errorStyle, eyebrow, h2 } from "./portfolioParts.jsx";
 // Six counts, the lead's scouts, what waits for them, the live activity feed and
 // the issues on the team's businesses. Every figure comes from
 // GET /api/operations/overview/ (targets, KYC approvals, check-ins, approvals,
-// health ratings, fraud cases) and GET /api/activity/. Support and delivery
-// issues have no records yet, so the issue count says so rather than showing 0.
+// health ratings, fraud cases, support issues) and GET /api/activity/. An issue
+// count the caller may not read (no service_issues.view) is left out, not zero.
 const PERIODS = [["today", "Today"], ["week", "Week"], ["month", "Month"]];
 const PERIOD_WORD = { today: "today", week: "this week", month: "this month" };
 const warn = "#A33A00";
@@ -51,7 +51,7 @@ export function kpiCards(data, period) {
   const word = PERIOD_WORD[period];
   const issueParts = [`${k.issues.fraud} fraud`];
   if (k.issues.support != null) issueParts.push(`${k.issues.support} support`);
-  if (k.issues.delivery != null) issueParts.push(`${k.issues.delivery} delivery`);
+  if (k.issues.delivery != null) issueParts.push(`${k.issues.delivery} open ${k.issues.delivery === 1 ? "dispute" : "disputes"} on deliveries`);
   const checkedSub = [
     k.checked_in.working ? `Working ${word === "today" ? "today" : "now"}` : "Nobody is working today",
     ...(k.checked_in.on_leave.length ? [`${k.checked_in.on_leave.join(", ")} on leave`] : []),
@@ -63,7 +63,7 @@ export function kpiCards(data, period) {
     approvals: { label: "Approvals waiting", value: `${k.approvals.waiting}`, sub: k.approvals.oldest ? `Oldest ${ageText(k.approvals.oldest.created_at)} · ${k.approvals.oldest.target_label || k.approvals.oldest.title}` : "Nothing waiting for you", color: k.approvals.waiting ? warn : undefined },
     checked_in: { label: "Scouts checked in", value: `${k.checked_in.count} / ${k.checked_in.working}`, sub: checkedSub },
     at_risk: { label: "At-risk businesses", value: `${k.at_risk.count}`, sub: `${k.at_risk.needs_attention} more need attention`, color: k.at_risk.count ? warn : undefined },
-    issues: { label: "Open service issues", value: `${k.issues.total}`, sub: `${issueParts.join(" · ")}${k.issues.support == null ? " · support and delivery counts arrive with those screens" : ""}` },
+    issues: { label: "Open service issues", value: `${k.issues.total}`, sub: issueParts.join(" · ") },
   };
 }
 
@@ -195,18 +195,21 @@ export default function OperationsOverviewPanel({ auth, onNavigate, onOpenApprov
           <section aria-labelledby="ov-issues" style={{ ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
               <h3 id="ov-issues" style={{ ...h2, fontSize: "0.95rem" }}>Issues on your team's businesses</h3>
-              <button type="button" onClick={() => onNavigate?.("fraud-cases")} style={linkStyle}>{`All fraud cases (${data.issue_total})`}</button>
+              <span style={{ display: "flex", gap: 12 }}>
+                {data.kpis.issues.support != null && <button type="button" onClick={() => onNavigate?.("support-issues")} style={linkStyle}>{`All service issues (${data.kpis.issues.support})`}</button>}
+                <button type="button" onClick={() => onNavigate?.("fraud-cases")} style={linkStyle}>{`All fraud cases (${data.kpis.issues.fraud})`}</button>
+              </span>
             </div>
             {data.issues.length === 0 ? (
-              <div style={dim}>No open fraud cases on your team's businesses. Support and delivery issues will join this list when those screens arrive.</div>
+              <div style={dim}>{data.kpis.issues.support != null ? "No open fraud cases or service issues on your team's businesses." : "No open fraud cases on your team's businesses."}</div>
             ) : (
               <div style={scroll}>
                 <table style={table}>
                   <thead><tr>{["Type", "Business", "What happened", "Account manager", "Open for"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                   <tbody>
                     {data.issues.map((i) => (
-                      <tr key={i.id}>
-                        <td style={td}><span style={chip(D.red)}>Fraud</span></td>
+                      <tr key={`${i.type}-${i.id}`}>
+                        <td style={td}><span style={chip(i.type === "fraud" ? D.red : i.type === "dispute" ? D.red : i.type === "chat" ? D.green : D.amber)}>{i.type === "fraud" ? "Fraud" : i.type_label}</span></td>
                         <td style={{ ...td, fontWeight: 700 }}>
                           {i.business_id ? <button type="button" onClick={() => onOpenBusiness?.(i.business_id)} style={{ ...linkStyle, fontWeight: 700, color: D.text }}>{i.business}</button> : i.business}
                         </td>

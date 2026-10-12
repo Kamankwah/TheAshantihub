@@ -51,13 +51,26 @@ describe('OperationsOverviewPanel', () => {
     expect(screen.getByText('Same MoMo number')).toBeInTheDocument()
   })
 
-  it('does not invent support or delivery counts', async () => {
+  it('leaves out the support and delivery counts when the caller may not read them', async () => {
     server.use(http.get(`${API}/api/operations/overview/`, () => HttpResponse.json(overview())))
     renderPanel()
     const issues = within(await screen.findByRole('group', { name: 'Open service issues' }))
     expect(issues.getByText('1')).toBeInTheDocument()
-    expect(issues.getByText(/1 fraud · support and delivery counts arrive with those screens/)).toBeInTheDocument()
-    expect(screen.queryByText(/delivery · /)).not.toBeInTheDocument()
+    expect(issues.getByText('1 fraud')).toBeInTheDocument()
+    expect(screen.queryByText(/support/)).not.toBeInTheDocument()
+  })
+
+  it('shows the real support and dispute counts and lists service issues beside fraud', async () => {
+    const data = overview()
+    data.kpis.issues = { total: 3, fraud: 1, support: 2, delivery: 4 }
+    data.issues.push({ id: 7, type: 'chat', type_label: 'Owner chat', kind_label: 'Owner chat', business: 'Adwoa Fabrics', business_id: 5, what: 'we paid on Saturday', account_manager: 'Kwame Asante', opened_at: '2026-10-07T08:00:00', open_seconds: 10800 })
+    data.issue_total = 3
+    server.use(http.get(`${API}/api/operations/overview/`, () => HttpResponse.json(data)))
+    renderPanel()
+    const issues = within(await screen.findByRole('group', { name: 'Open service issues' }))
+    expect(issues.getByText('1 fraud · 2 support · 4 open disputes on deliveries')).toBeInTheDocument()
+    expect(screen.getByText('Owner chat')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'All service issues (2)' })).toBeInTheDocument()
   })
 
   it('says there is no target rather than showing 0 / 0 when no plan is set', () => {

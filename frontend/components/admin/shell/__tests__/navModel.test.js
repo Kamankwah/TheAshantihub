@@ -405,7 +405,7 @@ describe('Operations menu (canvas 2026-10-12)', () => {
   })
 
   it('marks the unbuilt screens as placeholders and none of the built ones', () => {
-    expect([...PLACEHOLDER_TABS].sort()).toEqual(['deliveries-returns', 'support-issues', 'support-team', 'visit-map'])
+    expect([...PLACEHOLDER_TABS].sort()).toEqual(['visit-map'])
   })
 
   it('maps the canvas badges to staff-badges keys, summing Hero & events', () => {

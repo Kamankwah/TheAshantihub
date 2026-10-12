@@ -67,11 +67,11 @@ export const NAV_ITEMS = [
   { id: "security", icon: "🔐", label: "Sign-in & Security", show: () => true },
   // Operations canvas screens (see the note above NAV_ITEMS).
   { id: "ops-scouts", icon: "🧑‍🌾", label: "Scouts", show: (auth) => opsOnly(auth, "portfolio.manage") },
-  { id: "support-team", icon: "🎧", label: "Support team", placeholder: true, show: (auth) => opsOnly(auth, "staff.invite_team") },
+  { id: "support-team", icon: "🎧", label: "Support team", show: (auth) => opsOnly(auth, "staff.invite_team") },
   { id: "leave", icon: "🏖️", label: "Leave & calendar", show: (auth) => opsOnly(auth, "leave.record") },
   { id: "hero-events", icon: "🌟", label: "Hero & events", show: (auth) => opsOnly(auth, "hero_media.approve", "event.approve") },
-  { id: "support-issues", icon: "🛎️", label: "Support issues", placeholder: true, show: (auth) => opsOnly(auth, "service_issues.view") },
-  { id: "deliveries-returns", icon: "📦", label: "Deliveries & returns", placeholder: true, show: (auth) => opsOnly(auth, "service_issues.view") },
+  { id: "support-issues", icon: "🛎️", label: "Support issues", show: (auth) => opsOnly(auth, "service_issues.view") },
+  { id: "deliveries-returns", icon: "📦", label: "Deliveries & returns", show: (auth) => opsOnly(auth, "service_issues.view") },
   { id: "visit-map", icon: "🗺️", label: "Visit map", placeholder: true, show: (auth) => opsOnly(auth, "portfolio.manage") },
   { id: "zones", icon: "📍", label: "Zones", show: (auth) => opsOnly(auth, "zones.manage") },
 ];
@@ -228,8 +228,7 @@ export const BADGE_KEY_BY_TAB = {
   "subscription-plans-approval": "plan_approvals",
   "contact-messages": "contact_messages",
   escrow: "escrow",
-  // Operations canvas badges. support-issues and deliveries-returns read keys
-  // the server returns as 0 until those screens are built.
+  // Operations canvas badges (open service issues; open disputes).
   "at-risk": "at_risk",
   "subscriptions-due": "subscriptions_due",
   "fraud-cases": "fraud_open",

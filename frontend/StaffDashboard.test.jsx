@@ -913,8 +913,9 @@ describe('StaffDashboard Contact Messages', () => {
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
     fireEvent.click(screen.getByText('Contact Messages'))
     await screen.findByText('"My order is late"')
-    expect(screen.getByText('New')).toBeInTheDocument()
-    expect(screen.getByText('Resolved')).toBeInTheDocument()
+    // The tab buttons and the row chips share these words.
+    expect(screen.getAllByText('New').length).toBeGreaterThan(1)
+    expect(screen.getAllByText('Resolved').length).toBeGreaterThan(1)
     expect(screen.getByText(/Resolved by Akosua Support/)).toBeInTheDocument()
   })
 

@@ -9,6 +9,9 @@ import { useStaffBadges } from "../../hooks/useStaffBadges.js";
 import { D, ROLE_ACCENTS } from "./theme.js";
 import OperationsOverviewPanel from "./panels/OperationsOverviewPanel.jsx";
 import OverviewPanel from "./panels/OverviewPanel.jsx";
+import ServiceIssuesPanel from "./panels/ServiceIssuesPanel.jsx";
+import DeliveriesReturnsPanel from "./panels/DeliveriesReturnsPanel.jsx";
+import SupportTeamPanel from "./panels/SupportTeamPanel.jsx";
 import ScreenBuildingPanel from "./panels/ScreenBuildingPanel.jsx";
 import KYCQueuePanel from "./panels/KYCQueuePanel.jsx";
 import ListingsModerationPanel from "./panels/ListingsModerationPanel.jsx";
@@ -329,7 +332,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "subscription-plans" && <SubscriptionPlansManagePanel />}
           {activeTab === "subscription-plans-approval" && <SubscriptionPlanApprovalPanel />}
           {activeTab === "delivery" && <DeliveryManagementPanel />}
-          {activeTab === "contact-messages" && <ContactMessagesPanel />}
+          {activeTab === "contact-messages" && <ContactMessagesPanel auth={auth} />}
           {activeTab === "users" && <UsersPanel auth={auth} />}
           {activeTab === "categories-zones" && <CategoriesZonesPanel auth={auth} />}
           {activeTab === "site-settings" && <SiteSettingsPanel showToast={showToast} />}
@@ -354,6 +357,9 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "targets" && (auth.hasPermission("businesses.manage_portfolio") ? <TargetsPanel /> : auth.hasPermission("targets.manage") ? <OpsTargetsPanel /> : <ScreenBuildingPanel title="Team targets" />)}
           {activeTab === "ops-scouts" && <OpsScoutsPanel auth={auth} onNavigate={selectTab} onOpenScout={openScoutPortfolio} />}
           {activeTab === "leave" && <LeavePanel auth={auth} />}
+          {activeTab === "support-issues" && <ServiceIssuesPanel auth={auth} onOpenBusiness={openBusiness} />}
+          {activeTab === "deliveries-returns" && <DeliveriesReturnsPanel auth={auth} />}
+          {activeTab === "support-team" && <SupportTeamPanel onNavigate={selectTab} />}
           {PLACEHOLDER_TABS.has(activeTab) && <ScreenBuildingPanel title={activeLabel} />}
           {activeTab === "hero-events" && <HeroEventsPanel auth={auth} />}
           {activeTab === "zones" && <CategoriesZonesPanel auth={auth} />}

@@ -300,3 +300,21 @@ describe('Fraud cases in the staff shell', () => {
     expect(onTabChange).toHaveBeenCalledWith('all-portfolios/31')
   })
 })
+
+describe('FraudCasesPanel — what confirming does', () => {
+  it('previews the commission it would reverse and says dismissing changes nothing else', async () => {
+    mockCases({ open: [flag({ commission_reversal: { lines: 1, amount: '50.00', staff: ['Kwaku Agyei'], hold_until: '2026-12-29T00:00:00Z' } })], counts: { open: 1, confirmed: 0, dismissed: 0 } })
+    renderPanel()
+    const box = await screen.findByLabelText('What deciding does')
+    expect(box).toHaveTextContent('When you confirm')
+    expect(box).toHaveTextContent('reversed — GH₵ 50.00 for Kwaku Agyei')
+    expect(box).toHaveTextContent('Commission already in a payout is not touched.')
+    expect(box).toHaveTextContent('Dismissing closes the case; nothing else changes.')
+  })
+
+  it('does not mention commission when nothing would be reversed', async () => {
+    mockCases({ open: [flag({ commission_reversal: null })], counts: { open: 1, confirmed: 0, dismissed: 0 } })
+    renderPanel()
+    expect(await screen.findByLabelText('What deciding does')).not.toHaveTextContent('commission')
+  })
+})

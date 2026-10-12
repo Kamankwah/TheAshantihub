@@ -73,6 +73,13 @@ QUEUE_INVALIDATIONS = [
     (("kyc-approve",), ("businesses.manage_portfolio",), ("leaderboard",)),
     # Commission lines are earned, released, reversed and exported by events; a policy change is an approval.
     (("commission.",), ("commission.view_own", "commission.view_all", "commission.policy"), ("my-commission", "commission-accruals", "commission-policies")),
+    # Operations' read-only Service screens (16, 17, 05): contact messages, disputes, conversations and deliveries.
+    (
+        ("contact-message", "dispute-", "staff-conversation-", "order-delivery-status-update", "order-assign-dispatch", "delivery-pickup", "delivery-deliver"),
+        ("service_issues.view",),
+        ("service-issues", "ops-deliveries", "ops-overview", "staff-badges"),
+    ),
+    (("staff-conversation-",), ("staff.invite_team",), ("ops-support-team",)),
     (("fraud.",), ("fraud.manage", "fraud.flag"), ("fraud-flags", "fraud-flag-counts", "kyc-queue", "portfolio-business", "staff-badges")),
 ]
 # (verb prefixes, extra keys for everyone who receives the feed event)
