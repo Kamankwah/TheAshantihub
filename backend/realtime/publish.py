@@ -38,6 +38,8 @@ QUEUE_INVALIDATIONS = [
     (("staff-conversation-",), ("messaging.manage",), ("staff-messaging-queue",)),
     (STAFF_MANAGEMENT_VERBS, ("staff.manage", "staff.invite_team"), ("staff-roster", "my-team", "ops-invites")),
     (("promotion-",), ("promotions.manage",), ("promotions-queue",)),
+    (("zone.",), ("zones.manage",), ("zones-summary", "zones")),
+    (("site_settings.",), ("site_settings.manage",), ("site-settings", "site-settings-history")),
     (("subscription-plan-",), ("subscription_plans.approve",), ("subscription-plan-pending-queue", "staff-badges")),
     (("escrow-",), ("escrow.view",), ("escrow-ledger", "staff-badges")),
     (("dispute-",), ("disputes.flag", "disputes.resolve_financial"), ("disputes-queue",)),
@@ -65,6 +67,8 @@ QUEUE_INVALIDATIONS = [
     (("targets.", "leave.", "calendar.", "kyc-approve", "subscription."), ("businesses.manage_portfolio",), ("my-targets",)),
     # Operations' scoreboard (screen 04) follows targets, leave, visits, calls, reports and the counts they come from.
     (("targets.", "leave.", "calendar.", "visit.", "kyc-approve", "subscription.", "call-", "report.", "fraud."), ("portfolio.manage",), ("ops-scouts", "ops-overview")),
+    # The Operations Visit map (20) follows check-ins and check-outs.
+    (("visit.",), ("portfolio.manage",), ("team-visits",)),
     # The Operations overview (01) also follows approvals waiting and the businesses' health.
     (("approval.", "kyc-", "portfolio.", "business."), ("portfolio.manage",), ("ops-overview",)),
     # Operations' Targets (07) and Leave (08) editors.
