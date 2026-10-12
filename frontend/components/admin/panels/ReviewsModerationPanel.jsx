@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
 import { useReviewsModerationQueue } from "../../../hooks/useReviewsModerationQueue.js";
+import { shortDay } from "../../../lib/timeAgo.js";
 import { D } from "../theme.js";
+import { chip, dim } from "./panelStyles.js";
 import ModerationQueueTabs, {
   ApprovedByLine,
   RejectedReason,
@@ -43,7 +45,8 @@ function ReviewRow({ review, state, canReReview, onDone }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
         <div>
           <div style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>
-            {"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}{" "}
+            <span role="img" aria-label={`${review.rating} out of 5 stars`}>{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</span>{" "}
+            <span>{review.rating}/5</span>{" "}
             <span style={{ color: D.textDim, fontWeight: 400 }}>({review.target_type})</span>
             {review.verified && (
               <span style={{ background: "rgba(52,211,153,0.16)", color: D.green, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6 }}>✓ Verified</span>
@@ -58,6 +61,12 @@ function ReviewRow({ review, state, canReReview, onDone }) {
           <div style={{ color: D.textDim, fontSize: "0.65rem" }}>
             {review.author_name} • written {review.created_at?.slice(0, 10)}
           </div>
+          {state === "pending" && (review.contains_phone || review.open_dispute_order) && (
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+              {review.contains_phone && <span style={chip(D.red)}>Contains a phone number</span>}
+              {review.open_dispute_order && <span style={chip(D.amber)}>{`Order #${review.open_dispute_order} has a dispute still open with this business`}</span>}
+            </div>
+          )}
           {state === "approved" && <ApprovedByLine name={review.reviewed_by_name} at={review.reviewed_at} />}
           {state === "rejected" && <RejectedReason reason={review.hidden_reason} />}
           {state === "rejected" && review.reviewed_by_name && (
@@ -116,8 +125,11 @@ export default function ReviewsModerationPanel({ auth }) {
   const canReReview = auth?.hasPermission?.("reviews.re_review") ?? false;
 
   const refetchAll = () => { pending.refetch(); approved.refetch(); rejected.refetch(); };
+  const recentlyHidden = (rejected.data?.results || []).slice(0, 3);
 
   return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div style={dim}>A new review stays out of public view until it's published here. Support works this queue too.</div>
     <ModerationQueueTabs
       tab={tab}
       onTab={setTab}
@@ -128,5 +140,19 @@ export default function ReviewsModerationPanel({ auth }) {
         <ReviewRow review={review} state={state} canReReview={canReReview} onDone={refetchAll} />
       )}
     />
+    {tab !== "rejected" && recentlyHidden.length > 0 && (
+      <section aria-labelledby="recently-hidden" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <h2 id="recently-hidden" style={{ color: D.text, fontWeight: 800, fontSize: "0.88rem", margin: 0 }}>Recently hidden</h2>
+        {recentlyHidden.map((r) => (
+          <div key={r.id} style={{ ...dim, borderTop: `1px solid ${D.divider}`, paddingTop: 6 }}>
+            <div>{`${r.rating}/5 · ${r.target_name || r.target_type} · “${r.comment}”`}</div>
+            {r.hidden_reason && <div>{`Hidden: ${r.hidden_reason}`}</div>}
+            {r.reviewed_by_name && <div>{`by ${r.reviewed_by_name}${r.reviewed_by_role ? ` (${r.reviewed_by_role})` : ""}${r.reviewed_at ? ` · ${shortDay(r.reviewed_at)}` : ""}`}</div>}
+          </div>
+        ))}
+        <div style={dim}>Only Super Admin can bring back a hidden review.</div>
+      </section>
+    )}
+    </div>
   );
 }

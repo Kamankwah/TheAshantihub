@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
 import { useHeroModerationQueue } from "../../../hooks/useHeroModerationQueue.js";
+import { shortDay } from "../../../lib/timeAgo.js";
 import { D } from "../theme.js";
+import { dim } from "./panelStyles.js";
 import ModerationQueueTabs, {
   ApprovedByLine,
   RejectedReason,
@@ -22,6 +24,10 @@ export default function HeroApprovalPanel() {
   const [actionError, setActionError] = useState(null);
 
   const refetchAll = () => { pending.refetch(); approved.refetch(); rejected.refetch(); };
+
+  // Whoever decided last, from either history tab, so a second decider sees it.
+  const decided = [...(approved.data || []), ...(rejected.data || [])].filter((x) => x.reviewed_at && x.reviewed_by_name);
+  const last = decided.sort((a, b) => (a.reviewed_at < b.reviewed_at ? 1 : -1))[0];
 
   const approve = async (id) => {
     setActionError(null);
@@ -53,7 +59,7 @@ export default function HeroApprovalPanel() {
           <div>
             <div style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>{s.business_owner_name}</div>
             <div style={{ color: D.textDim, fontSize: "0.72rem", margin: "3px 0", maxWidth: 320 }}>"{s.caption}"</div>
-            <div style={{ color: D.textDim, fontSize: "0.65rem" }}>Submitted {s.submitted_at?.slice(0, 10)}</div>
+            <div style={{ color: D.textDim, fontSize: "0.65rem" }}>Submitted {s.submitted_at?.slice(0, 10)}{state === "pending" ? " · joins the homepage hero once approved" : ""}</div>
             {state === "approved" && <ApprovedByLine name={s.reviewed_by_name} at={s.reviewed_at} />}
             {state === "rejected" && <RejectedReason reason={s.rejection_reason} />}
           </div>
@@ -87,6 +93,11 @@ export default function HeroApprovalPanel() {
         title="Hero submissions"
         renderRow={renderRow}
       />
+      {last && (
+        <div style={{ ...dim, marginTop: 8 }}>
+          {`Last decided: ${last.business_owner_name} “${last.caption}” — ${last.status === "approved" ? "approved" : "rejected"} by ${last.reviewed_by_name}${last.reviewed_by_role ? ` (${last.reviewed_by_role})` : ""} · ${shortDay(last.reviewed_at)}.`}
+        </div>
+      )}
     </>
   );
 }

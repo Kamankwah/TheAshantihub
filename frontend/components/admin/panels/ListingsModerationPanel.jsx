@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
 import { useModerationQueue } from "../../../hooks/useModerationQueue.js";
+import { useListingsStats } from "../../../hooks/useQueueStats.js";
 import { D } from "../theme.js";
+import { chip, dim } from "./panelStyles.js";
 import ModerationQueueTabs, {
   ApprovedByLine,
   RejectedReason,
@@ -13,8 +15,23 @@ import ModerationQueueTabs, {
 // every tab the backend orders listings by owning business, and each row leads
 // with a "🏢 {business}" header (with a divider when the business changes) so a
 // reviewer can identify a business's listings at a glance (item 2).
+// Chips beside a pending listing, from the business's records: an open fraud
+// case to check first, and a subscription that is overdue (the "of 14" only
+// while the pause is switched on, otherwise there is no deadline to name).
+function ListingChips({ listing }) {
+  const overdue = listing.subscription_overdue;
+  if (!(listing.open_fraud_cases > 0) && !overdue) return null;
+  return (
+    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+      {listing.open_fraud_cases > 0 && <span style={chip(D.red)}>Open fraud case on this business — check before approving</span>}
+      {overdue && <span style={chip(D.amber)}>{`Subscription overdue · day ${overdue.day}${overdue.grace_days ? ` of ${overdue.grace_days}` : ""}`}</span>}
+    </div>
+  );
+}
+
 export default function ListingsModerationPanel() {
   const [tab, setTab] = useState("pending");
+  const { data: stats } = useListingsStats();
   const pending = useModerationQueue({ status: "pending" });
   const approved = useModerationQueue({ status: "approved" });
   const rejected = useModerationQueue({ status: "rejected" });
@@ -58,6 +75,8 @@ export default function ListingsModerationPanel() {
           <div>
             <div style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>{l.name}</div>
             <div style={{ color: D.textDim, fontSize: "0.68rem" }}>{l.category?.label} • {l.zone?.name} • GHS {l.price_amount} • {l.contact_phone}</div>
+            {(l.specs || []).length > 0 && <div style={{ color: D.textDim, fontSize: "0.68rem" }}>{l.specs.map((x) => `${x.label}: ${x.value}`).join(" · ")}</div>}
+            {state === "pending" && <ListingChips listing={l} />}
             {state === "approved" && <ApprovedByLine name={l.reviewed_by_name} at={l.reviewed_at} verb="Published" />}
             {state === "rejected" && <RejectedReason reason={l.rejection_reason} />}
           </div>
@@ -116,6 +135,7 @@ export default function ListingsModerationPanel() {
 
   return (
     <>
+      <div style={{ ...dim, marginBottom: 10 }}>Listings owners submit themselves. Listings a scout adds for a business come through your Approvals inbox — that approval is their moderation.</div>
       {actionError && <div style={{ color: D.red, fontSize: "0.8rem", marginBottom: 10 }}>{actionError}</div>}
       <ModerationQueueTabs
         tab={tab}
@@ -125,6 +145,10 @@ export default function ListingsModerationPanel() {
         labels={{ approved: "Published" }}
         renderRow={renderRow}
       />
+      <div style={{ ...dim, marginTop: 10 }}>
+        {stats ? `This week: ${stats.week_published} published · ${stats.week_rejected} rejected. ` : ""}
+        Every decision records who made it, shown on the Published and Rejected tabs.
+      </div>
     </>
   );
 }

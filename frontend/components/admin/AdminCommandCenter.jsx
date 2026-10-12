@@ -13,6 +13,7 @@ import KYCQueuePanel from "./panels/KYCQueuePanel.jsx";
 import ListingsModerationPanel from "./panels/ListingsModerationPanel.jsx";
 import HeroApprovalPanel from "./panels/HeroApprovalPanel.jsx";
 import EventsModerationPanel from "./panels/EventsModerationPanel.jsx";
+import HeroEventsPanel from "./panels/HeroEventsPanel.jsx";
 import EventPricingPanel from "./panels/EventPricingPanel.jsx";
 import ReviewsModerationPanel from "./panels/ReviewsModerationPanel.jsx";
 import SubscriptionPlansManagePanel from "./panels/SubscriptionPlansManagePanel.jsx";
@@ -301,7 +302,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "overview" && (role === "scout"
             ? <ScoutTodayPanel auth={auth} onNavigate={selectTab} onCheckIn={openCheckInScreen} onRegister={() => selectTab("register-business")} onSeeApprovals={openMadeApprovals} onOpenBusiness={openMyBusiness} />
             : <OverviewPanel auth={auth} roleColor={roleColor} onNavigate={selectTab} />)}
-          {activeTab === "kyc" && <KYCQueuePanel />}
+          {activeTab === "kyc" && <KYCQueuePanel auth={auth} />}
           {activeTab === "moderation" && <ListingsModerationPanel />}
           {activeTab === "hero" && <HeroApprovalPanel />}
           {activeTab === "events-moderation" && <EventsModerationPanel />}
@@ -334,7 +335,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "prospects" && <ProspectsPanel onRegister={openRegisterFromProspect} />}
           {activeTab === "targets" && (auth.hasPermission("businesses.manage_portfolio") ? <TargetsPanel /> : <ScreenBuildingPanel title="Team targets" />)}
           {PLACEHOLDER_TABS.has(activeTab) && <ScreenBuildingPanel title={activeLabel} />}
-          {activeTab === "hero-events" && <>{auth.hasPermission("hero_media.approve") && <HeroApprovalPanel />}{auth.hasPermission("event.approve") && <EventsModerationPanel />}</>}
+          {activeTab === "hero-events" && <HeroEventsPanel auth={auth} />}
           {activeTab === "zones" && <CategoriesZonesPanel auth={auth} />}
           {activeTab === "commission" && <CommissionPanel />}
           {activeTab === "leaderboard" && <LeaderboardPanel />}

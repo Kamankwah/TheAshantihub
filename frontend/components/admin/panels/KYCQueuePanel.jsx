@@ -2,7 +2,10 @@ import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
 import { useKYCQueue } from "../../../hooks/useKYCQueue.js";
 import { useKYCDetail } from "../../../hooks/useKYCDetail.js";
+import { useKycStats } from "../../../hooks/useQueueStats.js";
+import { useScouts } from "../../../hooks/useScouts.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
+import { clockTime, shortDay } from "../../../lib/timeAgo.js";
 import { D } from "../theme.js";
 import ModerationQueueTabs, {
   ApprovedByLine,
@@ -71,7 +74,40 @@ function pinText(d) {
 
 const sectionHead = { color: D.gold, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em" };
 
-function KYCRow({ owner, state, onDone }) {
+const dayText = shortDay;
+const timeText = clockTime;
+const small = { background: D.panelBg2, color: D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" };
+
+// "Send a scout to verify": an Operations lead who cannot confirm a Ghana Post
+// address from the desk asks a scout to check it on site (a scout assignment).
+function SendScout({ ownerId }) {
+  const scouts = useScouts();
+  const [scoutId, setScoutId] = useState("");
+  const [state, setState] = useState({ busy: false, sent: null, error: null });
+  const list = scouts.data || [];
+  const send = async () => {
+    setState({ busy: true, sent: null, error: null });
+    try {
+      await apiPost("/api/accounts/scout-assignments/", { business_owner: ownerId, scout: Number(scoutId) });
+      setState({ busy: false, sent: list.find((s) => String(s.id) === scoutId)?.full_name || "the scout", error: null });
+    } catch (err) {
+      setState({ busy: false, sent: null, error: apiErrorMessage(err, "Could not send a scout. They may already be assigned to this business.") });
+    }
+  };
+  return (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
+      <select aria-label="Scout to send" value={scoutId} onChange={(e) => setScoutId(e.target.value)} style={{ padding: "5px 8px", borderRadius: 10, border: `1px solid ${D.cardBorder}`, fontSize: "0.72rem", fontFamily: "inherit", background: D.panelBg, color: D.text }}>
+        <option value="">Choose a scout…</option>
+        {list.map((s) => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+      </select>
+      <button type="button" disabled={!scoutId || state.busy} onClick={send} style={{ ...small, opacity: !scoutId || state.busy ? 0.5 : 1 }}>Send a scout to verify</button>
+      {state.sent && <span role="status" style={{ color: D.green, fontSize: "0.72rem", fontWeight: 700 }}>{`Sent: ${state.sent} will verify it on site.`}</span>}
+      {state.error && <span role="alert" style={{ color: D.red, fontSize: "0.72rem" }}>{state.error}</span>}
+    </div>
+  );
+}
+
+function KYCRow({ owner, state, onDone, canSendScout }) {
   const [expanded, setExpanded] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
@@ -93,6 +129,13 @@ function KYCRow({ owner, state, onDone }) {
   const gateReady = expanded && addressDecided;
   const registered = registrationLine(owner);
   const flags = Array.isArray(owner.open_fraud_flags) ? owner.open_fraud_flags : [];
+  // Owner's phone: masked in the list; the full number is a recorded, password-confirmed step.
+  const [fullPhone, setFullPhone] = useState(null);
+  const revealPhone = async () => {
+    setActionError(null);
+    try { setFullPhone((await apiPost(`/api/portfolio/businesses/${owner.id}/reveal-phone/`, {})).login_phone); }
+    catch (err) { setActionError(refusal(err, "Could not show the phone number.")); }
+  };
 
   const approve = async () => {
     setActionError(null);
@@ -122,8 +165,8 @@ function KYCRow({ owner, state, onDone }) {
     <div role="group" aria-label={owner.full_name} style={{ padding: "12px 0", borderBottom: `1px solid ${D.divider}` }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div>
-          <div style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>{owner.full_name}</div>
-          <div style={{ color: D.textDim, fontSize: "0.68rem" }}>{owner.login_phone} • submitted {owner.created_at?.slice(0, 10)}</div>
+          <div style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>{owner.business_name ? `${owner.full_name} · ${owner.business_name}` : owner.full_name}</div>
+          <div style={{ color: D.textDim, fontSize: "0.68rem" }}>{owner.login_phone} • submitted {dayText(owner.created_at)}{state === "pending" ? `, ${timeText(owner.created_at)}` : ""}</div>
           {registered && <div style={{ color: D.textDim, fontSize: "0.68rem" }}>{registered}</div>}
           {flags.length > 0 && (
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
@@ -147,6 +190,11 @@ function KYCRow({ owner, state, onDone }) {
 
       {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem", marginTop: 8 }}>{actionError}</div>}
 
+      {state === "pending" && gateReady && addressVerified !== undefined && (
+        <div style={{ color: D.green, fontSize: "0.68rem", marginTop: 6 }}>
+          {`Address ${addressVerified ? "verified" : "marked wrong"}${p?.address_verified_by_name ? ` by ${p.address_verified_by_name}` : ""}${timeText(p?.address_verified_at) ? ` at ${timeText(p.address_verified_at)}` : ""} — Approve and Reject are unlocked.`}
+        </div>
+      )}
       {state === "pending" && !gateReady && (
         <div style={{ color: D.amber, fontSize: "0.68rem", marginTop: 6 }}>
           {expanded ? "Verify the Ghana Post address below to enable Approve / Reject." : "Open Details and verify the Ghana Post address to enable Approve / Reject."}
@@ -167,7 +215,7 @@ function KYCRow({ owner, state, onDone }) {
               <div style={{ color: D.gold, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>Applicant</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0 20px" }}>
                 <DetailField label="Full name" value={detail.data.full_name} />
-                <DetailField label="Login phone" value={detail.data.login_phone} />
+                <DetailField label="Login phone" value={fullPhone || detail.data.login_phone} />
                 <DetailField label="Email" value={detail.data.email} />
                 <DetailField label="KYC status" value={detail.data.kyc_status} />
                 <DetailField label="Business contact phone" value={p?.business_contact_phone} />
@@ -177,6 +225,10 @@ function KYCRow({ owner, state, onDone }) {
                 <DetailField label="Formally registered?" value={p?.is_formal} />
                 <DetailField label="TIN" value={p?.tin} />
               </div>
+              {!fullPhone && detail.data.login_phone && (
+                <button type="button" onClick={revealPhone} style={{ ...small, marginBottom: 8 }}>Show full phone number (recorded)</button>
+              )}
+              {fullPhone && <div style={{ ...dim, marginBottom: 8 }}>Shown in full for you; this was recorded in the activity log.</div>}
               {detail.data.kyc_rejection_reason && <DetailField label="Previous rejection reason" value={detail.data.kyc_rejection_reason} />}
 
               {/* Staff phase 2A: the business and its map pin. */}
@@ -214,6 +266,7 @@ function KYCRow({ owner, state, onDone }) {
                   <button onClick={() => verifyAddress(false)} style={{ background: (addressDecided && !addressVerified) ? D.red : D.panelBg, color: (addressDecided && !addressVerified) ? "#fff" : D.red, border: `1px solid ${D.red}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✗ Address wrong</button>
                 </div>
               )}
+              {state === "pending" && canSendScout && <SendScout ownerId={owner.id} />}
 
               <div style={{ color: D.gold, fontWeight: 800, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", margin: "14px 0 10px" }}>Ghana Card</div>
               <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
@@ -242,8 +295,10 @@ function KYCRow({ owner, state, onDone }) {
 // view and adds the Ghana Post address-verification gate on Approve/Reject.
 // Staff phase 2A: each row says who registered the business, shows its open
 // fraud cases, and a refused decision shows the server's reason.
-export default function KYCQueuePanel() {
+export default function KYCQueuePanel({ auth }) {
   const [tab, setTab] = useState("pending");
+  const { data: stats } = useKycStats();
+  const canSendScout = auth?.hasPermission?.("scouts.assign") ?? false;
   const pending = useKYCQueue({ status: "pending" });
   const approved = useKYCQueue({ status: "approved" });
   const rejected = useKYCQueue({ status: "rejected" });
@@ -253,15 +308,19 @@ export default function KYCQueuePanel() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={dim}>Approving a scout's registration here also settles its request in Approvals.</div>
+      <div style={dim}>The same queue as before. Approving a scout's registration here also settles its request in your Approvals inbox.</div>
       <ModerationQueueTabs
         tab={tab}
         onTab={setTab}
         queries={queries}
         title="KYC submissions"
         labels={{ approved: "Verified" }}
-        renderRow={(owner, state) => <KYCRow owner={owner} state={state} onDone={refetchAll} />}
+        renderRow={(owner, state) => <KYCRow owner={owner} state={state} onDone={refetchAll} canSendScout={canSendScout} />}
       />
+      <div style={dim}>
+        {stats ? `This week: ${stats.week_verified} verified · ${stats.week_rejected} rejected. ` : ""}
+        Rejecting needs a reason the owner sees. A rejected submission can be sent back for another review from the Rejected tab.
+      </div>
     </div>
   );
 }

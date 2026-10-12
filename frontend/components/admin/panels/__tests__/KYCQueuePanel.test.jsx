@@ -98,7 +98,7 @@ describe('KYCQueuePanel (staff phase 2A)', () => {
       owner({ id: 43, full_name: 'Abena Owusu', registered_by_name: 'Simon Peter', registered_by_role: 'Super Admin', pending_approval_id: null }),
     ])
     renderPanel()
-    expect(screen.getByText("Approving a scout's registration here also settles its request in Approvals.")).toBeInTheDocument()
+    expect(screen.getByText("The same queue as before. Approving a scout's registration here also settles its request in your Approvals inbox.")).toBeInTheDocument()
     const nana = await screen.findByRole('group', { name: 'Nana Adwoa Agyeman' })
     expect(within(nana).getByText('Registered by Kwame Asante (Scout) · also in Approvals')).toBeInTheDocument()
     expect(within(nana).getByText('🚩 Similar business nearby')).toHaveAttribute('title', 'Nana Chop Bar & Drinks is 38 m away')

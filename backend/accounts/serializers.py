@@ -300,11 +300,13 @@ class BusinessOwnerKYCSerializer(serializers.ModelSerializer):
     # Masked ("024 *** 5531"): the full number is behind the recorded, password-
     # confirmed POST /api/portfolio/businesses/<id>/reveal-phone/.
     login_phone = serializers.SerializerMethodField()
+    # The business the owner is registering, to name the row ("Kofi Asamoah · Manhyia Tailoring").
+    business_name = serializers.CharField(source="profile.business_name", read_only=True, default=None)
 
     class Meta:
         model = BusinessOwner
         fields = [
-            "id", "full_name", "login_phone", "kyc_status", "kyc_rejection_reason",
+            "id", "full_name", "business_name", "login_phone", "kyc_status", "kyc_rejection_reason",
             "created_at", "reviewed_by_name", "reviewed_at",
             "registration_channel", "registered_by_name", "registered_by_role", "open_fraud_flags", "pending_approval_id",
         ]
