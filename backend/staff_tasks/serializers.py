@@ -27,14 +27,18 @@ class TaskSerializer(serializers.ModelSerializer):
     order_id = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
     overdue = serializers.SerializerMethodField()
+    owner = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
         fields = [
             "id", "title", "notes", "due_at", "status", "done_at", "kind", "business", "prospect", "order_id",
-            "overdue", "created_by_name", "source_type", "source_id", "created_at",
+            "overdue", "owner", "created_by_name", "source_type", "source_id", "created_at",
         ]
         read_only_fields = ["status", "done_at", "kind", "source_type", "source_id", "created_at"]
+
+    def get_owner(self, task):
+        return {"id": task.owner_id, "name": task.owner.full_name}
 
     def get_business(self, task):
         owner = task.business_owner

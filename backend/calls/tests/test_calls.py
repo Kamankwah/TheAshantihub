@@ -181,6 +181,19 @@ class ScoutCallSheetTests(TestCase):
         self.assertEqual(len(data["results"]), 2)
         self.assertNotIn("summary", self.client.get("/api/calls/").json())
 
+    def test_scope_splits_mine_from_my_teams_and_the_strip_counts_both(self):
+        CallLog.objects.create(staff=self.scout, direction="out", counterpart_type="other", purpose="other", outcome="connected", started_at=timezone.now())
+        CallLog.objects.create(staff=self.ops, direction="in", counterpart_type="other", purpose="other", outcome="no_answer", started_at=timezone.now())
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.ops, 'staff')}")
+        mine = self.client.get("/api/calls/?scope=mine&day=today").json()
+        team = self.client.get("/api/calls/?scope=team&day=today").json()
+        self.assertEqual([c["staff_name"] for c in mine["results"]], ["Ama"])
+        self.assertEqual([c["staff_name"] for c in team["results"]], ["Kwame"])
+        self.assertEqual(mine["strip"], {"mine": 1, "out": 0, "in": 1, "connected": 0, "no_answer": 1, "follow_ups": 0, "team": 1})
+        # A scout holds no team permission: the team number is unknown, not zero.
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.scout, 'staff')}")
+        self.assertIsNone(self.client.get("/api/calls/?day=today").json()["strip"]["team"])
+
     def test_the_scout_purposes_use_the_canvas_words(self):
         labels = [row["label"] for row in self.client.get("/api/calls/purposes/").json()]
         self.assertEqual(labels, ["Subscription reminder", "Onboarding help", "Photos & listings",

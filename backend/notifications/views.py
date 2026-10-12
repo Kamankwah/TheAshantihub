@@ -122,6 +122,10 @@ class StaffBadgesView(APIView):
                 todays or StaffReport(staff=user, period=StaffReport.DAY, period_start=today, period_end=today)
             ).isoformat()
 
+        import datetime as dt
+
+        end_of_today = timezone.make_aware(dt.datetime.combine(today + dt.timedelta(days=1), dt.time.min))
+
         def count(codename, queryset):
             return queryset.count() if codename in held else 0
 
@@ -152,7 +156,7 @@ class StaffBadgesView(APIView):
             fraud_open = visible_flags(user).filter(status=FraudFlag.OPEN).count()
         if "staff.invite_team" in held:
             team_reports_waiting = StaffReport.objects.filter(
-                staff__manager=user, status=StaffReport.SUBMITTED
+                staff__manager=user, staff__is_active=True, status=StaffReport.SUBMITTED
             ).count()
 
         # Escrow tab is gated by any of view/release/refund (see
@@ -204,6 +208,8 @@ class StaffBadgesView(APIView):
                 "tasks_overdue": Task.objects.filter(
                     owner=user, status=Task.OPEN, due_at__lt=timezone.now()
                 ).count(),
+                # Tasks to do now: overdue, plus due before midnight.
+                "tasks_due": Task.objects.filter(owner=user, status=Task.OPEN, due_at__lt=end_of_today).count(),
                 "approvals_waiting": waiting_for(user).count(),
                 "at_risk": at_risk,
                 "subscriptions_due": subscriptions_due,

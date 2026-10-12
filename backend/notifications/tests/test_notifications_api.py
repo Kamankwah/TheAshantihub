@@ -251,6 +251,17 @@ class OperationsBadgeKeysTests(TestCase):
         self.assertEqual(data["fraud_open"], 1)
         self.assertEqual(data["team_reports_waiting"], 1)
 
+    def test_team_reports_waiting_ignores_a_deactivated_report(self):
+        from django.utils import timezone
+
+        from reports.models import StaffReport
+
+        today = timezone.localdate()
+        StaffReport.objects.create(staff=self.scout, period="day", period_start=today, period_end=today, status=StaffReport.SUBMITTED)
+        self.scout.is_active = False
+        self.scout.save()
+        self.assertEqual(self._get(self.ops)["team_reports_waiting"], 0)
+
     def test_counts_are_zero_without_the_permission(self):
         data = self._get(self.marketing)
         for key in ["at_risk", "subscriptions_due", "fraud_open", "team_reports_waiting"]:

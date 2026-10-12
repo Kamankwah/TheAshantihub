@@ -329,3 +329,70 @@ def send_day_reminders(now=None):
         )
         sent += 1
     return sent
+
+
+MISSING_DAYS = 5
+MAX_MISSING_SPAN = 31
+
+
+class NotMissing(ReportError):
+    status_code = 409
+
+
+class AlreadyReminded(ReportError):
+    status_code = 409
+
+
+def team_members(manager):
+    """The people a lead reminds: active, activated, not suspended direct reports."""
+    return StaffUser.objects.filter(
+        manager=manager, is_active=True, is_suspended=False, invite_token__isnull=True
+    ).select_related("role").order_by("full_name")
+
+
+def missing_day_reports(manager, start, end, *, today=None):
+    """[(staff, day)] for each direct report's working day in start..end whose
+    day report was never submitted. Leave, public holidays and days off are not
+    counted (targets.Calendar decides), and today is left out: it is not yet due."""
+    from targets.services import WORKING, Calendar
+
+    today = today or timezone.localdate()
+    end = min(end, today - timedelta(days=1))
+    rows = []
+    if end < start:
+        return rows
+    for member in team_members(manager):
+        done = set(
+            StaffReport.objects.filter(
+                staff=member, period=StaffReport.DAY, period_start__gte=start, period_start__lte=end,
+                status__in=[StaffReport.SUBMITTED, StaffReport.ACKNOWLEDGED],
+            ).values_list("period_start", flat=True)
+        )
+        calendar = Calendar(member, start, end)
+        # Nobody owes a report for a day before they joined.
+        joined = timezone.localtime(member.created_at).date() if member.created_at else start
+        for day in calendar.days():
+            if day >= joined and calendar.state(day) == WORKING and day not in done:
+                rows.append((member, day))
+    rows.sort(key=lambda row: (row[1], row[0].full_name))
+    return rows
+
+
+def remind(manager, member, day, *, today=None, http_request=None):
+    """Nudge `member` for a missing day report: one in-app notification and one
+    activity event. Refused when the report isn't missing, or when they were
+    already reminded about that day today."""
+    today = today or timezone.localdate()
+    if member.manager_id != manager.pk:
+        raise NotReviewable("You can remind only your own team.")
+    if (member, day) not in missing_day_reports(manager, day, day, today=today):
+        raise NotMissing("That day report isn't missing.")
+    label = f"{day:%A} {day.day} {day:%B}"
+    with transaction.atomic():
+        if Notification.objects.filter(staff=member, kind="report_nudge", body=day.isoformat(), created_at__date=today).exists():
+            raise AlreadyReminded("You already reminded them about that day today.")
+        notify_staff(
+            member, "report_nudge", f"{manager.full_name} asked for your report for {label}",
+            body=day.isoformat(), link="reports", icon="📝",
+        )
+        record(manager, "report.reminded", target=member, after={"day": day.isoformat()}, request=http_request)
