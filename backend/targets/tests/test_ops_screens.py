@@ -165,6 +165,16 @@ class TargetsScreenTests(TargetsBase):
             approval_services.approve(pending["id"], self.lead)
         self.assertEqual(TargetPlan.objects.filter(staff=self.kwame, metric="calls").count(), 1)
 
+    def test_approving_a_cut_over_http_writes_one_applied_event_and_no_generic_duplicate(self):
+        self.plan(self.kwame, "calls", 10)
+        pending = self.put(self.lead, staff=self.kwame.pk, values={"calls": 4}).data["pending_approval"]
+        last = ActivityEvent.objects.order_by("-id").first().pk
+        self.as_staff(self.admin)
+        self.assertEqual(self.client.post(f"/api/approvals/{pending['id']}/approve/", {}, format="json").status_code, 200)
+        verbs = list(ActivityEvent.objects.filter(pk__gt=last).order_by("id").values_list("verb", flat=True))
+        # The apply's own event plus the decision: the middleware adds nothing for the same request.
+        self.assertEqual(sorted(verbs), ["approval.approved", "targets.cut_applied"])
+
     def preview(self, changes, **extra):
         self.as_staff(self.lead)
         return self.client.post(f"{PLANS}preview/", {"changes": changes, **extra}, format="json")
