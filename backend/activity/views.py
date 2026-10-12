@@ -13,6 +13,7 @@ from rest_framework.pagination import PageNumberPagination
 
 from accounts.models import StaffUser
 from accounts.permissions import IsStaff
+from accounts.sessions import require_sudo
 from reports.exports import ExportNegotiation, FORMATS
 
 from .models import ActivityEvent, ChainCheck
@@ -131,6 +132,20 @@ def _export_row(event):
     return [local.strftime("%Y-%m-%d %H:%M:%S"), event.actor_role, event.actor_label, event.verb, on, event.summary]
 
 
+def reaches_others(user, params):
+    """True when an export under these filters can include anyone but the
+    caller: it is then personal data and needs a recent password (sudo), as
+    reports.exports.reaches_others does."""
+    if params.get("mine") == "1" or params.get("actor") == str(user.pk):
+        return False
+    perms = user.effective_permission_codenames()
+    if "activity.view_all" in perms:
+        return True
+    if "activity.view_domains" in perms and ROLE_ACTIVITY_VISIBILITY.get(user.role.name, {}).get("roles"):
+        return True
+    return "activity.view_team" in perms and StaffUser.objects.filter(manager=user).exists()
+
+
 class ActivityExportView(FilteredEventsMixin, APIView):
     """GET activity/export/?format=csv|xlsx plus the list's filters: the same
     view the caller sees, newest first, at most 5,000 rows (the response says
@@ -145,6 +160,8 @@ class ActivityExportView(FilteredEventsMixin, APIView):
         fmt = request.query_params.get("format", "csv")
         if fmt not in ("csv", "xlsx"):
             raise ValidationError({"format": "Use csv or xlsx."})
+        if reaches_others(request.user, request.query_params):
+            require_sudo(request)  # other people's activity is personal data
         events = list(self.filtered_events()[: EXPORT_LIMIT + 1])
         truncated = len(events) > EXPORT_LIMIT
         events = events[:EXPORT_LIMIT]
