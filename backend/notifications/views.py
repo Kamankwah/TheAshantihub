@@ -131,8 +131,8 @@ class StaffBadgesView(APIView):
 
         # Operations' work-queue counts. Each is gated by the permission that
         # opens its screen, and only counts where a real record source exists:
-        # Support issues and Deliveries & returns are still being built, so
-        # they stay 0 rather than inventing a figure.
+        # Support issues counts the open items of operations.service_issues on
+        # the caller's businesses; Deliveries counts the open disputes.
         at_risk = subscriptions_due = fraud_open = team_reports_waiting = 0
         if "portfolio.manage" in held:
             from django.db.models import Q
@@ -154,6 +154,12 @@ class StaffBadgesView(APIView):
             from fraud.views import visible_flags
 
             fraud_open = visible_flags(user).filter(status=FraudFlag.OPEN).count()
+        support_issues = deliveries_open = 0
+        if "service_issues.view" in held:
+            from operations import service_issues
+
+            support_issues = service_issues.open_issue_count(user)
+            deliveries_open = service_issues.deliveries_open_count()
         if "staff.invite_team" in held:
             team_reports_waiting = StaffReport.objects.filter(
                 staff__manager=user, staff__is_active=True, status=StaffReport.SUBMITTED
@@ -215,8 +221,8 @@ class StaffBadgesView(APIView):
                 "subscriptions_due": subscriptions_due,
                 "fraud_open": fraud_open,
                 "team_reports_waiting": team_reports_waiting,
-                "support_issues": 0,
-                "deliveries_open": 0,
+                "support_issues": support_issues,
+                "deliveries_open": deliveries_open,
                 "report_due_at": report_due_at,
             }
         )

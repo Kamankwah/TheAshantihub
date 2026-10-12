@@ -39,3 +39,27 @@ class ContactMessageSerializer(serializers.ModelSerializer):
             "status", "resolved_by", "resolved_by_name", "resolved_at", "created_at",
         ]
         read_only_fields = fields
+
+
+class ContactMessageStaffSerializer(ContactMessageSerializer):
+    """The staff list adds the business the sender is matched to by email or
+    phone (accounts.phones), so the message also shows in Support issues."""
+
+    match = serializers.SerializerMethodField()
+
+    class Meta(ContactMessageSerializer.Meta):
+        fields = ContactMessageSerializer.Meta.fields + ["match"]
+        read_only_fields = fields
+
+    def get_match(self, obj):
+        from operations.service_issues import match_owner
+
+        owner = match_owner(obj.email, obj.phone)
+        if owner is None:
+            return None
+        manager = owner.account_manager
+        return {
+            "business_id": owner.pk, "business": owner.display_name,
+            "account_manager": manager.full_name if manager else None,
+            "kyc_status": owner.kyc_status,
+        }

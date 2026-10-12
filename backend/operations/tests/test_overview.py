@@ -97,8 +97,8 @@ class OverviewTests(TestCase):
         data = self.get(self.lead).data
         self.assertEqual([i["what"] for i in data["issues"]], ["Same MoMo number"])
         self.assertEqual(data["issues"][0]["account_manager"], "Kwame")
-        # Support and delivery issues have no records yet: unknown, not zero.
-        self.assertEqual(data["kpis"]["issues"], {"total": 1, "fraud": 1, "support": None, "delivery": None})
+        # Operations holds service_issues.view, so support and delivery are real counts (none here).
+        self.assertEqual(data["kpis"]["issues"], {"total": 1, "fraud": 1, "support": 0, "delivery": 0})
 
     def test_at_risk_counts_the_teams_businesses(self):
         data = self.get(self.lead).data

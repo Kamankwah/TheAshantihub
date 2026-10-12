@@ -12,6 +12,7 @@ from accounts.serializers import invite_state
 from listings.models import Zone
 from portfolio.areas import scout_areas
 
+from . import service_issues
 from .overview import overview
 from .scoreboard import scouts_scoreboard
 
@@ -81,3 +82,40 @@ class InvitesView(APIView):
             for z in Zone.objects.order_by("name")
         ]
         return Response({"pending": pending, "joined": joined, "zones": zones, "link_days": 7})
+
+
+class ServiceIssuesView(APIView):
+    """GET service-issues/?type=&manager=&status=open|resolved — contact messages,
+    disputes and owner conversations on the team's businesses (read-only)."""
+
+    def get_permissions(self):
+        return [HasRolePermission("service_issues.view")]
+
+    def get(self, request):
+        params = request.query_params
+        manager = params.get("manager")
+        return Response(service_issues.issues_payload(
+            request.user, kind=params.get("type", "all"), manager=int(manager) if (manager or "").isdigit() else None,
+            status=params.get("status", "open"),
+        ))
+
+
+class DeliveriesView(APIView):
+    """GET deliveries/ — today's delivery assignments and the open disputes, every business (read-only)."""
+
+    def get_permissions(self):
+        return [HasRolePermission("service_issues.view")]
+
+    def get(self, request):
+        return Response(service_issues.deliveries_payload())
+
+
+class SupportTeamView(APIView):
+    """GET support-team/ — the support agents reporting to the caller and the
+    support conversation queue (counts only; conversations have no assignee)."""
+
+    def get_permissions(self):
+        return [HasRolePermission("staff.invite_team")]
+
+    def get(self, request):
+        return Response(service_issues.support_team_payload(request.user))

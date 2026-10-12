@@ -6,8 +6,9 @@ Nothing is typed in. The scouts and their numbers come from
 approvals from `approvals.services`; the health mix from `portfolio.health`;
 issues from `fraud`. The live feed is the activity log, read by the page.
 
-Issues so far are fraud cases only: Support issues and Deliveries & returns
-arrive with their own screens and are reported as None, not 0."""
+Issues are open fraud cases plus, for a caller who holds service_issues.view,
+the Support issues list (contact messages, disputes, owner chats) and the open
+delivery disputes; without that permission those two are None, not 0."""
 from django.db.models import Q
 from django.utils import timezone
 
@@ -18,6 +19,7 @@ from fraud.views import visible_flags
 from portfolio import health, leaderboard
 from portfolio.views import portfolio_queryset
 from reports import services as report_services
+from . import service_issues as service
 from targets import services as target_services
 from targets.models import REGISTRATIONS
 
@@ -113,7 +115,17 @@ def overview(user, period="today", *, today=None, now=None):
     mix = {"at_risk": 0, "needs_attention": 0, "healthy": 0, "new": 0}
     for row in health.rate_all(portfolio_queryset(user, "team"), now):
         mix[row.rating] += 1
-    issue_total, issues = _issues(user, scouts)
+    fraud_total, issues = _issues(user, scouts)
+    support = delivery = None
+    issue_total = fraud_total
+    if "service_issues.view" in user.effective_permission_codenames():
+        service_rows = service.service_issues(user, status="open", now=now)
+        support = len(service_rows)
+        delivery = service.deliveries_open_count()
+        # The delivery figure is every business's open disputes (screen 17), some
+        # of which are already in the support count, so it is not added to the total.
+        issue_total = fraud_total + support
+        issues = sorted(issues + service_rows, key=lambda row: row["opened_at"])[:ISSUES_SHOWN]
 
     return {
         "period": period, "today": today, "now": now, "scout_count": len(scouts),
@@ -129,7 +141,7 @@ def overview(user, period="today", *, today=None, now=None):
                 "flagged": board["totals"]["visits_flagged"],
             },
             "at_risk": {"count": mix["at_risk"], "needs_attention": mix["needs_attention"]},
-            "issues": {"total": issue_total, "fraud": issue_total, "support": None, "delivery": None},
+            "issues": {"total": issue_total, "fraud": fraud_total, "support": support, "delivery": delivery},
         },
         "scouts": rows,
         "totals": board["totals"],
