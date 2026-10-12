@@ -5,6 +5,7 @@ from datetime import date
 from django.utils import timezone
 
 from accounts.models import StaffUser
+from activity.services import record
 from approvals.registry import ApprovalKind
 from approvals.services import ApprovalError
 from approvals.models import ApprovalRequest
@@ -39,7 +40,12 @@ def apply(request):
     values = request.payload["values"]
     effective_from = max(date.fromisoformat(request.payload["effective_from"]), timezone.localdate())
     # The maker's change, decided by a Super Admin: the plan records the maker.
-    plans.write_plans(_staff(request), values, effective_from, request.maker)
+    staff = _staff(request)
+    plans.write_plans(staff, values, effective_from, request.maker)
+    # Shows in the Targets screen's "Recent changes" (before is what was in force when it was asked for).
+    record(request.decided_by or request.maker, "targets.cut_applied", target=staff,
+           before={"values": (request.before or {}).get("current", {})},
+           after={"values": values, "effective_from": effective_from.isoformat(), "maker": request.maker.full_name})
 
 
 def render_diff(request):

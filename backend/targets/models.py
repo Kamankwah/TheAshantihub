@@ -68,13 +68,21 @@ class PublicHoliday(models.Model):
 class Leave(models.Model):
     ANNUAL = "annual"
     SICK = "sick"
+    COMPASSIONATE = "compassionate"
+    PARENTAL = "parental"
+    UNPAID = "unpaid"
+    # Rows recorded before the five kinds were drawn keep "other"; it is not offered for new leave.
     OTHER = "other"
-    KIND_CHOICES = [(ANNUAL, "Annual leave"), (SICK, "Sick leave"), (OTHER, "Other")]
+    KIND_CHOICES = [
+        (ANNUAL, "Annual leave"), (SICK, "Sick leave"), (COMPASSIONATE, "Compassionate leave"),
+        (PARENTAL, "Maternity or paternity leave"), (UNPAID, "Unpaid leave"), (OTHER, "Other leave"),
+    ]
+    RECORDABLE_KINDS = (ANNUAL, SICK, COMPASSIONATE, PARENTAL, UNPAID)
 
     staff = models.ForeignKey("accounts.StaffUser", on_delete=models.CASCADE, related_name="leaves")
     start = models.DateField()
     end = models.DateField()
-    kind = models.CharField(max_length=10, choices=KIND_CHOICES, default=ANNUAL)
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES, default=ANNUAL)
     note = models.CharField(max_length=300, blank=True, default="")
     recorded_by = models.ForeignKey("accounts.StaffUser", on_delete=models.PROTECT, related_name="+")
     created_at = models.DateTimeField(auto_now_add=True)

@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 SEND_TIMEOUT = 2
 
 STAFF_MANAGEMENT_VERBS = (
-    "staff-invite", "staff-resend-invite", "staff-suspend", "staff-unsuspend",
+    "staff-invite", "staff-resend-invite", "staff-cancel-invite", "staff.invite_cancelled", "staff-suspend", "staff-unsuspend",
     "staff-deactivate", "staff-reactivate", "staff-permissions", "staff-manager",
 )
 # (verb prefixes, permissions whose holders' queues changed, query keys)
@@ -36,7 +36,7 @@ QUEUE_INVALIDATIONS = [
     (("review-approve", "review-hide"), ("reviews.moderate",), ("reviews-moderation-queue", "staff-badges")),
     (("contact-message",), ("contact_messages.manage",), ("contact-messages-queue", "staff-badges")),
     (("staff-conversation-",), ("messaging.manage",), ("staff-messaging-queue",)),
-    (STAFF_MANAGEMENT_VERBS, ("staff.manage", "staff.invite_team"), ("staff-roster", "my-team")),
+    (STAFF_MANAGEMENT_VERBS, ("staff.manage", "staff.invite_team"), ("staff-roster", "my-team", "ops-invites")),
     (("promotion-",), ("promotions.manage",), ("promotions-queue",)),
     (("subscription-plan-",), ("subscription_plans.approve",), ("subscription-plan-pending-queue", "staff-badges")),
     (("escrow-",), ("escrow.view",), ("escrow-ledger", "staff-badges")),
@@ -63,6 +63,10 @@ QUEUE_INVALIDATIONS = [
     # Targets, leave and holidays change what a scout's Targets screen shows; a KYC approval
     # (registrations) and a subscription payment (renewals) change the counts.
     (("targets.", "leave.", "calendar.", "kyc-approve", "subscription."), ("businesses.manage_portfolio",), ("my-targets",)),
+    # Operations' scoreboard (screen 04) follows targets, leave, visits, calls, reports and the counts they come from.
+    (("targets.", "leave.", "calendar.", "visit.", "kyc-approve", "subscription.", "call-", "report.", "fraud."), ("portfolio.manage",), ("ops-scouts",)),
+    # Operations' Targets (07) and Leave (08) editors.
+    (("targets.", "leave.", "calendar.", "approval."), ("targets.manage", "leave.record"), ("targets-plans", "targets-history", "team-leave")),
     # A KYC approval may complete an activation (the leaderboard counts it once its first listing is live too).
     (("kyc-approve",), ("businesses.manage_portfolio",), ("leaderboard",)),
     # Commission lines are earned, released, reversed and exported by events; a policy change is an approval.

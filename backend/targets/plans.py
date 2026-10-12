@@ -6,9 +6,11 @@ from django.db import transaction
 from django.utils import timezone
 
 from accounts.models import Role
+from approvals.models import ApprovalRequest
+from reports.services import period_bounds
 
 from .models import METRICS, TargetLimit, TargetPlan
-from .services import Calendar, month_total_with
+from .services import Calendar, month_total_with, total_with
 
 HARD_CAP = 1000  # a typing slip guard where Super Admin has set no limit for a measure
 
@@ -85,3 +87,42 @@ def parse_effective_from(value, today=None):
     if day < today:
         raise PlanError("A target can't start in the past. Pick today or a later day.")
     return day
+
+
+def pending_cuts(staff_ids):
+    """{staff pk: {"approval_id", "requested_at", "metrics": {metric: value}}} for lowered
+    targets still waiting for a Super Admin. A later request wins for a measure."""
+    out = {}
+    requests = ApprovalRequest.objects.filter(kind="targets.cut", status=ApprovalRequest.PENDING).order_by("created_at", "id")
+    for request in requests:
+        staff_id = request.payload.get("staff")
+        if staff_id not in staff_ids:
+            continue
+        entry = out.setdefault(staff_id, {"approval_id": request.pk, "requested_at": request.created_at, "metrics": {}})
+        entry["approval_id"], entry["requested_at"] = request.pk, request.created_at
+        entry["metrics"].update(request.payload.get("values", {}))
+    return out
+
+
+def preview(user, changes, effective_from, today=None):
+    """Before -> after for the week and the month of `today` if each staff member's
+    typed daily targets started on `effective_from`. `changes` is
+    [(staff, {metric: value})]; a measure left out is unchanged. Leave and holidays
+    stay zero days. `cuts` lists the measures that would go to Super Admin."""
+    today = today or timezone.localdate()
+    week = period_bounds("week", today)
+    month = period_bounds("month", today)
+    rows = []
+    for staff, values in changes:
+        calendar = Calendar(staff, month[0], max(month[1], week[1]))
+        row = {"staff": staff.pk, "week": {}, "month": {}, "cuts": sorted(split_cuts(staff, values, effective_from, today)[1])}
+        for metric in METRICS:
+            for key, (start, end) in (("week", week), ("month", month)):
+                if metric in values:
+                    row[key][metric] = list(total_with(calendar, metric, values[metric], effective_from, start, end))
+                else:
+                    total = calendar.total(metric, start, end)
+                    row[key][metric] = [total, total]
+        row["month_working_days"] = sum(1 for d in calendar.days(*month) if calendar.state(d) == "working")
+        rows.append(row)
+    return {"week": {"start": week[0], "end": week[1]}, "month": {"start": month[0], "end": month[1]}, "rows": rows}
