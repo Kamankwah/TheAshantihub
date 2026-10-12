@@ -121,3 +121,15 @@ export function useDeliveries() {
 export function useSupportTeam() {
   return useQuery({ queryKey: ['ops-support-team'], queryFn: () => apiFetch('/api/operations/support-team/') })
 }
+
+// GET /api/listings/zones/summary/ — the Zones screen (25):
+//   {zones: [{id, name, listings, businesses, scouts: [names]}], changes: [{id, what, who, at, mine}]}
+// "scouts" is derived from the zones each scout's businesses sit in, not an assignment.
+export function useZonesSummary() {
+  return useQuery({ queryKey: ['zones-summary'], queryFn: () => apiFetch('/api/listings/zones/summary/') })
+}
+
+// GET /api/core/site-settings/history/ — [{id, at, who, changes: [{field, label, before, after}]}]; only recorded saves.
+export function useSiteSettingsHistory() {
+  return useQuery({ queryKey: ['site-settings-history'], queryFn: () => apiFetch('/api/core/site-settings/history/') })
+}

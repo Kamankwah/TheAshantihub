@@ -26,6 +26,7 @@ import DeliveryManagementPanel from "./panels/DeliveryManagementPanel.jsx";
 import ContactMessagesPanel from "./panels/ContactMessagesPanel.jsx";
 import UsersPanel from "./panels/UsersPanel.jsx";
 import CategoriesZonesPanel from "./panels/CategoriesZonesPanel.jsx";
+import ZonesPanel from "./panels/ZonesPanel.jsx";
 import SiteSettingsPanel from "./panels/SiteSettingsPanel.jsx";
 import StaffManagementPanel from "./panels/StaffManagementPanel.jsx";
 import EscrowLedgerPanel from "./panels/EscrowLedgerPanel.jsx";
@@ -362,7 +363,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "support-team" && <SupportTeamPanel onNavigate={selectTab} />}
           {PLACEHOLDER_TABS.has(activeTab) && <ScreenBuildingPanel title={activeLabel} />}
           {activeTab === "hero-events" && <HeroEventsPanel auth={auth} />}
-          {activeTab === "zones" && <CategoriesZonesPanel auth={auth} />}
+          {activeTab === "zones" && <ZonesPanel />}
           {activeTab === "commission" && <CommissionPanel />}
           {activeTab === "leaderboard" && <LeaderboardPanel />}
           {activeTab === "commission-policy" && <CommissionPolicyPanel canPropose={auth.hasPermission("commission.policy")} />}
