@@ -29,6 +29,8 @@ export default function ReportsPanel({ auth }) {
   const { data: report, isLoading, isError } = useCurrentReport(period, today);
   const { data: history } = useMyReports(period);
   const isScout = auth?.user?.role === "scout";
+  // The Operations lead's day report reads like the scout's: dated, addressed to their manager.
+  const isOps = auth?.user?.role === "operations";
   // Scouts see the day report first; "Week & month" reveals the period switch.
   const [more, setMore] = useState(false);
   const showSwitch = !isScout || more || period !== "day";
@@ -48,7 +50,7 @@ export default function ReportsPanel({ auth }) {
         </div>
         {isLoading && <div role="status" style={dim}>Loading…</div>}
         {isError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>Could not load your report.</div>}
-        {report && <ReportComposer key={`${period}:${report.period_start}`} report={report} period={period} leadName={isScout ? auth?.user?.manager?.full_name : undefined} isScout={isScout} />}
+        {report && <ReportComposer key={`${period}:${report.period_start}`} report={report} period={period} leadName={isScout || isOps ? auth?.user?.manager?.full_name : undefined} isScout={isScout} isOps={isOps} />}
       </div>
       <History rows={history?.results || []} />
       <RangeExport auth={auth} />
@@ -56,7 +58,8 @@ export default function ReportsPanel({ auth }) {
   );
 }
 
-function ReportComposer({ report, period, leadName, isScout }) {
+function ReportComposer({ report, period, leadName, isScout, isOps }) {
+  const dayStyle = (isScout || isOps) && report.period === "day";
   const queryClient = useQueryClient();
   const [achievements, setAchievements] = useState(report.achievements);
   const [blockers, setBlockers] = useState(report.blockers);
@@ -113,12 +116,12 @@ function ReportComposer({ report, period, leadName, isScout }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <span style={{ color: D.text, fontWeight: 800 }}>{isScout && report.period === "day" ? PERIOD_TITLE.day : `${PERIOD_TITLE[report.period]} · ${range(report)}`}</span>
+        <span style={{ color: D.text, fontWeight: 800 }}>{dayStyle ? PERIOD_TITLE.day : `${PERIOD_TITLE[report.period]} · ${range(report)}`}</span>
         <StatusChip status={report.status} />
         {report.is_late && <LateChip />}
         {!isScout && !locked && <span style={dim}>Due by {due}</span>}
       </div>
-      {isScout && report.period === "day" && (
+      {dayStyle && (
         <div style={dim}>{longDay(report.period_start)}{leadName ? ` · to ${leadName}` : ""} · due {due}</div>
       )}
       {report.status === "returned" && report.review_note && (
@@ -129,7 +132,7 @@ function ReportComposer({ report, period, leadName, isScout }) {
       <SystemSections sections={report.system} live={report.system_is_live} lockedAt={report.snapshot_at || report.submitted_at} onlyTargets={isScout} />
       {results.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <div style={{ color: D.text, fontWeight: 800, fontSize: "0.85rem" }}>{isScout && report.period === "day" ? "Yesterday's plan" : "Your last plan — how did it go?"}</div>
+          <div style={{ color: D.text, fontWeight: 800, fontSize: "0.85rem" }}>{dayStyle ? "Yesterday's plan" : "Your last plan — how did it go?"}</div>
           {results.map((row, index) => (
             <label key={row.item} style={{ ...labelStyle, flexDirection: "row", alignItems: "center", justifyContent: "space-between", fontWeight: 600 }}>
               <span>{row.item}</span>
@@ -145,7 +148,7 @@ function ReportComposer({ report, period, leadName, isScout }) {
       <label style={labelStyle}>What went well<textarea value={achievements} readOnly={locked} onChange={(e) => setAchievements(e.target.value)} rows={4} style={field} /></label>
       <label style={labelStyle}>What got in the way<textarea value={blockers} readOnly={locked} onChange={(e) => setBlockers(e.target.value)} rows={3} style={field} /></label>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <div style={labelStyle}>{isScout && report.period === "day" ? "Plan for tomorrow" : `Plan for next ${report.period}`}</div>
+        <div style={labelStyle}>{dayStyle ? "Plan for tomorrow" : `Plan for next ${report.period}`}</div>
         {plan.map((line, index) => (
           <input key={index} aria-label={`Plan line ${index + 1}`} value={line} readOnly={locked}
             onChange={(e) => setPlan(plan.map((l, i) => (i === index ? e.target.value : l)))} style={field} maxLength={300} />

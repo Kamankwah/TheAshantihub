@@ -73,3 +73,20 @@ export function useLeavePreview(staff, start, end) {
     enabled: Boolean(staff && start && end && end >= start),
   })
 }
+
+// GET /api/operations/overview/?period=today|week|month — the Operations overview (screen 01):
+//   {period, today, scout_count, month_label,
+//    kpis: {registrations: {done, target|null, planned}, activations: {count, registered},
+//      approvals: {waiting, oldest: {title, target_label, created_at}|null},
+//      checked_in: {count, working, on_leave: [names], flagged},
+//      at_risk: {count, needs_attention}, issues: {total, fraud, support|null, delivery|null}},
+//    scouts: [the scoreboard rows, see useOpsScouts], totals,
+//    waiting: [{id, title, kind, target_label, maker, created_at, due_at, next_move: {label, at}|null}],
+//    issues: [{id, type, kind_label, business, business_id, what, account_manager, opened_at, open_seconds}], issue_total}
+export function useOpsOverview(period = 'today') {
+  return useQuery({
+    queryKey: ['ops-overview', period],
+    queryFn: () => apiFetch(`/api/operations/overview/?period=${period}`),
+    placeholderData: keepPreviousData,
+  })
+}

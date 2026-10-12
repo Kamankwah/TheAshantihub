@@ -77,4 +77,18 @@ describe('Operations People screens in the shell', () => {
     expect(await screen.findByText('Invite to your team')).toBeInTheDocument()
     expect(screen.queryByText('Pending invites')).not.toBeInTheDocument()
   })
+
+  it('shows the Operations overview, not the generic KPI page, on Overview', async () => {
+    server.use(http.get(`${API}/api/operations/overview/`, () => HttpResponse.json({
+      period: 'today', today: '2026-10-07', now: '2026-10-07T11:46:00', scout_count: 0, month_label: 'October',
+      kpis: {
+        registrations: { done: 0, target: null, planned: 0 }, activations: { count: 0, registered: 0 }, approvals: { waiting: 0, oldest: null },
+        checked_in: { count: 0, working: 0, on_leave: [], flagged: 0 }, at_risk: { count: 0, needs_attention: 0 }, issues: { total: 0, fraud: 0, support: null, delivery: null },
+      },
+      scouts: [], totals: { registrations: { done: 0, target: 0 }, visits_flagged: 0 }, waiting: [], issues: [], issue_total: 0,
+    })))
+    renderAt('overview')
+    expect(await screen.findByRole('heading', { name: 'Operations overview' })).toBeInTheDocument()
+    expect(screen.queryByText(/Akwaaba/)).not.toBeInTheDocument()
+  })
 })

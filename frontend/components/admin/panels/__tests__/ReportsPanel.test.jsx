@@ -282,4 +282,23 @@ describe('ReportsPanel', () => {
       expect(await screen.findByRole('button', { name: 'Submit' })).toBeInTheDocument()
     })
   })
+
+  it("shows the Operations lead's team numbers and scouts table, addressed to their manager", async () => {
+    server.use(current(report({
+      staff: { id: 2, full_name: 'Ama Boateng', role: 'operations' },
+      system: [
+        { key: 'team_targets', title: 'Team against target', rows: [{ label: 'Registrations', value: 12, target: 13 }] },
+        { key: 'team_scouts', title: 'Scouts', columns: ['Registrations', 'Visits', 'Calls', 'Renewals', 'Day reports'], rows: [{ label: 'Kwame', value: '3 / 3', cells: ['3 / 3', '8 / 8', '10 / 10', '1 / 1', 'Submitted'] }] },
+        { key: 'ops_approvals', title: 'Approvals you decided', rows: [{ label: 'Decided', value: 9 }, { label: 'Median time to decide (clock time)', value: '2 h 10 min' }] },
+      ],
+    })))
+    renderPanel({ user: { id: 2, role: 'operations', manager: { id: 1, full_name: 'Simon Peter' } }, hasPermission: () => false })
+    expect(await screen.findByText('End of day report')).toBeInTheDocument()
+    expect(screen.getAllByText(/to Simon Peter/).length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: 'Submit to Simon Peter' })).toBeInTheDocument()
+    const table = screen.getByRole('table')
+    expect(table).toHaveTextContent('Kwame')
+    expect(table).toHaveTextContent('Submitted')
+    expect(screen.getByText('2 h 10 min')).toBeInTheDocument()
+  })
 })

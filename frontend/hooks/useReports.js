@@ -39,3 +39,9 @@ export function exportsRefetchInterval(query) {
 export function useReportExports() {
   return useQuery({ queryKey: ['report-exports'], queryFn: () => apiFetch('/api/reports/exports/'), refetchInterval: exportsRefetchInterval })
 }
+
+// GET /api/reports/team/missing/?from=&to= — the working days my direct reports never sent a day report for:
+//   {from, to, rows: [{staff, date, reminded_today}]}. Leave, holidays and days off are not counted.
+export function useTeamMissing({ enabled = true } = {}) {
+  return useQuery({ queryKey: ['team-reports', 'missing'], queryFn: () => apiFetch('/api/reports/team/missing/'), enabled })
+}

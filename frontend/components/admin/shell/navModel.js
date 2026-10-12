@@ -220,7 +220,7 @@ export function buildNavGroups(auth) {
 export const BADGE_KEY_BY_TAB = {
   kyc: "kyc",
   approvals: "approvals_waiting",
-  tasks: "tasks_overdue",
+  tasks: "tasks_due",
   moderation: "listings",
   hero: "hero",
   "events-moderation": "events",

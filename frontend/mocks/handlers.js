@@ -557,6 +557,8 @@ export const handlers = [
     system_is_live: true, system: [],
   })),
   http.get('http://localhost:8000/api/reports/', () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  http.get('http://localhost:8000/api/reports/team/missing/', () => HttpResponse.json({ from: '2026-10-02', to: '2026-10-06', rows: [] })),
+  http.get('http://localhost:8000/api/tasks/team-summary/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/reports/team/', () => HttpResponse.json({ period: 'day', period_start: '2026-10-07', rows: [] })),
   http.get('http://localhost:8000/api/reports/exports/', () => HttpResponse.json([])),
   // Portfolio (staff phase 2A) — scouts' and Operations' business lists, one
@@ -604,7 +606,7 @@ export const handlers = [
   http.get('http://localhost:8000/api/notifications/staff-badges/', () => {
     return HttpResponse.json({
       kyc: 0, listings: 0, events: 0, hero: 0, reviews: 0,
-      plan_approvals: 0, contact_messages: 0, escrow: 0, tasks_overdue: 0, approvals_waiting: 0, report_due_at: null,
+      plan_approvals: 0, contact_messages: 0, escrow: 0, tasks_overdue: 0, tasks_due: 0, approvals_waiting: 0, report_due_at: null,
     })
   }),
   // Scout registration and owner hand-over (staff phase 2A) — defaults;

@@ -7,6 +7,7 @@ import { noteSignedOutReason } from "../../lib/signOutReason.js";
 import LiveUpdatesIndicator from "./shell/LiveUpdatesIndicator.jsx";
 import { useStaffBadges } from "../../hooks/useStaffBadges.js";
 import { D, ROLE_ACCENTS } from "./theme.js";
+import OperationsOverviewPanel from "./panels/OperationsOverviewPanel.jsx";
 import OverviewPanel from "./panels/OverviewPanel.jsx";
 import ScreenBuildingPanel from "./panels/ScreenBuildingPanel.jsx";
 import KYCQueuePanel from "./panels/KYCQueuePanel.jsx";
@@ -243,6 +244,13 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
     else { setInternalTab("approvals"); setInternalDetail("made"); }
   };
 
+  // The overview's "Open request" shows the request under Approvals (/staff/approvals/<id>).
+  const openApproval = (id) => {
+    setDrawerOpen(false);
+    if (isControlled) onTabChange?.(`approvals/${id}`);
+    else { setInternalTab("approvals"); setInternalDetail(String(id)); }
+  };
+
   // A scout's "Sent for approval" is the Made by me box.
   const navSelect = (id) => (role === "scout" && id === "approvals" ? openMadeApprovals() : selectTab(id));
 
@@ -309,7 +317,9 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
         <main className="staff-content" style={{ padding: isPhone ? "16px 12px calc(88px + env(safe-area-inset-bottom, 0px))" : "22px 20px 72px" }}>
           {activeTab === "overview" && (role === "scout"
             ? <ScoutTodayPanel auth={auth} onNavigate={selectTab} onCheckIn={openCheckInScreen} onRegister={() => selectTab("register-business")} onSeeApprovals={openMadeApprovals} onOpenBusiness={openMyBusiness} />
-            : <OverviewPanel auth={auth} roleColor={roleColor} onNavigate={selectTab} />)}
+            : role === "operations" && auth.hasPermission("portfolio.manage")
+              ? <OperationsOverviewPanel auth={auth} onNavigate={selectTab} onOpenApproval={openApproval} onOpenBusiness={openBusiness} />
+              : <OverviewPanel auth={auth} roleColor={roleColor} onNavigate={selectTab} />)}
           {activeTab === "kyc" && <KYCQueuePanel auth={auth} />}
           {activeTab === "moderation" && <ListingsModerationPanel />}
           {activeTab === "hero" && <HeroApprovalPanel />}
@@ -337,7 +347,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "messaging" && <MessagingPanel />}
           {activeTab === "tasks" && (role === "scout"
             ? <FollowUpsPanel onOpenBusiness={openMyBusiness} onOpenProspects={() => selectTab("prospects")} leadName={leadName} />
-            : <TasksPanel />)}
+            : <TasksPanel auth={auth} />)}
           {activeTab === "activity" && <ActivityPanel />}
           {activeTab === "calls" && <CallLogPanel auth={auth} />}
           {activeTab === "prospects" && <ProspectsPanel onRegister={openRegisterFromProspect} />}

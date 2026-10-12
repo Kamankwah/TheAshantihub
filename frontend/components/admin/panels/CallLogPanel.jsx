@@ -6,6 +6,7 @@ import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D, glassCard } from "../theme.js";
 import LogCallSheet from "./LogCallSheet.jsx";
 import { button, dim, pill } from "./panelStyles.js";
+import { toggleButton, toggleGroup } from "./opsPeopleParts.jsx";
 import { errorStyle, eyebrow } from "./portfolioParts.jsx";
 
 const OUTCOMES = [["connected", "Connected"], ["no_answer", "No answer"], ["busy", "Busy"], ["voicemail", "Voicemail"], ["wrong_number", "Wrong number"], ["promised_to_pay", "Promised to pay"], ["callback_requested", "Callback requested"]];
@@ -17,11 +18,34 @@ const blank = () => ({ direction: "out", channel: "phone", counterpart_type: "bu
 // Scouts get the phone-first calls screen (canvas 12); every other role keeps
 // the desk form below.
 export default function CallLogPanel({ auth }) {
-  return auth?.user?.role === "scout" ? <ScoutCalls /> : <DeskCallLog />;
+  return auth?.user?.role === "scout" ? <ScoutCalls /> : <DeskCallLog auth={auth} />;
 }
 
-function DeskCallLog() {
-  const { data, isLoading, isError, refetch } = useCallLogs();
+function Strip({ strip }) {
+  const tile = (label, value, sub) => (
+    <div role="group" aria-label={label} style={{ ...glassCard, padding: 12, display: "flex", flexDirection: "column", gap: 2 }}>
+      <span style={{ ...dim, fontWeight: 700 }}>{label}</span>
+      <span style={{ fontSize: "1.3rem", fontWeight: 800, color: D.text, fontVariantNumeric: "tabular-nums" }}>{value}</span>
+      <span style={dim}>{sub}</span>
+    </div>
+  );
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
+      {tile("My calls today", strip.mine, `${strip.out} out · ${strip.in} in`)}
+      {tile("Connected", strip.connected, `${strip.no_answer} no answer`)}
+      {strip.team != null && tile("Team calls today", strip.team, "Your direct reports")}
+      {tile("Follow-ups set", strip.follow_ups, "Now in Tasks")}
+    </div>
+  );
+}
+
+function DeskCallLog({ auth }) {
+  // A lead can switch between their own calls and their direct reports'.
+  const leadsTeam = auth?.hasPermission?.("calls.view_team") ?? false;
+  const [scope, setScope] = useState("mine");
+  const teamMode = leadsTeam && scope === "team";
+  const { data, isLoading, isError, refetch } = useCallLogs({ scope: leadsTeam ? scope : undefined });
+  const today = useCallLogs({ day: "today", enabled: leadsTeam });
   const { data: purposes } = useCallPurposes();
   const [form, setForm] = useState(null);
   const [actionError, setActionError] = useState(null);
@@ -50,8 +74,15 @@ function DeskCallLog() {
     <div style={{ ...glassCard, padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ color: D.text, fontWeight: 800, fontSize: "0.95rem" }}>Call Log</div>
+        {leadsTeam && (
+          <div role="group" aria-label="Whose calls" style={toggleGroup}>
+            <button type="button" aria-pressed={!teamMode} onClick={() => setScope("mine")} style={toggleButton(!teamMode)}>Mine</button>
+            <button type="button" aria-pressed={teamMode} onClick={() => setScope("team")} style={toggleButton(teamMode)}>My team's</button>
+          </div>
+        )}
         {!form && <button type="button" onClick={() => setForm(blank())} style={{ background: D.gold, color: D.text, border: "none", borderRadius: 10, padding: "8px 14px", fontWeight: 800, fontSize: "0.8rem", cursor: "pointer", fontFamily: "inherit" }}>Log a call</button>}
       </div>
+      {leadsTeam && today.data?.strip && <Strip strip={today.data.strip} />}
       {actionError && <div style={{ color: D.red, fontSize: "0.8rem" }}>{actionError}</div>}
       {form && (
         <form onSubmit={save} noValidate style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10, padding: 12, background: D.pageBg, borderRadius: 12 }}>
@@ -75,7 +106,7 @@ function DeskCallLog() {
       )}
       {isLoading && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading…</div>}
       {isError && <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load the call log.</div>}
-      {!isLoading && !isError && calls.length === 0 && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>No calls logged yet.</div>}
+      {!isLoading && !isError && calls.length === 0 && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>{teamMode ? "Your team hasn't logged any calls yet." : "No calls logged yet."}</div>}
       {calls.map((c) => (
         <div key={c.id} style={{ padding: "10px 0", borderTop: `1px solid ${D.divider}`, fontSize: "0.8rem" }}>
           <div style={{ color: D.text, fontWeight: 700 }}>{c.direction === "out" ? "Outbound" : "Inbound"} · {c.counterpart_name || c.related_label || "Unknown"} {c.counterpart_phone && <span style={{ color: D.textDim, fontWeight: 400 }}>({c.counterpart_phone})</span>}</div>

@@ -20,7 +20,7 @@ const TOTAL_SUB = {
 const REPORT_LABEL = { not_yet: "Not yet", draft: "Draft saved", submitted: "Submitted", acknowledged: "Acknowledged", returned: "Returned" };
 const REPORT_COLOR = { draft: D.amber, submitted: D.blue, acknowledged: D.green, returned: D.red };
 
-function MeasureCell({ row, metric }) {
+export function MeasureCell({ row, metric }) {
   const m = row.measures[metric];
   if (row.state !== "working") return <span style={{ color: D.textDim }} aria-label="Not a working day">—</span>;
   if (m.target == null) return <span>{m.done}<span style={{ ...dim, display: "block" }}>No target set</span></span>;
@@ -28,7 +28,7 @@ function MeasureCell({ row, metric }) {
   return <span style={{ fontWeight: 700, color: behind && metric === "registrations" ? "#A33A00" : D.text, ...figures }}>{`${m.done} / ${m.target}`}</span>;
 }
 
-function MonthCell({ row, label }) {
+export function MonthCell({ row, label }) {
   const { month } = row;
   if (month.target == null) return <span style={dim}>No target set</span>;
   const pct = month.target ? (month.done / month.target) * 100 : 0;
@@ -43,7 +43,7 @@ function MonthCell({ row, label }) {
   );
 }
 
-function PortfolioCell({ row }) {
+export function PortfolioCell({ row }) {
   const p = row.portfolio || {};
   if (!p.size) return <span style={dim}>No businesses yet</span>;
   const part = (n, color) => (n ? <div style={{ flex: n, background: color, height: 6 }} /> : null);
@@ -59,7 +59,7 @@ function PortfolioCell({ row }) {
   );
 }
 
-function CheckInCell({ row }) {
+export function CheckInCell({ row }) {
   if (row.state === "leave") return <span style={dim}>{row.back_on ? `On leave · back ${dayShort(row.back_on)}` : "On leave"}</span>;
   if (row.state === "holiday") return <span style={dim}>Public holiday</span>;
   if (row.state === "off") return <span style={dim}>Not a working day</span>;
@@ -80,7 +80,7 @@ function CheckInCell({ row }) {
   );
 }
 
-function ReportCell({ row }) {
+export function ReportCell({ row }) {
   if (row.state === "leave") {
     return <div><span style={chip(D.textDim)}>On leave</span>{row.back_on && <div style={dim}>{`Back ${dayShort(row.back_on)}`}</div>}</div>;
   }

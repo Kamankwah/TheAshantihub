@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { server } from '../../../../mocks/server.js'
@@ -50,5 +50,33 @@ describe('CallLogPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save call' }))
     expect(await screen.findByText('Pick a follow-up time in the future.')).toBeInTheDocument()
     expect(posted).toBe(false)
+  })
+
+  it('lets a lead switch to the team\'s calls and shows the day strip', async () => {
+    const urls = []
+    server.use(http.get('http://localhost:8000/api/calls/', ({ request }) => {
+      urls.push(request.url)
+      const team = request.url.includes('scope=team')
+      return HttpResponse.json({
+        count: 1, next: null, previous: null,
+        results: [{ id: team ? 2 : 1, staff_name: team ? 'Yaw Owusu' : 'Ama Boateng', direction: 'out', counterpart_name: 'Adwoa Fabrics', counterpart_phone: '', purpose: 'other', outcome: 'connected', notes: '', started_at: '2026-10-07T09:00:00Z' }],
+        summary: { logged: 1, connected: 1 },
+        strip: { mine: 5, out: 4, in: 1, connected: 3, no_answer: 2, follow_ups: 2, team: 38 },
+      })
+    }))
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={queryClient}><CallLogPanel auth={{ user: { role: 'operations' }, hasPermission: (c) => c === 'calls.view_team' }} /></QueryClientProvider>)
+    expect(await screen.findByText(/by Ama Boateng/)).toBeInTheDocument()
+    expect(within(screen.getByRole('group', { name: 'Team calls today' })).getByText('38')).toBeInTheDocument()
+    expect(within(screen.getByRole('group', { name: 'My calls today' })).getByText('4 out · 1 in')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: "My team's" }))
+    expect(await screen.findByText(/by Yaw Owusu/)).toBeInTheDocument()
+    expect(urls.some((u) => u.includes('scope=team'))).toBe(true)
+  })
+
+  it('has no team switch without calls.view_team', async () => {
+    renderPanel()
+    await screen.findByText('No calls logged yet.')
+    expect(screen.queryByRole('button', { name: "My team's" })).not.toBeInTheDocument()
   })
 })

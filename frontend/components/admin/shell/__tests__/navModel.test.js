@@ -84,8 +84,8 @@ describe('My Work group', () => {
     expect(makeBadgeFor({ approvals_waiting: 4 })('approvals')).toBe(4)
   })
 
-  it('maps the tasks badge to tasks_overdue', () => {
-    expect(makeBadgeFor({ tasks_overdue: 2 })('tasks')).toBe(2)
+  it('maps the tasks badge to tasks_due (overdue plus due today)', () => {
+    expect(makeBadgeFor({ tasks_due: 2, tasks_overdue: 1 })('tasks')).toBe(2)
   })
 })
 
