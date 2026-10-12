@@ -60,6 +60,32 @@ class ZoneOpsTests(TestCase):
         self.assertIn("1 business", r.json()["detail"])
         self.assertTrue(Zone.objects.filter(pk=z.pk).exists())
 
+    def test_delete_refused_when_an_event_uses_it(self):
+        from django.utils import timezone
+
+        from accounts.models import Customer
+        from events.models import Event
+
+        z = Zone.objects.create(name="Zevent")
+        customer = Customer.objects.create(full_name="Ama", phone="+233200771144", password_hash="x")
+        Event.objects.create(
+            category=Category.objects.get(slug="festivals"), zone=z, submitted_by_customer=customer,
+            name="Durbar", description="d", address="Palace",
+            event_date=timezone.now() + timezone.timedelta(days=30), visibility_days=14,
+        )
+        r = self.client.delete(f"/api/listings/zones/{z.pk}/")
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("1 event", r.json()["detail"])
+        self.assertTrue(Zone.objects.filter(pk=z.pk).exists())
+
+    def test_delete_refused_when_a_rejected_business_is_in_it(self):
+        z = Zone.objects.create(name="Zrej")
+        owner = self._business(z, tag="rej")
+        BusinessOwner.objects.filter(pk=owner.pk).update(kyc_status=BusinessOwner.REJECTED)
+        r = self.client.delete(f"/api/listings/zones/{z.pk}/")
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("1 business", r.json()["detail"])
+
     def test_support_cannot_manage_zones(self):
         z = Zone.objects.create(name="Zadum")
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self._staff('support', 'm'), 'staff')}")

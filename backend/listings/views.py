@@ -5,6 +5,7 @@ from decimal import Decimal
 from django.core.files.base import ContentFile
 from django.db import transaction as db_transaction
 from django.db.models import Avg, Count, Exists, OuterRef, Q
+from django.db.models import ProtectedError
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import filters, generics, serializers
@@ -147,10 +148,14 @@ def _zone_usage(zone):
     """What still depends on a zone: its listings, the businesses whose profile
     sits in it, and the scouts invited to work it."""
     from accounts.models import BusinessOwner, StaffUser
+    from field.models import Prospect
 
     return {
         "listings": zone.listings.count(),
-        "businesses": BusinessOwner.objects.filter(profile__zone=zone).exclude(kyc_status=BusinessOwner.REJECTED).count(),
+        "events": zone.events.count(),
+        # Every business, rejected ones included: deleting the zone would blank their profile.
+        "businesses": BusinessOwner.objects.filter(profile__zone=zone).count(),
+        "prospects": Prospect.objects.filter(zone=zone).count(),
         "invited_scouts": StaffUser.areas.through.objects.filter(zone=zone).count(),
     }
 
@@ -184,6 +189,10 @@ class ZoneDetailView(generics.RetrieveUpdateDestroyAPIView):
             parts = []
             if usage["listings"]:
                 parts.append(f"{usage['listings']} listing{'s' if usage['listings'] != 1 else ''}")
+            if usage["events"]:
+                parts.append(f"{usage['events']} event{'s' if usage['events'] != 1 else ''}")
+            if usage["prospects"]:
+                parts.append(f"{usage['prospects']} prospect{'s' if usage['prospects'] != 1 else ''}")
             if usage["businesses"]:
                 parts.append(f"{usage['businesses']} business{'es' if usage['businesses'] != 1 else ''}")
             if usage["invited_scouts"]:
@@ -193,7 +202,10 @@ class ZoneDetailView(generics.RetrieveUpdateDestroyAPIView):
                 status=409,
             )
         name, pk = zone.name, zone.pk
-        zone.delete()
+        try:
+            zone.delete()
+        except ProtectedError:
+            return Response({"detail": f"{name} is still used by listings or events. Rename it instead."}, status=409)
         activity_record(
             request.user, "zone.deleted", target_type="listings.zone", target_id=pk, target_label=name,
             summary=f"Deleted {name}", before={"name": name}, method="DELETE", request=request,
