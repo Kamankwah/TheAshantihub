@@ -431,8 +431,12 @@ class LeaveDetailView(APIView):
             start, end, kind, note = _leave_data(_body(request), partial_from=leave)
         except plans.PlanError as exc:
             return _error(exc.message)
+        if start < leave.start and leave.start <= today:
+            return _error("Leave that has started keeps its first day; an earlier first day would rewrite days already judged.")
         if start != leave.start and (leave.start <= today or start < today):
             return _error("Leave that has started keeps its first day, and a new first day can't be in the past.")
+        if leave.start <= today and end < today:
+            return _error("Leave that has started can be shortened to today at the earliest; past days stay as they were.")
         before = {"start": leave.start.isoformat(), "end": leave.end.isoformat(), "kind": leave.kind, "note": leave.note}
         with transaction.atomic():
             leave.start, leave.end, leave.kind, leave.note = start, end, kind, note

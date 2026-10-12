@@ -5,6 +5,7 @@ from datetime import date
 from activity.models import ActivityEvent
 from approvals import services as approval_services
 from approvals.services import ApprovalError
+from targets import services
 from targets.models import Leave, PublicHoliday, TargetPlan, WorkPattern
 
 from .base import SAT, WED, TargetsBase
@@ -96,6 +97,13 @@ class ChangeLeaveTests(TargetsBase):
     def test_leave_in_progress_keeps_its_first_day(self):
         self.assertEqual(self.patch(self.now, start="2026-10-06").status_code, 400)
         self.assertEqual(self.patch(self.now, end="2026-10-10").status_code, 200)
+
+    def test_leave_in_progress_cannot_be_ended_in_the_past_or_started_earlier(self):
+        self.assertEqual(self.patch(self.now, end="2026-10-06").status_code, 400)  # before today (Wed 7th)
+        self.assertEqual(self.patch(self.now, start="2026-10-01").status_code, 400)
+        self.now.refresh_from_db()
+        self.assertEqual((self.now.start, self.now.end), (date(2026, 10, 5), date(2026, 10, 9)))
+        self.assertEqual(self.patch(self.now, end="2026-10-07").status_code, 200)  # shortened to today
 
     def test_a_new_first_day_cannot_be_in_the_past(self):
         self.assertEqual(self.patch(self.upcoming, start="2026-10-06").status_code, 400)
@@ -209,3 +217,23 @@ class TargetsScreenTests(TargetsBase):
         self.assertFalse(any(e.get("staff_name") == "Outsider" for e in events))
         self.as_staff(self.kwame)
         self.assertEqual(self.client.get("/api/targets/history/").status_code, 403)
+
+
+class SupportDefaultMigrationTests(TargetsBase):
+    def test_existing_support_staff_keep_monday_to_saturday_and_new_ones_get_monday_to_friday(self):
+        import importlib
+
+        from django.apps import apps
+
+        from accounts.testing import make_staff
+
+        old = make_staff("support", "old@example.com", manager=self.lead)
+        saved = make_staff("support", "saved@example.com", manager=self.lead)
+        WorkPattern.objects.create(staff=saved, weekdays=[1, 2], set_by=self.lead)
+        importlib.import_module("targets.migrations.0003_support_keeps_monday_to_saturday").keep_monday_to_saturday(apps, None)
+        self.assertEqual(WorkPattern.objects.get(staff=old).weekdays, [0, 1, 2, 3, 4, 5])
+        self.assertEqual(WorkPattern.objects.get(staff=saved).weekdays, [1, 2])
+        self.assertFalse(WorkPattern.objects.filter(staff=self.kwame).exists())  # scouts keep the code default
+        new = make_staff("support", "new@example.com", manager=self.lead)
+        self.assertFalse(services.is_working_day(new, SAT))
+        self.assertTrue(services.is_working_day(old, SAT))
