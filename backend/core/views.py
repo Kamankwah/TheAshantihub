@@ -9,6 +9,8 @@ from rest_framework.views import APIView
 from accounts.models import BusinessOwner, Customer
 from accounts.permissions import HasRolePermission
 from events.models import Event
+from activity.models import ActivityEvent
+from activity.services import record as activity_record
 from listings.models import Category, Listing
 from orders.models import Order
 
@@ -45,6 +47,23 @@ def health_check(request):
     return Response({"status": "ok", "redis": _redis_state()})
 
 
+SITE_SETTINGS_FIELDS = {
+    "contact_email": "Contact email",
+    "contact_phone": "Contact phone",
+    "contact_address": "Contact address",
+    "facebook_url": "Facebook link",
+    "instagram_url": "Instagram link",
+    "linkedin_url": "LinkedIn link",
+    "twitter_url": "Twitter / X link",
+    "tiktok_url": "TikTok link",
+    "youtube_url": "YouTube link",
+    "whatsapp_number": "WhatsApp support number",
+    "support_hours": "Support hours",
+    "warranty_returns_policy": "Warranty & returns policy",
+    "service_dispute_policy": "Service satisfaction & dispute policy",
+}
+
+
 class SiteSettingsView(generics.RetrieveUpdateAPIView):
     """GET is public; PATCH (partial update) requires site_settings.manage.
 
@@ -62,6 +81,40 @@ class SiteSettingsView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return SiteSettings.load()
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        before = {f: getattr(instance, f) for f in SITE_SETTINGS_FIELDS}
+        settings_row = serializer.save()
+        after = {f: getattr(settings_row, f) for f in SITE_SETTINGS_FIELDS}
+        changed = [f for f in SITE_SETTINGS_FIELDS if before[f] != after[f]]
+        if changed:
+            activity_record(
+                self.request.user, "site_settings.updated", target=settings_row,
+                summary=", ".join(SITE_SETTINGS_FIELDS[f] for f in changed),
+                before={f: before[f] for f in changed}, after={f: after[f] for f in changed},
+                method=self.request.method, request=self.request,
+            )
+
+
+class SiteSettingsHistoryView(APIView):
+    """GET /api/core/site-settings/history/ -- only the saves that were actually
+    recorded, with what each field was and became."""
+
+    def get_permissions(self):
+        return [HasRolePermission("site_settings.manage")]
+
+    def get(self, request):
+        events = ActivityEvent.objects.filter(verb="site_settings.updated").order_by("-id")[:20]
+        out = []
+        for e in events:
+            before, after = e.before or {}, e.after or {}
+            changes = [
+                {"field": f, "label": SITE_SETTINGS_FIELDS[f], "before": before.get(f, ""), "after": after.get(f, "")}
+                for f in SITE_SETTINGS_FIELDS if f in after or f in before
+            ]
+            out.append({"id": e.pk, "at": e.occurred_at, "who": e.actor_label, "changes": changes})
+        return Response(out)
 
 
 class AnalyticsOverviewView(APIView):
