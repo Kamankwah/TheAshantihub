@@ -101,13 +101,14 @@ class ServiceIssuesView(APIView):
 
 
 class DeliveriesView(APIView):
-    """GET deliveries/ — today's delivery assignments and the open disputes, every business (read-only)."""
+    """GET deliveries/ — today's delivery assignments and the open disputes, every business (read-only);
+    the customer's address and name only on orders holding one of the caller's team's businesses."""
 
     def get_permissions(self):
         return [HasRolePermission("service_issues.view")]
 
     def get(self, request):
-        return Response(service_issues.deliveries_payload())
+        return Response(service_issues.deliveries_payload(request.user))
 
 
 class SupportTeamView(APIView):

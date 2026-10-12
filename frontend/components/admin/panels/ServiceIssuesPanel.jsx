@@ -13,14 +13,14 @@ import { card, errorStyle, h2, h3, labelStyle } from "./portfolioParts.jsx";
 
 // ─── 16 Support issues ───────────────────────────────────────────────────────
 // What waits on the team's businesses, read-only: contact messages matched to an
-// owner by email or phone, disputes on orders holding their listings, and
+// owner by the email or phone typed in the form (an unverified match), disputes on orders holding their listings, and
 // conversations where the business owner talks to AshantiHub Support. Reading
 // this list (service_issues.view) does not let anyone reply as Support or decide
 // a dispute. Open, create a task for the account manager, log a call, flag fraud.
 // Everything comes from GET /api/operations/service-issues/.
 const TYPES = [["all", "All types"], ["contact", "Contact form"], ["dispute", "Order dispute"], ["chat", "Owner chat"]];
 const TYPE_COLOR = { contact: D.amber, dispute: D.red, chat: D.green };
-const INTRO = "What this list can see today: contact messages from your businesses' owners, disputes on their orders, and conversations where the business owner is the one talking to AshantiHub Support. Customer conversations about a business only carry a “Re:” subject line for now, so they aren't linked here yet — that comes in a later phase.";
+const INTRO = "What this list can see today: contact messages whose typed email or phone matches one of your businesses' owners (an unverified match: anyone can type any address), disputes on their orders, and conversations where the business owner is the one talking to AshantiHub Support. Customer conversations about a business only carry a “Re:” subject line for now, so they aren't linked here yet — that comes in a later phase.";
 const MONEY = "The money side of any dispute is decided by Accounting, never here. Payments are simulated until Hubtel is connected, so no real payment can be traced yet.";
 
 const age = (seconds) => (seconds < 60 ? "just now" : formatDuration(seconds * 1000));

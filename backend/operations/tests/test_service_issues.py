@@ -52,6 +52,17 @@ class ServiceIssuesTests(ServiceIssuesBase):
         self.assertEqual(sorted(r["what"].split(" · ")[0] for r in rows), ["By phone", "Renew fails"])
         self.assertTrue(all(r["business"] == "Adwoa Fabrics" and r["account_manager"] == "Kwame" for r in rows))
         self.assertEqual({r["handled_by"] for r in rows}, {"Not picked up yet"})
+        self.assertTrue(all("unverified match by the sender's" in r["what"] for r in rows))
+
+    def test_old_team_messages_are_not_pushed_out_by_unrelated_mail(self):
+        from unittest import mock
+
+        ContactMessage.objects.create(category="support", name="Adwoa", email="adwoa@example.com", subject="Mine, oldest", message="m")
+        with mock.patch("operations.service_issues.UNMATCHED_CAP", 3):
+            for n in range(5):
+                ContactMessage.objects.create(category="general", name="Spam", email=f"spam{n}@example.com", subject=f"Spam {n}", message="m")
+            rows = self.get(self.lead, self.URL).data["issues"]
+        self.assertEqual([r["what"].split(" · ")[0] for r in rows], ["Mine, oldest"])
 
     def test_dispute_on_an_order_with_the_teams_business_only(self):
         order = add_order(self.mine, days_ago=2)
@@ -108,6 +119,29 @@ class BadgesAndOverviewTests(ServiceIssuesBase):
         self.assertEqual(data["deliveries_open"], 1)  # but every business's disputes are on screen 17
         self.assertEqual(self.get(self.support, "/api/notifications/staff-badges/").data["support_issues"], 0)
 
+    def test_the_support_badge_is_counted_without_the_phone_scan_and_agrees_with_the_list_by_email(self):
+        from unittest import mock
+
+        ContactMessage.objects.create(category="support", name="A", email="ADWOA@example.com", subject="s", message="m")
+        ContactMessage.objects.create(category="support", name="B", email="suame@example.com", subject="other team", message="m")
+        Conversation.objects.create(business_owner=self.mine, subject="x")
+        order = add_order(self.mine, days_ago=1)
+        Dispute.objects.create(order=order, raised_by=order.customer, reason="delivery_issue", description="late")
+        with mock.patch("operations.service_issues.match_owner", side_effect=AssertionError("phone scan")):
+            data = self.get(self.lead, "/api/notifications/staff-badges/").data
+        self.assertEqual(data["support_issues"], 3)
+
+    def test_the_slow_badge_counts_are_kept_for_a_minute_per_person(self):
+        from django.test import override_settings
+
+        Conversation.objects.create(business_owner=self.mine, subject="x")
+        with override_settings(STAFF_BADGE_CACHE_SECONDS=60):
+            self.assertEqual(self.get(self.lead, "/api/notifications/staff-badges/").data["support_issues"], 1)
+            Conversation.objects.create(business_owner=self.mine, subject="y")
+            self.assertEqual(self.get(self.lead, "/api/notifications/staff-badges/").data["support_issues"], 1)
+            cache.clear()
+            self.assertEqual(self.get(self.lead, "/api/notifications/staff-badges/").data["support_issues"], 2)
+
     def test_overview_counts_and_lists_service_issues(self):
         Conversation.objects.create(business_owner=self.mine, subject="owner chat")
         FraudFlag.objects.create(kind="duplicate", source="staff", title="Dup", business_owner=self.mine)
@@ -132,10 +166,27 @@ class DeliveriesTests(ServiceIssuesBase):
         data = self.get(self.lead, self.URL).data
         self.assertEqual(len(data["assignments"]), 2)  # the old one was assigned today in the test clock
         row = next(r for r in data["assignments"] if r["order_id"] == order.pk)
-        self.assertEqual((row["rider"], row["status"], row["to"], row["last_update_label"]), ("Rider", "picked_up", "Bantama, Kumasi", "Picked up"))
+        self.assertEqual((row["rider"], row["status"], row["to"], row["last_update_label"]), ("Rider", "picked_up", None, "Picked up"))  # another team: no address
         self.assertEqual(row["businesses"], [{"id": self.theirs.pk, "name": "Suame Auto Parts"}])
         self.assertEqual([d["description"] for d in data["disputes"]], ["never came"])
         self.assertEqual(data["dispute_total"], 1)
+
+    def test_the_customer_address_is_shown_only_for_the_leads_team(self):
+        dispatch = make_staff("dispatch", "rider@example.com")
+        theirs, mine = add_order(self.theirs, days_ago=0), add_order(self.mine, days_ago=0)
+        for order, address in ((theirs, "Bantama"), (mine, "Adum")):
+            order.delivery_address = address
+            order.save()
+            DeliveryAssignment.objects.create(order=order, dispatch=dispatch, status="assigned")
+        Dispute.objects.create(order=theirs, raised_by=theirs.customer, reason="delivery_issue", description="x")
+        data = self.get(self.lead, self.URL).data
+        by_order = {r["order_id"]: r for r in data["assignments"]}
+        self.assertEqual((by_order[mine.pk]["to"], by_order[mine.pk]["in_scope"]), ("Adum", True))
+        self.assertEqual((by_order[theirs.pk]["to"], by_order[theirs.pk]["in_scope"]), (None, False))
+        self.assertEqual((data["disputes"][0]["raised_by"], data["disputes"][0]["in_scope"]), (None, False))
+        admin = make_staff("super_admin", "simon@example.com")
+        every = {r["order_id"]: r for r in self.get(admin, self.URL).data["assignments"]}
+        self.assertEqual(every[theirs.pk]["to"], "Bantama")
 
     def test_needs_the_read_permission(self):
         self.assertEqual(self.get(self.support, self.URL).status_code, 403)

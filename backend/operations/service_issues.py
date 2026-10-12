@@ -12,11 +12,12 @@ A conversation about a business started by a customer or guest only carries a
 "Re:" subject line, so it is not linked here. The module reads; replying as
 Support (messaging.manage) and deciding a dispute stay with their own screens.
 
-Deliveries: today's DeliveryAssignment rows and the open Dispute rows. There is
+Deliveries: today's DeliveryAssignment rows and the open Dispute rows, with the
+customer's address and name shown only for the caller's team. There is
 no rider offer, handover code, GPS or return model yet (the Delivery phase)."""
 from datetime import timedelta
 
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 
 from accounts.models import BusinessOwner, Role
@@ -84,7 +85,7 @@ def _contact_item(message, owner, now):
     return {
         "key": f"contact-{message.pk}", "type": "contact", "type_label": TYPE_LABELS["contact"], "id": message.pk,
         **_owner_fields(owner),
-        "what": f"{message.subject} · matched by the sender's {'email' if message.email and owner.email and owner.email.lower() == message.email.lower() else 'phone'}",
+        "what": f"{message.subject} · unverified match by the sender's {'email' if message.email and owner.email and owner.email.lower() == message.email.lower() else 'phone'}",
         "detail": message.message, "from": f"{message.name} · {message.email}",
         "handled_by": handled, "opened_at": message.created_at, "open_seconds": _seconds(message.created_at, now),
         "status": "resolved" if resolved else "open", "resolved_at": message.resolved_at,
@@ -151,7 +152,10 @@ def service_issues(user, *, kind="all", manager=None, status="open", now=None):
         messages = ContactMessage.objects.select_related("resolved_by")
         messages = messages.filter(status=ContactMessage.RESOLVED, resolved_at__gte=week) if status == "resolved" else messages.exclude(status=ContactMessage.RESOLVED)
         owner_ids = None
-        for message in messages.order_by("-created_at")[:UNMATCHED_CAP]:
+        matched = 0
+        # Match first, then cap: slicing the newest messages before matching would let
+        # unrelated mail push a team's older open messages out of view.
+        for message in messages.order_by("-created_at"):
             owner = match_owner(message.email, message.phone)
             if owner is None:
                 continue
@@ -159,6 +163,9 @@ def service_issues(user, *, kind="all", manager=None, status="open", now=None):
                 owner_ids = set(owners_q.values_list("pk", flat=True))
             if owner.pk in owner_ids:
                 rows.append(_contact_item(message, owner, now))
+                matched += 1
+                if matched >= UNMATCHED_CAP:
+                    break
 
     if kind in ("all", "dispute"):
         disputes = Dispute.objects.select_related("order", "raised_by", "flagged_by", "resolved_by").prefetch_related("order__items__listing__business_owner__account_manager", "order__items__listing__business_owner__profile")
@@ -182,8 +189,20 @@ def service_issues(user, *, kind="all", manager=None, status="open", now=None):
 
 
 def open_issue_count(user, now=None):
-    """The Support issues badge: open items across the three sources."""
-    return len(service_issues(user, status="open", now=now))
+    """The Support issues badge: open items across the three sources, counted in
+    SQL. It does not run the per-message phone scan the list does, so a contact
+    message that only matches by phone is not in this count."""
+    owners = BusinessOwner.objects.filter(team_owner_filter(user))
+    chats = Conversation.objects.filter(business_owner__in=owners, status=Conversation.OPEN).count()
+    disputes = (
+        Dispute.objects.filter(status__in=OPEN_DISPUTE, order__items__listing__business_owner__in=owners)
+        .distinct().count()
+    )
+    contacts = (
+        ContactMessage.objects.exclude(status=ContactMessage.RESOLVED).exclude(email="")
+        .filter(Exists(owners.filter(email__iexact=OuterRef("email")))).count()
+    )
+    return chats + disputes + contacts
 
 
 def resolved_this_week(user, now=None):
@@ -229,8 +248,19 @@ def _order_businesses(order):
     return list(seen.values())
 
 
-def deliveries_payload(now=None):
+def deliveries_payload(user, now=None):
+    """Today's assignments and the open disputes. Every delivery is listed (the
+    Delivery phase is not built, so this is the only view of them), but the
+    customer's delivery address and name are shown only for orders holding a
+    business in the caller's team (team_owner_filter; a Super Admin sees all)."""
     now = now or timezone.now()
+    scoped = None if user.role.name == Role.SUPER_ADMIN else set(
+        BusinessOwner.objects.filter(team_owner_filter(user)).values_list("pk", flat=True)
+    )
+
+    def in_scope(businesses):
+        return scoped is None or any(b["id"] in scoped for b in businesses)
+
     today = timezone.localdate(now)
     base = DeliveryAssignment.objects.select_related("order", "dispatch").prefetch_related(
         "order__items__listing__business_owner__profile",
@@ -246,9 +276,10 @@ def deliveries_payload(now=None):
                 label, at = text, value
                 break
         order = row.order
+        businesses = _order_businesses(order)
         assignments.append({
-            "id": row.pk, "order_id": order.pk, "businesses": _order_businesses(order),
-            "to": order.delivery_address or None, "rider": row.dispatch.full_name if row.dispatch_id else None,
+            "id": row.pk, "order_id": order.pk, "businesses": businesses, "in_scope": in_scope(businesses),
+            "to": (order.delivery_address or None) if in_scope(businesses) else None, "rider": row.dispatch.full_name if row.dispatch_id else None,
             "status": row.status, "status_label": row.get_status_display(),
             "delivery_status": order.delivery_status, "delivery_status_label": order.get_delivery_status_display(),
             "last_update": at, "last_update_label": label,
@@ -258,11 +289,12 @@ def deliveries_payload(now=None):
         "order__items__listing__business_owner__profile",
     ).order_by("created_at")
     for dispute in queryset:
+        businesses = _order_businesses(dispute.order) if dispute.order_id else []
         disputes.append({
             "id": dispute.pk, "order_id": dispute.order_id,
-            "businesses": _order_businesses(dispute.order) if dispute.order_id else [],
+            "businesses": businesses, "in_scope": in_scope(businesses),
             "reason": dispute.get_reason_display(), "status": dispute.status, "status_label": dispute.get_status_display(),
-            "description": dispute.description[:EXCERPT], "raised_by": dispute.raised_by.full_name if dispute.raised_by_id else None,
+            "description": dispute.description[:EXCERPT], "raised_by": (dispute.raised_by.full_name if dispute.raised_by_id else None) if in_scope(businesses) else None,
             "handled_by": dispute.flagged_by.full_name if dispute.flagged_by_id else None,
             "opened_at": dispute.created_at, "open_seconds": _seconds(dispute.created_at, now),
         })

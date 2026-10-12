@@ -80,6 +80,23 @@ class NotificationReadAllView(APIView):
         return Response({"unread_count": 0})
 
 
+def _cached_badge(user, name, compute):
+    """Badge counts that rate every business are kept for STAFF_BADGE_CACHE_SECONDS
+    per staff member: the nav polls them and they need not be exact to the second."""
+    from django.conf import settings
+    from django.core.cache import cache
+
+    ttl = settings.STAFF_BADGE_CACHE_SECONDS
+    if not ttl:
+        return compute()
+    key = f"staff-badge:{name}:{user.pk}"
+    value = cache.get(key)
+    if value is None:
+        value = compute()
+        cache.set(key, value, ttl)
+    return value
+
+
 class StaffBadgesView(APIView):
     """GET /api/notifications/staff-badges/ — per-tab counts of *current
     pending work* for the staff dashboard's nav badges. Deliberately computed
@@ -140,15 +157,22 @@ class StaffBadgesView(APIView):
             from portfolio import health
             from portfolio.views import portfolio_queryset
 
-            now = timezone.now()
-            team = portfolio_queryset(user, "team")
-            at_risk = sum(1 for row in health.rate_all(team, now) if row.rating == health.AT_RISK)
-            lapsed = team.filter(
-                Q(subscription__current_period_end__lt=now)
-                | Q(subscription__overdue_since__isnull=False)
-                | Q(subscription__paused_at__isnull=False)
-            )
-            subscriptions_due = sum(1 for row in health.rate_all(lapsed, now) if row.subscription["state"] == "overdue")
+            def rated_at_risk():
+                now = timezone.now()
+                team = portfolio_queryset(user, "team")
+                return sum(1 for row in health.rate_all(team, now) if row.rating == health.AT_RISK)
+
+            def overdue_count():
+                now = timezone.now()
+                lapsed = portfolio_queryset(user, "team").filter(
+                    Q(subscription__current_period_end__lt=now)
+                    | Q(subscription__overdue_since__isnull=False)
+                    | Q(subscription__paused_at__isnull=False)
+                )
+                return sum(1 for row in health.rate_all(lapsed, now) if row.subscription["state"] == "overdue")
+
+            at_risk = _cached_badge(user, "at_risk", rated_at_risk)
+            subscriptions_due = _cached_badge(user, "subscriptions_due", overdue_count)
         if "fraud.manage" in held:
             from fraud.models import FraudFlag
             from fraud.views import visible_flags
@@ -158,7 +182,7 @@ class StaffBadgesView(APIView):
         if "service_issues.view" in held:
             from operations import service_issues
 
-            support_issues = service_issues.open_issue_count(user)
+            support_issues = _cached_badge(user, "support_issues", lambda: service_issues.open_issue_count(user))
             deliveries_open = service_issues.deliveries_open_count()
         if "staff.invite_team" in held:
             team_reports_waiting = StaffReport.objects.filter(

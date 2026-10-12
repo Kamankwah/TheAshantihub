@@ -138,7 +138,7 @@ export default function DeliveriesReturnsPanel({ auth }) {
                     {data.assignments.map((a) => (
                       <tr key={a.id}>
                         <td style={{ ...td, fontWeight: 700 }}>{`#${a.order_id}`}</td>
-                        <td style={td}>{`${businessNames(a.businesses)} → ${a.to || "address not recorded"}`}</td>
+                        <td style={td}>{`${businessNames(a.businesses)} → ${a.in_scope === false ? "address shown to that business's own team" : (a.to || "address not recorded")}`}</td>
                         <td style={td}>{a.rider || "Not assigned"}</td>
                         <td style={td}><span style={chip(ASSIGNMENT_COLOR[a.status])}>{a.status_label}</span><div style={dim}>{`Order: ${a.delivery_status_label}`}</div></td>
                         <td style={{ ...td, ...figures }}>{`${a.last_update_label} · ${timeShort(a.last_update)}`}</td>
