@@ -34,10 +34,10 @@ const defaultScope = (auth) => (auth?.user?.role === "super_admin" ? "all" : "te
 
 // /staff/portfolio (a scout's own), /staff/all-portfolios and /staff/at-risk
 // (Operations); /staff/<tab>/<id> opens the business page.
-export default function PortfolioPanel({ mode = "mine", auth, detailId, onOpenDetail, onCheckIn }) {
+export default function PortfolioPanel({ mode = "mine", auth, detailId, onOpenDetail, onCheckIn, initialScout = null }) {
   const open = (id) => onOpenDetail?.(id);
   if (detailId != null) return <BusinessPage key={detailId} businessId={detailId} auth={auth} onBack={() => onOpenDetail?.(null)} onCheckIn={onCheckIn} />;
-  if (mode === "all") return <AllPortfolios auth={auth} onOpen={open} />;
+  if (mode === "all") return <AllPortfolios auth={auth} onOpen={open} initialScout={initialScout} />;
   if (mode === "at-risk") return <AtRisk auth={auth} onOpen={open} />;
   return <MyPortfolio onOpen={open} />;
 }
@@ -139,10 +139,11 @@ function ScopeToggle({ scope, setScope }) {
 const th = { padding: "6px 8px", textAlign: "left", color: D.textDim, fontWeight: 700, whiteSpace: "nowrap" };
 const td = { padding: "8px", verticalAlign: "top", borderTop: `1px solid ${D.divider}` };
 
-function AllPortfolios({ auth, onOpen }) {
+// initialScout: the scoreboard's Open / View lands here filtered to that scout (any team, so scope "all").
+function AllPortfolios({ auth, onOpen, initialScout = null }) {
   const queryClient = useQueryClient();
-  const [scope, setScope] = useState(defaultScope(auth));
-  const [filters, setFilters] = useState({ scout: "", health: "", subscription: "", zone: "", unassigned: false });
+  const [scope, setScope] = useState(initialScout != null ? "all" : defaultScope(auth));
+  const [filters, setFilters] = useState({ scout: initialScout != null ? String(initialScout) : "", health: "", subscription: "", zone: "", unassigned: false });
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState([]); // [{id, business_name}]

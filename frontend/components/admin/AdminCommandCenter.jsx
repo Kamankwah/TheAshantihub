@@ -56,6 +56,10 @@ import CommissionPolicyPanel from "./panels/CommissionPolicyPanel.jsx";
 import VisitsPanel from "./panels/VisitsPanel.jsx";
 import ProspectsPanel from "./panels/ProspectsPanel.jsx";
 import MyTeamPanel from "./panels/MyTeamPanel.jsx";
+import InvitePanel from "./panels/InvitePanel.jsx";
+import LeavePanel from "./panels/LeavePanel.jsx";
+import OpsScoutsPanel from "./panels/OpsScoutsPanel.jsx";
+import OpsTargetsPanel from "./panels/OpsTargetsPanel.jsx";
 import ApprovalsPanel from "./panels/ApprovalsPanel.jsx";
 import PortfolioPanel from "./panels/PortfolioPanel.jsx";
 import SubscriptionsDuePanel from "./panels/SubscriptionsDuePanel.jsx";
@@ -184,7 +188,11 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
     if (isControlled && requestedTab !== activeTab) onTabChange?.("overview", { replace: true });
   }, [isControlled, requestedTab, activeTab]);
 
+  // The scoreboard's Open / View: All portfolios filtered to one scout.
+  const [scoutFilter, setScoutFilter] = useState(null);
+  const openScoutPortfolio = (scoutId) => { selectTab("all-portfolios"); setScoutFilter(scoutId); };
   const selectTab = (id) => {
+    setScoutFilter(null);
     setDrawerOpen(false);
     if (id === activeTab && detail == null) return;
     setInternalDetail(null);
@@ -333,7 +341,9 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "activity" && <ActivityPanel />}
           {activeTab === "calls" && <CallLogPanel auth={auth} />}
           {activeTab === "prospects" && <ProspectsPanel onRegister={openRegisterFromProspect} />}
-          {activeTab === "targets" && (auth.hasPermission("businesses.manage_portfolio") ? <TargetsPanel /> : <ScreenBuildingPanel title="Team targets" />)}
+          {activeTab === "targets" && (auth.hasPermission("businesses.manage_portfolio") ? <TargetsPanel /> : auth.hasPermission("targets.manage") ? <OpsTargetsPanel /> : <ScreenBuildingPanel title="Team targets" />)}
+          {activeTab === "ops-scouts" && <OpsScoutsPanel auth={auth} onNavigate={selectTab} onOpenScout={openScoutPortfolio} />}
+          {activeTab === "leave" && <LeavePanel auth={auth} />}
           {PLACEHOLDER_TABS.has(activeTab) && <ScreenBuildingPanel title={activeLabel} />}
           {activeTab === "hero-events" && <HeroEventsPanel auth={auth} />}
           {activeTab === "zones" && <CategoriesZonesPanel auth={auth} />}
@@ -345,10 +355,10 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "team-reports" && <TeamReportsPanel auth={auth} />}
           {activeTab === "security" && <SecurityPanel />}
           {activeTab === "sessions" && <SessionsPanel auth={auth} />}
-          {activeTab === "my-team" && <MyTeamPanel currentStaffId={auth.user?.id} />}
+          {activeTab === "my-team" && (role === "operations" ? <InvitePanel auth={auth} /> : <MyTeamPanel currentStaffId={auth.user?.id} />)}
           {activeTab === "approvals" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "portfolio" && <PortfolioPanel mode="mine" auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
-          {activeTab === "all-portfolios" && <PortfolioPanel mode="all" auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
+          {activeTab === "all-portfolios" && <PortfolioPanel key={scoutFilter ?? "any"} mode="all" initialScout={scoutFilter} auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
           {activeTab === "at-risk" && <PortfolioPanel mode="at-risk" auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
           {activeTab === "subscriptions-due" && <SubscriptionsDuePanel auth={auth} onOpenBusiness={openBusiness} />}
           {activeTab === "fraud-cases" && <FraudCasesPanel auth={auth} onOpenBusiness={openBusiness} />}

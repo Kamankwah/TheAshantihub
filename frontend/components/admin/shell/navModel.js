@@ -66,9 +66,9 @@ export const NAV_ITEMS = [
   { id: "my-team", icon: "👥", label: "My Team", show: (auth) => auth.hasPermission("staff.invite_team") },
   { id: "security", icon: "🔐", label: "Sign-in & Security", show: () => true },
   // Operations canvas screens (see the note above NAV_ITEMS).
-  { id: "ops-scouts", icon: "🧑‍🌾", label: "Scouts", placeholder: true, show: (auth) => opsOnly(auth, "portfolio.manage") },
+  { id: "ops-scouts", icon: "🧑‍🌾", label: "Scouts", show: (auth) => opsOnly(auth, "portfolio.manage") },
   { id: "support-team", icon: "🎧", label: "Support team", placeholder: true, show: (auth) => opsOnly(auth, "staff.invite_team") },
-  { id: "leave", icon: "🏖️", label: "Leave & calendar", placeholder: true, show: (auth) => opsOnly(auth, "leave.record") },
+  { id: "leave", icon: "🏖️", label: "Leave & calendar", show: (auth) => opsOnly(auth, "leave.record") },
   { id: "hero-events", icon: "🌟", label: "Hero & events", show: (auth) => opsOnly(auth, "hero_media.approve", "event.approve") },
   { id: "support-issues", icon: "🛎️", label: "Support issues", placeholder: true, show: (auth) => opsOnly(auth, "service_issues.view") },
   { id: "deliveries-returns", icon: "📦", label: "Deliveries & returns", placeholder: true, show: (auth) => opsOnly(auth, "service_issues.view") },

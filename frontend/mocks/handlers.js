@@ -545,6 +545,8 @@ export const handlers = [
     month: '2026-10', as_of: '2026-10-07', lead: null, rows: [], team_total: 0, my_rank: 1, my_count: 0, gap: null, most_improved: null,
   })),
   http.get('http://localhost:8000/api/field/visit-targets/', () => HttpResponse.json([])),
+  // The staff activation page tells the server the invite link was opened.
+  http.post('http://localhost:8000/api/accounts/staff/activate/opened/', () => HttpResponse.json({ state: 'valid' })),
   http.get('http://localhost:8000/api/accounts/staff/team/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/accounts/staff/invitable-roles/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/reports/current/', () => HttpResponse.json({

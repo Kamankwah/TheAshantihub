@@ -11,7 +11,10 @@ const field = { border: `1px solid ${D.cardBorder}`, borderRadius: 10, padding: 
 const labelStyle = { display: "flex", flexDirection: "column", gap: 4, fontSize: "0.72rem", fontWeight: 700, color: D.text };
 const smallBtn = (bg, color) => ({ background: bg, color, border: bg === "#fff" ? `1px solid ${D.cardBorder}` : "none", borderRadius: 20, padding: "6px 12px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" });
 
-export default function MyTeamPanel({ currentStaffId }) {
+// rosterOnly: the Operations Invite screen shows its own invite form and pending
+// table, so this keeps just the people who have joined (resend lives with the
+// pending invites there).
+export default function MyTeamPanel({ currentStaffId, rosterOnly = false }) {
   const { data: team, isLoading, isError, refetch } = useMyTeam();
   const { data: roles } = useInvitableRoles();
   const [invite, setInvite] = useState({ full_name: "", email: "", role: "" });
@@ -34,10 +37,10 @@ export default function MyTeamPanel({ currentStaffId }) {
     }, "Invite sent.", "Could not send the invite. Check the email isn't already used.");
   };
 
-  const members = team || [];
+  const members = (team || []).filter((m) => !rosterOnly || (m.status !== "invited" && m.status !== "invite_expired"));
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <form onSubmit={sendInvite} style={{ ...glassCard, padding: 18, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+      {!rosterOnly && <form onSubmit={sendInvite} style={{ ...glassCard, padding: 18, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div style={{ width: "100%", color: D.text, fontWeight: 800, fontSize: "0.95rem" }}>Invite to your team</div>
         <label style={{ ...labelStyle, flex: "1 1 200px" }}>Full name<input value={invite.full_name} onChange={(e) => setInvite({ ...invite, full_name: e.target.value })} style={field} required /></label>
         <label style={{ ...labelStyle, flex: "1 1 220px" }}>Email<input type="email" value={invite.email} onChange={(e) => setInvite({ ...invite, email: e.target.value })} style={field} required /></label>
@@ -46,11 +49,11 @@ export default function MyTeamPanel({ currentStaffId }) {
           : <label style={labelStyle}>Role<select value={chosenRole} onChange={(e) => setInvite({ ...invite, role: e.target.value })} style={field}>{(roles || []).map((r) => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}</select></label>}
         <button type="submit" disabled={!chosenRole} style={{ opacity: chosenRole ? 1 : 0.5, background: D.gold, color: D.text, border: "none", borderRadius: 10, padding: "9px 16px", fontWeight: 800, fontSize: "0.8rem", cursor: "pointer", fontFamily: "inherit" }}>Send invite</button>
         <div style={{ width: "100%", color: D.textDim, fontSize: "0.72rem" }}>They get an email link to set their password. The link works for 7 days and you can resend it.</div>
-      </form>
+      </form>}
       {message && <div style={{ color: D.green, fontSize: "0.8rem" }}>{message}</div>}
       {actionError && <div style={{ color: D.red, fontSize: "0.8rem" }}>{actionError}</div>}
       <div style={{ ...glassCard, padding: 18 }}>
-        <div style={{ color: D.text, fontWeight: 800, fontSize: "0.95rem", marginBottom: 8 }}>My team ({members.length})</div>
+        <div style={{ color: D.text, fontWeight: 800, fontSize: "0.95rem", marginBottom: 8 }}>{rosterOnly ? "On your team" : "My team"} ({members.length})</div>
         {isLoading && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading…</div>}
         {isError && <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load your team.</div>}
         {!isLoading && !isError && members.length === 0 && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Nobody reports to you yet.</div>}

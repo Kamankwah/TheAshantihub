@@ -525,6 +525,14 @@ describe('AshantiHub routing — /staff/:panel', () => {
     expect(await screen.findByText('Activate Your Staff Account', {}, { timeout: 3000 })).toBeInTheDocument()
   }, 8000)
 
+  it('opening the activation link tells the server it was opened', async () => {
+    let body = null
+    server.use(http.post('http://localhost:8000/api/accounts/staff/activate/opened/', async ({ request }) => { body = await request.json(); return HttpResponse.json({ state: 'valid' }) }))
+    renderStaffAt('/staff/activate?token=abc')
+    await screen.findByText('Activate Your Staff Account', {}, { timeout: 3000 })
+    await waitFor(() => expect(body).toEqual({ token: 'abc' }))
+  }, 8000)
+
   it('activating a Super Admin invite shows the authenticator setup, not the dashboard', async () => {
     server.use(
       http.post('http://localhost:8000/api/accounts/staff/activate/', () => HttpResponse.json({ status: 'activated', two_factor_setup_required: true, mfa_token: 'mfa' })),
