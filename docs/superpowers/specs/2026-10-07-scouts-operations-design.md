@@ -303,3 +303,11 @@ Spec approved by the user with two changes, both applied above: scouts' default 
 include **Saturday**, and the bonus counts **paid months** (≥ 3), not payments. Health thresholds
 (3 listings, 30/60 days) accepted as starting values; commission amounts come from Commission
 policy (no defaults in code).
+
+## Operations People screens (OP-3, 2026-10-12): what was built
+
+- **Invite** (`POST accounts/staff/invite/`) takes two optional fields. `start_date` is the day the person is due to start; it is shown to their lead and does not block sign-in. `areas` (scouts only, zone ids) are held on the pending account (`StaffUser.areas`) and count as the scout's areas (`portfolio.areas.scout_areas`) once the invite is accepted: the zones holding most of their businesses lead, and invited zones fill any of the two places still empty. Nothing else (assignments, portfolios, targets) is created from them.
+- **Invite state**: `invite_sent_at`, `invite_opened_at` (set when the activation page loads the link, `POST accounts/staff/activate/opened/`; cleared on resend) and `activated_at`. `GET operations/invites/` returns pending invites (Not opened / Opened, password not set / Expired), who joined in the last 60 days and the zones with the scouts who work them. `POST accounts/staff/<id>/cancel-invite/` deletes a never-activated account (team scope, recorded as `staff.invite_cancelled`).
+- **Scoreboard**: `operations.scoreboard.scouts_scoreboard(user, scope)` behind `GET operations/scouts/?scope=team|all`; rows for other teams carry `mine: false` (read-only). The Overview reuses the function.
+- **Leave** has five kinds (annual, sick, compassionate, parental, unpaid). `other` stays on old rows and cannot be chosen for new ones. Current or upcoming leave can be changed (`PATCH`) or cancelled; leave already taken cannot. Support's default working week is Monday to Friday.
+- **Targets**: `POST targets/plans/preview/` (week and month, before to after; writes nothing), `pending_cut` per scout in `GET targets/plans/`, `GET targets/history/` from the activity log.
