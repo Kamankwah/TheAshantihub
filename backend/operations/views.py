@@ -12,6 +12,7 @@ from accounts.serializers import invite_state
 from listings.models import Zone
 from portfolio.areas import scout_areas
 
+from .overview import overview
 from .scoreboard import scouts_scoreboard
 
 JOINED_DAYS = 60
@@ -25,6 +26,16 @@ class ScoutsView(APIView):
 
     def get(self, request):
         return Response(scouts_scoreboard(request.user, request.query_params.get("scope", "team")))
+
+
+class OverviewView(APIView):
+    """GET overview/?period=today|week|month — the Operations overview (operations.overview)."""
+
+    def get_permissions(self):
+        return [HasRolePermission("portfolio.manage")]
+
+    def get(self, request):
+        return Response(overview(request.user, request.query_params.get("period", "today")))
 
 
 class InvitesView(APIView):

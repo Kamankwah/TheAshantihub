@@ -64,7 +64,9 @@ QUEUE_INVALIDATIONS = [
     # (registrations) and a subscription payment (renewals) change the counts.
     (("targets.", "leave.", "calendar.", "kyc-approve", "subscription."), ("businesses.manage_portfolio",), ("my-targets",)),
     # Operations' scoreboard (screen 04) follows targets, leave, visits, calls, reports and the counts they come from.
-    (("targets.", "leave.", "calendar.", "visit.", "kyc-approve", "subscription.", "call-", "report.", "fraud."), ("portfolio.manage",), ("ops-scouts",)),
+    (("targets.", "leave.", "calendar.", "visit.", "kyc-approve", "subscription.", "call-", "report.", "fraud."), ("portfolio.manage",), ("ops-scouts", "ops-overview")),
+    # The Operations overview (01) also follows approvals waiting and the businesses' health.
+    (("approval.", "kyc-", "portfolio.", "business."), ("portfolio.manage",), ("ops-overview",)),
     # Operations' Targets (07) and Leave (08) editors.
     (("targets.", "leave.", "calendar.", "approval."), ("targets.manage", "leave.record"), ("targets-plans", "targets-history", "team-leave")),
     # A KYC approval may complete an activation (the leaderboard counts it once its first listing is live too).
