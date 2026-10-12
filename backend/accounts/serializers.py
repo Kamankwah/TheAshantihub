@@ -23,6 +23,8 @@ from .models import (
     StaffSession,
     StaffUser,
 )
+from listings.models import Zone
+
 from .permissions import can_lead_team, can_manage_staff
 from .phones import filter_by_phone
 
@@ -110,9 +112,19 @@ class StaffInviteSerializer(serializers.ModelSerializer):
         queryset=StaffUser.objects.filter(is_active=True), required=False, allow_null=True, write_only=True
     )
 
+    # Screen 06 (Operations Invite): the day they start and, for a scout, the zones
+    # they will work. Both are optional; areas are held on the pending account.
+    start_date = serializers.DateField(required=False, allow_null=True)
+    areas = serializers.PrimaryKeyRelatedField(queryset=Zone.objects.all(), many=True, required=False)
+
     class Meta:
         model = StaffUser
-        fields = ["id", "full_name", "email", "phone", "role", "manager"]
+        fields = ["id", "full_name", "email", "phone", "role", "manager", "start_date", "areas"]
+
+    def validate_start_date(self, value):
+        if value is not None and value < timezone.localdate():
+            raise serializers.ValidationError("The start date can't be in the past.")
+        return value
 
     def validate_role(self, value):
         requester = self.context["request"].user
@@ -133,15 +145,21 @@ class StaffInviteSerializer(serializers.ModelSerializer):
         elif attrs.get("manager") is not None and not can_lead_team(attrs["manager"]):
             # Same rule as StaffManagerView: only someone who can lead a team.
             raise serializers.ValidationError({"manager": ["Choose a manager who can lead a team."]})
+        if attrs.get("areas") and attrs["role"].name != Role.SCOUT:
+            raise serializers.ValidationError({"areas": ["Areas are for scouts only."]})
         return attrs
 
     def create(self, validated_data):
         # password_hash stays unusable until /staff/activate/ sets a real password.
+        areas = validated_data.pop("areas", [])
         validated_data["password_hash"] = make_password(get_random_string(32))
         validated_data["invited_by"] = self.context["request"].user
         validated_data["invite_token"] = get_random_string(43)
         validated_data["invite_expires_at"] = timezone.now() + INVITE_TOKEN_LIFETIME
+        validated_data["invite_sent_at"] = timezone.now()
         staff = StaffUser.objects.create(**validated_data)
+        if areas:
+            staff.areas.set(areas)
         # FRONTEND_BASE_URL is per-environment (production vs staging vs local
         # dev), so the link lands on the frontend whose backend actually holds
         # this token — a hardcoded domain here once sent staging invites to
@@ -170,8 +188,17 @@ class StaffActivateSerializer(serializers.Serializer):
         self.staff.password_hash = make_password(self.validated_data["password"])
         self.staff.invite_token = None
         self.staff.invite_expires_at = None
-        self.staff.save(update_fields=["password_hash", "invite_token", "invite_expires_at"])
+        self.staff.activated_at = timezone.now()
+        self.staff.save(update_fields=["password_hash", "invite_token", "invite_expires_at", "activated_at"])
         return self.staff
+
+
+def invite_state(staff):
+    if staff.invite_token is None:
+        return None
+    if staff.invite_expires_at and staff.invite_expires_at < timezone.now():
+        return "expired"
+    return "opened" if staff.invite_opened_at else "not_opened"
 
 
 PASSWORD_RESET_TOKEN_LIFETIME = datetime.timedelta(hours=1)
@@ -832,6 +859,8 @@ class StaffListSerializer(serializers.ModelSerializer):
     role_permissions = serializers.SerializerMethodField()
     # From the session table (F9) — this replaces the missing last_login.
     last_sign_in_at = serializers.DateTimeField(read_only=True)
+    areas = serializers.SerializerMethodField()
+    invite_state = serializers.SerializerMethodField()
 
     class Meta:
         model = StaffUser
@@ -839,7 +868,15 @@ class StaffListSerializer(serializers.ModelSerializer):
             "id", "full_name", "email", "phone", "role", "manager", "manager_name", "status",
             "is_suspended", "suspension_reason", "is_active",
             "permissions", "role_permissions", "created_at", "last_sign_in_at",
+            "start_date", "areas", "invite_state", "invite_sent_at", "invite_expires_at", "invite_opened_at", "activated_at",
         ]
+
+    def get_areas(self, obj):
+        return sorted(z.name for z in obj.areas.all())
+
+    def get_invite_state(self, obj):
+        """not_opened | opened | expired for an invite still waiting, else None."""
+        return invite_state(obj)
 
     def get_status(self, obj):
         # Deactivation and suspension take priority over invite state — a

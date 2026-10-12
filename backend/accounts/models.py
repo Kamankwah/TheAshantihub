@@ -128,6 +128,17 @@ class StaffUser(AuthenticatableAccountMixin, models.Model):
     )
     invite_token = models.CharField(max_length=64, unique=True, null=True, blank=True)
     invite_expires_at = models.DateTimeField(null=True, blank=True)
+    # Invite bookkeeping for the Operations Invite screen: when the current link was
+    # sent, when the person first opened it (cleared on resend) and when they set
+    # their password. `start_date` is the day the person is due to start (shown to
+    # their lead; it does not block sign-in) and `areas` are the zones a new scout
+    # will work: they sit on the pending account and count as the scout's areas
+    # (portfolio.areas.scout_areas) once the invite is accepted.
+    invite_sent_at = models.DateTimeField(null=True, blank=True)
+    invite_opened_at = models.DateTimeField(null=True, blank=True)
+    activated_at = models.DateTimeField(null=True, blank=True)
+    start_date = models.DateField(null=True, blank=True)
+    areas = models.ManyToManyField("listings.Zone", related_name="staff_areas", blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     # Two distinct ways to stop a staffer signing in (punch-list item 10),

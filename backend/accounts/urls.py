@@ -7,6 +7,8 @@ urlpatterns = [
     path("customers/register/", views.CustomerRegisterView.as_view(), name="customer-register"),
     path("staff/invite/", views.StaffInviteView.as_view(), name="staff-invite"),
     path("staff/activate/", views.StaffActivateView.as_view(), name="staff-activate"),
+    path("staff/activate/opened/", views.StaffInviteOpenedView.as_view(), name="staff-activate-opened"),
+    path("staff/<int:pk>/cancel-invite/", views.StaffCancelInviteView.as_view(), name="staff-cancel-invite"),
     path(
         "staff/<int:pk>/resend-invite/",
         views.StaffResendInviteView.as_view(),

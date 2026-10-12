@@ -111,6 +111,7 @@ INSTALLED_APPS = [
     "fraud",
     "field",
     "targets",
+    "operations",
     "commission",
     "realtime",
 ]
@@ -323,6 +324,7 @@ REST_FRAMEWORK = {
         "customer_register": "5/min",
         "business_owner_register": "5/min",
         "staff_activate": "5/min",
+        "staff_activate_opened": "30/min",
         "login": "5/min",
         "two_factor": "10/min",
         "password_reset_request": "5/min",
