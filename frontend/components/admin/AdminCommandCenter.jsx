@@ -53,6 +53,8 @@ import ScoutTodayPanel from "./panels/ScoutTodayPanel.jsx";
 import FollowUpsPanel from "./panels/FollowUpsPanel.jsx";
 import TasksPanel from "./panels/TasksPanel.jsx";
 import ActivityPanel from "./panels/ActivityPanel.jsx";
+import StaffActivityPanel from "./panels/StaffActivityPanel.jsx";
+import TeamVisitMapPanel from "./panels/TeamVisitMapPanel.jsx";
 import CallLogPanel from "./panels/CallLogPanel.jsx";
 import TargetsPanel from "./panels/TargetsPanel.jsx";
 import CommissionPanel from "./panels/CommissionPanel.jsx";
@@ -352,7 +354,8 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "tasks" && (role === "scout"
             ? <FollowUpsPanel onOpenBusiness={openMyBusiness} onOpenProspects={() => selectTab("prospects")} leadName={leadName} />
             : <TasksPanel auth={auth} />)}
-          {activeTab === "activity" && <ActivityPanel />}
+          {activeTab === "activity" && (role === "operations" ? <StaffActivityPanel live={live.live} /> : <ActivityPanel />)}
+          {activeTab === "visit-map" && <TeamVisitMapPanel onOpenBusiness={openBusiness} />}
           {activeTab === "calls" && <CallLogPanel auth={auth} />}
           {activeTab === "prospects" && <ProspectsPanel onRegister={openRegisterFromProspect} />}
           {activeTab === "targets" && (auth.hasPermission("businesses.manage_portfolio") ? <TargetsPanel /> : auth.hasPermission("targets.manage") ? <OpsTargetsPanel /> : <ScreenBuildingPanel title="Team targets" />)}

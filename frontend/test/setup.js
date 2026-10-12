@@ -32,6 +32,13 @@ vi.mock('../components/admin/panels/VisitMap.jsx', () => ({
   default: ({ label }) => createElement('div', { 'data-testid': 'visit-map', role: 'img', 'aria-label': label }, 'visit map'),
 }))
 
+// The Operations team Visit map (several Leaflet markers) is stubbed too.
+vi.mock('../components/admin/panels/TeamVisitMap.jsx', () => ({
+  default: ({ label, points, onSelect }) =>
+    createElement('div', { 'data-testid': 'team-visit-map', role: 'img', 'aria-label': label },
+      points.map((p) => createElement('button', { key: p.id, type: 'button', 'data-state': p.state, onClick: () => onSelect?.(p.id) }, `pin ${p.label}`))),
+}))
+
 // jsdom does not implement matchMedia; stub it so hooks like useTheme (which
 // checks `prefers-color-scheme: dark` when no theme is stored) don't throw
 // when rendered under test. Individual tests can still override

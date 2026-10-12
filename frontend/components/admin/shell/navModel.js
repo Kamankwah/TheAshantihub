@@ -72,7 +72,7 @@ export const NAV_ITEMS = [
   { id: "hero-events", icon: "🌟", label: "Hero & events", show: (auth) => opsOnly(auth, "hero_media.approve", "event.approve") },
   { id: "support-issues", icon: "🛎️", label: "Support issues", show: (auth) => opsOnly(auth, "service_issues.view") },
   { id: "deliveries-returns", icon: "📦", label: "Deliveries & returns", show: (auth) => opsOnly(auth, "service_issues.view") },
-  { id: "visit-map", icon: "🗺️", label: "Visit map", placeholder: true, show: (auth) => opsOnly(auth, "portfolio.manage") },
+  { id: "visit-map", icon: "🗺️", label: "Visit map", show: (auth) => opsOnly(auth, "portfolio.manage") },
   { id: "zones", icon: "📍", label: "Zones", show: (auth) => opsOnly(auth, "zones.manage") },
 ];
 
