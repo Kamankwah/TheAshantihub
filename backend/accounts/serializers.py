@@ -297,6 +297,9 @@ class BusinessOwnerKYCSerializer(serializers.ModelSerializer):
     registered_by_role = serializers.CharField(source="registered_by.role.get_name_display", read_only=True, default=None)
     open_fraud_flags = serializers.SerializerMethodField()
     pending_approval_id = serializers.SerializerMethodField()
+    # Masked ("024 *** 5531"): the full number is behind the recorded, password-
+    # confirmed POST /api/portfolio/businesses/<id>/reveal-phone/.
+    login_phone = serializers.SerializerMethodField()
 
     class Meta:
         model = BusinessOwner
@@ -305,6 +308,11 @@ class BusinessOwnerKYCSerializer(serializers.ModelSerializer):
             "created_at", "reviewed_by_name", "reviewed_at",
             "registration_channel", "registered_by_name", "registered_by_role", "open_fraud_flags", "pending_approval_id",
         ]
+
+    def get_login_phone(self, obj):
+        from .phones import mask_phone
+
+        return mask_phone(obj.login_phone)
 
     def get_open_fraud_flags(self, obj):
         from .kyc import open_fraud_flag_rows

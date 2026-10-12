@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.conf import settings
 from django.contrib.auth.hashers import check_password
 from django.db import transaction
@@ -381,6 +383,23 @@ class KYCPendingQueueView(generics.ListAPIView):
         if kyc_status == BusinessOwner.PENDING:
             return queryset.order_by("created_at")
         return queryset.order_by("-reviewed_at", "-created_at")
+
+
+class KYCStatsView(APIView):
+    """GET /api/accounts/kyc/stats/ — businesses verified and rejected since
+    Monday (the queue's "This week" line)."""
+
+    def get_permissions(self):
+        return [HasRolePermission("kyc.approve")]
+
+    def get(self, request):
+        monday = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+        monday -= timedelta(days=monday.weekday())
+        week = BusinessOwner.objects.filter(reviewed_at__gte=monday)
+        return Response({
+            "week_verified": week.filter(kyc_status=BusinessOwner.VERIFIED).count(),
+            "week_rejected": week.filter(kyc_status=BusinessOwner.REJECTED).count(),
+        })
 
 
 class KYCDetailView(generics.RetrieveAPIView):

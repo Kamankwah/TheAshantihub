@@ -1,3 +1,4 @@
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -269,6 +270,10 @@ class ModerationListingSerializer(serializers.ModelSerializer):
     # the Approved/Rejected tabs' "who actioned this" line.
     business_owner_name = serializers.CharField(source="business_owner.full_name", read_only=True)
     reviewed_by_name = serializers.CharField(source="reviewed_by.full_name", read_only=True, default=None)
+    # Chips for the reviewer: a fraud case still open on the business, and a
+    # subscription that is overdue (day N). Both from the records, never guessed.
+    open_fraud_cases = serializers.SerializerMethodField()
+    subscription_overdue = serializers.SerializerMethodField()
 
     class Meta:
         model = Listing
@@ -277,8 +282,28 @@ class ModerationListingSerializer(serializers.ModelSerializer):
             "zone", "price_amount", "price_unit", "tag", "contact_phone", "lat", "lng",
             "main_photo", "photos", "specs", "service_duration",
             "status", "rejection_reason", "created_at",
-            "reviewed_by_name", "reviewed_at",
+            "reviewed_by_name", "reviewed_at", "open_fraud_cases", "subscription_overdue",
         ]
+
+    def get_open_fraud_cases(self, obj):
+        from fraud.models import FraudFlag
+
+        return FraudFlag.objects.filter(
+            Q(business_owner_id=obj.business_owner_id) | Q(related_business_owner_id=obj.business_owner_id),
+            status=FraudFlag.OPEN,
+        ).count()
+
+    def get_subscription_overdue(self, obj):
+        from billing.clock import OVERDUE, subscription_state
+
+        subscription = getattr(obj.business_owner, "subscription", None)
+        if subscription is None:
+            return None
+        state = subscription_state(subscription)
+        if state["state"] != OVERDUE:
+            return None
+        # "of 14" only while day 15 pauses the listings; with the pause off there is no deadline to name.
+        return {"day": state["overdue_day"], "grace_days": 14 if state["pause_enabled"] else None}
 
 
 class HeroMediaModerationSerializer(serializers.ModelSerializer):
@@ -290,13 +315,14 @@ class HeroMediaModerationSerializer(serializers.ModelSerializer):
     # Approver attribution (staff moderation-queue restructuring) — backs the
     # Approved/Rejected tabs' "who actioned this" line.
     reviewed_by_name = serializers.CharField(source="reviewed_by.full_name", read_only=True, default=None)
+    reviewed_by_role = serializers.CharField(source="reviewed_by.role.get_name_display", read_only=True, default=None)
 
     class Meta:
         model = HeroMediaSubmission
         fields = [
             "id", "business_owner", "business_owner_name", "media", "media_type", "caption",
             "status", "rejection_reason", "submitted_at", "approved_at", "expires_at",
-            "extended_days", "reviewed_by_name", "reviewed_at",
+            "extended_days", "reviewed_by_name", "reviewed_by_role", "reviewed_at",
         ]
 
 

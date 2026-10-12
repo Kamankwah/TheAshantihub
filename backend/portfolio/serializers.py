@@ -10,7 +10,7 @@ from rest_framework import serializers
 from accounts.gps import validate_ashanti_gps
 from accounts.kyc import address_correction
 from accounts.models import BusinessOwner, BusinessOwnerProfile, StaffUser
-from accounts.phones import normalize_gh_phone
+from accounts.phones import mask_phone, normalize_gh_phone
 from accounts.validators import validate_image_content_type
 from approvals.models import ApprovalRequest
 from calls.models import CallLog
@@ -346,7 +346,8 @@ def business_review_sheet(owner, request):
     return {
         "owner": {
             "full_name": owner.full_name,
-            "login_phone": owner.login_phone,
+            # Masked; "Show full phone number" is the recorded reveal endpoint.
+            "login_phone": mask_phone(owner.login_phone),
             "email": owner.email,
             "ghana_card_number": getattr(profile, "ghana_card_number", None),
             "needs_claim": owner.needs_claim,

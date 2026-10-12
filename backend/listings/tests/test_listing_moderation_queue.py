@@ -108,3 +108,55 @@ class ListingModerationQueueTests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(accountant, 'staff')}")
         response = self.client.post(f"/api/listings/moderation/{self.rejected.id}/re-review/")
         self.assertEqual(response.status_code, 403)
+
+
+class ListingModerationChipTests(ListingModerationQueueTests):
+    """OP-2: the queue row says when the business has an open fraud case or an
+    overdue subscription, from the records."""
+
+    def test_a_row_without_either_has_no_chips(self):
+        self._auth()
+        row = self.client.get("/api/listings/moderation/pending/").json()[0]
+        self.assertEqual((row["open_fraud_cases"], row["subscription_overdue"]), (0, None))
+
+    def test_an_open_fraud_case_shows_and_a_closed_one_does_not(self):
+        from fraud.models import FraudFlag
+
+        FraudFlag.objects.create(
+            kind=FraudFlag.FAKE_BUSINESS, status=FraudFlag.OPEN, source=FraudFlag.STAFF,
+            title="Looks fake", business_owner=self.owner,
+        )
+        FraudFlag.objects.create(
+            kind=FraudFlag.OTHER, status=FraudFlag.DISMISSED, source=FraudFlag.STAFF,
+            title="Old", business_owner=self.owner,
+        )
+        self._auth()
+        row = self.client.get("/api/listings/moderation/pending/").json()[0]
+        self.assertEqual(row["open_fraud_cases"], 1)
+
+    def test_an_overdue_subscription_gives_the_day_and_only_names_the_limit_when_the_pause_is_on(self):
+        from datetime import timedelta
+
+        from django.test import override_settings
+        from django.utils import timezone
+
+        from portfolio.tests.health_fixtures import subscribe
+
+        subscribe(self.owner, ends_at=timezone.now() - timedelta(days=9), overdue_since=timezone.now() - timedelta(days=8))
+        self._auth()
+        with override_settings(SUBSCRIPTION_PAUSE_ENABLED=False):
+            row = self.client.get("/api/listings/moderation/pending/").json()[0]
+        self.assertEqual(row["subscription_overdue"], {"day": 9, "grace_days": None})
+        with override_settings(SUBSCRIPTION_PAUSE_ENABLED=True):
+            row = self.client.get("/api/listings/moderation/pending/").json()[0]
+        self.assertEqual(row["subscription_overdue"], {"day": 9, "grace_days": 14})
+
+    def test_week_stats(self):
+        from django.utils import timezone
+
+        Listing.objects.filter(pk=self.published.pk).update(reviewed_at=timezone.now())
+        Listing.objects.filter(pk=self.rejected.pk).update(reviewed_at=timezone.now())
+        self._auth()
+        self.assertEqual(
+            self.client.get("/api/listings/moderation/stats/").json(), {"week_published": 1, "week_rejected": 1},
+        )

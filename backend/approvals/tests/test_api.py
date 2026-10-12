@@ -119,9 +119,15 @@ class ApprovalApiTests(TestCase):
     def test_counts_and_the_nav_badge(self):
         self.submit()
         self.as_(self.lead)
+        counts = self.client.get("/api/approvals/counts/").json()
+        kinds = counts.pop("kinds")
+        self.assertIn({"key": "test.rename_staff", "label": "Rename a staff member (test only)", "response_hours": 24}, kinds)
         self.assertEqual(
-            self.client.get("/api/approvals/counts/").json(),
-            {"mine": 1, "made": 0, "team": 1, "decided": 0, "can_view_all": False},
+            counts,
+            {
+                "mine": 1, "made": 0, "team": 1, "decided": 0, "escalated_to_me": 0, "can_view_all": False,
+                "makers": [{"id": self.scout.id, "full_name": "Kwame"}],
+            },
         )
         self.assertEqual(self.client.get("/api/notifications/staff-badges/").json()["approvals_waiting"], 1)
 

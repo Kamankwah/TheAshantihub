@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from accounts.kyc import ADDRESS_FIRST, KYC_KIND, SELF_DEALING_HOLD, KycError, approve_owner, self_dealing_open
 from accounts.models import BusinessOwner, BusinessOwnerProfile
+from accounts.phones import mask_phone
 from approvals.registry import ApprovalKind
 from approvals.services import ApprovalError
 from staff_tasks.models import Task
@@ -77,7 +78,8 @@ def _kyc_diff(request):
     registered_by = owner.registered_by.full_name if owner.registered_by_id else "The owner, online"
     return [
         {"field": "Business", "before": None, "after": owner.display_name},
-        {"field": "Owner", "before": None, "after": f"{owner.full_name} · {owner.login_phone}"},
+        # Masked: the full number is behind "Show full phone number" (sudo, recorded).
+        {"field": "Owner", "before": None, "after": f"{owner.full_name} · {mask_phone(owner.login_phone)}"},
         {"field": "Registered by", "before": None, "after": registered_by},
         {"field": "Ghana Post address", "before": None, "after": _address_text(_profile(owner.pk))},
     ]
@@ -111,6 +113,35 @@ def returned_task(request):
     )
 
 
+def _kyc_consequences(request):
+    """What Approve does, from the records: only lines that are true now."""
+    owner = BusinessOwner.objects.select_related("registered_by__role").filter(pk=request.target_id).first()
+    if owner is None:
+        return []
+    lines = ["The business is verified and can go live."]
+    registrar = owner.registered_by
+    if registrar is not None and registrar.role.name == "scout":
+        first = registrar.full_name.split(" ")[0]
+        lines.append(f"It counts toward {first}'s registrations today.")
+        from commission.models import CommissionAccrual, CommissionPolicy
+        from commission.services import policy_in_force
+
+        policy = policy_in_force(CommissionPolicy.REGISTRATION)
+        if policy is not None:
+            hold = CommissionAccrual.hold_end(timezone.now()).date()
+            lines.append(f"{first}'s registration commission (GH₵ {policy.amount}) starts, on hold until {hold:%-d %b %Y}.")
+    from approvals.models import ApprovalRequest
+    from listings.models import Listing
+
+    waiting_ids = ApprovalRequest.objects.filter(
+        kind=LISTING_CREATE_KEY, status=ApprovalRequest.PENDING, target_type="listings.listing",
+    ).values_list("target_id", flat=True)
+    waiting = Listing.objects.filter(business_owner=owner, pk__in=[int(i) for i in waiting_ids if str(i).isdigit()])
+    for listing in waiting[:3]:
+        lines.append(f"The waiting listing ({listing.name}) can then be approved.")
+    return lines
+
+
 BUSINESS_KYC = ApprovalKind(
     key=KYC_KIND,
     label="New business (KYC)",
@@ -121,6 +152,7 @@ BUSINESS_KYC = ApprovalKind(
     render_diff=_kyc_diff,
     validate=_kyc_validate,
     on_rejected=returned_task,
+    consequences=_kyc_consequences,
 )
 
 BUSINESS_UPDATE = ApprovalKind(

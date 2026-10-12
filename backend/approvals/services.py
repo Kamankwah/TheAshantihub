@@ -464,3 +464,69 @@ def diff_rows(approval):
         before = approval.before if isinstance(approval.before, dict) else {}
         return [{"field": key, "before": before.get(key), "after": value} for key, value in approval.payload.items()]
     return [{"field": "", "before": approval.before, "after": approval.payload}]
+
+
+def pool_label(approval):
+    """Who the pool stage is, in words: the non-Super-Admin roles holding the
+    kind's permission ("Operations"), else "anyone who can approve this"."""
+    if not approval.pool_permission:
+        return "anyone who can approve this"
+    names = list(
+        Role.objects.filter(permissions__codename=approval.pool_permission)
+        .exclude(name=Role.SUPER_ADMIN).order_by("name").values_list("name", flat=True)
+    )
+    if not names:
+        return "anyone who can approve this"
+    return " or ".join(f"any {Role(name=n).get_name_display()}" for n in names)
+
+
+def _stage_label(approval, stage, staff):
+    if stage == ApprovalRequest.MANAGER:
+        return staff.full_name if staff is not None else "their manager"
+    if stage == ApprovalRequest.POOL:
+        return pool_label(approval)
+    return "a Super Admin"
+
+
+def upcoming_moves(approval):
+    """What happens next to a pending request if nobody decides: the reminder,
+    then each later level, at the times the engine will act. A projection from
+    due_at and the kind's response time; the real moves are made by escalate_due()."""
+    if approval.status != ApprovalRequest.PENDING:
+        return []
+    moves = []
+    reminder_at = approval.reminded_at or _remind_at(approval)
+    moves.append({"at": reminder_at, "what": "Reminder to the person deciding", "done": approval.reminded_at is not None, "kind": "reminder"})
+    rank = ApprovalRequest.STAGE_ORDER.index(approval.stage)
+    at = approval.due_at
+    step = _response_time(approval)
+    for stage, staff in chain_for(approval):
+        if ApprovalRequest.STAGE_ORDER.index(stage) <= rank:
+            continue
+        moves.append({"at": at, "what": f"Moves to {_stage_label(approval, stage, staff)}", "done": False, "kind": "move", "stage": stage})
+        at = at + step
+    return moves
+
+
+def timeline(approval):
+    """Oldest first: sent, what the engine has already done, what comes next, or the decision."""
+    rows = [{"at": approval.created_at, "what": f"Sent by {approval.maker.full_name}", "done": True, "kind": "sent"}]
+    if approval.escalation_level:
+        rows.append({
+            "at": approval.stage_started_at, "what": f"Moved up to level {approval.escalation_level + 1} after no decision", "done": True, "kind": "escalated",
+        })
+    if approval.status == ApprovalRequest.PENDING:
+        rows.extend(upcoming_moves(approval))
+    elif approval.decided_at is not None:
+        verb = {"approved": "Approved", "rejected": "Returned", "cancelled": "Cancelled"}.get(approval.status, approval.get_status_display())
+        who = approval.decided_by.full_name if approval.decided_by_id else "someone"
+        rows.append({"at": approval.decided_at, "what": f"{verb} by {who}", "done": True, "kind": "decided"})
+    return rows
+
+
+def next_move(approval):
+    """The first projected level change of a pending request: {stage, label, at}."""
+    for move in upcoming_moves(approval):
+        if move["kind"] == "move":
+            return {"stage": move["stage"], "label": move["what"].removeprefix("Moves to "), "at": move["at"]}
+    return None

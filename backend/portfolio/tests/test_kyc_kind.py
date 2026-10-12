@@ -130,7 +130,7 @@ class KycKindTests(TestCase):
     def test_the_diff_reads_in_plain_words(self):
         self.assertEqual(approvals.diff_rows(self.approval), [
             {"field": "Business", "before": None, "after": "Adwoa Fabrics"},
-            {"field": "Owner", "before": None, "after": "Adwoa Mensah · +233244123118"},
+            {"field": "Owner", "before": None, "after": "Adwoa Mensah · 024 *** 3118"},
             {"field": "Registered by", "before": None, "after": "Kwame"},
             {"field": "Ghana Post address", "before": None, "after": "AK-039-5028 · verified"},
         ])

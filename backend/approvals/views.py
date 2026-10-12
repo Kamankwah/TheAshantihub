@@ -1,4 +1,8 @@
+import statistics
+from datetime import timedelta
+
 from django.http import Http404, QueryDict
+from django.utils import timezone
 from rest_framework import generics
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.pagination import PageNumberPagination
@@ -9,6 +13,7 @@ from accounts.permissions import IsStaff
 
 from . import services
 from .models import ApprovalRequest
+from .registry import all_kinds
 from .serializers import ApprovalDetailSerializer, ApprovalSerializer
 
 BOXES = ("mine", "made", "team", "decided", "all")
@@ -49,6 +54,26 @@ class ApprovalListView(generics.ListAPIView):
             approvals = approvals.filter(status=params["status"])
         if params.get("kind"):
             approvals = approvals.filter(kind=params["kind"])
+        if params.get("maker"):
+            if not params["maker"].isdigit():
+                raise ValidationError({"maker": "Use a staff member's id."})
+            approvals = approvals.filter(maker_id=int(params["maker"]))
+        if params.get("min_wait_hours"):
+            try:
+                hours = float(params["min_wait_hours"])
+            except ValueError:
+                raise ValidationError({"min_wait_hours": "Use a number of hours."})
+            approvals = approvals.filter(created_at__lte=timezone.now() - timedelta(hours=hours))
+        # Moved up to this person by the engine (no one decided in time).
+        if params.get("escalated") in ("1", "true"):
+            approvals = approvals.filter(escalation_level__gt=0)
+        ordering = params.get("ordering")
+        if ordering == "newest":
+            return approvals.order_by("-created_at", "-id")
+        if ordering == "due":
+            return approvals.order_by("due_at", "id")
+        if ordering == "decided":
+            return approvals.order_by("-decided_at", "-id")
         return approvals.order_by("due_at", "id") if box == "mine" else approvals.order_by("-created_at", "-id")
 
 
@@ -59,12 +84,49 @@ class ApprovalCountsView(APIView):
     def get(self, request):
         user = request.user
         pending = ApprovalRequest.objects.filter(status=ApprovalRequest.PENDING)
+        waiting = services.waiting_for(user)
         return Response({
-            "mine": services.waiting_for(user).count(),
+            "mine": waiting.count(),
             "made": pending.filter(maker=user).count(),
             "team": pending.filter(maker__manager=user).count(),
             "decided": ApprovalRequest.objects.filter(decided_by=user).count(),
+            "escalated_to_me": waiting.filter(escalation_level__gt=0).count(),
+            # Who has requests waiting for this person, to fill the "Made by" filter.
+            "makers": [
+                {"id": maker_id, "full_name": name}
+                for maker_id, name in waiting.order_by("maker__full_name").values_list("maker_id", "maker__full_name").distinct()
+            ],
+            # Every kind a request can be, for the "Kind" filter, with the hours each level gets.
+            "kinds": [
+                {"key": kind.key, "label": kind.label, "response_hours": kind.response_hours}
+                for kind in sorted(all_kinds().values(), key=lambda k: k.label)
+            ],
             "can_view_all": services.VIEW_ALL in user.effective_permission_codenames(),
+        })
+
+
+class ApprovalStatsView(APIView):
+    """GET /api/approvals/stats/ — this person's decisions today: how many, and the
+    median time from the request being made to their decision (the inbox's
+    "You decided today" strip)."""
+
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def get(self, request):
+        start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+        rows = list(
+            ApprovalRequest.objects.filter(
+                decided_by=request.user, decided_at__gte=start,
+                status__in=[ApprovalRequest.APPROVED, ApprovalRequest.REJECTED],
+            ).values_list("created_at", "decided_at", "status")
+        )
+        minutes = [(decided - created).total_seconds() / 60 for created, decided, _ in rows]
+        return Response({
+            "decided_today": len(rows),
+            "approved_today": sum(1 for *_, status in rows if status == ApprovalRequest.APPROVED),
+            "returned_today": sum(1 for *_, status in rows if status == ApprovalRequest.REJECTED),
+            "median_minutes": round(statistics.median(minutes)) if minutes else None,
         })
 
 

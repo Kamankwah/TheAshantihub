@@ -15,6 +15,7 @@ urlpatterns = [
         name="listing-photo-delete",
     ),
     path("moderation/pending/", views.ModerationPendingQueueView.as_view(), name="moderation-pending"),
+    path("moderation/stats/", views.ModerationStatsView.as_view(), name="moderation-stats"),
     path("moderation/<int:pk>/", views.ModerationListingDetailView.as_view(), name="moderation-detail"),
     path("moderation/<int:pk>/approve/", views.ModerationApproveView.as_view(), name="moderation-approve"),
     path("moderation/<int:pk>/reject/", views.ModerationRejectView.as_view(), name="moderation-reject"),

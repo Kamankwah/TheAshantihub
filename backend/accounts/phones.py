@@ -21,6 +21,16 @@ def phone_key(raw):
     return digits[-9:] if len(digits) >= 9 else ""
 
 
+def mask_phone(raw):
+    """"024 *** 5531": the network digits and the last four, never the whole
+    number. Too short to be a phone: fully hidden."""
+    key = phone_key(raw)
+    if not key:
+        return "•••"
+    local = "0" + key
+    return f"{local[:3]} *** {local[-4:]}"
+
+
 def normalize_gh_phone(raw):
     """Return "+233" + the key for a Ghana mobile number written as 9 digits
     (a local number without its 0), 10 digits starting 0, or 12 digits

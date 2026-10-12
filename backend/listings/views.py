@@ -452,13 +452,32 @@ class ModerationPendingQueueView(generics.ListAPIView):
     def get_queryset(self):
         tab = self.request.query_params.get("status", "pending")
         listing_status = LISTING_STATUS_MAP.get(tab, Listing.PENDING_REVIEW)
-        queryset = Listing.objects.filter(status=listing_status)
+        queryset = Listing.objects.filter(status=listing_status).select_related(
+            "business_owner__subscription__plan", "reviewed_by",
+        )
         # Item 2: group by owning business so a reviewer sees a business's
         # listings together. Within a business, pending is oldest-first (work
         # queue); approved/rejected are most-recently-actioned first (history).
         if listing_status == Listing.PENDING_REVIEW:
             return queryset.order_by("business_owner__full_name", "created_at")
         return queryset.order_by("business_owner__full_name", "-reviewed_at", "-created_at")
+
+
+class ModerationStatsView(APIView):
+    """GET /api/listings/moderation/stats/ — listings published and rejected
+    since Monday (the queue's "This week" line)."""
+
+    def get_permissions(self):
+        return [HasRolePermission("listings.moderate")]
+
+    def get(self, request):
+        monday = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+        monday -= timedelta(days=monday.weekday())
+        week = Listing.objects.filter(reviewed_at__gte=monday)
+        return Response({
+            "week_published": week.filter(status=Listing.PUBLISHED).count(),
+            "week_rejected": week.filter(status=Listing.REJECTED).count(),
+        })
 
 
 class ModerationListingDetailView(generics.RetrieveAPIView):

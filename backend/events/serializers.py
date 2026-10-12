@@ -160,6 +160,9 @@ class EventModerationSerializer(serializers.ModelSerializer):
     reviewed_by_name = serializers.CharField(
         source="reviewed_by.full_name", read_only=True, default=None
     )
+    reviewed_by_role = serializers.CharField(
+        source="reviewed_by.role.get_name_display", read_only=True, default=None
+    )
 
     class Meta:
         model = Event
@@ -169,7 +172,7 @@ class EventModerationSerializer(serializers.ModelSerializer):
             "access_code", "paid_at", "expires_at", "going_count", "media", "created_at",
             "submitted_by_customer", "submitted_by_customer_name",
             "submitted_by_business", "submitted_by_business_name",
-            "approved_by", "reviewed_by_name", "reviewed_at",
+            "approved_by", "reviewed_by_name", "reviewed_by_role", "reviewed_at",
         ]
 
 

@@ -20,7 +20,7 @@ from rest_framework.views import APIView
 from accounts import claims, sessions
 from accounts.models import BusinessOwner, Role, StaffUser
 from accounts.views import IsBusinessOwner
-from accounts.permissions import HasAnyRolePermission, HasRolePermission, IsStaff
+from accounts.permissions import HasAnyRolePermission, HasRolePermission, IsStaff, RequiresSudo
 from accounts.phones import filter_by_phone, phone_key
 from accounts.serializers import staff_brief
 from activity.models import ActivityEvent
@@ -432,6 +432,24 @@ class BusinessReviewView(APIView):
             pk=pk,
         )
         return Response(business_review_sheet(owner, request))
+
+
+class RevealOwnerPhoneView(APIView):
+    """POST /api/portfolio/businesses/<pk>/reveal-phone/ — the owner's full
+    sign-in phone number, for a reviewer who needs it. Password re-entry
+    (sudo) first; every reveal is written to the activity log (who, whose),
+    never the number itself."""
+
+    def get_permissions(self):
+        return [HasAnyRolePermission("kyc.approve", PORTFOLIO_MANAGE), RequiresSudo()]
+
+    def post(self, request, pk):
+        owner = generics.get_object_or_404(BusinessOwner, pk=pk)
+        record(
+            request.user, "business.phone_revealed", target=owner,
+            summary=f"Showed the full sign-in phone of {owner.display_name}", request=request,
+        )
+        return Response({"login_phone": owner.login_phone})
 
 
 class ReassignBusinessView(APIView):

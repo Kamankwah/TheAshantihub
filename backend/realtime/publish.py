@@ -25,12 +25,12 @@ STAFF_MANAGEMENT_VERBS = (
 )
 # (verb prefixes, permissions whose holders' queues changed, query keys)
 QUEUE_INVALIDATIONS = [
-    (("kyc-",), ("kyc.approve",), ("kyc-queue", "kyc-detail", "staff-badges")),
+    (("kyc-",), ("kyc.approve",), ("kyc-queue", "kyc-detail", "kyc-stats", "staff-badges")),
     # A KYC decision in the queue settles the maker's business.kyc request
     # without an approval.* event (accounts/kyc.py), so scouts' approvals
     # lists refresh from the decision itself.
-    (("kyc-approve", "kyc-reject"), ("businesses.manage_portfolio",), ("approvals", "approval", "approval-counts")),
-    (("moderation-",), ("listings.moderate",), ("moderation-queue", "staff-badges")),
+    (("kyc-approve", "kyc-reject"), ("businesses.manage_portfolio",), ("approvals", "approval", "approval-counts", "approval-stats")),
+    (("moderation-",), ("listings.moderate",), ("moderation-queue", "moderation-stats", "staff-badges")),
     (("hero-moderation-",), ("hero_media.approve",), ("hero-moderation-queue", "staff-badges")),
     (("event-moderation-",), ("event.approve",), ("event-moderation-queue", "event-moderation-detail", "staff-badges")),
     (("review-approve", "review-hide"), ("reviews.moderate",), ("reviews-moderation-queue", "staff-badges")),
@@ -75,10 +75,10 @@ FEED_KEYS = [
     (("call-",), ("call-logs", "my-targets")),
     (("visit.",), ("visits", "visit-open", "my-targets")),
     # A returned request gives its maker a follow-up task (portfolio/approval_kinds.py).
-    (("approval.",), ("approvals", "approval", "approval-counts", "staff-badges", "my-tasks")),
+    (("approval.",), ("approvals", "approval", "approval-counts", "approval-stats", "staff-badges", "my-tasks")),
     (("report.",), ("my-reports", "report", "team-reports", "staff-badges")),
 ]
-APPROVAL_KEYS = ["approvals", "approval", "approval-counts", "staff-badges"]
+APPROVAL_KEYS = ["approvals", "approval", "approval-counts", "approval-stats", "staff-badges"]
 REPORT_KEYS = ["my-reports", "report", "team-reports", "staff-badges"]
 
 

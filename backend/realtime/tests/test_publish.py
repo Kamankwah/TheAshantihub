@@ -88,7 +88,7 @@ class PublishTests(TestCase):
         self.record(self.lead, "kyc-approve", method="POST", target_type="accounts.businessowner", target_id="3", target_label="Adwoa Fabrics")
         payload = self.message(queue)["payload"]
         self.assertEqual(set(payload), {"type", "invalidate", "at"})
-        self.assertEqual(payload["invalidate"], ["kyc-queue", "kyc-detail", "staff-badges"])
+        self.assertEqual(payload["invalidate"], ["kyc-queue", "kyc-detail", "kyc-stats", "staff-badges"])
 
     def drain(self, channel):
         """Every payload waiting on `channel` (stops after 0.2 s of quiet)."""
@@ -110,11 +110,11 @@ class PublishTests(TestCase):
                 scouts = self.listen("perm.businesses.manage_portfolio")
                 self.record(self.lead, verb, method="POST", target_type="accounts.businessowner", target_id="3", target_label="Adwoa Fabrics")
                 invalidations = [payload["invalidate"] for payload in self.drain(scouts) if payload["type"] == "invalidate"]
-                self.assertIn(["approvals", "approval", "approval-counts"], invalidations)
+                self.assertIn(["approvals", "approval", "approval-counts", "approval-stats"], invalidations)
         scouts = self.listen("perm.businesses.manage_portfolio")
         self.record(self.lead, "kyc-address-verify", method="POST", target_type="accounts.businessowner", target_id="3")
         invalidations = [payload["invalidate"] for payload in self.drain(scouts) if payload["type"] == "invalidate"]
-        self.assertNotIn(["approvals", "approval", "approval-counts"], invalidations)  # only decisions settle requests
+        self.assertNotIn(["approvals", "approval", "approval-counts", "approval-stats"], invalidations)  # only decisions settle requests
 
     def test_the_money_delivery_and_promotion_queues_refresh_live(self):
         cases = [
