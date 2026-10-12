@@ -236,6 +236,20 @@ describe('BusinessPage', () => {
     expect(within(screen.getByRole('region', { name: 'Assignment history' })).getByText(/Kwame Asante/)).toBeInTheDocument()
   })
 
+  it('shows Operations the sign-in phone masked until the recorded reveal', async () => {
+    serve(business({ can_manage: false, login_phone: '024 *** 0118' }))
+    const posts = []
+    server.use(http.post(`${API}/api/portfolio/businesses/12/reveal-phone/`, () => {
+      posts.push(1)
+      return HttpResponse.json({ login_phone: '+233244000118' })
+    }))
+    renderPage({ auth: OPS })
+    expect(await screen.findByText('024 *** 0118')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Show full number (recorded)' }))
+    expect(await screen.findByText('+233244000118')).toBeInTheDocument()
+    expect(posts).toHaveLength(1)
+  })
+
   it('says a missing business is missing', async () => {
     server.use(http.get(`${API}/api/portfolio/businesses/12/`, () => HttpResponse.json({ detail: 'Not found.' }, { status: 404 })))
     renderPage()

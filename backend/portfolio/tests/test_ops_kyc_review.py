@@ -48,6 +48,17 @@ class OpsKycReviewTests(TestCase):
         detail = self.client.get(f"/api/accounts/kyc/{self.owner.id}/").json()
         self.assertEqual(detail["login_phone"], "024 *** 5531")
 
+    def test_the_portfolio_list_and_page_mask_the_phone_for_operations_but_not_the_scout(self):
+        self.as_(self.lead)
+        row = self.client.get("/api/portfolio/businesses/?scope=team").json()["results"][0]
+        self.assertEqual(row["login_phone"], "024 *** 5531")
+        page = self.client.get(f"/api/portfolio/businesses/{self.owner.id}/").json()
+        self.assertEqual(page["login_phone"], "024 *** 5531")
+        self.assertNotIn("+233244125531", str(self.client.get("/api/portfolio/subscriptions-due/").json()))
+        self.as_(self.scout)
+        mine = self.client.get(f"/api/portfolio/businesses/{self.owner.id}/").json()
+        self.assertEqual(mine["login_phone"], "+233244125531")
+
     def test_revealing_needs_the_password_and_is_recorded_without_the_number(self):
         url = f"/api/portfolio/businesses/{self.owner.id}/reveal-phone/"
         self.as_(self.lead)

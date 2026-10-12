@@ -40,6 +40,7 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
   const [notice, setNotice] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [fullPhone, setFullPhone] = useState(null);
   const [kycSent, setKycSent] = useState(null); // the "Sent to …" line once a KYC request went; hides the form for good
 
   const isOps = Boolean(auth?.hasPermission?.("portfolio.manage"));
@@ -102,6 +103,16 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
   ].sort((x, y) => new Date(y.at) - new Date(x.at));
   const toggle = (name) => { setNotice(null); setActionError(null); setPanel((p) => (p === name ? null : name)); };
 
+  const revealPhone = async () => {
+    setNotice(null);
+    setActionError(null);
+    try {
+      setFullPhone((await apiPost(`/api/portfolio/businesses/${b.id}/reveal-phone/`, {})).login_phone);
+    } catch (err) {
+      setActionError(errorText(err, "Could not show the phone number."));
+    }
+  };
+
   const sendClaimLink = async () => {
     setNotice(null);
     setActionError(null);
@@ -124,8 +135,17 @@ export default function BusinessPage({ businessId, auth, onBack, onCheckIn }) {
   const phoneCell = (value) => (isScout && value
     ? <a href={`tel:${value}`} aria-label={`Call ${maskPhone(value)}`} style={{ color: D.text }}>{maskPhone(value)}</a>
     : value);
+  // Operations gets the sign-in phone masked; the full number is the recorded reveal (password first).
+  const signInPhone = isScout ? phoneCell(b.login_phone) : (
+    <span>
+      {fullPhone || b.login_phone}
+      {isOps && !fullPhone && b.login_phone && (
+        <button type="button" onClick={revealPhone} style={{ ...button(D.panelBg, D.text), marginLeft: 8, padding: "2px 8px" }}>Show full number (recorded)</button>
+      )}
+    </span>
+  );
   const details = [
-    ["Sign-in phone", phoneCell(b.login_phone)], ["Business phone", phoneCell(b.business_contact_phone)], ["Email", b.email || "Not given"],
+    ["Sign-in phone", signInPhone], ["Business phone", phoneCell(b.business_contact_phone)], ["Email", b.email || "Not given"],
     ["Kind", b.business_kind === "service" ? "Service" : "Product"], ["Category", b.business_category?.name],
     ["Area", b.zone?.name], ["Ghana Post address", b.gps_address], ["Map pin", pin], ["Opening hours", b.opening_hours],
     ["Description", b.business_description], ["Registered", registered], ["Account manager", b.account_manager?.full_name || "None"],
