@@ -8,6 +8,7 @@ import LiveUpdatesIndicator from "./shell/LiveUpdatesIndicator.jsx";
 import { useStaffBadges } from "../../hooks/useStaffBadges.js";
 import { D, ROLE_ACCENTS } from "./theme.js";
 import OverviewPanel from "./panels/OverviewPanel.jsx";
+import ScreenBuildingPanel from "./panels/ScreenBuildingPanel.jsx";
 import KYCQueuePanel from "./panels/KYCQueuePanel.jsx";
 import ListingsModerationPanel from "./panels/ListingsModerationPanel.jsx";
 import HeroApprovalPanel from "./panels/HeroApprovalPanel.jsx";
@@ -33,7 +34,7 @@ import DispatchPanel from "./panels/DispatchPanel.jsx";
 import MessagingPanel from "./panels/MessagingPanel.jsx";
 import PromotionsPanel from "./panels/PromotionsPanel.jsx";
 import AnalyticsPanel from "./panels/AnalyticsPanel.jsx";
-import { buildNavGroups, makeBadgeFor, isPermittedTab, overviewLabel } from "./shell/navModel.js";
+import { buildNavGroups, makeBadgeFor, isPermittedTab, overviewLabel, PLACEHOLDER_TABS } from "./shell/navModel.js";
 import StaffNavList from "./shell/StaffNavList.jsx";
 import { pickBottomBarItems } from "./shell/navModel.js";
 import useBreakpoint from "../../hooks/useBreakpoint.js";
@@ -331,7 +332,10 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "activity" && <ActivityPanel />}
           {activeTab === "calls" && <CallLogPanel auth={auth} />}
           {activeTab === "prospects" && <ProspectsPanel onRegister={openRegisterFromProspect} />}
-          {activeTab === "targets" && <TargetsPanel />}
+          {activeTab === "targets" && (auth.hasPermission("businesses.manage_portfolio") ? <TargetsPanel /> : <ScreenBuildingPanel title="Team targets" />)}
+          {PLACEHOLDER_TABS.has(activeTab) && <ScreenBuildingPanel title={activeLabel} />}
+          {activeTab === "hero-events" && <>{auth.hasPermission("hero_media.approve") && <HeroApprovalPanel />}{auth.hasPermission("event.approve") && <EventsModerationPanel />}</>}
+          {activeTab === "zones" && <CategoriesZonesPanel auth={auth} />}
           {activeTab === "commission" && <CommissionPanel />}
           {activeTab === "leaderboard" && <LeaderboardPanel />}
           {activeTab === "commission-policy" && <CommissionPolicyPanel canPropose={auth.hasPermission("commission.policy")} />}

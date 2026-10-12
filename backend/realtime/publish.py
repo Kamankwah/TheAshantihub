@@ -49,7 +49,7 @@ QUEUE_INVALIDATIONS = [
     (
         ("kyc-", "business.", "portfolio.", "subscription."),
         ("portfolio.manage", "businesses.manage_portfolio"),
-        ("portfolio", "portfolio-business", "subscriptions-due"),
+        ("portfolio", "portfolio-business", "subscriptions-due", "staff-badges"),
     ),
     # The subscription clock gives the account manager a task (billing.clock).
     (("subscription.",), ("businesses.manage_portfolio",), ("my-tasks", "staff-badges")),

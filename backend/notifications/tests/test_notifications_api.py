@@ -212,6 +212,51 @@ class StaffBadgesTests(TestCase):
         self.assertIsNone(self.client.get(BADGES_URL).json()["report_due_at"])
 
 
+class OperationsBadgeKeysTests(TestCase):
+    """The Operations menu's badge keys: real counts where a source exists, 0 where the screen is not built."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.ops = StaffUser.objects.create(
+            full_name="Ama Ops", email="ops-badge@example.com", password_hash="x", role=Role.objects.get(name="operations"),
+        )
+        self.scout = StaffUser.objects.create(
+            full_name="Kojo Scout", email="scout-badge@example.com", password_hash="x",
+            role=Role.objects.get(name="scout"), manager=self.ops,
+        )
+        self.marketing = StaffUser.objects.create(
+            full_name="Mark", email="mark-badge@example.com", password_hash="x", role=Role.objects.get(name="marketing"),
+        )
+
+    def _get(self, staff):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(staff, 'staff')}")
+        return self.client.get(BADGES_URL).json()
+
+    def test_every_key_is_present_and_unbuilt_screens_are_zero(self):
+        data = self._get(self.ops)
+        for key in ["at_risk", "subscriptions_due", "fraud_open", "team_reports_waiting", "support_issues", "deliveries_open"]:
+            self.assertEqual(data[key], 0, key)
+
+    def test_fraud_open_and_team_reports_waiting_count_real_records(self):
+        from django.utils import timezone
+
+        from fraud.models import FraudFlag
+        from reports.models import StaffReport
+
+        owner = BusinessOwner.objects.create(full_name="Kofi Trader", login_phone="+233200000099", password_hash="x")
+        FraudFlag.objects.create(kind=FraudFlag.OTHER, title="t", detail="d", business_owner=owner, source=FraudFlag.STAFF, raised_by=self.ops)
+        today = timezone.localdate()
+        StaffReport.objects.create(staff=self.scout, period="day", period_start=today, period_end=today, status=StaffReport.SUBMITTED)
+        data = self._get(self.ops)
+        self.assertEqual(data["fraud_open"], 1)
+        self.assertEqual(data["team_reports_waiting"], 1)
+
+    def test_counts_are_zero_without_the_permission(self):
+        data = self._get(self.marketing)
+        for key in ["at_risk", "subscriptions_due", "fraud_open", "team_reports_waiting"]:
+            self.assertEqual(data[key], 0, key)
+
+
 class NotificationFailureIsolationTests(TestCase):
     def test_swallowed_db_error_does_not_poison_the_outer_transaction(self):
         from unittest import mock

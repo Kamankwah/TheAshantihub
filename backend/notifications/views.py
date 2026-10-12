@@ -125,6 +125,36 @@ class StaffBadgesView(APIView):
         def count(codename, queryset):
             return queryset.count() if codename in held else 0
 
+        # Operations' work-queue counts. Each is gated by the permission that
+        # opens its screen, and only counts where a real record source exists:
+        # Support issues and Deliveries & returns are still being built, so
+        # they stay 0 rather than inventing a figure.
+        at_risk = subscriptions_due = fraud_open = team_reports_waiting = 0
+        if "portfolio.manage" in held:
+            from django.db.models import Q
+
+            from portfolio import health
+            from portfolio.views import portfolio_queryset
+
+            now = timezone.now()
+            team = portfolio_queryset(user, "team")
+            at_risk = sum(1 for row in health.rate_all(team, now) if row.rating == health.AT_RISK)
+            lapsed = team.filter(
+                Q(subscription__current_period_end__lt=now)
+                | Q(subscription__overdue_since__isnull=False)
+                | Q(subscription__paused_at__isnull=False)
+            )
+            subscriptions_due = sum(1 for row in health.rate_all(lapsed, now) if row.subscription["state"] == "overdue")
+        if "fraud.manage" in held:
+            from fraud.models import FraudFlag
+            from fraud.views import visible_flags
+
+            fraud_open = visible_flags(user).filter(status=FraudFlag.OPEN).count()
+        if "staff.invite_team" in held:
+            team_reports_waiting = StaffReport.objects.filter(
+                staff__manager=user, status=StaffReport.SUBMITTED
+            ).count()
+
         # Escrow tab is gated by any of view/release/refund (see
         # AdminCommandCenter's nav), so its badge is too.
         can_escrow = held & {"escrow.view", "escrow.release", "escrow.refund"}
@@ -175,6 +205,12 @@ class StaffBadgesView(APIView):
                     owner=user, status=Task.OPEN, due_at__lt=timezone.now()
                 ).count(),
                 "approvals_waiting": waiting_for(user).count(),
+                "at_risk": at_risk,
+                "subscriptions_due": subscriptions_due,
+                "fraud_open": fraud_open,
+                "team_reports_waiting": team_reports_waiting,
+                "support_issues": 0,
+                "deliveries_open": 0,
                 "report_due_at": report_due_at,
             }
         )
