@@ -56,13 +56,26 @@ class UsersPiiMaskingTests(TestCase):
         self.assertEqual(body["login_phone"], "020 *** 2233")
         self.assertEqual(body["profile"]["business_contact_phone"], "020 *** 8877")
 
-    def test_manage_patch_response_carries_full_values(self):
+    def test_patch_never_reveals_a_phone_it_did_not_receive(self):
         self._as("operations")
         response = self.client.patch(
             f"/api/accounts/customers/{self.customer.id}/", {"full_name": "Ama B"}, format="json",
         )
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual(response.json()["phone"], "+233241234567")
+        self.assertEqual(response.json()["phone"], "024 *** 4567")
+        owner = self.client.patch(
+            f"/api/accounts/business-owners/{self.owner.id}/", {"full_name": "K T"}, format="json",
+        ).json()
+        self.assertEqual(owner["login_phone"], "020 *** 2233")
+        self.assertEqual(owner["profile"]["business_contact_phone"], "020 *** 8877")
+
+    def test_patch_echoes_only_the_phone_the_client_just_sent(self):
+        self._as("operations")
+        response = self.client.patch(
+            f"/api/accounts/customers/{self.customer.id}/", {"phone": "+233245550000"}, format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["phone"], "+233245550000")
 
     def test_patch_with_the_masked_phone_is_refused(self):
         self._as("operations")

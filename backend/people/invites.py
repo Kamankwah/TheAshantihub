@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import Role, RoleInviteRule, StaffUser
+from accounts.phones import mask_phone
 from accounts.permissions import HasRolePermission, can_lead_team
 from accounts.serializers import INVITE_TOKEN_LIFETIME, invite_state
 from activity.models import ActivityEvent
@@ -45,7 +46,7 @@ class InviteListView(APIView):
                 if state == "opened":
                     counts["opened_unfinished"] += 1
             open_rows.append({
-                "id": s.pk, "full_name": s.full_name, "email": s.email, "phone": s.phone,
+                "id": s.pk, "full_name": s.full_name, "email": s.email, "phone": mask_phone(s.phone) if s.phone else None,
                 "role": s.role.name, "role_label": ROLE_LABELS.get(s.role.name, s.role.name),
                 "manager": _who(s.manager) if s.manager_id else None,
                 "invited_by": _who(s.invited_by) if s.invited_by_id else None,

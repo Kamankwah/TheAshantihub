@@ -33,6 +33,13 @@ class InviteListTests(PeopleTestCase):
         self.assertEqual(data["kpis"]["expired"], 1)
         self.assertEqual(data["link_days"], 7)
 
+    def test_the_staff_phone_is_masked(self):
+        self.fresh.phone = "+233241234567"
+        self.fresh.save(update_fields=["phone"])
+        self.sign_in()
+        afua = next(i for i in self.client.get(URL).json()["invites"] if i["full_name"] == "Afua")
+        self.assertEqual(afua["phone"], "024 *** 4567")
+
     def test_accepted_and_revoked_in_the_last_30_days(self):
         accepted = make_staff("dispatch", "ama.k@example.com", invited_by=self.boss, activated_at=timezone.now() - timedelta(hours=3), invite_sent_at=timezone.now() - timedelta(days=1))
         self.sign_in(sudo=True)

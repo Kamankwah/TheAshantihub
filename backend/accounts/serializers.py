@@ -701,6 +701,14 @@ class CustomerSecondaryPhoneConfirmSerializer(serializers.Serializer):
         return customer
 
 
+def _sent_in_this_patch(serializer, field):
+    """True only when this request is a PATCH whose body carried `field`: the
+    response may then echo back the value the client just sent, nothing more."""
+    request = serializer.context.get("request")
+    sent = getattr(serializer, "initial_data", None)
+    return bool(request and request.method == "PATCH" and isinstance(sent, dict) and field in sent)
+
+
 def _mask_email_or_none(email):
     from .claims import mask_email
     return (mask_email(email) or None) if email else None
@@ -781,11 +789,10 @@ class StaffCustomerDetailSerializer(serializers.ModelSerializer):
         }
 
     def to_representation(self, instance):
-        # The phone is masked on every read; the full values come back only in
-        # the users.manage PATCH response (the view sets `full_pii`), and the
-        # full phone otherwise only through the sudo-gated reveal.
+        # The phone is masked on every read; it is echoed in full only when this
+        # PATCH just sent it. Otherwise the full phone is the sudo-gated reveal.
         data = super().to_representation(instance)
-        if not self.context.get("full_pii") and instance.phone:
+        if instance.phone and not _sent_in_this_patch(self, "phone"):
             data["phone"] = mask_phone(instance.phone)
         return data
 
@@ -849,12 +856,11 @@ class StaffBusinessOwnerDetailSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        if not self.context.get("full_pii"):
-            if instance.login_phone:
-                data["login_phone"] = mask_phone(instance.login_phone)
-            profile = data.get("profile")
-            if profile and profile.get("business_contact_phone"):
-                profile["business_contact_phone"] = mask_phone(profile["business_contact_phone"])
+        if instance.login_phone and not _sent_in_this_patch(self, "login_phone"):
+            data["login_phone"] = mask_phone(instance.login_phone)
+        profile = data.get("profile")
+        if profile and profile.get("business_contact_phone"):
+            profile["business_contact_phone"] = mask_phone(profile["business_contact_phone"])
         return data
 
     def validate_login_phone(self, value):
