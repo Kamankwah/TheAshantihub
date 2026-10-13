@@ -270,9 +270,18 @@ class ConfigTests(EngineCase):
     def test_the_rate_card_screen_reads_the_live_distance_basis(self):
         self.as_staff(self.manager)
         for mode, basis in (("road", routing_service.BASIS_ROAD), ("straight_line_estimate", routing_service.BASIS_ESTIMATE)):
-            with mock.patch("routing.service.status", return_value={"mode": mode, "factor": 1.3, "healthy": mode == "road"}):
+            with mock.patch("routing.service.status", return_value={"mode": mode, "factor": 1.3, "healthy": mode == "road", "configured": True}):
                 page = self.client.get("/api/delivery/rules/rate-card/").json()
             self.assertEqual(page["distance_basis"], basis)
+
+    def test_try_a_route_labels_a_typed_distance_as_typed(self):
+        self.as_staff(self.manager)
+        r = self.client.post("/api/delivery/rules/rate-card/quote/", {"km": 4, "values": CARD}, format="json")
+        self.assertEqual(r.status_code, 200, r.content)
+        body = r.json()
+        self.assertEqual(body["customer"]["distance_basis"], "distance you typed")
+        self.assertEqual(body["rider"]["distance_basis"], "distance you typed")
+        self.assertNotIn("straight-line", body["customer"]["distance_basis"])
 
     def test_there_is_no_rate_card_until_one_is_approved_and_nothing_is_charged(self):
         self.as_staff(self.manager)

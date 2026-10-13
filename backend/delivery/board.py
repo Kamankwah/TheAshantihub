@@ -1,6 +1,8 @@
 """The Delivery Manager's live board: what is waiting, what is on the road, which riders are where.
 Everything is derived from assignments, shifts and pings; with no riders on shift the screens say so
-(no sample pins). Distances are road routes when routing is configured and answering; otherwise they are labelled straight-line estimates scaled by ``services.ROAD_FACTOR``."""
+(no sample pins). The board shows no route distances of its own; where a screen does show distances, it labels them from the
+routing status: road routes when routing is configured and answering, otherwise straight-line estimates scaled by
+``services.ROAD_FACTOR``. The dispatch queue's rider ranking is the exception: it is always an estimate (``dispatching.rank``)."""
 from datetime import timedelta
 
 from django.db.models import F, Q
@@ -15,14 +17,26 @@ from . import payloads, services
 from .models import DeliveryEvent, Rider, ShiftSession
 
 
-def routing_block():
-    """The routing mode the screens report, from the live service status (never a fixed claim)."""
+ESTIMATE_RANKING_NOTE = "Rider distances here are straight-line estimates (x 1.3), not road routes. Road routes are not used to rank riders yet."
+
+
+def routing_block(*, estimate_figures=False):
+    """The routing mode the screens report, from the live service status (never a fixed claim).
+    ``estimate_figures`` is for a screen whose own numbers are straight-line estimates whatever OSRM is doing (the
+    dispatch queue's ranking): it keeps the live status but says what the figures on that screen are."""
     s = routing_service.status()
-    if s["mode"] == "road":
+    if estimate_figures:
+        note = ESTIMATE_RANKING_NOTE
+    elif s["mode"] == "road":
         note = "Distances and times are road routes."
+    elif not s["configured"]:
+        note = "Straight-line estimate. A road route service is not connected."
     else:
         note = "Straight-line estimate. The road route service is not answering, so distances and times are estimates."
-    return {**s, "note": note}
+    block = {**s, "note": note}
+    if estimate_figures:
+        block["distance_basis"] = routing_service.BASIS_ESTIMATE
+    return block
 
 
 def waiting_orders():

@@ -12,16 +12,54 @@ from .base import DROP, PICKUP
 
 class RoutingBlockTests(SimpleTestCase):
     def test_board_routing_block_reflects_status(self):
-        with mock.patch("delivery.board.routing_service.status", return_value={"mode": "road", "factor": 1.3, "healthy": True}):
+        with mock.patch("delivery.board.routing_service.status", return_value={"mode": "road", "factor": 1.3, "healthy": True, "configured": True}):
             block = board.routing_block()
         self.assertEqual(block["mode"], "road")
         self.assertIn("road", block["note"].lower())
 
     def test_estimate_mode_note_says_estimate(self):
-        with mock.patch("delivery.board.routing_service.status", return_value={"mode": "straight_line_estimate", "factor": 1.3, "healthy": False}):
+        with mock.patch("delivery.board.routing_service.status", return_value={"mode": "straight_line_estimate", "factor": 1.3, "healthy": False, "configured": True}):
             block = board.routing_block()
         self.assertEqual(block["mode"], "straight_line_estimate")
         self.assertIn("estimate", block["note"].lower())
+        self.assertIn("not answering", block["note"])
+
+    def test_not_configured_note_says_not_connected(self):
+        with mock.patch("delivery.board.routing_service.status", return_value={"mode": "straight_line_estimate", "factor": 1.3, "healthy": False, "configured": False}):
+            block = board.routing_block()
+        self.assertEqual(block["note"], "Straight-line estimate. A road route service is not connected.")
+
+    def test_road_note(self):
+        with mock.patch("delivery.board.routing_service.status", return_value={"mode": "road", "factor": 1.3, "healthy": True, "configured": True}):
+            self.assertEqual(board.routing_block()["note"], "Distances and times are road routes.")
+
+    def test_estimate_figures_block_never_claims_road_routes(self):
+        with mock.patch("delivery.board.routing_service.status", return_value={"mode": "road", "factor": 1.3, "healthy": True, "configured": True}):
+            block = board.routing_block(estimate_figures=True)
+        self.assertEqual(block["distance_basis"], "straight-line estimate x 1.3")
+        self.assertNotIn("are road routes", block["note"])
+        self.assertIn("estimate", block["note"])
+
+
+class RankingBasisTests(EngineCase):
+    ROAD = {"mode": "road", "factor": 1.3, "healthy": True, "configured": True}
+
+    def test_rank_payload_is_an_estimate_even_when_routing_status_is_road(self):
+        self.on_shift(self.rider, (PICKUP[0] + 0.002, PICKUP[1]))
+        with mock.patch("routing.service.status", return_value=self.ROAD):
+            ranked = dispatching.rank(self.make_order())
+        self.assertEqual(ranked["distance_basis"], "straight-line estimate x 1.3")
+
+    def test_queue_and_ranking_endpoints_label_estimate_figures_in_road_mode(self):
+        self.on_shift(self.rider, (PICKUP[0] + 0.002, PICKUP[1]))
+        order = self.make_order()
+        self.as_staff(self.manager)
+        with mock.patch("routing.service.status", return_value=self.ROAD):
+            queue = self.client.get("/api/delivery/queue/").json()
+            ranking = self.client.get(f"/api/delivery/queue/{order.pk}/ranking/").json()
+        self.assertEqual(queue["routing"]["distance_basis"], "straight-line estimate x 1.3")
+        self.assertNotIn("are road routes", queue["routing"]["note"])
+        self.assertEqual(ranking["distance_basis"], "straight-line estimate x 1.3")
 
 
 class OfferPayloadRoutingTests(EngineCase):

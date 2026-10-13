@@ -57,7 +57,7 @@ class QueueView(ManageView):
             "auto_assign": {"on": settings_row.auto_assign_on, "rules": {"source": rules["source"], "version": rules["version"]}, "updated_at": settings_row.updated_at if settings_row.pk else None},
             "recent": [{"order_id": a.order_id, "rider": a.dispatch.full_name if a.dispatch_id else None, "mode": a.assignment_mode, "mode_label": a.get_assignment_mode_display(), "at": a.assigned_at} for a in recent],
             "deadlines": "set" if limits else "none",
-            "routing": board.routing_block(),
+            "routing": board.routing_block(estimate_figures=True),
         })
 
 

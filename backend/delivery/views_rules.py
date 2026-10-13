@@ -138,8 +138,8 @@ class QuoteView(RatesView):
         if vehicle not in dict(VEHICLE_TYPES):
             return Response({"detail": "Unknown vehicle type."}, status=400)
         return Response({
-            "source": source, "customer": rates.customer_fee(card, km, vehicle=vehicle, express=bool(data.get("express")), extra_pickups=int(data.get("extra_pickups") or 0)),
-            "rider": rates.rider_pay(card, km, wait_minutes=int(data.get("wait_minutes") or 0)),
+            "source": source, "customer": rates.customer_fee(card, km, vehicle=vehicle, express=bool(data.get("express")), extra_pickups=int(data.get("extra_pickups") or 0), basis=rates.BASIS_TYPED),
+            "rider": rates.rider_pay(card, km, wait_minutes=int(data.get("wait_minutes") or 0), basis=rates.BASIS_TYPED),
         })
 
 

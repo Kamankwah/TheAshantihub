@@ -10,6 +10,7 @@ from . import config, services
 
 CENT = Decimal("0.01")
 BASIS = "straight-line estimate x 1.3"
+BASIS_TYPED = "distance you typed"  # try-a-route with a manager-entered km: no route was measured
 
 
 def _d(value):
