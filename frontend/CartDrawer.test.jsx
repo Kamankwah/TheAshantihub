@@ -348,7 +348,9 @@ describe('CartDrawer', () => {
     fireEvent.change(screen.getByPlaceholderText('Contact phone for delivery'), { target: { value: '+233200112233' } })
     fireEvent.click(screen.getByText('Confirm & Pay'))
     fireEvent.click(await screen.findByText('Simulate Pay'))
-    expect(await screen.findByText('We only deliver within the Ashanti Region for now.')).toBeInTheDocument()
+    const alertText = await screen.findByText(/We only deliver within the Ashanti Region for now\./)
+    expect(alertText).toHaveTextContent(/Your order was not placed\./)
+    expect(alertText).toHaveTextContent(/Payment reference: \S+/)
     expect(screen.queryByText(/Payment was confirmed/)).not.toBeInTheDocument()
   })
 

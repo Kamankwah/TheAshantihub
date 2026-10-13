@@ -173,9 +173,11 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
       setOrder(response);
       refetch();
     } catch (err) {
-      // An out-of-area delivery point is refused with its own explanation; show that, not the generic text.
+      // An out-of-area delivery point is refused with its own explanation; show that, not the generic text. The
+      // payment screen has already said "Payment Successful" by now, so say plainly that no order was placed and
+      // keep the payment reference for support.
       setCheckoutError(err?.body?.code === "out_of_area"
-        ? apiErrorMessage(err, "We only deliver within the Ashanti Region for now.")
+        ? `${apiErrorMessage(err, "We only deliver within the Ashanti Region for now.")} Your order was not placed. Payment reference: ${ref}.`
         : "Payment was confirmed but we couldn't place your order. Please contact support with reference " + ref + ".");
     }
   };

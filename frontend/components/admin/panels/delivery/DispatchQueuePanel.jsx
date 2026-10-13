@@ -15,13 +15,11 @@ import { Empty, ErrorLine, Note, SOURCE_LABEL, WARN, clock, linkStyle, spare, sp
 // (no time limits in force) sorts by how long it has waited and says so.
 const SHORT_MINUTES = 10;
 
-// What the server says about how distances were measured; nothing is assumed when it says nothing.
-const distanceSentence = (routing) => {
-  if (!routing || !routing.mode) return "";
-  return routing.mode === "road" ? "Distances are road routes." : `Distances are a straight-line estimate times ${routing.factor}.`;
-};
+// The ranking says how its own distances were measured (distance_basis, from the engine). Nothing is assumed when it
+// says nothing, and the page-wide routing status is not used here: it describes the road service, not these figures.
+const distanceSentence = (basis) => (basis ? `Rider distances are a ${basis}.` : "");
 
-function Ranking({ orderId, row, onDone, canForce, routing }) {
+function Ranking({ orderId, row, onDone, canForce }) {
   const { data, isLoading, isError } = useQueueRanking(orderId);
   const [rider, setRider] = useState("");
   const [releaseAt, setReleaseAt] = useState("");
@@ -69,7 +67,7 @@ function Ranking({ orderId, row, onDone, canForce, routing }) {
                 </tbody>
               </table>
             </div>
-            <span style={dim}>Score is the sum of each part (0 to 100) times its weight; the highest score is offered first. {distanceSentence(routing)} Weights are set in Auto-assign rules.</span>
+            <span style={dim}>Score is the sum of each part (0 to 100) times its weight; the highest score is offered first. {distanceSentence(data.distance_basis)} Weights are set in Auto-assign rules.</span>
             {data.left_out.length > 0 && (
               <div>
                 <b style={{ fontSize: "0.8rem", color: D.text }}>Left out</b>
@@ -145,7 +143,7 @@ export default function DispatchQueuePanel({ auth, onNavigate }) {
                 </div>
               )}
             </section>
-            {row && <Ranking key={row.order_id} orderId={row.order_id} row={row} canForce routing={data.routing} onDone={() => { queue.refetch(); setSelected(null); }} />}
+            {row && <Ranking key={row.order_id} orderId={row.order_id} row={row} canForce onDone={() => { queue.refetch(); setSelected(null); }} />}
             <section aria-labelledby="recent" style={section}>
               <h3 id="recent" style={sectionTitle}>Assigned in the last 30 minutes</h3>
               {data.recent.length === 0 ? <Empty>Nothing was assigned in the last 30 minutes.</Empty> : data.recent.map((r) => (

@@ -21,7 +21,7 @@ const RULE_FIELDS = [
   { key: "offer_timeout_s", label: "Offer timeout", unit: "seconds" },
   { key: "max_declines", label: "Declines before force-assign", unit: "offers" },
   { key: "force_slack_min", label: "Force-assign when slack is under", unit: "minutes" },
-  { key: "radius_km", label: "Rider radius from the pickup", unit: "km" },
+  { key: "radius_km", label: "Rider radius from the pickup", unit: "km (estimate)" },
   { key: "max_active_jobs", label: "Most active jobs per rider", unit: "jobs" },
   { key: "stale_s", label: "Location is stale after", unit: "seconds" },
   { key: "cash_cap", label: "Cash a rider may hold", unit: "GH₵" },
