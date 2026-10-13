@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('marketing', '0008_seed_whatsapp_steps'),
+        ('marketing', '0010_waived_fee_charge'),
     ]
 
     operations = [
