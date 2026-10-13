@@ -147,6 +147,9 @@ class CampaignRecipient(models.Model):
     network = models.CharField(max_length=12, blank=True)
     error = models.CharField(max_length=200, blank=True)
     provider_ref = models.CharField(max_length=80, blank=True)
+    provider_status = models.CharField(max_length=40, blank=True)   # the provider's own word, as reported (e.g. Hubtel's delivery receipt)
+    provider_cost = models.DecimalField(max_digits=8, decimal_places=4, null=True, blank=True)   # the rate the provider reported for this message
+    provider_updated_at = models.DateTimeField(null=True, blank=True)
     click_token = models.CharField(max_length=20, default=new_token, unique=True)
     sent_at = models.DateTimeField(null=True, blank=True)
     delivered_at = models.DateTimeField(null=True, blank=True)

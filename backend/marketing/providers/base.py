@@ -32,6 +32,7 @@ class SendResult:
     ref: str = ""
     error: str = ""
     cost: Optional[Decimal] = None    # only a provider that reports a price fills it
+    provider_status: str = ""         # the provider's own word for the state, kept as reported
     delivered: bool = False           # only a provider that reports delivery may set this
 
 

@@ -215,6 +215,16 @@ def email_facts():
     ]
 
 
+def sms_sender_state(sms):
+    """For the Hubtel provider: the configured sender ID's name and whether the register has it as approved. Names only, never keys."""
+    if getattr(settings, "MARKETING_SMS_PROVIDER", "") != "hubtel":
+        return None
+    from .providers.hubtel_sms import sender_is_approved
+
+    return {"name": settings.HUBTEL_SMS_SENDER_ID or None, "approved": sender_is_approved(),
+            "note": "A text is sent only while this sender ID is recorded as Approved below."}
+
+
 def overview():
     sms = provider_status("sms")
     from .cost import unit_price
@@ -224,8 +234,10 @@ def overview():
     templates = dict(Template.objects.filter(channel=Template.WHATSAPP, archived_at__isnull=True).values_list("meta_status").annotate(n=Count("id")))
     return {
         "sms": {**sms, "price": str(price) if price is not None else None, "price_note": "The planning price set on the server, not a quote from a provider.",
-                "balance": None, "balance_note": "No SMS provider is connected, so there is no balance, alert or delivery report to show.",
-                "delivery_reports": False, "backup": "None."},
+                "balance": None,
+                "balance_note": ("Hubtel's balance is not read from here, so none is shown. Delivery is shown only where Hubtel reports it." if sms["status"] == "connected"
+                                 else "No SMS provider is connected, so there is no balance, alert or delivery report to show."),
+                "delivery_reports": bool(sms.get("delivery_reports")), "backup": "None.", "sender_id": sms_sender_state(sms)},
         "senders": grouped_senders(), "networks": [{"key": k, "label": v} for k, v in SenderId.NETWORK_CHOICES],
         "whatsapp": {**provider_status("whatsapp"), "steps": steps, "done": sum(1 for s in steps if s["status"] == "done"), "price_marketing_usd": "0.0225", "price_utility_usd": "0.004",
                      "unit_price": str(wa_price) if wa_price is not None else None, "templates": templates},

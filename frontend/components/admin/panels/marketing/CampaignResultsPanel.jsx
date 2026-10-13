@@ -46,7 +46,7 @@ export default function CampaignResultsPanel({ detailId, onOpenDetail, onNavigat
       {!reported && <Honest tone="warn">{c.provider_state === "simulated" ? "This send was simulated: nothing reached anyone, so there are no delivery, click or order results beyond what the test data recorded." : "The provider for this channel reports no delivery, so delivered, failed-by-network and cost are not shown as facts."}</Honest>}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
         <Kpi label="Sent" value={n(r.counts.sent)} sub={r.counts.simulated ? `${n(r.counts.simulated)} simulated` : "one message each"} />
-        <Kpi label="Delivered" value={reported ? n(r.counts.delivered) : "Not reported"} sub={reported ? "" : "The provider sends no delivery reports"} />
+        <Kpi label="Delivered" value={reported ? n(r.counts.delivered) : "Not reported"} sub={reported ? (r.counts.awaiting_report ? `${n(r.counts.awaiting_report)} still waiting for a receipt` : "") : "The provider sends no delivery reports"} />
         <Kpi label="Failed" value={n(r.counts.failed)} sub={r.counts.left_out ? `${n(r.counts.left_out)} left out before sending` : ""} />
         <Kpi label="Clicks" value={n(r.clicks)} sub={r.click_rate != null ? `${r.click_rate}% of sent, unique people` : ""} />
         <Kpi label="Signups" value="Not tracked" sub={r.signups_note} />
