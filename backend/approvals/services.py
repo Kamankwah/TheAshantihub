@@ -309,7 +309,10 @@ def _submit(maker, kind, now, title, payload, target_type, target_id, target_lab
         if kind.amount_of is not None:
             approval.amount = kind.amount_of(approval)
         # A Super Admin's own change applies at once whatever the amount (below), so only
-        # staged requests carry the second-approval requirement.
+        # staged requests carry the second-approval requirement. This is the canvas rule
+        # ("a Super Admin's own changes apply at once and are recorded"), decided on purpose:
+        # the co-signer constrains requests staged by others, not a Super Admin's own. Also
+        # note no ApprovalKind defines amount_of yet, so the co-sign threshold is dormant.
         approval.required_approvals = 1 if maker.role.name == Role.SUPER_ADMIN else rules.required_approvals_for(approval.amount)
         if maker.role.name == Role.SUPER_ADMIN:
             if kind.validate is not None:

@@ -58,6 +58,14 @@ the role seeds in `backend/accounts/migrations/0002`–`0029`, the `HasRolePermi
 |---|---|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
 | Staff | `staff.manage` | Invite, suspend, deactivate and re-permission staff | ✓ | | | | | | | |
 | | `staff.view_as` | Step in: open a team member's workspace read-only (Super Admin role required too) | ✓ | | | | | | | |
+| | `roles.manage` | Change what each role can do (the role matrix); Super Admin only, never handed out | ✓ | | | | | | | |
+| | `approvals.manage_rules` | Edit approval timers and the money limit that needs a second approver; Super Admin only | ✓ | | | | | | | |
+| | `approvals.cosign` | Co-sign requests above the money limit. Held only by the external **co-signer** role (which holds nothing else); it cannot be granted to anyone else, and nothing can be granted to the co-signer | co-signer only | | | | | | | |
+| | `commission.tax_ruling` | Record the ruling on scouts' tax status; until then scout commission stays on hold. Super Admin only | ✓ | | | | | | | |
+| | `security.manage` | Security settings: 2-step rules, sign-in policy. Super Admin only | ✓ | | | | | | | |
+| | `exports.schedule` | Schedule recurring exports; Super Admin only | ✓ | | | | | | | |
+| | `announcements.send` | Send announcements to staff; Super Admin only | ✓ | | | | | | | |
+| | `system.view` | The system and jobs view; Super Admin only | ✓ | | | | | | | |
 | Onboarding | `kyc.approve` | Approve, reject or re-open business KYC; record the address decision | ✓ | ✓ | | | | | | |
 | | `scouts.assign` | Assign scouts to businesses | ✓ | ✓ | | | | | | |
 | | `scouts.verify` | Submit field reports for own assignments | ✓ | | | | | ✓ | | |
@@ -280,6 +288,13 @@ These rules keep one person from both proposing and approving the same thing.
 | Field verification | Admin assigns a scout | The scout reports; the Admin then approves or rejects KYC |
 | Delivery | Delivery Manager assigns | Dispatch picks up and delivers; the customer confirms receipt |
 | Staff accounts and permissions | — | Super Admin only, never on their own account |
+
+**Large approvals and the co-signer.** A request above the money limit needs a second approval from the
+external co-signer. This constrains staged requests made by others only: a Super Admin's own request
+applies at once whatever the amount (the canvas rule: "a Super Admin's own changes apply at once and are
+recorded"), and is recorded as applied directly. No approval kind defines `amount_of` yet, so the limit
+is dormant until one does. Separately, the permissions marked Super Admin only above cannot be granted
+to a role or to a person by anyone else.
 
 ---
 
