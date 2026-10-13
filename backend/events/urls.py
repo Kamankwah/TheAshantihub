@@ -42,6 +42,7 @@ urlpatterns = [
     ),
     path("tickets/mine/", views.MyTicketsListView.as_view(), name="my-tickets"),
     path("tickets/escrow/", views.EscrowLedgerListView.as_view(), name="escrow-ledger"),
+    path("tickets/escrow/summary/", views.EscrowSummaryView.as_view(), name="escrow-summary"),
     path(
         "tickets/<int:ticket_id>/escrow/release/",
         views.EscrowReleaseView.as_view(),

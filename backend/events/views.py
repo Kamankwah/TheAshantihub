@@ -1,9 +1,10 @@
 from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction as db_transaction
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, Count, Q, Sum
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import filters, generics
@@ -1002,7 +1003,7 @@ class EscrowLedgerListView(generics.ListAPIView):
         return [HasRolePermission("escrow.view")]
 
     def get_queryset(self):
-        return Ticket.objects.all().order_by("-created_at")
+        return Ticket.objects.select_related("ticket_type__event", "purchased_by", "escrow_released_by_staff", "refunded_by_staff").order_by("-created_at")
 
     def filter_queryset(self, queryset):
         status_param = self.request.query_params.get("status")
@@ -1013,7 +1014,51 @@ class EscrowLedgerListView(generics.ListAPIView):
         if event_id:
             queryset = queryset.filter(ticket_type__event_id=event_id)
 
+        # The Accountant's screen: one state (a refunded ticket is its own state) and a search.
+        state = self.request.query_params.get("state")
+        if state == "refunded":
+            queryset = queryset.filter(refunded_at__isnull=False)
+        elif state in (Ticket.HELD, Ticket.RELEASED):
+            queryset = queryset.filter(escrow_status=state, refunded_at__isnull=True)
+        query = (self.request.query_params.get("q") or "").strip()[:80]
+        if query:
+            queryset = queryset.filter(
+                Q(code__icontains=query) | Q(ticket_type__event__name__icontains=query) | Q(purchased_by__full_name__icontains=query)
+            )
         return queryset
+
+
+class EscrowSummaryView(APIView):
+    """GET /api/events/tickets/escrow/summary/ — staff `escrow.view`. Ticket money by
+    state, and the held tickets whose event date has already passed. Tickets are the
+    only money AshantiHub holds: orders and bookings have no escrow record."""
+
+    def get_permissions(self):
+        return [HasRolePermission("escrow.view")]
+
+    def get(self, request):
+        zero = Decimal("0.00")
+        held = Q(escrow_status=Ticket.HELD, refunded_at__isnull=True)
+        totals = Ticket.objects.aggregate(
+            held=Sum("price", filter=held), held_n=Count("id", filter=held),
+            released=Sum("price", filter=Q(escrow_status=Ticket.RELEASED, refunded_at__isnull=True)),
+            released_n=Count("id", filter=Q(escrow_status=Ticket.RELEASED, refunded_at__isnull=True)),
+            refunded=Sum("price", filter=Q(refunded_at__isnull=False)), refunded_n=Count("id", filter=Q(refunded_at__isnull=False)),
+            late=Sum("price", filter=held & Q(delivered_at__isnull=True, ticket_type__event__event_date__lt=timezone.now())),
+            late_n=Count("id", filter=held & Q(delivered_at__isnull=True, ticket_type__event__event_date__lt=timezone.now())),
+        )
+        money = lambda value: f"{(value or zero):.2f}"
+        return Response({
+            "simulated": settings.PAYMENTS_PROVIDER == "simulated",
+            "held": {"amount": money(totals["held"]), "count": totals["held_n"]},
+            "released": {"amount": money(totals["released"]), "count": totals["released_n"]},
+            "refunded": {"amount": money(totals["refunded"]), "count": totals["refunded_n"]},
+            "held_after_event": {"amount": money(totals["late"]), "count": totals["late_n"]},
+            "not_recorded": [
+                {"name": "Orders and bookings", "why": "Order and booking money is not held in escrow yet, so none is listed here."},
+                {"name": "Release timers", "why": "No release-after-delivery rule is built; a ticket is released at check-in or by staff."},
+            ],
+        })
 
 
 class EscrowReleaseView(APIView):

@@ -215,3 +215,46 @@ class AccountantReportTests(AccountingBase):
         self.assertEqual(sections["disputes"]["Refunded through disputes (GH₵)"], "20.00")
         self.assertEqual(sections["escrow"]["Released by you"], 1)
         self.assertEqual(sections["escrow"]["Refunded by you"], 0)
+
+
+class EscrowScreenTests(AccountingBase):
+    def test_summary_counts_ticket_money_by_state_and_names_what_is_not_held(self):
+        held, released, refunded, late = (self.make_ticket(p) for p in ("80.00", "50.00", "30.00", "20.00"))
+        Ticket.objects.filter(pk=released.pk).update(escrow_status=Ticket.RELEASED, escrow_released_at=timezone.now())
+        Ticket.objects.filter(pk=refunded.pk).update(refunded_at=timezone.now())
+        Event.objects.filter(pk=self.ticket_type.event_id).update(event_date=timezone.now() - timedelta(days=1))
+        self.as_staff(self.accountant)
+        body = self.client.get("/api/events/tickets/escrow/summary/").json()
+        self.assertEqual((body["held"]["amount"], body["held"]["count"]), ("100.00", 2))
+        self.assertEqual((body["released"]["amount"], body["refunded"]["amount"]), ("50.00", "30.00"))
+        self.assertEqual(body["held_after_event"]["count"], 2)
+        self.assertIn("Orders and bookings", [n["name"] for n in body["not_recorded"]])
+        self.as_staff(self.scout)
+        self.assertEqual(self.client.get("/api/events/tickets/escrow/summary/").status_code, 403)
+
+    def test_list_filters_by_state_and_search(self):
+        a, b = self.make_ticket("80.00"), self.make_ticket("50.00")
+        Ticket.objects.filter(pk=b.pk).update(refunded_at=timezone.now())
+        self.as_staff(self.accountant)
+        ids = lambda q: sorted(r["id"] for r in self.client.get(f"/api/events/tickets/escrow/{q}").json()["results"])
+        self.assertEqual(ids("?state=held"), [a.pk])
+        self.assertEqual(ids("?state=refunded"), [b.pk])
+        self.assertEqual(ids("?q=Ama"), sorted([a.pk, b.pk]))
+        self.assertEqual(ids("?q=nobody"), [])
+
+
+class PricingCountsTests(AccountingBase):
+    def test_plan_and_tier_counts_come_from_records(self):
+        from billing.models import Subscription, SubscriptionPlan
+        from events.models import EventPricingTier
+
+        plan = SubscriptionPlan.objects.first()
+        Subscription.objects.create(business_owner=self.owner, plan=plan, cycle_months=1, is_trial=False, status=Subscription.ACTIVE, current_period_start=timezone.now(), current_period_end=timezone.now() + timedelta(days=30))
+        self.make_ticket()
+        Event.objects.filter(pk=self.ticket_type.event_id).update(visibility_days=30, paid_at=timezone.now())
+        self.as_staff(self.accountant)
+        plans = {p["id"]: p for p in self.client.get("/api/billing/plans/manage/").json()}
+        self.assertEqual(plans[plan.pk]["paying_businesses"], 1)
+        tiers = {t["duration_days"]: t for t in self.client.get("/api/events/pricing-tiers/manage/").json()}
+        self.assertEqual(tiers[30]["events_paid_90d"], 1)
+        self.assertEqual(tiers[7]["events_paid_90d"], 0)
