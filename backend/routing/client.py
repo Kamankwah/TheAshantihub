@@ -33,8 +33,10 @@ def _get(path):
         body = _http_get_json(url, float(getattr(settings, "OSRM_TIMEOUT_S", 2.0)))
     except Exception as exc:  # network, timeout, bad JSON: one error type for callers
         raise OsrmError(str(exc)) from exc
-    if not isinstance(body, dict) or body.get("code") != "Ok":
-        raise OsrmError(str((body or {}).get("message") or (body or {}).get("code") or "OSRM error"))
+    if not isinstance(body, dict):
+        raise OsrmError("Malformed OSRM response.")
+    if body.get("code") != "Ok":
+        raise OsrmError(str(body.get("message") or body.get("code") or "OSRM error"))
     return body
 
 
@@ -44,11 +46,14 @@ def route(origin, dest):
     if not routes:
         raise OsrmError("No route.")
     first = routes[0]
-    return {
-        "distance_m": float(first["distance"]),
-        "duration_s": float(first["duration"]),
-        "geometry": (first.get("geometry") or {}).get("coordinates", []),
-    }
+    try:
+        return {
+            "distance_m": float(first["distance"]),
+            "duration_s": float(first["duration"]),
+            "geometry": (first.get("geometry") or {}).get("coordinates", []),
+        }
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        raise OsrmError("Malformed OSRM response.") from exc
 
 
 def table(origins, dest):
@@ -60,6 +65,8 @@ def table(origins, dest):
     sources = ";".join(str(i) for i in range(len(origins)))
     body = _get(f"/table/v1/driving/{coords}?sources={sources}&destinations={len(origins)}&annotations=duration,distance")
     durations, distances = body.get("durations") or [], body.get("distances") or []
+    if not isinstance(durations, list) or not isinstance(distances, list):
+        raise OsrmError("Malformed OSRM response.")
     out = []
     for i in range(len(origins)):
         try:

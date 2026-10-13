@@ -28,6 +28,23 @@ class RouteTests(SimpleTestCase):
             with self.assertRaises(client.OsrmError):
                 client.route((6.69, -1.62), (6.70, -1.60))
 
+    def test_non_object_body_raises_osrm_error(self):
+        with mock.patch("routing.client._http_get_json", return_value=[1, 2]):
+            with self.assertRaises(client.OsrmError):
+                client.route((6.69, -1.62), (6.70, -1.60))
+
+    def test_route_entry_missing_distance_raises_osrm_error(self):
+        body = {"code": "Ok", "routes": [{"duration": 612.0, "geometry": {"coordinates": []}}]}
+        with mock.patch("routing.client._http_get_json", return_value=body):
+            with self.assertRaises(client.OsrmError):
+                client.route((6.69, -1.62), (6.70, -1.60))
+
+    def test_route_entry_with_null_duration_raises_osrm_error(self):
+        body = {"code": "Ok", "routes": [{"distance": 5321.4, "duration": None, "geometry": {"coordinates": []}}]}
+        with mock.patch("routing.client._http_get_json", return_value=body):
+            with self.assertRaises(client.OsrmError):
+                client.route((6.69, -1.62), (6.70, -1.60))
+
     @override_settings(OSRM_URL="")
     def test_blank_url_raises_without_calling_network(self):
         with mock.patch("routing.client._http_get_json") as get:
