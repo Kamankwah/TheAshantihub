@@ -6,5 +6,6 @@ urlpatterns = [
     path("", views.CallLogListCreateView.as_view(), name="call-list"),
     path("purposes/", views.CallPurposesView.as_view(), name="call-purposes"),
     path("counterparts/", views.CallCounterpartsView.as_view(), name="call-counterparts"),
+    path("export/", views.CallLogExportView.as_view(), name="call-export"),
     path("<int:pk>/", views.CallLogDetailView.as_view(), name="call-detail"),
 ]

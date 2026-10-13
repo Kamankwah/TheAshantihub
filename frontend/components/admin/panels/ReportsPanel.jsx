@@ -29,8 +29,8 @@ export default function ReportsPanel({ auth }) {
   const { data: report, isLoading, isError } = useCurrentReport(period, today);
   const { data: history } = useMyReports(period);
   const isScout = auth?.user?.role === "scout";
-  // The Operations lead's day report reads like the scout's: dated, addressed to their manager.
-  const isOps = auth?.user?.role === "operations";
+  // The Operations lead and Support agents: a dated day report addressed to their manager.
+  const isOps = auth?.user?.role === "operations" || auth?.user?.role === "support";
   // Scouts see the day report first; "Week & month" reveals the period switch.
   const [more, setMore] = useState(false);
   const showSwitch = !isScout || more || period !== "day";

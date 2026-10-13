@@ -32,6 +32,10 @@ import SubscriptionPlansManagePanel from "./panels/SubscriptionPlansManagePanel.
 import SubscriptionPlanApprovalPanel from "./panels/SubscriptionPlanApprovalPanel.jsx";
 import DeliveryManagementPanel from "./panels/DeliveryManagementPanel.jsx";
 import ContactMessagesPanel from "./panels/ContactMessagesPanel.jsx";
+import SupportContactPanel from "./panels/SupportContactPanel.jsx";
+import SupportReviewsPanel from "./panels/SupportReviewsPanel.jsx";
+import SupportDisputeIntakePanel from "./panels/SupportDisputeIntakePanel.jsx";
+import SupportOrderStatusPanel from "./panels/SupportOrderStatusPanel.jsx";
 import UsersPanel from "./panels/UsersPanel.jsx";
 import CategoriesZonesPanel from "./panels/CategoriesZonesPanel.jsx";
 import ZonesPanel from "./panels/ZonesPanel.jsx";
@@ -70,6 +74,7 @@ import ActivityPanel from "./panels/ActivityPanel.jsx";
 import StaffActivityPanel from "./panels/StaffActivityPanel.jsx";
 import TeamVisitMapPanel from "./panels/TeamVisitMapPanel.jsx";
 import CallLogPanel from "./panels/CallLogPanel.jsx";
+import SupportLogCallPage from "./panels/SupportLogCallPage.jsx";
 import TargetsPanel from "./panels/TargetsPanel.jsx";
 import CommissionPanel from "./panels/CommissionPanel.jsx";
 import LeaderboardPanel from "./panels/LeaderboardPanel.jsx";
@@ -395,11 +400,11 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "hero" && <HeroApprovalPanel />}
           {activeTab === "events-moderation" && (role === "super_admin" ? <SaEventsPanel /> : <EventsModerationPanel />)}
           {activeTab === "event-pricing" && <EventPricingPanel auth={auth} />}
-          {activeTab === "reviews" && <ReviewsModerationPanel auth={auth} />}
+          {activeTab === "reviews" && (role === "support" ? <SupportReviewsPanel /> : <ReviewsModerationPanel auth={auth} />)}
           {activeTab === "subscription-plans" && <SubscriptionPlansManagePanel />}
           {activeTab === "subscription-plans-approval" && (role === "super_admin" ? <PlansPricesPanel /> : <SubscriptionPlanApprovalPanel />)}
           {activeTab === "delivery" && (role === "super_admin" ? <SaOrdersPanel /> : <DeliveryManagementPanel />)}
-          {activeTab === "contact-messages" && <ContactMessagesPanel auth={auth} />}
+          {activeTab === "contact-messages" && (role === "support" ? <SupportContactPanel auth={auth} onNavigate={selectTab} /> : <ContactMessagesPanel auth={auth} />)}
           {activeTab === "users" && (role === "super_admin" ? <SaCustomersPanel auth={auth} /> : <UsersPanel auth={auth} />)}
           {activeTab === "categories-zones" && <CategoriesZonesPanel auth={auth} />}
           {activeTab === "site-settings" && <SiteSettingsPanel showToast={showToast} />}
@@ -407,7 +412,8 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "teams-reporting" && <SaTeamsPanel onOpenStaff={openStaff} />}
           {activeTab === "roles-permissions" && <RolesPermissionsPanel />}
           {activeTab === "escrow" && <EscrowLedgerPanel auth={auth} />}
-          {activeTab === "disputes" && (role === "super_admin" ? <SaDisputesPanel auth={auth} /> : <DisputesPanel auth={auth} />)}
+          {activeTab === "disputes" && (role === "super_admin" ? <SaDisputesPanel auth={auth} /> : role === "support" ? <SupportDisputeIntakePanel /> : <DisputesPanel auth={auth} />)}
+          {activeTab === "support-order-status" && role === "support" && <SupportOrderStatusPanel />}
           {activeTab === "transactions" && (role === "super_admin" ? <RevenueSalesPanel /> : <TransactionsReportPanel />)}
           {activeTab === "credit" && <CreditPanel />}
           {activeTab === "scout-assignments" && <ScoutAssignmentsPanel />}
@@ -422,7 +428,8 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
             : <TasksPanel auth={auth} />)}
           {activeTab === "activity" && (role === "operations" || role === "super_admin" ? <StaffActivityPanel live={live.live} superAdmin={role === "super_admin"} /> : <ActivityPanel />)}
           {activeTab === "visit-map" && <TeamVisitMapPanel onOpenBusiness={openBusiness} />}
-          {activeTab === "calls" && <CallLogPanel auth={auth} />}
+          {activeTab === "calls" && <CallLogPanel auth={auth} onLogCall={() => selectTab("support-log-call")} />}
+          {activeTab === "support-log-call" && <SupportLogCallPage onDone={() => selectTab("calls")} onSeeLog={() => selectTab("calls")} />}
           {activeTab === "prospects" && <ProspectsPanel onRegister={openRegisterFromProspect} />}
           {activeTab === "targets" && (role === "super_admin" ? <TargetLimitsPanel onOpenApproval={openApproval} /> : role !== "super_admin" && auth.hasPermission("businesses.manage_portfolio") ? <TargetsPanel /> : auth.hasPermission("targets.manage") ? <OpsTargetsPanel /> : <ScreenBuildingPanel title="Team targets" />)}
           {activeTab === "ops-scouts" && <OpsScoutsPanel auth={auth} onNavigate={selectTab} onOpenScout={openScoutPortfolio} />}

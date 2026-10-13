@@ -95,8 +95,8 @@ export const NAV_ITEMS = [
   { id: "support-past-limit", icon: "⏰", label: "Past time limit", placeholder: "support", show: (auth) => supportOnly(auth, "messaging.manage") },
   { id: "support-snoozed", icon: "😴", label: "Snoozed", placeholder: "support", show: (auth) => supportOnly(auth, "messaging.manage") },
   { id: "support-resolved", icon: "✔️", label: "Resolved", placeholder: "support", show: (auth) => supportOnly(auth, "messaging.manage") },
-  { id: "support-log-call", icon: "☎️", label: "Log a call", placeholder: "support", show: (auth) => supportOnly(auth, "calls.log") },
-  { id: "support-order-status", icon: "🚚", label: "Order status", placeholder: "support", show: (auth) => supportOnly(auth, "orders.support_update") },
+  { id: "support-log-call", icon: "☎️", label: "Log a call", show: (auth) => supportOnly(auth, "calls.log") },
+  { id: "support-order-status", icon: "🚚", label: "Order status", show: (auth) => supportOnly(auth, "orders.support_update") },
   { id: "support-canned", icon: "💡", label: "Canned replies", placeholder: "support", show: (auth) => supportOnly(auth, "messaging.manage") },
   { id: "support-tags", icon: "🏷️", label: "Tags", placeholder: "support", show: (auth) => supportOnly(auth, "messaging.manage") },
   // Super Admin canvas screens; the ones not built yet are placeholders (see saOnly).
