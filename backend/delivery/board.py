@@ -1,6 +1,8 @@
 """The Delivery Manager's live board: what is waiting, what is on the road, which riders are where.
 Everything is derived from assignments, shifts and pings; with no riders on shift the screens say so
-(no sample pins). Distances are straight-line estimates scaled by ``services.ROAD_FACTOR``."""
+(no sample pins). The board shows no route distances of its own; where a screen does show distances, it labels them from the
+routing status: road routes when routing is configured and answering, otherwise straight-line estimates scaled by
+``services.ROAD_FACTOR``. The dispatch queue's rider ranking is the exception: it is always an estimate (``dispatching.rank``)."""
 from datetime import timedelta
 
 from django.db.models import F, Q
@@ -9,8 +11,32 @@ from django.utils import timezone
 from disputes.models import Dispute
 from orders.models import DeliveryAssignment, Order
 
+from routing import service as routing_service
+
 from . import payloads, services
 from .models import DeliveryEvent, Rider, ShiftSession
+
+
+ESTIMATE_RANKING_NOTE = "Rider distances here are straight-line estimates (x 1.3), not road routes. Road routes are not used to rank riders yet."
+
+
+def routing_block(*, estimate_figures=False):
+    """The routing mode the screens report, from the live service status (never a fixed claim).
+    ``estimate_figures`` is for a screen whose own numbers are straight-line estimates whatever OSRM is doing (the
+    dispatch queue's ranking): it keeps the live status but says what the figures on that screen are."""
+    s = routing_service.status()
+    if estimate_figures:
+        note = ESTIMATE_RANKING_NOTE
+    elif s["mode"] == "road":
+        note = "Distances and times are road routes."
+    elif not s["configured"]:
+        note = "Straight-line estimate. A road route service is not connected."
+    else:
+        note = "Straight-line estimate. The road route service is not answering, so distances and times are estimates."
+    block = {**s, "note": note}
+    if estimate_figures:
+        block["distance_basis"] = routing_service.BASIS_ESTIMATE
+    return block
 
 
 def waiting_orders():
@@ -178,6 +204,6 @@ def live(now=None):
         "needs_you": needs[:12], "pins": pins, "queue": waiting[:8],
         "disputes": [{"id": d.pk, "order_id": d.order_id, "reason": d.reason, "reason_label": d.get_reason_display(), "created_at": d.created_at, "status": d.status} for d in disputes],
         "stale_after_seconds": int(services.STALE_AFTER.total_seconds()),
-        "routing": {"mode": "straight_line_estimate", "factor": services.ROAD_FACTOR, "note": "Straight-line estimate. A road route service is not connected."},
+        "routing": routing_block(),
         "auto_assign": None,
     }

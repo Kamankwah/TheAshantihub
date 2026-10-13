@@ -22,3 +22,8 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # The activity-log integrity check runs in Celery beat since plan 1B
 # (CELERY_BEAT_SCHEDULE "activity-verify-chain", 01:45 Africa/Accra).
 # Production sets ACTIVITY_SEAL_EMAIL=True so the seal is emailed.
+
+# Monthly refresh of the OSRM road data (production only; staging is built by hand
+# once, see infra/README.md "Road routing (OSRM)"). Re-downloads Ghana from Geofabrik,
+# clips to the Ashanti Region, rebuilds and recreates the osrm container.
+30 4 1 * * root flock -n /var/lock/ashantihub-osrm.lock bash /opt/ashantihub/infra/scripts/build-osrm-data.sh ashantihub /opt/ashantihub/infra/compose/docker-compose.yml >> /var/log/ashantihub-osrm.log 2>&1

@@ -230,6 +230,14 @@ class WaiverQuote(WaiverBase):
         self.assertFalse(d["waived"])
         self.assertIn("same business", d["mixed_note"])
 
+    def test_quote_refuses_a_point_outside_the_service_area(self):
+        self.add(self.ama, self.stole, 1)
+        self.as_customer(self.ama)
+        r = self.client.post("/api/marketing/cart/quote/", {**DOOR, "delivery_lat": 5.6037, "delivery_lng": -0.187}, format="json")
+        d = r.json()["delivery"]
+        self.assertEqual((d["fee_status"], d["fee"]), ("out_of_area", None))
+        self.assertIn("Ashanti", d["message"])
+
     def test_quote_has_no_delivery_block_for_pickup(self):
         self.add(self.ama, self.stole, 1)
         self.as_customer(self.ama)

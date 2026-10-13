@@ -16,6 +16,7 @@ from django.utils import timezone
 from field.services import haversine_m
 from notifications.services import notify_staff
 from orders.models import DeliveryAssignment, Order
+from routing import service as routing_service
 
 from . import board, config, services
 from .models import DeliveryEvent, DeliverySettings, Offer, QueueHold, Rider, ShiftSession
@@ -42,7 +43,9 @@ def deadline_for(order, *, express=False, limits=None):
 
 
 def rank(order, rules=None, now=None):
-    """{"eligible": [...best first], "left_out": [...], "pickup_located": bool, "rules": ...}."""
+    """{"eligible": [...best first], "left_out": [...], "pickup_located": bool, "rules": ..., "distance_basis": ...}.
+    Every rider distance here (``km``, the radius check, the distance score) is the straight-line estimate, so the
+    payload says so in ``distance_basis`` whatever OSRM is doing; road legs arrive with stage 2."""
     rules = rules or config.effective_rules()
     now = now or timezone.now()
     plat, plng, _ = services.pickup_stop(order)
@@ -109,7 +112,7 @@ def rank(order, rules=None, now=None):
             "vehicle_type": rider.vehicle_type, "active_jobs": active.get(staff.pk, 0),
         })
     eligible.sort(key=lambda r: (-r["total"], r["km"] if r["km"] is not None else 1e9, r["rider_id"]))
-    return {"eligible": eligible, "left_out": left_out, "pickup_located": plat is not None, "rules": {k: str(v) for k, v in rules.items()}}
+    return {"eligible": eligible, "left_out": left_out, "pickup_located": plat is not None, "rules": {k: str(v) for k, v in rules.items()}, "distance_basis": routing_service.BASIS_ESTIMATE}
 
 
 def cod_over_cap(rider, rules):

@@ -15,6 +15,10 @@ import { Empty, ErrorLine, Note, SOURCE_LABEL, WARN, clock, linkStyle, spare, sp
 // (no time limits in force) sorts by how long it has waited and says so.
 const SHORT_MINUTES = 10;
 
+// The ranking says how its own distances were measured (distance_basis, from the engine). Nothing is assumed when it
+// says nothing, and the page-wide routing status is not used here: it describes the road service, not these figures.
+const distanceSentence = (basis) => (basis ? `Rider distances are a ${basis}.` : "");
+
 function Ranking({ orderId, row, onDone, canForce }) {
   const { data, isLoading, isError } = useQueueRanking(orderId);
   const [rider, setRider] = useState("");
@@ -63,7 +67,7 @@ function Ranking({ orderId, row, onDone, canForce }) {
                 </tbody>
               </table>
             </div>
-            <span style={dim}>Score is the sum of each part (0 to 100) times its weight; the highest score is offered first. Distances are a straight-line estimate times 1.3, not a road route. Weights are set in Auto-assign rules.</span>
+            <span style={dim}>Score is the sum of each part (0 to 100) times its weight; the highest score is offered first. {distanceSentence(data.distance_basis)} Weights are set in Auto-assign rules.</span>
             {data.left_out.length > 0 && (
               <div>
                 <b style={{ fontSize: "0.8rem", color: D.text }}>Left out</b>
@@ -148,7 +152,7 @@ export default function DispatchQueuePanel({ auth, onNavigate }) {
                 </div>
               ))}
             </section>
-            <span style={dim}>Road distance is a straight-line estimate times {data.routing.factor}; a road route service is not connected.</span>
+            {data.routing?.note && <span style={dim}>{data.routing.note}</span>}
           </>
         )}
       </Status>

@@ -22,7 +22,7 @@ const live = (over = {}) => ({
   ],
   queue: [{ order_id: 7, waiting_minutes: 12, route: { from: 'Kente House', to: 'Ahodwo' }, zone: 'Adum', unzoned: false, returned: false }],
   disputes: [{ id: 31, order_id: 7, reason: 'delivery_issue', reason_label: 'Delivery problem', status: 'open' }],
-  stale_after_seconds: 120, routing: { mode: 'straight_line_estimate', factor: 1.3, note: 'Straight-line estimate. A road route service is not connected.' },
+  stale_after_seconds: 120, routing: { mode: 'straight_line_estimate', factor: 1.3, note: 'Straight-line estimate. The road route service is not answering, so distances and times are estimates.' },
   ...over,
 })
 const queueData = (over = {}) => ({ results: [], total: 0, auto_assign: { on: true, rules: {}, updated_at: null }, recent: [], deadlines: 'none', routing: { factor: 1.3 }, ...over })
@@ -114,6 +114,33 @@ describe('Dispatch queue', () => {
     server.use(http.get(`${API}/api/delivery/queue/`, () => HttpResponse.json(queueData({ deadlines: 'set' }))))
     wrap(<DispatchQueuePanel auth={auth} onNavigate={() => {}} />)
     expect(await screen.findByText('No order is waiting for a rider.')).toBeInTheDocument()
+  })
+
+  const EST = 'straight-line estimate x 1.3'
+  const roadStatus = { mode: 'road', factor: 1.3, healthy: true, configured: true }
+  const queueNote = 'Rider distances here are straight-line estimates (x 1.3), not road routes. Road routes are not used to rank riders yet.'
+  const openRanking = async (routing, distance_basis) => {
+    server.use(
+      http.get(`${API}/api/delivery/queue/`, () => HttpResponse.json(queueData({ results: [row], total: 1, routing }))),
+      http.get(`${API}/api/delivery/queue/7/ranking/`, () => HttpResponse.json({ ...ranking, distance_basis })),
+    )
+    wrap(<DispatchQueuePanel auth={auth} onNavigate={() => {}} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Choose rider' }))
+    return screen.findByRole('region', { name: 'Order #7 detail' })
+  }
+
+  it('prints the ranking\'s own basis and never says road routes, even when the road service is up', async () => {
+    const region = await openRanking({ ...roadStatus, distance_basis: EST, note: queueNote }, EST)
+    expect(await within(region).findByText(/Rider distances are a straight-line estimate x 1\.3\./)).toBeInTheDocument()
+    expect(screen.getByText(queueNote)).toBeInTheDocument()
+    expect(screen.queryByText(/are road routes/i)).toBeNull()
+    expect(screen.queryByText(/not connected/i)).toBeNull()
+  })
+
+  it('says nothing about how distances were measured when the ranking does not say', async () => {
+    const region = await openRanking({ ...roadStatus, note: queueNote }, undefined)
+    await within(region).findByText(/Score is the sum of each part/)
+    expect(within(region).queryByText(/Rider distances are/)).toBeNull()
   })
 })
 
@@ -220,4 +247,5 @@ describe('Disputes and returns', () => {
     expect(await screen.findByText('Decision recorded')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Record decision' })).not.toBeInTheDocument()
   })
+
 })

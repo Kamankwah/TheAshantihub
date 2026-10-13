@@ -123,6 +123,7 @@ INSTALLED_APPS = [
     "announcements",
     "realtime",
     "delivery",
+    "routing",
 ]
 
 MIDDLEWARE = [
@@ -329,6 +330,11 @@ HUBTEL_MERCHANT_ACCOUNT = env("HUBTEL_MERCHANT_ACCOUNT", default="")
 HUBTEL_WEBHOOK_SECRET = env("HUBTEL_WEBHOOK_SECRET", default="")
 HUBTEL_CALLBACK_URL = env("HUBTEL_CALLBACK_URL", default="")
 PAYMENTS_PROVIDER = "hubtel" if HUBTEL_CLIENT_ID else "simulated"
+
+# Road routing (docs/superpowers/specs/2026-10-13-delivery-routing-dispatch-design.md). Blank OSRM_URL means
+# routing is off and every distance is the labelled straight-line estimate.
+OSRM_URL = env("OSRM_URL", default="")
+OSRM_TIMEOUT_S = float(env("OSRM_TIMEOUT_S", default="2.0") or 2.0)  # a blank line in the env file means the default
 
 # Marketing cost estimate, GH₵ per message (marketing/cost.py). In-app and email cost
 # nothing. There is no SMS or WhatsApp provider, so these are the owner's planning figures

@@ -10,6 +10,7 @@ from rest_framework.views import APIView
 
 from accounts.permissions import HasRolePermission
 from orders.models import DeliveryAssignment, Order
+from routing import service as routing_service
 
 from . import board, config, dispatching, payloads, services
 from .models import DeliverySettings, Offer, QueueHold, Rider
@@ -56,7 +57,7 @@ class QueueView(ManageView):
             "auto_assign": {"on": settings_row.auto_assign_on, "rules": {"source": rules["source"], "version": rules["version"]}, "updated_at": settings_row.updated_at if settings_row.pk else None},
             "recent": [{"order_id": a.order_id, "rider": a.dispatch.full_name if a.dispatch_id else None, "mode": a.assignment_mode, "mode_label": a.get_assignment_mode_display(), "at": a.assigned_at} for a in recent],
             "deadlines": "set" if limits else "none",
-            "routing": {"mode": "straight_line_estimate", "factor": services.ROAD_FACTOR},
+            "routing": board.routing_block(estimate_figures=True),
         })
 
 
@@ -146,8 +147,13 @@ def offer_payload(offer, now=None):
     plat, plng, name = services.pickup_stop(order)
     dlat, dlng = services.drop_stop(order)
     shift = services.open_shift(offer.rider)
-    to_pickup = services.distance_estimate_km(shift.last_lat, shift.last_lng, plat, plng) if shift and shift.last_lat is not None and plat is not None else None
-    trip = services.distance_estimate_km(plat, plng, dlat, dlng) if plat is not None and dlat is not None else None
+    leg_to_pickup = routing_service.leg((shift.last_lat, shift.last_lng), (plat, plng)) if shift and shift.last_lat is not None and plat is not None else None
+    leg_trip = routing_service.leg((plat, plng), (dlat, dlng)) if plat is not None and dlat is not None else None
+    to_pickup = leg_to_pickup["distance_km"] if leg_to_pickup else None
+    trip = leg_trip["distance_km"] if leg_trip else None
+    present = [leg for leg in (leg_to_pickup, leg_trip) if leg]
+    # Road only when every distance shown is a road route; any estimate makes the label the estimate.
+    basis = routing_service.BASIS_ROAD if present and all(leg["basis"] == routing_service.BASIS_ROAD for leg in present) else routing_service.BASIS_ESTIMATE
     from . import config as cfg
     from .rates import rider_pay
 
@@ -156,7 +162,7 @@ def offer_payload(offer, now=None):
     return {
         "id": offer.pk, "order_id": order.pk, "expires_at": offer.expires_at, "seconds_left": max(0, int((offer.expires_at - now).total_seconds())),
         "pickup": {"business_name": name, "lat": plat, "lng": plng}, "delivery_address": order.delivery_address, "delivery_lat": dlat, "delivery_lng": dlng,
-        "to_pickup_km": to_pickup, "trip_km": trip, "distance_basis": "straight-line estimate x 1.3", "payment": payloads.payment_label(order),
+        "to_pickup_km": to_pickup, "trip_km": trip, "distance_basis": basis, "payment": payloads.payment_label(order),
         "deadline_at": dispatching.deadline_for(order), "pay": pay, "items": order.items.count(),
     }
 

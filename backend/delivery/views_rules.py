@@ -10,6 +10,7 @@ from accounts.models import Role
 from accounts.permissions import HasAnyRolePermission, HasRolePermission
 from approvals import services as approvals
 from approvals.models import ApprovalRequest
+from routing import service as routing_service
 
 from . import config, rates, services
 from .models import AutoAssignRules, ConfigVersion, RateCard, TimeLimits, VEHICLE_TYPES
@@ -92,7 +93,7 @@ class RateCardView(_ConfigView):
         return {
             "vehicle_types": [{"value": v, "label": l} for v, l in VEHICLE_TYPES],
             "fee_charging": {"enabled": bool(settings.DELIVERY_FEE_ENABLED), "note": "Customers are charged a delivery fee only when delivery fees are switched on. That is a separate decision."},
-            "distance_basis": rates.BASIS,
+            "distance_basis": routing_service.BASIS_ROAD if routing_service.status()["mode"] == "road" else routing_service.BASIS_ESTIMATE,
         }
 
 
@@ -137,8 +138,8 @@ class QuoteView(RatesView):
         if vehicle not in dict(VEHICLE_TYPES):
             return Response({"detail": "Unknown vehicle type."}, status=400)
         return Response({
-            "source": source, "customer": rates.customer_fee(card, km, vehicle=vehicle, express=bool(data.get("express")), extra_pickups=int(data.get("extra_pickups") or 0)),
-            "rider": rates.rider_pay(card, km, wait_minutes=int(data.get("wait_minutes") or 0)),
+            "source": source, "customer": rates.customer_fee(card, km, vehicle=vehicle, express=bool(data.get("express")), extra_pickups=int(data.get("extra_pickups") or 0), basis=rates.BASIS_TYPED),
+            "rider": rates.rider_pay(card, km, wait_minutes=int(data.get("wait_minutes") or 0), basis=rates.BASIS_TYPED),
         })
 
 
