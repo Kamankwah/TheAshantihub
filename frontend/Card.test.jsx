@@ -26,9 +26,12 @@ const REAL_SHAPED_LISTING = {
   is_promoted: false,
 }
 
+// Card now reads the public promotions (flash-sale price tag), so it needs a query client.
+const renderWithClient = (ui) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>)
+
 describe('Card with real API shape', () => {
   it('renders the listing name, price, and zone from the real shape', () => {
-    render(
+    renderWithClient(
       <Card
         item={REAL_SHAPED_LISTING}
         accentColor="#000080"
@@ -45,7 +48,7 @@ describe('Card with real API shape', () => {
   })
 
   it('renders the main_photo as an image when present', () => {
-    render(
+    renderWithClient(
       <Card
         item={REAL_SHAPED_LISTING}
         accentColor="#000080"
@@ -62,7 +65,7 @@ describe('Card with real API shape', () => {
 
   it('calls onOpen with the listing id when the name is clicked', () => {
     const onOpen = vi.fn()
-    render(
+    renderWithClient(
       <Card
         item={REAL_SHAPED_LISTING}
         accentColor="#000080"
@@ -81,7 +84,7 @@ describe('Card with real API shape', () => {
   it('does not call onOpen when the favourite button is clicked', () => {
     const onOpen = vi.fn()
     const onFavourite = vi.fn()
-    render(
+    renderWithClient(
       <Card
         item={REAL_SHAPED_LISTING}
         accentColor="#000080"

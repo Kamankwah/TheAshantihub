@@ -18,6 +18,9 @@ from listings.models import Listing
 from disputes.serializers import DisputeSerializer
 from notifications.services import notify_customer
 from payments.models import CheckoutSession
+from marketing import checkout as promo_checkout
+from marketing import code_guard
+from marketing import promos
 from payments.services import process_payment
 
 from .models import DeliveryAssignment, Order, OrderItem
@@ -77,6 +80,22 @@ class OrderCheckoutView(APIView):
             )
 
         with db_transaction.atomic():
+            # Checkout promotions (marketing): off unless settings.MARKETING_PROMOS_ENABLED, and
+            # then priced here, before anything is reserved or written, under the flash-sale and
+            # coupon row locks. With the switch off `promo` stays None and nothing below changes.
+            promo = None
+            if promos.enabled():
+                if promo_checkout.normalise_code(request.data.get("coupon_code")) and code_guard.blocked(request):
+                    return Response({"detail": code_guard.TOO_MANY}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+                try:
+                    promo = promo_checkout.price(
+                        request.user, items, request.data.get("coupon_code"), lock=True,
+                        delivery_phone=delivery_phone if delivery_method == Order.DOOR_TO_DOOR else "",
+                    )
+                except promo_checkout.PromoError as exc:
+                    code_guard.record_failure(request)
+                    return Response({"detail": exc.message}, status=status.HTTP_400_BAD_REQUEST)
+
             # Lock the tracked listings and check stock before creating
             # anything. A listing with stock_quantity=None isn't inventory-
             # tracked (services, or products the owner hasn't set a count on)
@@ -98,6 +117,8 @@ class OrderCheckoutView(APIView):
             total = sum(
                 (item.unit_price_snapshot * item.quantity for item in items), Decimal("0.00")
             )
+            if promo:
+                total = promo.total  # net of any coupon
             # Delivery fee from the rate card in force, only when switched on (settings.DELIVERY_FEE_ENABLED,
             # default off). Fixed here, on the order; later card changes never touch it.
             fee_card, fee_quote = None, None
@@ -111,21 +132,26 @@ class OrderCheckoutView(APIView):
             order = Order.objects.create(
                 customer=request.user, status=Order.PENDING, total_amount=total,
                 delivery_fee=Decimal(fee_quote["total"]) if fee_quote else None, delivery_fee_breakdown=fee_quote, rate_card=fee_card,
+                **(promo.order_extras() if promo else {}),
                 delivery_method=delivery_method,
                 delivery_address=delivery_address if delivery_method == Order.DOOR_TO_DOOR else "",
                 delivery_phone=delivery_phone if delivery_method == Order.DOOR_TO_DOOR else "",
                 delivery_lat=request.data.get("delivery_lat") if delivery_method == Order.DOOR_TO_DOOR else None,
                 delivery_lng=request.data.get("delivery_lng") if delivery_method == Order.DOOR_TO_DOOR else None,
             )
-            for item in items:
-                line_total = item.unit_price_snapshot * item.quantity
-                OrderItem.objects.create(
-                    order=order,
-                    listing=item.listing,
-                    quantity=item.quantity,
-                    unit_price=item.unit_price_snapshot,
-                    line_total=line_total,
-                )
+            if promo:
+                promo_checkout.create_lines(order, promo)
+                promo_checkout.record_redemption(order, promo, request.user)
+            else:
+                for item in items:
+                    line_total = item.unit_price_snapshot * item.quantity
+                    OrderItem.objects.create(
+                        order=order,
+                        listing=item.listing,
+                        quantity=item.quantity,
+                        unit_price=item.unit_price_snapshot,
+                        line_total=line_total,
+                    )
 
             result = process_payment(
                 kind=CheckoutSession.ORDER_CHECKOUT,
@@ -134,7 +160,7 @@ class OrderCheckoutView(APIView):
                 customer=request.user,
                 # stock_reservations lets _fail_order_checkout put the stock
                 # back if a (Hubtel-mode) payment later fails/expires.
-                metadata={"order_id": order.id, "stock_reservations": reservations},
+                metadata={"order_id": order.id, "stock_reservations": reservations, **({"promos": True} if promo else {})},
             )
 
             if result["mode"] == "redirect":

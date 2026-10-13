@@ -42,10 +42,14 @@ def _email():
 
 
 def _sms():
+    if getattr(settings, "MARKETING_SMS_PROVIDER", "") == "simulated":
+        return _item("sms", "SMS", SIMULATED, "Simulated (no provider)", "Marketing SMS is simulated: nothing is sent to anyone.", ["An SMS provider and its keys (not built yet)"])
     return _item("sms", "SMS", NOT_CONNECTED, "None", "AshantiHub sends no text messages. There is no SMS balance to show.", ["An SMS provider and its keys (not built yet)"])
 
 
 def _whatsapp():
+    if getattr(settings, "MARKETING_WHATSAPP_PROVIDER", "") == "simulated":
+        return _item("whatsapp", "WhatsApp", SIMULATED, "Simulated (no provider)", "Marketing WhatsApp is simulated: nothing is sent to anyone.", ["A WhatsApp Business connection (not built yet)"])
     return _item(
         "whatsapp", "WhatsApp", NOT_CONNECTED, "None (link only)",
         "AshantiHub sends no WhatsApp messages. Visitors can open a chat with the support number through a link.",

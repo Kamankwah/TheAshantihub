@@ -117,6 +117,7 @@ INSTALLED_APPS = [
     "marketplace",
     "people",
     "commission",
+    "marketing",
     "insights",
     "staffsecurity",
     "announcements",
@@ -307,6 +308,13 @@ OWNER_TERMS_VERSION = "September 2026"
 # planned in-app wallet) can renew automatically.
 SUBSCRIPTION_PAUSE_ENABLED = env.bool("SUBSCRIPTION_PAUSE_ENABLED", default=False)
 
+# Checkout promotions (marketing flash sales and coupons). Off by default (owner
+# decision, 2026-10-13): staff can draft, edit and schedule both in the Marketing
+# dashboard, but checkout prices, totals, stock and orders are exactly what they were
+# before this existed - no flash-sale price, no coupon box, no discount - until the
+# owner switches this on. Read at request time (marketing.promos.enabled()).
+MARKETING_PROMOS_ENABLED = env.bool("MARKETING_PROMOS_ENABLED", default=False)
+
 # Hubtel payments (docs/HUBTEL_INTEGRATION.md, plan Workstream E). Every
 # HUBTEL_* var is blank by default — PAYMENTS_PROVIDER is *derived* from
 # whether HUBTEL_CLIENT_ID is actually set, not a separate manually-toggled
@@ -321,6 +329,18 @@ HUBTEL_MERCHANT_ACCOUNT = env("HUBTEL_MERCHANT_ACCOUNT", default="")
 HUBTEL_WEBHOOK_SECRET = env("HUBTEL_WEBHOOK_SECRET", default="")
 HUBTEL_CALLBACK_URL = env("HUBTEL_CALLBACK_URL", default="")
 PAYMENTS_PROVIDER = "hubtel" if HUBTEL_CLIENT_ID else "simulated"
+
+# Marketing cost estimate, GH₵ per message (marketing/cost.py). In-app and email cost
+# nothing. There is no SMS or WhatsApp provider, so these are the owner's planning figures
+# (env-overridable), not a quoted price; a channel left blank has an unknown cost and its
+# campaigns always go to Super Admin for approval.
+# "simulated" switches on a labelled backend that sends nothing (marketing/providers). Blank = not connected.
+MARKETING_SMS_PROVIDER = env("MARKETING_SMS_PROVIDER", default="")
+MARKETING_WHATSAPP_PROVIDER = env("MARKETING_WHATSAPP_PROVIDER", default="")
+MARKETING_UNIT_PRICE = {
+    "sms": env("MARKETING_SMS_UNIT_PRICE", default="0.033"),
+    "whatsapp": env("MARKETING_WHATSAPP_UNIT_PRICE", default=""),
+}
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
@@ -350,6 +370,9 @@ REST_FRAMEWORK = {
         # but not unlimited, since it's dark/unexercised until HUBTEL_* env
         # vars are set (see settings.PAYMENTS_PROVIDER).
         "hubtel_webhook": "60/min",
+        # Marketing: a person changing their own choices; the public one-click stop link.
+        "marketing_consent": "30/min",
+        "marketing_unsubscribe": "20/min",
         # Support chat — open to anonymous guests (keyed per-IP when
         # anonymous, per-account when signed in), so rate-limited to keep
         # guest spam bounded without getting in the way of a real
@@ -357,6 +380,9 @@ REST_FRAMEWORK = {
         "messaging": "60/hour",
         # A rider's phone sends a location fix every 15 s on a job (delivery.views_rider.PingView).
         "rider_ping": "30/min",
+        # Marketing banner view/click beacons: public, count-only. Generous because many
+        # phones share one mobile-carrier address; repeats are also de-duplicated per banner.
+        "banner_beacon": "240/min",
     },
 }
 
@@ -451,6 +477,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "reports.tasks.send_day_report_reminders",
         "schedule": crontab(hour=18, minute=0),
     },
+    "marketing-flash-sale-clock": {
+        "task": "marketing.tasks_promos.tick_flash_sales",
+        "schedule": 60.0,  # every minute: scheduled to live to ended
+    },
     "billing-subscription-clock": {
         "task": "billing.tasks.run_subscription_clock",
         "schedule": crontab(minute=5),  # hourly, at five past
@@ -462,6 +492,10 @@ CELERY_BEAT_SCHEDULE = {
     "field-close-abandoned-visits": {
         "task": "field.tasks.close_abandoned_visits",
         "schedule": crontab(minute=20),  # hourly, at twenty past
+    },
+    "marketing-campaign-tick": {
+        "task": "marketing.tasks.campaign_tick",
+        "schedule": 60.0,  # every minute: send what is due, drop approvals that missed their time
     },
     "commission-release-holds": {
         "task": "commission.tasks.release_commission_holds",

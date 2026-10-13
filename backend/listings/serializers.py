@@ -39,6 +39,19 @@ class CategorySerializer(serializers.ModelSerializer):
         extra_kwargs = {"kind": {"required": True}}
 
 
+
+class CategoryStaffSerializer(CategorySerializer):
+    """Staff list shape: the public fields plus how many listings and events use
+    the category. The counts come from queryset annotations (`listing_count`,
+    `event_count`), so the list costs one query."""
+
+    listing_count = serializers.IntegerField(read_only=True, default=0)
+    event_count = serializers.IntegerField(read_only=True, default=0)
+
+    class Meta(CategorySerializer.Meta):
+        fields = CategorySerializer.Meta.fields + ["listing_count", "event_count"]
+
+
 class ZoneSerializer(serializers.ModelSerializer):
     class Meta:
         model = Zone
@@ -326,6 +339,36 @@ class HeroMediaModerationSerializer(serializers.ModelSerializer):
         ]
 
 
+class HeroMediaStaffSerializer(HeroMediaModerationSerializer):
+    """The staff queue shape: the moderation shape plus the listing it promotes
+    and the server-computed checklist (canvas 14). Checks are computed for rows
+    still waiting for a decision only; a decided row carries an empty list."""
+
+    listing_name = serializers.CharField(source="listing.name", read_only=True, default=None)
+    checks = serializers.SerializerMethodField()
+    can_approve = serializers.SerializerMethodField()
+
+    class Meta(HeroMediaModerationSerializer.Meta):
+        fields = HeroMediaModerationSerializer.Meta.fields + ["listing", "listing_name", "checks", "can_approve"]
+
+    def _checks(self, obj):
+        cached = getattr(obj, "_staff_checks", None)
+        if cached is None:
+            from .moderation_checks import hero_checks
+
+            cached = hero_checks(obj) if obj.status == HeroMediaSubmission.PENDING else []
+            obj._staff_checks = cached
+        return cached
+
+    def get_checks(self, obj):
+        return self._checks(obj)
+
+    def get_can_approve(self, obj):
+        from .moderation_checks import blocking_failures
+
+        return obj.status == HeroMediaSubmission.PENDING and not blocking_failures(self._checks(obj))
+
+
 class HeroActiveSerializer(serializers.ModelSerializer):
     """Public shape for the live hero slider — GET /api/hero/active/."""
 
@@ -381,6 +424,13 @@ class PromotionAdminSerializer(serializers.ModelSerializer):
         source="listing.business_owner.full_name", read_only=True
     )
     is_currently_active = serializers.BooleanField(read_only=True)
+    checks = serializers.SerializerMethodField()
+    fraud_hold = serializers.SerializerMethodField()
+    days_left = serializers.SerializerMethodField()
+    paid_days = serializers.SerializerMethodField()
+    # Reserved for the Featured-listings package: which slot an approved
+    # promotion was placed in. Always null until that package lands.
+    slot = serializers.SerializerMethodField()
 
     class Meta:
         model = Promotion
@@ -388,8 +438,32 @@ class PromotionAdminSerializer(serializers.ModelSerializer):
             "id", "listing", "listing_name", "business_owner_name", "kind",
             "starts_at", "ends_at", "keywords", "amount_paid", "status",
             "rejection_reason", "is_currently_active", "created_at",
+            "checks", "fraud_hold", "days_left", "paid_days", "slot",
         ]
         read_only_fields = fields
+
+    def get_checks(self, obj):
+        from .moderation_checks import promotion_checks
+
+        return promotion_checks(obj)
+
+    def get_fraud_hold(self, obj):
+        from .moderation_checks import fraud_hold, open_fraud_flag
+
+        if obj.status != Promotion.PENDING:
+            return None
+        return fraud_hold(open_fraud_flag(obj.listing.business_owner_id, self.context.get("fraud_flags")))
+
+    def get_days_left(self, obj):
+        from .moderation_checks import days_left
+
+        return days_left(obj)
+
+    def get_paid_days(self, obj):
+        return max(1, round((obj.ends_at - obj.starts_at).total_seconds() / 86400))
+
+    def get_slot(self, obj):
+        return None
 
 
 class PromotionPurchaseSerializer(serializers.Serializer):

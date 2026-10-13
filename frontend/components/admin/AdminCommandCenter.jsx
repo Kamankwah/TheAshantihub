@@ -82,6 +82,20 @@ import MessagingPanel from "./panels/MessagingPanel.jsx";
 import PromotionsPanel from "./panels/PromotionsPanel.jsx";
 import AnalyticsPanel from "./panels/AnalyticsPanel.jsx";
 import { buildNavGroups, makeBadgeFor, isPermittedTab, overviewLabel, PLACEHOLDER_TABS, COUNT_ONLY_TABS } from "./shell/navModel.js";
+import CampaignsPanel from "./panels/marketing/CampaignsPanel.jsx";
+import NewCampaignPanel from "./panels/marketing/NewCampaignPanel.jsx";
+import CampaignCalendarPanel from "./panels/marketing/CampaignCalendarPanel.jsx";
+import TemplatesPanel from "./panels/marketing/TemplatesPanel.jsx";
+import SegmentsPanel from "./panels/marketing/SegmentsPanel.jsx";
+import ConsentPanel from "./panels/marketing/ConsentPanel.jsx";
+import FlashSalesPanel from "./panels/marketing/FlashSalesPanel.jsx";
+import CouponsPanel from "./panels/marketing/CouponsPanel.jsx";
+import BannersPanel from "./panels/marketing/BannersPanel.jsx";
+import FeaturedListingsPanel from "./panels/marketing/FeaturedListingsPanel.jsx";
+import CampaignResultsPanel from "./panels/marketing/CampaignResultsPanel.jsx";
+import SenderIdsPanel from "./panels/marketing/SenderIdsPanel.jsx";
+import MarketingOverviewPanel from "./panels/marketing/MarketingOverviewPanel.jsx";
+import QuietHoursPanel from "./panels/marketing/QuietHoursPanel.jsx";
 import StaffNavList from "./shell/StaffNavList.jsx";
 import { pickBottomBarItems } from "./shell/navModel.js";
 import useBreakpoint from "../../hooks/useBreakpoint.js";
@@ -310,6 +324,13 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
   const supportNavigate = (id, params) => { selectTab(id); if (params?.order) setSupportOrder(params.order); };
   const openSupportProfile = (kind, id) => { selectTab("users"); setSupportProfile({ kind, id }); };
   const openSupportLog = (link) => { selectTab("support-log-call"); setCallLink(link || null); };
+  // Marketing screens open each other (and a record inside one): onNavigate(tab, recordId).
+  const openTabDetail = (tab, id) => {
+    setScoutFilter(null);
+    setDrawerOpen(false);
+    if (isControlled) onTabChange?.(id == null ? tab : `${tab}/${id}`);
+    else { setInternalTab(tab); setInternalDetail(id == null ? null : String(id)); }
+  };
   const openDetail = (id) => {
     if (isControlled) onTabChange?.(id == null ? activeTab : `${activeTab}/${id}`);
     else setInternalDetail(id);
@@ -452,13 +473,15 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
               ? <SuperAdminOverviewPanel auth={auth} onNavigate={selectTab} onOpenApproval={openApproval} />
             : role === "accountant" && auth.hasPermission("transactions.report")
               ? <AccountingOverviewPanel auth={auth} onNavigate={selectTab} />
+            : role === "marketing"
+              ? <MarketingOverviewPanel auth={auth} onNavigate={openTabDetail} />
             : role === "operations" && auth.hasPermission("portfolio.manage")
               ? <OperationsOverviewPanel auth={auth} onNavigate={selectTab} onOpenApproval={openApproval} onOpenBusiness={openBusiness} />
               : <OverviewPanel auth={auth} roleColor={roleColor} onNavigate={selectTab} />)}
           {activeTab === "kyc" && <KYCQueuePanel auth={auth} />}
           {activeTab === "moderation" && (role === "super_admin" ? <SaListingsPanel auth={auth} onOpenBusiness={openBusiness} /> : <ListingsModerationPanel />)}
-          {activeTab === "hero" && <HeroApprovalPanel />}
-          {activeTab === "events-moderation" && (role === "super_admin" ? <SaEventsPanel /> : <EventsModerationPanel />)}
+          {activeTab === "hero" && <HeroApprovalPanel auth={auth} />}
+          {activeTab === "events-moderation" && (role === "super_admin" ? <SaEventsPanel /> : <EventsModerationPanel auth={auth} />)}
           {activeTab === "event-pricing" && <EventPricingPanel auth={auth} />}
           {activeTab === "reviews" && (role === "support" ? <SupportReviewsPanel /> : <ReviewsModerationPanel auth={auth} />)}
           {activeTab === "subscription-plans" && <SubscriptionPlansManagePanel />}
@@ -501,7 +524,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "delivery-coordination" && <DeliveryManagerPanel />}
           {activeTab === "my-deliveries" && <DispatchPanel />}
           {activeTab === "promotions" && <PromotionsPanel auth={auth} />}
-          {activeTab === "analytics" && (role === "super_admin" ? <SaAnalyticsPanel /> : <AnalyticsPanel />)}
+          {activeTab === "analytics" && (role === "super_admin" ? <SaAnalyticsPanel /> : <AnalyticsPanel auth={auth} />)}
           {activeTab === "messaging" && <MessagingPanel />}
           {activeTab === "tasks" && (role === "scout"
             ? <FollowUpsPanel onOpenBusiness={openMyBusiness} onOpenProspects={() => selectTab("prospects")} leadName={leadName} />
@@ -520,6 +543,19 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {role === "support" && SUPPORT_INBOX_SCOPES[activeTab] && <SupportInboxPanel key={activeTab} scope={SUPPORT_INBOX_SCOPES[activeTab]} auth={auth} onNavigate={supportNavigate} onOpenProfile={openSupportProfile} onLogCall={openSupportLog} />}
           {activeTab === "support-canned" && role === "support" && <SupportCannedPanel />}
           {activeTab === "support-tags" && role === "support" && <SupportTagsPanel />}
+          {activeTab === "mk-campaigns" && <CampaignsPanel auth={auth} onNavigate={openTabDetail} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "mk-new-campaign" && <NewCampaignPanel auth={auth} onNavigate={openTabDetail} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "mk-calendar" && <CampaignCalendarPanel auth={auth} onNavigate={openTabDetail} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "mk-templates" && <TemplatesPanel auth={auth} onNavigate={openTabDetail} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "mk-segments" && <SegmentsPanel auth={auth} onNavigate={openTabDetail} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "mk-consent" && <ConsentPanel auth={auth} onNavigate={openTabDetail} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "mk-flash-sales" && <FlashSalesPanel auth={auth} onNavigate={openTabDetail} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "mk-coupons" && <CouponsPanel auth={auth} onNavigate={openTabDetail} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "mk-banners" && <BannersPanel auth={auth} onNavigate={openTabDetail} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "mk-featured" && <FeaturedListingsPanel auth={auth} onNavigate={openTabDetail} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "mk-results" && <CampaignResultsPanel auth={auth} onNavigate={openTabDetail} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "mk-senders" && <SenderIdsPanel auth={auth} onNavigate={openTabDetail} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "mk-quiet-hours" && <QuietHoursPanel auth={auth} onNavigate={openTabDetail} />}
           {PLACEHOLDER_TABS[role]?.has(activeTab) && <ScreenBuildingPanel title={activeLabel} />}
           {activeTab.startsWith("step-in-") && <StepInPanel teamId={activeTab.slice("step-in-".length)} auth={auth} />}
           {activeTab === "hero-events" && <HeroEventsPanel auth={auth} />}

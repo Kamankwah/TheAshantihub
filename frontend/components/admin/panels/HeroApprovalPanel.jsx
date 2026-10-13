@@ -4,6 +4,7 @@ import { useHeroModerationQueue } from "../../../hooks/useHeroModerationQueue.js
 import { shortDay } from "../../../lib/timeAgo.js";
 import { D } from "../theme.js";
 import { dim } from "./panelStyles.js";
+import HeroApprovalMarketing from "./marketing/HeroApprovalMarketing.jsx";
 import ModerationQueueTabs, {
   ApprovedByLine,
   RejectedReason,
@@ -12,7 +13,13 @@ import ModerationQueueTabs, {
 
 // Hero-media approval, restructured into Pending / Approved / Rejected tabs
 // (staff moderation-queue restructuring, items 1 & 3).
-export default function HeroApprovalPanel() {
+export default function HeroApprovalPanel({ auth }) {
+  // Marketing works this queue with the checklist layout (canvas 14); other roles keep the plain tabs.
+  if (auth?.user?.role === "marketing") return <HeroApprovalMarketing />;
+  return <PlainHeroApproval />;
+}
+
+function PlainHeroApproval() {
   const [tab, setTab] = useState("pending");
   const pending = useHeroModerationQueue({ status: "pending" });
   const approved = useHeroModerationQueue({ status: "approved" });

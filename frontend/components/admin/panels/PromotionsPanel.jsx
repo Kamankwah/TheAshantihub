@@ -3,6 +3,7 @@ import { apiPost } from "../../../apiClient.js";
 import { usePromotionsQueue } from "../../../hooks/usePromotionsQueue.js";
 import { D } from "../theme.js";
 import ModerationQueueTabs from "../ModerationQueueTabs.jsx";
+import PromotionsMarketing from "./marketing/PromotionsMarketing.jsx";
 
 // Promotions management (punch-list item 7 + pre-prod bug fix 7). A purchased
 // promotion is now moderated before it affects ranking: the owner pays, the row
@@ -129,6 +130,12 @@ function PromotionRow({ promotion, state, canManage, onDone }) {
 }
 
 export default function PromotionsPanel({ auth }) {
+  // Marketing gets the table with checks and the fraud hold (canvas 16).
+  if (auth?.user?.role === "marketing") return <PromotionsMarketing auth={auth} />;
+  return <PlainPromotions auth={auth} />;
+}
+
+function PlainPromotions({ auth }) {
   const [tab, setTab] = useState("pending");
   const pending = usePromotionsQueue({ status: "pending" });
   const active = usePromotionsQueue({ status: "active" });

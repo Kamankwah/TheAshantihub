@@ -51,6 +51,14 @@ class OrderSerializer(serializers.ModelSerializer):
             return None
         return assignment.drop_code or None
 
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        # Only an order that used a coupon carries these, so every other response is unchanged.
+        if obj.coupon_id:
+            data["discount_amount"] = str(obj.discount_amount)
+            data["coupon_code"] = obj.coupon.code
+        return data
+
 
 class StaffOrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)

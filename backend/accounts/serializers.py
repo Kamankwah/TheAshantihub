@@ -82,12 +82,21 @@ def owner_details_change(before, after):
     )
 
 
+def _capture_marketing_consent(subject, choices, context):
+    """Sign-up's separate, unticked marketing boxes: only a ticked one writes a consent line."""
+    from marketing import consent  # local: marketing imports accounts
+
+    consent.capture_at_signup(subject, choices, request=context.get("request"))
+
+
 class CustomerRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
+    # {"sms": true, "email": true, ...} - the sign-up form's marketing boxes, each separate and unticked by default.
+    marketing_consent = serializers.JSONField(write_only=True, required=False)
 
     class Meta:
         model = Customer
-        fields = ["id", "full_name", "phone", "email", "password"]
+        fields = ["id", "full_name", "phone", "email", "password", "marketing_consent"]
 
     def validate(self, attrs):
         phone = attrs.get("phone")
@@ -101,7 +110,10 @@ class CustomerRegistrationSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         password = validated_data.pop("password")
         validated_data["password_hash"] = make_password(password)
-        return Customer.objects.create(**validated_data)
+        choices = validated_data.pop("marketing_consent", None)
+        customer = Customer.objects.create(**validated_data)
+        _capture_marketing_consent(customer, choices, self.context)
+        return customer
 
 
 INVITE_TOKEN_LIFETIME = datetime.timedelta(days=7)
@@ -302,16 +314,19 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
 class BusinessOwnerRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
     kyc_status = serializers.CharField(read_only=True)
+    marketing_consent = serializers.JSONField(write_only=True, required=False)
 
     class Meta:
         model = BusinessOwner
-        fields = ["id", "full_name", "login_phone", "email", "password", "kyc_status"]
+        fields = ["id", "full_name", "login_phone", "email", "password", "kyc_status", "marketing_consent"]
 
     def create(self, validated_data):
         password = validated_data.pop("password")
         validated_data["password_hash"] = make_password(password)
+        choices = validated_data.pop("marketing_consent", None)
         owner = BusinessOwner.objects.create(**validated_data)
         BusinessOwnerProfile.objects.create(business_owner=owner)
+        _capture_marketing_consent(owner, choices, self.context)
         return owner
 
     def to_representation(self, instance):

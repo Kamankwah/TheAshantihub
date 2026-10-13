@@ -3,6 +3,7 @@ import { D } from "../theme.js";
 import KpiCard from "../../dashboard/charts/KpiCard.jsx";
 import ChartFrame from "../../dashboard/charts/ChartFrame.jsx";
 import ListingsDonut from "../../dashboard/charts/ListingsDonut.jsx";
+import AnalyticsMarketing from "./marketing/AnalyticsMarketing.jsx";
 
 // Marketplace Analytics tab (staff-only, analytics.view). Every figure here is
 // a REAL count from GET /api/core/analytics/ (accounts/listings/orders/events
@@ -39,7 +40,20 @@ const EVENT_STATUS_META = [
 const toSlices = (obj, meta) =>
   meta.map(m => ({ name: m.name, value: (obj || {})[m.key] || 0, color: m.color }));
 
-export default function AnalyticsPanel() {
+export default function AnalyticsPanel({ auth }) {
+  // Marketing sees the 7/30/90-day view first, then the same live snapshot below it.
+  if (auth?.user?.role === "marketing") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+        <AnalyticsMarketing />
+        <Snapshot />
+      </div>
+    );
+  }
+  return <Snapshot />;
+}
+
+function Snapshot() {
   const { data, isLoading, isError } = useAnalyticsOverview();
 
   if (isLoading) return <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading…</div>;

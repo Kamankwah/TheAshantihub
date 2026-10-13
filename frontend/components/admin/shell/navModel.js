@@ -36,6 +36,9 @@ const saOrAcct = (auth, acctPerm = "transactions.report") => saOnly(auth) || acc
 // Admin ones), shown to Support only, so the menu is exactly the canvas; the package that
 // builds a screen swaps its panel in and drops the flag.
 const supportOnly = (auth, ...perms) => auth.user?.role === "support" && perms.some((perm) => auth.hasPermission(perm));
+// The Marketing canvas (2026-10-13, 22 screens): its own screens are Marketing's alone. A
+// screen not built yet is a placeholder (`placeholder: "marketing"`) until its package lands.
+const mkOnly = (auth, ...perms) => auth.user?.role === "marketing" && perms.some((perm) => auth.hasPermission(perm));
 const opsOrSa = (auth, ...perms) => ["operations", "super_admin"].includes(auth.user?.role) && perms.some((perm) => auth.hasPermission(perm));
 
 export const NAV_ITEMS = [
@@ -133,6 +136,20 @@ export const NAV_ITEMS = [
   { id: "invites", icon: "✉️", label: "Invites", show: saOnly },
   { id: "teams-reporting", icon: "🌳", label: "Teams & reporting lines", show: saOnly },
   { id: "roles-permissions", icon: "🔑", label: "Roles & permissions", show: saOnly },
+  // Marketing canvas screens (see mkOnly).
+  { id: "mk-campaigns", icon: "📣", label: "Campaigns", show: (auth) => mkOnly(auth, "campaigns.manage") },
+  { id: "mk-new-campaign", icon: "✍️", label: "New campaign", show: (auth) => mkOnly(auth, "campaigns.manage") },
+  { id: "mk-calendar", icon: "🗓️", label: "Calendar", show: (auth) => mkOnly(auth, "campaigns.manage") },
+  { id: "mk-templates", icon: "🧩", label: "Templates", show: (auth) => mkOnly(auth, "campaigns.manage") },
+  { id: "mk-segments", icon: "🎯", label: "Segments", show: (auth) => mkOnly(auth, "campaigns.manage") },
+  { id: "mk-consent", icon: "✅", label: "Consent & opt-outs", show: (auth) => mkOnly(auth, "consent.view") },
+  { id: "mk-flash-sales", icon: "⚡", label: "Flash sales", show: (auth) => mkOnly(auth, "site_promo.manage") },
+  { id: "mk-coupons", icon: "🏷️", label: "Coupons", show: (auth) => mkOnly(auth, "coupons.manage") },
+  { id: "mk-banners", icon: "🖼️", label: "Banners", show: (auth) => mkOnly(auth, "site_promo.manage") },
+  { id: "mk-featured", icon: "⭐", label: "Featured listings", show: (auth) => mkOnly(auth, "site_promo.manage") },
+  { id: "mk-results", icon: "📈", label: "Campaign results", show: (auth) => mkOnly(auth, "campaigns.manage") },
+  { id: "mk-senders", icon: "📡", label: "Sender IDs & providers", show: (auth) => mkOnly(auth, "campaigns.manage") },
+  { id: "mk-quiet-hours", icon: "🌙", label: "Quiet hours & limits", show: (auth) => mkOnly(auth, "campaigns.manage", "promotions.manage", "analytics.view") },
   // Teams (step in): read-only views of a team member's workspace (components/admin/stepin/).
   { id: "step-in-operations", icon: "👁️", label: "Operations & scouts", show: canStepIn },
   { id: "step-in-support", icon: "👁️", label: "Support", show: canStepIn },
@@ -238,13 +255,19 @@ const ROLE_MENUS = {
     ["plans-pricing", "Plans & pricing", ["subscription-plans", "event-pricing", "credit"]],
     ["reports", "Reports", ["acct-statements", "reports"]],
   ],
+  // Marketing, exactly as the approved canvas draws it (Overview is pinned above the groups).
+  // The canvas groups "Campaigns" and "Reports" hold items of the same name, which a menu may not
+  // do (a group never repeats an item label), so those two groups read "Messages" and "Reporting".
+  // Approvals, Tasks, Activity and Sign-in & Security are not in the canvas menu; their panels and
+  // permissions are untouched (see EXHAUSTIVE_MENU_ROLES).
   marketing: [
-    ["decisions", "Decisions", ["approvals"]],
+    ["messages", "Messages", ["mk-campaigns", "mk-new-campaign", "mk-calendar", "mk-templates"]],
+    ["audiences", "Audiences", ["mk-segments", "mk-consent"]],
+    ["on-the-site", "On the site", ["mk-flash-sales", "mk-coupons", "mk-banners", "mk-featured"]],
     ["moderation", "Moderation", ["hero", "events-moderation", "promotions"]],
-    ["insights", "Insights", ["analytics"]],
-    ["settings", "Settings", ["categories-zones"]],
-    ["reports", "Reports", ["reports"]],
-    ["my-work", "My work", ["tasks", "activity", "security"]],
+    ["insights", "Insights", ["analytics", "mk-results"]],
+    ["settings", "Settings", ["mk-senders", "mk-quiet-hours", "categories-zones"]],
+    ["reporting", "Reporting", ["reports"]],
   ],
   // Support, exactly as the approved canvas draws it (7 groups, 18 items). Fraud cases, Approvals,
   // Activity, Security and the legacy Messaging / Delivery Management panels are not in this menu;
@@ -291,7 +314,7 @@ const ROLE_MENUS = {
 
 // Roles whose menu is the whole menu: a screen the canvas leaves out is not
 // offered under "More tools" either (its permission and panel stay).
-const EXHAUSTIVE_MENU_ROLES = new Set(["operations", "super_admin", "cosigner", "support", "delivery_manager", "dispatch"]);
+const EXHAUSTIVE_MENU_ROLES = new Set(["operations", "super_admin", "cosigner", "support", "delivery_manager", "dispatch", "marketing"]);
 
 // Nav ids whose screen is not built yet, per role; AdminCommandCenter renders the
 // "being built" panel for them. A package that builds one swaps its panel in and
@@ -320,6 +343,9 @@ const ROLE_LABELS = {
   support: {
     calls: "Call log", "contact-messages": "Contact form", disputes: "Dispute intake", users: "Customers & businesses",
     reports: "My reports",
+  },
+  marketing: {
+    hero: "Hero approval", "events-moderation": "Events", reports: "Reports", "categories-zones": "Categories",
   },
   // Super Admin reads the canvas's words; the ids (and every other role's labels) stay.
   super_admin: {
@@ -382,6 +408,8 @@ export const BADGE_KEY_BY_TAB = {
   "dm-documents": "delivery_documents",
   "dm-cash": "delivery_cash",
   "hero-events": ["hero", "events"],
+  // Marketing canvas: promotions waiting for approval.
+  promotions: "promotions_pending",
 };
 
 // Badge keys a role reads differently from BADGE_KEY_BY_TAB. Super Admin's canvas badges:

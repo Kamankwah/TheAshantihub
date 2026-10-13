@@ -53,7 +53,12 @@ class Order(models.Model):
     delivery_phone = models.CharField(max_length=20, blank=True)
     delivery_lat = models.FloatField(null=True, blank=True)
     delivery_lng = models.FloatField(null=True, blank=True)
+    # total_amount is NET: what the customer pays after any coupon. discount_amount is the
+    # coupon discount already taken off (AshantiHub pays it, never the seller); it is 0 and
+    # coupon is empty on every order placed while checkout promotions are off.
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    coupon = models.ForeignKey("marketing.Coupon", on_delete=models.PROTECT, null=True, blank=True, related_name="orders")
     placed_at = models.DateTimeField(auto_now_add=True)
     # Delivery fee, fixed at checkout from the rate card in force (delivery.RateCard) and only when
     # settings.DELIVERY_FEE_ENABLED is on (default off): null means no fee was charged.
@@ -78,6 +83,8 @@ class OrderItem(models.Model):
     quantity = models.PositiveIntegerField()
     unit_price = models.DecimalField(max_digits=10, decimal_places=2)
     line_total = models.DecimalField(max_digits=10, decimal_places=2)
+    # Set when unit_price is a flash-sale price (the sellers pay for that discount).
+    flash_sale = models.ForeignKey("marketing.FlashSale", on_delete=models.PROTECT, null=True, blank=True, related_name="order_items")
 
     def __str__(self):
         return f"{self.quantity} x {self.listing.name} (Order {self.order_id})"

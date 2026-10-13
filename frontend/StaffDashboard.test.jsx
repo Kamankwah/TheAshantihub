@@ -1907,7 +1907,7 @@ describe('StaffDashboard Credit & Lending (item 16)', () => {
   it('only shows the Credit nav item for a session with credit.manage', () => {
     const auth = makeAuth({ hasPermission: (c) => c === 'credit.manage' })
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
-    expect(screen.getByText('Credit & Lending')).toBeInTheDocument()
+    expect(screen.getByText('Credit & lending')).toBeInTheDocument()
   })
 
   it('adjusts a business owner credit score with a required reason', async () => {
@@ -1923,7 +1923,7 @@ describe('StaffDashboard Credit & Lending (item 16)', () => {
     )
     const auth = makeAuth({ hasPermission: (c) => c === 'credit.manage' })
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
-    fireEvent.click(screen.getByText('Credit & Lending'))
+    fireEvent.click(screen.getByText('Credit & lending'))
     await screen.findByText('Kwame Trader')
     fireEvent.click(screen.getByText('⚖️ Adjust'))
     fireEvent.change(screen.getByPlaceholderText('+/- points'), { target: { value: '40' } })
@@ -1944,7 +1944,7 @@ describe('StaffDashboard Credit & Lending (item 16)', () => {
     )
     const auth = makeAuth({ hasPermission: (c) => c === 'credit.manage' })
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
-    fireEvent.click(screen.getByText('Credit & Lending'))
+    fireEvent.click(screen.getByText('Credit & lending'))
     await screen.findByText('+ Add partner')
     fireEvent.click(screen.getByText('+ Add partner'))
     fireEvent.change(screen.getByPlaceholderText('Partner name'), { target: { value: 'Kumasi Credit Union' } })
@@ -1967,7 +1967,7 @@ describe('StaffDashboard Credit & Lending (item 16)', () => {
     )
     const auth = makeAuth({ hasPermission: (c) => c === 'credit.manage' })
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
-    fireEvent.click(screen.getByText('Credit & Lending'))
+    fireEvent.click(screen.getByText('Credit & lending'))
     await screen.findByText(/Kwame Trader · GHS 5000.00/)
     fireEvent.click(screen.getByText('Review'))
     fireEvent.click(screen.getByText('Approve'))

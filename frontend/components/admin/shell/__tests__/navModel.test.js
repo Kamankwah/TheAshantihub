@@ -99,7 +99,9 @@ const ACCT_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('acct-')).map((i) => i
 const ACCT_SHARED = ['commissions', 'refunds', 'reconciliation']
 // The Support canvas screens (placeholder or built) appear for no other role.
 const SUPPORT_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('support-') && !['support-team', 'support-issues'].includes(i.id)).map((i) => i.id)
-const OPS_ONLY = ['ops-scouts', 'support-team', 'leave', 'hero-events', 'support-issues', 'deliveries-returns', 'visit-map', 'zones', ...SA_ONLY, ...SUPPORT_ONLY]
+// The Marketing canvas screens are Marketing's alone.
+const MK_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('mk-')).map((i) => i.id)
+const OPS_ONLY = [...MK_ONLY, 'ops-scouts', 'support-team', 'leave', 'hero-events', 'support-issues', 'deliveries-returns', 'visit-map', 'zones', ...SA_ONLY, ...SUPPORT_ONLY]
 // The Delivery Manager canvas screens (2026-10-07) are the Delivery Manager's alone.
 const DM_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('dm-')).map((i) => i.id)
 // The Dispatch (rider) canvas screens are the rider's alone.
@@ -143,8 +145,8 @@ describe('per-role menus', () => {
     expect([...COUNT_ONLY_TABS.support]).toEqual(['support-all-open', 'support-snoozed'])
   })
 
-  it('shows every permitted item exactly once and no empty group, for every role but Operations and Super Admin (exhaustive menus)', () => {
-    for (const role of ['accountant', 'marketing', 'scout']) {
+  it('shows every permitted item exactly once and no empty group, for roles without an exhaustive canvas menu (the Support, Delivery, Dispatch and Marketing menus are the canvas alone, tested separately)', () => {
+    for (const role of ['accountant', 'scout']) {
       const groups = buildNavGroups({ user: { role }, hasPermission: () => true })
       const ids = groups.flatMap((g) => g.items.map((i) => i.id))
       expect(new Set(ids).size).toBe(ids.length)
@@ -515,5 +517,44 @@ describe('Super Admin menu (canvases 2026-10-07)', () => {
     const other = makeBadgeFor({ disputes_open: 1, reports_hub: 12, team_reports_waiting: 3 }, 'operations')
     expect(other('disputes')).toBe(0)
     expect(other('team-reports')).toBe(3)
+  })
+})
+
+describe('Marketing menu (canvas 2026-10-13)', () => {
+  const MK = [
+    'campaigns.manage', 'consent.view', 'coupons.manage', 'site_promo.manage', 'promotions.manage', 'analytics.view', 'categories.manage',
+    'zones.manage', 'hero_media.approve', 'event.approve',
+  ]
+  const auth = { user: { role: 'marketing' }, hasPermission: (c) => MK.includes(c) }
+  const groups = buildNavGroups(auth)
+
+  it('has exactly the canvas items in order (two group names differ so no group repeats an item)', () => {
+    expect(groups.map((g) => [g.label, g.items.map((i) => i.label)])).toEqual([
+      ['Messages', ['Campaigns', 'New campaign', 'Calendar', 'Templates']],
+      ['Audiences', ['Segments', 'Consent & opt-outs']],
+      ['On the site', ['Flash sales', 'Coupons', 'Banners', 'Featured listings']],
+      ['Moderation', ['Hero approval', 'Events', 'Promotions']],
+      ['Insights', ['Analytics', 'Campaign results']],
+      ['Settings', ['Sender IDs & providers', 'Quiet hours & limits', 'Categories']],
+      ['Reporting', ['Reports']],
+    ])
+    expect(groups.flatMap((g) => g.items)).toHaveLength(19)
+  })
+
+  it('offers no More tools: a screen the canvas leaves out stays reachable only by URL permission rules', () => {
+    expect(groups.some((g) => g.id === 'more')).toBe(false)
+    expect(PLACEHOLDER_TABS.marketing.size).toBe(0)
+  })
+
+  it('gates each screen on its permission and shows none to another role', () => {
+    const ids = (a) => buildNavGroups(a).flatMap((g) => g.items.map((i) => i.id))
+    expect(ids({ user: { role: 'marketing' }, hasPermission: (c) => c === 'promotions.manage' })).toEqual(['promotions', 'mk-quiet-hours', 'reports'])
+    for (const role of ['super_admin', 'operations', 'support']) {
+      expect(ids({ user: { role }, hasPermission: () => true }).filter((id) => id.startsWith('mk-'))).toEqual([])
+    }
+  })
+
+  it('reads the promotions badge from the new staff-badges key', () => {
+    expect(makeBadgeFor({ promotions_pending: 3, hero: 2, events: 1 }, 'marketing')('promotions')).toBe(3)
   })
 })
