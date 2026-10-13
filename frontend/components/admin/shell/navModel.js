@@ -79,6 +79,12 @@ export const NAV_ITEMS = [
   { id: "dm-queue", icon: "📥", label: "Dispatch queue", show: (auth) => auth.hasPermission("delivery.manage") && auth.user?.role === "delivery_manager" },
   { id: "dm-active", icon: "🚚", label: "Active deliveries", show: (auth) => auth.hasPermission("delivery.manage") && auth.user?.role === "delivery_manager" },
   { id: "dm-cases", icon: "⚖️", label: "Disputes & returns", show: (auth) => auth.hasPermission("delivery.manage") && auth.user?.role === "delivery_manager" },
+  { id: "dm-riders", icon: "🛵", label: "Riders & drivers", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.fleet") },
+  { id: "dm-documents", icon: "🪪", label: "Documents", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.fleet") },
+  { id: "dm-vehicles", icon: "🚐", label: "Vehicles", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.fleet") },
+  { id: "dm-invite", icon: "✉️", label: "Invite a rider", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.fleet") },
+  { id: "dm-shifts", icon: "📅", label: "Shifts", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.fleet") },
+  { id: "dm-zones", icon: "📍", label: "Zones", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.fleet") },
   // Operations canvas screens (see the note above NAV_ITEMS).
   { id: "ops-scouts", icon: "🧑‍🌾", label: "Scouts", show: (auth) => opsOnly(auth, "portfolio.manage") },
   { id: "support-team", icon: "🎧", label: "Support team", show: (auth) => opsOnly(auth, "staff.invite_team") },

@@ -51,6 +51,12 @@ import ScoutPanel from "./panels/ScoutPanel.jsx";
 import ScoutAssignmentsPanel from "./panels/ScoutAssignmentsPanel.jsx";
 import DeliveryManagerPanel from "./panels/DeliveryManagerPanel.jsx";
 import DispatchPanel from "./panels/DispatchPanel.jsx";
+import DeliveryZonesPanel from "./panels/delivery/DeliveryZonesPanel.jsx";
+import DocumentsPanel from "./panels/delivery/DocumentsPanel.jsx";
+import InviteRiderPanel from "./panels/delivery/InviteRiderPanel.jsx";
+import Riders from "./panels/delivery/RidersPanel.jsx";
+import ShiftsPanel from "./panels/delivery/ShiftsPanel.jsx";
+import VehiclesPanel from "./panels/delivery/VehiclesPanel.jsx";
 import ActiveDeliveries from "./panels/delivery/ActiveDeliveriesPanel.jsx";
 import DisputesCases from "./panels/delivery/DisputesCasesPanel.jsx";
 import DispatchQueuePanel from "./panels/delivery/DispatchQueuePanel.jsx";
@@ -428,6 +434,12 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "dm-queue" && <DispatchQueuePanel auth={auth} onNavigate={selectTab} />}
           {activeTab === "dm-active" && <ActiveDeliveries detailId={detail} onOpenDetail={(id) => (id == null ? openDetail(null) : openAt("dm-active", id))} onOpenCase={(id) => openAt("dm-cases", id)} />}
           {activeTab === "dm-cases" && <DisputesCases detailId={detail} onOpenDetail={(id) => (id == null ? openDetail(null) : openAt("dm-cases", id))} onOpenDelivery={(id) => openAt("dm-active", id)} />}
+          {activeTab === "dm-riders" && <Riders detailId={detail} onOpenDetail={(id) => (id == null ? openDetail(null) : openAt("dm-riders", id))} onOpenDelivery={(id) => openAt("dm-active", id)} onNavigate={selectTab} />}
+          {activeTab === "dm-documents" && <DocumentsPanel onNavigate={selectTab} />}
+          {activeTab === "dm-vehicles" && <VehiclesPanel />}
+          {activeTab === "dm-invite" && <InviteRiderPanel auth={auth} />}
+          {activeTab === "dm-shifts" && <ShiftsPanel />}
+          {activeTab === "dm-zones" && <DeliveryZonesPanel />}
           {activeTab === "delivery-coordination" && <DeliveryManagerPanel />}
           {activeTab === "my-deliveries" && <DispatchPanel />}
           {activeTab === "promotions" && <PromotionsPanel auth={auth} />}
