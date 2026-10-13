@@ -122,6 +122,10 @@ class Review(models.Model):
     # was already published stays published.
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
     hidden_reason = models.TextField(null=True, blank=True)
+    # One of reviews.reasons.HIDE_REASONS (blank for rows hidden before the codes
+    # existed), and the message the reviewer was sent when it was hidden.
+    hidden_reason_code = models.CharField(max_length=24, blank=True, default="")
+    hidden_message = models.TextField(blank=True, default="")
     hidden_by = models.ForeignKey(
         StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="hidden_reviews",

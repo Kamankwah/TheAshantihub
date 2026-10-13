@@ -79,7 +79,7 @@ class DisputeFlagTests(DisputeTestsBase):
 
     def test_flag_moves_open_to_investigating(self):
         self._auth_staff(self.support)
-        response = self.client.post(self._flag_url())
+        response = self.client.post(self._flag_url(), {"intake_summary": "Customer reports the item never arrived."}, format="json")
         self.assertEqual(response.status_code, 200, response.content)
         self.dispute.refresh_from_db()
         self.assertEqual(self.dispute.status, Dispute.INVESTIGATING)

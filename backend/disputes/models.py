@@ -50,6 +50,36 @@ class Dispute(models.Model):
     # via DisputeFlagView/DisputeResolveView (see views.py).
     FINAL_STATUSES = (RESOLVED, REJECTED)
 
+    # Support intake (Support dashboard). `problem_type` is what went wrong in
+    # Support's words; there is no rider-raised type (no rider path exists).
+    FAULTY_ITEM = "faulty_item"
+    NOT_RECEIVED = "not_received"
+    DAMAGED = "damaged_in_transit"
+    WRONG_OR_MISSING = "wrong_or_missing"
+    RETURN_REQUEST = "return_request"
+    PROBLEM_CHOICES = [
+        (FAULTY_ITEM, "Faulty item"),
+        (NOT_RECEIVED, "Not received"),
+        (DAMAGED, "Damaged on the way"),
+        (WRONG_OR_MISSING, "Wrong or missing item"),
+        (RETURN_REQUEST, "Return"),
+    ]
+    MONEY_BACK = "money_back"
+    REPLACEMENT = "replacement"
+    REPAIR = "repair"
+    RETURN_ITEM = "return_item"
+    ASK_CHOICES = [
+        (MONEY_BACK, "Money back"),
+        (REPLACEMENT, "A replacement"),
+        (REPAIR, "A repair"),
+        (RETURN_ITEM, "To return it"),
+    ]
+    # problem_type -> the `reason` the older queue already shows.
+    REASON_FOR_PROBLEM = {
+        FAULTY_ITEM: QUALITY_ISSUE, NOT_RECEIVED: DELIVERY_ISSUE, DAMAGED: DELIVERY_ISSUE,
+        WRONG_OR_MISSING: ORDER_ISSUE, RETURN_REQUEST: ORDER_ISSUE,
+    }
+
     order = models.ForeignKey(
         Order, on_delete=models.SET_NULL, null=True, blank=True, related_name="disputes"
     )
@@ -59,6 +89,18 @@ class Dispute(models.Model):
     reason = models.CharField(max_length=20, choices=REASON_CHOICES)
     description = models.TextField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=OPEN)
+
+    problem_type = models.CharField(max_length=24, choices=PROBLEM_CHOICES, blank=True, default="")
+    customer_ask = models.CharField(max_length=16, choices=ASK_CHOICES, blank=True, default="")
+    # Support's summary for Accounting; flagging needs it.
+    intake_summary = models.TextField(blank=True, default="")
+    conversation = models.ForeignKey(
+        "messaging.Conversation", on_delete=models.SET_NULL, null=True, blank=True, related_name="disputes"
+    )
+    # Set when staff logged the dispute on the customer's behalf (raised_by stays null).
+    logged_by = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="disputes_logged"
+    )
 
     resolution_notes = models.TextField(null=True, blank=True)
     refund_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
@@ -78,3 +120,33 @@ class Dispute(models.Model):
 
     def __str__(self):
         return f"Dispute #{self.id} ({self.get_status_display()})"
+
+
+class DisputeEvidence(models.Model):
+    """One piece of evidence Support attached to a dispute: a typed note or a
+    photo/PDF. Append-only: it can be added, never edited or deleted (the model
+    refuses both), so what Accounting sees is what Support saw. The delivery
+    record is not stored here; it is read from the order's own stamps."""
+
+    NOTE = "note"
+    FILE = "file"
+    KIND_CHOICES = [(NOTE, "Note"), (FILE, "Photo or document")]
+
+    dispute = models.ForeignKey(Dispute, on_delete=models.CASCADE, related_name="evidence")
+    kind = models.CharField(max_length=8, choices=KIND_CHOICES, default=NOTE)
+    title = models.CharField(max_length=150)
+    body = models.TextField(blank=True, default="")
+    file = models.FileField(upload_to="dispute_evidence/", null=True, blank=True)
+    added_by = models.ForeignKey(StaffUser, null=True, on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def save(self, *args, **kwargs):
+        if self.pk is not None and not self._state.adding:
+            raise RuntimeError("Dispute evidence is append-only.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise RuntimeError("Dispute evidence is append-only.")

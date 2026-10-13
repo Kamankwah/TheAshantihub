@@ -67,6 +67,9 @@ describe('SaDisputesPanel', () => {
     const side = await screen.findByRole('region', { name: 'Case 9' })
     expect(within(side).getByText(/Never came/)).toBeInTheDocument()
     fireEvent.click(within(side).getByRole('button', { name: /Flag/ }))
+    // Flagging needs a summary for Accounting, so the row asks for one first.
+    fireEvent.change(within(side).getByLabelText('Summary for Accounting'), { target: { value: 'Never came, per the customer.' } })
+    fireEvent.click(within(side).getByRole('button', { name: 'Confirm flag' }))
     await waitFor(() => expect(seen.flags).toEqual(['9']))
   })
 })

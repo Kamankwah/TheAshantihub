@@ -16,10 +16,12 @@ import { apiFetch } from '../apiClient.js'
 // `enabled` (default true) — see useKYCQueue.js's identical convention,
 // used the same way by OverviewPanel (gating on disputes.flag||
 // disputes.resolve_financial).
-export function useDisputesQueue({ status = 'pending', enabled = true } = {}) {
+// `order` (optional) narrows the queue to one order's disputes (Support's
+// intake deep link, `?order=`).
+export function useDisputesQueue({ status = 'pending', enabled = true, order = '' } = {}) {
   return useQuery({
-    queryKey: ['disputes-queue', status],
-    queryFn: () => apiFetch(`/api/disputes/?status=${status}`),
+    queryKey: order ? ['disputes-queue', status, `order-${order}`] : ['disputes-queue', status],
+    queryFn: () => apiFetch(`/api/disputes/?status=${status}${order ? `&order=${encodeURIComponent(order)}` : ''}`),
     enabled,
   })
 }

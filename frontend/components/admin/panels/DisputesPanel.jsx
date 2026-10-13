@@ -29,6 +29,8 @@ const DISPUTE_STATUS_META = {
 // have moved money, so it stays final (see DisputeReReviewView).
 export function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
   const [resolving, setResolving] = useState(false);
+  const [flagging, setFlagging] = useState(false);
+  const [summary, setSummary] = useState("");
   const [confirmingReject, setConfirmingReject] = useState(false);
   const [refund, setRefund] = useState("");
   const [notes, setNotes] = useState("");
@@ -38,7 +40,7 @@ export function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
 
   const flag = async () => {
     setActionError(null);
-    try { await apiPost(`/api/disputes/${dispute.id}/flag/`, {}); onDone(); }
+    try { await apiPost(`/api/disputes/${dispute.id}/flag/`, { intake_summary: summary }); setFlagging(false); onDone(); }
     catch { setActionError("Could not flag this dispute."); }
   };
   const resolve = async (outcome) => {
@@ -94,7 +96,7 @@ export function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
         </div>
         <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>
           {state === "pending" && canFlag && dispute.status === "open" && (
-            <button onClick={flag} style={{ background: "rgba(96,165,250,0.16)", color: D.blue, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>🚩 Flag</button>
+            <button onClick={() => (dispute.intake_summary ? flag() : setFlagging(f => !f))} style={{ background: "rgba(96,165,250,0.16)", color: D.blue, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>🚩 Flag</button>
           )}
           {state === "pending" && canResolve && (
             <>
@@ -120,6 +122,13 @@ export function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
       {confirmingReject && (
         <div style={{ color: D.amber, fontSize: "0.8rem", marginTop: 6 }}>
           Reject this dispute? It moves to the Rejected tab with no refund. You can reopen it from there with "Review Again".
+        </div>
+      )}
+
+      {flagging && (
+        <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={summary} onChange={e => setSummary(e.target.value)} placeholder="Summary for Accounting (required)" aria-label="Summary for Accounting" style={{ flex: 1, minWidth: 200, padding: "5px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.72rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
+          <button onClick={flag} disabled={!summary.trim()} style={{ background: D.blue, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: summary.trim() ? "pointer" : "default", opacity: summary.trim() ? 1 : 0.5 }}>Confirm flag</button>
         </div>
       )}
 

@@ -100,22 +100,22 @@ describe('AdminCommandCenter — a registration draft on a shared phone', () => 
 describe('AdminCommandCenter — tab control', () => {
   it('uncontrolled: clicking a nav item switches panels and marks it current', () => {
     renderShell()
-    fireEvent.click(within(panelNav()).getByRole('button', { name: /Users/ }))
-    expect(within(panelNav()).getByRole('button', { name: /Users/ })).toHaveAttribute('aria-current', 'page')
+    fireEvent.click(within(panelNav()).getByRole('button', { name: /Customers & businesses/ }))
+    expect(within(panelNav()).getByRole('button', { name: /Customers & businesses/ })).toHaveAttribute('aria-current', 'page')
   })
 
   it('controlled: renders the activeTab prop and reports clicks through onTabChange', () => {
     const onTabChange = vi.fn()
     renderShell({ activeTab: 'users', onTabChange })
-    expect(within(panelNav()).getByRole('button', { name: /Users/ })).toHaveAttribute('aria-current', 'page')
-    fireEvent.click(within(panelNav()).getByRole('button', { name: /Messaging/ }))
-    expect(onTabChange).toHaveBeenCalledWith('messaging')
+    expect(within(panelNav()).getByRole('button', { name: /Customers & businesses/ })).toHaveAttribute('aria-current', 'page')
+    fireEvent.click(within(panelNav()).getByRole('button', { name: /Mine/ }))
+    expect(onTabChange).toHaveBeenCalledWith('support-mine')
   })
 
   it('controlled: clicking the already-active tab does not call onTabChange (no duplicate history entry)', () => {
     const onTabChange = vi.fn()
     renderShell({ activeTab: 'users', onTabChange })
-    fireEvent.click(within(panelNav()).getByRole('button', { name: /Users/ }))
+    fireEvent.click(within(panelNav()).getByRole('button', { name: /Customers & businesses/ }))
     expect(onTabChange).not.toHaveBeenCalled()
   })
 
@@ -130,7 +130,7 @@ describe('AdminCommandCenter — tab control', () => {
     const scrollTo = vi.spyOn(window, 'scrollTo')
     renderShell()
     expect(scrollTo).not.toHaveBeenCalled()
-    fireEvent.click(within(panelNav()).getByRole('button', { name: /Users/ }))
+    fireEvent.click(within(panelNav()).getByRole('button', { name: /Customers & businesses/ }))
     expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'instant' })
   })
 
@@ -168,8 +168,8 @@ describe('AdminCommandCenter — phone', () => {
     expect(screen.queryByRole('navigation', { name: 'Staff panels' })).not.toBeInTheDocument()
     const bar = screen.getByRole('navigation', { name: 'Quick navigation' })
     const labels = within(bar).getAllByRole('button').map((b) => b.textContent)
-    // The support menu leads with Inbox (Messaging) per the approved staff design.
-    expect(labels).toEqual(['📊Overview', '💬Messaging / Tickets', '⚖️Disputes', '👥Users', '☰More'])
+    // The support menu leads with the canvas's Inbox views (Mine, Unassigned, All open).
+    expect(labels).toEqual(['📊Overview', '📥Mine', '🙋Unassigned', '📂All open', '☰More'])
   })
 
   it('opens the drawer from the header, locks scroll, and closes + restores focus on selection', () => {
@@ -180,7 +180,7 @@ describe('AdminCommandCenter — phone', () => {
     fireEvent.click(menu)
     const dialog = screen.getByRole('dialog', { name: 'Staff navigation' })
     expect(document.documentElement.style.overflow).toBe('hidden')
-    fireEvent.click(within(dialog).getByRole('button', { name: /Users/ }))
+    fireEvent.click(within(dialog).getByRole('button', { name: /Customers & businesses/ }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(document.documentElement.style.overflow).toBe('')
     expect(menu).toHaveFocus()
@@ -263,7 +263,7 @@ describe('AdminCommandCenter — tablet', () => {
     mm = installMatchMedia(1024)
     renderShell()
     const rail = screen.getByRole('navigation', { name: 'Staff panels' })
-    expect(within(rail).getByRole('button', { name: 'Users' })).toHaveAttribute('title', 'Users')
+    expect(within(rail).getByRole('button', { name: /Customers & businesses/ })).toHaveAttribute('title', 'Customers & businesses')
     expect(screen.getByRole('button', { name: 'Open navigation' })).toBeInTheDocument()
     expect(screen.queryByRole('navigation', { name: 'Quick navigation' })).not.toBeInTheDocument()
     expect(screen.queryByText('← Collapse')).not.toBeInTheDocument()

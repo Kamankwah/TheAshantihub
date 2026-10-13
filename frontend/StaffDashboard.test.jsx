@@ -1521,6 +1521,9 @@ describe('StaffDashboard Disputes', () => {
     await screen.findByText(/Order #9/)
     expect(screen.queryByText('✓ Resolve')).not.toBeInTheDocument()
     fireEvent.click(screen.getByText('🚩 Flag'))
+    // Flagging needs a summary for Accounting, so the row asks for one first.
+    fireEvent.change(screen.getByLabelText('Summary for Accounting'), { target: { value: 'Customer says it never arrived.' } })
+    fireEvent.click(screen.getByText('Confirm flag'))
     await waitFor(() => expect(flagCalled).toBe(true))
   })
 
@@ -1612,6 +1615,8 @@ describe('StaffDashboard Disputes', () => {
     fireEvent.click(screen.getByText('Disputes'))
     await screen.findByText(/Order #9/)
     fireEvent.click(screen.getByText('🚩 Flag'))
+    fireEvent.change(screen.getByLabelText('Summary for Accounting'), { target: { value: 'Customer says it never arrived.' } })
+    fireEvent.click(screen.getByText('Confirm flag'))
     await screen.findByText('Could not flag this dispute.')
   })
 })
