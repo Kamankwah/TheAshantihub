@@ -135,3 +135,40 @@ class ReadingTests(SecurityBase):
         self.assertEqual(self.client.delete("/api/staff-security/sign-ins/").status_code, 405)
         self.assertEqual(Line.objects.count(), 1)
         self.assertFalse(ActivityEvent.objects.filter(verb="staff.signed_in").exclude(actor_id=self.esi.pk).exists())
+
+
+class CoalesceAndRetentionTests(SecurityBase):
+    def test_repeated_failures_from_one_identifier_and_address_become_one_counted_line(self):
+        for _ in range(3):
+            self.login("esi@example.com", "wrong-password-1", HTTP_X_REAL_IP="154.160.24.91")
+        line = Line.objects.get()
+        self.assertEqual((line.kind, line.attempts), ("sign_in_failed", 3))
+        # a different address (or identifier) is its own line
+        self.login("esi@example.com", "wrong-password-1", HTTP_X_REAL_IP="154.160.24.92")
+        self.login("kojo@example.com", "wrong-password-1", HTTP_X_REAL_IP="154.160.24.91")
+        self.assertEqual(Line.objects.count(), 3)
+
+    def test_a_failure_after_the_window_starts_a_new_line(self):
+        self.login("esi@example.com", "wrong-password-1", HTTP_X_REAL_IP="154.160.24.91")
+        Line.objects.update(at=timezone.now() - signin.COALESCE_WINDOW - timedelta(minutes=1))
+        self.login("esi@example.com", "wrong-password-1", HTTP_X_REAL_IP="154.160.24.91")
+        self.assertEqual(Line.objects.count(), 2)
+
+    def test_successes_are_never_coalesced(self):
+        self.login("esi@example.com", HTTP_X_REAL_IP="154.160.24.91")
+        self.login("esi@example.com", HTTP_X_REAL_IP="154.160.24.91")
+        self.assertEqual(Line.objects.filter(kind="signed_in").count(), 2)
+
+    def test_the_nightly_job_purges_lines_older_than_400_days_only(self):
+        from staffsecurity.tasks import purge_old_sign_in_records
+
+        old = Line.objects.create(kind="signed_in", at=timezone.now() - timedelta(days=401))
+        edge = Line.objects.create(kind="signed_in", at=timezone.now() - timedelta(days=399))
+        self.assertEqual(purge_old_sign_in_records(), 1)
+        self.assertFalse(Line.objects.filter(pk=old.pk).exists())
+        self.assertTrue(Line.objects.filter(pk=edge.pk).exists())
+
+    def test_the_purge_is_a_scheduled_job_so_it_gets_a_heartbeat(self):
+        from core.jobs import scheduled_task_names
+
+        self.assertIn("staffsecurity.tasks.purge_old_sign_in_records", scheduled_task_names())

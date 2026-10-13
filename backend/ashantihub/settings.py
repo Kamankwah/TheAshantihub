@@ -471,6 +471,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "announcements.tasks.send_due_announcements",
         "schedule": 60.0,  # every minute
     },
+    "staffsecurity-purge-sign-in-history": {
+        "task": "staffsecurity.tasks.purge_old_sign_in_records",
+        "schedule": crontab(hour=3, minute=45),
+    },
     "portfolio-purge-staged-photos": {
         "task": "portfolio.tasks.purge_staged_photos",
         "schedule": crontab(hour=4, minute=30),

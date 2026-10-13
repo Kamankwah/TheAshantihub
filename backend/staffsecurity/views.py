@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework.exceptions import ValidationError
@@ -88,7 +88,7 @@ class SignInHistoryView(APIView):
         failed = (
             everything.filter(at__gte=day_ago, kind__in=[StaffSignInRecord.SIGN_IN_FAILED, StaffSignInRecord.TWO_STEP_FAILED])
             .values("kind", "identifier_masked", "staff__full_name")
-            .annotate(attempts=Count("id"))
+            .annotate(attempts=Sum("attempts"))
             .order_by("-attempts")[:10]
         )
         return Response({
@@ -99,8 +99,8 @@ class SignInHistoryView(APIView):
             "history_starts": first,
             "summary": {
                 "signed_in_24h": everything.filter(at__gte=day_ago, kind=StaffSignInRecord.SIGNED_IN).count(),
-                "refused_24h": everything.filter(at__gte=day_ago, kind=StaffSignInRecord.SIGN_IN_FAILED).count(),
-                "two_step_failed_24h": everything.filter(at__gte=day_ago, kind=StaffSignInRecord.TWO_STEP_FAILED).count(),
+                "refused_24h": everything.filter(at__gte=day_ago, kind=StaffSignInRecord.SIGN_IN_FAILED).aggregate(n=Sum("attempts"))["n"] or 0,
+                "two_step_failed_24h": everything.filter(at__gte=day_ago, kind=StaffSignInRecord.TWO_STEP_FAILED).aggregate(n=Sum("attempts"))["n"] or 0,
                 "signed_in_now": sessions.live(StaffSession.objects.all(), now).values("staff_id").distinct().count(),
             },
             "failed_recent": [
@@ -118,7 +118,7 @@ def _line(row):
         "id": row.id, "at": row.at, "kind": row.kind, "kind_label": row.get_kind_display(),
         "who": None if row.staff is None else {"id": row.staff.id, "name": row.staff.full_name, "role": row.staff.role.name},
         "identifier": row.identifier_masked, "two_factor": row.two_factor, "note": row.note,
-        "ip": row.ip, "device": row.device_label,
+        "ip": row.ip, "device": row.device_label, "attempts": row.attempts,
     }
 
 

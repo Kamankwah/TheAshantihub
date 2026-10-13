@@ -40,6 +40,9 @@ class StaffSignInRecord(models.Model):
     ip = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.CharField(max_length=300, blank=True, default="")
     device_label = models.CharField(max_length=120, blank=True, default="")
+    # Repeated failures from the same masked identifier and address within a few
+    # minutes are one line with a count (signin.COALESCE_WINDOW); `at` is the latest.
+    attempts = models.PositiveIntegerField(default=1)
 
     class Meta:
         ordering = ["-id"]
