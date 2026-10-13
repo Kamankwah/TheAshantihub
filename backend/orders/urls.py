@@ -6,7 +6,7 @@ urlpatterns = [
     path("checkout/", views.OrderCheckoutView.as_view(), name="order-checkout"),
     path("owner/", views.OwnerOrderListView.as_view(), name="order-owner-list"),
     path("owner/<int:pk>/tracking/", views.OwnerOrderTrackingView.as_view(), name="owner-order-tracking"),
-    path("owner/report/",views.OwnerSalesReportView.as_view(), name="order-owner-report"),
+    path("owner/report/", views.OwnerSalesReportView.as_view(), name="order-owner-report"),
     path("owner/report/export/", views.OwnerSalesReportExportView.as_view(), name="order-owner-report-export"),
     path("staff/", views.OrderStaffListView.as_view(), name="order-staff-list"),
     # Door-to-door delivery (item 11) — before the "<int:pk>/" catch-alls.

@@ -1,9 +1,9 @@
 from accounts.authentication import issue_token
-from accounts.models import BusinessOwner, Customer
+from accounts.models import BusinessOwner, BusinessOwnerProfile, Customer
 from delivery.models import ShiftSession
 from delivery.tests.test_tracking import TrackingCase
 from listings.models import Category, Listing, Zone
-from orders.models import DeliveryAssignment as DA
+from orders.models import DeliveryAssignment as DA, OrderItem
 
 ADDRESS = "12 Ash Road"
 PIN = ("6.6123", "-1.5987")  # distinctive, so it cannot collide with the pickup or rider coordinates
@@ -52,6 +52,13 @@ class CustomerTrackingTests(TrackingPrivacyCase):
         self.login(self.owner, "business_owner")
         self.assertEqual(self.client.get(self.url(a)).status_code, 403)
 
+    def test_rider_visible_at_the_door(self):
+        a = self.tracked(DA.AT_CUSTOMER)
+        self.login(self.customer, "customer")
+        r = self.client.get(self.url(a))
+        self.assertEqual(r.json()["rider"]["first_name"], "Yaw")
+        self.assert_no_leak(r, "Mensah", "staff_id", a.drop_code)
+
     def test_no_assignment_is_not_assigned(self):
         order = self.make_order()
         self.login(self.customer, "customer")
@@ -73,6 +80,7 @@ class CustomerTrackingTests(TrackingPrivacyCase):
         r = self.client.get(self.url(a))
         self.assertEqual(r.status_code, 200, r.content)
         rider = r.json()["rider"]
+        self.assertEqual(r.json()["drop"], {"lat": 6.6123, "lng": -1.5987})
         self.assertEqual(rider["first_name"], "Yaw")
         self.assertIn("vehicle_type", rider)
         self.assert_no_leak(r, "Mensah", self.rider_staff.phone, "phone", "staff_id", "full_name", "pickup_code", "drop_code", "pickup")
@@ -89,6 +97,38 @@ class CustomerTrackingTests(TrackingPrivacyCase):
 class OwnerTrackingTests(TrackingPrivacyCase):
     def url(self, a):
         return f"/api/orders/owner/{a.order_id}/tracking/"
+
+    def setUp(self):
+        super().setUp()
+        for o in (self.owner, self.other_owner):
+            BusinessOwnerProfile.objects.update_or_create(business_owner=o, defaults={"lat": 6.7, "lng": -1.62})
+
+    def test_rider_visible_while_heading_to_the_business(self):
+        for status in (DA.ASSIGNED, DA.ACCEPTED, DA.AT_PICKUP):
+            with self.subTest(status=status):
+                DA.objects.all().delete()
+                ShiftSession.objects.all().delete()
+                a = self.tracked(status)
+                self.login(self.owner, "business_owner")
+                r = self.client.get(self.url(a))
+                self.assertEqual(r.json()["rider"]["first_name"], "Yaw")
+                self.assertIsNotNone(r.json()["pickup"])
+                self.assertIsNotNone(r.json()["leg"])
+                self.assert_no_leak(r, ADDRESS, PIN[0], PIN[1], "drop", "Mensah")
+
+    def test_second_business_on_a_shared_order_never_sees_the_rider(self):
+        a = self.tracked(DA.AT_PICKUP)
+        OrderItem.objects.create(order=a.order, listing=Listing.objects.get(business_owner=self.other_owner),
+                                 quantity=1, unit_price="5.00", line_total="5.00")
+        self.login(self.other_owner, "business_owner")
+        r = self.client.get(self.url(a))
+        self.assertEqual(r.status_code, 200)
+        self.assertIsNone(r.json()["rider"])
+        self.assertIsNone(r.json()["leg"])
+        self.assertIsNone(r.json()["route"])
+        self.assert_no_leak(r, "6.695", "Yaw", "Mensah", ADDRESS, PIN[0])
+        self.login(self.owner, "business_owner")
+        self.assertIsNotNone(self.client.get(self.url(a)).json()["rider"])
 
     def test_owner_not_on_the_order_gets_404(self):
         a = self.tracked()

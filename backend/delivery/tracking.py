@@ -90,6 +90,10 @@ def business_map(a, owner, now=None):
     out = {"stage": a.status, "pickup": pickup, "rider": None, "leg": None, "route": None}
     if a.status not in TO_PICKUP:
         return out
+    # Delivery is single-pickup: only the business the rider is heading to may watch the rider.
+    heading = services.pickup_owner(a.order)
+    if heading is None or heading.pk != owner.pk:
+        return out
     fix = rider_fix(a, now)
     if fix:
         parts = (a.dispatch.full_name or "").split()

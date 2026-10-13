@@ -137,6 +137,25 @@ class BusinessTests(TrackingCase):
         self.assertIsNone(p["rider"])
         self.assertIsNone(p["leg"])
 
+    def test_second_business_on_a_shared_order_does_not_see_the_rider(self):
+        from accounts.models import BusinessOwner
+        from listings.models import Category, Listing, Zone
+        from orders.models import OrderItem
+        second = BusinessOwner.objects.create(full_name="Second Shop", login_phone="+233207000099", password_hash="x")
+        BusinessOwnerProfile.objects.update_or_create(business_owner=second, defaults={"lat": PICKUP[0], "lng": PICKUP[1]})
+        listing = Listing.objects.create(
+            business_owner=second, category=Category.objects.get(slug="hotels"), zone=Zone.objects.get(name="Manhyia"),
+            name="Other", description="D.", contact_phone="+233207000099", price_amount="5.00", status=Listing.PUBLISHED)
+        a = self.job(DA.AT_PICKUP)
+        OrderItem.objects.create(order=a.order, listing=listing, quantity=1, unit_price="5.00", line_total="5.00")
+        with mock.patch("delivery.tracking.routing_service.leg", return_value=dict(ROAD)):
+            theirs = tracking.business_map(a, second)
+            first = tracking.business_map(a, self.owner)
+        self.assertIsNone(theirs["rider"])
+        self.assertIsNone(theirs["leg"])
+        self.assertIsNone(theirs["route"])
+        self.assertNotIn("6.695", json.dumps(theirs))
+
 
 class QueueTests(TrackingCase):
     def test_declined_rider_marked_ineligible_with_reason(self):

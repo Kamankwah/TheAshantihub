@@ -67,6 +67,13 @@ def pickup_stop(order):
     return None, None, ""
 
 
+def pickup_owner(order):
+    """The business the rider collects from: the first item's owner, by the same rule as pickup_stop."""
+    for item in sorted(order.items.all(), key=lambda i: i.pk):
+        return item.listing.business_owner
+    return None
+
+
 def drop_stop(order):
     pin = valid_point(order.delivery_lat, order.delivery_lng)
     return pin if pin else (None, None)
