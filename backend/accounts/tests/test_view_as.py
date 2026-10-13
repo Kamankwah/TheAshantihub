@@ -133,6 +133,29 @@ class SubstitutionTests(ViewAsBase):
         self.assertEqual(session_of(ama_token).last_seen_at, long_ago)
 
 
+class SudoInsideAViewTests(ViewAsBase):
+    def test_the_super_admins_password_window_does_not_reach_into_a_view(self):
+        from rest_framework.request import Request
+        from rest_framework.test import APIRequestFactory
+
+        from accounts import sessions
+        from accounts.authentication import MultiAccountJWTAuthentication
+
+        sessions.grant_sudo(self.session)
+        self.start(self.ama)
+
+        def request(**headers):
+            raw = APIRequestFactory().get("/api/accounts/me/", HTTP_AUTHORIZATION=f"Bearer {self.token}", **headers)
+            drf = Request(raw, authenticators=[MultiAccountJWTAuthentication()])
+            drf.user  # authenticate
+            return drf
+
+        viewing = request(HTTP_X_VIEW_AS=str(self.ama.pk))
+        self.assertEqual(viewing.user.pk, self.ama.pk)
+        self.assertFalse(sessions.has_sudo(viewing))
+        self.assertTrue(sessions.has_sudo(request()))
+
+
 class ReadOnlyGuardTests(ViewAsBase):
     WRITES = [
         ("post", "/api/accounts/staff/logout/"),

@@ -170,6 +170,10 @@ def grant_sudo(session, now=None):
 
 
 def has_sudo(request):
+    # Nothing password-protected runs inside a Super Admin's step-in (the
+    # session is the Super Admin's, the request is the viewed person's).
+    if getattr(getattr(request, "auth", None), "view_as_viewer", None) is not None:
+        return False
     session = current(request)
     return bool(session and session.sudo_until and session.sudo_until > timezone.now())
 
