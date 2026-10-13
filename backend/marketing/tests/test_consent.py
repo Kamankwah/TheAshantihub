@@ -182,6 +182,13 @@ class StaffLedgerTests(MarketingBase):
         self.assertEqual(self.client.get("/api/marketing/consent/ledger/?contact=Shop 2").json()["count"], 1)
         self.assertEqual(self.client.get("/api/marketing/consent/ledger/?source=checkout").json()["count"], 1)
 
+    def test_a_long_digit_string_cannot_probe_hidden_digits(self):
+        self.as_staff(self.akua)
+        # +233244000011: the screen shows only 0011; a longer guess must not match.
+        self.assertEqual(self.client.get("/api/marketing/consent/ledger/?contact=244000011").json()["count"], 0)
+        self.assertEqual(self.client.get("/api/marketing/consent/ledger/?contact=0244000011").json()["count"], 0)
+        self.assertEqual(self.client.get("/api/marketing/consent/ledger/?contact=0011").json()["count"], 3)
+
     def test_summary_counts_the_current_answers(self):
         self.as_staff(self.akua)
         by = {c["channel"]: c for c in self.client.get("/api/marketing/consent/summary/").json()["channels"]}

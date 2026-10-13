@@ -82,7 +82,9 @@ def ledger_queryset(params):
     if contact:
         digits = "".join(ch for ch in contact if ch.isdigit())
         match = Q(customer__full_name__icontains=contact) | Q(business_owner__full_name__icontains=contact) | Q(business_owner__profile__business_name__icontains=contact)
-        if len(digits) >= 3:
+        # Only the digits the screen shows (the last 4 of a masked number) can be searched: a longer
+        # string would let a searcher learn the hidden digits without the password-protected reveal.
+        if 3 <= len(digits) <= 4:
             match |= Q(customer__phone__endswith=digits) | Q(business_owner__login_phone__endswith=digits)
         qs = qs.filter(match)
     return qs.order_by("-at", "-id")
