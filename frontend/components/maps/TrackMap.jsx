@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { CircleMarker, MapContainer, Polyline, TileLayer, Tooltip, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import { D } from "../dashboard/theme.js";
@@ -16,7 +16,8 @@ const STYLE = {
 };
 const hasCoords = (m) => Number.isFinite(Number(m?.lat)) && Number.isFinite(Number(m?.lng)) && m.lat !== null && m.lng !== null;
 
-// What the camera frames: the stops (pickup/drop) and the route's ends. A moving rider or
+// What the camera frames: the stops (pickup/drop) and the route's destination (its last point;
+// the route starts at the moving rider, so its start and length change every poll). A moving rider or
 // candidate does not change it, so a poll never snaps the map back under a user who panned.
 // With no stops, the set of marker ids stands in so the first rider still gets framed.
 export function fitSignature(markers = [], route = null) {
@@ -25,7 +26,7 @@ export function fitSignature(markers = [], route = null) {
   const shown = (stops.length ? stops : pins.map((m) => ({ ...m, lat: 0, lng: 0 })))
     .map((m) => `${m.kind}:${m.id}:${Number(m.lat)},${Number(m.lng)}`).sort().join("|");
   const line = Array.isArray(route) && route.length >= 2
-    ? `${route.length}:${route[0]}>${route[route.length - 1]}` : "none";
+    ? `to:${route[route.length - 1]}` : "none";
   return `${shown}#${line}`;
 }
 
@@ -44,7 +45,7 @@ function Fit({ points, signature }) {
 
 export default function TrackMap({ markers = [], route = null, height = 320, label, onSelect }) {
   const pins = markers.filter(hasCoords);
-  const signature = useMemo(() => fitSignature(markers, route), [markers, route]);
+  const signature = fitSignature(markers, route);
   const line = Array.isArray(route) && route.length >= 2 ? route : null;
   if (!pins.length) {
     return (

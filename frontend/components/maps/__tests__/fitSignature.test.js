@@ -23,8 +23,15 @@ describe('fitSignature', () => {
     expect(fitSignature(moved, route)).not.toBe(fitSignature(base, route))
     expect(fitSignature(base.slice(1), route)).not.toBe(fitSignature(base, route))
   })
-  it('changes when the route endpoints change', () => {
+  it('ignores the route start moving and the route length changing', () => {
+    const closer = [[5.608, -0.172], [5.61, -0.17]]
+    expect(fitSignature(base, closer)).toBe(fitSignature(base, route))
+  })
+  it('changes when the route destination changes', () => {
     expect(fitSignature(base, [[5.6, -0.18], [5.62, -0.16]])).not.toBe(fitSignature(base, route))
+  })
+  it('handles a null route', () => {
     expect(fitSignature(base, null)).not.toBe(fitSignature(base, route))
+    expect(fitSignature(base, null)).toBe(fitSignature(base, undefined))
   })
 })
