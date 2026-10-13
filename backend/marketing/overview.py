@@ -86,13 +86,26 @@ def coupons_section(since, until):
 
 
 def banners_section(since, until):
-    """Banner click-through. Filled by the banners package."""
-    return {"state": NOT_TRACKED, "note": "No banners yet."}
+    """Banner click-through, from the first-party counters of banners live in the period."""
+    from . import banners as banner_rules
+    from .models_banners import Banner
+
+    if not Banner.objects.exclude(state=Banner.DRAFT).exists():
+        return {"state": NOT_TRACKED, "note": "No banners yet."}
+    live, views, clicks = banner_rules.totals(since, until)
+    return {
+        "state": "ok", "live": live, "views": views, "clicks": clicks, "ctr": banner_rules.ctr(views, clicks),
+        "note": "Counted by this site's own pages since banners launched; lifetime counts of the banners that ran in this period.",
+    }
 
 
 def scheduled_next(until_days=14):
-    """Campaigns, flash sales and banners coming up. Filled by their packages."""
-    return []
+    """Campaigns, flash sales and banners coming up. Each package adds its own entries."""
+    from . import banners as banner_rules
+
+    out = []
+    out.extend(banner_rules.upcoming(until_days))
+    return out
 
 
 def overview(user, days=7):

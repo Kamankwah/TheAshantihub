@@ -43,3 +43,5 @@ class SendPolicy(models.Model):
     def touch(self, staff):
         self.updated_by = staff
         self.updated_at = timezone.now()
+
+from .models_banners import *  # noqa: E402,F401,F403

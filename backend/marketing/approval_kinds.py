@@ -90,3 +90,7 @@ SEND_POLICY_KIND = ApprovalKind(
 
 # Appended to by the campaign, coupon and banner modules as they land.
 KINDS = [SEND_POLICY_KIND]
+
+from .approval_kinds_banners import BANNER_KIND  # noqa: E402
+
+KINDS.append(BANNER_KIND)

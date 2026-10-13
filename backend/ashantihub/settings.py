@@ -373,6 +373,9 @@ SIMPLE_JWT = {
 # ── Live updates and background jobs (staff foundations F2) ─────────────────
 # One Redis per environment (infra/compose/docker-compose.yml) carries the
 # Channels layer, the realtime-ticket cache and the Celery broker. With
+        # Marketing banner view/click beacons: public, count-only. Generous because many
+        # phones share one mobile-carrier address; repeats are also de-duplicated per banner.
+        "banner_beacon": "240/min",
 # REDIS_URL unset (plain local dev) — and ALWAYS under `manage.py test`, so
 # the suite never needs Redis — everything runs in-process instead: the
 # in-memory channel layer, a local-memory ticket cache and eager Celery.
