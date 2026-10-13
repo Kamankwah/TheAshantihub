@@ -18,7 +18,9 @@ function makeAuth(overrides = {}) {
   return {
     user: {
       token: 't', account_type: 'staff', id: 1, full_name: 'Akosua Support',
-      role: 'support', permissions: ['messaging.manage', 'disputes.flag', 'users.view'],
+      // Not 'support': Support now has its own exhaustive canvas menu (navModel.test.js), so the
+      // generic legacy-menu session in this contract uses a role with no tool-specific menu.
+      role: 'accountant', permissions: ['messaging.manage', 'disputes.flag', 'users.view'],
     },
     hasPermission: (codename) => ['messaging.manage', 'disputes.flag', 'users.view'].includes(codename),
     ...overrides,

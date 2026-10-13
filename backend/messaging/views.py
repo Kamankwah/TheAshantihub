@@ -20,8 +20,10 @@ from .serializers import (
     ConversationSerializer,
     MessageCreateSerializer,
     MessageSerializer,
+    StaffConversationDetailSerializer,
     StaffConversationListSerializer,
 )
+from . import services
 
 # A guest token is a browser-generated random id (crypto.randomUUID —
 # 36 chars) persisted in localStorage. The length floor rejects trivially
@@ -69,6 +71,31 @@ def _sender_type(request):
     return Message.GUEST
 
 
+def _about_links(data):
+    """The optional about_* ids a surface sent, resolved to rows. An id that does
+    not exist is dropped (the thread still starts); a customer cannot attach
+    anything they could not already name, and these links are staff context only
+    (they are never serialized back to the customer)."""
+    from listings.models import Listing
+    from orders.models import Order
+
+    links = {}
+    if data.get("about_business"):
+        owner = BusinessOwner.objects.filter(pk=data["about_business"]).first()
+        if owner:
+            links["about_business"] = owner
+    if data.get("about_listing"):
+        listing = Listing.objects.filter(pk=data["about_listing"]).select_related("business_owner").first()
+        if listing:
+            links["about_listing"] = listing
+            links.setdefault("about_business", listing.business_owner)
+    if data.get("about_order"):
+        order = Order.objects.filter(pk=data["about_order"]).first()
+        if order:
+            links["about_order"] = order
+    return links
+
+
 class ConversationListCreateView(generics.ListCreateAPIView):
     """GET /api/messaging/conversations/ — the caller's own conversations,
     full thread included; anonymous callers pass ?guest_token=. POST starts
@@ -91,11 +118,15 @@ class ConversationListCreateView(generics.ListCreateAPIView):
         scope = _conversation_scope(request)
         serializer = ConversationCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
         conversation = Conversation.objects.create(
-            subject=serializer.validated_data["subject"],
+            subject=data["subject"],
             status=Conversation.OPEN,
+            source="guest_chat" if "guest_token" in scope and data["source"] == "app" else data["source"],
+            **_about_links(data),
             **scope,
         )
+        services.stamp_clocks(conversation)
         Message.objects.create(
             conversation=conversation,
             sender_type=_sender_type(request),
@@ -154,7 +185,7 @@ class StaffConversationDetailView(generics.RetrieveAPIView):
     natural companion to the list above (a "needs_reply" flag alone doesn't
     tell staff what to reply to) and to the reply endpoint below."""
 
-    serializer_class = ConversationSerializer
+    serializer_class = StaffConversationDetailSerializer
     queryset = Conversation.objects.all().prefetch_related("messages")
 
     def get_permissions(self):
@@ -174,7 +205,10 @@ class StaffConversationReplyView(APIView):
         serializer.is_valid(raise_exception=True)
         message = Message.objects.create(
             conversation=conversation, sender_type=Message.STAFF, body=serializer.validated_data["body"],
+            author=request.user,
         )
+        if conversation.first_reply_at is None:
+            conversation.first_reply_at = message.created_at
         conversation.save()
         # Notify the account that owns the thread (a guest thread has no
         # account to notify — notify_* no-ops on a None recipient).

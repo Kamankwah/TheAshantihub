@@ -97,6 +97,9 @@ the role seeds in `backend/accounts/migrations/0002`–`0029`, the `HasRolePermi
 | | `delivery.dispatch` | Own deliveries: confirm pickup and delivery | ✓ | | | | | | | ✓ |
 | Support | `messaging.manage` | Every support conversation; reply as AshantiHub Support | ✓ | | | | ✓ | | | |
 | | `contact_messages.manage` | Contact-form submissions: mark read, resolve | ✓ | ✓ | | | ✓ | | | |
+| | `calls.view_peers` | See calls logged by teammates in the same role (Support team call log) | ✓ | | | | ✓ | | | |
+| | `orders.support_update` | Order status screen: note a delay, cancel for the customer (never Delivered) | ✓ | ✓ | | | ✓ | | | |
+| | `support.limits` | Set Support time limits, business hours and capacity | ✓ | ✓ | | | | | | |
 | | `service_issues.view` | Read-only view of support issues and deliveries across businesses (cannot reply as Support or change a delivery) | ✓ | ✓ | | | | | | |
 
 ---
@@ -231,8 +234,15 @@ disputes.
   investigating. Support **cannot** resolve or reject a dispute; that is the Accountant's job.
 - **Users, read-only.** Customer and business-owner accounts, without payout or tax details.
   Support can't edit or suspend anyone.
-- **Delivery Management.** See every order and update its delivery status. The customer is
-  notified.
+- **Delivery Management (removed from Support).** Support no longer holds
+  `orders.manage_delivery`: it could mark an order Delivered, which only the rider's code (or a
+  delivery manager) may do. Support uses the narrow Order status screen (`orders.support_update`).
+- **The Support desk (canvas, 2026-10-07).** Conversations carry an assignee, priority, snooze,
+  resolution, tags, first-reply and resolve time limits (set by Operations with `support.limits`),
+  and *internal notes*. **Internal notes and timeline events are staff-only**: every customer,
+  owner and guest serializer excludes them (contract: `messaging/tests/test_note_leak.py`).
+  A conversation is always with AshantiHub Support about a business, listing or order
+  (`about_*`); nothing contacts a business directly.
 
 ### Scout
 

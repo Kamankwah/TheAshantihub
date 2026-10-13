@@ -36,7 +36,10 @@ QUEUE_INVALIDATIONS = [
     (("event-moderation-",), ("event.approve",), ("event-moderation-queue", "event-moderation-detail", "staff-badges")),
     (("review-approve", "review-hide"), ("reviews.moderate",), ("reviews-moderation-queue", "staff-badges")),
     (("contact-message",), ("contact_messages.manage",), ("contact-messages-queue", "staff-badges")),
-    (("staff-conversation-",), ("messaging.manage",), ("staff-messaging-queue",)),
+    # The Support desk: every conversation write refreshes the inbox lists, a thread, and the menu counts.
+    (("staff-conversation-",), ("messaging.manage",), ("staff-messaging-queue", "support-inbox", "support-thread", "staff-badges")),
+    (("staff-canned-",), ("messaging.manage",), ("support-canned",)),
+    (("staff-tag-",), ("messaging.manage",), ("support-tags", "support-inbox")),
     # staff-badges: Super Admin's Invites badge counts open invites (invite, resend, cancel, deactivate change it).
     (STAFF_MANAGEMENT_VERBS, ("staff.manage", "staff.invite_team"), ("staff-roster", "my-team", "ops-invites", "staff-badges")),
     (("promotion-",), ("promotions.manage",), ("promotions-queue",)),

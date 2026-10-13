@@ -25,6 +25,11 @@ const opsOnly = (auth, ...perms) => auth.user?.role === "operations" && perms.so
 const saOnly = (auth) => auth.user?.role === "super_admin";
 // Step-in needs the Super Admin role and staff.view_as, as the server does (accounts/view_as.py).
 const canStepIn = (auth) => saOnly(auth) && auth.hasPermission("staff.view_as");
+// The Support canvas (2026-10-07, 17 screens + All open) draws screens that are not built
+// yet. Each has a NAV_ITEMS entry with `placeholder: "support"` (like the Operations and Super
+// Admin ones), shown to Support only, so the menu is exactly the canvas; the package that
+// builds a screen swaps its panel in and drops the flag.
+const supportOnly = (auth, ...perms) => auth.user?.role === "support" && perms.some((perm) => auth.hasPermission(perm));
 const opsOrSa = (auth, ...perms) => ["operations", "super_admin"].includes(auth.user?.role) && perms.some((perm) => auth.hasPermission(perm));
 
 export const NAV_ITEMS = [
@@ -83,6 +88,17 @@ export const NAV_ITEMS = [
   { id: "deliveries-returns", icon: "📦", label: "Deliveries & returns", show: (auth) => opsOnly(auth, "service_issues.view") },
   { id: "visit-map", icon: "🗺️", label: "Visit map", show: (auth) => opsOnly(auth, "portfolio.manage") },
   { id: "zones", icon: "📍", label: "Zones", show: (auth) => opsOnly(auth, "zones.manage") },
+  // Support canvas screens (see supportOnly).
+  { id: "support-mine", icon: "📥", label: "Mine", placeholder: "support", show: (auth) => supportOnly(auth, "messaging.manage") },
+  { id: "support-unassigned", icon: "🙋", label: "Unassigned", placeholder: "support", show: (auth) => supportOnly(auth, "messaging.manage") },
+  { id: "support-all-open", icon: "📂", label: "All open", placeholder: "support", show: (auth) => supportOnly(auth, "messaging.manage") },
+  { id: "support-past-limit", icon: "⏰", label: "Past time limit", placeholder: "support", show: (auth) => supportOnly(auth, "messaging.manage") },
+  { id: "support-snoozed", icon: "😴", label: "Snoozed", placeholder: "support", show: (auth) => supportOnly(auth, "messaging.manage") },
+  { id: "support-resolved", icon: "✔️", label: "Resolved", placeholder: "support", show: (auth) => supportOnly(auth, "messaging.manage") },
+  { id: "support-log-call", icon: "☎️", label: "Log a call", placeholder: "support", show: (auth) => supportOnly(auth, "calls.log") },
+  { id: "support-order-status", icon: "🚚", label: "Order status", placeholder: "support", show: (auth) => supportOnly(auth, "orders.support_update") },
+  { id: "support-canned", icon: "💡", label: "Canned replies", placeholder: "support", show: (auth) => supportOnly(auth, "messaging.manage") },
+  { id: "support-tags", icon: "🏷️", label: "Tags", placeholder: "support", show: (auth) => supportOnly(auth, "messaging.manage") },
   // Super Admin canvas screens; the ones not built yet are placeholders (see saOnly).
   { id: "invites", icon: "✉️", label: "Invites", show: saOnly },
   { id: "teams-reporting", icon: "🌳", label: "Teams & reporting lines", show: saOnly },
@@ -174,12 +190,16 @@ const ROLE_MENUS = {
     ["reports", "Reports", ["reports"]],
     ["my-work", "My work", ["tasks", "activity", "security"]],
   ],
+  // Support, exactly as the approved canvas draws it (7 groups, 18 items). Fraud cases, Approvals,
+  // Activity, Security and the legacy Messaging / Delivery Management panels are not in this menu;
+  // their panels and permissions are untouched (see EXHAUSTIVE_MENU_ROLES).
   support: [
-    ["inbox", "Inbox", ["messaging"]],
-    ["calls", "Calls", ["calls"]],
-    ["queues", "Queues", ["contact-messages", "reviews", "disputes", "delivery", "fraud-cases"]],
+    ["inbox", "Inbox", ["support-mine", "support-unassigned", "support-all-open", "support-past-limit", "support-snoozed", "support-resolved"]],
+    ["calls", "Calls", ["calls", "support-log-call"]],
+    ["queues", "Queues", ["contact-messages", "reviews", "disputes", "support-order-status"]],
+    ["knowledge", "Knowledge", ["support-canned", "support-tags"]],
     ["people", "People", ["users"]],
-    ["my-work", "My work", ["approvals", "tasks", "activity", "security"]],
+    ["my-work", "My work", ["tasks"]],
     ["reports", "Reports", ["reports"]],
   ],
   scout: [
@@ -212,7 +232,7 @@ const ROLE_MENUS = {
 
 // Roles whose menu is the whole menu: a screen the canvas leaves out is not
 // offered under "More tools" either (its permission and panel stay).
-const EXHAUSTIVE_MENU_ROLES = new Set(["operations", "super_admin", "cosigner"]);
+const EXHAUSTIVE_MENU_ROLES = new Set(["operations", "super_admin", "cosigner", "support"]);
 
 // Nav ids whose screen is not built yet, per role; AdminCommandCenter renders the
 // "being built" panel for them. A package that builds one swaps its panel in and
@@ -234,6 +254,10 @@ const ROLE_LABELS = {
     approvals: "Approvals inbox", "my-team": "Invite", kyc: "KYC queue", moderation: "Listings",
     activity: "Staff activity", reports: "My reports", "team-reports": "My team", calls: "Call log",
     "site-settings": "Site settings", "contact-messages": "Contact messages",
+  },
+  support: {
+    calls: "Call log", "contact-messages": "Contact form", disputes: "Dispute intake", users: "Customers & businesses",
+    reports: "My reports",
   },
   // Super Admin reads the canvas's words; the ids (and every other role's labels) stay.
   super_admin: {
@@ -298,8 +322,17 @@ export const BADGE_KEY_BY_TAB = {
 // team (not just the caller's own reports). My approvals and Fraud & anomaly alerts use
 // approvals_waiting and fraud_open from the table above.
 export const BADGE_KEY_BY_ROLE_TAB = {
+  // Support's canvas: Mine / Unassigned / Past time limit / Dispute intake are badges; All open and
+  // Snoozed are plain counts (COUNT_ONLY_TABS). Reviews, Contact form and Tasks use the shared keys.
+  support: {
+    "support-mine": "support_mine", "support-unassigned": "support_unassigned", "support-all-open": "support_all_open",
+    "support-past-limit": "support_past_limit", "support-snoozed": "support_snoozed", disputes: "disputes_intake",
+  },
   super_admin: { invites: "invites_open", disputes: "disputes_open", "team-reports": "reports_hub" },
 };
+
+// Menu items that show a muted count instead of a red badge (the Support canvas's All open and Snoozed).
+export const COUNT_ONLY_TABS = { support: new Set(["support-all-open", "support-snoozed"]) };
 
 // Badge lookup for a tab id against the GET /api/notifications/staff-badges/
 // payload — 0 for tabs with no badge key or no data yet.
