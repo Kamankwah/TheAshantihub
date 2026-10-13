@@ -148,6 +148,10 @@ def assign(order, rider_staff, assigned_by, *, mode):
     if rider is not None and rider.vehicle_id:
         assignment.vehicle_id = rider.vehicle_id
     ensure_codes(assignment)
+    if assignment.deadline_at is None:
+        from .dispatching import deadline_for
+
+        assignment.deadline_at = deadline_for(order)
     assignment.save()
     DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.ASSIGNED, at=now, by=assigned_by)
     return assignment
@@ -263,6 +267,9 @@ def deliver(assignment, rider_staff, code, lat, lng, accuracy):
     assignment.status = DeliveryAssignment.DELIVERED
     assignment.delivered_at = event.at
     assignment.save(update_fields=["status", "delivered_at"])
+    from .rates import snapshot_rider_pay
+
+    snapshot_rider_pay(assignment)
     _sync(assignment)
     notify_customer(
         assignment.order.customer, "order_status", "Your order has been delivered",
@@ -339,16 +346,22 @@ def cant_deliver(assignment, rider_staff, reason, note, lat, lng, accuracy):
 
 
 def open_case_for_failed_delivery(assignment):
-    """The dispute a failed delivery opens automatically (once). ``raised_by`` stays the customer so the
-    existing queues show it; the case type and rider are filled by the dispute extension."""
+    """The dispute a failed delivery opens automatically (once): a delivery case with its type, the rider and the
+    time to answer (from the time limits in force; empty if none). ``raised_by`` stays the customer so the
+    existing queues show it."""
     from disputes.models import Dispute
+
+    from . import config
 
     order = assignment.order
     existing = Dispute.objects.filter(order=order, status__in=(Dispute.OPEN, Dispute.INVESTIGATING), reason=Dispute.DELIVERY_ISSUE).first()
     if existing:
         return existing
+    case_type = {"no_answer": "unreachable", "wrong_address": "unreachable", "refused": "return"}.get(assignment.failed_reason, "not_received")
+    limits = config.effective_limits()
     return Dispute.objects.create(
-        order=order, raised_by=order.customer, reason=Dispute.DELIVERY_ISSUE,
+        order=order, raised_by=order.customer, reason=Dispute.DELIVERY_ISSUE, case_type=case_type, rider=assignment.dispatch,
+        answer_due_at=timezone.now() + timedelta(hours=limits.dispute_answer_hours) if limits else None,
         description=f"The rider could not deliver: {CANT_DELIVER_REASONS.get(assignment.failed_reason, 'unknown')}. {assignment.failed_note}".strip(),
         status=Dispute.OPEN,
     )
@@ -466,6 +479,9 @@ def legacy_deliver(assignment, rider_staff, code):
     assignment.status = DeliveryAssignment.DELIVERED
     assignment.delivered_at = now
     assignment.save(update_fields=["status", "delivered_at"])
+    from .rates import snapshot_rider_pay
+
+    snapshot_rider_pay(assignment)
     DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.DELIVERED, at=now, by=rider_staff)
     _sync(assignment)
     notify_customer(

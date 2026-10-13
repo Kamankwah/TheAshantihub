@@ -70,6 +70,20 @@ class Dispute(models.Model):
         StaffUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="disputes_resolved"
     )
 
+    # Delivery cases (Delivery Manager build). Null/blank for every other dispute.
+    NOT_RECEIVED, DAMAGED, WRONG_ITEM, UNREACHABLE, RETURN = "not_received", "damaged", "wrong_item", "unreachable", "return"
+    CASE_TYPE_CHOICES = [
+        ("", "Not a delivery case"), (NOT_RECEIVED, "Not received"), (DAMAGED, "Damaged"), (WRONG_ITEM, "Wrong item"),
+        (UNREACHABLE, "Customer unreachable"), (RETURN, "Return"),
+    ]
+    case_type = models.CharField(max_length=14, choices=CASE_TYPE_CHOICES, blank=True, default="")
+    answer_due_at = models.DateTimeField(null=True, blank=True)
+    rider = models.ForeignKey(StaffUser, null=True, blank=True, on_delete=models.SET_NULL, related_name="disputes_as_rider")
+    # The recorded decision: outcome, who was at fault, and what was asked of other teams.
+    outcome = models.CharField(max_length=20, blank=True, default="")
+    fault = models.CharField(max_length=12, blank=True, default="")
+    decided_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

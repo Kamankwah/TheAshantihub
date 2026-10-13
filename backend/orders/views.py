@@ -1,3 +1,4 @@
+from django.conf import settings
 from decimal import Decimal
 
 from django.db import transaction as db_transaction
@@ -97,8 +98,19 @@ class OrderCheckoutView(APIView):
             total = sum(
                 (item.unit_price_snapshot * item.quantity for item in items), Decimal("0.00")
             )
+            # Delivery fee from the rate card in force, only when switched on (settings.DELIVERY_FEE_ENABLED,
+            # default off). Fixed here, on the order; later card changes never touch it.
+            fee_card, fee_quote = None, None
+            if settings.DELIVERY_FEE_ENABLED and delivery_method == Order.DOOR_TO_DOOR:
+                from delivery.rates import checkout_fee
+
+                quoted = checkout_fee(items, request.data.get("delivery_lat"), request.data.get("delivery_lng"))
+                if quoted is not None:
+                    fee_card, fee_quote = quoted
+                    total += Decimal(fee_quote["total"])
             order = Order.objects.create(
                 customer=request.user, status=Order.PENDING, total_amount=total,
+                delivery_fee=Decimal(fee_quote["total"]) if fee_quote else None, delivery_fee_breakdown=fee_quote, rate_card=fee_card,
                 delivery_method=delivery_method,
                 delivery_address=delivery_address if delivery_method == Order.DOOR_TO_DOOR else "",
                 delivery_phone=delivery_phone if delivery_method == Order.DOOR_TO_DOOR else "",

@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views_fleet, views_live, views_rider
+from . import views_cash, views_cases, views_fleet, views_live, views_queue, views_rider, views_rules, views_shifts
 
 urlpatterns = [
     # ── Rider (delivery.dispatch): the rider app is built on these ──────────────────────────────────
@@ -45,4 +45,35 @@ urlpatterns = [
     path("zones/", views_fleet.ZonesView.as_view(), name="delivery-zones"),
     path("zones/<int:pk>/", views_fleet.ZoneDetailView.as_view(), name="delivery-zone"),
     path("invites/", views_fleet.InvitesView.as_view(), name="delivery-invites"),
+    path("shifts/", views_shifts.ShiftsView.as_view(), name="delivery-shifts"),
+    path("shifts/copy-week/", views_shifts.CopyWeekView.as_view(), name="delivery-shifts-copy-week"),
+    path("shifts/publish/", views_shifts.PublishView.as_view(), name="delivery-shifts-publish"),
+    path("shifts/<int:pk>/", views_shifts.ShiftDetailView.as_view(), name="delivery-shift"),
+    path("shifts/<int:pk>/swap-decision/", views_shifts.SwapDecisionView.as_view(), name="delivery-shift-swap-decision"),
+    # ── Queue, offers and the auto-assign switch (delivery.manage) ─────────────────────────────────
+    path("queue/", views_queue.QueueView.as_view(), name="delivery-queue"),
+    path("queue/<int:order_id>/ranking/", views_queue.RankingView.as_view(), name="delivery-queue-ranking"),
+    path("queue/<int:order_id>/offer/", views_queue.OfferToRiderView.as_view(), name="delivery-queue-offer"),
+    path("queue/<int:order_id>/force-assign/", views_queue.ForceAssignView.as_view(), name="delivery-queue-force-assign"),
+    path("queue/<int:order_id>/schedule/", views_queue.ScheduleView.as_view(), name="delivery-queue-schedule"),
+    path("auto-assign/switch/", views_queue.SwitchView.as_view(), name="delivery-auto-assign-switch"),
+    # ── Settings: rules, limits, rate card (delivery.rates) ────────────────────────────────────────
+    path("rules/auto-assign/", views_rules.AutoAssignRulesView.as_view(), name="delivery-rules-auto-assign"),
+    path("rules/time-limits/", views_rules.TimeLimitsView.as_view(), name="delivery-rules-time-limits"),
+    path("rules/rate-card/", views_rules.RateCardView.as_view(), name="delivery-rules-rate-card"),
+    path("rules/rate-card/quote/", views_rules.QuoteView.as_view(), name="delivery-rules-rate-card-quote"),
+    path("rules/withdraw/", views_rules.WithdrawView.as_view(), name="delivery-rules-withdraw"),
+    # ── Disputes, cash, earned ─────────────────────────────────────────────────────────────────────
+    path("cases/", views_cases.CasesView.as_view(), name="delivery-cases"),
+    path("cases/<int:pk>/", views_cases.CaseDetailView.as_view(), name="delivery-case"),
+    path("cases/<int:pk>/decide/", views_cases.DecideView.as_view(), name="delivery-case-decide"),
+    path("cash/", views_cash.CashView.as_view(), name="delivery-cash"),
+    path("payouts/", views_rules.RiderEarnedView.as_view(), name="delivery-payouts"),
+    path("payouts/<int:staff_id>/", views_rules.RiderEarningsLinesView.as_view(), name="delivery-payout-lines"),
+    # Rider: offers and rota
+    path("rider/offers/", views_queue.MyOffersView.as_view(), name="delivery-rider-offers"),
+    path("rider/offers/<int:pk>/accept/", views_queue.OfferAcceptView.as_view(), name="delivery-rider-offer-accept"),
+    path("rider/offers/<int:pk>/decline/", views_queue.OfferDeclineView.as_view(), name="delivery-rider-offer-decline"),
+    path("rider/shifts/", views_shifts.MyShiftsView.as_view(), name="delivery-rider-shifts"),
+    path("rider/shifts/<int:pk>/swap/", views_shifts.MyShiftSwapView.as_view(), name="delivery-rider-shift-swap"),
 ]

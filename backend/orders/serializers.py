@@ -38,7 +38,7 @@ class OrderSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             "id", "status", "delivery_status", "total_amount", "placed_at", "items",
-            "delivery_assignment_status", "delivery_code", *DELIVERY_FIELDS,
+            "delivery_assignment_status", "delivery_code", "delivery_fee", *DELIVERY_FIELDS,
         ]
 
     def get_delivery_assignment_status(self, obj):

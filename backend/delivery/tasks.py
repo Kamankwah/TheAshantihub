@@ -14,3 +14,11 @@ def run_paper_checks():
 def purge_old_pings():
     """Location fixes are kept 48 hours."""
     return services.purge_old_pings()
+
+
+@shared_task
+def run_engine():
+    """Every 10 seconds: time out offers and, when the auto-assign switch is on, offer or assign waiting orders."""
+    from . import dispatching
+
+    return dispatching.run_engine()

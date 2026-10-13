@@ -486,6 +486,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "delivery.tasks.run_paper_checks",
         "schedule": crontab(minute=10),  # hourly, at ten past: expire, remind, suspend (never mid-job)
     },
+    "delivery-engine": {
+        "task": "delivery.tasks.run_engine",
+        "schedule": 10.0,  # offers time out and the auto-assign switch is honoured every 10 seconds
+    },
     "delivery-purge-pings": {
         "task": "delivery.tasks.purge_old_pings",
         "schedule": crontab(hour=3, minute=50),
@@ -499,3 +503,7 @@ ACTIVITY_SEAL_EMAIL = env.bool("ACTIVITY_SEAL_EMAIL", default=False)
 # Files only a permission-checked view may serve (report exports, F6). Never
 # under MEDIA_ROOT, which nginx serves to anyone.
 PRIVATE_MEDIA_ROOT = BASE_DIR / "private"
+
+# Charge the delivery fee at checkout from the live rate card (delivery.RateCard). Off until the owner
+# decides: with it off, checkout is exactly as before and nothing is added to an order's total.
+DELIVERY_FEE_ENABLED = env.bool("DELIVERY_FEE_ENABLED", default=False)

@@ -6,6 +6,8 @@ where it is; it gains the step stamps and codes in ``orders`` and its events liv
 A rider is a ``StaffUser`` with the ``dispatch`` role plus one ``Rider`` row. Nothing here moves money:
 the rate card is a configuration, cash handovers are an operational count, and there is no payout,
 payroll or ledger model (owner decision, Super Admin brief)."""
+import datetime
+
 from django.conf import settings
 from django.db import models
 
@@ -257,3 +259,159 @@ class RiderIssue(models.Model):
 
     class Meta:
         ordering = ["-created_at", "-id"]
+
+
+# ── Offers, queue holds, rules ──────────────────────────────────────────────────────────────────
+class DeliverySettings(models.Model):
+    """One row (pk=1): the auto-assign switch. Off until the manager turns it on; every change is logged."""
+
+    auto_assign_on = models.BooleanField(default=False)
+    updated_by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @classmethod
+    def get(cls):
+        return cls.objects.filter(pk=1).first() or cls(pk=1)
+
+
+class Offer(models.Model):
+    """One offer of a waiting order to one rider (45 seconds by default)."""
+
+    OFFERED, ACCEPTED, DECLINED, EXPIRED, WITHDRAWN = "offered", "accepted", "declined", "expired", "withdrawn"
+    STATUS_CHOICES = [(OFFERED, "Offered"), (ACCEPTED, "Accepted"), (DECLINED, "Declined"), (EXPIRED, "Timed out"), (WITHDRAWN, "Withdrawn")]
+    AUTO, MANAGER = "auto", "manager"
+
+    order = models.ForeignKey("orders.Order", on_delete=models.CASCADE, related_name="offers")
+    rider = models.ForeignKey(Rider, on_delete=models.CASCADE, related_name="offers")
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=OFFERED)
+    source = models.CharField(max_length=8, default=AUTO)
+    offered_by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    offered_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    responded_at = models.DateTimeField(null=True, blank=True)
+    decline_reason = models.CharField(max_length=120, blank=True)
+    # The score breakdown the engine computed when it chose this rider ([] for a manager's pick).
+    score = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-offered_at", "-id"]
+        indexes = [models.Index(fields=["status", "expires_at"]), models.Index(fields=["rider", "-offered_at"])]
+        constraints = [
+            models.UniqueConstraint(fields=["order"], condition=models.Q(status="offered"), name="one_live_offer_per_order"),
+        ]
+
+
+class QueueHold(models.Model):
+    """"Schedule": keep an order out of the queue (and the engine) until a time."""
+
+    order = models.OneToOneField("orders.Order", on_delete=models.CASCADE, related_name="queue_hold")
+    release_at = models.DateTimeField()
+    by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class ConfigVersion(models.Model):
+    """A versioned setting set. A change is proposed as a new version, approved by Super Admin (or applied
+    at once when a Super Admin proposes it), and the previous live version is superseded, never edited."""
+
+    DRAFT, LIVE, SUPERSEDED = "draft", "live", "superseded"
+    STATUS_CHOICES = [(DRAFT, "Waiting for approval"), (LIVE, "In force"), (SUPERSEDED, "Replaced")]
+
+    version = models.PositiveIntegerField(unique=True)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=LIVE)
+    proposed_by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    approved_by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    approval_id = models.PositiveIntegerField(null=True, blank=True)
+    note = models.CharField(max_length=300, blank=True)
+    effective_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        abstract = True
+        ordering = ["-version"]
+
+
+class AutoAssignRules(ConfigVersion):
+    w_distance = models.PositiveSmallIntegerField(default=50)
+    w_fairness = models.PositiveSmallIntegerField(default=30)
+    w_idle = models.PositiveSmallIntegerField(default=20)
+    offer_timeout_s = models.PositiveSmallIntegerField(default=45)
+    max_declines = models.PositiveSmallIntegerField(default=3)
+    force_slack_min = models.PositiveSmallIntegerField(default=10)
+    radius_km = models.DecimalField(max_digits=5, decimal_places=2, default=5)
+    max_active_jobs = models.PositiveSmallIntegerField(default=2)
+    stale_s = models.PositiveSmallIntegerField(default=120)
+    batch_radius_km = models.DecimalField(max_digits=5, decimal_places=2, default=2)
+    cash_cap = models.DecimalField(max_digits=10, decimal_places=2, default=500)
+
+    class Meta(ConfigVersion.Meta):
+        constraints = [models.UniqueConstraint(fields=["status"], condition=models.Q(status="live"), name="one_live_auto_assign_rules")]
+
+
+class TimeLimits(ConfigVersion):
+    promise_standard_min = models.PositiveSmallIntegerField(default=90)
+    promise_express_min = models.PositiveSmallIntegerField(default=45)
+    opens_at = models.TimeField(default=datetime.time(7, 0))
+    closes_at = models.TimeField(default=datetime.time(20, 0))
+    assign_within_min = models.PositiveSmallIntegerField(default=10)
+    pickup_within_min = models.PositiveSmallIntegerField(default=30)
+    first_response_hours = models.PositiveSmallIntegerField(default=2)
+    dispute_answer_hours = models.PositiveSmallIntegerField(default=24)
+
+    class Meta(ConfigVersion.Meta):
+        constraints = [models.UniqueConstraint(fields=["status"], condition=models.Q(status="live"), name="one_live_time_limits")]
+
+
+class RateCard(ConfigVersion):
+    """What a delivery costs the customer and what a rider is owed per job. A configuration only: nothing is
+    charged until DELIVERY_FEE_ENABLED is switched on, and no payout is made from it."""
+
+    customer_base = models.DecimalField(max_digits=8, decimal_places=2)
+    customer_per_km = models.DecimalField(max_digits=8, decimal_places=2)
+    customer_min_fee = models.DecimalField(max_digits=8, decimal_places=2)
+    extra_pickup = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    express_multiplier = models.DecimalField(max_digits=4, decimal_places=2, default=1)
+    round_up_to = models.DecimalField(max_digits=4, decimal_places=2, default="0.50")
+    vehicle_multipliers = models.JSONField(default=dict, blank=True)
+    rider_per_job = models.DecimalField(max_digits=8, decimal_places=2)
+    rider_per_km = models.DecimalField(max_digits=8, decimal_places=2)
+    wait_after_min = models.PositiveSmallIntegerField(default=10)
+    wait_per_min = models.DecimalField(max_digits=6, decimal_places=2, default=0)
+
+    class Meta(ConfigVersion.Meta):
+        constraints = [models.UniqueConstraint(fields=["status"], condition=models.Q(status="live"), name="one_live_rate_card")]
+
+
+class CashHandover(models.Model):
+    """Cash a rider hands in, counted by a manager. An operational count, not a ledger."""
+
+    rider = models.ForeignKey(Rider, on_delete=models.CASCADE, related_name="handovers")
+    expected = models.DecimalField(max_digits=10, decimal_places=2)
+    counted = models.DecimalField(max_digits=10, decimal_places=2)
+    difference = models.DecimalField(max_digits=10, decimal_places=2)
+    counted_by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    note = models.CharField(max_length=300, blank=True)
+    at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-at", "-id"]
+
+
+class Shift(models.Model):
+    """A planned shift on the weekly rota (the rider's actual time is a ``ShiftSession``)."""
+
+    DRAFT, PUBLISHED, OPEN, SWAP = "draft", "published", "open", "swap"
+    STATUS_CHOICES = [(DRAFT, "Draft"), (PUBLISHED, "Published"), (OPEN, "Open (no rider yet)"), (SWAP, "Swap asked")]
+
+    rider = models.ForeignKey(Rider, null=True, blank=True, on_delete=models.CASCADE, related_name="shifts")
+    zone = models.ForeignKey(DeliveryZone, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    starts_at = models.DateTimeField()
+    ends_at = models.DateTimeField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=DRAFT)
+    published_at = models.DateTimeField(null=True, blank=True)
+    swap_with = models.ForeignKey(Rider, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    created_by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+
+    class Meta:
+        ordering = ["starts_at", "id"]
+        indexes = [models.Index(fields=["starts_at"])]

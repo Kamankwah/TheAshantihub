@@ -55,6 +55,11 @@ class Order(models.Model):
     delivery_lng = models.FloatField(null=True, blank=True)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
     placed_at = models.DateTimeField(auto_now_add=True)
+    # Delivery fee, fixed at checkout from the rate card in force (delivery.RateCard) and only when
+    # settings.DELIVERY_FEE_ENABLED is on (default off): null means no fee was charged.
+    delivery_fee = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    delivery_fee_breakdown = models.JSONField(null=True, blank=True)
+    rate_card = models.ForeignKey("delivery.RateCard", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
 
     class Meta:
         ordering = ["-placed_at"]
@@ -161,6 +166,13 @@ class DeliveryAssignment(models.Model):
     # Waiting pay held back while a flag is looked at. A hold only; there is no pay record yet.
     wait_pay_held = models.BooleanField(default=False)
     rider_note = models.CharField(max_length=500, blank=True)
+    # What the rider is owed for this job, worked out from the rate card in force when it was delivered
+    # (a record of the sum, not a payment). Null when no rate card was in force.
+    rider_pay = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    rider_pay_breakdown = models.JSONField(null=True, blank=True)
+    # Cash on delivery is not offered at checkout yet; these stay empty until it is.
+    cod_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    cash_collected_at = models.DateTimeField(null=True, blank=True)
 
     def sync_order(self):
         """Keep Order.delivery_status in step with the courier's progress so the customer's delivery

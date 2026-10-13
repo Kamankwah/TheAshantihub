@@ -270,7 +270,7 @@ class RosterAndProfileTests(DeliveryCase):
         self.assertEqual(by_email["rider2@example.com"]["papers"]["missing"].__len__(), 5)
         self.assertEqual(roster["total"], 2)
         self.assertIsNone(by_email["rider@example.com"]["cash_held"])
-        self.assertIsNone(by_email["rider@example.com"]["acceptance_30d"])
+        self.assertEqual(by_email["rider@example.com"]["acceptance_30d"], {"accepted": 0, "of": 0})
         self.assertEqual(self.client.get("/api/delivery/riders/?status=on_shift").json()["results"], [])
 
     def test_a_rider_on_a_job_is_on_a_job_and_on_time_counts_only_jobs_with_a_deadline(self):

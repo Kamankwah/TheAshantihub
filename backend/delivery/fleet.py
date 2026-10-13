@@ -10,7 +10,8 @@ from accounts.phones import mask_phone
 from orders.models import DeliveryAssignment
 
 from . import payloads, services
-from .models import DeliveryZone, Rider, RiderDocument, ShiftSession, Vehicle
+from . import cash
+from .models import DeliveryZone, Offer, Rider, RiderDocument, ShiftSession, Vehicle
 
 ROLLING_DAYS = 30
 EXPIRING_DAYS = 30
@@ -72,6 +73,11 @@ def roster(now=None):
         last_job=Max("assigned_at"),
     ):
         per_staff[row["dispatch_id"]] = row
+    offers = {}
+    for row in Offer.objects.filter(rider__in=riders, offered_at__gte=since).exclude(status__in=(Offer.OFFERED, Offer.WITHDRAWN)).values("rider_id").annotate(
+        answered=Count("id"), accepted=Count("id", filter=Q(status=Offer.ACCEPTED)),
+    ):
+        offers[row["rider_id"]] = row
     last_seen = {row["staff_id"]: row["at"] for row in StaffSession.objects.filter(staff__in=staff_ids).values("staff_id").annotate(at=Max("last_seen_at"))}
     rows = []
     for rider in riders:
@@ -90,7 +96,8 @@ def roster(now=None):
             # time limits set yet this is "of 0" and the screen shows "no data yet".
             "on_time_30d": {"on_time": stats.get("on_time_30", 0), "of": stats.get("deadline_30", 0)},
             "could_not_deliver_30d": stats.get("failed_30", 0), "delivered_30d": stats.get("delivered_30", 0),
-            "acceptance_30d": None, "cash_held": None,
+            "acceptance_30d": {"accepted": offers.get(rider.pk, {}).get("accepted", 0), "of": offers.get(rider.pk, {}).get("answered", 0)},
+            "cash_held": str(cash.held(staff.pk, rider.pk)) if cash.cod_offered() else None,
             "location": {"last_fix_at": shift.last_fix_at, "age_seconds": services.fix_age_seconds(shift, now), "stale": services.is_stale(shift, now)} if shift else None,
             "papers": docs, "job_hold": rider.job_hold, "suspended": staff.is_suspended, "suspension_reason": staff.suspension_reason if staff.is_suspended else None,
             "suspension_source": rider.suspension_source, "last_seen_at": last_seen.get(staff.pk),
