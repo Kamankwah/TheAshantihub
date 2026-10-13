@@ -100,6 +100,10 @@ const ACCT_SHARED = ['commissions', 'refunds', 'reconciliation']
 // The Support canvas screens (placeholder or built) appear for no other role.
 const SUPPORT_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('support-') && !['support-team', 'support-issues'].includes(i.id)).map((i) => i.id)
 const OPS_ONLY = ['ops-scouts', 'support-team', 'leave', 'hero-events', 'support-issues', 'deliveries-returns', 'visit-map', 'zones', ...SA_ONLY, ...SUPPORT_ONLY]
+// The Delivery Manager canvas screens (2026-10-07) are the Delivery Manager's alone.
+const DM_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('dm-')).map((i) => i.id)
+// The Dispatch (rider) canvas screens are the rider's alone.
+const DR_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('dr-')).map((i) => i.id)
 
 describe('per-role menus', () => {
   const authAs = (role, perms) => ({ user: { role }, hasPermission: (c) => perms.includes(c) })
@@ -140,13 +144,13 @@ describe('per-role menus', () => {
   })
 
   it('shows every permitted item exactly once and no empty group, for every role but Operations and Super Admin (exhaustive menus)', () => {
-    for (const role of ['accountant', 'marketing', 'scout', 'delivery_manager', 'dispatch']) {
+    for (const role of ['accountant', 'marketing', 'scout']) {
       const groups = buildNavGroups({ user: { role }, hasPermission: () => true })
       const ids = groups.flatMap((g) => g.items.map((i) => i.id))
       expect(new Set(ids).size).toBe(ids.length)
       // The Operations canvas screens appear for no other role.
       const accountant = role === 'accountant'
-      const expected = NAV_ITEMS.filter((i) => !ACCT_ONLY.includes(i.id) && !(OPS_ONLY.includes(i.id) && !(accountant && ACCT_SHARED.includes(i.id)))).map((i) => i.id)
+      const expected = NAV_ITEMS.filter((i) => !ACCT_ONLY.includes(i.id) && !DM_ONLY.includes(i.id) && !DR_ONLY.includes(i.id) && !(OPS_ONLY.includes(i.id) && !(accountant && ACCT_SHARED.includes(i.id)))).map((i) => i.id)
       expect([...ids].sort()).toEqual((accountant ? expected.concat(ACCT_ONLY) : expected).sort())
       expect(groups.every((g) => g.items.length > 0)).toBe(true)
     }
@@ -378,7 +382,9 @@ describe("the scout's menu in the canvas's words (staff WP6)", () => {
 
   it('x', () => {
     expect(overviewLabel('scout')).toBe('Today')
-    for (const role of ['operations', 'accountant', 'marketing', 'support', 'delivery_manager', 'dispatch']) expect(overviewLabel(role)).toBe('Overview')
+    for (const role of ['operations', 'accountant', 'marketing', 'support']) expect(overviewLabel(role)).toBe('Overview')
+    expect(overviewLabel('dispatch')).toBe('Shift')
+    expect(overviewLabel('delivery_manager')).toBe('Live operations')
     expect(overviewLabel('super_admin')).toBe('Command center')
   })
 

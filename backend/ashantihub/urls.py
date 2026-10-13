@@ -40,6 +40,7 @@ urlpatterns = [
     path("api/staff-security/", include("staffsecurity.urls")),
     path("api/announcements/", include("announcements.urls")),
     path("api/realtime/", include("realtime.urls")),
+    path("api/delivery/", include("delivery.urls")),
 ]
 
 if settings.DEBUG:

@@ -55,6 +55,11 @@ class Order(models.Model):
     delivery_lng = models.FloatField(null=True, blank=True)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
     placed_at = models.DateTimeField(auto_now_add=True)
+    # Delivery fee, fixed at checkout from the rate card in force (delivery.RateCard) and only when
+    # settings.DELIVERY_FEE_ENABLED is on (default off): null means no fee was charged.
+    delivery_fee = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    delivery_fee_breakdown = models.JSONField(null=True, blank=True)
+    rate_card = models.ForeignKey("delivery.RateCard", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
 
     class Meta:
         ordering = ["-placed_at"]
@@ -91,15 +96,31 @@ class DeliveryAssignment(models.Model):
     """
 
     ASSIGNED = "assigned"
+    ACCEPTED = "accepted"  # the rider took the job (heading to the pickup)
+    AT_PICKUP = "at_pickup"  # arrived at the business
     PICKED_UP = "picked_up"
+    AT_CUSTOMER = "at_customer"  # arrived at the customer
     DELIVERED = "delivered"
     CONFIRMED = "confirmed"  # customer confirmed receipt
+    FAILED = "failed"  # the rider could not deliver (a dispute is opened)
     STATUS_CHOICES = [
         (ASSIGNED, "Assigned"),
+        (ACCEPTED, "Accepted"),
+        (AT_PICKUP, "Arrived at pickup"),
         (PICKED_UP, "Picked up"),
+        (AT_CUSTOMER, "Arrived at customer"),
         (DELIVERED, "Delivered"),
         (CONFIRMED, "Confirmed by customer"),
+        (FAILED, "Could not deliver"),
     ]
+    # In flight: assigned to a rider, not yet delivered or failed.
+    ACTIVE_STATUSES = (ASSIGNED, ACCEPTED, AT_PICKUP, PICKED_UP, AT_CUSTOMER)
+    # How the rider came to hold the job.
+    MANUAL, AUTO, FORCED, OFFER = "manual", "auto", "forced", "offer"
+    MODE_CHOICES = [(MANUAL, "Chosen by a manager"), (AUTO, "Auto-assigned"), (FORCED, "Force-assigned"), (OFFER, "Offered and accepted")]
+    # A manager's decision on a location flag (a tap far from the stop).
+    FLAG_CLEARED, FLAG_UPHELD = "cleared", "upheld"
+    FLAG_CHOICES = [("", "Undecided"), (FLAG_CLEARED, "Cleared"), (FLAG_UPHELD, "Upheld")]
 
     order = models.OneToOneField(
         Order, on_delete=models.CASCADE, related_name="delivery_assignment"
@@ -119,6 +140,53 @@ class DeliveryAssignment(models.Model):
     picked_up_at = models.DateTimeField(null=True, blank=True)
     delivered_at = models.DateTimeField(null=True, blank=True)
     confirmed_at = models.DateTimeField(null=True, blank=True)
+
+    # Lifecycle stamps (Delivery Manager build). The where-and-how-far of each is a
+    # ``delivery.DeliveryEvent``; these are the times the list screens sort and filter on.
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    arrived_pickup_at = models.DateTimeField(null=True, blank=True)
+    arrived_drop_at = models.DateTimeField(null=True, blank=True)
+    failed_at = models.DateTimeField(null=True, blank=True)
+    failed_reason = models.CharField(max_length=30, blank=True)
+    failed_note = models.CharField(max_length=500, blank=True)
+    # Null until a time limit applies (``delivery.TimeLimits``); no deadline is ever made up.
+    deadline_at = models.DateTimeField(null=True, blank=True)
+    assignment_mode = models.CharField(max_length=10, choices=MODE_CHOICES, default=MANUAL)
+    vehicle = models.ForeignKey("delivery.Vehicle", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    # Four-digit codes made when the job is assigned: the business reads the pickup code to the
+    # rider, the customer reads the drop code. Wrong tries are counted and capped.
+    pickup_code = models.CharField(max_length=4, blank=True)
+    drop_code = models.CharField(max_length=4, blank=True)
+    pickup_code_attempts = models.PositiveSmallIntegerField(default=0)
+    drop_code_attempts = models.PositiveSmallIntegerField(default=0)
+    flag_decision = models.CharField(max_length=8, choices=FLAG_CHOICES, blank=True, default="")
+    flag_decided_by = models.ForeignKey(StaffUser, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    flag_decided_at = models.DateTimeField(null=True, blank=True)
+    flag_note = models.CharField(max_length=300, blank=True)
+    # Waiting pay held back while a flag is looked at. A hold only; there is no pay record yet.
+    wait_pay_held = models.BooleanField(default=False)
+    rider_note = models.CharField(max_length=500, blank=True)
+    # What the rider is owed for this job, worked out from the rate card in force when it was delivered
+    # (a record of the sum, not a payment). Null when no rate card was in force.
+    rider_pay = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    rider_pay_breakdown = models.JSONField(null=True, blank=True)
+    # Cash on delivery is not offered at checkout yet; these stay empty until it is.
+    cod_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    cash_collected_at = models.DateTimeField(null=True, blank=True)
+
+    def sync_order(self):
+        """Keep Order.delivery_status in step with the courier's progress so the customer's delivery
+        stepper reflects reality. A failed delivery leaves the order where it was."""
+        mapping = {
+            self.ASSIGNED: Order.PROCESSING, self.ACCEPTED: Order.PROCESSING, self.AT_PICKUP: Order.PROCESSING,
+            self.PICKED_UP: Order.OUT_FOR_DELIVERY, self.AT_CUSTOMER: Order.OUT_FOR_DELIVERY,
+            self.DELIVERED: Order.DELIVERED, self.CONFIRMED: Order.DELIVERED,
+        }
+        new_status = mapping.get(self.status)
+        order = self.order
+        if new_status and order.delivery_status != new_status:
+            order.delivery_status = new_status
+            order.save(update_fields=["delivery_status"])
 
     def __str__(self):
         return f"Delivery for Order {self.order_id} → dispatch {self.dispatch_id} ({self.status})"

@@ -132,6 +132,39 @@ class PublishTests(TestCase):
                     self.record(self.lead, verb, method="POST", target_type="x", target_id="1")
                     self.assertEqual(self.message(queue)["payload"]["invalidate"], keys)
 
+    def test_the_delivery_screens_follow_a_riders_steps_and_the_fleet_edits(self):
+        cases = [
+            ("delivery-rider-pickup", "perm.delivery.manage", ["delivery-live", "delivery-active", "delivery-job", "staff-badges"]),
+            ("delivery-job-flag-decision", "perm.delivery.manage", ["delivery-live", "delivery-active", "delivery-job", "staff-badges"]),
+            ("delivery-document-review", "perm.delivery.fleet", ["delivery-riders", "delivery-rider", "delivery-documents", "delivery-vehicles", "delivery-zones", "staff-badges"]),
+            ("delivery-vehicle-assign", "perm.delivery.fleet", ["delivery-riders", "delivery-rider", "delivery-documents", "delivery-vehicles", "delivery-zones", "staff-badges"]),
+        ]
+        for verb, group, keys in cases:
+            with self.subTest(verb=verb):
+                queue = self.listen(group)
+                self.record(self.lead, verb, method="POST", target_type="x", target_id="1")
+                self.assertEqual(self.message(queue)["payload"]["invalidate"], keys)
+        pending = self.listen("perm.delivery.fleet")
+        self.record(self.lead, "staff-invite", method="POST", target_type="accounts.staffuser", target_id="1")
+        keys = [payload["invalidate"] for payload in self.drain(pending) if payload["type"] == "invalidate"]
+        self.assertIn(["delivery-invites", "delivery-riders"], keys)
+
+    def test_the_queue_cases_cash_rota_rules_and_rider_app_follow_their_events(self):
+        cases = [
+            ("delivery-queue-offer", "perm.delivery.manage", ["delivery-queue", "delivery-live"]),
+            ("delivery-auto-assign-switch", "perm.delivery.manage", ["delivery-queue", "delivery-live"]),
+            ("delivery-case-decide", "perm.delivery.disputes", ["delivery-cases", "delivery-case"]),
+            ("delivery-cash", "perm.delivery.cash", ["delivery-cash", "delivery-payouts"]),
+            ("delivery-shifts-publish", "perm.delivery.fleet", ["delivery-shifts"]),
+            ("delivery-rules-rate-card", "perm.delivery.rates", ["delivery-rules"]),
+            ("delivery-queue-force-assign", "perm.delivery.dispatch", ["delivery-rider-me", "delivery-rider-offers", "delivery-rider-jobs", "delivery-rider-shifts", "delivery-rider-cash"]),
+        ]
+        for verb, group, keys in cases:
+            with self.subTest(verb=verb, group=group):
+                queue = self.listen(group)
+                self.record(self.lead, verb, method="POST", target_type="x", target_id="1")
+                self.assertEqual(self.message(queue)["payload"]["invalidate"], keys)
+
     def test_the_super_admin_marketplace_screens_follow_their_events(self):
         cases = [
             ("business.suspended", "perm.portfolio.manage", "sa-businesses"),

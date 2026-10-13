@@ -129,6 +129,8 @@ class StaffBadgesView(APIView):
         if not isinstance(user, StaffUser):
             raise PermissionDenied("Staff badges are staff-only.")
 
+        from delivery import badges as delivery_badges
+
         # Local imports keep this app's import surface small and avoid any
         # load-order coupling to the queue-owning apps.
         from approvals.services import waiting_for
@@ -311,5 +313,6 @@ class StaffBadgesView(APIView):
                 "disputes_open": disputes_open,
                 "reports_hub": reports_hub,
                 "report_due_at": report_due_at,
+                **delivery_badges.counts(held),
             }
         )

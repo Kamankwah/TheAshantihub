@@ -99,6 +99,40 @@ QUEUE_INVALIDATIONS = [
     (("order-delivery-status-update", "order-assign-dispatch", "delivery-pickup", "delivery-deliver", "dispute-"), ("orders.manage_delivery",), ("sa-orders",)),
     (("event-moderation-", "escrow-", "event."), ("escrow.view", "event.approve"), ("sa-events",)),
     (("dispute-",), ("disputes.flag", "disputes.resolve_financial"), ("sa-disputes",)),
+    # Delivery Manager (delivery app). A rider's step, an assignment or a flag decision changes the live board,
+    # the active list, one delivery's record and the queue; location pings are exempt from the log (no event).
+    (
+        ("delivery-rider-accept", "delivery-rider-arrive-", "delivery-rider-pickup", "delivery-rider-deliver", "delivery-rider-cant-deliver",
+         "delivery-rider-shift-", "delivery-rider-issues", "delivery-rider-note", "delivery-rider-photo", "delivery-rider-call",
+         "delivery-job-", "order-assign-dispatch", "dispute-"),
+        ("delivery.manage",),
+        ("delivery-live", "delivery-active", "delivery-job", "staff-badges"),
+    ),
+    # The fleet screens: riders, papers, vehicles, zones and the pending-invite list.
+    (
+        ("delivery-rider-shift-", "delivery-rider-documents", "delivery-rider-job-hold", "delivery-rider-reinstate", "delivery-rider",
+         "delivery-document-", "delivery-vehicle", "delivery-zone", "order-assign-dispatch", "delivery-rider-accept", "delivery-rider-deliver"),
+        ("delivery.fleet",),
+        ("delivery-riders", "delivery-rider", "delivery-documents", "delivery-vehicles", "delivery-zones", "staff-badges"),
+    ),
+    (STAFF_MANAGEMENT_VERBS, ("delivery.fleet",), ("delivery-invites", "delivery-riders")),
+    # Dispatch queue and offers, delivery cases, cash, the rota and the rules.
+    (
+        ("delivery-queue-", "delivery-auto-assign-", "delivery-rider-offer-", "delivery-rider-accept", "delivery-rider-shift-", "order-assign-dispatch",
+         "delivery-rider-cant-deliver", "delivery-rules-", "approval."),
+        ("delivery.manage",),
+        ("delivery-queue", "delivery-live"),
+    ),
+    (("delivery-case-decide", "dispute-", "delivery-rider-cant-deliver"), ("delivery.manage", "delivery.disputes"), ("delivery-cases", "delivery-case")),
+    (("delivery-cash", "delivery-rider-deliver"), ("delivery.cash",), ("delivery-cash", "delivery-payouts")),
+    (("delivery-shift", "delivery-rider-shift"), ("delivery.fleet",), ("delivery-shifts",)),
+    (("delivery-rules-", "approval."), ("delivery.rates",), ("delivery-rules",)),
+    # The rider app: any step, offer, hand-over or rota change refreshes every rider's own reads.
+    (
+        ("delivery-queue-", "delivery-rider-", "delivery-cash", "delivery-shift", "order-assign-dispatch", "delivery-job-"),
+        ("delivery.dispatch",),
+        ("delivery-rider-me", "delivery-rider-offers", "delivery-rider-jobs", "delivery-rider-shifts", "delivery-rider-cash"),
+    ),
 ]
 # (verb prefixes, extra keys for everyone who receives the feed event)
 FEED_KEYS = [

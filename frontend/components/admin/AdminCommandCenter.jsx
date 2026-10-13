@@ -61,6 +61,23 @@ import ScoutPanel from "./panels/ScoutPanel.jsx";
 import ScoutAssignmentsPanel from "./panels/ScoutAssignmentsPanel.jsx";
 import DeliveryManagerPanel from "./panels/DeliveryManagerPanel.jsx";
 import DispatchPanel from "./panels/DispatchPanel.jsx";
+import { useRiderLocation } from "../../lib/riderTracking.js";
+import RiderTracker from "./panels/rider/RiderTracker.jsx";
+import ShiftPanel from "./panels/rider/ShiftPanel.jsx";
+import { EarningsScreen, JobsScreen, ReportIssueScreen, RiderCashScreen, RiderDocumentsScreen, RiderMenuScreen } from "./panels/rider/RiderScreens.jsx";
+import RiderBottomBar from "./shell/RiderBottomBar.jsx";
+import DeliveryZonesPanel from "./panels/delivery/DeliveryZonesPanel.jsx";
+import DocumentsPanel from "./panels/delivery/DocumentsPanel.jsx";
+import InviteRiderPanel from "./panels/delivery/InviteRiderPanel.jsx";
+import Riders from "./panels/delivery/RidersPanel.jsx";
+import ShiftsPanel from "./panels/delivery/ShiftsPanel.jsx";
+import VehiclesPanel from "./panels/delivery/VehiclesPanel.jsx";
+import { CashPanel, PayoutsPanel } from "./panels/delivery/CashPanel.jsx";
+import { AutoAssignRulesPanel, DeliveryPricingPanel, TimeLimitsPanel } from "./panels/delivery/RulesPanels.jsx";
+import ActiveDeliveries from "./panels/delivery/ActiveDeliveriesPanel.jsx";
+import DisputesCases from "./panels/delivery/DisputesCasesPanel.jsx";
+import DispatchQueuePanel from "./panels/delivery/DispatchQueuePanel.jsx";
+import LiveOperationsPanel from "./panels/delivery/LiveOperationsPanel.jsx";
 import MessagingPanel from "./panels/MessagingPanel.jsx";
 import PromotionsPanel from "./panels/PromotionsPanel.jsx";
 import AnalyticsPanel from "./panels/AnalyticsPanel.jsx";
@@ -117,7 +134,7 @@ import NotificationCenterPanel from "./panels/NotificationCenterPanel.jsx";
 import StaffAnnouncementsPanel from "./panels/StaffAnnouncementsPanel.jsx";
 import AnnouncementBanner from "./shell/AnnouncementBanner.jsx";
 import SessionsPanel from "./panels/SessionsPanel.jsx";
-import { DeliveryPricingPanel, PayoutsPayrollPanel, ReconciliationPanel, TaxTablesPanel } from "./panels/LaterPhasePanels.jsx";
+import { PayoutsPayrollPanel, ReconciliationPanel, TaxTablesPanel } from "./panels/LaterPhasePanels.jsx";
 import IntegrationsPanel from "./panels/IntegrationsPanel.jsx";
 import SystemHealthPanel from "./panels/SystemHealthPanel.jsx";
 import PlansPricesPanel from "./panels/PlansPricesPanel.jsx";
@@ -215,7 +232,10 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
     noteSignedOutReason(reason);
     onExitRef.current?.();
   }, []);
-  useIdleSignOut(() => signOutBecause("idle"));
+  // A rider on shift keeps their phone mounted and untouched while it shares the location, and the
+  // pings keep the server session alive: only the 12-hour limit ends it. Off shift, the usual 30 minutes apply.
+  const sharingLocation = useRiderLocation().status === "sharing";
+  useIdleSignOut(() => signOutBecause("idle"), { enabled: !(role === "dispatch" && sharingLocation) });
   // The Sign out buttons: an explicit sign-out also clears any registration
   // draft from this phone (idle and "ended" sign-outs keep it).
   const signOut = useCallback(() => {
@@ -302,6 +322,13 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
     else { setInternalTab("all-portfolios"); setInternalDetail(String(id)); }
   };
 
+  // A record in a Delivery Manager screen: /staff/dm-active/<id>, /staff/dm-cases/<id>, /staff/dm-riders/<id>.
+  const openAt = (tab, id) => {
+    setDrawerOpen(false);
+    if (isControlled) onTabChange?.(`${tab}/${id}`);
+    else { setInternalTab(tab); setInternalDetail(String(id)); }
+  };
+
   // A person's profile opens under Staff directory (/staff/staff/<id>).
   const openStaff = (id) => {
     setDrawerOpen(false);
@@ -370,8 +397,9 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
   // A scout's phone gets the field bar (Businesses · Register · Calls · Menu);
   // every other role keeps Overview, three panels and More.
   const scoutBar = isPhone && role === "scout";
+  const riderBar = isPhone && role === "dispatch";
   const isScout = role === "scout";
-  const bottomItems = isPhone && !scoutBar ? pickBottomBarItems(navGroups, badgeFor) : [];
+  const bottomItems = isPhone && !scoutBar && !riderBar ? pickBottomBarItems(navGroups, badgeFor) : [];
 
   return (
     <div className="shadcn-scope command-center staff-shell" data-bp={breakpoint} style={{ display: "flex" }}>
@@ -416,6 +444,10 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           <AnnouncementBanner />
           {activeTab === "overview" && role !== "cosigner" && (role === "scout"
             ? <ScoutTodayPanel auth={auth} onNavigate={selectTab} onCheckIn={openCheckInScreen} onRegister={() => selectTab("register-business")} onSeeApprovals={openMadeApprovals} onOpenBusiness={openMyBusiness} />
+            : role === "dispatch" && auth.hasPermission("delivery.dispatch")
+              ? <ShiftPanel />
+            : role === "delivery_manager"
+              ? <LiveOperationsPanel auth={auth} onNavigate={selectTab} onOpenDelivery={(id) => openAt("dm-active", id)} onOpenCase={(id) => openAt("dm-cases", id)} />
             : role === "super_admin"
               ? <SuperAdminOverviewPanel auth={auth} onNavigate={selectTab} onOpenApproval={openApproval} />
             : role === "accountant" && auth.hasPermission("transactions.report")
@@ -446,6 +478,26 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "credit" && <CreditPanel />}
           {activeTab === "scout-assignments" && <ScoutAssignmentsPanel />}
           {activeTab === "field-verification" && <ScoutPanel />}
+          {activeTab === "dr-jobs" && <JobsScreen />}
+          {activeTab === "dr-earnings" && <EarningsScreen />}
+          {activeTab === "dr-cash" && <RiderCashScreen />}
+          {activeTab === "dr-issue" && <ReportIssueScreen />}
+          {activeTab === "dr-documents" && <RiderDocumentsScreen />}
+          {activeTab === "dr-menu" && <RiderMenuScreen auth={auth} onSelect={selectTab} onSignOut={signOut} />}
+          {activeTab === "dm-queue" && <DispatchQueuePanel auth={auth} onNavigate={selectTab} />}
+          {activeTab === "dm-active" && <ActiveDeliveries detailId={detail} onOpenDetail={(id) => (id == null ? openDetail(null) : openAt("dm-active", id))} onOpenCase={(id) => openAt("dm-cases", id)} />}
+          {activeTab === "dm-cases" && <DisputesCases detailId={detail} onOpenDetail={(id) => (id == null ? openDetail(null) : openAt("dm-cases", id))} onOpenDelivery={(id) => openAt("dm-active", id)} />}
+          {activeTab === "dm-riders" && <Riders detailId={detail} onOpenDetail={(id) => (id == null ? openDetail(null) : openAt("dm-riders", id))} onOpenDelivery={(id) => openAt("dm-active", id)} onNavigate={selectTab} />}
+          {activeTab === "dm-documents" && <DocumentsPanel onNavigate={selectTab} />}
+          {activeTab === "dm-vehicles" && <VehiclesPanel />}
+          {activeTab === "dm-invite" && <InviteRiderPanel auth={auth} />}
+          {activeTab === "dm-shifts" && <ShiftsPanel />}
+          {activeTab === "dm-zones" && <DeliveryZonesPanel />}
+          {activeTab === "dm-cash" && <CashPanel />}
+          {activeTab === "dm-payouts" && <PayoutsPanel />}
+          {activeTab === "dm-pricing" && <DeliveryPricingPanel auth={auth} />}
+          {activeTab === "dm-autoassign" && <AutoAssignRulesPanel auth={auth} onNavigate={selectTab} />}
+          {activeTab === "dm-limits" && <TimeLimitsPanel auth={auth} />}
           {activeTab === "delivery-coordination" && <DeliveryManagerPanel />}
           {activeTab === "my-deliveries" && <DispatchPanel />}
           {activeTab === "promotions" && <PromotionsPanel auth={auth} />}
@@ -477,7 +529,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "commission-policy" && <CommissionPolicyPanel canPropose={auth.hasPermission("commission.policy")} showTaxRuling={role === "super_admin" || auth.hasPermission("commission.tax_ruling")} onOpenApproval={role === "super_admin" ? openApproval : undefined} />}
           {activeTab === "payouts-payroll" && <PayoutsPayrollPanel onNavigate={selectTab} />}
           {activeTab === "reconciliation" && <ReconciliationPanel />}
-          {activeTab === "delivery-pricing" && <DeliveryPricingPanel />}
+          {activeTab === "delivery-pricing" && <DeliveryPricingPanel auth={auth} />}
           {activeTab === "tax-tables" && <TaxTablesPanel onNavigate={selectTab} />}
           {activeTab === "integrations" && <IntegrationsPanel />}
           {activeTab === "system-health" && <SystemHealthPanel />}
@@ -515,7 +567,10 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
         </main>
       </div>
 
-      {isPhone && (scoutBar
+      {role === "dispatch" && !viewAs && <RiderTracker />}
+      {isPhone && (riderBar
+        ? <RiderBottomBar activeTab={activeTab} onSelect={selectTab} roleColor={roleColor} />
+        : scoutBar
         ? <ScoutBottomBar navGroups={navGroups} activeTab={activeTab} onSelect={navSelect} onMenu={() => setDrawerOpen(true)} badgeFor={badgeFor} roleColor={roleColor} />
         : <StaffBottomBar items={bottomItems} activeTab={activeTab} onSelect={selectTab} onMore={() => setDrawerOpen(true)} badgeFor={badgeFor} roleColor={roleColor} />)}
 

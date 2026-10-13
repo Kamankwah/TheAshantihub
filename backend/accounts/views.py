@@ -893,6 +893,10 @@ class StaffSuspendView(APIView):
         staff.is_suspended = True
         staff.suspension_reason = request.data.get("reason", "") or ""
         staff.save(update_fields=["is_suspended", "suspension_reason"])
+        # A rider's suspension source is authoritative: a hand suspension is never liftable by the papers route.
+        from delivery.models import Rider
+
+        Rider.objects.filter(staff=staff).update(suspension_source=Rider.MANUAL)
         sessions.revoke_all(staff, StaffSession.SUSPENDED)
         return Response(StaffListSerializer(staff).data)
 
@@ -909,6 +913,9 @@ class StaffUnsuspendView(APIView):
         staff.is_suspended = False
         staff.suspension_reason = ""
         staff.save(update_fields=["is_suspended", "suspension_reason"])
+        from delivery.models import Rider
+
+        Rider.objects.filter(staff=staff).update(suspension_source="")
         return Response(StaffListSerializer(staff).data)
 
 

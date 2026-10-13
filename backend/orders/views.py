@@ -1,3 +1,4 @@
+from django.conf import settings
 from decimal import Decimal
 
 from django.db import transaction as db_transaction
@@ -97,8 +98,19 @@ class OrderCheckoutView(APIView):
             total = sum(
                 (item.unit_price_snapshot * item.quantity for item in items), Decimal("0.00")
             )
+            # Delivery fee from the rate card in force, only when switched on (settings.DELIVERY_FEE_ENABLED,
+            # default off). Fixed here, on the order; later card changes never touch it.
+            fee_card, fee_quote = None, None
+            if settings.DELIVERY_FEE_ENABLED and delivery_method == Order.DOOR_TO_DOOR:
+                from delivery.rates import checkout_fee
+
+                quoted = checkout_fee(items, request.data.get("delivery_lat"), request.data.get("delivery_lng"))
+                if quoted is not None:
+                    fee_card, fee_quote = quoted
+                    total += Decimal(fee_quote["total"])
             order = Order.objects.create(
                 customer=request.user, status=Order.PENDING, total_amount=total,
+                delivery_fee=Decimal(fee_quote["total"]) if fee_quote else None, delivery_fee_breakdown=fee_quote, rate_card=fee_card,
                 delivery_method=delivery_method,
                 delivery_address=delivery_address if delivery_method == Order.DOOR_TO_DOOR else "",
                 delivery_phone=delivery_phone if delivery_method == Order.DOOR_TO_DOOR else "",
@@ -152,7 +164,7 @@ class OrderListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated, IsCustomer]
 
     def get_queryset(self):
-        return Order.objects.filter(customer=self.request.user)
+        return Order.objects.filter(customer=self.request.user).select_related("delivery_assignment")
 
 
 class OrderDetailView(generics.RetrieveAPIView):
@@ -164,7 +176,7 @@ class OrderDetailView(generics.RetrieveAPIView):
     permission_classes = [IsAuthenticated, IsCustomer]
 
     def get_queryset(self):
-        return Order.objects.filter(customer=self.request.user)
+        return Order.objects.filter(customer=self.request.user).select_related("delivery_assignment")
 
 
 class OrderOwnerPagination(PageNumberPagination):
@@ -189,6 +201,7 @@ class OwnerOrderListView(generics.ListAPIView):
             Order.objects.filter(
                 status=Order.PAID, items__listing__business_owner=self.request.user
             )
+            .select_related("customer", "delivery_assignment")
             .prefetch_related("items__listing")
             .distinct()
             .order_by("-placed_at")
@@ -377,16 +390,8 @@ def _sync_order_delivery_status(order, assignment_status):
     """Keep Order.delivery_status roughly in step with the courier's progress
     so the customer's existing delivery stepper reflects reality.
     """
-    mapping = {
-        DeliveryAssignment.ASSIGNED: Order.PROCESSING,
-        DeliveryAssignment.PICKED_UP: Order.OUT_FOR_DELIVERY,
-        DeliveryAssignment.DELIVERED: Order.DELIVERED,
-        DeliveryAssignment.CONFIRMED: Order.DELIVERED,
-    }
-    new_status = mapping.get(assignment_status)
-    if new_status and order.delivery_status != new_status:
-        order.delivery_status = new_status
-        order.save(update_fields=["delivery_status"])
+    stub = DeliveryAssignment(order=order, status=assignment_status)
+    stub.sync_order()
 
 
 class DeliveryManagerOrderListView(generics.ListAPIView):
@@ -447,10 +452,12 @@ class AssignDispatchView(APIView):
         if dispatch.role.name != "dispatch":
             return Response({"dispatch": "That staff member is not a dispatch."}, status=400)
 
-        assignment, _ = DeliveryAssignment.objects.update_or_create(
-            order=order,
-            defaults={"dispatch": dispatch, "assigned_by": request.user},
-        )
+        from delivery import services as delivery_services
+
+        try:
+            assignment = delivery_services.assign(order, dispatch, request.user, mode=DeliveryAssignment.MANUAL)
+        except delivery_services.DeliveryError as exc:
+            return Response(exc.body(), status=exc.status_code)
         _sync_order_delivery_status(order, assignment.status)
         notify_customer(
             order.customer, "order_status", "Your delivery is on its way",
@@ -490,15 +497,15 @@ class DeliveryPickupView(APIView):
         return [HasRolePermission("delivery.dispatch")]
 
     def post(self, request, pk):
+        from delivery import services as delivery_services
+
         assignment = generics.get_object_or_404(
-            DeliveryAssignment, pk=pk, dispatch=request.user
+            DeliveryAssignment.objects.select_for_update(), pk=pk, dispatch=request.user
         )
-        if assignment.status != DeliveryAssignment.ASSIGNED:
-            return Response({"detail": "This delivery is not awaiting pickup."}, status=400)
-        assignment.status = DeliveryAssignment.PICKED_UP
-        assignment.picked_up_at = timezone.now()
-        assignment.save(update_fields=["status", "picked_up_at"])
-        _sync_order_delivery_status(assignment.order, assignment.status)
+        try:
+            delivery_services.legacy_pickup(assignment, request.user, request.data.get("code"))
+        except delivery_services.DeliveryError as exc:
+            return Response(exc.body(), status=exc.status_code)
         return Response(DispatchDeliverySerializer(assignment).data)
 
 
@@ -512,20 +519,15 @@ class DeliveryDeliverView(APIView):
         return [HasRolePermission("delivery.dispatch")]
 
     def post(self, request, pk):
+        from delivery import services as delivery_services
+
         assignment = generics.get_object_or_404(
-            DeliveryAssignment, pk=pk, dispatch=request.user
+            DeliveryAssignment.objects.select_for_update(), pk=pk, dispatch=request.user
         )
-        if assignment.status != DeliveryAssignment.PICKED_UP:
-            return Response({"detail": "This delivery has not been picked up yet."}, status=400)
-        assignment.status = DeliveryAssignment.DELIVERED
-        assignment.delivered_at = timezone.now()
-        assignment.save(update_fields=["status", "delivered_at"])
-        _sync_order_delivery_status(assignment.order, assignment.status)
-        notify_customer(
-            assignment.order.customer, "order_status", "Your order has been delivered",
-            body=f"Order #{assignment.order_id} has been delivered — please confirm you received it.",
-            link="/my-account", icon="📦",
-        )
+        try:
+            delivery_services.legacy_deliver(assignment, request.user, request.data.get("code"))
+        except delivery_services.DeliveryError as exc:
+            return Response(exc.body(), status=exc.status_code)
         return Response(DispatchDeliverySerializer(assignment).data)
 
 
