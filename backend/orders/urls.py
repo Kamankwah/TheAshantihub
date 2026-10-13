@@ -5,7 +5,8 @@ from . import support, views
 urlpatterns = [
     path("checkout/", views.OrderCheckoutView.as_view(), name="order-checkout"),
     path("owner/", views.OwnerOrderListView.as_view(), name="order-owner-list"),
-    path("owner/report/", views.OwnerSalesReportView.as_view(), name="order-owner-report"),
+    path("owner/<int:pk>/tracking/", views.OwnerOrderTrackingView.as_view(), name="owner-order-tracking"),
+    path("owner/report/",views.OwnerSalesReportView.as_view(), name="order-owner-report"),
     path("owner/report/export/", views.OwnerSalesReportExportView.as_view(), name="order-owner-report-export"),
     path("staff/", views.OrderStaffListView.as_view(), name="order-staff-list"),
     # Door-to-door delivery (item 11) — before the "<int:pk>/" catch-alls.
@@ -20,6 +21,7 @@ urlpatterns = [
     path("<int:pk>/support-status/", support.SupportOrderStatusView.as_view(), name="order-support-status"),
     path("", views.OrderListView.as_view(), name="order-list"),
     path("<int:pk>/", views.OrderDetailView.as_view(), name="order-detail"),
+    path("<int:pk>/tracking/", views.OrderTrackingView.as_view(), name="order-tracking"),
     path(
         "<int:pk>/delivery-status/",
         views.OrderDeliveryStatusUpdateView.as_view(),
