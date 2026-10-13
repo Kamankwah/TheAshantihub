@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { apiFetch } from '../apiClient.js'
 
-const PARAM_KEYS = ['scope', 'health', 'subscription', 'scout', 'zone', 'unassigned', 'q', 'page']
+const PARAM_KEYS = ['scope', 'health', 'subscription', 'kyc', 'flag', 'scout', 'zone', 'unassigned', 'q', 'page']
 const isSet = (value) => value !== undefined && value !== null && value !== '' && value !== false
 
 // GET /api/portfolio/businesses/ — a DRF page (read data?.results) plus
