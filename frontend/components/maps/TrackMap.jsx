@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { CircleMarker, MapContainer, Polyline, TileLayer, Tooltip, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import { D } from "../dashboard/theme.js";
@@ -16,32 +16,49 @@ const STYLE = {
 };
 const hasCoords = (m) => Number.isFinite(Number(m?.lat)) && Number.isFinite(Number(m?.lng)) && m.lat !== null && m.lng !== null;
 
-function Fit({ points }) {
+// What the camera frames: the stops (pickup/drop) and the route's ends. A moving rider or
+// candidate does not change it, so a poll never snaps the map back under a user who panned.
+// With no stops, the set of marker ids stands in so the first rider still gets framed.
+export function fitSignature(markers = [], route = null) {
+  const pins = markers.filter(hasCoords);
+  const stops = pins.filter((m) => m.kind === "pickup" || m.kind === "drop");
+  const shown = (stops.length ? stops : pins.map((m) => ({ ...m, lat: 0, lng: 0 })))
+    .map((m) => `${m.kind}:${m.id}:${Number(m.lat)},${Number(m.lng)}`).sort().join("|");
+  const line = Array.isArray(route) && route.length >= 2
+    ? `${route.length}:${route[0]}>${route[route.length - 1]}` : "none";
+  return `${shown}#${line}`;
+}
+
+function Fit({ points, signature }) {
   const map = useMap();
+  const latest = useRef(points);
+  latest.current = points;
   useEffect(() => {
-    if (!points.length) return;
-    if (points.length === 1) { map.setView(points[0], 15); return; }
-    map.fitBounds(points, { padding: [36, 36], maxZoom: 16 });
-  }, [map, points]);
+    const pts = latest.current;
+    if (!pts.length) return;
+    if (pts.length === 1) { map.setView(pts[0], 15); return; }
+    map.fitBounds(pts, { padding: [36, 36], maxZoom: 16 });
+  }, [map, signature]);
   return null;
 }
 
 export default function TrackMap({ markers = [], route = null, height = 320, label, onSelect }) {
   const pins = markers.filter(hasCoords);
+  const signature = useMemo(() => fitSignature(markers, route), [markers, route]);
   const line = Array.isArray(route) && route.length >= 2 ? route : null;
   if (!pins.length) {
     return (
-      <div role="img" aria-label={label} style={{ height, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", background: D.panelBg, color: D.text, fontSize: 13, textAlign: "center", padding: 16 }}>
+      <div style={{ height, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", background: D.panelBg, color: D.text, fontSize: 13, textAlign: "center", padding: 16 }}>
         No map coordinates for this delivery yet.
       </div>
     );
   }
   const points = [...pins.map((m) => [Number(m.lat), Number(m.lng)]), ...(line || [])];
   return (
-    <div role="img" aria-label={label} style={{ position: "relative", height, borderRadius: 12, overflow: "hidden" }}>
+    <div {...(label ? { role: "img", "aria-label": label } : {})} style={{ position: "relative", height, borderRadius: 12, overflow: "hidden" }}>
       <MapContainer center={points[0]} zoom={13} style={{ height: "100%", width: "100%" }} scrollWheelZoom={false}>
         <TileLayer attribution='Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-        <Fit points={points} />
+        <Fit points={points} signature={signature} />
         {line && <Polyline positions={line} pathOptions={{ color: "#2C1810", weight: 4, opacity: 0.75 }} />}
         {pins.map((m) => (
           <CircleMarker key={m.id} center={[Number(m.lat), Number(m.lng)]} radius={9} pathOptions={STYLE[m.kind] || STYLE.candidate} eventHandlers={{ click: () => onSelect?.(m.id) }}>

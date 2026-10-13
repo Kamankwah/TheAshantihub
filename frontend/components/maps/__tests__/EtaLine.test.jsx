@@ -39,4 +39,11 @@ describe('EtaLine', () => {
     const { container } = render(<EtaLine leg={null} stale />)
     expect(container).toBeEmptyDOMElement()
   })
+
+  it('renders nothing when the duration is not a number', () => {
+    const { container } = render(<EtaLine leg={{ ...leg, duration_s: null }} />)
+    expect(container).toBeEmptyDOMElement()
+    const again = render(<EtaLine leg={{ ...leg, duration_s: 'soon' }} />)
+    expect(again.container).toBeEmptyDOMElement()
+  })
 })
