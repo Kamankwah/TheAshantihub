@@ -51,7 +51,7 @@ export const useRateCard = () => get(['delivery-rules', 'rate-card'], '/api/deli
 
 // Rider app (delivery.dispatch): the caller's own data.
 export const useRiderMe = () => get(['delivery-rider-me'], '/api/delivery/rider/me/', { poll: 30000 })
-export const useRiderOffers = () => get(['delivery-rider-offers'], '/api/delivery/rider/offers/', { poll: 8000 })
+export const useRiderOffers = (enabled = true) => get(['delivery-rider-offers'], '/api/delivery/rider/offers/', { poll: 8000, enabled })
 export const useRiderJobs = (scope = 'active') => get(['delivery-rider-jobs', scope], `/api/delivery/rider/jobs/${qs({ scope })}`, { poll: 30000 })
 export const useRiderJob = (id) => get(['delivery-rider-jobs', 'one', id], `/api/delivery/rider/jobs/${id}/`, { enabled: id != null, poll: 15000 })
 export const useRiderShifts = () => get(['delivery-rider-shifts'], '/api/delivery/rider/shifts/')

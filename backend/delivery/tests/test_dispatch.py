@@ -362,3 +362,41 @@ class MenuBadgeTests(DeliveryCase):
         self.assertEqual(data["delivery_cash"], 0)
         rider = self.as_staff(self.rider_staff).get("/api/notifications/staff-badges/").json()
         self.assertEqual((rider["delivery_queue"], rider["delivery_documents"], rider["delivery_cases"]), (0, 0, 0))
+
+
+class RiderMoneyTests(DeliveryCase):
+    """The rider's own pay and cash: a record of what was earned, honest about what does not exist."""
+
+    def test_earnings_total_only_jobs_with_recorded_pay_and_never_show_a_made_up_figure(self):
+        a = self.assign()
+        self.run_to(a, "deliver")
+        data = self.as_staff(self.rider_staff).get("/api/delivery/rider/earnings/?period=today").json()
+        self.assertEqual((data["jobs"], data["jobs_without_pay"]), (1, 1))  # no rate card was in force
+        self.assertIsNone(data["total"])
+        self.assertIsNone(data["rates"])
+        self.assertEqual(data["payouts"]["status"], "not_connected")
+        DeliveryAssignment.objects.filter(pk=a.pk).update(rider_pay="19.16", rider_pay_breakdown={"distance_km": "6.2", "lines": [{"label": "Per job", "amount": "8.00"}]})
+        data = self.as_staff(self.rider_staff).get("/api/delivery/rider/earnings/?period=week").json()
+        self.assertEqual((data["total"], data["jobs_without_pay"]), ("19.16", 0))
+        self.assertEqual(data["results"][0]["lines"][0]["label"], "Per job")
+
+    def test_another_riders_pay_is_never_included(self):
+        a = self.assign()
+        self.run_to(a, "deliver")
+        DeliveryAssignment.objects.filter(pk=a.pk).update(rider_pay="19.16")
+        data = self.as_staff(self.other_staff).get("/api/delivery/rider/earnings/?period=week").json()
+        self.assertEqual((data["jobs"], data["total"]), (0, None))
+
+    def test_cash_says_it_is_not_offered_instead_of_showing_zero(self):
+        data = self.as_staff(self.rider_staff).get("/api/delivery/rider/cash/").json()
+        self.assertFalse(data["cod"]["offered"])
+        self.assertIsNone(data["holding"])
+        self.assertEqual(data["cap"], "500.00")
+
+    def test_cash_holding_and_room_once_a_job_carries_cash(self):
+        a = self.assign()
+        DeliveryAssignment.objects.filter(pk=a.pk).update(cod_amount="180.00", cash_collected_at=timezone.now())
+        data = self.as_staff(self.rider_staff).get("/api/delivery/rider/cash/").json()
+        self.assertTrue(data["cod"]["offered"])
+        self.assertEqual((data["holding"], data["room"], data["collected_today"]), ("180.00", "320.00", "180.00"))
+        self.assertEqual(self.as_staff(self.manager).get("/api/delivery/rider/cash/").status_code, 403)

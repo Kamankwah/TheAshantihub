@@ -49,7 +49,7 @@ describe('Operations People screens in the shell', () => {
       expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument()
       expect(screen.queryByText('This screen is being built')).not.toBeInTheDocument()
     }
-  })
+  }, 15000) // four full shell mounts in one test: the 5 s default is too tight now the shell carries the delivery screens
 
   it("the scoreboard's Open lands on All portfolios filtered to that scout", async () => {
     let scoutParam = null

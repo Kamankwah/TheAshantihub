@@ -95,6 +95,8 @@ const SA_ONLY = NAV_ITEMS.filter((i) => i.placeholder === 'super_admin').map((i)
 // 'leave' is also Super Admin's (the canvas's Leave & holidays), but no other role's.
 // The Delivery Manager canvas screens (2026-10-07) are the Delivery Manager's alone.
 const DM_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('dm-')).map((i) => i.id)
+// The Dispatch (rider) canvas screens are the rider's alone.
+const DR_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('dr-')).map((i) => i.id)
 const OPS_ONLY = ['ops-scouts', 'support-team', 'leave', 'hero-events', 'support-issues', 'deliveries-returns', 'visit-map', 'zones', ...SA_ONLY]
 
 describe('per-role menus', () => {
@@ -125,12 +127,12 @@ describe('per-role menus', () => {
   })
 
   it('shows every permitted item exactly once and no empty group, for every role but Operations and Super Admin (exhaustive menus)', () => {
-    for (const role of ['accountant', 'marketing', 'support', 'scout', 'dispatch']) {
+    for (const role of ['accountant', 'marketing', 'support', 'scout']) {
       const groups = buildNavGroups({ user: { role }, hasPermission: () => true })
       const ids = groups.flatMap((g) => g.items.map((i) => i.id))
       expect(new Set(ids).size).toBe(ids.length)
       // The Operations canvas screens appear for no other role.
-      const expected = NAV_ITEMS.filter((i) => !OPS_ONLY.includes(i.id) && !DM_ONLY.includes(i.id)).map((i) => i.id)
+      const expected = NAV_ITEMS.filter((i) => !OPS_ONLY.includes(i.id) && !DM_ONLY.includes(i.id) && !DR_ONLY.includes(i.id)).map((i) => i.id)
       expect([...ids].sort()).toEqual(expected.sort())
       expect(groups.every((g) => g.items.length > 0)).toBe(true)
     }
@@ -361,7 +363,8 @@ describe("the scout's menu in the canvas's words (staff WP6)", () => {
 
   it('x', () => {
     expect(overviewLabel('scout')).toBe('Today')
-    for (const role of ['operations', 'accountant', 'marketing', 'support', 'dispatch']) expect(overviewLabel(role)).toBe('Overview')
+    for (const role of ['operations', 'accountant', 'marketing', 'support']) expect(overviewLabel(role)).toBe('Overview')
+    expect(overviewLabel('dispatch')).toBe('Shift')
     expect(overviewLabel('delivery_manager')).toBe('Live operations')
     expect(overviewLabel('super_admin')).toBe('Command center')
   })

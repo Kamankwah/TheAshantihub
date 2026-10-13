@@ -32,6 +32,12 @@ describe('the Delivery Manager menu (canvas 2026-10-07, 20 screens)', () => {
       expect(ids.filter((id) => id.startsWith('dm-')), role).toEqual([])
     }
   })
+  it('keeps My Team for a manager without the fleet permission', () => {
+    const labels = (perms) => buildNavGroups(manager(perms)).flatMap((g) => g.items.map((i) => i.label))
+    expect(labels(['staff.invite_team'])).toContain('My Team')
+    expect(labels(['staff.invite_team', 'delivery.fleet'])).not.toContain('My Team')
+    expect(labels(['staff.invite_team', 'delivery.fleet'])).toContain('Invite a rider')
+  })
   it('puts a badge only on queues that are counted from records', () => {
     expect(BADGE_KEY_BY_TAB).toMatchObject({ 'dm-queue': 'delivery_queue', 'dm-cases': 'delivery_cases', 'dm-documents': 'delivery_documents', 'dm-cash': 'delivery_cash' })
     const badge = makeBadgeFor({ delivery_queue: 4, delivery_cases: 5 }, 'delivery_manager')

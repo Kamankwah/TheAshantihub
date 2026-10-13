@@ -51,6 +51,11 @@ import ScoutPanel from "./panels/ScoutPanel.jsx";
 import ScoutAssignmentsPanel from "./panels/ScoutAssignmentsPanel.jsx";
 import DeliveryManagerPanel from "./panels/DeliveryManagerPanel.jsx";
 import DispatchPanel from "./panels/DispatchPanel.jsx";
+import { useRiderLocation } from "../../lib/riderTracking.js";
+import RiderTracker from "./panels/rider/RiderTracker.jsx";
+import ShiftPanel from "./panels/rider/ShiftPanel.jsx";
+import { EarningsScreen, JobsScreen, ReportIssueScreen, RiderCashScreen, RiderDocumentsScreen, RiderMenuScreen } from "./panels/rider/RiderScreens.jsx";
+import RiderBottomBar from "./shell/RiderBottomBar.jsx";
 import DeliveryZonesPanel from "./panels/delivery/DeliveryZonesPanel.jsx";
 import DocumentsPanel from "./panels/delivery/DocumentsPanel.jsx";
 import InviteRiderPanel from "./panels/delivery/InviteRiderPanel.jsx";
@@ -207,7 +212,10 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
     noteSignedOutReason(reason);
     onExitRef.current?.();
   }, []);
-  useIdleSignOut(() => signOutBecause("idle"));
+  // A rider on shift keeps their phone mounted and untouched while it shares the location, and the
+  // pings keep the server session alive: only the 12-hour limit ends it. Off shift, the usual 30 minutes apply.
+  const sharingLocation = useRiderLocation().status === "sharing";
+  useIdleSignOut(() => signOutBecause("idle"), { enabled: !(role === "dispatch" && sharingLocation) });
   // The Sign out buttons: an explicit sign-out also clears any registration
   // draft from this phone (idle and "ended" sign-outs keep it).
   const signOut = useCallback(() => {
@@ -358,8 +366,9 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
   // A scout's phone gets the field bar (Businesses · Register · Calls · Menu);
   // every other role keeps Overview, three panels and More.
   const scoutBar = isPhone && role === "scout";
+  const riderBar = isPhone && role === "dispatch";
   const isScout = role === "scout";
-  const bottomItems = isPhone && !scoutBar ? pickBottomBarItems(navGroups, badgeFor) : [];
+  const bottomItems = isPhone && !scoutBar && !riderBar ? pickBottomBarItems(navGroups, badgeFor) : [];
 
   return (
     <div className="shadcn-scope command-center staff-shell" data-bp={breakpoint} style={{ display: "flex" }}>
@@ -404,6 +413,8 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           <AnnouncementBanner />
           {activeTab === "overview" && role !== "cosigner" && (role === "scout"
             ? <ScoutTodayPanel auth={auth} onNavigate={selectTab} onCheckIn={openCheckInScreen} onRegister={() => selectTab("register-business")} onSeeApprovals={openMadeApprovals} onOpenBusiness={openMyBusiness} />
+            : role === "dispatch" && auth.hasPermission("delivery.dispatch")
+              ? <ShiftPanel />
             : role === "delivery_manager"
               ? <LiveOperationsPanel auth={auth} onNavigate={selectTab} onOpenDelivery={(id) => openAt("dm-active", id)} onOpenCase={(id) => openAt("dm-cases", id)} />
             : role === "super_admin"
@@ -433,6 +444,12 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "credit" && <CreditPanel />}
           {activeTab === "scout-assignments" && <ScoutAssignmentsPanel />}
           {activeTab === "field-verification" && <ScoutPanel />}
+          {activeTab === "dr-jobs" && <JobsScreen />}
+          {activeTab === "dr-earnings" && <EarningsScreen />}
+          {activeTab === "dr-cash" && <RiderCashScreen />}
+          {activeTab === "dr-issue" && <ReportIssueScreen />}
+          {activeTab === "dr-documents" && <RiderDocumentsScreen />}
+          {activeTab === "dr-menu" && <RiderMenuScreen auth={auth} onSelect={selectTab} onSignOut={signOut} />}
           {activeTab === "dm-queue" && <DispatchQueuePanel auth={auth} onNavigate={selectTab} />}
           {activeTab === "dm-active" && <ActiveDeliveries detailId={detail} onOpenDetail={(id) => (id == null ? openDetail(null) : openAt("dm-active", id))} onOpenCase={(id) => openAt("dm-cases", id)} />}
           {activeTab === "dm-cases" && <DisputesCases detailId={detail} onOpenDetail={(id) => (id == null ? openDetail(null) : openAt("dm-cases", id))} onOpenDelivery={(id) => openAt("dm-active", id)} />}
@@ -507,7 +524,10 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
         </main>
       </div>
 
-      {isPhone && (scoutBar
+      {role === "dispatch" && !viewAs && <RiderTracker />}
+      {isPhone && (riderBar
+        ? <RiderBottomBar activeTab={activeTab} onSelect={selectTab} roleColor={roleColor} />
+        : scoutBar
         ? <ScoutBottomBar navGroups={navGroups} activeTab={activeTab} onSelect={navSelect} onMenu={() => setDrawerOpen(true)} badgeFor={badgeFor} roleColor={roleColor} />
         : <StaffBottomBar items={bottomItems} activeTab={activeTab} onSelect={selectTab} onMore={() => setDrawerOpen(true)} badgeFor={badgeFor} roleColor={roleColor} />)}
 

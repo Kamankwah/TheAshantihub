@@ -72,7 +72,8 @@ export const NAV_ITEMS = [
   { id: "reports", icon: "📝", label: "My Reports", show: () => true },
   { id: "team-reports", icon: "🗂️", label: "Team Reports", show: (auth) => auth.hasPermission("staff.invite_team") || auth.hasPermission("reports.view_all") },
   { id: "activity", icon: "🕘", label: "Activity", show: () => true },
-  { id: "my-team", icon: "👥", label: "My Team", show: (auth) => auth.hasPermission("staff.invite_team") },
+  // The Delivery Manager's "Invite a rider" (dm-invite) is their invite screen when they hold delivery.fleet; My Team stays for a manager without it.
+  { id: "my-team", icon: "👥", label: "My Team", show: (auth) => auth.hasPermission("staff.invite_team") && !(auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.fleet")) },
   { id: "security", icon: "🔐", label: "Sign-in & Security", show: () => true },
   // Delivery Manager canvas screens (2026-10-07, 20 screens). Each is the manager's alone: it needs the
   // permission the server checks, so a Super Admin (who holds all) sees them too.
@@ -90,6 +91,13 @@ export const NAV_ITEMS = [
   { id: "dm-pricing", icon: "🛵", label: "Delivery pricing", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.rates") },
   { id: "dm-autoassign", icon: "🤖", label: "Auto-assign rules", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.rates") },
   { id: "dm-limits", icon: "⏱️", label: "Delivery time limits", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.rates") },
+  // Dispatch (rider) canvas screens (2026-10-07, 16 screens): the rider's alone.
+  { id: "dr-jobs", icon: "📦", label: "Jobs", show: (auth) => auth.user?.role === "dispatch" && auth.hasPermission("delivery.dispatch") },
+  { id: "dr-earnings", icon: "💷", label: "Earnings", show: (auth) => auth.user?.role === "dispatch" && auth.hasPermission("delivery.dispatch") },
+  { id: "dr-cash", icon: "🪙", label: "Cash", show: (auth) => auth.user?.role === "dispatch" && auth.hasPermission("delivery.dispatch") },
+  { id: "dr-menu", icon: "☰", label: "Menu", show: (auth) => auth.user?.role === "dispatch" && auth.hasPermission("delivery.dispatch") },
+  { id: "dr-issue", icon: "🚨", label: "Report an issue", show: (auth) => auth.user?.role === "dispatch" && auth.hasPermission("delivery.dispatch") },
+  { id: "dr-documents", icon: "🪪", label: "Documents & vehicle", show: (auth) => auth.user?.role === "dispatch" && auth.hasPermission("delivery.dispatch") },
   // Operations canvas screens (see the note above NAV_ITEMS).
   { id: "ops-scouts", icon: "🧑‍🌾", label: "Scouts", show: (auth) => opsOnly(auth, "portfolio.manage") },
   { id: "support-team", icon: "🎧", label: "Support team", show: (auth) => opsOnly(auth, "staff.invite_team") },
@@ -209,7 +217,7 @@ const ROLE_MENUS = {
   delivery_manager: [
     ["live", "Live", ["dm-queue", "dm-active"]],
     ["issues", "Issues", ["dm-cases"]],
-    ["fleet", "Fleet", ["dm-riders", "dm-documents", "dm-vehicles", "dm-invite"]],
+    ["fleet", "Fleet", ["dm-riders", "dm-documents", "dm-vehicles", "dm-invite", "my-team"]],
     ["planning", "Planning", ["dm-shifts", "dm-zones"]],
     ["cash", "Cash", ["dm-cash", "dm-payouts"]],
     ["settings", "Settings", ["dm-pricing", "dm-autoassign", "dm-limits"]],
@@ -217,8 +225,9 @@ const ROLE_MENUS = {
     ["reports", "Reports", ["reports", "team-reports"]],
   ],
   dispatch: [
-    ["jobs", "Jobs", ["my-deliveries"]],
-    ["my-work", "My work", ["approvals", "tasks", "activity", "security"]],
+    ["work", "Work", ["dr-jobs", "dr-earnings", "dr-cash"]],
+    ["you", "You", ["dr-menu", "dr-issue", "dr-documents"]],
+    ["my-work", "My work", ["tasks", "approvals", "activity", "security"]],
     ["reports", "Reports", ["reports"]],
   ],
   // The external co-signer: requests above the co-sign limit, and their own sign-in. Nothing else.
@@ -230,7 +239,7 @@ const ROLE_MENUS = {
 
 // Roles whose menu is the whole menu: a screen the canvas leaves out is not
 // offered under "More tools" either (its permission and panel stay).
-const EXHAUSTIVE_MENU_ROLES = new Set(["operations", "super_admin", "cosigner", "delivery_manager"]);
+const EXHAUSTIVE_MENU_ROLES = new Set(["operations", "super_admin", "cosigner", "delivery_manager", "dispatch"]);
 
 // Nav ids whose screen is not built yet, per role; AdminCommandCenter renders the
 // "being built" panel for them. A package that builds one swaps its panel in and
@@ -249,6 +258,7 @@ const ROLE_LABELS = {
     security: "Profile & sign out", activity: "My activity",
   },
   delivery_manager: { "team-reports": "Riders' reports", reports: "My reports" },
+  dispatch: { reports: "End of day report", activity: "My activity", security: "Sign-in & security" },
   operations: {
     approvals: "Approvals inbox", "my-team": "Invite", kyc: "KYC queue", moderation: "Listings",
     activity: "Staff activity", reports: "My reports", "team-reports": "My team", calls: "Call log",
@@ -264,7 +274,7 @@ const ROLE_LABELS = {
   },
 };
 // The pinned Overview: "Today" for a scout, the canvas's "Command center" for Super Admin, "Live operations" for the Delivery Manager.
-export const overviewLabel = (role) => (role === "scout" ? "Today" : role === "super_admin" ? "Command center" : role === "delivery_manager" ? "Live operations" : "Overview");
+export const overviewLabel = (role) => (role === "scout" ? "Today" : role === "super_admin" ? "Command center" : role === "delivery_manager" ? "Live operations" : role === "dispatch" ? "Shift" : "Overview");
 const toNavItem = ({ id, icon, label }, role) => ({ id, icon, label: ROLE_LABELS[role]?.[id] || label });
 
 export function buildNavGroups(auth) {

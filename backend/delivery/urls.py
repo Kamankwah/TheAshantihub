@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views_cash, views_cases, views_fleet, views_live, views_queue, views_rider, views_rules, views_shifts
+from . import views_cash, views_cases, views_fleet, views_live, views_queue, views_rider, views_rider_money, views_rules, views_shifts
 
 urlpatterns = [
     # ── Rider (delivery.dispatch): the rider app is built on these ──────────────────────────────────
@@ -23,6 +23,8 @@ urlpatterns = [
     path("rider/calls/<int:pk>/outcome/", views_rider.CallOutcomeView.as_view(), name="delivery-rider-call-outcome"),
     path("rider/documents/", views_rider.DocumentListCreateView.as_view(), name="delivery-rider-documents"),
     path("rider/issues/", views_rider.IssueView.as_view(), name="delivery-rider-issues"),
+    path("rider/earnings/", views_rider_money.EarningsView.as_view(), name="delivery-rider-earnings"),
+    path("rider/cash/", views_rider_money.CashView.as_view(), name="delivery-rider-cash"),
     # ── Manager: live (delivery.manage) ────────────────────────────────────────────────────────────
     path("live/", views_live.LiveView.as_view(), name="delivery-live"),
     path("active/", views_live.ActiveView.as_view(), name="delivery-active"),
