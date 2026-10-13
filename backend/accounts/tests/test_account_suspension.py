@@ -4,6 +4,8 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from accounts.authentication import issue_token
+from accounts.testing import staff_token
+from activity.models import ActivityEvent
 from accounts.models import BusinessOwner, Customer, Role, StaffUser
 from notifications.models import Notification
 
@@ -81,15 +83,15 @@ class StaffUserManagementTests(TestCase):
             password_hash="x",
         )
 
-    def _token(self, role_name, suffix="1"):
+    def _token(self, role_name, suffix="1", sudo=False):
         staff = StaffUser.objects.create(
             full_name=f"{role_name} Person", email=f"{role_name}-{suffix}@example.com",
             password_hash="x", role=Role.objects.get(name=role_name),
         )
-        return issue_token(staff, "staff")
+        return staff_token(staff, sudo=sudo)
 
-    def _auth(self, role_name, suffix="1"):
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._token(role_name, suffix)}")
+    def _auth(self, role_name, suffix="1", sudo=False):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._token(role_name, suffix, sudo)}")
 
     # ── Permission gating ──────────────────────────────────────────────────
     def test_admin_has_users_manage_permission(self):
@@ -187,7 +189,7 @@ class StaffUserManagementTests(TestCase):
 
     # ── Suspend / unsuspend ────────────────────────────────────────────────
     def test_admin_can_suspend_and_unsuspend_customer(self):
-        self._auth("operations")
+        self._auth("operations", sudo=True)
         suspend = self.client.post(
             f"/api/accounts/customers/{self.customer.id}/suspend/",
             {"reason": "Fraudulent activity"}, format="json",
@@ -204,7 +206,7 @@ class StaffUserManagementTests(TestCase):
         self.assertEqual(self.customer.suspension_reason, "")
 
     def test_suspend_customer_creates_notification(self):
-        self._auth("operations")
+        self._auth("operations", sudo=True)
         self.client.post(
             f"/api/accounts/customers/{self.customer.id}/suspend/",
             {"reason": "Abuse"}, format="json",
@@ -214,7 +216,7 @@ class StaffUserManagementTests(TestCase):
         )
 
     def test_admin_can_suspend_business_owner_and_notify(self):
-        self._auth("operations")
+        self._auth("operations", sudo=True)
         response = self.client.post(
             f"/api/accounts/business-owners/{self.owner.id}/suspend/",
             {"reason": "Policy breach"}, format="json",
@@ -227,3 +229,45 @@ class StaffUserManagementTests(TestCase):
                 business_owner=self.owner, kind="account_suspended"
             ).exists()
         )
+
+    # ── Password again, a reason, and a record (Super Admin marketplace screens) ──
+    def test_suspending_and_lifting_need_the_password_again(self):
+        self._auth("operations")
+        for url in (
+            f"/api/accounts/customers/{self.customer.id}/suspend/",
+            f"/api/accounts/customers/{self.customer.id}/unsuspend/",
+            f"/api/accounts/business-owners/{self.owner.id}/suspend/",
+            f"/api/accounts/business-owners/{self.owner.id}/unsuspend/",
+        ):
+            response = self.client.post(url, {"reason": "x"}, format="json")
+            self.assertEqual(response.status_code, 403, url)
+            self.assertEqual(response.json()["code"], "sudo_required")
+        self.customer.refresh_from_db()
+        self.assertFalse(self.customer.is_suspended)
+
+    def test_a_suspension_needs_a_reason(self):
+        self._auth("operations", sudo=True)
+        for url in (
+            f"/api/accounts/customers/{self.customer.id}/suspend/",
+            f"/api/accounts/business-owners/{self.owner.id}/suspend/",
+        ):
+            for body in ({}, {"reason": "   "}):
+                self.assertEqual(self.client.post(url, body, format="json").status_code, 400)
+        self.customer.refresh_from_db()
+        self.assertFalse(self.customer.is_suspended)
+
+    def test_suspending_and_lifting_are_recorded_with_the_reason(self):
+        self._auth("operations", sudo=True)
+        self.client.post(f"/api/accounts/customers/{self.customer.id}/suspend/", {"reason": "Abuse of refunds"}, format="json")
+        self.client.post(f"/api/accounts/customers/{self.customer.id}/unsuspend/", {}, format="json")
+        self.client.post(f"/api/accounts/business-owners/{self.owner.id}/suspend/", {"reason": "Duplicate business"}, format="json")
+        self.client.post(f"/api/accounts/business-owners/{self.owner.id}/unsuspend/", {}, format="json")
+        verbs = list(ActivityEvent.objects.filter(verb__in=[
+            "customer.suspended", "customer.reinstated", "business.suspended", "business.reinstated",
+        ]).order_by("id").values_list("verb", flat=True))
+        self.assertEqual(verbs, ["customer.suspended", "customer.reinstated", "business.suspended", "business.reinstated"])
+        suspended = ActivityEvent.objects.get(verb="customer.suspended")
+        self.assertEqual(suspended.after["reason"], "Abuse of refunds")
+        self.assertEqual(suspended.target_id, str(self.customer.pk))
+        # The generic middleware event is not added on top.
+        self.assertEqual(ActivityEvent.objects.filter(verb__startswith="staff-customer").count(), 0)
