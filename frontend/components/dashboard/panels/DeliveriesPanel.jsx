@@ -29,14 +29,16 @@ function RiderOnTheWay({ orderId }) {
   const [open, setOpen] = useState(false);
   const { data, isError } = useOwnerOrderTracking(orderId, { enabled: open });
   const rider = data?.rider;
-  const hasFix = rider && Number.isFinite(Number(rider.lat)) && Number.isFinite(Number(rider.lng));
+  const hasFix = rider && rider.lat != null && rider.lng != null && Number.isFinite(Number(rider.lat)) && Number.isFinite(Number(rider.lng));
+  const COLLECTED = ["picked_up", "at_customer", "delivered", "confirmed"];
   const line = { margin: "8px 0 0", color: D.textDim, fontSize: "0.72rem" };
   let body = null;
   if (open) {
     if (isError) body = <p style={line}>Could not load the rider's location.</p>;
     else if (!data) body = <p style={line}>Loading…</p>;
     else if (data.stage === "not_assigned") body = <p style={line}>A rider has not been assigned yet.</p>;
-    else if (!rider) body = <p style={line}>The rider has collected the order.</p>;
+    else if (data.stage === "failed") body = <p style={line}>This delivery did not go ahead.</p>;
+    else if (COLLECTED.includes(data.stage)) body = <p style={line}>The rider has collected the order.</p>;
     else if (!hasFix) body = <p style={line}>The rider's location is not available right now.</p>;
     else {
       const markers = [
@@ -90,7 +92,7 @@ function OrderRow({ order }) {
         </div>
       )}
 
-      {doorToDoor && order.delivery_status !== "delivered" && <RiderOnTheWay orderId={order.id} />}
+      {doorToDoor && order.rider_heading_here === true && <RiderOnTheWay orderId={order.id} />}
 
       {/* Progress track — only meaningful for door-to-door delivery */}
       {doorToDoor && (

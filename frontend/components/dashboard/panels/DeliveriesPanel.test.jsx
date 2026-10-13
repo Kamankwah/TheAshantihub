@@ -42,6 +42,7 @@ describe('DeliveriesPanel rider tracking (vendor)', () => {
     server.use(http.get(`${API}/api/orders/owner/:id/tracking/`, () => { calls.push(1); return HttpResponse.json(payload) }))
     return calls
   }
+  const HEADING_ORDER = { ...DOOR_TO_DOOR_ORDER, rider_heading_here: true }
   const HEADING = {
     stage: 'accepted', pickup: { lat: 5.6037, lng: -0.187, name: 'Akosua Ntoma' },
     rider: { first_name: 'Kojo', vehicle_type: 'motorbike', lat: 5.605, lng: -0.19, age_s: 45, stale: false },
@@ -50,7 +51,7 @@ describe('DeliveriesPanel rider tracking (vendor)', () => {
 
   it('fetches nothing until the owner opens "Rider on the way", then shows shop pin, rider and ETA', async () => {
     const calls = trackWith(HEADING)
-    renderPanel([DOOR_TO_DOOR_ORDER])
+    renderPanel([HEADING_ORDER])
     const toggle = await screen.findByRole('button', { name: /Rider on the way/ })
     await new Promise((r) => setTimeout(r, 60))
     expect(calls).toHaveLength(0)
@@ -65,24 +66,41 @@ describe('DeliveriesPanel rider tracking (vendor)', () => {
 
   it('shows a plain line and no map once the rider has collected the order', async () => {
     trackWith({ stage: 'picked_up', rider: null, leg: null, route: null })
-    renderPanel([DOOR_TO_DOOR_ORDER])
+    renderPanel([HEADING_ORDER])
     fireEvent.click(await screen.findByRole('button', { name: /Rider on the way/ }))
     expect(await screen.findByText('The rider has collected the order.')).toBeInTheDocument()
     expect(screen.queryByTestId('track-map')).not.toBeInTheDocument()
   })
 
+  it('does not claim collection when the rider is still heading here but has no location', async () => {
+    trackWith({ stage: 'accepted', pickup: { lat: 5.6037, lng: -0.187, name: 'Akosua Ntoma' }, rider: null, leg: null, route: null })
+    renderPanel([HEADING_ORDER])
+    fireEvent.click(await screen.findByRole('button', { name: /Rider on the way/ }))
+    expect(await screen.findByText("The rider's location is not available right now.")).toBeInTheDocument()
+    expect(screen.queryByText(/collected/)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('track-map')).not.toBeInTheDocument()
+  })
+
+  it('uses neutral copy for a failed delivery', async () => {
+    trackWith({ stage: 'failed', rider: null, leg: null, route: null })
+    renderPanel([HEADING_ORDER])
+    fireEvent.click(await screen.findByRole('button', { name: /Rider on the way/ }))
+    expect(await screen.findByText('This delivery did not go ahead.')).toBeInTheDocument()
+  })
+
   it('says so when no rider has been assigned', async () => {
     trackWith({ stage: 'not_assigned' })
-    renderPanel([DOOR_TO_DOOR_ORDER])
+    renderPanel([HEADING_ORDER])
     fireEvent.click(await screen.findByRole('button', { name: /Rider on the way/ }))
     expect(await screen.findByText('A rider has not been assigned yet.')).toBeInTheDocument()
     expect(screen.queryByTestId('track-map')).not.toBeInTheDocument()
   })
 
-  it('has no disclosure for store pickup or delivered orders', async () => {
+  it('has no disclosure unless a rider is heading to this shop', async () => {
     renderPanel([
-      { ...DOOR_TO_DOOR_ORDER, id: 8, delivery_method: 'store_pickup' },
-      { ...DOOR_TO_DOOR_ORDER, id: 9, delivery_status: 'delivered' },
+      { ...HEADING_ORDER, id: 8, delivery_method: 'store_pickup' },
+      { ...DOOR_TO_DOOR_ORDER, id: 9, rider_heading_here: false },
+      { ...DOOR_TO_DOOR_ORDER, id: 10 },
     ])
     await screen.findByText(/Order #8/)
     expect(screen.queryByRole('button', { name: /Rider on the way/ })).not.toBeInTheDocument()
@@ -90,7 +108,7 @@ describe('DeliveriesPanel rider tracking (vendor)', () => {
 
   it("never puts the customer's address in the disclosure or its markers", async () => {
     trackWith({ ...HEADING, drop: { lat: 5.6, lng: -0.17, address: 'Bantama, Kumasi' } })
-    renderPanel([DOOR_TO_DOOR_ORDER])
+    renderPanel([HEADING_ORDER])
     fireEvent.click(await screen.findByRole('button', { name: /Rider on the way/ }))
     const map = await screen.findByTestId('track-map')
     const region = map.closest('[data-testid="rider-disclosure"]')

@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useOrderTracking } from "../hooks/useTracking.js";
 import TrackMap from "./maps/TrackMap.jsx";
 import EtaLine from "./maps/EtaLine.jsx";
@@ -13,10 +15,17 @@ const LIVE = ["picked_up", "at_customer"];
 const note = { margin: "10px 0 0", color: D.textDim, fontSize: "0.74rem" };
 
 function LiveMap({ orderId }) {
-  const { data } = useOrderTracking(orderId, { enabled: true });
+  const queryClient = useQueryClient();
+  const { data, isError } = useOrderTracking(orderId, { enabled: true });
   const rider = data?.rider;
-  const hasFix = rider && Number.isFinite(Number(rider.lat)) && Number.isFinite(Number(rider.lng));
+  const hasFix = rider && rider.lat != null && rider.lng != null && Number.isFinite(Number(rider.lat)) && Number.isFinite(Number(rider.lng));
+  // The delivery moved on while the customer was watching (delivered, confirmed, failed): refresh
+  // the orders list so the card shows its new state and the confirm-receipt button, and drop the map.
+  const moved = data && !LIVE.includes(data.stage);
+  useEffect(() => { if (moved) queryClient.invalidateQueries({ queryKey: ["orders"] }); }, [moved, queryClient]);
+  if (isError && !data) return <p style={note}>Could not load the live map. Please try again shortly.</p>;
   if (!data) return <p style={note}>Loading the live map…</p>;
+  if (moved) return null;
   if (!hasFix) return <p style={note}>The rider's location is not available right now.</p>;
   const who = [rider.first_name, rider.vehicle_type].filter(Boolean).join(" · ");
   const markers = [
@@ -36,9 +45,12 @@ function LiveMap({ orderId }) {
   );
 }
 
-export default function OrderTrackingMap({ orderId, assignmentStatus }) {
-  if (assignmentStatus == null) return <p style={note}>Finding a rider</p>;
-  if (BEFORE_PICKUP.includes(assignmentStatus)) return <p style={note}>A rider is heading to the shop</p>;
+// `deliveryStatus` is the order's own delivery_status: the pre-pickup lines only show while it is
+// still "processing", so an order staff moved on directly never reads "Finding a rider".
+export default function OrderTrackingMap({ orderId, assignmentStatus, deliveryStatus }) {
+  const processing = deliveryStatus === "processing";
+  if (assignmentStatus == null) return processing ? <p style={note}>Finding a rider</p> : null;
+  if (BEFORE_PICKUP.includes(assignmentStatus)) return processing ? <p style={note}>A rider is heading to the shop</p> : null;
   if (LIVE.includes(assignmentStatus)) return <LiveMap orderId={orderId} />;
   return null;
 }

@@ -87,15 +87,20 @@ class OwnerOrderSerializer(serializers.ModelSerializer):
     # The four-digit code the rider asks this business for at the counter. Only the business the rider
     # collects from (the order's first, v1 delivers one pickup per order) sees it, and only until pickup.
     pickup_code = serializers.SerializerMethodField()
+    # True while a rider is heading to THIS business (same gate as the owner tracking endpoint:
+    # assigned/accepted/at_pickup and this owner is the pickup business). Tells the owner nothing the
+    # tracking endpoint would not.
+    rider_heading_here = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
             "id", "customer_name", "status", "delivery_status", "placed_at",
-            "items", "owner_subtotal", "pickup_code", *OWNER_DELIVERY_FIELDS,
+            "items", "owner_subtotal", "pickup_code", "rider_heading_here", *OWNER_DELIVERY_FIELDS,
         ]
 
-    def get_pickup_code(self, obj):
+    def _heading_assignment(self, obj):
+        """The order's assignment when a rider is heading to this owner's shop, else None."""
         assignment = getattr(obj, "delivery_assignment", None)
         if assignment is None or assignment.status not in (
             DeliveryAssignment.ASSIGNED, DeliveryAssignment.ACCEPTED, DeliveryAssignment.AT_PICKUP,
@@ -104,7 +109,14 @@ class OwnerOrderSerializer(serializers.ModelSerializer):
         first = min(obj.items.all(), key=lambda i: i.pk, default=None)
         if first is None or first.listing.business_owner_id != self.context["owner"].id:
             return None
-        return assignment.pickup_code or None
+        return assignment
+
+    def get_pickup_code(self, obj):
+        assignment = self._heading_assignment(obj)
+        return (assignment.pickup_code or None) if assignment else None
+
+    def get_rider_heading_here(self, obj):
+        return self._heading_assignment(obj) is not None
 
     def _own_items(self, obj):
         owner = self.context["owner"]

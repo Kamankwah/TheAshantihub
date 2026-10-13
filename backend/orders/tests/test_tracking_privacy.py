@@ -171,3 +171,34 @@ class OwnerTrackingTests(TrackingPrivacyCase):
         r = self.client.get(self.url(a))
         self.assertIsNone(r.json()["rider"])
         self.assert_no_leak(r, "Mensah", "6.695")
+
+
+class OwnerRiderHeadingHereTests(TrackingPrivacyCase):
+    def listed(self):
+        self.login(self.owner, "business_owner")
+        return {o["id"]: o for o in self.client.get("/api/orders/owner/").json()["results"]}
+
+    def test_true_for_the_pickup_owner_while_heading_to_the_shop(self):
+        for status in (DA.ASSIGNED, DA.ACCEPTED, DA.AT_PICKUP):
+            with self.subTest(status=status):
+                DA.objects.all().delete()
+                ShiftSession.objects.all().delete()
+                a = self.tracked(status)
+                self.assertIs(self.listed()[a.order_id]["rider_heading_here"], True)
+
+    def test_false_before_assignment_and_after_pickup(self):
+        a = self.tracked(DA.ACCEPTED)
+        a.status = DA.PICKED_UP
+        a.save()
+        self.assertIs(self.listed()[a.order_id]["rider_heading_here"], False)
+        DA.objects.all().delete()
+        self.assertIs(self.listed()[a.order_id]["rider_heading_here"], False)
+
+    def test_false_for_the_second_owner_on_a_shared_order(self):
+        a = self.tracked(DA.AT_PICKUP)
+        OrderItem.objects.create(order=a.order, listing=Listing.objects.get(business_owner=self.other_owner),
+                                 quantity=1, unit_price="5.00", line_total="5.00")
+        self.login(self.other_owner, "business_owner")
+        row = {o["id"]: o for o in self.client.get("/api/orders/owner/").json()["results"]}[a.order_id]
+        self.assertIs(row["rider_heading_here"], False)
+        self.assertIs(self.listed()[a.order_id]["rider_heading_here"], True)

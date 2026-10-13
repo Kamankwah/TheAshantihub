@@ -2157,7 +2157,7 @@ function OrdersDeliveryTab({ searchQuery }) {
           </div>
         )}
         {o.status==="paid" && o.delivery_method==="door_to_door" && <DeliveryStepper status={o.delivery_status}/>}
-        {o.status==="paid" && o.delivery_method==="door_to_door" && <OrderTrackingMap orderId={o.id} assignmentStatus={o.delivery_assignment_status ?? null}/>}
+        {o.status==="paid" && o.delivery_method==="door_to_door" && <OrderTrackingMap orderId={o.id} assignmentStatus={o.delivery_assignment_status ?? null} deliveryStatus={o.delivery_status}/>}
         {o.delivery_assignment_status==="delivered" && (
           <div style={{marginTop:10}}>
             <div style={{color:D.textDim,fontSize:"0.72rem",marginBottom:6}}>Your courier marked this delivered. Please confirm you received it.</div>
