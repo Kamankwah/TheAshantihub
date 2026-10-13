@@ -1,4 +1,8 @@
+import { useState } from "react";
 import { useOwnerOrders } from "../../../hooks/useOwnerOrders.js";
+import { useOwnerOrderTracking } from "../../../hooks/useTracking.js";
+import TrackMap from "../../maps/TrackMap.jsx";
+import EtaLine from "../../maps/EtaLine.jsx";
 import { D, glassCard } from "../theme.js";
 
 // ─── Deliveries panel — the owner's fulfilment view (pre-prod bug fix 5) ──────
@@ -16,6 +20,48 @@ const STATUS_META = {
   delivered: { label: "Delivered", icon: "✅", color: D.green },
 };
 const PIPELINE = ["processing", "shipped", "out_for_delivery", "delivered"];
+
+// "Rider on the way": the owner's view of the rider heading to THEIR shop (OwnerOrderTrackingView).
+// Nothing is requested until it is opened. The server sends the rider only while heading to the
+// pickup business, so once the order is collected this is a plain line, never an empty map. It
+// shows the shop pin and the rider only - never the customer's address or location.
+function RiderOnTheWay({ orderId }) {
+  const [open, setOpen] = useState(false);
+  const { data, isError } = useOwnerOrderTracking(orderId, { enabled: open });
+  const rider = data?.rider;
+  const hasFix = rider && Number.isFinite(Number(rider.lat)) && Number.isFinite(Number(rider.lng));
+  const line = { margin: "8px 0 0", color: D.textDim, fontSize: "0.72rem" };
+  let body = null;
+  if (open) {
+    if (isError) body = <p style={line}>Could not load the rider's location.</p>;
+    else if (!data) body = <p style={line}>Loading…</p>;
+    else if (data.stage === "not_assigned") body = <p style={line}>A rider has not been assigned yet.</p>;
+    else if (!rider) body = <p style={line}>The rider has collected the order.</p>;
+    else if (!hasFix) body = <p style={line}>The rider's location is not available right now.</p>;
+    else {
+      const markers = [
+        data.pickup ? { id: "shop", kind: "pickup", lat: data.pickup.lat, lng: data.pickup.lng, label: data.pickup.name || "Your shop" } : null,
+        { id: "rider", kind: rider.stale ? "stale" : "rider", lat: rider.lat, lng: rider.lng, label: [rider.first_name, rider.vehicle_type].filter(Boolean).join(" · ") || "Rider" },
+      ].filter(Boolean);
+      body = (
+        <div style={{ marginTop: 8 }}>
+          <TrackMap markers={markers} route={data.route ?? null} height={220} label="Map of the rider heading to your shop" />
+          <div style={{ color: D.textFaint, fontSize: "0.66rem", marginTop: 4 }}>Gold pin: your shop. Dark pin: rider{rider.first_name ? ` (${rider.first_name})` : ""}.</div>
+          <div style={{ marginTop: 6 }}><EtaLine leg={data.leg} stale={!!rider.stale} ageS={rider.age_s ?? null} /></div>
+        </div>
+      );
+    }
+  }
+  return (
+    <div data-testid="rider-disclosure" style={{ marginTop: 10 }}>
+      <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)}
+        style={{ background: "none", border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", color: D.text }}>
+        🛵 Rider on the way {open ? "▴" : "▾"}
+      </button>
+      {body}
+    </div>
+  );
+}
 
 function OrderRow({ order }) {
   const doorToDoor = order.delivery_method === "door_to_door";
@@ -43,6 +89,8 @@ function OrderRow({ order }) {
           📍 {order.delivery_address}
         </div>
       )}
+
+      {doorToDoor && order.delivery_status !== "delivered" && <RiderOnTheWay orderId={order.id} />}
 
       {/* Progress track — only meaningful for door-to-door delivery */}
       {doorToDoor && (
