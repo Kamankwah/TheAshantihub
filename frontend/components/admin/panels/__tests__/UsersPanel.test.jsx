@@ -9,7 +9,7 @@ import UsersPanel from '../UsersPanel.jsx'
 // users.manage). A session that can see this panel already held users.view
 // when it loaded, so a 403 means its access changed mid-session — shown at
 // once (no retries), as a permission note, not as a broken load.
-const CUSTOMER = { id: 1, full_name: 'Ama Serwaa', phone: '+233240000001', email: 'ama@example.com', is_suspended: false }
+const CUSTOMER = { id: 1, full_name: 'Ama Serwaa', phone: '024 *** 0001', email: 'am•••@example.com', is_suspended: false }
 
 function renderPanel(perms, queryDefaults = { retry: false }) {
   const queryClient = new QueryClient({ defaultOptions: { queries: queryDefaults } })
@@ -55,9 +55,9 @@ describe('UsersPanel detail view', () => {
     expect(await screen.findByText("Could not load this account's details.", {}, { timeout: 12000 })).toBeInTheDocument()
   }, 15000)
 
-  const OWNER = { id: 9, full_name: 'Kwame Trader', login_phone: '+233201112233', kyc_status: 'verified', is_suspended: false }
+  const OWNER = { id: 9, full_name: 'Kwame Trader', login_phone: '020 *** 2233', kyc_status: 'verified', is_suspended: false }
   const BASE_PROFILE = {
-    business_contact_phone: '+233200000009', business_kind: 'product', gps_address: 'AK-039-5028',
+    business_contact_phone: '020 *** 0009', business_kind: 'product', gps_address: 'AK-039-5028',
     is_formal: true, address_verified: false, address_verified_by_name: null, address_verified_at: null,
   }
   const openOwner = async (profile, perms) => {
@@ -90,5 +90,36 @@ describe('UsersPanel detail view', () => {
     expect(screen.getByText('Payout details')).toBeInTheDocument()
     expect(screen.getByText('•••••99888')).toBeInTheDocument()
     expect(screen.queryByText(/need the users\.manage permission/)).not.toBeInTheDocument()
+  })
+
+  it('shows the phone masked and reveals the full number only through the password-confirmed POST', async () => {
+    let revealed = 0
+    server.use(
+      http.get('http://localhost:8000/api/accounts/customers/', () => HttpResponse.json({ count: 1, next: null, previous: null, results: [CUSTOMER] })),
+      http.get('http://localhost:8000/api/accounts/customers/1/', () => HttpResponse.json({ ...CUSTOMER, address: 'Adum', created_at: '2026-01-01T00:00:00Z' })),
+      http.post('http://localhost:8000/api/marketplace/customers/1/reveal-phone/', () => { revealed += 1; return HttpResponse.json({ phone: '+233240000001' }) }),
+    )
+    renderPanel(['users.view'])
+    expect(await screen.findByText(/024 \*\*\* 0001/)).toBeInTheDocument()
+    fireEvent.click(await screen.findByText('👁️ View'))
+    expect(revealed).toBe(0)
+    fireEvent.click(await screen.findByRole('button', { name: /Show full phone of Ama Serwaa/ }))
+    expect(await screen.findByText('+233240000001')).toBeInTheDocument()
+    expect(revealed).toBe(1)
+  })
+
+  it('does not write the masked phone back when editing', async () => {
+    let patched = null
+    server.use(
+      http.get('http://localhost:8000/api/accounts/customers/', () => HttpResponse.json({ count: 1, next: null, previous: null, results: [CUSTOMER] })),
+      http.get('http://localhost:8000/api/accounts/customers/1/', () => HttpResponse.json({ ...CUSTOMER, address: 'Adum', created_at: '2026-01-01T00:00:00Z' })),
+      http.patch('http://localhost:8000/api/accounts/customers/1/', async ({ request }) => { patched = await request.json(); return HttpResponse.json({ ...CUSTOMER }) }),
+    )
+    renderPanel(['users.view', 'users.manage'])
+    fireEvent.click(await screen.findByText('✏️ Edit'))
+    fireEvent.click(await screen.findByText('Save changes'))
+    await screen.findByText('✏️ Edit')
+    expect(patched).not.toBeNull()
+    expect(patched).not.toHaveProperty('phone')
   })
 })

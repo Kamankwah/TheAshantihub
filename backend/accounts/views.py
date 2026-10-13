@@ -698,6 +698,12 @@ class StaffCustomerDetailView(generics.RetrieveUpdateAPIView):
     def get_permissions(self):
         return _users_detail_permissions(self.request)
 
+    def get_serializer_context(self):
+        # Full values only in the users.manage PATCH response.
+        context = super().get_serializer_context()
+        context["full_pii"] = self.request.method == "PATCH"
+        return context
+
 
 class StaffBusinessOwnerDetailView(generics.RetrieveUpdateAPIView):
     """A PATCH that changes anything records business_owner.details_changed
@@ -737,6 +743,7 @@ class StaffBusinessOwnerDetailView(generics.RetrieveUpdateAPIView):
         context["can_see_payout"] = (
             "users.manage" in self.request.user.effective_permission_codenames()
         )
+        context["full_pii"] = self.request.method == "PATCH"
         return context
 
 

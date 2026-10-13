@@ -26,7 +26,7 @@ from .models import (
 from listings.models import Zone
 
 from .permissions import can_lead_team, can_manage_staff
-from .phones import filter_by_phone
+from .phones import filter_by_phone, mask_phone
 
 # Used to pay the same check_password() cost when no account is found, so that
 # login timing does not leak whether an identifier exists (see login serializers below).
@@ -701,10 +701,24 @@ class CustomerSecondaryPhoneConfirmSerializer(serializers.Serializer):
         return customer
 
 
+def _mask_email_or_none(email):
+    from .claims import mask_email
+    return (mask_email(email) or None) if email else None
+
+
 class CustomerListSerializer(serializers.ModelSerializer):
+    """Staff list: the phone and email are masked. The full phone is a
+    sudo-gated, audited POST (marketplace/customers/<id>/reveal-phone/)."""
+
     class Meta:
         model = Customer
         fields = ["id", "full_name", "phone", "email", "is_suspended", "created_at"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["phone"] = mask_phone(instance.phone) if instance.phone else None
+        data["email"] = _mask_email_or_none(instance.email)
+        return data
 
 
 class BusinessOwnerListSerializer(serializers.ModelSerializer):
@@ -719,6 +733,14 @@ class BusinessOwnerListSerializer(serializers.ModelSerializer):
             "id", "full_name", "business_name", "login_phone", "email", "kyc_status",
             "is_suspended", "created_at",
         ]
+
+    def to_representation(self, instance):
+        # Masked: the full sign-in phone is the sudo-gated, audited
+        # portfolio/businesses/<id>/reveal-phone/.
+        data = super().to_representation(instance)
+        data["login_phone"] = mask_phone(instance.login_phone) if instance.login_phone else None
+        data["email"] = _mask_email_or_none(instance.email)
+        return data
 
 
 # ── Staff user-management (staff user-management tools) ─────────────────────
@@ -757,6 +779,20 @@ class StaffCustomerDetailSerializer(serializers.ModelSerializer):
             "gender": {"required": False},
             "date_of_birth": {"required": False},
         }
+
+    def to_representation(self, instance):
+        # The phone is masked on every read; the full values come back only in
+        # the users.manage PATCH response (the view sets `full_pii`), and the
+        # full phone otherwise only through the sudo-gated reveal.
+        data = super().to_representation(instance)
+        if not self.context.get("full_pii") and instance.phone:
+            data["phone"] = mask_phone(instance.phone)
+        return data
+
+    def validate_phone(self, value):
+        if value and "*" in value:
+            raise serializers.ValidationError("That is the masked number; type the full phone or leave it unchanged.")
+        return value
 
     def get_payment_history(self, obj):
         # Last 10 payment attempts, newest first. Only what the backend
@@ -810,6 +846,21 @@ class StaffBusinessOwnerDetailSerializer(serializers.ModelSerializer):
             "login_phone": {"required": False},
             "email": {"required": False},
         }
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if not self.context.get("full_pii"):
+            if instance.login_phone:
+                data["login_phone"] = mask_phone(instance.login_phone)
+            profile = data.get("profile")
+            if profile and profile.get("business_contact_phone"):
+                profile["business_contact_phone"] = mask_phone(profile["business_contact_phone"])
+        return data
+
+    def validate_login_phone(self, value):
+        if value and "*" in value:
+            raise serializers.ValidationError("That is the masked number; type the full phone or leave it unchanged.")
+        return value
 
     def get_profile(self, obj):
         profile = getattr(obj, "profile", None)
