@@ -461,16 +461,16 @@ CELERY_BEAT_SCHEDULE = {
         "task": "insights.tasks.run_due_scheduled_exports",
         "schedule": 300.0,  # every 5 minutes
     },
+    "announcements-send-due": {
+        "task": "announcements.tasks.send_due_announcements",
+        "schedule": 60.0,  # every minute
+    },
     "portfolio-purge-staged-photos": {
         "task": "portfolio.tasks.purge_staged_photos",
         "schedule": crontab(hour=4, minute=30),
     },
 }
 
-    "announcements-send-due": {
-        "task": "announcements.tasks.send_due_announcements",
-        "schedule": 60.0,  # every minute
-    },
 # Production sets this True so the nightly activity check emails its seal to
 # every Super Admin; staging only verifies.
 ACTIVITY_SEAL_EMAIL = env.bool("ACTIVITY_SEAL_EMAIL", default=False)
