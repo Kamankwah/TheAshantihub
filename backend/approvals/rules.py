@@ -19,7 +19,10 @@ DEFAULT_RESPONSE_HOURS = 24
 
 
 def get_settings():
-    return ApprovalSettings.objects.get_or_create(pk=1)[0]
+    """The settings row, or its unsaved defaults until Super Admin first saves
+    one (the rules PATCH saves it): a read never writes, so a Super Admin's
+    read-only step-in stays read-only (accounts/tests/test_view_as_sweep.py)."""
+    return ApprovalSettings.objects.filter(pk=1).first() or ApprovalSettings(pk=1)
 
 
 def response_hours(kind_key):

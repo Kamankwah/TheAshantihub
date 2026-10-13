@@ -57,6 +57,7 @@ the role seeds in `backend/accounts/migrations/0002`–`0029`, the `HasRolePermi
 | Area | Permission | What it unlocks | Super Admin | Admin | Accountant | Marketing | Support | Scout | Delivery Mgr | Dispatch |
 |---|---|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
 | Staff | `staff.manage` | Invite, suspend, deactivate and re-permission staff | ✓ | | | | | | | |
+| | `staff.view_as` | Step in: open a team member's workspace read-only (Super Admin role required too) | ✓ | | | | | | | |
 | Onboarding | `kyc.approve` | Approve, reject or re-open business KYC; record the address decision | ✓ | ✓ | | | | | | |
 | | `scouts.assign` | Assign scouts to businesses | ✓ | ✓ | | | | | | |
 | | `scouts.verify` | Submit field reports for own assignments | ✓ | | | | | ✓ | | |
@@ -110,6 +111,13 @@ money-related changes that the Accountant proposes. Supervises other moderators'
 - Approve, reject or re-review **subscription plans**. This includes any edit to a plan that is
   already live, because an edit sends the plan back to pending.
 - **Re-review a hidden review**, which reverses another moderator's rejection.
+- **Step in** (`staff.view_as`): open an Operations, Scout, Support, Delivery Manager, Marketing or
+  Accountant workspace exactly as that person sees it, read-only. The Super Admin stays signed in
+  as themselves; the server substitutes the person for reads only (`X-View-As`, after a recorded
+  start on the Super Admin's own 2-step session) and refuses every write and export with
+  `403 view_only`. The start, the end and each screen opened are in the activity log, on behalf of
+  the person viewed. Never another Super Admin, a co-signer or a rider; granting the code to anyone
+  else does nothing (`accounts/view_as.py`).
 
 Super Admins can also do everything listed for every other role below.
 

@@ -5,6 +5,7 @@ import sys
 import environ
 
 from celery.schedules import crontab
+from corsheaders.defaults import default_headers as cors_default_headers
 from cryptography.fernet import Fernet
 from django.core.exceptions import ImproperlyConfigured
 
@@ -129,6 +130,9 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
+    # Step-in: refuses every write carrying X-View-As from a Super Admin
+    # before the activity middleware opens its transaction (accounts/view_as.py).
+    "accounts.view_as.ViewAsMiddleware",
     "activity.middleware.StaffActivityMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -175,6 +179,8 @@ MEDIA_ROOT = BASE_DIR / "media"
 # DJANGO_CORS_ALLOWED_ORIGINS list of the real frontend origins.
 CORS_ALLOW_ALL_ORIGINS = env.bool("DJANGO_CORS_ALLOW_ALL_ORIGINS", default=True)
 CORS_ALLOWED_ORIGINS = env.list("DJANGO_CORS_ALLOWED_ORIGINS", default=[])
+# The Super Admin's step-in sends two extra headers (accounts/view_as.py).
+CORS_ALLOW_HEADERS = (*cors_default_headers, "x-view-as", "x-view-as-screen")
 
 # Email — defaults to Django's console backend so nothing breaks locally
 # without SMTP configured; set EMAIL_BACKEND (and the SMTP vars below) in
