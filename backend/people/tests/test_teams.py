@@ -149,5 +149,7 @@ class SuperAdminRoleGuardTests(PeopleTestCase):
         self.sign_in(self.ama, sudo=True)
         response = self.client.post(f"/api/accounts/staff/{self.kojo.pk}/permissions/", {"grant": ["roles.manage"], "revoke": []}, format="json")
         self.assertEqual(response.status_code, 403)
+        self.kojo.refresh_from_db()
+        self.assertFalse(self.kojo.extra_permissions.filter(codename="roles.manage").exists())
         self.sign_in(sudo=True)
         self.assertEqual(self.client.post(f"/api/accounts/staff/{self.kojo.pk}/permissions/", {"grant": ["roles.manage"], "revoke": []}, format="json").status_code, 200)

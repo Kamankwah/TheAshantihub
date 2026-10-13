@@ -981,6 +981,11 @@ class StaffPermissionsView(APIView):
                 status=400,
             )
 
+        # Handing out the permissions that stay with Super Admin is a Super Admin's act.
+        if request.user.role.name != Role.SUPER_ADMIN and {
+            "staff.manage", "roles.manage", "approvals.manage_rules", "staff.view_as", "approvals.cosign"
+        } & (set(grant_codes) - set(staff.extra_permissions.values_list("codename", flat=True))):
+            return Response({"detail": "Only a Super Admin can grant that permission."}, status=403)
         grant_perms = list(Permission.objects.filter(codename__in=grant_codes))
         revoke_perms = list(Permission.objects.filter(codename__in=revoke_codes))
         missing = (set(grant_codes) | set(revoke_codes)) - {
@@ -991,8 +996,9 @@ class StaffPermissionsView(APIView):
                 {"detail": f"Unknown permission(s): {', '.join(sorted(missing))}."}, status=400
             )
 
-        staff.extra_permissions.set(grant_perms)
-        staff.revoked_permissions.set(revoke_perms)
+        with transaction.atomic():
+            staff.extra_permissions.set(grant_perms)
+            staff.revoked_permissions.set(revoke_perms)
         # Their socket's permission and team groups are now wrong: reconnect.
         # Handing out the permissions that stay with Super Admin is a Super Admin's act.
         if request.user.role.name != Role.SUPER_ADMIN and {
