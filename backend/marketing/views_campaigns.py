@@ -380,7 +380,8 @@ class CampaignResultsView(APIView):
         cost = c.actual_cost
         data = {
             "campaign": campaign_body(c, by, detail=False),
-            "counts": {"sent": sent, "delivered": delivered if reports else None, "failed": by.get("failed", 0), "simulated": by.get("simulated", 0), "left_out": by.get("skipped", 0), "queued": by.get("queued", 0)},
+            "counts": {"sent": sent, "delivered": delivered if reports else None, "failed": by.get("failed", 0), "simulated": by.get("simulated", 0), "left_out": by.get("skipped", 0), "queued": by.get("queued", 0),
+                       "awaiting_report": by.get("sent", 0) if reports and c.channel != "inapp" else None},
             "delivery_reported": reports, "left_out_reasons": skipped,
             "clicks": len(clicked), "click_rate": round(100 * len(clicked) / sent, 1) if sent else None,
             "signups": None, "signups_note": "Not tracked: AshantiHub does not link a new account to the message that brought it.",

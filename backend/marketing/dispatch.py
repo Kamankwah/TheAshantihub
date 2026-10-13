@@ -85,6 +85,8 @@ def _deliver(c, provider, row):
         row.save(update_fields=["status", "error"])
         return
     row.provider_ref = result.ref[:80]
+    row.provider_status, row.provider_cost = (result.provider_status or "")[:40], result.cost
+    row.provider_updated_at = now
     row.sent_at = now
     if result.state == "failed":
         row.status, row.error = CampaignRecipient.FAILED, result.error[:200]
@@ -94,7 +96,7 @@ def _deliver(c, provider, row):
         row.status, row.delivered_at = CampaignRecipient.DELIVERED, now
     else:
         row.status = CampaignRecipient.SENT
-    row.save(update_fields=["status", "error", "provider_ref", "sent_at", "delivered_at"])
+    row.save(update_fields=["status", "error", "provider_ref", "provider_status", "provider_cost", "provider_updated_at", "sent_at", "delivered_at"])
 
 
 def dispatch(campaign_id, now=None):
@@ -139,6 +141,10 @@ def finish(campaign_id):
             return "sending"
         c.status, c.sent_at = Campaign.SENT, timezone.now()
         c.save()
+    if c.channel == "sms":
+        from .sms_receipts import refresh_cost
+
+        refresh_cost(campaign_id)       # the sum of what the provider reported; blank when it reported none
     return Campaign.SENT
 
 

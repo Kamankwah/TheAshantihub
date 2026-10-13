@@ -47,7 +47,7 @@ export default function SenderIdsPanel() {
         <Section id="pv-sms" title="SMS" action={<Dot status={sms.status} />}>
           <Honest tone={sms.status === "not_connected" ? "warn" : undefined}>{sms.note || "SMS is connected."} {sms.balance_note}</Honest>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
-            {[["Balance", "Not available", sms.balance_note ? "No provider" : ""], ["Planning price", sms.price ? `GH₵ ${sms.price}` : "Not set", "Per SMS. Not a provider quote."], ["Delivery reports", sms.delivery_reports ? "On" : "Off", sms.delivery_reports ? "" : "Delivery is never assumed"]].map(([l, v, s]) => (
+            {[["Balance", "Not available", sms.status === "connected" ? "Not read from Hubtel" : "No provider"], ["Planning price", sms.price ? `GH₵ ${sms.price}` : "Not set", "Per SMS. Not a provider quote."], ["Delivery reports", sms.delivery_reports ? "On" : "Off", sms.delivery_reports ? "From Hubtel's receipts" : "Delivery is never assumed"], ...(sms.sender_id ? [["Sender ID", sms.sender_id.name || "Not set", sms.sender_id.approved ? "Recorded as approved" : "Not recorded as approved: nothing will send"]] : [])].map(([l, v, s]) => (
               <div key={l} role="group" aria-label={l}><div style={dim}>{l}</div><div style={{ fontWeight: 800 }}>{v}</div><div style={dim}>{s}</div></div>
             ))}
           </div>

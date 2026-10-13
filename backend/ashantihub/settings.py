@@ -337,6 +337,13 @@ PAYMENTS_PROVIDER = "hubtel" if HUBTEL_CLIENT_ID else "simulated"
 # "simulated" switches on a labelled backend that sends nothing (marketing/providers). Blank = not connected.
 MARKETING_SMS_PROVIDER = env("MARKETING_SMS_PROVIDER", default="")
 MARKETING_WHATSAPP_PROVIDER = env("MARKETING_WHATSAPP_PROVIDER", default="")
+# Hubtel SMS (marketing/providers/hubtel_sms.py), used only when MARKETING_SMS_PROVIDER=hubtel. These are
+# the Hubtel SMS API's own client id/secret, separate from the payments keys above. Never logged or returned.
+HUBTEL_SMS_CLIENT_ID = env("HUBTEL_SMS_CLIENT_ID", default="")
+HUBTEL_SMS_CLIENT_SECRET = env("HUBTEL_SMS_CLIENT_SECRET", default="")
+HUBTEL_SMS_SENDER_ID = env("HUBTEL_SMS_SENDER_ID", default="")          # must also be an Approved row in the Sender IDs register
+HUBTEL_SMS_CALLBACK_TOKEN = env("HUBTEL_SMS_CALLBACK_TOKEN", default="")  # secret path segment of the delivery-callback URL
+HUBTEL_SMS_CALLBACK_BASE_URL = env("HUBTEL_SMS_CALLBACK_BASE_URL", default="")  # public https origin Hubtel can reach
 MARKETING_UNIT_PRICE = {
     "sms": env("MARKETING_SMS_UNIT_PRICE", default="0.033"),
     "whatsapp": env("MARKETING_WHATSAPP_UNIT_PRICE", default=""),
@@ -370,6 +377,7 @@ REST_FRAMEWORK = {
         # but not unlimited, since it's dark/unexercised until HUBTEL_* env
         # vars are set (see settings.PAYMENTS_PROVIDER).
         "hubtel_webhook": "60/min",
+        "hubtel_sms_callback": "600/min",
         # Marketing: a person changing their own choices; the public one-click stop link.
         "marketing_consent": "30/min",
         "marketing_unsubscribe": "20/min",
@@ -476,6 +484,10 @@ CELERY_BEAT_SCHEDULE = {
     "reports-day-reminders": {
         "task": "reports.tasks.send_day_report_reminders",
         "schedule": crontab(hour=18, minute=0),
+    },
+    "marketing-sms-reconcile": {
+        "task": "marketing.tasks.reconcile_hubtel_sms",
+        "schedule": 600.0,  # every 10 minutes: asks Hubtel about sent texts still unconfirmed (no-op unless hubtel)
     },
     "marketing-flash-sale-clock": {
         "task": "marketing.tasks_promos.tick_flash_sales",

@@ -2,7 +2,10 @@ from django.urls import path
 
 from . import views_setup as v
 
+from .views_hubtel import HubtelSmsCallbackView
+
 urlpatterns = [
+    path("sms/hubtel/callback/<str:token>/", HubtelSmsCallbackView.as_view(), name="marketing-hubtel-sms-callback"),
     path("templates/", v.TemplatesView.as_view(), name="marketing-templates"),
     path("templates/<int:pk>/", v.TemplateDetailView.as_view(), name="marketing-template"),
     path("templates/<int:pk>/meta/", v.TemplateMetaView.as_view(), name="marketing-template-meta"),
