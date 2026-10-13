@@ -15,7 +15,7 @@ from accounts.models import Role
 from activity.services import record
 from fraud.models import FraudFlag
 
-from .models import HOLD_DAYS, CommissionAccrual, CommissionPolicy
+from .models import HOLD_DAYS, CommissionAccrual, CommissionPolicy, ScoutTaxRuling
 
 PAID_MONTHS_FOR_BONUS = 3
 MAX_AMOUNT = Decimal("100000.00")
@@ -181,3 +181,58 @@ def reverse_for_flag(flag, staff):
         after={"fraud_flag_id": flag.pk, "reason": flag.kind, "lines": [line.pk for line in lines]},
     )
     return len(lines)
+
+
+# ----------------------------------------------------------- scouts' tax status
+
+TAX_BLOCKED_MESSAGE = (
+    "Scouts' tax status has not been ruled on, so scout commission stays on hold and the first payout batch is blocked. "
+    "A Super Admin records the accountant's or GRA's ruling under Commission policy."
+)
+
+
+class PayoutBlocked(Exception):
+    def __init__(self, message=TAX_BLOCKED_MESSAGE):
+        super().__init__(message)
+        self.message = message
+
+
+def tax_ruling_in_force():
+    return ScoutTaxRuling.objects.select_related("recorded_by").first()
+
+
+def payout_blocker():
+    """Why a commission payout batch may not be formed yet, or None. The one place
+    payout code (Accounting phase) must ask before it moves lines into a batch."""
+    return None if tax_ruling_in_force() else TAX_BLOCKED_MESSAGE
+
+
+def assert_can_form_payout_batch():
+    message = payout_blocker()
+    if message:
+        raise PayoutBlocked(message)
+
+
+def record_tax_ruling(staff, status, ruled_on, reference, note="", request=None):
+    if status not in dict(ScoutTaxRuling.STATUS_CHOICES):
+        raise PolicyError("Choose employees (PAYE) or independent agents (10% withholding tax).")
+    try:
+        ruled_on = date.fromisoformat(str(ruled_on))
+    except ValueError:
+        raise PolicyError("Enter the date of the ruling as YYYY-MM-DD.") from None
+    if ruled_on > timezone.localdate():
+        raise PolicyError("The date of the ruling cannot be in the future.")
+    reference = str(reference or "").strip()
+    if not reference:
+        raise PolicyError("Enter the reference of the ruling (a letter number or the accountant's name).")
+    if len(reference) > 120 or len(str(note or "")) > 500:
+        raise PolicyError("The reference is limited to 120 characters and the note to 500.")
+    previous = tax_ruling_in_force()
+    ruling = ScoutTaxRuling.objects.create(status=status, ruled_on=ruled_on, reference=reference, note=str(note or "").strip(), recorded_by=staff)
+    record(
+        staff, "commission.tax_ruling_recorded", target=ruling,
+        summary=f"Scouts' tax status recorded: {ruling.get_status_display()} (ruling of {ruled_on.isoformat()}, ref {reference})",
+        before={"status": previous.status, "ruled_on": previous.ruled_on.isoformat(), "reference": previous.reference} if previous else None,
+        after={"status": status, "ruled_on": ruled_on.isoformat(), "reference": reference}, request=request,
+    )
+    return ruling

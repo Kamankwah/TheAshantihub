@@ -94,6 +94,15 @@ def refunds_document(report):
 
 # ---------------------------------------------------------------- commissions
 
+def _tax_note():
+    from commission.services import tax_ruling_in_force
+
+    ruling = tax_ruling_in_force()
+    if ruling is None:
+        return "Tax on commission depends on the scouts' status (PAYE if employees, 10% withholding tax if independent agents). It waits for an accountant or GRA ruling before the first payout."
+    return f"Scouts are recorded as {ruling.get_status_display().lower()} (ruling of {ruling.ruled_on:%d %b %Y}, ref {ruling.reference}). AshantiHub calculates no tax."
+
+
 def commission_report(year=None):
     from commission.views import totals
 
@@ -119,7 +128,7 @@ def commission_report(year=None):
     return {
         "simulated": sales.simulated(), "totals": summary, "scouts": rows, "policy": policy,
         "batches": {"exist": False, "note": "No payout batches exist yet. They arrive with the Accounting phase, so nothing is in a batch and nothing is recorded as paid."},
-        "tax_note": "Tax on commission depends on the scouts' status (PAYE if employees, 10% withholding tax if independent agents). It waits for an accountant or GRA ruling before the first payout.",
+        "tax_note": _tax_note(),
         "reversal_labels": REVERSAL_LABELS,
     }
 

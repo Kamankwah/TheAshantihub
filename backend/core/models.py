@@ -51,3 +51,22 @@ class SiteSettings(models.Model):
 
     def __str__(self):
         return "Site Settings"
+
+
+class JobRun(models.Model):
+    """The last run of each scheduled background job (one row per task), written
+    by the Celery signal handlers in core.jobs. System health reads it, so a job
+    that has never run shows "has not run yet" rather than an invented time."""
+
+    STARTED, OK, FAILED = "started", "ok", "failed"
+    STATUS_CHOICES = [(STARTED, "Running"), (OK, "Done"), (FAILED, "Failed")]
+
+    task = models.CharField(max_length=200, unique=True)
+    last_started_at = models.DateTimeField(null=True, blank=True)
+    last_finished_at = models.DateTimeField(null=True, blank=True)
+    last_status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STARTED)
+    last_duration_ms = models.PositiveIntegerField(null=True, blank=True)
+    last_error = models.CharField(max_length=300, blank=True, default="")
+
+    def __str__(self):
+        return f"{self.task}: {self.last_status}"
