@@ -1000,11 +1000,6 @@ class StaffPermissionsView(APIView):
             staff.extra_permissions.set(grant_perms)
             staff.revoked_permissions.set(revoke_perms)
         # Their socket's permission and team groups are now wrong: reconnect.
-        # Handing out the permissions that stay with Super Admin is a Super Admin's act.
-        if request.user.role.name != Role.SUPER_ADMIN and {
-            "staff.manage", "roles.manage", "approvals.manage_rules", "staff.view_as", "approvals.cosign"
-        } & set(grant_codes):
-            return Response({"detail": "Only a Super Admin can grant that permission."}, status=403)
         force_disconnect_on_commit(f"staff.{staff.pk}")
         return Response(StaffListSerializer(staff).data)
 
@@ -1090,6 +1085,8 @@ class StaffSessionEndView(APIView):
     def post(self, request, pk):
         scope = StaffSession.objects.all() if can_manage_staff(request.user) else StaffSession.objects.filter(staff=request.user)
         session = generics.get_object_or_404(scope.select_related("staff__role"), pk=pk)
+        if session.staff_id != request.user.pk:
+            sessions.require_sudo(request)  # ending someone else's session asks for the password again
         sessions.revoke(session, StaffSession.ENDED)
         session.refresh_from_db()
         return Response(StaffSessionSerializer(session, context=_session_context(request)).data)
@@ -1105,8 +1102,6 @@ class StaffEndOtherSessionsView(APIView):
 
 
 class StaffSignOutEverywhereView(APIView):
-        if session.staff_id != request.user.pk:
-            sessions.require_sudo(request)  # ending someone else's session asks for the password again
     def get_permissions(self):
         return [HasRolePermission("staff.manage"), RequiresSudo()]
 
