@@ -6,6 +6,7 @@ import { D } from "../../theme.js";
 import { button, chip, dim, field } from "../panelStyles.js";
 import { scroll, table, td, th } from "../opsPeopleParts.jsx";
 import { Kpi, Status, Title, kpiGrid, page, section, sectionTitle } from "../insightsParts.jsx";
+import { JobMap } from "./deliveryMaps.jsx";
 import { Empty, ErrorLine, Filters, Note, StepChip, WARN, clock, dayTime, fixAge, linkStyle, mono, money, spare } from "./deliveryParts.jsx";
 
 // ─── Delivery Manager 03 Active deliveries and 04 Delivery detail ────────────
@@ -137,6 +138,10 @@ export function DeliveryDetail({ id, onBack, onOpenCase }) {
               <Kpi label="Payment" value={job.payment.label} sub={`Order total ${money(job.total_amount)}`} />
               <Kpi label="Delivery fee" value="Not recorded" sub="Orders carry no delivery fee yet; it arrives with the rate card" />
             </div>
+            <section aria-labelledby="mp" style={section}>
+              <h3 id="mp" style={sectionTitle}>Where it is</h3>
+              <JobMap jobId={id} riderName={job.rider.full_name} />
+            </section>
             <section aria-labelledby="tl" style={section}>
               <h3 id="tl" style={sectionTitle}>Check-ins and events</h3>
               <span style={dim}>Stamped by the rider&apos;s phone, with server time.</span>
