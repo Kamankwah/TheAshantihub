@@ -981,6 +981,11 @@ class StaffPermissionsView(APIView):
         staff.extra_permissions.set(grant_perms)
         staff.revoked_permissions.set(revoke_perms)
         # Their socket's permission and team groups are now wrong: reconnect.
+        # Handing out the permissions that stay with Super Admin is a Super Admin's act.
+        if request.user.role.name != Role.SUPER_ADMIN and {
+            "staff.manage", "roles.manage", "approvals.manage_rules", "staff.view_as", "approvals.cosign"
+        } & set(grant_codes):
+            return Response({"detail": "Only a Super Admin can grant that permission."}, status=403)
         force_disconnect_on_commit(f"staff.{staff.pk}")
         return Response(StaffListSerializer(staff).data)
 

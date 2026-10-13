@@ -142,6 +142,9 @@ class ChangeRoleView(APIView):
             return Response({"detail": "Say why in a few words; it goes in the audit log."}, status=400)
         if staff.pk == request.user.pk:
             return Response({"detail": "You cannot change your own role."}, status=400)
+        # Granting or removing Super Admin is a Super Admin's act, whatever else the caller may manage.
+        if Role.SUPER_ADMIN in (role.name, staff.role.name) and request.user.role.name != Role.SUPER_ADMIN:
+            return Response({"detail": "Only a Super Admin can give or take away the Super Admin role."}, status=403)
         if not staff.is_active:
             return Response({"detail": "Reactivate this person before changing their role."}, status=400)
         if staff.role_id == role.pk:

@@ -99,3 +99,55 @@ class ChangeRoleTests(PeopleTestCase):
         self.assertEqual(response.status_code, 200, response.content)
         second.refresh_from_db()
         self.assertEqual(second.role.name, "operations")
+
+
+class SuperAdminRoleGuardTests(PeopleTestCase):
+    def setUp(self):
+        super().setUp()
+        # A non Super Admin who holds staff.manage by an individual grant.
+        from accounts.models import Permission
+
+        self.ama.extra_permissions.add(Permission.objects.get(codename="staff.manage"))
+
+    def url(self, staff):
+        return f"/api/people/staff/{staff.pk}/role/"
+
+    def test_non_super_admin_cannot_grant_super_admin(self):
+        self.sign_in(self.ama, sudo=True)
+        response = self.client.post(self.url(self.kojo), {"role": "super_admin", "reason": "x"}, format="json")
+        self.assertEqual(response.status_code, 403)
+        self.kojo.refresh_from_db()
+        self.assertEqual(self.kojo.role.name, "operations")
+
+    def test_non_super_admin_cannot_remove_super_admin(self):
+        second = make_staff("super_admin", "second@example.com")
+        self.sign_in(self.ama, sudo=True)
+        self.assertEqual(self.client.post(self.url(second), {"role": "operations", "reason": "x"}, format="json").status_code, 403)
+        second.refresh_from_db()
+        self.assertEqual(second.role.name, "super_admin")
+
+    def test_super_admin_can_grant_and_remove_it(self):
+        self.sign_in(sudo=True)
+        self.assertEqual(self.client.post(self.url(self.kojo), {"role": "super_admin", "reason": "Deputy"}, format="json").status_code, 200)
+        self.assertEqual(self.client.post(self.url(self.kojo), {"role": "operations", "reason": "Back"}, format="json").status_code, 200)
+
+    def test_nobody_changes_their_own_role(self):
+        self.sign_in(self.ama, sudo=True)
+        self.assertEqual(self.client.post(self.url(self.ama), {"role": "super_admin", "reason": "x"}, format="json").status_code, 400)
+
+    def test_the_last_active_super_admin_cannot_be_demoted(self):
+        # Reached only by a caller who is not themselves a Super Admin, which is refused first;
+        # a Super Admin demoting another leaves themselves, so one always remains.
+        self.sign_in(sudo=True)
+        second = make_staff("super_admin", "second@example.com")
+        self.assertEqual(self.client.post(self.url(second), {"role": "operations", "reason": "x"}, format="json").status_code, 200)
+        from accounts.models import Role
+
+        self.assertTrue(Role.objects.get(name="super_admin").staff_members.filter(is_active=True).exists())
+
+    def test_non_super_admin_cannot_grant_protected_permissions_individually(self):
+        self.sign_in(self.ama, sudo=True)
+        response = self.client.post(f"/api/accounts/staff/{self.kojo.pk}/permissions/", {"grant": ["roles.manage"], "revoke": []}, format="json")
+        self.assertEqual(response.status_code, 403)
+        self.sign_in(sudo=True)
+        self.assertEqual(self.client.post(f"/api/accounts/staff/{self.kojo.pk}/permissions/", {"grant": ["roles.manage"], "revoke": []}, format="json").status_code, 200)
