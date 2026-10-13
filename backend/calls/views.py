@@ -253,9 +253,18 @@ class CallCounterpartsView(APIView):
         order_id = int(text.lstrip("#")) if text.lstrip("#").isdecimal() and len(text.lstrip("#")) < 10 else None
         customers = Q(full_name__icontains=text)
         owners = Q(full_name__icontains=text) | Q(profile__business_name__icontains=text)
-        if len(digits) >= 3:
-            customers |= Q(phone__contains=digits)
-            owners |= Q(login_phone__contains=digits)
+        # Numbers are only ever matched on what the screen shows (the last 3-4 digits) or on the
+        # whole number, never on a fragment from the middle: a fragment search would let the
+        # masked digits be guessed one at a time.
+        if len(digits) in (3, 4):
+            customers |= Q(phone__endswith=digits)
+            owners |= Q(login_phone__endswith=digits)
+        elif len(digits) >= 9:
+            customers |= Q(phone__endswith=digits[-9:])
+            owners |= Q(login_phone__endswith=digits[-9:])
+        if len(digits) >= 3 and not getattr(request, "view_as_viewer", None):
+            # Audited without the number itself.
+            record(request.user, "call.counterpart_phone_search", after={"digits": len(digits)}, request=request)
         if order_id is not None:
             customers |= Q(orders__pk=order_id)
         limit = self.SEARCH_LIMIT

@@ -63,6 +63,8 @@ ROUTE_MODELS = {
     "api/orders/": "orders.Order",
     "api/disputes/": "disputes.Dispute",
     "api/messaging/": "messaging.Conversation",
+    "api/support/staff/customers/": "accounts.Customer",
+    "api/support/staff/businesses/": "accounts.BusinessOwner",
     "api/tasks/": "staff_tasks.Task",
     "api/calls/": "calls.CallLog",
     "api/targets/holidays/": "targets.Holiday",

@@ -48,6 +48,8 @@ QUEUE_INVALIDATIONS = [
     (("subscription-plan-",), ("subscription_plans.approve",), ("subscription-plan-pending-queue", "staff-badges")),
     (("escrow-",), ("escrow.view",), ("escrow-ledger", "staff-badges")),
     (("dispute-",), ("disputes.flag", "disputes.resolve_financial"), ("disputes-queue", "staff-badges")),
+    # Support's Order status screen: running late / cancelled by the customer.
+    (("order-support-",), ("orders.support_update",), ("support-orders",)),
     (
         ("order-delivery-status-update", "order-assign-dispatch", "delivery-pickup", "delivery-deliver"),
         ("orders.manage_delivery",),

@@ -101,6 +101,7 @@ INSTALLED_APPS = [
     "qa",
     "disputes",
     "messaging",
+    "support",
     "payments",
     "notifications",
     "activity",
@@ -469,6 +470,10 @@ CELERY_BEAT_SCHEDULE = {
     },
     "announcements-send-due": {
         "task": "announcements.tasks.send_due_announcements",
+        "schedule": 60.0,  # every minute
+    },
+    "messaging-wake-snoozed": {
+        "task": "messaging.tasks.wake_snoozed",
         "schedule": 60.0,  # every minute
     },
     "staffsecurity-purge-sign-in-history": {

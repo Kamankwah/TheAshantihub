@@ -36,6 +36,7 @@ def _order_model():
     return Order
 
 
+RELATED_PERMISSION = {"messaging.conversation": "messaging.manage", "orders.order": "orders.support_update"}
 RELATED_MODELS = {"messaging.conversation": _conversation_model, "orders.order": _order_model}
 
 
@@ -131,13 +132,14 @@ class CallLogSerializer(serializers.ModelSerializer):
             return
         if not related_id.isdecimal():
             raise serializers.ValidationError({"related_id": "Choose the record this call is about."})
+        needed = RELATED_PERMISSION[related_type]
+        if needed not in self._viewer().effective_permission_codenames():
+            raise serializers.ValidationError({"related_type": "You can't link a call to that kind of record."})
         record = RELATED_MODELS[related_type]().objects.filter(pk=int(related_id)).first()
         if record is None:
             raise serializers.ValidationError({"related_id": NOT_FOUND})
-        if not attrs.get("related_label"):
-            attrs["related_label"] = (
-                f"Order #{record.pk}" if related_type == "orders.order" else f"Conversation · {record.starter_display_name}"
-            )[:200]
+        # Neutral label, never a name taken from the record (and never one the client typed).
+        attrs["related_label"] = f"{'Order' if related_type == 'orders.order' else 'Conversation'} #{record.pk}"
 
     def create(self, validated_data):
         staff = self._viewer()

@@ -126,7 +126,7 @@ class SupportCallTests(TestCase):
         self.assertEqual([c["name"] for c in found["customers"]], ["Yaw Mensah"])
         self.assertEqual(found["customers"][0]["phone_masked"], "024 *** 553")
         self.assertNotIn("0245000553", str(found))
-        by_phone = self.client.get("/api/calls/counterparts/?q=000118").json()
+        by_phone = self.client.get("/api/calls/counterparts/?q=118").json()
         self.assertEqual(by_phone["businesses"][0]["owner_name"], "Nana Chop")
         self.assertEqual(by_phone["businesses"][0]["phone_masked"], "032 *** 118")
         self.assertNotIn("0320000118", str(by_phone))
@@ -134,6 +134,24 @@ class SupportCallTests(TestCase):
         self.assertEqual(by_order["orders"][0]["id"], self.order.pk)
         self.assertEqual([c["name"] for c in by_order["customers"]], ["Yaw Mensah"])
         self.assertEqual(self.client.get("/api/calls/counterparts/?q=y").json()["customers"], [])
+
+    def test_phone_fragments_find_nothing_but_tail_and_whole_number_do(self):
+        for q in ("000118", "4500", "245000", "00055"):
+            found = self.client.get(f"/api/calls/counterparts/?q={q}").json()
+            self.assertEqual((found["customers"], found["businesses"]), ([], []), q)
+        self.assertEqual(len(self.client.get("/api/calls/counterparts/?q=553").json()["customers"]), 1)
+        self.assertEqual(len(self.client.get("/api/calls/counterparts/?q=0245000553").json()["customers"]), 1)
+        self.assertTrue(ActivityEvent.objects.filter(verb="call.counterpart_phone_search", actor_id=self.esi.pk).exists())
+        self.assertNotIn("0245000553", str(list(ActivityEvent.objects.filter(verb="call.counterpart_phone_search").values_list("after", flat=True))))
+
+    def test_linking_needs_the_permission_for_that_record_and_the_label_has_no_name(self):
+        self.as_(self.scout)
+        for kind, pk in (("messaging.conversation", self.conversation.pk), ("orders.order", self.order.pk)):
+            refused = self.client.post("/api/calls/", self.payload(related_type=kind, related_id=str(pk), purpose="other"), format="json")
+            self.assertEqual(refused.status_code, 400, kind)
+        self.as_(self.esi)
+        ok = self.client.post("/api/calls/", self.payload(related_type="orders.order", related_id=str(self.order.pk), related_label="Yaw Mensah"), format="json")
+        self.assertEqual(ok.json()["related_label"], f"Order #{self.order.pk}")
 
     def test_search_is_for_support_not_scouts(self):
         self.as_(self.scout)
@@ -164,7 +182,7 @@ class SupportCallTests(TestCase):
     def test_related_conversation_and_order_must_exist(self):
         ok = self.client.post("/api/calls/", self.payload(related_type="messaging.conversation", related_id=str(self.conversation.pk)), format="json")
         self.assertEqual(ok.status_code, 201, ok.content)
-        self.assertEqual(ok.json()["related_label"], "Conversation · Yaw Mensah")
+        self.assertEqual(ok.json()["related_label"], f"Conversation #{self.conversation.pk}")
         for kind in ("messaging.conversation", "orders.order"):
             missing = self.client.post("/api/calls/", self.payload(related_type=kind, related_id="999999"), format="json")
             self.assertEqual(missing.status_code, 400)

@@ -1,18 +1,12 @@
+from django.db import transaction
 from rest_framework import generics
 from rest_framework.exceptions import PermissionDenied
-from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from accounts.models import BusinessOwner, Customer
-from accounts.permissions import HasRolePermission
-from notifications.services import (
-    notify_business_owner,
-    notify_customer,
-    notify_staff_role,
-)
 
 from .models import Conversation, Message
 from .serializers import (
@@ -20,8 +14,6 @@ from .serializers import (
     ConversationSerializer,
     MessageCreateSerializer,
     MessageSerializer,
-    StaffConversationDetailSerializer,
-    StaffConversationListSerializer,
 )
 from . import services
 
@@ -138,24 +130,24 @@ class ConversationListCreateView(generics.ListCreateAPIView):
         serializer = ConversationCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        conversation = Conversation.objects.create(
-            subject=data["subject"],
-            status=Conversation.OPEN,
-            source="guest_chat" if "guest_token" in scope and data["source"] == "app" else data["source"],
-            **_about_links(data, request),
-            **scope,
-        )
-        services.stamp_clocks(conversation)
-        Message.objects.create(
-            conversation=conversation,
-            sender_type=_sender_type(request),
-            body=serializer.validated_data["body"],
-        )
-        notify_staff_role(
-            "messaging.manage", "new_message", "New support conversation",
-            body=f"{conversation.starter_display_name} started a support conversation.",
-            link="messaging", icon="💬",
-        )
+        with transaction.atomic():
+            conversation = services.start_conversation(
+                subject=data["subject"],
+                source="guest_chat" if "guest_token" in scope and data["source"] == "app" else data["source"],
+                **_about_links(data, request),
+                **scope,
+            )
+            Message.objects.create(
+                conversation=conversation,
+                sender_type=_sender_type(request),
+                body=serializer.validated_data["body"],
+            )
+            # The assignee is told; an unassigned thread tells whoever is on shift (not the whole desk).
+            who = conversation.starter_display_name if conversation.guest_token is None else f"Guest (thread {conversation.pk})"
+            services.notify_assignee(
+                conversation, "New support conversation", f"{who} started a support conversation.",
+                link="support-mine" if conversation.assignee_id else "support-unassigned",
+            )
         return Response(ConversationSerializer(conversation).data, status=201)
 
 
@@ -175,72 +167,7 @@ class ConversationMessageCreateView(APIView):
         )
         serializer = MessageCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        message = Message.objects.create(
-            conversation=conversation, sender_type=_sender_type(request), body=serializer.validated_data["body"],
-        )
-        conversation.save()  # bump updated_at (auto_now) for the staff queue's recency ordering
-        return Response(MessageSerializer(message).data, status=201)
-
-
-class StaffConversationPagination(PageNumberPagination):
-    page_size = 20
-
-
-class StaffConversationListView(generics.ListAPIView):
-    """GET /api/messaging/staff/ — every conversation, staff-only
-    (messaging.manage), each annotated with a needs_reply indicator."""
-
-    serializer_class = StaffConversationListSerializer
-    queryset = Conversation.objects.all().select_related("customer", "business_owner").prefetch_related("messages")
-    pagination_class = StaffConversationPagination
-
-    def get_permissions(self):
-        return [HasRolePermission("messaging.manage")]
-
-
-class StaffConversationDetailView(generics.RetrieveAPIView):
-    """GET /api/messaging/staff/{id}/ — full thread for one conversation,
-    staff-only. Not explicitly required by the original request but the
-    natural companion to the list above (a "needs_reply" flag alone doesn't
-    tell staff what to reply to) and to the reply endpoint below."""
-
-    serializer_class = StaffConversationDetailSerializer
-    queryset = Conversation.objects.all().prefetch_related("messages")
-
-    def get_permissions(self):
-        return [HasRolePermission("messaging.manage")]
-
-
-class StaffConversationReplyView(APIView):
-    """POST /api/messaging/staff/{id}/reply/ — staff-only
-    (messaging.manage), posts a Message with sender_type=staff."""
-
-    def get_permissions(self):
-        return [HasRolePermission("messaging.manage")]
-
-    def post(self, request, pk):
-        conversation = generics.get_object_or_404(Conversation, pk=pk)
-        serializer = MessageCreateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        message = Message.objects.create(
-            conversation=conversation, sender_type=Message.STAFF, body=serializer.validated_data["body"],
-            author=request.user,
-        )
-        if conversation.first_reply_at is None:
-            conversation.first_reply_at = message.created_at
-        conversation.save()
-        # Notify the account that owns the thread (a guest thread has no
-        # account to notify — notify_* no-ops on a None recipient).
-        if conversation.customer_id:
-            notify_customer(
-                conversation.customer, "support_reply", "AshantiHub Support replied",
-                body="You have a new reply from AshantiHub Support.",
-                link="/my-account", icon="💬",
-            )
-        elif conversation.business_owner_id:
-            notify_business_owner(
-                conversation.business_owner, "support_reply", "AshantiHub Support replied",
-                body="You have a new reply from AshantiHub Support.",
-                link="/business-dashboard", icon="💬",
-            )
+        # Wakes a snoozed thread, reopens one resolved within 7 days, or (older) starts a
+        # new linked conversation; see messaging.services.route_customer_message.
+        _, message = services.route_customer_message(conversation.pk, _sender_type(request), serializer.validated_data["body"])
         return Response(MessageSerializer(message).data, status=201)
