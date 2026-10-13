@@ -80,6 +80,13 @@ class OrderCheckoutView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if delivery_method == Order.DOOR_TO_DOOR:
+            from routing import region
+
+            lat, lng = request.data.get("delivery_lat"), request.data.get("delivery_lng")
+            if lat not in (None, "") and lng not in (None, "") and not region.in_service_area(lat, lng):
+                return Response({"detail": region.OUT_OF_AREA_MESSAGE, "code": "out_of_area"}, status=status.HTTP_400_BAD_REQUEST)
+
         with db_transaction.atomic():
             # Checkout promotions (marketing): off unless settings.MARKETING_PROMOS_ENABLED, and
             # then priced here, before anything is reserved or written, under the flash-sale and
