@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.db import transaction
 from django.db.models import Count, Q
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -143,11 +144,13 @@ class AnnouncementCancelView(APIView):
         return [HasRolePermission(SEND)]
 
     def post(self, request, pk):
-        announcement = generics.get_object_or_404(Announcement, pk=pk)
-        if announcement.status not in (Announcement.DRAFT, Announcement.SCHEDULED):
-            raise ValidationError({"detail": "Only a draft or a scheduled announcement can be cancelled; a sent one cannot be taken back."})
-        announcement.status = Announcement.CANCELLED
-        announcement.save(update_fields=["status"])
+        # Lock the row so a send that lands between the check and the save cannot be overwritten.
+        with transaction.atomic():
+            announcement = generics.get_object_or_404(Announcement.objects.select_for_update(), pk=pk)
+            if announcement.status not in (Announcement.DRAFT, Announcement.SCHEDULED):
+                raise ValidationError({"detail": "Only a draft or a scheduled announcement can be cancelled; a sent one cannot be taken back."})
+            announcement.status = Announcement.CANCELLED
+            announcement.save(update_fields=["status"])
         return Response(_row(announcement))
 
 
@@ -156,8 +159,10 @@ class AnnouncementRemindView(APIView):
         return [HasRolePermission(SEND)]
 
     def post(self, request, pk):
-        announcement = generics.get_object_or_404(Announcement, pk=pk)
-        count = services.remind(announcement)
+        # The row is locked for the whole check-and-send, so a double click sends one reminder.
+        with transaction.atomic():
+            announcement = generics.get_object_or_404(Announcement.objects.select_for_update(), pk=pk)
+            count = services.remind(announcement)
         if count == -1:
             raise ValidationError({"detail": "You already sent a reminder in the last hour."})
         if announcement.status != Announcement.SENT:

@@ -97,6 +97,25 @@ class ComposeTests(Base):
         sent = self.compose().json()
         self.assertEqual(self.client.post(f"/api/announcements/{sent['id']}/cancel/").status_code, 400)
 
+    def test_cancel_and_remind_lock_the_row_so_a_send_or_double_click_cannot_slip_past(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        self.as_staff(self.boss)
+        draft = self.compose(when="draft").json()
+        with CaptureQueriesContext(connection) as queries:
+            self.assertEqual(self.client.post(f"/api/announcements/{draft['id']}/cancel/").status_code, 200)
+        self.assertTrue(any("FOR UPDATE" in q["sql"] and "announcements_announcement" in q["sql"] for q in queries))
+        sent = self.compose().json()
+        with CaptureQueriesContext(connection) as queries:
+            self.assertEqual(self.client.post(f"/api/announcements/{sent['id']}/remind/").status_code, 200)
+        self.assertTrue(any("FOR UPDATE" in q["sql"] and "announcements_announcement" in q["sql"] for q in queries))
+        # The second click sees the first one's stamp, not a stale copy.
+        self.assertEqual(self.client.post(f"/api/announcements/{sent['id']}/remind/").status_code, 400)
+        # A sent announcement stays sent even when cancel is retried.
+        self.assertEqual(self.client.post(f"/api/announcements/{sent['id']}/cancel/").status_code, 400)
+        self.assertEqual(Announcement.objects.get(pk=sent["id"]).status, Announcement.SENT)
+
     def test_the_list_reports_roles_and_teams(self):
         self.as_staff(self.boss)
         body = self.client.get("/api/announcements/").json()
