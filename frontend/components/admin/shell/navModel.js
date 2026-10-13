@@ -85,6 +85,11 @@ export const NAV_ITEMS = [
   { id: "dm-invite", icon: "✉️", label: "Invite a rider", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.fleet") },
   { id: "dm-shifts", icon: "📅", label: "Shifts", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.fleet") },
   { id: "dm-zones", icon: "📍", label: "Zones", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.fleet") },
+  { id: "dm-cash", icon: "💷", label: "Cash on delivery", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.cash") },
+  { id: "dm-payouts", icon: "🧾", label: "Rider payouts", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.cash") },
+  { id: "dm-pricing", icon: "🛵", label: "Delivery pricing", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.rates") },
+  { id: "dm-autoassign", icon: "🤖", label: "Auto-assign rules", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.rates") },
+  { id: "dm-limits", icon: "⏱️", label: "Delivery time limits", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.rates") },
   // Operations canvas screens (see the note above NAV_ITEMS).
   { id: "ops-scouts", icon: "🧑‍🌾", label: "Scouts", show: (auth) => opsOnly(auth, "portfolio.manage") },
   { id: "support-team", icon: "🎧", label: "Support team", show: (auth) => opsOnly(auth, "staff.invite_team") },
@@ -225,7 +230,7 @@ const ROLE_MENUS = {
 
 // Roles whose menu is the whole menu: a screen the canvas leaves out is not
 // offered under "More tools" either (its permission and panel stay).
-const EXHAUSTIVE_MENU_ROLES = new Set(["operations", "super_admin", "cosigner"]);
+const EXHAUSTIVE_MENU_ROLES = new Set(["operations", "super_admin", "cosigner", "delivery_manager"]);
 
 // Nav ids whose screen is not built yet, per role; AdminCommandCenter renders the
 // "being built" panel for them. A package that builds one swaps its panel in and

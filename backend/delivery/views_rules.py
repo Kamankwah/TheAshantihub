@@ -185,6 +185,7 @@ class RiderEarningsLinesView(APIView):
 
         from orders.models import DeliveryAssignment
 
-        since = timezone.now() - timedelta(days=14)
+        weeks = max(1, min(int(request.query_params.get("weeks", 2) or 2), 12))
+        since = timezone.now() - timedelta(days=7 * weeks)
         jobs = DeliveryAssignment.objects.filter(dispatch_id=staff_id, delivered_at__gte=since).order_by("-delivered_at")
         return Response({"results": [{"assignment_id": j.pk, "order_id": j.order_id, "delivered_at": j.delivered_at, "pay": str(j.rider_pay) if j.rider_pay is not None else None, "breakdown": j.rider_pay_breakdown, "wait_pay_held": j.wait_pay_held} for j in jobs]})

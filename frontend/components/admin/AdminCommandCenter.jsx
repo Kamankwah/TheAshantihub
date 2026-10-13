@@ -57,6 +57,8 @@ import InviteRiderPanel from "./panels/delivery/InviteRiderPanel.jsx";
 import Riders from "./panels/delivery/RidersPanel.jsx";
 import ShiftsPanel from "./panels/delivery/ShiftsPanel.jsx";
 import VehiclesPanel from "./panels/delivery/VehiclesPanel.jsx";
+import { CashPanel, PayoutsPanel } from "./panels/delivery/CashPanel.jsx";
+import { AutoAssignRulesPanel, DeliveryPricingPanel, TimeLimitsPanel } from "./panels/delivery/RulesPanels.jsx";
 import ActiveDeliveries from "./panels/delivery/ActiveDeliveriesPanel.jsx";
 import DisputesCases from "./panels/delivery/DisputesCasesPanel.jsx";
 import DispatchQueuePanel from "./panels/delivery/DispatchQueuePanel.jsx";
@@ -112,7 +114,7 @@ import NotificationCenterPanel from "./panels/NotificationCenterPanel.jsx";
 import StaffAnnouncementsPanel from "./panels/StaffAnnouncementsPanel.jsx";
 import AnnouncementBanner from "./shell/AnnouncementBanner.jsx";
 import SessionsPanel from "./panels/SessionsPanel.jsx";
-import { DeliveryPricingPanel, PayoutsPayrollPanel, ReconciliationPanel, TaxTablesPanel } from "./panels/LaterPhasePanels.jsx";
+import { PayoutsPayrollPanel, ReconciliationPanel, TaxTablesPanel } from "./panels/LaterPhasePanels.jsx";
 import IntegrationsPanel from "./panels/IntegrationsPanel.jsx";
 import SystemHealthPanel from "./panels/SystemHealthPanel.jsx";
 import PlansPricesPanel from "./panels/PlansPricesPanel.jsx";
@@ -440,6 +442,11 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "dm-invite" && <InviteRiderPanel auth={auth} />}
           {activeTab === "dm-shifts" && <ShiftsPanel />}
           {activeTab === "dm-zones" && <DeliveryZonesPanel />}
+          {activeTab === "dm-cash" && <CashPanel />}
+          {activeTab === "dm-payouts" && <PayoutsPanel />}
+          {activeTab === "dm-pricing" && <DeliveryPricingPanel auth={auth} />}
+          {activeTab === "dm-autoassign" && <AutoAssignRulesPanel auth={auth} onNavigate={selectTab} />}
+          {activeTab === "dm-limits" && <TimeLimitsPanel auth={auth} />}
           {activeTab === "delivery-coordination" && <DeliveryManagerPanel />}
           {activeTab === "my-deliveries" && <DispatchPanel />}
           {activeTab === "promotions" && <PromotionsPanel auth={auth} />}
@@ -467,7 +474,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "commission-policy" && <CommissionPolicyPanel canPropose={auth.hasPermission("commission.policy")} showTaxRuling={role === "super_admin" || auth.hasPermission("commission.tax_ruling")} onOpenApproval={role === "super_admin" ? openApproval : undefined} />}
           {activeTab === "payouts-payroll" && <PayoutsPayrollPanel onNavigate={selectTab} />}
           {activeTab === "reconciliation" && <ReconciliationPanel />}
-          {activeTab === "delivery-pricing" && <DeliveryPricingPanel />}
+          {activeTab === "delivery-pricing" && <DeliveryPricingPanel auth={auth} />}
           {activeTab === "tax-tables" && <TaxTablesPanel onNavigate={selectTab} />}
           {activeTab === "integrations" && <IntegrationsPanel />}
           {activeTab === "system-health" && <SystemHealthPanel />}

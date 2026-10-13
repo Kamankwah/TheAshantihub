@@ -125,12 +125,12 @@ describe('per-role menus', () => {
   })
 
   it('shows every permitted item exactly once and no empty group, for every role but Operations and Super Admin (exhaustive menus)', () => {
-    for (const role of ['accountant', 'marketing', 'support', 'scout', 'delivery_manager', 'dispatch']) {
+    for (const role of ['accountant', 'marketing', 'support', 'scout', 'dispatch']) {
       const groups = buildNavGroups({ user: { role }, hasPermission: () => true })
       const ids = groups.flatMap((g) => g.items.map((i) => i.id))
       expect(new Set(ids).size).toBe(ids.length)
       // The Operations canvas screens appear for no other role.
-      const expected = NAV_ITEMS.filter((i) => !OPS_ONLY.includes(i.id) && !(DM_ONLY.includes(i.id) && role !== 'delivery_manager')).map((i) => i.id)
+      const expected = NAV_ITEMS.filter((i) => !OPS_ONLY.includes(i.id) && !DM_ONLY.includes(i.id)).map((i) => i.id)
       expect([...ids].sort()).toEqual(expected.sort())
       expect(groups.every((g) => g.items.length > 0)).toBe(true)
     }
