@@ -5,7 +5,8 @@
 # Each build goes into its own directory (build-<stamp>) inside the osrm-data volume. The `current`
 # symlink, which the osrm service serves, is switched only after extract, partition and customize all
 # succeeded. A failed build removes its partial directory and leaves `current` untouched, so routing
-# that was already working keeps working across any later restart.
+# that was already working keeps working across any later restart. The cleanup never removes the
+# directory `current` points to, whatever fails and whenever.
 set -euo pipefail
 PROJECT="${1:?compose project, e.g. ashantihub}"
 COMPOSE_FILE="${2:?path to infra/compose/docker-compose.yml}"
@@ -20,13 +21,18 @@ BUILD="build-$STAMP"
 # Fail fast on a bad project/compose file, before downloading anything.
 docker compose -p "$PROJECT" -f "$COMPOSE_FILE" config -q
 
+# Run a shell snippet against the osrm-data volume (in the osrm image: has sh, rm, ln, mv, readlink).
+# Extra arguments become $1, $2 ... in the snippet.
+vol() { local snippet="$1"; shift; docker run --rm -v "$VOLUME:/data" "$OSRM_IMAGE" sh -c "$snippet" sh "$@"; }
+
 WORK="$(mktemp -d)"
 OK=0
 cleanup() {
   rm -rf "$WORK"
   if [ "$OK" != 1 ]; then
-    echo "Build failed; removing partial $BUILD and leaving current untouched" >&2
-    docker run --rm -v "$VOLUME:/data" "$OSRM_IMAGE" rm -rf "/data/$BUILD" || true
+    echo "Build did not complete; removing partial $BUILD unless current points to it" >&2
+    # Re-check inside the volume: never delete the build that `current` points to.
+    vol '[ "$(readlink /data/current 2>/dev/null)" = "$1" ] || rm -rf "/data/$1"' "$BUILD" || true
   fi
 }
 trap cleanup EXIT
@@ -34,18 +40,28 @@ trap cleanup EXIT
 curl -fsSL -o "$WORK/ghana.osm.pbf" https://download.geofabrik.de/africa/ghana-latest.osm.pbf
 docker run --rm -v "$WORK:/data" "$OSMIUM_IMAGE" extract --bbox "$BBOX" /data/ghana.osm.pbf -o /data/ashanti.osm.pbf --overwrite
 docker volume create "$VOLUME" >/dev/null
-# Extract from the /in mount; only the built graph lands in the volume.
-docker run --rm -v "$WORK:/in" -v "$VOLUME:/data" "$OSRM_IMAGE" sh -c \
+# The clipped PBF is mounted read-only at /in. osrm-extract writes its output next to its input, so the
+# PBF is copied into the build directory, extracted there, and deleted once the graph is built.
+docker run --rm -v "$WORK:/in:ro" -v "$VOLUME:/data" "$OSRM_IMAGE" sh -c \
   "set -e; mkdir -p /data/$BUILD && cp /in/ashanti.osm.pbf /data/$BUILD/ashanti.osm.pbf \
    && osrm-extract -p /opt/car.lua /data/$BUILD/ashanti.osm.pbf \
    && osrm-partition /data/$BUILD/ashanti.osrm && osrm-customize /data/$BUILD/ashanti.osrm \
    && rm -f /data/$BUILD/ashanti.osm.pbf"
-# Switch atomically, then keep only this build and the previous one.
-docker run --rm -v "$VOLUME:/data" "$OSRM_IMAGE" sh -c \
-  "set -e; prev=\$(readlink /data/current 2>/dev/null || true); \
-   ln -sfn $BUILD /data/current.new && mv -T /data/current.new /data/current; \
-   for d in /data/build-*; do n=\$(basename \$d); [ \"\$n\" = $BUILD ] || [ \"\$n\" = \"\$prev\" ] || rm -rf \$d; done"
+
+# Which build is live now (empty on a first build). Read-only; a failure here only means "unknown".
+PREV="$(vol 'readlink /data/current 2>/dev/null || true' || true)"
+
+# The one step that matters: atomic switch. OK=1 the moment it succeeds, so from here on the trap can
+# never remove this build. If the container dies after mv but before returning, the trap's readlink
+# check still protects the build.
+vol 'set -e; ln -sfn "$1" /data/current.new && mv -T /data/current.new /data/current' "$BUILD"
 OK=1
+
+# Housekeeping after a successful switch. Can never fail the script; keeps the new and previous builds
+# only, and removes root-level leftovers of the older in-place builds.
+vol 'for d in /data/build-*; do [ -e "$d" ] || continue; n=$(basename "$d"); [ "$n" = "$1" ] || [ "$n" = "$2" ] || rm -rf "$d"; done
+     rm -f /data/ashanti.osm.pbf /data/ashanti.osrm* /data/current.new' "$BUILD" "$PREV" || true
+
 # The osrm service sits in the "routing" compose profile, so deploy.sh never starts it; naming it here
 # starts it. --force-recreate makes a monthly refresh load the new data.
 docker compose -p "$PROJECT" -f "$COMPOSE_FILE" up -d --force-recreate osrm

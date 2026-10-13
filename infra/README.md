@@ -323,6 +323,9 @@ rebooted routing) on the last good data; check the log and rerun. Only the
 newest build and the previous one are kept. Reinstall the cron file after
 pulling this change (install line in its header).
 
+Two builds at once are unsafe: cron is protected by `flock`, so run a manual
+build under the same lock (`flock -n /var/lock/ashantihub-osrm.lock bash ...`).
+
 `docker compose down` ignores profiled services unless `--profile routing` is
 passed, so `osrm` keeps running through a normal `down`/`up` of the app.
 
