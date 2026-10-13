@@ -204,7 +204,7 @@ describe('Zones', () => {
     server.use(http.get(`${API}/api/delivery/zones/`, () => HttpResponse.json(zones)), http.patch(`${API}/api/delivery/zones/1/`, async ({ request }) => { body = await request.json(); return HttpResponse.json({}) }))
     wrap(<DeliveryZonesPanel />)
     expect(await screen.findByText('No boundary drawn')).toBeInTheDocument()
-    expect(screen.getByText(/There is no map-drawing tool/)).toBeInTheDocument()
+    expect(screen.queryByText(/There is no map-drawing tool/)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Edit boundary' }))
     fireEvent.change(screen.getByLabelText(/Boundary/), { target: { value: '-1.62, 6.69\n-1.60, 6.69\n-1.61, 6.71' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save zone' }))

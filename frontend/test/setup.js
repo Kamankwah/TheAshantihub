@@ -54,6 +54,15 @@ vi.mock('../components/maps/TrackMap.jsx', () => ({
       markers.map((m) => createElement('button', { key: m.id, type: 'button', 'data-kind': m.kind, onClick: () => onSelect?.(m.id) }, `pin ${m.label}`))),
 }))
 
+// The zone drawing map (Leaflet + Leaflet Draw) is stubbed: one button draws a fixed triangle
+// (an open [lng, lat] ring, as the backend stores it), one clears the shape.
+vi.mock('../components/maps/ZoneDrawMap.jsx', () => ({
+  default: ({ onChange, others = [] }) =>
+    createElement('div', { 'data-testid': 'zone-draw-map', 'data-others': others.length },
+      createElement('button', { type: 'button', onClick: () => onChange?.([[-1.62, 6.69], [-1.60, 6.69], [-1.61, 6.71]]) }, 'draw triangle'),
+      createElement('button', { type: 'button', onClick: () => onChange?.(null) }, 'clear shape')),
+}))
+
 // jsdom does not implement matchMedia; stub it so hooks like useTheme (which
 // checks `prefers-color-scheme: dark` when no theme is stored) don't throw
 // when rendered under test. Individual tests can still override
