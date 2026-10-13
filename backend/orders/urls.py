@@ -12,6 +12,7 @@ urlpatterns = [
     path("delivery/", views.DeliveryManagerOrderListView.as_view(), name="order-delivery-list"),
     path("dispatches/", views.DispatchListView.as_view(), name="order-dispatch-staff-list"),
     path("dispatch/", views.MyDeliveriesView.as_view(), name="order-my-deliveries"),
+    path("dispatch/<int:pk>/map/", views.DispatchMapView.as_view(), name="orders-dispatch-map"),
     path("delivery/<int:pk>/pickup/", views.DeliveryPickupView.as_view(), name="delivery-pickup"),
     path("delivery/<int:pk>/deliver/", views.DeliveryDeliverView.as_view(), name="delivery-deliver"),
     path("support/", support.SupportOrderSearchView.as_view(), name="order-support-search"),

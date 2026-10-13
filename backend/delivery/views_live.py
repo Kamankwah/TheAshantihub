@@ -13,7 +13,7 @@ from accounts.phones import mask_phone
 from disputes.models import Dispute
 from orders.models import DeliveryAssignment
 
-from . import board, files, payloads, services
+from . import board, files, payloads, services, tracking
 from .models import DeliveryCall, DeliveryPhoto
 
 PERMISSION = "delivery.manage"
@@ -85,6 +85,14 @@ class JobDetailView(ManageView):
             pk=pk,
         )
         return Response(manager_job(assignment))
+
+
+class JobMapView(ManageView):
+    """GET jobs/<id>/map/ — where the rider is and the route for one job."""
+
+    def get(self, request, pk):
+        assignment = get_object_or_404(DeliveryAssignment.objects.select_related("order", "order__customer", "dispatch", "dispatch__rider").prefetch_related("order__items__listing__business_owner__profile"), pk=pk)
+        return Response(tracking.manager_job_map(assignment))
 
 
 class FlagDecisionView(ManageView):

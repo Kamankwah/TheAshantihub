@@ -29,6 +29,7 @@ urlpatterns = [
     path("live/", views_live.LiveView.as_view(), name="delivery-live"),
     path("active/", views_live.ActiveView.as_view(), name="delivery-active"),
     path("jobs/<int:pk>/", views_live.JobDetailView.as_view(), name="delivery-job"),
+    path("jobs/<int:pk>/map/", views_live.JobMapView.as_view(), name="delivery-job-map"),
     path("jobs/<int:pk>/flag-decision/", views_live.FlagDecisionView.as_view(), name="delivery-job-flag-decision"),
     path("jobs/<int:pk>/call-rider/", views_live.CallRiderView.as_view(), name="delivery-job-call-rider"),
     path("jobs/<int:pk>/photos/<int:photo_id>/", views_live.PhotoFileView.as_view(), name="delivery-job-photo"),
@@ -58,6 +59,7 @@ urlpatterns = [
     path("queue/<int:order_id>/offer/", views_queue.OfferToRiderView.as_view(), name="delivery-queue-offer"),
     path("queue/<int:order_id>/force-assign/", views_queue.ForceAssignView.as_view(), name="delivery-queue-force-assign"),
     path("queue/<int:order_id>/schedule/", views_queue.ScheduleView.as_view(), name="delivery-queue-schedule"),
+    path("queue/<int:order_id>/map/", views_queue.QueueMapView.as_view(), name="delivery-queue-map"),
     path("auto-assign/switch/", views_queue.SwitchView.as_view(), name="delivery-auto-assign-switch"),
     # ── Settings: rules, limits, rate card (delivery.rates) ────────────────────────────────────────
     path("rules/auto-assign/", views_rules.AutoAssignRulesView.as_view(), name="delivery-rules-auto-assign"),

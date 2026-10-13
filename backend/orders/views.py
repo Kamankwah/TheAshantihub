@@ -511,6 +511,26 @@ class AssignDispatchView(APIView):
         return Response(DeliveryOrderSerializer(order).data)
 
 
+class DispatchMapView(APIView):
+    """GET /api/orders/dispatch/<pk>/map/ — the map for the dispatch's own assignment (delivery.dispatch);
+    another dispatcher's assignment is a 404."""
+
+    def get_permissions(self):
+        return [HasRolePermission("delivery.dispatch")]
+
+    def get(self, request, pk):
+        from django.shortcuts import get_object_or_404
+
+        from delivery import tracking
+
+        assignment = get_object_or_404(
+            DeliveryAssignment.objects.select_related("order", "order__customer", "dispatch", "dispatch__rider")
+            .prefetch_related("order__items__listing__business_owner__profile"),
+            pk=pk, dispatch=request.user,
+        )
+        return Response(tracking.manager_job_map(assignment))
+
+
 class MyDeliveriesView(generics.ListAPIView):
     """GET /api/orders/dispatch/ — the dispatch's own assigned deliveries
     (delivery.dispatch), with both pickup and drop-off locations.
