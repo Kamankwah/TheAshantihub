@@ -25,8 +25,7 @@ const opsOnly = (auth, ...perms) => auth.user?.role === "operations" && perms.so
 const saOnly = (auth) => auth.user?.role === "super_admin";
 // Step-in needs the Super Admin role and staff.view_as, as the server does (accounts/view_as.py).
 const canStepIn = (auth) => saOnly(auth) && auth.hasPermission("staff.view_as");
-// The Support canvas (2026-10-07, 17 screens + All open) draws screens that are not built
-// yet. Each has a NAV_ITEMS entry with `placeholder: "support"` (like the Operations and Super
+// The Support canvas (2026-10-07, 17 screens + All open) is fully built; a screen not built yet would have a NAV_ITEMS entry with `placeholder: "support"` (like the Operations and Super
 // Admin ones), shown to Support only, so the menu is exactly the canvas; the package that
 // builds a screen swaps its panel in and drops the flag.
 const supportOnly = (auth, ...perms) => auth.user?.role === "support" && perms.some((perm) => auth.hasPermission(perm));
@@ -89,16 +88,16 @@ export const NAV_ITEMS = [
   { id: "visit-map", icon: "🗺️", label: "Visit map", show: (auth) => opsOnly(auth, "portfolio.manage") },
   { id: "zones", icon: "📍", label: "Zones", show: (auth) => opsOnly(auth, "zones.manage") },
   // Support canvas screens (see supportOnly).
-  { id: "support-mine", icon: "📥", label: "Mine", placeholder: "support", show: (auth) => supportOnly(auth, "messaging.manage") },
-  { id: "support-unassigned", icon: "🙋", label: "Unassigned", placeholder: "support", show: (auth) => supportOnly(auth, "messaging.manage") },
-  { id: "support-all-open", icon: "📂", label: "All open", placeholder: "support", show: (auth) => supportOnly(auth, "messaging.manage") },
-  { id: "support-past-limit", icon: "⏰", label: "Past time limit", placeholder: "support", show: (auth) => supportOnly(auth, "messaging.manage") },
-  { id: "support-snoozed", icon: "😴", label: "Snoozed", placeholder: "support", show: (auth) => supportOnly(auth, "messaging.manage") },
-  { id: "support-resolved", icon: "✔️", label: "Resolved", placeholder: "support", show: (auth) => supportOnly(auth, "messaging.manage") },
+  { id: "support-mine", icon: "📥", label: "Mine", show: (auth) => supportOnly(auth, "messaging.manage") },
+  { id: "support-unassigned", icon: "🙋", label: "Unassigned", show: (auth) => supportOnly(auth, "messaging.manage") },
+  { id: "support-all-open", icon: "📂", label: "All open", show: (auth) => supportOnly(auth, "messaging.manage") },
+  { id: "support-past-limit", icon: "⏰", label: "Past time limit", show: (auth) => supportOnly(auth, "messaging.manage") },
+  { id: "support-snoozed", icon: "😴", label: "Snoozed", show: (auth) => supportOnly(auth, "messaging.manage") },
+  { id: "support-resolved", icon: "✔️", label: "Resolved", show: (auth) => supportOnly(auth, "messaging.manage") },
   { id: "support-log-call", icon: "☎️", label: "Log a call", show: (auth) => supportOnly(auth, "calls.log") },
   { id: "support-order-status", icon: "🚚", label: "Order status", show: (auth) => supportOnly(auth, "orders.support_update") },
-  { id: "support-canned", icon: "💡", label: "Canned replies", placeholder: "support", show: (auth) => supportOnly(auth, "messaging.manage") },
-  { id: "support-tags", icon: "🏷️", label: "Tags", placeholder: "support", show: (auth) => supportOnly(auth, "messaging.manage") },
+  { id: "support-canned", icon: "💡", label: "Canned replies", show: (auth) => supportOnly(auth, "messaging.manage") },
+  { id: "support-tags", icon: "🏷️", label: "Tags", show: (auth) => supportOnly(auth, "messaging.manage") },
   // Super Admin canvas screens; the ones not built yet are placeholders (see saOnly).
   { id: "invites", icon: "✉️", label: "Invites", show: saOnly },
   { id: "teams-reporting", icon: "🌳", label: "Teams & reporting lines", show: saOnly },

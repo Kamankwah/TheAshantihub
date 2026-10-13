@@ -36,13 +36,14 @@ function Choice({ legend, value, options, onChange, allowClear }) {
 
 const resultButton = { ...button(D.panelBg, D.text), textAlign: "left", width: "100%", display: "flex", flexDirection: "column", gap: 2, padding: "8px 12px" };
 
-// `preset` ({type, id, name, phone_masked}) opens the page with a person already chosen.
+// `preset` ({type, id, name, phone_masked}) opens the page with a person already chosen; `presetLink`
+// ({type, id, label}) with the conversation or order the call is about.
 export default function SupportLogCallPage(props) {
   const [run, setRun] = useState(0);
   return <LogCallForm key={run} {...props} onAnother={() => setRun((r) => r + 1)} />;
 }
 
-function LogCallForm({ onDone, onSeeLog, onAnother, preset = null }) {
+function LogCallForm({ onDone, onSeeLog, onAnother, preset = null, presetLink = null }) {
   const queryClient = useQueryClient();
   const { data: purposes } = useCallPurposes();
   const [form, setForm] = useState({
@@ -52,7 +53,7 @@ function LogCallForm({ onDone, onSeeLog, onAnother, preset = null }) {
   });
   const [who, setWho] = useState(preset ? { type: preset.type, id: preset.id, name: preset.name, sub: preset.phone_masked ? `${preset.phone_masked}` : "" } : null);
   const [q, setQ] = useState("");
-  const [link, setLink] = useState(null); // {type: "messaging.conversation" | "orders.order", id, label}
+  const [link, setLink] = useState(presetLink); // {type: "messaging.conversation" | "orders.order", id, label}
   const [linkQ, setLinkQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
