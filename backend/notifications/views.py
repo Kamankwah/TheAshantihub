@@ -1,3 +1,4 @@
+from django.db.models import Count
 from django.utils import timezone
 from rest_framework import generics
 from rest_framework.exceptions import PermissionDenied
@@ -40,10 +41,24 @@ class NotificationListView(APIView):
             return Response({"unread_count": 0, "results": []})
         qs = Notification.objects.filter(**scope)
         unread_count = qs.filter(is_read=False).count()
+        # The Notification center's filters. Without them this is the bell's
+        # plain list; `kinds` (what the caller has, with counts) is added only
+        # when asked for, so the bell's response stays as it was.
+        params = request.query_params
+        envelope = {}
+        if params.get("kinds") == "1":
+            envelope["kinds"] = list(qs.order_by().values("kind").annotate(total=Count("id")).order_by("kind"))
+        if params.get("kind"):
+            qs = qs.filter(kind__in=[k for k in params["kind"].split(",") if k][:20])
+        if params.get("unread") == "1":
+            qs = qs.filter(is_read=False)
+        if params.get("limit", "").isdecimal() and params["limit"].isascii():
+            qs = qs[: min(int(params["limit"]), 500)]
         return Response(
             {
                 "unread_count": unread_count,
                 "results": NotificationSerializer(qs, many=True).data,
+                **envelope,
             }
         )
 

@@ -19,6 +19,9 @@ from notifications.services import notify_business_owner, notify_customer, notif
 from activity.services import record as record_activity
 from realtime.publish import force_disconnect_on_commit
 
+from staffsecurity import signin as signin_log
+from staffsecurity.models import StaffSignInRecord
+
 from . import claims, kyc, sessions, two_factor
 from .authentication import issue_token
 from .emails import send_staff_invite_email, send_two_factor_changed_email, send_verification_code_email
@@ -322,6 +325,7 @@ def _staff_sign_in_response(account, request, *, two_factor_used=False):
         account, "staff.signed_in", target=account, method="POST", request=request,
         summary="with 2-step sign-in" if two_factor_used else "",
     )
+    signin_log.log(StaffSignInRecord.SIGNED_IN, request, staff=account, two_factor=two_factor_used)
     return {
         "token": token,
         "account_type": "staff",
@@ -357,7 +361,15 @@ class StaffLoginView(generics.GenericAPIView):
 
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            # Sign-in history: a refusal is written the same way whether or not the
+            # address exists, and only a masked form of the address is kept.
+            identifier = request.data.get("identifier") if isinstance(request.data, dict) else ""
+            signin_log.log(
+                StaffSignInRecord.SIGN_IN_FAILED, request, staff=getattr(serializer, "attempted_account", None),
+                identifier=identifier, note=getattr(serializer, "refusal", ""),
+            )
+            serializer.is_valid(raise_exception=True)
         account = serializer.account
         stage = two_factor.challenge_for(account)
         if stage == two_factor.VERIFY:
@@ -376,6 +388,7 @@ class StaffLogoutView(APIView):
         if session is not None:
             sessions.revoke(session, StaffSession.SIGNED_OUT)
         record_activity(request.user, "staff.signed_out", target=request.user, method="POST", request=request)
+        signin_log.log(StaffSignInRecord.SIGNED_OUT, request, staff=request.user)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -1026,7 +1039,9 @@ class StaffReauthView(APIView):
 
     def post(self, request):
         if not check_password(request.data.get("password") or "", request.user.password_hash):
+            signin_log.log(StaffSignInRecord.PASSWORD_REENTRY_FAILED, request, staff=request.user)
             return Response({"password": ["That password isn't right."]}, status=400)
+        signin_log.log(StaffSignInRecord.PASSWORD_REENTERED, request, staff=request.user)
         return Response({"sudo_until": sessions.grant_sudo(sessions.current(request))})
 
 
@@ -1383,6 +1398,7 @@ class StaffLoginTwoFactorView(APIView):
             return Response({"detail": UNREADABLE}, status=400)
         if not ok:
             record_activity(account, two_factor.FAILED_VERB, target=account, method="POST", request=request)
+            signin_log.log(StaffSignInRecord.TWO_STEP_FAILED, request, staff=account, note="Recovery code" if recovery_code else "Authenticator code")
             return Response({"detail": WRONG_CODE}, status=400)
         if recovery_code:
             left = two_factor.status(account)["recovery_codes_left"]
@@ -1482,7 +1498,8 @@ class StaffTwoFactorDisableView(APIView):
 
     def post(self, request):
         if two_factor.is_required(request.user):
-            return Response({"detail": "2-step sign-in can't be turned off for a Super Admin."}, status=400)
+            who = "a Super Admin" if request.user.role.name == "super_admin" else "your role: a Super Admin requires it"
+            return Response({"detail": f"2-step sign-in can't be turned off for {who}."}, status=400)
         two_factor.disable(request.user)
         record_activity(request.user, "staff.two_factor_disabled", target=request.user, method="POST", request=request)
         _email_after_commit(request.user, "2-step sign-in was turned off for your account.")

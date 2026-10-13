@@ -561,15 +561,21 @@ class StaffLoginSerializer(serializers.Serializer):
         account = StaffUser.objects.filter(email=attrs["identifier"]).first()
         password_hash = account.password_hash if account else DUMMY_PASSWORD_HASH
         password_valid = check_password(attrs["password"], password_hash)
+        # Read by StaffLoginView for the sign-in history; never sent to the client.
+        self.attempted_account = account
+        self.refusal = ""
         if account is None or not password_valid:
+            self.refusal = "Wrong password or unknown address"
             raise serializers.ValidationError("Invalid credentials")
         # Only surfaced after valid credentials — never leaks account state to
         # someone who couldn't otherwise sign in (punch-list item 10). Both a
         # temporary suspension and a "no longer works here" deactivation stop
         # login; they carry different copy so the staffer knows which it is.
         if account.is_suspended:
+            self.refusal = "Account suspended"
             raise serializers.ValidationError(SUSPENDED_LOGIN_MESSAGE)
         if not account.is_active:
+            self.refusal = "Account deactivated"
             raise serializers.ValidationError(DEACTIVATED_LOGIN_MESSAGE)
         self.account = account
         return attrs
