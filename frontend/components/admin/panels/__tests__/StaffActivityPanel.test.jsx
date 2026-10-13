@@ -110,4 +110,47 @@ describe('eventDetail', () => {
     expect(eventDetail({ verb: 'kyc-approve', summary: '', after: null })).toEqual({ text: '', flagged: false })
     expect(eventDetail({ verb: 'visit.check_out', summary: '', after: { minutes: 35 } }).text).toBe('35 min on site')
   })
+
+  describe('as the Super Admin audit log', () => {
+    const detailed = (id, over = {}) => event(id, { ip: '154.160.24.91', user_agent: 'Mozilla/5.0 (Windows NT 10.0) Chrome/120.0 Safari/537.36', hash: '9f3c' + 'a'.repeat(56) + 'a41e', prev_hash: '51b0' + 'b'.repeat(56) + '7d2c', on_behalf_of_id: null, ...over })
+
+    it('is titled Audit log, words the seal honestly and searches on the server', async () => {
+      const seen = serve({ events: [detailed(1)], chain: { checked: true, checked_at: '2026-10-13T02:00:00Z', ok: true, events: 1284602, seal_emailed: false } })
+      renderPanel({ superAdmin: true })
+      expect(await screen.findByRole('heading', { name: 'Audit log' })).toBeInTheDocument()
+      expect(await screen.findByText('Chain intact')).toBeInTheDocument()
+      expect(await screen.findByText(/not emailed from this environment/)).toBeInTheDocument()
+      expect(screen.queryByText(/sent off the server/)).not.toBeInTheDocument()
+      fireEvent.change(screen.getByLabelText('Search the log'), { target: { value: 'Adwoa' } })
+      await waitFor(() => expect(seen.at(-1)).toMatchObject({ q: 'Adwoa' }))
+    })
+
+    it('says the seal is emailed only where the server says so', async () => {
+      serve({ events: [detailed(1)], chain: { checked: true, checked_at: '2026-10-13T02:00:00Z', ok: true, events: 10, seal_emailed: true } })
+      renderPanel({ superAdmin: true })
+      expect(await screen.findByText(/seal is emailed to every Super Admin/)).toBeInTheDocument()
+    })
+
+    it('shows device, address and a Done outcome, and opens the seal and before/after for a row', async () => {
+      serve({ events: [detailed(1, { verb: 'targets.limits_set', before: { daily_visits: 8 }, after: { daily_visits: 10 }, summary: 'Changed the visit limit' })] })
+      renderPanel({ superAdmin: true })
+      const row = (await screen.findByText('Changed the visit limit')).closest('tr')
+      expect(row).toHaveTextContent('Chrome on Windows computer · 154.160.24.91')
+      expect(row).toHaveTextContent('Done')
+      fireEvent.click(row)
+      const detail = await screen.findByRole('region', { name: 'Entry detail' })
+      expect(detail).toHaveTextContent('9f3c…a41e')
+      expect(detail).toHaveTextContent('51b0…7d2c')
+      expect(within(detail).getByText('daily_visits').closest('tr')).toHaveTextContent('810')
+    })
+
+    it('offers the System actor and all roles, and drops the Operations scope note', async () => {
+      serve({ events: [detailed(1)] })
+      renderPanel({ superAdmin: true })
+      await screen.findByRole('heading', { name: 'Audit log' })
+      expect(screen.getByRole('option', { name: 'System' })).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: 'Operations' })).toBeInTheDocument()
+      expect(screen.queryByText('What Operations can see here')).not.toBeInTheDocument()
+    })
+  })
 })

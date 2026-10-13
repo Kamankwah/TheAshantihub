@@ -497,6 +497,9 @@ export const handlers = [
   http.get('http://localhost:8000/api/notifications/', () => {
     return HttpResponse.json({ unread_count: 0, results: [] })
   }),
+  // Staff announcements waiting for the signed-in staffer (the banner at the top of every
+  // staff screen asks on mount).
+  http.get('http://localhost:8000/api/announcements/mine/', () => HttpResponse.json([])),
   http.post('http://localhost:8000/api/notifications/:id/read/', ({ params }) => {
     return HttpResponse.json({ id: Number(params.id), is_read: true })
   }),

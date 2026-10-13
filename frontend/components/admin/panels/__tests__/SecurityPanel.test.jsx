@@ -13,9 +13,9 @@ const session = (id, overrides = {}) => ({
 })
 const off = { enabled: false, required: false, enabled_at: null, recovery_codes_left: 0 }
 
-function renderPanel() {
+function renderPanel(props = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(<QueryClientProvider client={queryClient}><SecurityPanel /></QueryClientProvider>)
+  render(<QueryClientProvider client={queryClient}><SecurityPanel {...props} /></QueryClientProvider>)
 }
 
 describe('SecurityPanel', () => {
@@ -55,7 +55,7 @@ describe('SecurityPanel', () => {
 
   it("never offers to turn it off for a Super Admin", async () => {
     server.use(http.get('http://localhost:8000/api/accounts/staff/two-factor/', () => HttpResponse.json({ enabled: true, required: true, enabled_at: '2026-10-02T08:00:00Z', recovery_codes_left: 9 })))
-    renderPanel()
+    renderPanel({ isSuperAdmin: true })
     expect(await screen.findByText(/Recovery codes left: 9 of 10/)).toBeInTheDocument()
     expect(screen.getByText("2-step sign-in can't be turned off for a Super Admin.")).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Turn off' })).not.toBeInTheDocument()
@@ -141,5 +141,58 @@ describe('SecurityPanel', () => {
     // Ended rows never get an End button.
     expect(screen.queryByRole('button', { name: 'End the session on Firefox on Linux computer' })).not.toBeInTheDocument()
   })
-})
 
+  it('says a Super Admin requires it when a role is required by policy', async () => {
+    server.use(http.get('http://localhost:8000/api/accounts/staff/two-factor/', () => HttpResponse.json({ enabled: true, required: true, enabled_at: '2026-10-02T08:00:00Z', recovery_codes_left: 9 })))
+    renderPanel()
+    expect(await screen.findByText(/a Super Admin requires it for your role/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Turn off' })).not.toBeInTheDocument()
+  })
+
+  describe('Security settings for a Super Admin', () => {
+    const policy = (over = {}) => ({
+      roles: [
+        { name: 'super_admin', label: 'Super Admin', people: 1, using: 1, required: true, locked: true },
+        { name: 'support', label: 'Support', people: 4, using: 1, required: false, locked: false },
+        { name: 'scout', label: 'Scout', people: 9, using: 0, required: false, locked: false },
+      ],
+      limits: { idle_minutes: 30, absolute_hours: 12, password_window_minutes: 10 },
+      password_protected: [{ title: 'Approving money', body: 'Approving a request that moves money.' }],
+      updated_at: null, updated_by: null, other_super_admins: 0, ...over,
+    })
+
+    it('shows the fixed limits and the people using 2-step, with no control for what cannot change', async () => {
+      server.use(http.get('http://localhost:8000/api/staff-security/policy/', () => HttpResponse.json(policy())))
+      renderPanel({ isSuperAdmin: true })
+      expect(await screen.findByText(/Signed out after/)).toHaveTextContent('30 minutes')
+      expect(screen.getByText(/Signed out after/)).toHaveTextContent('12 hours')
+      expect(screen.getByText(/cannot be changed here/)).toBeInTheDocument()
+      expect(screen.getByText('2 of 14 active people use it today.')).toBeInTheDocument()
+      expect(screen.getByText('Always')).toBeInTheDocument()
+      expect(screen.getByText(/One password check covers 10 minutes/)).toBeInTheDocument()
+      expect(screen.getByText(/Approving a request that moves money/)).toBeInTheDocument()
+    })
+
+    it('saves the chosen roles and keeps Save off until something changed', async () => {
+      let saved = null
+      server.use(
+        http.get('http://localhost:8000/api/staff-security/policy/', () => HttpResponse.json(policy())),
+        http.patch('http://localhost:8000/api/staff-security/policy/', async ({ request }) => { saved = await request.json(); return HttpResponse.json(policy()) }),
+      )
+      renderPanel({ isSuperAdmin: true })
+      const save = await screen.findByRole('button', { name: 'Save changes' })
+      expect(save).toBeDisabled()
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Require 2-step sign-in for Scout' }))
+      expect(save).toBeEnabled()
+      fireEvent.click(save)
+      await waitFor(() => expect(saved).toEqual({ two_factor_roles: ['scout'] }))
+      expect(await screen.findByText(/Saved\. The change applies at each person/)).toBeInTheDocument()
+    })
+
+    it('is not shown to anyone else', async () => {
+      renderPanel()
+      await screen.findByText('Your sessions')
+      expect(screen.queryByText('Who must use 2-step sign-in')).not.toBeInTheDocument()
+    })
+  })
+})

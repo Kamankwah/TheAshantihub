@@ -89,6 +89,12 @@ import SaEventsPanel from "./panels/SaEventsPanel.jsx";
 import SaDisputesPanel from "./panels/SaDisputesPanel.jsx";
 import TeamReportsPanel from "./panels/TeamReportsPanel.jsx";
 import SecurityPanel from "./panels/SecurityPanel.jsx";
+import SignInHistoryPanel from "./panels/SignInHistoryPanel.jsx";
+import DataExportsLogPanel from "./panels/DataExportsLogPanel.jsx";
+import FraudAlertsPanel from "./panels/FraudAlertsPanel.jsx";
+import NotificationCenterPanel from "./panels/NotificationCenterPanel.jsx";
+import StaffAnnouncementsPanel from "./panels/StaffAnnouncementsPanel.jsx";
+import AnnouncementBanner from "./shell/AnnouncementBanner.jsx";
 import SessionsPanel from "./panels/SessionsPanel.jsx";
 import RegisterBusinessPanel, { clearRegisterDrafts } from "./panels/RegisterBusinessPanel.jsx";
 import SudoPrompt from "./SudoPrompt.jsx";
@@ -336,6 +342,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
         }}>✓ Saved!</div>}
 
         <main className="staff-content" style={{ padding: isPhone ? "16px 12px calc(88px + env(safe-area-inset-bottom, 0px))" : "22px 20px 72px" }}>
+          <AnnouncementBanner />
           {activeTab === "overview" && role !== "cosigner" && (role === "scout"
             ? <ScoutTodayPanel auth={auth} onNavigate={selectTab} onCheckIn={openCheckInScreen} onRegister={() => selectTab("register-business")} onSeeApprovals={openMadeApprovals} onOpenBusiness={openMyBusiness} />
             : role === "super_admin"
@@ -371,7 +378,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "tasks" && (role === "scout"
             ? <FollowUpsPanel onOpenBusiness={openMyBusiness} onOpenProspects={() => selectTab("prospects")} leadName={leadName} />
             : <TasksPanel auth={auth} />)}
-          {activeTab === "activity" && (role === "operations" || role === "super_admin" ? <StaffActivityPanel live={live.live} /> : <ActivityPanel />)}
+          {activeTab === "activity" && (role === "operations" || role === "super_admin" ? <StaffActivityPanel live={live.live} superAdmin={role === "super_admin"} /> : <ActivityPanel />)}
           {activeTab === "visit-map" && <TeamVisitMapPanel onOpenBusiness={openBusiness} />}
           {activeTab === "calls" && <CallLogPanel auth={auth} />}
           {activeTab === "prospects" && <ProspectsPanel onRegister={openRegisterFromProspect} />}
@@ -394,7 +401,11 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "refunds" && <RefundsPanel />}
           {activeTab === "growth-funnel" && <GrowthFunnelPanel />}
           {activeTab === "scheduled-exports" && <ScheduledExportsPanel />}
-          {activeTab === "security" && <SecurityPanel />}
+          {activeTab === "security" && <SecurityPanel isSuperAdmin={role === "super_admin"} />}
+          {activeTab === "sign-in-history" && <SignInHistoryPanel />}
+          {activeTab === "data-exports-log" && <DataExportsLogPanel />}
+          {activeTab === "notification-center" && <NotificationCenterPanel onNavigate={selectTab} knownScreens={new Set(navGroups.flatMap((g) => g.items.map((i) => i.id)))} />}
+          {activeTab === "staff-announcements" && <StaffAnnouncementsPanel />}
           {activeTab === "sessions" && <SessionsPanel auth={auth} />}
           {activeTab === "invites" && <MyTeamPanel currentStaffId={auth.user?.id} />}
           {activeTab === "my-team" && (role === "operations" ? <InvitePanel auth={auth} /> : <MyTeamPanel currentStaffId={auth.user?.id} />)}
@@ -407,7 +418,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "all-portfolios" && role !== "super_admin" && <PortfolioPanel key={scoutFilter ?? "any"} mode="all" initialScout={scoutFilter} auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
           {activeTab === "at-risk" && <PortfolioPanel mode="at-risk" auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
           {activeTab === "subscriptions-due" && <SubscriptionsDuePanel auth={auth} onOpenBusiness={openBusiness} />}
-          {activeTab === "fraud-cases" && <FraudCasesPanel auth={auth} onOpenBusiness={openBusiness} />}
+          {activeTab === "fraud-cases" && (role === "super_admin" ? <FraudAlertsPanel auth={auth} onOpenBusiness={openBusiness} /> : <FraudCasesPanel auth={auth} onOpenBusiness={openBusiness} />)}
           {activeTab === "register-business" && <RegisterBusinessPanel auth={auth} detailId={detail} onOpenDetail={openDetail} />}
         </main>
       </div>

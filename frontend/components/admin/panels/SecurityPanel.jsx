@@ -7,6 +7,7 @@ import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { RecoveryCodes, TwoFactorSetup } from "../TwoFactorSetup.jsx";
 import { D, glassCard } from "../theme.js";
 import { button, chip, dim } from "./panelStyles.js";
+import SecurityPolicySection from "./SecurityPolicySection.jsx";
 import { SignInHistory, when } from "./sessionParts.jsx";
 
 const heading = { color: D.text, fontWeight: 800, fontSize: "0.95rem", margin: 0 };
@@ -15,7 +16,8 @@ const KEYS = [["my-sessions"], ["active-sessions"], ["two-factor"]];
 
 // Sign-in & Security (F9) for every staffer: their own sessions and their
 // 2-step sign-in. Sensitive steps ask for the password through SudoPrompt.
-export default function SecurityPanel() {
+// `isSuperAdmin` adds the firm-wide settings (Super Admin 14) under the person's own.
+export default function SecurityPanel({ isSuperAdmin = false }) {
   const queryClient = useQueryClient();
   const { data: sessions, isLoading, isError } = useMySessions();
   const { data: twoFactor, isLoading: twoFactorLoading, isError: twoFactorError } = useTwoFactorStatus();
@@ -107,7 +109,7 @@ export default function SecurityPanel() {
               <button type="button" disabled={busy} onClick={() => run(async () => setCodes((await apiPost("/api/accounts/staff/two-factor/recovery-codes/", {})).recovery_codes), null, "Could not make new codes.")} style={button(D.panelBg, D.text, busy)}>Make new recovery codes</button>
               {!twoFactor.required && <button type="button" disabled={busy} onClick={() => run(() => apiPost("/api/accounts/staff/two-factor/disable/", {}), "2-step sign-in is off.", "Could not turn it off.")} style={button(D.panelBg, D.red, busy)}>Turn off</button>}
             </div>
-            {twoFactor.required && <div style={dim}>2-step sign-in can't be turned off for a Super Admin.</div>}
+            {twoFactor.required && <div style={dim}>{isSuperAdmin ? "2-step sign-in can't be turned off for a Super Admin." : "2-step sign-in can't be turned off: a Super Admin requires it for your role."}</div>}
             <div style={dim}>Making new codes cancels the old ones.</div>
           </>
         ) : (
@@ -119,6 +121,8 @@ export default function SecurityPanel() {
         {message && <div role="status" style={{ color: D.text, fontSize: "0.8rem" }}>{message}</div>}
         {actionError && !setup && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>{actionError}</div>}
       </section>
+
+      {isSuperAdmin && <SecurityPolicySection />}
     </div>
   );
 }
