@@ -6,7 +6,7 @@ instead of showing a number. Nothing is estimated or filled in."""
 from datetime import timedelta
 from decimal import Decimal
 
-from django.db.models import Min, Sum
+from django.db.models import Count, Min, Sum
 from django.utils import timezone
 
 from approvals.models import ApprovalRequest
@@ -15,6 +15,7 @@ from events.models import Event
 from listings.models import HeroMediaSubmission, Promotion
 
 from . import policy as policy_rules
+from . import promos
 
 PERIODS = (7, 30)
 
@@ -71,8 +72,14 @@ def messages_section(since, until):
 
 
 def opt_ins_section(since, until):
-    """Net new opt-ins from the consent ledger. Filled by the consent package."""
-    return {"state": NOT_TRACKED, "note": "No opt-ins recorded yet. Opt-in appears on sign-up and Settings."}
+    """Net new opt-ins from the consent ledger: lines added in the window (a person who ticks then stops counts once each way)."""
+    from .models_consent import ConsentRecord
+
+    rows = ConsentRecord.objects.filter(at__gte=since, at__lte=until)
+    joined, left = rows.filter(status=ConsentRecord.OPTED_IN).count(), rows.filter(status=ConsentRecord.OPTED_OUT).count()
+    if not ConsentRecord.objects.exists():
+        return {"state": NOT_TRACKED, "note": "No opt-ins recorded yet. Opt-in appears on sign-up and Settings."}
+    return {"state": "ok", "joined": joined, "left": left, "net": joined - left}
 
 
 def orders_section(since, until):
@@ -81,8 +88,19 @@ def orders_section(since, until):
 
 
 def coupons_section(since, until):
-    """Coupon redemptions and discount cost. Filled by the coupons package."""
-    return {"state": NOT_TRACKED, "note": "No coupons yet."}
+    """Coupon redemptions and discount cost, from real redemptions only."""
+    from .models_promos import Coupon, CouponRedemption
+
+    if not Coupon.objects.exists():
+        return {"state": NOT_TRACKED, "note": "No coupons yet."}
+    rows = CouponRedemption.objects.filter(released_at__isnull=True, created_at__gte=since, created_at__lte=until)
+    totals = rows.aggregate(n=Count("id"), cost=Sum("amount"))
+    live = [c for c in Coupon.objects.filter(status=Coupon.ACTIVE) if c.effective_status() == Coupon.ACTIVE]
+    return {
+        "state": "ok", "live": len(live), "redeemed": totals["n"] or 0, "cost": _money(totals["cost"]),
+        "waiting": Coupon.objects.filter(status=Coupon.WAITING).count(),
+        "note": "" if promos.enabled() else "Checkout promotions are switched off, so no code can be used yet.",
+    }
 
 
 def banners_section(since, until):
@@ -101,9 +119,15 @@ def banners_section(since, until):
 
 def scheduled_next(until_days=14):
     """Campaigns, flash sales and banners coming up. Each package adds its own entries."""
+    from .models_promos import FlashSale
+
+    now = timezone.now()
+    out = []
+    for sale in FlashSale.objects.filter(status__in=(FlashSale.SCHEDULED, FlashSale.WAITING), starts_at__gte=now, starts_at__lte=now + timedelta(days=until_days)).order_by("starts_at"):
+        out.append({"at": sale.starts_at, "kind": "flash_sale", "what": f"Flash sale: {sale.name}", "status": "Scheduled" if sale.status == FlashSale.SCHEDULED else "Waiting for sellers",
+                    "tone": "ok" if sale.status == FlashSale.SCHEDULED else "warn"})
     from . import banners as banner_rules
 
-    out = []
     out.extend(banner_rules.upcoming(until_days))
     return out
 

@@ -415,8 +415,8 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
               : <OverviewPanel auth={auth} roleColor={roleColor} onNavigate={selectTab} />)}
           {activeTab === "kyc" && <KYCQueuePanel auth={auth} />}
           {activeTab === "moderation" && (role === "super_admin" ? <SaListingsPanel auth={auth} onOpenBusiness={openBusiness} /> : <ListingsModerationPanel />)}
-          {activeTab === "hero" && <HeroApprovalPanel />}
-          {activeTab === "events-moderation" && (role === "super_admin" ? <SaEventsPanel /> : <EventsModerationPanel />)}
+          {activeTab === "hero" && <HeroApprovalPanel auth={auth} />}
+          {activeTab === "events-moderation" && (role === "super_admin" ? <SaEventsPanel /> : <EventsModerationPanel auth={auth} />)}
           {activeTab === "event-pricing" && <EventPricingPanel auth={auth} />}
           {activeTab === "reviews" && <ReviewsModerationPanel auth={auth} />}
           {activeTab === "subscription-plans" && <SubscriptionPlansManagePanel />}
@@ -438,7 +438,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "delivery-coordination" && <DeliveryManagerPanel />}
           {activeTab === "my-deliveries" && <DispatchPanel />}
           {activeTab === "promotions" && <PromotionsPanel auth={auth} />}
-          {activeTab === "analytics" && (role === "super_admin" ? <SaAnalyticsPanel /> : <AnalyticsPanel />)}
+          {activeTab === "analytics" && (role === "super_admin" ? <SaAnalyticsPanel /> : <AnalyticsPanel auth={auth} />)}
           {activeTab === "messaging" && <MessagingPanel />}
           {activeTab === "tasks" && (role === "scout"
             ? <FollowUpsPanel onOpenBusiness={openMyBusiness} onOpenProspects={() => selectTab("prospects")} leadName={leadName} />

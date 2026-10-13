@@ -3,6 +3,7 @@ import { apiPost, apiPatch, apiDelete } from "../../../apiClient.js";
 import { useCategories } from "../../../hooks/useCategories.js";
 import { useZones } from "../../../hooks/useZones.js";
 import { D, glassCard } from "../theme.js";
+import CategoriesMarketing from "./marketing/CategoriesMarketing.jsx";
 
 // Category "kind" choices staff pick from. Accommodation is surfaced as its
 // own first-class option here even though it isn't a distinct backend `kind`
@@ -52,6 +53,12 @@ function slugify(label) {
 }
 
 export default function CategoriesZonesPanel({ auth }) {
+  // Marketing manages the categories half only; zones stay with Operations (canvas 21).
+  if (auth?.user?.role === "marketing") return <CategoriesMarketing auth={auth} />;
+  return <CategoriesAndZones auth={auth} />;
+}
+
+function CategoriesAndZones({ auth }) {
   const categories = useCategories();
   const zones = useZones();
   const canManageCategories = auth.hasPermission("categories.manage");

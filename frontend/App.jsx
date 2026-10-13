@@ -32,6 +32,8 @@ import Flag from "./components/Flag.jsx";
 import Navbar from "./components/Navbar.jsx";
 import Hero from "./components/Hero.jsx";
 import HeroCarousel from "./components/HeroCarousel.jsx";
+import SiteBanner from "./components/SiteBanner.jsx";
+import FeaturedRow from "./components/FeaturedRow.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 import ListingDetailPage from "./components/ListingDetailPage.jsx";
 import ChatLauncher from "./components/ChatLauncher.jsx";
@@ -51,6 +53,7 @@ import BusinessClaimPage from "./components/BusinessClaimPage.jsx";
 import MarketingConsentCard from "./components/MarketingConsentCard.jsx";
 import UnsubscribePage from "./components/UnsubscribePage.jsx";
 import CartDrawer from "./components/CartDrawer.jsx";
+import FlashPriceTag from "./components/FlashPriceTag.jsx";
 import EventHeroCarousel from "./components/EventHeroCarousel.jsx";
 import EventCard, { formatEventDate } from "./components/EventCard.jsx";
 import EventDetailPage from "./components/EventDetailPage.jsx";
@@ -1080,6 +1083,7 @@ export function Card({item,accentColor,user,favourites,onFavourite,currency,onMe
         )}
         <div style={{fontSize:"0.68rem",color:"rgba(255,255,255,0.6)",marginBottom:4}}>📍 {item.zone?.name}</div>
         <div style={{color:"rgba(255,255,255,0.75)",fontSize:"0.75rem",marginBottom:10,lineHeight:1.4}}>{item.description}</div>
+        <FlashPriceTag listingId={item.id}/>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6,flexWrap:"wrap"}}>
           <span style={{fontWeight:800,color:accentColor,fontSize:"0.8rem"}}>{displayPrice()}</span>
           <div style={{display:"flex",gap:5}}>
@@ -3157,12 +3161,15 @@ export default function AshantiHub() {
 
       {page==="home"&&(
         <>
+          <SiteBanner slot="home_hero" onNavigate={navigate}/>
           <Hero
             T={T}
             user={user}
             setAuthModal={setAuthModal}
             setPage={setPage}
           />
+          <FeaturedRow onOpen={(id)=>setSelectedListingId(id)}/>
+          <SiteBanner slot="home_strip" onNavigate={navigate}/>
 
           {/* Referral program hidden for now — not yet implemented (no real
               referral tracking/credit). Re-enable once it's built properly. */}
@@ -3183,6 +3190,8 @@ export default function AshantiHub() {
               detail (the checkout view) is open, so the detail page isn't
               pushed down below the full-viewport hero. */}
           {!selectedListingId && (<>
+          {filters.category&&<SiteBanner slot="category_top" category={filters.category} onNavigate={navigate}/>}
+          {filters.category&&<FeaturedRow category={filters.category} onOpen={(id)=>setSelectedListingId(id)}/>}
           {/* Hero carousel — approved/non-expired hero-media submissions
               (docs/BUSINESS_EVENTS_ROADMAP.md Phase 2/3). Renders nothing when
               there are none active, so it never leaves a disruptive empty gap. */}
@@ -3385,6 +3394,7 @@ export default function AshantiHub() {
           {/* Hero + browse chrome only on the grid view — hidden when an event
               detail is open, so it isn't pushed down below the full hero. */}
           {!selectedEventId && (<>
+          <SiteBanner slot="events_top" onNavigate={navigate}/>
           <EventHeroCarousel onOpen={(id)=>setSelectedEventId(id)}/>
 
           <div style={{background:C.void,borderBottom:`1.5px solid ${C.gold}30`,padding:"10px 16px",textAlign:"center"}}>

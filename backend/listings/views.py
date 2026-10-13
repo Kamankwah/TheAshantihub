@@ -21,12 +21,22 @@ from accounts.views import IsBusinessOwner
 from billing.models import Transaction
 from notifications.services import notify_business_owner, notify_staff_role
 
+from .moderation_checks import (
+    CONTACT_DETAILS_MESSAGE,
+    blocking_failures,
+    fraud_hold_message,
+    hero_checks,
+    open_fraud_flag,
+    open_fraud_flags,
+)
 from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, Promotion, Zone
 from .permissions import IsHeroMediaOwner, IsListingOwner, IsListingPhotoOwner
 from .serializers import (
     CategorySerializer,
+    CategoryStaffSerializer,
     HeroActiveSerializer,
     HeroMediaModerationSerializer,
+    HeroMediaStaffSerializer,
     HeroSubmitSerializer,
     ListingPhotoSerializer,
     ModerationListingSerializer,
@@ -87,6 +97,22 @@ class CategoryListView(generics.ListCreateAPIView):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
 
+    def _is_staff_read(self):
+        from accounts.models import StaffUser
+
+        return self.request.method == "GET" and isinstance(self.request.user, StaffUser)
+
+    def get_serializer_class(self):
+        return CategoryStaffSerializer if self._is_staff_read() else CategorySerializer
+
+    def get_queryset(self):
+        if self._is_staff_read():
+            # Usage counts for the staff Categories screen, in the same query.
+            return Category.objects.annotate(
+                listing_count=Count("listings", distinct=True), event_count=Count("events", distinct=True),
+            )
+        return Category.objects.all()
+
     def get_permissions(self):
         if self.request.method == "POST":
             return [HasRolePermission("categories.manage")]
@@ -113,12 +139,17 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
     def destroy(self, request, *args, **kwargs):
         category = self.get_object()
         listing_count = category.listings.count()
-        if listing_count:
-            noun = "listing" if listing_count == 1 else "listings"
+        event_count = category.events.count()
+        if listing_count or event_count:
+            parts = []
+            if listing_count:
+                parts.append(f"{listing_count} {'listing' if listing_count == 1 else 'listings'}")
+            if event_count:
+                parts.append(f"{event_count} {'event' if event_count == 1 else 'events'}")
             return Response(
                 {
                     "detail": (
-                        f"{listing_count} {noun} use this category. Reassign or "
+                        f"{' and '.join(parts)} use this category. Reassign or "
                         "remove them before deleting it."
                     )
                 },
@@ -840,9 +871,9 @@ HERO_STATUS_MAP = {
 class HeroPendingQueueView(generics.ListAPIView):
     """Clones ModerationPendingQueueView's shape for hero-media submissions,
     including the `?status=` three-state param (staff moderation-queue
-    restructuring)."""
+    restructuring). Pending rows carry the server-computed `checks`."""
 
-    serializer_class = HeroMediaModerationSerializer
+    serializer_class = HeroMediaStaffSerializer
 
     def get_permissions(self):
         return [HasRolePermission("hero_media.approve")]
@@ -850,7 +881,9 @@ class HeroPendingQueueView(generics.ListAPIView):
     def get_queryset(self):
         tab = self.request.query_params.get("status", "pending")
         hero_status = HERO_STATUS_MAP.get(tab, HeroMediaSubmission.PENDING)
-        queryset = HeroMediaSubmission.objects.filter(status=hero_status)
+        queryset = HeroMediaSubmission.objects.filter(status=hero_status).select_related(
+            "business_owner__subscription__plan", "listing", "reviewed_by__role",
+        ).prefetch_related("listing__photos")
         if hero_status == HeroMediaSubmission.PENDING:
             return queryset.order_by("submitted_at")
         return queryset.order_by("-reviewed_at", "-submitted_at")
@@ -858,7 +891,7 @@ class HeroPendingQueueView(generics.ListAPIView):
 
 class HeroMediaDetailView(generics.RetrieveAPIView):
     queryset = HeroMediaSubmission.objects.all()
-    serializer_class = HeroMediaModerationSerializer
+    serializer_class = HeroMediaStaffSerializer
 
     def get_permissions(self):
         return [HasRolePermission("hero_media.approve")]
@@ -870,6 +903,13 @@ class HeroApproveView(APIView):
 
     def post(self, request, pk):
         submission = generics.get_object_or_404(HeroMediaSubmission, pk=pk)
+        # The no-direct-contact rule is enforced here, not only on the screen.
+        blocked = blocking_failures(hero_checks(submission))
+        if blocked:
+            return Response(
+                {"detail": CONTACT_DETAILS_MESSAGE, "code": "contact_details_in_caption", "checks": blocked},
+                status=400,
+            )
         now = timezone.now()
         hero_days = _hero_days_for(submission.business_owner)
         submission.status = HeroMediaSubmission.APPROVED
@@ -914,6 +954,29 @@ class HeroRejectView(APIView):
             link="/business-dashboard", icon="⚠️",
         )
         return Response({"id": submission.id, "status": submission.status})
+
+
+class HeroMyDecisionsView(generics.ListAPIView):
+    """GET /api/listings/hero/my-decisions/ — the calling staff member's own
+    most recent hero decisions (approved or rejected), newest first (canvas 14,
+    "recent decisions by you")."""
+
+    serializer_class = HeroMediaStaffSerializer
+    pagination_class = None
+    LIMIT = 10
+
+    def get_permissions(self):
+        return [HasRolePermission("hero_media.approve")]
+
+    def get_queryset(self):
+        return (
+            HeroMediaSubmission.objects.filter(
+                reviewed_by=self.request.user,
+                status__in=[HeroMediaSubmission.APPROVED, HeroMediaSubmission.REJECTED],
+            )
+            .select_related("business_owner", "listing", "reviewed_by__role")
+            .order_by("-reviewed_at", "-id")[: self.LIMIT]
+        )
 
 
 class HeroReReviewView(APIView):
@@ -1049,7 +1112,17 @@ class PromotionAdminListView(generics.ListAPIView):
         return [HasRolePermission("promotions.manage")]
 
     def get_queryset(self):
-        return _promotions_for_tab(self.request.query_params.get("status", "pending"))
+        return _promotions_for_tab(self.request.query_params.get("status", "pending")).select_related(
+            "listing__business_owner__subscription__plan",
+        )
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        if self.request.query_params.get("status", "pending") == "pending":
+            # One query for every open fraud case on the page's owners (no N+1).
+            owners = {p.listing.business_owner_id for p in self.get_queryset()}
+            context["fraud_flags"] = open_fraud_flags(owners)
+        return context
 
 
 class PromotionApproveView(APIView):
@@ -1063,11 +1136,23 @@ class PromotionApproveView(APIView):
         return [HasRolePermission("promotions.manage")]
 
     def post(self, request, pk):
-        promotion = generics.get_object_or_404(Promotion, pk=pk)
-        if promotion.status != Promotion.PENDING:
-            return Response(
-                {"detail": "Only a pending promotion can be approved."}, status=400
+        with db_transaction.atomic():
+            promotion = generics.get_object_or_404(
+                Promotion.objects.select_for_update(of=("self",)).select_related("listing__business_owner"), pk=pk
             )
+            if promotion.status != Promotion.PENDING:
+                return Response(
+                    {"detail": "Only a pending promotion can be approved."}, status=400
+                )
+            # An open fraud case on the owner holds the promotion until it is decided.
+            flag = open_fraud_flag(promotion.listing.business_owner_id)
+            if flag is not None:
+                return Response(
+                    {"detail": fraud_hold_message(flag), "code": "fraud_hold"}, status=409
+                )
+            return self._approve(promotion)
+
+    def _approve(self, promotion):
         now = timezone.now()
         duration = promotion.ends_at - promotion.starts_at
         promotion.starts_at = now

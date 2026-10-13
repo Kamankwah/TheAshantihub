@@ -46,6 +46,8 @@ export const handlers = [
   // Site settings / footer content (docs/UI_MODERNIZATION_ROADMAP.md Phase B)
   // — default handlers, overridden per-test via server.use() where a
   // specific settings state/response is needed.
+  // Checkout promotions are off by default (MARKETING_PROMOS_ENABLED): the public site shows nothing.
+  http.get('http://localhost:8000/api/marketing/promos/public/', () => HttpResponse.json({ enabled: false, flash_sales: [] })),
   http.get('http://localhost:8000/api/core/site-settings/', () => {
     return HttpResponse.json({
       contact_email: '', contact_phone: '', contact_address: '',

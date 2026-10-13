@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { C, CURRENCIES } from "../theme.js";
 import { useCart } from "../hooks/useCart.js";
 import { apiPatch, apiPost, apiDelete } from "../apiClient.js";
+import { quoteCart, usePublicPromos } from "../hooks/usePublicPromos.js";
 import { useStaffGate } from "../hooks/useStaffGate.js";
 import LocationPicker from "./LocationPicker.jsx";
 import StaffGateNotice from "./StaffGateNotice.jsx";
@@ -63,6 +64,29 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
 
   const items = cart?.items || [];
 
+  // Checkout promotions (flash-sale prices and a coupon code) exist only while the owner has switched
+  // them on; with the switch off none of this renders and the cart is exactly as before.
+  const { data: promos } = usePublicPromos();
+  const promosOn = !!promos?.enabled;
+  const [couponInput, setCouponInput] = useState("");
+  const [appliedCode, setAppliedCode] = useState("");
+  const [quote, setQuote] = useState(null);
+  const [quoting, setQuoting] = useState(false);
+  const cartSignature = items.map((i) => `${i.id}:${i.quantity}`).join(",");
+  useEffect(() => {
+    if (!promosOn || items.length === 0) { setQuote(null); return; }
+    let live = true;
+    setQuoting(true);
+    quoteCart({ coupon_code: appliedCode, delivery_phone: deliveryMethod === "door_to_door" ? deliveryPhone : "" })
+      .then((q) => { if (live) { setQuote(q); setCouponError(q.coupon_error || ""); if (q.coupon_error) setAppliedCode(""); } })
+      .catch(() => { if (live) setQuote(null); })
+      .finally(() => { if (live) setQuoting(false); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [promosOn, cartSignature, appliedCode]);
+  const shownTotal = promosOn && quote?.total ? quote.total : cart?.total;
+  const [couponError, setCouponError] = useState("");
+
   const formatAmount = (amount) => {
     const value = parseFloat(amount) || 0;
     if (currency === "GHS") return `GHS ${value.toFixed(2)}`;
@@ -104,6 +128,7 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
         delivery_method: deliveryMethod,
         delivery_address: deliveryAddress,
         delivery_phone: deliveryPhone,
+        ...(promosOn && appliedCode ? { coupon_code: appliedCode } : {}),
         // Only sent when the customer dropped a pin — the backend treats
         // missing coords as "no pin", the dispatch map then falls back to the
         // text address.
@@ -137,6 +162,32 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
     setOrder(null);
     setCheckoutError(null);
     setStep("cart");
+  };
+
+  // Coupon box and the flash-sale notes; renders nothing while checkout promotions are off.
+  const PromoBlock = () => {
+    if (!promosOn) return null;
+    return (
+      <div style={{ marginBottom: 10 }}>
+        {quote?.notes?.map((n) => <div key={n} style={{ fontSize: "0.68rem", color: "#555", marginBottom: 4 }}>{n}</div>)}
+        {quote?.lines?.some((l) => l.flash_sale) && <div style={{ fontSize: "0.68rem", color: "#555", marginBottom: 4 }}>Flash-sale prices are applied at checkout. Coupons don't apply to them.</div>}
+        {quote?.coupon ? (
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.74rem", color: C.darkBrown, marginBottom: 6 }}>
+            <span>Coupon {quote.coupon.code}: − {formatAmount(quote.coupon.discount)}</span>
+            <button type="button" onClick={() => { setAppliedCode(""); setCouponInput(""); }} style={{ background: "none", border: "none", color: C.kente1, cursor: "pointer", fontSize: "0.7rem", fontWeight: 700 }}>Remove</button>
+          </div>
+        ) : (
+          <div style={{ display: "flex", gap: 6 }}>
+            <label style={{ flex: 1 }}>
+              <span style={{ position: "absolute", left: -9999 }}>Coupon code</span>
+              <input value={couponInput} onChange={(e) => { setCouponInput(e.target.value); setCouponError(""); }} placeholder="Coupon code" style={{ width: "100%", padding: "8px 10px", borderRadius: 10, border: "1.5px solid #e0e0e0", fontSize: "0.76rem", fontFamily: "inherit", boxSizing: "border-box" }} />
+            </label>
+            <button type="button" disabled={!couponInput.trim() || quoting} onClick={() => setAppliedCode(couponInput.trim())} style={{ background: "#f0f0f0", color: C.darkBrown, border: "none", borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}>Apply</button>
+          </div>
+        )}
+        {couponError && <div role="alert" style={{ color: "#dc2626", fontSize: "0.7rem", marginTop: 4 }}>{couponError}</div>}
+      </div>
+    );
   };
 
   return (
@@ -207,8 +258,9 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
               <div style={{ padding: "14px 16px", borderTop: "1px solid #f0f0f0" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem", fontWeight: 800, color: C.darkBrown, marginBottom: 10 }}>
                   <span>Total</span>
-                  <span>{formatAmount(cart?.total)}</span>
+                  <span>{formatAmount(shownTotal)}</span>
                 </div>
+                <PromoBlock />
                 <button
                   onClick={() => { if (staffGate.blocked()) return; setStep("confirm"); }}
                   style={{ width: "100%", background: C.gold, color: C.darkBrown, border: "none", borderRadius: 24, padding: "11px", fontWeight: 900, fontSize: "0.82rem", cursor: "pointer", fontFamily: "inherit" }}
@@ -230,8 +282,11 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
             ))}
             <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 900, color: C.kente2, fontSize: "0.9rem", borderTop: "1px solid #eee", paddingTop: 8, marginTop: 8, marginBottom: 14 }}>
               <span>Total</span>
-              <span>{formatAmount(cart?.total)}</span>
+              <span>{formatAmount(shownTotal)}</span>
             </div>
+            {promosOn && quote?.coupon && (
+              <div style={{ fontSize: "0.72rem", color: "#555", margin: "-8px 0 12px" }}>Includes coupon {quote.coupon.code}: − {formatAmount(quote.coupon.discount)}</div>
+            )}
 
             {/* Delivery method (Wave F) */}
             <div style={{ fontWeight: 800, color: C.darkBrown, fontSize: "0.78rem", marginBottom: 8 }}>How would you like it?</div>
@@ -274,7 +329,7 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={() => setStep("cart")} style={{ flex: 1, background: "#f0f0f0", color: "#666", border: "none", borderRadius: 20, padding: "10px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>← Back</button>
               <button
-                onClick={() => { if (staffGate.blocked()) return; setCheckoutAmount(parseFloat(cart?.total) || 0); setShowPayment(true); }}
+                onClick={() => { if (staffGate.blocked()) return; setCheckoutAmount(parseFloat(shownTotal) || 0); setShowPayment(true); }}
                 disabled={!doorToDoorReady}
                 style={{ flex: 2, background: doorToDoorReady ? C.kente2 : "#ccc", color: "white", border: "none", borderRadius: 20, padding: "10px", fontWeight: 900, cursor: doorToDoorReady ? "pointer" : "not-allowed", fontFamily: "inherit" }}
               >

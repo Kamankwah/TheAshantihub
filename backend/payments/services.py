@@ -69,6 +69,11 @@ def _fail_order_checkout(session):
         if listing.stock_quantity is not None:
             listing.stock_quantity += reservation["quantity"]
             listing.save(update_fields=["stock_quantity"])
+    if meta.get("promos"):
+        # Priced with checkout promotions on: give the coupon use back and free the sale stock.
+        from marketing.checkout import release_order
+
+        release_order(meta["order_id"])
     session.metadata = {**meta, "rolled_back": True}
     session.save(update_fields=["metadata", "updated_at"])
 

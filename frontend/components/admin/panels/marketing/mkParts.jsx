@@ -79,3 +79,36 @@ export function ageWord(iso) {
   if (minutes < 60 * 48) return `${Math.floor(minutes / 60)} h`;
   return `${Math.floor(minutes / 1440)} d`;
 }
+
+// ─── Moderation checklists (hero approval, promotions) ───────────────────────
+// A server-computed check: {key, label, status: pass|warn|fail, detail}. The mark is
+// a word-shaped glyph as well as a colour, so the state never rests on colour alone.
+const CHECK_MARK = { pass: ["✓", "Passed", "#00500A", "#E3F1E3"], warn: ["~", "Check", "#6A4A00", "#FBF3DC"], fail: ["!", "Failed", "#A30000", "#FDE8E8"] };
+
+export function CheckList({ checks, label = "Checks" }) {
+  return (
+    <ul aria-label={label} style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+      {checks.map((c) => {
+        const [mark, word, fg, bg] = CHECK_MARK[c.status] || CHECK_MARK.warn;
+        return (
+          <li key={c.key} style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: "0.8rem", color: D.text, lineHeight: 1.45 }}>
+            <span aria-hidden="true" style={{ background: bg, color: fg, borderRadius: 999, minWidth: 20, height: 20, display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.7rem" }}>{mark}</span>
+            <span><span className="sr-only" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>{word}: </span><b>{c.label}</b>{c.detail ? <span style={{ color: D.textDim }}> {"—"} {c.detail}</span> : null}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+// Queue switch (Waiting / Approved / Rejected ...): a pressed-state button group.
+export function QueueSwitch({ label = "Queue", value, onChange, options }) {
+  return (
+    <div role="group" aria-label={label} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      {options.map(([id, text]) => (
+        <button key={id} type="button" aria-pressed={value === id} onClick={() => onChange(id)}
+          style={{ background: value === id ? D.text : "transparent", color: value === id ? D.panelBg : D.text, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "6px 12px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{text}</button>
+      ))}
+    </div>
+  );
+}
