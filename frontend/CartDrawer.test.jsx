@@ -219,6 +219,52 @@ describe('CartDrawer', () => {
     expect(screen.queryByText(/no delivery fee is added/i)).not.toBeInTheDocument()
   })
 
+  it('disables Confirm & Pay for an out-of-area pin so the payment step cannot start', async () => {
+    const MESSAGE = 'We only deliver within the Ashanti Region for now.'
+    server.use(
+      http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)),
+      http.get('http://localhost:8000/api/marketing/promos/public/', () => HttpResponse.json({ enabled: true, flash_sales: [] })),
+      http.post('http://localhost:8000/api/marketing/cart/quote/', () => HttpResponse.json({
+        enabled: true, total: '300.00',
+        delivery: { fee: null, fee_status: 'out_of_area', waived: false, waiver_name: null, waived_fee: null, mixed_note: null, message: MESSAGE },
+      })),
+    )
+    renderDrawer()
+    await screen.findByText('Kente Cloth')
+    fireEvent.click(screen.getByText('Checkout →'))
+    await screen.findByText('Confirm your order')
+    fireEvent.click(screen.getByText('🚚 Door-to-door'))
+    fireEvent.change(screen.getByPlaceholderText('Delivery address'), { target: { value: 'Accra' } })
+    fireEvent.change(screen.getByPlaceholderText('Contact phone for delivery'), { target: { value: '+233200112233' } })
+    fireEvent.click(screen.getByText('drop-pin'))
+    expect(await screen.findByText(MESSAGE)).toBeInTheDocument()
+    const pay = screen.getByRole('button', { name: /Confirm & Pay/ })
+    expect(pay).toBeDisabled()
+    fireEvent.click(pay)
+    expect(screen.queryByText('Simulate Pay')).not.toBeInTheDocument()
+  })
+
+  it('keeps Confirm & Pay enabled for a normal door-to-door quote', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)),
+      http.get('http://localhost:8000/api/marketing/promos/public/', () => HttpResponse.json({ enabled: true, flash_sales: [] })),
+      http.post('http://localhost:8000/api/marketing/cart/quote/', () => HttpResponse.json({
+        enabled: true, total: '300.00',
+        delivery: { fee: '12.00', fee_status: 'ok', waived: false, waiver_name: null, waived_fee: null, mixed_note: null },
+      })),
+    )
+    renderDrawer()
+    await screen.findByText('Kente Cloth')
+    fireEvent.click(screen.getByText('Checkout →'))
+    await screen.findByText('Confirm your order')
+    fireEvent.click(screen.getByText('🚚 Door-to-door'))
+    fireEvent.change(screen.getByPlaceholderText('Delivery address'), { target: { value: 'Adum' } })
+    fireEvent.change(screen.getByPlaceholderText('Contact phone for delivery'), { target: { value: '+233200112233' } })
+    fireEvent.click(screen.getByText('drop-pin'))
+    await screen.findByText(/Delivery: GHS 12.00/)
+    expect(screen.getByRole('button', { name: /Confirm & Pay/ })).toBeEnabled()
+  })
+
   it('shows the server explanation when checkout refuses an out-of-area delivery point', async () => {
     server.use(
       http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)),

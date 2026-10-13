@@ -57,7 +57,7 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   const [deliveryPhone, setDeliveryPhone] = useState("");
   const [deliveryLat, setDeliveryLat] = useState(null);
   const [deliveryLng, setDeliveryLng] = useState(null);
-  const doorToDoorReady = deliveryMethod !== "door_to_door" || (deliveryAddress.trim() && deliveryPhone.trim());
+  const doorToDoorFilled = deliveryMethod !== "door_to_door" || (deliveryAddress.trim() && deliveryPhone.trim());
   // App.jsx only ever opens the cart for a customer; this is the
   // defence-in-depth layer so checkout itself refuses a staff session with
   // the shared staff notice.
@@ -92,6 +92,10 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   // is chosen, "0.00" with waived=true when a business's free-delivery promo covers the whole order.
   const delivery = promosOn ? quote?.delivery : null;
   const itemsTotal = promosOn && quote?.total ? quote.total : cart?.total;
+  // Checkout refuses a door-to-door point outside the Ashanti Region, and payment runs before checkout, so the
+  // pay button stays off here (the delivery note above carries the quote's message) rather than charging first.
+  const outOfArea = deliveryMethod === "door_to_door" && delivery?.fee_status === "out_of_area";
+  const doorToDoorReady = doorToDoorFilled && !outOfArea;
   const shownTotal = delivery?.fee != null && itemsTotal != null ? (parseFloat(itemsTotal) + parseFloat(delivery.fee)).toFixed(2) : itemsTotal;
   const [couponError, setCouponError] = useState("");
 
