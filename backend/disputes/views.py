@@ -1,9 +1,10 @@
+from django.db import transaction
 from rest_framework import generics
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.permissions import HasAnyRolePermission, HasRolePermission
+from accounts.permissions import HasAnyRolePermission, HasRolePermission, RequiresSudo
 
 from .models import Dispute
 from .serializers import DisputeResolveSerializer, DisputeSerializer
@@ -88,26 +89,27 @@ class DisputeResolveView(APIView):
     """
 
     def get_permissions(self):
-        return [HasRolePermission("disputes.resolve_financial")]
+        # A resolution can refund money, so the password is asked again.
+        return [HasRolePermission("disputes.resolve_financial"), RequiresSudo()]
 
     def post(self, request, pk):
-        dispute = generics.get_object_or_404(Dispute, pk=pk)
-        if dispute.status in Dispute.FINAL_STATUSES:
-            return Response({"detail": "This dispute has already been resolved."}, status=400)
-
         serializer = DisputeResolveSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-
-        dispute.status = Dispute.RESOLVED if data["outcome"] == "resolved" else Dispute.REJECTED
-        # A rejected dispute never moves money: drop any refund_amount sent
-        # with outcome="rejected" so a Rejected row can't show a refund.
-        dispute.refund_amount = data.get("refund_amount") if data["outcome"] == "resolved" else None
-        dispute.resolution_notes = data.get("resolution_notes", "")
-        dispute.resolved_by = request.user
-        dispute.save(
-            update_fields=["status", "refund_amount", "resolution_notes", "resolved_by", "updated_at"]
-        )
+        # Two staff resolving at once must not both book a refund: lock the row.
+        with transaction.atomic():
+            dispute = generics.get_object_or_404(Dispute.objects.select_for_update(), pk=pk)
+            if dispute.status in Dispute.FINAL_STATUSES:
+                return Response({"detail": "This dispute has already been resolved."}, status=400)
+            dispute.status = Dispute.RESOLVED if data["outcome"] == "resolved" else Dispute.REJECTED
+            # A rejected dispute never moves money: drop any refund_amount sent
+            # with outcome="rejected" so a Rejected row can't show a refund.
+            dispute.refund_amount = data.get("refund_amount") if data["outcome"] == "resolved" else None
+            dispute.resolution_notes = data.get("resolution_notes", "")
+            dispute.resolved_by = request.user
+            dispute.save(
+                update_fields=["status", "refund_amount", "resolution_notes", "resolved_by", "updated_at"]
+            )
         return Response(DisputeSerializer(dispute).data)
 
 

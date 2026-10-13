@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import BusinessOwner, StaffUser
-from accounts.permissions import HasAnyRolePermission, HasRolePermission
+from accounts.permissions import HasAnyRolePermission, HasRolePermission, RequiresSudo
 from accounts.views import IsCustomer
 from billing.models import Transaction
 from listings.visibility import hidden_business_q
@@ -1025,26 +1025,28 @@ class EscrowReleaseView(APIView):
     """
 
     def get_permissions(self):
-        return [HasRolePermission("escrow.release")]
+        # Money leaves escrow: the password is asked again.
+        return [HasRolePermission("escrow.release"), RequiresSudo()]
 
     def post(self, request, ticket_id):
-        ticket = generics.get_object_or_404(Ticket, pk=ticket_id)
+        with db_transaction.atomic():
+            ticket = generics.get_object_or_404(Ticket.objects.select_for_update(), pk=ticket_id)
 
-        if ticket.refunded_at is not None:
-            return Response({"detail": "This ticket was refunded and cannot be released."}, status=400)
-        if ticket.escrow_status == Ticket.RELEASED:
-            return Response({"detail": "This ticket's escrow is already released."}, status=400)
+            if ticket.refunded_at is not None:
+                return Response({"detail": "This ticket was refunded and cannot be released."}, status=400)
+            if ticket.escrow_status == Ticket.RELEASED:
+                return Response({"detail": "This ticket's escrow is already released."}, status=400)
 
-        ticket.escrow_status = Ticket.RELEASED
-        ticket.escrow_released_at = timezone.now()
-        ticket.escrow_released_by_staff = request.user
-        ticket.escrow_override_note = request.data.get("note", "")
-        ticket.save(
-            update_fields=[
-                "escrow_status", "escrow_released_at", "escrow_released_by_staff",
-                "escrow_override_note",
-            ]
-        )
+            ticket.escrow_status = Ticket.RELEASED
+            ticket.escrow_released_at = timezone.now()
+            ticket.escrow_released_by_staff = request.user
+            ticket.escrow_override_note = request.data.get("note", "")
+            ticket.save(
+                update_fields=[
+                    "escrow_status", "escrow_released_at", "escrow_released_by_staff",
+                    "escrow_override_note",
+                ]
+            )
         return Response(TicketEscrowLedgerSerializer(ticket).data)
 
 
@@ -1060,23 +1062,24 @@ class EscrowHoldView(APIView):
         return [HasRolePermission("escrow.release")]
 
     def post(self, request, ticket_id):
-        ticket = generics.get_object_or_404(Ticket, pk=ticket_id)
+        with db_transaction.atomic():
+            ticket = generics.get_object_or_404(Ticket.objects.select_for_update(), pk=ticket_id)
 
-        if ticket.refunded_at is not None:
-            return Response({"detail": "This ticket was refunded and cannot be held."}, status=400)
-        if ticket.escrow_status == Ticket.HELD:
-            return Response({"detail": "This ticket's escrow is already held."}, status=400)
+            if ticket.refunded_at is not None:
+                return Response({"detail": "This ticket was refunded and cannot be held."}, status=400)
+            if ticket.escrow_status == Ticket.HELD:
+                return Response({"detail": "This ticket's escrow is already held."}, status=400)
 
-        ticket.escrow_status = Ticket.HELD
-        ticket.escrow_released_at = None
-        ticket.escrow_released_by_staff = None
-        ticket.escrow_override_note = request.data.get("note", "")
-        ticket.save(
-            update_fields=[
-                "escrow_status", "escrow_released_at", "escrow_released_by_staff",
-                "escrow_override_note",
-            ]
-        )
+            ticket.escrow_status = Ticket.HELD
+            ticket.escrow_released_at = None
+            ticket.escrow_released_by_staff = None
+            ticket.escrow_override_note = request.data.get("note", "")
+            ticket.save(
+                update_fields=[
+                    "escrow_status", "escrow_released_at", "escrow_released_by_staff",
+                    "escrow_override_note",
+                ]
+            )
         return Response(TicketEscrowLedgerSerializer(ticket).data)
 
 
@@ -1091,20 +1094,20 @@ class EscrowRefundView(APIView):
     """
 
     def get_permissions(self):
-        return [HasRolePermission("escrow.refund")]
+        return [HasRolePermission("escrow.refund"), RequiresSudo()]
 
     def post(self, request, ticket_id):
-        ticket = generics.get_object_or_404(Ticket, pk=ticket_id)
-
-        if ticket.delivered_at is not None:
-            return Response(
-                {"detail": "This ticket has already been delivered and cannot be refunded."},
-                status=400,
-            )
-        if ticket.refunded_at is not None:
-            return Response({"detail": "This ticket has already been refunded."}, status=400)
-
         with db_transaction.atomic():
+            ticket = generics.get_object_or_404(Ticket.objects.select_for_update(), pk=ticket_id)
+
+            if ticket.delivered_at is not None:
+                return Response(
+                    {"detail": "This ticket has already been delivered and cannot be refunded."},
+                    status=400,
+                )
+            if ticket.refunded_at is not None:
+                return Response({"detail": "This ticket has already been refunded."}, status=400)
+
             Transaction.objects.create(
                 customer=ticket.purchased_by,
                 amount=-ticket.price,
