@@ -80,7 +80,7 @@ Manager's tools; a rider app should use the endpoints above.
 `GET active/?filter=all|at_customer|flagged|stale`, `GET jobs/<id>/` (record: timeline, codes matched, photos, calls, masked phone, fee `null`),
 `POST jobs/<id>/flag-decision/ {decision: cleared|upheld, note, hold_wait_pay}`, `POST jobs/<id>/call-rider/`, `GET jobs/<id>/photos/<photo>/`.
 
-`delivery.fleet`: `GET riders/` and `GET riders/<id>/` (+ `PATCH` vehicle type, home zone), `POST riders/<id>/job-hold/`, `POST riders/<id>/reinstate/`,
+`delivery.fleet`: `GET riders/` and `GET riders/<id>/` (+ `PATCH` vehicle type, home zone), `POST riders/<id>/job-hold/`, `POST riders/<id>/reinstate/` (sudo),
 `GET documents/?bucket=waiting|expiring|expired|all`, `POST documents/<id>/review/ {decision, reject_reason, expires_on}`, `POST documents/<id>/remind/`,
 `GET documents/<id>/file/`, `GET/POST vehicles/`, `GET/PATCH vehicles/<id>/`, `POST vehicles/<id>/assign/ {rider, note}`, `GET/POST zones/`,
 `PATCH zones/<id>/`, `GET invites/`. Inviting a rider uses `POST /api/accounts/staff/invite/` with `role: "dispatch"` and the extra
@@ -89,3 +89,7 @@ fields `vehicle_type, home_zone, first_shift_date, invite_note`. Suspend, unsusp
 Papers: `delivery.tasks.run_paper_checks` runs hourly. It expires lapsed papers, sends 30/14/7-day reminders (in-app to the rider and the manager)
 and suspends a rider whose required paper lapsed (`Rider.suspension_source = "documents"`), never while a job is on the road. `riders/<id>/reinstate/`
 lifts only that kind of suspension once every required paper is approved and in date.
+
+Files: uploads are typed by their bytes (JPEG, PNG, PDF only), stored under a server-chosen name, and served only through
+authenticated views as attachments with the detected type, `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`.
+`Rider.suspension_source` is authoritative: the staff suspend endpoint sets `manual`, unsuspend clears it, only the papers job sets `documents`.

@@ -16,7 +16,7 @@ from rest_framework.views import APIView
 from accounts.permissions import HasRolePermission
 from orders.models import DeliveryAssignment
 
-from . import payloads, services
+from . import files, payloads, services
 from .models import DeliveryCall, DeliveryPhoto, Rider, RiderDocument, RiderIssue
 
 PERMISSION = "delivery.dispatch"
@@ -276,12 +276,11 @@ class JobPhotoView(RiderView):
             return Response({"detail": "Send an image and a kind (pickup, drop or evidence)."}, status=400)
         if assignment.photos.count() >= 6:
             return Response({"detail": "That job already has 6 photos.", "code": "too_many"}, status=409)
-        photo = DeliveryPhoto(assignment=assignment, kind=kind, image=image, uploaded_by=request.user)
-        try:
-            photo.full_clean()
-        except Exception as exc:  # a ValidationError names the bad file type
+        clean = files.clean_upload(image, {"image/jpeg": ".jpg", "image/png": ".png"})
+        if clean is None:
             return Response({"detail": "That file is not a JPEG or PNG image."}, status=400)
-        photo.save()
+        photo = DeliveryPhoto(assignment=assignment, kind=kind, uploaded_by=request.user)
+        photo.image.save(clean.name, clean, save=True)
         return Response({"id": photo.pk, "kind": photo.kind, "at": photo.at}, status=status.HTTP_201_CREATED)
 
 
@@ -325,12 +324,11 @@ class DocumentListCreateView(RiderView):
             return Response({"detail": "Enter the expiry date as YYYY-MM-DD."}, status=400)
         if expires_on is not None and expires_on < timezone.localdate():
             return Response({"detail": "That paper has already expired."}, status=400)
-        doc = RiderDocument(rider=rider, kind=kind, file=upload, number=str(request.data.get("number", ""))[:40], expires_on=expires_on, uploaded_by=request.user)
-        try:
-            doc.full_clean()
-        except Exception:
+        clean = files.clean_upload(upload)
+        if clean is None:
             return Response({"detail": "That file is not a JPEG, PNG or PDF."}, status=400)
-        doc.save()
+        doc = RiderDocument(rider=rider, kind=kind, number=str(request.data.get("number", ""))[:40], expires_on=expires_on, uploaded_by=request.user)
+        doc.file.save(clean.name, clean, save=True)
         return Response(payloads.document_row(doc), status=status.HTTP_201_CREATED)
 
 

@@ -89,7 +89,7 @@ class ExpiryJobTests(DeliveryCase):
         self.assertTrue(self.rider_staff.is_suspended)
         self.assertEqual(self.rider.suspension_source, Rider.DOCUMENTS)
         # Reinstating before the paper is renewed is refused.
-        self.as_staff(self.manager)
+        self.as_staff(self.manager, sudo=True)
         self.assertEqual(self.client.post(f"/api/delivery/riders/{self.rider.pk}/reinstate/").status_code, 409)
         RiderDocument.objects.create(
             rider=self.rider, kind="roadworthy", file=SimpleUploadedFile("a.png", PNG, "image/png"), status=RiderDocument.APPROVED,
@@ -124,10 +124,57 @@ class ExpiryJobTests(DeliveryCase):
         self.approve_papers()
         self.rider_staff.is_suspended = True
         self.rider_staff.save()
-        self.as_staff(self.manager)
+        self.as_staff(self.manager, sudo=True)
         response = self.client.post(f"/api/delivery/riders/{self.rider.pk}/reinstate/")
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.json()["code"], "manual_suspension")
+
+
+class SecurityFixTests(DeliveryCase):
+    def test_reinstate_needs_sudo(self):
+        self.approve_papers()
+        self.rider_staff.is_suspended = True
+        self.rider_staff.save()
+        Rider.objects.filter(pk=self.rider.pk).update(suspension_source=Rider.DOCUMENTS)
+        self.as_staff(self.manager)
+        response = self.client.post(f"/api/delivery/riders/{self.rider.pk}/reinstate/")
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json().get("code"), "sudo_required")
+        self.as_staff(self.manager, sudo=True)
+        self.assertEqual(self.client.post(f"/api/delivery/riders/{self.rider.pk}/reinstate/").status_code, 200)
+
+    def test_a_manual_suspension_overrides_a_stale_papers_source_and_unsuspend_clears_it(self):
+        self.approve_papers()
+        Rider.objects.filter(pk=self.rider.pk).update(suspension_source=Rider.DOCUMENTS)
+        self.as_staff(self.manager, sudo=True)
+        self.assertEqual(self.client.post(f"/api/accounts/staff/{self.rider_staff.pk}/suspend/", {"reason": "Conduct"}, format="json").status_code, 200)
+        self.rider.refresh_from_db()
+        self.assertEqual(self.rider.suspension_source, Rider.MANUAL)
+        response = self.client.post(f"/api/delivery/riders/{self.rider.pk}/reinstate/")
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["code"], "manual_suspension")
+        self.client.post(f"/api/accounts/staff/{self.rider_staff.pk}/unsuspend/")
+        self.rider.refresh_from_db()
+        self.assertEqual(self.rider.suspension_source, "")
+
+    def test_html_renamed_as_an_image_is_rejected(self):
+        self.as_staff(self.rider_staff)
+        evil = {"kind": "licence", "file": SimpleUploadedFile("x.jpg", b"<html><script>alert(1)</script></html>", "image/jpeg")}
+        self.assertEqual(self.client.post("/api/delivery/rider/documents/", evil, format="multipart").status_code, 400)
+        self.assertEqual(RiderDocument.objects.count(), 0)
+
+    def test_files_get_a_server_name_and_are_served_inert(self):
+        self.as_staff(self.rider_staff)
+        row = self.client.post("/api/delivery/rider/documents/", {"kind": "licence", "file": SimpleUploadedFile("../../evil.html.png", PNG, "text/html")}, format="multipart").json()
+        doc = RiderDocument.objects.get(pk=row["id"])
+        self.assertRegex(doc.file.name, r"^documents/[0-9a-f]{32}\.png$")
+        self.as_staff(self.manager)
+        response = self.client.get(f"/api/delivery/documents/{doc.pk}/file/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/png")
+        self.assertEqual(response["X-Content-Type-Options"], "nosniff")
+        self.assertIn("sandbox", response["Content-Security-Policy"])
+        self.assertIn("attachment", response["Content-Disposition"])
 
 
 class VehicleTests(DeliveryCase):

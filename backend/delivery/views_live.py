@@ -13,7 +13,7 @@ from accounts.phones import mask_phone
 from disputes.models import Dispute
 from orders.models import DeliveryAssignment
 
-from . import board, payloads, services
+from . import board, files, payloads, services
 from .models import DeliveryCall, DeliveryPhoto
 
 PERMISSION = "delivery.manage"
@@ -127,8 +127,4 @@ class PhotoFileView(ManageView):
 
     def get(self, request, pk, photo_id):
         photo = get_object_or_404(DeliveryPhoto, pk=photo_id, assignment_id=pk)
-        try:
-            handle = photo.image.open("rb")
-        except (FileNotFoundError, ValueError):
-            raise Http404
-        return FileResponse(handle)
+        return files.serve(photo.image)

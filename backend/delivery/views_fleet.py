@@ -17,7 +17,7 @@ from accounts.serializers import invite_state
 from accounts import sessions
 from notifications.services import notify_staff
 
-from . import fleet, payloads, services
+from . import files, fleet, payloads, services
 from .models import DeliveryZone, Rider, RiderDocument, Vehicle, VehicleHandover, VEHICLE_TYPES
 
 PERMISSION = "delivery.fleet"
@@ -94,10 +94,10 @@ class RiderReinstateView(FleetView):
     (this refuses it, so the two reasons are never mixed)."""
 
     def get_permissions(self):
-        return [HasRolePermission(PERMISSION)]
+        return [HasRolePermission(PERMISSION), RequiresSudo()]
 
     def post(self, request, pk):
-        rider = get_object_or_404(Rider.objects.select_related("staff"), pk=pk)
+        rider = get_object_or_404(Rider.objects.select_for_update().select_related("staff"), pk=pk)
         staff = rider.staff
         if not staff.is_suspended:
             return Response({"detail": "This rider is not suspended."}, status=409)
@@ -208,11 +208,7 @@ class DocumentFileView(FleetView):
 
     def get(self, request, pk):
         doc = get_object_or_404(RiderDocument, pk=pk)
-        try:
-            handle = doc.file.open("rb")
-        except (FileNotFoundError, ValueError):
-            raise Http404
-        return FileResponse(handle, as_attachment=False)
+        return files.serve(doc.file)
 
 
 # ── Vehicles ───────────────────────────────────────────────────────────────────────────────────
