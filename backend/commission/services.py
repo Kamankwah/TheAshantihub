@@ -148,7 +148,11 @@ def accrue_bonus(owner, session=None, *, now=None):
 
 
 def release_holds(now=None):
-    """Daily job: on-hold lines whose 90 days have passed become payable."""
+    """Daily job: on-hold lines whose 90 days have passed become payable - once
+    a tax ruling on scouts is recorded. Until then every line stays on hold
+    (owner decision: scout commission is held until the ruling)."""
+    if payout_blocker():
+        return 0
     now = now or timezone.now()
     with transaction.atomic():
         released = CommissionAccrual.objects.filter(status=CommissionAccrual.ON_HOLD, hold_until__lte=now).update(status=CommissionAccrual.PAYABLE)

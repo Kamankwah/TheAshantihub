@@ -8,7 +8,7 @@ from accounts.models import BusinessOwner
 from activity.models import ActivityEvent
 from billing.models import Subscription, SubscriptionPlan
 from commission import services
-from commission.models import CommissionAccrual, CommissionPolicy
+from commission.models import CommissionAccrual, CommissionPolicy, ScoutTaxRuling
 from commission.tasks import release_commission_holds
 from fraud import services as fraud
 from fraud.models import FraudFlag
@@ -334,6 +334,10 @@ class ReleaseAndReversalTests(CommissionBase):
         self.owner = self.pending_owner()
         self.approve(self.owner)
         self.accrual = CommissionAccrual.objects.get()
+        # Holds only release once a tax ruling is recorded.
+        ScoutTaxRuling.objects.create(
+            status="agent", ruled_on=timezone.localdate(), reference="GRA letter", recorded_by=self.boss,
+        )
 
     def age(self, days):
         CommissionAccrual.objects.update(hold_until=timezone.now() - timedelta(days=days))
@@ -394,3 +398,38 @@ class ReleaseAndReversalTests(CommissionBase):
         self.confirm(FraudFlag.DUPLICATE)
         self.assertIsNone(services.accrue_registration(self.owner))
         self.assertEqual(CommissionAccrual.objects.count(), 1)
+
+
+class ReleaseNeedsTaxRulingTests(CommissionBase):
+    def test_without_a_ruling_an_overdue_line_stays_on_hold_then_releases_after_one(self):
+        self.policy()
+        self.approve(self.pending_owner())
+        CommissionAccrual.objects.update(hold_until=timezone.now() - timedelta(days=10))
+        self.assertEqual(release_commission_holds(), 0)
+        self.assertEqual(CommissionAccrual.objects.get().status, "on_hold")
+        ScoutTaxRuling.objects.create(
+            status="employee", ruled_on=timezone.localdate(), reference="Memo", recorded_by=self.boss,
+        )
+        self.assertEqual(release_commission_holds(), 1)
+        self.assertEqual(CommissionAccrual.objects.get().status, "payable")
+
+    def test_any_code_that_moves_lines_into_a_batch_must_ask_the_guard(self):
+        """Documents the contract: the payout batch is blocked until a ruling is
+        recorded, so any module that sets a line to in_batch has to call
+        assert_can_form_payout_batch(). Fails when such code is added without it."""
+        import pathlib
+        import re
+
+        with self.assertRaises(services.PayoutBlocked):
+            services.assert_can_form_payout_batch()
+        root = pathlib.Path(__file__).resolve().parents[2]
+        pattern = re.compile(r"CommissionAccrual\.IN_BATCH|status\s*=\s*[\"']in_batch[\"']")
+        offenders = []
+        for path in root.rglob("*.py"):
+            parts = path.relative_to(root).parts
+            if "tests" in parts or "migrations" in parts or parts[-1] in ("models.py", "test_services.py"):
+                continue
+            text = path.read_text(encoding="utf-8")
+            if pattern.search(text) and "assert_can_form_payout_batch" not in text:
+                offenders.append(str(path.relative_to(root)))
+        self.assertEqual(offenders, [], "payout-batch code must call commission.services.assert_can_form_payout_batch()")
