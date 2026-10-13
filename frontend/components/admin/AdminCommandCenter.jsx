@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Flag from "../Flag.jsx";
 import { SESSION_ENDED_EVENT, UNAUTHORIZED_EVENT, getStoredAuth } from "../../apiClient.js";
 import { useIdleSignOut } from "../../hooks/useIdleSignOut.js";
@@ -112,6 +112,12 @@ import StaffShellStyles from "./shell/StaffShellStyles.jsx";
 import InstallAppButton from "./shell/InstallAppButton.jsx";
 import UpdateToast from "./shell/UpdateToast.jsx";
 import OfflineBanner from "./shell/OfflineBanner.jsx";
+import StepInGate from "./stepin/StepInGate.jsx";
+import StepInPanel from "./stepin/StepInPanel.jsx";
+import ViewAsBanner from "./stepin/ViewAsBanner.jsx";
+import ViewAsSelect from "./stepin/ViewAsSelect.jsx";
+import useViewOnlyControls from "./stepin/useViewOnlyControls.js";
+import { setViewAsScreen } from "../../lib/viewAs.js";
 
 // ─── Admin Command Center ─────────────────────────────────────────────────────
 // The staff dashboard's shell, restyled to match the Business Command
@@ -129,7 +135,15 @@ import OfflineBanner from "./shell/OfflineBanner.jsx";
 // "Sign out" in the browser and the installed app alike. `onViewSite` is the
 // optional keep-the-session alternative ("View site", browser only — App.jsx
 // leaves it undefined inside the installed app, which has no marketplace).
-export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab: activeTabProp, activeDetail, onTabChange, NotificationsSlot }) {
+// A Super Admin stepped into someone's workspace sees that person's real
+// shell, read-only, under a banner (stepin/StepInGate.jsx); otherwise this is
+// the shell as always.
+export default function AdminCommandCenter(props) {
+  return <StepInGate Shell={StaffShell} {...props} />;
+}
+
+// `viewAs` is set only inside a step-in: `auth` is then the viewed person's.
+function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, activeDetail, onTabChange, NotificationsSlot, viewAs }) {
   const { data: staffBadges } = useStaffBadges();
   const badgeFor = makeBadgeFor(staffBadges, auth.user?.role);
   // A scout's Reports item carries a neutral "Due 19:00" while today's day report is unsubmitted.
@@ -165,7 +179,8 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
   const refetchMe = useCallback(() => {
     authRef.current?.refreshUser?.()?.catch?.(() => {});
   }, []);
-  const live = useRealtime(true, { onForceDisconnect: refetchMe });
+  // No live socket inside a step-in: its ticket is a write, which a view refuses.
+  const live = useRealtime(!viewAs, { onForceDisconnect: refetchMe });
   // Idle (30 min without input) and "the server ended this session" both
   // sign out through the normal staff sign-out, which clears cached data.
   const onExitRef = useRef(onExit);
@@ -219,6 +234,12 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
   const requestedTab = isControlled ? activeTabProp : internalTab;
   const activeTab = isPermittedTab(navGroups, requestedTab) ? requestedTab : "overview";
   const activeLabel = activeTab === "overview" ? overviewLabel(auth.user?.role) : allItems.find(i => i.id === activeTab)?.label;
+  // Inside a step-in: each request names the screen open (one audit event per
+  // screen), and controls that would change data are switched off.
+  useLayoutEffect(() => { if (viewAs) setViewAsScreen(activeTab); }, [viewAs, activeTab]);
+  const mainRef = useRef(null);
+  useViewOnlyControls(mainRef, Boolean(viewAs));
+  const canViewAs = role === "super_admin" && auth.hasPermission("staff.view_as");
 
   // An unpermitted/unknown panel URL (or manifest shortcut) is sent back to
   // Overview by replacing the history entry, not pushing a new one.
@@ -349,7 +370,8 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
         <StaffHeader status={<LiveUpdatesIndicator paused={live.paused} />} title={activeLabel} role={role} roleColor={roleColor} fullName={auth.user?.full_name}
           onExit={signOut} onViewSite={onViewSite} breakpoint={breakpoint}
           onOpenMenu={() => setDrawerOpen(true)} menuButtonRef={menuButtonRef} drawerOpen={drawerOpen}
-          actions={<>{NotificationsSlot ? <NotificationsSlot user={auth.user} /> : null}{isPhone ? null : <InstallAppButton variant="header" />}</>}>
+          actions={<>{!isPhone && (viewAs || canViewAs) ? <ViewAsSelect viewAs={viewAs} /> : null}{NotificationsSlot ? <NotificationsSlot user={auth.user} /> : null}{isPhone ? null : <InstallAppButton variant="header" />}</>}>
+          {viewAs && <ViewAsBanner viewAs={viewAs} compact={isPhone} />}
           <OfflineBanner bleed={isPhone ? 12 : 20} />
         </StaffHeader>
 
@@ -358,7 +380,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           ...(isPhone ? { left: 12, right: 12, bottom: "calc(80px + env(safe-area-inset-bottom, 0px))", textAlign: "center" } : { top: 74, right: 20 }),
         }}>✓ Saved!</div>}
 
-        <main className="staff-content" style={{ padding: isPhone ? "16px 12px calc(88px + env(safe-area-inset-bottom, 0px))" : "22px 20px 72px" }}>
+        <main ref={mainRef} className="staff-content" style={{ padding: isPhone ? "16px 12px calc(88px + env(safe-area-inset-bottom, 0px))" : "22px 20px 72px" }}>
           <AnnouncementBanner />
           {activeTab === "overview" && role !== "cosigner" && (role === "scout"
             ? <ScoutTodayPanel auth={auth} onNavigate={selectTab} onCheckIn={openCheckInScreen} onRegister={() => selectTab("register-business")} onSeeApprovals={openMadeApprovals} onOpenBusiness={openMyBusiness} />
@@ -408,6 +430,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "deliveries-returns" && <DeliveriesReturnsPanel auth={auth} />}
           {activeTab === "support-team" && <SupportTeamPanel onNavigate={selectTab} />}
           {PLACEHOLDER_TABS[role]?.has(activeTab) && <ScreenBuildingPanel title={activeLabel} />}
+          {activeTab.startsWith("step-in-") && <StepInPanel teamId={activeTab.slice("step-in-".length)} auth={auth} />}
           {activeTab === "hero-events" && <HeroEventsPanel auth={auth} />}
           {activeTab === "zones" && <ZonesPanel />}
           {activeTab === "commission" && <CommissionPanel />}

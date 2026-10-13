@@ -90,7 +90,7 @@ describe('My Work group', () => {
 })
 
 // Super Admin screens that are built (no longer placeholders) but still no other role's.
-const SA_BUILT = ['teams-reporting', 'roles-permissions', 'commissions', 'refunds', 'growth-funnel', 'scheduled-exports', 'approval-rules', 'payouts-payroll', 'reconciliation', 'delivery-pricing', 'tax-tables', 'integrations', 'system-health']
+const SA_BUILT = ['step-in-operations', 'step-in-support', 'step-in-delivery', 'step-in-marketing', 'step-in-accounting', 'teams-reporting', 'roles-permissions', 'commissions', 'refunds', 'growth-funnel', 'scheduled-exports', 'approval-rules', 'payouts-payroll', 'reconciliation', 'delivery-pricing', 'tax-tables', 'integrations', 'system-health']
 const SA_ONLY = NAV_ITEMS.filter((i) => i.placeholder === 'super_admin').map((i) => i.id).concat('invites', SA_BUILT)
 // 'leave' is also Super Admin's (the canvas's Leave & holidays), but no other role's.
 const OPS_ONLY = ['ops-scouts', 'support-team', 'leave', 'hero-events', 'support-issues', 'deliveries-returns', 'visit-map', 'zones', ...SA_ONLY]
@@ -453,14 +453,23 @@ describe('Super Admin menu (canvases 2026-10-07)', () => {
 
   it('lists the unbuilt screens as placeholders for Super Admin only', () => {
     const placeholders = [...PLACEHOLDER_TABS.super_admin]
-    expect(placeholders).toEqual(expect.arrayContaining(['step-in-operations']))
-    for (const built of ['teams-reporting', 'roles-permissions', 'approvals', 'staff', 'sessions', 'leave', 'transactions', 'analytics', 'activity', 'security', 'commission-policy', 'targets', 'categories-zones', 'invites', 'payouts-payroll', 'reconciliation', 'delivery-pricing', 'tax-tables', 'integrations', 'system-health']) {
+    // The step-in screens (SA-6) were the last placeholders: every canvas screen is built.
+    expect(placeholders).toEqual([])
+    for (const built of ['step-in-operations', 'step-in-accounting', 'teams-reporting', 'roles-permissions', 'approvals', 'staff', 'sessions', 'leave', 'transactions', 'analytics', 'activity', 'security', 'commission-policy', 'targets', 'categories-zones', 'invites', 'payouts-payroll', 'reconciliation', 'delivery-pricing', 'tax-tables', 'integrations', 'system-health']) {
       expect(placeholders).not.toContain(built)
     }
     for (const role of ['operations', 'accountant', 'scout']) {
       const others = buildNavGroups({ user: { role }, hasPermission: () => true }).flatMap((g) => g.items.map((i) => i.id))
       for (const id of placeholders) expect(others).not.toContain(id)
     }
+  })
+
+  it('shows the step-in screens only to a Super Admin holding staff.view_as', () => {
+    const teams = (perms) => buildNavGroups({ user: { role: 'super_admin' }, hasPermission: (c) => perms.includes(c) }).find((g) => g.id === 'teams')
+    expect(teams(['staff.view_as']).items.map((i) => i.id)).toEqual(['step-in-operations', 'step-in-support', 'step-in-delivery', 'step-in-marketing', 'step-in-accounting'])
+    expect(teams([])).toBeUndefined()
+    const ops = buildNavGroups({ user: { role: 'operations' }, hasPermission: () => true }).flatMap((g) => g.items.map((i) => i.id))
+    expect(ops.filter((id) => id.startsWith('step-in-'))).toEqual([])
   })
 
   it("keeps the Super Admin-only screens out of a session without a known role", () => {

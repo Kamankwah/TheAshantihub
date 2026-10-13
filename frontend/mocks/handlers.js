@@ -354,6 +354,9 @@ export const handlers = [
   // keeps every test off real WebSockets (the client just retries later).
   http.post('http://localhost:8000/api/realtime/ticket/', () => HttpResponse.json({ detail: 'Live updates are off in tests.' }, { status: 503 })),
   http.post('http://localhost:8000/api/accounts/staff/logout/', () => new HttpResponse(null, { status: 204 })),
+  // Step-in (SA-6): nobody to view as and no view open, by default.
+  http.get('http://localhost:8000/api/accounts/staff/view-as/', () => HttpResponse.json({ current: null, people: [], teams: {} })),
+  http.post('http://localhost:8000/api/accounts/staff/view-as/end/', () => HttpResponse.json({ current: null })),
   http.post('http://localhost:8000/api/accounts/staff/:id/suspend/', ({ params }) => {
     return HttpResponse.json({ id: Number(params.id), status: 'suspended' })
   }),

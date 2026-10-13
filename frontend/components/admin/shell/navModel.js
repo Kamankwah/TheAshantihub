@@ -23,6 +23,8 @@ const opsOnly = (auth, ...perms) => auth.user?.role === "operations" && perms.so
 // panel; the package that builds a screen swaps the panel in and drops the flag.
 // They are Super Admin's alone (saOnly), so no other role's menu gains one.
 const saOnly = (auth) => auth.user?.role === "super_admin";
+// Step-in needs the Super Admin role and staff.view_as, as the server does (accounts/view_as.py).
+const canStepIn = (auth) => saOnly(auth) && auth.hasPermission("staff.view_as");
 const opsOrSa = (auth, ...perms) => ["operations", "super_admin"].includes(auth.user?.role) && perms.some((perm) => auth.hasPermission(perm));
 
 export const NAV_ITEMS = [
@@ -85,11 +87,12 @@ export const NAV_ITEMS = [
   { id: "invites", icon: "✉️", label: "Invites", show: saOnly },
   { id: "teams-reporting", icon: "🌳", label: "Teams & reporting lines", show: saOnly },
   { id: "roles-permissions", icon: "🔑", label: "Roles & permissions", show: saOnly },
-  { id: "step-in-operations", icon: "👁️", label: "Operations & scouts", show: saOnly, placeholder: "super_admin" },
-  { id: "step-in-support", icon: "👁️", label: "Support", show: saOnly, placeholder: "super_admin" },
-  { id: "step-in-delivery", icon: "👁️", label: "Delivery & dispatch", show: saOnly, placeholder: "super_admin" },
-  { id: "step-in-marketing", icon: "👁️", label: "Marketing", show: saOnly, placeholder: "super_admin" },
-  { id: "step-in-accounting", icon: "👁️", label: "Accounting", show: saOnly, placeholder: "super_admin" },
+  // Teams (step in): read-only views of a team member's workspace (components/admin/stepin/).
+  { id: "step-in-operations", icon: "👁️", label: "Operations & scouts", show: canStepIn },
+  { id: "step-in-support", icon: "👁️", label: "Support", show: canStepIn },
+  { id: "step-in-delivery", icon: "👁️", label: "Delivery & dispatch", show: canStepIn },
+  { id: "step-in-marketing", icon: "👁️", label: "Marketing", show: canStepIn },
+  { id: "step-in-accounting", icon: "👁️", label: "Accounting", show: canStepIn },
   { id: "payouts-payroll", icon: "🏦", label: "Payouts & payroll", show: saOnly },
   { id: "commissions", icon: "💷", label: "Commissions", show: saOnly },
   { id: "refunds", icon: "↩️", label: "Refunds", show: saOnly },

@@ -1,5 +1,6 @@
 import { saveBlob } from './lib/saveBlob.js'
 import { reportApiNetworkFailure, reportApiResponse } from './lib/networkStatus.js'
+import { viewAsHeaders, viewOnlyRefusal } from './lib/viewAs.js'
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 const AUTH_STORAGE_KEY = 'ashantihub.auth'
@@ -31,9 +32,17 @@ export function setStoredAuth(auth) {
   }
 }
 
-function authHeaders() {
+// While a Super Admin is stepped into someone's workspace (lib/viewAs.js),
+// reads also carry X-View-As, and writes and downloads are never sent:
+// refuseWhileViewing throws the server's own 403 view_only instead.
+function authHeaders(path) {
   const auth = getStoredAuth()
-  return auth?.token ? { Authorization: `Bearer ${auth.token}` } : {}
+  return auth?.token ? { Authorization: `Bearer ${auth.token}`, ...viewAsHeaders(path, auth.token) } : {}
+}
+
+function refuseWhileViewing(path) {
+  const refused = viewOnlyRefusal(path, getStoredAuth()?.token)
+  if (refused) throw refused
 }
 
 // Every API call goes through here so the network-status store (and the
@@ -124,7 +133,7 @@ async function handleResponse(response, path) {
 }
 
 export async function apiFetch(path) {
-  const response = await send(path, () => ({ headers: authHeaders() }))
+  const response = await send(path, () => ({ headers: authHeaders(path) }))
   return handleResponse(response, path)
 }
 
@@ -134,7 +143,8 @@ export async function apiFetch(path) {
 // file to build in the background: nothing is saved and the JSON body
 // ({id, status}) is returned instead.
 export async function apiDownload(path, filename) {
-  const response = await send(path, () => ({ headers: authHeaders() }))
+  refuseWhileViewing(path)
+  const response = await send(path, () => ({ headers: authHeaders(path) }))
   if (response.status === 202) return response.json()
   noteUnauthorized(response)
   if (!response.ok) {
@@ -154,54 +164,60 @@ export async function apiDownload(path, filename) {
 }
 
 export async function apiPost(path, body) {
+  refuseWhileViewing(path)
   const response = await send(path, () => ({
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    headers: { 'Content-Type': 'application/json', ...authHeaders(path) },
     body: JSON.stringify(body),
   }))
   return handleResponse(response, path)
 }
 
 export async function apiPatch(path, body) {
+  refuseWhileViewing(path)
   const response = await send(path, () => ({
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    headers: { 'Content-Type': 'application/json', ...authHeaders(path) },
     body: JSON.stringify(body),
   }))
   return handleResponse(response, path)
 }
 
 export async function apiPut(path, body) {
+  refuseWhileViewing(path)
   const response = await send(path, () => ({
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    headers: { 'Content-Type': 'application/json', ...authHeaders(path) },
     body: JSON.stringify(body),
   }))
   return handleResponse(response, path)
 }
 
 export async function apiPostForm(path, formData) {
+  refuseWhileViewing(path)
   const response = await send(path, () => ({
     method: 'POST',
-    headers: authHeaders(),
+    headers: authHeaders(path),
     body: formData,
   }))
   return handleResponse(response, path)
 }
 
 export async function apiPatchForm(path, formData) {
+  refuseWhileViewing(path)
   const response = await send(path, () => ({
     method: 'PATCH',
-    headers: authHeaders(),
+    headers: authHeaders(path),
     body: formData,
   }))
   return handleResponse(response, path)
 }
 
 export async function apiDelete(path) {
+  refuseWhileViewing(path)
   const response = await send(path, () => ({
     method: 'DELETE',
-    headers: authHeaders(),
+    headers: authHeaders(path),
   }))
   return handleResponse(response, path)
 }
