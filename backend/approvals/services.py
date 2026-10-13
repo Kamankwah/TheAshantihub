@@ -237,6 +237,8 @@ def _submit(maker, kind, now, title, payload, target_type, target_id, target_lab
         if maker.role.name == Role.SUPER_ADMIN:
             _lock_target(approval)
         approval.before = _normalise(kind.current_state(approval))
+        if kind.amount_of is not None:
+            approval.amount = kind.amount_of(approval)
         if maker.role.name == Role.SUPER_ADMIN:
             if kind.validate is not None:
                 kind.validate(approval)

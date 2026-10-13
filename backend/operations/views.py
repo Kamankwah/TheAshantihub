@@ -12,7 +12,7 @@ from accounts.serializers import invite_state
 from listings.models import Zone
 from portfolio.areas import scout_areas
 
-from . import service_issues
+from . import sa_overview, service_issues
 from .overview import overview
 from .scoreboard import scouts_scoreboard
 
@@ -120,3 +120,13 @@ class SupportTeamView(APIView):
 
     def get(self, request):
         return Response(service_issues.support_team_payload(request.user))
+
+
+class SuperAdminOverviewView(APIView):
+    """GET superadmin-overview/ — the Super Admin command center (operations.sa_overview)."""
+
+    def get_permissions(self):
+        return [HasRolePermission("approvals.view_all")]
+
+    def get(self, request):
+        return Response(sa_overview.overview(request.user))

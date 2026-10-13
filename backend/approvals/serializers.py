@@ -18,14 +18,19 @@ class ApprovalSerializer(serializers.ModelSerializer):
     maker_team = serializers.SerializerMethodField()
     escalated = serializers.SerializerMethodField()
     next_move = serializers.SerializerMethodField()
+    requires_sudo = serializers.SerializerMethodField()
 
     class Meta:
         model = ApprovalRequest
         fields = [
-            "id", "kind", "kind_label", "title", "status", "stage", "maker", "assigned_to", "pool_permission",
+            "id", "amount", "requires_sudo", "kind", "kind_label", "title", "status", "stage", "maker", "assigned_to", "pool_permission",
             "target", "maker_note", "decided_by", "decided_at", "decision_note", "due_at", "escalation_level",
             "created_at", "can_decide", "can_cancel", "maker_team", "escalated", "next_move",
         ]
+
+    def get_requires_sudo(self, obj):
+        kind = get_kind(obj.kind)
+        return bool(kind is not None and kind.requires_sudo)
 
     def get_kind_label(self, obj):
         kind = get_kind(obj.kind)

@@ -44,6 +44,9 @@ class ApprovalRequest(models.Model):
     payload = models.JSONField(default=dict, blank=True)
     before = models.JSONField(default=dict, blank=True)
     maker_note = models.TextField(blank=True, default="")
+    # Money the request would move or commit, in GH₵, for the kinds that carry
+    # an amount (ApprovalKind.amount_of). Null for every other kind: never 0.
+    amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     decided_by = models.ForeignKey(
         "accounts.StaffUser", on_delete=models.PROTECT, null=True, blank=True, related_name="approval_requests_decided"
     )

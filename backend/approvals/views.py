@@ -1,5 +1,6 @@
 import statistics
 from datetime import timedelta
+from decimal import Decimal, InvalidOperation
 
 from django.http import Http404, QueryDict
 from django.utils import timezone
@@ -9,11 +10,12 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts import sessions
 from accounts.permissions import IsStaff
 
 from . import services
 from .models import ApprovalRequest
-from .registry import all_kinds
+from .registry import all_kinds, get_kind
 from .serializers import ApprovalDetailSerializer, ApprovalSerializer
 
 BOXES = ("mine", "made", "team", "decided", "all")
@@ -51,7 +53,20 @@ class ApprovalListView(generics.ListAPIView):
         box = params.get("box", "mine")
         approvals = box_queryset(self.request.user, box).select_related("maker__role", "assigned_to__role", "decided_by__role")
         if params.get("status"):
-            approvals = approvals.filter(status=params["status"])
+            approvals = approvals.filter(status__in=[value for value in params["status"].split(",") if value])
+        if params.get("team"):
+            # The team a request comes from = the maker's role (Operations, Accountant, …).
+            approvals = approvals.filter(maker__role__name=params["team"])
+        if params.get("level"):
+            if not params["level"].isdigit():
+                raise ValidationError({"level": "Use an escalation level number."})
+            approvals = approvals.filter(escalation_level=int(params["level"]))
+        for key, lookup in (("amount_min", "amount__gte"), ("amount_max", "amount__lte")):
+            if params.get(key):
+                try:
+                    approvals = approvals.filter(**{lookup: Decimal(params[key])})
+                except InvalidOperation:
+                    raise ValidationError({key: "Use an amount in GH₵."})
         if params.get("kind"):
             approvals = approvals.filter(kind=params["kind"])
         if params.get("maker"):
@@ -85,6 +100,7 @@ class ApprovalCountsView(APIView):
         user = request.user
         pending = ApprovalRequest.objects.filter(status=ApprovalRequest.PENDING)
         waiting = services.waiting_for(user)
+        can_view_all = services.VIEW_ALL in user.effective_permission_codenames()
         return Response({
             "mine": waiting.count(),
             "made": pending.filter(maker=user).count(),
@@ -101,7 +117,15 @@ class ApprovalCountsView(APIView):
                 {"key": kind.key, "label": kind.label, "response_hours": kind.response_hours}
                 for kind in sorted(all_kinds().values(), key=lambda k: k.label)
             ],
-            "can_view_all": services.VIEW_ALL in user.effective_permission_codenames(),
+            "can_view_all": can_view_all,
+            # The Super Admin's "Everything open" tab and the teams that have made requests (the "Team" filter).
+            "all_open": pending.count() if can_view_all else None,
+            "teams": sorted(
+                {role for role in ApprovalRequest.objects.values_list("maker__role__name", flat=True).distinct()}
+            ) if can_view_all else [],
+            "levels": sorted(
+                {level for level in pending.values_list("escalation_level", flat=True).distinct()}
+            ) if can_view_all else [],
         })
 
 
@@ -144,6 +168,9 @@ class _DecisionView(APIView):
     def get_permissions(self):
         return [IsStaff()]
 
+    def before_decide(self, approval, request):
+        """A hook for checks that must run after visibility but before the decision."""
+
     def decide(self, approval, request):
         raise NotImplementedError
 
@@ -158,6 +185,7 @@ class _DecisionView(APIView):
             or services.approvers_for(approval).filter(pk=request.user.pk).exists()
         ):
             raise Http404
+        self.before_decide(approval, request)
         try:
             self.decide(approval, request)
         except services.ApprovalError as exc:
@@ -167,6 +195,13 @@ class _DecisionView(APIView):
 
 
 class ApprovalApproveView(_DecisionView):
+    def before_decide(self, approval, request):
+        # Money kinds need the password re-entered on this session (staff foundations F9);
+        # the frontend turns the sudo_required answer into a password prompt and retries.
+        kind = get_kind(approval.kind)
+        if kind is not None and kind.requires_sudo and approval.status == ApprovalRequest.PENDING:
+            sessions.require_sudo(request)
+
     def decide(self, approval, request):
         services.approve(approval.pk, request.user, note=str(request.data.get("note") or ""), http_request=request)
 
