@@ -15,14 +15,19 @@ const BOXES = [
   ["decided", "Decided"],
   ["all", "Everything"],
 ];
-const BOX_IDS = new Set(BOXES.map(([id]) => id));
+// Super Admin only: requests nobody decided (cancelled by the maker, or past every level's time).
+const CLOSED_BOX = ["closed", "Cancelled & expired"];
+const BOX_IDS = new Set([...BOXES.map(([id]) => id), CLOSED_BOX[0]]);
 const EMPTY = {
   mine: "Nothing is waiting for your decision.",
   made: "You haven't asked for any approvals.",
   team: "Nobody in your team has asked for an approval.",
   decided: "You haven't decided any requests yet.",
   all: "There are no approval requests yet.",
+  closed: "No request has been cancelled or has expired.",
 };
+const money = (value) => `GH₵ ${Number(value).toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const LEVEL_WORD = (level) => (level ? `Level ${level + 1} (moved up ${level}×)` : "Level 1");
 const STATUS = {
   pending: ["Waiting", D.amber],
   approved: ["Approved", D.green],
@@ -96,7 +101,7 @@ export default function ApprovalsPanel({ detailId, onOpenDetail }) {
   return <ApprovalsInbox onOpen={(id) => onOpenDetail(id)} />;
 }
 
-const FILTERS_OFF = { kind: "", maker: "", wait: "", ordering: "", escalated: false };
+const FILTERS_OFF = { kind: "", maker: "", wait: "", ordering: "", escalated: false, team: "", level: "", amount_min: "", amount_max: "" };
 
 function ApprovalsInbox({ onOpen, initialBox = "mine" }) {
   const [box, setBox] = useState(initialBox);
@@ -104,12 +109,19 @@ function ApprovalsInbox({ onOpen, initialBox = "mine" }) {
   // Moving between approvals entries while mounted re-applies the box the entry names.
   useEffect(() => { setBox(initialBox); }, [initialBox]);
   const { data: counts } = useApprovalCounts();
-  const { data, isLoading, isError } = useApprovals(box, "", {
+  const closed = box === CLOSED_BOX[0];
+  const { data, isLoading, isError } = useApprovals(closed ? "all" : box, closed ? "cancelled,expired" : "", {
     kind: filters.kind, maker: filters.maker, min_wait_hours: filters.wait, ordering: filters.ordering, escalated: filters.escalated ? "1" : "",
+    team: filters.team, level: filters.level, amount_min: filters.amount_min, amount_max: filters.amount_max,
   });
+  const { data: stats } = useApprovalStats();
   const rows = data?.results || [];
-  const label = (id, text) => (counts?.[id] ? `${text} · ${counts[id]}` : text);
-  const boxes = BOXES.filter(([id]) => id !== "all" || counts?.can_view_all);
+  const label = (id, text) => {
+    const n = id === "all" ? counts?.all_open : counts?.[id];
+    return n ? `${text} · ${n}` : text;
+  };
+  const boxes = [...BOXES.filter(([id]) => id !== "all" || counts?.can_view_all), ...(counts?.can_view_all ? [CLOSED_BOX] : [])];
+  const everything = Boolean(counts?.can_view_all);
   const set = (key) => (e) => setFilters((f) => ({ ...f, [key]: e.target.value }));
   const waiting = rows.filter((a) => a.status === "pending");
   const escalated = waiting.filter((a) => a.escalated).length;
@@ -121,12 +133,28 @@ function ApprovalsInbox({ onOpen, initialBox = "mine" }) {
       nextMove ? (nextMove > Date.now() ? `next to move on in ${formatDuration(nextMove - Date.now())}` : "one is past its time") : null,
     ].filter(Boolean)
     : [];
-  const filtered = filters.kind || filters.maker || filters.wait || filters.ordering || filters.escalated;
+  const filtered = Object.values(filters).some(Boolean);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {everything && (
+        <div role="group" aria-label="Approvals at a glance" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+          {[
+            ["Waiting for you", counts.mine, counts.escalated_to_me ? `${counts.escalated_to_me} escalated to you` : "Nothing escalated"],
+            ["Open across AshantiHub", counts.all_open, "Every team's pending requests"],
+            ["You decided today", stats?.decided_today ?? "—", stats ? `${stats.approved_today} approved · ${stats.returned_today} returned` : ""],
+            ["Median time to decide", stats?.median_minutes != null ? formatDuration(stats.median_minutes * 60000) : "—", "Your decisions today"],
+          ].map(([name, value, sub]) => (
+            <div key={name} role="group" aria-label={name} style={{ ...glassCard, padding: 14, display: "flex", flexDirection: "column", gap: 4 }}>
+              <span style={{ ...dim, fontWeight: 700 }}>{name}</span>
+              <span style={{ fontSize: "1.4rem", fontWeight: 800, color: D.text, fontVariantNumeric: "tabular-nums" }}>{value}</span>
+              <span style={dim}>{sub}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{ ...glassCard, padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <h2 style={heading}>Approvals</h2>
+          <h2 style={heading}>{everything ? "My approvals" : "Approvals"}</h2>
           <div role="group" aria-label="Which requests" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {boxes.map(([id, text]) => (
               <button key={id} type="button" aria-pressed={box === id} onClick={() => setBox(id)} style={pill(box === id)}>{label(id, text)}</button>
@@ -146,6 +174,28 @@ function ApprovalsInbox({ onOpen, initialBox = "mine" }) {
               {(counts?.makers || []).map((m) => <option key={m.id} value={m.id}>{m.full_name}</option>)}
             </select>
           </label>
+          {everything && (
+            <>
+              <label style={filterLabel}>Team
+                <select value={filters.team} onChange={set("team")} style={selectStyle}>
+                  <option value="">All teams</option>
+                  {(counts?.teams || []).map((t) => <option key={t} value={t}>{roleName(t)}</option>)}
+                </select>
+              </label>
+              <label style={filterLabel}>Level
+                <select value={filters.level} onChange={set("level")} style={selectStyle}>
+                  <option value="">Any level</option>
+                  {[0, 1, 2].map((l) => <option key={l} value={l}>{LEVEL_WORD(l)}</option>)}
+                </select>
+              </label>
+              <label style={filterLabel}>Amount from (GH₵)
+                <input type="number" min="0" inputMode="decimal" value={filters.amount_min} onChange={set("amount_min")} style={{ ...selectStyle, width: 110 }} />
+              </label>
+              <label style={filterLabel}>Amount to (GH₵)
+                <input type="number" min="0" inputMode="decimal" value={filters.amount_max} onChange={set("amount_max")} style={{ ...selectStyle, width: 110 }} />
+              </label>
+            </>
+          )}
           <label style={filterLabel}>Waiting
             <select value={filters.wait} onChange={set("wait")} style={selectStyle}>
               <option value="">Any time</option>
@@ -176,6 +226,7 @@ function ApprovalsInbox({ onOpen, initialBox = "mine" }) {
               <thead>
                 <tr style={{ borderBottom: `1px solid ${D.divider}` }}>
                   <th scope="col" style={th}>Kind</th><th scope="col" style={th}>Request</th><th scope="col" style={th}>Made by</th>
+                  {everything && <th scope="col" style={th}>Amount</th>}
                   <th scope="col" style={th}>Waiting</th><th scope="col" style={th}>{box === "mine" ? "If you don't decide" : "Where it stands"}</th>
                   <th scope="col" style={th}><span style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>Open</span></th>
                 </tr>
@@ -194,7 +245,8 @@ function ApprovalsInbox({ onOpen, initialBox = "mine" }) {
                       {(a.maker_note || a.target.label) && a.maker_note !== a.title && <div style={dim}>{a.maker_note || a.target.label}</div>}
                     </td>
                     <td style={td}><div style={{ fontWeight: 700 }}>{a.maker.full_name}</div><div style={dim}>{makerLine(a)}</div></td>
-                    <td style={{ ...td, whiteSpace: "nowrap", fontWeight: 700 }}>{timeAgo(a.created_at)}</td>
+                    {everything && <td style={{ ...td, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{a.amount != null ? money(a.amount) : <span style={dim}>No amount</span>}</td>}
+                    <td style={{ ...td, whiteSpace: "nowrap", fontWeight: 700 }}>{timeAgo(a.created_at)}{everything && a.status === "pending" && <div style={dim}>{LEVEL_WORD(a.escalation_level)}</div>}</td>
                     <td style={{ ...td, color: D.textDim }}>{ifNotDecided(a)}</td>
                     <td style={td}>
                       <button type="button" aria-label={`Open ${a.title}`} onClick={() => onOpen(a.id)} style={button(D.panelBg, D.text)}>Open</button>
@@ -342,6 +394,7 @@ function ApprovalRequest({ id, onBack }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
           <span style={chip(statusColor)}>{a.status === "pending" && a.can_decide ? `Waiting for you · ${timeAgo(a.created_at)}` : statusLabel}</span>
           {a.status === "pending" && <span style={dim}>{ifNotDecided(a)}</span>}
+          {a.amount != null && <span style={{ fontWeight: 800, color: D.text, fontVariantNumeric: "tabular-nums" }}>{money(a.amount)}</span>}
         </div>
       </div>
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
@@ -363,6 +416,11 @@ function ApprovalRequest({ id, onBack }) {
               ))}
             </tbody>
           </table>
+          {a.amount != null && (
+            <div style={{ ...dim, background: D.panelBg2, borderRadius: 10, padding: "8px 12px", lineHeight: 1.5 }}>
+              {`This request carries one amount, ${money(a.amount)}. Payments are simulated until Hubtel is connected, and line-by-line pay detail arrives with the Accounting phase, so only what the request holds is shown here.`}
+            </div>
+          )}
           {isKyc && a.target?.id && (
             <BusinessKycReview businessId={a.target.id} canRecordAddress={a.status === "pending" && Boolean(a.can_decide)} />
           )}
@@ -372,10 +430,13 @@ function ApprovalRequest({ id, onBack }) {
             <h2 style={heading}>Your decision</h2>
             {a.stale && <div role="alert" style={{ color: D.red, fontWeight: 700, fontSize: "0.8rem" }}>This changed since it was requested — ask for a fresh request.</div>}
             {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>{actionError}</div>}
+            {a.can_decide && a.requires_sudo && (
+              <div style={dim}>Approving this asks for your password again. It then stays unlocked on this device for 10 minutes.</div>
+            )}
             {a.can_decide && (
               <>
                 <div style={dim}>{`Made by ${a.maker.full_name}${a.maker_team?.mine ? ` · you decide as ${makerFirst}'s ${a.maker_team.manager ? "lead" : "manager"}.` : "."}`}</div>
-                <button type="button" disabled={busy || a.stale} onClick={() => act("approve", { note })} style={button(D.green, D.panelBg, busy || a.stale)}>{isKyc ? "Approve KYC" : "Approve"}</button>
+                <button type="button" disabled={busy || a.stale} onClick={() => act("approve", { note })} style={button(D.green, D.panelBg, busy || a.stale)}>{isKyc ? "Approve KYC" : a.requires_sudo ? "Approve with password" : "Approve"}</button>
                 {consequences.length > 0 && (
                   <ul aria-label="What approving does" style={{ margin: 0, paddingLeft: 18, fontSize: "0.78rem", color: D.text, display: "flex", flexDirection: "column", gap: 3 }}>
                     {consequences.map((line) => <li key={line}>{line}</li>)}
@@ -400,6 +461,13 @@ function ApprovalRequest({ id, onBack }) {
               <div style={dim}>{statusLabel} by {a.decided_by.full_name} on {new Date(a.decided_at).toLocaleString("en-GH")}{a.decision_note ? `: “${a.decision_note}”` : ""}</div>
             )}
           </section>
+          {a.status === "pending" && (
+            <section aria-labelledby="who-h" style={card}>
+              <h2 id="who-h" style={heading}>Who signs off</h2>
+              <div style={{ fontSize: "0.8rem", color: D.text }}>{`Now: ${stageText(a)}. ${LEVEL_WORD(a.escalation_level)}.`}</div>
+              <div style={dim}>{`${a.maker.full_name} made it and can never decide it.${a.next_move ? ` If nobody does: ${ifNotDecided(a).toLowerCase()}.` : ""}`}</div>
+            </section>
+          )}
           {timeline.length > 0 && (
             <section aria-labelledby="tl-h" style={card}>
               <h2 id="tl-h" style={heading}>Timeline</h2>

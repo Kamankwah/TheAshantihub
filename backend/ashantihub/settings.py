@@ -113,6 +113,7 @@ INSTALLED_APPS = [
     "targets",
     "operations",
     "commission",
+    "insights",
     "realtime",
 ]
 
@@ -451,6 +452,10 @@ CELERY_BEAT_SCHEDULE = {
     "commission-release-holds": {
         "task": "commission.tasks.release_commission_holds",
         "schedule": crontab(hour=2, minute=45),
+    },
+    "insights-scheduled-exports": {
+        "task": "insights.tasks.run_due_scheduled_exports",
+        "schedule": 300.0,  # every 5 minutes
     },
     "portfolio-purge-staged-photos": {
         "task": "portfolio.tasks.purge_staged_photos",

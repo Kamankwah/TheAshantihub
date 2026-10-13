@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ doc.title }}</title>
+<style>
+  @page { size: A4 landscape; margin: 14mm 12mm;
+    @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8pt; color: #6b5a4e; } }
+  body { font-family: "DejaVu Sans", sans-serif; color: #2C1810; font-size: 8.5pt; line-height: 1.4; }
+  h1 { font-size: 15pt; margin: 0 0 4pt; }
+  h2 { font-size: 11pt; margin: 14pt 0 3pt; }
+  .meta { color: #6b5a4e; font-size: 8.5pt; margin-bottom: 6pt; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th { text-align: left; font-size: 8pt; color: #6b5a4e; border-bottom: 1px solid #2C181066; padding: 3pt 4pt; }
+  td { padding: 3pt 4pt; vertical-align: top; border-top: 1px solid #2C18101f; }
+</style>
+</head>
+<body>
+  <h1>{{ doc.title }}</h1>
+  <div class="meta">Generated {{ generated_at|date:"j M Y, H:i" }} · from AshantiHub's records{% if doc.note %} · {{ doc.note }}{% endif %}</div>
+  {% for tab in doc.tables %}
+    {% if tab.heading %}<h2>{{ tab.heading }}</h2>{% endif %}
+    <table>
+      <thead><tr>{% for c in tab.columns %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for row in tab.rows %}<tr>{% for v in row %}<td>{{ v }}</td>{% endfor %}</tr>{% empty %}<tr><td colspan="{{ tab.columns|length }}">Nothing in this range.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  {% endfor %}
+</body>
+</html>

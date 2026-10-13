@@ -9,6 +9,7 @@ import { useStaffBadges } from "../../hooks/useStaffBadges.js";
 import { D, ROLE_ACCENTS } from "./theme.js";
 import OperationsOverviewPanel from "./panels/OperationsOverviewPanel.jsx";
 import OverviewPanel from "./panels/OverviewPanel.jsx";
+import SuperAdminOverviewPanel from "./panels/SuperAdminOverviewPanel.jsx";
 import ServiceIssuesPanel from "./panels/ServiceIssuesPanel.jsx";
 import DeliveriesReturnsPanel from "./panels/DeliveriesReturnsPanel.jsx";
 import SupportTeamPanel from "./panels/SupportTeamPanel.jsx";
@@ -323,6 +324,8 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
         <main className="staff-content" style={{ padding: isPhone ? "16px 12px calc(88px + env(safe-area-inset-bottom, 0px))" : "22px 20px 72px" }}>
           {activeTab === "overview" && (role === "scout"
             ? <ScoutTodayPanel auth={auth} onNavigate={selectTab} onCheckIn={openCheckInScreen} onRegister={() => selectTab("register-business")} onSeeApprovals={openMadeApprovals} onOpenBusiness={openMyBusiness} />
+            : role === "super_admin"
+              ? <SuperAdminOverviewPanel auth={auth} onNavigate={selectTab} onOpenApproval={openApproval} />
             : role === "operations" && auth.hasPermission("portfolio.manage")
               ? <OperationsOverviewPanel auth={auth} onNavigate={selectTab} onOpenApproval={openApproval} onOpenBusiness={openBusiness} />
               : <OverviewPanel auth={auth} roleColor={roleColor} onNavigate={selectTab} />)}
