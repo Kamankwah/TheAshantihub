@@ -104,6 +104,57 @@ function Decision({ job, onDone }) {
   );
 }
 
+const LOCK_AT = 5; // CODE_ATTEMPT_LIMIT on the server; the server is the one that enforces it
+
+// One code's line in the record: matched or not, wrong tries, and, once five wrong tries have locked it,
+// an unlock that needs a written reason (it is logged with the manager's name). The code itself is
+// never shown to a manager.
+function CodeLine({ label, which, jobId, state, onDone }) {
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const locked = !state.matched && state.wrong_tries >= LOCK_AT;
+  const unlock = async () => {
+    setError("");
+    setBusy(true);
+    try {
+      await apiPost(`/api/delivery/jobs/${jobId}/unlock-code/`, { which, note: note.trim() });
+      setOpen(false);
+      setNote("");
+      onDone();
+    } catch (err) {
+      setError(apiErrorMessage(err, "Could not unlock the code."));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <span style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <span>{label}: {state.matched ? "matched" : "not entered yet"}{state.wrong_tries ? `, ${state.wrong_tries} wrong tr${state.wrong_tries === 1 ? "y" : "ies"}` : ""}</span>
+      {locked && (
+        <span style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
+          <span style={chip(D.amber)}>Code locked</span>
+          {!open && <button type="button" onClick={() => setOpen(true)} style={button(D.panelBg, D.text)}>Unlock code</button>}
+          {open && (
+            <span style={{ display: "flex", flexDirection: "column", gap: 6, alignSelf: "stretch" }}>
+              <ErrorLine>{error}</ErrorLine>
+              <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: "0.7rem", fontWeight: 700, color: D.text }}>
+                Why are you unlocking this code? (required, kept in the activity log)
+                <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={300} style={field} />
+              </label>
+              <span style={{ display: "flex", gap: 8 }}>
+                <button type="button" disabled={!note.trim() || busy} onClick={unlock} style={button(D.gold, D.text, !note.trim() || busy)}>Confirm unlock</button>
+                <button type="button" disabled={busy} onClick={() => { setOpen(false); setError(""); }} style={button(D.panelBg, D.text)}>Cancel</button>
+              </span>
+            </span>
+          )}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function DeliveryDetail({ id, onBack, onOpenCase }) {
   const { data: job, isLoading, isError, refetch } = useDeliveryJob(id);
   const [error, setError] = useState("");
@@ -155,8 +206,8 @@ export function DeliveryDetail({ id, onBack, onOpenCase }) {
                 </div>
               ))}
               <div style={{ ...dim, display: "flex", gap: 14, flexWrap: "wrap" }}>
-                <span>Pickup code: {job.codes.pickup.matched ? "matched" : "not entered yet"}{job.codes.pickup.wrong_tries ? `, ${job.codes.pickup.wrong_tries} wrong tr${job.codes.pickup.wrong_tries === 1 ? "y" : "ies"}` : ""}</span>
-                <span>Customer code: {job.codes.drop.matched ? "matched" : "not entered yet"}{job.codes.drop.wrong_tries ? `, ${job.codes.drop.wrong_tries} wrong tr${job.codes.drop.wrong_tries === 1 ? "y" : "ies"}` : ""}</span>
+                <CodeLine label="Pickup code" which="pickup" jobId={id} state={job.codes.pickup} onDone={refetch} />
+                <CodeLine label="Customer code" which="drop" jobId={id} state={job.codes.drop} onDone={refetch} />
               </div>
               {job.wait && <Note tone="warn">Waiting at the door: {Math.floor(job.wait.elapsed_seconds / 60)} of {Math.floor(job.wait.limit_seconds / 60)} minutes.</Note>}
               {job.failed && <Note tone="warn">Could not deliver at {clock(job.failed.at)}: {job.failed.reason}. {job.failed.note}</Note>}

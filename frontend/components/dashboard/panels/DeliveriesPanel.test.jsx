@@ -135,3 +135,30 @@ describe('DeliveriesPanel rider tracking (vendor)', () => {
     expect(screen.queryAllByRole('button').some((b) => b.getAttribute('data-kind') === 'drop')).toBe(false)
   })
 })
+
+describe('DeliveriesPanel pickup code (vendor)', () => {
+  const DROP_CODE = '2468'
+
+  it('shows the pickup code large, with who to give it to, when the server sends one', async () => {
+    renderPanel([{ ...DOOR_TO_DOOR_ORDER, pickup_code: '4729', rider_heading_here: false }])
+    const box = await screen.findByTestId('pickup-code-box')
+    expect(box).toHaveTextContent('Pickup code')
+    expect(screen.getByLabelText('Pickup code 4 7 2 9')).toBeInTheDocument()
+    expect(box).toHaveTextContent('Read this to the rider when they collect order #7.')
+    expect(box).toHaveTextContent('Only give it to the rider who is at your shop.')
+  })
+
+  it('renders nothing when the pickup code is null or missing', async () => {
+    renderPanel([{ ...DOOR_TO_DOOR_ORDER, pickup_code: null }])
+    await screen.findByText(/Bantama, Kumasi/)
+    expect(screen.queryByTestId('pickup-code-box')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Pickup code/)).not.toBeInTheDocument()
+  })
+
+  it('never shows a delivery code, even if one slipped into the payload', async () => {
+    const { container } = renderPanel([{ ...DOOR_TO_DOOR_ORDER, pickup_code: '4729', delivery_code: DROP_CODE, drop_code: DROP_CODE }])
+    await screen.findByTestId('pickup-code-box')
+    expect(container.textContent).not.toContain(DROP_CODE)
+    expect(screen.queryByText(/Delivery code/i)).not.toBeInTheDocument()
+  })
+})

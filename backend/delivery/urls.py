@@ -31,6 +31,7 @@ urlpatterns = [
     path("jobs/<int:pk>/", views_live.JobDetailView.as_view(), name="delivery-job"),
     path("jobs/<int:pk>/map/", views_live.JobMapView.as_view(), name="delivery-job-map"),
     path("jobs/<int:pk>/flag-decision/", views_live.FlagDecisionView.as_view(), name="delivery-job-flag-decision"),
+    path("jobs/<int:pk>/unlock-code/", views_live.UnlockCodeView.as_view(), name="delivery-job-unlock-code"),
     path("jobs/<int:pk>/call-rider/", views_live.CallRiderView.as_view(), name="delivery-job-call-rider"),
     path("jobs/<int:pk>/photos/<int:photo_id>/", views_live.PhotoFileView.as_view(), name="delivery-job-photo"),
     # ── Manager: fleet (delivery.fleet) ────────────────────────────────────────────────────────────

@@ -67,6 +67,22 @@ function RiderOnTheWay({ orderId }) {
   );
 }
 
+// The code the rider asks this shop for at the counter. The server sends it only while this rider is
+// heading to this owner's shop, so null means render nothing. It is never the customer's delivery code.
+function PickupCodeBox({ code, orderId }) {
+  if (!code) return null;
+  const spaced = String(code).split("").join(" ");
+  return (
+    <div data-testid="pickup-code-box" style={{ marginTop: 10, padding: "12px 14px", borderRadius: 12, background: `${D.gold}1e`, border: `1.5px solid ${D.gold}` }}>
+      <div style={{ fontSize: "0.7rem", fontWeight: 800, color: D.deepGold, textTransform: "uppercase", letterSpacing: "0.06em" }}>Pickup code</div>
+      <div aria-label={`Pickup code ${spaced}`} style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: "2rem", fontWeight: 700, letterSpacing: "0.3em", color: D.text, margin: "4px 0" }}>{spaced}</div>
+      <div style={{ fontSize: "0.72rem", color: D.text, lineHeight: 1.5 }}>
+        Read this to the rider when they collect order #{orderId}. Only give it to the rider who is at your shop.
+      </div>
+    </div>
+  );
+}
+
 function OrderRow({ order }) {
   const doorToDoor = order.delivery_method === "door_to_door";
   const meta = STATUS_META[order.delivery_status] || { label: order.delivery_status, color: D.textDim, icon: "•" };
@@ -94,6 +110,7 @@ function OrderRow({ order }) {
         </div>
       )}
 
+      {doorToDoor && <PickupCodeBox code={order.pickup_code} orderId={order.id} />}
       {doorToDoor && order.rider_heading_here === true && <RiderOnTheWay orderId={order.id} />}
 
       {/* Progress track — only meaningful for door-to-door delivery */}

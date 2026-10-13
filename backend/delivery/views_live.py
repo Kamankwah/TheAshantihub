@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import HasRolePermission
+from activity.services import record
 from accounts.phones import mask_phone
 from disputes.models import Dispute
 from orders.models import DeliveryAssignment
@@ -128,6 +129,35 @@ class CallRiderView(ManageView):
             return Response({"detail": "This rider has no phone number on file.", "code": "no_phone"}, status=409)
         call = services.log_call(assignment, request.user, DeliveryCall.MANAGER_TO_RIDER)
         return Response({"call_id": call.pk, "phone": phone, "started_at": call.started_at}, status=201)
+
+
+class UnlockCodeView(ManageView):
+    """POST jobs/<id>/unlock-code/ {"which": "pickup"|"drop", "note"} - a step locked by five wrong codes is
+    reopened by a manager who says why. Only the counter is reset; the code itself never changes or leaves
+    the server. The unlock is written to the activity log with the note."""
+
+    def post(self, request, pk):
+        which = request.data.get("which")
+        if which not in ("pickup", "drop"):
+            return Response({"detail": "Choose the pickup or the drop code."}, status=400)
+        note = str(request.data.get("note", "")).strip()
+        if not note:
+            return Response({"detail": "Say why you are unlocking this code."}, status=400)
+        field = "pickup_code_attempts" if which == "pickup" else "drop_code_attempts"
+        with transaction.atomic():
+            assignment = get_object_or_404(DeliveryAssignment.objects.select_for_update(of=("self",)), pk=pk)
+            if getattr(assignment, field) < services.CODE_ATTEMPT_LIMIT:
+                return Response({"detail": "This code is not locked.", "code": "not_locked"}, status=409)
+            before = getattr(assignment, field)
+            setattr(assignment, field, 0)
+            assignment.save(update_fields=[field])
+            # Last, because record() holds the activity chain lock until commit.
+            record(
+                request.user, "delivery.code_unlocked", target=assignment, method="POST",
+                summary=f"Unlocked the {which} code on order #{assignment.order_id}: {note[:200]}",
+                before={"which": which, "wrong_tries": before}, after={"which": which, "wrong_tries": 0, "note": note[:300]}, request=request,
+            )
+        return Response({"which": which, "attempts": 0})
 
 
 class PhotoFileView(ManageView):

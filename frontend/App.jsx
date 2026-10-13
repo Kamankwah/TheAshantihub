@@ -30,6 +30,7 @@ import { apiFetch, apiPost, apiPatch, getStoredAuth } from "./apiClient.js";
 import { C, CURRENCIES } from "./theme.js";
 import Flag from "./components/Flag.jsx";
 import OrderTrackingMap from "./components/OrderTrackingMap.jsx";
+import DeliveryCodeBox from "./components/DeliveryCodeBox.jsx";
 import Navbar from "./components/Navbar.jsx";
 import Hero from "./components/Hero.jsx";
 import HeroCarousel from "./components/HeroCarousel.jsx";
@@ -2158,6 +2159,7 @@ function OrdersDeliveryTab({ searchQuery }) {
         )}
         {o.status==="paid" && o.delivery_method==="door_to_door" && <DeliveryStepper status={o.delivery_status}/>}
         {o.status==="paid" && o.delivery_method==="door_to_door" && <OrderTrackingMap orderId={o.id} assignmentStatus={o.delivery_assignment_status ?? null} deliveryStatus={o.delivery_status}/>}
+        {o.status==="paid" && o.delivery_method==="door_to_door" && <DeliveryCodeBox code={o.delivery_code} assignmentStatus={o.delivery_assignment_status ?? null}/>}
         {o.delivery_assignment_status==="delivered" && (
           <div style={{marginTop:10}}>
             <div style={{color:D.textDim,fontSize:"0.72rem",marginBottom:6}}>Your courier marked this delivered. Please confirm you received it.</div>
