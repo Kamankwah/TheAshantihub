@@ -118,7 +118,7 @@ class PublishTests(TestCase):
 
     def test_the_money_delivery_and_promotion_queues_refresh_live(self):
         cases = [
-            ("dispute-resolve", ["perm.disputes.resolve_financial", "perm.disputes.flag"], ["disputes-queue"]),
+            ("dispute-resolve", ["perm.disputes.resolve_financial", "perm.disputes.flag"], ["disputes-queue", "staff-badges"]),
             ("promotion-approve", ["perm.promotions.manage"], ["promotions-queue"]),
             ("subscription-plan-approve", ["perm.subscription_plans.approve"], ["subscription-plan-pending-queue", "staff-badges"]),
             ("escrow-release", ["perm.escrow.view"], ["escrow-ledger", "staff-badges"]),

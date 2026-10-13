@@ -89,7 +89,9 @@ describe('My Work group', () => {
   })
 })
 
-const OPS_ONLY = ['ops-scouts', 'support-team', 'leave', 'hero-events', 'support-issues', 'deliveries-returns', 'visit-map', 'zones']
+const SA_ONLY = NAV_ITEMS.filter((i) => i.placeholder === 'super_admin').map((i) => i.id).concat('invites')
+// 'leave' is also Super Admin's (the canvas's Leave & holidays), but no other role's.
+const OPS_ONLY = ['ops-scouts', 'support-team', 'leave', 'hero-events', 'support-issues', 'deliveries-returns', 'visit-map', 'zones', ...SA_ONLY]
 
 describe('per-role menus', () => {
   const authAs = (role, perms) => ({ user: { role }, hasPermission: (c) => perms.includes(c) })
@@ -118,8 +120,8 @@ describe('per-role menus', () => {
     expect(groups.at(-1).id).toBe('more')
   })
 
-  it('shows every permitted item exactly once and no empty group, for every role but Operations', () => {
-    for (const role of ['super_admin', 'accountant', 'marketing', 'support', 'scout', 'delivery_manager', 'dispatch']) {
+  it('shows every permitted item exactly once and no empty group, for every role but Operations and Super Admin (exhaustive menus)', () => {
+    for (const role of ['accountant', 'marketing', 'support', 'scout', 'delivery_manager', 'dispatch']) {
       const groups = buildNavGroups({ user: { role }, hasPermission: () => true })
       const ids = groups.flatMap((g) => g.items.map((i) => i.id))
       expect(new Set(ids).size).toBe(ids.length)
@@ -166,8 +168,8 @@ describe('Register a business (staff phase 2A)', () => {
     expect(allIds(groups)).not.toContain('register-business')
   })
 
-  it('gives Super Admin a Businesses group too', () => {
-    expect(groupOf(buildNavGroups(authAs('super_admin', ['businesses.register'])), 'register-business')).toBe('Businesses')
+  it("is not in Super Admin's menu either (the 2026-10-07 canvas has no such item; the permission stays)", () => {
+    expect(allIds(buildNavGroups(authAs('super_admin', ['businesses.register'])))).not.toContain('register-business')
   })
 
   it('sits with the field tools for a session without a known role', () => {
@@ -224,12 +226,12 @@ describe('portfolio menus (staff phase 2A)', () => {
     expect(idsIn(groups, 'Businesses')).toEqual(['all-portfolios', 'at-risk', 'subscriptions-due'])
   })
 
-  it('gives Super Admin a Businesses group and keeps Portfolio under Teams (step in)', () => {
+  it("shows All portfolios to Super Admin as the canvas's Businesses, under Marketplace, and no Portfolio or At risk", () => {
     const groups = buildNavGroups({ user: { role: 'super_admin' }, hasPermission: () => true })
-    expect(groupOf(groups, 'all-portfolios')).toBe('Businesses')
-    expect(groupOf(groups, 'at-risk')).toBe('Businesses')
-    expect(groupOf(groups, 'register-business')).toBe('Businesses')
-    expect(groupOf(groups, 'portfolio')).toBe('Teams (step in)')
+    expect(groupOf(groups, 'all-portfolios')).toBe('Marketplace')
+    expect(groups.flatMap((g) => g.items).find((i) => i.id === 'all-portfolios').label).toBe('Businesses')
+    expect(groups.flatMap((g) => g.items.map((i) => i.id))).not.toContain('at-risk')
+    expect(groups.flatMap((g) => g.items.map((i) => i.id))).not.toContain('portfolio')
   })
 
   it('shows Portfolio to account managers and the Operations screens only with portfolio.manage', () => {
@@ -282,10 +284,11 @@ describe('Subscriptions due and Fraud cases (staff phase 2A)', () => {
     expect(idsIn(groups, 'Queues')).toEqual(['contact-messages', 'reviews', 'disputes', 'delivery', 'fraud-cases'])
   })
 
-  it('gives Super Admin both: Subscriptions due under Businesses, Fraud cases at the end of Marketplace', () => {
+  it("gives Super Admin Fraud cases as the canvas's Fraud & anomaly alerts under Security & audit, and no Subscriptions due", () => {
     const groups = buildNavGroups(everything('super_admin'))
-    expect(idsIn(groups, 'Businesses')).toEqual(['all-portfolios', 'at-risk', 'subscriptions-due', 'register-business'])
-    expect(idsIn(groups, 'Marketplace').at(-1)).toBe('fraud-cases')
+    expect(groupOf(groups, 'fraud-cases')).toBe('Security & audit')
+    expect(groups.flatMap((g) => g.items).find((i) => i.id === 'fraud-cases').label).toBe('Fraud & anomaly alerts')
+    expect(groups.flatMap((g) => g.items.map((i) => i.id))).not.toContain('subscriptions-due')
   })
 
   it('keeps both inside the original groups for a session without a known role', () => {
@@ -351,9 +354,10 @@ describe("the scout's menu in the canvas's words (staff WP6)", () => {
     expect(labelsIn(groups, 'Account')).toEqual(['Profile & sign out', 'My activity'])
   })
 
-  it('calls the scout\'s Overview "Today" and everyone else\'s "Overview"', () => {
+  it('x', () => {
     expect(overviewLabel('scout')).toBe('Today')
-    for (const role of ['super_admin', 'operations', 'accountant', 'marketing', 'support', 'delivery_manager', 'dispatch']) expect(overviewLabel(role)).toBe('Overview')
+    for (const role of ['operations', 'accountant', 'marketing', 'support', 'delivery_manager', 'dispatch']) expect(overviewLabel(role)).toBe('Overview')
+    expect(overviewLabel('super_admin')).toBe('Command center')
   })
 
   it('leaves the shared labels, and every other role\'s, as they were', () => {
@@ -405,7 +409,7 @@ describe('Operations menu (canvas 2026-10-12)', () => {
   })
 
   it('has no placeholder screens left: every Operations canvas screen is built', () => {
-    expect([...PLACEHOLDER_TABS]).toEqual([])
+    expect([...PLACEHOLDER_TABS.operations]).toEqual([])
   })
 
   it('maps the canvas badges to staff-badges keys, summing Hero & events', () => {
@@ -417,5 +421,62 @@ describe('Operations menu (canvas 2026-10-12)', () => {
     expect(badgeFor('support-issues')).toBe(0)
     expect(badgeFor('deliveries-returns')).toBe(0)
     expect(badgeFor('hero-events')).toBe(2)
+  })
+})
+
+describe('Super Admin menu (canvases 2026-10-07)', () => {
+  const auth = { user: { role: 'super_admin' }, hasPermission: () => true }
+  const groups = buildNavGroups(auth)
+
+  it('has exactly the canvas groups and items, in order, with the Security settings item', () => {
+    expect(groups.map((g) => [g.label, g.items.map((i) => i.label)])).toEqual([
+      ['Home', ['My approvals']],
+      ['People', ['Staff directory', 'Teams & reporting lines', 'Invites', 'Roles & permissions', 'Sessions & devices', 'Leave & holidays']],
+      ['Teams (step in)', ['Operations & scouts', 'Support', 'Delivery & dispatch', 'Marketing', 'Accounting']],
+      ['Marketplace', ['Businesses', 'Customers', 'Listings & services', 'Orders & deliveries', 'Events & tickets', 'Disputes & returns']],
+      ['Money', ['Revenue & sales', 'Payouts & payroll', 'Commissions', 'Refunds', 'Reconciliation']],
+      ['Insights', ['Analytics', 'Growth funnel', 'Reports hub', 'Scheduled exports']],
+      ['Security & audit', ['Audit log', 'Sign-in history', 'Fraud & anomaly alerts', 'Data exports log', 'Security settings']],
+      ['Communication', ['Notification center', 'Staff announcements']],
+      ['Settings', ['Approval rules & timers', 'Commission policy', 'Delivery pricing', 'Plans & prices', 'Target limits', 'Tax tables', 'Categories & zones', 'Integrations', 'System health']],
+    ])
+  })
+
+  it('is exhaustive: no More tools, and dropped screens keep their permission', () => {
+    expect(groups.some((g) => g.id === 'more')).toBe(false)
+    const ids = groups.flatMap((g) => g.items.map((i) => i.id))
+    for (const gone of ['kyc', 'hero', 'reviews', 'escrow', 'credit', 'messaging', 'tasks', 'calls', 'reports', 'at-risk', 'register-business', 'scout-assignments', 'site-settings']) expect(ids).not.toContain(gone)
+    expect(NAV_ITEMS.find((i) => i.id === 'kyc').show(auth)).toBe(true) // the permission and panel are untouched
+  })
+
+  it('lists the unbuilt screens as placeholders for Super Admin only', () => {
+    const placeholders = [...PLACEHOLDER_TABS.super_admin]
+    expect(placeholders).toEqual(expect.arrayContaining(['teams-reporting', 'roles-permissions', 'step-in-operations', 'payouts-payroll', 'system-health']))
+    for (const built of ['approvals', 'staff', 'sessions', 'leave', 'transactions', 'analytics', 'activity', 'security', 'commission-policy', 'targets', 'categories-zones', 'invites']) {
+      expect(placeholders).not.toContain(built)
+    }
+    for (const role of ['operations', 'accountant', 'scout']) {
+      const others = buildNavGroups({ user: { role }, hasPermission: () => true }).flatMap((g) => g.items.map((i) => i.id))
+      for (const id of placeholders) expect(others).not.toContain(id)
+    }
+  })
+
+  it("keeps the Super Admin-only screens out of a session without a known role", () => {
+    const ids = buildNavGroups({ user: { role: 'not-a-role' }, hasPermission: () => true }).flatMap((g) => g.items.map((i) => i.id))
+    expect(ids).not.toContain('invites')
+    expect(ids).not.toContain('tax-tables')
+  })
+
+  it('reads the canvas badges: approvals, invites, disputes, reports hub and fraud', () => {
+    const badgeFor = makeBadgeFor({ approvals_waiting: 7, invites_open: 2, disputes_open: 1, reports_hub: 12, fraud_open: 1, team_reports_waiting: 3 }, 'super_admin')
+    expect(badgeFor('approvals')).toBe(7)
+    expect(badgeFor('invites')).toBe(2)
+    expect(badgeFor('disputes')).toBe(1)
+    expect(badgeFor('team-reports')).toBe(12)
+    expect(badgeFor('fraud-cases')).toBe(1)
+    // Other roles keep their own keys: no disputes badge, and Reports reads the manager's own team.
+    const other = makeBadgeFor({ disputes_open: 1, reports_hub: 12, team_reports_waiting: 3 }, 'operations')
+    expect(other('disputes')).toBe(0)
+    expect(other('team-reports')).toBe(3)
   })
 })

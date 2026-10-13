@@ -36,13 +36,14 @@ QUEUE_INVALIDATIONS = [
     (("review-approve", "review-hide"), ("reviews.moderate",), ("reviews-moderation-queue", "staff-badges")),
     (("contact-message",), ("contact_messages.manage",), ("contact-messages-queue", "staff-badges")),
     (("staff-conversation-",), ("messaging.manage",), ("staff-messaging-queue",)),
-    (STAFF_MANAGEMENT_VERBS, ("staff.manage", "staff.invite_team"), ("staff-roster", "my-team", "ops-invites")),
+    # staff-badges: Super Admin's Invites badge counts open invites (invite, resend, cancel, deactivate change it).
+    (STAFF_MANAGEMENT_VERBS, ("staff.manage", "staff.invite_team"), ("staff-roster", "my-team", "ops-invites", "staff-badges")),
     (("promotion-",), ("promotions.manage",), ("promotions-queue",)),
     (("zone.",), ("zones.manage",), ("zones-summary", "zones")),
     (("site_settings.",), ("site_settings.manage",), ("site-settings", "site-settings-history")),
     (("subscription-plan-",), ("subscription_plans.approve",), ("subscription-plan-pending-queue", "staff-badges")),
     (("escrow-",), ("escrow.view",), ("escrow-ledger", "staff-badges")),
-    (("dispute-",), ("disputes.flag", "disputes.resolve_financial"), ("disputes-queue",)),
+    (("dispute-",), ("disputes.flag", "disputes.resolve_financial"), ("disputes-queue", "staff-badges")),
     (
         ("order-delivery-status-update", "order-assign-dispatch", "delivery-pickup", "delivery-deliver"),
         ("orders.manage_delivery",),

@@ -100,7 +100,7 @@ import OfflineBanner from "./shell/OfflineBanner.jsx";
 // leaves it undefined inside the installed app, which has no marketplace).
 export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab: activeTabProp, activeDetail, onTabChange, NotificationsSlot }) {
   const { data: staffBadges } = useStaffBadges();
-  const badgeFor = makeBadgeFor(staffBadges);
+  const badgeFor = makeBadgeFor(staffBadges, auth.user?.role);
   // A scout's Reports item carries a neutral "Due 19:00" while today's day report is unsubmitted.
   const noteFor = (id) => {
     if (auth.user?.role !== "scout" || id !== "reports" || !staffBadges?.report_due_at) return null;
@@ -354,17 +354,17 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "tasks" && (role === "scout"
             ? <FollowUpsPanel onOpenBusiness={openMyBusiness} onOpenProspects={() => selectTab("prospects")} leadName={leadName} />
             : <TasksPanel auth={auth} />)}
-          {activeTab === "activity" && (role === "operations" ? <StaffActivityPanel live={live.live} /> : <ActivityPanel />)}
+          {activeTab === "activity" && (role === "operations" || role === "super_admin" ? <StaffActivityPanel live={live.live} /> : <ActivityPanel />)}
           {activeTab === "visit-map" && <TeamVisitMapPanel onOpenBusiness={openBusiness} />}
           {activeTab === "calls" && <CallLogPanel auth={auth} />}
           {activeTab === "prospects" && <ProspectsPanel onRegister={openRegisterFromProspect} />}
-          {activeTab === "targets" && (auth.hasPermission("businesses.manage_portfolio") ? <TargetsPanel /> : auth.hasPermission("targets.manage") ? <OpsTargetsPanel /> : <ScreenBuildingPanel title="Team targets" />)}
+          {activeTab === "targets" && (role !== "super_admin" && auth.hasPermission("businesses.manage_portfolio") ? <TargetsPanel /> : auth.hasPermission("targets.manage") ? <OpsTargetsPanel /> : <ScreenBuildingPanel title="Team targets" />)}
           {activeTab === "ops-scouts" && <OpsScoutsPanel auth={auth} onNavigate={selectTab} onOpenScout={openScoutPortfolio} />}
           {activeTab === "leave" && <LeavePanel auth={auth} />}
           {activeTab === "support-issues" && <ServiceIssuesPanel auth={auth} onOpenBusiness={openBusiness} />}
           {activeTab === "deliveries-returns" && <DeliveriesReturnsPanel auth={auth} />}
           {activeTab === "support-team" && <SupportTeamPanel onNavigate={selectTab} />}
-          {PLACEHOLDER_TABS.has(activeTab) && <ScreenBuildingPanel title={activeLabel} />}
+          {PLACEHOLDER_TABS[role]?.has(activeTab) && <ScreenBuildingPanel title={activeLabel} />}
           {activeTab === "hero-events" && <HeroEventsPanel auth={auth} />}
           {activeTab === "zones" && <ZonesPanel />}
           {activeTab === "commission" && <CommissionPanel />}
@@ -375,6 +375,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "team-reports" && <TeamReportsPanel auth={auth} />}
           {activeTab === "security" && <SecurityPanel />}
           {activeTab === "sessions" && <SessionsPanel auth={auth} />}
+          {activeTab === "invites" && <MyTeamPanel currentStaffId={auth.user?.id} />}
           {activeTab === "my-team" && (role === "operations" ? <InvitePanel auth={auth} /> : <MyTeamPanel currentStaffId={auth.user?.id} />)}
           {activeTab === "approvals" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "portfolio" && <PortfolioPanel mode="mine" auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
