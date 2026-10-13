@@ -14,6 +14,13 @@ import ServiceIssuesPanel from "./panels/ServiceIssuesPanel.jsx";
 import DeliveriesReturnsPanel from "./panels/DeliveriesReturnsPanel.jsx";
 import SupportTeamPanel from "./panels/SupportTeamPanel.jsx";
 import ScreenBuildingPanel from "./panels/ScreenBuildingPanel.jsx";
+import RevenueSalesPanel from "./panels/RevenueSalesPanel.jsx";
+import CommissionsPanel from "./panels/CommissionsPanel.jsx";
+import RefundsPanel from "./panels/RefundsPanel.jsx";
+import SaAnalyticsPanel from "./panels/SaAnalyticsPanel.jsx";
+import GrowthFunnelPanel from "./panels/GrowthFunnelPanel.jsx";
+import ReportsHubPanel from "./panels/ReportsHubPanel.jsx";
+import ScheduledExportsPanel from "./panels/ScheduledExportsPanel.jsx";
 import KYCQueuePanel from "./panels/KYCQueuePanel.jsx";
 import ListingsModerationPanel from "./panels/ListingsModerationPanel.jsx";
 import HeroApprovalPanel from "./panels/HeroApprovalPanel.jsx";
@@ -351,14 +358,14 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "staff" && <StaffManagementPanel />}
           {activeTab === "escrow" && <EscrowLedgerPanel auth={auth} />}
           {activeTab === "disputes" && (role === "super_admin" ? <SaDisputesPanel auth={auth} /> : <DisputesPanel auth={auth} />)}
-          {activeTab === "transactions" && <TransactionsReportPanel />}
+          {activeTab === "transactions" && (role === "super_admin" ? <RevenueSalesPanel /> : <TransactionsReportPanel />)}
           {activeTab === "credit" && <CreditPanel />}
           {activeTab === "scout-assignments" && <ScoutAssignmentsPanel />}
           {activeTab === "field-verification" && <ScoutPanel />}
           {activeTab === "delivery-coordination" && <DeliveryManagerPanel />}
           {activeTab === "my-deliveries" && <DispatchPanel />}
           {activeTab === "promotions" && <PromotionsPanel auth={auth} />}
-          {activeTab === "analytics" && <AnalyticsPanel />}
+          {activeTab === "analytics" && (role === "super_admin" ? <SaAnalyticsPanel /> : <AnalyticsPanel />)}
           {activeTab === "messaging" && <MessagingPanel />}
           {activeTab === "tasks" && (role === "scout"
             ? <FollowUpsPanel onOpenBusiness={openMyBusiness} onOpenProspects={() => selectTab("prospects")} leadName={leadName} />
@@ -381,7 +388,11 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "commission-policy" && <CommissionPolicyPanel canPropose={auth.hasPermission("commission.policy")} />}
           {activeTab === "visits" && <VisitsPanel auth={auth} detailId={detail} onOpenDetail={openDetail} leadName={leadName} />}
           {activeTab === "reports" && <ReportsPanel auth={auth} />}
-          {activeTab === "team-reports" && <TeamReportsPanel auth={auth} />}
+          {activeTab === "team-reports" && (role === "super_admin" ? <ReportsHubPanel /> : <TeamReportsPanel auth={auth} />)}
+          {activeTab === "commissions" && <CommissionsPanel onNavigate={selectTab} />}
+          {activeTab === "refunds" && <RefundsPanel />}
+          {activeTab === "growth-funnel" && <GrowthFunnelPanel />}
+          {activeTab === "scheduled-exports" && <ScheduledExportsPanel />}
           {activeTab === "security" && <SecurityPanel />}
           {activeTab === "sessions" && <SessionsPanel auth={auth} />}
           {activeTab === "invites" && <MyTeamPanel currentStaffId={auth.user?.id} />}
