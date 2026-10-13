@@ -46,6 +46,14 @@ vi.mock('../components/admin/panels/delivery/RiderMap.jsx', () => ({
       points.map((p) => createElement('button', { key: p.id, type: 'button', 'data-state': p.state, onClick: () => onSelect?.(p.id) }, `pin ${p.label}`))),
 }))
 
+// The shared delivery TrackMap (Leaflet) is stubbed the same way; data-route-points lets tests
+// assert the road route was passed through.
+vi.mock('../components/maps/TrackMap.jsx', () => ({
+  default: ({ label, markers = [], route, onSelect }) =>
+    createElement('div', { 'data-testid': 'track-map', role: 'img', 'aria-label': label, 'data-route-points': route ? route.length : 0 },
+      markers.map((m) => createElement('button', { key: m.id, type: 'button', 'data-kind': m.kind, onClick: () => onSelect?.(m.id) }, `pin ${m.label}`))),
+}))
+
 // jsdom does not implement matchMedia; stub it so hooks like useTheme (which
 // checks `prefers-color-scheme: dark` when no theme is stored) don't throw
 // when rendered under test. Individual tests can still override
