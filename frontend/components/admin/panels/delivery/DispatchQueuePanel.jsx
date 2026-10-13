@@ -15,7 +15,13 @@ import { Empty, ErrorLine, Note, SOURCE_LABEL, WARN, clock, linkStyle, spare, sp
 // (no time limits in force) sorts by how long it has waited and says so.
 const SHORT_MINUTES = 10;
 
-function Ranking({ orderId, row, onDone, canForce }) {
+// What the server says about how distances were measured; nothing is assumed when it says nothing.
+const distanceSentence = (routing) => {
+  if (!routing || !routing.mode) return "";
+  return routing.mode === "road" ? "Distances are road routes." : `Distances are a straight-line estimate times ${routing.factor}.`;
+};
+
+function Ranking({ orderId, row, onDone, canForce, routing }) {
   const { data, isLoading, isError } = useQueueRanking(orderId);
   const [rider, setRider] = useState("");
   const [releaseAt, setReleaseAt] = useState("");
@@ -63,7 +69,7 @@ function Ranking({ orderId, row, onDone, canForce }) {
                 </tbody>
               </table>
             </div>
-            <span style={dim}>Score is the sum of each part (0 to 100) times its weight; the highest score is offered first. Distances are a straight-line estimate times 1.3, not a road route. Weights are set in Auto-assign rules.</span>
+            <span style={dim}>Score is the sum of each part (0 to 100) times its weight; the highest score is offered first. {distanceSentence(routing)} Weights are set in Auto-assign rules.</span>
             {data.left_out.length > 0 && (
               <div>
                 <b style={{ fontSize: "0.8rem", color: D.text }}>Left out</b>
@@ -139,7 +145,7 @@ export default function DispatchQueuePanel({ auth, onNavigate }) {
                 </div>
               )}
             </section>
-            {row && <Ranking key={row.order_id} orderId={row.order_id} row={row} canForce onDone={() => { queue.refetch(); setSelected(null); }} />}
+            {row && <Ranking key={row.order_id} orderId={row.order_id} row={row} canForce routing={data.routing} onDone={() => { queue.refetch(); setSelected(null); }} />}
             <section aria-labelledby="recent" style={section}>
               <h3 id="recent" style={sectionTitle}>Assigned in the last 30 minutes</h3>
               {data.recent.length === 0 ? <Empty>Nothing was assigned in the last 30 minutes.</Empty> : data.recent.map((r) => (
@@ -148,7 +154,7 @@ export default function DispatchQueuePanel({ auth, onNavigate }) {
                 </div>
               ))}
             </section>
-            <span style={dim}>Road distance is a straight-line estimate times {data.routing.factor}; a road route service is not connected.</span>
+            {data.routing?.note && <span style={dim}>{data.routing.note}</span>}
           </>
         )}
       </Status>

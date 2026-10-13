@@ -22,7 +22,7 @@ const live = (over = {}) => ({
   ],
   queue: [{ order_id: 7, waiting_minutes: 12, route: { from: 'Kente House', to: 'Ahodwo' }, zone: 'Adum', unzoned: false, returned: false }],
   disputes: [{ id: 31, order_id: 7, reason: 'delivery_issue', reason_label: 'Delivery problem', status: 'open' }],
-  stale_after_seconds: 120, routing: { mode: 'straight_line_estimate', factor: 1.3, note: 'Straight-line estimate. A road route service is not connected.' },
+  stale_after_seconds: 120, routing: { mode: 'straight_line_estimate', factor: 1.3, note: 'Straight-line estimate. The road route service is not answering, so distances and times are estimates.' },
   ...over,
 })
 const queueData = (over = {}) => ({ results: [], total: 0, auto_assign: { on: true, rules: {}, updated_at: null }, recent: [], deadlines: 'none', routing: { factor: 1.3 }, ...over })
@@ -114,6 +114,33 @@ describe('Dispatch queue', () => {
     server.use(http.get(`${API}/api/delivery/queue/`, () => HttpResponse.json(queueData({ deadlines: 'set' }))))
     wrap(<DispatchQueuePanel auth={auth} onNavigate={() => {}} />)
     expect(await screen.findByText('No order is waiting for a rider.')).toBeInTheDocument()
+  })
+
+  const roadRouting = { mode: 'road', factor: 1.3, healthy: true, note: 'Distances and times are road routes.' }
+  const estRouting = { mode: 'straight_line_estimate', factor: 1.3, healthy: false, note: 'Straight-line estimate. The road route service is not answering, so distances and times are estimates.' }
+  const openRanking = async (routing) => {
+    server.use(
+      http.get(`${API}/api/delivery/queue/`, () => HttpResponse.json(queueData({ results: [row], total: 1, routing }))),
+      http.get(`${API}/api/delivery/queue/7/ranking/`, () => HttpResponse.json(ranking)),
+    )
+    wrap(<DispatchQueuePanel auth={auth} onNavigate={() => {}} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Choose rider' }))
+    return screen.findByRole('region', { name: 'Order #7 detail' })
+  }
+
+  it('shows the road-route note and says nothing is not connected when the server reports road mode', async () => {
+    const region = await openRanking(roadRouting)
+    expect(await within(region).findByText(/Distances are road routes\./)).toBeInTheDocument()
+    expect(screen.getByText('Distances and times are road routes.')).toBeInTheDocument()
+    expect(screen.queryByText(/not connected/i)).toBeNull()
+    expect(screen.queryByText(/straight-line estimate times/i)).toBeNull()
+  })
+
+  it('still says estimate, with the server note, when the server reports the fallback', async () => {
+    const region = await openRanking(estRouting)
+    expect(await within(region).findByText(/Distances are a straight-line estimate times 1\.3\./)).toBeInTheDocument()
+    expect(screen.getByText(/distances and times are estimates/i)).toBeInTheDocument()
+    expect(screen.queryByText(/not connected/i)).toBeNull()
   })
 })
 
@@ -220,4 +247,5 @@ describe('Disputes and returns', () => {
     expect(await screen.findByText('Decision recorded')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Record decision' })).not.toBeInTheDocument()
   })
+
 })
