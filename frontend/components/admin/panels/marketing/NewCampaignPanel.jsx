@@ -57,7 +57,7 @@ export default function NewCampaignPanel({ detailId, onOpenDetail, onNavigate })
   }
   async function run(label, fn) {
     setBusy(true); setError(""); setNote("");
-    try { const r = await fn(); setNote(label(r)); existing.refetch(); }
+    try { const r = await fn(); setNote(label(r)); if (detailId) existing.refetch(); }
     catch (e) { setError(apiErrorMessage(e)); }
     finally { setBusy(false); }
   }

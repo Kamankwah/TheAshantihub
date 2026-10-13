@@ -52,8 +52,9 @@ describe('NewCampaignPanel', () => {
   it('shows the server checks, the approval need and what is not connected; the button says it goes to Super Admin', async () => {
     setup()
     renderMk(NewCampaignPanel, { permissions: ['campaigns.manage'] })
-    fireEvent.change(await screen.findByLabelText('Audience'), { target: { value: '3' } })
-    expect(await screen.findByText(/1,240 people will get this/, {}, { timeout: 5000 })).toBeInTheDocument()
+    await screen.findByRole('option', { name: /Adum customers/ })
+    fireEvent.change(screen.getByLabelText('Audience'), { target: { value: '3' } })
+    expect(await screen.findByText(/1,240 people will get this/)).toBeInTheDocument()
     expect(screen.getByText(/not connected, so this can be saved as a draft but not sent/)).toBeInTheDocument()
     expect(screen.getByText(/must approve it/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Send to Super Admin for approval' })).toBeInTheDocument()
@@ -64,6 +65,7 @@ describe('NewCampaignPanel', () => {
     setup([http.post(`${API}/api/marketing/campaigns/`, async ({ request }) => { body = await request.json(); return HttpResponse.json({ id: 9 }, { status: 201 }) })])
     renderMk(NewCampaignPanel, { permissions: ['campaigns.manage'] })
     fireEvent.change(await screen.findByLabelText(/Campaign name/), { target: { value: 'Kente Friday' } })
+    await screen.findByRole('option', { name: /Adum customers/ })
     fireEvent.change(screen.getByLabelText('Audience'), { target: { value: '3' } })
     fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Hello {link}' } })
     fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-20' } })
@@ -173,5 +175,20 @@ describe('TrackedLinkPage', () => {
     server.use(http.post(`${API}/api/marketing/r/abc/`, () => HttpResponse.json({ path: '//evil.test' })))
     render(<TrackedLinkPage token="abc" onGo={(p) => { went = p }} />)
     await waitFor(() => expect(went).toBe('/'))
+  })
+})
+
+describe('AnalyticsMarketing marketplace view', () => {
+  it('shows categories, order sources and reachable counts from the server', async () => {
+    const { default: AnalyticsMarketing } = await import('../AnalyticsMarketing.jsx')
+    server.use(http.get(`${API}/api/marketing/analytics/`, () => HttpResponse.json({
+      days: 30, customers: 1, business_owners: 1, listings: 1, orders: 2, orders_paid: 2, events: 0, hero_submissions: 0, promotions_started: 0, promotions_bought: 0, promotion_revenue: '0', opt_ins: { state: 'not_tracked', note: 'No opt-ins recorded yet.' },
+      marketplace: { totals: { businesses: 3, businesses_verified: 2, live_listings: 5, customers: 9, live_events: 1, active_promotions: 0 }, categories: [{ id: 1, name: 'Hotels', live_listings: 5, orders: 2, bookings: 0, order_value: '200.00' }],
+        category_totals: { live_listings: 5, orders: 2, bookings: 0, order_value: '200.00' }, sources: { orders: 2, campaign: 1, campaign_value: '100.00', coupon: 0, other: 1 }, reachable: [{ channel: 'sms', opted_in: 5 }, { channel: 'email', opted_in: 2 }], order_value: '200.00' },
+    })))
+    renderMk(AnalyticsMarketing, { permissions: ['analytics.view'] })
+    expect(await screen.findByText('Hotels')).toBeInTheDocument()
+    expect(screen.getByText(/Where the 2 orders came from/)).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Reachable by SMS' })).toHaveTextContent('5')
   })
 })

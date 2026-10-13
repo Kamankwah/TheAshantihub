@@ -241,3 +241,51 @@ class TemplatesAndRegisters(CampaignBase):
         r = self.client.post(f"/api/marketing/provider-steps/{step.pk}/", {"status": "done", "note": "Account created"}, format="json")
         self.assertEqual((r.json()["status"], r.json()["recorded_by"]), ("done", self.akua.full_name))
         self.assertEqual(self.client.post(f"/api/marketing/provider-steps/{step.pk}/", {"status": "magic"}, format="json").status_code, 400)
+
+
+class MarketplaceAnalytics(CampaignBase):
+    def test_sources_split_campaign_coupon_and_other_orders_and_reachable_counts_are_real(self):
+        self.as_staff(self.akua)
+        data = self.client.get("/api/marketing/analytics/?days=30").json()["marketplace"]
+        self.assertEqual(data["sources"], {"orders": 0, "campaign": 0, "campaign_value": "0", "coupon": 0, "other": 0})
+        self.assertEqual({r["channel"]: r["opted_in"] for r in data["reachable"]}["sms"], 5)
+        self.assertEqual(data["categories"], [])
+
+    def test_an_order_after_a_click_is_counted_for_the_campaign_and_by_category(self):
+        from decimal import Decimal
+
+        from accounts.models import BusinessOwner
+        from listings.models import Category, Listing, Zone
+        from orders.models import Order, OrderItem
+
+        owner = BusinessOwner.objects.create(full_name="Kente House", login_phone="+233207660001", password_hash="x", kyc_status="verified")
+        cat = Category.objects.get(slug="hotels")
+        listing = Listing.objects.create(business_owner=owner, category=cat, zone=Zone.objects.get(name="Manhyia"), name="Stole", description="D.", contact_phone=owner.login_phone, price_amount="100.00", status=Listing.PUBLISHED)
+        ama, yaw = self.people[0], self.people[1]
+        camp = Campaign.objects.create(name="C", channel="sms", status="sent")
+        CampaignRecipient.objects.create(campaign=camp, customer=ama, status="simulated", first_click_at=timezone.now() - timedelta(hours=2))
+        for who in (ama, yaw):
+            order = Order.objects.create(customer=who, status=Order.PAID, total_amount=Decimal("100.00"))
+            OrderItem.objects.create(order=order, listing=listing, quantity=1, unit_price=Decimal("100.00"), line_total=Decimal("100.00"))
+        self.as_staff(self.akua)
+        data = self.client.get("/api/marketing/analytics/?days=30").json()["marketplace"]
+        self.assertEqual((data["sources"]["campaign"], data["sources"]["other"], data["sources"]["campaign_value"]), (1, 1, "100.00"))
+        row = [c for c in data["categories"] if c["id"] == cat.pk][0]
+        self.assertEqual((row["orders"], row["order_value"], row["live_listings"]), (2, "200.00", 1))
+
+
+class ReportSections(CampaignBase):
+    def test_the_report_counts_messages_by_channel_and_never_claims_delivery(self):
+        from datetime import date
+
+        from marketing.report_provider import marketing_sections
+
+        camp = Campaign.objects.create(name="C", channel="sms", status="sent")
+        CampaignRecipient.objects.create(campaign=camp, customer=self.people[0], status="simulated", sent_at=timezone.now())
+        today = timezone.localdate()
+        sections = {s["key"]: {r["label"]: r["value"] for r in s["rows"]} for s in marketing_sections(self.akua, today, today)}
+        self.assertIn("1 (1 simulated", sections["marketing_messages"]["SMS sent"])
+        self.assertEqual(sections["marketing_messages"]["SMS delivered"], "Not reported by the provider")
+        self.assertEqual(sections["marketing_messages"]["WhatsApp sent"], "Not connected")
+        self.assertEqual(sections["marketing_consent"]["New opt-ins"], 5)
+        self.assertIsInstance(today, date)

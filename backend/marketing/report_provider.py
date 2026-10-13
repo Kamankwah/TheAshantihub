@@ -79,3 +79,48 @@ def marketing_sections(staff, start, end):
     for extra in EXTRA_SECTIONS:
         sections.extend(extra(staff, start, end))
     return sections
+
+
+# ─── sections that depend on the campaign, consent and coupon packages ───────────────────────
+def messaging_sections(staff, start, end):
+    """Messages sent in the period by channel (what the recipient rows say; delivery only where a provider reports it),
+    opt-ins and opt-outs recorded, and coupon redemptions. Nothing is estimated."""
+    from django.db.models import Count, Sum
+
+    from .models_campaigns import CampaignRecipient
+    from .models_consent import CHANNEL_LABELS, ConsentRecord
+    from .models_promos import CouponRedemption
+    from .providers import provider_status
+
+    low, high = day_bounds(start, end)
+    sent = CampaignRecipient.objects.filter(sent_at__gte=low, sent_at__lt=high, campaign__isnull=False)
+    by = {}
+    for r in sent.values("campaign__channel", "status").annotate(n=Count("id")):
+        by.setdefault(r["campaign__channel"], {})[r["status"]] = r["n"]
+    rows = []
+    for channel, label in CHANNEL_LABELS.items():
+        counts = by.get(channel, {})
+        total = sum(counts.values())
+        if channel == "whatsapp" and provider_status("whatsapp")["status"] == "not_connected" and not total:
+            rows.append({"label": f"{label} sent", "value": "Not connected"})
+            continue
+        reported = provider_status(channel)["delivery_reports"] or channel == "inapp"
+        text = f"{total}" + (f" ({counts.get('simulated', 0)} simulated, nothing delivered)" if counts.get("simulated") else "")
+        rows.append({"label": f"{label} sent", "value": text})
+        if total:
+            rows.append({"label": f"{label} delivered", "value": counts.get("delivered", 0) if reported else "Not reported by the provider"})
+            rows.append({"label": f"{label} failed", "value": counts.get("failed", 0)})
+    ledger = ConsentRecord.objects.filter(at__gte=low, at__lt=high)
+    redemptions = CouponRedemption.objects.filter(released_at__isnull=True, created_at__gte=low, created_at__lt=high).aggregate(n=Count("id"), cost=Sum("amount"))
+    return [
+        {"key": "marketing_messages", "title": "Messages", "rows": rows},
+        {"key": "marketing_consent", "title": "Opt-ins and coupons", "rows": [
+            {"label": "New opt-ins", "value": ledger.filter(status=ConsentRecord.OPTED_IN).count()},
+            {"label": "Opt-outs", "value": ledger.filter(status=ConsentRecord.OPTED_OUT).count()},
+            {"label": "Coupon redemptions", "value": redemptions["n"] or 0},
+            {"label": "Coupon discount cost (GH₵)", "value": str(redemptions["cost"] or 0)},
+        ]},
+    ]
+
+
+EXTRA_SECTIONS.append(messaging_sections)
