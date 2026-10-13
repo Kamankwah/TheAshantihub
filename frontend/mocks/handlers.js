@@ -9,6 +9,10 @@ function proposalReply(body) {
 }
 
 export const handlers = [
+  // Marketing consent card (customer Settings, business Profile & Settings): nothing ticked, no wording.
+  http.get('http://localhost:8000/api/marketing/consent/me/', () => {
+    return HttpResponse.json({ channels: Object.fromEntries(['sms', 'whatsapp', 'email', 'inapp'].map((k) => [k, { label: k, status: null, at: null, wording: `Send me offers by ${k}.`, wording_label: '' }])) })
+  }),
   // Listings search/browse (docs/UI_MODERNIZATION_ROADMAP.md Phase D) — a
   // default empty-page handler. AshantiHub's `useListings(filters)` call
   // fires unconditionally on mount (not gated by which page/tab is active),

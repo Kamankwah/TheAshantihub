@@ -1,5 +1,6 @@
 import { useBusinessProfile } from "../../../hooks/useBusinessProfile.js";
 import { D, glassCard } from "../theme.js";
+import MarketingConsentCard from "../../MarketingConsentCard.jsx";
 
 // "Profile & Settings" — reachable from the header's avatar dropdown. Read-only:
 // GET /api/accounts/business-owners/me/profile/ (the same hook AnalyticsPanel's
@@ -56,6 +57,8 @@ export default function ProfilePanel({ user }) {
           </div>
         </div>
       )}
+
+      <MarketingConsentCard />
 
       <div style={{ ...glassCard, padding: "18px 22px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
         <div style={{ fontSize: "0.78rem", color: D.textDim, maxWidth: 420 }}>

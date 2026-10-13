@@ -48,6 +48,8 @@ import { AboutFaqSection } from "./components/ui/about-faq-section.tsx";
 import { ContactPage } from "./components/ui/contact-page.tsx";
 import BusinessRegistrationFlow from "./components/BusinessRegistrationFlow.jsx";
 import BusinessClaimPage from "./components/BusinessClaimPage.jsx";
+import MarketingConsentCard from "./components/MarketingConsentCard.jsx";
+import UnsubscribePage from "./components/UnsubscribePage.jsx";
 import CartDrawer from "./components/CartDrawer.jsx";
 import EventHeroCarousel from "./components/EventHeroCarousel.jsx";
 import EventCard, { formatEventDate } from "./components/EventCard.jsx";
@@ -1181,6 +1183,7 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
   const [resetEmail,setResetEmail]=useState("");
   const [resetSubmitting,setResetSubmitting]=useState(false);
   const [resetSubmitted,setResetSubmitted]=useState(false);
+  const [offers,setOffers]=useState({});
 
   const handleLogin=async(e)=>{
     e.preventDefault();
@@ -1223,10 +1226,13 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
       return;
     }
     setSubmitting(true);
+    // Only a ticked box is sent: an untouched box records no answer.
+    const ticked=Object.fromEntries(Object.entries(offers).filter(([,on])=>on));
+    const consentField=Object.keys(ticked).length?{marketing_consent:ticked}:{};
     try {
       const result=accountType==="business_owner"
-        ? await auth.registerBusinessOwner({full_name:fullName,login_phone:phone||undefined,email:email||undefined,password})
-        : await auth.registerCustomer({full_name:fullName,phone:phone||undefined,email:email||undefined,password});
+        ? await auth.registerBusinessOwner({full_name:fullName,login_phone:phone||undefined,email:email||undefined,password,...consentField})
+        : await auth.registerCustomer({full_name:fullName,phone:phone||undefined,email:email||undefined,password,...consentField});
       onSuccess(result);
     } catch (err) {
       setError("Could not create your account. Please check your details.");
@@ -1293,6 +1299,14 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
           <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone (+233...)" style={authInputStyle}/>
           <input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="Email" style={authInputStyle}/>
           <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" required minLength={8} style={authInputStyle}/>
+          <fieldset style={{border:"1px solid #eee",borderRadius:10,padding:"8px 12px",margin:"0 0 12px"}}>
+            <legend style={{fontSize:"0.72rem",fontWeight:800,padding:"0 4px"}}>Offers from AshantiHub (optional)</legend>
+            {[["sms","SMS"],["whatsapp","WhatsApp"],["email","Email"],["inapp","In the app"]].map(([key,label])=>(
+              <label key={key} style={{display:"flex",gap:8,alignItems:"center",fontSize:"0.76rem",padding:"3px 0"}}>
+                <input type="checkbox" checked={!!offers[key]} onChange={e=>setOffers({...offers,[key]:e.target.checked})}/>Send me offers from AshantiHub by {label}. I can stop any time.
+              </label>
+            ))}
+          </fieldset>
           <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Creating account…":accountType==="business_owner"?"Create Business Account":"Create Free Account"}</button>
         </form>}
 
@@ -2315,6 +2329,8 @@ function SettingsTab({ user, auth, lang, setLang, onSignOut }) {
       )}
     </div>
 
+    <MarketingConsentCard/>
+
     <div style={{...glassCard,padding:18}}>
       <div style={{fontWeight:800,color:D.text,fontSize:"0.85rem",marginBottom:10}}>Session</div>
       <button onClick={onSignOut} style={{background:"none",border:`1px solid ${D.red}`,color:D.red,borderRadius:20,padding:"8px 20px",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>🚪 Sign Out</button>
@@ -2614,6 +2630,8 @@ export default function AshantiHub() {
   const businessPathMatch = useMatch("/business/:id");
   const businessDetailMatch = businessPathMatch?.params.id === "claim" ? null : businessPathMatch;
   const eventDetailMatch = useMatch("/events/:id");
+  // The stop link in a marketing message (Marketing consent): a standalone page keyed by a signed token.
+  const unsubscribeMatch = useMatch("/unsubscribe/:token");
   // Staff dashboard panels are URL-addressable (/staff/kyc, /staff/users, …)
   // so Android's back gesture steps through panels inside the installed app
   // and manifest shortcuts can deep-link. /staff/activate and /staff/install
@@ -2646,7 +2664,7 @@ export default function AshantiHub() {
     const path = PAGE_TO_PATH[id] ?? "/";
     if (location.pathname !== path) navigate(path);
   };
-  const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch && !onStaffDashboardPath;
+  const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch && !unsubscribeMatch && !onStaffDashboardPath;
   const [authModal,setAuthModal]=useState(null);
   const auth=useAuth();
   const queryClient=useQueryClient();
@@ -3067,6 +3085,7 @@ export default function AshantiHub() {
   if(page==="reset-password") return <ResetPasswordPage auth={auth} setPage={setPage} setAuthModal={setAuthModal}/>;
   if(page==="payment-return") return <PaymentReturnPage setPage={setPage}/>;
   if(page==="business-claim") return <BusinessClaimPage onSignIn={()=>{setAuthModal("login");setPage("home");}}/>;
+  if(unsubscribeMatch) return <UnsubscribePage token={unsubscribeMatch.params.token} onHome={()=>navigate("/")}/>;
   if(isLoading) return <LoadingScreen/>;
   if(show404) return <NotFoundPage onHome={()=>setPage("home")} user={user}/>;
 
