@@ -90,9 +90,25 @@ class CampaignFlow(CampaignBase):
         self.assertEqual(response.json()["status"], "waiting_approval", response.content)
         self.assertEqual(self.client.patch(f"/api/marketing/campaigns/{pk}/", {"name": "x"}, format="json").status_code, 409)
         c = Campaign.objects.get(pk=pk)
-        self.assertEqual(self.client.post(f"/api/approvals/{c.approval_id}/approve/", {}, format="json").status_code in (403, 404), True)
+        from approvals import services as approvals
+        from approvals.services import ApprovalError
+
+        with self.assertRaises(ApprovalError):
+            approvals.approve(c.approval_id, self.akua)       # the maker never decides
+        self.assertEqual(self.client.post(f"/api/marketing/campaigns/{pk}/remind/").json(), {"reminded": True})
+        self.assertEqual(self.client.post(f"/api/marketing/campaigns/{pk}/remind/").status_code, 429)
         withdrawn = self.client.post(f"/api/marketing/campaigns/{pk}/withdraw/").json()
         self.assertEqual(withdrawn["status"], "withdrawn")
+
+    @override_settings(MARKETING_UNIT_PRICE={"sms": "6.00", "whatsapp": "", "email": "", "inapp": ""})
+    def test_super_admin_approval_schedules_it(self):
+        from approvals import services as approvals
+
+        pk = self.make().json()["id"]
+        self.client.post(f"/api/marketing/campaigns/{pk}/send/")
+        c = Campaign.objects.get(pk=pk)
+        approvals.approve(c.approval_id, self.boss)
+        self.assertEqual(Campaign.objects.get(pk=pk).status, "scheduled")
 
     def test_an_unapproved_request_is_dropped_when_its_time_comes(self):
         pk = self.make().json()["id"]
