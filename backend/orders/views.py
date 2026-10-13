@@ -18,6 +18,7 @@ from disputes.serializers import DisputeSerializer
 from notifications.services import notify_customer
 from payments.models import CheckoutSession
 from marketing import checkout as promo_checkout
+from marketing import code_guard
 from marketing import promos
 from payments.services import process_payment
 
@@ -83,12 +84,15 @@ class OrderCheckoutView(APIView):
             # coupon row locks. With the switch off `promo` stays None and nothing below changes.
             promo = None
             if promos.enabled():
+                if promo_checkout.normalise_code(request.data.get("coupon_code")) and code_guard.blocked(request):
+                    return Response({"detail": code_guard.TOO_MANY}, status=status.HTTP_429_TOO_MANY_REQUESTS)
                 try:
                     promo = promo_checkout.price(
                         request.user, items, request.data.get("coupon_code"), lock=True,
                         delivery_phone=delivery_phone if delivery_method == Order.DOOR_TO_DOOR else "",
                     )
                 except promo_checkout.PromoError as exc:
+                    code_guard.record_failure(request)
                     return Response({"detail": exc.message}, status=status.HTTP_400_BAD_REQUEST)
 
             # Lock the tracked listings and check stock before creating

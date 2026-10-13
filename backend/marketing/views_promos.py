@@ -16,6 +16,7 @@ from cart.models import Cart
 from listings.models import Listing
 from orders.models import Order, OrderItem
 
+from . import code_guard
 from . import checkout as promo_checkout
 from . import coupons as coupon_rules
 from . import flash_sales as flash
@@ -423,10 +424,14 @@ class CartQuoteView(APIView):
             return Response({"enabled": False})
         cart = Cart.objects.filter(customer=request.user).first()
         items = list(cart.items.select_related("listing")) if cart else []
+        typed = promo_checkout.normalise_code(request.data.get("coupon_code"))
+        if typed and code_guard.blocked(request):
+            return Response({"detail": code_guard.TOO_MANY}, status=429)
         try:
             priced = promo_checkout.price(request.user, items, request.data.get("coupon_code"), lock=False,
                                           delivery_phone=str(request.data.get("delivery_phone") or ""))
         except promo_checkout.PromoError as exc:
+            code_guard.record_failure(request)
             # The cart is still priced, without the code, so the box can show the reason beside the total.
             priced = promo_checkout.price(request.user, items, "", lock=False)
             data = promo_checkout.quote_data(priced)

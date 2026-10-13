@@ -33,7 +33,7 @@ from orders.models import Order, OrderItem
 from .models_promos import Coupon, CouponCode, CouponRedemption, FlashSale, FlashSaleListing
 from .promos import cents, money
 
-INVALID_CODE = "That code isn't valid."
+INVALID_CODE = "That code can't be used."
 LEAST_TOTAL = Decimal("0.01")
 
 
@@ -150,7 +150,7 @@ def _flash_lines(customer, items, now, lock):
 
 # ─── coupons ─────────────────────────────────────────────────────────────────
 def normalise_code(raw):
-    return (raw or "").strip().upper()
+    return str(raw or "").strip().upper()
 
 
 def find_code(raw):
@@ -199,7 +199,18 @@ def discount_for(coupon, eligible):
 
 
 def apply_coupon(raw_code, customer, lines, *, lock, now, delivery_phone=""):
-    """(coupon, code_row, discount) or raises PromoError. Locks the coupon row when `lock`."""
+    """(coupon, code_row, discount) or raises PromoError. Locks the coupon row when `lock`.
+
+    Every way a code can fail (unknown, not live, not started, expired, used up, already used by
+    this person, nothing in the cart it applies to) answers the same words, so the answer never
+    tells a guesser that a code exists."""
+    try:
+        return _apply_coupon(raw_code, customer, lines, lock=lock, now=now, delivery_phone=delivery_phone)
+    except PromoError:
+        raise PromoError(INVALID_CODE)
+
+
+def _apply_coupon(raw_code, customer, lines, *, lock, now, delivery_phone=""):
     coupon, row = find_code(raw_code)
     if coupon is None:
         raise PromoError(INVALID_CODE)

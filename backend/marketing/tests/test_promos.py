@@ -32,6 +32,9 @@ ON = override_settings(MARKETING_PROMOS_ENABLED=True)
 
 class PromoBase(TestCase):
     def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
         self.client = APIClient()
         self.boss = make_staff("super_admin", "boss@example.com")
         self.akua = make_staff("marketing", "akua@example.com")
@@ -265,6 +268,46 @@ class CouponCheckout(PromoBase):
         self.assertEqual(Order.objects.get().discount_amount, Decimal("20.00"))  # 15% of 200 = 30, capped at 20
         self.assertEqual(response.json()["total_amount"], "180.00")
 
+    def test_single_use_codes_are_long_enough_to_be_unguessable(self):
+        self.assertGreaterEqual(coupon_rules.CODE_SUFFIX_LENGTH, 13)
+        self.assertGreaterEqual(len(coupon_rules.ALPHABET) ** coupon_rules.CODE_SUFFIX_LENGTH, 2 ** 64)
+
+    def test_every_failure_answers_the_same_words(self):
+        from django.core.cache import cache
+
+        self.coupon("DRAFTY", status=Coupon.DRAFT)
+        self.coupon("OLD", expires_at=timezone.now() - timedelta(days=1))
+        self.coupon("LATER", starts_at=timezone.now() + timedelta(days=1))
+        self.coupon("BIG", min_spend=Decimal("9999"))
+        self.coupon("SPENT", usage_limit=1)
+        answers = set()
+        for code in ("NOPE", "DRAFTY", "OLD", "LATER", "BIG"):
+            cache.clear()
+            Cart.objects.filter(customer=self.ama).delete()
+            self.add(self.ama, self.stole, 1)
+            self.as_customer(self.ama)
+            quote = self.client.post("/api/marketing/cart/quote/", {"coupon_code": code}, format="json").json()
+            answers.add(quote["coupon_error"])
+            answers.add(self.checkout(self.ama, coupon_code=code).json()["detail"])
+        self.assertEqual(answers, {"That code can't be used."})
+
+    def test_failed_lookups_are_throttled_at_quote_and_checkout(self):
+        from django.core.cache import cache
+
+        cache.clear()
+        self.add(self.ama, self.stole, 1)
+        self.as_customer(self.ama)
+        for i in range(10):
+            self.client.post("/api/marketing/cart/quote/", {"coupon_code": f"GUESS{i}"}, format="json")
+        self.assertEqual(self.client.post("/api/marketing/cart/quote/", {"coupon_code": "GUESS99"}, format="json").status_code, 429)
+        self.assertEqual(self.checkout(self.ama, coupon_code="GUESS98").status_code, 429)
+        # a different customer from the same address is held by the per-address count
+        self.add(self.yaw, self.stole, 1)
+        self.as_customer(self.yaw)
+        self.assertEqual(self.client.post("/api/marketing/cart/quote/", {"coupon_code": "GUESS97"}, format="json").status_code, 429)
+        # a cart with no code is not affected
+        self.assertEqual(self.checkout(self.yaw).status_code, 201)
+
     def test_invalid_codes_are_refused_and_create_nothing(self):
         self.coupon("DRAFTY", status=Coupon.DRAFT)
         self.coupon("OLD", expires_at=timezone.now() - timedelta(days=1))
@@ -284,7 +327,7 @@ class CouponCheckout(PromoBase):
         # a cart of only flash items cannot use a coupon
         response = self.apply("A10")
         self.assertEqual(response.status_code, 400)
-        self.assertIn("flash-sale", response.json()["detail"])
+        self.assertEqual(response.json()["detail"], "That code can't be used.")
         # mixed cart: the coupon applies to the non-flash line only
         response = self.apply("A10", listings=((self.stole, 1), (self.cloth, 1)))
         self.assertEqual(response.status_code, 201, response.content)
@@ -330,7 +373,7 @@ class CouponCheckout(PromoBase):
         self.assertEqual(made.status_code, 201, made.content)
         codes = list(CouponCode.objects.values_list("code", flat=True))
         self.assertEqual(len(codes), 3)
-        self.assertTrue(all(c.startswith("WB-") and len(c) == 8 for c in codes))
+        self.assertTrue(all(c.startswith("WB-") and len(c) == 3 + coupon_rules.CODE_SUFFIX_LENGTH for c in codes))
         Coupon.objects.update(status=Coupon.ACTIVE)
         self.assertEqual(self.apply("WB").status_code, 400)
         self.assertEqual(self.apply(codes[0].lower()).status_code, 201)
@@ -363,7 +406,7 @@ class CouponCheckout(PromoBase):
         self.assertEqual(CouponRedemption.objects.count(), 0)
         self.assertEqual(Order.objects.count(), 0)
         bad = self.client.post("/api/marketing/cart/quote/", {"coupon_code": "NOPE"}, format="json").json()
-        self.assertEqual(bad["coupon_error"], "That code isn't valid.")
+        self.assertEqual(bad["coupon_error"], "That code can't be used.")
         self.assertEqual(bad["total"], "280.00")
         self.assertEqual(self.checkout(self.ama, coupon_code="SAVE10").json()["total_amount"], quote["total"])
 
@@ -381,6 +424,11 @@ class SingleUseRace(TransactionTestCase):
     """Two customers, one single-use code, at the same moment: exactly one order gets it."""
 
     serialized_rollback = True
+
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
 
     @ON
     def test_a_single_use_code_cannot_be_redeemed_twice_concurrently(self):

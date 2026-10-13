@@ -21,6 +21,8 @@ from .promos import cents
 
 KIND_KEY = "marketing.coupon"
 ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+# 32 ** 13 is about 2 ** 65: a single-use code cannot be guessed (the lookups are throttled as well).
+CODE_SUFFIX_LENGTH = 13
 MAX_CODES = 1000
 EDITABLE = (Coupon.DRAFT,)
 
@@ -131,11 +133,11 @@ def code_taken(code, exclude_coupon=None):
 
 
 def generate_codes(coupon, count):
-    """Replace a draft's single-use codes with `count` fresh ones like WB-7KQ2M."""
+    """Replace a draft's single-use codes with `count` fresh ones like WB-7KQ2M4HJ9XT3P."""
     coupon.codes.all().delete()
     made = set()
     while len(made) < count:
-        code = f"{coupon.code}-" + "".join(secrets.choice(ALPHABET) for _ in range(5))
+        code = f"{coupon.code}-" + "".join(secrets.choice(ALPHABET) for _ in range(CODE_SUFFIX_LENGTH))
         if code in made or code_taken(code):
             continue
         made.add(code)
