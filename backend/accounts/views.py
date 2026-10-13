@@ -989,10 +989,16 @@ class StaffPermissionsView(APIView):
             )
 
         # Handing out the permissions that stay with Super Admin is a Super Admin's act.
-        if request.user.role.name != Role.SUPER_ADMIN and {
-            "staff.manage", "roles.manage", "approvals.manage_rules", "staff.view_as", "approvals.cosign"
-        } & (set(grant_codes) - set(staff.extra_permissions.values_list("codename", flat=True))):
+        from people.roles import COSIGN, SUPER_ADMIN_ONLY, individual_grant_refusal
+
+        protected = set(SUPER_ADMIN_ONLY) | {COSIGN}
+        if request.user.role.name != Role.SUPER_ADMIN and protected & (
+            set(grant_codes) - set(staff.extra_permissions.values_list("codename", flat=True))
+        ):
             return Response({"detail": "Only a Super Admin can grant that permission."}, status=403)
+        refusal = individual_grant_refusal(staff.role.name, grant_codes)
+        if refusal:
+            return Response({"detail": refusal}, status=400)
         grant_perms = list(Permission.objects.filter(codename__in=grant_codes))
         revoke_perms = list(Permission.objects.filter(codename__in=revoke_codes))
         missing = (set(grant_codes) | set(revoke_codes)) - {

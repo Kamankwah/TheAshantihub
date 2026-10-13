@@ -28,8 +28,25 @@ SUPER_ADMIN_ONLY = {
     "approvals.manage_rules": "editing approval timers and money limits",
     "staff.view_as": "stepping into a team's workspace",
     "staff.manage": "inviting, suspending and changing staff",
+    "commission.tax_ruling": "recording the ruling on scouts' tax status",
+    "security.manage": "security settings, 2-step rules and the sign-in policy",
+    "exports.schedule": "scheduling recurring exports",
+    "announcements.send": "sending announcements to staff",
+    "system.view": "the system and jobs view",
 }
 COSIGN = "approvals.cosign"
+
+
+def individual_grant_refusal(role_name, codenames):
+    """Why these per-person extra grants may not be made for someone in `role_name`,
+    or None. The co-signer separation: only the external co-signer may hold
+    approvals.cosign, and the co-signer holds nothing beyond its role."""
+    codenames = set(codenames)
+    if role_name == Role.COSIGNER and codenames:
+        return "The co-signer approves large requests only and cannot be given anything else."
+    if COSIGN in codenames and role_name != Role.COSIGNER:
+        return "Only the external co-signer can co-sign; nobody who makes requests may."
+    return None
 
 GROUPS = [
     ("People and access", ("staff.", "leave.", "calendar.", "activity.", "roles.")),

@@ -7,12 +7,14 @@ from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import BusinessOwner, Role, StaffUser
+from accounts import sessions
+from accounts.models import BusinessOwner, Role, StaffSession, StaffUser
 from accounts.permissions import HasRolePermission, RequiresSudo, can_lead_team
 from activity.models import ActivityEvent
 from activity.services import record
 from notifications.services import notify_staff
 from portfolio.areas import scout_areas
+from staffsecurity import policy
 from realtime.publish import force_disconnect_on_commit
 
 from .common import ROLE_LABELS, ROLE_ORDER, status_of
@@ -158,11 +160,21 @@ class ChangeRoleView(APIView):
             managed = staff.managed_businesses.exclude(kyc_status=BusinessOwner.REJECTED).count()
             if managed:
                 return Response({"detail": f"Reassign {staff.full_name}'s {managed} {'business' if managed == 1 else 'businesses'} first."}, status=400)
+        # Co-signer separation: nobody with individual grants becomes the co-signer, and the
+        # co-signer never carries any (so leaving the role clears nothing that could exist).
+        if role.name == Role.COSIGNER and staff.extra_permissions.exists():
+            return Response({"detail": f"Remove {staff.full_name}'s individual permissions first; the co-signer holds nothing beyond its role."}, status=400)
         kept = staff.extra_permissions.count() + staff.revoked_permissions.count()
         old = staff.role
         with transaction.atomic():
             staff.role = role
             staff.save(update_fields=["role"])
+            if old.name == Role.COSIGNER:
+                staff.extra_permissions.clear()
+                kept = staff.revoked_permissions.count()
+            # Super Admin and the roles under the 2-step rule: end the live sign-ins so they sign in again under it.
+            if role.name == Role.SUPER_ADMIN or policy.requires_two_factor(role.name):
+                sessions.revoke_all(staff, StaffSession.ENDED)
             record(
                 request.user, "staff.role_changed", target=staff,
                 summary=f"{staff.full_name} changed from {ROLE_LABELS.get(old.name, old.name)} to {ROLE_LABELS.get(role.name, role.name)}",
