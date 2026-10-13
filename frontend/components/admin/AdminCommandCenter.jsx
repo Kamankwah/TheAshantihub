@@ -42,6 +42,7 @@ import SaTeamsPanel from "./panels/SaTeamsPanel.jsx";
 import SaInvitesPanel from "./panels/SaInvitesPanel.jsx";
 import RolesPermissionsPanel from "./panels/RolesPermissionsPanel.jsx";
 import SaSessionsPanel from "./panels/SaSessionsPanel.jsx";
+import { startViewAs } from "../../hooks/useViewAs.js";
 import EscrowLedgerPanel from "./panels/EscrowLedgerPanel.jsx";
 import DisputesPanel from "./panels/DisputesPanel.jsx";
 import TransactionsReportPanel from "./panels/TransactionsReportPanel.jsx";
@@ -270,6 +271,13 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
     else { setInternalTab("all-portfolios"); setInternalDetail(String(id)); }
   };
 
+  // A person's profile opens under Staff directory (/staff/staff/<id>).
+  const openStaff = (id) => {
+    setDrawerOpen(false);
+    if (isControlled) onTabChange?.(`staff/${id}`);
+    else { setInternalTab("staff"); setInternalDetail(String(id)); }
+  };
+
   // A follow-up's business opens its page under My businesses (/staff/portfolio/<id>).
   const openMyBusiness = (id) => {
     if (isControlled) onTabChange?.(`portfolio/${id}`);
@@ -291,13 +299,6 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
   };
 
   // Today's "Check in" opens the check-in screen (/staff/visits/check-in) and
-  // A person's profile opens under Staff directory (/staff/staff/<id>).
-  const openStaff = (id) => {
-    setDrawerOpen(false);
-    if (isControlled) onTabChange?.(`staff/${id}`);
-    else { setInternalTab("staff"); setInternalDetail(String(id)); }
-  };
-
   // "See all" on Waiting for <lead> opens the Made by me box (/staff/approvals/made).
   const openCheckInScreen = () => {
     if (isControlled) onTabChange?.("visits/check-in");
@@ -402,7 +403,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "users" && (role === "super_admin" ? <SaCustomersPanel auth={auth} /> : <UsersPanel auth={auth} />)}
           {activeTab === "categories-zones" && <CategoriesZonesPanel auth={auth} />}
           {activeTab === "site-settings" && <SiteSettingsPanel showToast={showToast} />}
-          {activeTab === "staff" && (role === "super_admin" ? <StaffDirectoryPanel auth={auth} detailId={detail} onOpenDetail={openDetail} onNavigate={selectTab} /> : <StaffManagementPanel />)}
+          {activeTab === "staff" && (role === "super_admin" ? <StaffDirectoryPanel auth={auth} detailId={detail} onOpenDetail={openDetail} onNavigate={selectTab} onViewAs={auth.hasPermission("staff.view_as") ? startViewAs : undefined} /> : <StaffManagementPanel />)}
           {activeTab === "teams-reporting" && <SaTeamsPanel onOpenStaff={openStaff} />}
           {activeTab === "roles-permissions" && <RolesPermissionsPanel />}
           {activeTab === "escrow" && <EscrowLedgerPanel auth={auth} />}
