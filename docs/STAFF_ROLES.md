@@ -317,6 +317,30 @@ Plan Approvals, Contact Messages and Escrow Ledger.
 
 ---
 
+## Editing a whole role (Super Admin build, SA-4)
+
+Until this build a role's permissions were fixed by migration seeds; only one person's grants and
+revokes could be edited. **Roles & permissions** (Super Admin, `roles.manage`) now edits a role:
+
+- Tick or untick a permission for a role. **Review and save** shows, per change, who it reaches and
+  which individual grants or revokes it touches; nothing is saved until you re-enter your password.
+- A save takes effect at once (the effective set is read on every request) and reconnects the
+  people affected. One `role.permissions_changed` audit event holds the before and after for every
+  box that changed.
+- **Guards, enforced on save:** the Super Admin role is locked (it always holds every permission, as
+  the seed test asserts). `roles.manage`, `approvals.manage_rules`, `staff.view_as` and `staff.manage`
+  cannot be handed to another role. `approvals.cosign` belongs to the Co-signer role alone and that
+  role holds nothing else, so whoever makes a request can never also co-sign it.
+- Only permissions that exist are listed. The canvas codes `payouts.prepare`, `payouts.approve`,
+  `campaigns.send` and `customers.export` are not created yet; each appears here when its phase adds it.
+
+The directory, profile, org chart, invites and sessions screens read `/api/people/`. A manager change
+(`staff.manager_changed`) and a role change (`staff.role_changed`) each ask for the password, need a
+reason and record before and after. A person's pay profile, payslips and payout account do not exist
+in the data, so the profile shows commission only and says pay arrives with the Accounting phase.
+
+---
+
 ## Known gaps (found while compiling this)
 
 1. **Three places check only the role's permissions and ignore individual grants and

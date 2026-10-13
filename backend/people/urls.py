@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import directory, invites, profile, sessions_overview, teams
+from . import directory, invites, profile, roles, sessions_overview, teams
 
 urlpatterns = [
     path("staff/", directory.StaffDirectoryView.as_view(), name="people-staff"),
@@ -11,6 +11,9 @@ urlpatterns = [
     path("teams/", teams.OrgChartView.as_view(), name="people-teams"),
     path("teams/reassign/", teams.ReassignManagerView.as_view(), name="people-teams-reassign"),
     path("invites/", invites.InviteListView.as_view(), name="people-invites"),
+    path("roles/", roles.RoleMatrixView.as_view(), name="people-roles"),
+    path("roles/save/", roles.RoleSaveView.as_view(), name="people-roles-save"),
+    path("roles/preview/", roles.RolePreviewView.as_view(), name="people-roles-preview"),
     path("sessions/", sessions_overview.SessionsOverviewView.as_view(), name="people-sessions"),
     path("sessions/sign-out-all/", sessions_overview.SignOutEveryoneView.as_view(), name="people-sessions-sign-out-all"),
 ]
