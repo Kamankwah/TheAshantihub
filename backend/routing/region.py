@@ -1,6 +1,8 @@
-"""Where we deliver: the whole Ashanti Region. v1 uses an approximate bounding polygon (it also admits a thin strip
-of neighbouring districts); replace ASHANTI_RING with the OpenStreetMap administrative boundary when available
-(spec open item). Ring points are [lng, lat], the format delivery.services.point_in_ring reads."""
+"""Where we deliver. v1 uses ASHANTI_RING, an approximate bounding rectangle, NOT the region's boundary: it covers
+about 1.9 times Ashanti's area and is known to admit parts of neighbouring regions (for example Sunyani, Goaso,
+Sefwi Wiawso, Berekum, Bibiani, Nkawkaw, Akim Oda and Kade). Replace it with the OpenStreetMap administrative
+boundary plus a small buffer before delivery coverage is relied on (spec open item). Ring points are [lng, lat],
+the format delivery.services.point_in_ring reads."""
 from delivery import services
 
 ASHANTI_RING = [[-2.80, 5.80], [-0.60, 5.80], [-0.60, 7.50], [-2.80, 7.50]]

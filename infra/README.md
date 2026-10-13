@@ -215,7 +215,8 @@ is still outstanding — see below.
 ## Scheduled jobs
 
 `infra/cron/ashantihub.cron` holds the host cron jobs (backups, `expire_events`
-and the monthly OSRM data refresh); output goes to `/var/log/ashantihub-cron.log`. The activity
+and the monthly OSRM data refresh); output goes to `/var/log/ashantihub-cron.log`, except the OSRM
+refresh, which logs to `/var/log/ashantihub-osrm.log`. The activity
 log (`activity_activityevent`) is append-only and hash-chained: Postgres
 triggers refuse `UPDATE`/`DELETE`, so never "fix" a row by hand. Its nightly
 chain check now runs in Celery beat at 01:45 (`ACTIVITY_SEAL_EMAIL=True` in
@@ -299,12 +300,21 @@ It downloads Ghana from Geofabrik, clips it to the Ashanti bounding box,
 builds the routing graph into the `osrm-data` volume and starts `osrm`
 (a few minutes; needs a couple of GB of free disk and RAM while it runs). Then
 set `OSRM_URL=http://osrm:5000` in that checkout's `backend/.env` (never
-committed; `OSRM_TIMEOUT_S` defaults to 2.0) and restart the app services so
-they read it:
+committed; `OSRM_TIMEOUT_S` defaults to 2.0; both are in `infra/env/backend.env.example`) and
+recreate the app services so they read it. A plain `restart` is not enough: it
+keeps the container's old environment and does not re-read `env_file`, so use
+`up -d --force-recreate` (or re-run `deploy.sh`):
 
 ```bash
-docker compose -p ashantihub -f /opt/ashantihub/infra/compose/docker-compose.yml restart web realtime worker beat
+docker compose -p ashantihub -f /opt/ashantihub/infra/compose/docker-compose.yml up -d --force-recreate web realtime worker beat
 ```
+
+**Service area.** `routing/region.py` refuses checkouts outside an approximate
+rectangle around Ashanti. The rectangle is about 1.9 times the area of the
+region itself and is known to admit parts of neighbouring regions (for example
+Sunyani, Goaso, Sefwi Wiawso, Berekum, Bibiani, Nkawkaw, Akim Oda and Kade). It
+must be replaced by the OpenStreetMap administrative boundary plus a small
+buffer before delivery coverage is relied on.
 
 **Fallback.** With `OSRM_URL` blank, or OSRM stopped or failing, every screen
 falls back to the straight-line estimate and labels it "estimate" instead of

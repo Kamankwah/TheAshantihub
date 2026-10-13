@@ -38,7 +38,7 @@ cleanup() {
 trap cleanup EXIT
 
 curl -fsSL -o "$WORK/ghana.osm.pbf" https://download.geofabrik.de/africa/ghana-latest.osm.pbf
-docker run --rm -v "$WORK:/data" "$OSMIUM_IMAGE" extract --bbox "$BBOX" /data/ghana.osm.pbf -o /data/ashanti.osm.pbf --overwrite
+docker run --rm -v "$WORK:/data" "$OSMIUM_IMAGE" extract --bbox="$BBOX" /data/ghana.osm.pbf -o /data/ashanti.osm.pbf --overwrite
 docker volume create "$VOLUME" >/dev/null
 # The clipped PBF is mounted read-only at /in. osrm-extract writes its output next to its input, so the
 # PBF is copied into the build directory, extracted there, and deleted once the graph is built.

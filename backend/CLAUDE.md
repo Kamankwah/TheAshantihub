@@ -175,7 +175,7 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   Admin only. Coupon failures all answer `checkout.INVALID_CODE`, and failed lookups are throttled in
   `marketing/code_guard.py`; never reintroduce a more specific message.
 
-- **Distances come from `routing.service`.** Never call `delivery.services.distance_estimate_km` for a figure shown to a user; use `routing.service.leg`/`legs_from`, which return the road route or the labelled estimate (`basis`). Only `routing/client.py` talks to OSRM and converts lat/lng to lng/lat. The service area is `routing.region.in_service_area`.
+- **Distances come from `routing.service`.** Never call `delivery.services.distance_estimate_km` for a figure shown to a user; use `routing.service.leg`/`legs_from`, which return the road route or the labelled estimate (`basis`). Only `routing/client.py` talks to OSRM and converts lat/lng to lng/lat. The one exception until stage 2: `delivery.dispatching.rank` (the Dispatch queue ranking and its radius check) still uses the straight-line estimate and says so in its `distance_basis`. The service area is `routing.region.in_service_area` (an approximate rectangle, see its docstring).
 
 ## Test-fixture gotcha
 

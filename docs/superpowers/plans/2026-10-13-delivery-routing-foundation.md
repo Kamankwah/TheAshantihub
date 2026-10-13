@@ -946,7 +946,7 @@ volumes:
 
 - `infra/cron/ashantihub.cron`: add `0 3 1 * * root /opt/ashantihub/infra/scripts/build-osrm-data.sh ashantihub /opt/ashantihub/infra/compose/docker-compose.yml >> /var/log/ashantihub-osrm.log 2>&1` (match the file's existing user/format; staging does not get this line, build it by hand once).
 - `backend/.env.example`: add `OSRM_URL=` (blank = routing off) and `OSRM_TIMEOUT_S=2.0` with a one-line comment.
-- `infra/README.md`: add a section "Road routing (OSRM)" with: first build on each environment (`bash infra/scripts/build-osrm-data.sh <project> <compose file>`), then set `OSRM_URL=http://osrm:5000` in that checkout's `backend/.env` and restart `web realtime worker beat`; the fallback behaviour; the monthly cron.
+- `infra/README.md`: add a section "Road routing (OSRM)" with: first build on each environment (`bash infra/scripts/build-osrm-data.sh <project> <compose file>`), then set `OSRM_URL=http://osrm:5000` in that checkout's `backend/.env` and recreate `web realtime worker beat` with `up -d --force-recreate` (a plain `restart` does not re-read `env_file`); the fallback behaviour; the monthly cron.
 - `backend/CLAUDE.md`: add a bullet "**Distances come from `routing.service`.** Never call `delivery.services.distance_estimate_km` for a figure shown to a user; use `routing.service.leg`/`legs_from`, which return the road route or the labelled estimate (`basis`). Only `routing/client.py` talks to OSRM and converts lat/lng to lng/lat. The service area is `routing.region.in_service_area`."
 
 - [ ] **Step 4: Verify**
@@ -965,8 +965,8 @@ git commit -m "feat(infra): OSRM container, Ashanti data build script, monthly r
 ## Verification on staging (after merge, not part of the tasks)
 
 1. Deploy to staging (`deploy` skill). Run `bash /opt/ashantihub-staging/infra/scripts/build-osrm-data.sh ashantihub-staging /opt/ashantihub-staging/infra/compose/docker-compose.yml`.
-2. Set `OSRM_URL=http://osrm:5000` in `/opt/ashantihub-staging/backend/.env`, restart `web realtime worker beat`.
-3. As Delivery Manager open Delivery pricing "Try a route" and the Dispatch queue: the basis reads "road route" and the routing note says road routes. Stop the `osrm` container: the same screens fall back to "estimate" within about 30 seconds.
+2. Set `OSRM_URL=http://osrm:5000` in `/opt/ashantihub-staging/backend/.env`, recreate `web realtime worker beat` with `docker compose -p ashantihub-staging -f /opt/ashantihub-staging/infra/compose/docker-compose.yml up -d --force-recreate web realtime worker beat` (or re-run `deploy.sh`); a plain `restart` does not re-read `env_file`.
+3. As Delivery Manager open the Delivery pricing screen: its distance basis reads "road route". "Try a route" with a typed km reads "distance you typed". The Dispatch queue ranking still reads "straight-line estimate x 1.3" (stage 2 moves it to road legs); a rider's job offer shows a road route. Stop the `osrm` container: the pricing screen and offers fall back to "estimate" within about 30 seconds.
 4. Check a checkout with a delivery point in Accra is refused and one in Kumasi is accepted.
 
 ## Self-review notes
