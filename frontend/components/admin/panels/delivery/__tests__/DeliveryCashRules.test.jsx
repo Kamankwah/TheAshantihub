@@ -59,6 +59,16 @@ const versions = (current, over = {}) => ({ current, pending: null, history: cur
 
 describe('Auto-assign rules', () => {
   const defaults = { w_distance: 50, w_fairness: 30, w_idle: 20, offer_timeout_s: 45, max_declines: 3, force_slack_min: 10, radius_km: '5.00', max_active_jobs: 2, stale_s: 120, batch_radius_km: '2.00', cash_cap: '500.00' }
+  it('labels the rider radius as km (estimate) because the radius is checked against the estimate', async () => {
+    server.use(
+      http.get(`${API}/api/delivery/rules/auto-assign/`, () => HttpResponse.json(versions(null, { effective: { source: 'defaults', version: null }, defaults, switch: { on: true } }))),
+      http.get(`${API}/api/delivery/queue/`, () => HttpResponse.json({ results: [], total: 0, auto_assign: { on: true }, recent: [], deadlines: 'none', routing: { factor: 1.3 } })),
+    )
+    wrap(<AutoAssignRulesPanel auth={dm} onNavigate={() => {}} />)
+    expect(await screen.findByText('Rider radius from the pickup')).toBeInTheDocument()
+    expect(screen.getByText('km (estimate)')).toBeInTheDocument()
+  })
+
   it('starts from the built-in defaults, names them as such and sends a change for approval', async () => {
     let body
     server.use(
@@ -134,4 +144,12 @@ describe('Delivery pricing', () => {
     fireEvent.change(screen.getByLabelText('Road distance (km)'), { target: { value: '5' } })
     expect(screen.queryByRole('button', { name: 'Work out with the card in force' })).not.toBeInTheDocument()
   })
+
+  it('prints the server distance basis and no hardcoded route-service claim', async () => {
+    server.use(http.get(`${API}/api/delivery/rules/rate-card/`, () => HttpResponse.json(base({ distance_basis: 'road route' }))))
+    wrap(<DeliveryPricingPanel auth={dm} />)
+    expect(await screen.findByText('Distance basis: road route.')).toBeInTheDocument()
+    expect(screen.queryByText(/not connected/i)).toBeNull()
+  })
+
 })

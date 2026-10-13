@@ -214,8 +214,9 @@ is still outstanding — see below.
 
 ## Scheduled jobs
 
-`infra/cron/ashantihub.cron` holds the host cron jobs (backups and
-`expire_events`); output goes to `/var/log/ashantihub-cron.log`. The activity
+`infra/cron/ashantihub.cron` holds the host cron jobs (backups, `expire_events`
+and the monthly OSRM data refresh); output goes to `/var/log/ashantihub-cron.log`, except the OSRM
+refresh, which logs to `/var/log/ashantihub-osrm.log`. The activity
 log (`activity_activityevent`) is append-only and hash-chained: Postgres
 triggers refuse `UPDATE`/`DELETE`, so never "fix" a row by hand. Its nightly
 chain check now runs in Celery beat at 01:45 (`ACTIVITY_SEAL_EMAIL=True` in
@@ -278,6 +279,65 @@ header):
 ```bash
 install -m 644 /opt/ashantihub/infra/cron/ashantihub.cron /etc/cron.d/ashantihub
 ```
+
+## Road routing (OSRM)
+
+Delivery distances and ETAs come from an OSRM container (`osrm` in the compose
+file) serving road data for the Ashanti Region. It is in the `routing` compose
+profile, so `deploy.sh` never starts it and never waits on it: a deploy is safe
+before any data exists. The build script starts it.
+
+**First build, per environment** (staging is built by hand once; production's
+first build is also by hand, cron only does the monthly refresh):
+
+```bash
+bash /opt/ashantihub/infra/scripts/build-osrm-data.sh ashantihub /opt/ashantihub/infra/compose/docker-compose.yml
+# staging
+bash /opt/ashantihub-staging/infra/scripts/build-osrm-data.sh ashantihub-staging /opt/ashantihub-staging/infra/compose/docker-compose.yml
+```
+
+It downloads Ghana from Geofabrik, clips it to the Ashanti bounding box,
+builds the routing graph into the `osrm-data` volume and starts `osrm`
+(a few minutes; needs a couple of GB of free disk and RAM while it runs). Then
+set `OSRM_URL=http://osrm:5000` in that checkout's `backend/.env` (never
+committed; `OSRM_TIMEOUT_S` defaults to 2.0; both are in `infra/env/backend.env.example`) and
+recreate the app services so they read it. A plain `restart` is not enough: it
+keeps the container's old environment and does not re-read `env_file`, so use
+`up -d --force-recreate` (or re-run `deploy.sh`):
+
+```bash
+docker compose -p ashantihub -f /opt/ashantihub/infra/compose/docker-compose.yml up -d --force-recreate web realtime worker beat
+```
+
+**Service area.** `routing/region.py` refuses checkouts outside an approximate
+rectangle around Ashanti. The rectangle is about 1.9 times the area of the
+region itself and is known to admit parts of neighbouring regions (for example
+Sunyani, Goaso, Sefwi Wiawso, Berekum, Bibiani, Nkawkaw, Akim Oda and Kade). It
+must be replaced by the OpenStreetMap administrative boundary plus a small
+buffer before delivery coverage is relied on.
+
+**Fallback.** With `OSRM_URL` blank, or OSRM stopped or failing, every screen
+falls back to the straight-line estimate and labels it "estimate" instead of
+"road route"; the delivery manager screens show a routing note. Nothing breaks
+and nothing is hidden. Recovery is automatic within about 30 seconds of OSRM
+coming back.
+
+**Monthly refresh.** `infra/cron/ashantihub.cron` runs the build script at
+04:30 on the 1st, production only, under `flock` so two builds never overlap,
+logging to `/var/log/ashantihub-osrm.log`. Each build goes into its own
+`build-<timestamp>` directory in the `osrm-data` volume, and the `current`
+symlink that `osrm` serves is switched only after extract, partition and
+customize all succeed; then `osrm` is recreated to load it. A failed build
+removes its partial directory and leaves `current` (and so the running or
+rebooted routing) on the last good data; check the log and rerun. Only the
+newest build and the previous one are kept. Reinstall the cron file after
+pulling this change (install line in its header).
+
+Two builds at once are unsafe: cron is protected by `flock`, so run a manual
+build under the same lock (`flock -n /var/lock/ashantihub-osrm.lock bash ...`).
+
+`docker compose down` ignores profiled services unless `--profile routing` is
+passed, so `osrm` keeps running through a normal `down`/`up` of the app.
 
 ## Live updates
 

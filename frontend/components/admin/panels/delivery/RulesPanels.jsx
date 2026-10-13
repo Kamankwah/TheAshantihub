@@ -10,8 +10,8 @@ import { Empty, ErrorLine, Note, money } from "./deliveryParts.jsx";
 
 // ─── Delivery Manager 16 Delivery pricing, 17 Auto-assign rules, 18 Delivery time limits ───
 // Each is a versioned setting the manager proposes and a Super Admin approves (a Super Admin's
-// own change applies at once and is recorded). Distances in every calculation are a
-// straight-line estimate times 1.3: a road route service is not connected.
+// own change applies at once and is recorded). How distances were measured (road route or
+// straight-line estimate) is never fixed here: it comes from the server's distance_basis.
 
 // ── 17 Auto-assign rules ────────────────────────────────────────────────────────────────────
 const RULE_FIELDS = [
@@ -179,7 +179,7 @@ export function DeliveryPricingPanel({ auth }) {
             </div>
           </section>
           <TryRoute form={form} multipliers={multipliers} hasCard={Boolean(data.current)} />
-          <span style={dim}>Distance basis: {data.distance_basis}. A road route service is not connected.</span>
+          <span style={dim}>Distance basis: {data.distance_basis}.</span>
         </>
       )}
     </ConfigScreen>
