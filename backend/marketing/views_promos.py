@@ -414,6 +414,35 @@ class PublicPromosView(APIView):
         return Response({"enabled": True, "flash_sales": out})
 
 
+def _delivery_quote(request, items):
+    """What the cart shows for delivery, mirroring checkout: None unless fees are on and the customer chose
+    door-to-door. `fee` is the amount that will be charged ("0.00" when waived) and is null until a delivery
+    point lets the fee be measured; `waived_fee` is what the promo took off, when known. `mixed_note` is set when
+    a free-delivery promo exists for part of the cart but the cart spans businesses."""
+    from django.conf import settings
+
+    from . import waivers
+    from delivery.rates import checkout_fee
+
+    if not settings.DELIVERY_FEE_ENABLED or request.data.get("delivery_method") != Order.DOOR_TO_DOOR or not items:
+        return None
+    listings = [i.listing for i in items]
+    waiver = waivers.covering_waiver(listings, timezone.now())
+    quoted = checkout_fee(items, request.data.get("delivery_lat"), request.data.get("delivery_lng"))
+    original = money(quoted[1]["total"]) if quoted else None
+    from delivery import config
+
+    # "ok": a fee was measured. "no_rate_card": none is in force, so checkout adds NO delivery fee.
+    # "needs_location": no usable delivery point, so checkout adds no fee until one is chosen.
+    fee_status = "ok" if quoted else ("no_rate_card" if config.live(config.RateCard) is None else "needs_location")
+    out = {"fee": original, "fee_status": fee_status, "waived": waiver is not None, "waiver_name": waiver.name if waiver else None, "waived_fee": None, "mixed_note": None}
+    if waiver is not None:
+        out["fee"], out["waived_fee"] = ("0.00", original) if original is not None else (None, None)
+    elif waivers.mixed_business(listings) and any(waivers.live_waivers(o, timezone.now()) for o in {l.business_owner_id for l in listings}):
+        out["mixed_note"] = "Free delivery only applies when everything in your order is from the same business."
+    return out
+
+
 class CartQuoteView(APIView):
     """POST {coupon_code?, delivery_phone?} — the caller's cart priced with flash sales and the code. Writes nothing."""
 
@@ -436,5 +465,8 @@ class CartQuoteView(APIView):
             priced = promo_checkout.price(request.user, items, "", lock=False)
             data = promo_checkout.quote_data(priced)
             data["coupon_error"] = exc.message
+            data["delivery"] = _delivery_quote(request, items)
             return Response(data)
-        return Response(promo_checkout.quote_data(priced))
+        data = promo_checkout.quote_data(priced)
+        data["delivery"] = _delivery_quote(request, items)
+        return Response(data)

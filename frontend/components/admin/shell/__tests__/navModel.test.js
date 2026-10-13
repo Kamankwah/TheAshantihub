@@ -532,13 +532,13 @@ describe('Marketing menu (canvas 2026-10-13)', () => {
     expect(groups.map((g) => [g.label, g.items.map((i) => i.label)])).toEqual([
       ['Messages', ['Campaigns', 'New campaign', 'Calendar', 'Templates']],
       ['Audiences', ['Segments', 'Consent & opt-outs']],
-      ['On the site', ['Flash sales', 'Coupons', 'Banners', 'Featured listings']],
+      ['On the site', ['Flash sales', 'Coupons', 'Free delivery', 'Banners', 'Featured listings']],
       ['Moderation', ['Hero approval', 'Events', 'Promotions']],
       ['Insights', ['Analytics', 'Campaign results']],
       ['Settings', ['Sender IDs & providers', 'Quiet hours & limits', 'Categories']],
       ['Reporting', ['Reports']],
     ])
-    expect(groups.flatMap((g) => g.items)).toHaveLength(19)
+    expect(groups.flatMap((g) => g.items)).toHaveLength(20)
   })
 
   it('offers no More tools: a screen the canvas leaves out stays reachable only by URL permission rules', () => {

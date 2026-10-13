@@ -69,6 +69,12 @@ def _fail_order_checkout(session):
         if listing.stock_quantity is not None:
             listing.stock_quantity += reservation["quantity"]
             listing.save(update_fields=["stock_quantity"])
+    from marketing.waivers import reverse_for_order
+    from orders.models import Order
+
+    failed_order = Order.objects.filter(pk=meta.get("order_id")).first()
+    if failed_order is not None:
+        reverse_for_order(failed_order, "payment_failed")
     if meta.get("promos"):
         # Priced with checkout promotions on: give the coupon use back and free the sale stock.
         from marketing.checkout import release_order
