@@ -136,3 +136,29 @@ describe('LeavePanel', () => {
     expect(await screen.findByText(/No leave recorded for your team in the last 90 days/)).toBeInTheDocument()
   })
 })
+
+describe('LeavePanel as Super Admin', () => {
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(2026, 9, 7, 11, 46)) })
+  afterEach(() => vi.useRealTimers())
+
+  it('covers everyone on the staff, shows the summary and lets Super Admin keep the holidays', async () => {
+    const seen = {}
+    serve({ rows: [leave(1, { status: 'on_leave', start: '2026-10-06', end: '2026-10-08', staff_role: 'dispatch', staff_name: 'Esi Owusu' })], holidays: [{ id: 9, name: 'Farmers Day', date: '2026-12-04' }], seen })
+    server.use(
+      http.get(`${API}/api/people/staff/`, () => HttpResponse.json({ count: 1, next: null, previous: null, results: [{ id: 21, name: 'Akua Sarpong', role: 'marketing', status: 'active' }] })),
+      http.post(`${API}/api/targets/holidays/`, async ({ request }) => { seen.holiday = await request.json(); return HttpResponse.json({ id: 10 }, { status: 201 }) }),
+    )
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={queryClient}><LeavePanel auth={{ user: { id: 1, role: 'super_admin' }, hasPermission: () => true }} /></QueryClientProvider>)
+    const kpis = await screen.findByRole('group', { name: 'Leave summary' })
+    expect(within(kpis).getByText('Esi Owusu')).toBeInTheDocument()
+    expect(await screen.findByRole('option', { name: /Akua Sarpong/ })).toBeInTheDocument()
+    expect(screen.getByText('Away on those days')).toBeInTheDocument()
+    expect(screen.queryByText('Read-only')).toBeNull()
+    const form = screen.getByRole('form', { name: 'Add a public holiday' })
+    fireEvent.change(within(form).getByLabelText('Holiday name'), { target: { value: 'Christmas Day' } })
+    fireEvent.change(within(form).getByLabelText(/Day off/), { target: { value: '2026-12-25' } })
+    fireEvent.click(within(form).getByRole('button', { name: 'Add a public holiday' }))
+    await waitFor(() => expect(seen.holiday).toEqual({ name: 'Christmas Day', date: '2026-12-25' }))
+  })
+})

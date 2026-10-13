@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiDelete, apiPatch, apiPost } from "../../../apiClient.js";
 import { useHolidays, useLeavePreview, useTeamLeave } from "../../../hooks/useOpsPeople.js";
+import { useStaffDirectory } from "../../../hooks/usePeople.js";
 import { useMyTeam } from "../../../hooks/useMyTeam.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D, glassCard } from "../theme.js";
@@ -74,7 +75,7 @@ function Calendar({ month, leave, holidays, today, onMonth }) {
   );
 }
 
-function RecordForm({ team, auth, onDone }) {
+function RecordForm({ team, auth, onDone, everyone }) {
   const today = isoDay(new Date());
   const [who, setWho] = useState("");
   const [kind, setKind] = useState("annual");
@@ -118,12 +119,12 @@ function RecordForm({ team, auth, onDone }) {
       )}
       {error && <div role="alert" style={errorStyle}>{error}</div>}
       <button type="submit" disabled={!person || saving} style={button(D.gold, D.text, !person || saving)}>{saving ? "Recording…" : "Record leave"}</button>
-      <div style={dim}>You record leave for your own team only. The person sees it, and it's in the activity log.</div>
+      <div style={dim}>{everyone ? "As Super Admin you record leave for anyone on the staff. The person sees it, and it's in the activity log." : "You record leave for your own team only. The person sees it, and it's in the activity log."}</div>
     </form>
   );
 }
 
-function LeaveRow({ row, mineId, onChanged, onMessage }) {
+function LeaveRow({ row, mineId, onChanged, onMessage, showEffect }) {
   const [mode, setMode] = useState(null); // "change" | "cancel"
   const [kind, setKind] = useState(row.kind);
   const [start, setStart] = useState(row.start);
@@ -144,6 +145,7 @@ function LeaveRow({ row, mineId, onChanged, onMessage }) {
       <td style={td}>{span(row)}</td>
       <td style={{ ...td, ...figures }}>{row.working_days}</td>
       <td style={td}>{`By ${row.recorded_by_id === mineId ? "you" : row.recorded_by} · ${dayShort(row.recorded_at)}`}</td>
+      {showEffect && <td style={td}>{row.staff_role === "scout" ? "Targets are zero on those days" : "Away on those days"}</td>}
       <td style={td}><span style={chip(tone)}>{status}</span></td>
       <td style={td}>
         {row.can_change && mode === null && (
@@ -178,6 +180,54 @@ function LeaveRow({ row, mineId, onChanged, onMessage }) {
   );
 }
 
+function LeaveKpis({ all, inMonth, holidays, todayIso, year }) {
+  const now = all.filter((l) => l.status === "on_leave");
+  const days = inMonth.reduce((n, l) => n + (l.working_days || 0), 0);
+  const people = new Set(inMonth.map((l) => l.staff)).size;
+  const next = holidays.find((h) => h.date >= todayIso);
+  const count = (y) => holidays.filter((h) => h.date.startsWith(String(y))).length;
+  const tiles = [
+    ["On leave today", String(now.length), now.map((l) => l.staff_name).join(" · ") || "Nobody"],
+    ["Leave this month", plural(people, "person", "people"), `${plural(days, "working day", "working days")} in total`],
+    ["Next public holiday", next ? dayShort(next.date) : "None entered", next ? next.name : ""],
+    ["Holidays entered", `${year} · ${count(year)}`, `${year + 1} · ${count(year + 1) || "none yet"}`],
+  ];
+  return (
+    <div role="group" aria-label="Leave summary" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(150px, 100%), 1fr))", gap: 10 }}>
+      {tiles.map(([label, value, sub]) => (
+        <div key={label} style={{ ...glassCard, padding: 12, display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ ...dim, fontWeight: 800 }}>{label}</div>
+          <div style={{ color: D.text, fontWeight: 900, fontSize: "1.1rem" }}>{value}</div>
+          <div style={dim}>{sub}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Super Admin keeps the public holidays: the observed date is the one targets use.
+function AddHoliday({ onDone }) {
+  const [name, setName] = useState("");
+  const [date, setDate] = useState("");
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const submit = async (e) => {
+    e.preventDefault();
+    setError(null); setBusy(true);
+    try { await apiPost("/api/targets/holidays/", { name: name.trim(), date }); onDone(`Added ${name.trim()}.`); setName(""); setDate(""); }
+    catch (err) { setError(apiErrorMessage(err, "Could not add the holiday.")); }
+    finally { setBusy(false); }
+  };
+  return (
+    <form aria-label="Add a public holiday" onSubmit={submit} noValidate style={{ display: "flex", flexDirection: "column", gap: 8, borderTop: `1px solid ${D.divider}`, paddingTop: 8 }}>
+      <label style={labelStyle}>Holiday name<input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} style={field} /></label>
+      <label style={labelStyle}>Day off (the observed date)<input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={field} /></label>
+      {error && <div role="alert" style={errorStyle}>{error}</div>}
+      <div><button type="submit" disabled={!name.trim() || !date || busy} style={button(D.gold, D.text, !name.trim() || !date || busy)}>{busy ? "Adding…" : "Add a public holiday"}</button></div>
+    </form>
+  );
+}
+
 export default function LeavePanel({ auth }) {
   const queryClient = useQueryClient();
   const todayIso = isoDay(new Date());
@@ -187,10 +237,18 @@ export default function LeavePanel({ auth }) {
   const monthTo = isoDay(new Date(month.getFullYear(), month.getMonth() + 1, 0));
   const { data: inMonth } = useTeamLeave(monthFrom, monthTo);
   const { data: all, isLoading, isError, refetch } = useTeamLeave();
+  const isSa = auth?.user?.role === "super_admin";
+  const canHolidays = isSa && Boolean(auth?.hasPermission?.("calendar.manage"));
+  const [kindFilter, setKindFilter] = useState("");
   const { data: team } = useMyTeam();
+  // Super Admin records leave for anyone on the staff, not just direct reports.
+  const { data: everyone } = useStaffDirectory({ status: "active", page_size: 100 }, { enabled: isSa });
   const { data: holidaysThis } = useHolidays(month.getFullYear());
   const { data: holidaysNext } = useHolidays(month.getFullYear() + 1);
-  const people = useMemo(() => (team || []).filter((m) => m.status === "active"), [team]);
+  const people = useMemo(
+    () => (isSa ? (everyone?.results || []).map((m) => ({ id: m.id, full_name: m.name, role: m.role, status: m.status })) : (team || []).filter((m) => m.status === "active")),
+    [isSa, everyone, team],
+  );
   const holidays = useMemo(() => [...(holidaysThis || []), ...(holidaysNext || [])].sort((a, b) => (a.date < b.date ? -1 : 1)), [holidaysThis, holidaysNext]);
   const inThisMonth = holidays.filter((h) => h.date >= monthFrom && h.date <= monthTo);
   const upcoming = holidays.filter((h) => h.date >= todayIso && !inThisMonth.includes(h)).slice(0, 4);
@@ -198,7 +256,7 @@ export default function LeavePanel({ auth }) {
   const refreshed = () => { ["team-leave", "targets-plans", "ops-scouts", "my-targets"].forEach((key) => queryClient.invalidateQueries({ queryKey: [key] })); };
   const done = (text) => { setMessage(text); refreshed(); };
   const order = { on_leave: 0, upcoming: 1, taken: 2 };
-  const rows = [...(all || [])].sort((a, b) => (order[a.status] - order[b.status]) || (a.status === "taken" ? (a.start < b.start ? 1 : -1) : (a.start < b.start ? -1 : 1)));
+  const rows = [...(all || [])].filter((r) => !kindFilter || r.kind === kindFilter).sort((a, b) => (order[a.status] - order[b.status]) || (a.status === "taken" ? (a.start < b.start ? 1 : -1) : (a.start < b.start ? -1 : 1)));
   const monthName = month.toLocaleDateString("en-GB", { month: "long" });
 
   return (
@@ -206,8 +264,9 @@ export default function LeavePanel({ auth }) {
       <div>
         <div style={eyebrow}>People</div>
         <h2 style={{ ...h2, fontSize: "1.4rem", margin: "2px 0 0" }}>Leave &amp; calendar</h2>
-        <div style={dim}>Your team</div>
+        <div style={dim}>{isSa ? "Everyone on the staff" : "Your team"}</div>
       </div>
+      {isSa && all && <LeaveKpis all={all} inMonth={inMonth || []} holidays={holidays} todayIso={todayIso} year={month.getFullYear()} />}
       {message && <div role="status" style={{ color: D.green, fontSize: "0.82rem", fontWeight: 700 }}>{message}</div>}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14, alignItems: "start" }}>
@@ -216,39 +275,49 @@ export default function LeavePanel({ auth }) {
           <section aria-labelledby="leave-hol" style={{ ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
               <h3 id="leave-hol" style={{ ...h2, fontSize: "1rem" }}>Public holidays</h3>
-              <span style={chip(D.textDim)}>Read-only</span>
+              {!canHolidays && <span style={chip(D.textDim)}>Read-only</span>}
             </div>
-            <div style={dim}>Observed dates, kept by Super Admin. A holiday is a zero-target day for everyone.</div>
+            <div style={dim}>{canHolidays ? "Observed dates, kept by you. A holiday is a zero-target day for everyone." : "Observed dates, kept by Super Admin. A holiday is a zero-target day for everyone."}</div>
             {listed.map((h) => (
               <div key={h.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: "0.82rem", color: D.text, borderTop: `1px solid ${D.divider}`, paddingTop: 6 }}>
                 <span style={{ fontWeight: 700 }}>{h.name}</span><span style={figures}>{toDate(h.date)?.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}</span>
+                {canHolidays && <button type="button" aria-label={`Remove ${h.name}`} onClick={async () => { try { await apiDelete(`/api/targets/holidays/${h.id}/`); done(`Removed ${h.name}.`); queryClient.invalidateQueries({ queryKey: ["holidays"] }); } catch (err) { setMessage(apiErrorMessage(err, "Could not remove the holiday.")); } }} style={button(D.panelBg, D.text)}>Remove</button>}
               </div>
             ))}
             {inThisMonth.length === 0 && <div style={dim}>{`No public holiday in ${monthName}.`}</div>}
             {holidays.length === 0 && <div style={dim}>No public holidays have been recorded yet.</div>}
           </section>
-          <RecordForm key={people.length} team={people} auth={auth} onDone={done} />
+          {canHolidays && <AddHoliday onDone={(text) => { done(text); queryClient.invalidateQueries({ queryKey: ["holidays"] }); }} />}
+          <RecordForm key={people.length} team={people} auth={auth} onDone={done} everyone={isSa} />
         </div>
       </div>
 
       <section aria-labelledby="leave-team" style={{ ...glassCard, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-          <h3 id="leave-team" style={{ ...h2, fontSize: "1rem" }}>Team leave</h3>
+          <h3 id="leave-team" style={{ ...h2, fontSize: "1rem" }}>{isSa ? "All leave" : "Team leave"}</h3>
           <span style={dim}>Working days: scouts Mon–Sat · support Mon–Fri · set per person</span>
         </div>
+        {isSa && (
+          <label style={{ ...labelStyle, maxWidth: 220 }}>Kind
+            <select value={kindFilter} onChange={(e) => setKindFilter(e.target.value)} style={field}>
+              <option value="">All kinds</option>
+              {KINDS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+            </select>
+          </label>
+        )}
         {isLoading && <div style={dim}>Loading…</div>}
         {isError && <div role="alert" style={errorStyle}>Couldn't load the leave. <button type="button" onClick={() => refetch()} style={button(D.panelBg, D.text)}>Try again</button></div>}
-        {all && rows.length === 0 && <div style={dim}>No leave recorded for your team in the last 90 days, and none coming up.</div>}
+        {all && rows.length === 0 && <div style={dim}>{isSa ? "No leave recorded in the last 90 days, and none coming up." : "No leave recorded for your team in the last 90 days, and none coming up."}</div>}
         {rows.length > 0 && (
           <div style={scroll}>
             <table style={table}>
               <thead>
                 <tr>
-                  {["Person", "Kind", "Dates", "Working days", "Recorded", "Status"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}
+                  {["Person", "Kind", "Dates", "Working days", "Recorded", ...(isSa ? ["What changes"] : []), "Status"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}
                   <th scope="col" style={th}><span style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>Actions</span></th>
                 </tr>
               </thead>
-              <tbody>{rows.map((row) => <LeaveRow key={`${row.id}-${row.start}-${row.end}-${row.kind}`} row={row} mineId={auth?.user?.id} onChanged={refreshed} onMessage={setMessage} />)}</tbody>
+              <tbody>{rows.map((row) => <LeaveRow key={`${row.id}-${row.start}-${row.end}-${row.kind}`} row={row} mineId={auth?.user?.id} onChanged={refreshed} onMessage={setMessage} showEffect={isSa} />)}</tbody>
             </table>
           </div>
         )}
