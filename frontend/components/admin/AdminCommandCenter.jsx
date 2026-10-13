@@ -96,6 +96,11 @@ import NotificationCenterPanel from "./panels/NotificationCenterPanel.jsx";
 import StaffAnnouncementsPanel from "./panels/StaffAnnouncementsPanel.jsx";
 import AnnouncementBanner from "./shell/AnnouncementBanner.jsx";
 import SessionsPanel from "./panels/SessionsPanel.jsx";
+import { DeliveryPricingPanel, PayoutsPayrollPanel, ReconciliationPanel, TaxTablesPanel } from "./panels/LaterPhasePanels.jsx";
+import IntegrationsPanel from "./panels/IntegrationsPanel.jsx";
+import SystemHealthPanel from "./panels/SystemHealthPanel.jsx";
+import PlansPricesPanel from "./panels/PlansPricesPanel.jsx";
+import TargetLimitsPanel from "./panels/TargetLimitsPanel.jsx";
 import RegisterBusinessPanel, { clearRegisterDrafts } from "./panels/RegisterBusinessPanel.jsx";
 import SudoPrompt from "./SudoPrompt.jsx";
 import StaffShellStyles from "./shell/StaffShellStyles.jsx";
@@ -357,7 +362,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "event-pricing" && <EventPricingPanel auth={auth} />}
           {activeTab === "reviews" && <ReviewsModerationPanel auth={auth} />}
           {activeTab === "subscription-plans" && <SubscriptionPlansManagePanel />}
-          {activeTab === "subscription-plans-approval" && <SubscriptionPlanApprovalPanel />}
+          {activeTab === "subscription-plans-approval" && (role === "super_admin" ? <PlansPricesPanel /> : <SubscriptionPlanApprovalPanel />)}
           {activeTab === "delivery" && (role === "super_admin" ? <SaOrdersPanel /> : <DeliveryManagementPanel />)}
           {activeTab === "contact-messages" && <ContactMessagesPanel auth={auth} />}
           {activeTab === "users" && (role === "super_admin" ? <SaCustomersPanel auth={auth} /> : <UsersPanel auth={auth} />)}
@@ -382,7 +387,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "visit-map" && <TeamVisitMapPanel onOpenBusiness={openBusiness} />}
           {activeTab === "calls" && <CallLogPanel auth={auth} />}
           {activeTab === "prospects" && <ProspectsPanel onRegister={openRegisterFromProspect} />}
-          {activeTab === "targets" && (role !== "super_admin" && auth.hasPermission("businesses.manage_portfolio") ? <TargetsPanel /> : auth.hasPermission("targets.manage") ? <OpsTargetsPanel /> : <ScreenBuildingPanel title="Team targets" />)}
+          {activeTab === "targets" && (role === "super_admin" ? <TargetLimitsPanel onOpenApproval={openApproval} /> : role !== "super_admin" && auth.hasPermission("businesses.manage_portfolio") ? <TargetsPanel /> : auth.hasPermission("targets.manage") ? <OpsTargetsPanel /> : <ScreenBuildingPanel title="Team targets" />)}
           {activeTab === "ops-scouts" && <OpsScoutsPanel auth={auth} onNavigate={selectTab} onOpenScout={openScoutPortfolio} />}
           {activeTab === "leave" && <LeavePanel auth={auth} />}
           {activeTab === "support-issues" && <ServiceIssuesPanel auth={auth} onOpenBusiness={openBusiness} />}
@@ -393,7 +398,13 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "zones" && <ZonesPanel />}
           {activeTab === "commission" && <CommissionPanel />}
           {activeTab === "leaderboard" && <LeaderboardPanel />}
-          {activeTab === "commission-policy" && <CommissionPolicyPanel canPropose={auth.hasPermission("commission.policy")} />}
+          {activeTab === "commission-policy" && <CommissionPolicyPanel canPropose={auth.hasPermission("commission.policy")} showTaxRuling={role === "super_admin" || auth.hasPermission("commission.tax_ruling")} onOpenApproval={role === "super_admin" ? openApproval : undefined} />}
+          {activeTab === "payouts-payroll" && <PayoutsPayrollPanel onNavigate={selectTab} />}
+          {activeTab === "reconciliation" && <ReconciliationPanel />}
+          {activeTab === "delivery-pricing" && <DeliveryPricingPanel />}
+          {activeTab === "tax-tables" && <TaxTablesPanel onNavigate={selectTab} />}
+          {activeTab === "integrations" && <IntegrationsPanel />}
+          {activeTab === "system-health" && <SystemHealthPanel />}
           {activeTab === "visits" && <VisitsPanel auth={auth} detailId={detail} onOpenDetail={openDetail} leadName={leadName} />}
           {activeTab === "reports" && <ReportsPanel auth={auth} />}
           {activeTab === "team-reports" && (role === "super_admin" ? <ReportsHubPanel /> : <TeamReportsPanel auth={auth} />)}

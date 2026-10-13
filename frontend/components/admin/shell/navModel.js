@@ -91,10 +91,10 @@ export const NAV_ITEMS = [
   { id: "step-in-delivery", icon: "👁️", label: "Delivery & dispatch", show: saOnly, placeholder: "super_admin" },
   { id: "step-in-marketing", icon: "👁️", label: "Marketing", show: saOnly, placeholder: "super_admin" },
   { id: "step-in-accounting", icon: "👁️", label: "Accounting", show: saOnly, placeholder: "super_admin" },
-  { id: "payouts-payroll", icon: "🏦", label: "Payouts & payroll", show: saOnly, placeholder: "super_admin" },
+  { id: "payouts-payroll", icon: "🏦", label: "Payouts & payroll", show: saOnly },
   { id: "commissions", icon: "💷", label: "Commissions", show: saOnly },
   { id: "refunds", icon: "↩️", label: "Refunds", show: saOnly },
-  { id: "reconciliation", icon: "🧮", label: "Reconciliation", show: saOnly, placeholder: "super_admin" },
+  { id: "reconciliation", icon: "🧮", label: "Reconciliation", show: saOnly },
   { id: "growth-funnel", icon: "🪜", label: "Growth funnel", show: saOnly },
   { id: "scheduled-exports", icon: "📆", label: "Scheduled exports", show: saOnly },
   { id: "sign-in-history", icon: "🕵️", label: "Sign-in history", show: saOnly },
@@ -102,10 +102,10 @@ export const NAV_ITEMS = [
   { id: "notification-center", icon: "🔔", label: "Notification center", show: saOnly },
   { id: "staff-announcements", icon: "📣", label: "Staff announcements", show: saOnly },
   { id: "approval-rules", icon: "⏱️", label: "Approval rules & timers", show: saOnly },
-  { id: "delivery-pricing", icon: "🛵", label: "Delivery pricing", show: saOnly, placeholder: "super_admin" },
-  { id: "tax-tables", icon: "📑", label: "Tax tables", show: saOnly, placeholder: "super_admin" },
-  { id: "integrations", icon: "🔌", label: "Integrations", show: saOnly, placeholder: "super_admin" },
-  { id: "system-health", icon: "🩺", label: "System health", show: saOnly, placeholder: "super_admin" },
+  { id: "delivery-pricing", icon: "🛵", label: "Delivery pricing", show: saOnly },
+  { id: "tax-tables", icon: "📑", label: "Tax tables", show: saOnly },
+  { id: "integrations", icon: "🔌", label: "Integrations", show: saOnly },
+  { id: "system-health", icon: "🩺", label: "System health", show: saOnly },
 ];
 
 // [group id, group label, item ids]. The original (pre-1B) grouping, used for

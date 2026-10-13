@@ -90,7 +90,7 @@ describe('My Work group', () => {
 })
 
 // Super Admin screens that are built (no longer placeholders) but still no other role's.
-const SA_BUILT = ['commissions', 'refunds', 'growth-funnel', 'scheduled-exports', 'approval-rules']
+const SA_BUILT = ['commissions', 'refunds', 'growth-funnel', 'scheduled-exports', 'approval-rules', 'payouts-payroll', 'reconciliation', 'delivery-pricing', 'tax-tables', 'integrations', 'system-health']
 const SA_ONLY = NAV_ITEMS.filter((i) => i.placeholder === 'super_admin').map((i) => i.id).concat('invites', SA_BUILT)
 // 'leave' is also Super Admin's (the canvas's Leave & holidays), but no other role's.
 const OPS_ONLY = ['ops-scouts', 'support-team', 'leave', 'hero-events', 'support-issues', 'deliveries-returns', 'visit-map', 'zones', ...SA_ONLY]
@@ -453,8 +453,8 @@ describe('Super Admin menu (canvases 2026-10-07)', () => {
 
   it('lists the unbuilt screens as placeholders for Super Admin only', () => {
     const placeholders = [...PLACEHOLDER_TABS.super_admin]
-    expect(placeholders).toEqual(expect.arrayContaining(['teams-reporting', 'roles-permissions', 'step-in-operations', 'payouts-payroll', 'system-health']))
-    for (const built of ['approvals', 'staff', 'sessions', 'leave', 'transactions', 'analytics', 'activity', 'security', 'commission-policy', 'targets', 'categories-zones', 'invites']) {
+    expect(placeholders).toEqual(expect.arrayContaining(['teams-reporting', 'roles-permissions', 'step-in-operations']))
+    for (const built of ['approvals', 'staff', 'sessions', 'leave', 'transactions', 'analytics', 'activity', 'security', 'commission-policy', 'targets', 'categories-zones', 'invites', 'payouts-payroll', 'reconciliation', 'delivery-pricing', 'tax-tables', 'integrations', 'system-health']) {
       expect(placeholders).not.toContain(built)
     }
     for (const role of ['operations', 'accountant', 'scout']) {
