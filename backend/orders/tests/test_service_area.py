@@ -42,3 +42,32 @@ class ServiceAreaCheckoutTests(CheckoutTestsBase):
             resp = self._post(**KUMASI)
         self.assertEqual(resp.status_code, 201, resp.content)
         self.assertIsNotNone(resp.json()["delivery_fee"])
+
+    @override_settings(DELIVERY_FEE_ENABLED=True)
+    def test_fee_is_quoted_before_the_checkout_transaction_opens(self):
+        from django.db import connection
+
+        from routing import region
+
+        depth = {}
+        real_area = region.in_service_area
+
+        def area(lat, lng):
+            depth["request"] = len(connection.savepoint_ids)  # the depth the request starts at, before checkout's own atomic
+            return real_area(lat, lng)
+
+        def quote(items, lat, lng, **kw):
+            depth["quote"] = len(connection.savepoint_ids)
+            return None, dict(FEE)
+
+        with mock.patch("routing.region.in_service_area", area), mock.patch("delivery.rates.checkout_fee", quote):
+            resp = self._post(**KUMASI)
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(depth["quote"], depth["request"])
+        self.assertEqual(resp.json()["delivery_fee"], "15.00")
+
+    @override_settings(DELIVERY_FEE_ENABLED=False)
+    def test_fee_switch_off_never_quotes(self):
+        with mock.patch("delivery.rates.checkout_fee") as quote:
+            self.assertEqual(self._post(**KUMASI).status_code, 201)
+        quote.assert_not_called()

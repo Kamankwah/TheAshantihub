@@ -1,6 +1,7 @@
 """The only code that talks to OSRM. Points are (lat, lng); OSRM wants lng,lat, converted here and nowhere else.
 Every failure (unconfigured, network, timeout, NoRoute) is an OsrmError so callers have one thing to catch."""
 import json
+import urllib.error
 import urllib.request
 
 from django.conf import settings
@@ -8,6 +9,11 @@ from django.conf import settings
 
 class OsrmError(Exception):
     pass
+
+
+class OsrmUnavailable(OsrmError):
+    """OSRM could not be reached (network, timeout, connection refused, 5xx). Not raised for NoRoute or a malformed
+    answer: those mean OSRM is up. The service uses this one to stop calling a down server for a while."""
 
 
 def _http_get_json(url, timeout):
@@ -31,7 +37,14 @@ def _get(path):
     url = f"{_base()}{path}"
     try:
         body = _http_get_json(url, float(getattr(settings, "OSRM_TIMEOUT_S", 2.0)))
-    except Exception as exc:  # network, timeout, bad JSON: one error type for callers
+    except urllib.error.HTTPError as exc:
+        # OSRM answers NoRoute / InvalidQuery with a 4xx and a JSON body: it is up, so this is a plain OsrmError.
+        if exc.code >= 500:
+            raise OsrmUnavailable(str(exc)) from exc
+        raise OsrmError(str(exc)) from exc
+    except (OSError, TimeoutError) as exc:  # URLError, socket timeout, refused or reset connection
+        raise OsrmUnavailable(str(exc)) from exc
+    except Exception as exc:  # bad JSON and anything else: one error type for callers
         raise OsrmError(str(exc)) from exc
     if not isinstance(body, dict):
         raise OsrmError("Malformed OSRM response.")

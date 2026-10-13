@@ -1,3 +1,4 @@
+import urllib.error
 from unittest import mock
 
 from django.test import SimpleTestCase, override_settings
@@ -27,6 +28,35 @@ class RouteTests(SimpleTestCase):
         with mock.patch("routing.client._http_get_json", side_effect=OSError("boom")):
             with self.assertRaises(client.OsrmError):
                 client.route((6.69, -1.62), (6.70, -1.60))
+
+    def test_network_and_timeout_failures_are_unavailable(self):
+        for exc in (OSError("boom"), TimeoutError("slow"), urllib.error.URLError("refused")):
+            with mock.patch("routing.client._http_get_json", side_effect=exc):
+                with self.assertRaises(client.OsrmUnavailable):
+                    client.route((6.69, -1.62), (6.70, -1.60))
+
+    def test_server_error_is_unavailable_but_a_4xx_is_not(self):
+        err = lambda code: urllib.error.HTTPError("http://osrm", code, "x", {}, None)
+        with mock.patch("routing.client._http_get_json", side_effect=err(503)):
+            with self.assertRaises(client.OsrmUnavailable):
+                client.route((6.69, -1.62), (6.70, -1.60))
+        with mock.patch("routing.client._http_get_json", side_effect=err(400)):
+            with self.assertRaises(client.OsrmError) as ctx:
+                client.route((6.69, -1.62), (6.70, -1.60))
+        self.assertNotIsInstance(ctx.exception, client.OsrmUnavailable)
+
+    def test_no_route_and_malformed_are_not_unavailable(self):
+        for body in ({"code": "NoRoute"}, [1, 2], {"code": "Ok", "routes": [{"duration": 1.0}]}):
+            with mock.patch("routing.client._http_get_json", return_value=body):
+                with self.assertRaises(client.OsrmError) as ctx:
+                    client.route((6.69, -1.62), (6.70, -1.60))
+            self.assertNotIsInstance(ctx.exception, client.OsrmUnavailable)
+
+    def test_timeout_setting_is_passed_to_the_request(self):
+        body = {"code": "Ok", "routes": [{"distance": 1.0, "duration": 1.0, "geometry": {"coordinates": []}}]}
+        with override_settings(OSRM_TIMEOUT_S=0.75), mock.patch("routing.client._http_get_json", return_value=body) as get:
+            client.route((6.69, -1.62), (6.70, -1.60))
+        self.assertEqual(get.call_args[0][1], 0.75)
 
     def test_non_object_body_raises_osrm_error(self):
         with mock.patch("routing.client._http_get_json", return_value=[1, 2]):

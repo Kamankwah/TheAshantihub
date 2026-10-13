@@ -87,6 +87,14 @@ class OrderCheckoutView(APIView):
             if lat not in (None, "") and lng not in (None, "") and not region.in_service_area(lat, lng):
                 return Response({"detail": region.OUT_OF_AREA_MESSAGE, "code": "out_of_area"}, status=status.HTTP_400_BAD_REQUEST)
 
+        # The fee quote may call the road-routing service (a network round trip), so it is worked out before the
+        # transaction opens: it needs no row lock and must not hold a database transaction open while it waits.
+        quoted = None
+        if settings.DELIVERY_FEE_ENABLED and delivery_method == Order.DOOR_TO_DOOR:
+            from delivery.rates import checkout_fee
+
+            quoted = checkout_fee(items, request.data.get("delivery_lat"), request.data.get("delivery_lng"))
+
         with db_transaction.atomic():
             # Checkout promotions (marketing): off unless settings.MARKETING_PROMOS_ENABLED, and
             # then priced here, before anything is reserved or written, under the flash-sale and
@@ -130,17 +138,13 @@ class OrderCheckoutView(APIView):
             # Delivery fee from the rate card in force, only when switched on (settings.DELIVERY_FEE_ENABLED,
             # default off). Fixed here, on the order; later card changes never touch it.
             fee_card, fee_quote, charged, waiver = None, None, None, None
-            if settings.DELIVERY_FEE_ENABLED and delivery_method == Order.DOOR_TO_DOOR:
-                from delivery.rates import checkout_fee
-
-                quoted = checkout_fee(items, request.data.get("delivery_lat"), request.data.get("delivery_lng"))
-                if quoted is not None:
-                    fee_card, fee_quote = quoted
-                    # A live free-delivery promo covering every line waives the fee (marketing.waivers);
-                    # the original amount stays in the breakdown.
-                    waiver = waivers.covering_waiver([i.listing for i in items], timezone.now())
-                    charged, fee_quote = waivers.apply_to_fee(waiver, fee_quote)
-                    total += charged
+            if quoted is not None:
+                fee_card, fee_quote = quoted
+                # A live free-delivery promo covering every line waives the fee (marketing.waivers);
+                # the original amount stays in the breakdown.
+                waiver = waivers.covering_waiver([i.listing for i in items], timezone.now())
+                charged, fee_quote = waivers.apply_to_fee(waiver, fee_quote)
+                total += charged
             order = Order.objects.create(
                 customer=request.user, status=Order.PENDING, total_amount=total,
                 delivery_fee=charged if fee_quote else None, delivery_fee_breakdown=fee_quote, rate_card=fee_card,
