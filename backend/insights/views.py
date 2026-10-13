@@ -405,7 +405,16 @@ class ExportFileDownloadView(APIView):
         path = scheduling.directory() / file.file_name
         if file.purged or not file.file_name or file.expires_at is None or file.expires_at <= timezone.now() or not path.exists():
             return Response({"detail": "This export isn't available any more."}, status=410)
+        schedule = file.run.schedule
+        # Access may have changed since the file was made: re-check the downloader now.
+        if not generators.allowed(schedule.kind, request.user):
+            return Response({"detail": "You may no longer receive this export."}, status=403)
         if file.first_opened_at is None:
             file.first_opened_at = timezone.now()
             file.save(update_fields=["first_opened_at"])
+        # Who took which file, never what is in it.
+        record(request.user, "export.downloaded", target=schedule, method="GET", request=request,
+               summary=f"Downloaded the scheduled export: {schedule.name}",
+               after={"source": "scheduled", "export": schedule.kind, "format": schedule.format, "rows": file.row_count,
+                      "personal_data": schedule.personal_data, "file": file.pk})
         return FileResponse(open(path, "rb"), as_attachment=True, filename=file.download_name)

@@ -174,6 +174,36 @@ class RunTests(ScheduledExportBase):
         self.assertNotIn("boom", ScheduledExportFile.objects.exclude(error="").get().error)
 
 
+class CreatorGuardTests(ScheduledExportBase):
+    def due_schedule(self, **extra):
+        sid = self.create(**extra).json()["id"]
+        ScheduledExport.objects.filter(pk=sid).update(next_run_at=timezone.now() - timedelta(minutes=1))
+        return ScheduledExport.objects.get(pk=sid)
+
+    def test_a_suspended_creator_makes_the_schedule_skip_and_pause(self):
+        schedule = self.due_schedule()
+        self.boss.is_suspended = True
+        self.boss.save()
+        scheduling.dispatch_due()
+        run = ScheduledExportRun.objects.get()
+        self.assertEqual(run.status, "failed")
+        self.assertIn("no longer has an active account", run.error)
+        self.assertFalse(ScheduledExportFile.objects.exists())
+        schedule.refresh_from_db()
+        self.assertIsNotNone(schedule.paused_at)
+        self.assertTrue(ActivityEvent.objects.filter(verb="export.scheduled_run_skipped").exists())
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_a_creator_without_the_permission_is_skipped(self):
+        schedule = self.due_schedule()
+        schedule.created_by.revoked_permissions.add(Permission.objects.get(codename="exports.schedule"))
+        scheduling.dispatch_due()
+        run = ScheduledExportRun.objects.get()
+        self.assertEqual(run.status, "failed")
+        self.assertIn("can no longer schedule", run.error)
+        self.assertFalse(ScheduledExportFile.objects.exists())
+
+
 class DownloadTests(ScheduledExportBase):
     def make_file(self):
         sid = self.create(recipients=[self.accountant.pk]).json()["id"]
@@ -198,6 +228,24 @@ class DownloadTests(ScheduledExportBase):
         self.assertEqual(self.client.get(f"/api/insights/exports/files/{file.pk}/download/?sig=forged").status_code, 403)
         self.client.credentials()
         self.assertEqual(self.client.get(mine[0]["download_url"]).status_code, 401)
+
+    def test_a_download_is_audited_without_contents_and_rechecks_access(self):
+        file = self.make_file()
+        self.as_staff(self.accountant)
+        url = self.client.get("/api/insights/exports/files/mine/").json()[0]["download_url"]
+        self.assertEqual(self.client.get(url).status_code, 200)
+        event = ActivityEvent.objects.get(verb="export.downloaded")
+        self.assertEqual(event.actor_id, self.accountant.pk)
+        self.assertIn("personal_data", event.after)
+        self.assertEqual(event.after["export"], "revenue")
+        self.assertNotIn("content", str(event.after).lower())
+        # Access lost since the file was made: refused, and no second event.
+        self.accountant.revoked_permissions.add(*Permission.objects.filter(codename="transactions.report"))
+        from insights import generators
+
+        self.assertFalse(generators.allowed("revenue", self.accountant))
+        self.assertEqual(self.client.get(url).status_code, 403)
+        self.assertEqual(ActivityEvent.objects.filter(verb="export.downloaded").count(), 1)
 
     def test_a_link_stops_working_after_24_hours_and_the_file_is_deleted(self):
         file = self.make_file()

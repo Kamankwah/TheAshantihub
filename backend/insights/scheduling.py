@@ -66,8 +66,29 @@ def _email(recipient, schedule, file):
     )
 
 
+def creator_problem(schedule):
+    """Why a schedule may no longer run, or None: whoever set it up must still be an
+    active, unsuspended Super Admin-level holder of exports.schedule."""
+    creator = schedule.created_by
+    if not creator.is_active or creator.is_suspended:
+        return "The person who set this up no longer has an active account."
+    if "exports.schedule" not in creator.effective_permission_codenames():
+        return "The person who set this up can no longer schedule exports."
+    return None
+
+
 def run_schedule(schedule, *, now=None):
     now = now or timezone.now()
+    problem = creator_problem(schedule)
+    if problem:
+        # Skip and flag: pause it so it does not keep trying, and say why.
+        run = ScheduledExportRun.objects.create(
+            schedule=schedule, started_at=now, finished_at=now, status=ScheduledExportRun.FAILED, error=problem,
+        )
+        ScheduledExport.objects.filter(pk=schedule.pk, paused_at__isnull=True).update(paused_at=now)
+        record(None, "export.scheduled_run_skipped", target=schedule, summary=f"Scheduled export skipped: {schedule.name}",
+               after={"reason": problem, "creator": schedule.created_by.full_name})
+        return run
     run = ScheduledExportRun.objects.create(schedule=schedule, started_at=now)
     made = problems = rows = 0
     today = timezone.localdate(now)
