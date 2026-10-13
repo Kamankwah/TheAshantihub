@@ -145,6 +145,7 @@ export const NAV_ITEMS = [
   { id: "mk-consent", icon: "✅", label: "Consent & opt-outs", show: (auth) => mkOnly(auth, "consent.view") },
   { id: "mk-flash-sales", icon: "⚡", label: "Flash sales", show: (auth) => mkOnly(auth, "site_promo.manage") },
   { id: "mk-coupons", icon: "🏷️", label: "Coupons", show: (auth) => mkOnly(auth, "coupons.manage") },
+  { id: "mk-delivery-promos", icon: "🚚", label: "Free delivery", show: (auth) => mkOnly(auth, "site_promo.manage") },
   { id: "mk-banners", icon: "🖼️", label: "Banners", show: (auth) => mkOnly(auth, "site_promo.manage") },
   { id: "mk-featured", icon: "⭐", label: "Featured listings", show: (auth) => mkOnly(auth, "site_promo.manage") },
   { id: "mk-results", icon: "📈", label: "Campaign results", show: (auth) => mkOnly(auth, "campaigns.manage") },
@@ -263,7 +264,7 @@ const ROLE_MENUS = {
   marketing: [
     ["messages", "Messages", ["mk-campaigns", "mk-new-campaign", "mk-calendar", "mk-templates"]],
     ["audiences", "Audiences", ["mk-segments", "mk-consent"]],
-    ["on-the-site", "On the site", ["mk-flash-sales", "mk-coupons", "mk-banners", "mk-featured"]],
+    ["on-the-site", "On the site", ["mk-flash-sales", "mk-coupons", "mk-delivery-promos", "mk-banners", "mk-featured"]],
     ["moderation", "Moderation", ["hero", "events-moderation", "promotions"]],
     ["insights", "Insights", ["analytics", "mk-results"]],
     ["settings", "Settings", ["mk-senders", "mk-quiet-hours", "categories-zones"]],

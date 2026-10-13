@@ -77,14 +77,21 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
     if (!promosOn || items.length === 0) { setQuote(null); return; }
     let live = true;
     setQuoting(true);
-    quoteCart({ coupon_code: appliedCode, delivery_phone: deliveryMethod === "door_to_door" ? deliveryPhone : "" })
+    quoteCart({
+      coupon_code: appliedCode, delivery_phone: deliveryMethod === "door_to_door" ? deliveryPhone : "",
+      delivery_method: deliveryMethod, ...(deliveryMethod === "door_to_door" && deliveryLat != null ? { delivery_lat: deliveryLat, delivery_lng: deliveryLng } : {}),
+    })
       .then((q) => { if (live) { setQuote(q); setCouponError(q.coupon_error || ""); if (q.coupon_error) setAppliedCode(""); } })
       .catch(() => { if (live) setQuote(null); })
       .finally(() => { if (live) setQuoting(false); });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [promosOn, cartSignature, appliedCode]);
-  const shownTotal = promosOn && quote?.total ? quote.total : cart?.total;
+  }, [promosOn, cartSignature, appliedCode, deliveryMethod, deliveryLat, deliveryLng]);
+  // Delivery as the server will charge it (the quote mirrors checkout): fee is null until a delivery point
+  // is chosen, "0.00" with waived=true when a business's free-delivery promo covers the whole order.
+  const delivery = promosOn ? quote?.delivery : null;
+  const itemsTotal = promosOn && quote?.total ? quote.total : cart?.total;
+  const shownTotal = delivery?.fee != null && itemsTotal != null ? (parseFloat(itemsTotal) + parseFloat(delivery.fee)).toFixed(2) : itemsTotal;
   const [couponError, setCouponError] = useState("");
 
   const formatAmount = (amount) => {
@@ -286,6 +293,16 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
             </div>
             {promosOn && quote?.coupon && (
               <div style={{ fontSize: "0.72rem", color: "#555", margin: "-8px 0 12px" }}>Includes coupon {quote.coupon.code}: − {formatAmount(quote.coupon.discount)}</div>
+            )}
+            {delivery && (
+              <div data-testid="cart-delivery" style={{ fontSize: "0.72rem", color: "#555", margin: "-8px 0 12px" }}>
+                {delivery.waived
+                  ? <>Delivery: <b style={{ color: C.kente2 }}>Free</b> ({delivery.waiver_name}){delivery.waived_fee != null ? <>, saving {formatAmount(delivery.waived_fee)}</> : null}</>
+                  : delivery.fee != null
+                    ? <>Delivery: {formatAmount(delivery.fee)}</>
+                    : <>The delivery fee is worked out once you choose your delivery location.</>}
+                {delivery.mixed_note && <div>{delivery.mixed_note}</div>}
+              </div>
             )}
 
             {/* Delivery method (Wave F) */}

@@ -21,6 +21,7 @@ from payments.models import CheckoutSession
 from marketing import checkout as promo_checkout
 from marketing import code_guard
 from marketing import promos
+from marketing import waivers
 from payments.services import process_payment
 
 from .models import DeliveryAssignment, Order, OrderItem
@@ -121,17 +122,21 @@ class OrderCheckoutView(APIView):
                 total = promo.total  # net of any coupon
             # Delivery fee from the rate card in force, only when switched on (settings.DELIVERY_FEE_ENABLED,
             # default off). Fixed here, on the order; later card changes never touch it.
-            fee_card, fee_quote = None, None
+            fee_card, fee_quote, charged = None, None, None
             if settings.DELIVERY_FEE_ENABLED and delivery_method == Order.DOOR_TO_DOOR:
                 from delivery.rates import checkout_fee
 
                 quoted = checkout_fee(items, request.data.get("delivery_lat"), request.data.get("delivery_lng"))
                 if quoted is not None:
                     fee_card, fee_quote = quoted
-                    total += Decimal(fee_quote["total"])
+                    # A live free-delivery promo covering every line waives the fee (marketing.waivers);
+                    # the original amount stays in the breakdown.
+                    waiver = waivers.covering_waiver([i.listing for i in items], timezone.now())
+                    charged, fee_quote = waivers.apply_to_fee(waiver, fee_quote)
+                    total += charged
             order = Order.objects.create(
                 customer=request.user, status=Order.PENDING, total_amount=total,
-                delivery_fee=Decimal(fee_quote["total"]) if fee_quote else None, delivery_fee_breakdown=fee_quote, rate_card=fee_card,
+                delivery_fee=charged if fee_quote else None, delivery_fee_breakdown=fee_quote, rate_card=fee_card,
                 **(promo.order_extras() if promo else {}),
                 delivery_method=delivery_method,
                 delivery_address=delivery_address if delivery_method == Order.DOOR_TO_DOOR else "",

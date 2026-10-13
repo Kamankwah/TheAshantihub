@@ -9,6 +9,7 @@ urlpatterns = [
     path("", include("marketing.urls_consent")),
     path("", include("marketing.urls_banners")),
     path("", include("marketing.urls_promos")),
+    path("", include("marketing.urls_waivers")),
     path("", include("marketing.urls_campaigns")),
     path("", include("marketing.urls_setup")),
 ]

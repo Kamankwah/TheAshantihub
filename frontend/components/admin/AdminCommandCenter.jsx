@@ -90,6 +90,7 @@ import SegmentsPanel from "./panels/marketing/SegmentsPanel.jsx";
 import ConsentPanel from "./panels/marketing/ConsentPanel.jsx";
 import FlashSalesPanel from "./panels/marketing/FlashSalesPanel.jsx";
 import CouponsPanel from "./panels/marketing/CouponsPanel.jsx";
+import DeliveryPromosPanel from "./panels/marketing/DeliveryPromosPanel.jsx";
 import BannersPanel from "./panels/marketing/BannersPanel.jsx";
 import FeaturedListingsPanel from "./panels/marketing/FeaturedListingsPanel.jsx";
 import CampaignResultsPanel from "./panels/marketing/CampaignResultsPanel.jsx";
@@ -551,6 +552,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "mk-consent" && <ConsentPanel auth={auth} onNavigate={openTabDetail} detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "mk-flash-sales" && <FlashSalesPanel auth={auth} onNavigate={openTabDetail} detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "mk-coupons" && <CouponsPanel auth={auth} onNavigate={openTabDetail} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "mk-delivery-promos" && <DeliveryPromosPanel />}
           {activeTab === "mk-banners" && <BannersPanel auth={auth} onNavigate={openTabDetail} detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "mk-featured" && <FeaturedListingsPanel auth={auth} onNavigate={openTabDetail} detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "mk-results" && <CampaignResultsPanel auth={auth} onNavigate={openTabDetail} detailId={detail} onOpenDetail={openDetail} />}
