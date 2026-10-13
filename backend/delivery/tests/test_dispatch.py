@@ -265,6 +265,17 @@ class ConfigTests(EngineCase):
         self.assertEqual(self.client.post("/api/delivery/rules/withdraw/", {"approval_id": r["approval_id"]}, format="json").status_code, 200)
         self.assertIsNone(self.client.get("/api/delivery/rules/rate-card/").json()["pending"])
 
+    def test_the_rate_card_screen_reads_the_live_distance_basis(self):
+        from unittest import mock
+
+        from routing import service as routing_service
+
+        self.as_staff(self.manager)
+        for mode, basis in (("road", routing_service.BASIS_ROAD), ("straight_line_estimate", routing_service.BASIS_ESTIMATE)):
+            with mock.patch("routing.service.status", return_value={"mode": mode, "factor": 1.3, "healthy": mode == "road"}):
+                page = self.client.get("/api/delivery/rules/rate-card/").json()
+            self.assertEqual(page["distance_basis"], basis)
+
     def test_there_is_no_rate_card_until_one_is_approved_and_nothing_is_charged(self):
         self.as_staff(self.manager)
         page = self.client.get("/api/delivery/rules/rate-card/").json()

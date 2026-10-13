@@ -10,6 +10,7 @@ from accounts.models import Role
 from accounts.permissions import HasAnyRolePermission, HasRolePermission
 from approvals import services as approvals
 from approvals.models import ApprovalRequest
+from routing import service as routing_service
 
 from . import config, rates, services
 from .models import AutoAssignRules, ConfigVersion, RateCard, TimeLimits, VEHICLE_TYPES
@@ -92,7 +93,7 @@ class RateCardView(_ConfigView):
         return {
             "vehicle_types": [{"value": v, "label": l} for v, l in VEHICLE_TYPES],
             "fee_charging": {"enabled": bool(settings.DELIVERY_FEE_ENABLED), "note": "Customers are charged a delivery fee only when delivery fees are switched on. That is a separate decision."},
-            "distance_basis": rates.BASIS,
+            "distance_basis": routing_service.BASIS_ROAD if routing_service.status()["mode"] == "road" else routing_service.BASIS_ESTIMATE,
         }
 
 
