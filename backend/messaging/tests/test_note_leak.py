@@ -104,7 +104,13 @@ class SupportFoundationTests(TestCase):
         )
 
     def test_about_ids_are_context_only_and_bad_ids_are_dropped(self):
+        from listings.models import Category, Listing, Zone
+
         owner = BusinessOwner.objects.create(full_name="Kofi Trader", login_phone="+233207777002", password_hash="x")
+        Listing.objects.create(
+            business_owner=owner, status=Listing.PUBLISHED, name="Stole", description="d", price_amount=10,
+            category=Category.objects.filter(kind="product").first(), zone=Zone.objects.first(), contact_phone="+233207777999",
+        )
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.customer, 'customer')}")
         response = self.client.post(
             "/api/messaging/conversations/",
@@ -166,3 +172,55 @@ class SupportFoundationTests(TestCase):
         self.assertNotIn("support.limits", perms)
         ops = Role.objects.get(name="operations").permissions.values_list("codename", flat=True)
         self.assertIn("support.limits", ops)
+
+
+class AboutLinkScopeTests(TestCase):
+    """The about_* ids are staff context, so a caller can only name records they may see."""
+
+    def setUp(self):
+        from listings.models import Category, Listing, Zone
+        from orders.models import Order, OrderItem
+
+        self.me = Customer.objects.create(full_name="Me", phone="+233200888001", password_hash="x")
+        self.other = Customer.objects.create(full_name="Other", phone="+233200888002", password_hash="x")
+        self.owner = BusinessOwner.objects.create(full_name="Owner A", login_phone="+233207888001", password_hash="x")
+        self.owner2 = BusinessOwner.objects.create(full_name="Owner B", login_phone="+233207888002", password_hash="x")
+        fields = dict(name="Stole", description="d", category=Category.objects.filter(kind="product").first(), price_amount=10, zone=Zone.objects.first(), contact_phone="+233207888999")
+        self.listing = Listing.objects.create(business_owner=self.owner, status=Listing.PUBLISHED, **fields)
+        self.draft = Listing.objects.create(business_owner=self.owner2, status=Listing.DRAFT, **fields)
+        self.my_order = Order.objects.create(customer=self.me, total_amount=10)
+        self.other_order = Order.objects.create(customer=self.other, total_amount=10)
+        for order in (self.my_order, self.other_order):
+            OrderItem.objects.create(order=order, listing=self.listing, quantity=1, unit_price=10, line_total=10)
+
+    def _post(self, account=None, kind=None, **extra):
+        client = APIClient()
+        if account:
+            client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(account, kind)}")
+        else:
+            extra["guest_token"] = GUEST
+        response = client.post("/api/messaging/conversations/", {"body": "Hi", **extra}, format="json")
+        self.assertEqual(response.status_code, 201, response.content)
+        return Conversation.objects.get(pk=response.json()["id"])
+
+    def test_customer_links_own_order_but_not_anothers(self):
+        self.assertEqual(self._post(self.me, "customer", about_order=self.my_order.pk).about_order, self.my_order)
+        self.assertIsNone(self._post(self.me, "customer", about_order=self.other_order.pk).about_order)
+
+    def test_guest_order_link_is_dropped(self):
+        self.assertIsNone(self._post(about_order=self.my_order.pk).about_order)
+
+    def test_listing_must_be_published_for_customers_and_guests(self):
+        self.assertEqual(self._post(self.me, "customer", about_listing=self.listing.pk).about_business, self.owner)
+        self.assertIsNone(self._post(self.me, "customer", about_listing=self.draft.pk).about_listing)
+        self.assertIsNone(self._post(about_listing=self.draft.pk).about_listing)
+        self.assertIsNone(self._post(self.me, "customer", about_business=self.owner2.pk).about_business)
+
+    def test_owner_links_only_their_own_business_listing_and_orders(self):
+        convo = self._post(self.owner, "business_owner", about_business=self.owner2.pk, about_listing=self.draft.pk)
+        self.assertIsNone(convo.about_business)
+        self.assertIsNone(convo.about_listing)
+        convo = self._post(self.owner, "business_owner", about_business=self.owner.pk, about_order=self.my_order.pk)
+        self.assertEqual(convo.about_business, self.owner)
+        self.assertEqual(convo.about_order, self.my_order)
+        self.assertIsNone(self._post(self.owner2, "business_owner", about_order=self.my_order.pk).about_order)

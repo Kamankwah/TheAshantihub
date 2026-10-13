@@ -71,26 +71,45 @@ def _sender_type(request):
     return Message.GUEST
 
 
-def _about_links(data):
-    """The optional about_* ids a surface sent, resolved to rows. An id that does
-    not exist is dropped (the thread still starts); a customer cannot attach
-    anything they could not already name, and these links are staff context only
-    (they are never serialized back to the customer)."""
+def _about_links(data, request):
+    """The optional about_* ids a surface sent, resolved to rows the CALLER may name.
+    Staff-only context, never serialized back. Anything the caller could not
+    legitimately point at is silently dropped (the thread still starts):
+    - customer: only their own orders; published listings/businesses.
+    - business owner: only their own business and listings, and orders that
+      contain their listings.
+    - guest: no order link; published listings/businesses only."""
     from listings.models import Listing
     from orders.models import Order
 
+    user = request.user
+    is_customer = isinstance(user, Customer)
+    is_owner = isinstance(user, BusinessOwner)
     links = {}
-    if data.get("about_business"):
-        owner = BusinessOwner.objects.filter(pk=data["about_business"]).first()
-        if owner:
-            links["about_business"] = owner
     if data.get("about_listing"):
-        listing = Listing.objects.filter(pk=data["about_listing"]).select_related("business_owner").first()
+        listings = Listing.objects.filter(pk=data["about_listing"])
+        listings = listings.filter(business_owner=user) if is_owner else listings.filter(status=Listing.PUBLISHED)
+        listing = listings.select_related("business_owner").first()
         if listing:
             links["about_listing"] = listing
-            links.setdefault("about_business", listing.business_owner)
+            links["about_business"] = listing.business_owner
+    if data.get("about_business") and "about_business" not in links:
+        if is_owner:
+            if data["about_business"] == user.pk:
+                links["about_business"] = user
+        else:
+            owner = BusinessOwner.objects.filter(
+                pk=data["about_business"], listings__status=Listing.PUBLISHED
+            ).distinct().first()
+            if owner:
+                links["about_business"] = owner
     if data.get("about_order"):
-        order = Order.objects.filter(pk=data["about_order"]).first()
+        orders = Order.objects.none()
+        if is_customer:
+            orders = Order.objects.filter(pk=data["about_order"], customer=user)
+        elif is_owner:
+            orders = Order.objects.filter(pk=data["about_order"], items__listing__business_owner=user).distinct()
+        order = orders.first()
         if order:
             links["about_order"] = order
     return links
@@ -123,7 +142,7 @@ class ConversationListCreateView(generics.ListCreateAPIView):
             subject=data["subject"],
             status=Conversation.OPEN,
             source="guest_chat" if "guest_token" in scope and data["source"] == "app" else data["source"],
-            **_about_links(data),
+            **_about_links(data, request),
             **scope,
         )
         services.stamp_clocks(conversation)
