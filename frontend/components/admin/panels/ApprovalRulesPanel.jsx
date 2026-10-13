@@ -20,7 +20,7 @@ const REMIND = [["0.75", "75% of the response time"], ["0.50", "50% of the respo
 const LIMITS = [
   { key: "cosign_threshold", label: "Two approvers above", note: "A request with an amount above this needs the approver and a co-signer. Applies to requests made after you save." },
   { key: "refund_threshold", label: "Refunds come to you above", note: "Saved for the Accounting phase: no refund approval flow reads it yet." },
-  { key: "campaign_threshold", label: "Campaigns need you above", note: "Saved for the Marketing phase: no campaign approval flow reads it yet." },
+  { key: "campaign_threshold", label: "Campaigns need you above", note: "Marketing campaigns, coupons and offers that could cost more than this wait for you before they run." },
 ];
 
 function Cosigner({ data, onNavigate }) {

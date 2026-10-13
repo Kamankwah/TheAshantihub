@@ -32,6 +32,8 @@ import Flag from "./components/Flag.jsx";
 import Navbar from "./components/Navbar.jsx";
 import Hero from "./components/Hero.jsx";
 import HeroCarousel from "./components/HeroCarousel.jsx";
+import SiteBanner from "./components/SiteBanner.jsx";
+import FeaturedRow from "./components/FeaturedRow.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 import ListingDetailPage from "./components/ListingDetailPage.jsx";
 import ChatLauncher from "./components/ChatLauncher.jsx";
@@ -48,7 +50,11 @@ import { AboutFaqSection } from "./components/ui/about-faq-section.tsx";
 import { ContactPage } from "./components/ui/contact-page.tsx";
 import BusinessRegistrationFlow from "./components/BusinessRegistrationFlow.jsx";
 import BusinessClaimPage from "./components/BusinessClaimPage.jsx";
+import MarketingConsentCard from "./components/MarketingConsentCard.jsx";
+import UnsubscribePage from "./components/UnsubscribePage.jsx";
+import TrackedLinkPage from "./components/TrackedLinkPage.jsx";
 import CartDrawer from "./components/CartDrawer.jsx";
+import FlashPriceTag from "./components/FlashPriceTag.jsx";
 import EventHeroCarousel from "./components/EventHeroCarousel.jsx";
 import EventCard, { formatEventDate } from "./components/EventCard.jsx";
 import EventDetailPage from "./components/EventDetailPage.jsx";
@@ -509,7 +515,12 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
         await apiPost(`/api/messaging/conversations/${activeConv.id}/messages/`, { body: newMessage, ...guestFields });
       } else {
         const subject = initialBusiness ? subjectLine(initialBusiness.name) : "";
-        const created = await apiPost(`/api/messaging/conversations/`, { subject, body: newMessage, ...guestFields });
+        // What the conversation is about, for Support's context pane (a listing opened it). Ids only;
+        // the thread stays with AshantiHub Support, never with the business.
+        const aboutFields = initialBusiness?.id
+          ? { about_listing: initialBusiness.id, ...(initialBusiness.business_owner?.id ? { about_business: initialBusiness.business_owner.id } : {}), source: "listing_page" }
+          : {};
+        const created = await apiPost(`/api/messaging/conversations/`, { subject, body: newMessage, ...aboutFields, ...guestFields });
         setActiveConvId(created.id);
       }
       setNewMessage("");
@@ -1078,6 +1089,7 @@ export function Card({item,accentColor,user,favourites,onFavourite,currency,onMe
         )}
         <div style={{fontSize:"0.68rem",color:"rgba(255,255,255,0.6)",marginBottom:4}}>📍 {item.zone?.name}</div>
         <div style={{color:"rgba(255,255,255,0.75)",fontSize:"0.75rem",marginBottom:10,lineHeight:1.4}}>{item.description}</div>
+        <FlashPriceTag listingId={item.id}/>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6,flexWrap:"wrap"}}>
           <span style={{fontWeight:800,color:accentColor,fontSize:"0.8rem"}}>{displayPrice()}</span>
           <div style={{display:"flex",gap:5}}>
@@ -1181,6 +1193,7 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
   const [resetEmail,setResetEmail]=useState("");
   const [resetSubmitting,setResetSubmitting]=useState(false);
   const [resetSubmitted,setResetSubmitted]=useState(false);
+  const [offers,setOffers]=useState({});
 
   const handleLogin=async(e)=>{
     e.preventDefault();
@@ -1223,10 +1236,13 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
       return;
     }
     setSubmitting(true);
+    // Only a ticked box is sent: an untouched box records no answer.
+    const ticked=Object.fromEntries(Object.entries(offers).filter(([,on])=>on));
+    const consentField=Object.keys(ticked).length?{marketing_consent:ticked}:{};
     try {
       const result=accountType==="business_owner"
-        ? await auth.registerBusinessOwner({full_name:fullName,login_phone:phone||undefined,email:email||undefined,password})
-        : await auth.registerCustomer({full_name:fullName,phone:phone||undefined,email:email||undefined,password});
+        ? await auth.registerBusinessOwner({full_name:fullName,login_phone:phone||undefined,email:email||undefined,password,...consentField})
+        : await auth.registerCustomer({full_name:fullName,phone:phone||undefined,email:email||undefined,password,...consentField});
       onSuccess(result);
     } catch (err) {
       setError("Could not create your account. Please check your details.");
@@ -1293,6 +1309,14 @@ export function AuthModal({authState,auth,onClose,onSuccess,onGoToMarketplace}) 
           <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Phone (+233...)" style={authInputStyle}/>
           <input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="Email" style={authInputStyle}/>
           <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Password (min 8 characters)" required minLength={8} style={authInputStyle}/>
+          <fieldset style={{border:"1px solid #eee",borderRadius:10,padding:"8px 12px",margin:"0 0 12px"}}>
+            <legend style={{fontSize:"0.72rem",fontWeight:800,padding:"0 4px"}}>Offers from AshantiHub (optional)</legend>
+            {[["sms","SMS"],["whatsapp","WhatsApp"],["email","Email"],["inapp","In the app"]].map(([key,label])=>(
+              <label key={key} style={{display:"flex",gap:8,alignItems:"center",fontSize:"0.76rem",padding:"3px 0"}}>
+                <input type="checkbox" checked={!!offers[key]} onChange={e=>setOffers({...offers,[key]:e.target.checked})}/>Send me offers from AshantiHub by {label}. I can stop any time.
+              </label>
+            ))}
+          </fieldset>
           <button type="submit" disabled={submitting} style={authSubmitStyle}>{submitting?"Creating account…":accountType==="business_owner"?"Create Business Account":"Create Free Account"}</button>
         </form>}
 
@@ -2315,6 +2339,8 @@ function SettingsTab({ user, auth, lang, setLang, onSignOut }) {
       )}
     </div>
 
+    <MarketingConsentCard/>
+
     <div style={{...glassCard,padding:18}}>
       <div style={{fontWeight:800,color:D.text,fontSize:"0.85rem",marginBottom:10}}>Session</div>
       <button onClick={onSignOut} style={{background:"none",border:`1px solid ${D.red}`,color:D.red,borderRadius:20,padding:"8px 20px",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>🚪 Sign Out</button>
@@ -2614,6 +2640,9 @@ export default function AshantiHub() {
   const businessPathMatch = useMatch("/business/:id");
   const businessDetailMatch = businessPathMatch?.params.id === "claim" ? null : businessPathMatch;
   const eventDetailMatch = useMatch("/events/:id");
+  // The stop link in a marketing message (Marketing consent): a standalone page keyed by a signed token.
+  const unsubscribeMatch = useMatch("/unsubscribe/:token");
+  const trackedLinkMatch = useMatch("/r/:token");
   // Staff dashboard panels are URL-addressable (/staff/kyc, /staff/users, …)
   // so Android's back gesture steps through panels inside the installed app
   // and manifest shortcuts can deep-link. /staff/activate and /staff/install
@@ -2646,7 +2675,7 @@ export default function AshantiHub() {
     const path = PAGE_TO_PATH[id] ?? "/";
     if (location.pathname !== path) navigate(path);
   };
-  const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch && !onStaffDashboardPath;
+  const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch && !unsubscribeMatch && !trackedLinkMatch && !onStaffDashboardPath;
   const [authModal,setAuthModal]=useState(null);
   const auth=useAuth();
   const queryClient=useQueryClient();
@@ -3067,6 +3096,8 @@ export default function AshantiHub() {
   if(page==="reset-password") return <ResetPasswordPage auth={auth} setPage={setPage} setAuthModal={setAuthModal}/>;
   if(page==="payment-return") return <PaymentReturnPage setPage={setPage}/>;
   if(page==="business-claim") return <BusinessClaimPage onSignIn={()=>{setAuthModal("login");setPage("home");}}/>;
+  if(trackedLinkMatch) return <TrackedLinkPage token={trackedLinkMatch.params.token} onGo={(path)=>navigate(path,{replace:true})}/>;
+  if(unsubscribeMatch) return <UnsubscribePage token={unsubscribeMatch.params.token} onHome={()=>navigate("/")}/>;
   if(isLoading) return <LoadingScreen/>;
   if(show404) return <NotFoundPage onHome={()=>setPage("home")} user={user}/>;
 
@@ -3138,12 +3169,15 @@ export default function AshantiHub() {
 
       {page==="home"&&(
         <>
+          <SiteBanner slot="home_hero" onNavigate={navigate}/>
           <Hero
             T={T}
             user={user}
             setAuthModal={setAuthModal}
             setPage={setPage}
           />
+          <FeaturedRow onOpen={(id)=>setSelectedListingId(id)}/>
+          <SiteBanner slot="home_strip" onNavigate={navigate}/>
 
           {/* Referral program hidden for now — not yet implemented (no real
               referral tracking/credit). Re-enable once it's built properly. */}
@@ -3164,6 +3198,8 @@ export default function AshantiHub() {
               detail (the checkout view) is open, so the detail page isn't
               pushed down below the full-viewport hero. */}
           {!selectedListingId && (<>
+          {filters.category&&<SiteBanner slot="category_top" category={filters.category} onNavigate={navigate}/>}
+          {filters.category&&<FeaturedRow category={filters.category} onOpen={(id)=>setSelectedListingId(id)}/>}
           {/* Hero carousel — approved/non-expired hero-media submissions
               (docs/BUSINESS_EVENTS_ROADMAP.md Phase 2/3). Renders nothing when
               there are none active, so it never leaves a disruptive empty gap. */}
@@ -3366,6 +3402,7 @@ export default function AshantiHub() {
           {/* Hero + browse chrome only on the grid view — hidden when an event
               detail is open, so it isn't pushed down below the full hero. */}
           {!selectedEventId && (<>
+          <SiteBanner slot="events_top" onNavigate={navigate}/>
           <EventHeroCarousel onOpen={(id)=>setSelectedEventId(id)}/>
 
           <div style={{background:C.void,borderBottom:`1.5px solid ${C.gold}30`,padding:"10px 16px",textAlign:"center"}}>

@@ -1,8 +1,8 @@
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from accounts.authentication import issue_token
 from accounts.models import Customer, Role, StaffUser
+from accounts.testing import staff_token
 
 from disputes.models import Dispute
 
@@ -32,8 +32,9 @@ class DisputeTestsBase(TestCase):
             role=Role.objects.get(name="marketing"),
         )
 
-    def _auth_staff(self, staff):
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(staff, 'staff')}")
+    def _auth_staff(self, staff, sudo=True):
+        # Resolving a dispute can refund money, so it asks for the password: tests are signed in with it.
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(staff, sudo=sudo)}")
 
     def _flag_url(self, pk=None):
         return f"/api/disputes/{pk or self.dispute.id}/flag/"
@@ -79,7 +80,7 @@ class DisputeFlagTests(DisputeTestsBase):
 
     def test_flag_moves_open_to_investigating(self):
         self._auth_staff(self.support)
-        response = self.client.post(self._flag_url())
+        response = self.client.post(self._flag_url(), {"intake_summary": "Customer reports the item never arrived."}, format="json")
         self.assertEqual(response.status_code, 200, response.content)
         self.dispute.refresh_from_db()
         self.assertEqual(self.dispute.status, Dispute.INVESTIGATING)
@@ -117,6 +118,14 @@ class DisputeResolveTests(DisputeTestsBase):
         self._auth_staff(self.support)  # has flag, not resolve_financial
         response = self.client.post(self._resolve_url())
         self.assertEqual(response.status_code, 403)
+
+    def test_resolving_asks_for_the_password_again(self):
+        self._auth_staff(self.accountant, sudo=False)
+        response = self.client.post(self._resolve_url(), {"refund_amount": "50.00"}, format="json")
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["code"], "sudo_required")
+        self.dispute.refresh_from_db()
+        self.assertEqual(self.dispute.status, Dispute.INVESTIGATING)
 
     def test_resolve_with_refund_sets_resolved_status(self):
         self._auth_staff(self.accountant)

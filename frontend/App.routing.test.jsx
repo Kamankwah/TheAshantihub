@@ -470,11 +470,12 @@ function renderStaffAt(path) {
   )
 }
 
-function signInStaff(permissions) {
+// Support's menu is the canvas's, with no Approvals; approvals routes sign in as Operations.
+function signInStaff(permissions, role = 'support') {
   setStoredAuth({ token: 'test-token', account_type: 'staff', id: 1, full_name: 'Akosua Support' })
   server.use(
     http.get('http://localhost:8000/api/accounts/me/', () => HttpResponse.json({
-      account_type: 'staff', id: 1, full_name: 'Akosua Support', role: 'support', permissions,
+      account_type: 'staff', id: 1, full_name: 'Akosua Support', role, permissions,
     })),
   )
 }
@@ -487,7 +488,7 @@ describe('AshantiHub routing — /staff/:panel', () => {
   it('mounting at /staff/users opens the Users panel for a permitted staffer', async () => {
     signInStaff(['messaging.manage', 'users.view'])
     renderStaffAt('/staff/users')
-    expect(within(await staffNav()).getByRole('button', { name: /Users/ })).toHaveAttribute('aria-current', 'page')
+    expect(within(await staffNav()).getByRole('button', { name: /Customers & businesses/ })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByTestId('location')).toHaveTextContent('/staff/users')
   }, 8000)
 
@@ -508,7 +509,7 @@ describe('AshantiHub routing — /staff/:panel', () => {
   it('clicking a nav item pushes /staff/<panel>, and Overview goes back to /staff', async () => {
     signInStaff(['messaging.manage', 'users.view'])
     renderStaffAt('/staff')
-    fireEvent.click(within(await staffNav()).getByRole('button', { name: /Users/ }))
+    fireEvent.click(within(await staffNav()).getByRole('button', { name: /Customers & businesses/ }))
     expect(screen.getByTestId('location').textContent).toBe('/staff/users')
     fireEvent.click(within(await staffNav()).getByRole('button', { name: /Overview/ }))
     expect(screen.getByTestId('location').textContent).toBe('/staff')
@@ -621,7 +622,7 @@ describe('AshantiHub routing — /staff/:panel', () => {
   }, 10000)
 
   it('/staff/approvals/<id> opens that request, and Back returns to the inbox URL', async () => {
-    signInStaff(['messaging.manage'])
+    signInStaff(['messaging.manage'], 'operations')
     server.use(http.get('http://localhost:8000/api/approvals/7/', () => HttpResponse.json({
       id: 7, kind: 'business.update', kind_label: 'Business info change', title: 'Adwoa Fabrics', status: 'pending',
       stage: 'manager', maker: { id: 3, full_name: 'Kwame Asante', role: 'scout' }, assigned_to: null, pool_permission: '',
@@ -709,7 +710,7 @@ describe('AshantiHub routing — staff notification bell', () => {
   const withNotification = (link) => server.use(http.get('http://localhost:8000/api/notifications/', () => HttpResponse.json({ unread_count: 1, results: [{ ...notification, link }] })))
 
   it('the staff header shows a bell with the unread count', async () => {
-    signInStaff(['messaging.manage'])
+    signInStaff(['messaging.manage'], 'operations')
     withNotification('approvals/7')
     renderStaffAt('/staff')
     const bell = await screen.findByRole('button', { name: 'Notifications (1 unread)' }, { timeout: 3000 })
@@ -719,7 +720,7 @@ describe('AshantiHub routing — staff notification bell', () => {
   }, 8000)
 
   it('a staff notification linking approvals/7 opens /staff/approvals/7', async () => {
-    signInStaff(['messaging.manage'])
+    signInStaff(['messaging.manage'], 'operations')
     withNotification('approvals/7')
     server.use(http.get('http://localhost:8000/api/approvals/7/', () => HttpResponse.json({ detail: 'Not found.' }, { status: 404 })))
     renderStaffAt('/staff')

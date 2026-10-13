@@ -1,3 +1,4 @@
+import FlashPriceTag from "./FlashPriceTag.jsx";
 import { useState } from "react";
 import { C } from "../theme.js";
 import { apiPost } from "../apiClient.js";
@@ -219,6 +220,7 @@ export default function ListingDetailPage({
           {displayPrice() && (
             <div style={{ color: accentColor, fontWeight: 900, fontSize: "1.15rem", marginBottom: 14 }}>{displayPrice()}</div>
           )}
+          <FlashPriceTag listingId={item.id} />
 
           {/* Businesses can no longer be contacted directly (fraud-prevention —
               docs/UI_MODERNIZATION_ROADMAP.md Phase F). This opens

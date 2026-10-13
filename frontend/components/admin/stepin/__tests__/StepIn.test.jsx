@@ -55,11 +55,11 @@ beforeEach(() => setStoredAuth({ token: 'token-of-simon', account_type: 'staff',
 afterEach(() => { clearViewAs(); setStoredAuth(null) })
 
 describe('Teams (step in)', () => {
-  it("lists the team's people and says plainly when its dashboard is not rebuilt yet", async () => {
+  it("lists the team's people; Support is rebuilt now, so no not-rebuilt notice", async () => {
     serve()
     renderShell()
     expect(screen.getByRole('heading', { name: 'Step in: Support' })).toBeInTheDocument()
-    expect(screen.getByText(/has not been rebuilt to its new design yet/)).toBeInTheDocument()
+    expect(screen.queryByText(/has not been rebuilt/)).not.toBeInTheDocument()
     const list = await screen.findByRole('list', { name: 'Support people' })
     expect(within(list).getByText('Esi Nyarko')).toBeInTheDocument()
     expect(within(list).queryByText('Ama Boateng')).not.toBeInTheDocument()
@@ -73,10 +73,10 @@ describe('Teams (step in)', () => {
     expect(await screen.findByText(/Viewing as Support \(read-only\) · logged/)).toBeInTheDocument()
     expect(calls.started).toEqual([7])
     // Her own menu and panels, not the Super Admin's.
-    expect(await screen.findByText('Messaging / Tickets')).toBeInTheDocument()
+    expect(await screen.findByText('Canned replies')).toBeInTheDocument() // the rebuilt Support menu
     expect(screen.queryByText('Staff directory')).not.toBeInTheDocument()
     expect(screen.getByText(/you stay signed in as Simon Peter/)).toBeInTheDocument()
-    expect(screen.getByText(/these are the screens Esi uses today/)).toBeInTheDocument()
+    expect(screen.queryByText(/has not been rebuilt/)).not.toBeInTheDocument()
     const throughView = calls.me.find((c) => c.url.includes('viewing=1'))
     expect(throughView).toMatchObject({ viewAs: '7', screen: 'overview' })
 
@@ -212,5 +212,8 @@ describe('controls that change data inside a step-in', () => {
     expect(changesData('Cancel')).toBe(false)
     expect(changesData('Rejected')).toBe(false)
     expect(changesData('📤 Export CSV')).toBe(true)
+    expect(changesData('Wake now')).toBe(true)
+    expect(changesData('Note to the team')).toBe(true)
+    expect(changesData('Notes')).toBe(false)
   })
 })

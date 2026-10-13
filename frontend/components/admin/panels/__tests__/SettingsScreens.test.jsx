@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { server } from '../../../../mocks/server.js'
 import CommissionPolicyPanel from '../CommissionPolicyPanel.jsx'
 import IntegrationsPanel from '../IntegrationsPanel.jsx'
-import { DeliveryPricingPanel, PayoutsPayrollPanel, ReconciliationPanel, TaxTablesPanel } from '../LaterPhasePanels.jsx'
+import { PayoutsPayrollPanel, ReconciliationPanel, TaxTablesPanel } from '../LaterPhasePanels.jsx'
 import PlansPricesPanel from '../PlansPricesPanel.jsx'
 import SystemHealthPanel from '../SystemHealthPanel.jsx'
 import TargetLimitsPanel from '../TargetLimitsPanel.jsx'
@@ -51,14 +51,6 @@ describe('Later-phase money screens', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Arrives with the Accounting phase')
     expect(screen.getByText('Matched and unmatched lines')).toBeInTheDocument()
     expect(document.body.textContent).not.toMatch(/\d+%|\d+ of \d+/)
-  })
-
-  it('Delivery pricing records only the no-VAT decision and sets no rate', () => {
-    wrap(<DeliveryPricingPanel />)
-    expect(screen.getByRole('status')).toHaveTextContent('Arrives with the Delivery phase')
-    expect(screen.getByText(/Delivery fees carry no VAT/)).toBeInTheDocument()
-    expect(screen.getByText('Rate card')).toBeInTheDocument()
-    expect(document.body.textContent).not.toMatch(/GH₵\s*\d/)
   })
 
   it('Tax tables: no tax is calculated, delivery fee is no VAT, everything else is to confirm, no rate appears', async () => {

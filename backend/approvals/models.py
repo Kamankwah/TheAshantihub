@@ -117,7 +117,7 @@ class ApprovalSettings(models.Model):
 
     # Requests above this need a second sign-off from a co-signer.
     cosign_threshold = models.DecimalField(max_digits=12, decimal_places=2, default=DEFAULT_COSIGN_THRESHOLD)
-    # Stored for the Accounting and Marketing phases; no refund or campaign flow reads them yet.
+    # refund_threshold is stored for the Accounting phase (no refund flow reads it yet); campaign_threshold is read by marketing.policy.
     refund_threshold = models.DecimalField(max_digits=12, decimal_places=2, default=DEFAULT_REFUND_THRESHOLD)
     campaign_threshold = models.DecimalField(max_digits=12, decimal_places=2, default=DEFAULT_CAMPAIGN_THRESHOLD)
     remind_fraction = models.DecimalField(max_digits=3, decimal_places=2, default=DEFAULT_REMIND_FRACTION)

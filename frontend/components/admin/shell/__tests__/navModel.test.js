@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { NAV_ITEMS, PLACEHOLDER_TABS, buildNavGroups, isPermittedTab, makeBadgeFor, overviewLabel, pickBottomBarItems } from '../navModel.js'
+import { NAV_ITEMS, PLACEHOLDER_TABS, buildNavGroups, isPermittedTab, makeBadgeFor, overviewLabel, pickBottomBarItems, COUNT_ONLY_TABS } from '../navModel.js'
 
 const groups = [
   { id: 'a', label: 'A', items: [
@@ -93,7 +93,19 @@ describe('My Work group', () => {
 const SA_BUILT = ['step-in-operations', 'step-in-support', 'step-in-delivery', 'step-in-marketing', 'step-in-accounting', 'teams-reporting', 'roles-permissions', 'commissions', 'refunds', 'growth-funnel', 'scheduled-exports', 'approval-rules', 'payouts-payroll', 'reconciliation', 'delivery-pricing', 'tax-tables', 'integrations', 'system-health', 'sign-in-history', 'staff-announcements', 'data-exports-log', 'notification-center']
 const SA_ONLY = NAV_ITEMS.filter((i) => i.placeholder === 'super_admin').map((i) => i.id).concat('invites', SA_BUILT)
 // 'leave' is also Super Admin's (the canvas's Leave & holidays), but no other role's.
-const OPS_ONLY = ['ops-scouts', 'support-team', 'leave', 'hero-events', 'support-issues', 'deliveries-returns', 'visit-map', 'zones', ...SA_ONLY]
+// The Accounting canvas screens (2026-10-07): the Accountant's alone, except Commissions, Refunds and
+// Reconciliation, which are Super Admin's panels opened to the Accountant as well.
+const ACCT_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('acct-')).map((i) => i.id)
+const ACCT_SHARED = ['commissions', 'refunds', 'reconciliation']
+// The Support canvas screens (placeholder or built) appear for no other role.
+const SUPPORT_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('support-') && !['support-team', 'support-issues'].includes(i.id)).map((i) => i.id)
+// The Marketing canvas screens are Marketing's alone.
+const MK_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('mk-')).map((i) => i.id)
+const OPS_ONLY = [...MK_ONLY, 'ops-scouts', 'support-team', 'leave', 'hero-events', 'support-issues', 'deliveries-returns', 'visit-map', 'zones', ...SA_ONLY, ...SUPPORT_ONLY]
+// The Delivery Manager canvas screens (2026-10-07) are the Delivery Manager's alone.
+const DM_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('dm-')).map((i) => i.id)
+// The Dispatch (rider) canvas screens are the rider's alone.
+const DR_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('dr-')).map((i) => i.id)
 
 describe('per-role menus', () => {
   const authAs = (role, perms) => ({ user: { role }, hasPermission: (c) => perms.includes(c) })
@@ -108,27 +120,40 @@ describe('per-role menus', () => {
     expect(groupOf(groups, 'site-settings')).toBe('Settings')
   })
 
-  it('gives support an Inbox, Calls and Queues', () => {
-    const groups = buildNavGroups(authAs('support', ['messaging.manage', 'calls.log', 'reviews.moderate', 'users.view']))
-    expect(groupOf(groups, 'messaging')).toBe('Inbox')
-    expect(groupOf(groups, 'calls')).toBe('Calls')
-    expect(groupOf(groups, 'reviews')).toBe('Queues')
-    expect(groupOf(groups, 'users')).toBe('People')
+  it("gives Support the canvas's seven groups and eighteen items, in order", () => {
+    const groups = buildNavGroups(authAs('support', ['messaging.manage', 'calls.log', 'contact_messages.manage', 'reviews.moderate', 'disputes.flag', 'orders.support_update', 'users.view']))
+    expect(groups.map((g) => [g.label, g.items.map((i) => i.label)])).toEqual([
+      ['Inbox', ['Mine', 'Unassigned', 'All open', 'Past time limit', 'Snoozed', 'Resolved']],
+      ['Calls', ['Call log', 'Log a call']],
+      ['Queues', ['Contact form', 'Reviews', 'Dispute intake', 'Order status']],
+      ['Knowledge', ['Canned replies', 'Tags']],
+      ['People', ['Customers & businesses']],
+      ['My work', ['Tasks']],
+      ['Reports', ['My reports']],
+    ])
   })
 
-  it("puts a granted tool the role's menu doesn't place under More tools", () => {
-    const groups = buildNavGroups(authAs('support', ['messaging.manage', 'analytics.view']))
-    expect(groupOf(groups, 'analytics')).toBe('More tools')
-    expect(groups.at(-1).id).toBe('more')
+  it("keeps Support's menu exhaustive: a granted tool the canvas leaves out is not offered under More tools", () => {
+    const groups = buildNavGroups(authAs('support', ['messaging.manage', 'analytics.view', 'fraud.flag']))
+    expect(groups.some((g) => g.id === 'more')).toBe(false)
+    expect(groups.flatMap((g) => g.items.map((i) => i.id))).not.toContain('fraud-cases')
   })
 
-  it('shows every permitted item exactly once and no empty group, for every role but Operations and Super Admin (exhaustive menus)', () => {
-    for (const role of ['accountant', 'marketing', 'support', 'scout', 'delivery_manager', 'dispatch']) {
+  it("shows Support's All open and Snoozed as counts, the rest as badges", () => {
+    const badgeFor = makeBadgeFor({ support_mine: 4, support_unassigned: 3, support_all_open: 13, support_past_limit: 3, support_snoozed: 2, disputes_intake: 1, reviews: 5, contact_messages: 2, tasks_due: 3 }, 'support')
+    expect(['support-mine', 'support-unassigned', 'support-all-open', 'support-past-limit', 'support-snoozed', 'disputes', 'reviews', 'contact-messages', 'tasks'].map(badgeFor)).toEqual([4, 3, 13, 3, 2, 1, 5, 2, 3])
+    expect([...COUNT_ONLY_TABS.support]).toEqual(['support-all-open', 'support-snoozed'])
+  })
+
+  it('shows every permitted item exactly once and no empty group, for roles without an exhaustive canvas menu (the Support, Delivery, Dispatch and Marketing menus are the canvas alone, tested separately)', () => {
+    for (const role of ['accountant', 'scout']) {
       const groups = buildNavGroups({ user: { role }, hasPermission: () => true })
       const ids = groups.flatMap((g) => g.items.map((i) => i.id))
       expect(new Set(ids).size).toBe(ids.length)
       // The Operations canvas screens appear for no other role.
-      expect([...ids].sort()).toEqual(NAV_ITEMS.filter((i) => !OPS_ONLY.includes(i.id)).map((i) => i.id).sort())
+      const accountant = role === 'accountant'
+      const expected = NAV_ITEMS.filter((i) => !ACCT_ONLY.includes(i.id) && !DM_ONLY.includes(i.id) && !DR_ONLY.includes(i.id) && !(OPS_ONLY.includes(i.id) && !(accountant && ACCT_SHARED.includes(i.id)))).map((i) => i.id)
+      expect([...ids].sort()).toEqual((accountant ? expected.concat(ACCT_ONLY) : expected).sort())
       expect(groups.every((g) => g.items.length > 0)).toBe(true)
     }
   })
@@ -215,7 +240,8 @@ describe('portfolio menus (staff phase 2A)', () => {
     expect(idsIn(scout, 'Performance')).toEqual(['targets', 'commission', 'leaderboard'])
     expect(NAV_ITEMS.find((i) => i.id === 'commission')).toMatchObject({ label: 'Commission' })
     const accountant = buildNavGroups(authAs('accountant', ['commission.view_all', 'commission.policy', 'subscription_plans.manage']))
-    expect(groupOf(accountant, 'commission-policy')).toBe('Plans & pricing')
+    // The Accounting canvas leaves the policy panel out of the menu; the permission and panel stay (More tools).
+    expect(groupOf(accountant, 'commission-policy')).toBe('More tools')
     expect(groupOf(buildNavGroups({ user: { role: 'super_admin' }, hasPermission: () => true }), 'commission-policy')).toBe('Settings')
     expect(allIds(['portfolio.manage', 'businesses.register'])).not.toContain('commission')
     expect(allIds(['portfolio.manage', 'businesses.register'])).not.toContain('commission-policy')
@@ -281,9 +307,9 @@ describe('Subscriptions due and Fraud cases (staff phase 2A)', () => {
     expect(idsIn(groups, 'Service')).toEqual(['fraud-cases'])
   })
 
-  it("puts Fraud cases at the end of Support's Queues", () => {
-    const groups = buildNavGroups(authAs('support', ['fraud.flag', 'contact_messages.manage', 'reviews.moderate', 'disputes.flag', 'orders.manage_delivery']))
-    expect(idsIn(groups, 'Queues')).toEqual(['contact-messages', 'reviews', 'disputes', 'delivery', 'fraud-cases'])
+  it("leaves Fraud cases and Delivery Management out of Support's Queues (the canvas has neither)", () => {
+    const groups = buildNavGroups(authAs('support', ['fraud.flag', 'contact_messages.manage', 'reviews.moderate', 'disputes.flag', 'orders.manage_delivery', 'orders.support_update']))
+    expect(idsIn(groups, 'Queues')).toEqual(['contact-messages', 'reviews', 'disputes', 'support-order-status'])
   })
 
   it("gives Super Admin Fraud cases as the canvas's Fraud & anomaly alerts under Security & audit, and no Subscriptions due", () => {
@@ -358,7 +384,9 @@ describe("the scout's menu in the canvas's words (staff WP6)", () => {
 
   it('x', () => {
     expect(overviewLabel('scout')).toBe('Today')
-    for (const role of ['operations', 'accountant', 'marketing', 'support', 'delivery_manager', 'dispatch']) expect(overviewLabel(role)).toBe('Overview')
+    for (const role of ['operations', 'accountant', 'marketing', 'support']) expect(overviewLabel(role)).toBe('Overview')
+    expect(overviewLabel('dispatch')).toBe('Shift')
+    expect(overviewLabel('delivery_manager')).toBe('Live operations')
     expect(overviewLabel('super_admin')).toBe('Command center')
   })
 
@@ -489,5 +517,44 @@ describe('Super Admin menu (canvases 2026-10-07)', () => {
     const other = makeBadgeFor({ disputes_open: 1, reports_hub: 12, team_reports_waiting: 3 }, 'operations')
     expect(other('disputes')).toBe(0)
     expect(other('team-reports')).toBe(3)
+  })
+})
+
+describe('Marketing menu (canvas 2026-10-13)', () => {
+  const MK = [
+    'campaigns.manage', 'consent.view', 'coupons.manage', 'site_promo.manage', 'promotions.manage', 'analytics.view', 'categories.manage',
+    'zones.manage', 'hero_media.approve', 'event.approve',
+  ]
+  const auth = { user: { role: 'marketing' }, hasPermission: (c) => MK.includes(c) }
+  const groups = buildNavGroups(auth)
+
+  it('has exactly the canvas items in order (two group names differ so no group repeats an item)', () => {
+    expect(groups.map((g) => [g.label, g.items.map((i) => i.label)])).toEqual([
+      ['Messages', ['Campaigns', 'New campaign', 'Calendar', 'Templates']],
+      ['Audiences', ['Segments', 'Consent & opt-outs']],
+      ['On the site', ['Flash sales', 'Coupons', 'Free delivery', 'Banners', 'Featured listings']],
+      ['Moderation', ['Hero approval', 'Events', 'Promotions']],
+      ['Insights', ['Analytics', 'Campaign results']],
+      ['Settings', ['Sender IDs & providers', 'Quiet hours & limits', 'Categories']],
+      ['Reporting', ['Reports']],
+    ])
+    expect(groups.flatMap((g) => g.items)).toHaveLength(20)
+  })
+
+  it('offers no More tools: a screen the canvas leaves out stays reachable only by URL permission rules', () => {
+    expect(groups.some((g) => g.id === 'more')).toBe(false)
+    expect(PLACEHOLDER_TABS.marketing.size).toBe(0)
+  })
+
+  it('gates each screen on its permission and shows none to another role', () => {
+    const ids = (a) => buildNavGroups(a).flatMap((g) => g.items.map((i) => i.id))
+    expect(ids({ user: { role: 'marketing' }, hasPermission: (c) => c === 'promotions.manage' })).toEqual(['promotions', 'mk-quiet-hours', 'reports'])
+    for (const role of ['super_admin', 'operations', 'support']) {
+      expect(ids({ user: { role }, hasPermission: () => true }).filter((id) => id.startsWith('mk-'))).toEqual([])
+    }
+  })
+
+  it('reads the promotions badge from the new staff-badges key', () => {
+    expect(makeBadgeFor({ promotions_pending: 3, hero: 2, events: 1 }, 'marketing')('promotions')).toBe(3)
   })
 })

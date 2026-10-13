@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.db.models import Avg, Count
 from django.utils import timezone
 from rest_framework import generics
@@ -11,10 +12,12 @@ from accounts.permissions import HasRolePermission
 from accounts.views import IsCustomer
 from events.models import Event, EventRSVP
 from listings.models import Listing
-from notifications.services import notify_staff_role
+from accounts.emails import _send
+from notifications.services import notify_customer, notify_staff_role
 from orders.models import Order, OrderItem
 
 from .models import Review
+from .reasons import HIDE_REASONS, default_message, reason_label
 from .serializers import ReviewModerationSerializer, ReviewSerializer, ReviewSubmitSerializer
 
 
@@ -316,23 +319,52 @@ class ReviewHideView(APIView):
         return [HasRolePermission("reviews.moderate")]
 
     def post(self, request, pk):
-        reason = (request.data.get("reason") or "").strip()
+        code = str(request.data.get("reason_code") or "").strip()
+        if code and code not in HIDE_REASONS:
+            return Response({"reason_code": "Pick one of the listed reasons."}, status=400)
+        reason = reason_label(code) if code else (request.data.get("reason") or "").strip()
         if not reason:
             return Response({"reason": "A reason is required."}, status=400)
-        review = generics.get_object_or_404(Review, pk=pk)
-        review.status = Review.HIDDEN
-        review.hidden_reason = reason
-        review.hidden_by = request.user
-        # Also record the canonical pair, so the Rejected tab can show who
-        # actioned it and when without special-casing this queue.
-        review.reviewed_by = request.user
-        review.reviewed_at = timezone.now()
-        review.save(
-            update_fields=[
-                "status", "hidden_reason", "hidden_by", "reviewed_by", "reviewed_at",
-            ]
-        )
+        message = str(request.data.get("message") or "").strip()
+        with transaction.atomic():
+            review = generics.get_object_or_404(Review.objects.select_for_update(), pk=pk)
+            review.status = Review.HIDDEN
+            review.hidden_reason = reason
+            review.hidden_reason_code = code
+            review.hidden_by = request.user
+            # Also record the canonical pair, so the Rejected tab can show who
+            # actioned it and when without special-casing this queue.
+            review.reviewed_by = request.user
+            review.reviewed_at = timezone.now()
+            if code and not message:
+                message = default_message(code, _about(review))
+            review.hidden_message = message
+            review.save(
+                update_fields=[
+                    "status", "hidden_reason", "hidden_reason_code", "hidden_message",
+                    "hidden_by", "reviewed_by", "reviewed_at",
+                ]
+            )
+        if message:
+            _tell_reviewer(review, message)
         return Response({"id": review.id, "status": review.status})
+
+
+def _about(review):
+    if review.listing_id:
+        return review.listing.business_owner.display_name
+    if review.business_owner_id:
+        return review.business_owner.display_name
+    return review.event.name if review.event_id else ""
+
+
+def _tell_reviewer(review, message):
+    """In-app notice plus email to the reviewer, from AshantiHub Support. Both
+    are best-effort and never name the staff member."""
+    author = review.author
+    notify_customer(author, "review_hidden", "About your review", body=message, icon="⭐")
+    if author.email:
+        _send("About your review on AshantiHub", message, author.email)
 
 
 class ReviewReReviewView(APIView):

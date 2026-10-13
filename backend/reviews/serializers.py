@@ -85,15 +85,17 @@ class ReviewModerationSerializer(serializers.ModelSerializer):
     # open on an order with this business.
     contains_phone = serializers.SerializerMethodField()
     open_dispute_order = serializers.SerializerMethodField()
+    order_id = serializers.SerializerMethodField()
+    about_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Review
         fields = [
             "id", "target_type", "listing", "event", "business_owner", "organizer_customer",
             "author", "author_name", "rating", "comment", "verified", "status",
-            "hidden_reason", "hidden_by", "hidden_by_name",
+            "hidden_reason", "hidden_reason_code", "hidden_message", "hidden_by", "hidden_by_name",
             "reviewed_by_name", "reviewed_by_role", "reviewed_at", "target_name", "created_at",
-            "contains_phone", "open_dispute_order",
+            "contains_phone", "open_dispute_order", "order_id", "about_name",
         ]
         read_only_fields = fields
 
@@ -119,6 +121,32 @@ class ReviewModerationSerializer(serializers.ModelSerializer):
             .order_by("-created_at").values_list("order_id", flat=True).first()
         )
         return dispute
+
+    def get_order_id(self, obj):
+        """The order behind a verified purchase review, only when it is
+        unambiguous: the author has exactly one paid order with this listing (or
+        this seller). Otherwise None and the screen says "Verified purchase"."""
+        if not obj.verified or obj.target_type not in (Review.LISTING, Review.SELLER):
+            return None
+        from orders.models import Order
+
+        orders = Order.objects.filter(customer_id=obj.author_id, status=Order.PAID)
+        if obj.listing_id:
+            orders = orders.filter(items__listing_id=obj.listing_id)
+        elif obj.business_owner_id:
+            orders = orders.filter(items__listing__business_owner_id=obj.business_owner_id)
+        else:
+            return None
+        ids = list(orders.values_list("pk", flat=True).distinct()[:2])
+        return ids[0] if len(ids) == 1 else None
+
+    def get_about_name(self, obj):
+        """The business the review concerns, for the "About ..." line."""
+        if obj.listing_id:
+            return obj.listing.business_owner.display_name
+        if obj.business_owner_id:
+            return obj.business_owner.display_name
+        return None
 
     def get_target_name(self, obj):
         if obj.listing_id:

@@ -166,6 +166,15 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   Confirming runs the hooks in `fraud.services.ON_CONFIRMED`; plan 2B adds commission reversal
   there. The realtime `fraud.` row also invalidates `kyc-queue` and `portfolio-business`.
 
+- **Marketing sends are gated server-side, in `marketing/campaigns.py` and `dispatch.py`.** A
+  recipient is re-checked at send time for a live opt-in (`consent.is_opted_in`), the per-person cap
+  and the sending window; the provider answers `not_connected`/`simulated`/`connected`
+  (`marketing/providers`), and **delivery, cost and Meta/network outcomes exist only when a provider
+  or a person recorded them** (`SenderId`, `Template.meta_status`, `ProviderStep` are hand-kept).
+  A campaign over the GH₵ limit (or with no known price) is a `marketing.campaign` approval, Super
+  Admin only. Coupon failures all answer `checkout.INVALID_CODE`, and failed lookups are throttled in
+  `marketing/code_guard.py`; never reintroduce a more specific message.
+
 ## Test-fixture gotcha
 
 **Reviews are pre-moderated.** A new `Review` lands in `pending` and is invisible to the public

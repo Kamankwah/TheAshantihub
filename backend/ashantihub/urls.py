@@ -19,7 +19,9 @@ urlpatterns = [
     path("api/reviews/", include("reviews.urls")),
     path("api/qa/", include("qa.urls")),
     path("api/disputes/", include("disputes.urls")),
+    path("api/messaging/", include("messaging.knowledge_urls")),  # canned replies + tags
     path("api/messaging/", include("messaging.urls")),
+    path("api/support/", include("support.urls")),
     path("api/payments/", include("payments.urls")),
     path("api/notifications/", include("notifications.urls")),
     path("api/tasks/", include("staff_tasks.urls")),
@@ -33,11 +35,13 @@ urlpatterns = [
     path("api/marketplace/", include("marketplace.urls")),
     path("api/people/", include("people.urls")),
     path("api/commission/", include("commission.urls")),
+    path("api/marketing/", include("marketing.urls")),
     path("api/insights/", include("insights.urls")),
     path("api/portfolio/", include("portfolio.urls")),
     path("api/staff-security/", include("staffsecurity.urls")),
     path("api/announcements/", include("announcements.urls")),
     path("api/realtime/", include("realtime.urls")),
+    path("api/delivery/", include("delivery.urls")),
 ]
 
 if settings.DEBUG:

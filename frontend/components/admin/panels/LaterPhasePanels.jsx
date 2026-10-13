@@ -11,7 +11,7 @@ import { Kpi, NotRecorded, SimulatedBanner, Status, Title, kpiGrid, page, sectio
 // exists yet. Each shows its place, the few real records that do exist, and a
 // plain statement of when the rest arrives. No rate, balance, run or tax is
 // invented, and nothing here calculates tax.
-function Arrives({ phase, children }) {
+export function Arrives({ phase, children }) {
   return (
     <div role="status" style={callout(D.amber)}>
       Arrives with the {phase} phase. {children} Nothing on this screen is invented: where AshantiHub has no record it says so.
@@ -74,26 +74,7 @@ export function ReconciliationPanel() {
   );
 }
 
-export function DeliveryPricingPanel() {
-  return (
-    <div style={page}>
-      <Title>Delivery pricing</Title>
-      <Arrives phase="Delivery">Accounting and Delivery will propose a rate card, and you will approve it here before it goes live.</Arrives>
-      <section aria-labelledby="dp-decided" style={section}>
-        <h3 id="dp-decided" style={sectionTitle}>Decided</h3>
-        <span style={{ color: D.text, fontSize: "0.85rem" }}>Delivery fees carry no VAT, NHIL or GETFund. This is your recorded decision; the full list is under Tax tables.</span>
-      </section>
-      <NotRecorded title="Not set up yet" items={[
-        { name: "Rate card", why: "No base fee, per-kilometre rate or minimum has been set, and orders do not carry a delivery fee." },
-        { name: "Rider earnings", why: "No rider rate exists, so nothing is paid to riders." },
-        { name: "Margin", why: "There are no priced deliveries to measure a margin on." },
-        { name: "Try a route", why: "No road-distance service is connected yet (see Integrations)." },
-      ]} />
-    </div>
-  );
-}
-
-const DECISIONS = [
+export const DECISIONS = [
   { name: "Delivery fee", tax: "No VAT, NHIL or GETFund", who: "Decided by you. Kept as a setting for each charge.", decided: true },
   { name: "Subscription plans", tax: "To confirm", who: "Waiting for the accountant." },
   { name: "Promotions and event visibility", tax: "To confirm", who: "Waiting for the accountant." },

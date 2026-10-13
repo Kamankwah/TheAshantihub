@@ -15,7 +15,7 @@ from activity.services import record
 from reports import services as report_services
 from reports.exports import ExportNegotiation, FORMATS
 
-from . import funnel, generators, hub, money, sales, scheduling, tabular
+from . import accounting, funnel, generators, hub, money, sales, scheduling, tabular
 from .models import ScheduledExport, ScheduledExportFile, ScheduledExportRun
 
 MAX_DAYS = 366
@@ -190,6 +190,66 @@ class CommissionStatementView(_Base):
         staff = _id(request.query_params, "staff")
         doc = tabular.document("Commission statement", [tabular.table(*t) for t in money.statement_document([staff] if staff else None)])
         return send_document(request, doc, fmt, f"ashantihub-commission-statement-{timezone.localdate()}", kind="commission_statements", personal=True, filters={"staff": staff})
+
+
+class AccountingOverviewView(_Base):
+    """GET /api/insights/accounting-overview/ — the Accountant's Money desk."""
+
+    permission = "transactions.report"
+
+    def get(self, request):
+        return Response(accounting.overview(request.user))
+
+
+class CollectionsView(_Base):
+    """GET /api/insights/collections/?from=&to=&kind=&status=&q=&page=[&format=] — every
+    incoming payment attempt. Payers are named, so a file asks for the password."""
+
+    permission = "transactions.report"
+
+    def get(self, request):
+        params = request.query_params
+        today = timezone.localdate()
+        start, end = _range(params, sales.month_start(today), today)
+        kind = params.get("kind") or None
+        if kind not in (None, "all", *[key for key, *_ in accounting.COLLECTION_TYPES]):
+            raise ValidationError({"kind": "Unknown type."})
+        status = params.get("status") or None
+        if status not in (None, "all", *accounting.STATUSES):
+            raise ValidationError({"status": "Unknown status."})
+        page = _id(params, "page") or 1
+        fmt = _format(params)
+        query = (params.get("q") or "")[:80]
+        if fmt:
+            # A file holds every row of the filter, not just one page.
+            rows = [accounting._collection_row(s) for s in accounting.export_rows(start, end, kind=kind, status=status, query=query)]
+            doc = tabular.document(f"Collections, {start} to {end}", [tabular.table(*t) for t in accounting.collections_document({"rows": rows})])
+            return send_document(request, doc, fmt, f"ashantihub-collections-{start}-{end}", kind="collections", personal=True, filters={"from": str(start), "to": str(end), "kind": kind, "status": status})
+        report = accounting.collections(start, end, kind=kind, status=status, query=query, page=page)
+        return Response(report)
+
+
+class MoneyAlertsView(_Base):
+    """GET /api/insights/money-alerts/ — alerts computed on read from refunds and fraud
+    cases. POST resolves one with a note (recorded in the activity log, nothing else)."""
+
+    permission = "transactions.report"
+
+    def get(self, request):
+        return Response(accounting.money_alerts())
+
+    def post(self, request):
+        key = str(request.data.get("key") or "")
+        note = str(request.data.get("note") or "").strip()
+        if len(note) < 5 or len(note) > 280:
+            raise ValidationError({"note": "Write a note of 5 to 280 characters."})
+        alert = next((a for a in accounting.money_alerts()["alerts"] if a["key"] == key), None)
+        if alert is None or not alert["resolvable"]:
+            raise ValidationError({"key": "That alert is not open."})
+        if alert["resolved"]:
+            raise ValidationError({"key": "That alert was already resolved."})
+        record(request.user, accounting.RESOLVED_VERB, target_type="insights.moneyalert", target_id=key, target_label=alert["title"], summary=note, after={"note": note}, request=request)
+        return Response(accounting.money_alerts())
 
 
 # ------------------------------------------------------------ scheduled exports

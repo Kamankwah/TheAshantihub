@@ -29,13 +29,18 @@ export default function ReportsPanel({ auth }) {
   const { data: report, isLoading, isError } = useCurrentReport(period, today);
   const { data: history } = useMyReports(period);
   const isScout = auth?.user?.role === "scout";
-  // The Operations lead's day report reads like the scout's: dated, addressed to their manager.
-  const isOps = auth?.user?.role === "operations";
+  // The Operations lead and Support agents: a dated day report addressed to their manager.
+  const isOps = auth?.user?.role === "operations" || auth?.user?.role === "support";
+  // Marketing reads like Operations too, and lays the page out as the report beside its export and history (canvas 22).
+  const isMarketing = auth?.user?.role === "marketing";
   // Scouts see the day report first; "Week & month" reveals the period switch.
   const [more, setMore] = useState(false);
   const showSwitch = !isScout || more || period !== "day";
+  const split = isMarketing
+    ? { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(340px, 100%), 1fr))", gap: 16, alignItems: "start" }
+    : { display: "flex", flexDirection: "column", gap: 16 };
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={split}>
       <div style={{ ...glassCard, padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <div style={{ color: D.text, fontWeight: 800, fontSize: "0.95rem" }}>My reports</div>
@@ -50,10 +55,23 @@ export default function ReportsPanel({ auth }) {
         </div>
         {isLoading && <div role="status" style={dim}>Loading…</div>}
         {isError && <div role="alert" style={{ color: D.red, fontSize: "0.8rem" }}>Could not load your report.</div>}
-        {report && <ReportComposer key={`${period}:${report.period_start}`} report={report} period={period} leadName={isScout || isOps ? auth?.user?.manager?.full_name : undefined} isScout={isScout} isOps={isOps} />}
+        {report && <ReportComposer key={`${period}:${report.period_start}`} report={report} period={period} leadName={isScout || isOps || isMarketing ? auth?.user?.manager?.full_name : undefined} isScout={isScout} isOps={isOps || isMarketing} />}
       </div>
-      <History rows={history?.results || []} />
-      <RangeExport auth={auth} />
+      {isMarketing ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <RangeExport auth={auth} />
+          <History rows={history?.results || []} />
+          <div style={{ ...glassCard, padding: 18, display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ color: D.text, fontWeight: 800, fontSize: "0.95rem" }}>Week and month</div>
+            <div style={dim}>Week and month reports add up the days automatically. You only write the story. Your manager acknowledges each one or returns it with a comment.</div>
+          </div>
+        </div>
+      ) : (
+        <>
+          <History rows={history?.results || []} />
+          <RangeExport auth={auth} />
+        </>
+      )}
     </div>
   );
 }

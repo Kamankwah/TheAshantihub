@@ -17,7 +17,7 @@ customer's address and name shown only for the caller's team. There is
 no rider offer, handover code, GPS or return model yet (the Delivery phase)."""
 from datetime import timedelta
 
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Count, Exists, OuterRef, Q, Subquery
 from django.utils import timezone
 
 from accounts.models import BusinessOwner, Role
@@ -307,11 +307,63 @@ def deliveries_payload(user, now=None):
 
 # ---- Support team (screen 05) ------------------------------------------------
 
+def _desk_stats(agent_ids, now):
+    """Per-agent figures from the desk's own stamps: awake open conversations, how many wait for a
+    reply, how many are past a time limit, the average first-reply time over the last 7 days
+    (clock time from arrival to the first staff reply, on the conversations they own) and
+    their resolutions. Nothing is estimated: no conversation, no figure."""
+    from django.db.models import Avg, DurationField, ExpressionWrapper, F
+
+    from messaging import desk, services as desk_services
+
+    week = now - timedelta(days=7)
+    blank = {
+        "open": 0, "awaiting_reply": 0, "past_limit": 0, "snoozed": 0, "resolved_week": 0,
+        "first_reply_avg_seconds": None, "first_reply_count": 0,
+    }
+    out = {pk: dict(blank) for pk in agent_ids}
+    awake = desk.awake_q(now)
+    last_sender = Subquery(
+        Message.objects.filter(conversation=OuterRef("pk"), kind=Message.MESSAGE, is_internal=False)
+        .order_by("-created_at").values("sender_type")[:1]
+    )
+    wait = ExpressionWrapper(F("first_reply_at") - F("created_at"), output_field=DurationField())
+    answered = Q(first_reply_at__gte=week)
+    rows = (
+        Conversation.objects.filter(assignee_id__in=agent_ids).annotate(last_sender=last_sender)
+        .values("assignee_id")
+        .annotate(
+            n_open=Count("pk", filter=awake),
+            n_wait=Count("pk", filter=awake & ~Q(last_sender=Message.STAFF) & Q(last_sender__isnull=False)),
+            n_past=Count("pk", filter=desk.past_q(now)),
+            n_snoozed=Count("pk", filter=Q(status=Conversation.OPEN, snoozed_until__gt=now)),
+            n_resolved=Count("pk", filter=Q(status=Conversation.CLOSED, resolved_at__gte=week)),
+            n_first=Count("pk", filter=answered),
+            avg_first=Avg(wait, filter=answered),
+        )
+    )
+    board = {r["id"]: r for r in desk_services.capacity_board(now)}
+    for row in rows:
+        out[row["assignee_id"]].update(
+            open=row["n_open"], awaiting_reply=row["n_wait"], past_limit=row["n_past"], snoozed=row["n_snoozed"],
+            resolved_week=row["n_resolved"], first_reply_count=row["n_first"],
+            first_reply_avg_seconds=int(row["avg_first"].total_seconds()) if row["avg_first"] is not None and row["n_first"] else None,
+        )
+    capacity = desk_services.current_settings().capacity_per_agent
+    for pk in agent_ids:
+        slot = board.get(pk)
+        out[pk].update(
+            capacity=capacity, signed_in=bool(slot and slot["signed_in"]), away=bool(slot and slot["away"]),
+            on_leave=bool(slot and slot["on_leave"]), available=bool(slot and slot["available"]),
+        )
+    return out
+
+
 def support_team_payload(user, now=None):
     from accounts import sessions
     from accounts.models import StaffUser
     from calls.models import CallLog
-    from django.db.models import Count, OuterRef, Subquery
+    from messaging import desk
     from reports.models import StaffReport
 
     now = now or timezone.now()
@@ -319,7 +371,8 @@ def support_team_payload(user, now=None):
     agents = StaffUser.objects.filter(role__name=Role.SUPPORT, is_active=True, invite_token__isnull=True)
     if user.role.name != Role.SUPER_ADMIN:
         agents = agents.filter(manager=user)
-    agents = sessions.with_last_sign_in(agents).order_by("full_name")
+    agents = list(sessions.with_last_sign_in(agents).order_by("full_name"))
+    desk_rows = _desk_stats([a.pk for a in agents], now)
     rows = []
     for agent in agents:
         report = StaffReport.objects.filter(staff=agent, period=StaffReport.DAY, period_start=today).first()
@@ -330,6 +383,7 @@ def support_team_payload(user, now=None):
             "calls_today": CallLog.objects.filter(staff=agent, started_at__date=today).count(),
             "report_today": report.status if report else None,
             "last_report": {"date": last.period_start, "status": last.status} if last else None,
+            **desk_rows[agent.pk],
         })
 
     last_sender = Subquery(Message.objects.filter(conversation=OuterRef("pk")).order_by("-created_at").values("sender_type")[:1])
@@ -346,8 +400,13 @@ def support_team_payload(user, now=None):
         "queue": {
             "open": open_chats.count(), "awaiting_reply": waiting.count(),
             "oldest_waiting_seconds": _seconds(oldest.updated_at, now) if oldest else None,
-            "closed_this_week": Conversation.objects.filter(status=Conversation.CLOSED, updated_at__gte=week).count(),
+            # Resolved through the desk (resolved_at); a thread closed before the desk existed counts by its last change.
+            "closed_this_week": Conversation.objects.filter(status=Conversation.CLOSED).filter(
+                Q(resolved_at__gte=week) | Q(resolved_at__isnull=True, updated_at__gte=week)).count(),
             "closed_total": Conversation.objects.filter(status=Conversation.CLOSED).count(),
+            "unassigned": Conversation.objects.filter(desk.awake_q(now), assignee__isnull=True).count(),
+            "past_limit": Conversation.objects.filter(desk.past_q(now)).count(),
+            "snoozed": Conversation.objects.filter(status=Conversation.OPEN, snoozed_until__gt=now).count(),
             "by_starter": {"customers": kinds["customer"], "business_owners": kinds["owner"], "guests": kinds["guest"]},
         },
     }

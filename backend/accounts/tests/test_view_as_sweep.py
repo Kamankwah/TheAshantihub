@@ -63,6 +63,8 @@ ROUTE_MODELS = {
     "api/orders/": "orders.Order",
     "api/disputes/": "disputes.Dispute",
     "api/messaging/": "messaging.Conversation",
+    "api/support/staff/customers/": "accounts.Customer",
+    "api/support/staff/businesses/": "accounts.BusinessOwner",
     "api/tasks/": "staff_tasks.Task",
     "api/calls/": "calls.CallLog",
     "api/targets/holidays/": "targets.Holiday",
@@ -73,6 +75,12 @@ ROUTE_MODELS = {
     "api/marketplace/listings/": "listings.Listing",
     "api/marketplace/disputes/": "disputes.Dispute",
     "api/commission/": "commission.CommissionAccrual",
+    "api/delivery/jobs/": "orders.DeliveryAssignment",
+    "api/delivery/rider/jobs/": "orders.DeliveryAssignment",
+    "api/delivery/riders/": "delivery.Rider",
+    "api/delivery/documents/": "delivery.RiderDocument",
+    "api/delivery/vehicles/": "delivery.Vehicle",
+    "api/delivery/zones/": "delivery.DeliveryZone",
 }
 
 

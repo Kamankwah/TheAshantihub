@@ -5,6 +5,7 @@ import { useCallPurposes } from "../../../hooks/useCallPurposes.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D, glassCard } from "../theme.js";
 import LogCallSheet from "./LogCallSheet.jsx";
+import SupportCallLog from "./SupportCallLog.jsx";
 import { button, dim, pill } from "./panelStyles.js";
 import { toggleButton, toggleGroup } from "./opsPeopleParts.jsx";
 import { errorStyle, eyebrow } from "./portfolioParts.jsx";
@@ -17,8 +18,11 @@ const blank = () => ({ direction: "out", channel: "phone", counterpart_type: "bu
 
 // Scouts get the phone-first calls screen (canvas 12); every other role keeps
 // the desk form below.
-export default function CallLogPanel({ auth }) {
-  return auth?.user?.role === "scout" ? <ScoutCalls /> : <DeskCallLog auth={auth} />;
+// Support has its own call log (canvas 06) and a Log a call page (canvas 07, SupportLogCallPage).
+export default function CallLogPanel({ auth, onLogCall, counterpart }) {
+  const role = auth?.user?.role;
+  if (role === "support") return <SupportCallLog onLogCall={onLogCall} counterpart={counterpart} />;
+  return role === "scout" ? <ScoutCalls /> : <DeskCallLog auth={auth} />;
 }
 
 function Strip({ strip }) {

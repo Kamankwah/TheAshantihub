@@ -8,6 +8,29 @@ _KIND_BY_SOURCE = {
 }
 
 
+# Chip text for each kind (also the choices' display names). Support kinds are
+# created by the messaging desk; the label map is owned here.
+KIND_LABELS = dict(Task.KIND_CHOICES)
+
+# Where "open the source" goes: source model -> (dashboard tab for the Support
+# role, query parameter that selects the record).
+SOURCE_LINKS = {
+    "messaging.conversation": ("support-all-open", "conversation"),
+    "calls.calllog": ("calls", "call"),
+    "disputes.dispute": ("disputes", "dispute"),
+    "orders.order": ("support-order-status", "order"),
+}
+
+
+def source_link(task):
+    """{type, id, tab, param} for a task whose source is a conversation, call,
+    dispute or order; None otherwise (nothing is guessed)."""
+    target = SOURCE_LINKS.get(task.source_type)
+    if target is None or not task.source_id.isdigit():
+        return None
+    return {"type": task.source_type, "id": int(task.source_id), "tab": target[0], "param": target[1]}
+
+
 def create_task(owner, title, due_at, *, notes="", source=None, created_by=None, kind=None, business=None):
     """`kind` says why the task exists (Follow-ups shows it as a chip); with
     no kind it follows the source, else the task is a plain "manual" one.

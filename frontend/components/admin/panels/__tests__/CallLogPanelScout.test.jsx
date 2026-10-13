@@ -76,7 +76,7 @@ describe('CallLogPanel — the scout layout', () => {
   })
 
   it('leaves every other role on the desk form', async () => {
-    renderPanel({ user: { id: 2, role: 'support' }, hasPermission: () => true })
+    renderPanel({ user: { id: 2, role: 'operations' }, hasPermission: () => true }) // Support has its own call log (SupportCallLog.test.jsx)
     expect(await screen.findByText('Call Log')).toBeInTheDocument()
   })
 

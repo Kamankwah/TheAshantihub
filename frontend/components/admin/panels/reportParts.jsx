@@ -66,6 +66,27 @@ function Row({ row }) {
   );
 }
 
+// Support's "Calls by outcome" (canvas 17): one bar per outcome, scaled to the largest, with the number.
+const OUTCOME_COLOUR = { Connected: "#006400", "No answer": "#E8621A", "Left voicemail": "#8A7A6B" };
+function OutcomeBars({ section }) {
+  const top = Math.max(1, ...section.rows.map((row) => Number(row.value) || 0));
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {section.rows.map((row) => {
+        const n = Number(row.value) || 0;
+        return (
+          <div key={row.label} style={{ color: D.text, fontSize: "0.75rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span>{row.label}</span><span style={{ fontWeight: 700 }}>{n}</span></div>
+            <div role="img" aria-label={`${row.label}: ${n}`} style={{ height: 6, borderRadius: 999, background: "#EADFC6", overflow: "hidden" }}>
+              <div style={{ width: `${(n / top) * 100}%`, height: "100%", background: OUTCOME_COLOUR[row.label] || D.gold }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // A section with `columns` (the Operations report's scouts) is a small table: one row per
 // person, one cell per column. The frozen snapshot holds the same rows.
 function SectionTable({ section }) {
@@ -112,6 +133,7 @@ export function SystemSections({ sections: given, live, lockedAt, onlyTargets = 
             <div style={{ color: D.text, fontWeight: 700, fontSize: "0.78rem", marginBottom: 4 }}>{section.title}</div>
             {section.columns
               ? <SectionTable section={section} />
+              : section.key === "support_calls_outcome" ? <OutcomeBars section={section} />
               : section.rows.map((row) => <Row key={row.label} row={row} />)}
             {section.summary && <div style={{ ...dim, color: D.text, marginTop: 6, lineHeight: 1.4 }}>{section.summary}</div>}
           </div>

@@ -17,7 +17,8 @@ const CHANGES_DATA = new RegExp(
     "unpublish|hide|unhide|dismiss|escalate|re-review|take|claim|start|stop|apply|undo|request|flag|export|download|reveal|" +
     "reply|snooze|generate|pay|renew|extend|archive|restore|accept|verify|block|unblock|pin|unpin|transfer|reset|sign out|" +
     "cancel\\s+\\S+|turn on|turn off|enable|disable|schedule|report a|raise|book|share|copy link|retry|run|import|sync|link|unlink|" +
-    "close case|close the|merge|split|move|rename|replace|upgrade|downgrade|pause|resume|activate|deny|allow|notify|nudge)\\b",
+    "close case|close the|merge|split|move|rename|replace|upgrade|downgrade|pause|resume|activate|deny|allow|notify|nudge|" +
+    "wake|note|internal note|tag|retire|loop in|pass to)\\b",
   "i",
 );
 export const OFF_TITLE = "Switched off while viewing someone else's workspace";

@@ -25,6 +25,20 @@ const opsOnly = (auth, ...perms) => auth.user?.role === "operations" && perms.so
 const saOnly = (auth) => auth.user?.role === "super_admin";
 // Step-in needs the Super Admin role and staff.view_as, as the server does (accounts/view_as.py).
 const canStepIn = (auth) => saOnly(auth) && auth.hasPermission("staff.view_as");
+// The Accounting canvas (2026-10-07, 31 screens). Its ledger, payout, payroll and tax screens
+// have no records behind them yet, so each is a built, honest "arrives with the Accounting
+// phase" panel (AccountingShellPanel), not a placeholder. They are the Accountant's alone
+// (acctOnly); Refunds, Commissions and Reconciliation are Super Admin's panels, opened to the
+// Accountant too (saOrAcct) because the money endpoints behind them already allow it.
+const acctOnly = (auth, perm = "transactions.report") => auth.user?.role === "accountant" && auth.hasPermission(perm);
+const saOrAcct = (auth, acctPerm = "transactions.report") => saOnly(auth) || acctOnly(auth, acctPerm);
+// The Support canvas (2026-10-07, 17 screens + All open) is fully built; a screen not built yet would have a NAV_ITEMS entry with `placeholder: "support"` (like the Operations and Super
+// Admin ones), shown to Support only, so the menu is exactly the canvas; the package that
+// builds a screen swaps its panel in and drops the flag.
+const supportOnly = (auth, ...perms) => auth.user?.role === "support" && perms.some((perm) => auth.hasPermission(perm));
+// The Marketing canvas (2026-10-13, 22 screens): its own screens are Marketing's alone. A
+// screen not built yet is a placeholder (`placeholder: "marketing"`) until its package lands.
+const mkOnly = (auth, ...perms) => auth.user?.role === "marketing" && perms.some((perm) => auth.hasPermission(perm));
 const opsOrSa = (auth, ...perms) => ["operations", "super_admin"].includes(auth.user?.role) && perms.some((perm) => auth.hasPermission(perm));
 
 export const NAV_ITEMS = [
@@ -72,8 +86,32 @@ export const NAV_ITEMS = [
   { id: "reports", icon: "📝", label: "My Reports", show: () => true },
   { id: "team-reports", icon: "🗂️", label: "Team Reports", show: (auth) => auth.hasPermission("staff.invite_team") || auth.hasPermission("reports.view_all") },
   { id: "activity", icon: "🕘", label: "Activity", show: () => true },
-  { id: "my-team", icon: "👥", label: "My Team", show: (auth) => auth.hasPermission("staff.invite_team") },
+  // The Delivery Manager's "Invite a rider" (dm-invite) is their invite screen when they hold delivery.fleet; My Team stays for a manager without it.
+  { id: "my-team", icon: "👥", label: "My Team", show: (auth) => auth.hasPermission("staff.invite_team") && !(auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.fleet")) },
   { id: "security", icon: "🔐", label: "Sign-in & Security", show: () => true },
+  // Delivery Manager canvas screens (2026-10-07, 20 screens). Each is the manager's alone: it needs the
+  // permission the server checks, so a Super Admin (who holds all) sees them too.
+  { id: "dm-queue", icon: "📥", label: "Dispatch queue", show: (auth) => auth.hasPermission("delivery.manage") && auth.user?.role === "delivery_manager" },
+  { id: "dm-active", icon: "🚚", label: "Active deliveries", show: (auth) => auth.hasPermission("delivery.manage") && auth.user?.role === "delivery_manager" },
+  { id: "dm-cases", icon: "⚖️", label: "Disputes & returns", show: (auth) => auth.hasPermission("delivery.manage") && auth.user?.role === "delivery_manager" },
+  { id: "dm-riders", icon: "🛵", label: "Riders & drivers", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.fleet") },
+  { id: "dm-documents", icon: "🪪", label: "Documents", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.fleet") },
+  { id: "dm-vehicles", icon: "🚐", label: "Vehicles", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.fleet") },
+  { id: "dm-invite", icon: "✉️", label: "Invite a rider", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.fleet") },
+  { id: "dm-shifts", icon: "📅", label: "Shifts", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.fleet") },
+  { id: "dm-zones", icon: "📍", label: "Zones", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.fleet") },
+  { id: "dm-cash", icon: "💷", label: "Cash on delivery", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.cash") },
+  { id: "dm-payouts", icon: "🧾", label: "Rider payouts", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.cash") },
+  { id: "dm-pricing", icon: "🛵", label: "Delivery pricing", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.rates") },
+  { id: "dm-autoassign", icon: "🤖", label: "Auto-assign rules", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.rates") },
+  { id: "dm-limits", icon: "⏱️", label: "Delivery time limits", show: (auth) => auth.user?.role === "delivery_manager" && auth.hasPermission("delivery.rates") },
+  // Dispatch (rider) canvas screens (2026-10-07, 16 screens): the rider's alone.
+  { id: "dr-jobs", icon: "📦", label: "Jobs", show: (auth) => auth.user?.role === "dispatch" && auth.hasPermission("delivery.dispatch") },
+  { id: "dr-earnings", icon: "💷", label: "Earnings", show: (auth) => auth.user?.role === "dispatch" && auth.hasPermission("delivery.dispatch") },
+  { id: "dr-cash", icon: "🪙", label: "Cash", show: (auth) => auth.user?.role === "dispatch" && auth.hasPermission("delivery.dispatch") },
+  { id: "dr-menu", icon: "☰", label: "Menu", show: (auth) => auth.user?.role === "dispatch" && auth.hasPermission("delivery.dispatch") },
+  { id: "dr-issue", icon: "🚨", label: "Report an issue", show: (auth) => auth.user?.role === "dispatch" && auth.hasPermission("delivery.dispatch") },
+  { id: "dr-documents", icon: "🪪", label: "Documents & vehicle", show: (auth) => auth.user?.role === "dispatch" && auth.hasPermission("delivery.dispatch") },
   // Operations canvas screens (see the note above NAV_ITEMS).
   { id: "ops-scouts", icon: "🧑‍🌾", label: "Scouts", show: (auth) => opsOnly(auth, "portfolio.manage") },
   { id: "support-team", icon: "🎧", label: "Support team", show: (auth) => opsOnly(auth, "staff.invite_team") },
@@ -83,10 +121,36 @@ export const NAV_ITEMS = [
   { id: "deliveries-returns", icon: "📦", label: "Deliveries & returns", show: (auth) => opsOnly(auth, "service_issues.view") },
   { id: "visit-map", icon: "🗺️", label: "Visit map", show: (auth) => opsOnly(auth, "portfolio.manage") },
   { id: "zones", icon: "📍", label: "Zones", show: (auth) => opsOnly(auth, "zones.manage") },
+  // Support canvas screens (see supportOnly).
+  { id: "support-mine", icon: "📥", label: "Mine", show: (auth) => supportOnly(auth, "messaging.manage") },
+  { id: "support-unassigned", icon: "🙋", label: "Unassigned", show: (auth) => supportOnly(auth, "messaging.manage") },
+  { id: "support-all-open", icon: "📂", label: "All open", show: (auth) => supportOnly(auth, "messaging.manage") },
+  { id: "support-past-limit", icon: "⏰", label: "Past time limit", show: (auth) => supportOnly(auth, "messaging.manage") },
+  { id: "support-snoozed", icon: "😴", label: "Snoozed", show: (auth) => supportOnly(auth, "messaging.manage") },
+  { id: "support-resolved", icon: "✔️", label: "Resolved", show: (auth) => supportOnly(auth, "messaging.manage") },
+  { id: "support-log-call", icon: "☎️", label: "Log a call", show: (auth) => supportOnly(auth, "calls.log") },
+  { id: "support-order-status", icon: "🚚", label: "Order status", show: (auth) => supportOnly(auth, "orders.support_update") },
+  { id: "support-canned", icon: "💡", label: "Canned replies", show: (auth) => supportOnly(auth, "messaging.manage") },
+  { id: "support-tags", icon: "🏷️", label: "Tags", show: (auth) => supportOnly(auth, "messaging.manage") },
   // Super Admin canvas screens; the ones not built yet are placeholders (see saOnly).
   { id: "invites", icon: "✉️", label: "Invites", show: saOnly },
   { id: "teams-reporting", icon: "🌳", label: "Teams & reporting lines", show: saOnly },
   { id: "roles-permissions", icon: "🔑", label: "Roles & permissions", show: saOnly },
+  // Marketing canvas screens (see mkOnly).
+  { id: "mk-campaigns", icon: "📣", label: "Campaigns", show: (auth) => mkOnly(auth, "campaigns.manage") },
+  { id: "mk-new-campaign", icon: "✍️", label: "New campaign", show: (auth) => mkOnly(auth, "campaigns.manage") },
+  { id: "mk-calendar", icon: "🗓️", label: "Calendar", show: (auth) => mkOnly(auth, "campaigns.manage") },
+  { id: "mk-templates", icon: "🧩", label: "Templates", show: (auth) => mkOnly(auth, "campaigns.manage") },
+  { id: "mk-segments", icon: "🎯", label: "Segments", show: (auth) => mkOnly(auth, "campaigns.manage") },
+  { id: "mk-consent", icon: "✅", label: "Consent & opt-outs", show: (auth) => mkOnly(auth, "consent.view") },
+  { id: "mk-flash-sales", icon: "⚡", label: "Flash sales", show: (auth) => mkOnly(auth, "site_promo.manage") },
+  { id: "mk-coupons", icon: "🏷️", label: "Coupons", show: (auth) => mkOnly(auth, "coupons.manage") },
+  { id: "mk-delivery-promos", icon: "🚚", label: "Free delivery", show: (auth) => mkOnly(auth, "site_promo.manage") },
+  { id: "mk-banners", icon: "🖼️", label: "Banners", show: (auth) => mkOnly(auth, "site_promo.manage") },
+  { id: "mk-featured", icon: "⭐", label: "Featured listings", show: (auth) => mkOnly(auth, "site_promo.manage") },
+  { id: "mk-results", icon: "📈", label: "Campaign results", show: (auth) => mkOnly(auth, "campaigns.manage") },
+  { id: "mk-senders", icon: "📡", label: "Sender IDs & providers", show: (auth) => mkOnly(auth, "campaigns.manage") },
+  { id: "mk-quiet-hours", icon: "🌙", label: "Quiet hours & limits", show: (auth) => mkOnly(auth, "campaigns.manage", "promotions.manage", "analytics.view") },
   // Teams (step in): read-only views of a team member's workspace (components/admin/stepin/).
   { id: "step-in-operations", icon: "👁️", label: "Operations & scouts", show: canStepIn },
   { id: "step-in-support", icon: "👁️", label: "Support", show: canStepIn },
@@ -94,9 +158,9 @@ export const NAV_ITEMS = [
   { id: "step-in-marketing", icon: "👁️", label: "Marketing", show: canStepIn },
   { id: "step-in-accounting", icon: "👁️", label: "Accounting", show: canStepIn },
   { id: "payouts-payroll", icon: "🏦", label: "Payouts & payroll", show: saOnly },
-  { id: "commissions", icon: "💷", label: "Commissions", show: saOnly },
-  { id: "refunds", icon: "↩️", label: "Refunds", show: saOnly },
-  { id: "reconciliation", icon: "🧮", label: "Reconciliation", show: saOnly },
+  { id: "commissions", icon: "💷", label: "Commissions", show: (auth) => saOrAcct(auth, "commission.view_all") },
+  { id: "refunds", icon: "↩️", label: "Refunds", show: (auth) => saOrAcct(auth) },
+  { id: "reconciliation", icon: "🧮", label: "Reconciliation", show: (auth) => saOrAcct(auth) },
   { id: "growth-funnel", icon: "🪜", label: "Growth funnel", show: saOnly },
   { id: "scheduled-exports", icon: "📆", label: "Scheduled exports", show: saOnly },
   { id: "sign-in-history", icon: "🕵️", label: "Sign-in history", show: saOnly },
@@ -108,6 +172,25 @@ export const NAV_ITEMS = [
   { id: "tax-tables", icon: "📑", label: "Tax tables", show: saOnly },
   { id: "integrations", icon: "🔌", label: "Integrations", show: saOnly },
   { id: "system-health", icon: "🩺", label: "System health", show: saOnly },
+  // Accounting canvas screens (see acctOnly above).
+  { id: "acct-journal", icon: "📒", label: "Journal", show: acctOnly },
+  { id: "acct-chart", icon: "🗃️", label: "Chart of accounts", show: acctOnly },
+  { id: "acct-trial-balance", icon: "⚖️", label: "Trial balance", show: acctOnly },
+  { id: "acct-collections", icon: "📥", label: "Collections", show: acctOnly },
+  { id: "acct-payout-runs", icon: "📤", label: "Payout runs", show: acctOnly },
+  { id: "acct-settlements", icon: "🏪", label: "Seller settlements", show: acctOnly },
+  { id: "acct-rider-payouts", icon: "🛵", label: "Rider payouts", show: acctOnly },
+  { id: "acct-payroll", icon: "🧑‍💼", label: "Payroll", show: acctOnly },
+  { id: "acct-pay-profiles", icon: "🪪", label: "Pay profiles", show: acctOnly },
+  { id: "acct-paye", icon: "🧾", label: "PAYE", show: acctOnly },
+  { id: "acct-ssnit", icon: "🛡️", label: "SSNIT & Tier 2", show: acctOnly },
+  { id: "acct-wht", icon: "✂️", label: "Withholding tax", show: acctOnly },
+  { id: "acct-vat", icon: "📑", label: "VAT, NHIL, GETFund", show: acctOnly },
+  { id: "acct-tax-settings", icon: "⚙️", label: "Tax settings", show: acctOnly },
+  { id: "acct-period-close", icon: "🔒", label: "Period close", show: acctOnly },
+  { id: "acct-audit-chain", icon: "⛓️", label: "Audit chain", show: acctOnly },
+  { id: "acct-alerts", icon: "🚨", label: "Alerts", show: acctOnly },
+  { id: "acct-statements", icon: "📊", label: "Statements", show: acctOnly },
 ];
 
 // [group id, group label, item ids]. The original (pre-1B) grouping, used for
@@ -158,28 +241,45 @@ const ROLE_MENUS = {
     ["my-work", "My work", ["tasks", "calls", "security"]],
     ["settings", "Settings", ["zones", "site-settings", "contact-messages"]],
   ],
+  // Accounting, exactly as the approved canvas draws it (Money desk is the pinned Overview).
+  // Disputes, Transactions Report, Commission policy, Tasks, Activity and Sign-in & Security are
+  // not in the canvas; they stay reachable under "More tools" (accountant is not an exhaustive
+  // menu) because the Accountant resolves disputes and proposes commission policy.
   accountant: [
     ["decisions", "Decisions", ["approvals"]],
-    ["money-in", "Money in", ["escrow"]],
-    ["controls", "Controls", ["disputes", "transactions"]],
-    ["plans-pricing", "Plans & pricing", ["subscription-plans", "subscription-plans-approval", "event-pricing", "commission-policy", "credit"]],
-    ["reports", "Reports", ["reports", "team-reports"]],
-    ["my-work", "My work", ["tasks", "activity", "security"]],
+    ["ledger", "Ledger", ["acct-journal", "acct-chart", "acct-trial-balance"]],
+    ["money-in", "Money in", ["acct-collections", "escrow"]],
+    ["money-out", "Money out", ["acct-payout-runs", "acct-settlements", "acct-rider-payouts", "refunds"]],
+    ["people", "People", ["acct-payroll", "commissions", "acct-pay-profiles"]],
+    ["tax", "Tax", ["acct-paye", "acct-ssnit", "acct-wht", "acct-vat", "acct-tax-settings"]],
+    ["controls", "Controls", ["reconciliation", "acct-period-close", "acct-audit-chain", "acct-alerts"]],
+    ["plans-pricing", "Plans & pricing", ["subscription-plans", "event-pricing", "credit"]],
+    ["reports", "Reports", ["acct-statements", "reports"]],
   ],
+  // Marketing, exactly as the approved canvas draws it (Overview is pinned above the groups).
+  // The canvas groups "Campaigns" and "Reports" hold items of the same name, which a menu may not
+  // do (a group never repeats an item label), so those two groups read "Messages" and "Reporting".
+  // Approvals, Tasks, Activity and Sign-in & Security are not in the canvas menu; their panels and
+  // permissions are untouched (see EXHAUSTIVE_MENU_ROLES).
   marketing: [
-    ["decisions", "Decisions", ["approvals"]],
+    ["messages", "Messages", ["mk-campaigns", "mk-new-campaign", "mk-calendar", "mk-templates"]],
+    ["audiences", "Audiences", ["mk-segments", "mk-consent"]],
+    ["on-the-site", "On the site", ["mk-flash-sales", "mk-coupons", "mk-delivery-promos", "mk-banners", "mk-featured"]],
     ["moderation", "Moderation", ["hero", "events-moderation", "promotions"]],
-    ["insights", "Insights", ["analytics"]],
-    ["settings", "Settings", ["categories-zones"]],
-    ["reports", "Reports", ["reports"]],
-    ["my-work", "My work", ["tasks", "activity", "security"]],
+    ["insights", "Insights", ["analytics", "mk-results"]],
+    ["settings", "Settings", ["mk-senders", "mk-quiet-hours", "categories-zones"]],
+    ["reporting", "Reporting", ["reports"]],
   ],
+  // Support, exactly as the approved canvas draws it (7 groups, 18 items). Fraud cases, Approvals,
+  // Activity, Security and the legacy Messaging / Delivery Management panels are not in this menu;
+  // their panels and permissions are untouched (see EXHAUSTIVE_MENU_ROLES).
   support: [
-    ["inbox", "Inbox", ["messaging"]],
-    ["calls", "Calls", ["calls"]],
-    ["queues", "Queues", ["contact-messages", "reviews", "disputes", "delivery", "fraud-cases"]],
+    ["inbox", "Inbox", ["support-mine", "support-unassigned", "support-all-open", "support-past-limit", "support-snoozed", "support-resolved"]],
+    ["calls", "Calls", ["calls", "support-log-call"]],
+    ["queues", "Queues", ["contact-messages", "reviews", "disputes", "support-order-status"]],
+    ["knowledge", "Knowledge", ["support-canned", "support-tags"]],
     ["people", "People", ["users"]],
-    ["my-work", "My work", ["approvals", "tasks", "activity", "security"]],
+    ["my-work", "My work", ["tasks"]],
     ["reports", "Reports", ["reports"]],
   ],
   scout: [
@@ -191,16 +291,19 @@ const ROLE_MENUS = {
     ["account", "Account", ["security", "activity"]],
   ],
   delivery_manager: [
-    ["live", "Live", ["delivery-coordination", "delivery"]],
-    ["issues", "Issues", ["disputes"]],
-    ["fleet", "Fleet", ["my-team"]],
-    ["planning", "Planning", ["categories-zones"]],
-    ["my-work", "My work", ["approvals", "tasks", "calls", "activity", "security"]],
+    ["live", "Live", ["dm-queue", "dm-active"]],
+    ["issues", "Issues", ["dm-cases"]],
+    ["fleet", "Fleet", ["dm-riders", "dm-documents", "dm-vehicles", "dm-invite", "my-team"]],
+    ["planning", "Planning", ["dm-shifts", "dm-zones"]],
+    ["cash", "Cash", ["dm-cash", "dm-payouts"]],
+    ["settings", "Settings", ["dm-pricing", "dm-autoassign", "dm-limits"]],
+    ["my-work", "My work", ["tasks", "approvals", "calls", "activity", "security"]],
     ["reports", "Reports", ["reports", "team-reports"]],
   ],
   dispatch: [
-    ["jobs", "Jobs", ["my-deliveries"]],
-    ["my-work", "My work", ["approvals", "tasks", "activity", "security"]],
+    ["work", "Work", ["dr-jobs", "dr-earnings", "dr-cash"]],
+    ["you", "You", ["dr-menu", "dr-issue", "dr-documents"]],
+    ["my-work", "My work", ["tasks", "approvals", "activity", "security"]],
     ["reports", "Reports", ["reports"]],
   ],
   // The external co-signer: requests above the co-sign limit, and their own sign-in. Nothing else.
@@ -212,7 +315,7 @@ const ROLE_MENUS = {
 
 // Roles whose menu is the whole menu: a screen the canvas leaves out is not
 // offered under "More tools" either (its permission and panel stay).
-const EXHAUSTIVE_MENU_ROLES = new Set(["operations", "super_admin", "cosigner"]);
+const EXHAUSTIVE_MENU_ROLES = new Set(["operations", "super_admin", "cosigner", "support", "delivery_manager", "dispatch", "marketing"]);
 
 // Nav ids whose screen is not built yet, per role; AdminCommandCenter renders the
 // "being built" panel for them. A package that builds one swaps its panel in and
@@ -230,10 +333,20 @@ const ROLE_LABELS = {
     tasks: "Follow-ups", calls: "Calls", approvals: "Sent for approval", reports: "Day, week & month",
     security: "Profile & sign out", activity: "My activity",
   },
+  delivery_manager: { "team-reports": "Riders' reports", reports: "My reports" },
+  dispatch: { reports: "End of day report", activity: "My activity", security: "Sign-in & security" },
   operations: {
     approvals: "Approvals inbox", "my-team": "Invite", kyc: "KYC queue", moderation: "Listings",
     activity: "Staff activity", reports: "My reports", "team-reports": "My team", calls: "Call log",
     "site-settings": "Site settings", "contact-messages": "Contact messages",
+  },
+  accountant: { escrow: "Escrow", credit: "Credit & lending", reports: "My reports" },
+  support: {
+    calls: "Call log", "contact-messages": "Contact form", disputes: "Dispute intake", users: "Customers & businesses",
+    reports: "My reports",
+  },
+  marketing: {
+    hero: "Hero approval", "events-moderation": "Events", reports: "Reports", "categories-zones": "Categories",
   },
   // Super Admin reads the canvas's words; the ids (and every other role's labels) stay.
   super_admin: {
@@ -244,8 +357,8 @@ const ROLE_LABELS = {
     "subscription-plans-approval": "Plans & prices", targets: "Target limits", "categories-zones": "Categories & zones",
   },
 };
-// The pinned Overview: "Today" for a scout, the canvas's "Command center" for Super Admin.
-export const overviewLabel = (role) => (role === "scout" ? "Today" : role === "super_admin" ? "Command center" : "Overview");
+// The pinned Overview: "Today" for a scout, the canvas's "Command center" for Super Admin, "Live operations" for the Delivery Manager.
+export const overviewLabel = (role) => (role === "scout" ? "Today" : role === "super_admin" ? "Command center" : role === "delivery_manager" ? "Live operations" : role === "dispatch" ? "Shift" : "Overview");
 const toNavItem = ({ id, icon, label }, role) => ({ id, icon, label: ROLE_LABELS[role]?.[id] || label });
 
 export function buildNavGroups(auth) {
@@ -290,7 +403,14 @@ export const BADGE_KEY_BY_TAB = {
   "team-reports": "team_reports_waiting",
   "support-issues": "support_issues",
   "deliveries-returns": "deliveries_open",
+  // Delivery Manager canvas badges.
+  "dm-queue": "delivery_queue",
+  "dm-cases": "delivery_cases",
+  "dm-documents": "delivery_documents",
+  "dm-cash": "delivery_cash",
   "hero-events": ["hero", "events"],
+  // Marketing canvas: promotions waiting for approval.
+  promotions: "promotions_pending",
 };
 
 // Badge keys a role reads differently from BADGE_KEY_BY_TAB. Super Admin's canvas badges:
@@ -298,8 +418,17 @@ export const BADGE_KEY_BY_TAB = {
 // team (not just the caller's own reports). My approvals and Fraud & anomaly alerts use
 // approvals_waiting and fraud_open from the table above.
 export const BADGE_KEY_BY_ROLE_TAB = {
+  // Support's canvas: Mine / Unassigned / Past time limit / Dispute intake are badges; All open and
+  // Snoozed are plain counts (COUNT_ONLY_TABS). Reviews, Contact form and Tasks use the shared keys.
+  support: {
+    "support-mine": "support_mine", "support-unassigned": "support_unassigned", "support-all-open": "support_all_open",
+    "support-past-limit": "support_past_limit", "support-snoozed": "support_snoozed", disputes: "disputes_intake",
+  },
   super_admin: { invites: "invites_open", disputes: "disputes_open", "team-reports": "reports_hub" },
 };
+
+// Menu items that show a muted count instead of a red badge (the Support canvas's All open and Snoozed).
+export const COUNT_ONLY_TABS = { support: new Set(["support-all-open", "support-snoozed"]) };
 
 // Badge lookup for a tab id against the GET /api/notifications/staff-badges/
 // payload — 0 for tabs with no badge key or no data yet.

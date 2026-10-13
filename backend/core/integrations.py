@@ -42,10 +42,19 @@ def _email():
 
 
 def _sms():
+    if getattr(settings, "MARKETING_SMS_PROVIDER", "") == "hubtel":
+        missing = [label for label, value in (("Hubtel SMS client id", settings.HUBTEL_SMS_CLIENT_ID), ("Hubtel SMS client secret", settings.HUBTEL_SMS_CLIENT_SECRET), ("Sender ID name", settings.HUBTEL_SMS_SENDER_ID)) if not value]
+        if missing:
+            return _item("sms", "SMS", NOT_CONNECTED, "Hubtel (not fully set up)", "SMS is set to Hubtel but cannot send until the missing values are set.", missing)
+        return _item("sms", "SMS", CONNECTED, "Hubtel SMS", "Marketing SMS is sent through Hubtel. Delivery is shown only where Hubtel reports it.")
+    if getattr(settings, "MARKETING_SMS_PROVIDER", "") == "simulated":
+        return _item("sms", "SMS", SIMULATED, "Simulated (no provider)", "Marketing SMS is simulated: nothing is sent to anyone.", ["An SMS provider and its keys (not built yet)"])
     return _item("sms", "SMS", NOT_CONNECTED, "None", "AshantiHub sends no text messages. There is no SMS balance to show.", ["An SMS provider and its keys (not built yet)"])
 
 
 def _whatsapp():
+    if getattr(settings, "MARKETING_WHATSAPP_PROVIDER", "") == "simulated":
+        return _item("whatsapp", "WhatsApp", SIMULATED, "Simulated (no provider)", "Marketing WhatsApp is simulated: nothing is sent to anyone.", ["A WhatsApp Business connection (not built yet)"])
     return _item(
         "whatsapp", "WhatsApp", NOT_CONNECTED, "None (link only)",
         "AshantiHub sends no WhatsApp messages. Visitors can open a chat with the support number through a link.",

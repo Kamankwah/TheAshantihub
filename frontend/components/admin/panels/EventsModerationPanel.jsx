@@ -28,10 +28,14 @@ function DetailField({ label, value }) {
   );
 }
 
-function EventRow({ event, state, onDone }) {
+// Marketing's canvas offers set reasons (plus a free note) instead of a blank box.
+const EVENT_REASONS = ["Contact details in the description", "Duplicate of a live event", "Date or venue unclear", "Not allowed on AshantiHub", "Other"];
+
+function EventRow({ event, state, onDone, presetReasons = false }) {
   const [expanded, setExpanded] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
+  const [presetChoice, setPresetChoice] = useState("");
   const [actionError, setActionError] = useState(null);
   const detail = useEventModerationDetail(event.id, { enabled: expanded });
 
@@ -42,7 +46,8 @@ function EventRow({ event, state, onDone }) {
   };
   const reject = async () => {
     setActionError(null);
-    try { await apiPost(`/api/events/moderation/${event.id}/reject/`, { reason: rejectReason }); setRejecting(false); setRejectReason(""); onDone(); }
+    const reason = presetReasons && presetChoice ? (rejectReason.trim() ? `${presetChoice}. ${rejectReason.trim()}` : presetChoice) : rejectReason;
+    try { await apiPost(`/api/events/moderation/${event.id}/reject/`, { reason }); setRejecting(false); setRejectReason(""); setPresetChoice(""); onDone(); }
     catch (err) { setActionError("Could not reject this event."); }
   };
   const reReview = async () => {
@@ -79,8 +84,14 @@ function EventRow({ event, state, onDone }) {
       {actionError && <div style={{ color: D.red, fontSize: "0.8rem", marginTop: 8 }}>{actionError}</div>}
 
       {rejecting && <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <input value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Rejection reason" style={{ flex: "1 1 160px", minWidth: 0, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
-        <button onClick={reject} disabled={!rejectReason} style={{ background: D.red, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: rejectReason ? "pointer" : "default" }}>Confirm reject</button>
+        {presetReasons && (
+          <select aria-label="Reason for rejecting" value={presetChoice} onChange={e => setPresetChoice(e.target.value)} style={{ flex: "1 1 200px", minWidth: 0, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }}>
+            <option value="">Choose a reason</option>
+            {EVENT_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+        )}
+        <input value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder={presetReasons ? "Note to the organiser (optional)" : "Rejection reason"} aria-label={presetReasons ? "Note to the organiser" : "Rejection reason"} style={{ flex: "1 1 160px", minWidth: 0, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.75rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
+        <button onClick={reject} disabled={presetReasons ? !presetChoice : !rejectReason} style={{ background: D.red, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: (presetReasons ? presetChoice : rejectReason) ? "pointer" : "default" }}>Confirm reject</button>
       </div>}
 
       {expanded && (
@@ -119,7 +130,8 @@ function EventRow({ event, state, onDone }) {
   );
 }
 
-export default function EventsModerationPanel() {
+export default function EventsModerationPanel({ auth }) {
+  const isMarketing = auth?.user?.role === "marketing";
   const [tab, setTab] = useState("pending");
   const pending = useEventModerationQueue({ status: "pending" });
   const approved = useEventModerationQueue({ status: "approved" });
@@ -129,13 +141,20 @@ export default function EventsModerationPanel() {
   const refetchAll = () => { pending.refetch(); approved.refetch(); rejected.refetch(); };
 
   return (
-    <ModerationQueueTabs
-      tab={tab}
-      onTab={setTab}
-      queries={queries}
-      title="Events moderation"
-      emptyLabel={{ pending: "No events are waiting for approval." }}
-      renderRow={(event, state) => <EventRow event={event} state={state} onDone={refetchAll} />}
-    />
+    <>
+      <ModerationQueueTabs
+        tab={tab}
+        onTab={setTab}
+        queries={queries}
+        title="Events moderation"
+        emptyLabel={{ pending: "No events are waiting for approval." }}
+        renderRow={(event, state) => <EventRow event={event} state={state} onDone={refetchAll} presetReasons={isMarketing} />}
+      />
+      {isMarketing && (
+        <div style={{ color: D.textDim, fontSize: "0.75rem", marginTop: 10, lineHeight: 1.5 }}>
+          After you approve, the organiser is asked to pay for the days they chose. Approval alone doesn't put an event on the site; only payment does. When the paid days run out it is hidden, not deleted. Payments are simulated until Hubtel payments are connected.
+        </div>
+      )}
+    </>
   );
 }

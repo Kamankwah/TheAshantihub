@@ -3,7 +3,7 @@ import datetime as dt
 from django.utils import timezone
 from rest_framework import serializers
 
-from accounts.models import BusinessOwner
+from accounts.models import BusinessOwner, Customer
 from accounts.serializers import mask_but_last
 from staff_tasks.models import Task
 from staff_tasks.services import create_task
@@ -11,9 +11,33 @@ from staff_tasks.services import create_task
 from .models import CallLog, purposes_for
 
 FUTURE_TOLERANCE = dt.timedelta(minutes=5)
+NOT_FOUND = "We couldn't find that record."
+NOT_ALLOWED_TO_LOOK_UP = "You can't look up customers or businesses to log a call."
 NOT_YOUR_BUSINESS = "That business isn't in your portfolio."
 NOT_YOUR_PROSPECT = "That prospect isn't on your list."
 PROSPECT_REGISTERED = "That prospect is registered now. Log the call on the business."
+
+
+def _masked(phone):
+    from field.prospects import masked_phone
+
+    return masked_phone(phone)
+
+
+def _conversation_model():
+    from messaging.models import Conversation
+
+    return Conversation
+
+
+def _order_model():
+    from orders.models import Order
+
+    return Order
+
+
+RELATED_PERMISSION = {"messaging.conversation": "messaging.manage", "orders.order": "orders.support_update"}
+RELATED_MODELS = {"messaging.conversation": _conversation_model, "orders.order": _order_model}
 
 
 class CallLogSerializer(serializers.ModelSerializer):
@@ -55,20 +79,35 @@ class CallLogSerializer(serializers.ModelSerializer):
         phone from that record, and the caller must be allowed to see it."""
         if self.instance is not None:
             return attrs
+        self._check_related(attrs)
         kind, record_id = attrs.get("counterpart_type"), attrs.get("counterpart_id")
+        perms = self._viewer().effective_permission_codenames()
+        # Support looks people up across the whole platform; it never holds a full
+        # number for them, so what is stored is the masked form.
+        may_look_up = "calls.view_peers" in perms and "users.view" in perms
         if record_id and kind == "business_owner":
             owner = BusinessOwner.objects.select_related("profile").filter(pk=record_id).first()
-            perms = self._viewer().effective_permission_codenames()
-            if owner is None or not (
+            managed = owner is not None and (
                 owner.account_manager_id == self._viewer().id or "portfolio.manage" in perms or "calls.view_all" in perms
-            ):
+            )
+            if owner is None or not (managed or may_look_up):
                 raise serializers.ValidationError({"counterpart_id": NOT_YOUR_BUSINESS})
             profile = getattr(owner, "profile", None)
             attrs.update(
-                counterpart_name=owner.full_name, counterpart_phone=owner.login_phone or "",
+                counterpart_name=owner.full_name,
+                counterpart_phone=(owner.login_phone or "") if managed else _masked(owner.login_phone),
                 related_type="business_owner", related_id=str(owner.pk),
                 related_label=(getattr(profile, "business_name", "") or owner.full_name)[:200],
             )
+        elif record_id and kind == "customer":
+            if not may_look_up:
+                raise serializers.ValidationError({"counterpart_id": NOT_ALLOWED_TO_LOOK_UP})
+            customer = Customer.objects.filter(pk=record_id).first()
+            if customer is None:
+                raise serializers.ValidationError({"counterpart_id": NOT_FOUND})
+            attrs.update(counterpart_name=customer.full_name, counterpart_phone=_masked(customer.phone))
+            if not attrs.get("related_type"):
+                attrs.update(related_type="customer", related_id=str(customer.pk), related_label=customer.full_name[:200])
         elif record_id and kind == "prospect":
             from field.models import Prospect
 
@@ -84,6 +123,23 @@ class CallLogSerializer(serializers.ModelSerializer):
         elif kind == "prospect":
             raise serializers.ValidationError({"counterpart_id": NOT_YOUR_PROSPECT})
         return attrs
+
+    def _check_related(self, attrs):
+        """A call can be filed under a conversation or an order; the record has to
+        exist (the label is filled from it when the sheet did not send one)."""
+        related_type, related_id = attrs.get("related_type", ""), str(attrs.get("related_id", ""))
+        if related_type not in RELATED_MODELS:
+            return
+        if not related_id.isdecimal():
+            raise serializers.ValidationError({"related_id": "Choose the record this call is about."})
+        needed = RELATED_PERMISSION[related_type]
+        if needed not in self._viewer().effective_permission_codenames():
+            raise serializers.ValidationError({"related_type": "You can't link a call to that kind of record."})
+        record = RELATED_MODELS[related_type]().objects.filter(pk=int(related_id)).first()
+        if record is None:
+            raise serializers.ValidationError({"related_id": NOT_FOUND})
+        # Neutral label, never a name taken from the record (and never one the client typed).
+        attrs["related_label"] = f"{'Order' if related_type == 'orders.order' else 'Conversation'} #{record.pk}"
 
     def create(self, validated_data):
         staff = self._viewer()
@@ -124,6 +180,8 @@ class CallLogSerializer(serializers.ModelSerializer):
         data = super().to_representation(instance)
         viewer = self._viewer()
         sees_full = instance.staff_id == viewer.id or "calls.view_all" in viewer.effective_permission_codenames()
-        if data["counterpart_phone"] and not sees_full:
+        # A Support agent never sees a business owner's number in full, even on a call they logged.
+        business_for_support = instance.counterpart_type == "business_owner" and viewer.role.name == "support"
+        if data["counterpart_phone"] and (not sees_full or business_for_support):
             data["counterpart_phone"] = mask_but_last(data["counterpart_phone"], keep=3)
         return data

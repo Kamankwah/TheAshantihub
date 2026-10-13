@@ -30,3 +30,11 @@ export const useScheduledExports = () => get(['scheduled-exports'], '/api/insigh
 export const useScheduleRuns = (id) => get(['scheduled-exports', 'runs', id], `/api/insights/exports/${id}/runs/`, id != null)
 // GET /api/insights/exports/files/mine/ — files sent to me that are still valid.
 export const useMyExportFiles = () => get(['export-files'], '/api/insights/exports/files/mine/')
+
+// The Accountant's screens (backend/insights/accounting.py, all transactions.report).
+// GET /api/insights/accounting-overview/ — the Money desk.
+export const useAccountingOverview = (enabled = true) => get(['accounting-overview'], '/api/insights/accounting-overview/', enabled)
+// GET /api/insights/collections/?from=&to=&kind=&status=&q=&page=
+export const useCollections = (p) => get(['collections', p], `/api/insights/collections/${qs(p)}`)
+// GET /api/insights/money-alerts/ — computed on read; POST resolves one with a note.
+export const useMoneyAlerts = () => get(['money-alerts'], '/api/insights/money-alerts/')

@@ -21,6 +21,7 @@ urlpatterns = [
     path("moderation/<int:pk>/reject/", views.ModerationRejectView.as_view(), name="moderation-reject"),
     path("moderation/<int:pk>/re-review/", views.ModerationReReviewView.as_view(), name="moderation-re-review"),
     path("hero/pending/", views.HeroPendingQueueView.as_view(), name="hero-moderation-pending"),
+    path("hero/my-decisions/", views.HeroMyDecisionsView.as_view(), name="hero-moderation-my-decisions"),
     path("hero/<int:pk>/", views.HeroMediaDetailView.as_view(), name="hero-moderation-detail"),
     path("hero/<int:pk>/approve/", views.HeroApproveView.as_view(), name="hero-moderation-approve"),
     path("hero/<int:pk>/reject/", views.HeroRejectView.as_view(), name="hero-moderation-reject"),

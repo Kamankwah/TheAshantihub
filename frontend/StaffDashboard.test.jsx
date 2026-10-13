@@ -18,7 +18,9 @@ function makeAuth(overrides = {}) {
   return {
     user: {
       token: 't', account_type: 'staff', id: 1, full_name: 'Akosua Support',
-      role: 'support', permissions: ['messaging.manage', 'disputes.flag', 'users.view'],
+      // Not 'support': Support now has its own exhaustive canvas menu (navModel.test.js), so the
+      // generic legacy-menu session in this contract uses a role with no tool-specific menu.
+      role: 'accountant', permissions: ['messaging.manage', 'disputes.flag', 'users.view'],
     },
     hasPermission: (codename) => ['messaging.manage', 'disputes.flag', 'users.view'].includes(codename),
     ...overrides,
@@ -1519,6 +1521,9 @@ describe('StaffDashboard Disputes', () => {
     await screen.findByText(/Order #9/)
     expect(screen.queryByText('✓ Resolve')).not.toBeInTheDocument()
     fireEvent.click(screen.getByText('🚩 Flag'))
+    // Flagging needs a summary for Accounting, so the row asks for one first.
+    fireEvent.change(screen.getByLabelText('Summary for Accounting'), { target: { value: 'Customer says it never arrived.' } })
+    fireEvent.click(screen.getByText('Confirm flag'))
     await waitFor(() => expect(flagCalled).toBe(true))
   })
 
@@ -1610,6 +1615,8 @@ describe('StaffDashboard Disputes', () => {
     fireEvent.click(screen.getByText('Disputes'))
     await screen.findByText(/Order #9/)
     fireEvent.click(screen.getByText('🚩 Flag'))
+    fireEvent.change(screen.getByLabelText('Summary for Accounting'), { target: { value: 'Customer says it never arrived.' } })
+    fireEvent.click(screen.getByText('Confirm flag'))
     await screen.findByText('Could not flag this dispute.')
   })
 })
@@ -1900,7 +1907,7 @@ describe('StaffDashboard Credit & Lending (item 16)', () => {
   it('only shows the Credit nav item for a session with credit.manage', () => {
     const auth = makeAuth({ hasPermission: (c) => c === 'credit.manage' })
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
-    expect(screen.getByText('Credit & Lending')).toBeInTheDocument()
+    expect(screen.getByText('Credit & lending')).toBeInTheDocument()
   })
 
   it('adjusts a business owner credit score with a required reason', async () => {
@@ -1916,7 +1923,7 @@ describe('StaffDashboard Credit & Lending (item 16)', () => {
     )
     const auth = makeAuth({ hasPermission: (c) => c === 'credit.manage' })
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
-    fireEvent.click(screen.getByText('Credit & Lending'))
+    fireEvent.click(screen.getByText('Credit & lending'))
     await screen.findByText('Kwame Trader')
     fireEvent.click(screen.getByText('⚖️ Adjust'))
     fireEvent.change(screen.getByPlaceholderText('+/- points'), { target: { value: '40' } })
@@ -1937,7 +1944,7 @@ describe('StaffDashboard Credit & Lending (item 16)', () => {
     )
     const auth = makeAuth({ hasPermission: (c) => c === 'credit.manage' })
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
-    fireEvent.click(screen.getByText('Credit & Lending'))
+    fireEvent.click(screen.getByText('Credit & lending'))
     await screen.findByText('+ Add partner')
     fireEvent.click(screen.getByText('+ Add partner'))
     fireEvent.change(screen.getByPlaceholderText('Partner name'), { target: { value: 'Kumasi Credit Union' } })
@@ -1960,7 +1967,7 @@ describe('StaffDashboard Credit & Lending (item 16)', () => {
     )
     const auth = makeAuth({ hasPermission: (c) => c === 'credit.manage' })
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
-    fireEvent.click(screen.getByText('Credit & Lending'))
+    fireEvent.click(screen.getByText('Credit & lending'))
     await screen.findByText(/Kwame Trader · GHS 5000.00/)
     fireEvent.click(screen.getByText('Review'))
     fireEvent.click(screen.getByText('Approve'))
