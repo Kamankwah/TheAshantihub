@@ -26,4 +26,4 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # Monthly refresh of the OSRM road data (production only; staging is built by hand
 # once, see infra/README.md "Road routing (OSRM)"). Re-downloads Ghana from Geofabrik,
 # clips to the Ashanti Region, rebuilds and recreates the osrm container.
-0 3 1 * * root bash /opt/ashantihub/infra/scripts/build-osrm-data.sh ashantihub /opt/ashantihub/infra/compose/docker-compose.yml >> /var/log/ashantihub-osrm.log 2>&1
+30 4 1 * * root flock -n /var/lock/ashantihub-osrm.lock bash /opt/ashantihub/infra/scripts/build-osrm-data.sh ashantihub /opt/ashantihub/infra/compose/docker-compose.yml >> /var/log/ashantihub-osrm.log 2>&1

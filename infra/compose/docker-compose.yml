@@ -164,13 +164,13 @@ services:
   # Road routing for delivery distances and ETAs. Data is built by infra/scripts/build-osrm-data.sh,
   # which is also what starts this service. It sits in the "routing" profile so a plain
   # `up -d` (deploy.sh names its services anyway) never starts it before any data exists: osrm-routed
-  # exits when /data/ashanti.osrm is missing, which would otherwise crash-loop. Until it runs the app
+  # exits when /data/current/ashanti.osrm is missing, which would otherwise crash-loop. Until it runs the app
   # uses the labelled straight-line estimate. No host port: only the compose network reaches it.
   osrm:
     image: ghcr.io/project-osrm/osrm-backend:v5.27.1
     profiles: ["routing"]
     restart: unless-stopped
-    command: ["osrm-routed", "--algorithm", "mld", "--max-table-size", "200", "/data/ashanti.osrm"]
+    command: ["osrm-routed", "--algorithm", "mld", "--max-table-size", "200", "/data/current/ashanti.osrm"]
     volumes:
       - osrm-data:/data:ro
     logging: *default-logging

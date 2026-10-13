@@ -214,8 +214,8 @@ is still outstanding — see below.
 
 ## Scheduled jobs
 
-`infra/cron/ashantihub.cron` holds the host cron jobs (backups and
-`expire_events`); output goes to `/var/log/ashantihub-cron.log`. The activity
+`infra/cron/ashantihub.cron` holds the host cron jobs (backups, `expire_events`
+and the monthly OSRM data refresh); output goes to `/var/log/ashantihub-cron.log`. The activity
 log (`activity_activityevent`) is append-only and hash-chained: Postgres
 triggers refuse `UPDATE`/`DELETE`, so never "fix" a row by hand. Its nightly
 chain check now runs in Celery beat at 01:45 (`ACTIVITY_SEAL_EMAIL=True` in
@@ -313,12 +313,18 @@ and nothing is hidden. Recovery is automatic within about 30 seconds of OSRM
 coming back.
 
 **Monthly refresh.** `infra/cron/ashantihub.cron` runs the build script at
-03:00 on the 1st, production only, logging to `/var/log/ashantihub-osrm.log`.
-It recreates `osrm` so the new data loads. Reinstall the cron file after
-pulling this change (install line in its header). If a build fails, the
-previous data and the running container are left as they were, except that
-a failure during the last steps can leave the volume half-written: rerun the
-script by hand.
+04:30 on the 1st, production only, under `flock` so two builds never overlap,
+logging to `/var/log/ashantihub-osrm.log`. Each build goes into its own
+`build-<timestamp>` directory in the `osrm-data` volume, and the `current`
+symlink that `osrm` serves is switched only after extract, partition and
+customize all succeed; then `osrm` is recreated to load it. A failed build
+removes its partial directory and leaves `current` (and so the running or
+rebooted routing) on the last good data; check the log and rerun. Only the
+newest build and the previous one are kept. Reinstall the cron file after
+pulling this change (install line in its header).
+
+`docker compose down` ignores profiled services unless `--profile routing` is
+passed, so `osrm` keeps running through a normal `down`/`up` of the app.
 
 ## Live updates
 
