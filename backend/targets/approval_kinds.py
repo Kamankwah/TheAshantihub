@@ -68,6 +68,7 @@ TARGETS_CUT = ApprovalKind(
     current_state=current_state,
     apply=apply,
     response_hours=48,
+    chain_note="Super Admin only",
     resolve_approver=resolve_approver,
     render_diff=render_diff,
     validate=validate,

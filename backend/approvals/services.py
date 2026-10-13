@@ -16,7 +16,8 @@ from accounts.permissions import staff_holding
 from activity.services import record
 from notifications.services import notify_staff
 
-from .models import ApprovalRequest
+from . import rules
+from .models import ApprovalDecision, ApprovalRequest
 from .registry import get_kind
 
 logger = logging.getLogger(__name__)
@@ -105,9 +106,32 @@ def _next_step(approval):
     return None
 
 
-def approvers_for(approval):
-    """Who decides at the current stage (never the maker). approvals.view_all
-    holders may also decide at any stage — see can_decide()."""
+def _decisions(approval):
+    """Approvals given so far (prefetch-friendly), oldest first."""
+    return [d for d in approval.decisions.all() if d.decision == ApprovalDecision.APPROVED]
+
+
+def slot_filled(approval, slot):
+    return any(d.slot == slot for d in _decisions(approval))
+
+
+def waiting_on(approval):
+    """What a pending request still needs: "approver" (the ordinary chain),
+    "cosigner" (the approver has signed; a co-signer must too) or None."""
+    if approval.status != ApprovalRequest.PENDING:
+        return None
+    if not slot_filled(approval, ApprovalDecision.APPROVER):
+        return "approver"
+    if approval.required_approvals > 1 and not slot_filled(approval, ApprovalDecision.COSIGNER):
+        return "cosigner"
+    return None
+
+
+def _already_decided(approval, staff):
+    return any(d.staff_id == staff.pk for d in approval.decisions.all())
+
+
+def _regular_approvers(approval):
     if approval.stage == ApprovalRequest.MANAGER:
         approvers = StaffUser.objects.filter(pk=approval.assigned_to_id, is_active=True, is_suspended=False)
     elif approval.stage == ApprovalRequest.POOL:
@@ -117,24 +141,69 @@ def approvers_for(approval):
     return approvers.exclude(pk=approval.maker_id)
 
 
+def approvers_for(approval):
+    """Who may decide now (never the maker, never someone who already has): the
+    ordinary approvers of the current stage while the approver slot is open, and,
+    on a request needing two, the co-signers while their slot is open."""
+    waiting = waiting_on(approval)
+    pks = set()
+    if waiting == "approver":
+        pks |= set(_regular_approvers(approval).values_list("pk", flat=True))
+    if approval.required_approvals > 1 and waiting is not None and not slot_filled(approval, ApprovalDecision.COSIGNER):
+        pks |= set(rules.cosigners().values_list("pk", flat=True))
+    done = [d.staff_id for d in approval.decisions.all()]
+    return StaffUser.objects.filter(pk__in=pks).exclude(pk__in=done).exclude(pk=approval.maker_id)
+
+
+def was_eligible(approval, staff):
+    """Whether this person was ever an approver of the request (even if it is decided now), so a
+    loser of a race hears "already decided" instead of a 404."""
+    return _regular_approvers(approval).filter(pk=staff.pk).exists() or (
+        approval.required_approvals > 1 and rules.can_cosign(staff)
+    )
+
+
+def slot_for(approval, staff):
+    """Which sign-off this person would give on this request now, or None.
+    "approver": the ordinary chain (approvals.view_all holders decide at any
+    stage); "cosigner": a co-signer on a request needing two. Maker and anyone
+    who has already signed get nothing: no one counts twice."""
+    if approval.status != ApprovalRequest.PENDING or staff.pk == approval.maker_id or _already_decided(approval, staff):
+        return None
+    waiting = waiting_on(approval)
+    if waiting == "approver" and (
+        VIEW_ALL in staff.effective_permission_codenames() or _regular_approvers(approval).filter(pk=staff.pk).exists()
+    ):
+        return ApprovalDecision.APPROVER
+    if approval.required_approvals > 1 and waiting is not None and rules.can_cosign(staff):
+        return ApprovalDecision.COSIGNER
+    return None
+
+
 def can_decide(approval, staff):
-    if approval.status != ApprovalRequest.PENDING or staff.pk == approval.maker_id:
-        return False
-    if VIEW_ALL in staff.effective_permission_codenames():
-        return True
-    return approvers_for(approval).filter(pk=staff.pk).exists()
+    return slot_for(approval, staff) is not None
 
 
 def waiting_for(staff):
     """Pending requests at a stage this staffer decides: the inbox's
     "Waiting for me" and the nav badge."""
     perms = staff.effective_permission_codenames()
+    approver_open = ~Q(pk__in=ApprovalDecision.objects.filter(
+        slot=ApprovalDecision.APPROVER, decision=ApprovalDecision.APPROVED).values("request_id"))
     scope = Q(stage=ApprovalRequest.MANAGER, assigned_to=staff)
     if perms:
         scope |= Q(stage=ApprovalRequest.POOL, pool_permission__in=perms)
     if VIEW_ALL in perms:
         scope |= Q(stage=ApprovalRequest.SUPER_ADMIN)
-    return ApprovalRequest.objects.filter(status=ApprovalRequest.PENDING).filter(scope).exclude(maker=staff)
+    scope = scope & approver_open
+    if rules.can_cosign(staff):
+        # A co-signer's whole inbox: requests needing a second approval whose co-sign slot is open.
+        scope |= Q(required_approvals__gt=1) & ~Q(pk__in=ApprovalDecision.objects.filter(
+            slot=ApprovalDecision.COSIGNER, decision=ApprovalDecision.APPROVED).values("request_id"))
+    return (
+        ApprovalRequest.objects.filter(status=ApprovalRequest.PENDING).filter(scope)
+        .exclude(maker=staff).exclude(pk__in=ApprovalDecision.objects.filter(staff=staff).values("request_id"))
+    )
 
 
 def visible_to(staff):
@@ -144,6 +213,7 @@ def visible_to(staff):
         return ApprovalRequest.objects.all()
     return ApprovalRequest.objects.filter(
         Q(maker=staff) | Q(maker__manager=staff) | Q(decided_by=staff) | Q(pk__in=waiting_for(staff).values("pk"))
+        | Q(pk__in=ApprovalDecision.objects.filter(staff=staff).values("request_id"))
     )
 
 
@@ -199,8 +269,7 @@ def _notify_approvers(approval, kind, title):
 
 
 def _response_time(approval):
-    kind = get_kind(approval.kind)
-    return timedelta(hours=kind.response_hours if kind is not None else DEFAULT_RESPONSE_HOURS)
+    return timedelta(hours=rules.response_hours(approval.kind))
 
 
 def _enter_stage(approval, stage, staff, now):
@@ -239,6 +308,9 @@ def _submit(maker, kind, now, title, payload, target_type, target_id, target_lab
         approval.before = _normalise(kind.current_state(approval))
         if kind.amount_of is not None:
             approval.amount = kind.amount_of(approval)
+        # A Super Admin's own change applies at once whatever the amount (below), so only
+        # staged requests carry the second-approval requirement.
+        approval.required_approvals = 1 if maker.role.name == Role.SUPER_ADMIN else rules.required_approvals_for(approval.amount)
         if maker.role.name == Role.SUPER_ADMIN:
             if kind.validate is not None:
                 kind.validate(approval)
@@ -271,12 +343,17 @@ def _lock(approval_id):
 
 
 def _check_decidable(approval, staff):
+    """Returns the slot the person signs in; raises when they may not decide."""
     if approval.status != ApprovalRequest.PENDING:
         raise NotPending("This request has already been decided.")
     if staff.pk == approval.maker_id:
         raise MakerCannotDecide("You can't approve your own request.")
-    if not can_decide(approval, staff):
+    if _already_decided(approval, staff):
+        raise NotYourDecision("You have already signed this request. A second approval has to come from someone else.")
+    slot = slot_for(approval, staff)
+    if slot is None:
         raise NotYourDecision("This request is waiting for someone else.")
+    return slot
 
 
 def _state_now(kind, approval):
@@ -306,7 +383,7 @@ def approve(approval_id, staff, note="", http_request=None):
 def _approve(approval_id, staff, note, http_request):
     with transaction.atomic():
         approval = _lock(approval_id)
-        _check_decidable(approval, staff)
+        slot = _check_decidable(approval, staff)
         kind = get_kind(approval.kind)
         if kind is None:
             raise UnknownKind("This kind of request can no longer be decided.")
@@ -315,13 +392,21 @@ def _approve(approval_id, staff, note, http_request):
             raise StaleRequest(STALE_MESSAGE)
         if kind.validate is not None:
             kind.validate(approval)  # e.g. "approve the business's KYC first" — raises ApprovalError
+        now = timezone.now()
+        note = (note or "").strip()
+        ApprovalDecision.objects.create(request=approval, staff=staff, slot=slot, decision=ApprovalDecision.APPROVED, note=note, decided_at=now)
+        approval.__dict__.pop("_prefetched_objects_cache", None)
+        if approval.required_approvals > 1 and waiting_on(approval) is not None:
+            return _first_of_two(approval, staff, slot, note, now, http_request)
         # apply may need the decider (business.kyc stamps the owner's reviewed_by
         # with it), so it is set first; a failed apply rolls the whole block back.
-        approval.decided_by = staff
-        approval.decided_at = timezone.now()
+        # On a two-approval request that is the approver, not the co-signer.
+        approver = next((d.staff for d in _decisions(approval) if d.slot == ApprovalDecision.APPROVER), staff)
+        approval.decided_by = approver
+        approval.decided_at = now
         _run_apply(kind, approval)
         approval.status = ApprovalRequest.APPROVED
-        approval.decision_note = (note or "").strip()
+        approval.decision_note = note
         approval.save(update_fields=["status", "decided_by", "decided_at", "decision_note"])
         notify_staff(approval.maker, "approval_decided", f"Approved: {approval.title}",
                      body=approval.decision_note, link=_link(approval), icon="✅")
@@ -329,13 +414,28 @@ def _approve(approval_id, staff, note, http_request):
     return approval
 
 
+def _first_of_two(approval, staff, slot, note, now, http_request):
+    """One of the two approvals is in: the request stays pending, waiting for the other
+    person, with a fresh response time. Nothing is applied."""
+    other = "a co-signer" if slot == ApprovalDecision.APPROVER else "the approver"
+    _enter_stage(approval, approval.stage, approval.assigned_to, now)
+    approval.save(update_fields=["stage_started_at", "due_at", "reminded_at"])
+    _notify_approvers(approval, "approval_waiting", f"Waiting for {other}: {approval.title}")
+    notify_staff(approval.maker, "approval_progress", f"First approval given: {approval.title}",
+                 body=f"Waiting for {other}.", link=_link(approval), icon="🗳️")
+    record(staff, "approval.signed", target=approval,
+           after={"slot": slot, "note": note, "required_approvals": approval.required_approvals}, request=http_request)
+    return approval
+
+
 def reject(approval_id, staff, note, http_request=None):
     note = (note or "").strip()
     with transaction.atomic():
         approval = _lock(approval_id)
-        _check_decidable(approval, staff)
+        slot = _check_decidable(approval, staff)
         if not note:
             raise NoteRequired("Write a note so the maker knows what to change.")
+        ApprovalDecision.objects.create(request=approval, staff=staff, slot=slot, decision=ApprovalDecision.RETURNED, note=note)
         approval.status = ApprovalRequest.REJECTED
         approval.decided_by = staff
         approval.decided_at = timezone.now()
@@ -399,7 +499,7 @@ def cancel(approval_id, staff, http_request=None):
 
 
 def _remind_at(approval):
-    return approval.stage_started_at + (approval.due_at - approval.stage_started_at) * REMIND_AT
+    return approval.stage_started_at + (approval.due_at - approval.stage_started_at) * float(rules.get_settings().remind_fraction)
 
 
 def _assignee_gone(approval):
@@ -419,6 +519,14 @@ def _escalate_one(pk, now):
             .first()
         )
         if approval is None:
+            return 0
+        if waiting_on(approval) == "cosigner":
+            # The approver has signed; only a co-signer is missing, so there is no one higher to
+            # move it to: remind the co-signers each time the response time runs out.
+            if now >= approval.due_at:
+                _enter_stage(approval, approval.stage, approval.assigned_to, now)
+                approval.save()
+                _notify_approvers(approval, "approval_reminder", f"Overdue, waiting for a co-signer: {approval.title}")
             return 0
         if _assignee_gone(approval) or now >= approval.due_at:
             step = _next_step(approval)
@@ -498,6 +606,9 @@ def upcoming_moves(approval):
         return []
     moves = []
     reminder_at = approval.reminded_at or _remind_at(approval)
+    if waiting_on(approval) == "cosigner":
+        moves.append({"at": approval.due_at, "what": "Reminder to the co-signer", "done": False, "kind": "reminder"})
+        return moves
     moves.append({"at": reminder_at, "what": "Reminder to the person deciding", "done": approval.reminded_at is not None, "kind": "reminder"})
     rank = ApprovalRequest.STAGE_ORDER.index(approval.stage)
     at = approval.due_at
@@ -517,9 +628,15 @@ def timeline(approval):
         rows.append({
             "at": approval.stage_started_at, "what": f"Moved up to level {approval.escalation_level + 1} after no decision", "done": True, "kind": "escalated",
         })
+    if approval.required_approvals > 1:
+        for d in _decisions(approval):
+            label = "approver" if d.slot == ApprovalDecision.APPROVER else "co-signer"
+            rows.append({"at": d.decided_at, "what": f"Approved by {d.staff.full_name} as {label}", "done": True, "kind": "signed"})
     if approval.status == ApprovalRequest.PENDING:
         rows.extend(upcoming_moves(approval))
-    elif approval.decided_at is not None:
+    elif approval.decided_at is not None and approval.status != ApprovalRequest.APPROVED or (
+        approval.decided_at is not None and approval.required_approvals <= 1
+    ):
         verb = {"approved": "Approved", "rejected": "Returned", "cancelled": "Cancelled"}.get(approval.status, approval.get_status_display())
         who = approval.decided_by.full_name if approval.decided_by_id else "someone"
         rows.append({"at": approval.decided_at, "what": f"{verb} by {who}", "done": True, "kind": "decided"})

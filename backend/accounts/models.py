@@ -24,6 +24,8 @@ class Role(models.Model):
     SCOUT = "scout"
     DELIVERY_MANAGER = "delivery_manager"
     DISPATCH = "dispatch"
+    # External co-signer: approves only requests above the co-sign limit (approvals app).
+    COSIGNER = "cosigner"
 
     NAME_CHOICES = [
         (SUPER_ADMIN, "Super Admin"),
@@ -34,6 +36,7 @@ class Role(models.Model):
         (SCOUT, "Scout"),
         (DELIVERY_MANAGER, "Delivery Manager"),
         (DISPATCH, "Dispatch"),
+        (COSIGNER, "Co-signer"),
     ]
 
     name = models.CharField(max_length=20, choices=NAME_CHOICES, unique=True)
@@ -239,6 +242,14 @@ class StaffSession(models.Model):
     revoked_at = models.DateTimeField(null=True, blank=True)
     revoked_reason = models.CharField(max_length=30, blank=True, default="", choices=REASON_CHOICES)
     sudo_until = models.DateTimeField(null=True, blank=True)
+    # Step-in ("view as", Super Admin SA-6): whose workspace this session is
+    # viewing read-only, set by POST staff/view-as/ and cleared by its end.
+    # An X-View-As header is honoured only while it names this person
+    # (accounts/view_as.py), so every viewed page follows a recorded start.
+    view_as_target = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    view_as_started_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
