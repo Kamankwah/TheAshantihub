@@ -1,6 +1,6 @@
 """The Delivery Manager's live board: what is waiting, what is on the road, which riders are where.
 Everything is derived from assignments, shifts and pings; with no riders on shift the screens say so
-(no sample pins). Distances are straight-line estimates scaled by ``services.ROAD_FACTOR``."""
+(no sample pins). Distances are road routes when routing is configured and answering; otherwise they are labelled straight-line estimates scaled by ``services.ROAD_FACTOR``."""
 from datetime import timedelta
 
 from django.db.models import F, Q

@@ -10,6 +10,7 @@ from rest_framework.views import APIView
 
 from accounts.permissions import HasRolePermission
 from orders.models import DeliveryAssignment, Order
+from routing import service as routing_service
 
 from . import board, config, dispatching, payloads, services
 from .models import DeliverySettings, Offer, QueueHold, Rider
@@ -146,13 +147,13 @@ def offer_payload(offer, now=None):
     plat, plng, name = services.pickup_stop(order)
     dlat, dlng = services.drop_stop(order)
     shift = services.open_shift(offer.rider)
-    from routing import service as routing_service
-
     leg_to_pickup = routing_service.leg((shift.last_lat, shift.last_lng), (plat, plng)) if shift and shift.last_lat is not None and plat is not None else None
     leg_trip = routing_service.leg((plat, plng), (dlat, dlng)) if plat is not None and dlat is not None else None
     to_pickup = leg_to_pickup["distance_km"] if leg_to_pickup else None
     trip = leg_trip["distance_km"] if leg_trip else None
-    basis = (leg_trip or leg_to_pickup or {}).get("basis", "straight-line estimate x 1.3")
+    present = [leg for leg in (leg_to_pickup, leg_trip) if leg]
+    # Road only when every distance shown is a road route; any estimate makes the label the estimate.
+    basis = routing_service.BASIS_ROAD if present and all(leg["basis"] == routing_service.BASIS_ROAD for leg in present) else routing_service.BASIS_ESTIMATE
     from . import config as cfg
     from .rates import rider_pay
 
