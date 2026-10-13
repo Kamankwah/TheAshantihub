@@ -76,6 +76,7 @@ import LeavePanel from "./panels/LeavePanel.jsx";
 import OpsScoutsPanel from "./panels/OpsScoutsPanel.jsx";
 import OpsTargetsPanel from "./panels/OpsTargetsPanel.jsx";
 import ApprovalsPanel from "./panels/ApprovalsPanel.jsx";
+import ApprovalRulesPanel from "./panels/ApprovalRulesPanel.jsx";
 import PortfolioPanel from "./panels/PortfolioPanel.jsx";
 import SubscriptionsDuePanel from "./panels/SubscriptionsDuePanel.jsx";
 import FraudCasesPanel from "./panels/FraudCasesPanel.jsx";
@@ -335,7 +336,7 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
         }}>✓ Saved!</div>}
 
         <main className="staff-content" style={{ padding: isPhone ? "16px 12px calc(88px + env(safe-area-inset-bottom, 0px))" : "22px 20px 72px" }}>
-          {activeTab === "overview" && (role === "scout"
+          {activeTab === "overview" && role !== "cosigner" && (role === "scout"
             ? <ScoutTodayPanel auth={auth} onNavigate={selectTab} onCheckIn={openCheckInScreen} onRegister={() => selectTab("register-business")} onSeeApprovals={openMadeApprovals} onOpenBusiness={openMyBusiness} />
             : role === "super_admin"
               ? <SuperAdminOverviewPanel auth={auth} onNavigate={selectTab} onOpenApproval={openApproval} />
@@ -398,6 +399,9 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "invites" && <MyTeamPanel currentStaffId={auth.user?.id} />}
           {activeTab === "my-team" && (role === "operations" ? <InvitePanel auth={auth} /> : <MyTeamPanel currentStaffId={auth.user?.id} />)}
           {activeTab === "approvals" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "approval-rules" && <ApprovalRulesPanel onNavigate={selectTab} />}
+          {/* The external co-signer has one screen: the requests waiting for their second approval. */}
+          {activeTab === "overview" && role === "cosigner" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "portfolio" && <PortfolioPanel mode="mine" auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
           {activeTab === "all-portfolios" && role === "super_admin" && <SaBusinessesPanel auth={auth} detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "all-portfolios" && role !== "super_admin" && <PortfolioPanel key={scoutFilter ?? "any"} mode="all" initialScout={scoutFilter} auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}

@@ -455,7 +455,7 @@ describe('StaffDashboard', () => {
     const roleSelect = await screen.findByDisplayValue('Role')
     expect(roleSelect.tagName).toBe('SELECT')
     const optionValues = Array.from(roleSelect.querySelectorAll('option')).map((o) => o.value)
-    expect(optionValues).toEqual(['', 'super_admin', 'operations', 'accountant', 'marketing', 'support', 'scout', 'delivery_manager', 'dispatch'])
+    expect(optionValues).toEqual(['', 'super_admin', 'operations', 'accountant', 'marketing', 'support', 'scout', 'delivery_manager', 'dispatch', 'cosigner'])
   })
 
   it('shows an inline error when approving a KYC submission fails', async () => {

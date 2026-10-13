@@ -101,7 +101,7 @@ export const NAV_ITEMS = [
   { id: "data-exports-log", icon: "📤", label: "Data exports log", show: saOnly, placeholder: "super_admin" },
   { id: "notification-center", icon: "🔔", label: "Notification center", show: saOnly, placeholder: "super_admin" },
   { id: "staff-announcements", icon: "📣", label: "Staff announcements", show: saOnly, placeholder: "super_admin" },
-  { id: "approval-rules", icon: "⏱️", label: "Approval rules & timers", show: saOnly, placeholder: "super_admin" },
+  { id: "approval-rules", icon: "⏱️", label: "Approval rules & timers", show: saOnly },
   { id: "delivery-pricing", icon: "🛵", label: "Delivery pricing", show: saOnly, placeholder: "super_admin" },
   { id: "tax-tables", icon: "📑", label: "Tax tables", show: saOnly, placeholder: "super_admin" },
   { id: "integrations", icon: "🔌", label: "Integrations", show: saOnly, placeholder: "super_admin" },
@@ -201,11 +201,16 @@ const ROLE_MENUS = {
     ["my-work", "My work", ["approvals", "tasks", "activity", "security"]],
     ["reports", "Reports", ["reports"]],
   ],
+  // The external co-signer: requests above the co-sign limit, and their own sign-in. Nothing else.
+  cosigner: [
+    ["decisions", "Decisions", ["approvals"]],
+    ["account", "Account", ["security"]],
+  ],
 };
 
 // Roles whose menu is the whole menu: a screen the canvas leaves out is not
 // offered under "More tools" either (its permission and panel stay).
-const EXHAUSTIVE_MENU_ROLES = new Set(["operations", "super_admin"]);
+const EXHAUSTIVE_MENU_ROLES = new Set(["operations", "super_admin", "cosigner"]);
 
 // Nav ids whose screen is not built yet, per role; AdminCommandCenter renders the
 // "being built" panel for them. A package that builds one swaps its panel in and

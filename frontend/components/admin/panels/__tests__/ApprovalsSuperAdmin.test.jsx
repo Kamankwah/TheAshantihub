@@ -106,4 +106,21 @@ describe('Approval detail for a money request', () => {
     expect(screen.queryByText(/This request carries one amount/)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument()
   })
+
+  it('shows approver 1 of 2 and a waiting co-signer, saying plainly when none is named', async () => {
+    const signoff = { required: 2, waiting_on: 'cosigner', cosigner_named: false, signed: [{ slot: 'approver', staff: { id: 1, full_name: 'Simon Peter', role: 'super_admin' }, at: '2026-10-12T10:00:00Z', note: '' }] }
+    server.use(http.get(`${API}/api/approvals/12/`, () => HttpResponse.json(detail({ required_approvals: 2, signoff }))))
+    renderPanel({ detailId: 12 })
+    expect(await screen.findByText('Approver 1 of 2: Simon Peter approved')).toBeInTheDocument()
+    expect(screen.getByText(/Co-signer 2 of 2: waiting — no co-signer is named yet, so this cannot be released/)).toBeInTheDocument()
+    expect(screen.getByText(/needs two different people \(1 of 2 so far\)/)).toBeInTheDocument()
+    expect(screen.getByText(/Now: Waiting for a co-signer \(none named yet\)/)).toBeInTheDocument()
+  })
+
+  it('shows no two-approval steps on a single-approval request', async () => {
+    server.use(http.get(`${API}/api/approvals/12/`, () => HttpResponse.json(detail({ required_approvals: 1, signoff: { required: 1, waiting_on: 'approver', signed: [], cosigner_named: null } }))))
+    renderPanel({ detailId: 12 })
+    await screen.findByRole('heading', { name: 'Who signs off' })
+    expect(screen.queryByLabelText('Two approvals needed')).not.toBeInTheDocument()
+  })
 })

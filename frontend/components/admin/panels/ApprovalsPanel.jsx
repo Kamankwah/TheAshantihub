@@ -63,7 +63,28 @@ function ifNotDecided(a) {
   return `${stageText(a)} · ${describeWait(a.due_at)}`;
 }
 
+// "Approver 1 of 2" and the co-signer slot, from the request's own sign-off record.
+function SignOffSteps({ a }) {
+  const so = a.signoff || {};
+  const approver = (so.signed || []).find((x) => x.slot === "approver");
+  const cosigner = (so.signed || []).find((x) => x.slot === "cosigner");
+  const row = (label, who, waiting) => (
+    <li style={{ display: "flex", gap: 8, fontSize: "0.78rem", color: who ? D.text : D.textDim, fontWeight: who ? 700 : 500 }}>
+      <span aria-hidden="true">{who ? "✓" : "○"}</span>
+      <span>{who ? `${label}: ${who.staff.full_name} approved` : `${label}: ${waiting}`}</span>
+    </li>
+  );
+  return (
+    <ol aria-label="Two approvals needed" style={{ listStyle: "none", margin: "4px 0 0", padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+      <li style={{ ...dim, fontWeight: 800 }}>{`This is above the co-sign limit, so it needs two different people (${(so.signed || []).length} of 2 so far).`}</li>
+      {row("Approver 1 of 2", approver, "waiting")}
+      {row("Co-signer 2 of 2", cosigner, so.cosigner_named === false ? "waiting — no co-signer is named yet, so this cannot be released" : "waiting")}
+    </ol>
+  );
+}
+
 function stageText(a) {
+  if (a.signoff?.waiting_on === "cosigner") return a.signoff.cosigner_named === false ? "Waiting for a co-signer (none named yet)" : "Waiting for a co-signer";
   if (a.stage === "manager") return `With ${a.assigned_to?.full_name || "their manager"}`;
   if (a.stage === "pool") return "With anyone who can approve this";
   return "With a Super Admin";
@@ -238,6 +259,7 @@ function ApprovalsInbox({ onOpen, initialBox = "mine" }) {
                       <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                         <span style={chip(D.blue)}>{a.kind_label}</span>
                         {a.escalated && <span style={chip(D.red)}>Escalated to you</span>}
+                        {a.required_approvals > 1 && <span style={chip(D.amber)}>Needs 2 approvals</span>}
                       </div>
                     </td>
                     <td style={td}>
@@ -466,6 +488,7 @@ function ApprovalRequest({ id, onBack }) {
               <h2 id="who-h" style={heading}>Who signs off</h2>
               <div style={{ fontSize: "0.8rem", color: D.text }}>{`Now: ${stageText(a)}. ${LEVEL_WORD(a.escalation_level)}.`}</div>
               <div style={dim}>{`${a.maker.full_name} made it and can never decide it.${a.next_move ? ` If nobody does: ${ifNotDecided(a).toLowerCase()}.` : ""}`}</div>
+              {a.required_approvals > 1 && <SignOffSteps a={a} />}
             </section>
           )}
           {timeline.length > 0 && (
