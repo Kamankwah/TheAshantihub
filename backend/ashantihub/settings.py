@@ -114,12 +114,12 @@ INSTALLED_APPS = [
     "targets",
     "operations",
     "marketplace",
-    "commission",
     "people",
+    "commission",
     "insights",
-    "realtime",
     "staffsecurity",
     "announcements",
+    "realtime",
 ]
 
 MIDDLEWARE = [
