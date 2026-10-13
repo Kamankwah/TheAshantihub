@@ -5,6 +5,16 @@ import { describe, expect, it, vi } from 'vitest'
 import { server } from './mocks/server.js'
 import CartDrawer from './components/CartDrawer.jsx'
 
+// Same stub as test/setup.js plus a second pin, so a test can move the pin from one point to another.
+vi.mock('./components/LocationPicker.jsx', async () => {
+  const { createElement, Fragment } = await import('react')
+  return {
+    default: ({ onChange, onAddress }) => createElement(Fragment, null,
+      createElement('button', { type: 'button', onClick: () => { onChange(6.7, -1.62); if (onAddress) onAddress('KNUST Ave, Kumasi') } }, 'drop-pin'),
+      createElement('button', { type: 'button', onClick: () => onChange(6.69, -1.62) }, 'drop-pin-out')),
+  }
+})
+
 function StubPayment({ amount, onSuccess, onClose }) {
   return (
     <div>
@@ -262,6 +272,63 @@ describe('CartDrawer', () => {
     fireEvent.change(screen.getByPlaceholderText('Contact phone for delivery'), { target: { value: '+233200112233' } })
     fireEvent.click(screen.getByText('drop-pin'))
     await screen.findByText(/Delivery: GHS 12.00/)
+    expect(screen.getByRole('button', { name: /Confirm & Pay/ })).toBeEnabled()
+  })
+
+  const quoteHandlers = (quoteFor) => [
+    http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)),
+    http.get('http://localhost:8000/api/marketing/promos/public/', () => HttpResponse.json({ enabled: true, flash_sales: [] })),
+    http.post('http://localhost:8000/api/marketing/cart/quote/', async ({ request }) => quoteFor(await request.json())),
+  ]
+  const OK_DELIVERY = { enabled: true, total: '300.00', delivery: { fee: '12.00', fee_status: 'ok', waived: false, waiver_name: null, waived_fee: null, mixed_note: null } }
+  const OUT_DELIVERY = { enabled: true, total: '300.00', delivery: { fee: null, fee_status: 'out_of_area', waived: false, waiver_name: null, waived_fee: null, mixed_note: null, message: 'We only deliver within the Ashanti Region for now.' } }
+  async function openDoorToDoor() {
+    await screen.findByText('Kente Cloth')
+    fireEvent.click(screen.getByText('Checkout →'))
+    await screen.findByText('Confirm your order')
+    fireEvent.click(screen.getByText('🚚 Door-to-door'))
+    fireEvent.change(screen.getByPlaceholderText('Delivery address'), { target: { value: 'Adum' } })
+    fireEvent.change(screen.getByPlaceholderText('Contact phone for delivery'), { target: { value: '+233200112233' } })
+  }
+
+  it('keeps Confirm & Pay disabled while the quote for a moved pin is pending and once it resolves out of area', async () => {
+    let release
+    const gate = new Promise((r) => { release = r })
+    server.use(...quoteHandlers(async (body) => {
+      if (body.delivery_lat === 6.69) { await gate; return HttpResponse.json(OUT_DELIVERY) }
+      return HttpResponse.json(OK_DELIVERY)
+    }))
+    renderDrawer()
+    await openDoorToDoor()
+    fireEvent.click(screen.getByText('drop-pin'))
+    await screen.findByText(/Delivery: GHS 12.00/)
+    expect(screen.getByRole('button', { name: /Confirm & Pay/ })).toBeEnabled()
+    fireEvent.click(screen.getByText('drop-pin-out'))
+    expect(screen.getByRole('button', { name: /Confirm & Pay/ })).toBeDisabled()
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.getByRole('button', { name: /Confirm & Pay/ })).toBeDisabled()
+    release()
+    expect(await screen.findByText('We only deliver within the Ashanti Region for now.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Confirm & Pay/ })).toBeDisabled()
+  })
+
+  it('keeps Confirm & Pay disabled and says so when the delivery quote request fails', async () => {
+    server.use(...quoteHandlers(() => HttpResponse.json({ detail: 'boom' }, { status: 500 })))
+    renderDrawer()
+    await openDoorToDoor()
+    fireEvent.click(screen.getByText('drop-pin'))
+    expect(await screen.findByText("We couldn't check delivery to this location yet. Try again.")).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Confirm & Pay/ })).toBeDisabled()
+  })
+
+  it('cannot check the region while promotions are off, so Confirm & Pay stays enabled (documented limit)', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)),
+      http.get('http://localhost:8000/api/marketing/promos/public/', () => HttpResponse.json({ enabled: false, flash_sales: [] })),
+    )
+    renderDrawer()
+    await openDoorToDoor()
+    fireEvent.click(screen.getByText('drop-pin'))
     expect(screen.getByRole('button', { name: /Confirm & Pay/ })).toBeEnabled()
   })
 

@@ -73,17 +73,24 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   const [appliedCode, setAppliedCode] = useState("");
   const [quote, setQuote] = useState(null);
   const [quoting, setQuoting] = useState(false);
+  // The delivery point (method + pin) the held `quote` was fetched for, and whether the last request failed.
+  const [quotedFor, setQuotedFor] = useState(null);
+  const [quoteFailed, setQuoteFailed] = useState(false);
+  const pinKey = `${deliveryMethod}:${deliveryLat}:${deliveryLng}`;
   const cartSignature = items.map((i) => `${i.id}:${i.quantity}`).join(",");
   useEffect(() => {
     if (!promosOn || items.length === 0) { setQuote(null); return; }
     let live = true;
     setQuoting(true);
+    setQuoteFailed(false);
+    // A quote for another pin or method must never answer for this one: drop it as soon as the pin moves.
+    if (quotedFor !== pinKey) { setQuote(null); setQuotedFor(null); }
     quoteCart({
       coupon_code: appliedCode, delivery_phone: deliveryMethod === "door_to_door" ? deliveryPhone : "",
       delivery_method: deliveryMethod, ...(deliveryMethod === "door_to_door" && deliveryLat != null ? { delivery_lat: deliveryLat, delivery_lng: deliveryLng } : {}),
     })
-      .then((q) => { if (live) { setQuote(q); setCouponError(q.coupon_error || ""); if (q.coupon_error) setAppliedCode(""); } })
-      .catch(() => { if (live) setQuote(null); })
+      .then((q) => { if (live) { setQuote(q); setQuotedFor(pinKey); setCouponError(q.coupon_error || ""); if (q.coupon_error) setAppliedCode(""); } })
+      .catch(() => { if (live) { setQuote(null); setQuotedFor(null); setQuoteFailed(true); } })
       .finally(() => { if (live) setQuoting(false); });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -93,9 +100,14 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   const delivery = promosOn ? quote?.delivery : null;
   const itemsTotal = promosOn && quote?.total ? quote.total : cart?.total;
   // Checkout refuses a door-to-door point outside the Ashanti Region, and payment runs before checkout, so the
-  // pay button stays off here (the delivery note above carries the quote's message) rather than charging first.
+  // pay button stays off until a quote for THIS pin has resolved and says it is in area (the delivery note
+  // above carries the quote's message). A pending, stale or failed quote also keeps it off.
+  // Known limit: with promotions off there is no quote endpoint, so the region cannot be checked here and the
+  // button stays on; checkout still refuses an out-of-area point (a test pins this).
+  const pinChosen = deliveryMethod === "door_to_door" && deliveryLat != null;
   const outOfArea = deliveryMethod === "door_to_door" && delivery?.fee_status === "out_of_area";
-  const doorToDoorReady = doorToDoorFilled && !outOfArea;
+  const regionUnchecked = promosOn && pinChosen && (quoting || quotedFor !== pinKey || quoteFailed);
+  const doorToDoorReady = doorToDoorFilled && !outOfArea && !regionUnchecked;
   const shownTotal = delivery?.fee != null && itemsTotal != null ? (parseFloat(itemsTotal) + parseFloat(delivery.fee)).toFixed(2) : itemsTotal;
   const [couponError, setCouponError] = useState("");
 
@@ -353,6 +365,7 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
               </div>
             )}
 
+            {promosOn && pinChosen && quoteFailed && <div data-testid="cart-delivery-unchecked" style={{ fontSize: "0.72rem", color: "#555", marginBottom: 12 }}>We couldn't check delivery to this location yet. Try again.</div>}
             {checkoutError && <div style={{ background: "#fee2e2", color: "#dc2626", borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>{checkoutError}</div>}
             {staffGate.shownFor && <StaffGateNotice style={{ marginBottom: 12 }} />}
             <div style={{ display: "flex", gap: 8 }}>

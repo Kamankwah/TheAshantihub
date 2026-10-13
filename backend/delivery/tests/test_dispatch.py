@@ -1,5 +1,6 @@
 from datetime import timedelta
 from decimal import Decimal
+from unittest import mock
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
@@ -11,6 +12,7 @@ from delivery import config, dispatching, rates
 from delivery.models import AutoAssignRules, DeliverySettings, Offer, QueueHold, RateCard, Rider, RiderDocument, ShiftSession, TimeLimits
 from disputes.models import Dispute
 from orders.models import DeliveryAssignment
+from routing import service as routing_service
 
 from .base import DROP, PICKUP, PNG, DeliveryCase
 
@@ -266,10 +268,6 @@ class ConfigTests(EngineCase):
         self.assertIsNone(self.client.get("/api/delivery/rules/rate-card/").json()["pending"])
 
     def test_the_rate_card_screen_reads_the_live_distance_basis(self):
-        from unittest import mock
-
-        from routing import service as routing_service
-
         self.as_staff(self.manager)
         for mode, basis in (("road", routing_service.BASIS_ROAD), ("straight_line_estimate", routing_service.BASIS_ESTIMATE)):
             with mock.patch("routing.service.status", return_value={"mode": mode, "factor": 1.3, "healthy": mode == "road"}):
