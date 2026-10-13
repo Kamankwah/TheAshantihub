@@ -131,6 +131,22 @@ class PublishTests(TestCase):
                     self.record(self.lead, verb, method="POST", target_type="x", target_id="1")
                     self.assertEqual(self.message(queue)["payload"]["invalidate"], keys)
 
+    def test_the_super_admin_marketplace_screens_follow_their_events(self):
+        cases = [
+            ("business.suspended", "perm.portfolio.manage", "sa-businesses"),
+            ("business.suspended", "perm.listings.moderate", "sa-listings"),
+            ("customer.suspended", "perm.users.view", "sa-customers"),
+            ("order-assign-dispatch", "perm.orders.manage_delivery", "sa-orders"),
+            ("escrow-release", "perm.escrow.view", "sa-events"),
+            ("dispute-flag", "perm.disputes.flag", "sa-disputes"),
+        ]
+        for verb, group, key in cases:
+            with self.subTest(verb=verb, group=group):
+                queue = self.listen(group)
+                self.record(self.lead, verb, method="POST", target_type="x", target_id="1")
+                keys = [key_ for payload in self.drain(queue) if payload["type"] == "invalidate" for key_ in payload["invalidate"]]
+                self.assertIn(key, keys)
+
     def test_target_leave_and_holiday_changes_refresh_scouts_targets_screens(self):
         for verb in ("targets.plan_set", "leave.recorded", "calendar.holiday_added"):
             with self.subTest(verb=verb):

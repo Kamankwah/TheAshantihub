@@ -329,8 +329,49 @@ def _portfolio_sort_key(row):
     return (health.SORT_RANK[row.rating], row.owner.display_name.casefold(), row.owner.pk)
 
 
+KYC_FILTERS = ("verified", "pending", "suspended")
+FLAG_FILTERS = ("fraud", "dispute", "no_login")
+
+
+def _filtered_rows(request, now):
+    """The rated businesses the list (and the Super Admin export) show for the
+    request's filters, before the health filter. Health is worked out per row,
+    so filtering by it happens in Python over the whole filtered set."""
+    params = request.query_params
+    subscription_filter = _portfolio_choice_param(params, "subscription", SUBSCRIPTION_STATES)
+    kyc_filter = _portfolio_choice_param(params, "kyc", KYC_FILTERS)
+    flag_filter = _portfolio_choice_param(params, "flag", FLAG_FILTERS)
+    owners = portfolio_queryset(request.user, params.get("scope"))
+    scout = _portfolio_id_param(params, "scout")
+    if scout is not None:
+        owners = owners.filter(account_manager_id=scout)
+    zone = _portfolio_id_param(params, "zone")
+    if zone is not None:
+        owners = owners.filter(profile__zone_id=zone)
+    if params.get("unassigned") in ("1", "true"):
+        owners = owners.filter(account_manager__isnull=True)
+    if kyc_filter == "suspended":
+        owners = owners.filter(is_suspended=True)
+    elif kyc_filter:
+        owners = owners.filter(kyc_status=kyc_filter)
+    text = (params.get("q") or "").strip()
+    if text:
+        owners = owners.filter(_portfolio_search(text))
+    rows = health.rate_all(owners, now)
+    if subscription_filter:
+        rows = [row for row in rows if row.subscription["state"] == subscription_filter]
+    if flag_filter == "fraud":
+        rows = [row for row in rows if row.owner.open_fraud_flags > 0]
+    elif flag_filter == "dispute":
+        rows = [row for row in rows if row.owner.open_disputes > 0]
+    elif flag_filter == "no_login":
+        rows = [row for row in rows if row.owner.needs_claim]
+    return rows
+
+
 class PortfolioListView(APIView):
     """GET /api/portfolio/businesses/?scope=mine|team|all&health=&subscription=
+    &kyc=verified|pending|suspended&flag=fraud|dispute|no_login
     &scout=&zone=&unassigned=1&q=&page= — a DRF page of 25 plus `summary`."""
 
     def get_permissions(self):
@@ -338,27 +379,9 @@ class PortfolioListView(APIView):
 
     def get(self, request):
         now = timezone.now()
-        params = request.query_params
-        health_filter = _portfolio_choice_param(params, "health", health.RATINGS)
-        subscription_filter = _portfolio_choice_param(params, "subscription", SUBSCRIPTION_STATES)
-        owners = portfolio_queryset(request.user, params.get("scope"))
-        scout = _portfolio_id_param(params, "scout")
-        if scout is not None:
-            owners = owners.filter(account_manager_id=scout)
-        zone = _portfolio_id_param(params, "zone")
-        if zone is not None:
-            owners = owners.filter(profile__zone_id=zone)
-        if params.get("unassigned") in ("1", "true"):
-            owners = owners.filter(account_manager__isnull=True)
-        text = (params.get("q") or "").strip()
-        if text:
-            owners = owners.filter(_portfolio_search(text))
-        # Health is worked out per row, so filtering and sorting by it happen in
-        # Python over the whole filtered set before a page is cut: one query
-        # whatever the size, fine for thousands of businesses.
-        rows = health.rate_all(owners, now)
-        if subscription_filter:
-            rows = [row for row in rows if row.subscription["state"] == subscription_filter]
+        health_filter = _portfolio_choice_param(request.query_params, "health", health.RATINGS)
+        # One query whatever the size, fine for thousands of businesses.
+        rows = _filtered_rows(request, now)
         # Counted before the health filter, so every health chip keeps its count.
         summary = _portfolio_summary(rows, now)
         if health_filter:

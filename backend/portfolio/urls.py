@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import oversight, views
 
 urlpatterns = [
     path("register/check/", views.RegisterCheckView.as_view(), name="portfolio-register-check"),
@@ -9,6 +9,9 @@ urlpatterns = [
     path("businesses/<int:pk>/handover/", views.HandoverView.as_view(), name="portfolio-handover"),
     path("businesses/<int:pk>/claim-link/", views.ClaimLinkView.as_view(), name="portfolio-claim-link"),
     path("businesses/", views.PortfolioListView.as_view(), name="portfolio-business-list"),
+    path("businesses/counts/", oversight.BusinessCountsView.as_view(), name="portfolio-business-counts"),
+    path("businesses/export/", oversight.BusinessExportView.as_view(), name="portfolio-business-export"),
+    path("businesses/<int:pk>/oversight/", oversight.BusinessOversightView.as_view(), name="portfolio-business-oversight"),
     path("businesses/<int:pk>/", views.PortfolioBusinessDetailView.as_view(), name="portfolio-business-detail"),
     path("businesses/<int:pk>/orders/", views.BusinessOrdersView.as_view(), name="portfolio-business-orders"),
     path(

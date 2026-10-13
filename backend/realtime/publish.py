@@ -86,6 +86,13 @@ QUEUE_INVALIDATIONS = [
     ),
     (("staff-conversation-",), ("staff.invite_team",), ("ops-support-team",)),
     (("fraud.",), ("fraud.manage", "fraud.flag"), ("fraud-flags", "fraud-flag-counts", "kyc-queue", "portfolio-business", "staff-badges")),
+    # Super Admin marketplace screens (SA-5): each follows the events that change its list and its counts.
+    (("business.", "kyc-", "portfolio.", "subscription.", "fraud."), ("portfolio.manage",), ("sa-businesses",)),
+    (("customer.", "order-delivery-status-update", "order-assign-dispatch", "delivery-pickup", "delivery-deliver", "dispute-"), ("users.view",), ("sa-customers",)),
+    (("moderation-", "business.", "approval."), ("listings.moderate",), ("sa-listings",)),
+    (("order-delivery-status-update", "order-assign-dispatch", "delivery-pickup", "delivery-deliver", "dispute-"), ("orders.manage_delivery",), ("sa-orders",)),
+    (("event-moderation-", "escrow-", "event."), ("escrow.view", "event.approve"), ("sa-events",)),
+    (("dispute-",), ("disputes.flag", "disputes.resolve_financial"), ("sa-disputes",)),
 ]
 # (verb prefixes, extra keys for everyone who receives the feed event)
 FEED_KEYS = [

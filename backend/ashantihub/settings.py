@@ -112,6 +112,7 @@ INSTALLED_APPS = [
     "field",
     "targets",
     "operations",
+    "marketplace",
     "commission",
     "insights",
     "realtime",

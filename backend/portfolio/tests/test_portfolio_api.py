@@ -35,7 +35,8 @@ from portfolio.tests.health_fixtures import (
 TEST_MEDIA_ROOT = tempfile.mkdtemp()
 URL = "/api/portfolio/businesses/"
 ITEM_KEYS = {
-    "id", "business_name", "owner_name", "login_phone", "zone", "kyc_status", "registration_channel",
+    "id", "business_name", "owner_name", "login_phone", "zone", "kyc_status", "is_suspended", "suspension_reason",
+    "registration_channel",
     "needs_claim", "claimed_at", "account_manager", "health", "subscription", "listings_live",
     "listings_total", "listings_waiting", "last_order_at", "last_contact", "open_fraud_flags",
 }
