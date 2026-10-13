@@ -3,11 +3,35 @@ from rest_framework import serializers
 from .models import Conversation, Message
 
 
+def is_public_message(message):
+    """True only for a plain message the customer/owner/guest may read. Internal
+    notes and timeline events are staff-only: EVERY non-staff serializer goes
+    through this filter (the note-leak contract; see tests/test_note_leak.py)."""
+    return message.kind == Message.MESSAGE and not message.is_internal
+
+
 class MessageSerializer(serializers.ModelSerializer):
+    """The customer/owner/guest shape of a message: no author, no note flag."""
+
     class Meta:
         model = Message
         fields = ["id", "conversation", "sender_type", "body", "created_at"]
         read_only_fields = fields
+
+
+class StaffMessageSerializer(serializers.ModelSerializer):
+    """Staff-only shape: adds the kind (message / note / event) and the author.
+    Never used on a customer, owner or guest endpoint."""
+
+    author_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Message
+        fields = ["id", "conversation", "sender_type", "kind", "is_internal", "body", "author", "author_name", "created_at"]
+        read_only_fields = fields
+
+    def get_author_name(self, obj):
+        return obj.author.full_name if obj.author_id else ""
 
 
 class ConversationSerializer(serializers.ModelSerializer):
@@ -19,7 +43,7 @@ class ConversationSerializer(serializers.ModelSerializer):
     its own shape" convention).
     """
 
-    messages = MessageSerializer(many=True, read_only=True)
+    messages = serializers.SerializerMethodField()
     starter_name = serializers.SerializerMethodField()
 
     class Meta:
@@ -30,8 +54,22 @@ class ConversationSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    def get_messages(self, obj):
+        # Plain messages only: an internal note or timeline event never leaves
+        # the server through this (customer / owner / guest) serializer.
+        return MessageSerializer([m for m in obj.messages.all() if is_public_message(m)], many=True).data
+
     def get_starter_name(self, obj):
         return obj.starter_display_name
+
+
+class StaffConversationDetailSerializer(ConversationSerializer):
+    """Staff thread: every message, internal notes and timeline events included.
+    Subclasses the customer shape only to share its metadata fields; `messages`
+    is overridden, so this must never be used on a non-staff endpoint."""
+
+    def get_messages(self, obj):
+        return StaffMessageSerializer(obj.messages.all(), many=True).data
 
 
 class ConversationCreateSerializer(serializers.Serializer):
@@ -41,6 +79,15 @@ class ConversationCreateSerializer(serializers.Serializer):
 
     subject = serializers.CharField(max_length=200, required=False, allow_blank=True, default="")
     body = serializers.CharField()
+    # Optional context from the surface that knows it (listing page, order page,
+    # business dashboard help). Ids only; a bad id is ignored, never an error,
+    # because the conversation matters more than its label.
+    about_business = serializers.IntegerField(required=False, allow_null=True)
+    about_listing = serializers.IntegerField(required=False, allow_null=True)
+    about_order = serializers.IntegerField(required=False, allow_null=True)
+    source = serializers.ChoiceField(
+        choices=["app", "listing_page", "order_page", "business_dashboard", "guest_chat"], required=False, default="app",
+    )
 
 
 class MessageCreateSerializer(serializers.Serializer):
@@ -75,7 +122,8 @@ class StaffConversationListSerializer(serializers.ModelSerializer):
         # Relies on the queryset having .prefetch_related("messages") so
         # obj.messages.all() doesn't hit the DB per row; Message.Meta.ordering
         # is ["created_at"] ascending, so the last element is the latest.
-        msgs = list(obj.messages.all())
+        # Notes and timeline events do not count as the customer's last word.
+        msgs = [m for m in obj.messages.all() if is_public_message(m)]
         return msgs[-1] if msgs else None
 
     def get_needs_reply(self, obj):

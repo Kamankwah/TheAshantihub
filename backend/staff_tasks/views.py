@@ -1,5 +1,6 @@
 import datetime as dt
 
+from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework import generics
@@ -12,8 +13,9 @@ from accounts.permissions import IsStaff
 from notifications.services import notify_staff
 
 from .models import Task
-from .serializers import TaskSerializer, _subscription_states
+from .serializers import TaskDueSerializer, TaskSerializer, _subscription_states
 from .services import create_task
+from activity import services as activity
 
 MAX_ROWS = 200
 
@@ -42,6 +44,9 @@ class TaskListCreateView(generics.ListCreateAPIView):
         now = timezone.now()
         if view == "done":
             return mine.filter(status=Task.DONE).order_by("-done_at")[:MAX_ROWS]
+        if view == "done_today":
+            start = timezone.make_aware(dt.datetime.combine(timezone.localdate(), dt.time.min))
+            return mine.filter(status=Task.DONE, done_at__gte=start).order_by("-done_at")[:MAX_ROWS]
         open_tasks = mine.filter(status=Task.OPEN)
         if view == "overdue":
             open_tasks = open_tasks.filter(due_at__lt=now)
@@ -89,6 +94,43 @@ class TaskListCreateView(generics.ListCreateAPIView):
         if owner is None:
             raise ValidationError({"owner": "You can give tasks only to yourself or your direct reports."})
         return owner
+
+
+class TaskDetailView(APIView):
+    """PATCH <id>/ — move a task's due date. The owner or the owner's manager
+    (a lead) only; the change is recorded in the activity log."""
+
+    def get_permissions(self):
+        return [IsStaff()]
+
+    def patch(self, request, pk):
+        task = generics.get_object_or_404(
+            Task.objects.select_related("owner", "business_owner__profile", "created_by"),
+            Q(owner=request.user) | Q(owner__manager=request.user), pk=pk,
+        )
+        unknown = set(request.data) - {"due_at"}
+        if unknown:
+            raise ValidationError({"detail": "Only the due date can be changed."})
+        serializer = TaskDueSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            task = Task.objects.select_for_update().get(pk=task.pk)
+            if task.status != Task.OPEN:
+                raise ValidationError({"detail": "Only an open task can be moved."})
+            before = task.due_at
+            task.due_at = serializer.validated_data["due_at"]
+            task.save(update_fields=["due_at"])
+            activity.record(
+                request.user, "task.due_moved", target=task, method="PATCH",
+                summary=f"Moved the due date of \"{task.title}\"",
+                before={"due_at": before.isoformat()}, after={"due_at": task.due_at.isoformat()}, request=request,
+            )
+            if task.owner_id != request.user.pk:
+                notify_staff(
+                    task.owner, "task_moved", f"{request.user.full_name} moved a task's due date",
+                    body=task.title, link="tasks", icon="✅",
+                )
+        return Response(TaskSerializer(task).data)
 
 
 class _TaskStatusView(APIView):

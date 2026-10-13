@@ -18,7 +18,9 @@ function makeAuth(overrides = {}) {
   return {
     user: {
       token: 't', account_type: 'staff', id: 1, full_name: 'Akosua Support',
-      role: 'support', permissions: ['messaging.manage', 'disputes.flag', 'users.view'],
+      // Not 'support': Support now has its own exhaustive canvas menu (navModel.test.js), so the
+      // generic legacy-menu session in this contract uses a role with no tool-specific menu.
+      role: 'accountant', permissions: ['messaging.manage', 'disputes.flag', 'users.view'],
     },
     hasPermission: (codename) => ['messaging.manage', 'disputes.flag', 'users.view'].includes(codename),
     ...overrides,
@@ -1519,6 +1521,9 @@ describe('StaffDashboard Disputes', () => {
     await screen.findByText(/Order #9/)
     expect(screen.queryByText('✓ Resolve')).not.toBeInTheDocument()
     fireEvent.click(screen.getByText('🚩 Flag'))
+    // Flagging needs a summary for Accounting, so the row asks for one first.
+    fireEvent.change(screen.getByLabelText('Summary for Accounting'), { target: { value: 'Customer says it never arrived.' } })
+    fireEvent.click(screen.getByText('Confirm flag'))
     await waitFor(() => expect(flagCalled).toBe(true))
   })
 
@@ -1610,6 +1615,8 @@ describe('StaffDashboard Disputes', () => {
     fireEvent.click(screen.getByText('Disputes'))
     await screen.findByText(/Order #9/)
     fireEvent.click(screen.getByText('🚩 Flag'))
+    fireEvent.change(screen.getByLabelText('Summary for Accounting'), { target: { value: 'Customer says it never arrived.' } })
+    fireEvent.click(screen.getByText('Confirm flag'))
     await screen.findByText('Could not flag this dispute.')
   })
 })

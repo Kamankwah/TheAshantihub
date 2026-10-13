@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import support, views
 
 urlpatterns = [
     path("checkout/", views.OrderCheckoutView.as_view(), name="order-checkout"),
@@ -14,6 +14,9 @@ urlpatterns = [
     path("dispatch/", views.MyDeliveriesView.as_view(), name="order-my-deliveries"),
     path("delivery/<int:pk>/pickup/", views.DeliveryPickupView.as_view(), name="delivery-pickup"),
     path("delivery/<int:pk>/deliver/", views.DeliveryDeliverView.as_view(), name="delivery-deliver"),
+    path("support/", support.SupportOrderSearchView.as_view(), name="order-support-search"),
+    path("support/<int:pk>/", support.SupportOrderDetailView.as_view(), name="order-support-detail"),
+    path("<int:pk>/support-status/", support.SupportOrderStatusView.as_view(), name="order-support-status"),
     path("", views.OrderListView.as_view(), name="order-list"),
     path("<int:pk>/", views.OrderDetailView.as_view(), name="order-detail"),
     path(

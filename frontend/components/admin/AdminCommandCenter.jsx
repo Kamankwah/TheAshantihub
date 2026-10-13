@@ -38,6 +38,10 @@ import SubscriptionPlansManagePanel from "./panels/SubscriptionPlansManagePanel.
 import SubscriptionPlanApprovalPanel from "./panels/SubscriptionPlanApprovalPanel.jsx";
 import DeliveryManagementPanel from "./panels/DeliveryManagementPanel.jsx";
 import ContactMessagesPanel from "./panels/ContactMessagesPanel.jsx";
+import SupportContactPanel from "./panels/SupportContactPanel.jsx";
+import SupportReviewsPanel from "./panels/SupportReviewsPanel.jsx";
+import SupportDisputeIntakePanel from "./panels/SupportDisputeIntakePanel.jsx";
+import SupportOrderStatusPanel from "./panels/SupportOrderStatusPanel.jsx";
 import UsersPanel from "./panels/UsersPanel.jsx";
 import CategoriesZonesPanel from "./panels/CategoriesZonesPanel.jsx";
 import ZonesPanel from "./panels/ZonesPanel.jsx";
@@ -60,7 +64,7 @@ import DispatchPanel from "./panels/DispatchPanel.jsx";
 import MessagingPanel from "./panels/MessagingPanel.jsx";
 import PromotionsPanel from "./panels/PromotionsPanel.jsx";
 import AnalyticsPanel from "./panels/AnalyticsPanel.jsx";
-import { buildNavGroups, makeBadgeFor, isPermittedTab, overviewLabel, PLACEHOLDER_TABS } from "./shell/navModel.js";
+import { buildNavGroups, makeBadgeFor, isPermittedTab, overviewLabel, PLACEHOLDER_TABS, COUNT_ONLY_TABS } from "./shell/navModel.js";
 import StaffNavList from "./shell/StaffNavList.jsx";
 import { pickBottomBarItems } from "./shell/navModel.js";
 import useBreakpoint from "../../hooks/useBreakpoint.js";
@@ -76,6 +80,11 @@ import ActivityPanel from "./panels/ActivityPanel.jsx";
 import StaffActivityPanel from "./panels/StaffActivityPanel.jsx";
 import TeamVisitMapPanel from "./panels/TeamVisitMapPanel.jsx";
 import CallLogPanel from "./panels/CallLogPanel.jsx";
+import SupportLogCallPage from "./panels/SupportLogCallPage.jsx";
+import SupportInboxPanel from "./panels/SupportInboxPanel.jsx";
+import SupportCannedPanel from "./panels/SupportCannedPanel.jsx";
+import SupportTagsPanel from "./panels/SupportTagsPanel.jsx";
+import SupportPeoplePanel from "./panels/SupportPeoplePanel.jsx";
 import TargetsPanel from "./panels/TargetsPanel.jsx";
 import CommissionPanel from "./panels/CommissionPanel.jsx";
 import LeaderboardPanel from "./panels/LeaderboardPanel.jsx";
@@ -145,6 +154,11 @@ import { setViewAsScreen } from "../../lib/viewAs.js";
 // A Super Admin stepped into someone's workspace sees that person's real
 // shell, read-only, under a banner (stepin/StepInGate.jsx); otherwise this is
 // the shell as always.
+const SUPPORT_INBOX_SCOPES = {
+  "support-mine": "mine", "support-unassigned": "unassigned", "support-all-open": "all", "support-past-limit": "past",
+  "support-snoozed": "snoozed", "support-resolved": "resolved",
+};
+
 export default function AdminCommandCenter(props) {
   return <StepInGate Shell={StaffShell} {...props} />;
 }
@@ -257,14 +271,25 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
   // The scoreboard's Open / View: All portfolios filtered to one scout.
   const [scoutFilter, setScoutFilter] = useState(null);
   const openScoutPortfolio = (scoutId) => { selectTab("all-portfolios"); setScoutFilter(scoutId); };
+  // Support: a profile opened from a conversation, a conversation linked into Log a call, an order opened
+  // from a profile or thread. Each is cleared when its tab is chosen from the menu.
+  const [supportProfile, setSupportProfile] = useState(null);
+  const [callLink, setCallLink] = useState(null);
+  const [supportOrder, setSupportOrder] = useState(null);
   const selectTab = (id) => {
     setScoutFilter(null);
+    if (id === "users") setSupportProfile(null);
+    if (id === "support-log-call") setCallLink(null);
+    if (id === "support-order-status") setSupportOrder(null);
     setDrawerOpen(false);
     if (id === activeTab && detail == null) return;
     setInternalDetail(null);
     if (isControlled) onTabChange?.(id);
     else setInternalTab(id);
   };
+  const supportNavigate = (id, params) => { selectTab(id); if (params?.order) setSupportOrder(params.order); };
+  const openSupportProfile = (kind, id) => { selectTab("users"); setSupportProfile({ kind, id }); };
+  const openSupportLog = (link) => { selectTab("support-log-call"); setCallLink(link || null); };
   const openDetail = (id) => {
     if (isControlled) onTabChange?.(id == null ? activeTab : `${activeTab}/${id}`);
     else setInternalDetail(id);
@@ -367,7 +392,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
             {isDesktop && !sidebarCollapsed && <div style={{ color: D.gold, fontWeight: 900, fontSize: "0.85rem" }}>AshantiHub Staff</div>}
           </div>
           {isDesktop && <button onClick={() => setSidebarCollapsed(s => !s)} style={{ background: "none", border: "none", color: D.textDim, cursor: "pointer", padding: "8px 12px", fontSize: "0.7rem", fontFamily: "inherit", width: "100%", textAlign: "left" }}>{sidebarCollapsed ? "→" : "← Collapse"}</button>}
-          <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={navSelect} collapsed={!isDesktop || sidebarCollapsed} badgeFor={badgeFor} roleColor={roleColor} overviewLabel={overviewLabel(role)} noteFor={noteFor} />
+          <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={navSelect} collapsed={!isDesktop || sidebarCollapsed} badgeFor={badgeFor} roleColor={roleColor} overviewLabel={overviewLabel(role)} noteFor={noteFor} countOnly={COUNT_ONLY_TABS[role]} />
         </div>
       )}
 
@@ -403,19 +428,20 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "hero" && <HeroApprovalPanel />}
           {activeTab === "events-moderation" && (role === "super_admin" ? <SaEventsPanel /> : <EventsModerationPanel />)}
           {activeTab === "event-pricing" && <EventPricingPanel auth={auth} />}
-          {activeTab === "reviews" && <ReviewsModerationPanel auth={auth} />}
+          {activeTab === "reviews" && (role === "support" ? <SupportReviewsPanel /> : <ReviewsModerationPanel auth={auth} />)}
           {activeTab === "subscription-plans" && <SubscriptionPlansManagePanel />}
           {activeTab === "subscription-plans-approval" && (role === "super_admin" ? <PlansPricesPanel /> : <SubscriptionPlanApprovalPanel />)}
           {activeTab === "delivery" && (role === "super_admin" ? <SaOrdersPanel /> : <DeliveryManagementPanel />)}
-          {activeTab === "contact-messages" && <ContactMessagesPanel auth={auth} />}
-          {activeTab === "users" && (role === "super_admin" ? <SaCustomersPanel auth={auth} /> : <UsersPanel auth={auth} />)}
+          {activeTab === "contact-messages" && (role === "support" ? <SupportContactPanel auth={auth} onNavigate={selectTab} /> : <ContactMessagesPanel auth={auth} />)}
+          {activeTab === "users" && (role === "super_admin" ? <SaCustomersPanel auth={auth} /> : role === "support" ? <SupportPeoplePanel profile={supportProfile} onOpenProfile={openSupportProfile} onBack={() => setSupportProfile(null)} onLogCall={openSupportLog} onNavigate={supportNavigate} /> : <UsersPanel auth={auth} />)}
           {activeTab === "categories-zones" && <CategoriesZonesPanel auth={auth} />}
           {activeTab === "site-settings" && <SiteSettingsPanel showToast={showToast} />}
           {activeTab === "staff" && (role === "super_admin" ? <StaffDirectoryPanel auth={auth} detailId={detail} onOpenDetail={openDetail} onNavigate={selectTab} onViewAs={auth.hasPermission("staff.view_as") ? startViewAs : undefined} /> : <StaffManagementPanel />)}
           {activeTab === "teams-reporting" && <SaTeamsPanel onOpenStaff={openStaff} />}
           {activeTab === "roles-permissions" && <RolesPermissionsPanel />}
           {activeTab === "escrow" && <EscrowLedgerPanel auth={auth} />}
-          {activeTab === "disputes" && (role === "super_admin" ? <SaDisputesPanel auth={auth} /> : <DisputesPanel auth={auth} />)}
+          {activeTab === "disputes" && (role === "super_admin" ? <SaDisputesPanel auth={auth} /> : role === "support" ? <SupportDisputeIntakePanel /> : <DisputesPanel auth={auth} />)}
+          {activeTab === "support-order-status" && role === "support" && <SupportOrderStatusPanel key={supportOrder || "none"} orderId={supportOrder} />}
           {activeTab === "transactions" && (role === "super_admin" ? <RevenueSalesPanel /> : <TransactionsReportPanel />)}
           {activeTab === "credit" && <CreditPanel />}
           {activeTab === "scout-assignments" && <ScoutAssignmentsPanel />}
@@ -430,7 +456,8 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
             : <TasksPanel auth={auth} />)}
           {activeTab === "activity" && (role === "operations" || role === "super_admin" ? <StaffActivityPanel live={live.live} superAdmin={role === "super_admin"} /> : <ActivityPanel />)}
           {activeTab === "visit-map" && <TeamVisitMapPanel onOpenBusiness={openBusiness} />}
-          {activeTab === "calls" && <CallLogPanel auth={auth} />}
+          {activeTab === "calls" && <CallLogPanel auth={auth} onLogCall={() => selectTab("support-log-call")} />}
+          {activeTab === "support-log-call" && <SupportLogCallPage presetLink={callLink} onDone={() => selectTab("calls")} onSeeLog={() => selectTab("calls")} />}
           {activeTab === "prospects" && <ProspectsPanel onRegister={openRegisterFromProspect} />}
           {activeTab === "targets" && (role === "super_admin" ? <TargetLimitsPanel onOpenApproval={openApproval} /> : role !== "super_admin" && auth.hasPermission("businesses.manage_portfolio") ? <TargetsPanel /> : auth.hasPermission("targets.manage") ? <OpsTargetsPanel /> : <ScreenBuildingPanel title="Team targets" />)}
           {activeTab === "ops-scouts" && <OpsScoutsPanel auth={auth} onNavigate={selectTab} onOpenScout={openScoutPortfolio} />}
@@ -438,6 +465,9 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "support-issues" && <ServiceIssuesPanel auth={auth} onOpenBusiness={openBusiness} />}
           {activeTab === "deliveries-returns" && <DeliveriesReturnsPanel auth={auth} />}
           {activeTab === "support-team" && <SupportTeamPanel onNavigate={selectTab} />}
+          {role === "support" && SUPPORT_INBOX_SCOPES[activeTab] && <SupportInboxPanel key={activeTab} scope={SUPPORT_INBOX_SCOPES[activeTab]} auth={auth} onNavigate={supportNavigate} onOpenProfile={openSupportProfile} onLogCall={openSupportLog} />}
+          {activeTab === "support-canned" && role === "support" && <SupportCannedPanel />}
+          {activeTab === "support-tags" && role === "support" && <SupportTagsPanel />}
           {PLACEHOLDER_TABS[role]?.has(activeTab) && <ScreenBuildingPanel title={activeLabel} />}
           {activeTab.startsWith("step-in-") && <StepInPanel teamId={activeTab.slice("step-in-".length)} auth={auth} />}
           {activeTab === "hero-events" && <HeroEventsPanel auth={auth} />}
@@ -506,7 +536,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
             <button type="button" onClick={signOut} style={{ minHeight: 44, background: "rgba(44,24,16,0.05)", border: `1px solid ${D.divider}`, color: D.text, borderRadius: 20, padding: "0 16px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Sign out</button>
           </div>
         </div>}
-        <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={navSelect} collapsed={false} badgeFor={badgeFor} roleColor={roleColor} itemMinHeight={44} overviewLabel={overviewLabel(role)} noteFor={noteFor} />
+        <StaffNavList navGroups={navGroups} activeTab={activeTab} onSelect={navSelect} collapsed={false} badgeFor={badgeFor} roleColor={roleColor} itemMinHeight={44} overviewLabel={overviewLabel(role)} noteFor={noteFor} countOnly={COUNT_ONLY_TABS[role]} />
         {isScout && <ScoutDevices />}
         {isScout && (
           <div style={{ padding: "0 14px 16px", display: "flex", gap: 8, flexWrap: "wrap" }}>

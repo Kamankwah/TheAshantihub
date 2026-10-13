@@ -46,6 +46,11 @@ class ContactMessage(models.Model):
         related_name="resolved_contact_messages",
     )
     resolved_at = models.DateTimeField(null=True, blank=True)
+    # Handed to the Operations lead as a follow-up Task (there is no leads model).
+    passed_to_operations_at = models.DateTimeField(null=True, blank=True)
+    passed_by = models.ForeignKey(
+        StaffUser, null=True, blank=True, on_delete=models.SET_NULL, related_name="+",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -53,3 +58,18 @@ class ContactMessage(models.Model):
 
     def __str__(self):
         return f"{self.get_category_display()} message from {self.name} ({self.status})"
+
+
+class ContactReply(models.Model):
+    """An email reply a staffer sent to a contact-form sender. The sender has no
+    account or chat thread, so email is the only answer path; `email_sent`
+    records whether the mail backend accepted it (never a delivery claim)."""
+
+    message = models.ForeignKey(ContactMessage, on_delete=models.CASCADE, related_name="replies")
+    staff = models.ForeignKey(StaffUser, null=True, on_delete=models.SET_NULL, related_name="+")
+    body = models.TextField()
+    email_sent = models.BooleanField(default=False)
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["sent_at", "id"]

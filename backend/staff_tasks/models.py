@@ -14,6 +14,12 @@ class Task(models.Model):
     PROSPECT_FOLLOW_UP = "prospect_follow_up"
     OPS_FOLLOW_UP = "ops_follow_up"
     MANUAL = "manual"
+    # Support desk kinds (Package B creates these; the label map lives in
+    # staff_tasks.services.KIND_LABELS).
+    SNOOZE_WAKE = "snooze_wake"
+    HANDOVER = "handover"
+    ESCALATION_FOLLOW_UP = "escalation_follow_up"
+    LEAD_ASSIGNED = "lead_assigned"
     KIND_CHOICES = [
         (SUBSCRIPTION_OVERDUE, "Subscription overdue"),
         (DELIVERY_PROBLEM, "Delivery problem"),
@@ -22,6 +28,10 @@ class Task(models.Model):
         (PROSPECT_FOLLOW_UP, "Prospect follow-up"),
         (OPS_FOLLOW_UP, "Follow-up from a lead"),
         (MANUAL, "Added by hand"),
+        (SNOOZE_WAKE, "Snoozed conversation wakes"),
+        (HANDOVER, "Handed over to you"),
+        (ESCALATION_FOLLOW_UP, "Escalation to follow up"),
+        (LEAD_ASSIGNED, "Lead assigned to you"),
     ]
 
     owner = models.ForeignKey("accounts.StaffUser", on_delete=models.CASCADE, related_name="tasks")

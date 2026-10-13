@@ -15,4 +15,19 @@ urlpatterns = [
         views.ContactMessageResolveView.as_view(),
         name="contact-message-resolve",
     ),
+    path(
+        "core/contact-messages/<int:pk>/mark-unread/",
+        views.ContactMessageMarkUnreadView.as_view(),
+        name="contact-message-mark-unread",
+    ),
+    path(
+        "core/contact-messages/<int:pk>/reply/",
+        views.ContactMessageReplyView.as_view(),
+        name="contact-message-reply",
+    ),
+    path(
+        "core/contact-messages/<int:pk>/pass-to-operations/",
+        views.ContactMessagePassToOperationsView.as_view(),
+        name="contact-message-pass-to-operations",
+    ),
 ]

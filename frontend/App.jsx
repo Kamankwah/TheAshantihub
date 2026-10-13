@@ -509,7 +509,12 @@ export function MessagingCenter({ user, onClose, initialBusiness, embedded = fal
         await apiPost(`/api/messaging/conversations/${activeConv.id}/messages/`, { body: newMessage, ...guestFields });
       } else {
         const subject = initialBusiness ? subjectLine(initialBusiness.name) : "";
-        const created = await apiPost(`/api/messaging/conversations/`, { subject, body: newMessage, ...guestFields });
+        // What the conversation is about, for Support's context pane (a listing opened it). Ids only;
+        // the thread stays with AshantiHub Support, never with the business.
+        const aboutFields = initialBusiness?.id
+          ? { about_listing: initialBusiness.id, ...(initialBusiness.business_owner?.id ? { about_business: initialBusiness.business_owner.id } : {}), source: "listing_page" }
+          : {};
+        const created = await apiPost(`/api/messaging/conversations/`, { subject, body: newMessage, ...aboutFields, ...guestFields });
         setActiveConvId(created.id);
       }
       setNewMessage("");

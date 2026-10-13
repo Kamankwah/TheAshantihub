@@ -229,6 +229,20 @@ class StaffBadgesView(APIView):
                 .count()
             )
 
+        # Support desk menu counts (messaging.manage): Mine / Unassigned / All open /
+        # Past time limit / Snoozed in one aggregate query, plus the disputes waiting
+        # for Support's intake (status open; with Accounting once flagged).
+        support_counts = {"mine": 0, "unassigned": 0, "all_open": 0, "past_limit": 0, "snoozed": 0}
+        disputes_intake = 0
+        if "messaging.manage" in held:
+            from messaging import services as messaging_services
+
+            support_counts = messaging_services.desk_counts(user)
+        if "disputes.flag" in held:
+            from disputes.models import Dispute
+
+            disputes_intake = Dispute.objects.filter(status=Dispute.OPEN).count()
+
         # Escrow tab is gated by any of view/release/refund (see
         # AdminCommandCenter's nav), so its badge is too.
         can_escrow = held & {"escrow.view", "escrow.release", "escrow.refund"}
@@ -287,6 +301,12 @@ class StaffBadgesView(APIView):
                 "team_reports_waiting": team_reports_waiting,
                 "support_issues": support_issues,
                 "deliveries_open": deliveries_open,
+                "support_mine": support_counts["mine"],
+                "support_unassigned": support_counts["unassigned"],
+                "support_all_open": support_counts["all_open"],
+                "support_past_limit": support_counts["past_limit"],
+                "support_snoozed": support_counts["snoozed"],
+                "disputes_intake": disputes_intake,
                 "invites_open": invites_open,
                 "disputes_open": disputes_open,
                 "reports_hub": reports_hub,

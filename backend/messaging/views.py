@@ -1,18 +1,12 @@
+from django.db import transaction
 from rest_framework import generics
 from rest_framework.exceptions import PermissionDenied
-from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from accounts.models import BusinessOwner, Customer
-from accounts.permissions import HasRolePermission
-from notifications.services import (
-    notify_business_owner,
-    notify_customer,
-    notify_staff_role,
-)
 
 from .models import Conversation, Message
 from .serializers import (
@@ -20,8 +14,8 @@ from .serializers import (
     ConversationSerializer,
     MessageCreateSerializer,
     MessageSerializer,
-    StaffConversationListSerializer,
 )
+from . import services
 
 # A guest token is a browser-generated random id (crypto.randomUUID —
 # 36 chars) persisted in localStorage. The length floor rejects trivially
@@ -69,6 +63,50 @@ def _sender_type(request):
     return Message.GUEST
 
 
+def _about_links(data, request):
+    """The optional about_* ids a surface sent, resolved to rows the CALLER may name.
+    Staff-only context, never serialized back. Anything the caller could not
+    legitimately point at is silently dropped (the thread still starts):
+    - customer: only their own orders; published listings/businesses.
+    - business owner: only their own business and listings, and orders that
+      contain their listings.
+    - guest: no order link; published listings/businesses only."""
+    from listings.models import Listing
+    from orders.models import Order
+
+    user = request.user
+    is_customer = isinstance(user, Customer)
+    is_owner = isinstance(user, BusinessOwner)
+    links = {}
+    if data.get("about_listing"):
+        listings = Listing.objects.filter(pk=data["about_listing"])
+        listings = listings.filter(business_owner=user) if is_owner else listings.filter(status=Listing.PUBLISHED)
+        listing = listings.select_related("business_owner").first()
+        if listing:
+            links["about_listing"] = listing
+            links["about_business"] = listing.business_owner
+    if data.get("about_business") and "about_business" not in links:
+        if is_owner:
+            if data["about_business"] == user.pk:
+                links["about_business"] = user
+        else:
+            owner = BusinessOwner.objects.filter(
+                pk=data["about_business"], listings__status=Listing.PUBLISHED
+            ).distinct().first()
+            if owner:
+                links["about_business"] = owner
+    if data.get("about_order"):
+        orders = Order.objects.none()
+        if is_customer:
+            orders = Order.objects.filter(pk=data["about_order"], customer=user)
+        elif is_owner:
+            orders = Order.objects.filter(pk=data["about_order"], items__listing__business_owner=user).distinct()
+        order = orders.first()
+        if order:
+            links["about_order"] = order
+    return links
+
+
 class ConversationListCreateView(generics.ListCreateAPIView):
     """GET /api/messaging/conversations/ — the caller's own conversations,
     full thread included; anonymous callers pass ?guest_token=. POST starts
@@ -91,21 +129,25 @@ class ConversationListCreateView(generics.ListCreateAPIView):
         scope = _conversation_scope(request)
         serializer = ConversationCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        conversation = Conversation.objects.create(
-            subject=serializer.validated_data["subject"],
-            status=Conversation.OPEN,
-            **scope,
-        )
-        Message.objects.create(
-            conversation=conversation,
-            sender_type=_sender_type(request),
-            body=serializer.validated_data["body"],
-        )
-        notify_staff_role(
-            "messaging.manage", "new_message", "New support conversation",
-            body=f"{conversation.starter_display_name} started a support conversation.",
-            link="messaging", icon="💬",
-        )
+        data = serializer.validated_data
+        with transaction.atomic():
+            conversation = services.start_conversation(
+                subject=data["subject"],
+                source="guest_chat" if "guest_token" in scope and data["source"] == "app" else data["source"],
+                **_about_links(data, request),
+                **scope,
+            )
+            Message.objects.create(
+                conversation=conversation,
+                sender_type=_sender_type(request),
+                body=serializer.validated_data["body"],
+            )
+            # The assignee is told; an unassigned thread tells whoever is on shift (not the whole desk).
+            who = conversation.starter_display_name if conversation.guest_token is None else f"Guest (thread {conversation.pk})"
+            services.notify_assignee(
+                conversation, "New support conversation", f"{who} started a support conversation.",
+                link="support-mine" if conversation.assignee_id else "support-unassigned",
+            )
         return Response(ConversationSerializer(conversation).data, status=201)
 
 
@@ -125,69 +167,7 @@ class ConversationMessageCreateView(APIView):
         )
         serializer = MessageCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        message = Message.objects.create(
-            conversation=conversation, sender_type=_sender_type(request), body=serializer.validated_data["body"],
-        )
-        conversation.save()  # bump updated_at (auto_now) for the staff queue's recency ordering
-        return Response(MessageSerializer(message).data, status=201)
-
-
-class StaffConversationPagination(PageNumberPagination):
-    page_size = 20
-
-
-class StaffConversationListView(generics.ListAPIView):
-    """GET /api/messaging/staff/ — every conversation, staff-only
-    (messaging.manage), each annotated with a needs_reply indicator."""
-
-    serializer_class = StaffConversationListSerializer
-    queryset = Conversation.objects.all().select_related("customer", "business_owner").prefetch_related("messages")
-    pagination_class = StaffConversationPagination
-
-    def get_permissions(self):
-        return [HasRolePermission("messaging.manage")]
-
-
-class StaffConversationDetailView(generics.RetrieveAPIView):
-    """GET /api/messaging/staff/{id}/ — full thread for one conversation,
-    staff-only. Not explicitly required by the original request but the
-    natural companion to the list above (a "needs_reply" flag alone doesn't
-    tell staff what to reply to) and to the reply endpoint below."""
-
-    serializer_class = ConversationSerializer
-    queryset = Conversation.objects.all().prefetch_related("messages")
-
-    def get_permissions(self):
-        return [HasRolePermission("messaging.manage")]
-
-
-class StaffConversationReplyView(APIView):
-    """POST /api/messaging/staff/{id}/reply/ — staff-only
-    (messaging.manage), posts a Message with sender_type=staff."""
-
-    def get_permissions(self):
-        return [HasRolePermission("messaging.manage")]
-
-    def post(self, request, pk):
-        conversation = generics.get_object_or_404(Conversation, pk=pk)
-        serializer = MessageCreateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        message = Message.objects.create(
-            conversation=conversation, sender_type=Message.STAFF, body=serializer.validated_data["body"],
-        )
-        conversation.save()
-        # Notify the account that owns the thread (a guest thread has no
-        # account to notify — notify_* no-ops on a None recipient).
-        if conversation.customer_id:
-            notify_customer(
-                conversation.customer, "support_reply", "AshantiHub Support replied",
-                body="You have a new reply from AshantiHub Support.",
-                link="/my-account", icon="💬",
-            )
-        elif conversation.business_owner_id:
-            notify_business_owner(
-                conversation.business_owner, "support_reply", "AshantiHub Support replied",
-                body="You have a new reply from AshantiHub Support.",
-                link="/business-dashboard", icon="💬",
-            )
+        # Wakes a snoozed thread, reopens one resolved within 7 days, or (older) starts a
+        # new linked conversation; see messaging.services.route_customer_message.
+        _, message = services.route_customer_message(conversation.pk, _sender_type(request), serializer.validated_data["body"])
         return Response(MessageSerializer(message).data, status=201)

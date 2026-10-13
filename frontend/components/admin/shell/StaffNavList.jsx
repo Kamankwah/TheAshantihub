@@ -4,7 +4,7 @@ import { D } from "../theme.js";
 // groups). Shared by the desktop sidebar, the tablet icon rail (collapsed),
 // and the phone/tablet drawer — markup/text is the pre-extraction sidebar's,
 // unchanged, because StaffDashboard.test.jsx asserts on these labels.
-export default function StaffNavList({ navGroups, activeTab, onSelect, collapsed, badgeFor, roleColor, itemMinHeight, overviewLabel = "Overview", noteFor }) {
+export default function StaffNavList({ navGroups, activeTab, onSelect, collapsed, badgeFor, roleColor, itemMinHeight, overviewLabel = "Overview", noteFor, countOnly }) {
   const itemStyle = (active) => ({
     display: "flex", alignItems: "center", gap: 10, width: "100%", minHeight: itemMinHeight,
     background: active ? `${roleColor}22` : "none",
@@ -42,7 +42,10 @@ export default function StaffNavList({ navGroups, activeTab, onSelect, collapsed
                 {!collapsed && note && badgeCount === 0 && (
                   <span style={{ background: "#FBF3DC", color: "#6A4A00", borderRadius: 10, height: 18, fontSize: "0.62rem", fontWeight: 800, display: "flex", alignItems: "center", padding: "0 7px", flexShrink: 0 }}>{note}</span>
                 )}
-                {!collapsed && badgeCount > 0 && (
+                {!collapsed && badgeCount > 0 && countOnly?.has(item.id) && (
+                  <span aria-label={`${badgeCount} open`} style={{ color: D.textDim, fontSize: "0.7rem", fontWeight: 700, flexShrink: 0 }}>{badgeCount > 99 ? "99+" : badgeCount}</span>
+                )}
+                {!collapsed && badgeCount > 0 && !countOnly?.has(item.id) && (
                   <span aria-label={`${badgeCount} pending`} style={{ background: D.red, color: "#fff", borderRadius: 10, minWidth: 18, height: 18, fontSize: "0.62rem", fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px", flexShrink: 0 }}>
                     {badgeCount > 99 ? "99+" : badgeCount}
                   </span>

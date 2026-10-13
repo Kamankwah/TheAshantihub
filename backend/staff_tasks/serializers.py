@@ -3,6 +3,7 @@ from rest_framework import serializers
 from billing.clock import GRACE_DAYS, subscription_state
 
 from .models import Task
+from .services import KIND_LABELS, source_link
 
 ORDER_SOURCE = "orders.order"
 PROSPECT_SOURCE = "field.prospect"
@@ -17,6 +18,10 @@ def _subscription_states(ids):
     }
 
 
+class TaskDueSerializer(serializers.Serializer):
+    due_at = serializers.DateTimeField()
+
+
 class TaskSerializer(serializers.ModelSerializer):
     """A follow-up. `business` and `prospect` are what it is about (null when
     nothing); `order_id` is the order of a delivery problem. Nothing here
@@ -28,14 +33,23 @@ class TaskSerializer(serializers.ModelSerializer):
     created_by_name = serializers.SerializerMethodField()
     overdue = serializers.SerializerMethodField()
     owner = serializers.SerializerMethodField()
+    kind_label = serializers.SerializerMethodField()
+    source_link = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
         fields = [
             "id", "title", "notes", "due_at", "status", "done_at", "kind", "business", "prospect", "order_id",
             "overdue", "owner", "created_by_name", "source_type", "source_id", "created_at",
+            "kind_label", "source_link",
         ]
         read_only_fields = ["status", "done_at", "kind", "source_type", "source_id", "created_at"]
+
+    def get_kind_label(self, task):
+        return KIND_LABELS.get(task.kind, task.kind)
+
+    def get_source_link(self, task):
+        return source_link(task)
 
     def get_owner(self, task):
         return {"id": task.owner_id, "name": task.owner.full_name}

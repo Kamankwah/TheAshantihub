@@ -123,6 +123,7 @@ class PublishTests(TestCase):
             ("subscription-plan-approve", ["perm.subscription_plans.approve"], ["subscription-plan-pending-queue", "staff-badges"]),
             ("escrow-release", ["perm.escrow.view"], ["escrow-ledger", "staff-badges"]),
             ("order-delivery-status-update", ["perm.orders.manage_delivery"], ["delivery-queue"]),
+            ("order-support-status", ["perm.orders.support_update"], ["support-orders"]),
         ]
         for verb, groups, keys in cases:
             for group in groups:

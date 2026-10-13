@@ -122,3 +122,28 @@ class DeliveryAssignment(models.Model):
 
     def __str__(self):
         return f"Delivery for Order {self.order_id} → dispatch {self.dispatch_id} ({self.status})"
+
+
+class OrderSupportNote(models.Model):
+    """What AshantiHub Support did to an order on the Order status screen:
+    marked it running late (with the new expected time as typed text) or
+    cancelled it at the customer's request. Append-only; it never changes
+    delivery_status, so Support cannot mark an order Delivered through it."""
+
+    RUNNING_LATE = "running_late"
+    CANCELLED_BY_CUSTOMER = "cancelled_by_customer"
+    KIND_CHOICES = [
+        (RUNNING_LATE, "Running late"),
+        (CANCELLED_BY_CUSTOMER, "Cancelled by customer"),
+    ]
+
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="support_notes")
+    staff = models.ForeignKey(StaffUser, null=True, on_delete=models.SET_NULL, related_name="+")
+    kind = models.CharField(max_length=24, choices=KIND_CHOICES)
+    reason = models.TextField()
+    # Free text ("about 12:15"): nothing here computes or promises a time.
+    expected_time = models.CharField(max_length=80, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
