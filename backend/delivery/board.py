@@ -9,8 +9,20 @@ from django.utils import timezone
 from disputes.models import Dispute
 from orders.models import DeliveryAssignment, Order
 
+from routing import service as routing_service
+
 from . import payloads, services
 from .models import DeliveryEvent, Rider, ShiftSession
+
+
+def routing_block():
+    """The routing mode the screens report, from the live service status (never a fixed claim)."""
+    s = routing_service.status()
+    if s["mode"] == "road":
+        note = "Distances and times are road routes."
+    else:
+        note = "Straight-line estimate. The road route service is not answering, so distances and times are estimates."
+    return {**s, "note": note}
 
 
 def waiting_orders():
@@ -178,6 +190,6 @@ def live(now=None):
         "needs_you": needs[:12], "pins": pins, "queue": waiting[:8],
         "disputes": [{"id": d.pk, "order_id": d.order_id, "reason": d.reason, "reason_label": d.get_reason_display(), "created_at": d.created_at, "status": d.status} for d in disputes],
         "stale_after_seconds": int(services.STALE_AFTER.total_seconds()),
-        "routing": {"mode": "straight_line_estimate", "factor": services.ROAD_FACTOR, "note": "Straight-line estimate. A road route service is not connected."},
+        "routing": routing_block(),
         "auto_assign": None,
     }
