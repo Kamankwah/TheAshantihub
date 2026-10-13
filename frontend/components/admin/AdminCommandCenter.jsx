@@ -37,6 +37,11 @@ import CategoriesZonesPanel from "./panels/CategoriesZonesPanel.jsx";
 import ZonesPanel from "./panels/ZonesPanel.jsx";
 import SiteSettingsPanel from "./panels/SiteSettingsPanel.jsx";
 import StaffManagementPanel from "./panels/StaffManagementPanel.jsx";
+import StaffDirectoryPanel from "./panels/StaffDirectoryPanel.jsx";
+import SaTeamsPanel from "./panels/SaTeamsPanel.jsx";
+import SaInvitesPanel from "./panels/SaInvitesPanel.jsx";
+import RolesPermissionsPanel from "./panels/RolesPermissionsPanel.jsx";
+import SaSessionsPanel from "./panels/SaSessionsPanel.jsx";
 import EscrowLedgerPanel from "./panels/EscrowLedgerPanel.jsx";
 import DisputesPanel from "./panels/DisputesPanel.jsx";
 import TransactionsReportPanel from "./panels/TransactionsReportPanel.jsx";
@@ -265,6 +270,13 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
   };
 
   // Today's "Check in" opens the check-in screen (/staff/visits/check-in) and
+  // A person's profile opens under Staff directory (/staff/staff/<id>).
+  const openStaff = (id) => {
+    setDrawerOpen(false);
+    if (isControlled) onTabChange?.(`staff/${id}`);
+    else { setInternalTab("staff"); setInternalDetail(String(id)); }
+  };
+
   // "See all" on Waiting for <lead> opens the Made by me box (/staff/approvals/made).
   const openCheckInScreen = () => {
     if (isControlled) onTabChange?.("visits/check-in");
@@ -368,7 +380,9 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "users" && (role === "super_admin" ? <SaCustomersPanel auth={auth} /> : <UsersPanel auth={auth} />)}
           {activeTab === "categories-zones" && <CategoriesZonesPanel auth={auth} />}
           {activeTab === "site-settings" && <SiteSettingsPanel showToast={showToast} />}
-          {activeTab === "staff" && <StaffManagementPanel />}
+          {activeTab === "staff" && (role === "super_admin" ? <StaffDirectoryPanel auth={auth} detailId={detail} onOpenDetail={openDetail} onNavigate={selectTab} /> : <StaffManagementPanel />)}
+          {activeTab === "teams-reporting" && <SaTeamsPanel onOpenStaff={openStaff} />}
+          {activeTab === "roles-permissions" && <RolesPermissionsPanel />}
           {activeTab === "escrow" && <EscrowLedgerPanel auth={auth} />}
           {activeTab === "disputes" && (role === "super_admin" ? <SaDisputesPanel auth={auth} /> : <DisputesPanel auth={auth} />)}
           {activeTab === "transactions" && (role === "super_admin" ? <RevenueSalesPanel /> : <TransactionsReportPanel />)}
@@ -417,8 +431,8 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           {activeTab === "data-exports-log" && <DataExportsLogPanel />}
           {activeTab === "notification-center" && <NotificationCenterPanel onNavigate={selectTab} knownScreens={new Set(navGroups.flatMap((g) => g.items.map((i) => i.id)))} />}
           {activeTab === "staff-announcements" && <StaffAnnouncementsPanel />}
-          {activeTab === "sessions" && <SessionsPanel auth={auth} />}
-          {activeTab === "invites" && <MyTeamPanel currentStaffId={auth.user?.id} />}
+          {activeTab === "sessions" && (role === "super_admin" ? <SaSessionsPanel /> : <SessionsPanel auth={auth} />)}
+          {activeTab === "invites" && <SaInvitesPanel />}
           {activeTab === "my-team" && (role === "operations" ? <InvitePanel auth={auth} /> : <MyTeamPanel currentStaffId={auth.user?.id} />)}
           {activeTab === "approvals" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "approval-rules" && <ApprovalRulesPanel onNavigate={selectTab} />}

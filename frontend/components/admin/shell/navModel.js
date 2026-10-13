@@ -81,11 +81,10 @@ export const NAV_ITEMS = [
   { id: "deliveries-returns", icon: "📦", label: "Deliveries & returns", show: (auth) => opsOnly(auth, "service_issues.view") },
   { id: "visit-map", icon: "🗺️", label: "Visit map", show: (auth) => opsOnly(auth, "portfolio.manage") },
   { id: "zones", icon: "📍", label: "Zones", show: (auth) => opsOnly(auth, "zones.manage") },
-  // Super Admin canvas screens. "invites" opens the existing My team panel until the
-  // Super Admin Invites screen replaces it; the rest are placeholders (see saOnly).
+  // Super Admin canvas screens; the ones not built yet are placeholders (see saOnly).
   { id: "invites", icon: "✉️", label: "Invites", show: saOnly },
-  { id: "teams-reporting", icon: "🌳", label: "Teams & reporting lines", show: saOnly, placeholder: "super_admin" },
-  { id: "roles-permissions", icon: "🔑", label: "Roles & permissions", show: saOnly, placeholder: "super_admin" },
+  { id: "teams-reporting", icon: "🌳", label: "Teams & reporting lines", show: saOnly },
+  { id: "roles-permissions", icon: "🔑", label: "Roles & permissions", show: saOnly },
   { id: "step-in-operations", icon: "👁️", label: "Operations & scouts", show: saOnly, placeholder: "super_admin" },
   { id: "step-in-support", icon: "👁️", label: "Support", show: saOnly, placeholder: "super_admin" },
   { id: "step-in-delivery", icon: "👁️", label: "Delivery & dispatch", show: saOnly, placeholder: "super_admin" },
