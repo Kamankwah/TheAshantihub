@@ -5,7 +5,7 @@ from datetime import timedelta
 
 from django.contrib.auth.hashers import make_password
 from django.core.cache import caches
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -131,6 +131,17 @@ class SubstitutionTests(ViewAsBase):
         self.session.refresh_from_db()
         self.assertGreater(self.session.last_seen_at, long_ago)
         self.assertEqual(session_of(ama_token).last_seen_at, long_ago)
+
+
+class CrossOriginTests(TestCase):
+    @override_settings(CORS_ALLOW_ALL_ORIGINS=False, CORS_ALLOWED_ORIGINS=["https://theashantihub.com"])
+    def test_the_browser_may_send_the_step_in_headers_from_the_site(self):
+        response = APIClient().options(
+            "/api/accounts/me/", HTTP_ORIGIN="https://theashantihub.com", HTTP_ACCESS_CONTROL_REQUEST_METHOD="GET",
+            HTTP_ACCESS_CONTROL_REQUEST_HEADERS="authorization, x-view-as, x-view-as-screen",
+        )
+        allowed = {h.strip() for h in response["Access-Control-Allow-Headers"].lower().split(",")}
+        self.assertTrue({"authorization", "x-view-as", "x-view-as-screen"} <= allowed)
 
 
 class SudoInsideAViewTests(ViewAsBase):

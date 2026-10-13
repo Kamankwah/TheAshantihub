@@ -84,6 +84,8 @@ export default function ViewAsBanner({ viewAs, compact }) {
         </div>
       )}
       {message && <div role="status" style={{ color: D.text, fontSize: "0.74rem", fontWeight: 700 }}>{message}</div>}
+      {/* Controls switched off by useViewOnlyControls read as off at a glance. */}
+      <style>{'[data-view-only="off"]{opacity:.45 !important;cursor:not-allowed !important;filter:grayscale(.5)}'}</style>
     </section>
   );
 }
