@@ -111,6 +111,23 @@ QUEUE_INVALIDATIONS = [
         ("delivery-riders", "delivery-rider", "delivery-documents", "delivery-vehicles", "delivery-zones", "staff-badges"),
     ),
     (STAFF_MANAGEMENT_VERBS, ("delivery.fleet",), ("delivery-invites", "delivery-riders")),
+    # Dispatch queue and offers, delivery cases, cash, the rota and the rules.
+    (
+        ("delivery-queue-", "delivery-auto-assign-", "delivery-rider-offer-", "delivery-rider-accept", "delivery-rider-shift-", "order-assign-dispatch",
+         "delivery-rider-cant-deliver", "delivery-rules-", "approval."),
+        ("delivery.manage",),
+        ("delivery-queue", "delivery-live"),
+    ),
+    (("delivery-case-decide", "dispute-", "delivery-rider-cant-deliver"), ("delivery.manage", "delivery.disputes"), ("delivery-cases", "delivery-case")),
+    (("delivery-cash", "delivery-rider-deliver"), ("delivery.cash",), ("delivery-cash", "delivery-payouts")),
+    (("delivery-shift", "delivery-rider-shift"), ("delivery.fleet",), ("delivery-shifts",)),
+    (("delivery-rules-", "approval."), ("delivery.rates",), ("delivery-rules",)),
+    # The rider app: any step, offer, hand-over or rota change refreshes every rider's own reads.
+    (
+        ("delivery-queue-", "delivery-rider-", "delivery-cash", "delivery-shift", "order-assign-dispatch", "delivery-job-"),
+        ("delivery.dispatch",),
+        ("delivery-rider-me", "delivery-rider-offers", "delivery-rider-jobs", "delivery-rider-shifts", "delivery-rider-cash"),
+    ),
 ]
 # (verb prefixes, extra keys for everyone who receives the feed event)
 FEED_KEYS = [

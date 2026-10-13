@@ -1,17 +1,18 @@
 from datetime import timedelta
 from decimal import Decimal
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 
 from accounts.testing import make_staff
 from approvals import services as approvals
 from approvals.models import ApprovalRequest
 from delivery import config, dispatching, rates
-from delivery.models import AutoAssignRules, DeliverySettings, Offer, QueueHold, RateCard, Rider, ShiftSession, TimeLimits
+from delivery.models import AutoAssignRules, DeliverySettings, Offer, QueueHold, RateCard, Rider, RiderDocument, ShiftSession, TimeLimits
 from disputes.models import Dispute
 from orders.models import DeliveryAssignment
 
-from .base import DROP, PICKUP, DeliveryCase
+from .base import DROP, PICKUP, PNG, DeliveryCase
 
 RULES = {"w_distance": 50, "w_fairness": 30, "w_idle": 20, "offer_timeout_s": 45, "max_declines": 2, "force_slack_min": 10, "radius_km": "5", "max_active_jobs": 2, "stale_s": 120, "batch_radius_km": "2", "cash_cap": "500"}
 CARD = {
@@ -343,3 +344,21 @@ class RateTests(EngineCase):
             on = checkout()
         self.assertGreater(Decimal(str(on["total_amount"])), Decimal("100.00"))
         self.assertEqual(Decimal(str(on["total_amount"])) - Decimal("100.00"), Decimal(str(on["delivery_fee"])))
+
+
+class MenuBadgeTests(DeliveryCase):
+    """The Delivery Manager's menu badges count live queues and are gated by the permission that opens the screen."""
+
+    def test_counts_for_the_manager_and_zeroes_for_a_rider(self):
+        self.make_order()
+        RiderDocument.objects.create(
+            rider=self.rider, kind="insurance", file=SimpleUploadedFile("i.png", PNG, "image/png"), status=RiderDocument.UPLOADED,
+        )
+        client = self.as_staff(self.manager)
+        data = client.get("/api/notifications/staff-badges/").json()
+        self.assertEqual(data["delivery_queue"], 1)
+        self.assertEqual(data["delivery_documents"], 1)
+        self.assertEqual(data["delivery_cases"], 0)
+        self.assertEqual(data["delivery_cash"], 0)
+        rider = self.as_staff(self.rider_staff).get("/api/notifications/staff-badges/").json()
+        self.assertEqual((rider["delivery_queue"], rider["delivery_documents"], rider["delivery_cases"]), (0, 0, 0))

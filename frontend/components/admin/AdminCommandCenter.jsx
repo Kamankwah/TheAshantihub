@@ -51,6 +51,10 @@ import ScoutPanel from "./panels/ScoutPanel.jsx";
 import ScoutAssignmentsPanel from "./panels/ScoutAssignmentsPanel.jsx";
 import DeliveryManagerPanel from "./panels/DeliveryManagerPanel.jsx";
 import DispatchPanel from "./panels/DispatchPanel.jsx";
+import ActiveDeliveries from "./panels/delivery/ActiveDeliveriesPanel.jsx";
+import DisputesCases from "./panels/delivery/DisputesCasesPanel.jsx";
+import DispatchQueuePanel from "./panels/delivery/DispatchQueuePanel.jsx";
+import LiveOperationsPanel from "./panels/delivery/LiveOperationsPanel.jsx";
 import MessagingPanel from "./panels/MessagingPanel.jsx";
 import PromotionsPanel from "./panels/PromotionsPanel.jsx";
 import AnalyticsPanel from "./panels/AnalyticsPanel.jsx";
@@ -271,6 +275,13 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
     else { setInternalTab("all-portfolios"); setInternalDetail(String(id)); }
   };
 
+  // A record in a Delivery Manager screen: /staff/dm-active/<id>, /staff/dm-cases/<id>, /staff/dm-riders/<id>.
+  const openAt = (tab, id) => {
+    setDrawerOpen(false);
+    if (isControlled) onTabChange?.(`${tab}/${id}`);
+    else { setInternalTab(tab); setInternalDetail(String(id)); }
+  };
+
   // A person's profile opens under Staff directory (/staff/staff/<id>).
   const openStaff = (id) => {
     setDrawerOpen(false);
@@ -385,6 +396,8 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           <AnnouncementBanner />
           {activeTab === "overview" && role !== "cosigner" && (role === "scout"
             ? <ScoutTodayPanel auth={auth} onNavigate={selectTab} onCheckIn={openCheckInScreen} onRegister={() => selectTab("register-business")} onSeeApprovals={openMadeApprovals} onOpenBusiness={openMyBusiness} />
+            : role === "delivery_manager"
+              ? <LiveOperationsPanel auth={auth} onNavigate={selectTab} onOpenDelivery={(id) => openAt("dm-active", id)} onOpenCase={(id) => openAt("dm-cases", id)} />
             : role === "super_admin"
               ? <SuperAdminOverviewPanel auth={auth} onNavigate={selectTab} onOpenApproval={openApproval} />
             : role === "operations" && auth.hasPermission("portfolio.manage")
@@ -412,6 +425,9 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "credit" && <CreditPanel />}
           {activeTab === "scout-assignments" && <ScoutAssignmentsPanel />}
           {activeTab === "field-verification" && <ScoutPanel />}
+          {activeTab === "dm-queue" && <DispatchQueuePanel auth={auth} onNavigate={selectTab} />}
+          {activeTab === "dm-active" && <ActiveDeliveries detailId={detail} onOpenDetail={(id) => (id == null ? openDetail(null) : openAt("dm-active", id))} onOpenCase={(id) => openAt("dm-cases", id)} />}
+          {activeTab === "dm-cases" && <DisputesCases detailId={detail} onOpenDetail={(id) => (id == null ? openDetail(null) : openAt("dm-cases", id))} onOpenDelivery={(id) => openAt("dm-active", id)} />}
           {activeTab === "delivery-coordination" && <DeliveryManagerPanel />}
           {activeTab === "my-deliveries" && <DispatchPanel />}
           {activeTab === "promotions" && <PromotionsPanel auth={auth} />}

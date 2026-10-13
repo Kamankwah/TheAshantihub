@@ -74,6 +74,11 @@ export const NAV_ITEMS = [
   { id: "activity", icon: "🕘", label: "Activity", show: () => true },
   { id: "my-team", icon: "👥", label: "My Team", show: (auth) => auth.hasPermission("staff.invite_team") },
   { id: "security", icon: "🔐", label: "Sign-in & Security", show: () => true },
+  // Delivery Manager canvas screens (2026-10-07, 20 screens). Each is the manager's alone: it needs the
+  // permission the server checks, so a Super Admin (who holds all) sees them too.
+  { id: "dm-queue", icon: "📥", label: "Dispatch queue", show: (auth) => auth.hasPermission("delivery.manage") && auth.user?.role === "delivery_manager" },
+  { id: "dm-active", icon: "🚚", label: "Active deliveries", show: (auth) => auth.hasPermission("delivery.manage") && auth.user?.role === "delivery_manager" },
+  { id: "dm-cases", icon: "⚖️", label: "Disputes & returns", show: (auth) => auth.hasPermission("delivery.manage") && auth.user?.role === "delivery_manager" },
   // Operations canvas screens (see the note above NAV_ITEMS).
   { id: "ops-scouts", icon: "🧑‍🌾", label: "Scouts", show: (auth) => opsOnly(auth, "portfolio.manage") },
   { id: "support-team", icon: "🎧", label: "Support team", show: (auth) => opsOnly(auth, "staff.invite_team") },
@@ -191,11 +196,13 @@ const ROLE_MENUS = {
     ["account", "Account", ["security", "activity"]],
   ],
   delivery_manager: [
-    ["live", "Live", ["delivery-coordination", "delivery"]],
-    ["issues", "Issues", ["disputes"]],
-    ["fleet", "Fleet", ["my-team"]],
-    ["planning", "Planning", ["categories-zones"]],
-    ["my-work", "My work", ["approvals", "tasks", "calls", "activity", "security"]],
+    ["live", "Live", ["dm-queue", "dm-active"]],
+    ["issues", "Issues", ["dm-cases"]],
+    ["fleet", "Fleet", ["dm-riders", "dm-documents", "dm-vehicles", "dm-invite"]],
+    ["planning", "Planning", ["dm-shifts", "dm-zones"]],
+    ["cash", "Cash", ["dm-cash", "dm-payouts"]],
+    ["settings", "Settings", ["dm-pricing", "dm-autoassign", "dm-limits"]],
+    ["my-work", "My work", ["tasks", "approvals", "calls", "activity", "security"]],
     ["reports", "Reports", ["reports", "team-reports"]],
   ],
   dispatch: [
@@ -230,6 +237,7 @@ const ROLE_LABELS = {
     tasks: "Follow-ups", calls: "Calls", approvals: "Sent for approval", reports: "Day, week & month",
     security: "Profile & sign out", activity: "My activity",
   },
+  delivery_manager: { "team-reports": "Riders' reports", reports: "My reports" },
   operations: {
     approvals: "Approvals inbox", "my-team": "Invite", kyc: "KYC queue", moderation: "Listings",
     activity: "Staff activity", reports: "My reports", "team-reports": "My team", calls: "Call log",
@@ -244,8 +252,8 @@ const ROLE_LABELS = {
     "subscription-plans-approval": "Plans & prices", targets: "Target limits", "categories-zones": "Categories & zones",
   },
 };
-// The pinned Overview: "Today" for a scout, the canvas's "Command center" for Super Admin.
-export const overviewLabel = (role) => (role === "scout" ? "Today" : role === "super_admin" ? "Command center" : "Overview");
+// The pinned Overview: "Today" for a scout, the canvas's "Command center" for Super Admin, "Live operations" for the Delivery Manager.
+export const overviewLabel = (role) => (role === "scout" ? "Today" : role === "super_admin" ? "Command center" : role === "delivery_manager" ? "Live operations" : "Overview");
 const toNavItem = ({ id, icon, label }, role) => ({ id, icon, label: ROLE_LABELS[role]?.[id] || label });
 
 export function buildNavGroups(auth) {
@@ -290,6 +298,11 @@ export const BADGE_KEY_BY_TAB = {
   "team-reports": "team_reports_waiting",
   "support-issues": "support_issues",
   "deliveries-returns": "deliveries_open",
+  // Delivery Manager canvas badges.
+  "dm-queue": "delivery_queue",
+  "dm-cases": "delivery_cases",
+  "dm-documents": "delivery_documents",
+  "dm-cash": "delivery_cash",
   "hero-events": ["hero", "events"],
 };
 
