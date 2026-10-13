@@ -199,6 +199,46 @@ describe('CartDrawer', () => {
     expect(screen.getByPlaceholderText('Delivery address')).toHaveValue('KNUST Ave, Kumasi')
   })
 
+  it('shows the out-of-area message instead of "no delivery fee is added" for a pin outside the region', async () => {
+    const MESSAGE = 'We only deliver within the Ashanti Region for now.'
+    server.use(
+      http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)),
+      http.get('http://localhost:8000/api/marketing/promos/public/', () => HttpResponse.json({ enabled: true, flash_sales: [] })),
+      http.post('http://localhost:8000/api/marketing/cart/quote/', () => HttpResponse.json({
+        enabled: true, total: '300.00',
+        delivery: { fee: null, fee_status: 'out_of_area', waived: false, waiver_name: null, waived_fee: null, mixed_note: null, message: MESSAGE },
+      })),
+    )
+    renderDrawer()
+    await screen.findByText('Kente Cloth')
+    fireEvent.click(screen.getByText('Checkout →'))
+    await screen.findByText('Confirm your order')
+    fireEvent.click(screen.getByText('🚚 Door-to-door'))
+    fireEvent.click(screen.getByText('drop-pin'))
+    expect(await screen.findByText(MESSAGE)).toBeInTheDocument()
+    expect(screen.queryByText(/no delivery fee is added/i)).not.toBeInTheDocument()
+  })
+
+  it('shows the server explanation when checkout refuses an out-of-area delivery point', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)),
+      http.post('http://localhost:8000/api/orders/checkout/', () => HttpResponse.json(
+        { detail: 'We only deliver within the Ashanti Region for now.', code: 'out_of_area' }, { status: 400 },
+      )),
+    )
+    renderDrawer()
+    await screen.findByText('Kente Cloth')
+    fireEvent.click(screen.getByText('Checkout →'))
+    await screen.findByText('Confirm your order')
+    fireEvent.click(screen.getByText('🚚 Door-to-door'))
+    fireEvent.change(screen.getByPlaceholderText('Delivery address'), { target: { value: 'Accra' } })
+    fireEvent.change(screen.getByPlaceholderText('Contact phone for delivery'), { target: { value: '+233200112233' } })
+    fireEvent.click(screen.getByText('Confirm & Pay'))
+    fireEvent.click(await screen.findByText('Simulate Pay'))
+    expect(await screen.findByText('We only deliver within the Ashanti Region for now.')).toBeInTheDocument()
+    expect(screen.queryByText(/Payment was confirmed/)).not.toBeInTheDocument()
+  })
+
   it('keeps the payment amount stable even after checkout empties the cart mid-payment', async () => {
     // Regression test: handlePaymentSuccess's post-checkout refetch() used to
     // feed PaymentComponent's `amount` prop straight from the live `cart?.total`

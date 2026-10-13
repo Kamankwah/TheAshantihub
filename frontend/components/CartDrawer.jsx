@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { C, CURRENCIES } from "../theme.js";
 import { useCart } from "../hooks/useCart.js";
 import { apiPatch, apiPost, apiDelete } from "../apiClient.js";
+import { apiErrorMessage } from "../lib/apiErrorMessage.js";
 import { quoteCart, usePublicPromos } from "../hooks/usePublicPromos.js";
 import { useStaffGate } from "../hooks/useStaffGate.js";
 import LocationPicker from "./LocationPicker.jsx";
@@ -156,7 +157,10 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
       setOrder(response);
       refetch();
     } catch (err) {
-      setCheckoutError("Payment was confirmed but we couldn't place your order. Please contact support with reference " + ref + ".");
+      // An out-of-area delivery point is refused with its own explanation; show that, not the generic text.
+      setCheckoutError(err?.body?.code === "out_of_area"
+        ? apiErrorMessage(err, "We only deliver within the Ashanti Region for now.")
+        : "Payment was confirmed but we couldn't place your order. Please contact support with reference " + ref + ".");
     }
   };
 
@@ -300,9 +304,11 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
                   ? <>Delivery: <b style={{ color: C.kente2 }}>Free</b> ({delivery.waiver_name}){delivery.waived_fee != null ? <>, saving {formatAmount(delivery.waived_fee)}</> : null}</>
                   : delivery.fee != null
                     ? <>Delivery: {formatAmount(delivery.fee)}</>
-                    : delivery.fee_status === "no_rate_card"
-                      ? <>No delivery fee is being charged right now.</>
-                      : <>Choose your delivery location on the map to see the delivery fee. Without one, no delivery fee is added.</>}
+                    : delivery.fee_status === "out_of_area"
+                      ? <b data-testid="cart-delivery-out-of-area" role="alert" style={{ color: "#dc2626" }}>{delivery.message}</b>
+                      : delivery.fee_status === "no_rate_card"
+                        ? <>No delivery fee is being charged right now.</>
+                        : <>Choose your delivery location on the map to see the delivery fee. Without one, no delivery fee is added.</>}
                 {delivery.mixed_note && <div>{delivery.mixed_note}</div>}
               </div>
             )}
