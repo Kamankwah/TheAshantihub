@@ -28,8 +28,9 @@ def rules_text(seg):
 
 
 def used_by(seg):
-    """Where the segment was last used. Filled by the campaigns package (None until a campaign uses it)."""
-    return None
+    """The campaign that last used the segment, as {id, name, at}; None until a campaign uses it."""
+    c = seg.campaigns.order_by("-created_at").first()
+    return {"id": c.pk, "name": c.name, "at": c.created_at} if c else None
 
 
 def body(seg, with_count=True):

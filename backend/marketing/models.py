@@ -48,3 +48,4 @@ from .models_consent import *  # noqa: F401,F403
 from .models_banners import *  # noqa: E402,F401,F403
 
 from .models_promos import *  # noqa: E402,F401,F403
+from .models_campaigns import *  # noqa: E402,F401,F403

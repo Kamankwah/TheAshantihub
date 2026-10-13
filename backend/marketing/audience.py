@@ -104,9 +104,32 @@ def reachable(audience, filters, channel):
     return matching(audience, filters).annotate(_consent=latest_status_subquery(field, channel)).filter(_consent=ConsentRecord.OPTED_IN)
 
 
-def recently_messaged_ids(audience, days):
-    """Ids of people who got a marketing message in the last `days` days (the per-person cap). Filled by the campaigns package."""
-    return set()
+def recently_messaged_ids(audience, days, now=None):
+    """Ids of people who got a marketing message (any channel) in the last `days` days: the per-person cap."""
+    from .models_campaigns import CampaignRecipient
+
+    field = "customer_id" if audience == CUSTOMER else "business_owner_id"
+    now = now or timezone.now()
+    rows = CampaignRecipient.objects.filter(status__in=[CampaignRecipient.SENT, CampaignRecipient.DELIVERED, CampaignRecipient.SIMULATED], sent_at__gte=now - timedelta(days=days), sent_at__lte=now)
+    return set(rows.exclude(**{field: None}).values_list(field, flat=True))
+
+
+def failing_ids(audience, channel):
+    """People whose last two sends on `channel` failed: left out of later sends."""
+    from .models_campaigns import CampaignRecipient
+
+    field = "customer_id" if audience == CUSTOMER else "business_owner_id"
+    out = set()
+    rows = CampaignRecipient.objects.filter(campaign__channel=channel).exclude(**{field: None}).exclude(status=CampaignRecipient.SKIPPED).exclude(status=CampaignRecipient.QUEUED).order_by(field, "-id")
+    last = {}
+    for pk, status in rows.values_list(field, "status")[:20000]:
+        seen = last.setdefault(pk, [])
+        if len(seen) < 2:
+            seen.append(status)
+    for pk, seen in last.items():
+        if len(seen) == 2 and all(s == CampaignRecipient.FAILED for s in seen):
+            out.add(pk)
+    return out
 
 
 def count_for(audience, filters, channel):

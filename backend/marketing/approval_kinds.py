@@ -98,3 +98,7 @@ KINDS.append(BANNER_KIND)
 from .approval_kinds_coupons import COUPON_KIND  # noqa: E402
 
 KINDS.append(COUPON_KIND)
+
+from .approval_kinds_campaigns import CAMPAIGN_KIND  # noqa: E402
+
+KINDS.append(CAMPAIGN_KIND)

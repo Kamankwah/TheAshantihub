@@ -489,6 +489,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "field.tasks.close_abandoned_visits",
         "schedule": crontab(minute=20),  # hourly, at twenty past
     },
+    "marketing-campaign-tick": {
+        "task": "marketing.tasks.campaign_tick",
+        "schedule": 60.0,  # every minute: send what is due, drop approvals that missed their time
+    },
     "commission-release-holds": {
         "task": "commission.tasks.release_commission_holds",
         "schedule": crontab(hour=2, minute=45),

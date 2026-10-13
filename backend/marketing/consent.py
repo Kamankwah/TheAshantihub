@@ -110,8 +110,20 @@ def unsubscribe_token(subject, channel, campaign_id=None):
     return signing.dumps(payload, salt=UNSUBSCRIBE_SALT)
 
 
+def short_stop_token(recipient):
+    """The short stop code in an SMS: names one campaign recipient (so one person, one channel, one campaign)."""
+    return f"r-{recipient.click_token}"
+
+
 def read_unsubscribe_token(token):
-    """(subject, channel, campaign_id) from a signed link, or raises ConsentError."""
+    """(subject, channel, campaign_id) from a signed link or a short campaign code, or raises ConsentError."""
+    if token.startswith("r-"):
+        from .models_campaigns import CampaignRecipient
+
+        row = CampaignRecipient.objects.select_related("campaign", "customer", "business_owner").filter(click_token=token[2:]).first()
+        if row is None:
+            raise ConsentError("This link is not valid or has expired.")
+        return row.subject, row.campaign.channel, row.campaign_id
     try:
         data = signing.loads(token, salt=UNSUBSCRIBE_SALT, max_age=UNSUBSCRIBE_MAX_AGE)
         model = Customer if data["k"] == "c" else BusinessOwner
