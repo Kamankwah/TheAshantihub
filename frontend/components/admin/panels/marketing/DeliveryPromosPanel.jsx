@@ -37,7 +37,7 @@ export default function DeliveryPromosPanel() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <PageHead title="Free-delivery promos" />
-      <Honest>A business can waive delivery only on its own items, and only when the whole order is from that business. The business covers the cost; the waived fee is recorded on each order, and nothing is settled against the business automatically yet.</Honest>
+      <Honest>A business can waive delivery only on its own items, and only when the whole order is from that business. The business covers the cost: each waived fee is a charge recorded against the business for that order, reversed if the order is cancelled, its payment fails or it is fully refunded.</Honest>
       <Section id="dp-list" title="Promos" action={
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {TABS.map(([v, l]) => <button key={v} type="button" aria-pressed={status === v} onClick={() => setStatus(v)} style={pill(status === v)}>{l}</button>)}
@@ -52,6 +52,7 @@ export default function DeliveryPromosPanel() {
             </div>
             <div style={dim}>{when(p.starts_at)} to {when(p.ends_at)} · {p.source === "staff" ? "Set up by staff" : "Asked for by the business"}</div>
             <div style={dim}>{p.all_items ? "All of the business's items" : p.listings.map((l) => l.name).join(", ")}</div>
+            <div style={dim}>Covered so far: GH₵ {p.covered_total} on {p.covered_orders} {p.covered_orders === 1 ? "order" : "orders"}</div>
             {p.rejection_reason && <div style={{ ...dim, color: D.red }}>Reason: {p.rejection_reason}</div>}
             <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
               {p.status === "pending" && (

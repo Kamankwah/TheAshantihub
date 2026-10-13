@@ -122,7 +122,7 @@ class OrderCheckoutView(APIView):
                 total = promo.total  # net of any coupon
             # Delivery fee from the rate card in force, only when switched on (settings.DELIVERY_FEE_ENABLED,
             # default off). Fixed here, on the order; later card changes never touch it.
-            fee_card, fee_quote, charged = None, None, None
+            fee_card, fee_quote, charged, waiver = None, None, None, None
             if settings.DELIVERY_FEE_ENABLED and delivery_method == Order.DOOR_TO_DOOR:
                 from delivery.rates import checkout_fee
 
@@ -144,6 +144,8 @@ class OrderCheckoutView(APIView):
                 delivery_lat=request.data.get("delivery_lat") if delivery_method == Order.DOOR_TO_DOOR else None,
                 delivery_lng=request.data.get("delivery_lng") if delivery_method == Order.DOOR_TO_DOOR else None,
             )
+            if waiver is not None and fee_quote and fee_quote.get("waived"):
+                waivers.record_charge(order, waiver, Decimal(fee_quote["waived"]["amount"]))
             if promo:
                 promo_checkout.create_lines(order, promo)
                 promo_checkout.record_redemption(order, promo, request.user)

@@ -7,7 +7,7 @@ import { server } from '../../../mocks/server.js'
 
 const PROMO = {
   id: 4, name: 'Free delivery weekend', business: 'Kente House', starts_at: '2026-10-14T08:00:00Z', ends_at: '2026-10-16T08:00:00Z',
-  all_items: false, listings: [{ id: 9, name: 'Stole' }], status: 'active', effective_status: 'active', live: false, rejection_reason: '',
+  all_items: false, listings: [{ id: 9, name: 'Stole' }], status: 'active', effective_status: 'active', live: false, rejection_reason: '', covered_total: '30.00', covered_orders: 2,
 }
 
 function renderPanel(results, extra = []) {

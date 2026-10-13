@@ -7,7 +7,7 @@ import { D, glassCard } from "../theme.js";
 // ─── Free-delivery promos — a business waives the delivery fee on its own items ───
 // Every call is scoped server-side to the signed-in business: it can only name its own listings and only
 // ever sees its own promos. A new promo waits for AshantiHub's review before it applies.
-// The waived fee is recorded on each order; no settlement against the business exists yet, and the page says so.
+// Each waived fee is a ledger row against the business (marketing.WaivedFeeCharge), reversed on cancel, failed payment or full refund.
 
 const STATUS = {
   pending: ["Waiting for review", D.amber], active: ["Approved", D.green], paused: ["Paused", D.amber],
@@ -72,7 +72,7 @@ function NewPromo({ onDone }) {
       </fieldset>
       <div style={{ color: D.textDim, fontSize: "0.72rem", lineHeight: 1.5 }}>
         Delivery is free only when everything in the customer's order is from your business and covered by this promo.
-        You cover the delivery cost: the waived fee is recorded on each order, but nothing is settled against your account automatically yet.
+        You cover the delivery fee. Each waived fee is recorded as a charge against your business for that order, and reversed if the order is cancelled, its payment fails or it is fully refunded.
         AshantiHub reviews each promo before it applies.
       </div>
       {actionError && <div role="alert" style={{ color: D.red, fontSize: "0.78rem" }}>{actionError}</div>}
@@ -125,6 +125,7 @@ export default function DeliveryPromosPanel() {
             </div>
             <div style={{ color: D.textDim, fontSize: "0.72rem", marginTop: 4 }}>{when(p.starts_at)} to {when(p.ends_at)}</div>
             <div style={{ color: D.textFaint, fontSize: "0.72rem", marginTop: 4 }}>{p.all_items ? "All your items" : p.listings.map((l) => l.name).join(", ")}</div>
+            <div style={{ color: D.textDim, fontSize: "0.72rem", marginTop: 4 }}>Delivery covered so far: GH₵ {p.covered_total} on {p.covered_orders} {p.covered_orders === 1 ? "order" : "orders"}</div>
             {p.status === "rejected" && p.rejection_reason && <div style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>Reason: {p.rejection_reason}</div>}
             {!over && (
               <div style={{ display: "flex", gap: 8, marginTop: 10 }}>

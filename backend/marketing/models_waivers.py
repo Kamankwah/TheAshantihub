@@ -58,3 +58,28 @@ class DeliveryWaiver(models.Model):
         if self.status in (self.ACTIVE, self.PAUSED) and self.ends_at <= now:
             return self.ENDED
         return self.status
+
+
+class WaivedFeeCharge(models.Model):
+    """The delivery fee a business covered on one order through its free-delivery promo: one row per
+    waived order, written in the checkout transaction. `owed` is a recorded charge against the business
+    that no payout run has settled (no payout ledger exists yet, so nothing moves automatically);
+    `reversed` means the order was cancelled, its payment failed or it was fully refunded, so the
+    business owes nothing for it. Rows are never deleted or edited otherwise."""
+
+    OWED = "owed"
+    REVERSED = "reversed"
+    STATUS_CHOICES = [(OWED, "Owed by the business"), (REVERSED, "Reversed")]
+
+    order = models.OneToOneField("orders.Order", on_delete=models.PROTECT, related_name="waived_fee_charge")
+    waiver = models.ForeignKey(DeliveryWaiver, on_delete=models.PROTECT, related_name="charges")
+    business_owner = models.ForeignKey("accounts.BusinessOwner", on_delete=models.PROTECT, related_name="waived_fee_charges")
+    amount = models.DecimalField(max_digits=8, decimal_places=2)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=OWED)
+    reversed_at = models.DateTimeField(null=True, blank=True)
+    reversed_reason = models.CharField(max_length=40, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [models.CheckConstraint(condition=Q(amount__gt=0), name="marketing_waivedfee_positive")]

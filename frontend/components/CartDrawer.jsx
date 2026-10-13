@@ -300,7 +300,9 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
                   ? <>Delivery: <b style={{ color: C.kente2 }}>Free</b> ({delivery.waiver_name}){delivery.waived_fee != null ? <>, saving {formatAmount(delivery.waived_fee)}</> : null}</>
                   : delivery.fee != null
                     ? <>Delivery: {formatAmount(delivery.fee)}</>
-                    : <>The delivery fee is worked out once you choose your delivery location.</>}
+                    : delivery.fee_status === "no_rate_card"
+                      ? <>No delivery fee is being charged right now.</>
+                      : <>Choose your delivery location on the map to see the delivery fee. Without one, no delivery fee is added.</>}
                 {delivery.mixed_note && <div>{delivery.mixed_note}</div>}
               </div>
             )}

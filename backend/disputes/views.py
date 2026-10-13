@@ -135,6 +135,12 @@ class DisputeResolveView(APIView):
             dispute.save(
                 update_fields=["status", "refund_amount", "resolution_notes", "resolved_by", "updated_at"]
             )
+            # A full refund of the order also reverses the delivery fee its business covered through a
+            # free-delivery promo; a partial one leaves that charge standing.
+            if dispute.order_id and dispute.refund_amount and dispute.refund_amount >= dispute.order.total_amount:
+                from marketing.waivers import reverse_for_order
+
+                reverse_for_order(dispute.order, "order_refunded")
         return Response(DisputeSerializer(dispute).data)
 
 

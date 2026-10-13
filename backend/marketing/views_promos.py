@@ -430,7 +430,12 @@ def _delivery_quote(request, items):
     waiver = waivers.covering_waiver(listings, timezone.now())
     quoted = checkout_fee(items, request.data.get("delivery_lat"), request.data.get("delivery_lng"))
     original = money(quoted[1]["total"]) if quoted else None
-    out = {"fee": original, "waived": waiver is not None, "waiver_name": waiver.name if waiver else None, "waived_fee": None, "mixed_note": None}
+    from delivery import config
+
+    # "ok": a fee was measured. "no_rate_card": none is in force, so checkout adds NO delivery fee.
+    # "needs_location": no usable delivery point, so checkout adds no fee until one is chosen.
+    fee_status = "ok" if quoted else ("no_rate_card" if config.live(config.RateCard) is None else "needs_location")
+    out = {"fee": original, "fee_status": fee_status, "waived": waiver is not None, "waiver_name": waiver.name if waiver else None, "waived_fee": None, "mixed_note": None}
     if waiver is not None:
         out["fee"], out["waived_fee"] = ("0.00", original) if original is not None else (None, None)
     elif waivers.mixed_business(listings) and any(waivers.live_waivers(o, timezone.now()) for o in {l.business_owner_id for l in listings}):

@@ -233,6 +233,9 @@ class SupportOrderStatusView(APIView):
             assignment.delete()
         order.status = Order.CANCELLED
         order.save(update_fields=["status"])
+        from marketing.waivers import reverse_for_order
+
+        reverse_for_order(order, "order_cancelled")
 
     @staticmethod
     def _tell_customer(order, note):

@@ -6,6 +6,7 @@ from unittest import mock
 from django.test import override_settings
 from django.utils import timezone
 
+from accounts.testing import make_staff
 from marketing import waivers
 from marketing.models_waivers import DeliveryWaiver
 from marketing.tests.test_promos import PromoBase
@@ -233,3 +234,118 @@ class WaiverQuote(WaiverBase):
         self.add(self.ama, self.stole, 1)
         self.as_customer(self.ama)
         self.assertIsNone(self.client.post("/api/marketing/cart/quote/", {}, format="json").json()["delivery"])
+
+
+def make_accountant():
+    return make_staff("accountant", "acct-waiver@example.com")
+
+
+@FEE_ON
+class WaivedFeeLedger(WaiverBase):
+    def waived_order(self):
+        w = self.waiver()
+        r = self.order_for(self.stole)
+        self.assertEqual(r.status_code, 201, r.content)
+        return w, Order.objects.get()
+
+    def test_waived_fee_is_a_row_tied_to_the_order_and_promo(self):
+        from marketing.models_waivers import WaivedFeeCharge
+
+        w, order = self.waived_order()
+        c = WaivedFeeCharge.objects.get()
+        self.assertEqual((c.order, c.waiver, c.business_owner, c.amount, c.status), (order, w, self.owner, Decimal("15.00"), "owed"))
+
+    def test_no_row_when_the_fee_was_charged(self):
+        from marketing.models_waivers import WaivedFeeCharge
+
+        self.order_for(self.stole)
+        self.assertFalse(WaivedFeeCharge.objects.exists())
+
+    def test_owner_sees_what_the_promo_has_covered(self):
+        self.waived_order()
+        self.as_owner(self.owner)
+        row = self.client.get("/api/marketing/owner/delivery-promos/").json()["results"][0]
+        self.assertEqual((row["covered_orders"], row["covered_total"]), (1, "15.00"))
+
+    def test_cancel_reverses_the_charge_once(self):
+        from marketing.models_waivers import WaivedFeeCharge
+        from orders.support import SupportOrderStatusView
+
+        _, order = self.waived_order()
+        SupportOrderStatusView._cancel(order)
+        c = WaivedFeeCharge.objects.get()
+        self.assertEqual((c.status, c.reversed_reason), ("reversed", "order_cancelled"))
+        self.assertIsNotNone(c.reversed_at)
+        self.assertIsNone(waivers.reverse_for_order(order, "again"))
+
+    def test_failed_payment_reverses_the_charge(self):
+        from marketing.models_waivers import WaivedFeeCharge
+        from payments.models import CheckoutSession
+        from payments.services import finalize_failure
+
+        self.waived_order()
+        finalize_failure(CheckoutSession.objects.get(kind=CheckoutSession.ORDER_CHECKOUT))
+        self.assertEqual(WaivedFeeCharge.objects.get().status, "reversed")
+
+    def test_full_refund_reverses_and_partial_does_not(self):
+        from disputes.models import Dispute
+        from marketing.models_waivers import WaivedFeeCharge
+
+        _, order = self.waived_order()
+        acct = make_accountant()
+        for refund, expected in (("40.00", "owed"), ("100.00", "reversed")):
+            d = Dispute.objects.create(order=order, raised_by=self.ama, reason="payment_issue", description="x")
+            self.as_staff(acct, sudo=True)
+            r = self.client.post(f"/api/disputes/{d.pk}/resolve/", {"refund_amount": refund}, format="json")
+            self.assertEqual(r.status_code, 200, r.content)
+            self.assertEqual(WaivedFeeCharge.objects.get().status, expected)
+
+
+@FEE_ON
+class OwnerStanding(WaiverBase):
+    def test_suspended_owner_cannot_create_resume_or_be_approved(self):
+        pending = self.waiver(status=DeliveryWaiver.PENDING)
+        paused = self.waiver(status=DeliveryWaiver.PAUSED)
+        self.owner.is_suspended = True
+        self.owner.save(update_fields=["is_suspended"])
+        self.as_owner(self.owner)
+        r = self.client.post("/api/marketing/owner/delivery-promos/", self.body(), format="json")
+        self.assertEqual(r.status_code, 403)
+        self.assertIn("suspended", r.json()["detail"])
+        self.assertEqual(self.client.post(f"/api/marketing/owner/delivery-promos/{paused.pk}/resume/").status_code, 403)
+        self.as_staff(self.akua)
+        self.assertEqual(self.client.post(f"/api/marketing/delivery-promos/{pending.pk}/approve/").status_code, 403)
+        self.assertEqual(self.client.post("/api/marketing/delivery-promos/", self.body(business_owner=self.owner.pk), format="json").status_code, 403)
+
+    def test_unverified_owner_is_blocked_with_a_clear_message(self):
+        self.owner.kyc_status = "pending"
+        self.owner.save(update_fields=["kyc_status"])
+        self.as_owner(self.owner)
+        r = self.client.post("/api/marketing/owner/delivery-promos/", self.body(), format="json")
+        self.assertEqual((r.status_code, r.json()["detail"]), (403, "Only a verified business can run a free-delivery promo."))
+
+    def test_live_promo_stops_applying_when_the_owner_is_suspended_or_unverified(self):
+        self.waiver()
+        self.assertIsNotNone(waivers.covering_waiver([self.stole], self.t0))
+        self.owner.is_suspended = True
+        self.owner.save(update_fields=["is_suspended"])
+        self.assertIsNone(waivers.covering_waiver([self.stole], self.t0))
+        self.owner.is_suspended, self.owner.kyc_status = False, "pending"
+        self.owner.save(update_fields=["is_suspended", "kyc_status"])
+        self.assertIsNone(waivers.covering_waiver([self.stole], self.t0))
+        self.owner.kyc_status = "verified"
+        self.owner.save(update_fields=["kyc_status"])
+        self.assertIsNotNone(waivers.covering_waiver([self.stole], self.t0))
+
+
+class NoRateCard(WaiverBase):
+    """Both switches on and no live RateCard: an honest zero fee, never an invented number."""
+
+    @override_settings(MARKETING_PROMOS_ENABLED=True, DELIVERY_FEE_ENABLED=True)
+    def test_checkout_and_quote_charge_nothing_and_say_so(self):
+        self.add(self.ama, self.stole, 1)
+        self.as_customer(self.ama)
+        d = self.client.post("/api/marketing/cart/quote/", DOOR, format="json").json()["delivery"]
+        self.assertEqual((d["fee"], d["fee_status"]), (None, "no_rate_card"))
+        r = self.checkout(self.ama, **DOOR)
+        self.assertEqual((Decimal(str(r.json()["total_amount"])), r.json()["delivery_fee"]), (Decimal("100.00"), None))

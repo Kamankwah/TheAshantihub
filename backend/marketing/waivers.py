@@ -4,13 +4,18 @@ Checkout rule (decided, simplest): the delivery fee is ONE fee per order, measur
 listing's pickup point, so it is not split per business. The fee is waived only when EVERY line of
 the order belongs to one business and is covered by that business's live waiver(s). A cart mixing
 businesses is never waived, so one business's promo is never paid for by another's."""
+from decimal import Decimal
+
 from django.db import transaction
+from django.db.models import Count, Sum
 from django.utils import timezone
 
+from accounts.models import BusinessOwner
 from listings.models import Listing
+from listings.visibility import hidden_business_q
 from notifications.services import notify_business_owner, notify_staff_role
 
-from .models_waivers import DeliveryWaiver
+from .models_waivers import DeliveryWaiver, WaivedFeeCharge
 from .promos import cents
 
 MAX_DAYS = 90
@@ -30,8 +35,40 @@ def live_waivers(owner_id, now):
     return list(
         DeliveryWaiver.objects.filter(
             business_owner_id=owner_id, status=DeliveryWaiver.ACTIVE, starts_at__lte=now, ends_at__gt=now,
-        ).prefetch_related("listings").order_by("id")
+            business_owner__kyc_status=BusinessOwner.VERIFIED,
+        ).exclude(hidden_business_q("business_owner__")).prefetch_related("listings").order_by("id")
     )
+
+
+def owner_blocker(owner):
+    """Why this business may not run a promo, or None. Suspended, hidden or unverified businesses cannot,
+    and an already-live promo of one stops applying (live_waivers applies the same test)."""
+    row = BusinessOwner.objects.filter(pk=owner.pk).exclude(hidden_business_q("")).first()
+    if row is None:
+        return "This business is suspended or hidden, so it can't run a free-delivery promo."
+    if row.kyc_status != BusinessOwner.VERIFIED:
+        return "Only a verified business can run a free-delivery promo."
+    return None
+
+
+def _guard(owner):
+    message = owner_blocker(owner)
+    if message:
+        raise WaiverError(message, 403)
+
+
+def record_charge(order, waiver, amount):
+    """The business's cover of a waived fee as an auditable row tied to the order and the promo. Call in the checkout transaction."""
+    return WaivedFeeCharge.objects.create(order=order, waiver=waiver, business_owner=waiver.business_owner, amount=cents(amount))
+
+
+def reverse_for_order(order, reason):
+    """Idempotent: the order was cancelled, its payment failed or it was fully refunded, so the business no longer owes the fee."""
+    charge = WaivedFeeCharge.objects.select_for_update().filter(order=order, status=WaivedFeeCharge.OWED).first()
+    if charge is not None:
+        charge.status, charge.reversed_at, charge.reversed_reason = WaivedFeeCharge.REVERSED, timezone.now(), reason[:40]
+        charge.save(update_fields=["status", "reversed_at", "reversed_reason"])
+    return charge
 
 
 def mixed_business(listings):
@@ -100,6 +137,7 @@ def clean(data, owner, now=None):
 # ─── actions ─────────────────────────────────────────────────────────────────
 @transaction.atomic
 def create_for_owner(owner, data):
+    _guard(owner)
     fields, listings = clean(data, owner)
     w = DeliveryWaiver.objects.create(business_owner=owner, source=DeliveryWaiver.OWNER, status=DeliveryWaiver.PENDING, **fields)
     w.listings.set(listings)
@@ -109,6 +147,7 @@ def create_for_owner(owner, data):
 
 @transaction.atomic
 def create_for_staff(staff, owner, data):
+    _guard(owner)
     fields, listings = clean(data, owner)
     w = DeliveryWaiver.objects.create(
         business_owner=owner, source=DeliveryWaiver.STAFF, status=DeliveryWaiver.ACTIVE, created_by=staff,
@@ -137,6 +176,7 @@ def owner_pause(owner, pk):
 
 @transaction.atomic
 def owner_resume(owner, pk):
+    _guard(owner)
     w = _locked(pk, business_owner=owner)
     if w.status != DeliveryWaiver.PAUSED:
         raise WaiverError("Only a paused promo can be resumed.", 409)
@@ -160,6 +200,7 @@ def end(pk, owner=None):
 @transaction.atomic
 def approve(pk, staff):
     w = _locked(pk)
+    _guard(w.business_owner)
     if w.status != DeliveryWaiver.PENDING:
         raise WaiverError("This promo is not waiting for review.", 409)
     if w.ends_at <= timezone.now():
@@ -196,7 +237,9 @@ def re_review(pk):
 
 def serialize(w, now=None):
     now = now or timezone.now()
+    owed = w.charges.filter(status=WaivedFeeCharge.OWED).aggregate(n=Count("id"), total=Sum("amount"))
     return {
+        "covered_orders": owed["n"], "covered_total": str(owed["total"] or Decimal("0.00")),
         "id": w.pk, "name": w.name, "business_id": w.business_owner_id, "business": w.business_owner.display_name,
         "starts_at": w.starts_at, "ends_at": w.ends_at, "all_items": w.all_items,
         "listings": [{"id": l.pk, "name": l.name} for l in w.listings.all()],
