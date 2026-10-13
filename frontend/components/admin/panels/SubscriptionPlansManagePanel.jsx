@@ -137,6 +137,7 @@ export default function SubscriptionPlansManagePanel() {
   return (
     <div>
       {actionError && <div style={{ color: D.red, fontSize: "0.8rem", marginBottom: 10 }}>{actionError}</div>}
+      <div style={{ color: D.textDim, fontSize: "0.75rem", marginBottom: 10, lineHeight: 1.5 }}>Changing a live plan sends it back to the Super Admin for approval, and the live price stays in force until it is approved.</div>
       <div style={{ ...glassCard, padding: 18, marginBottom: 16, maxWidth: 560 }}>
         <div style={{ color: D.text, fontWeight: 800, fontSize: "0.88rem", marginBottom: 12 }}>Create a new plan</div>
         <SubscriptionPlanFormFields form={createForm} setField={setCreateField} />
@@ -167,6 +168,7 @@ export default function SubscriptionPlansManagePanel() {
                       <span style={{ background: `${statusMeta.color}22`, color: statusMeta.color, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6, display: "inline-block", whiteSpace: "nowrap" }}>{statusMeta.label}</span>
                     </div>
                     <div style={{ color: D.textDim, fontSize: "0.72rem", margin: "3px 0" }}>{p.kind === "product" ? "Product" : "Service"} · GHS {p.monthly_price}/mo · Max listings: {p.max_active_listings ?? "Unlimited"} · Hero days: {p.hero_days} · Boost credits: {p.boost_credits_per_month}</div>
+                    <div style={{ color: D.textDim, fontSize: "0.72rem" }}>{p.paying_businesses == null ? "" : `${p.paying_businesses} paying business${p.paying_businesses === 1 ? "" : "es"} (active, not on a free trial)`}</div>
                     {p.status === "rejected" && p.rejection_reason && <div style={{ color: D.red, fontSize: "0.68rem", marginTop: 2 }}>Rejected: {p.rejection_reason}</div>}
                   </div>
                   <button onClick={() => startEdit(p)} style={{ background: "none", border: `1px solid ${D.cardBorder}`, color: D.text, borderRadius: 20, padding: "5px 14px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>✏️ Edit</button>

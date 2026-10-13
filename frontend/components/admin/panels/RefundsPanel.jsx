@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { useRefunds } from "../../../hooks/useInsights.js";
+import { useAccountingOverview, useRefunds } from "../../../hooks/useInsights.js";
 import { D } from "../theme.js";
-import { chip, dim } from "./panelStyles.js";
+import { button, chip, dim } from "./panelStyles.js";
 import { figures, scroll, table, td, th } from "./opsPeopleParts.jsx";
 import { errorStyle, money } from "./portfolioParts.jsx";
 import { ExportBar, Kpi, NotRecorded, SimulatedBanner, Status, Title, kpiGrid, page, section, sectionTitle } from "./insightsParts.jsx";
@@ -16,13 +16,15 @@ const SOURCES = [["all", "All sources"], ["dispute", "Dispute"], ["ticket", "Eve
 const PERIODS = [["month", "This month so far"], ["last", "Last month"]];
 const when = (iso) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 
-export default function RefundsPanel() {
+export default function RefundsPanel({ onNavigate }) {
   const [source, setSource] = useState("all");
   const [kind, setKind] = useState("month");
   const [exportError, setExportError] = useState("");
   const range = periodRange(kind);
   const params = { ...range, source };
   const { data, isLoading, isError } = useRefunds(params);
+  // The Accountant's "Waiting for you": disputes still to be decided (the Super Admin's view has none).
+  const waiting = useAccountingOverview(Boolean(onNavigate)).data?.disputes_waiting;
   const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v && v !== "all")).toString();
   const select = { border: `1px solid ${D.cardBorder}`, borderRadius: 10, padding: "8px 10px", fontSize: "0.82rem", fontFamily: "inherit", background: D.panelBg, color: D.text };
 
@@ -38,6 +40,19 @@ export default function RefundsPanel() {
         </label>
       </div>
       {exportError && <div role="alert" style={errorStyle}>{exportError}</div>}
+      {onNavigate && (
+        <section aria-labelledby="rf-waiting" style={section}>
+          <h3 id="rf-waiting" style={sectionTitle}>Waiting for you</h3>
+          <span style={{ color: D.text, fontSize: "0.85rem" }}>
+            {waiting == null ? "Checking…" : waiting ? `${waiting} dispute${waiting === 1 ? " is" : "s are"} waiting for a decision. Resolving one with a refund asks for your password.` : "No dispute is waiting for a decision."}
+          </span>
+          <span style={dim}>There is no refund request or approval limit yet: a refund is decided on its dispute, or on its ticket under Escrow.</span>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" onClick={() => onNavigate("disputes")} style={button(D.panelBg, D.text)}>Open disputes</button>
+            <button type="button" onClick={() => onNavigate("escrow")} style={button(D.panelBg, D.text)}>Open escrow</button>
+          </div>
+        </section>
+      )}
       <SimulatedBanner simulated={data?.simulated}>A refund here is a recorded return of money to the customer; no money moves yet. The file includes customer names, so it asks for your password.</SimulatedBanner>
       <Status isLoading={isLoading} isError={isError}>
         {data && (

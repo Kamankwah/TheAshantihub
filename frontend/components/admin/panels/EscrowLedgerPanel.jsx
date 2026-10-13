@@ -1,95 +1,123 @@
 import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
-import { useEscrowLedger } from "../../../hooks/useEscrowLedger.js";
-import { D, glassCard, ESCROW_STATUS_META } from "../theme.js";
+import { useEscrowLedger, useEscrowSummary } from "../../../hooks/useEscrowLedger.js";
+import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
+import { D, ESCROW_STATUS_META, glassCard } from "../theme.js";
+import { button, chip, dim, field } from "./panelStyles.js";
+import { figures } from "./opsPeopleParts.jsx";
+import { errorStyle, money } from "./portfolioParts.jsx";
+import { Kpi, NotRecorded, SimulatedBanner, Title, kpiGrid, page } from "./insightsParts.jsx";
 
-// Escrow Ledger staff panel (event ticketing + escrow work). Clones
-// ReviewsModerationPanel's shape exactly — same paginated-queue/actionError/
-// refetch() convention, `data?.results` (useEscrowLedger mirrors
-// useReviewsModerationQueue's paginated shape). Release/Hold require
-// `escrow.release`; Refund requires `escrow.refund` — a stricter,
-// non-overlapping permission per events/views.py's EscrowRefundView. A
-// refunded ticket (refunded_at set) never gets Release/Hold/Refund actions
-// again regardless of permission, and Refund itself only ever shows for a
-// still-held, not-yet-delivered ticket (mirrors EscrowRefundView's own
-// validation, so a click here doesn't just round-trip into a 400).
+// ─── Accounting 08 Escrow ────────────────────────────────────────────────────
+// Event ticket money is the only money AshantiHub holds in escrow: orders,
+// bookings and delivery have no escrow record, so the screen says so instead of
+// listing them. "Needs you" is the tickets still held after their event date.
+// Release / Hold need escrow.release, Refund needs escrow.refund; every action
+// takes a note (the server refuses one without) and asks for the password.
+// useEscrowLedger returns a DRF envelope: read data.results.
+const STATES = [["", "All tickets"], ["late", "Needs you"], ["held", "Held"], ["released", "Released"], ["refunded", "Refunded"]];
+const day = (iso) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
+
+function Row({ t, canRelease, canRefund, onDone }) {
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const meta = ESCROW_STATUS_META[t.escrow_status] || { label: t.escrow_status, color: D.textDim };
+  const refunded = Boolean(t.refunded_at);
+  const delivered = Boolean(t.delivered_at);
+  const ready = note.trim().length >= 3;
+  const act = async (action, field_, failure) => {
+    setBusy(true);
+    setError("");
+    try {
+      await apiPost(`/api/events/tickets/${t.id}/escrow/${action}/`, { [field_]: note.trim() });
+      setNote("");
+      onDone();
+    } catch (err) {
+      setError(apiErrorMessage(err, failure));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const actions = !refunded && ((canRelease && (t.escrow_status === "held" || t.escrow_status === "released")) || (canRefund && t.escrow_status === "held" && !delivered));
+  return (
+    <li style={{ padding: "12px 0", borderBottom: `1px solid ${D.divider}`, listStyle: "none" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ color: D.text, fontWeight: 800, fontSize: "0.85rem" }}>
+            {t.event_name} — {t.ticket_type_name} <span style={{ color: D.textDim, fontWeight: 400 }}>({t.code})</span>{" "}
+            <span style={chip(refunded ? D.red : meta.color)}>{refunded ? "Refunded" : meta.label}</span>
+          </div>
+          <div style={dim}>Buyer {t.purchased_by_name} · event {day(t.event_date)} · held {day(t.escrow_held_at)} · released {day(t.escrow_released_at)} · checked in {day(t.delivered_at)}</div>
+          {t.escrow_override_note && <div style={dim}>Note: {t.escrow_override_note}{t.released_by_staff_name ? ` (${t.released_by_staff_name})` : ""}</div>}
+          {refunded && t.refund_reason && <div style={dim}>Refund reason: {t.refund_reason}{t.refunded_by_staff_name ? ` (${t.refunded_by_staff_name})` : ""}</div>}
+        </div>
+        <div style={{ ...figures, fontWeight: 800, color: D.text }}>{money(t.price)}</div>
+      </div>
+      {actions && (
+        <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          <input aria-label={`Note for ticket ${t.code}`} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (required)" maxLength={500} style={{ ...field, flex: 1, minWidth: 160 }} />
+          {canRelease && t.escrow_status === "held" && <button type="button" disabled={!ready || busy} onClick={() => act("release", "note", "Could not release this ticket's escrow.")} style={button(D.green, "#fff", !ready || busy)}>Release</button>}
+          {canRelease && t.escrow_status === "released" && <button type="button" disabled={!ready || busy} onClick={() => act("hold", "note", "Could not hold this ticket's escrow.")} style={button(D.amber, "#2a1a00", !ready || busy)}>Hold</button>}
+          {canRefund && t.escrow_status === "held" && !delivered && <button type="button" disabled={!ready || busy} onClick={() => act("refund", "reason", "Could not refund this ticket.")} style={button(D.red, "#fff", !ready || busy)}>Refund</button>}
+        </div>
+      )}
+      {error && <div role="alert" style={errorStyle}>{error}</div>}
+    </li>
+  );
+}
+
 export default function EscrowLedgerPanel({ auth }) {
-  const { data, isLoading, isError, refetch } = useEscrowLedger();
-  const [noteById, setNoteById] = useState({});
-  const [reasonById, setReasonById] = useState({});
-  const [actionError, setActionError] = useState(null);
-
+  const [state, setState] = useState("");
+  const [search, setSearch] = useState("");
+  const [pageNo, setPageNo] = useState(1);
+  const { data, isLoading, isError, refetch } = useEscrowLedger({ state, q: search.trim(), page: pageNo });
+  const summary = useEscrowSummary();
   const canRelease = auth.hasPermission("escrow.release");
   const canRefund = auth.hasPermission("escrow.refund");
-
-  const release = async (id) => {
-    setActionError(null);
-    try { await apiPost(`/api/events/tickets/${id}/escrow/release/`, { note: noteById[id] || "" }); refetch(); }
-    catch (err) { setActionError("Could not release this ticket's escrow."); }
-  };
-  const hold = async (id) => {
-    setActionError(null);
-    try { await apiPost(`/api/events/tickets/${id}/escrow/hold/`, { note: noteById[id] || "" }); refetch(); }
-    catch (err) { setActionError("Could not hold this ticket's escrow."); }
-  };
-  const refund = async (id) => {
-    setActionError(null);
-    try { await apiPost(`/api/events/tickets/${id}/escrow/refund/`, { reason: reasonById[id] || "" }); refetch(); }
-    catch (err) { setActionError("Could not refund this ticket."); }
-  };
-
-  if (isLoading) return <div style={{ color: D.textDim, fontSize: "0.8rem" }}>Loading…</div>;
-  if (isError) return <div style={{ color: D.red, fontSize: "0.8rem" }}>Could not load the escrow ledger.</div>;
+  const s = summary.data;
   const items = data?.results || [];
+  const lastPage = data ? Math.max(1, Math.ceil(data.count / 20)) : 1;
+  const done = () => { refetch(); summary.refetch(); };
+  const count = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
   return (
-    <div style={{ ...glassCard, padding: 18 }}>
-      <div style={{ color: D.text, fontWeight: 800, fontSize: "0.88rem", marginBottom: 14 }}>Escrow Ledger ({data?.count ?? items.length})</div>
-      {actionError && <div style={{ color: D.red, fontSize: "0.8rem", marginBottom: 10 }}>{actionError}</div>}
-      {items.length === 0 && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>No tickets yet.</div>}
-      {items.map(t => {
-        const statusMeta = ESCROW_STATUS_META[t.escrow_status] || { label: t.escrow_status, color: D.textDim };
-        const isRefunded = !!t.refunded_at;
-        const isDelivered = !!t.delivered_at;
-        return (
-          <div key={t.id} style={{ padding: "12px 0", borderBottom: `1px solid ${D.divider}` }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
-              <div>
-                <div style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>
-                  {t.event_name} — {t.ticket_type_name} <span style={{ color: D.textDim, fontWeight: 400 }}>({t.code})</span>
-                  {isRefunded ? (
-                    <span style={{ background: "rgba(248,113,113,0.16)", color: D.red, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6 }}>Refunded</span>
-                  ) : (
-                    <span style={{ background: `${statusMeta.color}22`, color: statusMeta.color, borderRadius: 20, padding: "2px 8px", fontSize: "0.6rem", fontWeight: 700, marginLeft: 6 }}>{statusMeta.label}</span>
-                  )}
-                </div>
-                <div style={{ color: D.textDim, fontSize: "0.68rem", marginTop: 2 }}>
-                  Buyer: {t.purchased_by_name} • GHS {t.price}
-                </div>
-                <div style={{ color: D.textDim, fontSize: "0.65rem", marginTop: 2 }}>
-                  Held {t.escrow_held_at?.slice(0, 10) || "—"} • Released {t.escrow_released_at?.slice(0, 10) || "—"} • Delivered {t.delivered_at?.slice(0, 10) || "—"}
-                </div>
-                {t.escrow_override_note && <div style={{ color: D.textDim, fontSize: "0.65rem", marginTop: 2 }}>Note: {t.escrow_override_note}</div>}
-                {isRefunded && t.refund_reason && <div style={{ color: D.red, fontSize: "0.65rem", marginTop: 2 }}>Refund reason: {t.refund_reason}</div>}
-              </div>
-            </div>
-            {!isRefunded && (canRelease || canRefund) && <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-              {canRelease && t.escrow_status === "held" && <>
-                <input value={noteById[t.id] || ""} onChange={e => setNoteById(n => ({ ...n, [t.id]: e.target.value }))} placeholder="Note (optional)" style={{ flex: 1, minWidth: 120, padding: "5px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.72rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
-                <button onClick={() => release(t.id)} style={{ background: D.green, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Release</button>
-              </>}
-              {canRelease && t.escrow_status === "released" && <>
-                <input value={noteById[t.id] || ""} onChange={e => setNoteById(n => ({ ...n, [t.id]: e.target.value }))} placeholder="Note (optional)" style={{ flex: 1, minWidth: 120, padding: "5px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.72rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
-                <button onClick={() => hold(t.id)} style={{ background: D.amber, color: "#2a1a00", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Hold</button>
-              </>}
-              {canRefund && t.escrow_status === "held" && !isDelivered && <>
-                <input value={reasonById[t.id] || ""} onChange={e => setReasonById(n => ({ ...n, [t.id]: e.target.value }))} placeholder="Refund reason (optional)" style={{ flex: 1, minWidth: 120, padding: "5px 10px", borderRadius: 10, border: `1.5px solid ${D.cardBorder}`, fontSize: "0.72rem", fontFamily: "inherit", background: D.panelBg2, color: D.text }} />
-                <button onClick={() => refund(t.id)} style={{ background: D.red, color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>Refund</button>
-              </>}
-            </div>}
+    <div style={page}>
+      <Title>Escrow</Title>
+      <SimulatedBanner simulated={s?.simulated}>Held and released money below is what the records show from simulated payments.</SimulatedBanner>
+      {s && (
+        <div style={kpiGrid}>
+          <Kpi label="Held" value={money(s.held.amount)} sub={count(s.held.count, "ticket")} />
+          <Kpi label="Needs you" value={count(s.held_after_event.count, "ticket")} sub={s.held_after_event.count ? `${money(s.held_after_event.amount)} still held after the event date` : "Nothing held past its event date"} subColor={s.held_after_event.count ? "#A33A00" : undefined} />
+          <Kpi label="Released" value={money(s.released.amount)} sub={count(s.released.count, "ticket")} />
+          <Kpi label="Refunded" value={money(s.refunded.amount)} sub={count(s.refunded.count, "ticket")} />
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <label style={{ fontSize: "0.7rem", fontWeight: 700, color: D.text, display: "flex", flexDirection: "column", gap: 2 }}>Show
+          <select value={state} onChange={(e) => { setState(e.target.value); setPageNo(1); }} style={field}>{STATES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select>
+        </label>
+        <label style={{ fontSize: "0.7rem", fontWeight: 700, color: D.text, display: "flex", flexDirection: "column", gap: 2 }}>Search
+          <input type="search" value={search} onChange={(e) => { setSearch(e.target.value); setPageNo(1); }} placeholder="Code, event or buyer" style={{ ...field, minWidth: 200 }} />
+        </label>
+      </div>
+      <section aria-labelledby="esc-list" style={{ ...glassCard, padding: 16 }}>
+        <h3 id="esc-list" style={{ margin: 0, color: D.text, fontSize: "0.95rem", fontWeight: 800 }}>Event tickets ({data?.count ?? items.length})</h3>
+        {isLoading && <div role="status" style={dim}>Loading…</div>}
+        {isError && <div role="alert" style={errorStyle}>Could not load the escrow ledger.</div>}
+        {!isLoading && !isError && items.length === 0 && <div style={dim}>{state || search ? "No tickets match." : "No tickets yet."}</div>}
+        <ul style={{ margin: 0, padding: 0 }}>
+          {items.map((t) => <Row key={t.id} t={t} canRelease={canRelease} canRefund={canRefund} onDone={done} />)}
+        </ul>
+        {lastPage > 1 && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
+            <button type="button" disabled={pageNo <= 1} onClick={() => setPageNo((n) => n - 1)} style={button(D.panelBg, D.text, pageNo <= 1)}>Previous</button>
+            <span style={dim}>Page {pageNo} of {lastPage}</span>
+            <button type="button" disabled={pageNo >= lastPage} onClick={() => setPageNo((n) => n + 1)} style={button(D.panelBg, D.text, pageNo >= lastPage)}>Next</button>
           </div>
-        );
-      })}
+        )}
+      </section>
+      {s && <NotRecorded title="Not held in escrow" items={s.not_recorded} />}
     </div>
   );
 }

@@ -25,6 +25,13 @@ const opsOnly = (auth, ...perms) => auth.user?.role === "operations" && perms.so
 const saOnly = (auth) => auth.user?.role === "super_admin";
 // Step-in needs the Super Admin role and staff.view_as, as the server does (accounts/view_as.py).
 const canStepIn = (auth) => saOnly(auth) && auth.hasPermission("staff.view_as");
+// The Accounting canvas (2026-10-07, 31 screens). Its ledger, payout, payroll and tax screens
+// have no records behind them yet, so each is a built, honest "arrives with the Accounting
+// phase" panel (AccountingShellPanel), not a placeholder. They are the Accountant's alone
+// (acctOnly); Refunds, Commissions and Reconciliation are Super Admin's panels, opened to the
+// Accountant too (saOrAcct) because the money endpoints behind them already allow it.
+const acctOnly = (auth, perm = "transactions.report") => auth.user?.role === "accountant" && auth.hasPermission(perm);
+const saOrAcct = (auth, acctPerm = "transactions.report") => saOnly(auth) || acctOnly(auth, acctPerm);
 const opsOrSa = (auth, ...perms) => ["operations", "super_admin"].includes(auth.user?.role) && perms.some((perm) => auth.hasPermission(perm));
 
 export const NAV_ITEMS = [
@@ -94,9 +101,9 @@ export const NAV_ITEMS = [
   { id: "step-in-marketing", icon: "👁️", label: "Marketing", show: canStepIn },
   { id: "step-in-accounting", icon: "👁️", label: "Accounting", show: canStepIn },
   { id: "payouts-payroll", icon: "🏦", label: "Payouts & payroll", show: saOnly },
-  { id: "commissions", icon: "💷", label: "Commissions", show: saOnly },
-  { id: "refunds", icon: "↩️", label: "Refunds", show: saOnly },
-  { id: "reconciliation", icon: "🧮", label: "Reconciliation", show: saOnly },
+  { id: "commissions", icon: "💷", label: "Commissions", show: (auth) => saOrAcct(auth, "commission.view_all") },
+  { id: "refunds", icon: "↩️", label: "Refunds", show: (auth) => saOrAcct(auth) },
+  { id: "reconciliation", icon: "🧮", label: "Reconciliation", show: (auth) => saOrAcct(auth) },
   { id: "growth-funnel", icon: "🪜", label: "Growth funnel", show: saOnly },
   { id: "scheduled-exports", icon: "📆", label: "Scheduled exports", show: saOnly },
   { id: "sign-in-history", icon: "🕵️", label: "Sign-in history", show: saOnly },
@@ -108,6 +115,25 @@ export const NAV_ITEMS = [
   { id: "tax-tables", icon: "📑", label: "Tax tables", show: saOnly },
   { id: "integrations", icon: "🔌", label: "Integrations", show: saOnly },
   { id: "system-health", icon: "🩺", label: "System health", show: saOnly },
+  // Accounting canvas screens (see acctOnly above).
+  { id: "acct-journal", icon: "📒", label: "Journal", show: acctOnly },
+  { id: "acct-chart", icon: "🗃️", label: "Chart of accounts", show: acctOnly },
+  { id: "acct-trial-balance", icon: "⚖️", label: "Trial balance", show: acctOnly },
+  { id: "acct-collections", icon: "📥", label: "Collections", show: acctOnly },
+  { id: "acct-payout-runs", icon: "📤", label: "Payout runs", show: acctOnly },
+  { id: "acct-settlements", icon: "🏪", label: "Seller settlements", show: acctOnly },
+  { id: "acct-rider-payouts", icon: "🛵", label: "Rider payouts", show: acctOnly },
+  { id: "acct-payroll", icon: "🧑‍💼", label: "Payroll", show: acctOnly },
+  { id: "acct-pay-profiles", icon: "🪪", label: "Pay profiles", show: acctOnly },
+  { id: "acct-paye", icon: "🧾", label: "PAYE", show: acctOnly },
+  { id: "acct-ssnit", icon: "🛡️", label: "SSNIT & Tier 2", show: acctOnly },
+  { id: "acct-wht", icon: "✂️", label: "Withholding tax", show: acctOnly },
+  { id: "acct-vat", icon: "📑", label: "VAT, NHIL, GETFund", show: acctOnly },
+  { id: "acct-tax-settings", icon: "⚙️", label: "Tax settings", show: acctOnly },
+  { id: "acct-period-close", icon: "🔒", label: "Period close", show: acctOnly },
+  { id: "acct-audit-chain", icon: "⛓️", label: "Audit chain", show: acctOnly },
+  { id: "acct-alerts", icon: "🚨", label: "Alerts", show: acctOnly },
+  { id: "acct-statements", icon: "📊", label: "Statements", show: acctOnly },
 ];
 
 // [group id, group label, item ids]. The original (pre-1B) grouping, used for
@@ -158,13 +184,20 @@ const ROLE_MENUS = {
     ["my-work", "My work", ["tasks", "calls", "security"]],
     ["settings", "Settings", ["zones", "site-settings", "contact-messages"]],
   ],
+  // Accounting, exactly as the approved canvas draws it (Money desk is the pinned Overview).
+  // Disputes, Transactions Report, Commission policy, Tasks, Activity and Sign-in & Security are
+  // not in the canvas; they stay reachable under "More tools" (accountant is not an exhaustive
+  // menu) because the Accountant resolves disputes and proposes commission policy.
   accountant: [
     ["decisions", "Decisions", ["approvals"]],
-    ["money-in", "Money in", ["escrow"]],
-    ["controls", "Controls", ["disputes", "transactions"]],
-    ["plans-pricing", "Plans & pricing", ["subscription-plans", "subscription-plans-approval", "event-pricing", "commission-policy", "credit"]],
-    ["reports", "Reports", ["reports", "team-reports"]],
-    ["my-work", "My work", ["tasks", "activity", "security"]],
+    ["ledger", "Ledger", ["acct-journal", "acct-chart", "acct-trial-balance"]],
+    ["money-in", "Money in", ["acct-collections", "escrow"]],
+    ["money-out", "Money out", ["acct-payout-runs", "acct-settlements", "acct-rider-payouts", "refunds"]],
+    ["people", "People", ["acct-payroll", "commissions", "acct-pay-profiles"]],
+    ["tax", "Tax", ["acct-paye", "acct-ssnit", "acct-wht", "acct-vat", "acct-tax-settings"]],
+    ["controls", "Controls", ["reconciliation", "acct-period-close", "acct-audit-chain", "acct-alerts"]],
+    ["plans-pricing", "Plans & pricing", ["subscription-plans", "event-pricing", "credit"]],
+    ["reports", "Reports", ["acct-statements", "reports"]],
   ],
   marketing: [
     ["decisions", "Decisions", ["approvals"]],
@@ -235,6 +268,7 @@ const ROLE_LABELS = {
     activity: "Staff activity", reports: "My reports", "team-reports": "My team", calls: "Call log",
     "site-settings": "Site settings", "contact-messages": "Contact messages",
   },
+  accountant: { escrow: "Escrow", credit: "Credit & lending", reports: "My reports" },
   // Super Admin reads the canvas's words; the ids (and every other role's labels) stay.
   super_admin: {
     approvals: "My approvals", staff: "Staff directory", sessions: "Sessions & devices", leave: "Leave & holidays",

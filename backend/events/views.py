@@ -1018,6 +1018,11 @@ class EscrowLedgerListView(generics.ListAPIView):
         state = self.request.query_params.get("state")
         if state == "refunded":
             queryset = queryset.filter(refunded_at__isnull=False)
+        elif state == "late":
+            queryset = queryset.filter(
+                escrow_status=Ticket.HELD, refunded_at__isnull=True, delivered_at__isnull=True,
+                ticket_type__event__event_date__lt=timezone.now(),
+            )
         elif state in (Ticket.HELD, Ticket.RELEASED):
             queryset = queryset.filter(escrow_status=state, refunded_at__isnull=True)
         query = (self.request.query_params.get("q") or "").strip()[:80]
@@ -1061,6 +1066,12 @@ class EscrowSummaryView(APIView):
         })
 
 
+def _required_note(value):
+    """A staff note for an escrow action: trimmed, 3 to 500 characters, or None."""
+    text = str(value or "").strip()
+    return text[:500] if len(text) >= 3 else None
+
+
 class EscrowReleaseView(APIView):
     """POST /api/events/tickets/{ticket_id}/escrow/release/ — staff
     `escrow.release` manually releases a held ticket's payment before/
@@ -1074,6 +1085,9 @@ class EscrowReleaseView(APIView):
         return [HasRolePermission("escrow.release"), RequiresSudo()]
 
     def post(self, request, ticket_id):
+        note = _required_note(request.data.get("note"))
+        if note is None:
+            return Response({"note": "Write a note of at least 3 characters: every release is explained."}, status=400)
         with db_transaction.atomic():
             ticket = generics.get_object_or_404(Ticket.objects.select_for_update(), pk=ticket_id)
 
@@ -1085,7 +1099,7 @@ class EscrowReleaseView(APIView):
             ticket.escrow_status = Ticket.RELEASED
             ticket.escrow_released_at = timezone.now()
             ticket.escrow_released_by_staff = request.user
-            ticket.escrow_override_note = request.data.get("note", "")
+            ticket.escrow_override_note = note
             ticket.save(
                 update_fields=[
                     "escrow_status", "escrow_released_at", "escrow_released_by_staff",
@@ -1107,6 +1121,9 @@ class EscrowHoldView(APIView):
         return [HasRolePermission("escrow.release")]
 
     def post(self, request, ticket_id):
+        note = _required_note(request.data.get("note"))
+        if note is None:
+            return Response({"note": "Write a note of at least 3 characters: every hold is explained."}, status=400)
         with db_transaction.atomic():
             ticket = generics.get_object_or_404(Ticket.objects.select_for_update(), pk=ticket_id)
 
@@ -1118,7 +1135,7 @@ class EscrowHoldView(APIView):
             ticket.escrow_status = Ticket.HELD
             ticket.escrow_released_at = None
             ticket.escrow_released_by_staff = None
-            ticket.escrow_override_note = request.data.get("note", "")
+            ticket.escrow_override_note = note
             ticket.save(
                 update_fields=[
                     "escrow_status", "escrow_released_at", "escrow_released_by_staff",
@@ -1142,6 +1159,9 @@ class EscrowRefundView(APIView):
         return [HasRolePermission("escrow.refund"), RequiresSudo()]
 
     def post(self, request, ticket_id):
+        reason = _required_note(request.data.get("reason"))
+        if reason is None:
+            return Response({"reason": "Write a reason of at least 3 characters: every refund is explained."}, status=400)
         with db_transaction.atomic():
             ticket = generics.get_object_or_404(Ticket.objects.select_for_update(), pk=ticket_id)
 
@@ -1162,7 +1182,7 @@ class EscrowRefundView(APIView):
             )
             ticket.refunded_at = timezone.now()
             ticket.refunded_by_staff = request.user
-            ticket.refund_reason = request.data.get("reason", "")
+            ticket.refund_reason = reason
             ticket.save(update_fields=["refunded_at", "refunded_by_staff", "refund_reason"])
 
         return Response(TicketEscrowLedgerSerializer(ticket).data)

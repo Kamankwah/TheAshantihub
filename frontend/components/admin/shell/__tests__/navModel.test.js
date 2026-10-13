@@ -93,6 +93,10 @@ describe('My Work group', () => {
 const SA_BUILT = ['step-in-operations', 'step-in-support', 'step-in-delivery', 'step-in-marketing', 'step-in-accounting', 'teams-reporting', 'roles-permissions', 'commissions', 'refunds', 'growth-funnel', 'scheduled-exports', 'approval-rules', 'payouts-payroll', 'reconciliation', 'delivery-pricing', 'tax-tables', 'integrations', 'system-health', 'sign-in-history', 'staff-announcements', 'data-exports-log', 'notification-center']
 const SA_ONLY = NAV_ITEMS.filter((i) => i.placeholder === 'super_admin').map((i) => i.id).concat('invites', SA_BUILT)
 // 'leave' is also Super Admin's (the canvas's Leave & holidays), but no other role's.
+// The Accounting canvas screens (2026-10-07): the Accountant's alone, except Commissions, Refunds and
+// Reconciliation, which are Super Admin's panels opened to the Accountant as well.
+const ACCT_ONLY = NAV_ITEMS.filter((i) => i.id.startsWith('acct-')).map((i) => i.id)
+const ACCT_SHARED = ['commissions', 'refunds', 'reconciliation']
 const OPS_ONLY = ['ops-scouts', 'support-team', 'leave', 'hero-events', 'support-issues', 'deliveries-returns', 'visit-map', 'zones', ...SA_ONLY]
 
 describe('per-role menus', () => {
@@ -128,7 +132,9 @@ describe('per-role menus', () => {
       const ids = groups.flatMap((g) => g.items.map((i) => i.id))
       expect(new Set(ids).size).toBe(ids.length)
       // The Operations canvas screens appear for no other role.
-      expect([...ids].sort()).toEqual(NAV_ITEMS.filter((i) => !OPS_ONLY.includes(i.id)).map((i) => i.id).sort())
+      const accountant = role === 'accountant'
+      const expected = NAV_ITEMS.filter((i) => !ACCT_ONLY.includes(i.id) && !(OPS_ONLY.includes(i.id) && !(accountant && ACCT_SHARED.includes(i.id)))).map((i) => i.id)
+      expect([...ids].sort()).toEqual((accountant ? expected.concat(ACCT_ONLY) : expected).sort())
       expect(groups.every((g) => g.items.length > 0)).toBe(true)
     }
   })
@@ -215,7 +221,8 @@ describe('portfolio menus (staff phase 2A)', () => {
     expect(idsIn(scout, 'Performance')).toEqual(['targets', 'commission', 'leaderboard'])
     expect(NAV_ITEMS.find((i) => i.id === 'commission')).toMatchObject({ label: 'Commission' })
     const accountant = buildNavGroups(authAs('accountant', ['commission.view_all', 'commission.policy', 'subscription_plans.manage']))
-    expect(groupOf(accountant, 'commission-policy')).toBe('Plans & pricing')
+    // The Accounting canvas leaves the policy panel out of the menu; the permission and panel stay (More tools).
+    expect(groupOf(accountant, 'commission-policy')).toBe('More tools')
     expect(groupOf(buildNavGroups({ user: { role: 'super_admin' }, hasPermission: () => true }), 'commission-policy')).toBe('Settings')
     expect(allIds(['portfolio.manage', 'businesses.register'])).not.toContain('commission')
     expect(allIds(['portfolio.manage', 'businesses.register'])).not.toContain('commission-policy')

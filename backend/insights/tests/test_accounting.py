@@ -190,6 +190,17 @@ class EscrowSudoTests(AccountingBase):
         ticket.refresh_from_db()
         self.assertEqual(ticket.escrow_status, Ticket.RELEASED)
 
+    def test_every_action_needs_a_note(self):
+        ticket = self.make_ticket()
+        self.as_staff(self.accountant, sudo=True)
+        for action, body in (("release", {}), ("release", {"note": " "}), ("hold", {"note": "x"}), ("refund", {"reason": ""})):
+            self.assertEqual(self.post(action, ticket, body or {"note": ""}).status_code, 400, action)
+        ticket.refresh_from_db()
+        self.assertEqual((ticket.escrow_status, ticket.refunded_at), (Ticket.HELD, None))
+        self.assertEqual(self.post("release", ticket, {"note": "Event ran, organiser confirmed"}).status_code, 200)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.escrow_override_note, "Event ran, organiser confirmed")
+
     def test_a_ticket_is_refunded_once(self):
         ticket = self.make_ticket()
         self.as_staff(self.accountant, sudo=True)
@@ -241,6 +252,8 @@ class EscrowScreenTests(AccountingBase):
         self.assertEqual(ids("?state=refunded"), [b.pk])
         self.assertEqual(ids("?q=Ama"), sorted([a.pk, b.pk]))
         self.assertEqual(ids("?q=nobody"), [])
+        Event.objects.filter(pk=self.ticket_type.event_id).update(event_date=timezone.now() - timedelta(days=1))
+        self.assertEqual(ids("?state=late"), [a.pk])
 
 
 class PricingCountsTests(AccountingBase):

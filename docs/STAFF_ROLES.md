@@ -179,7 +179,7 @@ credit and lending.
 
 **Manages**
 - **Escrow ledger.** Ticket payments are held until check-in. Accountants can view the ledger;
-  release a held ticket early, with a note; put a released ticket back on hold, for example when
+  release a held ticket early, with a note and the password; put a released ticket back on hold, for example when
   a dispute arrives after release; and refund a held, undelivered ticket, which books a
   negative-amount transaction. **Refund belongs only to Accountant and Super Admin.**
 - **Transactions report.** Every customer and business transaction across the platform, with
@@ -194,6 +194,37 @@ credit and lending.
 
 **Cannot.** Approve their own pricing proposals or plans, moderate anything (KYC, listings,
 events, reviews), or see user accounts.
+
+**The Accounting dashboard (31 screens, built 2026-10-13).** The menu is the approved canvas:
+Decisions, Ledger, Money in, Money out, People, Tax, Controls, Plans & pricing and Reports, with the
+Money desk as the Overview. Disputes, Transactions Report, Commission policy, Tasks, Activity and
+Sign-in & Security stay reachable under "More tools".
+
+- **Real screens:** Money desk, Collections (every incoming payment with our and the provider's
+  reference), Escrow, Refunds, Commissions, Audit chain, Alerts, Subscription plans, Event pricing,
+  Credit & lending, Statements (revenue by type, before tax) and My reports. All read existing
+  records. Money screens need `transactions.report` (Commissions needs `commission.view_all`); no new
+  permission was added.
+- **Honest shells (14 screens):** Journal, Chart of accounts, Trial balance, Payout runs, Seller
+  settlements, Rider payouts, Payroll, Pay profiles, PAYE, SSNIT & Tier 2, Withholding tax, VAT/NHIL/
+  GETFund, Tax settings and Period close (Reconciliation is Super Admin's existing shell). AshantiHub
+  has no ledger, journal, payout, payroll, pay-profile, tax or period record, and none is invented: each
+  screen says it arrives with the Accounting phase and names what it cannot show. No tax is calculated.
+  The canvas's detail and form screens (journal entry, new entry, payout run detail, payslip) are not
+  built: they reach nothing.
+- **Escrow is tickets only.** Orders, bookings and delivery have no escrow record. The screen says so.
+- **Password again (sudo)** on ticket escrow release and
+  refund, on resolving a dispute (it can refund), and on a Collections export (it names payers). Every escrow action needs a note (3 to 500 characters).
+- **No refund request or approval limit exists.** An Accountant decides a dispute's refund, or a
+  ticket's refund, directly; the GH₵ 500 / 20,000 ladder on the canvas is not enforced.
+- **Alerts** are worked out on read: a refund over 3 times the 90-day average, a business refunded 3 or
+  more times in 30 days, and open fraud cases (information only). Resolving takes a note and is written
+  to the activity log. Rules that need a ledger, payout or reconciliation record are listed as not
+  available.
+- **Audit chain** is the staff activity chain (the nightly check's stored result). There is no ledger
+  chain. "Verify now" is not offered.
+- **Not built:** "Reverse with reason" and "Prepare batch" on Commissions (no reversal or batch API),
+  money-alert badge on the menu (it would add a heavy poll).
 
 ### Marketing
 
