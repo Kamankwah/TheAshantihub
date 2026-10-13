@@ -52,6 +52,7 @@ import BusinessRegistrationFlow from "./components/BusinessRegistrationFlow.jsx"
 import BusinessClaimPage from "./components/BusinessClaimPage.jsx";
 import MarketingConsentCard from "./components/MarketingConsentCard.jsx";
 import UnsubscribePage from "./components/UnsubscribePage.jsx";
+import TrackedLinkPage from "./components/TrackedLinkPage.jsx";
 import CartDrawer from "./components/CartDrawer.jsx";
 import FlashPriceTag from "./components/FlashPriceTag.jsx";
 import EventHeroCarousel from "./components/EventHeroCarousel.jsx";
@@ -2636,6 +2637,7 @@ export default function AshantiHub() {
   const eventDetailMatch = useMatch("/events/:id");
   // The stop link in a marketing message (Marketing consent): a standalone page keyed by a signed token.
   const unsubscribeMatch = useMatch("/unsubscribe/:token");
+  const trackedLinkMatch = useMatch("/r/:token");
   // Staff dashboard panels are URL-addressable (/staff/kyc, /staff/users, …)
   // so Android's back gesture steps through panels inside the installed app
   // and manifest shortcuts can deep-link. /staff/activate and /staff/install
@@ -2668,7 +2670,7 @@ export default function AshantiHub() {
     const path = PAGE_TO_PATH[id] ?? "/";
     if (location.pathname !== path) navigate(path);
   };
-  const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch && !unsubscribeMatch && !onStaffDashboardPath;
+  const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch && !unsubscribeMatch && !trackedLinkMatch && !onStaffDashboardPath;
   const [authModal,setAuthModal]=useState(null);
   const auth=useAuth();
   const queryClient=useQueryClient();
@@ -3089,6 +3091,7 @@ export default function AshantiHub() {
   if(page==="reset-password") return <ResetPasswordPage auth={auth} setPage={setPage} setAuthModal={setAuthModal}/>;
   if(page==="payment-return") return <PaymentReturnPage setPage={setPage}/>;
   if(page==="business-claim") return <BusinessClaimPage onSignIn={()=>{setAuthModal("login");setPage("home");}}/>;
+  if(trackedLinkMatch) return <TrackedLinkPage token={trackedLinkMatch.params.token} onGo={(path)=>navigate(path,{replace:true})}/>;
   if(unsubscribeMatch) return <UnsubscribePage token={unsubscribeMatch.params.token} onHome={()=>navigate("/")}/>;
   if(isLoading) return <LoadingScreen/>;
   if(show404) return <NotFoundPage onHome={()=>setPage("home")} user={user}/>;

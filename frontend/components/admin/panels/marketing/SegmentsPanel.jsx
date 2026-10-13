@@ -156,7 +156,7 @@ export default function SegmentsPanel({ onNavigate }) {
                     <th scope="row" style={{ ...td, textAlign: "left" }}><button type="button" onClick={() => load(seg)} style={linkStyle}>{seg.name}</button></th>
                     <td style={td}>{seg.audience_label}</td><td style={td}>{seg.rules}</td><td style={td}><span style={chip(D.text)}>{seg.channel_label}</span></td>
                     <td style={{ ...td, ...figures }}>{seg.size.toLocaleString("en-GB")}</td>
-                    <td style={td}>{seg.last_used || "Not used yet"}</td>
+                    <td style={td}>{seg.last_used ? seg.last_used.name : "Not used yet"}</td>
                     <td style={td}><button type="button" onClick={() => remove(seg)} aria-label={`Remove ${seg.name}`} style={linkStyle}>Remove</button></td>
                   </tr>
                 ))}
