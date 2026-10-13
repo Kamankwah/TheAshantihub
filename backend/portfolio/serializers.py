@@ -190,6 +190,8 @@ def portfolio_item(row, masked=False):
         "login_phone": mask_phone(owner.login_phone) if masked else owner.login_phone,
         "zone": _portfolio_named(getattr(profile, "zone", None)),
         "kyc_status": owner.kyc_status,
+        "is_suspended": owner.is_suspended,
+        "suspension_reason": owner.suspension_reason,
         "registration_channel": owner.registration_channel,
         "needs_claim": owner.needs_claim,
         "claimed_at": owner.claimed_at,

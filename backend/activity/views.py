@@ -1,6 +1,7 @@
 import csv
 import io
 
+from django.conf import settings
 from django.db.models import Q
 from django.http import HttpResponse
 from django.utils import timezone
@@ -17,7 +18,7 @@ from accounts.sessions import require_sudo
 from reports.exports import ExportNegotiation, FORMATS
 
 from .models import ActivityEvent, ChainCheck
-from .serializers import ActivityEventSerializer
+from .serializers import ActivityEventDetailSerializer, ActivityEventSerializer
 from .services import record
 
 # activity.view_domains: what each overseeing role sees beyond its own team.
@@ -82,8 +83,15 @@ class FilteredEventsMixin:
             if not (params["actor"].isdecimal() and params["actor"].isascii()):
                 raise ValidationError({"actor": "Use a staff id."})
             events = events.filter(actor_type=ActivityEvent.STAFF, actor_id=params["actor"])
-        if params.get("role"):
+        if params.get("role") == "system":
+            events = events.filter(actor_type=ActivityEvent.SYSTEM)
+        elif params.get("role"):
             events = events.filter(actor_role=params["role"])
+        search = (params.get("q") or "").strip()[:100]
+        if search:
+            events = events.filter(
+                Q(actor_label__icontains=search) | Q(target_label__icontains=search) | Q(summary__icontains=search) | Q(verb__icontains=search)
+            )
         if params.get("verb"):
             # Comma-separated prefixes: an action group on the screen is several verb families.
             prefixes = [part for part in params["verb"].split(",") if part][:12]
@@ -106,11 +114,15 @@ class FilteredEventsMixin:
 
 
 class ActivityListView(FilteredEventsMixin, generics.ListAPIView):
-    serializer_class = ActivityEventSerializer
     pagination_class = ActivityPagination
 
     def get_permissions(self):
         return [IsStaff()]
+
+    def get_serializer_class(self):
+        if "activity.view_all" in self.request.user.effective_permission_codenames():
+            return ActivityEventDetailSerializer
+        return ActivityEventSerializer
 
     def get_queryset(self):
         return self.filtered_events()
@@ -166,7 +178,11 @@ class ActivityExportView(FilteredEventsMixin, APIView):
         truncated = len(events) > EXPORT_LIMIT
         events = events[:EXPORT_LIMIT]
         # Recorded after the read, so the export does not list itself.
-        record(request.user, "report.exported", after={"format": fmt, "kind": "staff-activity", "rows": len(events), "truncated": truncated}, request=request)
+        record(request.user, "report.exported", after={
+            "format": fmt, "kind": "staff-activity", "rows": len(events), "truncated": truncated,
+            "personal_data": reaches_others(request.user, request.query_params),
+            "filters": {k: v for k, v in request.query_params.items() if v and k != "format"},
+        }, request=request)
         rows = [_export_row(event) for event in events]
         stem = f"ashantihub-staff-activity-{timezone.localdate().isoformat()}"
         if fmt == "csv":
@@ -227,4 +243,8 @@ class ChainStatusView(APIView):
         check = ChainCheck.objects.first()
         if check is None:
             return Response({"checked": False})
-        return Response({"checked": True, "checked_at": check.checked_at, "ok": check.ok, "events": check.events})
+        return Response({
+            "checked": True, "checked_at": check.checked_at, "ok": check.ok, "events": check.events,
+            # The nightly seal is e-mailed to every Super Admin only where this is on (production).
+            "seal_emailed": bool(settings.ACTIVITY_SEAL_EMAIL),
+        })

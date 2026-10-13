@@ -8,7 +8,7 @@ import { apiFetch } from '../apiClient.js'
 // work still to do, and each count is gated behind the same permission that
 // gates its tab (a staffer without a permission gets 0 for that key). Shape:
 // { kyc, listings, events, hero, reviews, plan_approvals, contact_messages,
-//   escrow }.
+//   escrow, ... } plus the Super Admin canvas counts invites_open, disputes_open and reports_hub.
 //
 // Staff-only (403s any non-staff session), so `enabled` is passed false for
 // non-staff callers — same convention as useCart.js/useNotifications.js.

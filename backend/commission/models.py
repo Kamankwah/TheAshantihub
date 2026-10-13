@@ -69,3 +69,27 @@ class CommissionAccrual(models.Model):
     @staticmethod
     def hold_end(earned_at):
         return earned_at + timedelta(days=HOLD_DAYS)
+
+
+class ScoutTaxRuling(models.Model):
+    """The recorded answer to "are scouts employees (PAYE) or independent agents
+    (10% withholding tax)?", as ruled by an accountant or GRA. Append-only: the
+    newest row is the one in force. Until one exists the first payout batch is
+    blocked (commission.services.payout_blocker); AshantiHub calculates no tax."""
+
+    EMPLOYEE = "employee"
+    AGENT = "agent"
+    STATUS_CHOICES = [(EMPLOYEE, "Employees (PAYE)"), (AGENT, "Independent agents (10% withholding tax)")]
+
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES)
+    ruled_on = models.DateField()
+    reference = models.CharField(max_length=120)
+    note = models.CharField(max_length=500, blank=True, default="")
+    recorded_by = models.ForeignKey("accounts.StaffUser", on_delete=models.PROTECT, related_name="+")
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-id"]
+
+    def __str__(self):
+        return f"Scouts are {self.get_status_display()} (ruled {self.ruled_on})"

@@ -57,5 +57,5 @@ def resolve_approver(request):
 
 COMMISSION_POLICY = ApprovalKind(
     key=KEY, label="Change a commission amount", pool_permission="", current_state=current_state, apply=apply,
-    response_hours=48, resolve_approver=resolve_approver, render_diff=render_diff, validate=validate,
+    response_hours=48, chain_note="Super Admin only", resolve_approver=resolve_approver, render_diff=render_diff, validate=validate,
 )

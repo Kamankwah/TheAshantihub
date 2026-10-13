@@ -22,6 +22,7 @@ SEND_TIMEOUT = 2
 STAFF_MANAGEMENT_VERBS = (
     "staff-invite", "staff-resend-invite", "staff-cancel-invite", "staff.invite_cancelled", "staff-suspend", "staff-unsuspend",
     "staff-deactivate", "staff-reactivate", "staff-permissions", "staff-manager",
+    "staff.manager_changed", "staff.role_changed", "role.permissions_changed", "staff.signed_out_everyone",
 )
 # (verb prefixes, permissions whose holders' queues changed, query keys)
 QUEUE_INVALIDATIONS = [
@@ -36,13 +37,14 @@ QUEUE_INVALIDATIONS = [
     (("review-approve", "review-hide"), ("reviews.moderate",), ("reviews-moderation-queue", "staff-badges")),
     (("contact-message",), ("contact_messages.manage",), ("contact-messages-queue", "staff-badges")),
     (("staff-conversation-",), ("messaging.manage",), ("staff-messaging-queue",)),
-    (STAFF_MANAGEMENT_VERBS, ("staff.manage", "staff.invite_team"), ("staff-roster", "my-team", "ops-invites")),
+    # staff-badges: Super Admin's Invites badge counts open invites (invite, resend, cancel, deactivate change it).
+    (STAFF_MANAGEMENT_VERBS, ("staff.manage", "staff.invite_team"), ("staff-roster", "my-team", "ops-invites", "staff-badges")),
     (("promotion-",), ("promotions.manage",), ("promotions-queue",)),
     (("zone.",), ("zones.manage",), ("zones-summary", "zones")),
     (("site_settings.",), ("site_settings.manage",), ("site-settings", "site-settings-history")),
     (("subscription-plan-",), ("subscription_plans.approve",), ("subscription-plan-pending-queue", "staff-badges")),
     (("escrow-",), ("escrow.view",), ("escrow-ledger", "staff-badges")),
-    (("dispute-",), ("disputes.flag", "disputes.resolve_financial"), ("disputes-queue",)),
+    (("dispute-",), ("disputes.flag", "disputes.resolve_financial"), ("disputes-queue", "staff-badges")),
     (
         ("order-delivery-status-update", "order-assign-dispatch", "delivery-pickup", "delivery-deliver"),
         ("orders.manage_delivery",),
@@ -85,6 +87,13 @@ QUEUE_INVALIDATIONS = [
     ),
     (("staff-conversation-",), ("staff.invite_team",), ("ops-support-team",)),
     (("fraud.",), ("fraud.manage", "fraud.flag"), ("fraud-flags", "fraud-flag-counts", "kyc-queue", "portfolio-business", "staff-badges")),
+    # Super Admin marketplace screens (SA-5): each follows the events that change its list and its counts.
+    (("business.", "kyc-", "portfolio.", "subscription.", "fraud."), ("portfolio.manage",), ("sa-businesses",)),
+    (("customer.", "order-delivery-status-update", "order-assign-dispatch", "delivery-pickup", "delivery-deliver", "dispute-"), ("users.view",), ("sa-customers",)),
+    (("moderation-", "business.", "approval."), ("listings.moderate",), ("sa-listings",)),
+    (("order-delivery-status-update", "order-assign-dispatch", "delivery-pickup", "delivery-deliver", "dispute-"), ("orders.manage_delivery",), ("sa-orders",)),
+    (("event-moderation-", "escrow-", "event."), ("escrow.view", "event.approve"), ("sa-events",)),
+    (("dispute-",), ("disputes.flag", "disputes.resolve_financial"), ("sa-disputes",)),
 ]
 # (verb prefixes, extra keys for everyone who receives the feed event)
 FEED_KEYS = [

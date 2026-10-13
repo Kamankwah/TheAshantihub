@@ -268,6 +268,63 @@ class OperationsBadgeKeysTests(TestCase):
             self.assertEqual(data[key], 0, key)
 
 
+class SuperAdminBadgeKeysTests(TestCase):
+    """The Super Admin canvas badges: invites, disputes and the reports hub count real records."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = StaffUser.objects.create(
+            full_name="Simon", email="sa-badge@example.com", password_hash="x", role=Role.objects.get(name="super_admin"),
+        )
+        self.marketing = StaffUser.objects.create(
+            full_name="Mark", email="mark2-badge@example.com", password_hash="x", role=Role.objects.get(name="marketing"),
+        )
+
+    def _get(self, staff):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(staff, 'staff')}")
+        return self.client.get(BADGES_URL).json()
+
+    def test_keys_are_present_and_zero_with_nothing_pending(self):
+        data = self._get(self.admin)
+        for key in ["invites_open", "disputes_open", "reports_hub"]:
+            self.assertEqual(data[key], 0, key)
+
+    def test_invites_open_counts_live_unexpired_invites_only(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        role = Role.objects.get(name="support")
+        later = timezone.now() + timedelta(days=3)
+        StaffUser.objects.create(full_name="A", email="a-inv@example.com", password_hash="x", role=role, invite_token="tok-a", invite_expires_at=later)
+        StaffUser.objects.create(full_name="B", email="b-inv@example.com", password_hash="x", role=role, invite_token="tok-b", invite_expires_at=timezone.now() - timedelta(days=1))
+        StaffUser.objects.create(full_name="C", email="c-inv@example.com", password_hash="x", role=role, invite_token="tok-c", invite_expires_at=later, is_active=False)
+        StaffUser.objects.create(full_name="D", email="d-inv@example.com", password_hash="x", role=role)  # already activated
+        self.assertEqual(self._get(self.admin)["invites_open"], 1)
+
+    def test_disputes_open_counts_open_and_investigating_but_not_resolved(self):
+        from disputes.models import Dispute
+
+        for status in (Dispute.OPEN, Dispute.INVESTIGATING, Dispute.RESOLVED):
+            Dispute.objects.create(reason=Dispute.OTHER, description="x", status=status)
+        self.assertEqual(self._get(self.admin)["disputes_open"], 2)
+
+    def test_reports_hub_counts_submitted_reports_of_others_not_my_own(self):
+        from django.utils import timezone
+
+        from reports.models import StaffReport
+
+        today = timezone.localdate()
+        StaffReport.objects.create(staff=self.marketing, period="day", period_start=today, period_end=today, status=StaffReport.SUBMITTED)
+        StaffReport.objects.create(staff=self.admin, period="day", period_start=today, period_end=today, status=StaffReport.SUBMITTED)
+        self.assertEqual(self._get(self.admin)["reports_hub"], 1)
+
+    def test_all_three_are_zero_without_the_permission(self):
+        data = self._get(self.marketing)
+        for key in ["invites_open", "disputes_open", "reports_hub"]:
+            self.assertEqual(data[key], 0, key)
+
+
 class NotificationFailureIsolationTests(TestCase):
     def test_swallowed_db_error_does_not_poison_the_outer_transaction(self):
         from unittest import mock

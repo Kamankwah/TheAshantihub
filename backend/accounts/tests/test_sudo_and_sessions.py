@@ -11,7 +11,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from accounts import sessions
 from accounts.authentication import issue_token
 from accounts.models import StaffSession, StaffUser
-from accounts.testing import make_staff, session_of
+from accounts.testing import make_staff, session_of, staff_token
 from activity.models import ActivityEvent
 
 PASSWORD = "correct-horse-1"
@@ -172,9 +172,20 @@ class SessionsApiTests(Base):
         self.use(live)
         self.assertEqual(self.client.get("/api/accounts/staff/sessions/active/").status_code, 403)
 
+    def test_signing_someone_out_everywhere_and_ending_their_session_need_the_password(self):
+        theirs = issue_token(self.esi, "staff")
+        self.use(issue_token(self.boss, "staff"))
+        for response in (
+            self.client.post(f"/api/accounts/staff/{self.esi.id}/sign-out-everywhere/", {}, format="json"),
+            self.client.post(f"/api/accounts/staff/sessions/{session_of(theirs).pk}/end/", {}, format="json"),
+        ):
+            self.assertEqual(response.status_code, 403)
+            self.assertEqual(response.json()["code"], "sudo_required")
+        self.assertIsNone(session_of(theirs).revoked_at)
+
     def test_super_admin_signs_someone_out_everywhere(self):
         tokens = [issue_token(self.esi, "staff") for _ in range(2)]
-        self.use(issue_token(self.boss, "staff"))
+        self.use(staff_token(self.boss, sudo=True))
         response = self.client.post(f"/api/accounts/staff/{self.esi.id}/sign-out-everywhere/", {}, format="json")
         self.assertEqual(response.json(), {"ended": 2})
         self.assertEqual({session_of(t).revoked_reason for t in tokens}, {StaffSession.SIGNED_OUT_EVERYWHERE})
@@ -189,7 +200,7 @@ class SessionScopingTests(Base):
 
     def test_staff_manage_can_end_another_staffers_session(self):
         esi_session = session_of(issue_token(self.esi, "staff"))
-        boss_token = self.use(issue_token(self.boss, "staff"))
+        boss_token = self.use(staff_token(self.boss, sudo=True))
         response = self.end(esi_session)
         self.assertEqual(response.status_code, 200)
         esi_session.refresh_from_db()

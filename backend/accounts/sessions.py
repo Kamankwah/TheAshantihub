@@ -8,7 +8,7 @@ on every staff request.
 """
 from datetime import timedelta
 
-from django.db.models import Max
+from django.db.models import Max, Q
 from django.utils import timezone
 from rest_framework import exceptions
 
@@ -103,11 +103,23 @@ def validate(staff, token):
     reason = end_reason_if_invalid(session)
     if reason:
         if session.revoked_at is None:
-            StaffSession.objects.filter(pk=session.pk, revoked_at__isnull=True).update(
+            ended = StaffSession.objects.filter(pk=session.pk, revoked_at__isnull=True).update(
                 revoked_at=timezone.now(), revoked_reason=reason
             )
+            if ended and reason in (StaffSession.IDLE, StaffSession.EXPIRED):
+                _log_timeout(session, reason)
         raise exceptions.AuthenticationFailed(ENDED_MESSAGE)
     return session
+
+
+def _log_timeout(session, reason):
+    """Sign-in history line for a session that timed out (written once, by
+    whichever of validate() or cleanup() ended it first)."""
+    from staffsecurity import signin
+    from staffsecurity.models import StaffSignInRecord
+
+    note = "30 minutes without activity" if reason == StaffSession.IDLE else "12-hour limit reached"
+    signin.log(StaffSignInRecord.TIMED_OUT, staff=session.staff, note=note, two_factor=session.two_factor)
 
 
 def touch(session, now=None):
@@ -158,6 +170,10 @@ def grant_sudo(session, now=None):
 
 
 def has_sudo(request):
+    # Nothing password-protected runs inside a Super Admin's step-in (the
+    # session is the Super Admin's, the request is the viewed person's).
+    if getattr(getattr(request, "auth", None), "view_as_viewer", None) is not None:
+        return False
     session = current(request)
     return bool(session and session.sudo_until and session.sudo_until > timezone.now())
 
@@ -177,11 +193,13 @@ def cleanup(now=None):
     """Mark sessions that timed out as ended and forget rows older than 90
     days (sign-ins older than that live on in the activity log)."""
     now = now or timezone.now()
-    StaffSession.objects.filter(revoked_at__isnull=True, created_at__lt=now - ABSOLUTE_LIMIT).update(
-        revoked_at=now, revoked_reason=StaffSession.EXPIRED
-    )
-    StaffSession.objects.filter(revoked_at__isnull=True, last_seen_at__lt=now - IDLE_LIMIT).update(
-        revoked_at=now, revoked_reason=StaffSession.IDLE
-    )
+    for reason, due in (
+        (StaffSession.EXPIRED, Q(created_at__lt=now - ABSOLUTE_LIMIT)),
+        (StaffSession.IDLE, Q(last_seen_at__lt=now - IDLE_LIMIT)),
+    ):
+        stale = list(StaffSession.objects.filter(due, revoked_at__isnull=True).select_related("staff")[:5000])
+        for session in stale:
+            if StaffSession.objects.filter(pk=session.pk, revoked_at__isnull=True).update(revoked_at=now, revoked_reason=reason):
+                _log_timeout(session, reason)
     deleted, _ = StaffSession.objects.filter(created_at__lt=now - RETENTION).delete()
     return deleted

@@ -30,8 +30,13 @@ urlpatterns = [
     path("api/field/", include("field.urls")),
     path("api/targets/", include("targets.urls")),
     path("api/operations/", include("operations.urls")),
+    path("api/marketplace/", include("marketplace.urls")),
+    path("api/people/", include("people.urls")),
     path("api/commission/", include("commission.urls")),
+    path("api/insights/", include("insights.urls")),
     path("api/portfolio/", include("portfolio.urls")),
+    path("api/staff-security/", include("staffsecurity.urls")),
+    path("api/announcements/", include("announcements.urls")),
     path("api/realtime/", include("realtime.urls")),
 ]
 

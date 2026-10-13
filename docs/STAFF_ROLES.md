@@ -57,6 +57,15 @@ the role seeds in `backend/accounts/migrations/0002`–`0029`, the `HasRolePermi
 | Area | Permission | What it unlocks | Super Admin | Admin | Accountant | Marketing | Support | Scout | Delivery Mgr | Dispatch |
 |---|---|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
 | Staff | `staff.manage` | Invite, suspend, deactivate and re-permission staff | ✓ | | | | | | | |
+| | `staff.view_as` | Step in: open a team member's workspace read-only (Super Admin role required too) | ✓ | | | | | | | |
+| | `roles.manage` | Change what each role can do (the role matrix); Super Admin only, never handed out | ✓ | | | | | | | |
+| | `approvals.manage_rules` | Edit approval timers and the money limit that needs a second approver; Super Admin only | ✓ | | | | | | | |
+| | `approvals.cosign` | Co-sign requests above the money limit. Held only by the external **co-signer** role (which holds nothing else); it cannot be granted to anyone else, and nothing can be granted to the co-signer | co-signer only | | | | | | | |
+| | `commission.tax_ruling` | Record the ruling on scouts' tax status; until then scout commission stays on hold. Super Admin only | ✓ | | | | | | | |
+| | `security.manage` | Security settings: 2-step rules, sign-in policy. Super Admin only | ✓ | | | | | | | |
+| | `exports.schedule` | Schedule recurring exports; Super Admin only | ✓ | | | | | | | |
+| | `announcements.send` | Send announcements to staff; Super Admin only | ✓ | | | | | | | |
+| | `system.view` | The system and jobs view; Super Admin only | ✓ | | | | | | | |
 | Onboarding | `kyc.approve` | Approve, reject or re-open business KYC; record the address decision | ✓ | ✓ | | | | | | |
 | | `scouts.assign` | Assign scouts to businesses | ✓ | ✓ | | | | | | |
 | | `scouts.verify` | Submit field reports for own assignments | ✓ | | | | | ✓ | | |
@@ -110,6 +119,13 @@ money-related changes that the Accountant proposes. Supervises other moderators'
 - Approve, reject or re-review **subscription plans**. This includes any edit to a plan that is
   already live, because an edit sends the plan back to pending.
 - **Re-review a hidden review**, which reverses another moderator's rejection.
+- **Step in** (`staff.view_as`): open an Operations, Scout, Support, Delivery Manager, Marketing or
+  Accountant workspace exactly as that person sees it, read-only. The Super Admin stays signed in
+  as themselves; the server substitutes the person for reads only (`X-View-As`, after a recorded
+  start on the Super Admin's own 2-step session) and refuses every write and export with
+  `403 view_only`. The start, the end and each screen opened are in the activity log, on behalf of
+  the person viewed. Never another Super Admin, a co-signer or a rider; granting the code to anyone
+  else does nothing (`accounts/view_as.py`).
 
 Super Admins can also do everything listed for every other role below.
 
@@ -273,6 +289,13 @@ These rules keep one person from both proposing and approving the same thing.
 | Delivery | Delivery Manager assigns | Dispatch picks up and delivers; the customer confirms receipt |
 | Staff accounts and permissions | — | Super Admin only, never on their own account |
 
+**Large approvals and the co-signer.** A request above the money limit needs a second approval from the
+external co-signer. This constrains staged requests made by others only: a Super Admin's own request
+applies at once whatever the amount (the canvas rule: "a Super Admin's own changes apply at once and are
+recorded"), and is recorded as applied directly. No approval kind defines `amount_of` yet, so the limit
+is dormant until one does. Separately, the permissions marked Super Admin only above cannot be granted
+to a role or to a person by anyone else.
+
 ---
 
 ## How the roles hand work to each other
@@ -314,6 +337,30 @@ matching permission:
 Tab badges count work that is still open, not unread alerts. They refresh every 60 seconds and
 appear on these tabs: KYC Queue, Listings Moderation, Hero Approval, Events Moderation, Reviews,
 Plan Approvals, Contact Messages and Escrow Ledger.
+
+---
+
+## Editing a whole role (Super Admin build, SA-4)
+
+Until this build a role's permissions were fixed by migration seeds; only one person's grants and
+revokes could be edited. **Roles & permissions** (Super Admin, `roles.manage`) now edits a role:
+
+- Tick or untick a permission for a role. **Review and save** shows, per change, who it reaches and
+  which individual grants or revokes it touches; nothing is saved until you re-enter your password.
+- A save takes effect at once (the effective set is read on every request) and reconnects the
+  people affected. One `role.permissions_changed` audit event holds the before and after for every
+  box that changed.
+- **Guards, enforced on save:** the Super Admin role is locked (it always holds every permission, as
+  the seed test asserts). `roles.manage`, `approvals.manage_rules`, `staff.view_as` and `staff.manage`
+  cannot be handed to another role. `approvals.cosign` belongs to the Co-signer role alone and that
+  role holds nothing else, so whoever makes a request can never also co-sign it.
+- Only permissions that exist are listed. The canvas codes `payouts.prepare`, `payouts.approve`,
+  `campaigns.send` and `customers.export` are not created yet; each appears here when its phase adds it.
+
+The directory, profile, org chart, invites and sessions screens read `/api/people/`. A manager change
+(`staff.manager_changed`) and a role change (`staff.role_changed`) each ask for the password, need a
+reason and record before and after. A person's pay profile, payslips and payout account do not exist
+in the data, so the profile shows commission only and says pay arrives with the Accounting phase.
 
 ---
 

@@ -312,7 +312,7 @@ class ReportExportView(APIView):
         )
         if report.staff_id != request.user.pk:
             require_sudo(request)  # someone else's report is personal data
-        record(request.user, "report.exported", target=report, after={"format": fmt, "report": report.pk}, request=request)
+        record(request.user, "report.exported", target=report, after={"format": fmt, "report": report.pk, "personal_data": report.staff_id != request.user.pk}, request=request)
         stem = f"report-{slugify(report.staff.full_name)}-{report.period}-{report.period_start}"
         return exports.export_response([report], fmt, stem, str(report))
 
@@ -352,7 +352,8 @@ class ReportRangeExportView(APIView):
         count = reports.count()
         background = (end - start).days + 1 > exports.BACKGROUND_DAYS or count > exports.BACKGROUND_ROWS
         background = background or (fmt == "pdf" and count > exports.PDF_SYNC_ROWS)
-        after = {"filters": filters, "format": fmt, "rows": count, "background": background}
+        after = {"filters": filters, "format": fmt, "rows": count, "background": background,
+                 "personal_data": exports.reaches_others(request.user, filters)}
         if background:
             # record() holds a global lock until commit, so it goes last.
             with transaction.atomic():

@@ -55,10 +55,17 @@ describe('StaffDashboard', () => {
       hasPermission: () => true,
     })
     renderWithQueryClient(<StaffDashboard auth={auth} onExit={vi.fn()} />)
-    ;['KYC Queue', 'Listings Moderation', 'Hero Approval', 'Events Moderation', 'Event Pricing', 'Reviews', 'Delivery Management', 'Users', 'Categories & Zones', 'Site Settings', 'Staff Management',
-      'Escrow Ledger', 'Disputes', 'Transactions Report', 'Credit & Lending', 'Promotions', 'Analytics', 'Messaging / Tickets',
-      'Scout Assignments', 'Field Verification', 'Delivery Coordination', 'My Deliveries']
-      .forEach((label) => expect(screen.getByText(label)).toBeInTheDocument())
+    // Super Admin's menu is the 2026-10-07 canvas's (SA-1): the old tool names are now the
+    // canvas's words (Users -> Customers, Listings Moderation -> Listings & services, ...), and
+    // Hero Approval, Reviews, Escrow, Credit, Messaging ... are no longer in the menu (their panels
+    // and permissions stay). Some labels (Support, Marketing) also appear elsewhere, hence getAllByText.
+    ;['My approvals', 'Staff directory', 'Teams & reporting lines', 'Invites', 'Roles & permissions', 'Sessions & devices', 'Leave & holidays',
+      'Operations & scouts', 'Support', 'Delivery & dispatch', 'Marketing', 'Accounting', 'Businesses', 'Customers', 'Listings & services', 'Orders & deliveries', 'Events & tickets',
+      'Disputes & returns', 'Revenue & sales', 'Payouts & payroll', 'Commissions', 'Refunds', 'Reconciliation', 'Analytics', 'Growth funnel', 'Reports hub',
+      'Scheduled exports', 'Audit log', 'Sign-in history', 'Fraud & anomaly alerts', 'Data exports log', 'Security settings', 'Notification center',
+      'Staff announcements', 'Approval rules & timers', 'Commission policy', 'Delivery pricing', 'Plans & prices', 'Target limits', 'Tax tables',
+      'Categories & zones', 'Integrations', 'System health']
+      .forEach((label) => expect(screen.getAllByText(label).length).toBeGreaterThan(0))
   })
 
   it('switches to the Analytics panel and shows real marketplace counts', async () => {
@@ -448,7 +455,7 @@ describe('StaffDashboard', () => {
     const roleSelect = await screen.findByDisplayValue('Role')
     expect(roleSelect.tagName).toBe('SELECT')
     const optionValues = Array.from(roleSelect.querySelectorAll('option')).map((o) => o.value)
-    expect(optionValues).toEqual(['', 'super_admin', 'operations', 'accountant', 'marketing', 'support', 'scout', 'delivery_manager', 'dispatch'])
+    expect(optionValues).toEqual(['', 'super_admin', 'operations', 'accountant', 'marketing', 'support', 'scout', 'delivery_manager', 'dispatch', 'cosigner'])
   })
 
   it('shows an inline error when approving a KYC submission fails', async () => {

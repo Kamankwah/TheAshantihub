@@ -53,6 +53,8 @@ STAFF = [
     ("Kwame Admin", "admin.staff@theashantihub.com", "operations"),
     ("Yaw Accountant", "accountant.staff@theashantihub.com", "accountant"),
     ("Esi Marketing", "marketing.staff@theashantihub.com", "marketing"),
+    # The external co-signer (approves only requests above the co-sign limit).
+    ("Kojo Cosigner", "cosigner.staff@theashantihub.com", "cosigner"),
 ]
 
 # (full_name, login_phone, email, business_kind, ghana_card, gps_address)

@@ -1,3 +1,4 @@
+from django.db.models import Count
 from django.utils import timezone
 from rest_framework import generics
 from rest_framework.exceptions import PermissionDenied
@@ -40,10 +41,24 @@ class NotificationListView(APIView):
             return Response({"unread_count": 0, "results": []})
         qs = Notification.objects.filter(**scope)
         unread_count = qs.filter(is_read=False).count()
+        # The Notification center's filters. Without them this is the bell's
+        # plain list; `kinds` (what the caller has, with counts) is added only
+        # when asked for, so the bell's response stays as it was.
+        params = request.query_params
+        envelope = {}
+        if params.get("kinds") == "1":
+            envelope["kinds"] = list(qs.order_by().values("kind").annotate(total=Count("id")).order_by("kind"))
+        if params.get("kind"):
+            qs = qs.filter(kind__in=[k for k in params["kind"].split(",") if k][:20])
+        if params.get("unread") == "1":
+            qs = qs.filter(is_read=False)
+        if params.get("limit", "").isdecimal() and params["limit"].isascii():
+            qs = qs[: min(int(params["limit"]), 500)]
         return Response(
             {
                 "unread_count": unread_count,
                 "results": NotificationSerializer(qs, many=True).data,
+                **envelope,
             }
         )
 
@@ -189,6 +204,31 @@ class StaffBadgesView(APIView):
                 staff__manager=user, staff__is_active=True, status=StaffReport.SUBMITTED
             ).count()
 
+        # Super Admin canvas badges. Each counts a real record source and is gated by the
+        # permission that opens its screen: Invites = open staff invites (link not yet used,
+        # not expired); Disputes & returns = open or investigating disputes (there is no
+        # returns model yet); Reports hub = submitted reports waiting for a decision, across
+        # every active team member but the caller.
+        invites_open = disputes_open = reports_hub = 0
+        if "staff.manage" in held:
+            from django.db.models import Q
+
+            invites_open = (
+                StaffUser.objects.filter(is_active=True, invite_token__isnull=False)
+                .filter(Q(invite_expires_at__isnull=True) | Q(invite_expires_at__gt=timezone.now()))
+                .count()
+            )
+        if held & {"disputes.resolve_financial", "disputes.flag"}:
+            from operations import service_issues
+
+            disputes_open = service_issues.open_disputes().count()
+        if "reports.view_all" in held:
+            reports_hub = (
+                StaffReport.objects.filter(staff__is_active=True, status=StaffReport.SUBMITTED)
+                .exclude(staff=user)
+                .count()
+            )
+
         # Escrow tab is gated by any of view/release/refund (see
         # AdminCommandCenter's nav), so its badge is too.
         can_escrow = held & {"escrow.view", "escrow.release", "escrow.refund"}
@@ -247,6 +287,9 @@ class StaffBadgesView(APIView):
                 "team_reports_waiting": team_reports_waiting,
                 "support_issues": support_issues,
                 "deliveries_open": deliveries_open,
+                "invites_open": invites_open,
+                "disputes_open": disputes_open,
+                "reports_hub": reports_hub,
                 "report_due_at": report_due_at,
             }
         )

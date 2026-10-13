@@ -7,6 +7,7 @@ import { dateInputValue } from "../../../lib/followUp.js";
 import { D, glassCard } from "../theme.js";
 import { button, dim, field } from "./panelStyles.js";
 import { errorStyle, eyebrow, h3, labelStyle } from "./portfolioParts.jsx";
+import TaxRulingSection from "./TaxRulingSection.jsx";
 
 // ─── Commission policy (Accounting proposes, Super Admin approves) ───────────
 // The amounts scouts earn come only from here: nothing is hard-coded, and with
@@ -19,7 +20,7 @@ const local = (value) => (/^\d{4}-\d{2}-\d{2}$/.test(String(value)) ? new Date(`
 const SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const shortDate = (value) => { const d = local(value); return `${d.getDate()} ${SHORT[d.getMonth()]} ${d.getFullYear()}`; };
 
-export default function CommissionPolicyPanel({ canPropose = false }) {
+export default function CommissionPolicyPanel({ canPropose = false, showTaxRuling = false, onOpenApproval }) {
   const queryClient = useQueryClient();
   const policies = useCommissionPolicies();
   const accruals = useCommissionAccruals();
@@ -87,10 +88,13 @@ export default function CommissionPolicyPanel({ canPropose = false }) {
           {policies.data.pending.map((p) => (
             <div key={p.id} style={{ fontSize: "0.82rem", color: D.text, ...figures }}>
               {`${KINDS.find(([k]) => k === p.kind)?.[1] || p.kind}: GH₵ ${p.amount} from ${shortDate(p.effective_from)} · proposed by ${p.maker}`}
+              {onOpenApproval && <> <button type="button" onClick={() => onOpenApproval(p.id)} style={{ ...button(D.gold, D.text), padding: "3px 10px", fontSize: "0.7rem" }}>Review and decide</button></>}
             </div>
           ))}
         </section>
       )}
+
+      {showTaxRuling && <TaxRulingSection />}
 
       {canPropose && (
         <form onSubmit={propose} aria-label="Propose a new amount" style={{ ...glassCard, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>

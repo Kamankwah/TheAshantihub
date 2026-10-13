@@ -5,6 +5,7 @@ import sys
 import environ
 
 from celery.schedules import crontab
+from corsheaders.defaults import default_headers as cors_default_headers
 from cryptography.fernet import Fernet
 from django.core.exceptions import ImproperlyConfigured
 
@@ -112,7 +113,12 @@ INSTALLED_APPS = [
     "field",
     "targets",
     "operations",
+    "marketplace",
+    "people",
     "commission",
+    "insights",
+    "staffsecurity",
+    "announcements",
     "realtime",
 ]
 
@@ -124,6 +130,9 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
+    # Step-in: refuses every write carrying X-View-As from a Super Admin
+    # before the activity middleware opens its transaction (accounts/view_as.py).
+    "accounts.view_as.ViewAsMiddleware",
     "activity.middleware.StaffActivityMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -170,6 +179,8 @@ MEDIA_ROOT = BASE_DIR / "media"
 # DJANGO_CORS_ALLOWED_ORIGINS list of the real frontend origins.
 CORS_ALLOW_ALL_ORIGINS = env.bool("DJANGO_CORS_ALLOW_ALL_ORIGINS", default=True)
 CORS_ALLOWED_ORIGINS = env.list("DJANGO_CORS_ALLOWED_ORIGINS", default=[])
+# The Super Admin's step-in sends two extra headers (accounts/view_as.py).
+CORS_ALLOW_HEADERS = (*cors_default_headers, "x-view-as", "x-view-as-screen")
 
 # Email — defaults to Django's console backend so nothing breaks locally
 # without SMTP configured; set EMAIL_BACKEND (and the SMTP vars below) in
@@ -451,6 +462,18 @@ CELERY_BEAT_SCHEDULE = {
     "commission-release-holds": {
         "task": "commission.tasks.release_commission_holds",
         "schedule": crontab(hour=2, minute=45),
+    },
+    "insights-scheduled-exports": {
+        "task": "insights.tasks.run_due_scheduled_exports",
+        "schedule": 300.0,  # every 5 minutes
+    },
+    "announcements-send-due": {
+        "task": "announcements.tasks.send_due_announcements",
+        "schedule": 60.0,  # every minute
+    },
+    "staffsecurity-purge-sign-in-history": {
+        "task": "staffsecurity.tasks.purge_old_sign_in_records",
+        "schedule": crontab(hour=3, minute=45),
     },
     "portfolio-purge-staged-photos": {
         "task": "portfolio.tasks.purge_staged_photos",

@@ -1,6 +1,7 @@
 """2-step sign-in for staff (foundations F9): TOTP authenticator codes with
-single-use recovery codes. Mandatory for Super Admin (set up at the next
-password sign-in), optional for everyone else."""
+single-use recovery codes. Mandatory for Super Admin and for the roles Super
+Admin requires in Security settings (set up at the next password sign-in),
+optional for everyone else."""
 import hashlib
 import hmac
 import logging
@@ -65,7 +66,12 @@ def _open_secret(staff, token):
 
 
 def is_required(staff):
-    return staff.role.name == Role.SUPER_ADMIN
+    if staff.role.name == Role.SUPER_ADMIN:
+        return True
+    # Roles Super Admin chose in Security settings (staffsecurity.policy).
+    from staffsecurity import policy
+
+    return policy.requires_two_factor(staff.role.name)
 
 
 def is_enabled(staff):

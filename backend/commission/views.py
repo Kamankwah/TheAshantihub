@@ -14,6 +14,7 @@ from rest_framework.views import APIView
 
 from accounts.models import BusinessOwner
 from accounts.permissions import HasAnyRolePermission, HasRolePermission
+from accounts.sessions import require_sudo
 from activity.services import record
 from approvals import services as approvals
 from approvals.models import ApprovalRequest
@@ -22,9 +23,10 @@ from reports.exports import ExportNegotiation, escape_cell
 
 from . import services
 from .approval_kinds import KEY as POLICY_KIND
-from .models import CommissionAccrual, CommissionPolicy
+from .models import CommissionAccrual, CommissionPolicy, ScoutTaxRuling
 
 VIEW_OWN, VIEW_ALL, POLICY = "commission.view_own", "commission.view_all", "commission.policy"
+TAX_RULING = "commission.tax_ruling"
 BONUS_ROWS = 10
 
 
@@ -149,6 +151,8 @@ class AccrualsView(APIView):
         params = request.query_params
         if params.get("status") in dict(CommissionAccrual.STATUS_CHOICES):
             queryset = queryset.filter(status=params["status"])
+        if params.get("kind") in dict(CommissionPolicy.KIND_CHOICES):
+            queryset = queryset.filter(kind=params["kind"])
         if params.get("staff", "").isdecimal() and len(params["staff"]) < 10:
             queryset = queryset.filter(staff_id=int(params["staff"]))
         queryset = queryset.order_by("-earned_at", "-id")
@@ -241,3 +245,42 @@ class PoliciesView(APIView):
         except approvals.ApprovalError as exc:
             return Response({"detail": exc.message}, status=getattr(exc, "status_code", 400))
         return Response({"approval_id": approval.pk, "status": approval.status}, status=status.HTTP_201_CREATED)
+
+
+def _ruling_body(ruling):
+    return {
+        "status": ruling.status, "status_label": ruling.get_status_display(), "ruled_on": ruling.ruled_on, "reference": ruling.reference,
+        "note": ruling.note, "recorded_by": ruling.recorded_by.full_name, "recorded_at": ruling.recorded_at,
+    }
+
+
+class TaxRulingView(APIView):
+    """GET tax-ruling/ — the scouts' tax status in force (if any) and its history.
+    POST tax-ruling/ {status, ruled_on, reference, note} — Super Admin records a
+    ruling; needs the password again and is written to the audit log."""
+
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [HasRolePermission(TAX_RULING)]
+        return [HasAnyRolePermission(VIEW_ALL, POLICY, TAX_RULING)]
+
+    def get(self, request):
+        rulings = list(ScoutTaxRuling.objects.select_related("recorded_by")[:20])
+        blocker = services.payout_blocker()
+        return Response({
+            "current": _ruling_body(rulings[0]) if rulings else None,
+            "history": [_ruling_body(r) for r in rulings],
+            "payout_blocked": blocker is not None,
+            "blocked_message": blocker,
+            "can_record": TAX_RULING in request.user.effective_permission_codenames(),
+            "options": [{"value": value, "label": label} for value, label in ScoutTaxRuling.STATUS_CHOICES],
+        })
+
+    def post(self, request):
+        require_sudo(request)
+        data = request.data if isinstance(request.data, dict) else {}
+        try:
+            ruling = services.record_tax_ruling(request.user, data.get("status"), data.get("ruled_on"), data.get("reference"), data.get("note", ""), request=request)
+        except services.PolicyError as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
+        return Response(_ruling_body(ruling), status=status.HTTP_201_CREATED)

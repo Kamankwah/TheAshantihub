@@ -27,7 +27,7 @@ const DISPUTE_STATUS_META = {
 // being worked), Resolved = the approved-equivalent, Rejected = its
 // counterpart. Only a *rejected* dispute can be reopened — a resolved one may
 // have moved money, so it stays final (see DisputeReReviewView).
-function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
+export function DisputeRow({ dispute, state, canFlag, canResolve, onDone }) {
   const [resolving, setResolving] = useState(false);
   const [confirmingReject, setConfirmingReject] = useState(false);
   const [refund, setRefund] = useState("");

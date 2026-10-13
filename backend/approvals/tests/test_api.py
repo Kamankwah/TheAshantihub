@@ -126,6 +126,7 @@ class ApprovalApiTests(TestCase):
             counts,
             {
                 "mine": 1, "made": 0, "team": 1, "decided": 0, "escalated_to_me": 0, "can_view_all": False,
+                "all_open": None, "teams": [], "levels": [],
                 "makers": [{"id": self.scout.id, "full_name": "Kwame"}],
             },
         )

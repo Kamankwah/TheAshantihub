@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import view_as_views, views
 
 urlpatterns = [
     path("me/", views.me, name="accounts-me"),
@@ -55,6 +55,8 @@ urlpatterns = [
     path("staff/login/", views.StaffLoginView.as_view(), name="staff-login"),
     path("staff/logout/", views.StaffLogoutView.as_view(), name="staff-logout"),
     path("staff/reauth/", views.StaffReauthView.as_view(), name="staff-reauth"),
+    path("staff/view-as/", view_as_views.ViewAsView.as_view(), name="staff-view-as"),
+    path("staff/view-as/end/", view_as_views.ViewAsEndView.as_view(), name="staff-view-as-end"),
     path("staff/sessions/", views.StaffSessionListView.as_view(), name="staff-sessions"),
     path("staff/sessions/active/", views.StaffActiveSessionsView.as_view(), name="staff-sessions-active"),
     path("staff/sessions/end-others/", views.StaffEndOtherSessionsView.as_view(), name="staff-sessions-end-others"),

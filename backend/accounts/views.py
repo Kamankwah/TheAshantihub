@@ -19,6 +19,9 @@ from notifications.services import notify_business_owner, notify_customer, notif
 from activity.services import record as record_activity
 from realtime.publish import force_disconnect_on_commit
 
+from staffsecurity import signin as signin_log
+from staffsecurity.models import StaffSignInRecord
+
 from . import claims, kyc, sessions, two_factor
 from .authentication import issue_token
 from .emails import send_staff_invite_email, send_two_factor_changed_email, send_verification_code_email
@@ -322,6 +325,7 @@ def _staff_sign_in_response(account, request, *, two_factor_used=False):
         account, "staff.signed_in", target=account, method="POST", request=request,
         summary="with 2-step sign-in" if two_factor_used else "",
     )
+    signin_log.log(StaffSignInRecord.SIGNED_IN, request, staff=account, two_factor=two_factor_used)
     return {
         "token": token,
         "account_type": "staff",
@@ -357,7 +361,15 @@ class StaffLoginView(generics.GenericAPIView):
 
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            # Sign-in history: a refusal is written the same way whether or not the
+            # address exists, and only a masked form of the address is kept.
+            identifier = request.data.get("identifier") if isinstance(request.data, dict) else ""
+            signin_log.log(
+                StaffSignInRecord.SIGN_IN_FAILED, request, staff=getattr(serializer, "attempted_account", None),
+                identifier=identifier, note=getattr(serializer, "refusal", ""),
+            )
+            serializer.is_valid(raise_exception=True)
         account = serializer.account
         stage = two_factor.challenge_for(account)
         if stage == two_factor.VERIFY:
@@ -376,6 +388,7 @@ class StaffLogoutView(APIView):
         if session is not None:
             sessions.revoke(session, StaffSession.SIGNED_OUT)
         record_activity(request.user, "staff.signed_out", target=request.user, method="POST", request=request)
+        signin_log.log(StaffSignInRecord.SIGNED_OUT, request, staff=request.user)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -727,82 +740,105 @@ class StaffBusinessOwnerDetailView(generics.RetrieveUpdateAPIView):
         return context
 
 
+def _suspension_reason(request):
+    """The reason a staff member gives for suspending a customer or business:
+    required, because the account holder is told it."""
+    body = request.data if isinstance(request.data, dict) else {}
+    return str(body.get("reason") or "").strip()[:500]
+
+
 class StaffCustomerSuspendView(APIView):
+    """Needs users.manage and the password again (sudo); the reason is
+    required, goes to the customer, and the action is recorded with it."""
+
     def get_permissions(self):
-        return [HasRolePermission("users.manage")]
+        return [HasRolePermission("users.manage"), RequiresSudo()]
 
     def post(self, request, pk):
-        customer = generics.get_object_or_404(Customer, pk=pk)
-        customer.is_suspended = True
-        customer.suspension_reason = request.data.get("reason", "") or ""
-        customer.save(update_fields=["is_suspended", "suspension_reason"])
-        notify_customer(
-            customer, "account_suspended", "Your account has been suspended",
-            body=customer.suspension_reason
-            or "Your account has been suspended. Please contact AshantiHub support.",
-            icon="🚫",
-        )
-        return Response({
-            "id": customer.id,
-            "is_suspended": customer.is_suspended,
-            "suspension_reason": customer.suspension_reason,
-        })
+        reason = _suspension_reason(request)
+        if not reason:
+            return Response({"reason": "Say why: the customer is told."}, status=400)
+        with transaction.atomic():
+            customer = generics.get_object_or_404(Customer.objects.select_for_update(), pk=pk)
+            customer.is_suspended = True
+            customer.suspension_reason = reason
+            customer.save(update_fields=["is_suspended", "suspension_reason"])
+            notify_customer(customer, "account_suspended", "Your account has been suspended", body=reason, icon="🚫")
+            record_activity(
+                request.user, "customer.suspended", target=customer, summary=f"Suspended {customer.full_name}",
+                after={"reason": reason}, method="POST", request=request,
+            )
+        return Response({"id": customer.id, "is_suspended": customer.is_suspended, "suspension_reason": customer.suspension_reason})
 
 
 class StaffCustomerUnsuspendView(APIView):
     def get_permissions(self):
-        return [HasRolePermission("users.manage")]
+        return [HasRolePermission("users.manage"), RequiresSudo()]
 
     def post(self, request, pk):
-        customer = generics.get_object_or_404(Customer, pk=pk)
-        customer.is_suspended = False
-        customer.suspension_reason = ""
-        customer.save(update_fields=["is_suspended", "suspension_reason"])
-        notify_customer(
-            customer, "account_reinstated", "Your account has been reinstated",
-            body="Your account is active again — welcome back.",
-            icon="✅",
-        )
+        with transaction.atomic():
+            customer = generics.get_object_or_404(Customer.objects.select_for_update(), pk=pk)
+            before = customer.suspension_reason
+            customer.is_suspended = False
+            customer.suspension_reason = ""
+            customer.save(update_fields=["is_suspended", "suspension_reason"])
+            notify_customer(
+                customer, "account_reinstated", "Your account has been reinstated",
+                body="Your account is active again — welcome back.", icon="✅",
+            )
+            record_activity(
+                request.user, "customer.reinstated", target=customer, summary=f"Lifted the suspension of {customer.full_name}",
+                before={"reason": before}, method="POST", request=request,
+            )
         return Response({"id": customer.id, "is_suspended": customer.is_suspended})
 
 
 class StaffBusinessOwnerSuspendView(APIView):
+    """As the customer's, plus: the business's listings and events leave public
+    browse at once (hidden_business_q); nothing is deleted."""
+
     def get_permissions(self):
-        return [HasRolePermission("users.manage")]
+        return [HasRolePermission("users.manage"), RequiresSudo()]
 
     def post(self, request, pk):
-        owner = generics.get_object_or_404(BusinessOwner, pk=pk)
-        owner.is_suspended = True
-        owner.suspension_reason = request.data.get("reason", "") or ""
-        owner.save(update_fields=["is_suspended", "suspension_reason"])
-        notify_business_owner(
-            owner, "account_suspended", "Your account has been suspended",
-            body=owner.suspension_reason
-            or "Your account has been suspended. Your listings and events are hidden. "
-            "Please contact AshantiHub support.",
-            icon="🚫",
-        )
-        return Response({
-            "id": owner.id,
-            "is_suspended": owner.is_suspended,
-            "suspension_reason": owner.suspension_reason,
-        })
+        reason = _suspension_reason(request)
+        if not reason:
+            return Response({"reason": "Say why: the owner is told."}, status=400)
+        with transaction.atomic():
+            owner = generics.get_object_or_404(BusinessOwner.objects.select_for_update(), pk=pk)
+            owner.is_suspended = True
+            owner.suspension_reason = reason
+            owner.save(update_fields=["is_suspended", "suspension_reason"])
+            notify_business_owner(
+                owner, "account_suspended", "Your account has been suspended",
+                body=f"{reason} Your listings and events are hidden. Please contact AshantiHub support.", icon="🚫",
+            )
+            record_activity(
+                request.user, "business.suspended", target=owner, summary=f"Suspended {owner.display_name}",
+                after={"reason": reason}, method="POST", request=request,
+            )
+        return Response({"id": owner.id, "is_suspended": owner.is_suspended, "suspension_reason": owner.suspension_reason})
 
 
 class StaffBusinessOwnerUnsuspendView(APIView):
     def get_permissions(self):
-        return [HasRolePermission("users.manage")]
+        return [HasRolePermission("users.manage"), RequiresSudo()]
 
     def post(self, request, pk):
-        owner = generics.get_object_or_404(BusinessOwner, pk=pk)
-        owner.is_suspended = False
-        owner.suspension_reason = ""
-        owner.save(update_fields=["is_suspended", "suspension_reason"])
-        notify_business_owner(
-            owner, "account_reinstated", "Your account has been reinstated",
-            body="Your account is active again — your listings and events are visible.",
-            icon="✅",
-        )
+        with transaction.atomic():
+            owner = generics.get_object_or_404(BusinessOwner.objects.select_for_update(), pk=pk)
+            before = owner.suspension_reason
+            owner.is_suspended = False
+            owner.suspension_reason = ""
+            owner.save(update_fields=["is_suspended", "suspension_reason"])
+            notify_business_owner(
+                owner, "account_reinstated", "Your account has been reinstated",
+                body="Your account is active again — your listings and events are visible.", icon="✅",
+            )
+            record_activity(
+                request.user, "business.reinstated", target=owner, summary=f"Lifted the suspension of {owner.display_name}",
+                before={"reason": before}, method="POST", request=request,
+            )
         return Response({"id": owner.id, "is_suspended": owner.is_suspended})
 
 
@@ -945,6 +981,17 @@ class StaffPermissionsView(APIView):
                 status=400,
             )
 
+        # Handing out the permissions that stay with Super Admin is a Super Admin's act.
+        from people.roles import COSIGN, SUPER_ADMIN_ONLY, individual_grant_refusal
+
+        protected = set(SUPER_ADMIN_ONLY) | {COSIGN}
+        if request.user.role.name != Role.SUPER_ADMIN and protected & (
+            set(grant_codes) - set(staff.extra_permissions.values_list("codename", flat=True))
+        ):
+            return Response({"detail": "Only a Super Admin can grant that permission."}, status=403)
+        refusal = individual_grant_refusal(staff.role.name, grant_codes)
+        if refusal:
+            return Response({"detail": refusal}, status=400)
         grant_perms = list(Permission.objects.filter(codename__in=grant_codes))
         revoke_perms = list(Permission.objects.filter(codename__in=revoke_codes))
         missing = (set(grant_codes) | set(revoke_codes)) - {
@@ -955,8 +1002,9 @@ class StaffPermissionsView(APIView):
                 {"detail": f"Unknown permission(s): {', '.join(sorted(missing))}."}, status=400
             )
 
-        staff.extra_permissions.set(grant_perms)
-        staff.revoked_permissions.set(revoke_perms)
+        with transaction.atomic():
+            staff.extra_permissions.set(grant_perms)
+            staff.revoked_permissions.set(revoke_perms)
         # Their socket's permission and team groups are now wrong: reconnect.
         force_disconnect_on_commit(f"staff.{staff.pk}")
         return Response(StaffListSerializer(staff).data)
@@ -998,7 +1046,9 @@ class StaffReauthView(APIView):
 
     def post(self, request):
         if not check_password(request.data.get("password") or "", request.user.password_hash):
+            signin_log.log(StaffSignInRecord.PASSWORD_REENTRY_FAILED, request, staff=request.user)
             return Response({"password": ["That password isn't right."]}, status=400)
+        signin_log.log(StaffSignInRecord.PASSWORD_REENTERED, request, staff=request.user)
         return Response({"sudo_until": sessions.grant_sudo(sessions.current(request))})
 
 
@@ -1041,6 +1091,8 @@ class StaffSessionEndView(APIView):
     def post(self, request, pk):
         scope = StaffSession.objects.all() if can_manage_staff(request.user) else StaffSession.objects.filter(staff=request.user)
         session = generics.get_object_or_404(scope.select_related("staff__role"), pk=pk)
+        if session.staff_id != request.user.pk:
+            sessions.require_sudo(request)  # ending someone else's session asks for the password again
         sessions.revoke(session, StaffSession.ENDED)
         session.refresh_from_db()
         return Response(StaffSessionSerializer(session, context=_session_context(request)).data)
@@ -1057,7 +1109,7 @@ class StaffEndOtherSessionsView(APIView):
 
 class StaffSignOutEverywhereView(APIView):
     def get_permissions(self):
-        return [HasRolePermission("staff.manage")]
+        return [HasRolePermission("staff.manage"), RequiresSudo()]
 
     def post(self, request, pk):
         staff = generics.get_object_or_404(StaffUser, pk=pk)
@@ -1353,6 +1405,7 @@ class StaffLoginTwoFactorView(APIView):
             return Response({"detail": UNREADABLE}, status=400)
         if not ok:
             record_activity(account, two_factor.FAILED_VERB, target=account, method="POST", request=request)
+            signin_log.log(StaffSignInRecord.TWO_STEP_FAILED, request, staff=account, note="Recovery code" if recovery_code else "Authenticator code")
             return Response({"detail": WRONG_CODE}, status=400)
         if recovery_code:
             left = two_factor.status(account)["recovery_codes_left"]
@@ -1452,7 +1505,8 @@ class StaffTwoFactorDisableView(APIView):
 
     def post(self, request):
         if two_factor.is_required(request.user):
-            return Response({"detail": "2-step sign-in can't be turned off for a Super Admin."}, status=400)
+            who = "a Super Admin" if request.user.role.name == "super_admin" else "your role: a Super Admin requires it"
+            return Response({"detail": f"2-step sign-in can't be turned off for {who}."}, status=400)
         two_factor.disable(request.user)
         record_activity(request.user, "staff.two_factor_disabled", target=request.user, method="POST", request=request)
         _email_after_commit(request.user, "2-step sign-in was turned off for your account.")

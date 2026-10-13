@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Flag from "../Flag.jsx";
 import { SESSION_ENDED_EVENT, UNAUTHORIZED_EVENT, getStoredAuth } from "../../apiClient.js";
 import { useIdleSignOut } from "../../hooks/useIdleSignOut.js";
@@ -9,10 +9,18 @@ import { useStaffBadges } from "../../hooks/useStaffBadges.js";
 import { D, ROLE_ACCENTS } from "./theme.js";
 import OperationsOverviewPanel from "./panels/OperationsOverviewPanel.jsx";
 import OverviewPanel from "./panels/OverviewPanel.jsx";
+import SuperAdminOverviewPanel from "./panels/SuperAdminOverviewPanel.jsx";
 import ServiceIssuesPanel from "./panels/ServiceIssuesPanel.jsx";
 import DeliveriesReturnsPanel from "./panels/DeliveriesReturnsPanel.jsx";
 import SupportTeamPanel from "./panels/SupportTeamPanel.jsx";
 import ScreenBuildingPanel from "./panels/ScreenBuildingPanel.jsx";
+import RevenueSalesPanel from "./panels/RevenueSalesPanel.jsx";
+import CommissionsPanel from "./panels/CommissionsPanel.jsx";
+import RefundsPanel from "./panels/RefundsPanel.jsx";
+import SaAnalyticsPanel from "./panels/SaAnalyticsPanel.jsx";
+import GrowthFunnelPanel from "./panels/GrowthFunnelPanel.jsx";
+import ReportsHubPanel from "./panels/ReportsHubPanel.jsx";
+import ScheduledExportsPanel from "./panels/ScheduledExportsPanel.jsx";
 import KYCQueuePanel from "./panels/KYCQueuePanel.jsx";
 import ListingsModerationPanel from "./panels/ListingsModerationPanel.jsx";
 import HeroApprovalPanel from "./panels/HeroApprovalPanel.jsx";
@@ -29,6 +37,12 @@ import CategoriesZonesPanel from "./panels/CategoriesZonesPanel.jsx";
 import ZonesPanel from "./panels/ZonesPanel.jsx";
 import SiteSettingsPanel from "./panels/SiteSettingsPanel.jsx";
 import StaffManagementPanel from "./panels/StaffManagementPanel.jsx";
+import StaffDirectoryPanel from "./panels/StaffDirectoryPanel.jsx";
+import SaTeamsPanel from "./panels/SaTeamsPanel.jsx";
+import SaInvitesPanel from "./panels/SaInvitesPanel.jsx";
+import RolesPermissionsPanel from "./panels/RolesPermissionsPanel.jsx";
+import SaSessionsPanel from "./panels/SaSessionsPanel.jsx";
+import { startViewAs } from "../../hooks/useViewAs.js";
 import EscrowLedgerPanel from "./panels/EscrowLedgerPanel.jsx";
 import DisputesPanel from "./panels/DisputesPanel.jsx";
 import TransactionsReportPanel from "./panels/TransactionsReportPanel.jsx";
@@ -68,19 +82,43 @@ import LeavePanel from "./panels/LeavePanel.jsx";
 import OpsScoutsPanel from "./panels/OpsScoutsPanel.jsx";
 import OpsTargetsPanel from "./panels/OpsTargetsPanel.jsx";
 import ApprovalsPanel from "./panels/ApprovalsPanel.jsx";
+import ApprovalRulesPanel from "./panels/ApprovalRulesPanel.jsx";
 import PortfolioPanel from "./panels/PortfolioPanel.jsx";
 import SubscriptionsDuePanel from "./panels/SubscriptionsDuePanel.jsx";
 import FraudCasesPanel from "./panels/FraudCasesPanel.jsx";
 import ReportsPanel from "./panels/ReportsPanel.jsx";
+import SaBusinessesPanel from "./panels/SaBusinessesPanel.jsx";
+import SaCustomersPanel from "./panels/SaCustomersPanel.jsx";
+import SaListingsPanel from "./panels/SaListingsPanel.jsx";
+import SaOrdersPanel from "./panels/SaOrdersPanel.jsx";
+import SaEventsPanel from "./panels/SaEventsPanel.jsx";
+import SaDisputesPanel from "./panels/SaDisputesPanel.jsx";
 import TeamReportsPanel from "./panels/TeamReportsPanel.jsx";
 import SecurityPanel from "./panels/SecurityPanel.jsx";
+import SignInHistoryPanel from "./panels/SignInHistoryPanel.jsx";
+import DataExportsLogPanel from "./panels/DataExportsLogPanel.jsx";
+import FraudAlertsPanel from "./panels/FraudAlertsPanel.jsx";
+import NotificationCenterPanel from "./panels/NotificationCenterPanel.jsx";
+import StaffAnnouncementsPanel from "./panels/StaffAnnouncementsPanel.jsx";
+import AnnouncementBanner from "./shell/AnnouncementBanner.jsx";
 import SessionsPanel from "./panels/SessionsPanel.jsx";
+import { DeliveryPricingPanel, PayoutsPayrollPanel, ReconciliationPanel, TaxTablesPanel } from "./panels/LaterPhasePanels.jsx";
+import IntegrationsPanel from "./panels/IntegrationsPanel.jsx";
+import SystemHealthPanel from "./panels/SystemHealthPanel.jsx";
+import PlansPricesPanel from "./panels/PlansPricesPanel.jsx";
+import TargetLimitsPanel from "./panels/TargetLimitsPanel.jsx";
 import RegisterBusinessPanel, { clearRegisterDrafts } from "./panels/RegisterBusinessPanel.jsx";
 import SudoPrompt from "./SudoPrompt.jsx";
 import StaffShellStyles from "./shell/StaffShellStyles.jsx";
 import InstallAppButton from "./shell/InstallAppButton.jsx";
 import UpdateToast from "./shell/UpdateToast.jsx";
 import OfflineBanner from "./shell/OfflineBanner.jsx";
+import StepInGate from "./stepin/StepInGate.jsx";
+import StepInPanel from "./stepin/StepInPanel.jsx";
+import ViewAsBanner from "./stepin/ViewAsBanner.jsx";
+import ViewAsSelect from "./stepin/ViewAsSelect.jsx";
+import useViewOnlyControls from "./stepin/useViewOnlyControls.js";
+import { setViewAsScreen } from "../../lib/viewAs.js";
 
 // ─── Admin Command Center ─────────────────────────────────────────────────────
 // The staff dashboard's shell, restyled to match the Business Command
@@ -98,9 +136,17 @@ import OfflineBanner from "./shell/OfflineBanner.jsx";
 // "Sign out" in the browser and the installed app alike. `onViewSite` is the
 // optional keep-the-session alternative ("View site", browser only — App.jsx
 // leaves it undefined inside the installed app, which has no marketplace).
-export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab: activeTabProp, activeDetail, onTabChange, NotificationsSlot }) {
+// A Super Admin stepped into someone's workspace sees that person's real
+// shell, read-only, under a banner (stepin/StepInGate.jsx); otherwise this is
+// the shell as always.
+export default function AdminCommandCenter(props) {
+  return <StepInGate Shell={StaffShell} {...props} />;
+}
+
+// `viewAs` is set only inside a step-in: `auth` is then the viewed person's.
+function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, activeDetail, onTabChange, NotificationsSlot, viewAs }) {
   const { data: staffBadges } = useStaffBadges();
-  const badgeFor = makeBadgeFor(staffBadges);
+  const badgeFor = makeBadgeFor(staffBadges, auth.user?.role);
   // A scout's Reports item carries a neutral "Due 19:00" while today's day report is unsubmitted.
   const noteFor = (id) => {
     if (auth.user?.role !== "scout" || id !== "reports" || !staffBadges?.report_due_at) return null;
@@ -134,7 +180,8 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
   const refetchMe = useCallback(() => {
     authRef.current?.refreshUser?.()?.catch?.(() => {});
   }, []);
-  const live = useRealtime(true, { onForceDisconnect: refetchMe });
+  // No live socket inside a step-in: its ticket is a write, which a view refuses.
+  const live = useRealtime(!viewAs, { onForceDisconnect: refetchMe });
   // Idle (30 min without input) and "the server ended this session" both
   // sign out through the normal staff sign-out, which clears cached data.
   const onExitRef = useRef(onExit);
@@ -188,6 +235,12 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
   const requestedTab = isControlled ? activeTabProp : internalTab;
   const activeTab = isPermittedTab(navGroups, requestedTab) ? requestedTab : "overview";
   const activeLabel = activeTab === "overview" ? overviewLabel(auth.user?.role) : allItems.find(i => i.id === activeTab)?.label;
+  // Inside a step-in: each request names the screen open (one audit event per
+  // screen), and controls that would change data are switched off.
+  useLayoutEffect(() => { if (viewAs) setViewAsScreen(activeTab); }, [viewAs, activeTab]);
+  const mainRef = useRef(null);
+  useViewOnlyControls(mainRef, Boolean(viewAs));
+  const canViewAs = role === "super_admin" && auth.hasPermission("staff.view_as");
 
   // An unpermitted/unknown panel URL (or manifest shortcut) is sent back to
   // Overview by replacing the history entry, not pushing a new one.
@@ -216,6 +269,13 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
     setDrawerOpen(false);
     if (isControlled) onTabChange?.(`all-portfolios/${id}`);
     else { setInternalTab("all-portfolios"); setInternalDetail(String(id)); }
+  };
+
+  // A person's profile opens under Staff directory (/staff/staff/<id>).
+  const openStaff = (id) => {
+    setDrawerOpen(false);
+    if (isControlled) onTabChange?.(`staff/${id}`);
+    else { setInternalTab("staff"); setInternalDetail(String(id)); }
   };
 
   // A follow-up's business opens its page under My businesses (/staff/portfolio/<id>).
@@ -311,7 +371,8 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
         <StaffHeader status={<LiveUpdatesIndicator paused={live.paused} />} title={activeLabel} role={role} roleColor={roleColor} fullName={auth.user?.full_name}
           onExit={signOut} onViewSite={onViewSite} breakpoint={breakpoint}
           onOpenMenu={() => setDrawerOpen(true)} menuButtonRef={menuButtonRef} drawerOpen={drawerOpen}
-          actions={<>{NotificationsSlot ? <NotificationsSlot user={auth.user} /> : null}{isPhone ? null : <InstallAppButton variant="header" />}</>}>
+          actions={<>{!isPhone && (viewAs || canViewAs) ? <ViewAsSelect viewAs={viewAs} /> : null}{NotificationsSlot ? <NotificationsSlot user={auth.user} /> : null}{isPhone ? null : <InstallAppButton variant="header" />}</>}>
+          {viewAs && <ViewAsBanner viewAs={viewAs} compact={isPhone} />}
           <OfflineBanner bleed={isPhone ? 12 : 20} />
         </StaffHeader>
 
@@ -320,68 +381,93 @@ export default function AdminCommandCenter({ auth, onExit, onViewSite, activeTab
           ...(isPhone ? { left: 12, right: 12, bottom: "calc(80px + env(safe-area-inset-bottom, 0px))", textAlign: "center" } : { top: 74, right: 20 }),
         }}>✓ Saved!</div>}
 
-        <main className="staff-content" style={{ padding: isPhone ? "16px 12px calc(88px + env(safe-area-inset-bottom, 0px))" : "22px 20px 72px" }}>
-          {activeTab === "overview" && (role === "scout"
+        <main ref={mainRef} className="staff-content" style={{ padding: isPhone ? "16px 12px calc(88px + env(safe-area-inset-bottom, 0px))" : "22px 20px 72px" }}>
+          <AnnouncementBanner />
+          {activeTab === "overview" && role !== "cosigner" && (role === "scout"
             ? <ScoutTodayPanel auth={auth} onNavigate={selectTab} onCheckIn={openCheckInScreen} onRegister={() => selectTab("register-business")} onSeeApprovals={openMadeApprovals} onOpenBusiness={openMyBusiness} />
+            : role === "super_admin"
+              ? <SuperAdminOverviewPanel auth={auth} onNavigate={selectTab} onOpenApproval={openApproval} />
             : role === "operations" && auth.hasPermission("portfolio.manage")
               ? <OperationsOverviewPanel auth={auth} onNavigate={selectTab} onOpenApproval={openApproval} onOpenBusiness={openBusiness} />
               : <OverviewPanel auth={auth} roleColor={roleColor} onNavigate={selectTab} />)}
           {activeTab === "kyc" && <KYCQueuePanel auth={auth} />}
-          {activeTab === "moderation" && <ListingsModerationPanel />}
+          {activeTab === "moderation" && (role === "super_admin" ? <SaListingsPanel auth={auth} onOpenBusiness={openBusiness} /> : <ListingsModerationPanel />)}
           {activeTab === "hero" && <HeroApprovalPanel />}
-          {activeTab === "events-moderation" && <EventsModerationPanel />}
+          {activeTab === "events-moderation" && (role === "super_admin" ? <SaEventsPanel /> : <EventsModerationPanel />)}
           {activeTab === "event-pricing" && <EventPricingPanel auth={auth} />}
           {activeTab === "reviews" && <ReviewsModerationPanel auth={auth} />}
           {activeTab === "subscription-plans" && <SubscriptionPlansManagePanel />}
-          {activeTab === "subscription-plans-approval" && <SubscriptionPlanApprovalPanel />}
-          {activeTab === "delivery" && <DeliveryManagementPanel />}
+          {activeTab === "subscription-plans-approval" && (role === "super_admin" ? <PlansPricesPanel /> : <SubscriptionPlanApprovalPanel />)}
+          {activeTab === "delivery" && (role === "super_admin" ? <SaOrdersPanel /> : <DeliveryManagementPanel />)}
           {activeTab === "contact-messages" && <ContactMessagesPanel auth={auth} />}
-          {activeTab === "users" && <UsersPanel auth={auth} />}
+          {activeTab === "users" && (role === "super_admin" ? <SaCustomersPanel auth={auth} /> : <UsersPanel auth={auth} />)}
           {activeTab === "categories-zones" && <CategoriesZonesPanel auth={auth} />}
           {activeTab === "site-settings" && <SiteSettingsPanel showToast={showToast} />}
-          {activeTab === "staff" && <StaffManagementPanel />}
+          {activeTab === "staff" && (role === "super_admin" ? <StaffDirectoryPanel auth={auth} detailId={detail} onOpenDetail={openDetail} onNavigate={selectTab} onViewAs={auth.hasPermission("staff.view_as") ? startViewAs : undefined} /> : <StaffManagementPanel />)}
+          {activeTab === "teams-reporting" && <SaTeamsPanel onOpenStaff={openStaff} />}
+          {activeTab === "roles-permissions" && <RolesPermissionsPanel />}
           {activeTab === "escrow" && <EscrowLedgerPanel auth={auth} />}
-          {activeTab === "disputes" && <DisputesPanel auth={auth} />}
-          {activeTab === "transactions" && <TransactionsReportPanel />}
+          {activeTab === "disputes" && (role === "super_admin" ? <SaDisputesPanel auth={auth} /> : <DisputesPanel auth={auth} />)}
+          {activeTab === "transactions" && (role === "super_admin" ? <RevenueSalesPanel /> : <TransactionsReportPanel />)}
           {activeTab === "credit" && <CreditPanel />}
           {activeTab === "scout-assignments" && <ScoutAssignmentsPanel />}
           {activeTab === "field-verification" && <ScoutPanel />}
           {activeTab === "delivery-coordination" && <DeliveryManagerPanel />}
           {activeTab === "my-deliveries" && <DispatchPanel />}
           {activeTab === "promotions" && <PromotionsPanel auth={auth} />}
-          {activeTab === "analytics" && <AnalyticsPanel />}
+          {activeTab === "analytics" && (role === "super_admin" ? <SaAnalyticsPanel /> : <AnalyticsPanel />)}
           {activeTab === "messaging" && <MessagingPanel />}
           {activeTab === "tasks" && (role === "scout"
             ? <FollowUpsPanel onOpenBusiness={openMyBusiness} onOpenProspects={() => selectTab("prospects")} leadName={leadName} />
             : <TasksPanel auth={auth} />)}
-          {activeTab === "activity" && (role === "operations" ? <StaffActivityPanel live={live.live} /> : <ActivityPanel />)}
+          {activeTab === "activity" && (role === "operations" || role === "super_admin" ? <StaffActivityPanel live={live.live} superAdmin={role === "super_admin"} /> : <ActivityPanel />)}
           {activeTab === "visit-map" && <TeamVisitMapPanel onOpenBusiness={openBusiness} />}
           {activeTab === "calls" && <CallLogPanel auth={auth} />}
           {activeTab === "prospects" && <ProspectsPanel onRegister={openRegisterFromProspect} />}
-          {activeTab === "targets" && (auth.hasPermission("businesses.manage_portfolio") ? <TargetsPanel /> : auth.hasPermission("targets.manage") ? <OpsTargetsPanel /> : <ScreenBuildingPanel title="Team targets" />)}
+          {activeTab === "targets" && (role === "super_admin" ? <TargetLimitsPanel onOpenApproval={openApproval} /> : role !== "super_admin" && auth.hasPermission("businesses.manage_portfolio") ? <TargetsPanel /> : auth.hasPermission("targets.manage") ? <OpsTargetsPanel /> : <ScreenBuildingPanel title="Team targets" />)}
           {activeTab === "ops-scouts" && <OpsScoutsPanel auth={auth} onNavigate={selectTab} onOpenScout={openScoutPortfolio} />}
           {activeTab === "leave" && <LeavePanel auth={auth} />}
           {activeTab === "support-issues" && <ServiceIssuesPanel auth={auth} onOpenBusiness={openBusiness} />}
           {activeTab === "deliveries-returns" && <DeliveriesReturnsPanel auth={auth} />}
           {activeTab === "support-team" && <SupportTeamPanel onNavigate={selectTab} />}
-          {PLACEHOLDER_TABS.has(activeTab) && <ScreenBuildingPanel title={activeLabel} />}
+          {PLACEHOLDER_TABS[role]?.has(activeTab) && <ScreenBuildingPanel title={activeLabel} />}
+          {activeTab.startsWith("step-in-") && <StepInPanel teamId={activeTab.slice("step-in-".length)} auth={auth} />}
           {activeTab === "hero-events" && <HeroEventsPanel auth={auth} />}
           {activeTab === "zones" && <ZonesPanel />}
           {activeTab === "commission" && <CommissionPanel />}
           {activeTab === "leaderboard" && <LeaderboardPanel />}
-          {activeTab === "commission-policy" && <CommissionPolicyPanel canPropose={auth.hasPermission("commission.policy")} />}
+          {activeTab === "commission-policy" && <CommissionPolicyPanel canPropose={auth.hasPermission("commission.policy")} showTaxRuling={role === "super_admin" || auth.hasPermission("commission.tax_ruling")} onOpenApproval={role === "super_admin" ? openApproval : undefined} />}
+          {activeTab === "payouts-payroll" && <PayoutsPayrollPanel onNavigate={selectTab} />}
+          {activeTab === "reconciliation" && <ReconciliationPanel />}
+          {activeTab === "delivery-pricing" && <DeliveryPricingPanel />}
+          {activeTab === "tax-tables" && <TaxTablesPanel onNavigate={selectTab} />}
+          {activeTab === "integrations" && <IntegrationsPanel />}
+          {activeTab === "system-health" && <SystemHealthPanel />}
           {activeTab === "visits" && <VisitsPanel auth={auth} detailId={detail} onOpenDetail={openDetail} leadName={leadName} />}
           {activeTab === "reports" && <ReportsPanel auth={auth} />}
-          {activeTab === "team-reports" && <TeamReportsPanel auth={auth} />}
-          {activeTab === "security" && <SecurityPanel />}
-          {activeTab === "sessions" && <SessionsPanel auth={auth} />}
+          {activeTab === "team-reports" && (role === "super_admin" ? <ReportsHubPanel /> : <TeamReportsPanel auth={auth} />)}
+          {activeTab === "commissions" && <CommissionsPanel onNavigate={selectTab} />}
+          {activeTab === "refunds" && <RefundsPanel />}
+          {activeTab === "growth-funnel" && <GrowthFunnelPanel />}
+          {activeTab === "scheduled-exports" && <ScheduledExportsPanel />}
+          {activeTab === "security" && <SecurityPanel isSuperAdmin={role === "super_admin"} />}
+          {activeTab === "sign-in-history" && <SignInHistoryPanel />}
+          {activeTab === "data-exports-log" && <DataExportsLogPanel />}
+          {activeTab === "notification-center" && <NotificationCenterPanel onNavigate={selectTab} knownScreens={new Set(navGroups.flatMap((g) => g.items.map((i) => i.id)))} />}
+          {activeTab === "staff-announcements" && <StaffAnnouncementsPanel />}
+          {activeTab === "sessions" && (role === "super_admin" ? <SaSessionsPanel /> : <SessionsPanel auth={auth} />)}
+          {activeTab === "invites" && <SaInvitesPanel />}
           {activeTab === "my-team" && (role === "operations" ? <InvitePanel auth={auth} /> : <MyTeamPanel currentStaffId={auth.user?.id} />)}
           {activeTab === "approvals" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "approval-rules" && <ApprovalRulesPanel onNavigate={selectTab} />}
+          {/* The external co-signer has one screen: the requests waiting for their second approval. */}
+          {activeTab === "overview" && role === "cosigner" && <ApprovalsPanel detailId={detail} onOpenDetail={openDetail} />}
           {activeTab === "portfolio" && <PortfolioPanel mode="mine" auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
-          {activeTab === "all-portfolios" && <PortfolioPanel key={scoutFilter ?? "any"} mode="all" initialScout={scoutFilter} auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
+          {activeTab === "all-portfolios" && role === "super_admin" && <SaBusinessesPanel auth={auth} detailId={detail} onOpenDetail={openDetail} />}
+          {activeTab === "all-portfolios" && role !== "super_admin" && <PortfolioPanel key={scoutFilter ?? "any"} mode="all" initialScout={scoutFilter} auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
           {activeTab === "at-risk" && <PortfolioPanel mode="at-risk" auth={auth} detailId={detail} onOpenDetail={openDetail} onCheckIn={openCheckIn} />}
           {activeTab === "subscriptions-due" && <SubscriptionsDuePanel auth={auth} onOpenBusiness={openBusiness} />}
-          {activeTab === "fraud-cases" && <FraudCasesPanel auth={auth} onOpenBusiness={openBusiness} />}
+          {activeTab === "fraud-cases" && (role === "super_admin" ? <FraudAlertsPanel auth={auth} onOpenBusiness={openBusiness} /> : <FraudCasesPanel auth={auth} onOpenBusiness={openBusiness} />)}
           {activeTab === "register-business" && <RegisterBusinessPanel auth={auth} detailId={detail} onOpenDetail={openDetail} />}
         </main>
       </div>

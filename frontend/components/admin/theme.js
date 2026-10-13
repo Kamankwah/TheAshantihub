@@ -27,6 +27,7 @@ export const ROLE_ACCENTS = {
   scout: C.darkBrown,
   delivery_manager: C.deepGold,
   dispatch: C.orange,
+  cosigner: C.black,
 };
 
 // Text color for the role badge, keyed by role — ROLE_ACCENTS' backgrounds
@@ -44,6 +45,7 @@ export const ROLE_BADGE_TEXT = {
   scout: C.cream,
   delivery_manager: C.darkBrown,
   dispatch: C.darkBrown,
+  cosigner: C.cream,
 };
 
 // ─── Per-panel status-label→color lookup maps ─────────────────────────────

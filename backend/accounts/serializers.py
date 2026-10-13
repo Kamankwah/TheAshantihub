@@ -26,7 +26,7 @@ from .models import (
 from listings.models import Zone
 
 from .permissions import can_lead_team, can_manage_staff
-from .phones import filter_by_phone
+from .phones import filter_by_phone, mask_phone
 
 # Used to pay the same check_password() cost when no account is found, so that
 # login timing does not leak whether an identifier exists (see login serializers below).
@@ -561,15 +561,21 @@ class StaffLoginSerializer(serializers.Serializer):
         account = StaffUser.objects.filter(email=attrs["identifier"]).first()
         password_hash = account.password_hash if account else DUMMY_PASSWORD_HASH
         password_valid = check_password(attrs["password"], password_hash)
+        # Read by StaffLoginView for the sign-in history; never sent to the client.
+        self.attempted_account = account
+        self.refusal = ""
         if account is None or not password_valid:
+            self.refusal = "Wrong password or unknown address"
             raise serializers.ValidationError("Invalid credentials")
         # Only surfaced after valid credentials — never leaks account state to
         # someone who couldn't otherwise sign in (punch-list item 10). Both a
         # temporary suspension and a "no longer works here" deactivation stop
         # login; they carry different copy so the staffer knows which it is.
         if account.is_suspended:
+            self.refusal = "Account suspended"
             raise serializers.ValidationError(SUSPENDED_LOGIN_MESSAGE)
         if not account.is_active:
+            self.refusal = "Account deactivated"
             raise serializers.ValidationError(DEACTIVATED_LOGIN_MESSAGE)
         self.account = account
         return attrs
@@ -695,10 +701,32 @@ class CustomerSecondaryPhoneConfirmSerializer(serializers.Serializer):
         return customer
 
 
+def _sent_in_this_patch(serializer, field):
+    """True only when this request is a PATCH whose body carried `field`: the
+    response may then echo back the value the client just sent, nothing more."""
+    request = serializer.context.get("request")
+    sent = getattr(serializer, "initial_data", None)
+    return bool(request and request.method == "PATCH" and isinstance(sent, dict) and field in sent)
+
+
+def _mask_email_or_none(email):
+    from .claims import mask_email
+    return (mask_email(email) or None) if email else None
+
+
 class CustomerListSerializer(serializers.ModelSerializer):
+    """Staff list: the phone and email are masked. The full phone is a
+    sudo-gated, audited POST (marketplace/customers/<id>/reveal-phone/)."""
+
     class Meta:
         model = Customer
         fields = ["id", "full_name", "phone", "email", "is_suspended", "created_at"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["phone"] = mask_phone(instance.phone) if instance.phone else None
+        data["email"] = _mask_email_or_none(instance.email)
+        return data
 
 
 class BusinessOwnerListSerializer(serializers.ModelSerializer):
@@ -713,6 +741,14 @@ class BusinessOwnerListSerializer(serializers.ModelSerializer):
             "id", "full_name", "business_name", "login_phone", "email", "kyc_status",
             "is_suspended", "created_at",
         ]
+
+    def to_representation(self, instance):
+        # Masked: the full sign-in phone is the sudo-gated, audited
+        # portfolio/businesses/<id>/reveal-phone/.
+        data = super().to_representation(instance)
+        data["login_phone"] = mask_phone(instance.login_phone) if instance.login_phone else None
+        data["email"] = _mask_email_or_none(instance.email)
+        return data
 
 
 # ── Staff user-management (staff user-management tools) ─────────────────────
@@ -751,6 +787,19 @@ class StaffCustomerDetailSerializer(serializers.ModelSerializer):
             "gender": {"required": False},
             "date_of_birth": {"required": False},
         }
+
+    def to_representation(self, instance):
+        # The phone is masked on every read; it is echoed in full only when this
+        # PATCH just sent it. Otherwise the full phone is the sudo-gated reveal.
+        data = super().to_representation(instance)
+        if instance.phone and not _sent_in_this_patch(self, "phone"):
+            data["phone"] = mask_phone(instance.phone)
+        return data
+
+    def validate_phone(self, value):
+        if value and "*" in value:
+            raise serializers.ValidationError("That is the masked number; type the full phone or leave it unchanged.")
+        return value
 
     def get_payment_history(self, obj):
         # Last 10 payment attempts, newest first. Only what the backend
@@ -804,6 +853,20 @@ class StaffBusinessOwnerDetailSerializer(serializers.ModelSerializer):
             "login_phone": {"required": False},
             "email": {"required": False},
         }
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if instance.login_phone and not _sent_in_this_patch(self, "login_phone"):
+            data["login_phone"] = mask_phone(instance.login_phone)
+        profile = data.get("profile")
+        if profile and profile.get("business_contact_phone"):
+            profile["business_contact_phone"] = mask_phone(profile["business_contact_phone"])
+        return data
+
+    def validate_login_phone(self, value):
+        if value and "*" in value:
+            raise serializers.ValidationError("That is the masked number; type the full phone or leave it unchanged.")
+        return value
 
     def get_profile(self, obj):
         profile = getattr(obj, "profile", None)

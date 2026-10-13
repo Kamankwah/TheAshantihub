@@ -17,6 +17,9 @@ class ApprovalKind:
     validate: Optional[Callable] = None          # (request) -> None; raise ApprovalError(message) to refuse
     on_rejected: Optional[Callable] = None       # (request) -> None; runs when a decider returns it (the maker's follow-up task)
     consequences: Optional[Callable] = None      # (request) -> [str, …]; what approving does, shown beside the Approve button
+    requires_sudo: bool = False                  # approving needs the password re-entered (money kinds)
+    chain_note: str = ""                         # words for a custom chain on the rules screen, e.g. "Super Admin only"
+    amount_of: Optional[Callable] = None         # (request) -> Decimal | None; GH₵ the request moves, stored on request.amount
 
 
 _KINDS = {}

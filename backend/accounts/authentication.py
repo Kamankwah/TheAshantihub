@@ -2,7 +2,7 @@ from rest_framework import authentication, exceptions, status
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import AccessToken
 
-from . import sessions
+from . import sessions, view_as
 from .models import BusinessOwner, Customer, StaffUser
 from .mixins import AnonymousUser
 
@@ -66,6 +66,13 @@ class MultiAccountJWTAuthentication(authentication.BaseAuthentication):
             session = sessions.validate(account, token)
             sessions.touch(session)
             token.staff_session = session
+            # Step-in (accounts/view_as.py): a Super Admin's GET carrying
+            # X-View-As sees the target as request.user; writes are refused.
+            # The session touched above stays the Super Admin's own.
+            target = view_as.resolve(request, account, session)
+            if target is not None:
+                token.view_as_viewer = account
+                return (target, token)
 
         return (account, token)
 
@@ -84,6 +91,7 @@ def exception_handler(exc, context):
 
     if (
         response is not None
+        and not isinstance(exc, view_as.ViewAsRefused)
         and response.status_code == status.HTTP_403_FORBIDDEN
         and isinstance(context["request"].user, AnonymousUser)
     ):

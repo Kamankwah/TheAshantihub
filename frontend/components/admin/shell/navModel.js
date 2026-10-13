@@ -17,6 +17,15 @@
 // flag. They are shown to Operations only (opsOnly) so no other role's menu or
 // "More tools" list gains a placeholder.
 const opsOnly = (auth, ...perms) => auth.user?.role === "operations" && perms.some((perm) => auth.hasPermission(perm));
+// The Super Admin canvases (2026-10-07, 47 screens) draw screens that are not
+// built yet. Each has a NAV_ITEMS entry now with `placeholder: "super_admin"`, so
+// the menu is exactly the canvas and the panel switch opens the "being built"
+// panel; the package that builds a screen swaps the panel in and drops the flag.
+// They are Super Admin's alone (saOnly), so no other role's menu gains one.
+const saOnly = (auth) => auth.user?.role === "super_admin";
+// Step-in needs the Super Admin role and staff.view_as, as the server does (accounts/view_as.py).
+const canStepIn = (auth) => saOnly(auth) && auth.hasPermission("staff.view_as");
+const opsOrSa = (auth, ...perms) => ["operations", "super_admin"].includes(auth.user?.role) && perms.some((perm) => auth.hasPermission(perm));
 
 export const NAV_ITEMS = [
   { id: "kyc", icon: "🪪", label: "KYC Queue", show: (auth) => auth.hasPermission("kyc.approve") },
@@ -68,17 +77,38 @@ export const NAV_ITEMS = [
   // Operations canvas screens (see the note above NAV_ITEMS).
   { id: "ops-scouts", icon: "🧑‍🌾", label: "Scouts", show: (auth) => opsOnly(auth, "portfolio.manage") },
   { id: "support-team", icon: "🎧", label: "Support team", show: (auth) => opsOnly(auth, "staff.invite_team") },
-  { id: "leave", icon: "🏖️", label: "Leave & calendar", show: (auth) => opsOnly(auth, "leave.record") },
+  { id: "leave", icon: "🏖️", label: "Leave & calendar", show: (auth) => opsOrSa(auth, "leave.record") },
   { id: "hero-events", icon: "🌟", label: "Hero & events", show: (auth) => opsOnly(auth, "hero_media.approve", "event.approve") },
   { id: "support-issues", icon: "🛎️", label: "Support issues", show: (auth) => opsOnly(auth, "service_issues.view") },
   { id: "deliveries-returns", icon: "📦", label: "Deliveries & returns", show: (auth) => opsOnly(auth, "service_issues.view") },
   { id: "visit-map", icon: "🗺️", label: "Visit map", show: (auth) => opsOnly(auth, "portfolio.manage") },
   { id: "zones", icon: "📍", label: "Zones", show: (auth) => opsOnly(auth, "zones.manage") },
+  // Super Admin canvas screens; the ones not built yet are placeholders (see saOnly).
+  { id: "invites", icon: "✉️", label: "Invites", show: saOnly },
+  { id: "teams-reporting", icon: "🌳", label: "Teams & reporting lines", show: saOnly },
+  { id: "roles-permissions", icon: "🔑", label: "Roles & permissions", show: saOnly },
+  // Teams (step in): read-only views of a team member's workspace (components/admin/stepin/).
+  { id: "step-in-operations", icon: "👁️", label: "Operations & scouts", show: canStepIn },
+  { id: "step-in-support", icon: "👁️", label: "Support", show: canStepIn },
+  { id: "step-in-delivery", icon: "👁️", label: "Delivery & dispatch", show: canStepIn },
+  { id: "step-in-marketing", icon: "👁️", label: "Marketing", show: canStepIn },
+  { id: "step-in-accounting", icon: "👁️", label: "Accounting", show: canStepIn },
+  { id: "payouts-payroll", icon: "🏦", label: "Payouts & payroll", show: saOnly },
+  { id: "commissions", icon: "💷", label: "Commissions", show: saOnly },
+  { id: "refunds", icon: "↩️", label: "Refunds", show: saOnly },
+  { id: "reconciliation", icon: "🧮", label: "Reconciliation", show: saOnly },
+  { id: "growth-funnel", icon: "🪜", label: "Growth funnel", show: saOnly },
+  { id: "scheduled-exports", icon: "📆", label: "Scheduled exports", show: saOnly },
+  { id: "sign-in-history", icon: "🕵️", label: "Sign-in history", show: saOnly },
+  { id: "data-exports-log", icon: "📤", label: "Data exports log", show: saOnly },
+  { id: "notification-center", icon: "🔔", label: "Notification center", show: saOnly },
+  { id: "staff-announcements", icon: "📣", label: "Staff announcements", show: saOnly },
+  { id: "approval-rules", icon: "⏱️", label: "Approval rules & timers", show: saOnly },
+  { id: "delivery-pricing", icon: "🛵", label: "Delivery pricing", show: saOnly },
+  { id: "tax-tables", icon: "📑", label: "Tax tables", show: saOnly },
+  { id: "integrations", icon: "🔌", label: "Integrations", show: saOnly },
+  { id: "system-health", icon: "🩺", label: "System health", show: saOnly },
 ];
-
-// Nav ids whose screen is not built yet; AdminCommandCenter renders the
-// "being built" panel for them.
-export const PLACEHOLDER_TABS = new Set(NAV_ITEMS.filter((item) => item.placeholder).map((item) => item.id));
 
 // [group id, group label, item ids]. The original (pre-1B) grouping, used for
 // any session whose role has no menu below.
@@ -96,17 +126,21 @@ const DEFAULT_GROUPS = [
 // repeats an item label (e.g. the canvas's "Approvals" group is "Decisions"
 // here) so a label always names exactly one thing on screen.
 const ROLE_MENUS = {
+  // Super Admin, exactly as the two approved canvases draw it (Command center is the
+  // pinned Overview). Screens the canvas leaves out (Staff Management's old name, Escrow,
+  // Credit, Tasks, Call log, My reports, Messaging, ...) are not in this menu; their panels
+  // and permissions are untouched (see EXHAUSTIVE_MENU_ROLES). Where a screen is not built
+  // yet its id is a placeholder (NAV_ITEMS); where an older panel serves it, that panel's id.
   super_admin: [
     ["home", "Home", ["approvals"]],
-    ["people", "People", ["staff", "my-team", "sessions"]],
-    ["teams", "Teams (step in)", ["scout-assignments", "field-verification", "portfolio", "delivery-coordination", "my-deliveries"]],
-    ["businesses", "Businesses", ["all-portfolios", "at-risk", "subscriptions-due", "register-business"]],
-    ["marketplace", "Marketplace", ["users", "kyc", "moderation", "hero", "events-moderation", "reviews", "delivery", "disputes", "messaging", "contact-messages", "fraud-cases"]],
-    ["money", "Money", ["transactions", "escrow", "credit"]],
-    ["insights", "Insights", ["analytics", "reports", "team-reports"]],
-    ["security-audit", "Security & audit", ["activity"]],
-    ["settings", "Settings", ["subscription-plans", "subscription-plans-approval", "event-pricing", "commission-policy", "promotions", "categories-zones", "site-settings"]],
-    ["my-work", "My work", ["tasks", "calls", "security"]],
+    ["people", "People", ["staff", "teams-reporting", "invites", "roles-permissions", "sessions", "leave"]],
+    ["teams", "Teams (step in)", ["step-in-operations", "step-in-support", "step-in-delivery", "step-in-marketing", "step-in-accounting"]],
+    ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "delivery", "events-moderation", "disputes"]],
+    ["money", "Money", ["transactions", "payouts-payroll", "commissions", "refunds", "reconciliation"]],
+    ["insights", "Insights", ["analytics", "growth-funnel", "team-reports", "scheduled-exports"]],
+    ["security-audit", "Security & audit", ["activity", "sign-in-history", "fraud-cases", "data-exports-log", "security"]],
+    ["communication", "Communication", ["notification-center", "staff-announcements"]],
+    ["settings", "Settings", ["approval-rules", "commission-policy", "delivery-pricing", "subscription-plans-approval", "targets", "tax-tables", "categories-zones", "integrations", "system-health"]],
   ],
   // Operations, exactly as the approved canvas draws it (Overview is pinned
   // above the groups). Users, Scout Assignments, Register a business, Field
@@ -169,11 +203,23 @@ const ROLE_MENUS = {
     ["my-work", "My work", ["approvals", "tasks", "activity", "security"]],
     ["reports", "Reports", ["reports"]],
   ],
+  // The external co-signer: requests above the co-sign limit, and their own sign-in. Nothing else.
+  cosigner: [
+    ["decisions", "Decisions", ["approvals"]],
+    ["account", "Account", ["security"]],
+  ],
 };
 
 // Roles whose menu is the whole menu: a screen the canvas leaves out is not
 // offered under "More tools" either (its permission and panel stay).
-const EXHAUSTIVE_MENU_ROLES = new Set(["operations"]);
+const EXHAUSTIVE_MENU_ROLES = new Set(["operations", "super_admin", "cosigner"]);
+
+// Nav ids whose screen is not built yet, per role; AdminCommandCenter renders the
+// "being built" panel for them. A package that builds one swaps its panel in and
+// drops the item's `placeholder` flag.
+export const PLACEHOLDER_TABS = Object.fromEntries(
+  Object.keys(ROLE_MENUS).map((role) => [role, new Set(NAV_ITEMS.filter((item) => item.placeholder === role).map((item) => item.id))]),
+);
 
 const ITEM_BY_ID = Object.fromEntries(NAV_ITEMS.map((item) => [item.id, item]));
 // Labels a role reads differently (the item ids and NAV_ITEMS labels stay as they are).
@@ -189,8 +235,17 @@ const ROLE_LABELS = {
     activity: "Staff activity", reports: "My reports", "team-reports": "My team", calls: "Call log",
     "site-settings": "Site settings", "contact-messages": "Contact messages",
   },
+  // Super Admin reads the canvas's words; the ids (and every other role's labels) stay.
+  super_admin: {
+    approvals: "My approvals", staff: "Staff directory", sessions: "Sessions & devices", leave: "Leave & holidays",
+    "all-portfolios": "Businesses", users: "Customers", moderation: "Listings & services", delivery: "Orders & deliveries",
+    "events-moderation": "Events & tickets", disputes: "Disputes & returns", transactions: "Revenue & sales",
+    "team-reports": "Reports hub", activity: "Audit log", "fraud-cases": "Fraud & anomaly alerts", security: "Security settings",
+    "subscription-plans-approval": "Plans & prices", targets: "Target limits", "categories-zones": "Categories & zones",
+  },
 };
-export const overviewLabel = (role) => (role === "scout" ? "Today" : "Overview");
+// The pinned Overview: "Today" for a scout, the canvas's "Command center" for Super Admin.
+export const overviewLabel = (role) => (role === "scout" ? "Today" : role === "super_admin" ? "Command center" : "Overview");
 const toNavItem = ({ id, icon, label }, role) => ({ id, icon, label: ROLE_LABELS[role]?.[id] || label });
 
 export function buildNavGroups(auth) {
@@ -238,11 +293,19 @@ export const BADGE_KEY_BY_TAB = {
   "hero-events": ["hero", "events"],
 };
 
+// Badge keys a role reads differently from BADGE_KEY_BY_TAB. Super Admin's canvas badges:
+// open invites; open disputes (there is no returns model yet); submitted reports across every
+// team (not just the caller's own reports). My approvals and Fraud & anomaly alerts use
+// approvals_waiting and fraud_open from the table above.
+export const BADGE_KEY_BY_ROLE_TAB = {
+  super_admin: { invites: "invites_open", disputes: "disputes_open", "team-reports": "reports_hub" },
+};
+
 // Badge lookup for a tab id against the GET /api/notifications/staff-badges/
 // payload — 0 for tabs with no badge key or no data yet.
-export function makeBadgeFor(staffBadges) {
+export function makeBadgeFor(staffBadges, role) {
   return (tabId) => {
-    const key = BADGE_KEY_BY_TAB[tabId];
+    const key = BADGE_KEY_BY_ROLE_TAB[role]?.[tabId] || BADGE_KEY_BY_TAB[tabId];
     if (!key) return 0;
     // A tab fed by two queues (Hero & events) shows their sum.
     return [].concat(key).reduce((total, k) => total + (staffBadges?.[k] || 0), 0);

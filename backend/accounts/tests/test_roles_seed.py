@@ -26,6 +26,7 @@ DEFAULT_MATRIX = {
     },
     "delivery_manager": {"delivery.manage", "staff.invite_team", "activity.view_team"},
     "dispatch": {"delivery.dispatch"},
+    "cosigner": {"approvals.cosign"},
 }
 
 

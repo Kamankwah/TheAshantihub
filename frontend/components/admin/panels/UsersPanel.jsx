@@ -54,6 +54,30 @@ const CONFIG = {
   },
 };
 
+const PHONE_FIELDS = ["phone", "login_phone"];
+
+// Phones arrive masked; the full number is a password-confirmed, recorded POST
+// (customers: marketplace reveal; owners: the portfolio reveal).
+function RevealPhone({ kind, id, name }) {
+  const [full, setFull] = useState(null);
+  const [error, setError] = useState(null);
+  const reveal = async () => {
+    setError(null);
+    try {
+      const url = kind === "customers" ? `/api/marketplace/customers/${id}/reveal-phone/` : `/api/portfolio/businesses/${id}/reveal-phone/`;
+      const res = await apiPost(url, {});
+      setFull((kind === "customers" ? res.phone : res.login_phone) || "No phone on file");
+    } catch (err) { setError("Could not show the phone number."); }
+  };
+  return (
+    <div style={{ marginBottom: 8 }}>
+      {full ? <span style={{ color: D.text, fontSize: "0.78rem" }}>{full}</span>
+        : <button type="button" aria-label={`Show full phone of ${name}`} onClick={reveal} style={{ border: "none", borderRadius: 20, padding: "3px 10px", fontSize: "0.68rem", fontWeight: 700, cursor: "pointer", background: D.panelBg, color: D.text }}>Show full phone</button>}
+      {error && <div style={{ color: D.red, fontSize: "0.72rem" }}>{error}</div>}
+    </div>
+  );
+}
+
 function DetailField({ label, value }) {
   return (
     <div style={{ marginBottom: 8 }}>
@@ -164,7 +188,9 @@ function UserRow({ user, config, canManage, onChanged }) {
   useEffect(() => {
     if (mode === "edit" && detail.data && !seededRef.current) {
       const seeded = {};
-      config.editFields.forEach(f => { seeded[f.name] = detail.data[f.name] || ""; });
+      // A phone is masked on read: its box starts empty ("leave blank to keep")
+      // so the masked text is never written back.
+      config.editFields.forEach(f => { seeded[f.name] = PHONE_FIELDS.includes(f.name) ? "" : (detail.data[f.name] || ""); });
       setForm(seeded);
       seededRef.current = true;
     }
@@ -176,7 +202,8 @@ function UserRow({ user, config, canManage, onChanged }) {
 
   const save = async () => {
     setActionError(null);
-    try { await apiPatch(`${config.basePath}/${user.id}/`, form); close(); onChanged(); }
+    const body = Object.fromEntries(Object.entries(form).filter(([k, v]) => !(PHONE_FIELDS.includes(k) && !String(v).trim())));
+    try { await apiPatch(`${config.basePath}/${user.id}/`, body); close(); onChanged(); }
     catch (err) { setActionError("Could not save these changes. Please try again."); }
   };
   const suspend = async () => {
@@ -238,6 +265,7 @@ function UserRow({ user, config, canManage, onChanged }) {
                   <DetailField key={f.name} label={f.label} value={f.slice ? detail.data[f.name]?.slice(0, f.slice) : detail.data[f.name]} />
                 ))}
               </div>
+              <RevealPhone kind={config === CONFIG.customers ? "customers" : "owners"} id={user.id} name={user.full_name} />
               {detail.data.is_suspended && <DetailField label="Suspension reason" value={detail.data.suspension_reason} />}
               {config.renderExtra && config.renderExtra(detail.data)}
             </>

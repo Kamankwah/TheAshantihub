@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts import view_as
 from accounts.models import BusinessOwner
 from accounts.permissions import HasAnyRolePermission, HasRolePermission
 from accounts.views import IsBusinessOwner
@@ -29,6 +30,16 @@ def _refresh_base_score(owner):
     credit_score, _ = CreditScore.objects.update_or_create(
         business_owner=owner, defaults={"score": score, "factors": factors}
     )
+    return credit_score
+
+
+def _base_score_unsaved(owner, existing):
+    """The same recomputed figures as _refresh_base_score, saving nothing:
+    a Super Admin's read-only step-in (accounts/view_as.py) must not write."""
+    score, factors = compute_naive_credit_score(owner)
+    credit_score = existing or CreditScore(business_owner=owner, computed_at=timezone.now())
+    credit_score.score = score
+    credit_score.factors = factors
     return credit_score
 
 
@@ -58,10 +69,12 @@ class CreditScoreStaffListView(APIView):
         return [HasAnyRolePermission("analytics.view", "credit.manage")]
 
     def get(self, request):
-        results = [
-            _refresh_base_score(owner)
-            for owner in BusinessOwner.objects.all().order_by("full_name")
-        ]
+        owners = BusinessOwner.objects.all().order_by("full_name")
+        if view_as.viewer_of(request) is not None:
+            existing = {row.business_owner_id: row for row in CreditScore.objects.select_related("adjusted_by")}
+            results = [_base_score_unsaved(owner, existing.get(owner.pk)) for owner in owners]
+        else:
+            results = [_refresh_base_score(owner) for owner in owners]
         return Response(CreditScoreStaffListSerializer(results, many=True).data)
 
 

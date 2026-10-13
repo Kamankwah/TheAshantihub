@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from accounts.serializers import staff_brief
 
-from . import services
+from . import rules, services
 from .models import ApprovalRequest
 from .registry import get_kind
 
@@ -18,14 +18,33 @@ class ApprovalSerializer(serializers.ModelSerializer):
     maker_team = serializers.SerializerMethodField()
     escalated = serializers.SerializerMethodField()
     next_move = serializers.SerializerMethodField()
+    requires_sudo = serializers.SerializerMethodField()
+    signoff = serializers.SerializerMethodField()
 
     class Meta:
         model = ApprovalRequest
         fields = [
-            "id", "kind", "kind_label", "title", "status", "stage", "maker", "assigned_to", "pool_permission",
+            "id", "amount", "requires_sudo", "required_approvals", "signoff", "kind", "kind_label", "title", "status", "stage", "maker", "assigned_to", "pool_permission",
             "target", "maker_note", "decided_by", "decided_at", "decision_note", "due_at", "escalation_level",
             "created_at", "can_decide", "can_cancel", "maker_team", "escalated", "next_move",
         ]
+
+    def get_requires_sudo(self, obj):
+        kind = get_kind(obj.kind)
+        return bool(kind is not None and kind.requires_sudo)
+
+    def get_signoff(self, obj):
+        """Who has signed and what is still missing, for the "Who signs off" card."""
+        return {
+            "required": obj.required_approvals,
+            "waiting_on": services.waiting_on(obj),
+            "signed": [
+                {"slot": d.slot, "staff": staff_brief(d.staff), "at": d.decided_at, "note": d.note}
+                for d in services._decisions(obj)
+            ],
+            # Only meaningful on a request that needs a co-signer.
+            "cosigner_named": rules.cosigner_named() if obj.required_approvals > 1 else None,
+        }
 
     def get_kind_label(self, obj):
         kind = get_kind(obj.kind)
