@@ -143,6 +143,13 @@ class CommissionTests(InsightsBase):
         self.assertEqual(sum(1 for r in rows if r and r[0] == "Kwame"), 2)
         self.assertTrue(ActivityEvent.objects.filter(verb="report.exported", after__personal_data=True).exists())
 
+    def test_the_accrual_list_filters_by_kind_and_status(self):
+        self.as_staff(self.boss)
+        both = self.client.get("/api/commission/accruals/").json()
+        self.assertEqual(both["count"], 2)
+        self.assertEqual(self.client.get("/api/commission/accruals/?kind=registration&status=reversed").json()["count"], 1)
+        self.assertEqual(self.client.get("/api/commission/accruals/?kind=three_paid_months_bonus").json()["count"], 0)
+
     def test_an_accountant_without_the_right_is_refused(self):
         self.as_staff(self.scout)
         self.assertEqual(self.client.get("/api/insights/commissions/").status_code, 403)

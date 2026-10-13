@@ -19,7 +19,7 @@ const humanise = (label) => String(label).replace(/[._-]+/g, " ").trim();
 
 // Everything a report action can change: lists, the open report, the team
 // view and the header counts/bell.
-export const REPORT_CACHE_KEYS = ["my-reports", "report", "team-reports", "staff-badges", "notifications"];
+export const REPORT_CACHE_KEYS = ["my-reports", "report", "team-reports", "insights", "staff-badges", "notifications"];
 export const refreshReportCaches = (queryClient) => REPORT_CACHE_KEYS.forEach((key) => queryClient.invalidateQueries({ queryKey: [key] }));
 
 // 410 is an expired export link; everything else uses the server's message.

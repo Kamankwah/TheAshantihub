@@ -149,6 +149,8 @@ class AccrualsView(APIView):
         params = request.query_params
         if params.get("status") in dict(CommissionAccrual.STATUS_CHOICES):
             queryset = queryset.filter(status=params["status"])
+        if params.get("kind") in dict(CommissionPolicy.KIND_CHOICES):
+            queryset = queryset.filter(kind=params["kind"])
         if params.get("staff", "").isdecimal() and len(params["staff"]) < 10:
             queryset = queryset.filter(staff_id=int(params["staff"]))
         queryset = queryset.order_by("-earned_at", "-id")

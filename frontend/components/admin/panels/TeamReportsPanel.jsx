@@ -194,7 +194,7 @@ export default function TeamReportsPanel({ auth }) {
   );
 }
 
-function ReportReview({ id }) {
+export function ReportReview({ id }) {
   const queryClient = useQueryClient();
   const { data: report, isLoading, isError } = useReport(id);
   const [note, setNote] = useState("");
