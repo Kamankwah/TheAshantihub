@@ -1079,8 +1079,10 @@ class StaffEndOtherSessionsView(APIView):
 
 
 class StaffSignOutEverywhereView(APIView):
+        if session.staff_id != request.user.pk:
+            sessions.require_sudo(request)  # ending someone else's session asks for the password again
     def get_permissions(self):
-        return [HasRolePermission("staff.manage")]
+        return [HasRolePermission("staff.manage"), RequiresSudo()]
 
     def post(self, request, pk):
         staff = generics.get_object_or_404(StaffUser, pk=pk)

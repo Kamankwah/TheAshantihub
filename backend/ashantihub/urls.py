@@ -31,6 +31,7 @@ urlpatterns = [
     path("api/targets/", include("targets.urls")),
     path("api/operations/", include("operations.urls")),
     path("api/marketplace/", include("marketplace.urls")),
+    path("api/people/", include("people.urls")),
     path("api/commission/", include("commission.urls")),
     path("api/insights/", include("insights.urls")),
     path("api/portfolio/", include("portfolio.urls")),

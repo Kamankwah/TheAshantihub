@@ -22,6 +22,7 @@ SEND_TIMEOUT = 2
 STAFF_MANAGEMENT_VERBS = (
     "staff-invite", "staff-resend-invite", "staff-cancel-invite", "staff.invite_cancelled", "staff-suspend", "staff-unsuspend",
     "staff-deactivate", "staff-reactivate", "staff-permissions", "staff-manager",
+    "staff.manager_changed", "staff.role_changed", "role.permissions_changed", "staff.signed_out_everyone",
 )
 # (verb prefixes, permissions whose holders' queues changed, query keys)
 QUEUE_INVALIDATIONS = [
