@@ -279,6 +279,47 @@ header):
 install -m 644 /opt/ashantihub/infra/cron/ashantihub.cron /etc/cron.d/ashantihub
 ```
 
+## Road routing (OSRM)
+
+Delivery distances and ETAs come from an OSRM container (`osrm` in the compose
+file) serving road data for the Ashanti Region. It is in the `routing` compose
+profile, so `deploy.sh` never starts it and never waits on it: a deploy is safe
+before any data exists. The build script starts it.
+
+**First build, per environment** (staging is built by hand once; production's
+first build is also by hand, cron only does the monthly refresh):
+
+```bash
+bash /opt/ashantihub/infra/scripts/build-osrm-data.sh ashantihub /opt/ashantihub/infra/compose/docker-compose.yml
+# staging
+bash /opt/ashantihub-staging/infra/scripts/build-osrm-data.sh ashantihub-staging /opt/ashantihub-staging/infra/compose/docker-compose.yml
+```
+
+It downloads Ghana from Geofabrik, clips it to the Ashanti bounding box,
+builds the routing graph into the `osrm-data` volume and starts `osrm`
+(a few minutes; needs a couple of GB of free disk and RAM while it runs). Then
+set `OSRM_URL=http://osrm:5000` in that checkout's `backend/.env` (never
+committed; `OSRM_TIMEOUT_S` defaults to 2.0) and restart the app services so
+they read it:
+
+```bash
+docker compose -p ashantihub -f /opt/ashantihub/infra/compose/docker-compose.yml restart web realtime worker beat
+```
+
+**Fallback.** With `OSRM_URL` blank, or OSRM stopped or failing, every screen
+falls back to the straight-line estimate and labels it "estimate" instead of
+"road route"; the delivery manager screens show a routing note. Nothing breaks
+and nothing is hidden. Recovery is automatic within about 30 seconds of OSRM
+coming back.
+
+**Monthly refresh.** `infra/cron/ashantihub.cron` runs the build script at
+03:00 on the 1st, production only, logging to `/var/log/ashantihub-osrm.log`.
+It recreates `osrm` so the new data loads. Reinstall the cron file after
+pulling this change (install line in its header). If a build fails, the
+previous data and the running container are left as they were, except that
+a failure during the last steps can leave the volume half-written: rerun the
+script by hand.
+
 ## Live updates
 
 - Staff dashboards receive live updates over WebSocket. The API templates
