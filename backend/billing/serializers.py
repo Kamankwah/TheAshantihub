@@ -42,15 +42,22 @@ class SubscriptionPlanAdminSerializer(serializers.ModelSerializer):
     reviewed_by_name = serializers.CharField(
         source="reviewed_by.full_name", read_only=True, default=None
     )
+    paying_businesses = serializers.SerializerMethodField()
 
     class Meta:
         model = SubscriptionPlan
         fields = [
             "id", "tier", "name", "kind", "monthly_price", "features", "is_recommended",
             "status", "rejection_reason", "max_active_listings", "hero_days", "hero_slots",
-            "boost_credits_per_month", "reviewed_by_name", "reviewed_at", "created_at",
+            "boost_credits_per_month", "reviewed_by_name", "reviewed_at", "created_at", "paying_businesses",
         ]
-        read_only_fields = ["id", "reviewed_by_name", "reviewed_at", "created_at"]
+        read_only_fields = ["id", "reviewed_by_name", "reviewed_at", "created_at", "paying_businesses"]
+
+    def get_paying_businesses(self, obj):
+        """Businesses on this plan with an active subscription that is not a free trial."""
+        from .models import Subscription
+
+        return obj.subscriptions.filter(status=Subscription.ACTIVE, is_trial=False).count()
 
     def create(self, validated_data):
         # Never trust client-submitted status on creation — every new plan

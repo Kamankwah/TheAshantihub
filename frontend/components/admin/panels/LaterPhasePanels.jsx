@@ -11,7 +11,7 @@ import { Kpi, NotRecorded, SimulatedBanner, Status, Title, kpiGrid, page, sectio
 // exists yet. Each shows its place, the few real records that do exist, and a
 // plain statement of when the rest arrives. No rate, balance, run or tax is
 // invented, and nothing here calculates tax.
-function Arrives({ phase, children }) {
+export function Arrives({ phase, children }) {
   return (
     <div role="status" style={callout(D.amber)}>
       Arrives with the {phase} phase. {children} Nothing on this screen is invented: where AshantiHub has no record it says so.
@@ -93,7 +93,7 @@ export function DeliveryPricingPanel() {
   );
 }
 
-const DECISIONS = [
+export const DECISIONS = [
   { name: "Delivery fee", tax: "No VAT, NHIL or GETFund", who: "Decided by you. Kept as a setting for each charge.", decided: true },
   { name: "Subscription plans", tax: "To confirm", who: "Waiting for the accountant." },
   { name: "Promotions and event visibility", tax: "To confirm", who: "Waiting for the accountant." },

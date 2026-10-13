@@ -14,9 +14,14 @@ describe('Super Admin Insights and Money screens (SA-7)', () => {
   })
 
   it('stay out of every other role\'s menu', () => {
+    // The Accountant has Commissions and Refunds too (the Accounting canvas); only Growth funnel and
+    // Scheduled exports stay Super Admin's.
     for (const role of ['operations', 'accountant', 'marketing', 'support', 'scout', 'delivery_manager', 'dispatch']) {
       const all = buildNavGroups(auth(role)).flatMap((g) => g.items.map((i) => i.id))
-      for (const id of BUILT) expect(all).not.toContain(id)
+      for (const id of BUILT) {
+        if (role === 'accountant' && ['commissions', 'refunds'].includes(id)) continue
+        expect(all).not.toContain(id)
+      }
     }
   })
 })

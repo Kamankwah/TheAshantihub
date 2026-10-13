@@ -243,14 +243,26 @@ class EventPricingTierManageSerializer(serializers.ModelSerializer):
     proposed_by_name = serializers.CharField(
         source="proposed_by.full_name", read_only=True, default=None
     )
+    events_paid_90d = serializers.SerializerMethodField()
 
     class Meta:
         model = EventPricingTier
         fields = [
             "id", "duration_days", "live_price", "pending_price",
-            "proposed_by", "proposed_by_name", "proposed_at", "updated_at",
+            "proposed_by", "proposed_by_name", "proposed_at", "updated_at", "events_paid_90d",
         ]
         read_only_fields = fields
+
+    def get_events_paid_90d(self, obj):
+        """Events paid for in the last 90 days with this visibility window: a real
+        count of events, not an amount (a tier's price may have changed within it)."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from .models import Event
+
+        return Event.objects.filter(visibility_days=obj.duration_days, paid_at__gte=timezone.now() - timedelta(days=90)).count()
 
 
 class EventUnlockSerializer(serializers.Serializer):
@@ -416,12 +428,13 @@ class TicketEscrowLedgerSerializer(serializers.ModelSerializer):
     refunded_by_staff_name = serializers.CharField(
         source="refunded_by_staff.full_name", read_only=True, default=None
     )
+    event_date = serializers.DateTimeField(source="ticket_type.event.event_date", read_only=True)
 
     class Meta:
         model = Ticket
         fields = [
             "id", "code", "price", "escrow_status", "escrow_held_at", "escrow_released_at",
             "escrow_override_note", "delivered_at", "refunded_at", "refund_reason",
-            "event_name", "ticket_type_name", "purchased_by_name",
+            "event_name", "event_date", "ticket_type_name", "purchased_by_name",
             "released_by_staff_name", "refunded_by_staff_name",
         ]

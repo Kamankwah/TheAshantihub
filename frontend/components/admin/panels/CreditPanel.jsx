@@ -23,6 +23,11 @@ const LOAN_STATUS_META = {
 };
 
 // ── Scores ────────────────────────────────────────────────────────────────
+// The signals the placeholder scorer really uses (credit/scoring.py); nothing else is claimed.
+const FACTOR_LABELS = { listings_published: "Published listings", account_tenure_months: "Months on AshantiHub", kyc_verified: "KYC verified", payout_verified: "Payout details verified" };
+const factorValue = (v) => (typeof v === "boolean" ? (v ? "yes" : "no") : String(v));
+const factorsLine = (factors) => Object.entries(factors || {}).filter(([key]) => FACTOR_LABELS[key]).map(([key, f]) => `${FACTOR_LABELS[key]}: ${factorValue(f.value)}`).join(" · ");
+
 function ScoreRow({ row, onChanged }) {
   const [adjusting, setAdjusting] = useState(false);
   const [delta, setDelta] = useState(row.manual_adjustment || 0);
@@ -50,6 +55,7 @@ function ScoreRow({ row, onChanged }) {
             {row.adjusted_by_name && <span> · by {row.adjusted_by_name}</span>}
           </div>
           {row.adjustment_reason && <div style={{ color: D.textFaint, fontSize: "0.62rem", marginTop: 1 }}>“{row.adjustment_reason}”</div>}
+          {factorsLine(row.factors) && <div style={{ color: D.textDim, fontSize: "0.62rem", marginTop: 1 }}>{factorsLine(row.factors)}</div>}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ textAlign: "right" }}>
@@ -146,6 +152,7 @@ function PartnersSection() {
       </div>
       {actionError && <div style={{ color: D.red, fontSize: "0.72rem", marginBottom: 8 }}>{actionError}</div>}
       {adding && <PartnerForm initial={BLANK_PARTNER} onSubmit={create} onCancel={() => setAdding(false)} submitLabel="Add partner" />}
+      {partners.length === 0 && <div style={{ color: D.textDim, fontSize: "0.78rem", marginBottom: 6 }}>No lending partner has been signed yet.</div>}
       {partners.map(p => (
         <div key={p.id} style={{ padding: "9px 0", borderBottom: `1px solid ${D.divider}`, opacity: p.is_active ? 1 : 0.55 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>

@@ -17,6 +17,12 @@ import ScreenBuildingPanel from "./panels/ScreenBuildingPanel.jsx";
 import RevenueSalesPanel from "./panels/RevenueSalesPanel.jsx";
 import CommissionsPanel from "./panels/CommissionsPanel.jsx";
 import RefundsPanel from "./panels/RefundsPanel.jsx";
+import AccountingOverviewPanel from "./panels/AccountingOverviewPanel.jsx";
+import AccountingShellPanel, { ACCOUNTING_SHELLS } from "./panels/AccountingShellPanel.jsx";
+import CollectionsPanel from "./panels/CollectionsPanel.jsx";
+import AuditChainPanel from "./panels/AuditChainPanel.jsx";
+import MoneyAlertsPanel from "./panels/MoneyAlertsPanel.jsx";
+import StatementsPanel from "./panels/StatementsPanel.jsx";
 import SaAnalyticsPanel from "./panels/SaAnalyticsPanel.jsx";
 import GrowthFunnelPanel from "./panels/GrowthFunnelPanel.jsx";
 import ReportsHubPanel from "./panels/ReportsHubPanel.jsx";
@@ -387,6 +393,8 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
             ? <ScoutTodayPanel auth={auth} onNavigate={selectTab} onCheckIn={openCheckInScreen} onRegister={() => selectTab("register-business")} onSeeApprovals={openMadeApprovals} onOpenBusiness={openMyBusiness} />
             : role === "super_admin"
               ? <SuperAdminOverviewPanel auth={auth} onNavigate={selectTab} onOpenApproval={openApproval} />
+            : role === "accountant" && auth.hasPermission("transactions.report")
+              ? <AccountingOverviewPanel auth={auth} onNavigate={selectTab} />
             : role === "operations" && auth.hasPermission("portfolio.manage")
               ? <OperationsOverviewPanel auth={auth} onNavigate={selectTab} onOpenApproval={openApproval} onOpenBusiness={openBusiness} />
               : <OverviewPanel auth={auth} roleColor={roleColor} onNavigate={selectTab} />)}
@@ -447,7 +455,12 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "reports" && <ReportsPanel auth={auth} />}
           {activeTab === "team-reports" && (role === "super_admin" ? <ReportsHubPanel /> : <TeamReportsPanel auth={auth} />)}
           {activeTab === "commissions" && <CommissionsPanel onNavigate={selectTab} />}
-          {activeTab === "refunds" && <RefundsPanel />}
+          {activeTab === "refunds" && <RefundsPanel onNavigate={role === "accountant" ? selectTab : undefined} />}
+          {Object.hasOwn(ACCOUNTING_SHELLS, activeTab) && <AccountingShellPanel id={activeTab} />}
+          {activeTab === "acct-collections" && <CollectionsPanel />}
+          {activeTab === "acct-audit-chain" && <AuditChainPanel />}
+          {activeTab === "acct-alerts" && <MoneyAlertsPanel />}
+          {activeTab === "acct-statements" && <StatementsPanel />}
           {activeTab === "growth-funnel" && <GrowthFunnelPanel />}
           {activeTab === "scheduled-exports" && <ScheduledExportsPanel />}
           {activeTab === "security" && <SecurityPanel isSuperAdmin={role === "super_admin"} />}

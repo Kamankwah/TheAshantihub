@@ -1,9 +1,10 @@
 from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction as db_transaction
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, Count, Q, Sum
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from rest_framework import filters, generics
@@ -13,7 +14,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.models import BusinessOwner, StaffUser
-from accounts.permissions import HasAnyRolePermission, HasRolePermission
+from accounts.permissions import HasAnyRolePermission, HasRolePermission, RequiresSudo
 from accounts.views import IsCustomer
 from billing.models import Transaction
 from listings.visibility import hidden_business_q
@@ -1002,7 +1003,7 @@ class EscrowLedgerListView(generics.ListAPIView):
         return [HasRolePermission("escrow.view")]
 
     def get_queryset(self):
-        return Ticket.objects.all().order_by("-created_at")
+        return Ticket.objects.select_related("ticket_type__event", "purchased_by", "escrow_released_by_staff", "refunded_by_staff").order_by("-created_at")
 
     def filter_queryset(self, queryset):
         status_param = self.request.query_params.get("status")
@@ -1013,7 +1014,62 @@ class EscrowLedgerListView(generics.ListAPIView):
         if event_id:
             queryset = queryset.filter(ticket_type__event_id=event_id)
 
+        # The Accountant's screen: one state (a refunded ticket is its own state) and a search.
+        state = self.request.query_params.get("state")
+        if state == "refunded":
+            queryset = queryset.filter(refunded_at__isnull=False)
+        elif state == "late":
+            queryset = queryset.filter(
+                escrow_status=Ticket.HELD, refunded_at__isnull=True, delivered_at__isnull=True,
+                ticket_type__event__event_date__lt=timezone.now(),
+            )
+        elif state in (Ticket.HELD, Ticket.RELEASED):
+            queryset = queryset.filter(escrow_status=state, refunded_at__isnull=True)
+        query = (self.request.query_params.get("q") or "").strip()[:80]
+        if query:
+            queryset = queryset.filter(
+                Q(code__icontains=query) | Q(ticket_type__event__name__icontains=query) | Q(purchased_by__full_name__icontains=query)
+            )
         return queryset
+
+
+class EscrowSummaryView(APIView):
+    """GET /api/events/tickets/escrow/summary/ — staff `escrow.view`. Ticket money by
+    state, and the held tickets whose event date has already passed. Tickets are the
+    only money AshantiHub holds: orders and bookings have no escrow record."""
+
+    def get_permissions(self):
+        return [HasRolePermission("escrow.view")]
+
+    def get(self, request):
+        zero = Decimal("0.00")
+        held = Q(escrow_status=Ticket.HELD, refunded_at__isnull=True)
+        totals = Ticket.objects.aggregate(
+            held=Sum("price", filter=held), held_n=Count("id", filter=held),
+            released=Sum("price", filter=Q(escrow_status=Ticket.RELEASED, refunded_at__isnull=True)),
+            released_n=Count("id", filter=Q(escrow_status=Ticket.RELEASED, refunded_at__isnull=True)),
+            refunded=Sum("price", filter=Q(refunded_at__isnull=False)), refunded_n=Count("id", filter=Q(refunded_at__isnull=False)),
+            late=Sum("price", filter=held & Q(delivered_at__isnull=True, ticket_type__event__event_date__lt=timezone.now())),
+            late_n=Count("id", filter=held & Q(delivered_at__isnull=True, ticket_type__event__event_date__lt=timezone.now())),
+        )
+        money = lambda value: f"{(value or zero):.2f}"
+        return Response({
+            "simulated": settings.PAYMENTS_PROVIDER == "simulated",
+            "held": {"amount": money(totals["held"]), "count": totals["held_n"]},
+            "released": {"amount": money(totals["released"]), "count": totals["released_n"]},
+            "refunded": {"amount": money(totals["refunded"]), "count": totals["refunded_n"]},
+            "held_after_event": {"amount": money(totals["late"]), "count": totals["late_n"]},
+            "not_recorded": [
+                {"name": "Orders and bookings", "why": "Order and booking money is not held in escrow yet, so none is listed here."},
+                {"name": "Release timers", "why": "No release-after-delivery rule is built; a ticket is released at check-in or by staff."},
+            ],
+        })
+
+
+def _required_note(value):
+    """A staff note for an escrow action: trimmed, 3 to 500 characters, or None."""
+    text = str(value or "").strip()
+    return text[:500] if len(text) >= 3 else None
 
 
 class EscrowReleaseView(APIView):
@@ -1025,26 +1081,31 @@ class EscrowReleaseView(APIView):
     """
 
     def get_permissions(self):
-        return [HasRolePermission("escrow.release")]
+        # Money leaves escrow: the password is asked again.
+        return [HasRolePermission("escrow.release"), RequiresSudo()]
 
     def post(self, request, ticket_id):
-        ticket = generics.get_object_or_404(Ticket, pk=ticket_id)
+        note = _required_note(request.data.get("note"))
+        if note is None:
+            return Response({"note": "Write a note of at least 3 characters: every release is explained."}, status=400)
+        with db_transaction.atomic():
+            ticket = generics.get_object_or_404(Ticket.objects.select_for_update(), pk=ticket_id)
 
-        if ticket.refunded_at is not None:
-            return Response({"detail": "This ticket was refunded and cannot be released."}, status=400)
-        if ticket.escrow_status == Ticket.RELEASED:
-            return Response({"detail": "This ticket's escrow is already released."}, status=400)
+            if ticket.refunded_at is not None:
+                return Response({"detail": "This ticket was refunded and cannot be released."}, status=400)
+            if ticket.escrow_status == Ticket.RELEASED:
+                return Response({"detail": "This ticket's escrow is already released."}, status=400)
 
-        ticket.escrow_status = Ticket.RELEASED
-        ticket.escrow_released_at = timezone.now()
-        ticket.escrow_released_by_staff = request.user
-        ticket.escrow_override_note = request.data.get("note", "")
-        ticket.save(
-            update_fields=[
-                "escrow_status", "escrow_released_at", "escrow_released_by_staff",
-                "escrow_override_note",
-            ]
-        )
+            ticket.escrow_status = Ticket.RELEASED
+            ticket.escrow_released_at = timezone.now()
+            ticket.escrow_released_by_staff = request.user
+            ticket.escrow_override_note = note
+            ticket.save(
+                update_fields=[
+                    "escrow_status", "escrow_released_at", "escrow_released_by_staff",
+                    "escrow_override_note",
+                ]
+            )
         return Response(TicketEscrowLedgerSerializer(ticket).data)
 
 
@@ -1060,23 +1121,27 @@ class EscrowHoldView(APIView):
         return [HasRolePermission("escrow.release")]
 
     def post(self, request, ticket_id):
-        ticket = generics.get_object_or_404(Ticket, pk=ticket_id)
+        note = _required_note(request.data.get("note"))
+        if note is None:
+            return Response({"note": "Write a note of at least 3 characters: every hold is explained."}, status=400)
+        with db_transaction.atomic():
+            ticket = generics.get_object_or_404(Ticket.objects.select_for_update(), pk=ticket_id)
 
-        if ticket.refunded_at is not None:
-            return Response({"detail": "This ticket was refunded and cannot be held."}, status=400)
-        if ticket.escrow_status == Ticket.HELD:
-            return Response({"detail": "This ticket's escrow is already held."}, status=400)
+            if ticket.refunded_at is not None:
+                return Response({"detail": "This ticket was refunded and cannot be held."}, status=400)
+            if ticket.escrow_status == Ticket.HELD:
+                return Response({"detail": "This ticket's escrow is already held."}, status=400)
 
-        ticket.escrow_status = Ticket.HELD
-        ticket.escrow_released_at = None
-        ticket.escrow_released_by_staff = None
-        ticket.escrow_override_note = request.data.get("note", "")
-        ticket.save(
-            update_fields=[
-                "escrow_status", "escrow_released_at", "escrow_released_by_staff",
-                "escrow_override_note",
-            ]
-        )
+            ticket.escrow_status = Ticket.HELD
+            ticket.escrow_released_at = None
+            ticket.escrow_released_by_staff = None
+            ticket.escrow_override_note = note
+            ticket.save(
+                update_fields=[
+                    "escrow_status", "escrow_released_at", "escrow_released_by_staff",
+                    "escrow_override_note",
+                ]
+            )
         return Response(TicketEscrowLedgerSerializer(ticket).data)
 
 
@@ -1091,20 +1156,23 @@ class EscrowRefundView(APIView):
     """
 
     def get_permissions(self):
-        return [HasRolePermission("escrow.refund")]
+        return [HasRolePermission("escrow.refund"), RequiresSudo()]
 
     def post(self, request, ticket_id):
-        ticket = generics.get_object_or_404(Ticket, pk=ticket_id)
-
-        if ticket.delivered_at is not None:
-            return Response(
-                {"detail": "This ticket has already been delivered and cannot be refunded."},
-                status=400,
-            )
-        if ticket.refunded_at is not None:
-            return Response({"detail": "This ticket has already been refunded."}, status=400)
-
+        reason = _required_note(request.data.get("reason"))
+        if reason is None:
+            return Response({"reason": "Write a reason of at least 3 characters: every refund is explained."}, status=400)
         with db_transaction.atomic():
+            ticket = generics.get_object_or_404(Ticket.objects.select_for_update(), pk=ticket_id)
+
+            if ticket.delivered_at is not None:
+                return Response(
+                    {"detail": "This ticket has already been delivered and cannot be refunded."},
+                    status=400,
+                )
+            if ticket.refunded_at is not None:
+                return Response({"detail": "This ticket has already been refunded."}, status=400)
+
             Transaction.objects.create(
                 customer=ticket.purchased_by,
                 amount=-ticket.price,
@@ -1114,7 +1182,7 @@ class EscrowRefundView(APIView):
             )
             ticket.refunded_at = timezone.now()
             ticket.refunded_by_staff = request.user
-            ticket.refund_reason = request.data.get("reason", "")
+            ticket.refund_reason = reason
             ticket.save(update_fields=["refunded_at", "refunded_by_staff", "refund_reason"])
 
         return Response(TicketEscrowLedgerSerializer(ticket).data)
