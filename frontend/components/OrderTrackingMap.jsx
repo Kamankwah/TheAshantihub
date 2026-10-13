@@ -12,6 +12,11 @@ import { D } from "./dashboard/theme.js";
 // are not contacted directly (root CLAUDE.md).
 const BEFORE_PICKUP = ["assigned", "accepted", "at_pickup"];
 const LIVE = ["picked_up", "at_customer"];
+const BEFORE_PICKUP_COPY = {
+  assigned: "A rider has been assigned.",
+  accepted: "A rider is heading to the shop.",
+  at_pickup: "The rider is at the shop.",
+};
 const note = { margin: "10px 0 0", color: D.textDim, fontSize: "0.74rem" };
 
 function LiveMap({ orderId }) {
@@ -26,6 +31,7 @@ function LiveMap({ orderId }) {
   if (isError && !data) return <p style={note}>Could not load the live map. Please try again shortly.</p>;
   if (!data) return <p style={note}>Loading the live map…</p>;
   if (moved) return null;
+  if (data.rider_busy) return <p style={note}>The rider is finishing another delivery first.</p>;
   if (!hasFix) return <p style={note}>The rider's location is not available right now.</p>;
   const who = [rider.first_name, rider.vehicle_type].filter(Boolean).join(" · ");
   const markers = [
@@ -39,7 +45,10 @@ function LiveMap({ orderId }) {
         {rider.vehicle_type ? ` · ${rider.vehicle_type}` : ""}
       </div>
       <TrackMap markers={markers} route={data.route ?? null} height={240} label="Map of your rider and delivery location" />
-      <div style={{ color: D.textDim, fontSize: "0.68rem", marginTop: 4 }}>Dark pin: rider. Green pin: your delivery location.</div>
+      <div style={{ color: D.textDim, fontSize: "0.68rem", marginTop: 4 }}>
+        {data.drop ? "Dark pin: rider. Green pin: your delivery location." : "Dark pin: rider."}
+      </div>
+      {!data.drop && <p style={note}>Your address has no map pin, so the route and arrival time can't be shown.</p>}
       <div style={{ marginTop: 6 }}><EtaLine leg={data.leg} stale={!!rider.stale} ageS={rider.age_s ?? null} /></div>
     </div>
   );
@@ -50,7 +59,7 @@ function LiveMap({ orderId }) {
 export default function OrderTrackingMap({ orderId, assignmentStatus, deliveryStatus }) {
   const processing = deliveryStatus === "processing";
   if (assignmentStatus == null) return processing ? <p style={note}>Finding a rider</p> : null;
-  if (BEFORE_PICKUP.includes(assignmentStatus)) return processing ? <p style={note}>A rider is heading to the shop</p> : null;
+  if (BEFORE_PICKUP.includes(assignmentStatus)) return processing ? <p style={note}>{BEFORE_PICKUP_COPY[assignmentStatus]}</p> : null;
   if (LIVE.includes(assignmentStatus)) return <LiveMap orderId={orderId} />;
   return null;
 }

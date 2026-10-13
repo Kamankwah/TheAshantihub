@@ -31,10 +31,18 @@ def rider_fix(a, now=None):
     shift = services.open_shift(rider) if rider else None
     if not shift or shift.last_lat is None or shift.last_lng is None or shift.last_fix_at is None:
         return None
+    if shift.last_accuracy_m is not None and shift.last_accuracy_m > services.MAX_ACCURACY_M:
+        return None  # a fix this loose is not used for distances, so it is not drawn either
     now = now or timezone.now()
     age = max(0, int((now - shift.last_fix_at).total_seconds()))
     return {"lat": float(shift.last_lat), "lng": float(shift.last_lng), "age_s": age,
             "stale": age > int(config.effective_rules()["stale_s"])}
+
+
+def is_current(a):
+    """True when this assignment is the job the rider is on now (their oldest active one)."""
+    job = services.current_job(a.dispatch) if a.dispatch_id else None
+    return job is not None and job.pk == a.pk
 
 
 def _pickup(a):
@@ -72,8 +80,12 @@ def manager_job_map(a, now=None):
 def customer_map(a, now=None):
     """The buyer sees the rider only once the parcel is picked up, as a first name and a vehicle type."""
     drop = _drop(a)
-    out = {"stage": a.status, "drop": drop, "rider": None, "leg": None, "route": None}
+    out = {"stage": a.status, "drop": drop, "rider": None, "leg": None, "route": None, "rider_busy": False}
     if a.status not in TO_DROP:
+        return out
+    if not is_current(a):
+        # The rider holds an older job and drives to that door first: show nothing of their position.
+        out["rider_busy"] = True
         return out
     fix = rider_fix(a, now)
     if fix:
@@ -85,14 +97,17 @@ def customer_map(a, now=None):
 
 def business_map(a, owner, now=None):
     """The business sees the rider only on the way to it, and nothing about the customer."""
-    pin = services.business_pin(owner)
-    pickup = {"lat": float(pin[0]), "lng": float(pin[1]), "name": getattr(owner, "display_name", None) or owner.full_name} if pin else None
-    out = {"stage": a.status, "pickup": pickup, "rider": None, "leg": None, "route": None}
-    if a.status not in TO_PICKUP:
-        return out
+    out = {"stage": a.status, "pickup": None, "rider": None, "leg": None, "route": None, "rider_busy": False}
     # Delivery is single-pickup: only the business the rider is heading to may watch the rider.
     heading = services.pickup_owner(a.order)
     if heading is None or heading.pk != owner.pk:
+        return out
+    pickup = _pickup(a)  # the same stop the rider navigates to (profile pin, else the listing's)
+    out["pickup"] = pickup
+    if a.status not in TO_PICKUP:
+        return out
+    if not is_current(a):
+        out["rider_busy"] = True
         return out
     fix = rider_fix(a, now)
     if fix:

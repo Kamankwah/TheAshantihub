@@ -67,7 +67,7 @@ class MeView(RiderView):
         shift = services.open_shift(rider)
         today = timezone.localdate(now)
         mine = DeliveryAssignment.objects.filter(dispatch=request.user)
-        active = mine.filter(status__in=DeliveryAssignment.ACTIVE_STATUSES).order_by("assigned_at").first()
+        active = services.current_job(request.user)
         manager = request.user.manager
         missing = services.required_documents_missing(rider)
         return Response({

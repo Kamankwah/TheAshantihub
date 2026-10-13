@@ -30,10 +30,14 @@ describe('OrderTrackingMap (customer)', () => {
     expect(calls).toHaveLength(0)
   })
 
-  it.each(['assigned', 'accepted', 'at_pickup'])('shows text only while the rider heads to the shop (%s)', async (status) => {
+  it.each([
+    ['assigned', 'A rider has been assigned.'],
+    ['accepted', 'A rider is heading to the shop.'],
+    ['at_pickup', 'The rider is at the shop.'],
+  ])('shows text only before pickup, worded by status (%s)', async (status, text) => {
     const calls = track(PICKED_UP)
     mount(<OrderTrackingMap orderId={7} assignmentStatus={status} deliveryStatus="processing" />)
-    expect(screen.getByText('A rider is heading to the shop')).toBeInTheDocument()
+    expect(screen.getByText(text)).toBeInTheDocument()
     expect(screen.queryByTestId('track-map')).not.toBeInTheDocument()
     expect(screen.queryByText(/Kojo/)).not.toBeInTheDocument()
     await new Promise((r) => setTimeout(r, 60))
@@ -77,8 +81,26 @@ describe('OrderTrackingMap (customer)', () => {
     expect(screen.queryByTestId('track-map')).not.toBeInTheDocument()
   })
 
+  it('explains a missing delivery pin and lists only the pins drawn', async () => {
+    track({ ...PICKED_UP, drop: null, leg: null, route: null })
+    mount(<OrderTrackingMap orderId={7} assignmentStatus="picked_up" deliveryStatus="out_for_delivery" />)
+    expect(await screen.findByText("Your address has no map pin, so the route and arrival time can't be shown.")).toBeInTheDocument()
+    expect(screen.getByText('Dark pin: rider.')).toBeInTheDocument()
+    expect(screen.queryByText(/Green pin/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/About \d+ min/)).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button').map((b) => b.getAttribute('data-kind'))).toEqual(['rider'])
+  })
+
+  it('says the rider is finishing another delivery, with no map, when the server marks the rider busy', async () => {
+    track({ stage: 'picked_up', drop: { lat: 5.6, lng: -0.17 }, rider: null, leg: null, route: null, rider_busy: true })
+    mount(<OrderTrackingMap orderId={7} assignmentStatus="picked_up" deliveryStatus="out_for_delivery" />)
+    expect(await screen.findByText('The rider is finishing another delivery first.')).toBeInTheDocument()
+    expect(screen.queryByTestId('track-map')).not.toBeInTheDocument()
+    expect(screen.queryByText(/location is not available/i)).not.toBeInTheDocument()
+  })
+
   it('shows the pre-pickup lines only while the order is processing', async () => {
-    for (const [assignment, text] of [[null, 'Finding a rider'], ['accepted', 'A rider is heading to the shop']]) {
+    for (const [assignment, text] of [[null, 'Finding a rider'], ['accepted', 'A rider is heading to the shop.']]) {
       const { container, unmount } = mount(<OrderTrackingMap orderId={7} assignmentStatus={assignment} deliveryStatus="delivered" />)
       expect(container).toBeEmptyDOMElement()
       expect(screen.queryByText(text)).not.toBeInTheDocument()

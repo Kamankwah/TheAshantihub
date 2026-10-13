@@ -72,6 +72,20 @@ describe('Dispatch queue map', () => {
     expect(within(region).getByText(/straight-line estimate/)).toBeInTheDocument()
   })
 
+  it('says there is no trip and lists no drop-off in the legend when the order has no drop pin', async () => {
+    const region = await openQueue(queueMap({ drop: null, trip: null, route: null }))
+    await within(region).findByTestId('track-map')
+    expect(within(region).getByText('This order has no drop-off pin, so there is no trip route or time.')).toBeInTheDocument()
+    expect(within(region).queryByText(/Green: drop-off/)).toBeNull()
+    expect(within(region).getByText(/Gold: shop/)).toBeInTheDocument()
+  })
+
+  it('labels the trip time as shop to drop-off', async () => {
+    const region = await openQueue(queueMap())
+    expect(await within(region).findByText(/^Shop to drop-off: About 7 min/)).toBeInTheDocument()
+    expect(within(region).getByText(/Green: drop-off/)).toBeInTheDocument()
+  })
+
   it('shows the empty state and no map when the business has no pin, and says when no rider has a location', async () => {
     const region = await openQueue(queueMap({ pickup: null, drop: null, route: null, trip: null, riders: [] }))
     expect(await within(region).findByText(/No map pin for this pickup/)).toBeInTheDocument()
@@ -109,5 +123,19 @@ describe('Active job map', () => {
     expect(await screen.findByRole('button', { name: /pin Kofi Appiah/ })).toHaveAttribute('data-kind', 'stale')
     expect(screen.getByText(/Last location 10 min ago/)).toBeInTheDocument()
     expect(screen.getByText(/straight-line estimate/)).toBeInTheDocument()
+  })
+
+  it('says there is no drop-off pin and leaves it out of the legend when the order has none', async () => {
+    server.use(
+      http.get(`${API}/api/delivery/jobs/55/`, () => HttpResponse.json(detail)),
+      http.get(`${API}/api/delivery/jobs/55/map/`, () => HttpResponse.json({
+        stage: 'accepted', pickup: { lat: 5.6037, lng: -0.187, name: 'Akosua Ntoma' }, drop: null,
+        rider: { lat: 5.602, lng: -0.18, age_s: 20, stale: false, name: 'Kofi Appiah' }, leg: null, route: null,
+      })),
+    )
+    wrap(<ActiveDeliveries detailId="55" onOpenDetail={() => {}} />)
+    expect(await screen.findByText('This order has no drop-off pin, so there is no trip route or time.')).toBeInTheDocument()
+    expect(screen.queryByText(/Green: drop-off/)).toBeNull()
+    expect(screen.getByText(/Gold: shop/)).toBeInTheDocument()
   })
 })

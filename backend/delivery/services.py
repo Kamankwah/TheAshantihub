@@ -55,23 +55,44 @@ def valid_point(lat, lng):
     return lat, lng
 
 
+def first_item(order):
+    """The order's first line item by pk, or None. The single rule for "which business does the rider
+    collect from": pickup_stop, pickup_owner and the owner serializer all read it, so the privacy gate
+    on who may watch the rider cannot drift between them."""
+    return min(order.items.all(), key=lambda i: i.pk, default=None)
+
+
 def pickup_stop(order):
     """(lat, lng, business name) of the first business on the order, or (None, None, name). The pin on
     the business profile wins; a listing's own coordinates are the fallback. Multi-business orders are
     delivered from the first business only (v1: one pickup per assignment)."""
-    for item in sorted(order.items.all(), key=lambda i: i.pk):
-        owner = item.listing.business_owner
-        pin = business_pin(owner) or valid_point(item.listing.lat, item.listing.lng)
-        name = getattr(owner, "display_name", None) or owner.full_name
-        return (float(pin[0]), float(pin[1]), name) if pin else (None, None, name)
-    return None, None, ""
+    item = first_item(order)
+    if item is None:
+        return None, None, ""
+    owner = item.listing.business_owner
+    pin = business_pin(owner) or valid_point(item.listing.lat, item.listing.lng)
+    name = getattr(owner, "display_name", None) or owner.full_name
+    return (float(pin[0]), float(pin[1]), name) if pin else (None, None, name)
 
 
 def pickup_owner(order):
     """The business the rider collects from: the first item's owner, by the same rule as pickup_stop."""
-    for item in sorted(order.items.all(), key=lambda i: i.pk):
-        return item.listing.business_owner
-    return None
+    item = first_item(order)
+    return item.listing.business_owner if item else None
+
+
+def active_jobs(staff):
+    """A rider's active assignments, oldest first. The rider app works the first one, so this ordering
+    is the single definition of "the job the rider is on" (MeView and tracking both use it)."""
+    from orders.models import DeliveryAssignment
+
+    return DeliveryAssignment.objects.filter(
+        dispatch=staff, status__in=DeliveryAssignment.ACTIVE_STATUSES,
+    ).order_by("assigned_at", "pk")
+
+
+def current_job(staff):
+    return active_jobs(staff).first()
 
 
 def drop_stop(order):

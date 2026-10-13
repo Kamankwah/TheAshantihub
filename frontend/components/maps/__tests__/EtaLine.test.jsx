@@ -10,6 +10,11 @@ describe('EtaLine', () => {
     expect(screen.getByText('About 7 min · 3.2 km · road route')).toBeInTheDocument()
   })
 
+  it('puts an optional prefix in front of the time', () => {
+    render(<EtaLine leg={leg} prefix="Shop to drop-off: " />)
+    expect(screen.getByText('Shop to drop-off: About 7 min · 3.2 km · road route')).toBeInTheDocument()
+  })
+
   it('rounds minutes up, with a minimum of 1', () => {
     render(<EtaLine leg={{ ...leg, duration_s: 61 }} />)
     expect(screen.getByText(/About 2 min/)).toBeInTheDocument()

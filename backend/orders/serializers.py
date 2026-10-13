@@ -101,12 +101,14 @@ class OwnerOrderSerializer(serializers.ModelSerializer):
 
     def _heading_assignment(self, obj):
         """The order's assignment when a rider is heading to this owner's shop, else None."""
+        from delivery import services
+
         assignment = getattr(obj, "delivery_assignment", None)
         if assignment is None or assignment.status not in (
             DeliveryAssignment.ASSIGNED, DeliveryAssignment.ACCEPTED, DeliveryAssignment.AT_PICKUP,
         ):
             return None
-        first = min(obj.items.all(), key=lambda i: i.pk, default=None)
+        first = services.first_item(obj)
         if first is None or first.listing.business_owner_id != self.context["owner"].id:
             return None
         return assignment
@@ -116,7 +118,15 @@ class OwnerOrderSerializer(serializers.ModelSerializer):
         return (assignment.pickup_code or None) if assignment else None
 
     def get_rider_heading_here(self, obj):
-        return self._heading_assignment(obj) is not None
+        # Only while this is the job the rider is actually on; a rider finishing another delivery first
+        # is not heading here, and the vendor must not be shown their position.
+        from delivery import services
+
+        assignment = self._heading_assignment(obj)
+        if assignment is None or assignment.dispatch_id is None:
+            return False
+        current = services.current_job(assignment.dispatch)
+        return current is not None and current.pk == assignment.pk
 
     def _own_items(self, obj):
         owner = self.context["owner"]

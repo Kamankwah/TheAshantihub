@@ -81,6 +81,24 @@ describe('DeliveriesPanel rider tracking (vendor)', () => {
     expect(screen.queryByTestId('track-map')).not.toBeInTheDocument()
   })
 
+  it('explains a missing shop pin and lists only the pins drawn', async () => {
+    trackWith({ ...HEADING, pickup: null, leg: null, route: null })
+    renderPanel([HEADING_ORDER])
+    fireEvent.click(await screen.findByRole('button', { name: /Rider on the way/ }))
+    expect(await screen.findByText("Your shop has no map pin, so the arrival time can't be shown.")).toBeInTheDocument()
+    expect(screen.queryByText(/Gold pin/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Dark pin: rider/)).toBeInTheDocument()
+    expect(screen.queryByText(/About \d+ min/)).not.toBeInTheDocument()
+  })
+
+  it('says the rider is finishing another delivery, with no map, when the server marks the rider busy', async () => {
+    trackWith({ stage: 'accepted', pickup: { lat: 5.6037, lng: -0.187, name: 'Akosua Ntoma' }, rider: null, leg: null, route: null, rider_busy: true })
+    renderPanel([HEADING_ORDER])
+    fireEvent.click(await screen.findByRole('button', { name: /Rider on the way/ }))
+    expect(await screen.findByText('The rider is finishing another delivery first.')).toBeInTheDocument()
+    expect(screen.queryByTestId('track-map')).not.toBeInTheDocument()
+  })
+
   it('uses neutral copy for a failed delivery', async () => {
     trackWith({ stage: 'failed', rider: null, leg: null, route: null })
     renderPanel([HEADING_ORDER])

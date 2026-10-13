@@ -3,13 +3,13 @@ import { D } from "../dashboard/theme.js";
 // "About 7 min · 3.2 km · road route". The basis is always shown so an estimate never reads
 // as a measured road time. A null leg draws nothing (no leg is not "0 min"). `ageS` is the
 // age of the rider's last fix; when stale we say so rather than present it as live.
-export default function EtaLine({ leg, stale = false, ageS = null }) {
+export default function EtaLine({ leg, stale = false, ageS = null, prefix = "" }) {
   if (!leg) return null;
   const seconds = Number(leg.duration_s);
   if (leg.duration_s == null || !Number.isFinite(seconds)) return null;
   const minutes = Math.max(1, Math.ceil(seconds / 60));
   const km = Number(leg.distance_km);
-  const parts = [`About ${minutes} min`];
+  const parts = [`${prefix}About ${minutes} min`];
   if (Number.isFinite(km)) parts.push(`${km} km`);
   if (leg.basis) parts.push(leg.basis);
   const staleNote = stale

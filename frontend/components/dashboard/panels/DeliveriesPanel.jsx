@@ -39,6 +39,7 @@ function RiderOnTheWay({ orderId }) {
     else if (data.stage === "not_assigned") body = <p style={line}>A rider has not been assigned yet.</p>;
     else if (data.stage === "failed") body = <p style={line}>This delivery did not go ahead.</p>;
     else if (COLLECTED.includes(data.stage)) body = <p style={line}>The rider has collected the order.</p>;
+    else if (data.rider_busy) body = <p style={line}>The rider is finishing another delivery first.</p>;
     else if (!hasFix) body = <p style={line}>The rider's location is not available right now.</p>;
     else {
       const markers = [
@@ -48,7 +49,8 @@ function RiderOnTheWay({ orderId }) {
       body = (
         <div style={{ marginTop: 8 }}>
           <TrackMap markers={markers} route={data.route ?? null} height={220} label="Map of the rider heading to your shop" />
-          <div style={{ color: D.textFaint, fontSize: "0.66rem", marginTop: 4 }}>Gold pin: your shop. Dark pin: rider{rider.first_name ? ` (${rider.first_name})` : ""}.</div>
+          <div style={{ color: D.textFaint, fontSize: "0.66rem", marginTop: 4 }}>{data.pickup ? "Gold pin: your shop. " : ""}Dark pin: rider{rider.first_name ? ` (${rider.first_name})` : ""}.</div>
+          {!data.pickup && <p style={line}>Your shop has no map pin, so the arrival time can't be shown.</p>}
           <div style={{ marginTop: 6 }}><EtaLine leg={data.leg} stale={!!rider.stale} ageS={rider.age_s ?? null} /></div>
         </div>
       );

@@ -38,9 +38,10 @@ export function QueueMap({ orderId, onSelectRider }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <TrackMap markers={markers} route={data.route} height={280} label={`Map of order #${orderId}: pickup, drop-off and nearby riders`}
         onSelect={(id) => { if (id !== "pickup" && id !== "drop") onSelectRider?.(id); }} />
-      <EtaLine leg={data.trip} />
+      <EtaLine leg={data.trip} prefix="Shop to drop-off: " />
+      {!has(data.drop) && <span style={line}>This order has no drop-off pin, so there is no trip route or time.</span>}
       {riders.length === 0 && <span style={line}>No rider has shared a location recently.</span>}
-      <span style={dim}>Gold: shop · Green: drop-off · Dark: eligible rider · White: left out (hover for the reason) · Dashed: location out of date. Select a rider to find them in the table.</span>
+      <span style={dim}>Gold: shop · {has(data.drop) ? "Green: drop-off · " : ""}Dark: eligible rider · White: left out (hover for the reason) · Dashed: location out of date. Select a rider to find them in the table.</span>
     </div>
   );
 }
@@ -59,8 +60,11 @@ export function JobMap({ jobId, riderName }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <TrackMap markers={markers} route={data.route} height={280} label="Map of this delivery: stops and the rider" />
       <EtaLine leg={data.leg} stale={!!data.rider?.stale} ageS={data.rider?.age_s ?? null} />
+      {!has(data.drop) && <span style={line}>This order has no drop-off pin, so there is no trip route or time.</span>}
       {!has(data.rider) && <span style={line}>The rider has not shared a location yet.</span>}
-      <span style={dim}>Gold: shop · Green: drop-off · Dark: rider · Dashed: location out of date.</span>
+      <span style={dim}>
+        {[has(data.pickup) && "Gold: shop", has(data.drop) && "Green: drop-off", has(data.rider) && "Dark: rider", has(data.rider) && "Dashed: location out of date"].filter(Boolean).join(" · ")}
+      </span>
     </div>
   );
 }
