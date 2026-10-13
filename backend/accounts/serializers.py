@@ -23,6 +23,7 @@ from .models import (
     StaffSession,
     StaffUser,
 )
+from delivery.models import VEHICLE_TYPES as VEHICLE_TYPE_CHOICES, DeliveryZone, Rider
 from listings.models import Zone
 
 from .permissions import can_lead_team, can_manage_staff
@@ -117,9 +118,16 @@ class StaffInviteSerializer(serializers.ModelSerializer):
     start_date = serializers.DateField(required=False, allow_null=True)
     areas = serializers.PrimaryKeyRelatedField(queryset=Zone.objects.all(), many=True, required=False)
 
+    # Delivery Manager's Invite a rider (screen 11): a Dispatch invite also carries the rider's vehicle,
+    # home delivery zone, first shift day and a note. They live on the pending account's Rider profile.
+    vehicle_type = serializers.ChoiceField(choices=VEHICLE_TYPE_CHOICES, required=False, write_only=True)
+    home_zone = serializers.PrimaryKeyRelatedField(queryset=DeliveryZone.objects.all(), required=False, allow_null=True, write_only=True)
+    first_shift_date = serializers.DateField(required=False, allow_null=True, write_only=True)
+    invite_note = serializers.CharField(max_length=500, required=False, allow_blank=True, write_only=True)
+
     class Meta:
         model = StaffUser
-        fields = ["id", "full_name", "email", "phone", "role", "manager", "start_date", "areas"]
+        fields = ["id", "full_name", "email", "phone", "role", "manager", "start_date", "areas", "vehicle_type", "home_zone", "first_shift_date", "invite_note"]
 
     def validate_start_date(self, value):
         if value is not None and value < timezone.localdate():
@@ -147,11 +155,15 @@ class StaffInviteSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"manager": ["Choose a manager who can lead a team."]})
         if attrs.get("areas") and attrs["role"].name != Role.SCOUT:
             raise serializers.ValidationError({"areas": ["Areas are for scouts only."]})
+        rider_fields = {"vehicle_type", "home_zone", "first_shift_date", "invite_note"}
+        if rider_fields & set(attrs) and attrs["role"].name != Role.DISPATCH:
+            raise serializers.ValidationError({"vehicle_type": ["Vehicle, home zone and first shift are for riders (Dispatch) only."]})
         return attrs
 
     def create(self, validated_data):
         # password_hash stays unusable until /staff/activate/ sets a real password.
         areas = validated_data.pop("areas", [])
+        rider_profile = {k: validated_data.pop(k) for k in ("vehicle_type", "home_zone", "first_shift_date", "invite_note") if k in validated_data}
         validated_data["password_hash"] = make_password(get_random_string(32))
         validated_data["invited_by"] = self.context["request"].user
         validated_data["invite_token"] = get_random_string(43)
@@ -160,6 +172,9 @@ class StaffInviteSerializer(serializers.ModelSerializer):
         staff = StaffUser.objects.create(**validated_data)
         if areas:
             staff.areas.set(areas)
+        if rider_profile:
+            # The Rider row is made by delivery.signals when a Dispatch account is saved.
+            Rider.objects.update_or_create(staff=staff, defaults=rider_profile)
         # FRONTEND_BASE_URL is per-environment (production vs staging vs local
         # dev), so the link lands on the frontend whose backend actually holds
         # this token — a hardcoded domain here once sent staging invites to

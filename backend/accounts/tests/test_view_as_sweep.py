@@ -73,6 +73,12 @@ ROUTE_MODELS = {
     "api/marketplace/listings/": "listings.Listing",
     "api/marketplace/disputes/": "disputes.Dispute",
     "api/commission/": "commission.CommissionAccrual",
+    "api/delivery/jobs/": "orders.DeliveryAssignment",
+    "api/delivery/rider/jobs/": "orders.DeliveryAssignment",
+    "api/delivery/riders/": "delivery.Rider",
+    "api/delivery/documents/": "delivery.RiderDocument",
+    "api/delivery/vehicles/": "delivery.Vehicle",
+    "api/delivery/zones/": "delivery.DeliveryZone",
 }
 
 

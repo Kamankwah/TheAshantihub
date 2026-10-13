@@ -24,7 +24,11 @@ DEFAULT_MATRIX = {
         "scouts.verify", "users.view", "calls.log",
         "businesses.register", "businesses.manage_portfolio", "commission.view_own",
     },
-    "delivery_manager": {"delivery.manage", "staff.invite_team", "activity.view_team"},
+    # delivery.fleet/cash/rates/disputes: the Delivery Manager build (migration 0047).
+    "delivery_manager": {
+        "delivery.manage", "staff.invite_team", "activity.view_team",
+        "delivery.fleet", "delivery.cash", "delivery.rates", "delivery.disputes",
+    },
     "dispatch": {"delivery.dispatch"},
     "cosigner": {"approvals.cosign"},
 }

@@ -120,6 +120,7 @@ INSTALLED_APPS = [
     "staffsecurity",
     "announcements",
     "realtime",
+    "delivery",
 ]
 
 MIDDLEWARE = [
@@ -353,6 +354,8 @@ REST_FRAMEWORK = {
         # guest spam bounded without getting in the way of a real
         # back-and-forth conversation.
         "messaging": "60/hour",
+        # A rider's phone sends a location fix every 15 s on a job (delivery.views_rider.PingView).
+        "rider_ping": "30/min",
     },
 }
 
@@ -478,6 +481,14 @@ CELERY_BEAT_SCHEDULE = {
     "portfolio-purge-staged-photos": {
         "task": "portfolio.tasks.purge_staged_photos",
         "schedule": crontab(hour=4, minute=30),
+    },
+    "delivery-paper-checks": {
+        "task": "delivery.tasks.run_paper_checks",
+        "schedule": crontab(minute=10),  # hourly, at ten past: expire, remind, suspend (never mid-job)
+    },
+    "delivery-purge-pings": {
+        "task": "delivery.tasks.purge_old_pings",
+        "schedule": crontab(hour=3, minute=50),
     },
 }
 

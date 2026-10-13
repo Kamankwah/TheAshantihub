@@ -1,0 +1,183 @@
+"""The Delivery Manager's live board: what is waiting, what is on the road, which riders are where.
+Everything is derived from assignments, shifts and pings; with no riders on shift the screens say so
+(no sample pins). Distances are straight-line estimates scaled by ``services.ROAD_FACTOR``."""
+from datetime import timedelta
+
+from django.db.models import F, Q
+from django.utils import timezone
+
+from disputes.models import Dispute
+from orders.models import DeliveryAssignment, Order
+
+from . import payloads, services
+from .models import DeliveryEvent, Rider, ShiftSession
+
+
+def waiting_orders():
+    """Paid door-to-door orders no rider holds: never assigned, or the last attempt failed. Oldest first."""
+    return (
+        Order.objects.filter(status=Order.PAID, delivery_method=Order.DOOR_TO_DOOR)
+        .exclude(delivery_status=Order.DELIVERED)
+        .filter(Q(delivery_assignment__isnull=True) | Q(delivery_assignment__status=DeliveryAssignment.FAILED))
+        .select_related("customer", "delivery_assignment")
+        .prefetch_related("items__listing__business_owner__profile")
+        .order_by("placed_at")
+    )
+
+
+def _route(order):
+    plat, plng, name = services.pickup_stop(order)
+    return {"from": name, "to": order.delivery_address or None, "pickup_located": plat is not None, "drop_located": order.delivery_lat is not None and order.delivery_lng is not None}
+
+
+def queue_row(order, now):
+    zone = services.zone_of(order.delivery_lat, order.delivery_lng)
+    assignment = getattr(order, "delivery_assignment", None)
+    return {
+        "order_id": order.pk, "placed_at": order.placed_at, "waiting_minutes": int((now - order.placed_at).total_seconds() // 60),
+        "route": _route(order), "zone": zone.name if zone else None, "unzoned": zone is None,
+        "deadline_at": assignment.deadline_at if assignment else None,
+        "returned": bool(assignment and assignment.status == DeliveryAssignment.FAILED),
+        "payment": payloads.payment_label(order),
+    }
+
+
+def _last_event(assignment):
+    events = list(assignment.events.all())
+    return events[-1] if events else None
+
+
+def _step_note(a, now):
+    if a.status == DeliveryAssignment.AT_CUSTOMER:
+        wait = payloads.wait_info(a, now)
+        return f"Waiting {wait['elapsed_seconds'] // 60} of {wait['limit_seconds'] // 60} min" if wait else ""
+    if a.status == DeliveryAssignment.AT_PICKUP and a.arrived_pickup_at:
+        return f"Waiting for the business {int((now - a.arrived_pickup_at).total_seconds() // 60)} min"
+    return ""
+
+
+def active_row(a, shifts, now):
+    shift = shifts.get(a.dispatch_id)
+    last = _last_event(a)
+    slack = int((a.deadline_at - now).total_seconds() // 60) if a.deadline_at else None
+    rider = getattr(a.dispatch, "rider", None)
+    flag = next((e for e in reversed(list(a.events.all())) if e.flagged), None)
+    stale = bool(shift) and services.is_stale(shift, now)
+    return {
+        "id": a.pk, "order_id": a.order_id, "route": _route(a.order),
+        "rider": {"id": rider.pk if rider else None, "staff_id": a.dispatch_id, "full_name": a.dispatch.full_name if a.dispatch_id else None},
+        "vehicle": rider.get_vehicle_type_display() if rider else None,
+        "status": a.status, "status_label": a.get_status_display(), "step_note": _step_note(a, now),
+        "last_stamp": {"at": last.at, "label": payloads.STEP_LABELS.get(last.step), "distance_m": last.distance_m, "flagged": last.flagged} if last else None,
+        "location_age_seconds": services.fix_age_seconds(shift, now), "stale": stale, "deadline_at": a.deadline_at, "minutes_to_spare": slack,
+        "payment": payloads.payment_label(a.order),
+        "flag": {"kind": "location", "label": f"Tap {last_flag_distance(flag)} m away", "decision": a.flag_decision} if flag and not a.flag_decision else ({"kind": "stale", "label": "Stale location"} if stale else None),
+        "assigned_at": a.assigned_at, "assignment_mode": a.assignment_mode,
+    }
+
+
+def last_flag_distance(event):
+    return int(event.distance_m) if event and event.distance_m is not None else 0
+
+
+def active_queryset():
+    return (
+        DeliveryAssignment.objects.filter(status__in=DeliveryAssignment.ACTIVE_STATUSES)
+        .select_related("order", "order__customer", "dispatch", "dispatch__rider")
+        .prefetch_related("events", "order__items__listing__business_owner__profile")
+        .order_by("assigned_at")
+    )
+
+
+def open_shifts():
+    return {s.rider.staff_id: s for s in ShiftSession.objects.filter(ended_at__isnull=True).select_related("rider", "zone")}
+
+
+def active(filter_name="all", now=None):
+    now = now or timezone.now()
+    today = timezone.localdate(now)
+    shifts = open_shifts()
+    rows = [active_row(a, shifts, now) for a in active_queryset()]
+    pipeline = {s: 0 for s in DeliveryAssignment.ACTIVE_STATUSES}
+    for r in rows:
+        pipeline[r["status"]] += 1
+    delivered_today = DeliveryAssignment.objects.filter(delivered_at__date=today)
+    on_time = delivered_today.filter(deadline_at__isnull=False)
+    counts = {
+        "all": len(rows), "at_customer": pipeline[DeliveryAssignment.AT_CUSTOMER],
+        "flagged": sum(1 for r in rows if r["flag"] and r["flag"]["kind"] == "location"), "stale": sum(1 for r in rows if r["stale"]),
+        "cash": 0,
+    }
+    if filter_name == "at_customer":
+        rows = [r for r in rows if r["status"] == DeliveryAssignment.AT_CUSTOMER]
+    elif filter_name == "flagged":
+        rows = [r for r in rows if r["flag"] and r["flag"]["kind"] == "location"]
+    elif filter_name == "stale":
+        rows = [r for r in rows if r["stale"]]
+    return {
+        "pipeline": {
+            **pipeline,
+            "delivered_today": delivered_today.count(),
+            "delivered_today_on_time": on_time.filter(delivered_at__lte=F("deadline_at")).count(),
+            "delivered_today_with_deadline": on_time.count(),
+            "could_not_deliver_today": DeliveryAssignment.objects.filter(failed_at__date=today).count(),
+        },
+        "counts": counts, "filter": filter_name, "results": rows, "cash_on_delivery": "not_offered",
+    }
+
+
+def live(now=None):
+    """GET live/ — the live operations screen in one read."""
+    now = now or timezone.now()
+    today = timezone.localdate(now)
+    shifts = open_shifts()
+    act = [active_row(a, shifts, now) for a in active_queryset()]
+    on_job_staff = {r["rider"]["staff_id"] for r in act}
+    pins = []
+    status_counts = {"on_shift": 0, "free": 0, "on_job": 0, "break": 0, "stale": 0}
+    for staff_id, shift in shifts.items():
+        rider = shift.rider
+        stale = services.is_stale(shift, now)
+        on_job = staff_id in on_job_staff
+        status = "on_job" if on_job else ("break" if shift.on_break else "free")
+        status_counts["on_shift"] += 1
+        status_counts[status] += 1
+        status_counts["stale"] += 1 if stale else 0
+        has_fix = shift.last_lat is not None
+        pins.append({
+            "rider_id": rider.pk, "full_name": rider.staff.full_name, "status": status, "lat": shift.last_lat if has_fix else None,
+            "lng": shift.last_lng if has_fix else None, "last_fix_at": shift.last_fix_at, "age_seconds": services.fix_age_seconds(shift, now), "stale": stale,
+        })
+    waiting = [queue_row(o, now) for o in waiting_orders()[:50]]
+    waiting_total = waiting_orders().count()
+    delivered = DeliveryAssignment.objects.filter(delivered_at__date=today)
+    with_deadline = delivered.filter(deadline_at__isnull=False)
+    late_now = [r for r in act if r["minutes_to_spare"] is not None and r["minutes_to_spare"] < 0]
+    needs = []
+    for row in waiting[:5]:
+        needs.append({"kind": "unassigned", "order_id": row["order_id"], "text": f"Order #{row['order_id']} has waited {row['waiting_minutes']} min for a rider", "minutes": row["waiting_minutes"]})
+    for r in act:
+        if r["stale"]:
+            needs.append({"kind": "stale", "order_id": r["order_id"], "text": f"{r['rider']['full_name']} on order #{r['order_id']}: no fresh location", "rider_id": r["rider"]["id"]})
+        if r["flag"] and r["flag"]["kind"] == "location":
+            needs.append({"kind": "flag", "order_id": r["order_id"], "text": f"Order #{r['order_id']}: {r['flag']['label']}", "assignment_id": r["id"]})
+    for r in late_now:
+        needs.append({"kind": "late", "order_id": r["order_id"], "text": f"Order #{r['order_id']} is {abs(r['minutes_to_spare'])} min past its deadline", "assignment_id": r["id"]})
+    disputes = list(
+        Dispute.objects.filter(status__in=(Dispute.OPEN, Dispute.INVESTIGATING), reason__in=(Dispute.DELIVERY_ISSUE, Dispute.ORDER_ISSUE))
+        .select_related("order").order_by("created_at")[:5]
+    )
+    return {
+        "now": now,
+        "kpis": {
+            "on_the_road": len(act), "waiting": waiting_total, "late_now": len(late_now),
+            "delivered_today": delivered.count(),
+            "on_time_today": {"on_time": with_deadline.filter(delivered_at__lte=F("deadline_at")).count(), "of": with_deadline.count()},
+            "riders": status_counts,
+        },
+        "needs_you": needs[:12], "pins": pins, "queue": waiting[:8],
+        "disputes": [{"id": d.pk, "order_id": d.order_id, "reason": d.reason, "reason_label": d.get_reason_display(), "created_at": d.created_at, "status": d.status} for d in disputes],
+        "stale_after_seconds": int(services.STALE_AFTER.total_seconds()),
+        "routing": {"mode": "straight_line_estimate", "factor": services.ROAD_FACTOR, "note": "Straight-line estimate. A road route service is not connected."},
+        "auto_assign": None,
+    }

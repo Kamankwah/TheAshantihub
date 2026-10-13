@@ -30,17 +30,26 @@ class OrderSerializer(serializers.ModelSerializer):
     # a circular reference (DeliveryAssignmentSerializer is defined below) and
     # because the customer only needs the status string, not the courier's id.
     delivery_assignment_status = serializers.SerializerMethodField()
+    # The four-digit code the customer reads to the rider at the door. Shown only while a rider holds
+    # the job and has not yet delivered it; it is the customer's, never the business's or a manager's.
+    delivery_code = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
             "id", "status", "delivery_status", "total_amount", "placed_at", "items",
-            "delivery_assignment_status", *DELIVERY_FIELDS,
+            "delivery_assignment_status", "delivery_code", *DELIVERY_FIELDS,
         ]
 
     def get_delivery_assignment_status(self, obj):
         assignment = getattr(obj, "delivery_assignment", None)
         return assignment.status if assignment else None
+
+    def get_delivery_code(self, obj):
+        assignment = getattr(obj, "delivery_assignment", None)
+        if assignment is None or assignment.status not in DeliveryAssignment.ACTIVE_STATUSES:
+            return None
+        return assignment.drop_code or None
 
 
 class StaffOrderSerializer(serializers.ModelSerializer):
@@ -67,13 +76,27 @@ class OwnerOrderSerializer(serializers.ModelSerializer):
     items = serializers.SerializerMethodField()
     owner_subtotal = serializers.SerializerMethodField()
     customer_name = serializers.CharField(source="customer.full_name", read_only=True)
+    # The four-digit code the rider asks this business for at the counter. Only the business the rider
+    # collects from (the order's first, v1 delivers one pickup per order) sees it, and only until pickup.
+    pickup_code = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
             "id", "customer_name", "status", "delivery_status", "placed_at",
-            "items", "owner_subtotal", *OWNER_DELIVERY_FIELDS,
+            "items", "owner_subtotal", "pickup_code", *OWNER_DELIVERY_FIELDS,
         ]
+
+    def get_pickup_code(self, obj):
+        assignment = getattr(obj, "delivery_assignment", None)
+        if assignment is None or assignment.status not in (
+            DeliveryAssignment.ASSIGNED, DeliveryAssignment.ACCEPTED, DeliveryAssignment.AT_PICKUP,
+        ):
+            return None
+        first = min(obj.items.all(), key=lambda i: i.pk, default=None)
+        if first is None or first.listing.business_owner_id != self.context["owner"].id:
+            return None
+        return assignment.pickup_code or None
 
     def _own_items(self, obj):
         owner = self.context["owner"]

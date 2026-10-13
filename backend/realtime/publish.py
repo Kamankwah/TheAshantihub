@@ -94,6 +94,23 @@ QUEUE_INVALIDATIONS = [
     (("order-delivery-status-update", "order-assign-dispatch", "delivery-pickup", "delivery-deliver", "dispute-"), ("orders.manage_delivery",), ("sa-orders",)),
     (("event-moderation-", "escrow-", "event."), ("escrow.view", "event.approve"), ("sa-events",)),
     (("dispute-",), ("disputes.flag", "disputes.resolve_financial"), ("sa-disputes",)),
+    # Delivery Manager (delivery app). A rider's step, an assignment or a flag decision changes the live board,
+    # the active list, one delivery's record and the queue; location pings are exempt from the log (no event).
+    (
+        ("delivery-rider-accept", "delivery-rider-arrive-", "delivery-rider-pickup", "delivery-rider-deliver", "delivery-rider-cant-deliver",
+         "delivery-rider-shift-", "delivery-rider-issues", "delivery-rider-note", "delivery-rider-photo", "delivery-rider-call",
+         "delivery-job-", "order-assign-dispatch", "dispute-"),
+        ("delivery.manage",),
+        ("delivery-live", "delivery-active", "delivery-job", "staff-badges"),
+    ),
+    # The fleet screens: riders, papers, vehicles, zones and the pending-invite list.
+    (
+        ("delivery-rider-shift-", "delivery-rider-documents", "delivery-rider-job-hold", "delivery-rider-reinstate", "delivery-rider",
+         "delivery-document-", "delivery-vehicle", "delivery-zone", "order-assign-dispatch", "delivery-rider-accept", "delivery-rider-deliver"),
+        ("delivery.fleet",),
+        ("delivery-riders", "delivery-rider", "delivery-documents", "delivery-vehicles", "delivery-zones", "staff-badges"),
+    ),
+    (STAFF_MANAGEMENT_VERBS, ("delivery.fleet",), ("delivery-invites", "delivery-riders")),
 ]
 # (verb prefixes, extra keys for everyone who receives the feed event)
 FEED_KEYS = [
