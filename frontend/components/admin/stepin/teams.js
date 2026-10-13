@@ -8,14 +8,14 @@ export const STEP_IN_TEAMS = [
   { id: "operations", navId: "step-in-operations", label: "Operations & scouts", roles: ["operations", "scout"], rebuilt: true },
   { id: "support", navId: "step-in-support", label: "Support", roles: ["support"], rebuilt: false },
   { id: "delivery", navId: "step-in-delivery", label: "Delivery & dispatch", roles: ["delivery_manager"], rebuilt: false },
-  { id: "marketing", navId: "step-in-marketing", label: "Marketing", roles: ["marketing"], rebuilt: false },
+  { id: "marketing", navId: "step-in-marketing", label: "Marketing", roles: ["marketing"], rebuilt: true },
   { id: "accounting", navId: "step-in-accounting", label: "Accounting", roles: ["accountant"], rebuilt: false },
 ];
 
 export const teamById = (id) => STEP_IN_TEAMS.find((team) => team.id === id);
 export const teamOfRole = (role) => STEP_IN_TEAMS.find((team) => team.roles.includes(role));
-// Roles whose dashboard is built to its canvas (Scouts were built first, then Operations).
-const REBUILT_ROLES = new Set(["operations", "scout"]);
+// Roles whose dashboard is built to its canvas (Scouts were built first, then Operations, then Marketing).
+const REBUILT_ROLES = new Set(["operations", "scout", "marketing"]);
 export const isRebuiltRole = (role) => REBUILT_ROLES.has(role);
 export const firstName = (name) => (name || "").trim().split(/\s+/)[0] || name;
 

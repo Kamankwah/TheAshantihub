@@ -135,7 +135,7 @@ class StaffBadgesView(APIView):
         from billing.models import SubscriptionPlan
         from contact.models import ContactMessage
         from events.models import Event, Ticket
-        from listings.models import HeroMediaSubmission, Listing
+        from listings.models import HeroMediaSubmission, Listing, Promotion
         from reviews.models import Review
         from staff_tasks.models import Task
 
@@ -251,6 +251,10 @@ class StaffBadgesView(APIView):
                 "events": count(
                     "event.approve",
                     Event.objects.filter(status=Event.PENDING),
+                ),
+                "promotions_pending": count(
+                    "promotions.manage",
+                    Promotion.objects.filter(status=Promotion.PENDING),
                 ),
                 "hero": count(
                     "hero_media.approve",

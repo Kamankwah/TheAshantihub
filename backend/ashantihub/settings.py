@@ -116,6 +116,7 @@ INSTALLED_APPS = [
     "marketplace",
     "people",
     "commission",
+    "marketing",
     "insights",
     "staffsecurity",
     "announcements",
@@ -319,6 +320,15 @@ HUBTEL_MERCHANT_ACCOUNT = env("HUBTEL_MERCHANT_ACCOUNT", default="")
 HUBTEL_WEBHOOK_SECRET = env("HUBTEL_WEBHOOK_SECRET", default="")
 HUBTEL_CALLBACK_URL = env("HUBTEL_CALLBACK_URL", default="")
 PAYMENTS_PROVIDER = "hubtel" if HUBTEL_CLIENT_ID else "simulated"
+
+# Marketing cost estimate, GH₵ per message (marketing/cost.py). In-app and email cost
+# nothing. There is no SMS or WhatsApp provider, so these are the owner's planning figures
+# (env-overridable), not a quoted price; a channel left blank has an unknown cost and its
+# campaigns always go to Super Admin for approval.
+MARKETING_UNIT_PRICE = {
+    "sms": env("MARKETING_SMS_UNIT_PRICE", default="0.033"),
+    "whatsapp": env("MARKETING_WHATSAPP_UNIT_PRICE", default=""),
+}
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [

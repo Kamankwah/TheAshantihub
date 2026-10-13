@@ -184,7 +184,7 @@ class StaffBadgesTests(TestCase):
         self._auth(self.super_admin)
         data = self.client.get(BADGES_URL).json()
         for key in ["kyc", "listings", "events", "hero", "reviews",
-                    "plan_approvals", "contact_messages", "escrow"]:
+                    "plan_approvals", "contact_messages", "escrow", "promotions_pending"]:
             self.assertIn(key, data)
         self.assertGreaterEqual(data["kyc"], 1)
 
