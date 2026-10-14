@@ -19,7 +19,7 @@
 - Customer map goes live only after the last pickup. A vendor sees the rider only while its shop is the rider's current stop, and never the customer's address (tracking payloads). Shops are told "rider arrives about HH:MM" from the planned route.
 - A shop that cannot hand over: the stop is skipped with a required note, the customer is told, that shop's items go to the existing dispute (delivery case) process. Every skip is evidence: the rider's GPS pin at that moment (lat, lng, accuracy), the time and the note are kept on the append-only `DeliveryEvent` for that stop. The manager sees all of it (queue row, job drawer). The shop sees only its own stop's report as "Rider reported at your shop at HH:MM: <note>", with no rider name, phone or position.
 - Every stop skipped: the job fails as `all_stops_skipped` and the order goes BACK into the Delivery queue (`board.waiting_orders`) for the manager to re-dispatch. One refund case per skipped shop is kept. Requeue mechanism (owner ruling 2026-10-14): `DeliveryAssignment` stays OneToOne with `Order`, and the failed row is reset and reused, exactly as `services.assign` already does for a failed "Can't deliver" job (it resets status, rider and wrong tries on the same row). Reasons: every reader (`order.delivery_assignment`, cash, reports, tracking, serializers) assumes one row per order, so relaxing to many rows would touch dozens of call sites for no gain; and the evidence does not live on the row that is reset. It lives on `DeliveryEvent` rows (append-only, never reset, `stop` FK), which `stops.skip_history()` reads. On re-dispatch after `all_stops_skipped`, `stops.reopen_for_new_rider(..., all_skipped=True)` reopens the skipped stops (status pending, same codes, `skip_note` and the stop's `dispute` link cleared; the refund cases stay open as their own records for the manager to settle or withdraw). No separate attempt table is added: the events are the attempt record.
-- Food places: a business with a listing in a `Category.is_food` category. The real category slugs are `food` ("Food", seeded in `listings` migration 0002) and `pubs` ("Pubs & Bars", the only drinks category; there is no `beverages` slug anywhere in the code, fixtures or frontend). Migration 0020 flags both (`FOOD_CATEGORY_SLUGS = ("food", "pubs")`). Drinks follow the food rules in full: counted toward `max_food_shops`, collected last, cart-able (`guard.kind_of` tests `is_food` before `kind`, so a `service`-kind Pubs & Bars listing is carted as food). Adding a future `beverages` category to the flag is one more slug in that tuple.
+- Food places: a business with a listing in a `Category.is_food` category. Owner ruling: `food` ("Food", seeded in `listings` migration 0002, kind `service` via 0009) and a NEW `beverages` ("Beverages") category. No beverages category exists today (searched code, seeds, fixtures, frontend); Pubs & Bars (`pubs`) is a venue category and is left unchanged and unflagged. Migration 0020 creates `beverages` (`get_or_create`, idempotent, reversible, modelled on the seed pattern of 0002/0012: slug, icon, label, colour, explicit kind) and flags `food` and `beverages` (`FOOD_CATEGORY_SLUGS = ("food", "beverages")`). The frontend reads categories from `GET /api/listings/categories/`, so no frontend list needs the new entry. Beverages follow the food rules in full: counted toward `max_food_shops`, collected last, cart-able. Existing drink shops are NOT auto-moved: a manager or the owner reassigns those listings to Beverages.
 - Shop-owner order list (`OwnerOrderSerializer`): keeps the customer's name, delivery address and pin (an existing contract test pins them) and exposes NO customer contact details: no `delivery_phone` (already stripped by `OWNER_DELIVERY_FIELDS`), no phone, email or contact field of any kind. Task 7 adds a test over every key.
 - Pricing (option b): fee = base on road distance first pickup to H + `extra_pickup` per additional shop + detour charge (per-km rate on the km beyond `detour_limit_pct`). Pickup leg absorbed by AshantiHub. A business-funded free-delivery promo waives the fee only where every line is covered, as today.
 - Rate card gains `max_shops_per_delivery` (default 4), `max_food_shops` (default 2), `near_shop_radius_km` (default 3), `detour_limit_pct` (default 40), changed through the existing rate-card approval flow. With no card in force the built-in defaults run and are named as such.
@@ -51,7 +51,7 @@ EOF
 - Missing coordinates: no drop pin, a shop with no pin, or a first shop sitting at the drop. The plan falls back to cart order with food last, no detour is charged, nothing divides by zero, and the fee is only charged when the first pickup to drop can be measured. Tests: Task 4 `test_no_drop_pin_*`, `test_a_shop_without_a_pin_*`, `test_a_single_shop_at_the_delivery_point_*`.
 - Every stop skipped: nothing is left to deliver, so the job fails as `all_stops_skipped`, one refund case per shop is opened, and the order goes back into the Delivery queue for the manager to re-dispatch (the same row is reset; the skip evidence survives on `DeliveryEvent`). Tests: Task 5 `test_when_every_shop_is_skipped_the_order_goes_back_to_the_queue`, `test_a_returned_order_can_be_given_to_a_new_rider_and_the_evidence_survives`, `test_a_skip_keeps_the_riders_pin_time_and_note`; Task 6 `test_the_manager_sees_skip_evidence_in_the_queue_and_the_job`; Task 7 `test_a_shop_sees_the_riders_skip_report_for_its_own_stop_only`.
 - Shop-owner privacy: the owner order list keeps the address and pin and never carries a customer phone, email or contact field. Test: Task 7 `test_the_owner_order_row_has_no_customer_contact_details` (the existing `test_owner_sees_customer_name_and_address_but_not_phone` stays).
-- Drinks are food: `food` and `pubs` are both flagged, both counted as food places, both collected last. Tests: Task 3 `test_the_food_migration_marks_the_food_and_drinks_categories`, `test_a_drinks_shop_is_a_food_stop_collected_last`; Task 8 `test_a_pubs_and_bars_shop_counts_as_a_food_place`.
+- Beverages are food: `food` and the new `beverages` category are flagged, counted as food places, collected last; `pubs` is untouched. Tests: Task 3 `test_the_food_migration_marks_food_and_the_new_beverages_category`, `test_the_beverages_migration_is_idempotent`, `test_a_beverages_shop_is_a_food_stop_collected_last`; Task 8 `test_a_beverages_shop_counts_as_a_food_place`.
 - A business that sells both food and goods: it is one stop and one shop toward the limit, counts as a food place once any food line is in the cart, and is collected last. Tests: Task 3 `test_a_shop_selling_food_and_goods_is_one_food_stop`, Task 8 `test_a_shop_selling_goods_and_food_counts_once_and_as_food`.
 
 ---
@@ -554,7 +554,7 @@ git commit -m "feat(routing): distance table and multi-stop route planner, food 
 **Interfaces:**
 - Consumes: `field.services.business_pin`, `services.valid_point`, `services.first_item`.
 - Produces:
-  - `Category.is_food: bool` (migration 0020 sets it on the slugs `food` and `pubs`, i.e. Food and Pubs & Bars)
+  - `Category.is_food: bool` (migration 0020 creates the `beverages` category and sets it on the slugs `food` and `beverages`; `pubs` is not flagged)
   - `Order.route_plan: dict | None` (written by Task 4), `DeliveryAssignment.route_plan: dict | None` (= the order's plan plus `owner_ids`, `stop_ids`, written once when stops are made)
   - `PickupStop` with `PENDING, ARRIVED, COLLECTED, SKIPPED`, `OPEN = (PENDING, ARRIVED)`, fields `assignment (related_name="stops"), sequence, business_owner, lat, lng, code, code_attempts, status, planned_arrival, arrived_at, collected_at, skip_note, skipped_by, dispute (OneToOne, related_name="pickup_stop")`
   - `DeliveryEvent.COLLECTED_STOP = "collected_stop"`, `DeliveryEvent.SKIPPED_STOP = "skipped_stop"`, `DeliveryEvent.stop` (FK, nullable)
@@ -614,11 +614,24 @@ class StopTests(DeliveryCase):
     def owners(self, assignment):
         return [s.business_owner_id for s in assignment.stops.all()]
 
-    def test_the_food_migration_marks_the_food_and_drinks_categories(self):
-        self.assertEqual(sorted(Category.objects.filter(is_food=True).values_list("slug", flat=True)), ["food", "pubs"])
+    def test_the_food_migration_marks_food_and_the_new_beverages_category(self):
+        self.assertEqual(sorted(Category.objects.filter(is_food=True).values_list("slug", flat=True)), ["beverages", "food"])
+        bev = Category.objects.get(slug="beverages")
+        self.assertEqual((bev.label, bev.kind), ("Beverages", Category.PRODUCT))
+        self.assertFalse(Category.objects.get(slug="pubs").is_food)
 
-    def test_a_drinks_shop_is_a_food_stop_collected_last(self):
-        bar, item_bar = self.make_shop("Akwaaba Bar", "+233207000104", (6.702, -1.618), slug="pubs")
+    def test_the_beverages_migration_is_idempotent(self):
+        from importlib import import_module
+
+        from django.apps import apps as django_apps
+
+        migration = import_module("listings.migrations.0020_category_is_food")
+        migration.seed_beverages(django_apps, None)  # a second run changes nothing
+        self.assertEqual(Category.objects.filter(slug="beverages").count(), 1)
+        self.assertTrue(Category.objects.get(slug="beverages").is_food)
+
+    def test_a_beverages_shop_is_a_food_stop_collected_last(self):
+        bar, item_bar = self.make_shop("Akwaaba Drinks", "+233207000104", (6.702, -1.618), slug="beverages")
         a = self.assign(self.multi_order(item_bar, self.item_a, self.item_b))
         self.assertEqual(self.owners(a), [self.shop_a.pk, self.shop_b.pk, bar.pk])
 
@@ -734,9 +747,8 @@ Expected: FAIL (`ImportError: cannot import name 'stops' from 'delivery'` / `is_
 
 ```python
     # Prepared food (chop bars, restaurants): carted and delivered like a product, but one delivery collects from at most
-    # RateCard.max_food_shops food places and collects them last (spec 2026-10-14). Set on the "food" and "pubs" (Pubs &
-    # Bars, the drinks category) categories by
-    # migration 0020; `kind` stays as it was.
+    # RateCard.max_food_shops food places and collects them last (spec 2026-10-14). Set on the "food" and "beverages"
+    # categories by migration 0020; `kind` stays as it was.
     is_food = models.BooleanField(default=False)
 ```
 
@@ -746,16 +758,26 @@ Create `backend/listings/migrations/0020_category_is_food.py`:
 from django.db import migrations, models
 
 
-# Food (chop bars, restaurants) and Pubs & Bars (the drinks category; there is no "beverages" slug). Both follow the food rules.
-FOOD_CATEGORY_SLUGS = ("food", "pubs")
+# Food (chop bars, restaurants) and the new Beverages category both follow the food rules. Pubs & Bars is not flagged.
+FOOD_CATEGORY_SLUGS = ("food", "beverages")
+# Seeded like 0002/0012: slug, icon, label, colour, plus an explicit kind. Existing drink shops are not moved here.
+BEVERAGES = {"slug": "beverages", "icon": "🥤", "label": "Beverages", "color": "#0277BD", "kind": "product"}
+
+
+def seed_beverages(apps, schema_editor):
+    Category = apps.get_model("listings", "Category")
+    Category.objects.get_or_create(slug=BEVERAGES["slug"], defaults={k: v for k, v in BEVERAGES.items() if k != "slug"})
 
 
 def mark_food(apps, schema_editor):
+    seed_beverages(apps, schema_editor)
     apps.get_model("listings", "Category").objects.filter(slug__in=FOOD_CATEGORY_SLUGS).update(is_food=True)
 
 
 def unmark_food(apps, schema_editor):
-    apps.get_model("listings", "Category").objects.filter(slug__in=FOOD_CATEGORY_SLUGS).update(is_food=False)
+    Category = apps.get_model("listings", "Category")
+    Category.objects.filter(slug__in=FOOD_CATEGORY_SLUGS).update(is_food=False)
+    Category.objects.filter(slug="beverages", listings__isnull=True).delete()  # only while nothing is listed under it
 
 
 class Migration(migrations.Migration):
@@ -2686,10 +2708,10 @@ class AddToCartTests(GuardCase):
         self.assertEqual(r.json(), {"detail": "Your delivery can include up to 4 shops. Remove one to add this.", "code": "shop_limit"})
         self.assertEqual(self.add(self.listing(owner=first.business_owner)).status_code, 201)
 
-    def test_a_pubs_and_bars_shop_counts_as_a_food_place(self):
+    def test_a_beverages_shop_counts_as_a_food_place(self):
         self.assertEqual(self.add(self.listing(slug="food")).status_code, 201)
-        self.assertEqual(self.add(self.listing(slug="pubs")).status_code, 201)  # a service-kind category, carted as food
-        r = self.add(self.listing(slug="pubs"))
+        self.assertEqual(self.add(self.listing(slug="beverages")).status_code, 201)
+        r = self.add(self.listing(slug="beverages"))
         self.assertEqual(r.json()["code"], "food_limit")
         self.assertEqual(self.guard()["food_shops"], 2)
 
