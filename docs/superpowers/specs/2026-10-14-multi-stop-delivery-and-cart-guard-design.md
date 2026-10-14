@@ -167,20 +167,21 @@ Owner rulings made during the build:
   scrubbed on the shop's copy.
 - A shop sees its own pickup code from the start; the rider appears on a shop's screen only for that shop's stop.
 - `routing.service.legs_between` (one OSRM call) returns the legs between an ordered list of points.
+- No store pickup exists yet (it will be at the AshantiHub office, later), so shop limits apply to door-to-door only; there is no contact between vendor and customer at all.
 - Customer-side MoMo payment runs before `POST checkout`, so the UI blocks Pay until the cart guard has loaded.
 
 ## Known follow-ups
 
 - Rider pay distance (`rates.route_km`) still measures first shop to drop and understates multi-stop trips.
   OPEN pay-policy decision for the owner.
-- Shop limits apply at add even if store pickup is chosen later; cart tiers sort above paid featured placement.
+- Cart tiers sort above paid featured placement.
+- Rider pay for multi-stop trips is deferred to the payments phase (all payments will be in-app; AshantiHub-employed salaried riders and external per-job riders are both wanted).
 - Guard: false `food_unlocated` when a cart shop has no location but the added listing has one; add can pass
   where checkout later refuses for a pinless business; checkout can refuse on an estimate while OSRM is down;
   tier-2 cache is 60 s per process; the routing matrix is uncached.
 - Planner has no input validation (callers guarantee located shops and unique keys); mixed-unit partial
   tables can pick a suboptimal (labelled estimate) order; missing boundary-value tests for the limits.
 - Rider skip note is shown to the shop with phone numbers scrubbed only by pattern.
-- Rider app copy says "gone back to your manager" after an all-skipped job; the backend sends it to the Delivery queue.
 - StopsLine and the refund notice disappear once an order is delivered or confirmed.
 - Hand check in a real browser (Leaflet, phone width) is still owed.
 

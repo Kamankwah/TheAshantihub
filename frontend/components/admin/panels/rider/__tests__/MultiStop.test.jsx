@@ -85,7 +85,7 @@ describe('A delivery from several shops', () => {
   it('a delivery where no shop could hand over says so', async () => {
     serve(job({ status: 'failed', failed_reason: 'all_stops_skipped' }))
     wrap(<ActiveJobForTest id={5} />)
-    expect(await screen.findByText(/No shop could hand over the items. The order has gone back to your manager/)).toBeInTheDocument()
+    expect(await screen.findByText(/No shop could hand over the items. The order is back in the Delivery queue for your manager/)).toBeInTheDocument()
   })
 })
 
