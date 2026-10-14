@@ -351,7 +351,7 @@ export default function ListingDetailPage({
               rather than crashing the page. */}
           {cartBlocked ? (
           <div role="status" style={{ marginTop: 16, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", color: "white", borderRadius: 14, padding: "12px 14px", fontSize: "0.78rem", lineHeight: 1.5 }}>
-            <div style={{ fontWeight: 900, marginBottom: 4 }}>{cartBlocked.code === "food_far" || cartBlocked.code === "food_unlocated" ? "Too far for this delivery" : "Delivery limit reached"}</div>
+            {cartBlocked.code !== "not_deliverable" && <div style={{ fontWeight: 900, marginBottom: 4 }}>{cartBlocked.code === "food_far" || cartBlocked.code === "food_unlocated" ? "Too far for this delivery" : "Delivery limit reached"}</div>}
             {cartBlocked.detail}
           </div>
           ) : (

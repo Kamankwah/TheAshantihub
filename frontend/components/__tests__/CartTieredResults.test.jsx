@@ -51,4 +51,13 @@ describe('CartTieredResults', () => {
     expect(screen.getByRole('note')).toHaveTextContent('Too far for this delivery')
     expect(screen.getByRole('note')).not.toHaveTextContent('Delivery limit reached')
   })
+
+  it('shows the server\'s words verbatim for a service or stay, with no limit heading', () => {
+    const msg = 'Services, stays and events cannot be delivered. Book or enquire directly.'
+    render(<CartTieredResults listings={[row(1, 'Gala night', { cart_tier: 3, cart_blocked: { detail: msg, code: 'not_deliverable' } })]} renderCard={renderCard} />)
+    fireEvent.click(screen.getByRole('button', { name: /See other shops too/ }))
+    const note = screen.getByRole('note')
+    expect(note).toHaveTextContent(msg)
+    expect(note).not.toHaveTextContent('Delivery limit reached')
+  })
 })

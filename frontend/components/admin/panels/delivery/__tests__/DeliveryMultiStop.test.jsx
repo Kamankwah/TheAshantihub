@@ -38,6 +38,24 @@ describe('A delivery from several shops (manager)', () => {
     expect(await screen.findByText('Longer than going direct (allowance 40%)')).toBeInTheDocument()
   })
 
+  it('says plainly when no route was planned, and names a missing pin only when one is missing', async () => {
+    const plan = { planned: false, total_km: null, limit_pct: 40, over_limit: false }
+    server.use(http.get(`${API}/api/delivery/jobs/55/`, () => HttpResponse.json(detail({ route_plan: plan }))))
+    const { unmount } = wrap(<ActiveDeliveries detailId="55" onOpenDetail={() => {}} />)
+    expect(await screen.findByText('No planned route for this order.')).toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent('cart order')
+    unmount()
+    server.use(http.get(`${API}/api/delivery/jobs/55/`, () => HttpResponse.json(detail({ route_plan: plan, stops: [stop(1, 'Kente House', 'pending', { lat: null, lng: null }), stop(2, 'Adwoa Beads', 'pending')] }))))
+    wrap(<ActiveDeliveries detailId="55" onOpenDetail={() => {}} />)
+    expect(await screen.findByText('No planned route for this order. A shop has no map pin.')).toBeInTheDocument()
+  })
+
+  it('says when the detour allowance is the built-in default', async () => {
+    server.use(http.get(`${API}/api/delivery/jobs/55/`, () => HttpResponse.json(detail({ route_plan: { planned: true, total_km: 7.2, detour_pct: 44, limit_pct: 40, limit_source: 'defaults', over_limit: true, basis: 'road route' } }))))
+    wrap(<ActiveDeliveries detailId="55" onOpenDetail={() => {}} />)
+    expect(await screen.findByText('Detour 44% (allowance 40%, built-in default)')).toBeInTheDocument()
+  })
+
   it('unlocks the code of the shop named, sending its stop', async () => {
     let body
     server.use(

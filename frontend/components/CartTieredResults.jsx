@@ -18,7 +18,7 @@ function Row({ item, renderCard }) {
       {item.cart_label && <div style={tag}>{item.cart_label}</div>}
       {blocked && (
         <div role="note" style={{ ...tag, color: C.kente1 }}>
-          {blocked.code === "food_far" || blocked.code === "food_unlocated" ? "Too far for this delivery" : "Delivery limit reached"}
+          {blocked.code === "not_deliverable" ? null : blocked.code === "food_far" || blocked.code === "food_unlocated" ? "Too far for this delivery" : "Delivery limit reached"}
           <div style={{ fontWeight: 400 }}>{blocked.detail}</div>
         </div>
       )}

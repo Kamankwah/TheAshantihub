@@ -208,12 +208,14 @@ function StopRow({ jobId, stop, canSkip, onDone }) {
 }
 
 // The detour warning keys off over_limit; the percentage may be null, so the message does not need it.
-function RouteLine({ plan, count }) {
+function RouteLine({ plan, count, stops = [] }) {
   if (!plan) return null;
+  const missingPin = stops.some((s) => s.lat === null);
+  const allowance = `allowance ${plan.limit_pct}%${plan.limit_source === "defaults" ? ", built-in default" : ""}`;
   return (
     <span style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: "0.82rem", color: D.text }}>
-      {plan.total_km != null ? `Planned route ${plan.total_km} km through ${count} shops${plan.basis ? ` (${plan.basis})` : ""}.` : "No route could be planned (a shop or the drop-off has no map pin), so the shops are in cart order."}
-      {plan.over_limit && <span style={chip(D.amber)}>{plan.detour_pct != null ? `Detour ${plan.detour_pct}%` : "Longer than going direct"} (allowance {plan.limit_pct}%)</span>}
+      {plan.total_km != null ? `Planned route ${plan.total_km} km through ${count} shops${plan.basis ? ` (${plan.basis})` : ""}.` : `No planned route for this order.${missingPin ? " A shop has no map pin." : ""}`}
+      {plan.over_limit && <span style={chip(D.amber)}>{plan.detour_pct != null ? `Detour ${plan.detour_pct}%` : "Longer than going direct"} ({allowance})</span>}
     </span>
   );
 }
@@ -260,7 +262,7 @@ export function DeliveryDetail({ id, onBack, onOpenCase }) {
             {multi && (
               <section aria-label="Shops on this delivery" style={section}>
                 <h3 style={sectionTitle}>Shops on this delivery</h3>
-                <RouteLine plan={job.route_plan} count={job.stops.length} />
+                <RouteLine plan={job.route_plan} count={job.stops.length} stops={job.stops} />
                 {job.stops.map((s) => <StopRow key={s.sequence} jobId={id} stop={s} canSkip={SKIPPABLE.includes(job.status)} onDone={refetch} />)}
               </section>
             )}

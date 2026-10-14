@@ -575,4 +575,12 @@ describe('ListingDetailPage and the delivery cart', () => {
     expect(await screen.findByText('Too far for this delivery')).toBeInTheDocument()
     expect(screen.queryByText('Delivery limit reached')).not.toBeInTheDocument()
   })
+
+  it('a refused service or stay shows the server message, not "Delivery limit reached"', async () => {
+    const msg = 'Services, stays and events cannot be delivered. Book or enquire directly.'
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)), guard({ detail: msg, code: 'not_deliverable' }))
+    renderPage({ user: CUSTOMER })
+    expect(await screen.findByText(msg)).toBeInTheDocument()
+    expect(screen.queryByText('Delivery limit reached')).not.toBeInTheDocument()
+  })
 })
