@@ -59,7 +59,7 @@ def manager_job(assignment, now=None):
         "customer": {"name": order.customer.full_name, "phone_masked": mask_phone(order.delivery_phone) if order.delivery_phone else None},
         "delivery_address": order.delivery_address, "delivery_lat": drop[0], "delivery_lng": drop[1],
         "pickup": block["primary"], "multi_pickup": block["multi_pickup"],
-        "stops": block["all"], "progress": block["progress"], "route_plan": assignment.route_plan or order.route_plan, "skip_history": block["skip_history"],
+        "stops": [{**r, "id": 0} if r["id"] is None else r for r in block["all"]], "progress": block["progress"], "route_plan": assignment.route_plan or order.route_plan, "skip_history": block["skip_history"],
         "items": [{"name": i.listing.name, "quantity": i.quantity, "business": getattr(i.listing.business_owner, "display_name", None)} for i in order.items.all()],
         "payment": payloads.payment_label(order), "total_amount": str(order.total_amount),
         "placed_at": order.placed_at, "assigned_at": assignment.assigned_at, "deadline_at": assignment.deadline_at,
@@ -96,7 +96,7 @@ class JobMapView(ManageView):
     """GET jobs/<id>/map/ — where the rider is and the route for one job."""
 
     def get(self, request, pk):
-        assignment = get_object_or_404(DeliveryAssignment.objects.select_related("order", "order__customer", "dispatch", "dispatch__rider").prefetch_related("order__items__listing__business_owner__profile"), pk=pk)
+        assignment = get_object_or_404(DeliveryAssignment.objects.select_related("order", "order__customer", "dispatch", "dispatch__rider").prefetch_related("order__items__listing__business_owner__profile", "stops__business_owner__profile"), pk=pk)
         return Response(tracking.manager_job_map(assignment))
 
 
@@ -189,15 +189,22 @@ class StopSkipView(ManageView):
 
         with transaction.atomic():
             assignment = get_object_or_404(DeliveryAssignment.objects.select_for_update(of=("self",)), pk=pk)
-            stop = get_object_or_404(PickupStop, pk=stop_id, assignment=assignment)
+            rows = stops.ensure_stops(assignment)  # a job from before multi-stop delivery has no saved stop until now
+            # A GET never writes, so the record names such a job's one unsaved stop as id 0: it means the first stop.
+            stop = next((s for s in rows if s.pk == stop_id or (stop_id == 0 and s.sequence == 1)), None)
+            if stop is None:
+                raise Http404
             try:
                 services.skip_stop(assignment, request.user, request.data.get("note"), stop=stop)
             except services.DeliveryError as exc:
                 return Response(exc.body(), status=exc.status_code)
             stop.refresh_from_db()  # skip_stop re-reads the stop under the lock and writes that copy
         if assignment.dispatch_id:
+            ended = assignment.status == DeliveryAssignment.FAILED
             notify_staff(assignment.dispatch, "delivery_alert", f"Skip {stops.stop_name(stop)} on Order #{assignment.order_id}",
-                         body="Your manager took this shop off the delivery. Open the job for the next stop.", link="/staff/jobs", icon="🛵")
+                         body=("Your manager took this shop off the delivery and no shop is left, so this delivery has ended. Nothing more to collect."
+                               if ended else "Your manager took this shop off the delivery. Open the job for the next stop."),
+                         link="/staff/jobs", icon="🛵")
         return Response({"stop": stop.pk, "status": stop.status, "assignment_status": assignment.status})
 
 

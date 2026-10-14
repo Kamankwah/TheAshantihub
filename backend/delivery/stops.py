@@ -246,7 +246,8 @@ def skip_history(assignment):
     from .models import DeliveryEvent
 
     by_id = {s.pk: s for s in stops_of(assignment) if s.pk}
-    events = DeliveryEvent.objects.filter(assignment=assignment, step=DeliveryEvent.SKIPPED_STOP, stop__isnull=False).order_by("at", "id")
+    # Read through assignment.events.all() so a prefetch (the queue's) answers it without a query per row.
+    events = sorted((e for e in assignment.events.all() if e.step == DeliveryEvent.SKIPPED_STOP and e.stop_id is not None), key=lambda e: (e.at, e.pk))
     out = []
     for e in events:
         stop = by_id.get(e.stop_id)

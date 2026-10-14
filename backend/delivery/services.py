@@ -79,21 +79,34 @@ def pickup_stop(order):
     return (entry["lat"], entry["lng"], entry["name"]) if entry["lat"] is not None else (None, None, entry["name"])
 
 
-def dispatch_point(order):
-    """(lat, lng, name, stop_count) of where a rider given this waiting order starts. An order never given to a rider reads
-    its plan (pickup_stop); one whose attempt failed reads its saved stops (stops.stops_for_next_rider), so a returned job
-    from before multi-stop delivery still starts at the first item's shop its saved stop names, whatever the plan says."""
+def dispatch_info(order):
+    """Where a rider given this waiting order starts, computed once per order object (a queue row, its route label, its
+    ranking and its map all ask): {"lat", "lng", "name", "count", "from_saved", "owner_ids"}. An order never given to a
+    rider reads its plan (pickup_stop). One whose attempt failed reads its saved stops (stops.stops_for_next_rider), so a
+    returned job from before multi-stop delivery still starts at the shop its saved stop names, whatever the plan says;
+    `from_saved` is then true and `owner_ids` are the saved stops' businesses in order."""
+    cached = order.__dict__.get("_dispatch_info")
+    if cached is not None:
+        return cached
     from . import stops
 
     assignment = getattr(order, "delivery_assignment", None)
     if assignment is None:
         plat, plng, name = pickup_stop(order)
-        return plat, plng, name, len(stops.sequence_for_order(order))
-    saved = stops.stops_for_next_rider(assignment)
-    first = saved[0] if saved else None
-    if first is None:
-        return None, None, "", 0
-    return first.lat, first.lng, stops.stop_name(first), len(saved)
+        info = {"lat": plat, "lng": plng, "name": name, "count": len(stops.sequence_for_order(order)), "from_saved": False, "owner_ids": None}
+    else:
+        saved = stops.stops_for_next_rider(assignment)
+        first = saved[0] if saved else None
+        info = {"lat": first.lat if first else None, "lng": first.lng if first else None, "name": stops.stop_name(first) if first else "",
+                "count": len(saved), "from_saved": True, "owner_ids": [s.business_owner_id for s in saved]}
+    order.__dict__["_dispatch_info"] = info
+    return info
+
+
+def dispatch_point(order):
+    """(lat, lng, name, stop_count) of dispatch_info."""
+    info = dispatch_info(order)
+    return info["lat"], info["lng"], info["name"], info["count"]
 
 
 def active_jobs(staff):
@@ -132,11 +145,12 @@ def point_in_ring(lat, lng, ring):
     return inside
 
 
-def zone_of(lat, lng):
-    """The delivery zone whose drawn boundary holds the point, else None ("unzoned")."""
+def zone_of(lat, lng, zones=None):
+    """The delivery zone whose drawn boundary holds the point, else None ("unzoned"). A screen listing many orders passes
+    `zones` (list(DeliveryZone.objects.filter(active=True, boundary__isnull=False))) to read the zones once."""
     if valid_point(lat, lng) is None:
         return None
-    for zone in DeliveryZone.objects.filter(active=True, boundary__isnull=False):
+    for zone in (zones if zones is not None else DeliveryZone.objects.filter(active=True, boundary__isnull=False)):
         ring = zone.boundary
         if isinstance(ring, list) and len(ring) >= 3 and point_in_ring(float(lat), float(lng), ring):
             return zone

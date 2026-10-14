@@ -169,3 +169,64 @@ class ReturnedLegacyJobTests(DeliveryCase):
         from delivery import services
 
         self.assertEqual(services.dispatch_point(self.order)[:3], (A[0], A[1], "Chop A"))
+
+
+class FixRoundTests(DeliveryCase):
+    def test_a_queue_of_returned_multishop_jobs_does_not_cost_queries_per_row(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        def returned(n):
+            owners = [self.make_shop(f"R{n}{k}", f"+2332070{n:02d}{k}1", (6.70 + k / 1000, -1.62))[1] for k in range(3)]
+            job = self.assign(self.multi_order(*owners), rider_staff=self.rider_staff)
+            self.client.post(f"/api/delivery/jobs/{job.pk}/stops/{job.stops.first().pk}/skip/", {"note": "closed"}, format="json")
+            DA.objects.filter(pk=job.pk).update(status=DA.FAILED, failed_at=timezone.now(), failed_reason="rider_unavailable")
+
+        def cost():
+            self.as_staff(self.manager)
+            with CaptureQueriesContext(connection) as ctx:
+                self.assertEqual(self.client.get("/api/delivery/live/").status_code, 200)
+            return len(ctx)
+
+        for n in range(2):
+            returned(n)
+        two = cost()
+        for n in range(2, 6):
+            returned(n)
+        n = cost()
+        self.assertEqual(n, two)
+
+    def test_a_manager_skip_that_ends_the_delivery_tells_the_rider_so(self):
+        shop_a, item_a = self.make_shop("Only A", "+233207000701", A)
+        shop_b, item_b = self.make_shop("Only B", "+233207000702", B)
+        job = self.assign(self.multi_order(item_a, item_b))
+        for stop in job.stops.all():
+            r = self.client.post(f"/api/delivery/jobs/{job.pk}/stops/{stop.pk}/skip/", {"note": "closed"}, format="json")
+            self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()["assignment_status"], DA.FAILED)
+        bodies = list(self.rider_staff.notifications.filter(kind="delivery_alert").values_list("body", flat=True))
+        self.assertTrue(any("has ended" in b for b in bodies))
+        self.assertFalse(any("Open the job for the next stop" in b and "Only B" in b for b in bodies))
+
+    def test_a_manager_can_skip_the_stop_of_a_job_from_before_stops(self):
+        _, item = self.make_shop("Old shop", "+233207000711", A)
+        order = self.multi_order(item)
+        job = DA.objects.create(order=order, dispatch=self.rider_staff, assigned_by=self.manager, status=DA.ACCEPTED,
+                                pickup_code="4321", drop_code="8765", accepted_at=timezone.now())
+        body = self.as_staff(self.manager).get(f"/api/delivery/jobs/{job.pk}/").json()
+        stop_id = body["stops"][0]["id"]
+        self.assertEqual((stop_id, job.stops.count()), (0, 0))  # a GET saves nothing; 0 names the first, unsaved stop
+        r = self.client.post(f"/api/delivery/jobs/{job.pk}/stops/{stop_id}/skip/", {"note": "closed"}, format="json")
+        self.assertEqual((r.status_code, r.json()["status"]), (200, "skipped"))
+
+    def test_a_returned_job_does_not_carry_a_stale_detour_warning(self):
+        _, item_a = self.make_shop("Shop A", "+233207000721", A)
+        owner_b, item_b = self.make_shop("Shop B", "+233207000722", B)
+        order = self.multi_order(item_a, item_b, route_plan={**OVER, "owner_ids": [item_a.business_owner_id, owner_b.pk]})
+        job = self.assign(order)
+        self.as_staff(self.manager)
+        stop = job.stops.first()
+        self.client.post(f"/api/delivery/jobs/{job.pk}/stops/{stop.pk}/skip/", {"note": "closed"}, format="json")
+        DA.objects.filter(pk=job.pk).update(status=DA.FAILED, failed_at=timezone.now(), failed_reason="rider_unavailable")
+        row = {r["order_id"]: r for r in self.client.get("/api/delivery/queue/").json()["results"]}[order.pk]
+        self.assertEqual((row["stops"], row["detour_warning"]), (1, None))
