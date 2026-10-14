@@ -17,7 +17,10 @@
 - The rider nearest the first shop of the plan is dispatched (existing ranking, unchanged; `services.pickup_stop(order)` returns the plan's first shop).
 - Each shop has its own 4-digit pickup code; one delivery code. Wrong tries are counted and locked per stop at `services.CODE_ATTEMPT_LIMIT` (5).
 - Customer map goes live only after the last pickup. A vendor sees the rider only while its shop is the rider's current stop, and never the customer's address (tracking payloads). Shops are told "rider arrives about HH:MM" from the planned route.
-- A shop that cannot hand over: the stop is skipped with a required note, the customer is told, that shop's items go to the existing dispute (delivery case) process.
+- A shop that cannot hand over: the stop is skipped with a required note, the customer is told, that shop's items go to the existing dispute (delivery case) process. Every skip is evidence: the rider's GPS pin at that moment (lat, lng, accuracy), the time and the note are kept on the append-only `DeliveryEvent` for that stop. The manager sees all of it (queue row, job drawer). The shop sees only its own stop's report as "Rider reported at your shop at HH:MM: <note>", with no rider name, phone or position.
+- Every stop skipped: the job fails as `all_stops_skipped` and the order goes BACK into the Delivery queue (`board.waiting_orders`) for the manager to re-dispatch. One refund case per skipped shop is kept. Requeue mechanism (owner ruling 2026-10-14): `DeliveryAssignment` stays OneToOne with `Order`, and the failed row is reset and reused, exactly as `services.assign` already does for a failed "Can't deliver" job (it resets status, rider and wrong tries on the same row). Reasons: every reader (`order.delivery_assignment`, cash, reports, tracking, serializers) assumes one row per order, so relaxing to many rows would touch dozens of call sites for no gain; and the evidence does not live on the row that is reset. It lives on `DeliveryEvent` rows (append-only, never reset, `stop` FK), which `stops.skip_history()` reads. On re-dispatch after `all_stops_skipped`, `stops.reopen_for_new_rider(..., all_skipped=True)` reopens the skipped stops (status pending, same codes, `skip_note` and the stop's `dispute` link cleared; the refund cases stay open as their own records for the manager to settle or withdraw). No separate attempt table is added: the events are the attempt record.
+- Food places: a business with a listing in a `Category.is_food` category. The real category slugs are `food` ("Food", seeded in `listings` migration 0002) and `pubs` ("Pubs & Bars", the only drinks category; there is no `beverages` slug anywhere in the code, fixtures or frontend). Migration 0020 flags both (`FOOD_CATEGORY_SLUGS = ("food", "pubs")`). Drinks follow the food rules in full: counted toward `max_food_shops`, collected last, cart-able (`guard.kind_of` tests `is_food` before `kind`, so a `service`-kind Pubs & Bars listing is carted as food). Adding a future `beverages` category to the flag is one more slug in that tuple.
+- Shop-owner order list (`OwnerOrderSerializer`): keeps the customer's name, delivery address and pin (an existing contract test pins them) and exposes NO customer contact details: no `delivery_phone` (already stripped by `OWNER_DELIVERY_FIELDS`), no phone, email or contact field of any kind. Task 7 adds a test over every key.
 - Pricing (option b): fee = base on road distance first pickup to H + `extra_pickup` per additional shop + detour charge (per-km rate on the km beyond `detour_limit_pct`). Pickup leg absorbed by AshantiHub. A business-funded free-delivery promo waives the fee only where every line is covered, as today.
 - Rate card gains `max_shops_per_delivery` (default 4), `max_food_shops` (default 2), `near_shop_radius_km` (default 3), `detour_limit_pct` (default 40), changed through the existing rate-card approval flow. With no card in force the built-in defaults run and are named as such.
 - Cart guard only once the cart already has an item. Messages, verbatim: "Your delivery can include up to 4 shops. Remove one to add this." and "Services are requested separately, and stays are booked separately." (the number comes from the limit in force). Nothing is ever deleted from a cart automatically.
@@ -39,14 +42,16 @@ EOF
 ```
 
 - Frontend tests: `cd frontend && npm install; npx vitest run; npm run build` (always from `frontend/`).
-- Out of scope: splitting the extra-pickup charge between businesses, re-planning after dispatch, more than 6 stops, different riders per shop, size-class vehicle choice (not built; the fee keeps the motorbike default as today), rider pay changes (stays first pickup to drop), the vendor order list's address field (an existing contract test pins it), dropping the legacy `pickup_code` fields.
+- Out of scope: splitting the extra-pickup charge between businesses, re-planning after dispatch, more than 6 stops, different riders per shop, size-class vehicle choice (not built; the fee keeps the motorbike default as today), rider pay changes (stays first pickup to drop), the vendor order list's address field (an existing contract test pins it), dropping the legacy `pickup_code` fields, returning already-collected goods to a shop after a failed customer delivery (that stays with the existing Can't deliver process; `reopen_for_new_rider(failed=True)` only reopens the stops).
 
 ## Review Focus
 
 - Carts and test fixtures that already hold service-kind lines (every cart test uses the service-kind "hotels" category): checkout must refuse with the plain message and delete nothing; the fixtures move to the product category "shops". Test: Task 8 `test_checkout_refuses_a_cart_that_predates_the_rules_and_keeps_it`, plus the fixture step in Task 8.
 - An assignment in flight when this ships (it has a `pickup_code` and no `PickupStop` rows): reading it must write nothing and show its one old pickup; the next rider write keeps the same code and wrong tries. Tests: Task 3 `test_an_assignment_from_before_stops_is_read_as_one_stop_without_writing`, Task 5 `LegacyTests`.
 - Missing coordinates: no drop pin, a shop with no pin, or a first shop sitting at the drop. The plan falls back to cart order with food last, no detour is charged, nothing divides by zero, and the fee is only charged when the first pickup to drop can be measured. Tests: Task 4 `test_no_drop_pin_*`, `test_a_shop_without_a_pin_*`, `test_a_single_shop_at_the_delivery_point_*`.
-- Every stop skipped: nothing is left to deliver, so the job fails as `all_stops_skipped`, one case per shop is opened, and the order is not put back in the dispatch queue. Test: Task 5 `test_when_every_shop_is_skipped_the_job_fails_and_is_not_requeued`.
+- Every stop skipped: nothing is left to deliver, so the job fails as `all_stops_skipped`, one refund case per shop is opened, and the order goes back into the Delivery queue for the manager to re-dispatch (the same row is reset; the skip evidence survives on `DeliveryEvent`). Tests: Task 5 `test_when_every_shop_is_skipped_the_order_goes_back_to_the_queue`, `test_a_returned_order_can_be_given_to_a_new_rider_and_the_evidence_survives`, `test_a_skip_keeps_the_riders_pin_time_and_note`; Task 6 `test_the_manager_sees_skip_evidence_in_the_queue_and_the_job`; Task 7 `test_a_shop_sees_the_riders_skip_report_for_its_own_stop_only`.
+- Shop-owner privacy: the owner order list keeps the address and pin and never carries a customer phone, email or contact field. Test: Task 7 `test_the_owner_order_row_has_no_customer_contact_details` (the existing `test_owner_sees_customer_name_and_address_but_not_phone` stays).
+- Drinks are food: `food` and `pubs` are both flagged, both counted as food places, both collected last. Tests: Task 3 `test_the_food_migration_marks_the_food_and_drinks_categories`, `test_a_drinks_shop_is_a_food_stop_collected_last`; Task 8 `test_a_pubs_and_bars_shop_counts_as_a_food_place`.
 - A business that sells both food and goods: it is one stop and one shop toward the limit, counts as a food place once any food line is in the cart, and is collected last. Tests: Task 3 `test_a_shop_selling_food_and_goods_is_one_food_stop`, Task 8 `test_a_shop_selling_goods_and_food_counts_once_and_as_food`.
 
 ---
@@ -549,7 +554,7 @@ git commit -m "feat(routing): distance table and multi-stop route planner, food 
 **Interfaces:**
 - Consumes: `field.services.business_pin`, `services.valid_point`, `services.first_item`.
 - Produces:
-  - `Category.is_food: bool` (migration sets it on slug `food` only)
+  - `Category.is_food: bool` (migration 0020 sets it on the slugs `food` and `pubs`, i.e. Food and Pubs & Bars)
   - `Order.route_plan: dict | None` (written by Task 4), `DeliveryAssignment.route_plan: dict | None` (= the order's plan plus `owner_ids`, `stop_ids`, written once when stops are made)
   - `PickupStop` with `PENDING, ARRIVED, COLLECTED, SKIPPED`, `OPEN = (PENDING, ARRIVED)`, fields `assignment (related_name="stops"), sequence, business_owner, lat, lng, code, code_attempts, status, planned_arrival, arrived_at, collected_at, skip_note, skipped_by, dispute (OneToOne, related_name="pickup_stop")`
   - `DeliveryEvent.COLLECTED_STOP = "collected_stop"`, `DeliveryEvent.SKIPPED_STOP = "skipped_stop"`, `DeliveryEvent.stop` (FK, nullable)
@@ -558,7 +563,7 @@ git commit -m "feat(routing): distance table and multi-stop route planner, food 
   - `stops.sequence_for_order(order) -> [owner_id]`
   - `stops.stops_of(assignment) -> [PickupStop]` (never writes; an assignment without rows reads as one unsaved stop)
   - `stops.ensure_stops(assignment) -> [PickupStop]` (writes once)
-  - `stops.open_stops(a)`, `stops.current_stop(a) -> PickupStop | None`, `stops.stop_for_owner(a, owner_id)`, `stops.progress(a) -> {"total", "done", "skipped", "current": sequence | None}`, `stops.stop_lines(stop, order) -> [OrderItem]`, `stops.stop_name(stop) -> str`, `stops.reopen_for_new_rider(a, *, failed)`
+  - `stops.open_stops(a)`, `stops.current_stop(a) -> PickupStop | None`, `stops.stop_for_owner(a, owner_id)`, `stops.progress(a) -> {"total", "done", "skipped", "current": sequence | None}`, `stops.stop_lines(stop, order) -> [OrderItem]`, `stops.stop_name(stop) -> str`, `stops.reopen_for_new_rider(a, *, failed, all_skipped=False)`
   - `services.new_code(exclude=()) -> str`; `services.pickup_stop(order)` now returns the plan's first shop
   - Test helpers on `DeliveryCase`: `make_shop(name, phone, point=None, *, slug="shops") -> (owner, listing)`, `multi_order(*listings, **order_fields) -> Order`
 
@@ -609,8 +614,13 @@ class StopTests(DeliveryCase):
     def owners(self, assignment):
         return [s.business_owner_id for s in assignment.stops.all()]
 
-    def test_the_food_migration_marks_only_the_food_category(self):
-        self.assertEqual(list(Category.objects.filter(is_food=True).values_list("slug", flat=True)), ["food"])
+    def test_the_food_migration_marks_the_food_and_drinks_categories(self):
+        self.assertEqual(sorted(Category.objects.filter(is_food=True).values_list("slug", flat=True)), ["food", "pubs"])
+
+    def test_a_drinks_shop_is_a_food_stop_collected_last(self):
+        bar, item_bar = self.make_shop("Akwaaba Bar", "+233207000104", (6.702, -1.618), slug="pubs")
+        a = self.assign(self.multi_order(item_bar, self.item_a, self.item_b))
+        self.assertEqual(self.owners(a), [self.shop_a.pk, self.shop_b.pk, bar.pk])
 
     def test_a_new_assignment_gets_one_stop_per_shop_in_the_stored_plan(self):
         plan = {"owner_ids": [self.shop_b.pk, self.shop_a.pk, self.chop.pk], "planned": True, "total_km": 4.0}
@@ -676,6 +686,32 @@ class StopTests(DeliveryCase):
         self.assertEqual([s.code for s in again.stops.all()], [first.code, second.code])
         self.assertEqual((again.status, again.dispatch_id), (DA.ASSIGNED, self.other_staff.pk))
 
+    def test_re_dispatching_after_every_shop_was_skipped_reopens_the_stops_but_keeps_the_evidence(self):
+        a = self.assign(self.multi_order(self.item_a, self.item_b))
+        codes = [s.code for s in a.stops.all()]
+        for stop in a.stops.all():
+            stop.status, stop.skip_note, stop.skipped_by = PickupStop.SKIPPED, "Shut", self.manager
+            stop.save()
+        DA.objects.filter(pk=a.pk).update(status=DA.FAILED, failed_reason="all_stops_skipped")
+        again = self.assign(a.order, self.other_staff)
+        self.assertEqual((again.pk, again.status, again.failed_reason), (a.pk, DA.ASSIGNED, ""))
+        rows = list(again.stops.all())
+        self.assertEqual([(s.status, s.skip_note, s.skipped_by_id, s.code) for s in rows],
+                         [(PickupStop.PENDING, "", None, codes[0]), (PickupStop.PENDING, "", None, codes[1])])
+
+    def test_re_dispatching_after_a_failed_delivery_keeps_a_skipped_shop_skipped(self):
+        a = self.assign(self.multi_order(self.item_a, self.item_b))
+        first, second = a.stops.all()
+        first.status = PickupStop.SKIPPED
+        first.save()
+        second.status = PickupStop.COLLECTED
+        second.save()
+        DA.objects.filter(pk=a.pk).update(status=DA.FAILED, failed_reason="wrong_address")
+        again = self.assign(a.order, self.other_staff)
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual((first.status, second.status), (PickupStop.SKIPPED, PickupStop.PENDING))
+
     def test_current_stop_and_progress(self):
         a = self.assign(self.multi_order(self.item_a, self.item_b, self.item_food))
         first, second, third = a.stops.all()
@@ -698,7 +734,8 @@ Expected: FAIL (`ImportError: cannot import name 'stops' from 'delivery'` / `is_
 
 ```python
     # Prepared food (chop bars, restaurants): carted and delivered like a product, but one delivery collects from at most
-    # RateCard.max_food_shops food places and collects them last (spec 2026-10-14). Set on the "food" category by
+    # RateCard.max_food_shops food places and collects them last (spec 2026-10-14). Set on the "food" and "pubs" (Pubs &
+    # Bars, the drinks category) categories by
     # migration 0020; `kind` stays as it was.
     is_food = models.BooleanField(default=False)
 ```
@@ -709,12 +746,16 @@ Create `backend/listings/migrations/0020_category_is_food.py`:
 from django.db import migrations, models
 
 
+# Food (chop bars, restaurants) and Pubs & Bars (the drinks category; there is no "beverages" slug). Both follow the food rules.
+FOOD_CATEGORY_SLUGS = ("food", "pubs")
+
+
 def mark_food(apps, schema_editor):
-    apps.get_model("listings", "Category").objects.filter(slug="food").update(is_food=True)
+    apps.get_model("listings", "Category").objects.filter(slug__in=FOOD_CATEGORY_SLUGS).update(is_food=True)
 
 
 def unmark_food(apps, schema_editor):
-    apps.get_model("listings", "Category").objects.update(is_food=False)
+    apps.get_model("listings", "Category").objects.filter(slug__in=FOOD_CATEGORY_SLUGS).update(is_food=False)
 
 
 class Migration(migrations.Migration):
@@ -952,19 +993,25 @@ def stop_name(stop):
     return getattr(owner, "display_name", None) or owner.full_name
 
 
-def reopen_for_new_rider(assignment, *, failed):
+def reopen_for_new_rider(assignment, *, failed, all_skipped=False):
     """A new rider takes the job. Collected and skipped stops stay done (after a failed delivery collected stops reopen:
-    the goods went back); every open stop starts again with its code unchanged and its wrong tries cleared."""
+    the goods went back); every open stop starts again with its code unchanged and its wrong tries cleared.
+    `all_skipped` is true when the failed attempt ended because every shop was skipped: the manager is re-dispatching
+    the order, so the skipped stops reopen too (same codes). What the skips recorded is not lost: it lives on the
+    append-only DeliveryEvent rows (stops.skip_history), and each skipped shop's refund case stays open as its own
+    record, only unlinked from the stop so a second skip can open a fresh case."""
     for stop in ensure_stops(assignment):
         if stop.status == PickupStop.SKIPPED:
-            continue
+            if not all_skipped:
+                continue
+            stop.status, stop.skip_note, stop.skipped_by, stop.dispute = PickupStop.PENDING, "", None, None
         if failed or stop.status == PickupStop.ARRIVED:
             stop.status, stop.arrived_at = PickupStop.PENDING, None
             if failed:
                 stop.collected_at = None
         if stop.status in PickupStop.OPEN:
             stop.code_attempts, stop.planned_arrival = 0, None
-        stop.save(update_fields=["status", "arrived_at", "collected_at", "code_attempts", "planned_arrival"])
+        stop.save(update_fields=["status", "arrived_at", "collected_at", "code_attempts", "planned_arrival", "skip_note", "skipped_by", "dispute"])
     first = assignment.stops.filter(sequence=1).first()
     if first is not None:
         assignment.pickup_code_attempts = first.code_attempts
@@ -1005,7 +1052,7 @@ def pickup_stop(order):
     return (entry["lat"], entry["lng"], entry["name"]) if entry["lat"] is not None else (None, None, entry["name"])
 ```
 
-In `assign`, keep the status check and resets, then replace everything from `ensure_codes(assignment)` to the event with:
+In `assign`, keep the status check and resets, but capture why a failed attempt failed before the reset clears it: right after the line `existing = DeliveryAssignment.objects.select_for_update().filter(order=order).first()` add `previous_reason = existing.failed_reason if existing is not None else ""`. Then replace everything from `ensure_codes(assignment)` to the event with:
 
 ```python
     failed = existing is not None and existing.status == DeliveryAssignment.FAILED
@@ -1019,7 +1066,7 @@ In `assign`, keep the status check and resets, then replace everything from `ens
 
     stops.ensure_stops(assignment)
     if existing is not None and (swapped or failed):
-        stops.reopen_for_new_rider(assignment, failed=failed)
+        stops.reopen_for_new_rider(assignment, failed=failed, all_skipped=previous_reason == "all_stops_skipped")
     DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.ASSIGNED, at=now, by=assigned_by)
     return assignment
 ```
@@ -1336,9 +1383,9 @@ git commit -m "feat(delivery): plan the pickup route at checkout and price extra
 ### Task 5: The rider works one stop at a time (backend)
 
 **Files:**
-- Modify: `backend/delivery/stops.py` (add `rider_point`, `refresh_planned_arrivals`)
+- Modify: `backend/delivery/stops.py` (add `rider_point`, `refresh_planned_arrivals`, `skip_history`)
 - Modify: `backend/delivery/services.py` (`_stamp(at_stop=)`, `accept`, `arrive_pickup`, `pickup`, new `skip_stop`, `_after_stop`, `_check_stop_code`, `open_case_for_skipped_stop`, `ALL_STOPS_SKIPPED`, `open_case_for_failed_delivery` dedupe, `legacy_pickup`)
-- Modify: `backend/delivery/board.py` (`waiting_orders` excludes `all_stops_skipped`)
+- Modify: `backend/delivery/board.py` (`queue_row` adds `returned_reason`, `skips`; `waiting_orders` is NOT changed: a job that failed as `all_stops_skipped` is already waiting, like any failed job)
 - Modify: `backend/delivery/payloads.py` (`stop_row`, `stops_block` replace `pickup_block`; `rider_job`)
 - Modify: `backend/delivery/views_live.py` (`manager_job` reads `stops_block`)
 - Modify: `backend/delivery/views_rider.py` (`SkipStopView`; read path prefetches stops)
@@ -1349,12 +1396,13 @@ git commit -m "feat(delivery): plan the pickup route at checkout and price extra
 **Interfaces:**
 - Consumes: Task 3 `stops.*`, `PickupStop`, `DeliveryEvent.COLLECTED_STOP/SKIPPED_STOP`.
 - Produces:
-  - `services.skip_stop(assignment, by, note, *, stop=None, lat=None, lng=None, accuracy=None) -> DeliveryEvent` (rider: the current stop, status accepted/at_pickup; manager passes `stop`: any open stop, status assigned/accepted/at_pickup). Note required (400 `invalid`, `field: "note"`); done stop 409 `stop_done`.
-  - `services.ALL_STOPS_SKIPPED = "all_stops_skipped"`; assignment status between stops is `accepted`, `picked_up` only after the last stop, `failed` with that reason when nothing was collected.
+  - `services.skip_stop(assignment, by, note, *, stop=None, lat=None, lng=None, accuracy=None) -> DeliveryEvent` (rider: the current stop, status accepted/at_pickup, and the rider's GPS fix is REQUIRED, 400 `location_needed` without it, because the pin is the evidence; manager passes `stop`: any open stop, status assigned/accepted/at_pickup, no pin). Note required, at most 300 characters (400 `invalid`, `field: "note"`); done stop 409 `stop_done`. The event it writes (`step=skipped_stop`, `stop`, `lat`, `lng`, `accuracy_m`, `at`, `note`, `distance_m`, `flagged`) is the skip evidence.
+  - `services.ALL_STOPS_SKIPPED = "all_stops_skipped"`; assignment status between stops is `accepted`, `picked_up` only after the last stop, `failed` with that reason when nothing was collected. That failed job is requeued: it appears in `board.waiting_orders()` with `returned: true`, and `services.assign` on it resets the same row (see Global Constraints).
+  - `stops.skip_history(a) -> [{"stop_id", "sequence", "business_owner_id", "business_name", "at", "note", "pinned", "lat", "lng", "accuracy_m", "distance_m", "at_shop", "by": "rider"|"manager"}]` oldest first, read from the `skipped_stop` events (survives a reset and a new rider). `at_shop` is true for a rider skip whose pin is not flagged as far from the shop.
   - `services.open_case_for_skipped_stop(assignment, stop) -> Dispute`
   - `stops.rider_point(a) -> (lat, lng) | None`, `stops.refresh_planned_arrivals(a, origin=None, start=None)`
-  - `payloads.stop_row(stop, order) -> {"id", "sequence", "business_name", "phone", "lat", "lng", "status", "status_label", "planned_arrival", "arrived_at", "collected_at", "skip_note", "items": [str], "attempts_left", "wrong_tries"}` (never a code)
-  - `payloads.stops_block(a) -> {"primary", "all", "current", "multi_pickup", "progress"}`
+  - `payloads.stop_row(stop, order, skips=()) -> {"id", "sequence", "business_name", "phone", "lat", "lng", "status", "status_label", "planned_arrival", "arrived_at", "collected_at", "skip_note", "items": [str], "attempts_left", "wrong_tries"}` (never a code)
+  - `payloads.stops_block(a, *, evidence=False) -> {"primary", "all", "current", "multi_pickup", "progress", "skip_history"}` (`evidence=True`, manager only: rows also carry `skips`, and `skip_history` is filled; the rider payload never carries a pin)
   - `rider_job` adds `current_stop`, `progress`; `pickups` are stop rows; `pickup_attempts_left` is the current stop's
   - `POST /api/delivery/rider/jobs/<pk>/skip-stop/ {note, lat?, lng?, accuracy_m?}` (name `delivery-rider-skip-stop`)
   - `offer_payload` adds `stop_count: int` and `route_km: float | None`
@@ -1367,7 +1415,7 @@ from unittest import mock
 
 from django.utils import timezone
 
-from delivery import board
+from delivery import board, stops
 from delivery.models import PickupStop, ShiftSession
 from disputes.models import Dispute
 from notifications.models import Notification
@@ -1404,7 +1452,8 @@ class MultiStopRiderCase(DeliveryCase):
         return r.json()
 
     def skip(self, note="Shop closed early", **extra):
-        return self.step(self.job, "skip-stop", {"note": note, **extra})
+        """A rider's skip: the rider's pin is required, so one is sent unless `extra` brings its own."""
+        return self.step(self.job, "skip-stop", {"note": note, **self.at(near(A)), **extra})
 
 
 class StopByStopTests(MultiStopRiderCase):
@@ -1493,14 +1542,49 @@ class SkipTests(MultiStopRiderCase):
         self.assertEqual(r.json()["status"], "picked_up")
         self.assertEqual(list(self.job.events.values_list("step", flat=True))[-2:], ["skipped_stop", "picked_up"])
 
-    def test_when_every_shop_is_skipped_the_job_fails_and_is_not_requeued(self):
+    def test_when_every_shop_is_skipped_the_order_goes_back_to_the_queue(self):
         self.step(self.job, "accept")
         for _ in range(3):
             self.assertEqual(self.skip().status_code, 200)
         self.job.refresh_from_db()
         self.assertEqual((self.job.status, self.job.failed_reason), (DA.FAILED, "all_stops_skipped"))
-        self.assertEqual(Dispute.objects.filter(order=self.order).count(), 3)
+        self.assertEqual(Dispute.objects.filter(order=self.order).count(), 3)  # one refund case per shop, as planned
+        self.assertIn(self.order.pk, set(board.waiting_orders().values_list("pk", flat=True)))
+        row = next(board.queue_row(o, timezone.now()) for o in board.waiting_orders() if o.pk == self.order.pk)
+        self.assertEqual((row["returned"], row["returned_reason"]), (True, "all_stops_skipped"))
+        self.assertEqual(len(row["skips"]), 3)
+
+    def test_a_returned_order_can_be_given_to_a_new_rider_and_the_evidence_survives(self):
+        self.step(self.job, "accept")
+        for _ in range(3):
+            self.skip(note="Closed")
+        codes = {s.pk: s.code for s in self.job.stops.all()}
+        again = self.assign(self.order, self.other_staff)
+        self.assertEqual(DA.objects.filter(order=self.order).count(), 1)  # one row per order: the failed attempt is reset, not replaced
+        self.assertEqual((again.pk, again.status, again.dispatch_id, again.failed_reason, again.failed_at),
+                         (self.job.pk, DA.ASSIGNED, self.other_staff.pk, "", None))
+        rows = list(again.stops.all())
+        self.assertEqual({s.status for s in rows}, {PickupStop.PENDING})
+        self.assertEqual({s.pk: s.code for s in rows}, codes)
+        self.assertEqual({(s.skip_note, s.dispute_id) for s in rows}, {("", None)})
+        self.assertEqual(Dispute.objects.filter(order=self.order).count(), 3)  # the refund cases stay for the manager to settle
+        self.assertEqual(self.job.events.filter(step="skipped_stop").count(), 3)
+        self.assertEqual([h["note"] for h in stops.skip_history(again)], ["Closed"] * 3)
         self.assertNotIn(self.order.pk, set(board.waiting_orders().values_list("pk", flat=True)))
+
+    def test_a_skip_keeps_the_riders_pin_time_and_note(self):
+        self.step(self.job, "accept")
+        refused = self.step(self.job, "skip-stop", {"note": "Door locked"})  # no location sent
+        self.assertEqual((refused.status_code, refused.json()["code"]), (400, "location_needed"))
+        before = timezone.now()
+        self.assertEqual(self.skip(note="Door locked", lat=A[0] + 0.0001, lng=A[1], accuracy_m=7).status_code, 200)
+        event = self.job.events.get(step="skipped_stop")
+        self.assertEqual((event.stop_id, event.note, event.accuracy_m), (self.first.pk, "Door locked", 7.0))
+        self.assertEqual((round(event.lat, 4), round(event.lng, 4)), (round(A[0] + 0.0001, 4), round(A[1], 4)))
+        self.assertGreaterEqual(event.at, before)
+        history = stops.skip_history(self.job)
+        self.assertEqual([(h["business_name"], h["note"], h["pinned"], h["by"], h["at_shop"]) for h in history], [("Shop A", "Door locked", True, "rider", True)])
+        self.assertFalse(self.skip(note="x" * 301).status_code == 200)  # the note is capped at 300 characters
 
     def test_a_later_can_t_deliver_still_opens_its_own_case(self):
         self.step(self.job, "accept")
@@ -1592,6 +1676,29 @@ def refresh_planned_arrivals(assignment, origin=None, start=None):
             at = at + timedelta(seconds=int(leg["duration_s"]))
             stop.planned_arrival, here = at, (stop.lat, stop.lng)
         stop.save(update_fields=["planned_arrival"])
+
+
+def skip_history(assignment):
+    """Every skip on this delivery, oldest first, read from the append-only `skipped_stop` events. It outlives a failed
+    attempt: re-dispatching resets the assignment and reopens the stops, but never touches these events. `by` is "rider"
+    when the rider's own pin was recorded and "manager" for a manager's skip (no pin). `at_shop` is true for a rider skip
+    whose pin is not flagged as far from the shop (or the shop has no pin to compare with)."""
+    from .models import DeliveryEvent
+
+    by_id = {s.pk: s for s in stops_of(assignment) if s.pk}
+    events = DeliveryEvent.objects.filter(assignment=assignment, step=DeliveryEvent.SKIPPED_STOP, stop__isnull=False).order_by("at", "id")
+    out = []
+    for e in events:
+        stop = by_id.get(e.stop_id)
+        if stop is None:
+            continue
+        rider = e.lat is not None
+        out.append({
+            "stop_id": e.stop_id, "sequence": stop.sequence, "business_owner_id": stop.business_owner_id, "business_name": stop_name(stop),
+            "at": e.at, "note": e.note, "pinned": rider, "lat": e.lat, "lng": e.lng, "accuracy_m": e.accuracy_m,
+            "distance_m": e.distance_m, "at_shop": rider and not e.flagged, "by": "rider" if rider else "manager",
+        })
+    return out
 ```
 
 - [ ] **Step 4: The rider's steps in `services.py`.** Add `from decimal import Decimal` and `from .models import PickupStop` (with the other model imports). Give `_stamp` a keyword `at_stop=None` and pass `stop=at_stop` to `DeliveryEvent.objects.create`. Then:
@@ -1678,6 +1785,8 @@ def _after_stop(assignment, stop, by, at, *, left_shop, summary_event=False):
         assignment.status, assignment.failed_at, assignment.failed_reason = DeliveryAssignment.FAILED, at, ALL_STOPS_SKIPPED
         assignment.failed_note = "No shop on this delivery could hand over its items."
         assignment.save(update_fields=["status", "failed_at", "failed_reason", "failed_note"])
+        # The order is back in the Delivery queue (board.waiting_orders takes any failed job); say so to the managers.
+        _alert_managers(assignment, "Every shop skipped: order is back in the queue", f"Order #{assignment.order_id}: no shop could hand over. Check the skip notes and give it to a rider again.")
         return
     if summary_event:
         DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.PICKED_UP, at=at, by=by, note="The last shop was skipped.")
@@ -1688,7 +1797,7 @@ def _after_stop(assignment, stop, by, at, *, left_shop, summary_event=False):
 
 def skip_stop(assignment, by, note, *, stop=None, lat=None, lng=None, accuracy=None):
     """A shop cannot hand over: its stop is skipped with a note (required), the customer is told, and a delivery case
-    asks for that shop's lines only to be refunded. A rider skips the stop they are working; a manager passes `stop`
+    asks for that shop's lines only to be refunded. The skip event keeps the evidence (rider pin, time, note). A rider skips the stop they are working; a manager passes `stop`
     (any open stop, for a shop that closed or cancelled after dispatch)."""
     from orders.models import DeliveryAssignment as DA
 
@@ -1697,7 +1806,10 @@ def skip_stop(assignment, by, note, *, stop=None, lat=None, lng=None, accuracy=N
     note = note.strip() if isinstance(note, str) else ""
     if not note:
         raise DeliveryError("Say why this shop cannot hand over.", 400, "invalid", field="note")
-    allowed = (DA.ASSIGNED, DA.ACCEPTED, DA.AT_PICKUP) if stop is not None else (DA.ACCEPTED, DA.AT_PICKUP)
+    if len(note) > 300:
+        raise DeliveryError("Keep the note to 300 characters.", 400, "invalid", field="note")
+    by_manager = stop is not None
+    allowed = (DA.ASSIGNED, DA.ACCEPTED, DA.AT_PICKUP) if by_manager else (DA.ACCEPTED, DA.AT_PICKUP)
     if assignment.status not in allowed:
         raise DeliveryError("A shop can only be skipped before the order leaves for the customer.", 409, "wrong_step")
     stops.ensure_stops(assignment)
@@ -1705,12 +1817,12 @@ def skip_stop(assignment, by, note, *, stop=None, lat=None, lng=None, accuracy=N
     if stop is None or stop.status not in PickupStop.OPEN:
         raise DeliveryError("This shop is already done.", 409, "stop_done")
     left_shop = stop.status == PickupStop.ARRIVED
-    if lat not in (None, "") and lng not in (None, ""):
+    if by_manager:  # a manager's skip has no pin: it is the manager's word, not the rider's report
+        event = DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.SKIPPED_STOP, at=timezone.now(), by=by, note=note, stop=stop)
+    else:  # the rider's pin, time and note are the evidence, so the location is required
         lat, lng, accuracy = _fix(lat, lng, accuracy)
         event = _stamp(assignment, DeliveryEvent.SKIPPED_STOP, by, (stop.lat, stop.lng), lat, lng, accuracy, note=note, at_stop=stop)
-    else:
-        event = DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.SKIPPED_STOP, at=timezone.now(), by=by, note=note[:300], stop=stop)
-    stop.status, stop.skip_note, stop.skipped_by = PickupStop.SKIPPED, note[:500], by
+    stop.status, stop.skip_note, stop.skipped_by = PickupStop.SKIPPED, note, by
     stop.dispute = open_case_for_skipped_stop(assignment, stop)
     stop.save(update_fields=["status", "skip_note", "skipped_by", "dispute"])
     notify_customer(
@@ -1780,13 +1892,22 @@ In `open_case_for_failed_delivery`, add `pickup_stop__isnull=True` to the `exist
         rows[0].save(update_fields=["status", "collected_at"])
 ```
 
-(and drop its old `_check_code(assignment, "pickup", code)` and `now = ...` lines). In `board.waiting_orders`, add `.exclude(delivery_assignment__failed_reason="all_stops_skipped")` after the status `.filter(...)`.
+(and drop its old `_check_code(assignment, "pickup", code)` and `now = ...` lines). `board.waiting_orders` is left as it is: it already lists any failed job, so an `all_stops_skipped` job is requeued with no change. In `board.queue_row`, inside the returned dict, add:
+
+```python
+        "returned_reason": assignment.failed_reason if assignment and assignment.status == DeliveryAssignment.FAILED else "",
+        "skips": stops.skip_history(assignment) if assignment else [],
+```
+
+(and `from . import payloads, services, stops` at the top of `board.py`; Task 6 reuses the same import).
 
 - [ ] **Step 5: Payloads.** In `payloads.py` replace `pickup_block` with:
 
 ```python
-def stop_row(stop, order):
-    """One pickup stop for the rider and the manager: the shop, where it is, what to collect and how it stands. Never its code."""
+def stop_row(stop, order, skips=()):
+    """One pickup stop for the rider and the manager: the shop, where it is, what to collect and how it stands. Never its
+    code. `skips` is that stop's skip evidence (the manager's payload passes it; the rider's never does, so a rider's
+    screen carries no pins of earlier attempts)."""
     from . import stops
 
     lines = stops.stop_lines(stop, order)
@@ -1797,17 +1918,20 @@ def stop_row(stop, order):
         "arrived_at": stop.arrived_at, "collected_at": stop.collected_at, "skip_note": stop.skip_note,
         "items": [f"{i.listing.name} × {i.quantity}" for i in lines],
         "attempts_left": max(0, services.CODE_ATTEMPT_LIMIT - stop.code_attempts), "wrong_tries": stop.code_attempts,
+        **({"skips": list(skips)} if skips != () else {}),
     }
 
 
-def stops_block(assignment):
-    """Every stop in sequence, the one being worked, and the progress counts."""
+def stops_block(assignment, *, evidence=False):
+    """Every stop in sequence, the one being worked, and the progress counts. `evidence=True` (the manager's job record)
+    adds each stop's `skips` and the whole `skip_history`."""
     from . import stops
 
-    rows = [stop_row(s, assignment.order) for s in stops.stops_of(assignment)]
+    history = stops.skip_history(assignment) if evidence else []
+    rows = [stop_row(s, assignment.order, [h for h in history if h["stop_id"] == s.pk] if evidence else ()) for s in stops.stops_of(assignment)]
     progress = stops.progress(assignment)
     current = next((r for r in rows if r["sequence"] == progress["current"]), None)
-    return {"primary": current or (rows[0] if rows else None), "all": rows, "current": current, "multi_pickup": len(rows) > 1, "progress": progress}
+    return {"primary": current or (rows[0] if rows else None), "all": rows, "current": current, "multi_pickup": len(rows) > 1, "progress": progress, "skip_history": history}
 ```
 
 In `rider_job`, replace `pickups = pickup_block(order)` with `block = stops_block(assignment)` and in the returned dict use:
@@ -1818,7 +1942,7 @@ In `rider_job`, replace `pickups = pickup_block(order)` with `block = stops_bloc
         "pickup_attempts_left": block["current"]["attempts_left"] if block["current"] else max(0, services.CODE_ATTEMPT_LIMIT - assignment.pickup_code_attempts),
 ```
 
-In `views_live.manager_job`, replace `pickups = payloads.pickup_block(order)` with `block = payloads.stops_block(assignment)` and use `"pickup": block["primary"], "multi_pickup": block["multi_pickup"],`.
+In `views_live.manager_job`, replace `pickups = payloads.pickup_block(order)` with `block = payloads.stops_block(assignment, evidence=True)` and use `"pickup": block["primary"], "multi_pickup": block["multi_pickup"],`.
 
 - [ ] **Step 6: Endpoints.** In `views_rider.py`, make the read path prefetch the stops (never the locked write path, whose stops are created during the request):
 
@@ -1865,7 +1989,7 @@ git commit -m "feat(delivery): rider collects each shop with its own code, skip 
 
 **Files:**
 - Modify: `backend/delivery/views_live.py` (`manager_job` adds `stops`, `progress`, `route_plan`; `UnlockCodeView` per stop; new `StopSkipView`; detail/map views prefetch stops)
-- Modify: `backend/delivery/board.py` (`queue_row` adds `stops`, `route_plan`, `detour_warning`; `live()` adds detour rows to `needs_you`)
+- Modify: `backend/delivery/board.py` (`queue_row` adds `stops`, `route_plan`, `detour_warning`, beside Task 5's `returned_reason` and `skips`; `live()` adds detour rows to `needs_you`)
 - Modify: `backend/delivery/urls.py`
 - Modify: `backend/delivery/tests/test_fleet.py` (`UnlockCodeTests.locked` fixture)
 - Test: `backend/delivery/tests/test_multistop_manager.py`
@@ -1873,10 +1997,10 @@ git commit -m "feat(delivery): rider collects each shop with its own code, skip 
 **Interfaces:**
 - Consumes: Task 5 `services.skip_stop`, `payloads.stops_block`; Task 3 `stops.*`.
 - Produces:
-  - `GET /api/delivery/jobs/<pk>/` adds `stops` (stop rows incl. `wrong_tries`, never a code), `progress`, `route_plan`
+  - `GET /api/delivery/jobs/<pk>/` adds `stops` (stop rows incl. `wrong_tries` and `skips`, never a code), `progress`, `route_plan`, `skip_history` (every skip with the rider's pin `lat`/`lng`/`accuracy_m`, time and note)
   - `POST /api/delivery/jobs/<pk>/unlock-code/ {which, note, stop?}`: `stop` names a stop id; without it the current stop (else stop 1); response unchanged `{"which", "attempts": 0}`; an unknown stop is 404
   - `POST /api/delivery/jobs/<pk>/stops/<stop_id>/skip/ {note}` (name `delivery-job-stop-skip`) → `{"stop": id, "status": "skipped", "assignment_status": str}`
-  - `board.detour_warning(plan) -> str | None`; queue rows carry `stops: int`, `route_plan: dict | None`, `detour_warning: str | None`; `live()["needs_you"]` gets `{"kind": "detour", "order_id", "text"}`
+  - `board.detour_warning(plan) -> str | None`; queue rows carry `stops: int`, `route_plan: dict | None`, `detour_warning: str | None`, and (Task 5) `returned_reason`, `skips`; `live()["needs_you"]` gets `{"kind": "detour", "order_id", "text"}`
 
 - [ ] **Step 1: Update the unlock fixture** in `backend/delivery/tests/test_fleet.py`, `UnlockCodeTests.locked`:
 
@@ -1948,6 +2072,23 @@ class ManagerStopTests(DeliveryCase):
         self.second.refresh_from_db()
         self.assertEqual(self.second.code_attempts, 0)
 
+    def test_the_manager_sees_skip_evidence_in_the_queue_and_the_job(self):
+        from delivery import services
+
+        DA.objects.filter(pk=self.job.pk).update(status=DA.ACCEPTED)
+        for stop, point in ((self.first, A), (self.second, B), (self.third, C)):
+            services.skip_stop(DA.objects.get(pk=self.job.pk), self.rider_staff, f"Closed {stop.sequence}", lat=point[0] + 0.0001, lng=point[1], accuracy=9)
+        self.as_staff(self.manager)
+        row = {r["order_id"]: r for r in self.client.get("/api/delivery/queue/").json()["results"]}[self.job.order_id]
+        self.assertEqual((row["returned"], row["returned_reason"]), (True, "all_stops_skipped"))
+        self.assertEqual([(s["business_name"], s["note"], s["pinned"], s["accuracy_m"]) for s in row["skips"]],
+                         [("Shop A", "Closed 1", True, 9.0), ("Shop B", "Closed 2", True, 9.0), ("Shop C", "Closed 3", True, 9.0)])
+        self.assertEqual((round(row["skips"][1]["lat"], 4), round(row["skips"][1]["lng"], 4)), (round(B[0] + 0.0001, 4), round(B[1], 4)))
+        self.assertIsNotNone(row["skips"][0]["at"])
+        job = self.detail().json()
+        self.assertEqual([h["note"] for h in job["skip_history"]], ["Closed 1", "Closed 2", "Closed 3"])
+        self.assertEqual(job["stops"][2]["skips"][0]["note"], "Closed 3")
+
     def test_a_manager_skips_a_shop_that_closed(self):
         url = f"/api/delivery/jobs/{self.job.pk}/stops/{self.third.pk}/skip/"
         self.assertEqual(self.as_staff(self.manager).post(url, {"note": ""}, format="json").status_code, 400)
@@ -1956,6 +2097,7 @@ class ManagerStopTests(DeliveryCase):
         self.assertEqual(r.json()["status"], "skipped")
         self.third.refresh_from_db()
         self.assertEqual((self.third.status, self.third.skipped_by_id), (PickupStop.SKIPPED, self.manager.pk))
+        self.assertEqual(self.client.get(f"/api/delivery/jobs/{self.job.pk}/").json()["skip_history"][0]["by"], "manager")  # no rider pin
         self.assertIn("Shop C item", Dispute.objects.get(order=self.job.order).description)
         self.job.refresh_from_db()
         self.assertEqual(self.job.status, DA.ASSIGNED)  # the rider still starts at stop 1
@@ -1991,10 +2133,10 @@ class DetourWarningTests(DeliveryCase):
 Run: `docker compose -f docker-compose.yml -f $OV run --rm -e POSTGRES_HOST=db web python manage.py test delivery.tests.test_multistop_manager delivery.tests.test_fleet`
 Expected: FAIL (`KeyError: 'stops'`, skip URL 404, `detour_warning` missing; the fleet unlock tests fail until Step 4).
 
-- [ ] **Step 4: Implement the manager views.** In `views_live.py` (add `from . import stops` and `from .models import DeliveryCall, DeliveryPhoto, PickupStop`), add to `manager_job`'s dict:
+- [ ] **Step 4: Implement the manager views.** In `views_live.py` (add `from . import stops` and `from .models import DeliveryCall, DeliveryPhoto, PickupStop`; the job record uses `payloads.stops_block(assignment, evidence=True)`, Task 5), add to `manager_job`'s dict:
 
 ```python
-        "stops": block["all"], "progress": block["progress"], "route_plan": assignment.route_plan or order.route_plan,
+        "stops": block["all"], "progress": block["progress"], "route_plan": assignment.route_plan or order.route_plan, "skip_history": block["skip_history"],
 ```
 
 Add `"stops__business_owner__profile"` to the `prefetch_related` of `JobDetailView` and `JobMapView`. Replace `UnlockCodeView.post`:
@@ -2109,7 +2251,7 @@ git commit -m "feat(delivery): manager unlocks and skips per stop, detour warnin
 **Files:**
 - Modify: `backend/delivery/tracking.py` (`_pickup` = current stop, `_pickups`, `business_map` per stop, `customer_map.stops`, `manager_job_map.pickups`, `queue_map.pickups`)
 - Modify: `backend/delivery/services.py` (delete `pickup_owner`, now unused)
-- Modify: `backend/orders/serializers.py` (`OwnerOrderSerializer` per own stop, `pickup_eta`, `pickup_status`; `OrderSerializer.delivery_stops`)
+- Modify: `backend/orders/serializers.py` (`OwnerOrderSerializer` per own stop, `pickup_eta`, `pickup_status`, `rider_report`; `OrderSerializer.delivery_stops`)
 - Modify: `backend/orders/views.py` (prefetch stops for `OwnerOrderListView`, the tracking views and `DispatchMapView`)
 - Modify: `backend/orders/tests/test_code_privacy.py` (`coded` fixture)
 - Test: `backend/orders/tests/test_multistop_privacy.py`
@@ -2123,6 +2265,7 @@ git commit -m "feat(delivery): manager unlocks and skips per stop, detour warnin
   - `tracking.business_map(a, owner)` returns `{"stage", "pickup", "stop": {"status", "planned_arrival"} | None, "rider", "leg", "route", "rider_busy", "rider_elsewhere"}`: the rider only while the owner's stop is the current stop; `rider_elsewhere: True` while another shop is being worked; nothing once its stop is collected or skipped
   - `OwnerOrderSerializer`: `pickup_code` (own open stop only), `rider_heading_here` (own stop is current and this is the rider's current job), `pickup_eta` (own pending stop's `planned_arrival`), `pickup_status`
   - `OrderSerializer.delivery_stops: {"total", "done", "skipped"} | null` (null for one shop)
+  - `OwnerOrderSerializer.rider_report: {"at", "text"} | null`: for THIS owner's stop only, when a rider skipped it at the shop: `"Rider reported at your shop at HH:MM: <note>"`. Keys are exactly `at` and `text`: no rider name, phone, pin or accuracy. A manager's skip and another shop's skip never appear. The row still carries no customer phone, email or contact field.
 
 - [ ] **Step 1: Update the code-privacy fixture** in `orders/tests/test_code_privacy.py`, `CodePrivacyTests.coded`, after `a.save()`:
 
@@ -2209,6 +2352,47 @@ class MultiStopPrivacyTests(DeliveryCase):
         self.assertEqual(self.owner_row(self.shop_b)["pickup_eta"], eta.isoformat().replace("+00:00", "Z"))
         self.assertIsNotNone(self.owner_map(self.shop_b).json()["stop"]["planned_arrival"])
 
+    def test_a_shop_sees_the_riders_skip_report_for_its_own_stop_only(self):
+        from delivery import services
+
+        a = DA.objects.get(pk=self.a.pk)
+        services.skip_stop(a, self.rider_staff, "Shop was shut", lat=A[0] + 0.0001, lng=A[1], accuracy=8)
+        report = self.owner_row(self.shop_a)["rider_report"]
+        self.assertEqual(set(report), {"at", "text"})
+        self.assertRegex(report["text"], r"^Rider reported at your shop at \d{2}:\d{2}: Shop was shut$")
+        shown = str(self.owner_row(self.shop_a))
+        for needle in ("Yaw", "Mensah", "+233244000002", "6.7001", "accuracy"):
+            self.assertNotIn(needle, shown)
+        self.assertIsNone(self.owner_row(self.shop_b)["rider_report"])
+        self.assertIsNone(self.owner_row(self.shop_c)["rider_report"])
+
+    def test_a_managers_skip_is_not_shown_to_the_shop_as_a_rider_report(self):
+        from delivery import services
+
+        services.skip_stop(DA.objects.get(pk=self.a.pk), self.manager, "Shop closed for the day", stop=self.s2)
+        self.assertIsNone(self.owner_row(self.shop_b)["rider_report"])
+
+    def test_the_owner_order_row_has_no_customer_contact_details(self):
+        row = self.owner_row(self.shop_a)
+
+        def keys(value):  # every key at every depth
+            if isinstance(value, dict):
+                for key, inner in value.items():
+                    yield key
+                    yield from keys(inner)
+            elif isinstance(value, list):
+                for inner in value:
+                    yield from keys(inner)
+
+        contactish = [k for k in keys(row) if any(w in k.lower() for w in ("phone", "email", "contact", "mobile"))]
+        self.assertEqual(contactish, [])
+        self.assertNotIn("delivery_phone", row)
+        self.assertNotIn("+233200882200", str(row))  # the customer's number on this order
+        self.assertNotIn(self.customer.phone, str(row))
+        # What the contract test pins stays: the address and the pin.
+        self.assertEqual(row["delivery_address"], "12 Ash Road")
+        self.assertIsNotNone(row["delivery_lat"])
+
     def test_a_collected_shop_sees_nothing_more(self):
         self.set(self.s1, status=PickupStop.COLLECTED)
         row = self.owner_row(self.shop_a)
@@ -2253,7 +2437,7 @@ class MultiStopPrivacyTests(DeliveryCase):
 - [ ] **Step 3: Run, expect FAIL**
 
 Run: `docker compose -f docker-compose.yml -f $OV run --rm -e POSTGRES_HOST=db web python manage.py test orders.tests.test_multistop_privacy`
-Expected: FAIL (`KeyError: 'rider_elsewhere'`, `'pickup_eta'`, `'delivery_stops'`, `'pickups'`).
+Expected: FAIL (`KeyError: 'rider_elsewhere'`, `'pickup_eta'`, `'delivery_stops'`, `'pickups'`, `'rider_report'`).
 
 - [ ] **Step 4: Tracking.** In `tracking.py` add `from . import config, dispatching, services, stops` and `from .models import PickupStop, ShiftSession`, then replace `_pickup` and `business_map`, and extend the other builders:
 
@@ -2310,7 +2494,7 @@ In `manager_job_map`'s return add `"pickups": _pickups(a)`. In `customer_map`, a
 
 and return `"pickups": pickups` with the rest. Delete `services.pickup_owner` (its only caller was the old `business_map`).
 
-- [ ] **Step 5: Serializers.** In `orders/serializers.py`, `OwnerOrderSerializer`: add `pickup_eta = serializers.SerializerMethodField()` and `pickup_status = serializers.SerializerMethodField()`, add both names to `Meta.fields`, and replace `_heading_assignment`, `get_pickup_code`, `get_rider_heading_here` with:
+- [ ] **Step 5: Serializers.** In `orders/serializers.py`, `OwnerOrderSerializer`: add `pickup_eta = serializers.SerializerMethodField()`, `pickup_status = serializers.SerializerMethodField()` and `rider_report = serializers.SerializerMethodField()`, add the three names to `Meta.fields` (do not touch `OWNER_DELIVERY_FIELDS`: it keeps `delivery_phone` out), and replace `_heading_assignment`, `get_pickup_code`, `get_rider_heading_here` with:
 
 ```python
     def _own_stop(self, obj):
@@ -2355,6 +2539,22 @@ and return `"pickups": pickups` with the rest. Delete `services.pickup_owner` (i
         assignment = getattr(obj, "delivery_assignment", None)
         stop = stops.stop_for_owner(assignment, self.context["owner"].id) if assignment is not None else None
         return stop.status if stop is not None else None
+
+    def get_rider_report(self, obj):
+        """What the rider reported at THIS shop when it could not hand over: the time and their note, and nothing about the
+        rider (no name, phone or position). Only this owner's own stop, only a rider's skip made at the shop."""
+        from django.utils import timezone
+
+        from delivery import stops
+
+        assignment = getattr(obj, "delivery_assignment", None)
+        if assignment is None:
+            return None
+        mine = [h for h in stops.skip_history(assignment) if h["business_owner_id"] == self.context["owner"].id and h["by"] == "rider" and h["at_shop"]]
+        if not mine:
+            return None
+        last = mine[-1]
+        return {"at": last["at"], "text": f"Rider reported at your shop at {timezone.localtime(last['at']).strftime('%H:%M')}: {last['note']}"}
 ```
 
 Update the class comments that say "the order's first, v1 delivers one pickup per order" to "this owner's own stop". In `OrderSerializer`, add `delivery_stops = serializers.SerializerMethodField()`, `"delivery_stops"` to `Meta.fields`, and:
@@ -2485,6 +2685,13 @@ class AddToCartTests(GuardCase):
         self.assertEqual(r.status_code, 400)
         self.assertEqual(r.json(), {"detail": "Your delivery can include up to 4 shops. Remove one to add this.", "code": "shop_limit"})
         self.assertEqual(self.add(self.listing(owner=first.business_owner)).status_code, 201)
+
+    def test_a_pubs_and_bars_shop_counts_as_a_food_place(self):
+        self.assertEqual(self.add(self.listing(slug="food")).status_code, 201)
+        self.assertEqual(self.add(self.listing(slug="pubs")).status_code, 201)  # a service-kind category, carted as food
+        r = self.add(self.listing(slug="pubs"))
+        self.assertEqual(r.json()["code"], "food_limit")
+        self.assertEqual(self.guard()["food_shops"], 2)
 
     def test_a_third_food_place_is_refused(self):
         self.assertEqual(self.add(self.listing(slug="food")).status_code, 201)
@@ -3093,9 +3300,10 @@ describe('A delivery from several shops', () => {
     const confirm = screen.getByRole('button', { name: 'Confirm: skip this shop' })
     expect(confirm).toBeDisabled()
     expect(screen.getByText(/AshantiHub Support refunds this shop's items/)).toBeInTheDocument()
+    expect(screen.getByText(/Your location is sent with this report/)).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('What happened'), { target: { value: 'Closed for a funeral' } })
     fireEvent.click(confirm)
-    await waitFor(() => expect(body).toEqual({ note: 'Closed for a funeral' }))
+    await waitFor(() => expect(body).toEqual({ note: 'Closed for a funeral', lat: 6.7, lng: -1.62, accuracy_m: 12 }))
   })
 
   it('on the way: the next shop is named, then the customer', async () => {
@@ -3110,7 +3318,7 @@ describe('A delivery from several shops', () => {
   it('a delivery where no shop could hand over says so', async () => {
     serve(job({ status: 'failed', failed_reason: 'all_stops_skipped' }))
     wrap(<ActiveJobForTest id={5} />)
-    expect(await screen.findByText(/No shop could hand over the items/)).toBeInTheDocument()
+    expect(await screen.findByText(/No shop could hand over the items. The order has gone back to your manager/)).toBeInTheDocument()
   })
 })
 
@@ -3201,22 +3409,22 @@ export function SkipStop({ job, onBack, onDone }) {
         <h1 style={h2}>Order #{job.order_id} · {p?.business_name || "this shop"} can&apos;t hand over</h1>
         <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.8rem", fontWeight: 800, color: D.text }}>
           What happened? (required)
-          <textarea aria-label="What happened" rows={3} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} style={field} />
+          <textarea aria-label="What happened" rows={3} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} style={field} />
         </label>
         <Info>
-          {ends ? "Nothing has been collected and this is the last shop, so the delivery stops here and your manager is told." : left > 1 ? "You move on to the next shop." : "You go on to the customer with what you collected."}{" "}
-          The customer is told, and AshantiHub Support refunds this shop&apos;s items.
+          {ends ? "Nothing has been collected and this is the last shop, so you stop here. The order goes back to your manager to send out again." : left > 1 ? "You move on to the next shop." : "You go on to the customer with what you collected."}{" "}
+          The customer is told, and AshantiHub Support refunds this shop&apos;s items. Your location is sent with this report as proof you were there; the shop sees only the time and your note.
         </Info>
       </section>
       <Err>{step.error}</Err>
-      <button type="button" disabled={!note.trim() || step.busy} onClick={() => step.run("skip-stop", { note: note.trim() }, { locate: false })} style={bigButton(!note.trim() || step.busy)}>Confirm: skip this shop</button>
+      <button type="button" disabled={!note.trim() || step.busy} onClick={() => step.run("skip-stop", { note: note.trim() })} style={bigButton(!note.trim() || step.busy)}>Confirm: skip this shop</button>
       <button type="button" onClick={onBack} style={quietButton(false)}>Back to the job</button>
     </>
   );
 }
 ```
 
-In `ActiveJob`: add `const [skip, setSkip] = useState(false);`, render `if (skip) return <div style={screen}><SkipStop job={job} onBack={() => setSkip(false)} onDone={(out) => { setSkip(false); changed(out); }} /></div>;` before the step switch, pass `onSkip={() => setSkip(true)}` to `ToPickup` and `AtPickup`, and in the failed branch show `job.failed_reason === "all_stops_skipped" ? "No shop could hand over the items. Your manager has been told; nothing goes to the customer." : <>Reason: ...existing text...</>`.
+In `ActiveJob`: add `const [skip, setSkip] = useState(false);`, render `if (skip) return <div style={screen}><SkipStop job={job} onBack={() => setSkip(false)} onDone={(out) => { setSkip(false); changed(out); }} /></div>;` before the step switch, pass `onSkip={() => setSkip(true)}` to `ToPickup` and `AtPickup`, and in the failed branch show `job.failed_reason === "all_stops_skipped" ? "No shop could hand over the items. The order has gone back to your manager to send out again; nothing goes to the customer." : <>Reason: ...existing text...</>`.
 
 - [ ] **Step 5: The rider map and the offer.** In `rider/JobMap.jsx` (import `shopMarkers, unpinnedShops` from `../../../maps/shopMarkers.js`), build `const shops = shopMarkers(data);` and `markers = [...shops, ...drop pin..., ...rider pin...]`; the missing-pin line names `unpinnedShops(data)` (or "shop" when one shop has no pin, as today); the legend adds `shops.some((m) => m.kind === "stop") && "Ringed: later shops"`. In `ShiftPanel.jsx`, under the shop name in the offer card:
 
@@ -3243,13 +3451,13 @@ Hand check (Task 13): the gold/ringed pins and the framing are Leaflet, so they 
 ### Task 10: Vendor and customer screens (frontend)
 
 **Files:**
-- Modify: `frontend/components/dashboard/panels/DeliveriesPanel.jsx` (rider arrives about HH:MM; rider at another shop; collected line)
+- Modify: `frontend/components/dashboard/panels/DeliveriesPanel.jsx` (rider arrives about HH:MM; rider at another shop; collected line; the rider's report when this shop could not hand over)
 - Modify: `frontend/components/OrderTrackingMap.jsx` (`stops` prop)
 - Modify: `frontend/App.jsx` (pass `stops={o.delivery_stops ?? null}` to `OrderTrackingMap`, at the order card near line 2161; render only)
 - Test: additions to `frontend/components/dashboard/panels/DeliveriesPanel.test.jsx` and `frontend/components/__tests__/OrderTrackingMap.test.jsx`
 
 **Interfaces:**
-- Consumes: Task 7 `OwnerOrderSerializer.pickup_eta`, `pickup_status`, `business_map.rider_elsewhere`, `business_map.stop`, `OrderSerializer.delivery_stops`.
+- Consumes: Task 7 `OwnerOrderSerializer.pickup_eta`, `pickup_status`, `rider_report`, `business_map.rider_elsewhere`, `business_map.stop`, `OrderSerializer.delivery_stops`.
 - Produces: `<OrderTrackingMap orderId assignmentStatus deliveryStatus stops />` where `stops = {total, done, skipped} | null`.
 
 - [ ] **Step 1: Write the failing tests.** Append to `DeliveriesPanel.test.jsx` (inside `describe('DeliveriesPanel rider tracking (vendor)'`, which has `trackWith`, `HEADING_ORDER`):
@@ -3260,6 +3468,12 @@ Hand check (Task 13): the gold/ringed pins and the framing are Leaflet, so they 
     expect(await screen.findByText(/Rider arrives about \d{2}:\d{2}/)).toBeInTheDocument()
     expect(screen.getByLabelText('Pickup code 4 8 2 1')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Rider on the way/ })).not.toBeInTheDocument()
+  })
+
+  it("shows the rider's report when this shop could not hand over, with no rider details", async () => {
+    renderPanel([{ ...DOOR_TO_DOOR_ORDER, pickup_status: 'skipped', rider_report: { at: '2026-10-14T14:35:00Z', text: 'Rider reported at your shop at 14:35: Door was locked' } }])
+    expect(await screen.findByText('Rider reported at your shop at 14:35: Door was locked')).toBeInTheDocument()
+    expect(screen.queryByText(/\+233/)).not.toBeInTheDocument()
   })
 
   it('says the rider is at another shop first, with no map', async () => {
@@ -3324,6 +3538,7 @@ Expected: FAIL (texts not found).
 and in `OrderRow`, above `PickupCodeBox`:
 
 ```jsx
+      {doorToDoor && order.rider_report?.text && <div role="note" style={{ color: D.text, fontSize: "0.74rem", fontWeight: 700, marginTop: 8 }}>{order.rider_report.text}</div>}
       {doorToDoor && order.pickup_eta && (
         <div style={{ color: D.text, fontSize: "0.74rem", fontWeight: 700, marginTop: 8 }}>
           🛵 Rider arrives about {new Date(order.pickup_eta).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
@@ -3374,7 +3589,7 @@ git commit -m "feat(frontend): shops see their own stop and arrival time, custom
 - Test: `frontend/components/admin/panels/delivery/__tests__/DeliveryMultiStop.test.jsx`; one case added to `DeliveryCashRules.test.jsx`
 
 **Interfaces:**
-- Consumes: Task 6 job detail `stops`, `route_plan`, `POST jobs/<id>/unlock-code/ {stop}`, `POST jobs/<id>/stops/<stop>/skip/`, queue rows `stops`, `detour_warning`; Task 7 map `pickups`; Task 1 `cart_limits`; Task 9 `shopMarkers`.
+- Consumes: Task 6 job detail `stops` (each with `skips`), `skip_history`, `route_plan`, `POST jobs/<id>/unlock-code/ {stop}`, `POST jobs/<id>/stops/<stop>/skip/`, queue rows `stops`, `detour_warning`, `returned_reason`, `skips` (Task 5); Task 7 map `pickups`; Task 1 `cart_limits`; Task 9 `shopMarkers`.
 - Produces: `CodeLine` accepts `stopId` (sent as `stop` only when given).
 
 - [ ] **Step 1: Write the failing tests** `frontend/components/admin/panels/delivery/__tests__/DeliveryMultiStop.test.jsx`:
@@ -3460,6 +3675,16 @@ describe('Dispatch queue', () => {
     expect(await screen.findByText('3 shops')).toBeInTheDocument()
     expect(screen.getByText(/52% longer than going direct/)).toBeInTheDocument()
   })
+
+  it('shows an order sent back because every shop was skipped, with each rider report and pin', async () => {
+    const row = { order_id: 9, waiting_minutes: 4, route: { from: 'Kente House', to: 'Ahodwo' }, zone: 'Adum', unzoned: false, returned: true, returned_reason: 'all_stops_skipped', payment: { label: 'Paid online (simulated)' }, deadline_at: null, minutes_to_spare: 30, offer: null, held_until: null, refusals: 0, suggested: null, eligible: 2, pickup_located: true, stops: 2, detour_warning: null,
+      skips: [{ stop_id: 71, sequence: 1, business_name: 'Kente House', at: '2026-10-14T10:02:00Z', note: 'Door locked', by: 'rider', pinned: true, lat: 6.7001, lng: -1.62, accuracy_m: 9, distance_m: 12, at_shop: true }] }
+    server.use(http.get(`${API}/api/delivery/queue/`, () => HttpResponse.json({ results: [row], total: 1, auto_assign: { on: true, rules: {}, updated_at: null }, recent: [], deadlines: 'none', routing: { factor: 1.3 } })))
+    wrap(<DispatchQueuePanel auth={auth} />)
+    expect(await screen.findByText(/Every shop skipped, sent back to you/)).toBeInTheDocument()
+    expect(screen.getByText(/Kente House: Door locked/)).toBeInTheDocument()
+    expect(screen.getByText(/Pin 6.70010, -1.62000/)).toBeInTheDocument()
+  })
 })
 ```
 
@@ -3512,6 +3737,11 @@ function StopRow({ jobId, stop, canSkip, onDone }) {
     <div role="group" aria-label={`Stop ${stop.sequence}: ${stop.business_name}`} style={{ display: "flex", flexDirection: "column", gap: 6, borderTop: `1px solid ${D.divider}`, paddingTop: 8, fontSize: "0.82rem", color: D.text }}>
       <span><b>{stop.sequence}. {stop.business_name}</b> · {STOP_LABEL[stop.status] || stop.status}{stop.collected_at ? ` ${clock(stop.collected_at)}` : ""}{stop.status === "pending" && stop.planned_arrival ? ` · expected about ${clock(stop.planned_arrival)}` : ""}</span>
       {stop.skip_note && <span style={dim}>Skipped: {stop.skip_note}</span>}
+      {(stop.skips || []).map((k) => (
+        <span key={k.at} style={dim}>
+          {k.by === "rider" ? `Rider reported ${clock(k.at)}: ${k.note}. Pin ${Number(k.lat).toFixed(5)}, ${Number(k.lng).toFixed(5)}${k.accuracy_m != null ? ` (±${Math.round(k.accuracy_m)} m)` : ""}${k.at_shop ? "" : `, ${k.distance_m != null ? `${k.distance_m} m from the shop` : "far from the shop"}`}.` : `Skipped by a manager ${clock(k.at)}: ${k.note}.`}
+        </span>
+      ))}
       {stop.id != null && <CodeLine label="Pickup code" which="pickup" jobId={jobId} stopId={stop.id} state={{ matched: stop.status === "collected", wrong_tries: stop.wrong_tries || 0 }} onDone={onDone} />}
       {canSkip && openStop && stop.id != null && !open && <button type="button" onClick={() => setOpen(true)} style={{ ...button(D.panelBg, D.text), alignSelf: "flex-start" }}>Skip this shop</button>}
       {open && (
@@ -3519,7 +3749,7 @@ function StopRow({ jobId, stop, canSkip, onDone }) {
           <ErrorLine>{error}</ErrorLine>
           <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: "0.7rem", fontWeight: 700 }}>
             Why is this shop skipped? (required; the customer is told and a case asks for this shop&apos;s items to be refunded)
-            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={500} style={field} />
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={300} style={field} />
           </label>
           <span style={{ display: "flex", gap: 8 }}>
             <button type="button" disabled={!note.trim() || busy} onClick={skip} style={button(D.gold, D.text, !note.trim() || busy)}>Confirm skip</button>
@@ -3561,6 +3791,17 @@ and in the codes row render the single `<CodeLine label="Pickup code" ... />` on
 ```jsx
                             {o.stops > 1 && <span style={chip(D.blue)}>{o.stops} shops</span>}
                             {o.detour_warning && <div role="note" style={{ ...dim, color: D.amber, fontWeight: 700 }}>⚠ {o.detour_warning}</div>}
+                            {o.returned_reason === "all_stops_skipped" && (
+                              <div role="note" style={{ ...dim, color: D.amber, fontWeight: 700 }}>
+                                Every shop skipped, sent back to you. Check the notes, then give it to a rider again.
+                                {(o.skips || []).map((k) => (
+                                  <div key={k.stop_id + k.at} style={{ fontWeight: 400 }}>
+                                    {k.business_name}: {k.note}
+                                    {k.pinned ? ` · Pin ${Number(k.lat).toFixed(5)}, ${Number(k.lng).toFixed(5)} (±${Math.round(k.accuracy_m ?? 0)} m)` : " · skipped by a manager"}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
 ```
 
 In `RulesPanels.jsx`, append to `CARD_FIELDS`:
@@ -3906,7 +4147,7 @@ git commit -m "feat(frontend): cart-aware search tiers, delivery limit states an
 **Files:**
 - Modify: `docs/superpowers/specs/2026-10-14-multi-stop-delivery-and-cart-guard-design.md` (status line; a "Built" section listing what landed and the rulings in this plan's report; open items: detour default 40 % adopted, legacy fields still mirrored)
 - Modify: `docs/superpowers/specs/2026-10-13-delivery-routing-dispatch-design.md` (section 4: point the several-businesses bullet at the 2026-10-14 spec as built)
-- Modify: `backend/CLAUDE.md` (one bullet under correctness cores: stop codes and wrong tries live on `PickupStop`, stop 1 mirrored into the assignment; `stops.stops_of` never writes; write paths call `ensure_stops` first and must not prefetch `stops` on a locked row)
+- Modify: `backend/CLAUDE.md` (one bullet under correctness cores: stop codes and wrong tries live on `PickupStop`, stop 1 mirrored into the assignment; `stops.stops_of` never writes; write paths call `ensure_stops` first and must not prefetch `stops` on a locked row; skip evidence (rider pin, time, note) lives on the append-only `skipped_stop` `DeliveryEvent` rows and survives a reset, and an `all_stops_skipped` job is requeued by resetting the same OneToOne row)
 
 - [ ] **Step 1: Full suites.** Run `docker compose -f docker-compose.yml -f $OV run --rm -e POSTGRES_HOST=db web python manage.py test` (only the known unrelated failure), `... python manage.py makemigrations --check --dry-run` (expect "No changes detected"), and `cd frontend && npx vitest run && npm run build`.
 - [ ] **Step 2: Write the doc updates above and commit** — `docs: multi-stop delivery and cart guard built`.
@@ -3916,5 +4157,6 @@ git commit -m "feat(frontend): cart-aware search tiers, delivery limit states an
   - Listing page at the limit; a food listing shows Add to Cart; the cart's checkout block for door-to-door.
   - Rider app on a phone: stop 2 of 3, per-shop code, skip with a note; the map shows the gold current shop, ringed later shops, no collected shop.
   - Manager: queue map with every shop and the detour warning; job drawer shops section, per-stop unlock and skip; pricing screen limits.
+  - Every-shop skip: skip all shops as a rider with the location allowed; the order reappears in the Delivery queue marked "Every shop skipped, sent back to you" with each note and pin; give it to another rider and confirm the shops reopen with the same codes and the evidence is still listed in the job drawer; the shop that was skipped sees "Rider reported at your shop at HH:MM: <note>" and no other shop does, and no rider name or phone appears on the vendor screen. A vendor's order list shows no customer phone.
   - Vendor: a later shop sees "Rider arrives about" and its own code only; a collected shop sees nothing more. Customer: "Collecting from 3 shops" before the last pickup, live map only after.
   - Seed a rider fix with a one-off `manage.py shell` call to see the rider on the maps; remove it afterwards.
