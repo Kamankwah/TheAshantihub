@@ -114,6 +114,17 @@ def clean_limits(data):
     return out
 
 
+def _km(data, name, lo, hi, default=None):
+    raw = data.get(name, default)
+    try:
+        value = Decimal(str(raw)).quantize(Decimal("0.01"))
+    except (InvalidOperation, ValueError, TypeError):
+        raise ConfigError("Enter a distance in km.", name)
+    if not lo <= value <= hi:
+        raise ConfigError(f"Enter a distance from {lo} to {hi} km.", name)
+    return value
+
+
 # ── Rate card ──────────────────────────────────────────────────────────────────────────────────
 def clean_rate_card(data):
     multipliers = data.get("vehicle_multipliers") or {}
@@ -125,12 +136,21 @@ def clean_rate_card(data):
     unknown = set(multipliers) - set(cleaned)
     if unknown:
         raise ConfigError("Unknown vehicle type.", "vehicle_multipliers")
+    limits = {
+        "max_shops_per_delivery": _int(data, "max_shops_per_delivery", 1, 6, default=4),  # 6 = routing.planner.MAX_STOPS
+        "max_food_shops": _int(data, "max_food_shops", 0, 6, default=2),
+        "near_shop_radius_km": str(_km(data, "near_shop_radius_km", Decimal("0.5"), Decimal("20"), default="3.00")),
+        "detour_limit_pct": _int(data, "detour_limit_pct", 0, 300, default=40),
+    }
+    if limits["max_food_shops"] > limits["max_shops_per_delivery"]:
+        raise ConfigError("Food places cannot be more than the shops allowed per delivery.", "max_food_shops")
     return {
         "customer_base": str(_money(data, "customer_base")), "customer_per_km": str(_money(data, "customer_per_km")),
         "customer_min_fee": str(_money(data, "customer_min_fee")), "extra_pickup": str(_money(data, "extra_pickup", default="0")),
         "express_multiplier": str(_factor(data, "express_multiplier", default="1")), "round_up_to": str(_money(data, "round_up_to", Decimal("0"), Decimal("10"), default="0.50")),
         "vehicle_multipliers": cleaned, "rider_per_job": str(_money(data, "rider_per_job")), "rider_per_km": str(_money(data, "rider_per_km")),
         "wait_after_min": _int(data, "wait_after_min", 0, 120, default=10), "wait_per_min": str(_money(data, "wait_per_min", default="0")),
+        **limits,
     }
 
 
@@ -163,6 +183,25 @@ def effective_limits():
     return row
 
 
+CART_LIMIT_DEFAULTS = {"max_shops_per_delivery": 4, "max_food_shops": 2, "near_shop_radius_km": "3.00", "detour_limit_pct": 40}
+CART_LIMIT_FIELDS = tuple(CART_LIMIT_DEFAULTS)
+
+
+def effective_cart_limits():
+    """The delivery limits in force: the live rate card's, else the built-in defaults (flagged, never shown as approved)."""
+    row = live(RateCard)
+    values = {f: getattr(row, f) for f in CART_LIMIT_FIELDS} if row else dict(CART_LIMIT_DEFAULTS)
+    return {
+        "source": "version" if row else "defaults", "version": row.version if row else None,
+        "max_shops_per_delivery": int(values["max_shops_per_delivery"]), "max_food_shops": int(values["max_food_shops"]),
+        "near_shop_radius_km": Decimal(str(values["near_shop_radius_km"])), "detour_limit_pct": int(values["detour_limit_pct"]),
+    }
+
+
+def limits_json(limits):
+    return {k: (str(v) if isinstance(v, Decimal) else v) for k, v in limits.items()}
+
+
 def limits_dict(row):
     if row is None:
         return None
@@ -178,6 +217,7 @@ def limits_dict(row):
 RATE_FIELDS = (
     "customer_base", "customer_per_km", "customer_min_fee", "extra_pickup", "express_multiplier", "round_up_to",
     "rider_per_job", "rider_per_km", "wait_after_min", "wait_per_min",
+    "max_shops_per_delivery", "max_food_shops", "near_shop_radius_km", "detour_limit_pct",
 )
 
 

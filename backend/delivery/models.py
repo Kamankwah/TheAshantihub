@@ -377,6 +377,12 @@ class RateCard(ConfigVersion):
     rider_per_km = models.DecimalField(max_digits=8, decimal_places=2)
     wait_after_min = models.PositiveSmallIntegerField(default=10)
     wait_per_min = models.DecimalField(max_digits=6, decimal_places=2, default=0)
+    # Multi-stop delivery and the cart guard (spec 2026-10-14). Changed through this card's approval like every other
+    # value; with no card in force config.CART_LIMIT_DEFAULTS run, named as built-in defaults.
+    max_shops_per_delivery = models.PositiveSmallIntegerField(default=4)
+    max_food_shops = models.PositiveSmallIntegerField(default=2)
+    near_shop_radius_km = models.DecimalField(max_digits=5, decimal_places=2, default="3.00")
+    detour_limit_pct = models.PositiveSmallIntegerField(default=40)
 
     class Meta(ConfigVersion.Meta):
         constraints = [models.UniqueConstraint(fields=["status"], condition=models.Q(status="live"), name="one_live_rate_card")]
