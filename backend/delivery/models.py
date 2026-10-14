@@ -182,11 +182,14 @@ class DeliveryEvent(models.Model):
     ASSIGNED, ACCEPTED, ARRIVED_PICKUP, PICKED_UP, ARRIVED_DROP, DELIVERED, CANT_DELIVER = (
         "assigned", "accepted", "arrived_pickup", "picked_up", "arrived_drop", "delivered", "cant_deliver",
     )
+    COLLECTED_STOP, SKIPPED_STOP = "collected_stop", "skipped_stop"
     STEP_CHOICES = [
         (ASSIGNED, "Assigned"), (ACCEPTED, "Accepted"), (ARRIVED_PICKUP, "Arrived at pickup"), (PICKED_UP, "Picked up"),
         (ARRIVED_DROP, "Arrived at customer"), (DELIVERED, "Delivered"), (CANT_DELIVER, "Can't deliver"),
+        (COLLECTED_STOP, "Collected at a shop"), (SKIPPED_STOP, "Shop skipped"),
     ]
     assignment = models.ForeignKey("orders.DeliveryAssignment", on_delete=models.CASCADE, related_name="events")
+    stop = models.ForeignKey("delivery.PickupStop", null=True, blank=True, on_delete=models.SET_NULL, related_name="events")
     step = models.CharField(max_length=16, choices=STEP_CHOICES)
     at = models.DateTimeField()
     by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
@@ -197,10 +200,46 @@ class DeliveryEvent(models.Model):
     distance_m = models.FloatField(null=True, blank=True)
     flagged = models.BooleanField(default=False)
     note = models.CharField(max_length=300, blank=True)
+    # A `skipped_stop` event's refund case. Kept here because the stop's own link is cleared when every shop was skipped
+    # and the order is re-dispatched: this one survives, so a skip's case is never mistaken for another kind of case.
+    dispute = models.ForeignKey("disputes.Dispute", null=True, blank=True, on_delete=models.SET_NULL, related_name="skip_events")
 
     class Meta:
         ordering = ["at", "id"]
         indexes = [models.Index(fields=["assignment", "at"])]
+
+
+class PickupStop(models.Model):
+    """One business a delivery collects from (spec 2026-10-14). Made once per assignment in the planned order, which
+    never changes after. Each stop has its own four-digit code (the business reads it to the rider) and its own wrong-try
+    count; stop 1's are mirrored into DeliveryAssignment.pickup_code / pickup_code_attempts until those are removed.
+    lat/lng are a snapshot of where the rider was sent (null when the business had no location)."""
+
+    PENDING, ARRIVED, COLLECTED, SKIPPED = "pending", "arrived", "collected", "skipped"
+    STATUS_CHOICES = [(PENDING, "Waiting"), (ARRIVED, "Rider at the shop"), (COLLECTED, "Collected"), (SKIPPED, "Skipped")]
+    OPEN = (PENDING, ARRIVED)
+
+    assignment = models.ForeignKey("orders.DeliveryAssignment", on_delete=models.CASCADE, related_name="stops")
+    sequence = models.PositiveSmallIntegerField()
+    business_owner = models.ForeignKey("accounts.BusinessOwner", on_delete=models.PROTECT, related_name="pickup_stops")
+    lat = models.FloatField(null=True, blank=True)
+    lng = models.FloatField(null=True, blank=True)
+    code = models.CharField(max_length=4, blank=True)
+    code_attempts = models.PositiveSmallIntegerField(default=0)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
+    planned_arrival = models.DateTimeField(null=True, blank=True)
+    arrived_at = models.DateTimeField(null=True, blank=True)
+    collected_at = models.DateTimeField(null=True, blank=True)
+    skip_note = models.CharField(max_length=500, blank=True)
+    skipped_by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    dispute = models.OneToOneField("disputes.Dispute", null=True, blank=True, on_delete=models.SET_NULL, related_name="pickup_stop")
+
+    class Meta:
+        ordering = ["sequence"]
+        constraints = [
+            models.UniqueConstraint(fields=["assignment", "sequence"], name="one_stop_per_sequence"),
+            models.UniqueConstraint(fields=["assignment", "business_owner"], name="one_stop_per_business"),
+        ]
 
 
 class DeliveryPhoto(models.Model):
@@ -377,6 +416,12 @@ class RateCard(ConfigVersion):
     rider_per_km = models.DecimalField(max_digits=8, decimal_places=2)
     wait_after_min = models.PositiveSmallIntegerField(default=10)
     wait_per_min = models.DecimalField(max_digits=6, decimal_places=2, default=0)
+    # Multi-stop delivery and the cart guard (spec 2026-10-14). Changed through this card's approval like every other
+    # value; with no card in force config.CART_LIMIT_DEFAULTS run, named as built-in defaults.
+    max_shops_per_delivery = models.PositiveSmallIntegerField(default=4)
+    max_food_shops = models.PositiveSmallIntegerField(default=2)
+    near_shop_radius_km = models.DecimalField(max_digits=5, decimal_places=2, default="3.00")
+    detour_limit_pct = models.PositiveSmallIntegerField(default=40)
 
     class Meta(ConfigVersion.Meta):
         constraints = [models.UniqueConstraint(fields=["status"], condition=models.Q(status="live"), name="one_live_rate_card")]

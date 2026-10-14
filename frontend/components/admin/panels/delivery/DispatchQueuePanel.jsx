@@ -7,7 +7,7 @@ import { button, chip, dim, field } from "../panelStyles.js";
 import { scroll, table, td, th } from "../opsPeopleParts.jsx";
 import { Status, Title, page, section, sectionTitle } from "../insightsParts.jsx";
 import { QueueMap } from "./deliveryMaps.jsx";
-import { Empty, ErrorLine, Note, SOURCE_LABEL, WARN, clock, linkStyle, spare, span } from "./deliveryParts.jsx";
+import { Empty, ErrorLine, Note, SOURCE_LABEL, WARN, clock, linkStyle, skipPin, spare, span } from "./deliveryParts.jsx";
 
 // ─── Delivery Manager 02 Dispatch queue ──────────────────────────────────────
 // Waiting orders, least time to spare first. What is ranked is exactly what the engine
@@ -134,7 +134,15 @@ export default function DispatchQueuePanel({ auth, onNavigate }) {
                       {rows.map((o) => (
                         <tr key={o.order_id} style={{ background: o.order_id === selected ? D.panelBg2 : "transparent" }}>
                           <td style={{ ...td, fontWeight: 800 }}>#{o.order_id}{o.returned && <div style={dim}>Returned after a failed attempt</div>}</td>
-                          <td style={td}>{o.route.from || "Pickup not set"} → {o.route.to || "No address"}<div style={dim}>{o.unzoned ? "Outside every zone" : o.zone} · {o.payment.label}</div></td>
+                          <td style={td}>{o.route.from || "Pickup not set"} → {o.route.to || "No address"}<div style={dim}>{o.unzoned ? "Outside every zone" : o.zone} · {o.payment.label}</div>
+                            {o.stops > 1 && <span style={chip(D.blue)}>{o.stops} shops</span>}
+                            {o.detour_warning && <div role="note" style={{ ...dim, color: WARN, fontWeight: 700 }}>⚠ {o.detour_warning}</div>}
+                            {o.returned_reason === "all_stops_skipped" && (
+                              <div role="note" style={{ ...dim, color: WARN, fontWeight: 700 }}>
+                                Every shop skipped, sent back to you. Check the notes, then give it to a rider again.
+                                {(o.skips || []).map((k, i) => <div key={`${k.stop_id}-${i}`} style={{ fontWeight: 400 }}>{k.business_name}: {k.note} · {skipPin(k)}</div>)}
+                              </div>
+                            )}</td>
                           <td style={td}><span style={{ fontWeight: 800, color: o.minutes_to_spare !== null && o.minutes_to_spare < SHORT_MINUTES ? WARN : D.text }}>{o.minutes_to_spare === null ? `Waiting ${span(o.waiting_minutes * 60)}` : spare(o.minutes_to_spare)}</span>{o.deadline_at && <div style={dim}>Deliver by {clock(o.deadline_at)}</div>}</td>
                           <td style={td}>{o.offer ? <span style={chip(D.gold)}>Offered to {o.offer.rider}, {span(o.offer.seconds_left)} left</span> : o.held_until ? <span style={chip(D.textDim)}>Held until {clock(o.held_until)}</span> : <span style={chip(D.amber)}>Waiting</span>}{o.refusals > 0 && <div style={dim}>{o.refusals} declined or timed out</div>}</td>
                           <td style={td}>{o.suggested ? <>{o.suggested.full_name}<div style={dim}>score {o.suggested.total}{o.suggested.km !== null ? ` · ${o.suggested.km} km` : ""} · {o.eligible} eligible</div></> : <span style={dim}>{o.pickup_located ? "No eligible rider" : "Pickup location missing"}</span>}</td>

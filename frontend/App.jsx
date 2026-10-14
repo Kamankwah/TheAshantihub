@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCategories } from "./hooks/useCategories.js";
 import { useZones } from "./hooks/useZones.js";
 import { useListings } from "./hooks/useListings.js";
+import CartTieredResults from "./components/CartTieredResults.jsx";
 import { useListing } from "./hooks/useListing.js";
 import { useEvents } from "./hooks/useEvents.js";
 import { useAuth } from "./hooks/useAuth.js";
@@ -2158,7 +2159,7 @@ function OrdersDeliveryTab({ searchQuery }) {
           </div>
         )}
         {o.status==="paid" && o.delivery_method==="door_to_door" && <DeliveryStepper status={o.delivery_status}/>}
-        {o.status==="paid" && o.delivery_method==="door_to_door" && <OrderTrackingMap orderId={o.id} assignmentStatus={o.delivery_assignment_status ?? null} deliveryStatus={o.delivery_status}/>}
+        {o.status==="paid" && o.delivery_method==="door_to_door" && <OrderTrackingMap orderId={o.id} assignmentStatus={o.delivery_assignment_status ?? null} deliveryStatus={o.delivery_status} stops={o.delivery_stops ?? null}/>}
         {o.status==="paid" && o.delivery_method==="door_to_door" && <DeliveryCodeBox code={o.delivery_code} assignmentStatus={o.delivery_assignment_status ?? null}/>}
         {o.delivery_assignment_status==="delivered" && (
           <div style={{marginTop:10}}>
@@ -2787,6 +2788,10 @@ export default function AshantiHub() {
 
   const { data: categories, isLoading: categoriesLoading } = useCategories();
   const { data: zones, isLoading: zonesLoading } = useZones();
+  // A customer whose cart has something in it gets cart-aware search (GET /api/listings/?cart_tiers=1). Same ['cart']
+  // query as the navbar badge further down, so this costs no extra request.
+  const { data: tierCart } = useCart(user?.accountType === "customer");
+  const cartTiers = user?.accountType === "customer" && (tierCart?.items?.length ?? 0) > 0;
   const {
     data: listingsData,
     isLoading: listingsLoading,
@@ -2795,7 +2800,7 @@ export default function AshantiHub() {
     fetchNextPage,
     hasNextPage,
     refetch: refetchListings,
-  } = useListings(filters);
+  } = useListings(cartTiers ? { ...filters, cartTiers: true } : filters);
   const listings = listingsData ? listingsData.pages.flatMap((page) => page.results) : [];
 
   // ── Events tab (docs/BUSINESS_EVENTS_ROADMAP.md Phase 6) ──────────────────
@@ -2911,6 +2916,8 @@ export default function AshantiHub() {
     if (!isCustomer) { throw new Error("Only customer accounts can add items to a cart."); }
     await apiPost("/api/cart/items/", { listing: item.id, quantity });
     refetchCart();
+    queryClient.invalidateQueries({ queryKey: ["cart-guard"] });
+    queryClient.invalidateQueries({ queryKey: ["listings"] });
   };
 
 
@@ -3365,9 +3372,12 @@ export default function AshantiHub() {
                         columns on desktop, fewer on narrower viewports; not a hard-coded 20-item
                         page). Promoted/boosted sorting-first lands in a later phase — this renders
                         `listings` in whatever order the API returns, unsorted client-side. */}
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>
-                      {listings.map(item=><Card key={item.id} item={item} accentColor={activeCatObj?.color||C.gold} user={user} favourites={favourites} onFavourite={toggleFav} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);}} onOpen={(id)=>setSelectedListingId(id)}/>)}
-                    </div>
+                    {(()=>{
+                      const renderCard=(item)=><Card key={item.id} item={item} accentColor={activeCatObj?.color||C.gold} user={user} favourites={favourites} onFavourite={toggleFav} currency={currency} onMessage={(biz)=>{setMessagingBusiness(biz);setShowMessaging(true);}} onOpen={(id)=>setSelectedListingId(id)}/>;
+                      return listings.some((l)=>"cart_tier" in l)
+                        ? <CartTieredResults listings={listings} renderCard={renderCard}/>
+                        : <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(215px,1fr))",gap:14}}>{listings.map(renderCard)}</div>;
+                    })()}
                     {hasNextPage&&(
                       <div style={{textAlign:"center",marginTop:18}}>
                         <button onClick={()=>fetchNextPage()} style={{background:C.gold,color:C.darkBrown,border:"none",borderRadius:30,padding:"9px 24px",fontWeight:900,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>Load more</button>

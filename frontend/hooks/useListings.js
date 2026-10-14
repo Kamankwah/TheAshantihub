@@ -11,6 +11,7 @@ function buildQueryString(filters, page) {
   if (filters.ordering) params.set('ordering', filters.ordering)
   if (filters.kind) params.set('kind', filters.kind)
   if (filters.verified) params.set('verified', 'true')
+  if (filters.cartTiers) params.set('cart_tiers', '1')
   if (page) params.set('page', page)
   const query = params.toString()
   return query ? `?${query}` : ''

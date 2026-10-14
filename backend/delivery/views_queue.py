@@ -13,13 +13,13 @@ from orders.models import DeliveryAssignment, Order
 from routing import service as routing_service
 
 from . import board, config, dispatching, payloads, services, tracking
-from .models import DeliverySettings, Offer, QueueHold, Rider
+from .models import DeliverySettings, DeliveryZone, Offer, QueueHold, Rider
 from .views_live import ManageView
 from .views_rider import RiderView
 
 
-def _queue_row(order, now, rules, limits):
-    row = board.queue_row(order, now)
+def _queue_row(order, now, rules, limits, zones=None):
+    row = board.queue_row(order, now, zones)
     deadline = dispatching.deadline_for(order, limits=limits)
     live = dispatching.live_offer(order)
     hold = getattr(order, "queue_hold", None)
@@ -41,8 +41,9 @@ class QueueView(ManageView):
         now = timezone.now()
         rules, limits = config.effective_rules(), config.effective_limits()
         rows = []
+        zones = list(DeliveryZone.objects.filter(active=True, boundary__isnull=False))
         for order in board.waiting_orders().select_related("queue_hold").prefetch_related("offers")[:100]:
-            row = _queue_row(order, now, rules, limits)
+            row = _queue_row(order, now, rules, limits, zones)
             ranked = dispatching.rank(order, rules, now)
             best = ranked["eligible"][0] if ranked["eligible"] else None
             row["suggested"] = {"rider_id": best["rider_id"], "full_name": best["full_name"], "total": best["total"], "km": best["km"]} if best else None
@@ -150,9 +151,21 @@ class SwitchView(APIView):
 
 # ── Rider side ─────────────────────────────────────────────────────────────────────────────────
 def offer_payload(offer, now=None):
+    from . import stops
+
     now = now or timezone.now()
     order = offer.order
-    plat, plng, name = services.pickup_stop(order)
+    # A job offered again after a failed attempt keeps its saved stops (a job from before multi-stop delivery: its one
+    # first-item shop); only an order never given to a rider reads its plan.
+    assignment = getattr(order, "delivery_assignment", None)
+    if assignment is not None:
+        saved = stops.stops_for_next_rider(assignment)
+        first = saved[0] if saved else None
+        plat, plng, name = (first.lat, first.lng, stops.stop_name(first)) if first else (None, None, "")
+        stop_count = len(saved)
+    else:
+        plat, plng, name = services.pickup_stop(order)
+        stop_count = len(stops.sequence_for_order(order))
     dlat, dlng = services.drop_stop(order)
     shift = services.open_shift(offer.rider)
     leg_to_pickup = routing_service.leg((shift.last_lat, shift.last_lng), (plat, plng)) if shift and shift.last_lat is not None and plat is not None else None
@@ -172,6 +185,7 @@ def offer_payload(offer, now=None):
         "pickup": {"business_name": name, "lat": plat, "lng": plng}, "delivery_address": order.delivery_address, "delivery_lat": dlat, "delivery_lng": dlng,
         "to_pickup_km": to_pickup, "trip_km": trip, "distance_basis": basis, "payment": payloads.payment_label(order),
         "deadline_at": dispatching.deadline_for(order), "pay": pay, "items": order.items.count(),
+        "stop_count": stop_count, "route_km": (order.route_plan or {}).get("total_km"),
     }
 
 
@@ -182,7 +196,9 @@ class MyOffersView(RiderView):
     def get(self, request):
         rider = self.rider(request)
         now = timezone.now()
-        offers = Offer.objects.filter(rider=rider, status=Offer.OFFERED, expires_at__gt=now).select_related("order", "rider").prefetch_related("order__items__listing__business_owner__profile")
+        offers = Offer.objects.filter(rider=rider, status=Offer.OFFERED, expires_at__gt=now).select_related("order", "order__delivery_assignment", "rider").prefetch_related(
+            "order__items__listing__business_owner__profile", "order__items__listing__category",
+        )
         since = now - timedelta(days=30)
         history = Offer.objects.filter(rider=rider, offered_at__gte=since)
         answered = history.exclude(status__in=(Offer.OFFERED, Offer.WITHDRAWN)).count()

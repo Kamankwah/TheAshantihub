@@ -43,7 +43,7 @@ class PromoBase(TestCase):
         self.owner2 = self.make_owner("+233207660002", "Bonwire Looms")
         self.ama = Customer.objects.create(full_name="Ama", phone="+233200660001", password_hash="x")
         self.yaw = Customer.objects.create(full_name="Yaw", phone="+233200660002", password_hash="x")
-        self.cat = Category.objects.get(slug="hotels")
+        self.cat = Category.objects.get(slug="shops")
         self.zone = Zone.objects.get(name="Manhyia")
         self.stole = self.listing(self.owner, "Stole", "100.00", 50)
         self.cloth = self.listing(self.owner2, "Cloth", "200.00", 50)
@@ -433,7 +433,7 @@ class SingleUseRace(TransactionTestCase):
     @ON
     def test_a_single_use_code_cannot_be_redeemed_twice_concurrently(self):
         owner = BusinessOwner.objects.create(full_name="K", login_phone="+233207669991", password_hash="x", kyc_status="verified")
-        cat, zone = Category.objects.get(slug="hotels"), Zone.objects.get(name="Manhyia")
+        cat, zone = Category.objects.get(slug="shops"), Zone.objects.get(name="Manhyia")
         listing = Listing.objects.create(business_owner=owner, category=cat, zone=zone, name="Stole", description="D.", contact_phone="1",
                                          price_amount="100.00", status=Listing.PUBLISHED, stock_quantity=20)
         coupon = Coupon.objects.create(code="WB", code_mode=Coupon.SINGLE_USE, kind=Coupon.FIXED, value=10, usage_limit=1, budget_cap=10, status=Coupon.ACTIVE)
@@ -463,7 +463,7 @@ class SingleUseRace(TransactionTestCase):
     @ON
     def test_a_flash_sale_cap_holds_under_concurrent_checkouts(self):
         owner = BusinessOwner.objects.create(full_name="K", login_phone="+233207669992", password_hash="x", kyc_status="verified")
-        cat, zone = Category.objects.get(slug="hotels"), Zone.objects.get(name="Manhyia")
+        cat, zone = Category.objects.get(slug="shops"), Zone.objects.get(name="Manhyia")
         listing = Listing.objects.create(business_owner=owner, category=cat, zone=zone, name="Stole", description="D.", contact_phone="1",
                                          price_amount="100.00", status=Listing.PUBLISHED, stock_quantity=20)
         now = timezone.now()

@@ -27,7 +27,7 @@ NOT_AVAILABLE = {"listing": ["This item isn't available right now."]}
 class HiddenBusinessTests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.hotels = Category.objects.get(slug="hotels")
+        self.shops = Category.objects.get(slug="shops")
         self.festivals = Category.objects.get(slug="festivals")
         self.manhyia = Zone.objects.get(name="Manhyia")
         self.now = timezone.now()
@@ -66,7 +66,7 @@ class HiddenBusinessTests(TestCase):
 
     def make_listing(self, owner, name):
         return Listing.objects.create(
-            business_owner=owner, category=self.hotels, zone=self.manhyia, name=name,
+            business_owner=owner, category=self.shops, zone=self.manhyia, name=name,
             description="D.", contact_phone="+233207660999", price_amount="150.00",
             status=Listing.PUBLISHED,
         )

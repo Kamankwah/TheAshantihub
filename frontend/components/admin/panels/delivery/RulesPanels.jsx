@@ -111,7 +111,32 @@ const CARD_FIELDS = [
   { key: "rider_per_km", label: "Rider per km", unit: "GH₵" },
   { key: "wait_after_min", label: "Waiting pay starts after", unit: "minutes" },
   { key: "wait_per_min", label: "Waiting pay per minute", unit: "GH₵" },
+  { key: "max_shops_per_delivery", label: "Shops per delivery (most)", unit: "shops (1 to 6)" },
+  { key: "max_food_shops", label: "Food places per delivery (most)", unit: "places (0 to 6, not above the shops)" },
+  { key: "near_shop_radius_km", label: "Nearby shop distance", unit: "km (road, 0.5 to 20)" },
+  { key: "detour_limit_pct", label: "Detour allowance", unit: "% longer than going direct (0 to 300)" },
 ];
+const LIMIT_KEYS = ["max_shops_per_delivery", "max_food_shops", "near_shop_radius_km", "detour_limit_pct"];
+
+// Mirrors the server's checks (backend/delivery/config.py clean_rate_card) so a bad value is named before it is sent.
+function checkLimits(form) {
+  const out = {};
+  const whole = (key, lo, hi) => {
+    const raw = String(form[key] ?? "").trim();
+    if (!/^\d+$/.test(raw)) { out[key] = "Enter a whole number."; return null; }
+    const n = Number(raw);
+    if (n < lo || n > hi) { out[key] = `Enter a number from ${lo} to ${hi}.`; return null; }
+    return n;
+  };
+  const shops = whole("max_shops_per_delivery", 1, 6);
+  const food = whole("max_food_shops", 0, 6);
+  if (shops !== null && food !== null && food > shops) out.max_food_shops = "Food places cannot be more than the shops allowed per delivery.";
+  const radius = String(form.near_shop_radius_km ?? "").trim();
+  if (!/^\d+(\.\d+)?$/.test(radius)) out.near_shop_radius_km = "Enter a distance in km.";
+  else if (Number(radius) < 0.5 || Number(radius) > 20) out.near_shop_radius_km = "Enter a distance from 0.5 to 20 km.";
+  whole("detour_limit_pct", 0, 300);
+  return out;
+}
 const VEHICLES = [["motorbike", "Motorbike"], ["tricycle", "Tricycle"], ["car", "Car"], ["van", "Van"]];
 
 function TryRoute({ form, multipliers, hasCard }) {
@@ -163,6 +188,9 @@ export function DeliveryPricingPanel({ auth }) {
       query={query} endpoint="/api/delivery/rules/rate-card/" title="Delivery pricing" isSuperAdmin={isSa} fields={CARD_FIELDS}
       canPropose={auth?.hasPermission?.("delivery.rates") ?? true}
       valuesOf={(form) => ({ ...form, vehicle_multipliers: multipliers })}
+      validate={checkLimits}
+      // The four limits are in force even with no approved card (built-in defaults), so the form starts from them.
+      seedWith={(d) => Object.fromEntries(LIMIT_KEYS.filter((k) => d.cart_limits?.[k] !== undefined).map((k) => [k, d.cart_limits[k]]))}
       intro="Fee = base + distance. The system works out every order's fee from these rates; nobody types a fee by hand. No VAT is charged on delivery fees. New rates apply only to orders placed after they go live."
       describe={(v) => `Customer base ${v?.customer_base}, per km ${v?.customer_per_km}; rider per job ${v?.rider_per_job}, per km ${v?.rider_per_km}.`}
     >
@@ -178,6 +206,15 @@ export function DeliveryPricingPanel({ auth }) {
               {VEHICLES.map(([id, text]) => labelled(text, <input key={id} aria-label={`${text} multiplier`} inputMode="decimal" value={multipliers[id]} onChange={(e) => setMult({ ...multipliers, [id]: e.target.value })} style={{ ...field, maxWidth: 100 }} />, "×"))}
             </div>
           </section>
+          {data.cart_limits && (
+            <section aria-label="Delivery limits" style={section}>
+              <h3 style={sectionTitle}>Shops per delivery</h3>
+              <span style={{ fontSize: "0.82rem", color: D.text }}>
+                In force{data.cart_limits.source === "defaults" ? " (built-in defaults; no card approved yet)" : ""}: up to {data.cart_limits.max_shops_per_delivery} shops, {data.cart_limits.max_food_shops} food places, nearby within {data.cart_limits.near_shop_radius_km} km, detour allowance {data.cart_limits.detour_limit_pct}%.
+              </span>
+              <span style={dim}>One rider collects from every shop in an order. Food places are collected last. A route longer than going direct from the first shop by more than the allowance warns you, and the km beyond it are charged at the per-km rate.</span>
+            </section>
+          )}
           <TryRoute form={form} multipliers={multipliers} hasCard={Boolean(data.current)} />
           <span style={dim}>Distance basis: {data.distance_basis}.</span>
         </>

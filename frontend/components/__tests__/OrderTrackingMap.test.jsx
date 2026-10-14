@@ -127,3 +127,29 @@ describe('OrderTrackingMap (customer)', () => {
     expect(screen.queryByText(/location is not available/i)).not.toBeInTheDocument()
   })
 })
+
+describe('OrderTrackingMap with several shops', () => {
+  it('counts the shops before the last pickup, with no map', async () => {
+    const calls = track(PICKED_UP)
+    mount(<OrderTrackingMap orderId={7} assignmentStatus="accepted" deliveryStatus="processing" stops={{ total: 3, done: 1, skipped: 0 }} />)
+    expect(screen.getByText('Collecting from 3 shops: 1 done.')).toBeInTheDocument()
+    expect(screen.queryByTestId('track-map')).not.toBeInTheDocument()
+    await new Promise((r) => setTimeout(r, 60))
+    expect(calls).toHaveLength(0)
+  })
+
+  it('says a shop that could not hand over is for Support to review, without promising a refund, before and after pickup', async () => {
+    track(PICKED_UP)
+    const { rerender } = mount(<OrderTrackingMap orderId={7} assignmentStatus="accepted" deliveryStatus="processing" stops={{ total: 3, done: 1, skipped: 1 }} />)
+    expect(screen.getByText('Collecting from 3 shops: 1 done, 1 could not hand over.')).toBeInTheDocument()
+    expect(screen.getByText(/will not arrive\. AshantiHub Support will review a refund and be in touch/)).toBeInTheDocument()
+    expect(screen.queryByText(/is refunded|are refunded/)).not.toBeInTheDocument()
+    rerender(<QueryClientProvider client={new QueryClient()}><OrderTrackingMap orderId={7} assignmentStatus="picked_up" deliveryStatus="out_for_delivery" stops={{ total: 3, done: 2, skipped: 1 }} /></QueryClientProvider>)
+    expect(screen.getByText(/AshantiHub Support will review a refund/)).toBeInTheDocument()
+  })
+
+  it('adds nothing for a single shop', () => {
+    mount(<OrderTrackingMap orderId={7} assignmentStatus="accepted" deliveryStatus="processing" stops={null} />)
+    expect(screen.queryByText(/Collecting from/)).not.toBeInTheDocument()
+  })
+})

@@ -25,6 +25,10 @@ class Category(models.Model):
     # (check-in/out) through the booking engine, not requested (services) or
     # carted (products). Only ever meaningful for a service-kind category.
     is_accommodation = models.BooleanField(default=False)
+    # Prepared food (chop bars, restaurants): carted and delivered like a product, but one delivery collects from at most
+    # RateCard.max_food_shops food places and collects them last (spec 2026-10-14). Set on the "food" and "beverages"
+    # categories by migration 0020; `kind` stays as it was.
+    is_food = models.BooleanField(default=False)
 
     def __str__(self):
         return self.label

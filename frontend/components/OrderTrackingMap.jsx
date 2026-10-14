@@ -54,12 +54,24 @@ function LiveMap({ orderId }) {
   );
 }
 
+// A delivery from several shops: how many are collected and, only when one could not hand over, that its items will not
+// arrive. Counts only: the customer is never shown shop positions or codes. No refund is promised: Support reviews it.
+function StopsLine({ stops, full }) {
+  if (!stops || stops.total < 2) return null;
+  return (
+    <>
+      {full && <p style={note}>Collecting from {stops.total} shops: {stops.done} done{stops.skipped ? `, ${stops.skipped} could not hand over` : ""}.</p>}
+      {stops.skipped > 0 && <p style={note}>Items from a shop that could not hand over will not arrive. AshantiHub Support will review a refund and be in touch.</p>}
+    </>
+  );
+}
+
 // `deliveryStatus` is the order's own delivery_status: the pre-pickup lines only show while it is
 // still "processing", so an order staff moved on directly never reads "Finding a rider".
-export default function OrderTrackingMap({ orderId, assignmentStatus, deliveryStatus }) {
+export default function OrderTrackingMap({ orderId, assignmentStatus, deliveryStatus, stops = null }) {
   const processing = deliveryStatus === "processing";
   if (assignmentStatus == null) return processing ? <p style={note}>Finding a rider</p> : null;
-  if (BEFORE_PICKUP.includes(assignmentStatus)) return processing ? <p style={note}>{BEFORE_PICKUP_COPY[assignmentStatus]}</p> : null;
-  if (LIVE.includes(assignmentStatus)) return <LiveMap orderId={orderId} />;
+  if (BEFORE_PICKUP.includes(assignmentStatus)) return processing ? <><p style={note}>{BEFORE_PICKUP_COPY[assignmentStatus]}</p><StopsLine stops={stops} full /></> : null;
+  if (LIVE.includes(assignmentStatus)) return <><StopsLine stops={stops} full={false} /><LiveMap orderId={orderId} /></>;
   return null;
 }

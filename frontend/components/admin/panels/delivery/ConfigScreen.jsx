@@ -16,14 +16,15 @@ export const labelled = (text, control, hint) => (
   </label>
 );
 
-export default function ConfigScreen({ query, endpoint, title, intro, fields, startFrom, canPropose = true, isSuperAdmin, headerRight, children, onSaved, valuesOf, describe, historyLabel }) {
+export default function ConfigScreen({ query, endpoint, title, intro, fields, startFrom, canPropose = true, isSuperAdmin, headerRight, children, onSaved, valuesOf, describe, historyLabel, validate, seedWith }) {
   const { data, isLoading, isError, refetch } = query;
   const [form, setForm] = useState(null);
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
   const [busy, setBusy] = useState(false);
-  const seed = data ? (startFrom ? startFrom(data) : data.current || {}) : null;
+  const [fieldErrors, setFieldErrors] = useState({});
+  const seed = data ? { ...(seedWith ? seedWith(data) : {}), ...(startFrom ? startFrom(data) : data.current || {}) } : null;
   useEffect(() => {
     if (seed && form === null) setForm(Object.fromEntries(fields.map((f) => [f.key, seed[f.key] ?? ""])));
   }, [seed]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -33,6 +34,9 @@ export default function ConfigScreen({ query, endpoint, title, intro, fields, st
   const send = async () => {
     setError("");
     setDone("");
+    const problems = validate ? validate(form) : {};
+    setFieldErrors(problems);
+    if (Object.keys(problems).length) return;
     setBusy(true);
     try {
       const out = await apiPost(endpoint, { values, note });
@@ -41,7 +45,10 @@ export default function ConfigScreen({ query, endpoint, title, intro, fields, st
       refetch();
       onSaved?.(out);
     } catch (err) {
-      setError(apiErrorMessage(err, "Could not send this change."));
+      const message = apiErrorMessage(err, "Could not send this change.");
+      const bad = fields.find((f) => f.key === err?.body?.field);
+      if (bad) setFieldErrors({ [bad.key]: message });
+      setError(bad ? `${bad.label}: ${message}` : message);
     } finally {
       setBusy(false);
     }
@@ -85,7 +92,8 @@ export default function ConfigScreen({ query, endpoint, title, intro, fields, st
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                   {fields.map((f) => (
                     <div key={f.key} style={{ display: "flex", flexDirection: "column" }}>
-                      {labelled(f.label, <input aria-label={f.label} inputMode={f.type === "time" ? undefined : "decimal"} type={f.type === "time" ? "time" : "text"} value={form[f.key]} onChange={set(f.key)} style={{ ...field, maxWidth: 140 }} />, [f.unit, f.unenforced ? "Saved with the rules; nothing acts on this yet." : ""].filter(Boolean).join(" · "))}
+                      {labelled(f.label, <input aria-label={f.label} aria-invalid={fieldErrors[f.key] ? true : undefined} inputMode={f.type === "time" ? undefined : "decimal"} type={f.type === "time" ? "time" : "text"} value={form[f.key]} onChange={set(f.key)} style={{ ...field, maxWidth: 140 }} />, [f.unit, f.unenforced ? "Saved with the rules; nothing acts on this yet." : ""].filter(Boolean).join(" · "))}
+                      {fieldErrors[f.key] && <span role="alert" style={{ color: D.amber, fontSize: "0.7rem", fontWeight: 700 }}>{fieldErrors[f.key]}</span>}
                     </div>
                   ))}
                 </div>

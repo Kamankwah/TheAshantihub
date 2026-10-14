@@ -140,6 +140,7 @@ function Offer({ offer, onChanged }) {
         <div>
           <div style={dim}>Pick up{offer.to_pickup_km !== null ? ` · ${offer.to_pickup_km} km from you (estimate)` : ""}</div>
           <div style={{ fontWeight: 800, color: D.text }}>{offer.pickup.business_name || "Pickup not set"}</div>
+          {offer.stop_count > 1 && <div style={dim}>Then {offer.stop_count - 1} more shop{offer.stop_count === 2 ? "" : "s"} on the same trip</div>}
           <div style={{ ...dim, marginTop: 8 }}>Drop off{offer.trip_km !== null ? ` · ${offer.trip_km} km after pickup (estimate)` : ""}</div>
           <div style={{ fontWeight: 800, color: D.text }}>{offer.delivery_address || "No address"}</div>
           <div style={dim}>{offer.items} item{offer.items === 1 ? "" : "s"}</div>

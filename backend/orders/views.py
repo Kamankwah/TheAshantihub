@@ -2,6 +2,7 @@ from django.conf import settings
 from decimal import Decimal
 
 from django.db import transaction as db_transaction
+from django.db.models import Prefetch
 from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.pagination import PageNumberPagination
@@ -12,7 +13,9 @@ from rest_framework.views import APIView
 from accounts.models import StaffUser
 from accounts.permissions import HasRolePermission
 from accounts.views import IsBusinessOwner, IsCustomer
+from cart import guard as cart_guard
 from cart.models import Cart
+from delivery.models import DeliveryEvent
 from disputes.models import Dispute
 from listings.models import Listing
 from disputes.serializers import DisputeSerializer
@@ -60,7 +63,7 @@ class OrderCheckoutView(APIView):
 
     def post(self, request):
         cart = Cart.objects.filter(customer=request.user).first()
-        items = list(cart.items.select_related("listing")) if cart is not None else []
+        items = list(cart.items.select_related("listing__business_owner__profile", "listing__category")) if cart is not None else []
         if not items:
             return Response({"detail": "Your cart is empty."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -72,6 +75,13 @@ class OrderCheckoutView(APIView):
                 {"delivery_method": "Choose door-to-door delivery or store pickup."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # The cart guard (cart.guard): a service or stay line refuses every method (the row may predate the rule); more
+        # shops or food places than one delivery allows refuse door-to-door only, and so does a food place with no other
+        # cart shop within the radius (checked below, from the planned route). The cart is left exactly as it is.
+        try:
+            cart_guard.check_checkout(items, delivery_method)
+        except cart_guard.GuardError as exc:
+            return Response(exc.body(), status=status.HTTP_400_BAD_REQUEST)
         delivery_address = (request.data.get("delivery_address") or "").strip()
         delivery_phone = (request.data.get("delivery_phone") or "").strip()
         if delivery_method == Order.DOOR_TO_DOOR and (not delivery_address or not delivery_phone):
@@ -87,13 +97,23 @@ class OrderCheckoutView(APIView):
             if lat not in (None, "") and lng not in (None, "") and not region.in_service_area(lat, lng):
                 return Response({"detail": region.OUT_OF_AREA_MESSAGE, "code": "out_of_area"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # The fee quote may call the road-routing service (a network round trip), so it is worked out before the
-        # transaction opens: it needs no row lock and must not hold a database transaction open while it waits.
+        # The pickup route and the fee may call the road-routing service (a network round trip), so both are worked out
+        # before the transaction opens: they need no row lock and must not hold a database transaction open while they wait.
+        plan = None
+        if delivery_method == Order.DOOR_TO_DOOR:
+            from delivery.stops import plan_with_distances
+
+            plan, distances = plan_with_distances(items, request.data.get("delivery_lat"), request.data.get("delivery_lng"))
+            try:
+                # The food radius from the planner's own table: no second routing call (cart.guard.check_food_radius).
+                cart_guard.check_food_radius(items, distances=distances)
+            except cart_guard.GuardError as exc:
+                return Response(exc.body(), status=status.HTTP_400_BAD_REQUEST)
         quoted = None
         if settings.DELIVERY_FEE_ENABLED and delivery_method == Order.DOOR_TO_DOOR:
             from delivery.rates import checkout_fee
 
-            quoted = checkout_fee(items, request.data.get("delivery_lat"), request.data.get("delivery_lng"))
+            quoted = checkout_fee(items, request.data.get("delivery_lat"), request.data.get("delivery_lng"), plan=plan)
 
         with db_transaction.atomic():
             # Checkout promotions (marketing): off unless settings.MARKETING_PROMOS_ENABLED, and
@@ -147,7 +167,7 @@ class OrderCheckoutView(APIView):
                 total += charged
             order = Order.objects.create(
                 customer=request.user, status=Order.PENDING, total_amount=total,
-                delivery_fee=charged if fee_quote else None, delivery_fee_breakdown=fee_quote, rate_card=fee_card,
+                delivery_fee=charged if fee_quote else None, delivery_fee_breakdown=fee_quote, rate_card=fee_card, route_plan=plan,
                 **(promo.order_extras() if promo else {}),
                 delivery_method=delivery_method,
                 delivery_address=delivery_address if delivery_method == Order.DOOR_TO_DOOR else "",
@@ -208,7 +228,7 @@ class OrderListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated, IsCustomer]
 
     def get_queryset(self):
-        return Order.objects.filter(customer=self.request.user).select_related("delivery_assignment")
+        return _customer_orders(self.request.user)
 
 
 class OrderDetailView(generics.RetrieveAPIView):
@@ -220,11 +240,28 @@ class OrderDetailView(generics.RetrieveAPIView):
     permission_classes = [IsAuthenticated, IsCustomer]
 
     def get_queryset(self):
-        return Order.objects.filter(customer=self.request.user).select_related("delivery_assignment")
+        return _customer_orders(self.request.user)
+
+
+# The delivery fields read the saved stops; a job from before multi-stop delivery has none and is read as one stop at
+# its first item's business (its pin and category). Prefetched so a page costs the same number of queries however many
+# orders it holds.
+_LEGACY_STOP_READS = ("items__listing__business_owner__profile", "items__listing__category")
+
+
+def _customer_orders(customer):
+    return (
+        Order.objects.filter(customer=customer).select_related("delivery_assignment", "coupon")
+        .prefetch_related("delivery_assignment__stops", *_LEGACY_STOP_READS)
+    )
 
 
 def _assignment_of(order):
-    return DeliveryAssignment.objects.select_related("order", "dispatch", "dispatch__rider").filter(order=order).first()
+    return (
+        DeliveryAssignment.objects.select_related("order", "dispatch", "dispatch__rider")
+        .prefetch_related("stops__business_owner__profile", "order__items__listing__business_owner__profile", "order__items__listing__category")
+        .filter(order=order).first()
+    )
 
 
 class OrderTrackingView(APIView):
@@ -245,7 +282,8 @@ class OrderTrackingView(APIView):
 
 class OwnerOrderTrackingView(APIView):
     """GET /api/orders/owner/{id}/tracking/ - the vendor's map. Scoped like OwnerOrderListView (a paid order
-    with one of the caller's listings; anything else is a 404). Never carries the customer's address, pin or phone."""
+    with one of the caller's listings; anything else is a 404). Never carries the customer's address, pin or phone,
+    and shows only the caller's own pickup stop (tracking.business_map)."""
 
     permission_classes = [IsAuthenticated, IsBusinessOwner]
 
@@ -283,8 +321,12 @@ class OwnerOrderListView(generics.ListAPIView):
             Order.objects.filter(
                 status=Order.PAID, items__listing__business_owner=self.request.user
             )
-            .select_related("customer", "delivery_assignment")
-            .prefetch_related("items__listing")
+            .select_related("customer", "delivery_assignment", "delivery_assignment__dispatch")
+            .prefetch_related(
+                "delivery_assignment__stops__business_owner__profile", *_LEGACY_STOP_READS,
+                # Only the skip events are read (the rider's report at this owner's stop).
+                Prefetch("delivery_assignment__events", queryset=DeliveryEvent.objects.filter(step=DeliveryEvent.SKIPPED_STOP)),
+            )
             .distinct()
             .order_by("-placed_at")
         )
@@ -563,7 +605,7 @@ class DispatchMapView(APIView):
 
         assignment = get_object_or_404(
             DeliveryAssignment.objects.select_related("order", "order__customer", "dispatch", "dispatch__rider")
-            .prefetch_related("order__items__listing__business_owner__profile"),
+            .prefetch_related("order__items__listing__business_owner__profile", "order__items__listing__category", "stops__business_owner__profile"),
             pk=pk, dispatch=request.user,
         )
         return Response(tracking.manager_job_map(assignment))

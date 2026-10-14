@@ -28,7 +28,7 @@ class BasisTests(SimpleTestCase):
         self.assertEqual(Decimal(out["total"]), Decimal("6.36"))
 
     def test_route_km_returns_km_and_basis_from_routing(self):
-        order = mock.Mock()
+        order = mock.Mock(spec=[])
         with mock.patch("delivery.rates.services.pickup_stop", return_value=(6.69, -1.62, "Shop")), \
              mock.patch("delivery.rates.services.drop_stop", return_value=(6.70, -1.60)), \
              mock.patch("delivery.rates.routing_service.leg", return_value={"distance_km": 5.4, "basis": "road route"}):
@@ -37,4 +37,4 @@ class BasisTests(SimpleTestCase):
     def test_route_km_none_when_a_point_is_missing(self):
         with mock.patch("delivery.rates.services.pickup_stop", return_value=(None, None, "Shop")), \
              mock.patch("delivery.rates.services.drop_stop", return_value=(6.70, -1.60)):
-            self.assertEqual(rates.route_km(mock.Mock()), (None, None))
+            self.assertEqual(rates.route_km(mock.Mock(spec=[])), (None, None))

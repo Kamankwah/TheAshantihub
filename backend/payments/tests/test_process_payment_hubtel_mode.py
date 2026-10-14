@@ -34,10 +34,10 @@ class OrderCheckoutHubtelModeTests(TestCase):
         self.customer = Customer.objects.create(
             full_name="Ama Buyer", phone="+233200992001", password_hash="x",
         )
-        self.hotels = Category.objects.get(slug="hotels")
+        self.shops = Category.objects.get(slug="shops")
         self.zone = Zone.objects.get(name="Manhyia")
         self.listing = Listing.objects.create(
-            business_owner=self.owner, category=self.hotels, zone=self.zone,
+            business_owner=self.owner, category=self.shops, zone=self.zone,
             name="Room A", description="D.", contact_phone="+233207992001",
             price_amount="150.00", status=Listing.PUBLISHED,
         )

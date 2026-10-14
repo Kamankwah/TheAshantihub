@@ -21,16 +21,16 @@ class CheckoutTestsBase(TestCase):
         self.other_customer = Customer.objects.create(
             full_name="Yaw Buyer", phone="+233200662002", password_hash="x",
         )
-        self.hotels = Category.objects.get(slug="hotels")
+        self.shops = Category.objects.get(slug="shops")
         self.manhyia = Zone.objects.get(name="Manhyia")
 
         self.listing_a = Listing.objects.create(
-            business_owner=self.owner, category=self.hotels, zone=self.manhyia,
+            business_owner=self.owner, category=self.shops, zone=self.manhyia,
             name="Room A", description="D.", contact_phone="+233207662001",
             price_amount="150.00", status=Listing.PUBLISHED,
         )
         self.listing_b = Listing.objects.create(
-            business_owner=self.owner, category=self.hotels, zone=self.manhyia,
+            business_owner=self.owner, category=self.shops, zone=self.manhyia,
             name="Room B", description="D.", contact_phone="+233207662001",
             price_amount="75.50", status=Listing.PUBLISHED,
         )

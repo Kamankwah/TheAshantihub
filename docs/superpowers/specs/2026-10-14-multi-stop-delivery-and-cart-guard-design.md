@@ -1,6 +1,6 @@
 # Multi-stop delivery and the shop-aware cart guard — design
 
-Date: 2026-10-14. Status: decisions settled in conversation (2026-10-13/14); awaiting spec review.
+Date: 2026-10-14. Status: BUILT on branch `feature/multi-stop-delivery` (backend and frontend; staging and hand check pending). Decisions settled in conversation (2026-10-13/14).
 Amends section 4 ("Several businesses in one cart") and sections 2, 3, 5, 6 of
 `2026-10-13-delivery-routing-dispatch-design.md`. Read that spec first.
 
@@ -148,8 +148,43 @@ separately, and stays are booked separately." Checkout re-checks (a cart row may
 Splitting the extra-pickup charge between businesses; automatic re-planning after dispatch; more
 than 6 stops; different riders per shop; any change to the service request or stay booking flows.
 
+## Built
+
+Migrations: `listings 0020_category_is_food`, `orders 0008_route_plan`, `delivery 0004_ratecard_delivery_limits`,
+`delivery 0005_pickup_stops`, `delivery 0006_deliveryevent_dispute`.
+
+Owner rulings made during the build:
+
+- The Food flag is set on `food` and on a new `beverages` category. Pubs & Bars are not food.
+- The detour charge applies only to km beyond the 40% allowance.
+- Deliveries assigned before release keep their single stop and old code (no migration of in-flight jobs).
+- Shop and food limits apply door-to-door only, checked at checkout; service and stay refusal applies at every checkout.
+- The 3 km food radius is enforced on add and again at checkout.
+- A job where every shop is skipped fails with reason `all_stops_skipped` and is re-queued by resetting the same
+  OneToOne row. Skip evidence (rider pin, time, note) lives on append-only `skipped_stop` `DeliveryEvent` rows and
+  survives the reset; `DeliveryEvent.dispute` links the event to its case.
+- A vendor sees the delivery address but no contact details; a rider's skip note has phone numbers and emails
+  scrubbed on the shop's copy.
+- A shop sees its own pickup code from the start; the rider appears on a shop's screen only for that shop's stop.
+- `routing.service.legs_between` (one OSRM call) returns the legs between an ordered list of points.
+- Customer-side MoMo payment runs before `POST checkout`, so the UI blocks Pay until the cart guard has loaded.
+
+## Known follow-ups
+
+- Rider pay distance (`rates.route_km`) still measures first shop to drop and understates multi-stop trips.
+  OPEN pay-policy decision for the owner.
+- Shop limits apply at add even if store pickup is chosen later; cart tiers sort above paid featured placement.
+- Guard: false `food_unlocated` when a cart shop has no location but the added listing has one; add can pass
+  where checkout later refuses for a pinless business; checkout can refuse on an estimate while OSRM is down;
+  tier-2 cache is 60 s per process; the routing matrix is uncached.
+- Planner has no input validation (callers guarantee located shops and unique keys); mixed-unit partial
+  tables can pick a suboptimal (labelled estimate) order; missing boundary-value tests for the limits.
+- Rider skip note is shown to the shop with phone numbers scrubbed only by pattern.
+- Rider app copy says "gone back to your manager" after an all-skipped job; the backend sends it to the Delivery queue.
+- StopsLine and the refund notice disappear once an order is delivered or confirmed.
+- Hand check in a real browser (Leaflet, phone width) is still owed.
+
 ## Open items
 
-- Proposed default for `detour_limit_pct` (suggest 40%) and food radius (same 3 km) for owner
-  confirmation.
-- Whether the legacy `pickup_code` fields are dropped in a follow-up migration.
+- Detour default 40% and food radius 3 km adopted as built; owner may still change them in the rate card.
+- Legacy `pickup_code` fields are still mirrored from stop 1; dropping them is a follow-up migration.
