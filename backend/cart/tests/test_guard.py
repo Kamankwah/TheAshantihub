@@ -1,12 +1,15 @@
+import threading
 from unittest import mock
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlsplit
 
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.db import connection
+from django.test import TestCase, TransactionTestCase, override_settings
 from rest_framework.test import APIClient
 
 from accounts.authentication import issue_token
 from accounts.models import BusinessOwner, BusinessOwnerProfile, Customer
+from cart import guard as cart_guard
 from cart.guard import SERVICE_STAY_MESSAGE
 from cart.models import Cart, CartItem
 from delivery.models import RateCard
@@ -21,11 +24,15 @@ def leg(km):
 
 
 def osrm_table(km):
-    """A fake OSRM /table answer: every source to every destination is `km` by road."""
+    """A fake OSRM /table answer: every source to every destination is `km` by road (a full matrix when the request
+    names no sources, as routing.client.matrix sends it)."""
 
     def answer(url, timeout):
-        query = parse_qs(urlparse(url).query)
-        sources, destinations = query["sources"][0].split(";"), query["destinations"][0].split(";")
+        parsed = urlsplit(url)  # not urlparse: it would cut the path at the first ";"
+        query = parse_qs(parsed.query)
+        points = parsed.path.rsplit("/", 1)[-1].split(";")
+        sources = query["sources"][0].split(";") if "sources" in query else points
+        destinations = query["destinations"][0].split(";") if "destinations" in query else points
         return {"code": "Ok", "durations": [[300.0] * len(destinations) for _ in sources],
                 "distances": [[km * 1000] * len(destinations) for _ in sources]}
 
@@ -124,6 +131,51 @@ class AddToCartTests(GuardCase):
             "code": "food_unlocated",
         })
 
+    def test_a_far_shop_cannot_join_a_cart_whose_only_shop_sells_food(self):
+        self.put(self.listing(slug="food"))
+        r = self.add(self.listing(point=(6.80, -1.6244)))  # about 12 km
+        self.assertEqual(r.json(), {
+            "detail": "This shop is more than 3 km from the food place in your cart, so one rider cannot collect both on the same trip.",
+            "code": "food_far",
+        })
+        self.assertEqual(self.add(self.listing(point=(6.6905, -1.6244))).status_code, 201)
+        self.assertEqual(self.add(self.listing(point=(6.80, -1.6200))).status_code, 201)  # the food place has a shop nearby now
+
+    def test_a_shop_published_after_the_near_map_was_measured_is_measured_again(self):
+        self.put(self.listing(slug="food"))
+        self.assertIsNone(self.guard(self.listing(point=(6.6905, -1.6244)))["listing"]["blocked"])  # measures and caches the map
+        late = self.listing(point=(6.6895, -1.6244))  # 0.1 km away, published after that map was measured
+        self.assertEqual(self.add(late).status_code, 201)
+
+    def test_food_from_a_far_shop_already_in_the_cart_is_refused_unless_it_is_the_only_shop(self):
+        near, far = self.listing(), self.listing(point=(6.80, -1.6244))
+        self.put(near, far)
+        r = self.add(self.listing(slug="food", owner=far.business_owner, point=(6.80, -1.6244)))
+        self.assertEqual(r.json()["code"], "food_far")
+        CartItem.objects.filter(listing=near).delete()
+        self.assertEqual(self.add(self.listing(slug="food", owner=far.business_owner, point=(6.80, -1.6244))).status_code, 201)
+
+    def test_an_estimated_distance_is_said_to_be_an_estimate(self):
+        self.put(self.listing())
+        r = self.add(self.listing(slug="food", point=(6.7101, -1.6244)))  # 2.4 km as the crow flies, 3.12 km estimated
+        self.assertEqual(r.json(), {
+            "detail": "This food place is about 3.1 km (estimate) from the shops in your cart, beyond the 3 km one rider can collect from on the same trip.",
+            "code": "food_far",
+        })
+
+    def test_unlocated_shops_next_to_a_lone_food_place_cannot_be_measured(self):
+        self.put(self.listing(slug="food", point=None))
+        self.assertEqual(self.add(self.listing()).json(), {
+            "detail": "The food place in your cart has no location on the map yet, so no other shop can join the same delivery.",
+            "code": "food_unlocated",
+        })
+        CartItem.objects.all().delete()
+        self.put(self.listing(slug="food"))
+        self.assertEqual(self.add(self.listing(point=None)).json(), {
+            "detail": "This shop has no location on the map yet, so it cannot join a delivery with the food place in your cart.",
+            "code": "food_unlocated",
+        })
+
     def test_a_shop_selling_goods_and_food_counts_once_and_as_food(self):
         mixed = self.listing()
         self.put(self.listing(slug="food"), self.listing(slug="food"), mixed)
@@ -193,6 +245,53 @@ class CheckoutGuardTests(GuardCase):
         self.assertEqual(r.json(), {"detail": "Your delivery can include food from up to 1 place. Your cart has 2. Remove 1 to check out.", "code": "food_limit"})
         self.assertEqual(self.checkout("store_pickup").status_code, 201)
 
+    def test_a_cart_from_before_the_radius_rule_is_refused_for_door_to_door_only(self):
+        self.put(self.listing(slug="food", name="Auntie Chop Bar"), self.listing(point=(6.80, -1.6244)))
+        r = self.checkout("door_to_door")
+        self.assertEqual(r.json(), {
+            "detail": "Food from Auntie Chop Bar is more than 3 km from the other shops in your cart, so one rider cannot collect it on the same trip. Remove it to check out.",
+            "code": "food_far",
+        })
+        self.assertEqual(CartItem.objects.count(), 2)
+        self.assertEqual(self.guard()["checkout"]["door_to_door"]["code"], "food_far")
+        self.assertEqual(self.checkout("store_pickup").status_code, 201)
+
+    def test_a_lowered_radius_binds_at_checkout(self):
+        self.put(self.listing(slug="food"), self.listing(point=(6.7065, -1.6244)))  # 2 km apart as the crow flies
+        self.assertIsNone(self.guard()["checkout"]["door_to_door"])
+        RateCard.objects.create(version=1, status=RateCard.LIVE, customer_base="5", customer_per_km="1.5", customer_min_fee="8",
+                                rider_per_job="3", rider_per_km="1", near_shop_radius_km="1.00")
+        r = self.checkout("door_to_door")
+        self.assertEqual(r.json()["code"], "food_far")
+        self.assertIn("more than 1 km", r.json()["detail"])
+        self.assertEqual(CartItem.objects.count(), 2)
+
+    def test_a_cart_of_one_food_place_checks_out(self):
+        self.put(self.listing(slug="food"))
+        self.assertEqual(self.checkout("door_to_door").status_code, 201)
+
+    def test_an_estimated_route_names_its_distance_as_an_estimate(self):
+        self.put(self.listing(slug="food", name="Mama Put"), self.listing(point=(6.7101, -1.6244)))
+        r = self.client.post("/api/orders/checkout/", {"delivery_method": "door_to_door", "delivery_address": "1 Road",
+                                                       "delivery_phone": "+233200000000", "delivery_lat": KUMASI[0], "delivery_lng": KUMASI[1]}, format="json")
+        self.assertEqual(r.json(), {
+            "detail": "Food from Mama Put is about 3.1 km (estimate) from the other shops in your cart, beyond the 3 km one rider can collect from on the same trip. Remove it to check out.",
+            "code": "food_far",
+        })
+
+    @override_settings(OSRM_URL="http://osrm:5000")
+    def test_checkout_measures_the_radius_from_the_route_plan_without_another_routing_call(self):
+        self.put(self.listing(slug="food"), self.listing(point=(6.6905, -1.6244)))
+        body = {"delivery_method": "door_to_door", "delivery_address": "1 Road", "delivery_phone": "+233200000000",
+                "delivery_lat": 6.6950, "delivery_lng": -1.6300}
+        with mock.patch("routing.client._http_get_json", side_effect=osrm_table(3.5)) as get:
+            r = self.client.post("/api/orders/checkout/", body, format="json")
+        self.assertEqual((r.json().get("code"), get.call_count), ("food_far", 1))
+        self.assertIn("more than 3 km", r.json()["detail"])
+        with mock.patch("routing.client._http_get_json", side_effect=osrm_table(1.5)) as get:
+            r = self.client.post("/api/orders/checkout/", body, format="json")
+        self.assertEqual((r.status_code, get.call_count), (201, 1))
+
     def test_the_guard_endpoint_describes_the_cart(self):
         self.assertEqual(self.guard()["active"], False)
         self.put(self.listing(name="Kente House"))
@@ -221,3 +320,52 @@ class CheckoutGuardTests(GuardCase):
         hidden.business_owner.save(update_fields=["is_suspended"])
         self.assertEqual(self.client.get("/api/cart/guard/", {"listing": hidden.id}).status_code, 404)
         self.assertEqual(self.client.get("/api/cart/guard/", {"listing": "x"}).status_code, 400)
+
+
+class ConcurrentAddTests(TransactionTestCase):
+    """Two adds at the same moment both read a cart of 3 shops: the cart lock lets only one of them make it 4."""
+
+    serialized_rollback = True
+
+    def test_two_adds_at_once_cannot_take_the_cart_past_the_shop_limit(self):
+        cache.clear()
+        customer = Customer.objects.create(full_name="Ama Buyer", phone="+233200771001", password_hash="x")
+        shops = Category.objects.get(slug="shops")
+        zone = Zone.objects.get(name="Manhyia")
+
+        def listing(n):
+            owner = BusinessOwner.objects.create(full_name=f"Shop {n}", login_phone=f"+23320778{n:04d}", password_hash="x")
+            return Listing.objects.create(business_owner=owner, category=shops, zone=zone, name=f"Item {n}", description="D.",
+                                          contact_phone="+233207770000", price_amount="10.00", status=Listing.PUBLISHED,
+                                          lat=str(KUMASI[0]), lng=str(KUMASI[1]))
+
+        cart = Cart.objects.create(customer=customer)
+        for n in range(3):
+            CartItem.objects.create(cart=cart, listing=listing(n), quantity=1, unit_price_snapshot="10.00")
+        racers = [listing(10), listing(11)]
+        token = issue_token(customer, "customer")
+        real_check, local, barrier, results = cart_guard.check_add, threading.local(), threading.Barrier(2, timeout=5), []
+
+        def check_together(lines, item):
+            local.calls = getattr(local, "calls", 0) + 1
+            if local.calls == 1:  # both requests have read the 3-shop cart before either writes
+                barrier.wait()
+            return real_check(lines, item)
+
+        def add(item):
+            try:
+                client = APIClient()
+                client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+                results.append(client.post("/api/cart/items/", {"listing": item.id, "quantity": 1}, format="json").status_code)
+            finally:
+                connection.close()
+
+        with mock.patch("cart.views.guard.check_add", side_effect=check_together):
+            threads = [threading.Thread(target=add, args=(item,)) for item in racers]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=15)
+                self.assertFalse(thread.is_alive(), "a racing add hung")
+        self.assertEqual(sorted(results), [201, 400])
+        self.assertEqual(CartItem.objects.filter(cart=cart).count(), 4)

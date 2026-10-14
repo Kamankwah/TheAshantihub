@@ -88,6 +88,17 @@ class CartTierSearchTests(GuardCase):
         self.assertEqual({rows[i]["cart_tier"] for i in (self.mine.id, self.close.id, self.far.id)}, {3})
         self.assertIsNone(rows[self.tour.id]["cart_tier"])
 
+    def test_the_cached_near_map_still_fits_when_an_unlocated_cart_shop_leaves(self):
+        from cart.models import CartItem
+
+        unlocated = self.listing(point=None, name="Shop U")  # Shop U has no pin, and this line has no location
+        elsewhere = self.listing(owner=unlocated.business_owner, point=(6.6905, -1.6244))  # its other item, 0.2 km from Shop A
+        self.put(unlocated)
+        self.assertEqual({r["id"]: r for r in self.search()}[elsewhere.id]["cart_tier"], 1)
+        CartItem.objects.filter(listing=unlocated).delete()  # the located cart shops are unchanged, so is the cache key
+        row = {r["id"]: r for r in self.search()}[elsewhere.id]
+        self.assertEqual((row["cart_tier"], row["cart_label"]), (2, "0.3 km from Shop A (estimate)"))
+
     def test_anonymous_and_business_callers_get_plain_search(self):
         self.client.credentials()
         self.assertNotIn("cart_tier", self.search()[0])

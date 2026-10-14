@@ -76,7 +76,8 @@ class OrderCheckoutView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         # The cart guard (cart.guard): a service or stay line refuses every method (the row may predate the rule); more
-        # shops or food places than one delivery allows refuse door-to-door only. The cart is left exactly as it is.
+        # shops or food places than one delivery allows refuse door-to-door only, and so does a food place with no other
+        # cart shop within the radius (checked below, from the planned route). The cart is left exactly as it is.
         try:
             cart_guard.check_checkout(items, delivery_method)
         except cart_guard.GuardError as exc:
@@ -100,9 +101,14 @@ class OrderCheckoutView(APIView):
         # before the transaction opens: they need no row lock and must not hold a database transaction open while they wait.
         plan = None
         if delivery_method == Order.DOOR_TO_DOOR:
-            from delivery.stops import plan_for_lines
+            from delivery.stops import plan_with_distances
 
-            plan = plan_for_lines(items, request.data.get("delivery_lat"), request.data.get("delivery_lng"))
+            plan, distances = plan_with_distances(items, request.data.get("delivery_lat"), request.data.get("delivery_lng"))
+            try:
+                # The food radius from the planner's own table: no second routing call (cart.guard.check_food_radius).
+                cart_guard.check_food_radius(items, distances=distances)
+            except cart_guard.GuardError as exc:
+                return Response(exc.body(), status=status.HTTP_400_BAD_REQUEST)
         quoted = None
         if settings.DELIVERY_FEE_ENABLED and delivery_method == Order.DOOR_TO_DOOR:
             from delivery.rates import checkout_fee

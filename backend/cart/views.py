@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -42,7 +43,10 @@ class CartItemCreateView(APIView):
 
     The cart guard (cart.guard) refuses, with 400 {"detail", "code"} and
     nothing written, a service, stay or event listing and anything that would
-    take the cart past the delivery limits in force.
+    take the cart past the delivery limits in force. It runs once before the
+    write (a quick refusal, and it measures any distances outside a database
+    transaction) and again under a row lock on the cart, so two adds at the
+    same moment cannot both pass on the same old cart.
     """
 
     permission_classes = [IsAuthenticated, IsCustomer]
@@ -64,18 +68,24 @@ class CartItemCreateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        cart, _ = Cart.objects.get_or_create(customer=request.user)
-        item = CartItem.objects.filter(cart=cart, listing=listing).first()
-        if item is not None:
-            item.quantity += quantity
-            item.save(update_fields=["quantity"])
-            created = False
-        else:
-            item = CartItem.objects.create(
-                cart=cart, listing=listing, quantity=quantity,
-                unit_price_snapshot=listing.price_amount,
-            )
-            created = True
+        with transaction.atomic():
+            cart, _ = Cart.objects.select_for_update().get_or_create(customer=request.user)
+            try:
+                guard.check_add(_guard_lines(cart), listing)  # the same check on the locked cart (the near-shop map is cached)
+            except guard.GuardError as exc:
+                transaction.set_rollback(True)  # nothing written, not even a new empty cart
+                return Response(exc.body(), status=status.HTTP_400_BAD_REQUEST)
+            item = CartItem.objects.filter(cart=cart, listing=listing).first()
+            if item is not None:
+                item.quantity += quantity
+                item.save(update_fields=["quantity"])
+                created = False
+            else:
+                item = CartItem.objects.create(
+                    cart=cart, listing=listing, quantity=quantity,
+                    unit_price_snapshot=listing.price_amount,
+                )
+                created = True
 
         return Response(
             CartItemSerializer(item).data,

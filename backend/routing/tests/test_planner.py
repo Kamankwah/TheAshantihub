@@ -22,7 +22,8 @@ class PlanRouteTests(SimpleTestCase):
     def test_the_shortest_order_ends_at_the_drop(self):
         with table() as call:
             got = planner.plan_route(SHOPS, DROP)
-        self.assertEqual(got, {"order": ["A", "B", "C"], "total_km": 6, "direct_km": 5, "legs_km": [2, 3, 1], "basis": service.BASIS_ROAD})
+        self.assertEqual(got, {"order": ["A", "B", "C"], "total_km": 6, "direct_km": 5, "legs_km": [2, 3, 1], "basis": service.BASIS_ROAD,
+                               "between_km": {"A": {"B": 2, "C": 9}, "B": {"A": 2, "C": 3}, "C": {"A": 9, "B": 3}}})
         call.assert_called_once()
         self.assertEqual(call.call_args[0][0][-1], DROP)
 
@@ -47,7 +48,8 @@ class PlanRouteTests(SimpleTestCase):
         with mock.patch("routing.planner.service.leg", return_value=leg), table() as call:
             got = planner.plan_route(SHOPS[:1], DROP)
         call.assert_not_called()
-        self.assertEqual(got, {"order": ["A"], "total_km": 4.2, "direct_km": 4.2, "legs_km": [4.2], "basis": service.BASIS_ROAD})
+        self.assertEqual(got, {"order": ["A"], "total_km": 4.2, "direct_km": 4.2, "legs_km": [4.2], "basis": service.BASIS_ROAD,
+                               "between_km": {"A": {}}})
 
     def test_six_shops_are_brute_forced(self):
         shops = [{"key": n, "lat": 6.7 + n / 100, "lng": -1.62, "food": False} for n in range(1, 7)]

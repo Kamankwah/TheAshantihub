@@ -19,14 +19,17 @@ def detour_pct(total_km, direct_km):
 def plan_route(shops, drop):
     """shops: [{"key", "lat", "lng", "food"}] (1..MAX_STOPS, every one located); drop: (lat, lng). Returns the shortest
     route through every shop, non-food shops first, ending at the drop: {"order", "total_km", "direct_km" (first shop to
-    the drop), "legs_km", "basis"}. Ties go to the shops given first."""
+    the drop), "legs_km", "basis", "between_km"}. between_km[a][b] is the km from shop a to shop b in the same table (so
+    the cart guard can check its radius at checkout without asking the routing service again). Ties go to the shops
+    given first."""
     if not shops or len(shops) > MAX_STOPS:
         raise ValueError(f"plan_route needs 1 to {MAX_STOPS} shops, got {len(shops)}.")
     drop = (float(drop[0]), float(drop[1]))
     if len(shops) == 1:
         leg = service.leg((float(shops[0]["lat"]), float(shops[0]["lng"])), drop)
         km = round(float(leg["distance_km"]), 2)
-        return {"order": [shops[0]["key"]], "total_km": km, "direct_km": km, "legs_km": [km], "basis": leg["basis"]}
+        return {"order": [shops[0]["key"]], "total_km": km, "direct_km": km, "legs_km": [km], "basis": leg["basis"],
+                "between_km": {shops[0]["key"]: {}}}
     table = service.matrix([(float(s["lat"]), float(s["lng"])) for s in shops] + [drop])
     km, h = table["km"], len(shops)
     plain = [i for i, s in enumerate(shops) if not s.get("food")]
@@ -44,4 +47,5 @@ def plan_route(shops, drop):
     return {
         "order": [shops[i]["key"] for i in seq], "total_km": round(sum(legs), 2), "direct_km": round(km[seq[0]][h], 2),
         "legs_km": [round(x, 2) for x in legs], "basis": table["basis"],
+        "between_km": {a["key"]: {b["key"]: km[i][j] for j, b in enumerate(shops) if j != i} for i, a in enumerate(shops)},
     }

@@ -273,7 +273,15 @@ def skip_history(assignment):
 
 
 def plan_for_lines(lines, drop_lat, drop_lng):
-    """The pickup route for a cart or an order, ready to store on Order.route_plan (JSON-safe); None for no lines.
+    """plan_with_distances without the shop-to-shop distances."""
+    return plan_with_distances(lines, drop_lat, drop_lng)[0]
+
+
+def plan_with_distances(lines, drop_lat, drop_lng):
+    """(plan, distances). distances is {"km": {a: {b: km}}, "basis"} between every pair of shops, from the table the
+    planner used, when the route was planned; else None (nothing extra is measured for it).
+
+    The plan: the pickup route for a cart or an order, ready to store on Order.route_plan (JSON-safe); None for no lines.
     planned=True: every shop and the drop are located and there are at most planner.MAX_STOPS shops, so this is the
     shortest order with food last. Otherwise the fallback order, with direct_km measured from its first shop when both
     ends are known, and no total, detour or over-limit (none is made up). `basis` says how distances were measured (an
@@ -285,7 +293,7 @@ def plan_for_lines(lines, drop_lat, drop_lng):
 
     entries = shop_entries(lines)
     if not entries:
-        return None
+        return None, None
     limits = config.effective_cart_limits()
     limit = limits["detour_limit_pct"]
     drop = _point(drop_lat, drop_lng)
@@ -297,11 +305,11 @@ def plan_for_lines(lines, drop_lat, drop_lng):
         plan.update({"owner_ids": got["order"], "planned": True, "total_km": got["total_km"], "direct_km": got["direct_km"],
                      "legs_km": got["legs_km"], "detour_pct": planner.detour_pct(got["total_km"], got["direct_km"]),
                      "over_limit": over > 0, "basis": got["basis"]})
-        return plan
+        return plan, {"km": got["between_km"], "basis": got["basis"]}
     order = fallback_order(entries)
     plan.update({"owner_ids": order, "planned": False})
     first = next(e for e in entries if e["key"] == order[0])
     if drop is not None and first["lat"] is not None:
         leg = routing_service.leg((first["lat"], first["lng"]), drop)
         plan.update({"direct_km": float(leg["distance_km"]), "basis": leg["basis"]})
-    return plan
+    return plan, None
