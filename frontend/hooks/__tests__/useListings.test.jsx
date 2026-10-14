@@ -126,4 +126,13 @@ describe('useListings', () => {
     rerender({ filters: { category: 'food' } })
     await waitFor(() => expect(requestCount).toBe(2))
   })
+
+  it('asks for cart tiers only when told to', async () => {
+    let url
+    server.use(http.get('http://localhost:8000/api/listings/', ({ request }) => { url = new URL(request.url); return HttpResponse.json({ count: 0, next: null, previous: null, results: [] }) }))
+    const { result } = renderWithClient(() => useListings({ search: 'bead', cartTiers: true }))
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(url.searchParams.get('cart_tiers')).toBe('1')
+    expect(url.searchParams.get('search')).toBe('bead')
+  })
 })

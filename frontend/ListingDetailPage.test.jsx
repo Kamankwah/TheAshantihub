@@ -518,3 +518,32 @@ describe('ListingDetailPage — staff session is view-only', () => {
     expect(eligibilityCalls).toBe(0)
   })
 })
+
+describe('ListingDetailPage and the delivery cart', () => {
+  const CUSTOMER = { fullName: 'Ama Boateng', accountType: 'customer' }
+  const guard = (blocked) => http.get('http://localhost:8000/api/cart/guard/', () => HttpResponse.json({ active: true, limits: {}, shops: [], food_shops: 0, at_shop_limit: true, at_food_limit: false, checkout: { any: null, door_to_door: null }, listing: { id: 1, blocked } }))
+
+  it('a customer at the delivery limit sees the reason instead of Add to Cart', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)), guard({ detail: 'Your delivery can include up to 4 shops. Remove one to add this.', code: 'shop_limit' }))
+    renderPage({ user: CUSTOMER })
+    expect(await screen.findByText('Delivery limit reached')).toBeInTheDocument()
+    expect(screen.getByText('Your delivery can include up to 4 shops. Remove one to add this.')).toBeInTheDocument()
+    expect(screen.queryByText('Add to Cart')).not.toBeInTheDocument()
+  })
+
+  it('food is added to the cart, not requested as a service', async () => {
+    const food = { ...LISTING, category: { slug: 'food', icon: '🍲', label: 'Food', color: '#CC0000', kind: 'service', is_food: true } }
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(food)), guard(null))
+    renderPage({ user: CUSTOMER })
+    expect(await screen.findByText('Add to Cart')).toBeInTheDocument()
+    expect(screen.queryByText('Request this service')).not.toBeInTheDocument()
+  })
+
+  it("a refused add shows the server's reason", async () => {
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)), guard(null))
+    const err = Object.assign(new Error('API request to /api/cart/items/ failed with status 400'), { status: 400, body: { detail: 'Your delivery can include food from up to 2 places. Remove one to add this.', code: 'food_limit' } })
+    renderPage({ user: CUSTOMER, onAddToCart: vi.fn().mockRejectedValue(err) })
+    fireEvent.click(await screen.findByText('Add to Cart'))
+    expect(await screen.findByText('Your delivery can include food from up to 2 places. Remove one to add this.')).toBeInTheDocument()
+  })
+})

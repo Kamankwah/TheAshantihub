@@ -420,3 +420,28 @@ describe('CartDrawer', () => {
     expect(await screen.findByText('Confirm your order')).toBeInTheDocument()
   })
 })
+
+describe('CartDrawer and the delivery limits', () => {
+  const guard = (checkout) => http.get('http://localhost:8000/api/cart/guard/', () => HttpResponse.json({ active: true, limits: {}, shops: [], food_shops: 0, at_shop_limit: true, at_food_limit: false, checkout }))
+
+  it('a cart over the limit cannot be paid for door-to-door, and says why', async () => {
+    server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)), guard({ any: null, door_to_door: { detail: 'Your delivery can include up to 4 shops. Your cart has 5. Remove 1 to check out.', code: 'shop_limit' } }))
+    renderDrawer()
+    fireEvent.click(await screen.findByText('Checkout →'))
+    await screen.findByText('Confirm your order')
+    expect(screen.getByText('Confirm & Pay')).toBeEnabled() // store pickup has no rider
+    fireEvent.click(screen.getByText('🚚 Door-to-door'))
+    fireEvent.change(screen.getByPlaceholderText('Delivery address'), { target: { value: '12 Ash Road, Kumasi' } })
+    fireEvent.change(screen.getByPlaceholderText('Contact phone for delivery'), { target: { value: '+233200112233' } })
+    expect(await screen.findByTestId('cart-guard-block')).toHaveTextContent('Remove 1 to check out')
+    expect(screen.getByText('Confirm & Pay')).toBeDisabled()
+  })
+
+  it('a service line blocks checkout whatever the method', async () => {
+    server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)), guard({ any: { detail: 'Services are requested separately, and stays are booked separately. Remove them from your cart to check out.', code: 'not_deliverable' }, door_to_door: null }))
+    renderDrawer()
+    fireEvent.click(await screen.findByText('Checkout →'))
+    expect(await screen.findByTestId('cart-guard-block')).toHaveTextContent('Services are requested separately')
+    expect(screen.getByText('Confirm & Pay')).toBeDisabled()
+  })
+})
