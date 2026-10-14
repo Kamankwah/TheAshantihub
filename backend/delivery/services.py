@@ -176,14 +176,18 @@ def assign(order, rider_staff, assigned_by, *, mode):
     rider = Rider.objects.filter(staff=rider_staff).select_related("vehicle").first()
     if rider is not None and rider.vehicle_id:
         assignment.vehicle_id = rider.vehicle_id
+    from . import stops
+
+    if existing is not None:
+        # Settle an existing row's stops before ensure_codes gives it a drop code: a job from before codes existed
+        # (no codes, no stops) must keep its one uncoded first-item stop, not take the plan path and get new codes.
+        stops.ensure_stops(assignment)
     ensure_codes(assignment)
     if assignment.deadline_at is None:
         from .dispatching import deadline_for
 
         assignment.deadline_at = deadline_for(order)
     assignment.save()
-    from . import stops
-
     stops.ensure_stops(assignment)
     if existing is not None and (swapped or failed):
         stops.reopen_for_new_rider(assignment, failed=failed, all_skipped=previous_reason == ALL_STOPS_SKIPPED)
@@ -203,15 +207,16 @@ def _fix(lat, lng, accuracy):
     return pin[0], pin[1], accuracy
 
 
-def _stamp(assignment, step, rider_staff, stop, lat, lng, accuracy, *, note="", at_stop=None):
+def _stamp(assignment, step, rider_staff, stop, lat, lng, accuracy, *, note="", at_stop=None, dispute=None):
     """Write the step's event with its distance from the stop; return the event. `at_stop` is the PickupStop the
-    step belongs to (None for the customer's door)."""
+    step belongs to (None for the customer's door); `dispute` is a skip's refund case."""
     distance = None
     if stop and stop[0] is not None and (accuracy is None or accuracy <= MAX_ACCURACY_M):
         distance = round(haversine_m(lat, lng, stop[0], stop[1]))
     return DeliveryEvent.objects.create(
         assignment=assignment, step=step, at=timezone.now(), by=rider_staff, lat=lat, lng=lng, accuracy_m=accuracy,
         distance_m=distance, flagged=distance is not None and distance > FLAG_DISTANCE_M, note=note[:300], stop=at_stop,
+        dispute=dispute,
     )
 
 
@@ -321,11 +326,18 @@ def _after_stop(assignment, stop, by, at, *, left_shop, summary_event=False):
     _sync(assignment)
 
 
-def skip_stop(assignment, by, note, *, stop=None, lat=None, lng=None, accuracy=None):
+_CURRENT_STOP = object()  # skip_stop's default: an internal caller skips the stop being worked without naming it
+
+
+def skip_stop(assignment, by, note, *, stop=None, stop_id=_CURRENT_STOP, lat=None, lng=None, accuracy=None):
     """A shop cannot hand over: its stop is skipped with a note (required), the customer is told, and a delivery case
-    asks for that shop's lines only to be refunded. The skip event keeps the evidence (rider pin, time, note). A rider
-    skips the stop they are working; a manager passes `stop` (any open stop, for a shop that closed or cancelled after
-    dispatch)."""
+    asks for that shop's lines only to be refunded. The skip event keeps the evidence (rider pin, time, note) and the
+    case. A rider skips the stop being worked. The rider app names it (SkipStopView requires it): `stop_id` is the id
+    the rider's job shows (None only while a job from before multi-stop delivery has no saved stop yet). Naming any other
+    stop, or sending the same skip again after it went through, is 409 `stop_done` and changes nothing; a stop of
+    another delivery is 404. An internal caller may leave `stop_id` out to take the current stop. A manager passes
+    `stop` (any open stop of this delivery, for a shop that closed or cancelled after dispatch). Callers hold the
+    assignment's row lock, under which every stop write happens, and the stop is re-read under it."""
     from orders.models import DeliveryAssignment as DA
 
     from . import stops
@@ -339,18 +351,39 @@ def skip_stop(assignment, by, note, *, stop=None, lat=None, lng=None, accuracy=N
     allowed = (DA.ASSIGNED, DA.ACCEPTED, DA.AT_PICKUP) if by_manager else (DA.ACCEPTED, DA.AT_PICKUP)
     if assignment.status not in allowed:
         raise DeliveryError("A shop can only be skipped before the order leaves for the customer.", 409, "wrong_step")
+    done = DeliveryError("That shop is already done. Open the job again for the next stop.", 409, "stop_done")
+    if by_manager:
+        if stop.pk is None or stop.assignment_id != assignment.pk:
+            raise DeliveryError("That shop is not on this delivery.", 404, "not_found")
+    elif stop_id is _CURRENT_STOP:
+        pass
+    elif stop_id is not None:
+        if not PickupStop.objects.filter(pk=stop_id, assignment=assignment).exists():
+            raise DeliveryError("That shop is not on this delivery.", 404, "not_found")
+    elif assignment.stops.exists():
+        raise done  # the rider's screen showed a stop that was not saved yet; it is now, so this is a stale tap
     stops.ensure_stops(assignment)
-    stop = stop or stops.current_stop(assignment)
+    if by_manager:
+        stop = PickupStop.objects.filter(pk=stop.pk, assignment=assignment).first()  # fresh, under the assignment lock
+    else:
+        stop = stops.current_stop(assignment)
+        if stop is not None and isinstance(stop_id, int) and stop.pk != stop_id:
+            raise done
     if stop is None or stop.status not in PickupStop.OPEN:
-        raise DeliveryError("This shop is already done.", 409, "stop_done")
-    left_shop = stop.status == PickupStop.ARRIVED
-    if by_manager:  # a manager's skip has no pin: it is the manager's word, not the rider's report
-        event = DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.SKIPPED_STOP, at=timezone.now(), by=by, note=note, stop=stop)
-    else:  # the rider's pin, time and note are the evidence, so the location is required
+        raise done
+    if not by_manager:  # the rider's pin, time and note are the evidence, so the location is required
         lat, lng, accuracy = _fix(lat, lng, accuracy)
-        event = _stamp(assignment, DeliveryEvent.SKIPPED_STOP, by, (stop.lat, stop.lng), lat, lng, accuracy, note=note, at_stop=stop)
+    left_shop = stop.status == PickupStop.ARRIVED
     stop.status, stop.skip_note, stop.skipped_by = PickupStop.SKIPPED, note, by
     stop.dispute = open_case_for_skipped_stop(assignment, stop)
+    if by_manager:  # a manager's skip has no pin: it is the manager's word, not the rider's report
+        event = DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.SKIPPED_STOP, at=timezone.now(), by=by, note=note,
+                                             stop=stop, dispute=stop.dispute)
+    else:
+        event = _stamp(assignment, DeliveryEvent.SKIPPED_STOP, by, (stop.lat, stop.lng), lat, lng, accuracy, note=note, at_stop=stop,
+                       dispute=stop.dispute)
+        if event.flagged:
+            _alert_managers(assignment, "A rider skipped a shop far from it", f"Order #{assignment.order_id}: {stops.stop_name(stop)}, {event.distance_m} m from the shop.")
     stop.save(update_fields=["status", "skip_note", "skipped_by", "dispute"])
     notify_customer(
         assignment.order.customer, "order_status", "A shop could not hand over your items",
@@ -363,11 +396,15 @@ def skip_stop(assignment, by, note, *, stop=None, lat=None, lng=None, accuracy=N
 
 def open_case_for_skipped_stop(assignment, stop):
     """The delivery case a skipped stop opens: that shop's lines only, with their total, for the usual case decision
-    (a manager records the refund; payments are simulated)."""
+    (a manager records the refund; payments are simulated). A shop skipped again after a re-dispatch, while the case
+    its earlier skip opened is still open, keeps that case: the same lines are never put up for refund twice."""
     from disputes.models import Dispute
 
     from . import config, stops
 
+    earlier = Dispute.objects.filter(skip_events__stop=stop, status__in=(Dispute.OPEN, Dispute.INVESTIGATING)).order_by("created_at", "pk").first()
+    if earlier is not None:
+        return earlier
     order = assignment.order
     lines = stops.stop_lines(stop, order)
     total = sum((i.line_total for i in lines), Decimal("0.00"))
@@ -522,9 +559,11 @@ def open_case_for_failed_delivery(assignment):
     from . import config
 
     order = assignment.order
-    # A skipped shop's refund case (linked from its stop) is never the failed delivery's own case.
+    # A skipped shop's refund case is never the failed delivery's own case. Its stop's link is cleared when a fully
+    # skipped order is re-dispatched, so the skip event's link (append-only) is what marks it.
     existing = Dispute.objects.filter(
-        order=order, status__in=(Dispute.OPEN, Dispute.INVESTIGATING), reason=Dispute.DELIVERY_ISSUE, pickup_stop__isnull=True,
+        order=order, status__in=(Dispute.OPEN, Dispute.INVESTIGATING), reason=Dispute.DELIVERY_ISSUE,
+        pickup_stop__isnull=True, skip_events__isnull=True,
     ).first()
     if existing:
         return existing

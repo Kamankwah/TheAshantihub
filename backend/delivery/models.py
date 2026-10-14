@@ -200,6 +200,9 @@ class DeliveryEvent(models.Model):
     distance_m = models.FloatField(null=True, blank=True)
     flagged = models.BooleanField(default=False)
     note = models.CharField(max_length=300, blank=True)
+    # A `skipped_stop` event's refund case. Kept here because the stop's own link is cleared when every shop was skipped
+    # and the order is re-dispatched: this one survives, so a skip's case is never mistaken for another kind of case.
+    dispute = models.ForeignKey("disputes.Dispute", null=True, blank=True, on_delete=models.SET_NULL, related_name="skip_events")
 
     class Meta:
         ordering = ["at", "id"]

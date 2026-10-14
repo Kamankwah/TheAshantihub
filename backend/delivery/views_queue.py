@@ -154,7 +154,17 @@ def offer_payload(offer, now=None):
 
     now = now or timezone.now()
     order = offer.order
-    plat, plng, name = services.pickup_stop(order)
+    # A job offered again after a failed attempt keeps its saved stops (a job from before multi-stop delivery: its one
+    # first-item shop); only an order never given to a rider reads its plan.
+    assignment = getattr(order, "delivery_assignment", None)
+    if assignment is not None:
+        saved = stops.stops_for_next_rider(assignment)
+        first = saved[0] if saved else None
+        plat, plng, name = (first.lat, first.lng, stops.stop_name(first)) if first else (None, None, "")
+        stop_count = len(saved)
+    else:
+        plat, plng, name = services.pickup_stop(order)
+        stop_count = len(stops.sequence_for_order(order))
     dlat, dlng = services.drop_stop(order)
     shift = services.open_shift(offer.rider)
     leg_to_pickup = routing_service.leg((shift.last_lat, shift.last_lng), (plat, plng)) if shift and shift.last_lat is not None and plat is not None else None
@@ -174,7 +184,7 @@ def offer_payload(offer, now=None):
         "pickup": {"business_name": name, "lat": plat, "lng": plng}, "delivery_address": order.delivery_address, "delivery_lat": dlat, "delivery_lng": dlng,
         "to_pickup_km": to_pickup, "trip_km": trip, "distance_basis": basis, "payment": payloads.payment_label(order),
         "deadline_at": dispatching.deadline_for(order), "pay": pay, "items": order.items.count(),
-        "stop_count": len(stops.sequence_for_order(order)), "route_km": (order.route_plan or {}).get("total_km"),
+        "stop_count": stop_count, "route_km": (order.route_plan or {}).get("total_km"),
     }
 
 
@@ -185,7 +195,7 @@ class MyOffersView(RiderView):
     def get(self, request):
         rider = self.rider(request)
         now = timezone.now()
-        offers = Offer.objects.filter(rider=rider, status=Offer.OFFERED, expires_at__gt=now).select_related("order", "rider").prefetch_related(
+        offers = Offer.objects.filter(rider=rider, status=Offer.OFFERED, expires_at__gt=now).select_related("order", "order__delivery_assignment", "rider").prefetch_related(
             "order__items__listing__business_owner__profile", "order__items__listing__category",
         )
         since = now - timedelta(days=30)

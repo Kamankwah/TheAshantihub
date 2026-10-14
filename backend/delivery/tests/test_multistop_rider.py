@@ -39,9 +39,14 @@ class MultiStopRiderCase(DeliveryCase):
         self.assertEqual(r.status_code, 200, r.content)
         return r.json()
 
+    def current_id(self):
+        current = stops.current_stop(DA.objects.get(pk=self.job.pk))
+        return current.pk if current else None
+
     def skip(self, note="Shop closed early", **extra):
-        """A rider's skip: the rider's pin is required, so one is sent unless `extra` brings its own."""
-        return self.step(self.job, "skip-stop", {"note": note, **self.at(near(A)), **extra})
+        """A rider's skip of the stop being worked: it names that stop (`stop_id`, as the rider's job shows it) and the
+        rider's pin is required, so both are sent unless `extra` brings its own."""
+        return self.step(self.job, "skip-stop", {"note": note, "stop_id": self.current_id(), **self.at(near(A)), **extra})
 
 
 class StopByStopTests(MultiStopRiderCase):
@@ -188,7 +193,7 @@ class SkipTests(MultiStopRiderCase):
 
     def test_a_skip_keeps_the_riders_pin_time_and_note(self):
         self.step(self.job, "accept")
-        refused = self.step(self.job, "skip-stop", {"note": "Door locked"})  # no location sent
+        refused = self.step(self.job, "skip-stop", {"note": "Door locked", "stop_id": self.first.pk})  # no location sent
         self.assertEqual((refused.status_code, refused.json()["code"]), (400, "location_needed"))
         before = timezone.now()
         self.assertEqual(self.skip(note="Door locked", lat=A[0] + 0.0001, lng=A[1], accuracy_m=7).status_code, 200)
@@ -198,7 +203,8 @@ class SkipTests(MultiStopRiderCase):
         self.assertGreaterEqual(event.at, before)
         history = stops.skip_history(self.job)
         self.assertEqual([(h["business_name"], h["note"], h["pinned"], h["by"], h["at_shop"]) for h in history], [("Shop A", "Door locked", True, "rider", True)])
-        self.assertFalse(self.skip(note="x" * 301).status_code == 200)  # the note is capped at 300 characters
+        long = self.skip(note="x" * 301)  # the note is capped at 300 characters
+        self.assertEqual((long.status_code, long.json()["code"], long.json()["field"]), (400, "invalid", "note"))
 
     def test_a_later_can_t_deliver_still_opens_its_own_case(self):
         self.step(self.job, "accept")
@@ -219,6 +225,118 @@ class SkipTests(MultiStopRiderCase):
             services.skip_stop(DA.objects.get(pk=self.job.pk), self.manager, "Closed", stop=PickupStop.objects.get(pk=self.first.pk))
         self.assertEqual((done.exception.status_code, done.exception.code), (409, "stop_done"))
         self.assertFalse(Dispute.objects.filter(order=self.order).exists())
+
+    def test_a_skip_names_the_stop_being_worked_and_a_retry_changes_nothing(self):
+        self.step(self.job, "accept")
+        self.collect(self.first, A)
+        arrived = self.step(self.job, "arrive-pickup", self.at(near(B))).json()
+        self.assertEqual((arrived["current_stop_id"], arrived["current_stop"]["id"]), (self.second.pk, self.second.pk))
+        body = {"note": "Shop shut", "stop_id": self.second.pk, **self.at(near(B))}
+        missing = self.step(self.job, "skip-stop", {"note": "Shop shut", **self.at(near(B))})
+        self.assertEqual((missing.status_code, missing.json()["code"], missing.json()["field"]), (400, "invalid", "stop_id"))
+        later = self.step(self.job, "skip-stop", {**body, "stop_id": self.third.pk})
+        self.assertEqual((later.status_code, later.json()["code"]), (409, "stop_done"))  # not the stop being worked
+        elsewhere_order = self.multi_order(self.item_a)
+        elsewhere = self.assign(elsewhere_order, self.other_staff).stops.get()
+        foreign = self.step(self.job, "skip-stop", {**body, "stop_id": elsewhere.pk})
+        self.assertEqual(foreign.status_code, 404)
+        first = self.step(self.job, "skip-stop", body)
+        self.assertEqual((first.status_code, first.json()["current_stop_id"]), (200, self.third.pk))
+        again = self.step(self.job, "skip-stop", body)  # the same tap sent twice
+        self.assertEqual((again.status_code, again.json()["code"]), (409, "stop_done"))
+        self.assertEqual(Dispute.objects.filter(order=self.order).count(), 1)
+        self.assertEqual(Notification.objects.filter(customer=self.customer, title="A shop could not hand over your items").count(), 1)
+        self.assertEqual(self.job.events.filter(step="skipped_stop").count(), 1)
+        self.job.refresh_from_db()
+        self.third.refresh_from_db()
+        self.assertEqual((self.job.status, self.third.status, self.third.skip_note), (DA.ACCEPTED, PickupStop.PENDING, ""))
+        self.assertFalse(self.job.events.filter(stop=self.third).exists())
+
+    def test_a_skip_far_from_the_shop_alerts_the_manager(self):
+        self.step(self.job, "accept")
+        title = "A rider skipped a shop far from it"
+        self.assertEqual(self.skip(**self.at(near(A))).status_code, 200)  # at Shop A: no alert
+        self.assertFalse(self.manager.notifications.filter(title=title).exists())
+        self.assertEqual(self.skip(**self.at(near(A))).status_code, 200)  # Shop B, but the pin is at Shop A (~780 m)
+        self.assertTrue(self.job.events.filter(step="skipped_stop", stop=self.second, flagged=True).exists())
+        self.assertTrue(self.manager.notifications.filter(title=title).exists())
+
+    def test_an_unmeasured_skip_pin_is_never_called_at_the_shop(self):
+        self.step(self.job, "accept")
+        self.skip(**self.at(near(A), accuracy=services.MAX_ACCURACY_M + 1))  # too loose to measure
+        _, item_n = self.make_shop("Shop N", "+233207000304", None)
+        nowhere = self.assign(self.multi_order(item_n))
+        self.step(nowhere, "accept")
+        self.step(nowhere, "skip-stop", {"note": "No such shop", "stop_id": nowhere.stops.get().pk, **self.at(near(A))})  # no shop pin
+        rows = stops.skip_history(self.job) + stops.skip_history(nowhere)
+        self.assertEqual([(h["pinned"], h["distance_m"], h["at_shop"]) for h in rows], [(True, None, False), (True, None, False)])
+
+    def test_a_managers_skip_names_a_stop_of_this_job_and_reads_it_fresh(self):
+        other = self.assign(self.multi_order(self.item_b), self.other_staff).stops.get()
+        with self.assertRaises(services.DeliveryError) as foreign:
+            services.skip_stop(DA.objects.get(pk=self.job.pk), self.manager, "Closed", stop=other)
+        self.assertEqual(foreign.exception.status_code, 404)
+        stale = PickupStop.objects.get(pk=self.first.pk)  # read before the rider collected it
+        self.step(self.job, "accept")
+        self.collect(self.first, A)
+        with self.assertRaises(services.DeliveryError) as done:
+            services.skip_stop(DA.objects.get(pk=self.job.pk), self.manager, "Closed", stop=stale)
+        self.assertEqual((done.exception.status_code, done.exception.code), (409, "stop_done"))
+        self.assertFalse(Dispute.objects.filter(order=self.order).exists())
+        self.first.refresh_from_db()
+        self.assertEqual(self.first.status, PickupStop.COLLECTED)
+
+    def test_a_failed_delivery_after_a_re_dispatch_opens_its_own_case(self):
+        self.step(self.job, "accept")
+        for _ in range(3):
+            self.skip()
+        self.assign(self.order)  # back to a rider: the three refund cases stay open
+        self.step(self.job, "accept")
+        for stop, point in ((self.first, A), (self.second, B), (self.third, C)):
+            self.collect(stop, point)
+        self.step(self.job, "arrive-drop", self.at(near(DROP)))
+        r = self.step(self.job, "cant-deliver", {**self.at(near(DROP)), "reason": "wrong_address", "note": "No such house"})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(Dispute.objects.filter(order=self.order).count(), 4)
+        case = Dispute.objects.get(order=self.order, case_type=Dispute.UNREACHABLE)
+        self.assertIn("could not deliver", case.description)
+        self.assertEqual(services.open_case_for_failed_delivery(DA.objects.get(pk=self.job.pk)).pk, case.pk)  # opened once
+
+    def test_skipping_the_same_shop_again_reuses_its_open_refund_case(self):
+        self.step(self.job, "accept")
+        for _ in range(3):
+            self.skip()
+        cases = {s.pk: s.dispute_id for s in self.job.stops.all()}
+        self.assign(self.order)
+        self.step(self.job, "accept")
+        Dispute.objects.filter(pk=cases[self.second.pk]).update(status=Dispute.RESOLVED)  # Shop B's refund is settled
+        self.assertEqual(self.skip(note="Still shut").status_code, 200)  # Shop A again, its case still open
+        self.assertEqual(self.skip(note="Shut again").status_code, 200)  # Shop B again, its case already settled
+        self.first.refresh_from_db()
+        self.second.refresh_from_db()
+        self.assertEqual(self.first.dispute_id, cases[self.first.pk])  # no second refund case for Shop A's lines
+        self.assertNotEqual(self.second.dispute_id, cases[self.second.pk])
+        self.assertEqual(Dispute.objects.filter(order=self.order).count(), 4)
+        self.assertEqual(Dispute.objects.filter(order=self.order, status=Dispute.OPEN, description__contains="Shop A item").count(), 1)
+        self.assertEqual(len(stops.skip_history(self.job)), 5)
+
+    def test_an_offer_for_a_returned_job_counts_the_shops_it_will_collect(self):
+        from delivery.models import Offer
+        from delivery.views_queue import offer_payload
+
+        self.step(self.job, "accept")
+        for _ in range(3):
+            self.skip()
+        offer = Offer.objects.create(order=self.order, rider=self.rider, expires_at=timezone.now() + timedelta(seconds=45))
+        payload = offer_payload(offer)
+        self.assertEqual((payload["stop_count"], payload["pickup"]["business_name"]), (3, "Shop A"))
+
+    def test_a_service_caller_skips_the_stop_being_worked_without_naming_it(self):
+        self.step(self.job, "accept")
+        services.skip_stop(DA.objects.get(pk=self.job.pk), self.rider_staff, "Shop was shut", lat=A[0] + 0.0001, lng=A[1], accuracy=8)
+        self.first.refresh_from_db()
+        self.assertEqual(self.first.status, PickupStop.SKIPPED)
+        self.assertEqual(stops.current_stop(self.job).pk, self.second.pk)
 
     def test_a_managers_skip_carries_no_pin_and_reads_as_the_managers(self):
         services.skip_stop(DA.objects.get(pk=self.job.pk), self.manager, "Shop cancelled by phone", stop=PickupStop.objects.get(pk=self.second.pk))
@@ -270,6 +388,38 @@ class LegacyTests(DeliveryCase):
         self.assertEqual([(s.sequence, s.code) for s in job.stops.all()], [(1, "")])
         job.refresh_from_db()
         self.assertEqual(job.pickup_code, "")
+
+    def test_a_job_from_before_codes_given_to_another_rider_keeps_one_uncoded_stop(self):
+        _, item_a = self.make_shop("Shop A", "+233207000319", (6.70, -1.62))
+        owner_b, item_b = self.make_shop("Shop B", "+233207000320", (6.705, -1.615))
+        order = self.multi_order(item_a, item_b, route_plan={"owner_ids": [owner_b.pk, item_a.business_owner_id], "planned": True})
+        DA.objects.create(order=order, dispatch=self.rider_staff, assigned_by=self.manager, status=DA.ASSIGNED)
+        again = self.assign(order, self.other_staff)
+        self.assertEqual([(s.business_owner_id, s.code) for s in again.stops.all()], [(item_a.business_owner_id, "")])
+        self.assertEqual(again.pickup_code, "")
+
+    def test_a_job_from_before_stops_is_skipped_by_naming_its_unsaved_stop(self):
+        _, item_a = self.make_shop("Shop A", "+233207000325", (6.70, -1.62))
+        _, item_b = self.make_shop("Shop B", "+233207000326", (6.705, -1.615))
+        job = DA.objects.create(order=self.multi_order(item_a, item_b), dispatch=self.rider_staff, assigned_by=self.manager,
+                                status=DA.ACCEPTED, pickup_code="4321", drop_code="8765", accepted_at=timezone.now())
+        self.assertIsNone(self.as_staff(self.rider_staff).get(f"/api/delivery/rider/jobs/{job.pk}/").json()["current_stop_id"])
+        body = {"note": "Shop shut", "stop_id": None, **self.at((6.7001, -1.62))}
+        r = self.step(job, "skip-stop", body)
+        self.assertEqual((r.status_code, r.json()["status"], r.json()["failed_reason"]), (200, "failed", "all_stops_skipped"))
+        self.assertEqual(self.step(job, "skip-stop", body).status_code, 409)
+        self.assertEqual(Dispute.objects.filter(order=job.order).count(), 1)
+
+    def test_an_offer_for_a_returned_job_from_before_stops_shows_its_saved_shop(self):
+        from delivery.models import Offer
+        from delivery.views_queue import offer_payload
+
+        order = self.legacy_order()
+        DA.objects.create(order=order, dispatch=self.rider_staff, assigned_by=self.manager, status=DA.FAILED, failed_at=timezone.now(),
+                          failed_reason="wrong_address", pickup_code="4321", drop_code="8765")
+        offer = Offer.objects.create(order=order, rider=self.rider, expires_at=timezone.now() + timedelta(seconds=45))
+        payload = offer_payload(offer)
+        self.assertEqual((payload["pickup"]["business_name"], payload["pickup"]["lat"], payload["stop_count"]), ("Chop A", 6.70, 1))
 
     def test_the_old_pickup_button_refuses_a_multi_shop_job(self):
         _, item_a = self.make_shop("Shop A", "+233207000313", (6.70, -1.62))

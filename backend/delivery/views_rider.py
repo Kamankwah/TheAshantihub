@@ -59,6 +59,7 @@ class StepSerializer(LocationSerializer):
     code = serializers.CharField(max_length=8, required=False, allow_blank=True)
     reason = serializers.CharField(max_length=30, required=False)
     note = serializers.CharField(max_length=500, required=False, allow_blank=True)
+    stop_id = serializers.IntegerField(min_value=1, required=False, allow_null=True)
 
 
 class MeView(RiderView):
@@ -242,11 +243,15 @@ class CantDeliverView(_StepView):
 
 
 class SkipStopView(_StepView):
-    """POST rider/jobs/<id>/skip-stop/ {note, lat?, lng?, accuracy_m?} — the shop being worked cannot hand over. The
-    rider's location is required (the pin, the time and the note are the evidence)."""
+    """POST rider/jobs/<id>/skip-stop/ {stop_id, note, lat, lng, accuracy_m?} — the shop being worked cannot hand over.
+    `stop_id` is required and must be the job's `current_stop_id` (null only when the job shows null), so a retried tap
+    is refused (409 stop_done) instead of skipping the next shop. The rider's location is required (the pin, the time
+    and the note are the evidence)."""
 
     def run(self, a, staff, d):
-        services.skip_stop(a, staff, d.get("note", ""), lat=d.get("lat"), lng=d.get("lng"), accuracy=d.get("accuracy_m"))
+        if "stop_id" not in d:
+            raise services.DeliveryError("Say which shop you are skipping.", 400, "invalid", field="stop_id")
+        services.skip_stop(a, staff, d.get("note", ""), stop_id=d["stop_id"], lat=d.get("lat"), lng=d.get("lng"), accuracy=d.get("accuracy_m"))
 
 
 class CallCustomerView(RiderView):

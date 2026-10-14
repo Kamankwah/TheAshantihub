@@ -136,6 +136,22 @@ def ensure_stops(assignment):
     return rows
 
 
+def stops_for_next_rider(assignment):
+    """The saved stops a rider given this job (again) will work, in sequence; never re-derived from the order's plan,
+    so a job from before multi-stop delivery is its one first-item stop. After a failed attempt a re-dispatch reopens
+    every stop when all were skipped, else every stop not skipped (reopen_for_new_rider); otherwise the open stops."""
+    from orders.models import DeliveryAssignment as DA
+
+    from . import services
+
+    rows = stops_of(assignment)
+    if assignment.status == DA.FAILED:
+        if assignment.failed_reason == services.ALL_STOPS_SKIPPED:
+            return rows
+        return [s for s in rows if s.status != PickupStop.SKIPPED]
+    return [s for s in rows if s.status in PickupStop.OPEN]
+
+
 def open_stops(assignment):
     return [s for s in stops_of(assignment) if s.status in PickupStop.OPEN]
 
@@ -222,8 +238,10 @@ def refresh_planned_arrivals(assignment, origin=None, start=None):
 def skip_history(assignment):
     """Every skip on this delivery, oldest first, read from the append-only `skipped_stop` events. It outlives a failed
     attempt: re-dispatching resets the assignment and reopens the stops, but never touches these events. `by` is "rider"
-    when the rider's own pin was recorded and "manager" for a manager's skip (no pin). `at_shop` is true for a rider skip
-    whose pin is not flagged as far from the shop (or the shop has no pin to compare with)."""
+    when the rider's own pin was recorded and "manager" for a manager's skip (no pin). `at_shop` is true only for a rider
+    skip whose distance from the shop was measured and is within the flag distance; it is false when the distance could
+    not be measured (the shop has no pin, or the fix was too loose; `distance_m` is then null). `case_id` is the refund
+    case the skip opened or kept."""
     from .models import DeliveryEvent
 
     by_id = {s.pk: s for s in stops_of(assignment) if s.pk}
@@ -237,7 +255,8 @@ def skip_history(assignment):
         out.append({
             "stop_id": e.stop_id, "sequence": stop.sequence, "business_owner_id": stop.business_owner_id, "business_name": stop_name(stop),
             "at": e.at, "note": e.note, "pinned": rider, "lat": e.lat, "lng": e.lng, "accuracy_m": e.accuracy_m,
-            "distance_m": e.distance_m, "at_shop": rider and not e.flagged, "by": "rider" if rider else "manager",
+            "distance_m": e.distance_m, "at_shop": rider and e.distance_m is not None and not e.flagged,
+            "by": "rider" if rider else "manager", "case_id": e.dispute_id,
         })
     return out
 
