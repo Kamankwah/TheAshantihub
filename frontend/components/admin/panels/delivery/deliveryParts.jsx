@@ -60,3 +60,14 @@ export function Filters({ label, options, value, onChange }) {
 export const linkStyle = { background: "none", border: "none", padding: 0, color: D.deepGold, fontWeight: 800, cursor: "pointer", textDecoration: "underline", fontFamily: "inherit", fontSize: "inherit", textAlign: "left" };
 
 export const SOURCE_LABEL = { manual: "Chosen by a manager", auto: "Auto-assigned", forced: "Forced", offer: "Offered and accepted" };
+
+// One skip's evidence as a sentence part. A rider's skip carries the rider's own pin; a manager's skip has none.
+// The distance is only claimed when the server measured it (`distance_measured`); otherwise it says so rather than
+// guessing "far from the shop".
+export function skipPin(k) {
+  if (!k.pinned || k.lat == null || k.lng == null) return "skipped by a manager";
+  const pin = `Pin ${Number(k.lat).toFixed(5)}, ${Number(k.lng).toFixed(5)}${k.accuracy_m != null ? ` (±${Math.round(k.accuracy_m)} m)` : ""}`;
+  if (k.at_shop) return `${pin}, at the shop`;
+  if (k.distance_measured === true && k.distance_m != null) return `${pin}, ${Math.round(k.distance_m)} m from the shop`;
+  return `${pin}, distance not measured`;
+}

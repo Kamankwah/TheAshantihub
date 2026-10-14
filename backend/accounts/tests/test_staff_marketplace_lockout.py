@@ -30,7 +30,7 @@ class StaffMarketplaceLockoutTests(TestCase):
         )
         self.zone = Zone.objects.get(name="Manhyia")
         self.product = Listing.objects.create(
-            business_owner=self.owner, category=Category.objects.get(slug="hotels"), zone=self.zone,
+            business_owner=self.owner, category=Category.objects.get(slug="shops"), zone=self.zone,
             name="Kente Stole", description="Hand woven.", contact_phone="+233207770101",
             price_amount="150.00", status=Listing.PUBLISHED,
         )

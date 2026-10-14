@@ -102,7 +102,7 @@ event log. Existing manager overrides and the max-active-jobs rule stay.
 - Size class to minimum vehicle: small is a motorbike, medium a tricycle or car, large a car, bulky a truck. The
   largest item decides. The customer may upgrade, never downgrade. Riders are offered only orders their vehicle
   can carry.
-- Several businesses in one cart: the existing extra-pickup charge applies; pickups are visited nearest first;
+- Several businesses in one cart: superseded by `2026-10-14-multi-stop-delivery-and-cart-guard-design.md` (as built). Original text: the existing extra-pickup charge applies; pickups are visited nearest first;
   each pickup has its own code; the customer fee is measured from the first pickup to the delivery point.
 - Free-delivery promos: the customer pays zero and the waived amount is charged to the business in the ledger.
 - Rider pay: per-job amount, plus a per-km amount over both legs, plus waiting pay after the configured wait.

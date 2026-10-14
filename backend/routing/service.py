@@ -92,6 +92,80 @@ def legs_from(origins, dest):
         return [_estimate(o, dest) for o in origins]
 
 
+TABLE_MAX_ORIGINS = 100     # origins sent to OSRM in one legs_between call (URL length, the server's table limit)
+
+
+def legs_between(origins, dests):
+    """rows[i][j] = the leg from origins[i] to dests[j] ({"distance_km", "duration_s", "basis", "geometry": None}), all
+    from ONE OSRM table call. Never raises: OSRM off, down or refusing gives the labelled estimate, and a pair OSRM cannot
+    route is estimated on its own (each cell carries its basis). Only the first TABLE_MAX_ORIGINS origins go to OSRM;
+    the rest are estimated, so callers pass the ones that matter most first."""
+    origins = [(float(o[0]), float(o[1])) for o in origins]
+    dests = [(float(d[0]), float(d[1])) for d in dests]
+
+    def estimated(rows):
+        return [[_estimate(o, d) for d in dests] for o in rows]
+
+    if not origins or not dests:
+        return [[] for _ in origins]
+    if not _enabled() or _down():
+        return estimated(origins)
+    routed, rest = origins[:TABLE_MAX_ORIGINS], origins[TABLE_MAX_ORIGINS:]
+    try:
+        rows = client.table_between(routed, dests)
+    except client.OsrmError as exc:
+        if isinstance(exc, client.OsrmUnavailable):
+            _mark_down()
+        logger.info("OSRM table failed (%s); using straight-line estimates.", exc)
+        return estimated(origins)
+    except Exception:
+        logger.exception("OSRM table failed unexpectedly; using straight-line estimates.")
+        return estimated(origins)
+    out = []
+    for i, o in enumerate(routed):
+        row = rows[i] if i < len(rows) else []
+        out.append([_road(row[j]) if j < len(row) and row[j] else _estimate(o, d) for j, d in enumerate(dests)])
+    return out + estimated(rest)
+
+
+def matrix(points):
+    """Road km between every pair of points (km[i][j] from i to j, 0 on the diagonal) and one basis for the whole table.
+    Never raises: OSRM off or down gives the straight-line estimate; a pair OSRM cannot route is estimated, and then the
+    whole table is labelled an estimate, so a plan built on it never claims road distances."""
+    points = [(float(p[0]), float(p[1])) for p in points]
+
+    def estimated():
+        return {"km": [[0.0 if i == j else _estimate(a, b)["distance_km"] for j, b in enumerate(points)] for i, a in enumerate(points)],
+                "basis": BASIS_ESTIMATE}
+
+    if len(points) < 2 or not _enabled() or _down():
+        return estimated()
+    try:
+        rows = client.matrix(points)
+    except client.OsrmError as exc:
+        if isinstance(exc, client.OsrmUnavailable):
+            _mark_down()
+        logger.info("OSRM table failed (%s); using straight-line estimates.", exc)
+        return estimated()
+    except Exception:
+        logger.exception("OSRM table failed unexpectedly; using straight-line estimates.")
+        return estimated()
+    basis, km = BASIS_ROAD, []
+    for i, a in enumerate(points):
+        row = []
+        for j, b in enumerate(points):
+            cell = rows[i][j] if i < len(rows) and j < len(rows[i]) else None
+            if i == j:
+                row.append(0.0)
+            elif cell is None:
+                row.append(_estimate(a, b)["distance_km"])
+                basis = BASIS_ESTIMATE
+            else:
+                row.append(round(cell["distance_m"] / 1000, 2))
+        km.append(row)
+    return {"km": km, "basis": basis}
+
+
 def status():
     configured = _enabled()
     base = {"factor": delivery_services.ROAD_FACTOR, "configured": configured}

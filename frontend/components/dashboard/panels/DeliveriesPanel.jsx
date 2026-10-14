@@ -38,6 +38,10 @@ function RiderOnTheWay({ orderId }) {
     else if (!data) body = <p style={line}>Loading…</p>;
     else if (data.stage === "not_assigned") body = <p style={line}>A rider has not been assigned yet.</p>;
     else if (data.stage === "failed") body = <p style={line}>This delivery did not go ahead.</p>;
+    // The job's stage is not this shop's: read this shop's own stop and rider_elsewhere before it.
+    else if (data.stop?.status === "collected") body = <p style={line}>The rider has collected your items.</p>;
+    else if (data.stop?.status === "skipped") body = <p style={line}>The rider could not collect from your shop.</p>;
+    else if (data.rider_elsewhere) body = <p style={line}>The rider is collecting from another shop first.</p>;
     else if (COLLECTED.includes(data.stage)) body = <p style={line}>The rider has collected the order.</p>;
     else if (data.rider_busy) body = <p style={line}>The rider is finishing another delivery first.</p>;
     else if (!hasFix) body = <p style={line}>The rider's location is not available right now.</p>;
@@ -51,6 +55,7 @@ function RiderOnTheWay({ orderId }) {
           <TrackMap markers={markers} route={data.route ?? null} height={220} label="Map of the rider heading to your shop" />
           <div style={{ color: D.textFaint, fontSize: "0.66rem", marginTop: 4 }}>{data.pickup ? "Gold pin: your shop. " : ""}Dark pin: rider{rider.first_name ? ` (${rider.first_name})` : ""}.</div>
           {!data.pickup && <p style={line}>Your shop has no map pin, so the arrival time can't be shown.</p>}
+          {data.stop?.late && <p style={line}>The rider is running late.</p>}
           <div style={{ marginTop: 6 }}><EtaLine leg={data.leg} stale={!!rider.stale} ageS={rider.age_s ?? null} /></div>
         </div>
       );
@@ -110,6 +115,15 @@ function OrderRow({ order }) {
         </div>
       )}
 
+      {doorToDoor && order.rider_report?.text && <div role="note" style={{ color: D.text, fontSize: "0.74rem", fontWeight: 700, marginTop: 8 }}>{order.rider_report.text}</div>}
+      {doorToDoor && order.pickup_eta && (
+        <div style={{ color: D.text, fontSize: "0.74rem", fontWeight: 700, marginTop: 8 }}>
+          {order.pickup_eta_late
+            ? "🛵 The rider is running late"
+            : `🛵 Rider arrives about ${new Date(order.pickup_eta).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })}`}
+          <span style={{ color: D.textDim, fontWeight: 400 }}> · an estimate from the planned route; it moves if the rider is held up.</span>
+        </div>
+      )}
       {doorToDoor && <PickupCodeBox code={order.pickup_code} orderId={order.id} />}
       {doorToDoor && order.rider_heading_here === true && <RiderOnTheWay orderId={order.id} />}
 

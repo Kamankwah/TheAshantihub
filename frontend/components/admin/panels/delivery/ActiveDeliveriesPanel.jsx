@@ -7,7 +7,7 @@ import { button, chip, dim, field } from "../panelStyles.js";
 import { scroll, table, td, th } from "../opsPeopleParts.jsx";
 import { Kpi, Status, Title, kpiGrid, page, section, sectionTitle } from "../insightsParts.jsx";
 import { JobMap } from "./deliveryMaps.jsx";
-import { Empty, ErrorLine, Filters, Note, StepChip, WARN, clock, dayTime, fixAge, linkStyle, mono, money, spare } from "./deliveryParts.jsx";
+import { Empty, ErrorLine, Filters, Note, StepChip, WARN, clock, dayTime, fixAge, linkStyle, mono, money, skipPin, spare } from "./deliveryParts.jsx";
 
 // ─── Delivery Manager 03 Active deliveries and 04 Delivery detail ────────────
 // Every row is a job on the road with the last stamp the rider's phone sent. Nothing about
@@ -109,17 +109,17 @@ const LOCK_AT = 5; // CODE_ATTEMPT_LIMIT on the server; the server is the one th
 // One code's line in the record: matched or not, wrong tries, and, once five wrong tries have locked it,
 // an unlock that needs a written reason (it is logged with the manager's name). The code itself is
 // never shown to a manager.
-function CodeLine({ label, which, jobId, state, onDone }) {
+function CodeLine({ label, which, jobId, stopId, state, onDone, canUnlock = true }) {
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const locked = !state.matched && state.wrong_tries >= LOCK_AT;
+  const locked = canUnlock && !state.matched && state.wrong_tries >= LOCK_AT;
   const unlock = async () => {
     setError("");
     setBusy(true);
     try {
-      await apiPost(`/api/delivery/jobs/${jobId}/unlock-code/`, { which, note: note.trim() });
+      await apiPost(`/api/delivery/jobs/${jobId}/unlock-code/`, { which, note: note.trim(), ...(stopId != null ? { stop: stopId } : {}) });
       setOpen(false);
       setNote("");
       onDone();
@@ -156,10 +156,75 @@ function CodeLine({ label, which, jobId, state, onDone }) {
   );
 }
 
+const STOP_LABEL = { pending: "Waiting", arrived: "Rider at the shop", collected: "Collected", skipped: "Skipped" };
+const SKIPPABLE = ["assigned", "accepted", "at_pickup"];
+
+// One shop of a multi-shop delivery. A job from before multi-stop delivery has one unsaved stop the server names id 0
+// (a GET never writes); that 0 is sent back as it came and the server reads it as the first stop.
+function StopRow({ jobId, stop, canSkip, onDone }) {
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const openStop = stop.status === "pending" || stop.status === "arrived";
+  const skip = async () => {
+    setError("");
+    setBusy(true);
+    try {
+      await apiPost(`/api/delivery/jobs/${jobId}/stops/${stop.id}/skip/`, { note: note.trim() });
+      setOpen(false);
+      setNote("");
+      onDone();
+    } catch (err) {
+      setError(apiErrorMessage(err, "Could not skip this shop."));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div role="group" aria-label={`Stop ${stop.sequence}: ${stop.business_name}`} style={{ display: "flex", flexDirection: "column", gap: 6, borderTop: `1px solid ${D.divider}`, paddingTop: 8, fontSize: "0.82rem", color: D.text }}>
+      <span><b>{stop.sequence}. {stop.business_name}</b> · {STOP_LABEL[stop.status] || stop.status}{stop.collected_at ? ` ${clock(stop.collected_at)}` : ""}{stop.status === "pending" && stop.planned_arrival ? ` · expected about ${clock(stop.planned_arrival)}${stop.late ? ", running late" : ""}` : ""}</span>
+      {stop.skip_note && <span style={dim}>Skipped: {stop.skip_note}</span>}
+      {(stop.skips || []).map((k, i) => (
+        <span key={`${k.at}-${i}`} style={dim}>{k.by === "rider" ? "Rider reported" : "Skipped by a manager"} {clock(k.at)}: {k.note}{k.by === "rider" ? `. ${skipPin(k)}.` : "."}</span>
+      ))}
+      {stop.id != null && <CodeLine label="Pickup code" which="pickup" jobId={jobId} stopId={stop.id} canUnlock={openStop} state={{ matched: stop.status === "collected", wrong_tries: stop.wrong_tries || 0 }} onDone={onDone} />}
+      {canSkip && openStop && stop.id != null && !open && <button type="button" onClick={() => setOpen(true)} style={{ ...button(D.panelBg, D.text), alignSelf: "flex-start" }}>Skip this shop</button>}
+      {open && (
+        <span style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <ErrorLine>{error}</ErrorLine>
+          <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: "0.7rem", fontWeight: 700 }}>
+            Why is this shop skipped? (required; the customer is told and a case asks for this shop&apos;s items to be refunded)
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={300} style={field} />
+          </label>
+          <span style={{ display: "flex", gap: 8 }}>
+            <button type="button" disabled={!note.trim() || busy} onClick={skip} style={button(D.gold, D.text, !note.trim() || busy)}>Confirm skip</button>
+            <button type="button" disabled={busy} onClick={() => { setOpen(false); setError(""); }} style={button(D.panelBg, D.text)}>Cancel</button>
+          </span>
+        </span>
+      )}
+    </div>
+  );
+}
+
+// The detour warning keys off over_limit; the percentage may be null, so the message does not need it.
+function RouteLine({ plan, count, stops = [] }) {
+  if (!plan) return null;
+  const missingPin = stops.some((s) => s.lat === null);
+  const allowance = `allowance ${plan.limit_pct}%${plan.limit_source === "defaults" ? ", built-in default" : ""}`;
+  return (
+    <span style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: "0.82rem", color: D.text }}>
+      {plan.total_km != null ? `Planned route ${plan.total_km} km through ${count} shops${plan.basis ? ` (${plan.basis})` : ""}.` : `No planned route for this order.${missingPin ? " A shop has no map pin." : ""}`}
+      {plan.over_limit && <span style={chip(D.amber)}>{plan.detour_pct != null ? `Detour ${plan.detour_pct}%` : "Longer than going direct"} ({allowance})</span>}
+    </span>
+  );
+}
+
 export function DeliveryDetail({ id, onBack, onOpenCase }) {
   const { data: job, isLoading, isError, refetch } = useDeliveryJob(id);
   const [error, setError] = useState("");
   const [phone, setPhone] = useState(null);
+  const multi = (job?.stops || []).length > 1;
   const callRider = async () => {
     setError("");
     try {
@@ -194,6 +259,13 @@ export function DeliveryDetail({ id, onBack, onOpenCase }) {
               <h3 id="mp" style={sectionTitle}>Where it is</h3>
               <JobMap jobId={id} riderName={job.rider.full_name} />
             </section>
+            {multi && (
+              <section aria-label="Shops on this delivery" style={section}>
+                <h3 style={sectionTitle}>Shops on this delivery</h3>
+                <RouteLine plan={job.route_plan} count={job.stops.length} stops={job.stops} />
+                {job.stops.map((s) => <StopRow key={s.sequence} jobId={id} stop={s} canSkip={SKIPPABLE.includes(job.status)} onDone={refetch} />)}
+              </section>
+            )}
             <section aria-labelledby="tl" style={section}>
               <h3 id="tl" style={sectionTitle}>Check-ins and events</h3>
               <span style={dim}>Stamped by the rider&apos;s phone, with server time.</span>
@@ -207,7 +279,7 @@ export function DeliveryDetail({ id, onBack, onOpenCase }) {
                 </div>
               ))}
               <div style={{ ...dim, display: "flex", gap: 14, flexWrap: "wrap" }}>
-                <CodeLine label="Pickup code" which="pickup" jobId={id} state={job.codes.pickup} onDone={refetch} />
+                {!multi && <CodeLine label="Pickup code" which="pickup" jobId={id} state={job.codes.pickup} onDone={refetch} />}
                 <CodeLine label="Customer code" which="drop" jobId={id} state={job.codes.drop} onDone={refetch} />
               </div>
               {job.wait && <Note tone="warn">Waiting at the door: {Math.floor(job.wait.elapsed_seconds / 60)} of {Math.floor(job.wait.limit_seconds / 60)} minutes.</Note>}

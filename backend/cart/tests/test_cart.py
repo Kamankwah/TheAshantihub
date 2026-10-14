@@ -19,21 +19,21 @@ class CartTestsBase(TestCase):
         self.other_customer = Customer.objects.create(
             full_name="Yaw Buyer", phone="+233200661002", password_hash="x",
         )
-        self.hotels = Category.objects.get(slug="hotels")
+        self.shops = Category.objects.get(slug="shops")
         self.manhyia = Zone.objects.get(name="Manhyia")
 
         self.published_listing = Listing.objects.create(
-            business_owner=self.owner, category=self.hotels, zone=self.manhyia,
+            business_owner=self.owner, category=self.shops, zone=self.manhyia,
             name="Published Room", description="D.", contact_phone="+233207661001",
             price_amount="150.00", status=Listing.PUBLISHED,
         )
         self.draft_listing = Listing.objects.create(
-            business_owner=self.owner, category=self.hotels, zone=self.manhyia,
+            business_owner=self.owner, category=self.shops, zone=self.manhyia,
             name="Draft Room", description="D.", contact_phone="+233207661001",
             price_amount="99.00", status=Listing.DRAFT,
         )
         self.no_price_listing = Listing.objects.create(
-            business_owner=self.owner, category=self.hotels, zone=self.manhyia,
+            business_owner=self.owner, category=self.shops, zone=self.manhyia,
             name="Quote-only Service", description="D.", contact_phone="+233207661001",
             status=Listing.PUBLISHED,
         )

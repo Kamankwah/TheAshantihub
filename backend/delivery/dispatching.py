@@ -48,7 +48,7 @@ def rank(order, rules=None, now=None):
     payload says so in ``distance_basis`` whatever OSRM is doing; road legs arrive with stage 2."""
     rules = rules or config.effective_rules()
     now = now or timezone.now()
-    plat, plng, _ = services.pickup_stop(order)
+    plat, plng, _, _ = services.dispatch_point(order)
     shifts = {s.rider_id: s for s in ShiftSession.objects.filter(ended_at__isnull=True)}
     riders = list(Rider.objects.select_related("staff", "home_zone").filter(staff__is_active=True, staff__invite_token__isnull=True))
     active = {}
@@ -197,10 +197,17 @@ def force_assign(order, rider, by, *, mode=DeliveryAssignment.FORCED):
     return assignment
 
 
+def held_for_manager(order):
+    """True for an order whose last attempt failed because every shop skipped it: the same shops would refuse the next
+    rider too, so only a manager (a manual offer or assign, which the engine never blocks) puts it back out."""
+    assignment = getattr(order, "delivery_assignment", None)
+    return bool(assignment and assignment.status == DeliveryAssignment.FAILED and assignment.failed_reason == services.ALL_STOPS_SKIPPED)
+
+
 def run_engine(now=None):
     """One pass: time out stale offers, then for each waiting order offer it to the best eligible rider, or
     give it straight to that rider when time is short or enough riders have said no. Does nothing while the
-    auto-assign switch is off (offers a manager made still time out)."""
+    auto-assign switch is off (offers a manager made still time out). An order every shop skipped is left for a manager."""
     now = now or timezone.now()
     out = {"expired": expire_offers(now), "offered": 0, "forced": 0}
     if not DeliverySettings.get().auto_assign_on:
@@ -208,6 +215,8 @@ def run_engine(now=None):
     rules = config.effective_rules()
     limits = config.effective_limits()
     for order in board.waiting_orders():
+        if held_for_manager(order):
+            continue
         hold = getattr(order, "queue_hold", None)
         if hold is not None and hold.release_at > now:
             continue

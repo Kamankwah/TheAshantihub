@@ -518,3 +518,69 @@ describe('ListingDetailPage — staff session is view-only', () => {
     expect(eligibilityCalls).toBe(0)
   })
 })
+
+describe('ListingDetailPage and the delivery cart', () => {
+  const CUSTOMER = { fullName: 'Ama Boateng', accountType: 'customer' }
+  const guard = (blocked) => http.get('http://localhost:8000/api/cart/guard/', () => HttpResponse.json({ active: true, limits: {}, shops: [], food_shops: 0, at_shop_limit: true, at_food_limit: false, checkout: { any: null, door_to_door: null }, listing: { id: 1, blocked } }))
+
+  it('a customer at the delivery limit sees the reason instead of Add to Cart', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)), guard({ detail: 'Your delivery can include up to 4 shops. Remove one to add this.', code: 'shop_limit' }))
+    renderPage({ user: CUSTOMER })
+    expect(await screen.findByText('Delivery limit reached')).toBeInTheDocument()
+    expect(screen.getByText('Your delivery can include up to 4 shops. Remove one to add this.')).toBeInTheDocument()
+    expect(screen.queryByText('Add to Cart')).not.toBeInTheDocument()
+  })
+
+  it('food is added to the cart, not requested as a service', async () => {
+    const food = { ...LISTING, category: { slug: 'food', icon: '🍲', label: 'Food', color: '#CC0000', kind: 'service', is_food: true } }
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(food)), guard(null))
+    renderPage({ user: CUSTOMER })
+    expect(await screen.findByText('Add to Cart')).toBeInTheDocument()
+    expect(screen.queryByText('Request this service')).not.toBeInTheDocument()
+  })
+
+  it("a refused add shows the server's reason", async () => {
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)), guard(null))
+    const err = Object.assign(new Error('API request to /api/cart/items/ failed with status 400'), { status: 400, body: { detail: 'Your delivery can include food from up to 2 places. Remove one to add this.', code: 'food_limit' } })
+    renderPage({ user: CUSTOMER, onAddToCart: vi.fn().mockRejectedValue(err) })
+    fireEvent.click(await screen.findByText('Add to Cart'))
+    expect(await screen.findByText('Your delivery can include food from up to 2 places. Remove one to add this.')).toBeInTheDocument()
+  })
+
+  it('guests and business accounts never read the cart guard', async () => {
+    let guardCalls = 0
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)), http.get('http://localhost:8000/api/cart/guard/', () => { guardCalls += 1; return HttpResponse.json({}) }))
+    renderPage({ user: null })
+    await screen.findByText('Royal Ashanti Lodge')
+    renderPage({ user: { id: 5, fullName: 'Biz Owner', accountType: 'business_owner' } })
+    await new Promise((r) => setTimeout(r, 100))
+    expect(guardCalls).toBe(0)
+  })
+
+  it('a service is requested and a stay is booked, never added to the cart, even for a customer', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/2/', () => HttpResponse.json(SERVICE_LISTING)), guard(null))
+    const { unmount } = renderPage({ id: 2, user: CUSTOMER })
+    expect(await screen.findByText('Request this service', { selector: 'button' })).toBeInTheDocument()
+    expect(screen.queryByText('Add to Cart')).not.toBeInTheDocument()
+    unmount()
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json({ ...LISTING, category: { ...LISTING.category, is_accommodation: true } })), guard(null))
+    renderPage({ user: CUSTOMER })
+    expect(await screen.findByRole('button', { name: /^Book/ })).toBeInTheDocument()
+    expect(screen.queryByText('Add to Cart')).not.toBeInTheDocument()
+  })
+
+  it('a food place too far shows "Too far for this delivery"', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)), guard({ detail: 'This food place is more than 3 km from the shops in your cart, so one rider cannot collect it on the same trip.', code: 'food_far' }))
+    renderPage({ user: CUSTOMER })
+    expect(await screen.findByText('Too far for this delivery')).toBeInTheDocument()
+    expect(screen.queryByText('Delivery limit reached')).not.toBeInTheDocument()
+  })
+
+  it('a refused service or stay shows the server message, not "Delivery limit reached"', async () => {
+    const msg = 'Services, stays and events cannot be delivered. Book or enquire directly.'
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)), guard({ detail: msg, code: 'not_deliverable' }))
+    renderPage({ user: CUSTOMER })
+    expect(await screen.findByText(msg)).toBeInTheDocument()
+    expect(screen.queryByText('Delivery limit reached')).not.toBeInTheDocument()
+  })
+})

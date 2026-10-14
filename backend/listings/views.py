@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from django.core.files.base import ContentFile
 from django.db import transaction as db_transaction
-from django.db.models import Avg, Count, Exists, OuterRef, Q
+from django.db.models import Avg, Case, Count, Exists, F, FloatField, IntegerField, OuterRef, Q, Value, When
 from django.db.models import ProtectedError
 from django.utils import timezone
 from django.utils.crypto import get_random_string
@@ -32,6 +32,7 @@ from .moderation_checks import (
 from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, Promotion, Zone
 from .permissions import IsHeroMediaOwner, IsListingOwner, IsListingPhotoOwner
 from .serializers import (
+    CartTieredListingSerializer,
     CategorySerializer,
     CategoryStaffSerializer,
     HeroActiveSerializer,
@@ -310,6 +311,8 @@ class PublicListingListView(generics.ListAPIView):
         queryset = (
             Listing.objects.filter(status=Listing.PUBLISHED)
             .exclude(hidden_business_q())
+            .select_related("category", "zone", "business_owner__profile")
+            .prefetch_related("photos")
             .order_by("-created_at")
         )
 
@@ -338,7 +341,52 @@ class PublicListingListView(generics.ListAPIView):
             queryset = queryset.filter(business_owner__kyc_status=BusinessOwner.VERIFIED)
 
         queryset = queryset.annotate(is_promoted=Exists(self._promoted_subquery()))
+        ctx = self._cart_guard()
+        if ctx is not None:
+            queryset = self._with_tiers(queryset, ctx)
         return _with_rating_annotations(queryset)
+
+    def _cart_guard(self):
+        """The cart guard context (cart.guard) for ?cart_tiers=1 from a customer whose cart has something in it, its
+        near-shop map measured once here for every row; else None, and search is exactly as it was."""
+        if not hasattr(self, "_guard_ctx"):
+            self._guard_ctx = None
+            if self.request.query_params.get("cart_tiers") in ("1", "true"):
+                from accounts.models import Customer
+                from cart import guard
+                from cart.models import CartItem
+
+                if isinstance(self.request.user, Customer):
+                    lines = list(CartItem.objects.filter(cart__customer=self.request.user)
+                                 .select_related("listing__business_owner__profile", "listing__category"))
+                    if lines:
+                        ctx = guard.context(lines)
+                        guard.near(ctx)
+                        self._guard_ctx = ctx
+        return self._guard_ctx
+
+    @staticmethod
+    def _with_tiers(queryset, ctx):
+        """cart_tier: 1 for the cart's businesses, 2 for businesses near them, else 3 (services, stays and events sort
+        with tier 3 and show no tier); cart_km: the tier-2 distance, to put the nearest first."""
+        from cart import guard
+
+        whens = [When(~guard.deliverable_q(), then=Value(3))]
+        if ctx["ids"]:
+            whens.append(When(business_owner_id__in=sorted(ctx["ids"]), then=Value(1)))
+        if ctx["near"]:
+            whens.append(When(business_owner_id__in=sorted(ctx["near"]), then=Value(2)))
+        km = [When(business_owner_id=oid, then=Value(v["km"])) for oid, v in sorted(ctx["near"].items())]
+        return queryset.annotate(
+            cart_tier=Case(*whens, default=Value(3), output_field=IntegerField()),
+            cart_km=Case(*km, default=Value(None), output_field=FloatField()) if km else Value(None, output_field=FloatField()),
+        )
+
+    def get_serializer_class(self):
+        return CartTieredListingSerializer if self._cart_guard() is not None else PublicListingSerializer
+
+    def get_serializer_context(self):
+        return {**super().get_serializer_context(), "cart_guard": self._cart_guard()}
 
     def _promoted_subquery(self):
         """Active Promotion rows that should push their listing to the front
@@ -366,6 +414,8 @@ class PublicListingListView(generics.ListAPIView):
         # query param's effect.
         queryset = super().filter_queryset(queryset)
         existing_order = queryset.query.order_by or ("-created_at",)
+        if self._cart_guard() is not None:
+            return queryset.order_by("cart_tier", F("cart_km").asc(nulls_last=True), "-is_promoted", *existing_order)
         return queryset.order_by("-is_promoted", *existing_order)
 
 

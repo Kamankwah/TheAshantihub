@@ -65,6 +65,9 @@ class Order(models.Model):
     delivery_fee = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     delivery_fee_breakdown = models.JSONField(null=True, blank=True)
     rate_card = models.ForeignKey("delivery.RateCard", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    # The pickup route planned at checkout (delivery.stops.plan_for_lines): businesses in collection order, road km and the
+    # detour against the limit in force. Null for store pickup and for orders placed before multi-stop delivery.
+    route_plan = models.JSONField(null=True, blank=True)
 
     class Meta:
         ordering = ["-placed_at"]
@@ -180,6 +183,8 @@ class DeliveryAssignment(models.Model):
     # Cash on delivery is not offered at checkout yet; these stay empty until it is.
     cod_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     cash_collected_at = models.DateTimeField(null=True, blank=True)
+    # The plan the stops were made from (the order's route_plan plus owner_ids and stop_ids); fixed once written.
+    route_plan = models.JSONField(null=True, blank=True)
 
     def sync_order(self):
         """Keep Order.delivery_status in step with the courier's progress so the customer's delivery

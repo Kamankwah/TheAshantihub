@@ -3,6 +3,8 @@ import { useState } from "react";
 import { C } from "../theme.js";
 import { apiPost } from "../apiClient.js";
 import { useListing } from "../hooks/useListing.js";
+import { useCartGuard } from "../hooks/useCartGuard.js";
+import { apiErrorMessage } from "../lib/apiErrorMessage.js";
 import { useRelatedListings } from "../hooks/useRelatedListings.js";
 import { useListingReviews } from "../hooks/useListingReviews.js";
 import { useListingQuestions } from "../hooks/useListingQuestions.js";
@@ -67,6 +69,8 @@ export default function ListingDetailPage({
 }) {
   const { data: item, isLoading, isError, refetch } = useListing(id);
   const { data: related } = useRelatedListings(id);
+  // The delivery limits for this listing (backend cart/guard.py) — customers only; the server decides, we show its words.
+  const guard = useCartGuard(id, { enabled: user?.accountType === "customer" && id != null });
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [addingToCart, setAddingToCart] = useState(false);
   const [addedToCart, setAddedToCart] = useState(false);
@@ -114,7 +118,10 @@ export default function ListingDetailPage({
   const gallery = item.photos?.length > 0 ? item.photos.map((p) => p.image) : item.main_photo ? [item.main_photo] : [];
   const isFav = favourites?.includes(item.id);
   const isAccommodation = !!item.category?.is_accommodation;
-  const isService = item.category?.kind === "service";
+  // Food and beverages are carted for delivery; every other service stays a request (and stays a booking).
+  const isFood = !!item.category?.is_food;
+  const isService = item.category?.kind === "service" && !isFood;
+  const cartBlocked = guard.data?.listing?.blocked;
   // Businesses sell, customers buy — a signed-in business account can't
   // purchase/request/book. Guests (no user) still see the controls, which
   // prompt them to sign in as a customer. Staff see the controls too, gated
@@ -342,6 +349,12 @@ export default function ListingDetailPage({
               failure (unauthenticated, non-customer account, or a server
               error), caught here so the message shows next to the button
               rather than crashing the page. */}
+          {cartBlocked ? (
+          <div role="status" style={{ marginTop: 16, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", color: "white", borderRadius: 14, padding: "12px 14px", fontSize: "0.78rem", lineHeight: 1.5 }}>
+            {cartBlocked.code !== "not_deliverable" && <div style={{ fontWeight: 900, marginBottom: 4 }}>{cartBlocked.code === "food_far" || cartBlocked.code === "food_unlocated" ? "Too far for this delivery" : "Delivery limit reached"}</div>}
+            {cartBlocked.detail}
+          </div>
+          ) : (
           <button
             disabled={addingToCart || item.price_amount == null || !onAddToCart}
             title={item.price_amount == null ? "This listing has no price set" : undefined}
@@ -355,7 +368,7 @@ export default function ListingDetailPage({
                 setAddedToCart(true);
                 setTimeout(() => setAddedToCart(false), 2000);
               } catch (err) {
-                setCartError(err?.message || "Could not add this item to your cart.");
+                setCartError(apiErrorMessage(err, err?.message || "Could not add this item to your cart."));
               } finally {
                 setAddingToCart(false);
               }
@@ -376,6 +389,7 @@ export default function ListingDetailPage({
           >
             {addingToCart ? "Adding…" : addedToCart ? "Added to Cart ✓" : item.price_amount == null ? "No Price Set" : "Add to Cart"}
           </button>
+          )}
           {cartError && (
             <div style={{ marginTop: 8, color: "#ffb4b4", fontSize: "0.72rem" }}>{cartError}</div>
           )}

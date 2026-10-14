@@ -20,17 +20,17 @@ class FulfilmentSpineTestsBase(TestCase):
         self.customer = Customer.objects.create(
             full_name="Ama Buyer", phone="+233200770001", password_hash="x",
         )
-        self.hotels = Category.objects.get(slug="hotels")
+        self.shops = Category.objects.get(slug="shops")
         self.manhyia = Zone.objects.get(name="Manhyia")
 
         # A stock-tracked product (stock_quantity set) and an untracked one.
         self.tracked = Listing.objects.create(
-            business_owner=self.owner, category=self.hotels, zone=self.manhyia,
+            business_owner=self.owner, category=self.shops, zone=self.manhyia,
             name="Kente Cloth", description="D.", contact_phone="+233207770001",
             price_amount="100.00", status=Listing.PUBLISHED, stock_quantity=5,
         )
         self.untracked = Listing.objects.create(
-            business_owner=self.owner, category=self.hotels, zone=self.manhyia,
+            business_owner=self.owner, category=self.shops, zone=self.manhyia,
             name="Consulting", description="D.", contact_phone="+233207770001",
             price_amount="50.00", status=Listing.PUBLISHED, stock_quantity=None,
         )
@@ -192,7 +192,7 @@ class OwnerOrderTests(FulfilmentSpineTestsBase):
     def test_owner_only_sees_their_own_line_items_in_a_shared_order(self):
         # A single customer order spanning two businesses.
         other_listing = Listing.objects.create(
-            business_owner=self.other_owner, category=self.hotels, zone=self.manhyia,
+            business_owner=self.other_owner, category=self.shops, zone=self.manhyia,
             name="Other Product", description="D.", contact_phone="+233207770009",
             price_amount="200.00", status=Listing.PUBLISHED, stock_quantity=None,
         )

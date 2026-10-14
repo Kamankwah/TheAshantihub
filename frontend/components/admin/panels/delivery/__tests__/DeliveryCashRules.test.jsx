@@ -120,6 +120,57 @@ describe('Delivery time limits', () => {
 describe('Delivery pricing', () => {
   const card = { version: 3, customer_base: '5.00', customer_per_km: '2.50', customer_min_fee: '8.00', extra_pickup: '3.00', express_multiplier: '1.30', round_up_to: '0.50', rider_per_job: '8.00', rider_per_km: '1.80', wait_after_min: 10, wait_per_min: '0.20', vehicle_multipliers: { motorbike: '1.00', car: '1.40' }, approved_by: 'Simon', effective_at: '2026-09-01T08:00:00Z' }
   const base = (over = {}) => versions(card, { fee_charging: { enabled: false, note: 'Customers are charged a delivery fee only when delivery fees are switched on.' }, distance_basis: 'straight-line estimate x 1.3', ...over })
+  it('shows the delivery limits in force and offers them for change', async () => {
+    server.use(http.get(`${API}/api/delivery/rules/rate-card/`, () => HttpResponse.json(base({ cart_limits: { source: 'defaults', version: null, max_shops_per_delivery: 4, max_food_shops: 2, near_shop_radius_km: '3.00', detour_limit_pct: 40 } }))))
+    wrap(<DeliveryPricingPanel auth={dm} />)
+    expect(await screen.findByText(/up to 4 shops, 2 food places, nearby within 3\.00 km, detour allowance 40%/)).toBeInTheDocument()
+    expect(screen.getByText(/built-in defaults/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Shops per delivery (most)')).toBeInTheDocument()
+    expect(screen.getByLabelText('Detour allowance')).toBeInTheDocument()
+  })
+  const withLimits = (over = {}) => base({ cart_limits: { source: 'defaults', version: null, max_shops_per_delivery: 4, max_food_shops: 2, near_shop_radius_km: '3.00', detour_limit_pct: 40 }, ...over })
+  it('starts the limit fields from the limits in force when no card was approved', async () => {
+    server.use(http.get(`${API}/api/delivery/rules/rate-card/`, () => HttpResponse.json(withLimits({ current: null, history: [] }))))
+    wrap(<DeliveryPricingPanel auth={dm} />)
+    expect(await screen.findByLabelText('Shops per delivery (most)')).toHaveValue('4')
+    expect(screen.getByLabelText('Detour allowance')).toHaveValue('40')
+    expect(screen.getByText(/built-in defaults/)).toBeInTheDocument()
+  })
+
+  it.each([
+    ['Shops per delivery (most)', '0', 'Enter a number from 1 to 6.'],
+    ['Shops per delivery (most)', '7', 'Enter a number from 1 to 6.'],
+    ['Food places per delivery (most)', '7', 'Enter a number from 0 to 6.'],
+    ['Food places per delivery (most)', '3', 'Food places cannot be more than the shops allowed per delivery.', ['Shops per delivery (most)', '2']],
+    ['Nearby shop distance', '0.4', 'Enter a distance from 0.5 to 20 km.'],
+    ['Nearby shop distance', '21', 'Enter a distance from 0.5 to 20 km.'],
+    ['Detour allowance', '301', 'Enter a number from 0 to 300.'],
+  ])('blocks %s = %s with an inline message', async (label, value, message, pre) => {
+    let posted = false
+    server.use(
+      http.get(`${API}/api/delivery/rules/rate-card/`, () => HttpResponse.json(withLimits())),
+      http.post(`${API}/api/delivery/rules/rate-card/`, () => { posted = true; return HttpResponse.json({ applied: false }) }),
+    )
+    wrap(<DeliveryPricingPanel auth={dm} />)
+    const input = await screen.findByLabelText(label)
+    if (pre) fireEvent.change(screen.getByLabelText(pre[0]), { target: { value: pre[1] } })
+    fireEvent.change(input, { target: { value } })
+    fireEvent.click(screen.getByRole('button', { name: /Send for approval|Apply now/ }))
+    expect(await screen.findByText(message)).toBeInTheDocument()
+    expect(posted).toBe(false)
+  })
+
+  it('names the limit the server refused', async () => {
+    server.use(
+      http.get(`${API}/api/delivery/rules/rate-card/`, () => HttpResponse.json(withLimits())),
+      http.post(`${API}/api/delivery/rules/rate-card/`, () => HttpResponse.json({ detail: 'Enter a distance from 0.50 to 20 km.', field: 'near_shop_radius_km' }, { status: 400 })),
+    )
+    wrap(<DeliveryPricingPanel auth={dm} />)
+    await screen.findByLabelText('Nearby shop distance')
+    fireEvent.click(screen.getByRole('button', { name: /Send for approval|Apply now/ }))
+    expect((await screen.findAllByText(/Nearby shop distance: Enter a distance from 0\.50 to 20 km\./))[0]).toBeInTheDocument()
+  })
+
   it('says fees are switched off, and tries a route under the proposed values', async () => {
     let quote
     server.use(

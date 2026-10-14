@@ -13,8 +13,8 @@ from orders.models import DeliveryAssignment, Order
 
 from routing import service as routing_service
 
-from . import payloads, services
-from .models import DeliveryEvent, Rider, ShiftSession
+from . import payloads, services, stops
+from .models import DeliveryEvent, DeliveryZone, Rider, ShiftSession
 
 
 ESTIMATE_RANKING_NOTE = "Rider distances here are straight-line estimates (x 1.3), not road routes. Road routes are not used to rank riders yet."
@@ -46,24 +46,53 @@ def waiting_orders():
         .exclude(delivery_status=Order.DELIVERED)
         .filter(Q(delivery_assignment__isnull=True) | Q(delivery_assignment__status=DeliveryAssignment.FAILED))
         .select_related("customer", "delivery_assignment")
-        .prefetch_related("items__listing__business_owner__profile")
+        .prefetch_related("items__listing__business_owner__profile", "items__listing__category",
+                          "delivery_assignment__stops__business_owner__profile", "delivery_assignment__events")
         .order_by("placed_at")
     )
 
 
-def _route(order):
-    plat, plng, name = services.pickup_stop(order)
-    return {"from": name, "to": order.delivery_address or None, "pickup_located": plat is not None, "drop_located": order.delivery_lat is not None and order.delivery_lng is not None}
+def _route(order, assignment=None, point=None):
+    """Where the job runs from and to. A waiting order reads its plan's first shop (the dispatch point); a job a rider
+    holds reads its saved stops (the one being worked, else the first), so a job from before multi-stop delivery shows
+    the shop it was actually sent to."""
+    if assignment is None or assignment.status == DeliveryAssignment.FAILED:  # waiting: where the next rider starts
+        plat, _, name, _ = point or services.dispatch_point(order)
+        located = plat is not None
+    else:
+        rows = stops.stops_of(assignment)
+        stop = stops.current_stop(assignment) or (rows[0] if rows else None)
+        name, located = (stops.stop_name(stop), stop.lat is not None) if stop is not None else ("", False)
+    return {"from": name, "to": order.delivery_address or None, "pickup_located": located, "drop_located": order.delivery_lat is not None and order.delivery_lng is not None}
 
 
-def queue_row(order, now):
-    zone = services.zone_of(order.delivery_lat, order.delivery_lng)
+def detour_warning(plan):
+    """The manager's warning for an order whose planned route runs over the detour allowance (spec section 4). It keys off
+    `over_limit`, not the percentage, which is None when the first shop sits at the drop point."""
+    if not plan or not plan.get("over_limit"):
+        return None
+    pct = plan.get("detour_pct")
+    longer = f"{pct:g}% longer than going direct" if pct is not None else "longer than going direct"
+    estimate = " (straight-line estimate)" if plan.get("basis") == routing_service.BASIS_ESTIMATE else ""
+    return f"Planned route is {longer} from the first shop (allowance {plan.get('limit_pct')}%){estimate}."
+
+
+def queue_row(order, now, zones=None):
+    zone = services.zone_of(order.delivery_lat, order.delivery_lng, zones)
     assignment = getattr(order, "delivery_assignment", None)
+    info = services.dispatch_info(order)
+    point = (info["lat"], info["lng"], info["name"], info["count"])
     return {
         "order_id": order.pk, "placed_at": order.placed_at, "waiting_minutes": int((now - order.placed_at).total_seconds() // 60),
-        "route": _route(order), "zone": zone.name if zone else None, "unzoned": zone is None,
+        "route": _route(order, point=point), "zone": zone.name if zone else None, "unzoned": zone is None,
         "deadline_at": assignment.deadline_at if assignment else None,
         "returned": bool(assignment and assignment.status == DeliveryAssignment.FAILED),
+        "returned_reason": assignment.failed_reason if assignment and assignment.status == DeliveryAssignment.FAILED else "",
+        "skips": stops.skip_history(assignment) if assignment else [],
+        "stops": info["count"], "route_plan": order.route_plan,
+        # A plan describes the route the order was placed with; once a returned job's saved stops differ from it (some were
+        # skipped, or it predates the plan) the plan no longer describes the route the next rider will ride, so no warning.
+        "detour_warning": detour_warning(order.route_plan) if not info["from_saved"] or info["owner_ids"] == (order.route_plan or {}).get("owner_ids") else None,
         "payment": payloads.payment_label(order),
     }
 
@@ -90,7 +119,7 @@ def active_row(a, shifts, now):
     flag = next((e for e in reversed(list(a.events.all())) if e.flagged), None)
     stale = bool(shift) and services.is_stale(shift, now)
     return {
-        "id": a.pk, "order_id": a.order_id, "route": _route(a.order),
+        "id": a.pk, "order_id": a.order_id, "route": _route(a.order, a),
         "rider": {"id": rider.pk if rider else None, "staff_id": a.dispatch_id, "full_name": a.dispatch.full_name if a.dispatch_id else None},
         "vehicle": rider.get_vehicle_type_display() if rider else None,
         "status": a.status, "status_label": a.get_status_display(), "step_note": _step_note(a, now),
@@ -110,7 +139,7 @@ def active_queryset():
     return (
         DeliveryAssignment.objects.filter(status__in=DeliveryAssignment.ACTIVE_STATUSES)
         .select_related("order", "order__customer", "dispatch", "dispatch__rider")
-        .prefetch_related("events", "order__items__listing__business_owner__profile")
+        .prefetch_related("events", "order__items__listing__business_owner__profile", "order__items__listing__category", "stops__business_owner__profile")
         .order_by("assigned_at")
     )
 
@@ -174,7 +203,8 @@ def live(now=None):
             "rider_id": rider.pk, "full_name": rider.staff.full_name, "status": status, "lat": shift.last_lat if has_fix else None,
             "lng": shift.last_lng if has_fix else None, "last_fix_at": shift.last_fix_at, "age_seconds": services.fix_age_seconds(shift, now), "stale": stale,
         })
-    waiting = [queue_row(o, now) for o in waiting_orders()[:50]]
+    zones = list(DeliveryZone.objects.filter(active=True, boundary__isnull=False))
+    waiting = [queue_row(o, now, zones) for o in waiting_orders()[:50]]
     waiting_total = waiting_orders().count()
     delivered = DeliveryAssignment.objects.filter(delivered_at__date=today)
     with_deadline = delivered.filter(deadline_at__isnull=False)
@@ -182,6 +212,9 @@ def live(now=None):
     needs = []
     for row in waiting[:5]:
         needs.append({"kind": "unassigned", "order_id": row["order_id"], "text": f"Order #{row['order_id']} has waited {row['waiting_minutes']} min for a rider", "minutes": row["waiting_minutes"]})
+    for row in waiting:
+        if row["detour_warning"]:
+            needs.append({"kind": "detour", "order_id": row["order_id"], "text": f"Order #{row['order_id']}: {row['detour_warning']}"})
     for r in act:
         if r["stale"]:
             needs.append({"kind": "stale", "order_id": r["order_id"], "text": f"{r['rider']['full_name']} on order #{r['order_id']}: no fresh location", "rider_id": r["rider"]["id"]})

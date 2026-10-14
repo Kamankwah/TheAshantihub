@@ -378,6 +378,8 @@ class UnlockCodeTests(DeliveryCase):
         field = "pickup_code_attempts" if which == "pickup" else "drop_code_attempts"
         setattr(assignment, field, 5)
         assignment.save(update_fields=[field])
+        if which == "pickup":  # the stop holds the count since multi-stop delivery; the assignment field mirrors stop 1
+            assignment.stops.filter(sequence=1).update(code_attempts=5)
         return assignment
 
     def unlock(self, assignment, body, staff=None):

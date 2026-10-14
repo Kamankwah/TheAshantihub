@@ -90,6 +90,57 @@ def table(origins, dest):
     return out
 
 
+def table_between(origins, dests):
+    """Every origin to every destination in one call: rows[i][j] = {"distance_m", "duration_s"} from origins[i] to
+    dests[j], or None when OSRM cannot route that pair."""
+    origins, dests = list(origins), list(dests)
+    if not origins or not dests:
+        return [[] for _ in origins]
+    m = len(origins)
+    coords = ";".join(_coord(p) for p in origins + dests)
+    sources = ";".join(str(i) for i in range(m))
+    destinations = ";".join(str(m + j) for j in range(len(dests)))
+    body = _get(f"/table/v1/driving/{coords}?sources={sources}&destinations={destinations}&annotations=duration,distance")
+    durations, distances = body.get("durations") or [], body.get("distances") or []
+    if not isinstance(durations, list) or not isinstance(distances, list):
+        raise OsrmError("Malformed OSRM response.")
+    out = []
+    for i in range(m):
+        row = []
+        for j in range(len(dests)):
+            try:
+                d, dist = durations[i][j], distances[i][j]
+            except (IndexError, TypeError):
+                d = dist = None
+            row.append(None if d is None or dist is None else {"distance_m": float(dist), "duration_s": float(d)})
+        out.append(row)
+    return out
+
+
+def matrix(points):
+    """Every pair in one call: rows[i][j] = {"distance_m", "duration_s"} from point i to point j, or None when OSRM
+    cannot route that pair."""
+    points = list(points)
+    if not points:
+        return []
+    coords = ";".join(_coord(p) for p in points)
+    body = _get(f"/table/v1/driving/{coords}?annotations=duration,distance")
+    durations, distances = body.get("durations") or [], body.get("distances") or []
+    if not isinstance(durations, list) or not isinstance(distances, list):
+        raise OsrmError("Malformed OSRM response.")
+    out = []
+    for i in range(len(points)):
+        row = []
+        for j in range(len(points)):
+            try:
+                d, m = durations[i][j], distances[i][j]
+            except (IndexError, TypeError):
+                d = m = None
+            row.append(None if d is None or m is None else {"distance_m": float(m), "duration_s": float(d)})
+        out.append(row)
+    return out
+
+
 def health():
     try:
         _get("/nearest/v1/driving/-1.6244,6.6885")

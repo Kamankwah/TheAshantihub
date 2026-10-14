@@ -35,10 +35,10 @@ class PublicBrowsingTests(TestCase):
 
     def test_categories_endpoint_lists_all_fifteen(self):
         # 15 product/service categories (0002_seed_categories.py) + 5
-        # kind=event categories (0012_seed_event_categories.py, Phase 6).
+        # kind=event categories (0012_seed_event_categories.py, Phase 6) + beverages (0020).
         response = self.client.get("/api/listings/categories/")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.json()), 20)
+        self.assertEqual(len(response.json()), 21)
 
     def test_categories_endpoint_includes_kind(self):
         # The frontend's Products/Services category split (Phase 3) groups

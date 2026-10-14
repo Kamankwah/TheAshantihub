@@ -33,6 +33,7 @@ class CodePrivacyTests(TrackingPrivacyCase):
         a = self.tracked(status)
         a.pickup_code, a.drop_code = PICKUP_CODE, DROP_CODE
         a.save()
+        a.stops.filter(sequence=1).update(code=PICKUP_CODE)  # the stop holds the code since multi-stop delivery; the field mirrors it
         a.order.placed_at = FIXED_TIME
         a.order.save()
         return a

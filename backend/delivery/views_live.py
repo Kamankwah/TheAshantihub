@@ -15,7 +15,7 @@ from accounts.phones import mask_phone
 from disputes.models import Dispute
 from orders.models import DeliveryAssignment
 
-from . import board, files, payloads, services, tracking
+from . import board, files, payloads, services, stops, tracking
 from .models import DeliveryCall, DeliveryPhoto
 
 PERMISSION = "delivery.manage"
@@ -45,7 +45,7 @@ def manager_job(assignment, now=None):
     order = assignment.order
     events = list(assignment.events.select_related("by"))
     drop = services.drop_stop(order)
-    pickups = payloads.pickup_block(order)
+    block = payloads.stops_block(assignment, evidence=True)
     shift = None
     rider = getattr(assignment.dispatch, "rider", None)
     if rider is not None:
@@ -58,7 +58,8 @@ def manager_job(assignment, now=None):
         "shift": payloads.shift_block(shift, now),
         "customer": {"name": order.customer.full_name, "phone_masked": mask_phone(order.delivery_phone) if order.delivery_phone else None},
         "delivery_address": order.delivery_address, "delivery_lat": drop[0], "delivery_lng": drop[1],
-        "pickup": pickups["primary"], "multi_pickup": pickups["multi_pickup"],
+        "pickup": block["primary"], "multi_pickup": block["multi_pickup"],
+        "stops": [{**r, "id": 0} if r["id"] is None else r for r in block["all"]], "progress": block["progress"], "route_plan": assignment.route_plan or order.route_plan, "skip_history": block["skip_history"],
         "items": [{"name": i.listing.name, "quantity": i.quantity, "business": getattr(i.listing.business_owner, "display_name", None)} for i in order.items.all()],
         "payment": payloads.payment_label(order), "total_amount": str(order.total_amount),
         "placed_at": order.placed_at, "assigned_at": assignment.assigned_at, "deadline_at": assignment.deadline_at,
@@ -85,7 +86,7 @@ class JobDetailView(ManageView):
     def get(self, request, pk):
         assignment = get_object_or_404(
             DeliveryAssignment.objects.select_related("order", "order__customer", "dispatch", "dispatch__rider", "assigned_by", "flag_decided_by", "vehicle")
-            .prefetch_related("order__items__listing__business_owner__profile", "photos", "calls"),
+            .prefetch_related("order__items__listing__business_owner__profile", "order__items__listing__category", "stops__business_owner__profile", "photos", "calls"),
             pk=pk,
         )
         return Response(manager_job(assignment))
@@ -95,7 +96,7 @@ class JobMapView(ManageView):
     """GET jobs/<id>/map/ — where the rider is and the route for one job."""
 
     def get(self, request, pk):
-        assignment = get_object_or_404(DeliveryAssignment.objects.select_related("order", "order__customer", "dispatch", "dispatch__rider").prefetch_related("order__items__listing__business_owner__profile"), pk=pk)
+        assignment = get_object_or_404(DeliveryAssignment.objects.select_related("order", "order__customer", "dispatch", "dispatch__rider").prefetch_related("order__items__listing__business_owner__profile", "stops__business_owner__profile"), pk=pk)
         return Response(tracking.manager_job_map(assignment))
 
 
@@ -147,21 +148,64 @@ class UnlockCodeView(ManageView):
         note = note.strip() if isinstance(note, str) else ""
         if not note:
             return Response({"detail": "Say why you are unlocking this code."}, status=400)
-        field = "pickup_code_attempts" if which == "pickup" else "drop_code_attempts"
         with transaction.atomic():
             assignment = get_object_or_404(DeliveryAssignment.objects.select_for_update(of=("self",)), pk=pk)
-            if getattr(assignment, field) < services.CODE_ATTEMPT_LIMIT:
+            stop = None
+            if which == "pickup":
+                rows = stops.ensure_stops(assignment)
+                wanted = request.data.get("stop")
+                if wanted not in (None, ""):
+                    stop = next((s for s in rows if str(s.pk) == str(wanted)), None)
+                    if stop is None:
+                        raise Http404
+                else:
+                    stop = stops.current_stop(assignment) or (rows[0] if rows else None)
+            before = stop.code_attempts if stop is not None else getattr(assignment, f"{which}_code_attempts")
+            if before < services.CODE_ATTEMPT_LIMIT:
                 return Response({"detail": "This code is not locked.", "code": "not_locked"}, status=409)
-            before = getattr(assignment, field)
-            setattr(assignment, field, 0)
-            assignment.save(update_fields=[field])
+            if stop is not None:
+                stop.code_attempts = 0
+                stop.save(update_fields=["code_attempts"])
+            if stop is None or stop.sequence == 1:  # the assignment field mirrors stop 1
+                setattr(assignment, f"{which}_code_attempts", 0)
+                assignment.save(update_fields=[f"{which}_code_attempts"])
+            label = f"the pickup code at {stops.stop_name(stop)}" if stop is not None else f"the {which} code"
             # Last, because record() holds the activity chain lock until commit.
             record(
                 request.user, "delivery-job-unlock-code", target=assignment, method="POST",
-                summary=f"Unlocked the {which} code on order #{assignment.order_id}: {note[:200]}",
-                before={"which": which, "wrong_tries": before}, after={"which": which, "wrong_tries": 0, "note": note[:300]}, request=request,
+                summary=f"Unlocked {label} on order #{assignment.order_id}: {note[:200]}",
+                before={"which": which, "stop": stop.sequence if stop else None, "wrong_tries": before},
+                after={"which": which, "stop": stop.sequence if stop else None, "wrong_tries": 0, "note": note[:300]}, request=request,
             )
         return Response({"which": which, "attempts": 0})
+
+
+class StopSkipView(ManageView):
+    """POST jobs/<id>/stops/<stop_id>/skip/ {note} — a shop closed or cancelled after dispatch: skip its stop (the same
+    refund case as a rider's skip). Any open stop, before the order leaves for the customer. The rider is told."""
+
+    def post(self, request, pk, stop_id):
+        from notifications.services import notify_staff
+
+        with transaction.atomic():
+            assignment = get_object_or_404(DeliveryAssignment.objects.select_for_update(of=("self",)), pk=pk)
+            rows = stops.ensure_stops(assignment)  # a job from before multi-stop delivery has no saved stop until now
+            # A GET never writes, so the record names such a job's one unsaved stop as id 0: it means the first stop.
+            stop = next((s for s in rows if s.pk == stop_id or (stop_id == 0 and s.sequence == 1)), None)
+            if stop is None:
+                raise Http404
+            try:
+                services.skip_stop(assignment, request.user, request.data.get("note"), stop=stop)
+            except services.DeliveryError as exc:
+                return Response(exc.body(), status=exc.status_code)
+            stop.refresh_from_db()  # skip_stop re-reads the stop under the lock and writes that copy
+        if assignment.dispatch_id:
+            ended = assignment.status == DeliveryAssignment.FAILED
+            notify_staff(assignment.dispatch, "delivery_alert", f"Skip {stops.stop_name(stop)} on Order #{assignment.order_id}",
+                         body=("Your manager took this shop off the delivery and no shop is left, so this delivery has ended. Nothing more to collect."
+                               if ended else "Your manager took this shop off the delivery. Open the job for the next stop."),
+                         link="/staff/jobs", icon="🛵")
+        return Response({"stop": stop.pk, "status": stop.status, "assignment_status": assignment.status})
 
 
 class PhotoFileView(ManageView):

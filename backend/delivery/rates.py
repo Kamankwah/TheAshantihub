@@ -24,11 +24,14 @@ def round_up(amount, step):
     return (Decimal(math.ceil(amount / step)) * step).quantize(CENT)
 
 
-def customer_fee(card, km, *, vehicle="motorbike", express=False, extra_pickups=0, basis=BASIS):
+def customer_fee(card, km, *, vehicle="motorbike", express=False, extra_pickups=0, detour_km=0, basis=BASIS):
     km = _d(km)
     lines = [("Base", _d(card.customer_base)), (f"Distance {km} km", _d(card.customer_per_km) * km)]
     if extra_pickups:
         lines.append((f"{extra_pickups} extra pickup(s)", _d(card.extra_pickup) * extra_pickups))
+    detour = _d(detour_km)
+    if detour > 0:
+        lines.append((f"Detour {detour} km", _d(card.customer_per_km) * detour))
     subtotal = sum((amount for _, amount in lines), Decimal("0"))
     multiplier = _d((card.vehicle_multipliers or {}).get(vehicle, "1"))
     if multiplier != 1:
@@ -56,8 +59,18 @@ def rider_pay(card, km, *, wait_minutes=0, hold_wait=False, basis=BASIS):
 
 
 def route_km(order):
-    """(km, basis) for pickup to drop, or (None, None) when either point is unknown."""
-    plat, plng, _ = services.pickup_stop(order)
+    """(km, basis) for pickup to drop, or (None, None) when either point is unknown. The pickup is the job's saved first
+    stop when it has an assignment (so a job from before multi-stop delivery measures from the shop the rider actually
+    visited), else the plan's first shop. Rider pay for the extra shop legs is an open owner decision: this still
+    measures first shop to drop only."""
+    from . import stops
+
+    assignment = getattr(order, "delivery_assignment", None)
+    rows = stops.stops_of(assignment) if assignment is not None else []
+    if rows and rows[0].lat is not None:
+        plat, plng = rows[0].lat, rows[0].lng
+    else:
+        plat, plng, _ = services.pickup_stop(order)
     dlat, dlng = services.drop_stop(order)
     if plat is None or dlat is None:
         return None, None
@@ -81,17 +94,32 @@ def snapshot_rider_pay(assignment):
     assignment.save(update_fields=["rider_pay", "rider_pay_breakdown"])
 
 
-def checkout_fee(items, delivery_lat, delivery_lng, *, express=False):
-    """Fee for a door-to-door checkout, or None (no live card, or the route cannot be measured). The caller adds
-    it to the total only when settings.DELIVERY_FEE_ENABLED is on."""
+def detour_over_km(total_km, direct_km, limit_pct):
+    """Road km the planned route runs beyond the detour allowance (direct x (1 + limit%)); 0 within it or when unknown."""
+    if total_km is None or direct_km is None:
+        return Decimal("0")
+    over = _d(total_km) - _d(direct_km) * (1 + _d(limit_pct) / 100)
+    return max(Decimal("0"), over).quantize(CENT, ROUND_HALF_UP)
+
+
+def checkout_fee(items, delivery_lat, delivery_lng, *, express=False, plan=None):
+    """Fee for a door-to-door checkout, or None (no live card, or the first pickup to the drop cannot be measured). Base
+    and distance are on the road km from the first planned shop to the drop, plus extra_pickup for every further shop,
+    plus the km beyond the card's detour allowance at the per-km rate (spec 2026-10-14 section 4); fee["route"] says how
+    it was planned. The caller adds it to the total only when settings.DELIVERY_FEE_ENABLED is on."""
+    from . import stops
+
     card = config.live(config.RateCard)
     if card is None or not items:
         return None
-    first = sorted(items, key=lambda i: i.pk)[0].listing
-    pickup = services.valid_point(first.lat, first.lng)
-    drop = services.valid_point(delivery_lat, delivery_lng)
-    if pickup is None or drop is None:
+    plan = plan if plan is not None else stops.plan_for_lines(items, delivery_lat, delivery_lng)
+    if plan is None or plan["direct_km"] is None:
         return None
-    leg = routing_service.leg(pickup, drop)
-    fee = customer_fee(card, leg["distance_km"], express=express, basis=leg["basis"])
+    detour = detour_over_km(plan["total_km"], plan["direct_km"], card.detour_limit_pct) if plan["planned"] else Decimal("0")
+    fee = customer_fee(card, plan["direct_km"], express=express, extra_pickups=len(plan["owner_ids"]) - 1, detour_km=detour,
+                       basis=plan["basis"] or BASIS)
+    fee["route"] = {
+        "stops": len(plan["owner_ids"]), "planned": plan["planned"], "total_km": plan["total_km"], "direct_km": plan["direct_km"],
+        "detour_pct": plan["detour_pct"], "limit_pct": card.detour_limit_pct, "detour_charged_km": str(detour), "basis": plan["basis"],
+    }
     return card, fee

@@ -93,6 +93,7 @@ class RateCardView(_ConfigView):
         return {
             "vehicle_types": [{"value": v, "label": l} for v, l in VEHICLE_TYPES],
             "fee_charging": {"enabled": bool(settings.DELIVERY_FEE_ENABLED), "note": "Customers are charged a delivery fee only when delivery fees are switched on. That is a separate decision."},
+            "cart_limits": config.limits_json(config.effective_cart_limits()),
             "distance_basis": routing_service.BASIS_ROAD if routing_service.status()["mode"] == "road" else routing_service.BASIS_ESTIMATE,
         }
 
