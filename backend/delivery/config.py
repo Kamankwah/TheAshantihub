@@ -16,6 +16,8 @@ from approvals.models import ApprovalRequest
 from approvals.registry import ApprovalKind
 from approvals.services import ApprovalError
 
+from routing.planner import MAX_STOPS
+
 from .models import AutoAssignRules, ConfigVersion, RateCard, TimeLimits, VEHICLE_TYPES
 
 AUTO_ASSIGN, TIME_LIMITS, RATE_CARD, REFUND = "delivery.auto_assign", "delivery.time_limits", "delivery.rate_card", "delivery.refund_request"
@@ -137,8 +139,8 @@ def clean_rate_card(data):
     if unknown:
         raise ConfigError("Unknown vehicle type.", "vehicle_multipliers")
     limits = {
-        "max_shops_per_delivery": _int(data, "max_shops_per_delivery", 1, 6, default=4),  # 6 = routing.planner.MAX_STOPS
-        "max_food_shops": _int(data, "max_food_shops", 0, 6, default=2),
+        "max_shops_per_delivery": _int(data, "max_shops_per_delivery", 1, MAX_STOPS, default=4),
+        "max_food_shops": _int(data, "max_food_shops", 0, MAX_STOPS, default=2),
         "near_shop_radius_km": str(_km(data, "near_shop_radius_km", Decimal("0.5"), Decimal("20"), default="3.00")),
         "detour_limit_pct": _int(data, "detour_limit_pct", 0, 300, default=40),
     }

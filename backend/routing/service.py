@@ -92,6 +92,44 @@ def legs_from(origins, dest):
         return [_estimate(o, dest) for o in origins]
 
 
+def matrix(points):
+    """Road km between every pair of points (km[i][j] from i to j, 0 on the diagonal) and one basis for the whole table.
+    Never raises: OSRM off or down gives the straight-line estimate; a pair OSRM cannot route is estimated, and then the
+    whole table is labelled an estimate, so a plan built on it never claims road distances."""
+    points = [(float(p[0]), float(p[1])) for p in points]
+
+    def estimated():
+        return {"km": [[0.0 if i == j else _estimate(a, b)["distance_km"] for j, b in enumerate(points)] for i, a in enumerate(points)],
+                "basis": BASIS_ESTIMATE}
+
+    if len(points) < 2 or not _enabled() or _down():
+        return estimated()
+    try:
+        rows = client.matrix(points)
+    except client.OsrmError as exc:
+        if isinstance(exc, client.OsrmUnavailable):
+            _mark_down()
+        logger.info("OSRM table failed (%s); using straight-line estimates.", exc)
+        return estimated()
+    except Exception:
+        logger.exception("OSRM table failed unexpectedly; using straight-line estimates.")
+        return estimated()
+    basis, km = BASIS_ROAD, []
+    for i, a in enumerate(points):
+        row = []
+        for j, b in enumerate(points):
+            cell = rows[i][j] if i < len(rows) and j < len(rows[i]) else None
+            if i == j:
+                row.append(0.0)
+            elif cell is None:
+                row.append(_estimate(a, b)["distance_km"])
+                basis = BASIS_ESTIMATE
+            else:
+                row.append(round(cell["distance_m"] / 1000, 2))
+        km.append(row)
+    return {"km": km, "basis": basis}
+
+
 def status():
     configured = _enabled()
     base = {"factor": delivery_services.ROAD_FACTOR, "configured": configured}

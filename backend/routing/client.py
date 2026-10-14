@@ -90,6 +90,30 @@ def table(origins, dest):
     return out
 
 
+def matrix(points):
+    """Every pair in one call: rows[i][j] = {"distance_m", "duration_s"} from point i to point j, or None when OSRM
+    cannot route that pair."""
+    points = list(points)
+    if not points:
+        return []
+    coords = ";".join(_coord(p) for p in points)
+    body = _get(f"/table/v1/driving/{coords}?annotations=duration,distance")
+    durations, distances = body.get("durations") or [], body.get("distances") or []
+    if not isinstance(durations, list) or not isinstance(distances, list):
+        raise OsrmError("Malformed OSRM response.")
+    out = []
+    for i in range(len(points)):
+        row = []
+        for j in range(len(points)):
+            try:
+                d, m = durations[i][j], distances[i][j]
+            except (IndexError, TypeError):
+                d = m = None
+            row.append(None if d is None or m is None else {"distance_m": float(m), "duration_s": float(d)})
+        out.append(row)
+    return out
+
+
 def health():
     try:
         _get("/nearest/v1/driving/-1.6244,6.6885")
