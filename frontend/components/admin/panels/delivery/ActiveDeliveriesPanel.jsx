@@ -109,12 +109,12 @@ const LOCK_AT = 5; // CODE_ATTEMPT_LIMIT on the server; the server is the one th
 // One code's line in the record: matched or not, wrong tries, and, once five wrong tries have locked it,
 // an unlock that needs a written reason (it is logged with the manager's name). The code itself is
 // never shown to a manager.
-function CodeLine({ label, which, jobId, stopId, state, onDone }) {
+function CodeLine({ label, which, jobId, stopId, state, onDone, canUnlock = true }) {
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const locked = !state.matched && state.wrong_tries >= LOCK_AT;
+  const locked = canUnlock && !state.matched && state.wrong_tries >= LOCK_AT;
   const unlock = async () => {
     setError("");
     setBusy(true);
@@ -186,9 +186,9 @@ function StopRow({ jobId, stop, canSkip, onDone }) {
       <span><b>{stop.sequence}. {stop.business_name}</b> · {STOP_LABEL[stop.status] || stop.status}{stop.collected_at ? ` ${clock(stop.collected_at)}` : ""}{stop.status === "pending" && stop.planned_arrival ? ` · expected about ${clock(stop.planned_arrival)}${stop.late ? ", running late" : ""}` : ""}</span>
       {stop.skip_note && <span style={dim}>Skipped: {stop.skip_note}</span>}
       {(stop.skips || []).map((k, i) => (
-        <span key={`${k.at}-${i}`} style={dim}>{k.by === "rider" ? "Rider reported" : "Skipped by a manager"} {clock(k.at)}: {k.note}. {k.by === "rider" ? `${skipPin(k)}.` : ""}</span>
+        <span key={`${k.at}-${i}`} style={dim}>{k.by === "rider" ? "Rider reported" : "Skipped by a manager"} {clock(k.at)}: {k.note}{k.by === "rider" ? `. ${skipPin(k)}.` : "."}</span>
       ))}
-      {stop.id != null && <CodeLine label="Pickup code" which="pickup" jobId={jobId} stopId={stop.id} state={{ matched: stop.status === "collected", wrong_tries: stop.wrong_tries || 0 }} onDone={onDone} />}
+      {stop.id != null && <CodeLine label="Pickup code" which="pickup" jobId={jobId} stopId={stop.id} canUnlock={openStop} state={{ matched: stop.status === "collected", wrong_tries: stop.wrong_tries || 0 }} onDone={onDone} />}
       {canSkip && openStop && stop.id != null && !open && <button type="button" onClick={() => setOpen(true)} style={{ ...button(D.panelBg, D.text), alignSelf: "flex-start" }}>Skip this shop</button>}
       {open && (
         <span style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -212,7 +212,7 @@ function RouteLine({ plan, count }) {
   if (!plan) return null;
   return (
     <span style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: "0.82rem", color: D.text }}>
-      {plan.total_km != null ? `Planned route ${plan.total_km} km through ${count} shops (${plan.basis}).` : "No route could be planned (a shop or the drop-off has no map pin), so the shops are in cart order."}
+      {plan.total_km != null ? `Planned route ${plan.total_km} km through ${count} shops${plan.basis ? ` (${plan.basis})` : ""}.` : "No route could be planned (a shop or the drop-off has no map pin), so the shops are in cart order."}
       {plan.over_limit && <span style={chip(D.amber)}>{plan.detour_pct != null ? `Detour ${plan.detour_pct}%` : "Longer than going direct"} (allowance {plan.limit_pct}%)</span>}
     </span>
   );

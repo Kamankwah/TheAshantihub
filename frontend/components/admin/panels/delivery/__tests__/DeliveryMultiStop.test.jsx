@@ -97,6 +97,22 @@ describe('A delivery from several shops (manager)', () => {
     expect(beads).toHaveTextContent('running late')
   })
 
+  it('offers no unlock on a skipped shop, no undefined basis, and no stray full stop after a manager note', async () => {
+    const skips = [{ stop_id: 72, sequence: 2, business_name: 'Adwoa Beads', at: '2026-10-14T10:05:00Z', note: 'Closed down', by: 'manager', pinned: false, lat: null, lng: null, accuracy_m: null, distance_m: null, distance_measured: false, at_shop: false }]
+    server.use(http.get(`${API}/api/delivery/jobs/55/`, () => HttpResponse.json(detail({
+      stops: [stop(1, 'Kente House', 'collected'), stop(2, 'Adwoa Beads', 'skipped', { wrong_tries: 5, skips }), stop(3, 'Chop Corner', 'pending')],
+      route_plan: { planned: true, total_km: 7.2, detour_pct: 10, limit_pct: 40, over_limit: false },
+    }))))
+    wrap(<ActiveDeliveries detailId="55" onOpenDetail={() => {}} />)
+    const beads = await screen.findByRole('group', { name: 'Stop 2: Adwoa Beads' })
+    expect(within(beads).queryByRole('button', { name: 'Unlock code' })).not.toBeInTheDocument()
+    expect(within(beads).queryByText('Code locked')).not.toBeInTheDocument()
+    expect(beads).toHaveTextContent(/Closed down\.Pickup code/)
+    expect(beads).not.toHaveTextContent('Closed down. .')
+    expect(screen.getByText('Planned route 7.2 km through 3 shops.')).toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent('undefined')
+  })
+
   it('keeps the one-shop layout when there is a single stop', async () => {
     server.use(http.get(`${API}/api/delivery/jobs/55/`, () => HttpResponse.json(detail({ stops: [stop(1, 'Kente House', 'pending')], route_plan: null }))))
     wrap(<ActiveDeliveries detailId="55" onOpenDetail={() => {}} />)
