@@ -196,6 +196,49 @@ describe('Active deliveries and the delivery record', () => {
     expect(await screen.findByRole('link', { name: '+233240000001' })).toHaveAttribute('href', 'tel:+233240000001')
     expect(screen.getByText(/Flag cleared/)).toBeInTheDocument()
   })
+
+  it('shows a locked code and unlocks it only with a note, then refetches the job', async () => {
+    let body
+    let reads = 0
+    server.use(
+      http.get(`${API}/api/delivery/jobs/55/`, () => { reads += 1; return HttpResponse.json(detail({ status: 'at_pickup', codes: { pickup: { matched: false, wrong_tries: reads > 1 ? 0 : 5 }, drop: { matched: false, wrong_tries: 2 } } })) }),
+      http.post(`${API}/api/delivery/jobs/55/unlock-code/`, async ({ request }) => { body = await request.json(); return HttpResponse.json({ which: 'pickup', attempts: 0 }) }),
+    )
+    wrap(<ActiveDeliveries detailId="55" onOpenDetail={() => {}} />)
+    expect(await screen.findByText('Code locked')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Unlock code' })).toHaveLength(1) // the drop step has 2 wrong tries: not locked
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock code' }))
+    const confirm = screen.getByRole('button', { name: 'Confirm unlock' })
+    expect(confirm).toBeDisabled()
+    fireEvent.change(screen.getByLabelText(/Why are you unlocking/), { target: { value: 'Shop confirmed the rider' } })
+    fireEvent.click(confirm)
+    await waitFor(() => expect(body).toEqual({ which: 'pickup', note: 'Shop confirmed the rider' }))
+    await waitFor(() => expect(screen.queryByText('Code locked')).not.toBeInTheDocument())
+    expect(reads).toBeGreaterThan(1)
+  })
+
+  it('offers no unlock control when no code is locked', async () => {
+    server.use(http.get(`${API}/api/delivery/jobs/55/`, () => HttpResponse.json(detail())))
+    wrap(<ActiveDeliveries detailId="55" onOpenDetail={() => {}} />)
+    await screen.findByText(/1 wrong try/)
+    expect(screen.queryByText('Code locked')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Unlock code' })).not.toBeInTheDocument()
+  })
+
+  it('shows the server message when the unlock is refused, and reloads the job', async () => {
+    let reads = 0
+    server.use(
+      http.get(`${API}/api/delivery/jobs/55/`, () => { reads += 1; return HttpResponse.json(detail({ status: 'at_pickup', codes: { pickup: { matched: false, wrong_tries: 5 }, drop: { matched: false, wrong_tries: 0 } } })) }),
+      http.post(`${API}/api/delivery/jobs/55/unlock-code/`, () => HttpResponse.json({ detail: 'This code is not locked.', code: 'not_locked' }, { status: 409 })),
+    )
+    wrap(<ActiveDeliveries detailId="55" onOpenDetail={() => {}} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Unlock code' }))
+    fireEvent.change(screen.getByLabelText(/Why are you unlocking/), { target: { value: 'x' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm unlock' }))
+    expect(await screen.findByText('This code is not locked.')).toBeInTheDocument()
+    await waitFor(() => expect(reads).toBeGreaterThan(1))
+  })
+  
 })
 
 describe('Disputes and returns', () => {

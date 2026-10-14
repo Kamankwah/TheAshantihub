@@ -6,6 +6,7 @@ import { D } from "../../theme.js";
 import { button, chip, dim, field } from "../panelStyles.js";
 import { scroll, table, td, th } from "../opsPeopleParts.jsx";
 import { Status, Title, page, section, sectionTitle } from "../insightsParts.jsx";
+import { QueueMap } from "./deliveryMaps.jsx";
 import { Empty, ErrorLine, Note, SOURCE_LABEL, WARN, clock, linkStyle, spare, span } from "./deliveryParts.jsx";
 
 // ─── Delivery Manager 02 Dispatch queue ──────────────────────────────────────
@@ -25,6 +26,7 @@ function Ranking({ orderId, row, onDone, canForce }) {
   const [releaseAt, setReleaseAt] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [marked, setMarked] = useState(null); // rider_id picked on the map
   const act = async (path, body, failure) => {
     setError("");
     setBusy(true);
@@ -52,13 +54,14 @@ function Ranking({ orderId, row, onDone, canForce }) {
             {!data.pickup_located && <Note tone="warn">This business has no map pin, so the engine cannot rank riders. You can still pick a rider by hand below.</Note>}
             {row.offer && <Note>Offered to <b>{row.offer.rider}</b>, {span(row.offer.seconds_left)} left. If time runs out the offer passes to the next rider.</Note>}
             {short && <Note tone="warn"><b>Time is short.</b> Under {SHORT_MINUTES} minutes to spare. You can force-assign a rider now: they are told the job is assigned, not offered.</Note>}
+            <QueueMap orderId={orderId} onSelectRider={setMarked} />
             <div style={scroll}>
               <table style={table}>
                 <thead><tr>{["Rider", "Distance", "Fairness", "Idle", "Score"].map((h) => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
                 <tbody>
                   {eligible.length === 0 && <tr><td colSpan={5} style={td}>{data.left_out.length ? "No rider is eligible." : "No rider exists."}</td></tr>}
                   {eligible.map((e, i) => (
-                    <tr key={e.rider_id}>
+                    <tr key={e.rider_id} {...(String(e.rider_id) === String(marked) ? { "aria-current": "true" } : {})} style={String(e.rider_id) === String(marked) ? { background: D.panelBg2, boxShadow: `inset 3px 0 0 ${D.gold}` } : undefined}>
                       <td style={{ ...td, fontWeight: 800 }}>{e.full_name}{i === 0 && <span style={{ ...chip(D.green), marginLeft: 6 }}>Best</span>}<div style={dim}>{e.vehicle_type} · {e.active_jobs} active</div></td>
                       {e.parts.map((p) => <td key={p.key} style={td}>{p.points} <span style={dim}>× {p.weight}</span><div style={dim}>{p.label}</div></td>)}
                       <td style={{ ...td, fontWeight: 800 }}>{e.total}</td>

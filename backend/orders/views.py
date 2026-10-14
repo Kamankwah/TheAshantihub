@@ -223,6 +223,44 @@ class OrderDetailView(generics.RetrieveAPIView):
         return Order.objects.filter(customer=self.request.user).select_related("delivery_assignment")
 
 
+def _assignment_of(order):
+    return DeliveryAssignment.objects.select_related("order", "dispatch", "dispatch__rider").filter(order=order).first()
+
+
+class OrderTrackingView(APIView):
+    """GET /api/orders/{id}/tracking/ - the buyer's map. Scoped to the caller's own orders (another
+    customer's order is a 404); the rider shows only after pickup, as a first name and vehicle type."""
+
+    permission_classes = [IsAuthenticated, IsCustomer]
+
+    def get(self, request, pk):
+        from delivery import tracking
+
+        order = generics.get_object_or_404(Order, pk=pk, customer=request.user)
+        assignment = _assignment_of(order)
+        if assignment is None:
+            return Response({"stage": "not_assigned"})
+        return Response(tracking.customer_map(assignment))
+
+
+class OwnerOrderTrackingView(APIView):
+    """GET /api/orders/owner/{id}/tracking/ - the vendor's map. Scoped like OwnerOrderListView (a paid order
+    with one of the caller's listings; anything else is a 404). Never carries the customer's address, pin or phone."""
+
+    permission_classes = [IsAuthenticated, IsBusinessOwner]
+
+    def get(self, request, pk):
+        from delivery import tracking
+
+        order = generics.get_object_or_404(
+            Order.objects.filter(status=Order.PAID, items__listing__business_owner=request.user).distinct(), pk=pk
+        )
+        assignment = _assignment_of(order)
+        if assignment is None:
+            return Response({"stage": "not_assigned"})
+        return Response(tracking.business_map(assignment, request.user))
+
+
 class OrderOwnerPagination(PageNumberPagination):
     page_size = 20
 
@@ -509,6 +547,26 @@ class AssignDispatchView(APIView):
             link="/my-account", icon="🚚",
         )
         return Response(DeliveryOrderSerializer(order).data)
+
+
+class DispatchMapView(APIView):
+    """GET /api/orders/dispatch/<pk>/map/ — the map for the dispatch's own assignment (delivery.dispatch);
+    another dispatcher's assignment is a 404."""
+
+    def get_permissions(self):
+        return [HasRolePermission("delivery.dispatch")]
+
+    def get(self, request, pk):
+        from django.shortcuts import get_object_or_404
+
+        from delivery import tracking
+
+        assignment = get_object_or_404(
+            DeliveryAssignment.objects.select_related("order", "order__customer", "dispatch", "dispatch__rider")
+            .prefetch_related("order__items__listing__business_owner__profile"),
+            pk=pk, dispatch=request.user,
+        )
+        return Response(tracking.manager_job_map(assignment))
 
 
 class MyDeliveriesView(generics.ListAPIView):

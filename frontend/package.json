@@ -21,6 +21,7 @@
     "framer-motion": "^12.42.2",
     "jsqr": "^1.4.0",
     "leaflet": "^1.9.4",
+    "leaflet-draw": "^1.0.4",
     "lucide-react": "^1.24.0",
     "qrcode": "^1.5.4",
     "react": "^19.0.0",

@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -369,3 +370,101 @@ class LiveBoardTests(DeliveryCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.json()["phone"], "+233244000002")
         self.assertEqual(assignment.calls.count(), 1)
+
+
+class UnlockCodeTests(DeliveryCase):
+    def locked(self, which="pickup"):
+        assignment = self.assign()
+        field = "pickup_code_attempts" if which == "pickup" else "drop_code_attempts"
+        setattr(assignment, field, 5)
+        assignment.save(update_fields=[field])
+        return assignment
+
+    def unlock(self, assignment, body, staff=None):
+        self.as_staff(staff or self.manager)
+        return self.client.post(f"/api/delivery/jobs/{assignment.pk}/unlock-code/", body, format="json")
+
+    def test_a_manager_unlocks_a_locked_pickup_step_and_it_is_logged(self):
+        from activity.models import ActivityEvent
+
+        assignment = self.locked("pickup")
+        assignment.pickup_code, assignment.drop_code = "1357", "2468"
+        assignment.save(update_fields=["pickup_code", "drop_code"])
+        response = self.unlock(assignment, {"which": "pickup", "note": "Shop confirmed the rider by phone"})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json(), {"which": "pickup", "attempts": 0})
+        assignment.refresh_from_db()
+        self.assertEqual(assignment.pickup_code_attempts, 0)
+        event = ActivityEvent.objects.filter(verb="delivery-job-unlock-code").get()
+        self.assertEqual(event.actor_id, self.manager.pk)
+        self.assertIn("Shop confirmed the rider by phone", event.summary)
+        self.assertIn("pickup", event.summary)
+        blob = json.dumps([event.summary, event.before, event.after, event.target_label])
+        self.assertNotIn(assignment.pickup_code, blob)
+        self.assertNotIn(assignment.drop_code, blob)
+        self.assertEqual(self.client.get(f"/api/delivery/jobs/{assignment.pk}/").json()["codes"]["unlocks"], 1)
+
+    def test_the_unlock_reaches_other_managers_and_riders_live(self):
+        from unittest import mock
+
+        assignment = self.locked("pickup")
+        with mock.patch("realtime.publish._send", return_value=True) as send, self.captureOnCommitCallbacks(execute=True):
+            self.unlock(assignment, {"which": "pickup", "note": "Verified"})
+        groups = {call.args[0] for call in send.call_args_list}
+        self.assertIn("perm.delivery.manage", groups)
+        self.assertIn("perm.delivery.dispatch", groups)
+
+    def test_the_drop_step_unlocks_independently(self):
+        assignment = self.locked("drop")
+        assignment.pickup_code_attempts = 5
+        assignment.save(update_fields=["pickup_code_attempts"])
+        self.assertEqual(self.unlock(assignment, {"which": "drop", "note": "Customer verified"}).status_code, 200)
+        assignment.refresh_from_db()
+        self.assertEqual(assignment.drop_code_attempts, 0)
+        self.assertEqual(assignment.pickup_code_attempts, 5)
+
+    def test_unlocking_a_step_that_is_not_locked_is_409(self):
+        assignment = self.assign()
+        assignment.pickup_code_attempts = 4
+        assignment.save(update_fields=["pickup_code_attempts"])
+        response = self.unlock(assignment, {"which": "pickup", "note": "x"})
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["code"], "not_locked")
+        assignment.refresh_from_db()
+        self.assertEqual(assignment.pickup_code_attempts, 4)
+
+    def test_a_bad_step_or_an_empty_note_is_400(self):
+        assignment = self.locked()
+        self.assertEqual(self.unlock(assignment, {"which": "other", "note": "x"}).status_code, 400)
+        self.assertEqual(self.unlock(assignment, {"which": "pickup", "note": "   "}).status_code, 400)
+        self.assertEqual(self.unlock(assignment, {"which": "pickup"}).status_code, 400)
+        self.assertEqual(self.unlock(assignment, {"which": "pickup", "note": None}).status_code, 400)
+        self.assertEqual(self.unlock(assignment, {"which": "pickup", "note": 123}).status_code, 400)
+        assignment.refresh_from_db()
+        self.assertEqual(assignment.pickup_code_attempts, 5)
+
+    def test_an_unknown_job_is_404(self):
+        self.as_staff(self.manager)
+        response = self.client.post("/api/delivery/jobs/999999/unlock-code/", {"which": "pickup", "note": "x"}, format="json")
+        self.assertEqual(response.status_code, 404)
+
+    def test_only_delivery_managers_may_unlock(self):
+        assignment = self.locked()
+        self.assertEqual(self.unlock(assignment, {"which": "pickup", "note": "x"}, staff=self.rider_staff).status_code, 403)
+        self.client.credentials()
+        response = self.client.post(f"/api/delivery/jobs/{assignment.pk}/unlock-code/", {"which": "pickup", "note": "x"}, format="json")
+        self.assertIn(response.status_code, (401, 403))
+        assignment.refresh_from_db()
+        self.assertEqual(assignment.pickup_code_attempts, 5)
+
+    def test_after_the_unlock_the_rider_can_try_again(self):
+        assignment = self.assign()
+        self.step(assignment, "accept")
+        self.step(assignment, "arrive-pickup", self.at(PICKUP))
+        for _ in range(5):
+            self.step(assignment, "pickup", {**self.at(PICKUP), "code": "0000" if assignment.pickup_code != "0000" else "1111"})
+        locked = self.step(assignment, "pickup", {**self.at(PICKUP), "code": assignment.pickup_code})
+        self.assertEqual(locked.status_code, 423)
+        self.assertEqual(self.unlock(assignment, {"which": "pickup", "note": "Verified"}).status_code, 200)
+        ok = self.step(assignment, "pickup", {**self.at(PICKUP), "code": assignment.pickup_code})
+        self.assertEqual(ok.status_code, 200, ok.content)
