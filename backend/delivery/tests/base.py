@@ -39,7 +39,7 @@ class DeliveryCase(TestCase):
         self.owner = BusinessOwner.objects.create(full_name="Kwame Trader", login_phone="+233207882200", password_hash="x")
         self.customer = Customer.objects.create(full_name="Ama Buyer", phone="+233200882200", password_hash="x")
         self.listing = Listing.objects.create(
-            business_owner=self.owner, category=Category.objects.get(slug="hotels"), zone=Zone.objects.get(name="Manhyia"),
+            business_owner=self.owner, category=Category.objects.get(slug="shops"), zone=Zone.objects.get(name="Manhyia"),
             name="Kente Cloth", description="D.", contact_phone="+233207882200", price_amount="100.00", status=Listing.PUBLISHED,
             lat=str(PICKUP[0]), lng=str(PICKUP[1]),
         )

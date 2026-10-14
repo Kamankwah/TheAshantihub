@@ -29,7 +29,7 @@ class ListingPhotoSerializer(serializers.ModelSerializer):
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
-        fields = ["id", "slug", "icon", "label", "color", "kind", "is_accommodation"]
+        fields = ["id", "slug", "icon", "label", "color", "kind", "is_accommodation", "is_food"]
         # `kind` has a model-level default (PRODUCT), which would otherwise
         # make it optional on create — but staff must consciously choose
         # Product vs Service when creating a category (the admin form forces
@@ -37,6 +37,9 @@ class CategorySerializer(serializers.ModelSerializer):
         # update) DRF skips required-field enforcement, so editing name/icon/
         # label/color without re-sending `kind` still works.
         extra_kwargs = {"kind": {"required": True}}
+        # is_food (the delivery food rules, cart.guard) is set by migration only (listings 0020: food and beverages);
+        # it is shown, never changed through the category screens.
+        read_only_fields = ["is_food"]
 
 
 
@@ -107,6 +110,50 @@ class PublicListingSerializer(serializers.ModelSerializer):
 
     def get_review_count(self, obj):
         return getattr(obj, "review_count", 0)
+
+
+class CartTieredListingSerializer(PublicListingSerializer):
+    """Search for a customer whose cart holds something (?cart_tiers=1, cart.guard): the tier of the listing's shop
+    (1 in the cart, 2 near it, 3 everyone else; null for services, stays and events, which are not tiered), the distance
+    label for tier 2 (labelled when it is the straight-line estimate), and why the cart cannot take it now, if so. Needs
+    the guard context as context["cart_guard"], its near-shop map already measured."""
+
+    cart_tier = serializers.SerializerMethodField()
+    cart_label = serializers.SerializerMethodField()
+    cart_blocked = serializers.SerializerMethodField()
+
+    class Meta(PublicListingSerializer.Meta):
+        fields = [*PublicListingSerializer.Meta.fields, "cart_tier", "cart_label", "cart_blocked"]
+
+    @staticmethod
+    def _deliverable(obj):
+        from cart import guard
+
+        return guard.kind_of(obj) in guard.DELIVERABLE
+
+    def get_cart_tier(self, obj):
+        return getattr(obj, "cart_tier", None) if self._deliverable(obj) else None
+
+    def get_cart_label(self, obj):
+        from routing import service as routing_service
+
+        tier = self.get_cart_tier(obj)
+        ctx = self.context["cart_guard"]
+        if tier == 1:
+            return "In your cart" if obj.pk in ctx["listing_ids"] else "From a shop in your cart"
+        if tier == 2:
+            near = ctx["near"][obj.business_owner_id]
+            text = f"{near['km']:.1f} km from {near['from_name']}"
+            return text if near["basis"] == routing_service.BASIS_ROAD else f"{text} (estimate)"
+        return None
+
+    def get_cart_blocked(self, obj):
+        from cart import guard
+
+        if not self._deliverable(obj):
+            return None
+        reason = guard.blocked_reason(self.context["cart_guard"], obj)
+        return {"detail": reason[0], "code": reason[1]} if reason else None
 
 
 class OwnerListingManageSerializer(serializers.ModelSerializer):

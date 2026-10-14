@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 from accounts.models import StaffUser
 from accounts.permissions import HasRolePermission
 from accounts.views import IsBusinessOwner, IsCustomer
+from cart import guard as cart_guard
 from cart.models import Cart
 from delivery.models import DeliveryEvent
 from disputes.models import Dispute
@@ -74,6 +75,12 @@ class OrderCheckoutView(APIView):
                 {"delivery_method": "Choose door-to-door delivery or store pickup."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # The cart guard (cart.guard): a service or stay line refuses every method (the row may predate the rule); more
+        # shops or food places than one delivery allows refuse door-to-door only. The cart is left exactly as it is.
+        try:
+            cart_guard.check_checkout(items, delivery_method)
+        except cart_guard.GuardError as exc:
+            return Response(exc.body(), status=status.HTTP_400_BAD_REQUEST)
         delivery_address = (request.data.get("delivery_address") or "").strip()
         delivery_phone = (request.data.get("delivery_phone") or "").strip()
         if delivery_method == Order.DOOR_TO_DOOR and (not delivery_address or not delivery_phone):

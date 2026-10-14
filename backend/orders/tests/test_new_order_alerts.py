@@ -29,7 +29,7 @@ class NewOrderAlertTests(TestCase):
         self.customer = Customer.objects.create(
             full_name="Ama Buyer", phone="+233200663001", password_hash="x",
         )
-        category = Category.objects.get(slug="hotels")
+        category = Category.objects.get(slug="shops")
         zone = Zone.objects.get(name="Manhyia")
 
         def listing(owner, name, price):

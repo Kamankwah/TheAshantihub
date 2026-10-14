@@ -4,7 +4,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.views import IsCustomer
+from listings.models import Listing
+from listings.visibility import hidden_business_q
 
+from . import guard
 from .models import Cart, CartItem
 from .permissions import IsCartItemOwner
 from .serializers import (
@@ -25,10 +28,21 @@ class CartMeView(APIView):
         return Response(CartSerializer(cart).data)
 
 
+def _guard_lines(cart):
+    """The cart's lines as the guard reads them (business, pin and category with each line)."""
+    if cart is None:
+        return []
+    return list(cart.items.select_related("listing__business_owner__profile", "listing__category"))
+
+
 class CartItemCreateView(APIView):
     """POST /api/cart/items/ — add a listing to the caller's cart. If the
     listing is already in the cart, increments quantity on the existing row
     rather than creating a duplicate line.
+
+    The cart guard (cart.guard) refuses, with 400 {"detail", "code"} and
+    nothing written, a service, stay or event listing and anything that would
+    take the cart past the delivery limits in force.
     """
 
     permission_classes = [IsAuthenticated, IsCustomer]
@@ -38,6 +52,11 @@ class CartItemCreateView(APIView):
         serializer.is_valid(raise_exception=True)
         listing = serializer.validated_data["listing"]
         quantity = serializer.validated_data["quantity"]
+
+        try:
+            guard.check_add(_guard_lines(Cart.objects.filter(customer=request.user).first()), listing)
+        except guard.GuardError as exc:
+            return Response(exc.body(), status=status.HTTP_400_BAD_REQUEST)
 
         if listing.price_amount is None:
             return Response(
@@ -62,6 +81,28 @@ class CartItemCreateView(APIView):
             CartItemSerializer(item).data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
+
+
+class CartGuardView(APIView):
+    """GET /api/cart/guard/?listing=<id> — the delivery limits for the caller's cart (and whether they are a live rate
+    card's or the built-in defaults), its shops, whether checkout is blocked and why, and with ?listing= whether that
+    listing may be added now. Writes nothing."""
+
+    permission_classes = [IsAuthenticated, IsCustomer]
+
+    def get(self, request):
+        lines = _guard_lines(Cart.objects.filter(customer=request.user).first())
+        listing = None
+        raw = request.query_params.get("listing")
+        if raw:
+            if not str(raw).isdigit():
+                return Response({"detail": "Name a listing by its number."}, status=status.HTTP_400_BAD_REQUEST)
+            listing = generics.get_object_or_404(
+                Listing.objects.filter(status=Listing.PUBLISHED).exclude(hidden_business_q())
+                .select_related("category", "business_owner__profile"),
+                pk=raw,
+            )
+        return Response(guard.summary(lines, listing))
 
 
 class CartItemUpdateDeleteView(APIView):
