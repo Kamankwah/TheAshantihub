@@ -5,6 +5,7 @@ import { currentFix } from "../../../../lib/riderTracking.js";
 import { useRiderEarnings, useRiderJob, useRiderMe } from "../../../../hooks/useDelivery.js";
 import { D } from "../../theme.js";
 import { chip, dim, field } from "../panelStyles.js";
+import JobMap from "./JobMap.jsx";
 import { Err, Info, JobHeader, LocationLine, Warn, bigButton, card, distanceText, h2, hhmm, mmss, mono, money, quietButton, screen, useDistanceTo, useTick } from "./riderParts.jsx";
 
 // ─── Dispatch 04 to 09: one job from accepted to delivered ───────────────────
@@ -117,6 +118,7 @@ function ToPickup({ job, step, onChanged }) {
           <dt style={{ color: D.textDim }}>Deliver by</dt><dd style={{ margin: 0, fontWeight: 700 }}>{job.deadline_at ? hhmm(job.deadline_at) : "No time limit set"}</dd>
           <dt style={{ color: D.textDim }}>Payment</dt><dd style={{ margin: 0, fontWeight: 700 }}>{job.payment.label}</dd>
         </dl>
+        <JobMap jobId={job.id} />
         {p?.lat !== null && p?.lat !== undefined && (
           <a href={`https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`} target="_blank" rel="noreferrer" style={{ ...quietButton(false), display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }}>Open in Google Maps</a>
         )}
@@ -191,6 +193,7 @@ function ToCustomer({ job, step, onChanged }) {
         <div style={{ fontSize: "1.9rem", fontWeight: 800, color: D.text, lineHeight: 1.1 }}>{distance === null ? "Location needed" : <>{distanceText(distance)} <span style={{ fontSize: "1rem", fontWeight: 600, color: D.textDim }}>to go (straight line)</span></>}</div>
         <div><b>{job.customer_name}</b><div style={{ fontSize: "0.88rem", color: D.text }}>{job.delivery_address}</div></div>
         <div style={dim}>Deliver by {job.deadline_at ? hhmm(job.deadline_at) : "(no time limit set)"} · Payment {job.payment.label}{job.payment.cash_due ? ` · collect ${money(job.payment.cash_due)}` : " · nothing to collect"}</div>
+        <JobMap jobId={job.id} />
         {located && <a href={`https://www.google.com/maps/dir/?api=1&destination=${job.delivery_lat},${job.delivery_lng}`} target="_blank" rel="noreferrer" style={{ ...quietButton(false), display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }}>Open in Google Maps</a>}
       </section>
       <CallBlock job={job} onChanged={onChanged} />
