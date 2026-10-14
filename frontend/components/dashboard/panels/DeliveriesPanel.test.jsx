@@ -134,6 +134,28 @@ describe('DeliveriesPanel rider tracking (vendor)', () => {
     expect(region.textContent).not.toMatch(/Bantama|Kumasi|customer|drop/i)
     expect(screen.queryAllByRole('button').some((b) => b.getAttribute('data-kind') === 'drop')).toBe(false)
   })
+
+  it('says the rider is at another shop first, with no map', async () => {
+    trackWith({ stage: 'accepted', pickup: { lat: 5.6037, lng: -0.187, name: 'Akosua Ntoma' }, stop: { status: 'pending', planned_arrival: null, late: false }, rider: null, leg: null, route: null, rider_elsewhere: true })
+    renderPanel([HEADING_ORDER])
+    fireEvent.click(await screen.findByRole('button', { name: /Rider on the way/ }))
+    expect(await screen.findByText('The rider is collecting from another shop first.')).toBeInTheDocument()
+    expect(screen.queryByTestId('track-map')).not.toBeInTheDocument()
+  })
+
+  it('says its items are collected once its own stop is done, even while the rider is at the next shop', async () => {
+    trackWith({ stage: 'accepted', pickup: null, stop: { status: 'collected', planned_arrival: null, late: false }, rider: null, leg: null, route: null, rider_elsewhere: false })
+    renderPanel([HEADING_ORDER])
+    fireEvent.click(await screen.findByRole('button', { name: /Rider on the way/ }))
+    expect(await screen.findByText('The rider has collected your items.')).toBeInTheDocument()
+  })
+
+  it('says the rider is running late on the map when the stop is late', async () => {
+    trackWith({ ...HEADING, stop: { status: 'pending', planned_arrival: null, late: true }, rider_elsewhere: false })
+    renderPanel([HEADING_ORDER])
+    fireEvent.click(await screen.findByRole('button', { name: /Rider on the way/ }))
+    expect(await screen.findByText('The rider is running late.')).toBeInTheDocument()
+  })
 })
 
 describe('DeliveriesPanel pickup code (vendor)', () => {
@@ -161,4 +183,26 @@ describe('DeliveriesPanel pickup code (vendor)', () => {
     expect(container.textContent).not.toContain(DROP_CODE)
     expect(screen.queryByText(/Delivery code/i)).not.toBeInTheDocument()
   })
+
+  it('tells a later shop when the rider should arrive, with its own code and no map yet', async () => {
+    renderPanel([{ ...DOOR_TO_DOOR_ORDER, pickup_code: '4821', pickup_eta: '2026-10-14T14:35:00Z', rider_heading_here: false }])
+    expect(await screen.findByText(/Rider arrives about \d{2}:\d{2}/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Pickup code 4 8 2 1')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Rider on the way/ })).not.toBeInTheDocument()
+  })
+
+  it('says running late, not a passed time, when the planned arrival has gone by', async () => {
+    renderPanel([{ ...DOOR_TO_DOOR_ORDER, pickup_eta: '2026-10-14T14:35:00Z', pickup_eta_late: true }])
+    expect(await screen.findByText(/The rider is running late/)).toBeInTheDocument()
+    expect(screen.queryByText(/Rider arrives about/)).not.toBeInTheDocument()
+  })
+
+  it("shows the rider's report when this shop could not hand over, with no rider details", async () => {
+    renderPanel([{ ...DOOR_TO_DOOR_ORDER, pickup_status: 'skipped', rider_report: { at: '2026-10-14T14:35:00Z', text: 'Rider reported at your shop at 14:35: Door was locked' } }])
+    expect(await screen.findByText('Rider reported at your shop at 14:35: Door was locked')).toBeInTheDocument()
+    expect(screen.queryByText(/\+233/)).not.toBeInTheDocument()
+  })
+
+
+
 })

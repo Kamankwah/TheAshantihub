@@ -2158,7 +2158,7 @@ function OrdersDeliveryTab({ searchQuery }) {
           </div>
         )}
         {o.status==="paid" && o.delivery_method==="door_to_door" && <DeliveryStepper status={o.delivery_status}/>}
-        {o.status==="paid" && o.delivery_method==="door_to_door" && <OrderTrackingMap orderId={o.id} assignmentStatus={o.delivery_assignment_status ?? null} deliveryStatus={o.delivery_status}/>}
+        {o.status==="paid" && o.delivery_method==="door_to_door" && <OrderTrackingMap orderId={o.id} assignmentStatus={o.delivery_assignment_status ?? null} deliveryStatus={o.delivery_status} stops={o.delivery_stops ?? null}/>}
         {o.status==="paid" && o.delivery_method==="door_to_door" && <DeliveryCodeBox code={o.delivery_code} assignmentStatus={o.delivery_assignment_status ?? null}/>}
         {o.delivery_assignment_status==="delivered" && (
           <div style={{marginTop:10}}>
