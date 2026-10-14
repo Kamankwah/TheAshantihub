@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { apiPost } from "../../../apiClient.js";
 import { useMyDeliveries } from "../../../hooks/useMyDeliveries.js";
+import { useDispatchMap } from "../../../hooks/useTracking.js";
 import DeliveryRouteMap from "../../DeliveryRouteMap.jsx";
+import EtaLine from "../../maps/EtaLine.jsx";
 import { D, glassCard } from "../theme.js";
 
 // A Dispatch's assigned deliveries (punch-list item 11, delivery.dispatch).
@@ -17,6 +19,19 @@ const STATUS_META = {
   delivered: { label: "Delivered — awaiting customer", color: D.green },
   confirmed: { label: "Confirmed by customer", color: D.green },
 };
+
+// Mounted only while the map is shown, so nothing is fetched (or polled) for a closed map. The
+// road route and the rider's own last fix come from the server; with no route yet, none is drawn.
+function DispatchRouteMap({ delivery, dropoff }) {
+  const { data } = useDispatchMap(delivery.id);
+  const rider = data?.rider && data.rider.lat != null && data.rider.lng != null ? { lat: data.rider.lat, lng: data.rider.lng } : null;
+  return (
+    <>
+      <DeliveryRouteMap pickups={delivery.pickups || []} dropoff={dropoff} route={data?.route ?? null} rider={rider} />
+      {data?.leg && <div style={{ marginTop: 6 }}><EtaLine leg={data.leg} stale={!!data.rider?.stale} ageS={data.rider?.age_s ?? null} /></div>}
+    </>
+  );
+}
 
 function DeliveryCard({ delivery, onDone }) {
   const [showMap, setShowMap] = useState(false);
@@ -66,7 +81,7 @@ function DeliveryCard({ delivery, onDone }) {
       </button>
       {showMap && (
         <div style={{ marginTop: 10 }}>
-          <DeliveryRouteMap pickups={delivery.pickups || []} dropoff={dropoff} />
+          <DispatchRouteMap delivery={delivery} dropoff={dropoff} />
         </div>
       )}
 

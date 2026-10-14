@@ -5,13 +5,14 @@ import { useDeliveryZones } from "../../../../hooks/useDelivery.js";
 import { D } from "../../theme.js";
 import { button, chip, dim, field } from "../panelStyles.js";
 import { Status, Title, page, section, sectionTitle } from "../insightsParts.jsx";
+import ZoneDrawMap from "../../../maps/ZoneDrawMap.jsx";
 import { Empty, ErrorLine, Note } from "./deliveryParts.jsx";
 
 // ─── Delivery Manager 13 Zones ───────────────────────────────────────────────
 // Delivery zones are separate from the scouts' zones. A boundary is a ring of longitude,
-// latitude points typed one per line; there is no drawing tool on this screen yet, so the
-// screen says that instead of drawing a map it cannot back. A zone with no boundary
-// contains no address.
+// latitude points, drawn on a map (Leaflet Draw) or typed one per line under "Edit coordinates
+// as text"; the map and the text stay in sync through the card's text state. A zone with no
+// boundary contains no address.
 const toText = (ring) => (Array.isArray(ring) ? ring.map((p) => `${p[0]}, ${p[1]}`).join("\n") : "");
 function parse(text) {
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
@@ -19,7 +20,13 @@ function parse(text) {
   return lines.map((l) => l.split(/[ ,;]+/).map(Number));
 }
 
-function ZoneCard({ zone, onDone }) {
+// The ring the map may show for the text as typed: null unless it is at least 3 finite points.
+function ringOf(text) {
+  const r = parse(text);
+  return r && r.length >= 3 && r.every((p) => p.length === 2 && p.every(Number.isFinite)) ? r : null;
+}
+
+function ZoneCard({ zone, others, onDone }) {
   const [edit, setEdit] = useState(false);
   const [name, setName] = useState(zone.name);
   const [text, setText] = useState(toText(zone.boundary));
@@ -55,9 +62,14 @@ function ZoneCard({ zone, onDone }) {
       {edit ? (
         <>
           <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: "0.7rem", fontWeight: 700, color: D.text }}>Name<input value={name} onChange={(e) => setName(e.target.value)} style={field} /></label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: "0.7rem", fontWeight: 700, color: D.text }}>Boundary: one point per line as longitude, latitude (at least 3; empty clears it)
-            <textarea rows={5} value={text} onChange={(e) => setText(e.target.value)} style={field} />
-          </label>
+          <div style={{ fontSize: "0.7rem", fontWeight: 700, color: D.text }}>Draw the boundary: use the polygon tool on the map, then the edit or bin tool to change or remove it. One shape per zone.</div>
+          <ZoneDrawMap ring={ringOf(text)} others={others} onChange={(ring) => setText(toText(ring))} height={320} />
+          <details>
+            <summary style={{ cursor: "pointer", fontSize: "0.75rem", fontWeight: 700, color: D.text }}>Edit coordinates as text</summary>
+            <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: "0.7rem", fontWeight: 700, color: D.text, marginTop: 6 }}>Boundary: one point per line as longitude, latitude (at least 3; empty clears it)
+              <textarea rows={5} value={text} onChange={(e) => setText(e.target.value)} style={field} />
+            </label>
+          </details>
           <div style={{ display: "flex", gap: 8 }}><button type="button" onClick={save} style={button(D.gold, D.text)}>Save zone</button><button type="button" onClick={() => setEdit(false)} style={button(D.panelBg, D.text)}>Cancel</button></div>
         </>
       ) : (
@@ -86,8 +98,8 @@ export default function DeliveryZonesPanel() {
       <Status isLoading={isLoading} isError={isError}>
         {data && (
           <>
-            <Note>An order is placed in the zone whose boundary holds its delivery pin; an address outside every boundary shows as &quot;Outside every zone&quot;. There is no map-drawing tool here yet: a boundary is typed as points. These are delivery zones, separate from the scouts&apos; zones.</Note>
-            {data.results.length === 0 ? <Empty>No delivery zone has been added.</Empty> : data.results.map((z) => <ZoneCard key={z.id} zone={z} onDone={refetch} />)}
+            <Note>An order is placed in the zone whose boundary holds its delivery pin; an address outside every boundary shows as &quot;Outside every zone&quot;. A boundary is drawn on a map when you edit a zone, or typed as points. These are delivery zones, separate from the scouts&apos; zones.</Note>
+            {data.results.length === 0 ? <Empty>No delivery zone has been added.</Empty> : data.results.map((z) => <ZoneCard key={z.id} zone={z} others={data.results.filter((o) => o.id !== z.id).map((o) => o.boundary).filter(Array.isArray)} onDone={refetch} />)}
             <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
               <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: "0.7rem", fontWeight: 700, color: D.text }}>New zone<input value={name} onChange={(e) => setName(e.target.value)} style={field} /></label>
               <button type="button" disabled={!name.trim()} onClick={add} style={button(D.gold, D.text, !name.trim())}>Add zone</button>

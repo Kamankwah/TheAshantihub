@@ -644,4 +644,31 @@ export const handlers = [
     id: Number(params.id), kind: 'business.update', summary: '', made_by_name: '', applied_at: null, undo_until: null,
     can_undo: false, undone_at: new Date().toISOString(), undo_failed: '',
   })),
+  // Delivery maps and tracking (backend/delivery/tracking.py): one realistic payload per audience.
+  http.get('http://localhost:8000/api/delivery/queue/:id/map/', () => HttpResponse.json({
+    pickup: { lat: 5.6037, lng: -0.187, name: 'Akosua Ntoma' }, drop: { lat: 5.6, lng: -0.17 },
+    trip: { distance_km: 3.2, duration_s: 420, basis: 'road route' }, route: [[5.6037, -0.187], [5.602, -0.18], [5.6, -0.17]],
+    riders: [
+      { rider_id: 1, name: 'Kojo Mensah', lat: 5.605, lng: -0.19, age_s: 30, stale: false, eligible: true, reason: null, minutes_to_pickup: 4, distance_km: 1.1, basis: 'road route' },
+      { rider_id: 2, name: 'Yaw Boadu', lat: 5.62, lng: -0.2, age_s: 600, stale: true, eligible: false, reason: 'Too far', minutes_to_pickup: 12, distance_km: 3.4, basis: 'straight-line estimate x 1.3' },
+    ],
+  })),
+  http.get('http://localhost:8000/api/delivery/jobs/:id/map/', () => HttpResponse.json({
+    stage: 'picked_up', pickup: { lat: 5.6037, lng: -0.187, name: 'Akosua Ntoma' }, drop: { lat: 5.6, lng: -0.17 },
+    rider: { lat: 5.602, lng: -0.18, age_s: 20, stale: false },
+    leg: { to: 'drop', distance_km: 1.4, duration_s: 300, basis: 'road route' }, route: [[5.602, -0.18], [5.6, -0.17]],
+  })),
+  http.get('http://localhost:8000/api/orders/dispatch/:id/map/', () => HttpResponse.json({
+    stage: 'picked_up', pickup: { lat: 5.6037, lng: -0.187, name: 'Akosua Ntoma' }, drop: { lat: 5.6, lng: -0.17 },
+    rider: { lat: 5.602, lng: -0.18, age_s: 20, stale: false },
+    leg: { to: 'drop', distance_km: 1.4, duration_s: 300, basis: 'road route' }, route: [[5.602, -0.18], [5.6, -0.17]],
+  })),
+  http.get('http://localhost:8000/api/orders/:id/tracking/', () => HttpResponse.json({
+    stage: 'picked_up', drop: { lat: 5.6, lng: -0.17 }, rider: { lat: 5.602, lng: -0.18, age_s: 20, stale: false },
+    leg: { to: 'drop', distance_km: 1.4, duration_s: 300, basis: 'road route' }, route: [[5.602, -0.18], [5.6, -0.17]],
+  })),
+  http.get('http://localhost:8000/api/orders/owner/:id/tracking/', () => HttpResponse.json({
+    stage: 'assigned', pickup: { lat: 5.6037, lng: -0.187, name: 'Akosua Ntoma' }, rider: { lat: 5.605, lng: -0.19, age_s: 45, stale: false },
+    leg: { to: 'pickup', distance_km: 1.1, duration_s: 240, basis: 'road route' }, route: [[5.605, -0.19], [5.6037, -0.187]],
+  })),
 ]

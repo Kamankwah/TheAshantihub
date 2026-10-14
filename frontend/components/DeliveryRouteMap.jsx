@@ -26,6 +26,7 @@ function pin(color) {
 }
 const PICKUP_PIN = pin("#d4a017");
 const DROPOFF_PIN = pin("#16a34a");
+const RIDER_PIN = pin("#2C1810");
 
 // Route map for a dispatch's delivery (punch-list item 11). Plots each pickup
 // (business) point in gold and the customer drop-off in green, with a straight
@@ -35,15 +36,23 @@ const DROPOFF_PIN = pin("#16a34a");
 //
 // `pickups`: [{business_name, lat, lng, ...}]  `dropoff`: {lat, lng, address}
 // Points without coordinates are skipped rather than faked at 0,0.
-export default function DeliveryRouteMap({ pickups = [], dropoff = null, height = 320 }) {
+// Optional `route` ([[lat, lng], ...] from the server's road route) is drawn as the line when
+// given; an explicit null means "no route available" and draws none. Only when `route` is not
+// passed at all is the straight guide line used, and it is labelled as a guide.
+// Optional `rider` ({lat, lng}) adds the rider's own last fix.
+export default function DeliveryRouteMap({ pickups = [], dropoff = null, height = 320, route, rider = null }) {
   const pickupPoints = pickups.filter((p) => p.lat != null && p.lng != null);
   const hasDropoff = dropoff && dropoff.lat != null && dropoff.lng != null;
+
+  const hasRider = rider && rider.lat != null && rider.lng != null;
+  const roadRoute = Array.isArray(route) && route.length >= 2 ? route : null;
 
   const allPoints = useMemo(() => {
     const pts = pickupPoints.map((p) => [p.lat, p.lng]);
     if (hasDropoff) pts.push([dropoff.lat, dropoff.lng]);
+    if (hasRider) pts.push([rider.lat, rider.lng]);
     return pts;
-  }, [pickupPoints, hasDropoff, dropoff]);
+  }, [pickupPoints, hasDropoff, dropoff, hasRider, rider]);
 
   if (allPoints.length === 0) {
     return (
@@ -59,12 +68,13 @@ export default function DeliveryRouteMap({ pickups = [], dropoff = null, height 
     allPoints.reduce((s, p) => s + p[1], 0) / allPoints.length,
   ];
 
-  // The guide line only makes sense with both ends present.
-  const routeLine = hasDropoff && pickupPoints.length > 0
+  // The guide line only makes sense with both ends present, and only when no route prop was passed.
+  const guideLine = route === undefined && hasDropoff && pickupPoints.length > 0
     ? [[pickupPoints[0].lat, pickupPoints[0].lng], [dropoff.lat, dropoff.lng]]
     : null;
 
   return (
+    <div>
     <MapContainer center={center} zoom={13} style={{ height, borderRadius: 12 }} scrollWheelZoom={false}>
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -80,7 +90,15 @@ export default function DeliveryRouteMap({ pickups = [], dropoff = null, height 
           <Popup>🏠 Drop-off{dropoff.address ? `: ${dropoff.address}` : ""}</Popup>
         </Marker>
       )}
-      {routeLine && <Polyline positions={routeLine} pathOptions={{ color: "#16a34a", dashArray: "6 8" }} />}
+      {hasRider && (
+        <Marker position={[rider.lat, rider.lng]} icon={RIDER_PIN}>
+          <Popup>🛵 Rider's last location</Popup>
+        </Marker>
+      )}
+      {roadRoute && <Polyline positions={roadRoute} pathOptions={{ color: "#16a34a", weight: 4 }} />}
+      {guideLine && <Polyline positions={guideLine} pathOptions={{ color: "#16a34a", dashArray: "6 8" }} />}
     </MapContainer>
+    {guideLine && <div style={{ fontSize: "0.68rem", color: "#8A7A6B", marginTop: 4 }}>Dashed line is a straight guide between the two ends, not the road route.</div>}
+    </div>
   );
 }

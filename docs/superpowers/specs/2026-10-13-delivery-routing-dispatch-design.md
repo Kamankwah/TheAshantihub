@@ -164,6 +164,20 @@ event log. Existing manager overrides and the max-active-jobs rule stay.
 3. Rider app: Web Push, offer screen, pickup and delivery codes.
 4. Customer and business tracking: live maps, heatmap, Leaflet Draw zones.
 
+## Built so far (maps, 2026-10-13)
+
+Plan: `docs/superpowers/plans/2026-10-13-delivery-maps.md`. Built from sections 3 and 6:
+- Manager maps: the dispatch queue drawer (shop, drop-off, road route, candidate riders) and the active-job drawer.
+- Zone drawing with Leaflet Draw on the Delivery Zones screen (open `[lng, lat]` ring, 3 to 200 points, as the server validates it).
+- Dispatch role route map, vendor "Rider on the way" and the customer's live map after pickup.
+- Privacy as designed: the customer sees the rider only after pickup (first name and vehicle); the vendor sees the rider only while heading to its own shop, as the pickup business, and never the customer's address. A rider with two active jobs is shown only on the job they are working first (the oldest active one).
+
+Deviations and gaps:
+- Positions refresh by polling every 15 s, not through the realtime service; push can replace it later without changing the screens.
+- Not built: busy-area heatmap and alerts, Web Push, the rider's own offer screen.
+- The vendor order row still shows the customer's address and pin (`OwnerOrderSerializer`), which contradicts section 6; and no screen shows the customer their `delivery_code`.
+- Leaflet screens are verified by hand in a browser (jsdom cannot render them).
+
 ## Open items
 
 - Map tile provider (keyed provider or self-hosted).

@@ -1,4 +1,8 @@
+import { useState } from "react";
 import { useOwnerOrders } from "../../../hooks/useOwnerOrders.js";
+import { useOwnerOrderTracking } from "../../../hooks/useTracking.js";
+import TrackMap from "../../maps/TrackMap.jsx";
+import EtaLine from "../../maps/EtaLine.jsx";
 import { D, glassCard } from "../theme.js";
 
 // ─── Deliveries panel — the owner's fulfilment view (pre-prod bug fix 5) ──────
@@ -16,6 +20,68 @@ const STATUS_META = {
   delivered: { label: "Delivered", icon: "✅", color: D.green },
 };
 const PIPELINE = ["processing", "shipped", "out_for_delivery", "delivered"];
+
+// "Rider on the way": the owner's view of the rider heading to THEIR shop (OwnerOrderTrackingView).
+// Nothing is requested until it is opened. The server sends the rider only while heading to the
+// pickup business, so once the order is collected this is a plain line, never an empty map. It
+// shows the shop pin and the rider only - never the customer's address or location.
+function RiderOnTheWay({ orderId }) {
+  const [open, setOpen] = useState(false);
+  const { data, isError } = useOwnerOrderTracking(orderId, { enabled: open });
+  const rider = data?.rider;
+  const hasFix = rider && rider.lat != null && rider.lng != null && Number.isFinite(Number(rider.lat)) && Number.isFinite(Number(rider.lng));
+  const COLLECTED = ["picked_up", "at_customer", "delivered", "confirmed"];
+  const line = { margin: "8px 0 0", color: D.textDim, fontSize: "0.72rem" };
+  let body = null;
+  if (open) {
+    if (isError) body = <p style={line}>Could not load the rider's location.</p>;
+    else if (!data) body = <p style={line}>Loading…</p>;
+    else if (data.stage === "not_assigned") body = <p style={line}>A rider has not been assigned yet.</p>;
+    else if (data.stage === "failed") body = <p style={line}>This delivery did not go ahead.</p>;
+    else if (COLLECTED.includes(data.stage)) body = <p style={line}>The rider has collected the order.</p>;
+    else if (data.rider_busy) body = <p style={line}>The rider is finishing another delivery first.</p>;
+    else if (!hasFix) body = <p style={line}>The rider's location is not available right now.</p>;
+    else {
+      const markers = [
+        data.pickup ? { id: "shop", kind: "pickup", lat: data.pickup.lat, lng: data.pickup.lng, label: data.pickup.name || "Your shop" } : null,
+        { id: "rider", kind: rider.stale ? "stale" : "rider", lat: rider.lat, lng: rider.lng, label: [rider.first_name, rider.vehicle_type].filter(Boolean).join(" · ") || "Rider" },
+      ].filter(Boolean);
+      body = (
+        <div style={{ marginTop: 8 }}>
+          <TrackMap markers={markers} route={data.route ?? null} height={220} label="Map of the rider heading to your shop" />
+          <div style={{ color: D.textFaint, fontSize: "0.66rem", marginTop: 4 }}>{data.pickup ? "Gold pin: your shop. " : ""}Dark pin: rider{rider.first_name ? ` (${rider.first_name})` : ""}.</div>
+          {!data.pickup && <p style={line}>Your shop has no map pin, so the arrival time can't be shown.</p>}
+          <div style={{ marginTop: 6 }}><EtaLine leg={data.leg} stale={!!rider.stale} ageS={rider.age_s ?? null} /></div>
+        </div>
+      );
+    }
+  }
+  return (
+    <div data-testid="rider-disclosure" style={{ marginTop: 10 }}>
+      <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)}
+        style={{ background: "none", border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "5px 12px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", color: D.text }}>
+        🛵 Rider on the way {open ? "▴" : "▾"}
+      </button>
+      {body}
+    </div>
+  );
+}
+
+// The code the rider asks this shop for at the counter. The server sends it only while this rider is
+// heading to this owner's shop, so null means render nothing. It is never the customer's delivery code.
+function PickupCodeBox({ code, orderId }) {
+  if (!code) return null;
+  const spaced = String(code).split("").join(" ");
+  return (
+    <div data-testid="pickup-code-box" style={{ marginTop: 10, padding: "12px 14px", borderRadius: 12, background: `${D.gold}1e`, border: `1.5px solid ${D.gold}` }}>
+      <div style={{ fontSize: "0.7rem", fontWeight: 800, color: D.deepGold, textTransform: "uppercase", letterSpacing: "0.06em" }}>Pickup code</div>
+      <div aria-label={`Pickup code ${spaced}`} style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: "2rem", fontWeight: 700, letterSpacing: "0.3em", color: D.text, margin: "4px 0" }}>{spaced}</div>
+      <div style={{ fontSize: "0.72rem", color: D.text, lineHeight: 1.5 }}>
+        Read this to the rider when they collect order #{orderId}. Only give it to the rider who is at your shop.
+      </div>
+    </div>
+  );
+}
 
 function OrderRow({ order }) {
   const doorToDoor = order.delivery_method === "door_to_door";
@@ -43,6 +109,9 @@ function OrderRow({ order }) {
           📍 {order.delivery_address}
         </div>
       )}
+
+      {doorToDoor && <PickupCodeBox code={order.pickup_code} orderId={order.id} />}
+      {doorToDoor && order.rider_heading_here === true && <RiderOnTheWay orderId={order.id} />}
 
       {/* Progress track — only meaningful for door-to-door delivery */}
       {doorToDoor && (

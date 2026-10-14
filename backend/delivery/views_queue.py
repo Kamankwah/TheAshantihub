@@ -12,7 +12,7 @@ from accounts.permissions import HasRolePermission
 from orders.models import DeliveryAssignment, Order
 from routing import service as routing_service
 
-from . import board, config, dispatching, payloads, services
+from . import board, config, dispatching, payloads, services, tracking
 from .models import DeliverySettings, Offer, QueueHold, Rider
 from .views_live import ManageView
 from .views_rider import RiderView
@@ -68,6 +68,14 @@ class RankingView(ManageView):
     def get(self, request, order_id):
         order = get_object_or_404(board.waiting_orders(), pk=order_id)
         return Response(dispatching.rank(order))
+
+
+class QueueMapView(ManageView):
+    """GET queue/<order_id>/map/ — pickup, drop, trip and the on-shift riders for one waiting order."""
+
+    def get(self, request, order_id):
+        order = get_object_or_404(board.waiting_orders(), pk=order_id)
+        return Response(tracking.queue_map(order))
 
 
 class OfferSerializer(serializers.Serializer):
