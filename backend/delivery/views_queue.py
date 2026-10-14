@@ -150,6 +150,8 @@ class SwitchView(APIView):
 
 # ── Rider side ─────────────────────────────────────────────────────────────────────────────────
 def offer_payload(offer, now=None):
+    from . import stops
+
     now = now or timezone.now()
     order = offer.order
     plat, plng, name = services.pickup_stop(order)
@@ -172,6 +174,7 @@ def offer_payload(offer, now=None):
         "pickup": {"business_name": name, "lat": plat, "lng": plng}, "delivery_address": order.delivery_address, "delivery_lat": dlat, "delivery_lng": dlng,
         "to_pickup_km": to_pickup, "trip_km": trip, "distance_basis": basis, "payment": payloads.payment_label(order),
         "deadline_at": dispatching.deadline_for(order), "pay": pay, "items": order.items.count(),
+        "stop_count": len(stops.sequence_for_order(order)), "route_km": (order.route_plan or {}).get("total_km"),
     }
 
 
@@ -182,7 +185,9 @@ class MyOffersView(RiderView):
     def get(self, request):
         rider = self.rider(request)
         now = timezone.now()
-        offers = Offer.objects.filter(rider=rider, status=Offer.OFFERED, expires_at__gt=now).select_related("order", "rider").prefetch_related("order__items__listing__business_owner__profile")
+        offers = Offer.objects.filter(rider=rider, status=Offer.OFFERED, expires_at__gt=now).select_related("order", "rider").prefetch_related(
+            "order__items__listing__business_owner__profile", "order__items__listing__category",
+        )
         since = now - timedelta(days=30)
         history = Offer.objects.filter(rider=rider, offered_at__gte=since)
         answered = history.exclude(status__in=(Offer.OFFERED, Offer.WITHDRAWN)).count()

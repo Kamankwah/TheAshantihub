@@ -7,6 +7,7 @@ only rolls back on an exception."""
 import math
 import secrets
 from datetime import timedelta
+from decimal import Decimal
 
 from django.db import transaction
 from django.utils import timezone
@@ -15,7 +16,7 @@ from field.services import business_pin, haversine_m
 from notifications.services import notify_customer, notify_staff
 
 from .models import (
-    DeliveryCall, DeliveryEvent, DeliveryZone, LocationPing, Rider, RiderDocument, ShiftSession,
+    DeliveryCall, DeliveryEvent, DeliveryZone, LocationPing, PickupStop, Rider, RiderDocument, ShiftSession,
 )
 
 # ── Settings the rider flow reads (a later package moves these into the versioned rules) ─────────
@@ -26,6 +27,7 @@ STALE_AFTER = timedelta(seconds=120)
 PING_RETENTION = timedelta(hours=48)
 MAX_ACCURACY_M = 5000          # a fix this loose is stored but not used for distance checks
 ROAD_FACTOR = 1.3              # straight-line x 1.3: the only distance estimate until a road service is connected
+ALL_STOPS_SKIPPED = "all_stops_skipped"  # failed_reason when no shop on the delivery could hand over (back to the queue)
 
 REQUIRED_DOCUMENTS = (
     RiderDocument.GHANA_CARD, RiderDocument.LICENCE, RiderDocument.VEHICLE_REG,
@@ -56,15 +58,17 @@ def valid_point(lat, lng):
 
 
 def first_item(order):
-    """The order's first line item by pk, or None. The single rule for "which business does the rider
-    collect from" for the owner serializer and pickup_owner. Legacy reader: pickup_stop now follows the stored
-    route plan (stops.sequence_for_order), so this is only the single-pickup rule until Tasks 5/7 replace it."""
+    """The order's first line item by pk, or None. The single-pickup rule from before multi-stop delivery: a job made
+    then is served with this item's business (stops._legacy_stop). The rider's steps, payloads and maps read the saved
+    stops instead (stops.stops_of / current_stop); the owner serializer still reads this until Task 7."""
     return min(order.items.all(), key=lambda i: i.pk, default=None)
 
 
 def pickup_stop(order):
     """(lat, lng, business name) of the first business the planned route visits (the dispatch point), or
-    (None, None, name) when it has no location."""
+    (None, None, name) when it has no location. For an ORDER not yet given to a rider (the queue, offers, ranking).
+    An assignment's pickups are its saved stops (stops.stops_of): never re-derive them from here, because a job made
+    before multi-stop delivery keeps its first item's business whatever the plan says."""
     from . import stops
 
     entries = stops.shop_entries(order.items.all())
@@ -73,13 +77,6 @@ def pickup_stop(order):
         return None, None, ""
     entry = next(e for e in entries if e["key"] == sequence[0])
     return (entry["lat"], entry["lng"], entry["name"]) if entry["lat"] is not None else (None, None, entry["name"])
-
-
-def pickup_owner(order):
-    """The first item's owner. Legacy reader (not the planned route's first shop, which pickup_stop returns); to be
-    replaced by the stop-based rules in Tasks 5/7."""
-    item = first_item(order)
-    return item.listing.business_owner if item else None
 
 
 def active_jobs(staff):
@@ -189,7 +186,7 @@ def assign(order, rider_staff, assigned_by, *, mode):
 
     stops.ensure_stops(assignment)
     if existing is not None and (swapped or failed):
-        stops.reopen_for_new_rider(assignment, failed=failed, all_skipped=previous_reason == "all_stops_skipped")
+        stops.reopen_for_new_rider(assignment, failed=failed, all_skipped=previous_reason == ALL_STOPS_SKIPPED)
     DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.ASSIGNED, at=now, by=assigned_by)
     return assignment
 
@@ -206,14 +203,15 @@ def _fix(lat, lng, accuracy):
     return pin[0], pin[1], accuracy
 
 
-def _stamp(assignment, step, rider_staff, stop, lat, lng, accuracy, *, note=""):
-    """Write the step's event with its distance from the stop; return the event."""
+def _stamp(assignment, step, rider_staff, stop, lat, lng, accuracy, *, note="", at_stop=None):
+    """Write the step's event with its distance from the stop; return the event. `at_stop` is the PickupStop the
+    step belongs to (None for the customer's door)."""
     distance = None
     if stop and stop[0] is not None and (accuracy is None or accuracy <= MAX_ACCURACY_M):
         distance = round(haversine_m(lat, lng, stop[0], stop[1]))
     return DeliveryEvent.objects.create(
         assignment=assignment, step=step, at=timezone.now(), by=rider_staff, lat=lat, lng=lng, accuracy_m=accuracy,
-        distance_m=distance, flagged=distance is not None and distance > FLAG_DISTANCE_M, note=note[:300],
+        distance_m=distance, flagged=distance is not None and distance > FLAG_DISTANCE_M, note=note[:300], stop=at_stop,
     )
 
 
@@ -238,17 +236,30 @@ def accept(assignment, rider_staff):
     assignment.save(update_fields=["status", "accepted_at"])
     DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.ACCEPTED, at=assignment.accepted_at, by=rider_staff)
     _sync(assignment)
+    from . import stops
+
+    stops.ensure_stops(assignment)
+    stops.refresh_planned_arrivals(assignment, origin=stops.rider_point(assignment), start=assignment.accepted_at)
     return assignment
 
 
 def arrive_pickup(assignment, rider_staff, lat, lng, accuracy):
+    """The rider is at the stop being worked (the first open one in the saved sequence). Its distance is measured from
+    that stop's saved point, never from the order's plan: a job from before multi-stop delivery keeps its one stop."""
     from orders.models import DeliveryAssignment
+
+    from . import stops
 
     if assignment.status not in (DeliveryAssignment.ASSIGNED, DeliveryAssignment.ACCEPTED):
         raise DeliveryError("You can only arrive at the pickup before collecting the order.", 409, "wrong_step")
     lat, lng, accuracy = _fix(lat, lng, accuracy)
-    plat, plng, _ = pickup_stop(assignment.order)
-    event = _stamp(assignment, DeliveryEvent.ARRIVED_PICKUP, rider_staff, (plat, plng), lat, lng, accuracy)
+    stops.ensure_stops(assignment)
+    stop = stops.current_stop(assignment)
+    if stop is None:
+        raise DeliveryError("Every shop on this delivery is done.", 409, "wrong_step")
+    event = _stamp(assignment, DeliveryEvent.ARRIVED_PICKUP, rider_staff, (stop.lat, stop.lng), lat, lng, accuracy, at_stop=stop)
+    stop.status, stop.arrived_at = PickupStop.ARRIVED, event.at
+    stop.save(update_fields=["status", "arrived_at"])
     assignment.status = DeliveryAssignment.AT_PICKUP
     assignment.arrived_pickup_at = event.at
     assignment.save(update_fields=["status", "arrived_pickup_at"])
@@ -258,19 +269,138 @@ def arrive_pickup(assignment, rider_staff, lat, lng, accuracy):
 
 
 def pickup(assignment, rider_staff, code, lat, lng, accuracy):
+    """Collect the current stop with its own code. The last open stop sends the job to the customer."""
     from orders.models import DeliveryAssignment
+
+    from . import stops
 
     if assignment.status != DeliveryAssignment.AT_PICKUP:
         raise DeliveryError("Tap 'I've arrived' at the pickup first.", 409, "wrong_step")
     lat, lng, accuracy = _fix(lat, lng, accuracy)
-    _check_code(assignment, "pickup", code)
-    plat, plng, _ = pickup_stop(assignment.order)
-    event = _stamp(assignment, DeliveryEvent.PICKED_UP, rider_staff, (plat, plng), lat, lng, accuracy)
-    assignment.status = DeliveryAssignment.PICKED_UP
-    assignment.picked_up_at = event.at
+    stops.ensure_stops(assignment)
+    stop = stops.current_stop(assignment)
+    if stop is None or stop.status != PickupStop.ARRIVED:
+        raise DeliveryError("Tap 'I've arrived' at the pickup first.", 409, "wrong_step")
+    _check_stop_code(assignment, stop, code)
+    last = len(stops.open_stops(assignment)) == 1
+    step = DeliveryEvent.PICKED_UP if last else DeliveryEvent.COLLECTED_STOP
+    event = _stamp(assignment, step, rider_staff, (stop.lat, stop.lng), lat, lng, accuracy, at_stop=stop)
+    stop.status, stop.collected_at = PickupStop.COLLECTED, event.at
+    stop.save(update_fields=["status", "collected_at"])
+    _after_stop(assignment, stop, rider_staff, event.at, left_shop=True)
+    return event
+
+
+def _after_stop(assignment, stop, by, at, *, left_shop, summary_event=False):
+    """Move a job on once `stop` is collected or skipped: to the next stop, to the customer, or (nothing was collected
+    at all) to failed. `left_shop` is true when the rider was at that shop; `summary_event` writes the picked-up stamp
+    when a skip, not a collection, ended the pickups."""
+    from orders.models import DeliveryAssignment
+
+    from . import stops
+
+    if stops.open_stops(assignment):
+        if left_shop:
+            assignment.status, assignment.arrived_pickup_at = DeliveryAssignment.ACCEPTED, None
+            assignment.save(update_fields=["status", "arrived_pickup_at"])
+        if assignment.accepted_at is not None:
+            origin = (stop.lat, stop.lng) if left_shop and stop.lat is not None else stops.rider_point(assignment)
+            stops.refresh_planned_arrivals(assignment, origin=origin, start=at)
+        return
+    if not assignment.stops.filter(status=PickupStop.COLLECTED).exists():
+        assignment.status, assignment.failed_at, assignment.failed_reason = DeliveryAssignment.FAILED, at, ALL_STOPS_SKIPPED
+        assignment.failed_note = "No shop on this delivery could hand over its items."
+        assignment.save(update_fields=["status", "failed_at", "failed_reason", "failed_note"])
+        # The order is back in the Delivery queue (board.waiting_orders takes any failed job); say so to the managers.
+        _alert_managers(assignment, "Every shop skipped: order is back in the queue", f"Order #{assignment.order_id}: no shop could hand over. Check the skip notes and give it to a rider again.")
+        return
+    if summary_event:
+        DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.PICKED_UP, at=at, by=by, note="The last shop was skipped.")
+    assignment.status, assignment.picked_up_at = DeliveryAssignment.PICKED_UP, at
     assignment.save(update_fields=["status", "picked_up_at"])
     _sync(assignment)
+
+
+def skip_stop(assignment, by, note, *, stop=None, lat=None, lng=None, accuracy=None):
+    """A shop cannot hand over: its stop is skipped with a note (required), the customer is told, and a delivery case
+    asks for that shop's lines only to be refunded. The skip event keeps the evidence (rider pin, time, note). A rider
+    skips the stop they are working; a manager passes `stop` (any open stop, for a shop that closed or cancelled after
+    dispatch)."""
+    from orders.models import DeliveryAssignment as DA
+
+    from . import stops
+
+    note = note.strip() if isinstance(note, str) else ""
+    if not note:
+        raise DeliveryError("Say why this shop cannot hand over.", 400, "invalid", field="note")
+    if len(note) > 300:
+        raise DeliveryError("Keep the note to 300 characters.", 400, "invalid", field="note")
+    by_manager = stop is not None
+    allowed = (DA.ASSIGNED, DA.ACCEPTED, DA.AT_PICKUP) if by_manager else (DA.ACCEPTED, DA.AT_PICKUP)
+    if assignment.status not in allowed:
+        raise DeliveryError("A shop can only be skipped before the order leaves for the customer.", 409, "wrong_step")
+    stops.ensure_stops(assignment)
+    stop = stop or stops.current_stop(assignment)
+    if stop is None or stop.status not in PickupStop.OPEN:
+        raise DeliveryError("This shop is already done.", 409, "stop_done")
+    left_shop = stop.status == PickupStop.ARRIVED
+    if by_manager:  # a manager's skip has no pin: it is the manager's word, not the rider's report
+        event = DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.SKIPPED_STOP, at=timezone.now(), by=by, note=note, stop=stop)
+    else:  # the rider's pin, time and note are the evidence, so the location is required
+        lat, lng, accuracy = _fix(lat, lng, accuracy)
+        event = _stamp(assignment, DeliveryEvent.SKIPPED_STOP, by, (stop.lat, stop.lng), lat, lng, accuracy, note=note, at_stop=stop)
+    stop.status, stop.skip_note, stop.skipped_by = PickupStop.SKIPPED, note, by
+    stop.dispute = open_case_for_skipped_stop(assignment, stop)
+    stop.save(update_fields=["status", "skip_note", "skipped_by", "dispute"])
+    notify_customer(
+        assignment.order.customer, "order_status", "A shop could not hand over your items",
+        body=f"{stops.stop_name(stop)} could not hand over its part of Order #{assignment.order_id}. Those items will be refunded; AshantiHub Support will be in touch.",
+        link="/my-account", icon="🧾",
+    )
+    _after_stop(assignment, stop, by, event.at, left_shop=left_shop, summary_event=True)
     return event
+
+
+def open_case_for_skipped_stop(assignment, stop):
+    """The delivery case a skipped stop opens: that shop's lines only, with their total, for the usual case decision
+    (a manager records the refund; payments are simulated)."""
+    from disputes.models import Dispute
+
+    from . import config, stops
+
+    order = assignment.order
+    lines = stops.stop_lines(stop, order)
+    total = sum((i.line_total for i in lines), Decimal("0.00"))
+    listed = "; ".join(f"{i.listing.name} × {i.quantity} (GH₵ {i.line_total})" for i in lines)
+    limits = config.effective_limits()
+    return Dispute.objects.create(
+        order=order, raised_by=order.customer, reason=Dispute.DELIVERY_ISSUE, case_type=Dispute.NOT_RECEIVED, rider=assignment.dispatch,
+        answer_due_at=timezone.now() + timedelta(hours=limits.dispute_answer_hours) if limits else None,
+        description=f"{stops.stop_name(stop)} could not hand over its items (stop {stop.sequence}): {listed}. "
+                    f"Refund these lines only: GH₵ {total}. Note: {stop.skip_note}",
+        status=Dispute.OPEN,
+    )
+
+
+def _check_stop_code(assignment, stop, code):
+    """A stop's own code, counted and locked per stop. Stop 1's count is mirrored into the assignment's legacy field.
+    The count is saved before the refusal is raised (the request does not roll back)."""
+    from . import stops
+
+    if stop.code == "":
+        return
+    if stop.code_attempts >= CODE_ATTEMPT_LIMIT:
+        raise DeliveryError("Too many wrong codes. A manager has been told; ask them to help.", 423, "code_locked")
+    if _code_matches(stop.code, code):
+        return
+    stop.code_attempts += 1
+    stop.save(update_fields=["code_attempts"])
+    if stop.sequence == 1:
+        assignment.pickup_code_attempts = stop.code_attempts
+        assignment.save(update_fields=["pickup_code_attempts"])
+    if stop.code_attempts >= CODE_ATTEMPT_LIMIT:
+        _alert_managers(assignment, "A delivery code was entered wrongly 5 times", f"Order #{assignment.order_id} (pickup code at {stops.stop_name(stop)}).")
+    raise DeliveryError("That code is not right.", 400, "wrong_code", attempts_left=max(0, CODE_ATTEMPT_LIMIT - stop.code_attempts))
 
 
 def arrive_drop(assignment, rider_staff, lat, lng, accuracy):
@@ -317,7 +447,8 @@ def deliver(assignment, rider_staff, code, lat, lng, accuracy):
 
 def _check_code(assignment, which, code):
     """Compare a four-digit code; count wrong tries and, at the limit, lock the step and tell the manager.
-    The counter is saved before the refusal is raised (the request does not roll back)."""
+    The counter is saved before the refusal is raised (the request does not roll back). The rider's steps check only
+    the drop code here; a pickup code belongs to its stop (_check_stop_code)."""
     field, attempts = ("pickup_code", "pickup_code_attempts") if which == "pickup" else ("drop_code", "drop_code_attempts")
     if getattr(assignment, field) == "":  # a job from before codes existed has nothing to check
         return
@@ -391,7 +522,10 @@ def open_case_for_failed_delivery(assignment):
     from . import config
 
     order = assignment.order
-    existing = Dispute.objects.filter(order=order, status__in=(Dispute.OPEN, Dispute.INVESTIGATING), reason=Dispute.DELIVERY_ISSUE).first()
+    # A skipped shop's refund case (linked from its stop) is never the failed delivery's own case.
+    existing = Dispute.objects.filter(
+        order=order, status__in=(Dispute.OPEN, Dispute.INVESTIGATING), reason=Dispute.DELIVERY_ISSUE, pickup_stop__isnull=True,
+    ).first()
     if existing:
         return existing
     case_type = {"no_answer": "unreachable", "wrong_address": "unreachable", "refused": "return"}.get(assignment.failed_reason, "not_received")
@@ -491,18 +625,29 @@ def purge_old_pings(now=None):
 
 # ── The older panel's two buttons (orders/delivery/<id>/pickup|deliver/) ──────────────────────────
 def legacy_pickup(assignment, rider_staff, code):
-    """The first version of the rider screen had no location. It still works, but the codes are checked
-    when the job has them and the step is stamped without a place (so no distance, no flag)."""
+    """The first version of the rider screen had no location. It still works for a one-shop job: the stop's code is
+    checked when it has one and the step is stamped without a place (so no distance, no flag). A job collecting from
+    several shops is refused (409 multi_stop): only the rider app takes each shop in turn with its own code."""
     from orders.models import DeliveryAssignment
+
+    from . import stops
 
     if assignment.status not in (DeliveryAssignment.ASSIGNED, DeliveryAssignment.ACCEPTED, DeliveryAssignment.AT_PICKUP):
         raise DeliveryError("This delivery is not awaiting pickup.", 400, "wrong_step")
-    _check_code(assignment, "pickup", code)
+
+    rows = stops.ensure_stops(assignment)
+    if len(rows) > 1:
+        raise DeliveryError(f"This delivery collects from {len(rows)} shops. Use the rider app, which takes each shop in turn.", 409, "multi_stop")
+    if rows:
+        _check_stop_code(assignment, rows[0], code)
     now = timezone.now()
+    if rows:
+        rows[0].status, rows[0].collected_at = PickupStop.COLLECTED, now
+        rows[0].save(update_fields=["status", "collected_at"])
     assignment.status = DeliveryAssignment.PICKED_UP
     assignment.picked_up_at = now
     assignment.save(update_fields=["status", "picked_up_at"])
-    DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.PICKED_UP, at=now, by=rider_staff)
+    DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.PICKED_UP, at=now, by=rider_staff, stop=rows[0] if rows else None)
     _sync(assignment)
 
 

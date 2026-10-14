@@ -13,7 +13,7 @@ from orders.models import DeliveryAssignment, Order
 
 from routing import service as routing_service
 
-from . import payloads, services
+from . import payloads, services, stops
 from .models import DeliveryEvent, Rider, ShiftSession
 
 
@@ -51,9 +51,18 @@ def waiting_orders():
     )
 
 
-def _route(order):
-    plat, plng, name = services.pickup_stop(order)
-    return {"from": name, "to": order.delivery_address or None, "pickup_located": plat is not None, "drop_located": order.delivery_lat is not None and order.delivery_lng is not None}
+def _route(order, assignment=None):
+    """Where the job runs from and to. A waiting order reads its plan's first shop (the dispatch point); a job a rider
+    holds reads its saved stops (the one being worked, else the first), so a job from before multi-stop delivery shows
+    the shop it was actually sent to."""
+    if assignment is None:
+        plat, _, name = services.pickup_stop(order)
+        located = plat is not None
+    else:
+        rows = stops.stops_of(assignment)
+        stop = stops.current_stop(assignment) or (rows[0] if rows else None)
+        name, located = (stops.stop_name(stop), stop.lat is not None) if stop is not None else ("", False)
+    return {"from": name, "to": order.delivery_address or None, "pickup_located": located, "drop_located": order.delivery_lat is not None and order.delivery_lng is not None}
 
 
 def queue_row(order, now):
@@ -64,6 +73,8 @@ def queue_row(order, now):
         "route": _route(order), "zone": zone.name if zone else None, "unzoned": zone is None,
         "deadline_at": assignment.deadline_at if assignment else None,
         "returned": bool(assignment and assignment.status == DeliveryAssignment.FAILED),
+        "returned_reason": assignment.failed_reason if assignment and assignment.status == DeliveryAssignment.FAILED else "",
+        "skips": stops.skip_history(assignment) if assignment else [],
         "payment": payloads.payment_label(order),
     }
 
@@ -90,7 +101,7 @@ def active_row(a, shifts, now):
     flag = next((e for e in reversed(list(a.events.all())) if e.flagged), None)
     stale = bool(shift) and services.is_stale(shift, now)
     return {
-        "id": a.pk, "order_id": a.order_id, "route": _route(a.order),
+        "id": a.pk, "order_id": a.order_id, "route": _route(a.order, a),
         "rider": {"id": rider.pk if rider else None, "staff_id": a.dispatch_id, "full_name": a.dispatch.full_name if a.dispatch_id else None},
         "vehicle": rider.get_vehicle_type_display() if rider else None,
         "status": a.status, "status_label": a.get_status_display(), "step_note": _step_note(a, now),
@@ -110,7 +121,7 @@ def active_queryset():
     return (
         DeliveryAssignment.objects.filter(status__in=DeliveryAssignment.ACTIVE_STATUSES)
         .select_related("order", "order__customer", "dispatch", "dispatch__rider")
-        .prefetch_related("events", "order__items__listing__business_owner__profile")
+        .prefetch_related("events", "order__items__listing__business_owner__profile", "order__items__listing__category", "stops__business_owner__profile")
         .order_by("assigned_at")
     )
 

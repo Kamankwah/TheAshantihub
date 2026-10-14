@@ -7,6 +7,10 @@ ensure_stops first.
 
 Every entry is keyed by its business id (unique by construction). A business with no located pin keeps a stop with null
 lat/lng; callers that route (the planner) must skip or fall back for those themselves."""
+from datetime import timedelta
+
+from django.utils import timezone
+
 from field.services import business_pin
 from routing import service as routing_service
 
@@ -98,7 +102,9 @@ def stops_of(assignment):
 def ensure_stops(assignment):
     """Make the stops once and return them. A new assignment gets one stop per business in sequence_for_order, each
     with its own code (stop 1's mirrored into pickup_code). An assignment made before multi-stop delivery (it already has
-    a pickup code) keeps its single first-item pickup, with its code and wrong tries, so nothing in flight changes."""
+    a pickup code) keeps its single first-item pickup, with its code and wrong tries, so nothing in flight changes. So
+    does one made before codes existed (no pickup and no drop code; services.assign always sets the drop code first):
+    its one stop has no code, so nothing is checked, as before, and no shop is asked for a code it was never given."""
     from . import services
 
     rows = list(assignment.stops.order_by("sequence"))
@@ -109,7 +115,7 @@ def ensure_stops(assignment):
     entries = {e["key"]: e for e in entry_list}
     if not entries:
         return []
-    if assignment.pickup_code:
+    if assignment.pickup_code or not assignment.drop_code:
         stop = _legacy_stop(assignment)
         stop.save()
         rows, sequence = [stop], [stop.business_owner_id]
@@ -184,6 +190,56 @@ def reopen_for_new_rider(assignment, *, failed, all_skipped=False):
     if first is not None:
         assignment.pickup_code_attempts = first.code_attempts
         assignment.save(update_fields=["pickup_code_attempts"])
+
+
+def rider_point(assignment):
+    """The rider's last fix from their open shift, or None."""
+    from . import services
+
+    rider = getattr(assignment.dispatch, "rider", None) if assignment.dispatch_id else None
+    shift = services.open_shift(rider) if rider else None
+    if shift is None or shift.last_lat is None or shift.last_lng is None:
+        return None
+    return (float(shift.last_lat), float(shift.last_lng))
+
+
+def refresh_planned_arrivals(assignment, origin=None, start=None):
+    """Planned arrival at each open stop, chained along the fixed sequence by road time from `origin` (the rider's fix,
+    or the stop just finished) starting at `start`. No origin, or a stop without a location, leaves that stop and every
+    later one without a time (none is made up). Shops are shown it as "about HH:MM"."""
+    at = start or timezone.now()
+    here = origin
+    for stop in [s for s in ensure_stops(assignment) if s.status in PickupStop.OPEN]:
+        if here is None or stop.lat is None:
+            stop.planned_arrival, here = None, None
+        else:
+            leg = routing_service.leg(here, (stop.lat, stop.lng))
+            at = at + timedelta(seconds=int(leg["duration_s"]))
+            stop.planned_arrival, here = at, (stop.lat, stop.lng)
+        stop.save(update_fields=["planned_arrival"])
+
+
+def skip_history(assignment):
+    """Every skip on this delivery, oldest first, read from the append-only `skipped_stop` events. It outlives a failed
+    attempt: re-dispatching resets the assignment and reopens the stops, but never touches these events. `by` is "rider"
+    when the rider's own pin was recorded and "manager" for a manager's skip (no pin). `at_shop` is true for a rider skip
+    whose pin is not flagged as far from the shop (or the shop has no pin to compare with)."""
+    from .models import DeliveryEvent
+
+    by_id = {s.pk: s for s in stops_of(assignment) if s.pk}
+    events = DeliveryEvent.objects.filter(assignment=assignment, step=DeliveryEvent.SKIPPED_STOP, stop__isnull=False).order_by("at", "id")
+    out = []
+    for e in events:
+        stop = by_id.get(e.stop_id)
+        if stop is None:
+            continue
+        rider = e.lat is not None
+        out.append({
+            "stop_id": e.stop_id, "sequence": stop.sequence, "business_owner_id": stop.business_owner_id, "business_name": stop_name(stop),
+            "at": e.at, "note": e.note, "pinned": rider, "lat": e.lat, "lng": e.lng, "accuracy_m": e.accuracy_m,
+            "distance_m": e.distance_m, "at_shop": rider and not e.flagged, "by": "rider" if rider else "manager",
+        })
+    return out
 
 
 def plan_for_lines(lines, drop_lat, drop_lng):

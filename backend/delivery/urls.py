@@ -17,6 +17,7 @@ urlpatterns = [
     path("rider/jobs/<int:pk>/arrive-drop/", views_rider.ArriveDropView.as_view(), name="delivery-rider-arrive-drop"),
     path("rider/jobs/<int:pk>/deliver/", views_rider.DeliverView.as_view(), name="delivery-rider-deliver"),
     path("rider/jobs/<int:pk>/cant-deliver/", views_rider.CantDeliverView.as_view(), name="delivery-rider-cant-deliver"),
+    path("rider/jobs/<int:pk>/skip-stop/", views_rider.SkipStopView.as_view(), name="delivery-rider-skip-stop"),
     path("rider/jobs/<int:pk>/call/", views_rider.CallCustomerView.as_view(), name="delivery-rider-call"),
     path("rider/jobs/<int:pk>/photo/", views_rider.JobPhotoView.as_view(), name="delivery-rider-photo"),
     path("rider/jobs/<int:pk>/note/", views_rider.JobNoteView.as_view(), name="delivery-rider-note"),

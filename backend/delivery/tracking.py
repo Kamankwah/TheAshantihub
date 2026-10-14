@@ -5,7 +5,7 @@ from django.utils import timezone
 from orders.models import DeliveryAssignment as DA
 from routing import service as routing_service
 
-from . import config, dispatching, services
+from . import config, dispatching, services, stops
 from .models import ShiftSession
 
 TO_PICKUP = (DA.ASSIGNED, DA.ACCEPTED, DA.AT_PICKUP)
@@ -45,9 +45,19 @@ def is_current(a):
     return job is not None and job.pk == a.pk
 
 
+def _point_of(stop):
+    return {"lat": stop.lat, "lng": stop.lng, "name": stops.stop_name(stop)} if stop is not None and stop.lat is not None else None
+
+
+def _heading_stop(a):
+    """The saved stop the rider is heading to or at; once every stop is done, the first one. Never re-derived from the
+    order's plan: a job from before multi-stop delivery keeps its first item's business."""
+    rows = stops.stops_of(a)
+    return stops.current_stop(a) or (rows[0] if rows else None)
+
+
 def _pickup(a):
-    lat, lng, name = services.pickup_stop(a.order)
-    return {"lat": lat, "lng": lng, "name": name} if lat is not None else None
+    return _point_of(_heading_stop(a))
 
 
 def _drop(a):
@@ -98,11 +108,11 @@ def customer_map(a, now=None):
 def business_map(a, owner, now=None):
     """The business sees the rider only on the way to it, and nothing about the customer."""
     out = {"stage": a.status, "pickup": None, "rider": None, "leg": None, "route": None, "rider_busy": False}
-    # Delivery is single-pickup: only the business the rider is heading to may watch the rider.
-    heading = services.pickup_owner(a.order)
-    if heading is None or heading.pk != owner.pk:
+    # Only the business whose stop is being worked may watch the rider (its saved stop, not the order's plan).
+    heading = _heading_stop(a)
+    if heading is None or heading.business_owner_id != owner.pk:
         return out
-    pickup = _pickup(a)  # the same stop the rider navigates to (profile pin, else the listing's)
+    pickup = _point_of(heading)  # the same stop the rider navigates to (saved when the job was made)
     out["pickup"] = pickup
     if a.status not in TO_PICKUP:
         return out

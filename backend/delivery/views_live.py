@@ -45,7 +45,7 @@ def manager_job(assignment, now=None):
     order = assignment.order
     events = list(assignment.events.select_related("by"))
     drop = services.drop_stop(order)
-    pickups = payloads.pickup_block(order)
+    block = payloads.stops_block(assignment, evidence=True)
     shift = None
     rider = getattr(assignment.dispatch, "rider", None)
     if rider is not None:
@@ -58,7 +58,7 @@ def manager_job(assignment, now=None):
         "shift": payloads.shift_block(shift, now),
         "customer": {"name": order.customer.full_name, "phone_masked": mask_phone(order.delivery_phone) if order.delivery_phone else None},
         "delivery_address": order.delivery_address, "delivery_lat": drop[0], "delivery_lng": drop[1],
-        "pickup": pickups["primary"], "multi_pickup": pickups["multi_pickup"],
+        "pickup": block["primary"], "multi_pickup": block["multi_pickup"],
         "items": [{"name": i.listing.name, "quantity": i.quantity, "business": getattr(i.listing.business_owner, "display_name", None)} for i in order.items.all()],
         "payment": payloads.payment_label(order), "total_amount": str(order.total_amount),
         "placed_at": order.placed_at, "assigned_at": assignment.assigned_at, "deadline_at": assignment.deadline_at,
@@ -85,7 +85,7 @@ class JobDetailView(ManageView):
     def get(self, request, pk):
         assignment = get_object_or_404(
             DeliveryAssignment.objects.select_related("order", "order__customer", "dispatch", "dispatch__rider", "assigned_by", "flag_decided_by", "vehicle")
-            .prefetch_related("order__items__listing__business_owner__profile", "photos", "calls"),
+            .prefetch_related("order__items__listing__business_owner__profile", "order__items__listing__category", "stops__business_owner__profile", "photos", "calls"),
             pk=pk,
         )
         return Response(manager_job(assignment))
@@ -155,6 +155,8 @@ class UnlockCodeView(ManageView):
             before = getattr(assignment, field)
             setattr(assignment, field, 0)
             assignment.save(update_fields=[field])
+            if which == "pickup":  # the stop holds the count the rider is checked against; the field mirrors stop 1
+                assignment.stops.filter(sequence=1).update(code_attempts=0)
             # Last, because record() holds the activity chain lock until commit.
             record(
                 request.user, "delivery-job-unlock-code", target=assignment, method="POST",

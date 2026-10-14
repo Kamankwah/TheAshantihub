@@ -36,9 +36,12 @@ class RiderView(APIView):
 
     def job(self, request, pk, *, lock=False):
         queryset = DeliveryAssignment.objects.select_related("order", "order__customer", "dispatch", "dispatch__manager")
-        queryset = queryset.prefetch_related("order__items__listing__business_owner__profile", "events", "calls", "photos")
+        queryset = queryset.prefetch_related("order__items__listing__business_owner__profile", "order__items__listing__category", "events", "calls", "photos")
         if lock:
+            # Never prefetch the stops on the write path: a step may create them (ensure_stops) during the request.
             queryset = queryset.select_for_update(of=("self",))
+        else:
+            queryset = queryset.prefetch_related("stops__business_owner__profile")
         return get_object_or_404(queryset, pk=pk, dispatch=request.user)
 
     @staticmethod
@@ -160,7 +163,10 @@ class JobListView(RiderView):
     def get(self, request):
         scope = request.query_params.get("scope", "active")
         queryset = DeliveryAssignment.objects.filter(dispatch=request.user).select_related("order", "order__customer")
-        queryset = queryset.prefetch_related("order__items__listing__business_owner__profile", "events", "calls", "photos")
+        queryset = queryset.prefetch_related(
+            "order__items__listing__business_owner__profile", "order__items__listing__category", "stops__business_owner__profile",
+            "events", "calls", "photos",
+        )
         now = timezone.now()
         today = timezone.localdate(now)
         if scope == "active":
@@ -233,6 +239,14 @@ class DeliverView(_StepView):
 class CantDeliverView(_StepView):
     def run(self, a, staff, d):
         services.cant_deliver(a, staff, d.get("reason"), d.get("note", ""), d.get("lat"), d.get("lng"), d.get("accuracy_m"))
+
+
+class SkipStopView(_StepView):
+    """POST rider/jobs/<id>/skip-stop/ {note, lat?, lng?, accuracy_m?} — the shop being worked cannot hand over. The
+    rider's location is required (the pin, the time and the note are the evidence)."""
+
+    def run(self, a, staff, d):
+        services.skip_stop(a, staff, d.get("note", ""), lat=d.get("lat"), lng=d.get("lng"), accuracy=d.get("accuracy_m"))
 
 
 class CallCustomerView(RiderView):
