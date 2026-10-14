@@ -18,9 +18,8 @@ def mark_food(apps, schema_editor):
 
 
 def unmark_food(apps, schema_editor):
-    Category = apps.get_model("listings", "Category")
-    Category.objects.filter(slug__in=FOOD_CATEGORY_SLUGS).update(is_food=False)
-    Category.objects.filter(slug="beverages", listings__isnull=True).delete()  # only while nothing is listed under it
+    # Only unflag. The beverages category stays: other tables reference it (PROTECT/SET_NULL) and it may pre-date 0020.
+    apps.get_model("listings", "Category").objects.filter(slug__in=FOOD_CATEGORY_SLUGS).update(is_food=False)
 
 
 class Migration(migrations.Migration):

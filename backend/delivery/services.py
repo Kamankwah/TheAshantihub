@@ -57,8 +57,8 @@ def valid_point(lat, lng):
 
 def first_item(order):
     """The order's first line item by pk, or None. The single rule for "which business does the rider
-    collect from": pickup_stop, pickup_owner and the owner serializer all read it, so the privacy gate
-    on who may watch the rider cannot drift between them."""
+    collect from" for the owner serializer and pickup_owner. Legacy reader: pickup_stop now follows the stored
+    route plan (stops.sequence_for_order), so this is only the single-pickup rule until Tasks 5/7 replace it."""
     return min(order.items.all(), key=lambda i: i.pk, default=None)
 
 
@@ -67,15 +67,17 @@ def pickup_stop(order):
     (None, None, name) when it has no location."""
     from . import stops
 
-    sequence = stops.sequence_for_order(order)
+    entries = stops.shop_entries(order.items.all())
+    sequence = stops.sequence_for_order(order, entries)
     if not sequence:
         return None, None, ""
-    entry = next(e for e in stops.shop_entries(order.items.all()) if e["key"] == sequence[0])
+    entry = next(e for e in entries if e["key"] == sequence[0])
     return (entry["lat"], entry["lng"], entry["name"]) if entry["lat"] is not None else (None, None, entry["name"])
 
 
 def pickup_owner(order):
-    """The business the rider collects from: the first item's owner, by the same rule as pickup_stop."""
+    """The first item's owner. Legacy reader (not the planned route's first shop, which pickup_stop returns); to be
+    replaced by the stop-based rules in Tasks 5/7."""
     item = first_item(order)
     return item.listing.business_owner if item else None
 

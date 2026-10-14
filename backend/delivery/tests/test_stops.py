@@ -148,3 +148,37 @@ class StopTests(DeliveryCase):
         self.assertEqual(stops.current_stop(a).pk, third.pk)
         self.assertEqual(stops.progress(a), {"total": 3, "done": 1, "skipped": 1, "current": 3})
         self.assertEqual([i.listing_id for i in stops.stop_lines(third, a.order)], [self.item_food.pk])
+
+    def test_the_food_migration_reverse_only_unflags_and_keeps_beverages(self):
+        from importlib import import_module
+
+        from django.apps import apps as django_apps
+
+        migration = import_module("listings.migrations.0020_category_is_food")
+        migration.unmark_food(django_apps, None)
+        self.assertTrue(Category.objects.filter(slug="beverages").exists())
+        self.assertFalse(Category.objects.filter(is_food=True).exists())
+
+    def test_a_failed_job_re_dispatched_to_the_same_rider_reopens_its_stops(self):
+        a = self.assign(self.multi_order(self.item_a, self.item_b))
+        first, second = a.stops.all()
+        first.status = PickupStop.COLLECTED
+        first.save()
+        second.status, second.code_attempts = PickupStop.ARRIVED, 2
+        second.save()
+        DA.objects.filter(pk=a.pk).update(status=DA.FAILED, failed_reason="wrong_address")
+        again = self.assign(a.order, self.rider_staff)
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual((again.status, again.dispatch_id), (DA.ASSIGNED, self.rider_staff.pk))
+        self.assertEqual((first.status, second.status, second.code_attempts), (PickupStop.PENDING, PickupStop.PENDING, 0))
+
+    def test_a_pre_release_job_reassigned_keeps_its_code_and_gets_one_stop(self):
+        order = self.multi_order(self.item_a, self.item_b)
+        old = DA.objects.create(order=order, dispatch=self.rider_staff, assigned_by=self.manager, status=DA.ASSIGNED,
+                                pickup_code="4321", drop_code="8765")
+        again = self.assign(order, self.other_staff)
+        rows = list(again.stops.all())
+        self.assertEqual(again.pk, old.pk)
+        self.assertEqual([(s.business_owner_id, s.code) for s in rows], [(self.shop_a.pk, "4321")])
+        self.assertEqual((again.pickup_code, again.drop_code, again.dispatch_id), ("4321", "8765", self.other_staff.pk))

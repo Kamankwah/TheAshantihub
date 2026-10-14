@@ -47,10 +47,10 @@ def fallback_order(entries):
     return [e["key"] for e in entries if not e["food"]] + [e["key"] for e in entries if e["food"]]
 
 
-def sequence_for_order(order):
+def sequence_for_order(order, entries=None):
     """Business ids in collection order: the plan stored at checkout when it covers exactly this order's businesses,
     else the fallback order."""
-    entries = shop_entries(order.items.all())
+    entries = shop_entries(order.items.all()) if entries is None else entries
     keys = [e["key"] for e in entries]
     planned = list((order.route_plan or {}).get("owner_ids") or [])
     if planned and sorted(planned) == sorted(keys):
@@ -104,7 +104,8 @@ def ensure_stops(assignment):
     if rows:
         return rows
     order = assignment.order
-    entries = {e["key"]: e for e in shop_entries(order.items.all())}
+    entry_list = shop_entries(order.items.all())
+    entries = {e["key"]: e for e in entry_list}
     if not entries:
         return []
     if assignment.pickup_code:
@@ -112,7 +113,7 @@ def ensure_stops(assignment):
         stop.save()
         rows, sequence = [stop], [stop.business_owner_id]
     else:
-        sequence = sequence_for_order(order)
+        sequence = sequence_for_order(order, entry_list)
         used = {assignment.drop_code}
         for n, owner_id in enumerate(sequence, start=1):
             entry = entries[owner_id]

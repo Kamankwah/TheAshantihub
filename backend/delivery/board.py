@@ -46,7 +46,7 @@ def waiting_orders():
         .exclude(delivery_status=Order.DELIVERED)
         .filter(Q(delivery_assignment__isnull=True) | Q(delivery_assignment__status=DeliveryAssignment.FAILED))
         .select_related("customer", "delivery_assignment")
-        .prefetch_related("items__listing__business_owner__profile")
+        .prefetch_related("items__listing__business_owner__profile", "items__listing__category")
         .order_by("placed_at")
     )
 
