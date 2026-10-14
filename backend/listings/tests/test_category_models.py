@@ -37,7 +37,7 @@ SEEDED_KINDS = {
 class CategoryModelTests(TestCase):
     def test_all_fifteen_categories_are_seeded(self):
         self.assertEqual(
-            set(Category.objects.values_list("slug", flat=True)), SEEDED_SLUGS | EVENT_SLUGS
+            set(Category.objects.values_list("slug", flat=True)), SEEDED_SLUGS | EVENT_SLUGS | {"beverages"}  # beverages: 0020
         )
 
     def test_event_categories_are_seeded_with_kind_event(self):

@@ -63,16 +63,15 @@ def first_item(order):
 
 
 def pickup_stop(order):
-    """(lat, lng, business name) of the first business on the order, or (None, None, name). The pin on
-    the business profile wins; a listing's own coordinates are the fallback. Multi-business orders are
-    delivered from the first business only (v1: one pickup per assignment)."""
-    item = first_item(order)
-    if item is None:
+    """(lat, lng, business name) of the first business the planned route visits (the dispatch point), or
+    (None, None, name) when it has no location."""
+    from . import stops
+
+    sequence = stops.sequence_for_order(order)
+    if not sequence:
         return None, None, ""
-    owner = item.listing.business_owner
-    pin = business_pin(owner) or valid_point(item.listing.lat, item.listing.lng)
-    name = getattr(owner, "display_name", None) or owner.full_name
-    return (float(pin[0]), float(pin[1]), name) if pin else (None, None, name)
+    entry = next(e for e in stops.shop_entries(order.items.all()) if e["key"] == sequence[0])
+    return (entry["lat"], entry["lng"], entry["name"]) if entry["lat"] is not None else (None, None, entry["name"])
 
 
 def pickup_owner(order):
@@ -129,19 +128,20 @@ def zone_of(lat, lng):
 
 
 # ── Codes ──────────────────────────────────────────────────────────────────────────────────────
-def new_code():
-    return f"{secrets.randbelow(10000):04d}"
+def new_code(exclude=()):
+    """A four-digit code not in `exclude` (the other codes on the same delivery)."""
+    while True:
+        code = f"{secrets.randbelow(10000):04d}"
+        if code not in exclude:
+            return code
 
 
 def ensure_codes(assignment):
-    changed = []
-    if not assignment.pickup_code:
-        assignment.pickup_code = new_code()
-        changed.append("pickup_code")
+    """The customer's delivery code, made once. Pickup codes live on the stops (stops.ensure_stops)."""
     if not assignment.drop_code:
         assignment.drop_code = new_code()
-        changed.append("drop_code")
-    return changed
+        return ["drop_code"]
+    return []
 
 
 def _code_matches(expected, given):
@@ -157,6 +157,8 @@ def assign(order, rider_staff, assigned_by, *, mode):
 
     now = timezone.now()
     existing = DeliveryAssignment.objects.select_for_update().filter(order=order).first()
+    previous_reason = existing.failed_reason if existing is not None else ""
+    failed = existing is not None and existing.status == DeliveryAssignment.FAILED  # read before the reset below changes it
     if existing is not None and existing.status not in (
         DeliveryAssignment.ASSIGNED, DeliveryAssignment.ACCEPTED, DeliveryAssignment.AT_PICKUP, DeliveryAssignment.FAILED,
     ):
@@ -181,6 +183,11 @@ def assign(order, rider_staff, assigned_by, *, mode):
 
         assignment.deadline_at = deadline_for(order)
     assignment.save()
+    from . import stops
+
+    stops.ensure_stops(assignment)
+    if existing is not None and (swapped or failed):
+        stops.reopen_for_new_rider(assignment, failed=failed, all_skipped=previous_reason == "all_stops_skipped")
     DeliveryEvent.objects.create(assignment=assignment, step=DeliveryEvent.ASSIGNED, at=now, by=assigned_by)
     return assignment
 

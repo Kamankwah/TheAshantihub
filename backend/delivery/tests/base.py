@@ -64,6 +64,26 @@ class DeliveryCase(TestCase):
         OrderItem.objects.create(order=order, listing=self.listing, quantity=1, unit_price="100.00", line_total="100.00")
         return order
 
+    def make_shop(self, name, phone, point=None, *, slug="shops"):
+        """A business with one published listing (located at `point`, or with no location)."""
+        owner = BusinessOwner.objects.create(full_name=name, login_phone=phone, password_hash="x")
+        listing = Listing.objects.create(
+            business_owner=owner, category=Category.objects.get(slug=slug), zone=Zone.objects.get(name="Manhyia"),
+            name=f"{name} item", description="D.", contact_phone=phone, price_amount="10.00", status=Listing.PUBLISHED,
+            lat=str(point[0]) if point else None, lng=str(point[1]) if point else None,
+        )
+        return owner, listing
+
+    def multi_order(self, *listings, **kw):
+        """A paid door-to-door order with one line per listing, in the order given."""
+        order = Order.objects.create(
+            customer=self.customer, status=Order.PAID, total_amount="100.00", delivery_method=Order.DOOR_TO_DOOR,
+            delivery_address="12 Ash Road", delivery_phone="+233200882200", delivery_lat=DROP[0], delivery_lng=DROP[1], **kw,
+        )
+        for listing in listings:
+            OrderItem.objects.create(order=order, listing=listing, quantity=1, unit_price="10.00", line_total="10.00")
+        return order
+
     def assign(self, order=None, rider_staff=None):
         order = order or self.make_order()
         self.as_staff(self.manager)
