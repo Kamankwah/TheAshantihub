@@ -59,8 +59,18 @@ def rider_pay(card, km, *, wait_minutes=0, hold_wait=False, basis=BASIS):
 
 
 def route_km(order):
-    """(km, basis) for pickup to drop, or (None, None) when either point is unknown."""
-    plat, plng, _ = services.pickup_stop(order)
+    """(km, basis) for pickup to drop, or (None, None) when either point is unknown. The pickup is the job's saved first
+    stop when it has an assignment (so a job from before multi-stop delivery measures from the shop the rider actually
+    visited), else the plan's first shop. Rider pay for the extra shop legs is an open owner decision: this still
+    measures first shop to drop only."""
+    from . import stops
+
+    assignment = getattr(order, "delivery_assignment", None)
+    rows = stops.stops_of(assignment) if assignment is not None else []
+    if rows and rows[0].lat is not None:
+        plat, plng = rows[0].lat, rows[0].lng
+    else:
+        plat, plng, _ = services.pickup_stop(order)
     dlat, dlng = services.drop_stop(order)
     if plat is None or dlat is None:
         return None, None

@@ -4,7 +4,7 @@ from unittest import mock
 from django.utils import timezone
 
 from delivery import board, services, stops, tracking
-from delivery.models import PickupStop, ShiftSession
+from delivery.models import PickupStop, Rider, ShiftSession
 from disputes.models import Dispute
 from notifications.models import Notification
 from orders.models import DeliveryAssignment as DA, Order
@@ -465,6 +465,17 @@ class LegacyTests(DeliveryCase):
         self.assertEqual(row["route"]["from"], "Chop A")
         self.assertEqual(PickupStop.objects.filter(assignment=job).count(), 0)  # reads write nothing
 
+    def test_rider_pay_distance_for_a_job_from_before_stops_measures_from_its_saved_shop(self):
+        from delivery import rates
+
+        order = self.legacy_order()
+        DA.objects.create(order=order, dispatch=self.rider_staff, assigned_by=self.manager, status=DA.ACCEPTED,
+                          pickup_code="4321", drop_code="8765", accepted_at=timezone.now())
+        order = Order.objects.get(pk=order.pk)
+        with mock.patch("delivery.rates.routing_service.leg", return_value={"distance_km": 1.0, "basis": "road route"}) as leg:
+            rates.route_km(order)
+        self.assertEqual(leg.call_args.args[0], (6.70, -1.62))  # Chop A, the shop it was sent to; not the plan's Shop B
+
     def test_a_failed_job_from_before_stops_is_given_again_with_its_one_saved_shop(self):
         order = self.legacy_order()
         now = timezone.now()
@@ -499,3 +510,27 @@ class PlannedArrivalTests(DeliveryCase):
         job = self.assign(self.multi_order(item_a))
         self.step(job, "accept")
         self.assertIsNone(job.stops.get().planned_arrival)
+
+
+class AllSkippedHoldTests(MultiStopRiderCase):
+    """An order every shop skipped waits for a manager: the engine never re-sends it to another rider."""
+
+    def test_the_engine_leaves_an_every_shop_skipped_order_for_a_manager(self):
+        from delivery import dispatching
+        from delivery.models import DeliverySettings, Offer
+
+        other = Rider.objects.get(staff=self.other_staff)
+        self.approve_papers(other)
+        ShiftSession.objects.create(rider=other, last_lat=A[0], last_lng=A[1], last_fix_at=timezone.now())
+        DeliverySettings.objects.update_or_create(pk=1, defaults={"auto_assign_on": True})
+        self.step(self.job, "accept")
+        for _ in range(3):
+            self.assertEqual(self.skip().status_code, 200)
+        self.job.refresh_from_db()
+        self.assertEqual((self.job.status, self.job.failed_reason), (DA.FAILED, "all_stops_skipped"))
+        out = dispatching.run_engine()
+        self.assertEqual((out["offered"], out["forced"]), (0, 0))
+        self.assertFalse(Offer.objects.filter(order=self.order).exists())
+        self.assertEqual(DA.objects.get(order=self.order).status, DA.FAILED)
+        again = self.assign(self.order, self.other_staff)  # a manager's assign still works
+        self.assertEqual((again.status, again.dispatch_id), (DA.ASSIGNED, self.other_staff.pk))
