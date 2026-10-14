@@ -12,6 +12,7 @@ const STYLE = {
   drop: { color: "#FFFFFF", weight: 2.5, fillColor: "#006400", fillOpacity: 1 },
   rider: { color: "#FFFFFF", weight: 2.5, fillColor: "#2C1810", fillOpacity: 1 },
   candidate: { color: "#2C1810", weight: 2, fillColor: "#FFFFFF", fillOpacity: 1 },
+  stop: { color: "#D4A017", weight: 3, fillColor: "#FFFFFF", fillOpacity: 1 },
   stale: { color: "#A33A00", weight: 3, dashArray: "4 3", fillColor: "#FFFFFF", fillOpacity: 1 },
 };
 const hasCoords = (m) => Number.isFinite(Number(m?.lat)) && Number.isFinite(Number(m?.lng)) && m.lat !== null && m.lng !== null;
@@ -22,7 +23,7 @@ const hasCoords = (m) => Number.isFinite(Number(m?.lat)) && Number.isFinite(Numb
 // With no stops, the set of marker ids stands in so the first rider still gets framed.
 export function fitSignature(markers = [], route = null) {
   const pins = markers.filter(hasCoords);
-  const stops = pins.filter((m) => m.kind === "pickup" || m.kind === "drop");
+  const stops = pins.filter((m) => m.kind === "pickup" || m.kind === "drop" || m.kind === "stop");
   const shown = (stops.length ? stops : pins.map((m) => ({ ...m, lat: 0, lng: 0 })))
     .map((m) => `${m.kind}:${m.id}:${Number(m.lat)},${Number(m.lng)}`).sort().join("|");
   const line = Array.isArray(route) && route.length >= 2

@@ -88,6 +88,12 @@ describe('On shift', () => {
 
 describe('A new offer', () => {
   const offer = (over = {}) => ({ id: 9, order_id: 18, seconds_left: 38, expires_at: '2026-10-13T11:21:00Z', pickup: { business_name: 'Akosua Ntoma Kente', lat: 6.7, lng: -1.62 }, delivery_address: 'Ahodwo', to_pickup_km: 1.4, trip_km: 6.2, payment: { method: 'prepaid', label: 'Paid online (simulated)', cash_due: null }, deadline_at: null, pay: { total: '19.16', lines: [{ label: 'Per job', amount: '8.00' }, { label: 'Distance 6.2 km', amount: '11.16' }] }, items: 1, ...over })
+  it('says how many shops an offer collects from', async () => {
+    server.use(...base([http.get(`${API}/api/delivery/rider/me/`, () => HttpResponse.json(me({ shift: onShift }))), http.get(`${API}/api/delivery/rider/offers/`, () => HttpResponse.json({ results: [offer({ stop_count: 3 })], acceptance_30d: { accepted: 0, of: 0 } }))]))
+    wrap(<ShiftPanel />)
+    expect(await screen.findByText('Then 2 more shops on the same trip')).toBeInTheDocument()
+  })
+
   it('shows the pay from the rate card and accepts', async () => {
     let accepted = false
     server.use(...base([http.get(`${API}/api/delivery/rider/me/`, () => HttpResponse.json(me({ shift: onShift }))), http.get(`${API}/api/delivery/rider/offers/`, () => HttpResponse.json({ results: [offer()], acceptance_30d: { accepted: 11, of: 12 } })), http.post(`${API}/api/delivery/rider/offers/9/accept/`, () => { accepted = true; return HttpResponse.json({}) })]))

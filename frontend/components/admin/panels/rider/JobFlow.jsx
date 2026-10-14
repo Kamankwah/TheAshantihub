@@ -16,6 +16,15 @@ import { Err, Info, JobHeader, LocationLine, Warn, bigButton, card, distanceText
 // the server, which counts the tries.
 const FLAG_M = 150;
 
+// "stop 2 of 3" when a delivery collects from several shops; nothing extra for one shop (or a job from before
+// multi-stop delivery, whose payload carries no progress).
+const titled = (job, base) => (job.progress?.total > 1 && job.progress?.current ? `${base} · stop ${job.progress.current} of ${job.progress.total}` : base);
+const OPEN = ["pending", "arrived"];
+const nextShop = (job) => {
+  const cur = job.current_stop;
+  return (job.pickups || []).find((s) => cur && s.sequence > cur.sequence && OPEN.includes(s.status)) || null;
+};
+
 function PhotoPick({ label, onFile, file }) {
   return (
     <label style={{ ...quietButton(false), display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer" }}>
@@ -26,7 +35,7 @@ function PhotoPick({ label, onFile, file }) {
 }
 
 // Runs one step: asks for a fresh location, posts it, and hands the refreshed job to the parent.
-function useStep(job, onChanged) {
+function useStep(job, onChanged, { onStale } = {}) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const run = async (name, extra = {}, { locate = true } = {}) => {
@@ -42,6 +51,11 @@ function useStep(job, onChanged) {
       onChanged(out);
       return out;
     } catch (err) {
+      if (err?.body?.code === "stop_done" && onStale) {
+        // The same tap went through already (or the stop moved on): reload the job instead of showing an error.
+        onStale();
+        return null;
+      }
       setError(apiErrorMessage(err, err?.message || "That did not work. Try again."));
       return null;
     } finally {
@@ -101,20 +115,22 @@ function CallBlock({ job, onChanged }) {
   );
 }
 
-function ToPickup({ job, step, onChanged }) {
-  const p = job.pickup;
+function ToPickup({ job, step, onChanged, onSkip }) {
+  const p = job.current_stop || job.pickup;
+  const next = nextShop(job);
   const distance = useDistanceTo(p?.lat, p?.lng);
   const accepted = job.status !== "assigned";
   return (
     <>
-      <JobHeader job={job} title={accepted ? "to pickup" : "new job"} />
+      <JobHeader job={job} title={titled(job, accepted ? "to pickup" : "new job")} />
       <LocationLine />
       <section aria-label="Pickup" style={card}>
         <h2 style={{ ...h2, fontSize: "0.72rem", letterSpacing: "0.08em", textTransform: "uppercase", color: D.textDim }}>To the pickup</h2>
         <div style={{ fontSize: "1.9rem", fontWeight: 800, color: D.text, lineHeight: 1.1 }}>{distance === null ? "Location needed" : <>{distanceText(distance)} <span style={{ fontSize: "1rem", fontWeight: 600, color: D.textDim }}>to go (straight line)</span></>}</div>
         <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "auto 1fr", gap: "6px 12px", fontSize: "0.9rem" }}>
           <dt style={{ color: D.textDim }}>Shop</dt><dd style={{ margin: 0, fontWeight: 700 }}>{p?.business_name || "Not set"}</dd>
-          <dt style={{ color: D.textDim }}>Then to</dt><dd style={{ margin: 0, fontWeight: 700 }}>{job.delivery_address || "No address"}</dd>
+          <dt style={{ color: D.textDim }}>Then to</dt><dd style={{ margin: 0, fontWeight: 700 }}>{next ? next.business_name : (job.delivery_address || "No address")}</dd>
+          {p?.late && <><dt style={{ color: D.textDim }}>Timing</dt><dd style={{ margin: 0, fontWeight: 700, color: "#A33A00" }}>Running late for this shop</dd></>}
           <dt style={{ color: D.textDim }}>Deliver by</dt><dd style={{ margin: 0, fontWeight: 700 }}>{job.deadline_at ? hhmm(job.deadline_at) : "No time limit set"}</dd>
           <dt style={{ color: D.textDim }}>Payment</dt><dd style={{ margin: 0, fontWeight: 700 }}>{job.payment.label}</dd>
         </dl>
@@ -123,19 +139,23 @@ function ToPickup({ job, step, onChanged }) {
           <a href={`https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`} target="_blank" rel="noreferrer" style={{ ...quietButton(false), display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }}>Open in Google Maps</a>
         )}
         <Warn>Tracking pauses while you are in another app. Come back to this screen before you arrive: the arrival button needs your location.</Warn>
-        <Info>At the shop, ask for <b>Order #{job.order_id}</b>. The shop reads you a 4-digit pickup code from its AshantiHub order screen.</Info>
+        <Info>At the shop, ask for <b>Order #{job.order_id}</b>. Each shop reads you its own 4-digit pickup code from its AshantiHub order screen.</Info>
       </section>
       <Err>{step.error}</Err>
       {!accepted ? (
         <button type="button" disabled={step.busy} onClick={() => step.run("accept", {}, { locate: false })} style={bigButton(step.busy)}>Accept this job</button>
       ) : (
-        <ArriveButton distance={distance} located={p?.lat !== null && p?.lat !== undefined} busy={step.busy} label="I've arrived" onTap={() => step.run("arrive-pickup")} noPinText="This shop has no map pin, so the distance cannot be checked." />
+        <>
+          <ArriveButton distance={distance} located={p?.lat !== null && p?.lat !== undefined} busy={step.busy} label="I've arrived" onTap={() => step.run("arrive-pickup")} noPinText="This shop has no map pin, so the distance cannot be checked." />
+          {onSkip && <button type="button" onClick={onSkip} style={quietButton(false)}>Can&apos;t hand over?</button>}
+        </>
       )}
     </>
   );
 }
 
-function AtPickup({ job, step, onChanged }) {
+function AtPickup({ job, step, onChanged, onSkip }) {
+  const p = job.current_stop || job.pickup;
   useTick(1000);
   const [code, setCode] = useState("");
   const [photo, setPhoto] = useState(null);
@@ -156,19 +176,19 @@ function AtPickup({ job, step, onChanged }) {
   };
   return (
     <>
-      <JobHeader job={job} title="at pickup" />
+      <JobHeader job={job} title={titled(job, "at pickup")} />
       <LocationLine />
       <section aria-label="Pickup" style={card}>
-        <div style={{ fontWeight: 800, color: D.text }}>{job.pickup?.business_name}</div>
+        <div style={{ fontWeight: 800, color: D.text }}>{p?.business_name}</div>
         <div style={dim}>Arrived {hhmm(job.arrived_pickup_at)} · waiting {mmss(arrived)}. Waiting pay starts after 10:00.</div>
         <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.8rem", fontWeight: 800, color: D.text }}>
           Pickup code
           <input aria-label="Pickup code" inputMode="numeric" maxLength={4} autoComplete="off" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} style={{ ...field, ...mono, fontSize: "1.6rem", letterSpacing: "0.3em", textAlign: "center", minHeight: 56 }} />
         </label>
-        <span style={dim}>Type the 4-digit code shown on the shop&apos;s AshantiHub order screen. It proves the shop handed this order to you. {job.pickup_attempts_left < 5 ? `${job.pickup_attempts_left} tries left.` : ""}</span>
+        <span style={dim}>Type the 4-digit code shown on the shop&apos;s AshantiHub order screen. It proves the shop handed this order to you. {(p?.attempts_left ?? job.pickup_attempts_left) < 5 ? `${p?.attempts_left ?? job.pickup_attempts_left} tries left.` : ""}</span>
         <div>
           <b style={{ fontSize: "0.82rem", color: D.text }}>Check the items</b>
-          <ul style={{ margin: "4px 0 0", paddingLeft: 18, fontSize: "0.86rem", color: D.text }}>{(job.pickup?.items || []).map((i) => <li key={i}>{i}</li>)}</ul>
+          <ul style={{ margin: "4px 0 0", paddingLeft: 18, fontSize: "0.86rem", color: D.text }}>{(p?.items || []).map((i) => <li key={i}>{i}</li>)}</ul>
           <span style={dim}>Something missing or damaged? Do not pick up: report it from the menu.</span>
         </div>
         <PhotoPick label="Package photo (optional)" file={photo} onFile={setPhoto} />
@@ -176,6 +196,7 @@ function AtPickup({ job, step, onChanged }) {
       </section>
       <Err>{step.error}</Err>
       <button type="button" disabled={step.busy || code.length !== 4} onClick={pick} style={bigButton(step.busy || code.length !== 4)}>Picked up</button>
+      <button type="button" onClick={onSkip} style={quietButton(false)}>Can&apos;t hand over?</button>
       <span style={{ ...dim, textAlign: "center" }}>The tap is stamped with time and location. The shop sees your name and Order #{job.order_id}, never the customer&apos;s phone number.</span>
     </>
   );
@@ -234,6 +255,35 @@ function AtCustomer({ job, step, onChanged, onCant }) {
       <button type="button" disabled={step.busy || code.length !== 4} onClick={() => step.run("deliver", { code })} style={bigButton(step.busy || code.length !== 4)}>Delivered</button>
       <button type="button" onClick={onCant} style={quietButton(false)}>Can&apos;t deliver?</button>
       <span style={{ ...dim, textAlign: "center" }}>Wrong address or a refusal can be reported now. &quot;No answer&quot; needs the full wait and 2 calls.</span>
+    </>
+  );
+}
+
+export function SkipStop({ job, onBack, onDone }) {
+  const [note, setNote] = useState("");
+  const step = useStep(job, (out) => onDone(out), { onStale: () => onDone(null) });
+  const p = job.current_stop || job.pickup;
+  const left = (job.progress?.total || 1) - (job.progress?.done || 0) - (job.progress?.skipped || 0);
+  const ends = left <= 1 && !(job.progress?.done > 0);
+  // A skip names the shop (stop_id), so a retried tap cannot skip the next one; the location is required (the server's own
+  // "location needed" message is shown as is).
+  const submit = () => step.run("skip-stop", { stop_id: job.current_stop_id ?? null, note: note.trim() });
+  return (
+    <>
+      <section aria-label="Shop cannot hand over" style={card}>
+        <h1 style={h2}>Order #{job.order_id} · {p?.business_name || "this shop"} can&apos;t hand over</h1>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.8rem", fontWeight: 800, color: D.text }}>
+          What happened? (required)
+          <textarea aria-label="What happened" rows={3} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} style={field} />
+        </label>
+        <Info>
+          {ends ? "Nothing has been collected and this is the last shop, so you stop here. The order goes back to your manager to send out again." : left > 1 ? "You move on to the next shop." : "You go on to the customer with what you collected."}{" "}
+          The customer is told, and AshantiHub Support refunds this shop&apos;s items. Your location is sent with this report as proof you were there; the shop sees only the time and your note.
+        </Info>
+      </section>
+      <Err>{step.error}</Err>
+      <button type="button" disabled={!note.trim() || step.busy} onClick={submit} style={bigButton(!note.trim() || step.busy)}>Confirm: skip this shop</button>
+      <button type="button" onClick={onBack} style={quietButton(false)}>Back to the job</button>
     </>
   );
 }
@@ -332,19 +382,21 @@ export default function ActiveJob({ jobId, onDelivered }) {
   const { data: job, isLoading, isError, refetch } = useRiderJob(jobId);
   const me = useRiderMe();
   const [cant, setCant] = useState(false);
+  const [skip, setSkip] = useState(false);
   const changed = (out) => { refetch(); me.refetch(); if (out?.status === "delivered" || out?.status === "failed") onDelivered?.(out); };
   const step = useStep(job || { id: jobId }, changed);
   if (isLoading) return <div role="status" style={dim}>Loading the job…</div>;
   if (isError || !job) return <Err>Could not load this job.</Err>;
   if (job.status === "delivered" || job.status === "confirmed") return <div style={screen}><Delivered job={job} onNext={() => onDelivered?.(null)} /></div>;
   if (job.status === "failed") {
-    return <div style={screen}><section style={card}><h1 style={h2}>Order #{job.order_id} · could not deliver</h1><span style={{ color: D.text, fontSize: "0.88rem" }}>Reason: {String(job.failed_reason || "").replace(/_/g, " ")}. Your manager has been told and will open a case. Take the parcel back as they tell you.</span></section><button type="button" onClick={() => onDelivered?.(null)} style={bigButton(false)}>Back to the shift</button></div>;
+    return <div style={screen}><section style={card}><h1 style={h2}>Order #{job.order_id} · could not deliver</h1><span style={{ color: D.text, fontSize: "0.88rem" }}>{job.failed_reason === "all_stops_skipped" ? "No shop could hand over the items. The order has gone back to your manager to send out again; nothing goes to the customer." : <>Reason: {String(job.failed_reason || "").replace(/_/g, " ")}. Your manager has been told and will open a case. Take the parcel back as they tell you.</>}</span></section><button type="button" onClick={() => onDelivered?.(null)} style={bigButton(false)}>Back to the shift</button></div>;
   }
+  if (skip) return <div style={screen}><SkipStop job={job} onBack={() => setSkip(false)} onDone={(out) => { setSkip(false); changed(out); }} /></div>;
   if (cant) return <div style={screen}><CantDeliver job={job} onBack={() => setCant(false)} onDone={(out) => { setCant(false); changed(out); }} /></div>;
   return (
     <div style={screen}>
-      {(job.status === "assigned" || job.status === "accepted") && <ToPickup job={job} step={step} onChanged={refetch} />}
-      {job.status === "at_pickup" && <AtPickup job={job} step={step} onChanged={refetch} />}
+      {(job.status === "assigned" || job.status === "accepted") && <ToPickup job={job} step={step} onChanged={refetch} onSkip={() => setSkip(true)} />}
+      {job.status === "at_pickup" && <AtPickup job={job} step={step} onChanged={refetch} onSkip={() => setSkip(true)} />}
       {job.status === "picked_up" && <ToCustomer job={job} step={step} onChanged={refetch} />}
       {job.status === "at_customer" && <AtCustomer job={job} step={step} onChanged={refetch} onCant={() => setCant(true)} />}
       {me.data?.rider?.manager && <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: "0.82rem", fontWeight: 700 }}><span style={dim}>Something wrong? Use Report an issue in the menu.</span>{me.data.rider.manager.phone && <a href={`tel:${me.data.rider.manager.phone}`} style={{ color: D.deepGold }}>Call {me.data.rider.manager.full_name.split(" ")[0]}</a>}</div>}
