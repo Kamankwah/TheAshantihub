@@ -3,14 +3,15 @@ import { apiFetch } from '../apiClient.js'
 
 const POLL_MS = 30000
 
-// Poll only while the data shows a door-to-door delivery that is not finished, so the owner's
+// Poll only while the data shows a door-to-door order still in 'processing' (the only window the pickup code matters; failed, shipped or
+// delivered orders stop the poll), so the owner's
 // pickup code appears (and clears) without a manual reload. A shop with nothing on the road
 // makes no extra requests. Exported as a pure helper so it can be unit-tested.
 export function ownerOrdersInterval(data) {
   const active = (data?.results || []).some((o) => (
     o.rider_heading_here === true
     || (o.pickup_code != null && o.pickup_code !== '')
-    || (o.delivery_method === 'door_to_door' && o.delivery_status !== 'delivered')
+    || (o.delivery_method === 'door_to_door' && o.delivery_status === 'processing')
   ))
   return active ? POLL_MS : false
 }

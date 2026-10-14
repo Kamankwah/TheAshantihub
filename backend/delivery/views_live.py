@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import HasRolePermission
+from activity.models import ActivityEvent
 from activity.services import record
 from accounts.phones import mask_phone
 from disputes.models import Dispute
@@ -65,6 +66,8 @@ def manager_job(assignment, now=None):
         "codes": {
             "pickup": {"matched": assignment.picked_up_at is not None, "wrong_tries": assignment.pickup_code_attempts},
             "drop": {"matched": assignment.delivered_at is not None, "wrong_tries": assignment.drop_code_attempts},
+            # Unlocks reset the wrong-tries counters, so the log is the only evidence a step was ever locked.
+            "unlocks": ActivityEvent.objects.filter(verb="delivery-job-unlock-code", target_type=assignment._meta.label_lower, target_id=str(assignment.pk)).count(),
         },
         "wait": payloads.wait_info(assignment, now),
         "flag": {"decision": assignment.flag_decision, "decided_by": payloads.person(assignment.flag_decided_by), "decided_at": assignment.flag_decided_at,
@@ -140,7 +143,8 @@ class UnlockCodeView(ManageView):
         which = request.data.get("which")
         if which not in ("pickup", "drop"):
             return Response({"detail": "Choose the pickup or the drop code."}, status=400)
-        note = str(request.data.get("note", "")).strip()
+        note = request.data.get("note")
+        note = note.strip() if isinstance(note, str) else ""
         if not note:
             return Response({"detail": "Say why you are unlocking this code."}, status=400)
         field = "pickup_code_attempts" if which == "pickup" else "drop_code_attempts"
@@ -153,7 +157,7 @@ class UnlockCodeView(ManageView):
             assignment.save(update_fields=[field])
             # Last, because record() holds the activity chain lock until commit.
             record(
-                request.user, "delivery.code_unlocked", target=assignment, method="POST",
+                request.user, "delivery-job-unlock-code", target=assignment, method="POST",
                 summary=f"Unlocked the {which} code on order #{assignment.order_id}: {note[:200]}",
                 before={"which": which, "wrong_tries": before}, after={"which": which, "wrong_tries": 0, "note": note[:300]}, request=request,
             )

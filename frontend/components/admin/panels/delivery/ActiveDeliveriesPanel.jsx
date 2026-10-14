@@ -125,6 +125,7 @@ function CodeLine({ label, which, jobId, state, onDone }) {
       onDone();
     } catch (err) {
       setError(apiErrorMessage(err, "Could not unlock the code."));
+      if (err?.status === 409 || err?.code === "not_locked") onDone(); // someone else unlocked it: show the current state
     } finally {
       setBusy(false);
     }

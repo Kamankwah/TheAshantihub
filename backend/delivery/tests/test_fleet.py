@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -387,16 +388,31 @@ class UnlockCodeTests(DeliveryCase):
         from activity.models import ActivityEvent
 
         assignment = self.locked("pickup")
+        assignment.pickup_code, assignment.drop_code = "1357", "2468"
+        assignment.save(update_fields=["pickup_code", "drop_code"])
         response = self.unlock(assignment, {"which": "pickup", "note": "Shop confirmed the rider by phone"})
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.json(), {"which": "pickup", "attempts": 0})
         assignment.refresh_from_db()
         self.assertEqual(assignment.pickup_code_attempts, 0)
-        event = ActivityEvent.objects.filter(verb="delivery.code_unlocked").get()
+        event = ActivityEvent.objects.filter(verb="delivery-job-unlock-code").get()
         self.assertEqual(event.actor_id, self.manager.pk)
         self.assertIn("Shop confirmed the rider by phone", event.summary)
         self.assertIn("pickup", event.summary)
-        self.assertNotIn(assignment.pickup_code + '"', str(event.after))
+        blob = json.dumps([event.summary, event.before, event.after, event.target_label])
+        self.assertNotIn(assignment.pickup_code, blob)
+        self.assertNotIn(assignment.drop_code, blob)
+        self.assertEqual(self.client.get(f"/api/delivery/jobs/{assignment.pk}/").json()["codes"]["unlocks"], 1)
+
+    def test_the_unlock_reaches_other_managers_and_riders_live(self):
+        from unittest import mock
+
+        assignment = self.locked("pickup")
+        with mock.patch("realtime.publish._send", return_value=True) as send, self.captureOnCommitCallbacks(execute=True):
+            self.unlock(assignment, {"which": "pickup", "note": "Verified"})
+        groups = {call.args[0] for call in send.call_args_list}
+        self.assertIn("perm.delivery.manage", groups)
+        self.assertIn("perm.delivery.dispatch", groups)
 
     def test_the_drop_step_unlocks_independently(self):
         assignment = self.locked("drop")
@@ -422,6 +438,8 @@ class UnlockCodeTests(DeliveryCase):
         self.assertEqual(self.unlock(assignment, {"which": "other", "note": "x"}).status_code, 400)
         self.assertEqual(self.unlock(assignment, {"which": "pickup", "note": "   "}).status_code, 400)
         self.assertEqual(self.unlock(assignment, {"which": "pickup"}).status_code, 400)
+        self.assertEqual(self.unlock(assignment, {"which": "pickup", "note": None}).status_code, 400)
+        self.assertEqual(self.unlock(assignment, {"which": "pickup", "note": 123}).status_code, 400)
         assignment.refresh_from_db()
         self.assertEqual(assignment.pickup_code_attempts, 5)
 
