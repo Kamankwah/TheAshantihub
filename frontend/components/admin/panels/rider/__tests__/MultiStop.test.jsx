@@ -66,7 +66,7 @@ describe('A delivery from several shops', () => {
     fireEvent.click(await screen.findByRole('button', { name: "Can't hand over?" }))
     const confirm = screen.getByRole('button', { name: 'Confirm: skip this shop' })
     expect(confirm).toBeDisabled()
-    expect(screen.getByText(/AshantiHub Support refunds this shop's items/)).toBeInTheDocument()
+    expect(screen.getByText(/AshantiHub Support reviews this shop's items for a refund\. The shop sees only the time and your note; phone numbers and emails are removed/)).toBeInTheDocument()
     expect(screen.getByText(/Your location is sent with this report/)).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('What happened'), { target: { value: 'Closed for a funeral' } })
     fireEvent.click(confirm)
@@ -102,6 +102,8 @@ describe('Skipping a shop, edge cases', () => {
     wrap(<ActiveJobForTest id={5} />)
     await skipIt()
     await waitFor(() => expect(loads).toBeGreaterThan(1))
+    expect(await screen.findByRole('button', { name: 'Picked up' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('What happened')).not.toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
   it('shows the server message when the location is missing', async () => {
@@ -118,6 +120,22 @@ describe('Skipping a shop, edge cases', () => {
   })
 })
 
+describe('Double tap', () => {
+  it('two rapid clicks on skip send one request', async () => {
+    let posts = 0
+    serve(job(), [http.post(`${API}/api/delivery/rider/jobs/5/skip-stop/`, async () => { posts += 1; await new Promise((r) => setTimeout(r, 100)); return HttpResponse.json(job({ status: 'accepted' })) })])
+    wrap(<ActiveJobForTest id={5} />)
+    fireEvent.click(await screen.findByRole('button', { name: "Can't hand over?" }))
+    fireEvent.change(screen.getByLabelText('What happened'), { target: { value: 'Closed' } })
+    const confirm = screen.getByRole('button', { name: 'Confirm: skip this shop' })
+    fireEvent.click(confirm)
+    fireEvent.click(confirm)
+    await waitFor(() => expect(posts).toBe(1))
+    await new Promise((r) => setTimeout(r, 200))
+    expect(posts).toBe(1)
+  })
+})
+
 describe('A job from before multi-stop delivery', () => {
   it('shows no stop count, the one shop and the delivery address', async () => {
     const shop = { business_name: 'Kente House', lat: 6.7001, lng: -1.62, items: ['Kente × 1'], attempts_left: 5 }
@@ -126,6 +144,7 @@ describe('A job from before multi-stop delivery', () => {
     expect(await screen.findByText('Order #18 · to pickup')).toBeInTheDocument()
     expect(screen.getByText('Kente House')).toBeInTheDocument()
     expect(screen.getByText('Ahodwo')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: "Can't hand over?" })).not.toBeInTheDocument()
   })
 })
 

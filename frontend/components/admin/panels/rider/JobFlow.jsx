@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { apiPost, apiPostForm } from "../../../../apiClient.js";
 import { apiErrorMessage } from "../../../../lib/apiErrorMessage.js";
 import { currentFix } from "../../../../lib/riderTracking.js";
@@ -38,7 +38,10 @@ function PhotoPick({ label, onFile, file }) {
 function useStep(job, onChanged, { onStale } = {}) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false); // a fast double tap must send one request, not two
   const run = async (name, extra = {}, { locate = true } = {}) => {
+    if (inFlight.current) return null;
+    inFlight.current = true;
     setError("");
     setBusy(true);
     try {
@@ -59,6 +62,7 @@ function useStep(job, onChanged, { onStale } = {}) {
       setError(apiErrorMessage(err, err?.message || "That did not work. Try again."));
       return null;
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
@@ -196,7 +200,7 @@ function AtPickup({ job, step, onChanged, onSkip }) {
       </section>
       <Err>{step.error}</Err>
       <button type="button" disabled={step.busy || code.length !== 4} onClick={pick} style={bigButton(step.busy || code.length !== 4)}>Picked up</button>
-      <button type="button" onClick={onSkip} style={quietButton(false)}>Can&apos;t hand over?</button>
+      {onSkip && <button type="button" onClick={onSkip} style={quietButton(false)}>Can&apos;t hand over?</button>}
       <span style={{ ...dim, textAlign: "center" }}>The tap is stamped with time and location. The shop sees your name and Order #{job.order_id}, never the customer&apos;s phone number.</span>
     </>
   );
@@ -267,7 +271,7 @@ export function SkipStop({ job, onBack, onDone }) {
   const ends = left <= 1 && !(job.progress?.done > 0);
   // A skip names the shop (stop_id), so a retried tap cannot skip the next one; the location is required (the server's own
   // "location needed" message is shown as is).
-  const submit = () => step.run("skip-stop", { stop_id: job.current_stop_id ?? null, note: note.trim() });
+  const submit = () => step.run("skip-stop", { stop_id: job.current_stop_id, note: note.trim() });
   return (
     <>
       <section aria-label="Shop cannot hand over" style={card}>
@@ -278,7 +282,7 @@ export function SkipStop({ job, onBack, onDone }) {
         </label>
         <Info>
           {ends ? "Nothing has been collected and this is the last shop, so you stop here. The order goes back to your manager to send out again." : left > 1 ? "You move on to the next shop." : "You go on to the customer with what you collected."}{" "}
-          The customer is told, and AshantiHub Support refunds this shop&apos;s items. Your location is sent with this report as proof you were there; the shop sees only the time and your note.
+          The customer is told. AshantiHub Support reviews this shop&apos;s items for a refund. The shop sees only the time and your note; phone numbers and emails are removed. Your location is sent with this report.
         </Info>
       </section>
       <Err>{step.error}</Err>
@@ -385,6 +389,7 @@ export default function ActiveJob({ jobId, onDelivered }) {
   const [skip, setSkip] = useState(false);
   const changed = (out) => { refetch(); me.refetch(); if (out?.status === "delivered" || out?.status === "failed") onDelivered?.(out); };
   const step = useStep(job || { id: jobId }, changed);
+  const canSkip = job?.current_stop_id !== undefined && job?.current_stop_id !== null;
   if (isLoading) return <div role="status" style={dim}>Loading the job…</div>;
   if (isError || !job) return <Err>Could not load this job.</Err>;
   if (job.status === "delivered" || job.status === "confirmed") return <div style={screen}><Delivered job={job} onNext={() => onDelivered?.(null)} /></div>;
@@ -395,8 +400,8 @@ export default function ActiveJob({ jobId, onDelivered }) {
   if (cant) return <div style={screen}><CantDeliver job={job} onBack={() => setCant(false)} onDone={(out) => { setCant(false); changed(out); }} /></div>;
   return (
     <div style={screen}>
-      {(job.status === "assigned" || job.status === "accepted") && <ToPickup job={job} step={step} onChanged={refetch} onSkip={() => setSkip(true)} />}
-      {job.status === "at_pickup" && <AtPickup job={job} step={step} onChanged={refetch} onSkip={() => setSkip(true)} />}
+      {(job.status === "assigned" || job.status === "accepted") && <ToPickup job={job} step={step} onChanged={refetch} onSkip={canSkip ? () => setSkip(true) : undefined} />}
+      {job.status === "at_pickup" && <AtPickup job={job} step={step} onChanged={refetch} onSkip={canSkip ? () => setSkip(true) : undefined} />}
       {job.status === "picked_up" && <ToCustomer job={job} step={step} onChanged={refetch} />}
       {job.status === "at_customer" && <AtCustomer job={job} step={step} onChanged={refetch} onCant={() => setCant(true)} />}
       {me.data?.rider?.manager && <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: "0.82rem", fontWeight: 700 }}><span style={dim}>Something wrong? Use Report an issue in the menu.</span>{me.data.rider.manager.phone && <a href={`tel:${me.data.rider.manager.phone}`} style={{ color: D.deepGold }}>Call {me.data.rider.manager.full_name.split(" ")[0]}</a>}</div>}
