@@ -48,7 +48,7 @@ def rank(order, rules=None, now=None):
     payload says so in ``distance_basis`` whatever OSRM is doing; road legs arrive with stage 2."""
     rules = rules or config.effective_rules()
     now = now or timezone.now()
-    plat, plng, _ = services.pickup_stop(order)
+    plat, plng, _, _ = services.dispatch_point(order)
     shifts = {s.rider_id: s for s in ShiftSession.objects.filter(ended_at__isnull=True)}
     riders = list(Rider.objects.select_related("staff", "home_zone").filter(staff__is_active=True, staff__invite_token__isnull=True))
     active = {}

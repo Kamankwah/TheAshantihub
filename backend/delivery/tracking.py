@@ -131,7 +131,7 @@ def queue_map(order, now=None):
     """Pickup, drop, the trip between them and every on-shift rider with a fix (nearest 30), each with the
     road time to the pickup and the dispatch engine's verdict."""
     now = now or timezone.now()
-    plat, plng, pname = services.pickup_stop(order)
+    plat, plng, pname, _ = services.dispatch_point(order)
     pickup = {"lat": plat, "lng": plng, "name": pname} if plat is not None else None
     dlat, dlng = services.drop_stop(order)
     drop = {"lat": dlat, "lng": dlng} if dlat is not None else None

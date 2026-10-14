@@ -240,7 +240,8 @@ def skip_history(assignment):
     attempt: re-dispatching resets the assignment and reopens the stops, but never touches these events. `by` is "rider"
     when the rider's own pin was recorded and "manager" for a manager's skip (no pin). `at_shop` is true only for a rider
     skip whose distance from the shop was measured and is within the flag distance; it is false when the distance could
-    not be measured (the shop has no pin, or the fix was too loose; `distance_m` is then null). `case_id` is the refund
+    not be measured (the shop has no pin, or the fix was too loose; `distance_m` is then null and `distance_measured` false,
+    so a screen must not call it "far from the shop": it was never measured). `case_id` is the refund
     case the skip opened or kept."""
     from .models import DeliveryEvent
 
@@ -255,7 +256,8 @@ def skip_history(assignment):
         out.append({
             "stop_id": e.stop_id, "sequence": stop.sequence, "business_owner_id": stop.business_owner_id, "business_name": stop_name(stop),
             "at": e.at, "note": e.note, "pinned": rider, "lat": e.lat, "lng": e.lng, "accuracy_m": e.accuracy_m,
-            "distance_m": e.distance_m, "at_shop": rider and e.distance_m is not None and not e.flagged,
+            "distance_m": e.distance_m, "distance_measured": rider and e.distance_m is not None,
+            "at_shop": rider and e.distance_m is not None and not e.flagged,
             "by": "rider" if rider else "manager", "case_id": e.dispute_id,
         })
     return out

@@ -55,14 +55,25 @@ def _route(order, assignment=None):
     """Where the job runs from and to. A waiting order reads its plan's first shop (the dispatch point); a job a rider
     holds reads its saved stops (the one being worked, else the first), so a job from before multi-stop delivery shows
     the shop it was actually sent to."""
-    if assignment is None:
-        plat, _, name = services.pickup_stop(order)
+    if assignment is None or assignment.status == DeliveryAssignment.FAILED:  # waiting: where the next rider starts
+        plat, _, name, _ = services.dispatch_point(order)
         located = plat is not None
     else:
         rows = stops.stops_of(assignment)
         stop = stops.current_stop(assignment) or (rows[0] if rows else None)
         name, located = (stops.stop_name(stop), stop.lat is not None) if stop is not None else ("", False)
     return {"from": name, "to": order.delivery_address or None, "pickup_located": located, "drop_located": order.delivery_lat is not None and order.delivery_lng is not None}
+
+
+def detour_warning(plan):
+    """The manager's warning for an order whose planned route runs over the detour allowance (spec section 4). It keys off
+    `over_limit`, not the percentage, which is None when the first shop sits at the drop point."""
+    if not plan or not plan.get("over_limit"):
+        return None
+    pct = plan.get("detour_pct")
+    longer = f"{pct:g}% longer than going direct" if pct is not None else "longer than going direct"
+    estimate = " (straight-line estimate)" if plan.get("basis") == routing_service.BASIS_ESTIMATE else ""
+    return f"Planned route is {longer} from the first shop (allowance {plan.get('limit_pct')}%){estimate}."
 
 
 def queue_row(order, now):
@@ -75,6 +86,7 @@ def queue_row(order, now):
         "returned": bool(assignment and assignment.status == DeliveryAssignment.FAILED),
         "returned_reason": assignment.failed_reason if assignment and assignment.status == DeliveryAssignment.FAILED else "",
         "skips": stops.skip_history(assignment) if assignment else [],
+        "stops": services.dispatch_point(order)[3], "route_plan": order.route_plan, "detour_warning": detour_warning(order.route_plan),
         "payment": payloads.payment_label(order),
     }
 
@@ -193,6 +205,9 @@ def live(now=None):
     needs = []
     for row in waiting[:5]:
         needs.append({"kind": "unassigned", "order_id": row["order_id"], "text": f"Order #{row['order_id']} has waited {row['waiting_minutes']} min for a rider", "minutes": row["waiting_minutes"]})
+    for row in waiting:
+        if row["detour_warning"]:
+            needs.append({"kind": "detour", "order_id": row["order_id"], "text": f"Order #{row['order_id']}: {row['detour_warning']}"})
     for r in act:
         if r["stale"]:
             needs.append({"kind": "stale", "order_id": r["order_id"], "text": f"{r['rider']['full_name']} on order #{r['order_id']}: no fresh location", "rider_id": r["rider"]["id"]})

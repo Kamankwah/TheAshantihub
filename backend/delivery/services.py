@@ -79,6 +79,23 @@ def pickup_stop(order):
     return (entry["lat"], entry["lng"], entry["name"]) if entry["lat"] is not None else (None, None, entry["name"])
 
 
+def dispatch_point(order):
+    """(lat, lng, name, stop_count) of where a rider given this waiting order starts. An order never given to a rider reads
+    its plan (pickup_stop); one whose attempt failed reads its saved stops (stops.stops_for_next_rider), so a returned job
+    from before multi-stop delivery still starts at the first item's shop its saved stop names, whatever the plan says."""
+    from . import stops
+
+    assignment = getattr(order, "delivery_assignment", None)
+    if assignment is None:
+        plat, plng, name = pickup_stop(order)
+        return plat, plng, name, len(stops.sequence_for_order(order))
+    saved = stops.stops_for_next_rider(assignment)
+    first = saved[0] if saved else None
+    if first is None:
+        return None, None, "", 0
+    return first.lat, first.lng, stops.stop_name(first), len(saved)
+
+
 def active_jobs(staff):
     """A rider's active assignments, oldest first. The rider app works the first one, so this ordering
     is the single definition of "the job the rider is on" (MeView and tracking both use it)."""
