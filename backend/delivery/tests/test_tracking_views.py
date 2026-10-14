@@ -3,8 +3,8 @@ from orders.models import DeliveryAssignment as DA
 
 from .test_tracking import TrackingCase
 
-JOB_KEYS = {"stage", "pickup", "drop", "rider", "leg", "route"}
-QUEUE_KEYS = {"pickup", "drop", "trip", "route", "riders"}
+JOB_KEYS = {"stage", "pickup", "pickups", "drop", "rider", "leg", "route"}
+QUEUE_KEYS = {"pickup", "pickups", "drop", "trip", "route", "riders"}
 
 
 class ManagerMapTests(TrackingCase):

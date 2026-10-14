@@ -2,6 +2,7 @@ from django.conf import settings
 from decimal import Decimal
 
 from django.db import transaction as db_transaction
+from django.db.models import Prefetch
 from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.pagination import PageNumberPagination
@@ -13,6 +14,7 @@ from accounts.models import StaffUser
 from accounts.permissions import HasRolePermission
 from accounts.views import IsBusinessOwner, IsCustomer
 from cart.models import Cart
+from delivery.models import DeliveryEvent
 from disputes.models import Dispute
 from listings.models import Listing
 from disputes.serializers import DisputeSerializer
@@ -213,7 +215,7 @@ class OrderListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated, IsCustomer]
 
     def get_queryset(self):
-        return Order.objects.filter(customer=self.request.user).select_related("delivery_assignment")
+        return _customer_orders(self.request.user)
 
 
 class OrderDetailView(generics.RetrieveAPIView):
@@ -225,11 +227,28 @@ class OrderDetailView(generics.RetrieveAPIView):
     permission_classes = [IsAuthenticated, IsCustomer]
 
     def get_queryset(self):
-        return Order.objects.filter(customer=self.request.user).select_related("delivery_assignment")
+        return _customer_orders(self.request.user)
+
+
+# The delivery fields read the saved stops; a job from before multi-stop delivery has none and is read as one stop at
+# its first item's business (its pin and category). Prefetched so a page costs the same number of queries however many
+# orders it holds.
+_LEGACY_STOP_READS = ("items__listing__business_owner__profile", "items__listing__category")
+
+
+def _customer_orders(customer):
+    return (
+        Order.objects.filter(customer=customer).select_related("delivery_assignment", "coupon")
+        .prefetch_related("delivery_assignment__stops", *_LEGACY_STOP_READS)
+    )
 
 
 def _assignment_of(order):
-    return DeliveryAssignment.objects.select_related("order", "dispatch", "dispatch__rider").filter(order=order).first()
+    return (
+        DeliveryAssignment.objects.select_related("order", "dispatch", "dispatch__rider")
+        .prefetch_related("stops__business_owner__profile", "order__items__listing__business_owner__profile", "order__items__listing__category")
+        .filter(order=order).first()
+    )
 
 
 class OrderTrackingView(APIView):
@@ -250,7 +269,8 @@ class OrderTrackingView(APIView):
 
 class OwnerOrderTrackingView(APIView):
     """GET /api/orders/owner/{id}/tracking/ - the vendor's map. Scoped like OwnerOrderListView (a paid order
-    with one of the caller's listings; anything else is a 404). Never carries the customer's address, pin or phone."""
+    with one of the caller's listings; anything else is a 404). Never carries the customer's address, pin or phone,
+    and shows only the caller's own pickup stop (tracking.business_map)."""
 
     permission_classes = [IsAuthenticated, IsBusinessOwner]
 
@@ -288,8 +308,12 @@ class OwnerOrderListView(generics.ListAPIView):
             Order.objects.filter(
                 status=Order.PAID, items__listing__business_owner=self.request.user
             )
-            .select_related("customer", "delivery_assignment")
-            .prefetch_related("items__listing")
+            .select_related("customer", "delivery_assignment", "delivery_assignment__dispatch")
+            .prefetch_related(
+                "delivery_assignment__stops__business_owner__profile", *_LEGACY_STOP_READS,
+                # Only the skip events are read (the rider's report at this owner's stop).
+                Prefetch("delivery_assignment__events", queryset=DeliveryEvent.objects.filter(step=DeliveryEvent.SKIPPED_STOP)),
+            )
             .distinct()
             .order_by("-placed_at")
         )
@@ -568,7 +592,7 @@ class DispatchMapView(APIView):
 
         assignment = get_object_or_404(
             DeliveryAssignment.objects.select_related("order", "order__customer", "dispatch", "dispatch__rider")
-            .prefetch_related("order__items__listing__business_owner__profile"),
+            .prefetch_related("order__items__listing__business_owner__profile", "order__items__listing__category", "stops__business_owner__profile"),
             pk=pk, dispatch=request.user,
         )
         return Response(tracking.manager_job_map(assignment))

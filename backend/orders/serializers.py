@@ -33,12 +33,15 @@ class OrderSerializer(serializers.ModelSerializer):
     # The four-digit code the customer reads to the rider at the door. Shown only while a rider holds
     # the job and has not yet delivered it; it is the customer's, never the business's or a manager's.
     delivery_code = serializers.SerializerMethodField()
+    # For a delivery from several shops: how many there are and how many are done (counts only, never a shop's
+    # name, place or code); null for one shop or no rider yet.
+    delivery_stops = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
             "id", "status", "delivery_status", "total_amount", "placed_at", "items",
-            "delivery_assignment_status", "delivery_code", "delivery_fee", *DELIVERY_FIELDS,
+            "delivery_assignment_status", "delivery_code", "delivery_stops", "delivery_fee", *DELIVERY_FIELDS,
         ]
 
     def get_delivery_assignment_status(self, obj):
@@ -50,6 +53,16 @@ class OrderSerializer(serializers.ModelSerializer):
         if assignment is None or assignment.status not in DeliveryAssignment.ACTIVE_STATUSES:
             return None
         return assignment.drop_code or None
+
+    def get_delivery_stops(self, obj):
+        """How many shops the rider collects from and how many are done, for a delivery from several shops (counts only)."""
+        from delivery import stops
+
+        assignment = getattr(obj, "delivery_assignment", None)
+        if assignment is None:
+            return None
+        p = stops.progress(assignment)
+        return {"total": p["total"], "done": p["done"], "skipped": p["skipped"]} if p["total"] > 1 else None
 
     def to_representation(self, obj):
         data = super().to_representation(obj)
@@ -79,54 +92,110 @@ class OwnerOrderSerializer(serializers.ModelSerializer):
     order's full total, which would include other businesses' items. Carries
     the delivery info the owner needs to fulfil or hand off — name and
     address only, never the customer's phone (see OWNER_DELIVERY_FIELDS).
+
+    Delivery fields describe this owner's own stop only (a delivery may collect from several shops): its code, its
+    status, when the rider should arrive, and what the rider reported at this shop. Never another shop's stop, code or
+    report, and never the rider's name, phone or position. Every field reads the delivery's SAVED stops, so a job made
+    before multi-stop delivery keeps its one stop at its first item's business.
     """
 
     items = serializers.SerializerMethodField()
     owner_subtotal = serializers.SerializerMethodField()
     customer_name = serializers.CharField(source="customer.full_name", read_only=True)
-    # The four-digit code the rider asks this business for at the counter. Only the business the rider
-    # collects from (the order's first, v1 delivers one pickup per order) sees it, and only until pickup.
+    # The four-digit code the rider asks this business for at the counter: this owner's own stop's code, while that stop
+    # is still open (pending or the rider is there) and the delivery is still collecting. Never another shop's.
     pickup_code = serializers.SerializerMethodField()
-    # True while a rider is heading to THIS business (same gate as the owner tracking endpoint:
-    # assigned/accepted/at_pickup and this owner is the pickup business). Tells the owner nothing the
-    # tracking endpoint would not.
+    # True while this owner's own stop is the stop being worked and this is the job the rider is on (same gate as the
+    # owner tracking endpoint). Tells the owner nothing the tracking endpoint would not.
     rider_heading_here = serializers.SerializerMethodField()
+    # When the rider should reach this owner's stop ("rider arrives about HH:MM"), while it is still pending.
+    pickup_eta = serializers.SerializerMethodField()
+    # This owner's stop status (pending/arrived/collected/skipped), or null when the owner has no stop.
+    pickup_status = serializers.SerializerMethodField()
+    # {"at", "text"} when the rider skipped this owner's stop at the shop; else null.
+    rider_report = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
             "id", "customer_name", "status", "delivery_status", "placed_at",
-            "items", "owner_subtotal", "pickup_code", "rider_heading_here", *OWNER_DELIVERY_FIELDS,
+            "items", "owner_subtotal", "pickup_code", "rider_heading_here", "pickup_eta", "pickup_status", "rider_report",
+            *OWNER_DELIVERY_FIELDS,
         ]
 
-    def _heading_assignment(self, obj):
-        """The order's assignment when a rider is heading to this owner's shop, else None."""
+    def _stop(self, obj):
+        """(assignment or None, this owner's saved stop or None). Read once per order: every delivery field asks."""
+        from delivery import stops
+
+        cache = self.__dict__.setdefault("_stops", {})
+        if obj.pk not in cache:
+            assignment = getattr(obj, "delivery_assignment", None)
+            cache[obj.pk] = (assignment, stops.stop_for_owner(assignment, self.context["owner"].id) if assignment is not None else None)
+        return cache[obj.pk]
+
+    def _own_stop(self, obj):
+        """(assignment, this owner's stop) while the delivery is still collecting; else (assignment or None, None)."""
+        assignment, stop = self._stop(obj)
+        if assignment is None or assignment.status not in (DeliveryAssignment.ASSIGNED, DeliveryAssignment.ACCEPTED, DeliveryAssignment.AT_PICKUP):
+            return assignment, None
+        return assignment, stop
+
+    def _rider_job_id(self, dispatch):
+        """The pk of the job the rider is on now, asked once per rider per page."""
         from delivery import services
 
-        assignment = getattr(obj, "delivery_assignment", None)
-        if assignment is None or assignment.status not in (
-            DeliveryAssignment.ASSIGNED, DeliveryAssignment.ACCEPTED, DeliveryAssignment.AT_PICKUP,
-        ):
-            return None
-        first = services.first_item(obj)
-        if first is None or first.listing.business_owner_id != self.context["owner"].id:
-            return None
-        return assignment
+        jobs = self.__dict__.setdefault("_rider_jobs", {})
+        if dispatch.pk not in jobs:
+            job = services.current_job(dispatch)
+            jobs[dispatch.pk] = job.pk if job is not None else None
+        return jobs[dispatch.pk]
 
     def get_pickup_code(self, obj):
-        assignment = self._heading_assignment(obj)
-        return (assignment.pickup_code or None) if assignment else None
+        from delivery.models import PickupStop
+
+        _, stop = self._own_stop(obj)
+        return (stop.code or None) if stop is not None and stop.status in PickupStop.OPEN else None
 
     def get_rider_heading_here(self, obj):
-        # Only while this is the job the rider is actually on; a rider finishing another delivery first
-        # is not heading here, and the vendor must not be shown their position.
-        from delivery import services
+        # Only while this shop is the stop being worked and this is the job the rider is on; a rider at another shop
+        # or finishing another delivery is not heading here, and the vendor must not be shown their position.
+        from delivery import stops
+        from delivery.models import PickupStop
 
-        assignment = self._heading_assignment(obj)
-        if assignment is None or assignment.dispatch_id is None:
+        assignment, stop = self._own_stop(obj)
+        if stop is None or stop.status not in PickupStop.OPEN or assignment.dispatch_id is None:
             return False
-        current = services.current_job(assignment.dispatch)
-        return current is not None and current.pk == assignment.pk
+        current = stops.current_stop(assignment)
+        if current is None or current.business_owner_id != stop.business_owner_id:
+            return False
+        return self._rider_job_id(assignment.dispatch) == assignment.pk
+
+    def get_pickup_eta(self, obj):
+        from delivery.models import PickupStop
+
+        _, stop = self._own_stop(obj)
+        return stop.planned_arrival if stop is not None and stop.status == PickupStop.PENDING else None
+
+    def get_pickup_status(self, obj):
+        _, stop = self._stop(obj)
+        return stop.status if stop is not None else None
+
+    def get_rider_report(self, obj):
+        """What the rider reported at THIS shop when it could not hand over: the time and their note, and nothing about the
+        rider (no name, phone or position). Only this owner's own stop, only a rider's skip made at the shop (a skip
+        measured far from the shop, or not measured, goes to the manager, not here; a manager's skip is not a report)."""
+        from django.utils import timezone
+
+        from delivery import stops
+
+        assignment, stop = self._stop(obj)
+        if assignment is None or stop is None or stop.pk is None:
+            return None
+        mine = [h for h in stops.skip_history(assignment) if h["stop_id"] == stop.pk and h["by"] == "rider" and h["at_shop"]]
+        if not mine:
+            return None
+        last = mine[-1]
+        return {"at": last["at"], "text": f"Rider reported at your shop at {timezone.localtime(last['at']).strftime('%H:%M')}: {last['note']}"}
 
     def _own_items(self, obj):
         owner = self.context["owner"]

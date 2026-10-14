@@ -59,8 +59,8 @@ def valid_point(lat, lng):
 
 def first_item(order):
     """The order's first line item by pk, or None. The single-pickup rule from before multi-stop delivery: a job made
-    then is served with this item's business (stops._legacy_stop). The rider's steps, payloads and maps read the saved
-    stops instead (stops.stops_of / current_stop); the owner serializer still reads this until Task 7."""
+    then is served with this item's business (stops._legacy_stop). Everything else (the rider's steps, payloads, every
+    map and the owner's order row) reads the saved stops (stops.stops_of / current_stop / stop_for_owner)."""
     return min(order.items.all(), key=lambda i: i.pk, default=None)
 
 
