@@ -444,4 +444,75 @@ describe('CartDrawer and the delivery limits', () => {
     expect(await screen.findByTestId('cart-guard-block')).toHaveTextContent('Services are requested separately')
     expect(screen.getByText('Confirm & Pay')).toBeDisabled()
   })
+
+  const LIMIT = { detail: 'Your delivery can include up to 4 shops. Your cart has 5. Remove 1 to check out.', code: 'shop_limit' }
+  const toDoorToDoor = async () => {
+    fireEvent.click(screen.getByText('🚚 Door-to-door'))
+    fireEvent.change(screen.getByPlaceholderText('Delivery address'), { target: { value: 'Adum' } })
+    fireEvent.change(screen.getByPlaceholderText('Contact phone for delivery'), { target: { value: '+233200112233' } })
+  }
+
+  it('Confirm & Pay stays off while the limits are still loading', async () => {
+    server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)), http.get('http://localhost:8000/api/cart/guard/', () => new Promise(() => {})))
+    renderDrawer()
+    fireEvent.click(await screen.findByText('Checkout →'))
+    await screen.findByText('Confirm your order')
+    expect(screen.getByTestId('cart-guard-unchecked')).toHaveTextContent('Checking your delivery limits')
+    expect(screen.getByText('Confirm & Pay')).toBeDisabled()
+  })
+
+  it('Confirm & Pay stays off, with a plain line, when the limits could not be read', async () => {
+    server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)), http.get('http://localhost:8000/api/cart/guard/', () => HttpResponse.json({ detail: 'x' }, { status: 500 })))
+    renderDrawer()
+    fireEvent.click(await screen.findByText('Checkout →'))
+    expect(await screen.findByTestId('cart-guard-unchecked')).toHaveTextContent("couldn't check your delivery limits")
+    expect(screen.getByText('Confirm & Pay')).toBeDisabled()
+  })
+
+  it('a delivery-limit block says store pickup is still available; a service block does not', async () => {
+    server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)), guard({ any: null, door_to_door: LIMIT }))
+    const { unmount } = renderDrawer()
+    fireEvent.click(await screen.findByText('Checkout →'))
+    await screen.findByText('Confirm your order')
+    await toDoorToDoor()
+    expect(await screen.findByTestId('cart-guard-block')).toHaveTextContent('Store pickup is still available.')
+    unmount()
+    server.use(guard({ any: { detail: 'Services are requested separately, and stays are booked separately. Remove them from your cart to check out.', code: 'not_deliverable' }, door_to_door: null }))
+    renderDrawer()
+    fireEvent.click(await screen.findByText('Checkout →'))
+    expect(await screen.findByTestId('cart-guard-block')).not.toHaveTextContent('Store pickup')
+  })
+
+  describe('multi-shop fee breakdown', () => {
+    const quote = (delivery) => [
+      http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)),
+      http.get('http://localhost:8000/api/marketing/promos/public/', () => HttpResponse.json({ enabled: true, flash_sales: [] })),
+      http.post('http://localhost:8000/api/marketing/cart/quote/', () => HttpResponse.json({ enabled: true, total: '300.00', delivery })),
+    ]
+    const LINES = [{ label: 'Base', amount: '8.00' }, { label: 'Extra pickup', amount: '0.00' }]
+    const open = async () => {
+      renderDrawer()
+      fireEvent.click(await screen.findByText('Checkout →'))
+      await screen.findByText('Confirm your order')
+      await toDoorToDoor()
+      fireEvent.click(screen.getByText('drop-pin'))
+    }
+
+    it('lists every line, including a 0.00 one, and flags a straight-line estimate', async () => {
+      server.use(...quote({ fee: '8.00', fee_status: 'ok', waived: false, mixed_note: null, lines: LINES, route: { stops: 2, planned: false } }))
+      await open()
+      const list = await screen.findByRole('list', { name: 'Delivery fee breakdown' })
+      expect(list).toHaveTextContent('Base: GHS 8.00')
+      expect(list).toHaveTextContent('Extra pickup: GHS 0.00')
+      expect(screen.getByText(/straight-line estimate/)).toBeInTheDocument()
+      expect(screen.getByText('Delivery breakdown:')).toBeInTheDocument()
+    })
+
+    it('labels the lines as value, not a charge, when delivery is free', async () => {
+      server.use(...quote({ fee: '0.00', fee_status: 'ok', waived: true, waiver_name: 'Free week', waived_fee: '8.00', mixed_note: null, lines: LINES, route: { stops: 2, planned: true } }))
+      await open()
+      expect(await screen.findByText('Delivery value (not charged):')).toBeInTheDocument()
+      expect(screen.queryByText(/straight-line estimate/)).not.toBeInTheDocument()
+    })
+  })
 })

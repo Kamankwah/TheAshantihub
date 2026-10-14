@@ -546,4 +546,33 @@ describe('ListingDetailPage and the delivery cart', () => {
     fireEvent.click(await screen.findByText('Add to Cart'))
     expect(await screen.findByText('Your delivery can include food from up to 2 places. Remove one to add this.')).toBeInTheDocument()
   })
+
+  it('guests and business accounts never read the cart guard', async () => {
+    let guardCalls = 0
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)), http.get('http://localhost:8000/api/cart/guard/', () => { guardCalls += 1; return HttpResponse.json({}) }))
+    renderPage({ user: null })
+    await screen.findByText('Royal Ashanti Lodge')
+    renderPage({ user: { id: 5, fullName: 'Biz Owner', accountType: 'business_owner' } })
+    await new Promise((r) => setTimeout(r, 100))
+    expect(guardCalls).toBe(0)
+  })
+
+  it('a service is requested and a stay is booked, never added to the cart, even for a customer', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/2/', () => HttpResponse.json(SERVICE_LISTING)), guard(null))
+    const { unmount } = renderPage({ id: 2, user: CUSTOMER })
+    expect(await screen.findByText('Request this service', { selector: 'button' })).toBeInTheDocument()
+    expect(screen.queryByText('Add to Cart')).not.toBeInTheDocument()
+    unmount()
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json({ ...LISTING, category: { ...LISTING.category, is_accommodation: true } })), guard(null))
+    renderPage({ user: CUSTOMER })
+    expect(await screen.findByRole('button', { name: /^Book/ })).toBeInTheDocument()
+    expect(screen.queryByText('Add to Cart')).not.toBeInTheDocument()
+  })
+
+  it('a food place too far shows "Too far for this delivery"', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json(LISTING)), guard({ detail: 'This food place is more than 3 km from the shops in your cart, so one rider cannot collect it on the same trip.', code: 'food_far' }))
+    renderPage({ user: CUSTOMER })
+    expect(await screen.findByText('Too far for this delivery')).toBeInTheDocument()
+    expect(screen.queryByText('Delivery limit reached')).not.toBeInTheDocument()
+  })
 })

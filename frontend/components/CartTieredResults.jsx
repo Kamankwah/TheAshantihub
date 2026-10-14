@@ -3,7 +3,7 @@ import { C } from "../theme.js";
 
 // Search results for a customer whose cart already holds something (GET /api/listings/?cart_tiers=1, backend
 // cart/guard.py). The server orders and labels every row; this only groups them: shops in the cart, shops near them
-// (each labelled "1.2 km from Shop A"), services and stays (requested or booked separately, never tiered or limited),
+// (each labelled "1.2 km from Shop A"), services and stays (services and events are requested or booked separately, never tiered or limited),
 // and everyone else behind an always-available "See other shops too". A shop the cart cannot take now stays visible
 // with the server's reason.
 const heading = { margin: "18px 0 8px", color: C.lightGold, fontSize: "0.82rem", fontWeight: 900 };
@@ -47,7 +47,7 @@ export default function CartTieredResults({ listings, renderCard }) {
       <Group title="From shops in your cart" rows={inCart} renderCard={renderCard} />
       <Group title="Near the shops in your cart" rows={near} renderCard={renderCard} />
       {!inCart.length && !near.length && <div style={{ color: "#aaa", fontSize: "0.8rem", margin: "12px 0" }}>Nothing in these results from the shops in your cart or shops near them.</div>}
-      <Group title="Services and stays" rows={separate} renderCard={renderCard} />
+      <Group title="Services, stays and events" rows={separate} renderCard={renderCard} />
       <button type="button" aria-expanded={showOthers} onClick={() => setShowOthers((v) => !v)}
         style={{ marginTop: 16, background: "none", border: `1px solid ${C.gold}`, color: C.lightGold, borderRadius: 20, padding: "7px 16px", fontWeight: 800, fontSize: "0.78rem", cursor: "pointer", fontFamily: "inherit" }}>
         {showOthers ? "Hide other shops" : `See other shops too${others.length ? ` (${others.length})` : ""}`}

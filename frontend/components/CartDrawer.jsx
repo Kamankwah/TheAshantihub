@@ -42,7 +42,7 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   const { data: cart, isLoading, isError, refetch } = useCart();
   const queryClient = useQueryClient();
   // The delivery limits (backend cart/guard.py): `any` blocks every checkout, `door_to_door` only a rider delivery.
-  const { data: guard } = useCartGuard(null, { enabled: user?.accountType === "customer" });
+  const { data: guard, isError: guardError, isPending: guardPending } = useCartGuard(null, { enabled: user?.accountType === "customer" });
   const refreshGuard = () => { queryClient.invalidateQueries({ queryKey: ["cart-guard"] }); queryClient.invalidateQueries({ queryKey: ["listings"] }); };
   const [actionError, setActionError] = useState(null);
   const [pendingId, setPendingId] = useState(null);
@@ -115,7 +115,11 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   const regionUnchecked = promosOn && pinChosen && (quoting || quotedFor !== pinKey || quoteFailed);
   const doorToDoorReady = doorToDoorFilled && !outOfArea && !regionUnchecked;
   const guardBlock = guard?.checkout?.any || (deliveryMethod === "door_to_door" ? guard?.checkout?.door_to_door : null) || null;
-  const payReady = doorToDoorReady && !guardBlock;
+  // Payment runs in the browser before checkout, and checkout is where the server enforces the limits, so the pay
+  // button stays off until the limits have actually been read (a customer only; staff are gated separately).
+  const guardUnchecked = user?.accountType === "customer" && (guardPending || guardError);
+  const deliveryLimitBlock = !!guardBlock && guardBlock.code !== "not_deliverable";
+  const payReady = doorToDoorReady && !guardBlock && !guardUnchecked;
   const shownTotal = delivery?.fee != null && itemsTotal != null ? (parseFloat(itemsTotal) + parseFloat(delivery.fee)).toFixed(2) : itemsTotal;
   const [couponError, setCouponError] = useState("");
 
@@ -338,9 +342,13 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
                         ? <>No delivery fee is being charged right now.</>
                         : <>Choose your delivery location on the map to see the delivery fee. Without one, no delivery fee is added.</>}
                 {delivery.route?.stops > 1 && delivery.lines && (
-                  <ul aria-label="Delivery fee breakdown" style={{ margin: "4px 0 0", paddingLeft: 16 }}>
-                    {delivery.lines.map((l) => <li key={l.label}>{l.label}: {formatAmount(l.amount)}</li>)}
-                  </ul>
+                  <>
+                    <div>{delivery.waived ? "Delivery value (not charged):" : "Delivery breakdown:"}</div>
+                    <ul aria-label="Delivery fee breakdown" style={{ margin: "2px 0 0", paddingLeft: 16 }}>
+                      {delivery.lines.map((l) => <li key={l.label}>{l.label}: {formatAmount(l.amount)}</li>)}
+                    </ul>
+                    {delivery.route.planned === false && <div>These shops are not on one planned route yet, so the distance is a straight-line estimate.</div>}
+                  </>
                 )}
                 {delivery.mixed_note && <div>{delivery.mixed_note}</div>}
               </div>
@@ -383,7 +391,8 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
             )}
 
             {promosOn && pinChosen && quoteFailed && <div data-testid="cart-delivery-unchecked" style={{ fontSize: "0.72rem", color: "#555", marginBottom: 12 }}>We couldn't check delivery to this location yet. Try again.</div>}
-            {guardBlock && <div data-testid="cart-guard-block" role="alert" style={{ background: "#fee2e2", color: "#dc2626", borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>{guardBlock.detail}</div>}
+            {guardBlock && <div data-testid="cart-guard-block" role="alert" style={{ background: "#fee2e2", color: "#dc2626", borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>{guardBlock.detail}{deliveryLimitBlock && <div>Store pickup is still available.</div>}</div>}
+            {guardUnchecked && !guardBlock && <div data-testid="cart-guard-unchecked" style={{ fontSize: "0.72rem", color: "#555", marginBottom: 12 }}>{guardError ? "We couldn't check your delivery limits yet. Try again shortly." : "Checking your delivery limits…"}</div>}
             {checkoutError && <div style={{ background: "#fee2e2", color: "#dc2626", borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>{checkoutError}</div>}
             {staffGate.shownFor && <StaffGateNotice style={{ marginBottom: 12 }} />}
             <div style={{ display: "flex", gap: 8 }}>

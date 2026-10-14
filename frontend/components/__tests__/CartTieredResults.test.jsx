@@ -19,7 +19,7 @@ describe('CartTieredResults', () => {
     expect(within(cart).getByText('Kente stole')).toBeInTheDocument()
     expect(within(cart).getByText('In your cart')).toBeInTheDocument()
     expect(within(screen.getByRole('region', { name: 'Near the shops in your cart' })).getByText('1.2 km from Kente House')).toBeInTheDocument()
-    expect(within(screen.getByRole('region', { name: 'Services and stays' })).getByText('City tour')).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Services, stays and events' })).getByText('City tour')).toBeInTheDocument()
   })
 
   it('keeps everyone else behind "See other shops too"', () => {
@@ -43,5 +43,12 @@ describe('CartTieredResults', () => {
     render(<CartTieredResults listings={LISTINGS.slice(0, 1)} renderCard={renderCard} />)
     fireEvent.click(screen.getByRole('button', { name: 'See other shops too' }))
     expect(screen.getByText('No other shops in these results.')).toBeInTheDocument()
+  })
+
+  it('says a far food place is too far, not that a limit is reached', () => {
+    const far = [row(1, 'Chop bar', { cart_tier: 2, cart_blocked: { detail: 'This food place is more than 3 km from the shops in your cart.', code: 'food_far' } })]
+    render(<CartTieredResults listings={far} renderCard={renderCard} />)
+    expect(screen.getByRole('note')).toHaveTextContent('Too far for this delivery')
+    expect(screen.getByRole('note')).not.toHaveTextContent('Delivery limit reached')
   })
 })
