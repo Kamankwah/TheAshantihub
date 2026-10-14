@@ -8,6 +8,7 @@ ensure_stops first.
 Every entry is keyed by its business id (unique by construction). A business with no located pin keeps a stop with null
 lat/lng; callers that route (the planner) must skip or fall back for those themselves."""
 from field.services import business_pin
+from routing import service as routing_service
 
 from .models import PickupStop
 
@@ -183,3 +184,38 @@ def reopen_for_new_rider(assignment, *, failed, all_skipped=False):
     if first is not None:
         assignment.pickup_code_attempts = first.code_attempts
         assignment.save(update_fields=["pickup_code_attempts"])
+
+
+def plan_for_lines(lines, drop_lat, drop_lng):
+    """The pickup route for a cart or an order, ready to store on Order.route_plan (JSON-safe); None for no lines.
+    planned=True: every shop and the drop are located and there are at most planner.MAX_STOPS shops, so this is the
+    shortest order with food last. Otherwise the fallback order, with direct_km measured from its first shop when both
+    ends are known, and no total, detour or over-limit (none is made up). `basis` says how distances were measured (an
+    estimate is labelled as one); `limit_source` is "version" when the detour limit is a live rate card's, else
+    "defaults" (the built-in limit, never an approved one)."""
+    from routing import planner
+
+    from . import config, rates
+
+    entries = shop_entries(lines)
+    if not entries:
+        return None
+    limits = config.effective_cart_limits()
+    limit = limits["detour_limit_pct"]
+    drop = _point(drop_lat, drop_lng)
+    plan = {"limit_pct": limit, "limit_source": limits["source"], "total_km": None, "direct_km": None, "legs_km": None,
+            "detour_pct": None, "over_limit": False, "basis": None}
+    if drop is not None and all(e["lat"] is not None for e in entries) and len(entries) <= planner.MAX_STOPS:
+        got = planner.plan_route([{k: e[k] for k in ("key", "lat", "lng", "food")} for e in entries], drop)
+        over = rates.detour_over_km(got["total_km"], got["direct_km"], limit)
+        plan.update({"owner_ids": got["order"], "planned": True, "total_km": got["total_km"], "direct_km": got["direct_km"],
+                     "legs_km": got["legs_km"], "detour_pct": planner.detour_pct(got["total_km"], got["direct_km"]),
+                     "over_limit": over > 0, "basis": got["basis"]})
+        return plan
+    order = fallback_order(entries)
+    plan.update({"owner_ids": order, "planned": False})
+    first = next(e for e in entries if e["key"] == order[0])
+    if drop is not None and first["lat"] is not None:
+        leg = routing_service.leg((first["lat"], first["lng"]), drop)
+        plan.update({"direct_km": float(leg["distance_km"]), "basis": leg["basis"]})
+    return plan

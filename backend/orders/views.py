@@ -60,7 +60,7 @@ class OrderCheckoutView(APIView):
 
     def post(self, request):
         cart = Cart.objects.filter(customer=request.user).first()
-        items = list(cart.items.select_related("listing")) if cart is not None else []
+        items = list(cart.items.select_related("listing__business_owner__profile", "listing__category")) if cart is not None else []
         if not items:
             return Response({"detail": "Your cart is empty."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -87,13 +87,18 @@ class OrderCheckoutView(APIView):
             if lat not in (None, "") and lng not in (None, "") and not region.in_service_area(lat, lng):
                 return Response({"detail": region.OUT_OF_AREA_MESSAGE, "code": "out_of_area"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # The fee quote may call the road-routing service (a network round trip), so it is worked out before the
-        # transaction opens: it needs no row lock and must not hold a database transaction open while it waits.
+        # The pickup route and the fee may call the road-routing service (a network round trip), so both are worked out
+        # before the transaction opens: they need no row lock and must not hold a database transaction open while they wait.
+        plan = None
+        if delivery_method == Order.DOOR_TO_DOOR:
+            from delivery.stops import plan_for_lines
+
+            plan = plan_for_lines(items, request.data.get("delivery_lat"), request.data.get("delivery_lng"))
         quoted = None
         if settings.DELIVERY_FEE_ENABLED and delivery_method == Order.DOOR_TO_DOOR:
             from delivery.rates import checkout_fee
 
-            quoted = checkout_fee(items, request.data.get("delivery_lat"), request.data.get("delivery_lng"))
+            quoted = checkout_fee(items, request.data.get("delivery_lat"), request.data.get("delivery_lng"), plan=plan)
 
         with db_transaction.atomic():
             # Checkout promotions (marketing): off unless settings.MARKETING_PROMOS_ENABLED, and
@@ -147,7 +152,7 @@ class OrderCheckoutView(APIView):
                 total += charged
             order = Order.objects.create(
                 customer=request.user, status=Order.PENDING, total_amount=total,
-                delivery_fee=charged if fee_quote else None, delivery_fee_breakdown=fee_quote, rate_card=fee_card,
+                delivery_fee=charged if fee_quote else None, delivery_fee_breakdown=fee_quote, rate_card=fee_card, route_plan=plan,
                 **(promo.order_extras() if promo else {}),
                 delivery_method=delivery_method,
                 delivery_address=delivery_address if delivery_method == Order.DOOR_TO_DOOR else "",
