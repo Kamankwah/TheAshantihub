@@ -92,6 +92,7 @@ def stop_row(stop, order, skips=()):
         "id": stop.pk, "sequence": stop.sequence, "business_name": stops.stop_name(stop),
         "phone": lines[0].listing.contact_phone if lines else None, "lat": stop.lat, "lng": stop.lng,
         "status": stop.status, "status_label": stop.get_status_display(), "planned_arrival": stop.planned_arrival,
+        "late": stops.arrival_late(stop),
         "arrived_at": stop.arrived_at, "collected_at": stop.collected_at, "skip_note": stop.skip_note,
         "items": [f"{i.listing.name} × {i.quantity}" for i in lines],
         "attempts_left": max(0, services.CODE_ATTEMPT_LIMIT - stop.code_attempts), "wrong_tries": stop.code_attempts,

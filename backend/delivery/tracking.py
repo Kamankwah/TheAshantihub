@@ -56,10 +56,11 @@ def _pickup(a):
     return _point_of(stops.current_stop(a) or (rows[0] if rows else None))
 
 
-def _pickups(a):
-    """Every saved stop in sequence, for the manager's and the rider's map (never a shop's or the customer's)."""
+def _pickups(a, now=None):
+    """Every saved stop in sequence, for the manager's and the rider's map (never a shop's or the customer's). `late`: the
+    planned arrival has passed with the stop still pending (stops.arrival_late)."""
     return [{"id": s.pk, "sequence": s.sequence, "name": stops.stop_name(s), "lat": s.lat, "lng": s.lng, "status": s.status,
-             "planned_arrival": s.planned_arrival} for s in stops.stops_of(a)]
+             "planned_arrival": s.planned_arrival, "late": stops.arrival_late(s, now)} for s in stops.stops_of(a)]
 
 
 def _drop(a):
@@ -86,7 +87,7 @@ def manager_job_map(a, now=None):
         r = _rider(a)
         rider = {**fix, "name": a.dispatch.full_name, "vehicle_type": r.vehicle_type}
     leg, route = _leg(a, fix, pickup, drop)
-    return {"stage": a.status, "pickup": pickup, "pickups": _pickups(a), "drop": drop, "rider": rider, "leg": leg, "route": route}
+    return {"stage": a.status, "pickup": pickup, "pickups": _pickups(a, now), "drop": drop, "rider": rider, "leg": leg, "route": route}
 
 
 def customer_map(a, now=None):
@@ -114,12 +115,19 @@ def customer_map(a, now=None):
 def business_map(a, owner, now=None):
     """The business sees its own stop only: the rider while its shop is the stop being worked, the planned arrival
     before that, and nothing once its stop is collected or skipped. Never anything about the customer, and never another
-    shop's stop, code or report. Reads the saved stops: a job from before multi-stop delivery is its first item's shop."""
+    shop's stop, code or report. Reads the saved stops: a job from before multi-stop delivery is its first item's shop.
+
+    `stage` is the JOB's status, not this shop's: it reads "at_pickup" while the rider is at an EARLIER shop. A client
+    must read `stop.status` and `rider_elsewhere` first (collected/skipped: done here; rider_elsewhere: the rider is
+    collecting from another shop first) and use `stage` only once its own stop is the one being worked. `stop.late` is
+    true when the planned arrival has passed with the rider not there yet: show "running late", never the passed time
+    as an upcoming arrival."""
     out = {"stage": a.status, "pickup": None, "stop": None, "rider": None, "leg": None, "route": None, "rider_busy": False, "rider_elsewhere": False}
     own = stops.stop_for_owner(a, owner.pk)
     if own is None:
         return out
-    out["stop"] = {"status": own.status, "planned_arrival": own.planned_arrival if own.status == PickupStop.PENDING else None}
+    out["stop"] = {"status": own.status, "planned_arrival": own.planned_arrival if own.status == PickupStop.PENDING else None,
+                   "late": stops.arrival_late(own, now)}
     if own.status not in PickupStop.OPEN or a.status not in TO_PICKUP:
         return out
     pickup = _point_of(own)

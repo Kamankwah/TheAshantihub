@@ -2,6 +2,7 @@ from datetime import timedelta
 from unittest import mock
 
 from django.db import connection
+from django.test import SimpleTestCase
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
@@ -273,6 +274,77 @@ class MultiStopPrivacyTests(DeliveryCase):
         many, rows_many = count()
         self.assertEqual(rows_many - rows_few, 6)
         self.assertEqual(many, few)
+
+    # ── Fix round 1: no contact details in the shop's copy, no stale report, no past time as upcoming ──────
+
+    def test_the_shops_copy_of_a_report_has_no_number_or_email_and_the_managers_is_verbatim(self):
+        from delivery import services, stops
+
+        note = "Shut. Call +233 24 123 4567, 024-123-4567 or 0241234567, or a@b.com. Code 1234 failed at 14:30."
+        services.skip_stop(DA.objects.get(pk=self.a.pk), self.rider_staff, note, lat=A[0] + 0.0001, lng=A[1], accuracy=8)
+        text = self.owner_row(self.shop_a)["rider_report"]["text"]
+        self.assertTrue(text.endswith(": Shut. Call [number removed], [number removed] or [number removed], or [email removed]. Code 1234 failed at 14:30."), text)
+        self.assertEqual(stops.skip_history(DA.objects.get(pk=self.a.pk))[0]["note"], note)  # the manager's evidence is untouched
+
+    def test_a_reopened_stop_does_not_show_the_old_report_next_to_a_live_code(self):
+        from delivery import services
+
+        for point in (A, B, C):  # the rider skips every shop at the shop: the job fails and returns to the queue
+            services.skip_stop(DA.objects.get(pk=self.a.pk), self.rider_staff, "Shop was shut", lat=point[0] + 0.0001, lng=point[1], accuracy=8)
+        self.assertEqual(DA.objects.get(pk=self.a.pk).status, DA.FAILED)
+        self.assertIsNotNone(self.owner_row(self.shop_a)["rider_report"])
+        self.assign(self.a.order)  # given out again: every skipped shop reopens with its code
+        row = self.owner_row(self.shop_a)
+        self.assertEqual((row["pickup_status"], row["pickup_code"], row["rider_report"]), ("pending", "QA11", None))
+        # Skipped again, by a manager this time: the old rider report is not why it is skipped now.
+        services.skip_stop(DA.objects.get(pk=self.a.pk), self.manager, "Shop closed for the day", stop=PickupStop.objects.get(pk=self.s1.pk))
+        row = self.owner_row(self.shop_a)
+        self.assertEqual((row["pickup_status"], row["rider_report"]), ("skipped", None))
+
+    def test_a_passed_arrival_time_is_marked_late_never_shown_as_upcoming(self):
+        from delivery import payloads, tracking
+
+        past = (timezone.now() - timedelta(minutes=5)).replace(microsecond=0)
+        soon = (timezone.now() + timedelta(minutes=20)).replace(microsecond=0)
+        self.set(self.s2, planned_arrival=past)
+        self.set(self.s3, planned_arrival=soon)
+        late_row, on_time_row = self.owner_row(self.shop_b), self.owner_row(self.shop_c)
+        self.assertEqual((late_row["pickup_eta"], late_row["pickup_eta_late"]), (past.isoformat().replace("+00:00", "Z"), True))
+        self.assertEqual((on_time_row["pickup_eta"], on_time_row["pickup_eta_late"]), (soon.isoformat().replace("+00:00", "Z"), False))
+        self.assertIs(self.owner_row(self.shop_a)["pickup_eta_late"], False)  # no planned time: not late either
+        self.assertEqual(self.owner_map(self.shop_b).json()["stop"], {"status": "pending", "planned_arrival": past.isoformat().replace("+00:00", "Z"), "late": True})
+        self.assertIs(self.owner_map(self.shop_c).json()["stop"]["late"], False)
+        a = DA.objects.get(pk=self.a.pk)
+        with mock.patch("delivery.tracking.routing_service.leg", return_value=dict(ROAD)):
+            self.assertEqual([p["late"] for p in tracking.manager_job_map(a)["pickups"]], [False, True, False])
+        self.assertEqual([r["late"] for r in payloads.stops_block(a)["all"]], [False, True, False])
+        # A collected stop's old time is history, not a late arrival.
+        self.set(self.s2, status=PickupStop.COLLECTED)
+        self.assertEqual([r["late"] for r in payloads.stops_block(DA.objects.get(pk=self.a.pk))["all"]], [False, False, False])
+
+
+class ScrubForShopTests(SimpleTestCase):
+    def test_phone_numbers_in_any_common_format_are_removed(self):
+        from orders.serializers import scrub_for_shop
+
+        for raw in ("+233 24 123 4567", "024-123-4567", "0241234567", "(024) 123 4567", "024.123.4567", "+233-24-123-4567",
+                    "+233(0)241234567", "00233 24 123 4567"):
+            with self.subTest(raw=raw):
+                self.assertEqual(scrub_for_shop(f"Call {raw} now"), "Call [number removed] now")
+
+    def test_emails_are_removed(self):
+        from orders.serializers import scrub_for_shop
+
+        for raw in ("a@b.com", "kofi.mensah+shop@mail.example.com.gh", "Yaw_99@x.io"):
+            with self.subTest(raw=raw):
+                self.assertEqual(scrub_for_shop(f"Mail {raw} please"), "Mail [email removed] please")
+
+    def test_short_numbers_codes_and_times_stay(self):
+        from orders.serializers import scrub_for_shop
+
+        for note in ("Code 1234 did not work", "Back at 14:30", "Shop 12, row 3", "Waited 25 min", "Ref 123456"):
+            with self.subTest(note=note):
+                self.assertEqual(scrub_for_shop(note), note)
 
 
 class LegacyJobPrivacyTests(DeliveryCase):

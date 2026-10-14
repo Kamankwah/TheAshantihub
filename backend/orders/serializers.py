@@ -1,3 +1,5 @@
+import re
+
 from rest_framework import serializers
 
 from disputes.models import Dispute
@@ -20,6 +22,17 @@ DELIVERY_FIELDS = [
 # AshantiHub's delivery team runs door-to-door fulfilment, and a phone number
 # would open the direct business-to-customer channel the platform forbids.
 OWNER_DELIVERY_FIELDS = [f for f in DELIVERY_FIELDS if f != "delivery_phone"]
+
+_EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+# Seven or more digits with spaces, dashes, dots, plus signs or brackets between them: a phone number in any common
+# format ("+233 24 123 4567", "024-123-4567", "0241234567"). Four-digit codes, times and short numbers stay.
+_LONG_NUMBER = re.compile(r"[+(]*\d(?:[\s().+-]*\d){6,}")
+
+
+def scrub_for_shop(text):
+    """Free text written by staff (a rider's note) as a shop may see it: no email address and no phone-length number.
+    Businesses must never get a contact detail through AshantiHub; the manager's copy keeps the note as written."""
+    return _LONG_NUMBER.sub("[number removed]", _EMAIL.sub("[email removed]", text or ""))
 
 
 class OrderSerializer(serializers.ModelSerializer):
@@ -110,6 +123,9 @@ class OwnerOrderSerializer(serializers.ModelSerializer):
     rider_heading_here = serializers.SerializerMethodField()
     # When the rider should reach this owner's stop ("rider arrives about HH:MM"), while it is still pending.
     pickup_eta = serializers.SerializerMethodField()
+    # True when that time has already passed and the rider has not arrived: the rider is running late, so a screen must
+    # not show pickup_eta as an upcoming arrival.
+    pickup_eta_late = serializers.SerializerMethodField()
     # This owner's stop status (pending/arrived/collected/skipped), or null when the owner has no stop.
     pickup_status = serializers.SerializerMethodField()
     # {"at", "text"} when the rider skipped this owner's stop at the shop; else null.
@@ -119,7 +135,8 @@ class OwnerOrderSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             "id", "customer_name", "status", "delivery_status", "placed_at",
-            "items", "owner_subtotal", "pickup_code", "rider_heading_here", "pickup_eta", "pickup_status", "rider_report",
+            "items", "owner_subtotal", "pickup_code", "rider_heading_here", "pickup_eta", "pickup_eta_late", "pickup_status",
+            "rider_report",
             *OWNER_DELIVERY_FIELDS,
         ]
 
@@ -176,26 +193,35 @@ class OwnerOrderSerializer(serializers.ModelSerializer):
         _, stop = self._own_stop(obj)
         return stop.planned_arrival if stop is not None and stop.status == PickupStop.PENDING else None
 
+    def get_pickup_eta_late(self, obj):
+        from delivery import stops
+
+        _, stop = self._own_stop(obj)
+        return stop is not None and stops.arrival_late(stop)
+
     def get_pickup_status(self, obj):
         _, stop = self._stop(obj)
         return stop.status if stop is not None else None
 
     def get_rider_report(self, obj):
         """What the rider reported at THIS shop when it could not hand over: the time and their note, and nothing about the
-        rider (no name, phone or position). Only this owner's own stop, only a rider's skip made at the shop (a skip
-        measured far from the shop, or not measured, goes to the manager, not here; a manager's skip is not a report)."""
+        rider (no name, phone or position). Only this owner's own stop, only while it is skipped, and only when the skip
+        that left it skipped was the rider's, made at the shop (a skip measured far from the shop, or not measured, goes
+        to the manager, not here; a manager's skip is not a report; a stop reopened for a new rider shows no old report).
+        The note is scrubbed of phone numbers and emails (scrub_for_shop); the manager sees it as written."""
         from django.utils import timezone
 
         from delivery import stops
+        from delivery.models import PickupStop
 
         assignment, stop = self._stop(obj)
-        if assignment is None or stop is None or stop.pk is None:
+        if assignment is None or stop is None or stop.pk is None or stop.status != PickupStop.SKIPPED:
             return None
-        mine = [h for h in stops.skip_history(assignment) if h["stop_id"] == stop.pk and h["by"] == "rider" and h["at_shop"]]
-        if not mine:
+        mine = [h for h in stops.skip_history(assignment) if h["stop_id"] == stop.pk]
+        last = mine[-1] if mine else None  # the skip that left this stop skipped now
+        if last is None or last["by"] != "rider" or not last["at_shop"]:
             return None
-        last = mine[-1]
-        return {"at": last["at"], "text": f"Rider reported at your shop at {timezone.localtime(last['at']).strftime('%H:%M')}: {last['note']}"}
+        return {"at": last["at"], "text": f"Rider reported at your shop at {timezone.localtime(last['at']).strftime('%H:%M')}: {scrub_for_shop(last['note'])}"}
 
     def _own_items(self, obj):
         owner = self.context["owner"]

@@ -222,7 +222,8 @@ def rider_point(assignment):
 def refresh_planned_arrivals(assignment, origin=None, start=None):
     """Planned arrival at each open stop, chained along the fixed sequence by road time from `origin` (the rider's fix,
     or the stop just finished) starting at `start`. No origin, or a stop without a location, leaves that stop and every
-    later one without a time (none is made up). Shops are shown it as "about HH:MM"."""
+    later one without a time (none is made up). Shops are shown it as "about HH:MM"; once it passes with the rider not
+    there yet, arrival_late says so (the time is not refreshed until the rider's next step)."""
     at = start or timezone.now()
     here = origin
     for stop in [s for s in ensure_stops(assignment) if s.status in PickupStop.OPEN]:
@@ -233,6 +234,13 @@ def refresh_planned_arrivals(assignment, origin=None, start=None):
             at = at + timedelta(seconds=int(leg["duration_s"]))
             stop.planned_arrival, here = at, (stop.lat, stop.lng)
         stop.save(update_fields=["planned_arrival"])
+
+
+def arrival_late(stop, now=None):
+    """True when a still-pending stop's planned arrival has already passed (the rider is behind the plan). Every payload
+    that carries planned_arrival carries this beside it, so a screen says "running late" rather than showing a passed
+    time as an upcoming arrival. A collected, skipped or arrived stop is never late: its old time is history."""
+    return stop.status == PickupStop.PENDING and stop.planned_arrival is not None and stop.planned_arrival <= (now or timezone.now())
 
 
 def skip_history(assignment):
