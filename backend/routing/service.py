@@ -92,6 +92,42 @@ def legs_from(origins, dest):
         return [_estimate(o, dest) for o in origins]
 
 
+TABLE_MAX_ORIGINS = 100     # origins sent to OSRM in one legs_between call (URL length, the server's table limit)
+
+
+def legs_between(origins, dests):
+    """rows[i][j] = the leg from origins[i] to dests[j] ({"distance_km", "duration_s", "basis", "geometry": None}), all
+    from ONE OSRM table call. Never raises: OSRM off, down or refusing gives the labelled estimate, and a pair OSRM cannot
+    route is estimated on its own (each cell carries its basis). Only the first TABLE_MAX_ORIGINS origins go to OSRM;
+    the rest are estimated, so callers pass the ones that matter most first."""
+    origins = [(float(o[0]), float(o[1])) for o in origins]
+    dests = [(float(d[0]), float(d[1])) for d in dests]
+
+    def estimated(rows):
+        return [[_estimate(o, d) for d in dests] for o in rows]
+
+    if not origins or not dests:
+        return [[] for _ in origins]
+    if not _enabled() or _down():
+        return estimated(origins)
+    routed, rest = origins[:TABLE_MAX_ORIGINS], origins[TABLE_MAX_ORIGINS:]
+    try:
+        rows = client.table_between(routed, dests)
+    except client.OsrmError as exc:
+        if isinstance(exc, client.OsrmUnavailable):
+            _mark_down()
+        logger.info("OSRM table failed (%s); using straight-line estimates.", exc)
+        return estimated(origins)
+    except Exception:
+        logger.exception("OSRM table failed unexpectedly; using straight-line estimates.")
+        return estimated(origins)
+    out = []
+    for i, o in enumerate(routed):
+        row = rows[i] if i < len(rows) else []
+        out.append([_road(row[j]) if j < len(row) and row[j] else _estimate(o, d) for j, d in enumerate(dests)])
+    return out + estimated(rest)
+
+
 def matrix(points):
     """Road km between every pair of points (km[i][j] from i to j, 0 on the diagonal) and one basis for the whole table.
     Never raises: OSRM off or down gives the straight-line estimate; a pair OSRM cannot route is estimated, and then the
