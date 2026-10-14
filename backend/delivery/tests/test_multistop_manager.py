@@ -111,6 +111,29 @@ class ManagerStopTests(DeliveryCase):
         self.assertIs(entry["distance_measured"], True)
         self.assertIs(entry["at_shop"], True)
 
+    def test_the_case_evidence_lists_wrong_code_tries_for_every_shop(self):
+        PickupStop.objects.filter(pk=self.second.pk).update(code_attempts=3)
+        case = Dispute.objects.create(order=self.job.order, raised_by=self.customer, case_type=Dispute.NOT_RECEIVED, reason=Dispute.DELIVERY_ISSUE,
+                                      description="x", rider=self.rider_staff)
+        tries = self.as_staff(self.manager).get(f"/api/delivery/cases/{case.pk}/").json()["evidence"]["code_tries"]
+        self.assertEqual([(t["business_name"], t["wrong_tries"]) for t in tries["pickup_stops"]], [("Shop A", 0), ("Shop B", 3), ("Shop C", 0)])
+
+    def test_the_queue_does_not_query_zones_once_per_row(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        def zone_queries():
+            self.as_staff(self.manager)
+            with CaptureQueriesContext(connection) as ctx:
+                self.assertEqual(self.client.get("/api/delivery/queue/").status_code, 200)
+            return sum(q["sql"].startswith("SELECT") and "FROM \"delivery_deliveryzone\"" in q["sql"] and "boundary" in q["sql"] for q in ctx.captured_queries)
+
+        DA.objects.filter(pk=self.job.pk).update(status=DA.FAILED, failed_at=timezone.now(), failed_reason="wrong_address")
+        one = zone_queries()
+        for _ in range(3):
+            self.make_order()
+        self.assertEqual(zone_queries(), one)
+
 
 class DetourWarningTests(DeliveryCase):
     def test_a_waiting_order_over_the_detour_limit_warns_the_manager(self):

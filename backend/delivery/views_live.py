@@ -16,7 +16,7 @@ from disputes.models import Dispute
 from orders.models import DeliveryAssignment
 
 from . import board, files, payloads, services, stops, tracking
-from .models import DeliveryCall, DeliveryPhoto, PickupStop
+from .models import DeliveryCall, DeliveryPhoto
 
 PERMISSION = "delivery.manage"
 

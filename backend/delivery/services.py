@@ -12,7 +12,7 @@ from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
 
-from field.services import business_pin, haversine_m
+from field.services import haversine_m
 from notifications.services import notify_customer, notify_staff
 
 from .models import (
@@ -418,7 +418,7 @@ def skip_stop(assignment, by, note, *, stop=None, stop_id=_CURRENT_STOP, lat=Non
     stop.save(update_fields=["status", "skip_note", "skipped_by", "dispute"])
     notify_customer(
         assignment.order.customer, "order_status", "A shop could not hand over your items",
-        body=f"{stops.stop_name(stop)} could not hand over its part of Order #{assignment.order_id}. Those items will be refunded; AshantiHub Support will be in touch.",
+        body=f"{stops.stop_name(stop)} could not hand over its part of Order #{assignment.order_id}. AshantiHub Support will review a refund and be in touch.",
         link="/my-account", icon="🧾",
     )
     _after_stop(assignment, stop, by, event.at, left_shop=left_shop, summary_event=True)

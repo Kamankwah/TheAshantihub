@@ -19,7 +19,7 @@ from fraud import services as fraud
 from fraud.models import FraudFlag
 from orders.models import DeliveryAssignment
 
-from . import config, payloads, services
+from . import config, payloads, services, stops
 from .models import DeliveryEvent, Rider
 
 OPEN = (Dispute.OPEN, Dispute.INVESTIGATING)
@@ -122,7 +122,8 @@ class CaseDetailView(APIView):
                 "speeds": speed_between(events), "flagged": [e.step for e in events if e.flagged],
                 "photos": [{"id": p.pk, "kind": p.kind, "at": p.at} for p in assignment.photos.all()],
                 "calls": [{"kind": c.kind, "at": c.started_at, "outcome": c.outcome} for c in assignment.calls.all()],
-                "code_tries": {"pickup": assignment.pickup_code_attempts, "drop": assignment.drop_code_attempts},
+                "code_tries": {"pickup": assignment.pickup_code_attempts, "drop": assignment.drop_code_attempts,
+                               "pickup_stops": [{"business_name": stops.stop_name(s), "wrong_tries": s.code_attempts} for s in stops.stops_of(assignment)]},
                 "failed": {"reason": assignment.failed_reason, "note": assignment.failed_note, "at": assignment.failed_at} if assignment.failed_at else None,
                 "rider_note": assignment.rider_note,
             }

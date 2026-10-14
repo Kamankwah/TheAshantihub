@@ -125,3 +125,13 @@ class CartTierSearchTests(GuardCase):
         after, shown_after = queries()
         self.assertEqual(shown_after, shown + 15)
         self.assertEqual(after, before)
+
+
+class CartLabelMissingNearTests(GuardCase):
+    def test_a_shop_missing_from_the_near_map_has_no_label_instead_of_a_server_error(self):
+        from listings.serializers import CartTieredListingSerializer
+
+        listing = self.listing(name="Shop Z")
+        serializer = CartTieredListingSerializer(context={"cart_guard": {"listing_ids": set(), "near": {}}})
+        listing.cart_tier = 2
+        self.assertIsNone(serializer.get_cart_label(listing))

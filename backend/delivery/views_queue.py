@@ -13,13 +13,13 @@ from orders.models import DeliveryAssignment, Order
 from routing import service as routing_service
 
 from . import board, config, dispatching, payloads, services, tracking
-from .models import DeliverySettings, Offer, QueueHold, Rider
+from .models import DeliverySettings, DeliveryZone, Offer, QueueHold, Rider
 from .views_live import ManageView
 from .views_rider import RiderView
 
 
-def _queue_row(order, now, rules, limits):
-    row = board.queue_row(order, now)
+def _queue_row(order, now, rules, limits, zones=None):
+    row = board.queue_row(order, now, zones)
     deadline = dispatching.deadline_for(order, limits=limits)
     live = dispatching.live_offer(order)
     hold = getattr(order, "queue_hold", None)
@@ -41,8 +41,9 @@ class QueueView(ManageView):
         now = timezone.now()
         rules, limits = config.effective_rules(), config.effective_limits()
         rows = []
+        zones = list(DeliveryZone.objects.filter(active=True, boundary__isnull=False))
         for order in board.waiting_orders().select_related("queue_hold").prefetch_related("offers")[:100]:
-            row = _queue_row(order, now, rules, limits)
+            row = _queue_row(order, now, rules, limits, zones)
             ranked = dispatching.rank(order, rules, now)
             best = ranked["eligible"][0] if ranked["eligible"] else None
             row["suggested"] = {"rider_id": best["rider_id"], "full_name": best["full_name"], "total": best["total"], "km": best["km"]} if best else None

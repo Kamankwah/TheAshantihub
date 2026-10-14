@@ -142,7 +142,9 @@ class CartTieredListingSerializer(PublicListingSerializer):
         if tier == 1:
             return "In your cart" if obj.pk in ctx["listing_ids"] else "From a shop in your cart"
         if tier == 2:
-            near = ctx["near"][obj.business_owner_id]
+            near = ctx["near"].get(obj.business_owner_id)
+            if near is None:  # the near map was re-measured while the page was being built: no label rather than a wrong one
+                return None
             text = f"{near['km']:.1f} km from {near['from_name']}"
             return text if near["basis"] == routing_service.BASIS_ROAD else f"{text} (estimate)"
         return None

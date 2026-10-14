@@ -151,7 +151,9 @@ class SkipTests(MultiStopRiderCase):
         self.assertNotIn("Shop C item", case.description)
         self.second.refresh_from_db()
         self.assertEqual((self.second.status, self.second.dispute_id, self.second.skip_note), (PickupStop.SKIPPED, case.pk, "Shop closed early"))
-        self.assertTrue(Notification.objects.filter(customer=self.customer, title="A shop could not hand over your items").exists())
+        notice = Notification.objects.get(customer=self.customer, title="A shop could not hand over your items")
+        self.assertIn("AshantiHub Support will review a refund and be in touch", notice.body)
+        self.assertNotIn("will be refunded", notice.body)
 
     def test_skipping_the_last_open_shop_sends_the_rider_to_the_customer(self):
         self.step(self.job, "accept")
