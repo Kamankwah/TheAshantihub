@@ -111,6 +111,10 @@ const CARD_FIELDS = [
   { key: "rider_per_km", label: "Rider per km", unit: "GH₵" },
   { key: "wait_after_min", label: "Waiting pay starts after", unit: "minutes" },
   { key: "wait_per_min", label: "Waiting pay per minute", unit: "GH₵" },
+  { key: "max_shops_per_delivery", label: "Shops per delivery (most)", unit: "shops (1 to 6)" },
+  { key: "max_food_shops", label: "Food places per delivery (most)", unit: "places (0 to 6, not above the shops)" },
+  { key: "near_shop_radius_km", label: "Nearby shop distance", unit: "km (road, 0.5 to 20)" },
+  { key: "detour_limit_pct", label: "Detour allowance", unit: "% longer than going direct (0 to 300)" },
 ];
 const VEHICLES = [["motorbike", "Motorbike"], ["tricycle", "Tricycle"], ["car", "Car"], ["van", "Van"]];
 
@@ -178,6 +182,15 @@ export function DeliveryPricingPanel({ auth }) {
               {VEHICLES.map(([id, text]) => labelled(text, <input key={id} aria-label={`${text} multiplier`} inputMode="decimal" value={multipliers[id]} onChange={(e) => setMult({ ...multipliers, [id]: e.target.value })} style={{ ...field, maxWidth: 100 }} />, "×"))}
             </div>
           </section>
+          {data.cart_limits && (
+            <section aria-label="Delivery limits" style={section}>
+              <h3 style={sectionTitle}>Shops per delivery</h3>
+              <span style={{ fontSize: "0.82rem", color: D.text }}>
+                In force{data.cart_limits.source === "defaults" ? " (built-in defaults; no card approved yet)" : ""}: up to {data.cart_limits.max_shops_per_delivery} shops, {data.cart_limits.max_food_shops} food places, nearby within {data.cart_limits.near_shop_radius_km} km, detour allowance {data.cart_limits.detour_limit_pct}%.
+              </span>
+              <span style={dim}>One rider collects from every shop in an order. Food places are collected last. A route longer than going direct from the first shop by more than the allowance warns you, and the km beyond it are charged at the per-km rate.</span>
+            </section>
+          )}
           <TryRoute form={form} multipliers={multipliers} hasCard={Boolean(data.current)} />
           <span style={dim}>Distance basis: {data.distance_basis}.</span>
         </>

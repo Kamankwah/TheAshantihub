@@ -120,6 +120,14 @@ describe('Delivery time limits', () => {
 describe('Delivery pricing', () => {
   const card = { version: 3, customer_base: '5.00', customer_per_km: '2.50', customer_min_fee: '8.00', extra_pickup: '3.00', express_multiplier: '1.30', round_up_to: '0.50', rider_per_job: '8.00', rider_per_km: '1.80', wait_after_min: 10, wait_per_min: '0.20', vehicle_multipliers: { motorbike: '1.00', car: '1.40' }, approved_by: 'Simon', effective_at: '2026-09-01T08:00:00Z' }
   const base = (over = {}) => versions(card, { fee_charging: { enabled: false, note: 'Customers are charged a delivery fee only when delivery fees are switched on.' }, distance_basis: 'straight-line estimate x 1.3', ...over })
+  it('shows the delivery limits in force and offers them for change', async () => {
+    server.use(http.get(`${API}/api/delivery/rules/rate-card/`, () => HttpResponse.json(base({ cart_limits: { source: 'defaults', version: null, max_shops_per_delivery: 4, max_food_shops: 2, near_shop_radius_km: '3.00', detour_limit_pct: 40 } }))))
+    wrap(<DeliveryPricingPanel auth={dm} />)
+    expect(await screen.findByText(/up to 4 shops, 2 food places, nearby within 3\.00 km, detour allowance 40%/)).toBeInTheDocument()
+    expect(screen.getByText(/built-in defaults/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Shops per delivery (most)')).toBeInTheDocument()
+    expect(screen.getByLabelText('Detour allowance')).toBeInTheDocument()
+  })
   it('says fees are switched off, and tries a route under the proposed values', async () => {
     let quote
     server.use(
