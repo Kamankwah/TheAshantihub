@@ -30,6 +30,7 @@ DEFAULT_MATRIX = {
         "delivery.fleet", "delivery.cash", "delivery.rates", "delivery.disputes",
     },
     "dispatch": {"delivery.dispatch"},
+    "pickup_desk": {"pickup.confirm"},
     "cosigner": {"approvals.cosign"},
 }
 

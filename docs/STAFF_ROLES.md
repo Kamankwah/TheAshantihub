@@ -12,8 +12,8 @@ the role seeds in `backend/accounts/migrations/0002`–`0029`, the `HasRolePermi
 
 ## How staff access works
 
-- **There are eight roles, and every staffer holds exactly one:** Super Admin, Admin,
-  Accountant, Marketing, Support, Scout, Delivery Manager and Dispatch.
+- **There are nine roles, and every staffer holds exactly one:** Super Admin, Admin,
+  Accountant, Marketing, Support, Scout, Delivery Manager, Dispatch and Pickup Desk.
 - **A role is a bundle of permissions.** There are 32 permissions in total. A person's effective
   permissions are their role's permissions, plus any granted to them individually, minus any
   revoked from them individually. A revoke always beats a grant.
@@ -47,6 +47,7 @@ the role seeds in `backend/accounts/migrations/0002`–`0029`, the `HasRolePermi
 | **Scout** | Field visits that verify a business's address and legitimacy. | Users (read-only), Field Verification |
 | **Delivery Manager** | Assigns dispatch riders to paid door-to-door orders. | Delivery Coordination |
 | **Dispatch** | The courier: picks orders up and delivers them. | My Deliveries |
+| **Pickup Desk** | The AshantiHub office desk: hands store-pickup orders to customers and marks them collected. | Pickup Queue |
 
 ---
 
@@ -54,53 +55,55 @@ the role seeds in `backend/accounts/migrations/0002`–`0029`, the `HasRolePermi
 
 ✓ = held by the role by default. Super Admin holds every permission, and a seed test asserts it.
 
-| Area | Permission | What it unlocks | Super Admin | Admin | Accountant | Marketing | Support | Scout | Delivery Mgr | Dispatch |
-|---|---|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| Staff | `staff.manage` | Invite, suspend, deactivate and re-permission staff | ✓ | | | | | | | |
-| | `staff.view_as` | Step in: open a team member's workspace read-only (Super Admin role required too) | ✓ | | | | | | | |
-| | `roles.manage` | Change what each role can do (the role matrix); Super Admin only, never handed out | ✓ | | | | | | | |
-| | `approvals.manage_rules` | Edit approval timers and the money limit that needs a second approver; Super Admin only | ✓ | | | | | | | |
-| | `approvals.cosign` | Co-sign requests above the money limit. Held only by the external **co-signer** role (which holds nothing else); it cannot be granted to anyone else, and nothing can be granted to the co-signer | co-signer only | | | | | | | |
-| | `commission.tax_ruling` | Record the ruling on scouts' tax status; until then scout commission stays on hold. Super Admin only | ✓ | | | | | | | |
-| | `security.manage` | Security settings: 2-step rules, sign-in policy. Super Admin only | ✓ | | | | | | | |
-| | `exports.schedule` | Schedule recurring exports; Super Admin only | ✓ | | | | | | | |
-| | `announcements.send` | Send announcements to staff; Super Admin only | ✓ | | | | | | | |
-| | `system.view` | The system and jobs view; Super Admin only | ✓ | | | | | | | |
-| Onboarding | `kyc.approve` | Approve, reject or re-open business KYC; record the address decision | ✓ | ✓ | | | | | | |
-| | `scouts.assign` | Assign scouts to businesses | ✓ | ✓ | | | | | | |
-| | `scouts.verify` | Submit field reports for own assignments | ✓ | | | | | ✓ | | |
-| Moderation | `listings.moderate` | Approve, reject or re-review listings | ✓ | ✓ | | | | | | |
-| | `hero_media.approve` | Approve, reject or re-review hero media | ✓ | ✓ | | ✓ | | | | |
-| | `event.approve` | Approve, reject or re-review events; see attendees and check-in lists | ✓ | ✓ | | ✓ | | | | |
-| | `reviews.moderate` | Publish or hide reviews | ✓ | ✓ | | | ✓ | | | |
-| | `reviews.re_review` | Send a hidden review back to pending | ✓ | | | | | | | |
-| Users | `users.view` | Read customer and business-owner accounts, without payout or tax details | ✓ | ✓ | | | ✓ | ✓ | | |
-| | `users.manage` | See payout and tax details (masked); edit; suspend or unsuspend | ✓ | ✓ | | | | | | |
-| Finance | `escrow.view` | View the ticket escrow ledger | ✓ | | ✓ | | | | | |
-| | `escrow.release` | Release a held ticket early, or put a released one back on hold | ✓ | | ✓ | | | | | |
-| | `escrow.refund` | Refund a held, undelivered ticket | ✓ | | ✓ | | | | | |
-| | `disputes.flag` | See the dispute queue; flag a dispute for investigation | ✓ | | | | ✓ | | | |
-| | `disputes.resolve_financial` | See the queue; resolve, reject or reopen disputes | ✓ | | ✓ | | | | | |
-| | `transactions.report` | Platform-wide transaction list and aggregate report | ✓ | | ✓ | | | | | |
-| | `event_pricing.manage` | Propose a new event visibility-tier price | ✓ | | ✓ | | | | | |
-| | `event_pricing.approve` | Approve or reject a proposed price | ✓ | | | | | | | |
-| | `subscription_plans.manage` | Create and edit business subscription plans | ✓ | | ✓ | | | | | |
-| | `subscription_plans.approve` | Approve, reject or re-review plans | ✓ | | | | | | | |
-| | `credit.manage` | Credit scores and adjustments, lending partners, loan decisions | ✓ | | ✓ | | | | | |
-| Content | `promotions.manage` | Approve, reject or cancel promotions | ✓ | | | ✓ | | | | |
-| | `categories.manage` | Create, edit or delete categories | ✓ | | | ✓ | | | | |
-| | `zones.manage` | Create zones | ✓ | ✓ | | ✓ | | | | |
-| | `site_settings.manage` | Edit footer contact info and social links | ✓ | ✓ | | | | | | |
-| | `analytics.view` | Marketplace analytics snapshot | ✓ | | | ✓ | | | | |
-| Operations | `orders.manage_delivery` | See every customer order; update its delivery status | ✓ | ✓ | | | ✓ | | | |
-| | `delivery.manage` | See paid door-to-door orders; assign or reassign a dispatch | ✓ | | | | | | ✓ | |
-| | `delivery.dispatch` | Own deliveries: confirm pickup and delivery | ✓ | | | | | | | ✓ |
-| Support | `messaging.manage` | Every support conversation; reply as AshantiHub Support | ✓ | | | | ✓ | | | |
-| | `contact_messages.manage` | Contact-form submissions: mark read, resolve | ✓ | ✓ | | | ✓ | | | |
-| | `calls.view_peers` | See calls logged by teammates in the same role (Support team call log) | ✓ | | | | ✓ | | | |
-| | `orders.support_update` | Order status screen: note a delay, cancel for the customer (never Delivered) | ✓ | ✓ | | | ✓ | | | |
-| | `support.limits` | Set Support time limits, business hours and capacity | ✓ | ✓ | | | | | | |
-| | `service_issues.view` | Read-only view of support issues and deliveries across businesses (cannot reply as Support or change a delivery) | ✓ | ✓ | | | | | | |
+| Area | Permission | What it unlocks | Super Admin | Admin | Accountant | Marketing | Support | Scout | Delivery Mgr | Dispatch | Pickup Desk |
+|---|---|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| Staff | `staff.manage` | Invite, suspend, deactivate and re-permission staff | ✓ | | | | | | | | |
+| | `staff.view_as` | Step in: open a team member's workspace read-only (Super Admin role required too) | ✓ | | | | | | | | |
+| | `roles.manage` | Change what each role can do (the role matrix); Super Admin only, never handed out | ✓ | | | | | | | | |
+| | `approvals.manage_rules` | Edit approval timers and the money limit that needs a second approver; Super Admin only | ✓ | | | | | | | | |
+| | `approvals.cosign` | Co-sign requests above the money limit. Held only by the external **co-signer** role (which holds nothing else); it cannot be granted to anyone else, and nothing can be granted to the co-signer | co-signer only | | | | | | | | |
+| | `commission.tax_ruling` | Record the ruling on scouts' tax status; until then scout commission stays on hold. Super Admin only | ✓ | | | | | | | | |
+| | `security.manage` | Security settings: 2-step rules, sign-in policy. Super Admin only | ✓ | | | | | | | | |
+| | `exports.schedule` | Schedule recurring exports; Super Admin only | ✓ | | | | | | | | |
+| | `announcements.send` | Send announcements to staff; Super Admin only | ✓ | | | | | | | | |
+| | `system.view` | The system and jobs view; Super Admin only | ✓ | | | | | | | | |
+| Onboarding | `kyc.approve` | Approve, reject or re-open business KYC; record the address decision | ✓ | ✓ | | | | | | | |
+| | `scouts.assign` | Assign scouts to businesses | ✓ | ✓ | | | | | | | |
+| | `scouts.verify` | Submit field reports for own assignments | ✓ | | | | | ✓ | | | |
+| Moderation | `listings.moderate` | Approve, reject or re-review listings | ✓ | ✓ | | | | | | | |
+| | `hero_media.approve` | Approve, reject or re-review hero media | ✓ | ✓ | | ✓ | | | | | |
+| | `event.approve` | Approve, reject or re-review events; see attendees and check-in lists | ✓ | ✓ | | ✓ | | | | | |
+| | `reviews.moderate` | Publish or hide reviews | ✓ | ✓ | | | ✓ | | | | |
+| | `reviews.re_review` | Send a hidden review back to pending | ✓ | | | | | | | | |
+| Users | `users.view` | Read customer and business-owner accounts, without payout or tax details | ✓ | ✓ | | | ✓ | ✓ | | | |
+| | `users.manage` | See payout and tax details (masked); edit; suspend or unsuspend | ✓ | ✓ | | | | | | | |
+| Finance | `escrow.view` | View the ticket escrow ledger | ✓ | | ✓ | | | | | | |
+| | `escrow.release` | Release a held ticket early, or put a released one back on hold | ✓ | | ✓ | | | | | | |
+| | `escrow.refund` | Refund a held, undelivered ticket | ✓ | | ✓ | | | | | | |
+| | `disputes.flag` | See the dispute queue; flag a dispute for investigation | ✓ | | | | ✓ | | | | |
+| | `disputes.resolve_financial` | See the queue; resolve, reject or reopen disputes | ✓ | | ✓ | | | | | | |
+| | `transactions.report` | Platform-wide transaction list and aggregate report | ✓ | | ✓ | | | | | | |
+| | `event_pricing.manage` | Propose a new event visibility-tier price | ✓ | | ✓ | | | | | | |
+| | `event_pricing.approve` | Approve or reject a proposed price | ✓ | | | | | | | | |
+| | `subscription_plans.manage` | Create and edit business subscription plans | ✓ | | ✓ | | | | | | |
+| | `subscription_plans.approve` | Approve, reject or re-review plans | ✓ | | | | | | | | |
+| | `credit.manage` | Credit scores and adjustments, lending partners, loan decisions | ✓ | | ✓ | | | | | | |
+| Content | `promotions.manage` | Approve, reject or cancel promotions | ✓ | | | ✓ | | | | | |
+| | `categories.manage` | Create, edit or delete categories | ✓ | | | ✓ | | | | | |
+| | `zones.manage` | Create zones | ✓ | ✓ | | ✓ | | | | | |
+| | `site_settings.manage` | Edit footer contact info and social links | ✓ | ✓ | | | | | | | |
+| | `analytics.view` | Marketplace analytics snapshot | ✓ | | | ✓ | | | | | |
+| Operations | `orders.manage_delivery` | See every customer order; update its delivery status | ✓ | ✓ | | | ✓ | | | | |
+| | `delivery.manage` | See paid door-to-door orders; assign or reassign a dispatch | ✓ | | | | | | ✓ | | |
+| | `delivery.dispatch` | Own deliveries: confirm pickup and delivery | ✓ | | | | | | | ✓ | |
+| | `pickup.confirm` | See the store-pickup queue and mark an order collected | ✓ | | | | | | | | ✓ |
+| Support | `messaging.manage` | Every support conversation; reply as AshantiHub Support | ✓ | | | | ✓ | | | | |
+| | `orders.verify` | Verify a delivered or collected product order by phone; a match releases the vendor's money, a mismatch raises a dispute | ✓ | | | | ✓ | | | | |
+| | `contact_messages.manage` | Contact-form submissions: mark read, resolve | ✓ | ✓ | | | ✓ | | | | |
+| | `calls.view_peers` | See calls logged by teammates in the same role (Support team call log) | ✓ | | | | ✓ | | | | |
+| | `orders.support_update` | Order status screen: note a delay, cancel for the customer (never Delivered) | ✓ | ✓ | | | ✓ | | | | |
+| | `support.limits` | Set Support time limits, business hours and capacity | ✓ | ✓ | | | | | | | |
+| | `service_issues.view` | Read-only view of support issues and deliveries across businesses (cannot reply as Support or change a delivery) | ✓ | ✓ | | | | | | | |
 
 ---
 

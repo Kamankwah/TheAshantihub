@@ -24,6 +24,8 @@ class Role(models.Model):
     SCOUT = "scout"
     DELIVERY_MANAGER = "delivery_manager"
     DISPATCH = "dispatch"
+    # AshantiHub office desk that hands store-pickup orders to customers.
+    PICKUP_DESK = "pickup_desk"
     # External co-signer: approves only requests above the co-sign limit (approvals app).
     COSIGNER = "cosigner"
 
@@ -36,6 +38,7 @@ class Role(models.Model):
         (SCOUT, "Scout"),
         (DELIVERY_MANAGER, "Delivery Manager"),
         (DISPATCH, "Dispatch"),
+        (PICKUP_DESK, "Pickup Desk"),
         (COSIGNER, "Co-signer"),
     ]
 

@@ -147,3 +147,28 @@ class OrderVerificationView(APIView):
             "order": order.pk, "outcome": check.outcome, "dispute_id": check.dispute_id,
             "released": Journal.objects.filter(key=escrow.release_key(order)).exists(),
         })
+
+
+class PickupQueueView(APIView):
+    """GET pickup/ — store-pickup orders waiting at the office, with the time each must be collected by."""
+
+    def get_permissions(self):
+        return [HasRolePermission("pickup.confirm")]
+
+    def get(self, request):
+        return Response({"results": verification.pickup_queue()})
+
+
+class PickupCollectedView(APIView):
+    """POST pickup/<order id>/collected/ — the desk hands the order to the customer."""
+
+    def get_permissions(self):
+        return [HasRolePermission("pickup.confirm")]
+
+    def post(self, request, pk):
+        order = get_object_or_404(Order, pk=pk)
+        try:
+            check = verification.mark_collected(order, request.user)
+        except verification.VerificationError as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
+        return Response({"order": order.pk, "collected_at": check.collected_at})

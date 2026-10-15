@@ -117,3 +117,44 @@ def awaiting(now=None):
             "outcome": check.outcome, "outcome_note": check.outcome_note, "released": False,
         })
     return rows
+
+
+def mark_collected(order, staff, now=None):
+    """The pickup desk hands a paid store-pickup order to the customer. Idempotent: a second call keeps the first stamp."""
+    from orders.models import Order
+
+    now = now or timezone.now()
+    with transaction.atomic():
+        order = Order.objects.select_for_update().get(pk=order.pk)
+        if order.status != Order.PAID or order.delivery_method != Order.STORE_PICKUP:
+            raise VerificationError("Only a paid store-pickup order can be marked collected.")
+        check = check_for(order)
+        if check.collected_at is None:
+            check.collected_at, check.collected_by = now, staff
+            check.save(update_fields=["collected_at", "collected_by", "updated_at"])
+        return check
+
+
+def pickup_queue(now=None):
+    """Paid store-pickup orders not yet collected, oldest first. Deliberately carries no phone number: the desk
+    hands over goods, it does not call customers."""
+    from orders.models import Order
+
+    now = now or timezone.now()
+    window = timedelta(hours=settings_store.current("pickup_window_hours", now))
+    orders = (
+        Order.objects.filter(status=Order.PAID, delivery_method=Order.STORE_PICKUP)
+        .exclude(fulfilment_check__collected_at__isnull=False)
+        .select_related("customer").prefetch_related("items__listing__business_owner").order_by("placed_at", "id")
+    )
+    return [
+        {
+            "order_id": order.pk, "placed_at": order.placed_at, "collect_by": order.placed_at + window,
+            "overdue": now > order.placed_at + window, "customer_name": order.customer.full_name,
+            "items": [
+                {"name": item.listing.name, "quantity": item.quantity, "business": item.listing.business_owner.display_name}
+                for item in order.items.all()
+            ],
+        }
+        for order in orders
+    ]
