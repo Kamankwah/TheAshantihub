@@ -1,7 +1,9 @@
 from datetime import timedelta
 
 from django.core.cache import cache
+from django.db import connection
 from django.test import override_settings
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -329,3 +331,35 @@ class StrandedReleaseTests(VerificationBase):
         self.assertEqual(response.status_code, 409)
         self.assertFalse(FulfilmentCheck.objects.filter(order=order, outcome="matches").exists())
         self.assertEqual(self.balance(Account.VENDOR_PENDING, self.kofi), 12000)
+
+
+@override_settings(LEDGER_ENABLED=True)
+class ReviewFixTests(VerificationBase):
+    def test_a_note_that_is_not_text_is_a_400_and_nothing_is_recorded(self):
+        order = self.paid_order(customer_confirmed=True)
+        self.as_staff(self.support)
+        for note in (5, [1], {"a": 1}, True):
+            response = self.verify(order, "unreachable", note=note)
+            self.assertEqual(response.status_code, 400, (note, response.content))
+        self.assertFalse(FulfilmentCheck.objects.filter(order=order, outcome=FulfilmentCheck.UNREACHABLE).exists())
+        self.assertEqual(self.verify(order, "unreachable", note=None).status_code, 200)
+
+    def test_a_non_boolean_phone_confirmation_counts_as_false(self):
+        order = self.paid_order(customer_confirmed=False)
+        self.as_staff(self.support)
+        for value in ("true", 1, [True]):
+            response = self.verify(order, "matches", customer_confirmed_by_phone=value)
+            self.assertEqual(response.status_code, 409, (value, response.content))
+
+    def test_release_does_not_lock_the_vendors_business_owner_row(self):
+        order = self.paid_order(customer_confirmed=True)
+        self.as_staff(self.support)
+        check = FulfilmentCheck.objects.create(order=order, outcome=FulfilmentCheck.MATCHES)
+        self.assertTrue(check.pk)
+        with CaptureQueriesContext(connection) as queries:
+            self.assertIsNotNone(escrow.release_verified(order))
+        locking = [q["sql"] for q in queries if "FOR UPDATE" in q["sql"] and "ledger_orderfeesnapshot" in q["sql"]]
+        self.assertTrue(locking)
+        for sql in locking:
+            self.assertIn('FOR UPDATE OF "ledger_orderfeesnapshot"', sql)
+            self.assertNotIn('OF "accounts_businessowner"', sql)

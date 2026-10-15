@@ -49,6 +49,8 @@ def record(order, staff, outcome, *, note="", customer_confirmed_by_phone=False,
     now = now or timezone.now()
     if outcome not in (FulfilmentCheck.MATCHES, FulfilmentCheck.DOES_NOT_MATCH, FulfilmentCheck.UNREACHABLE):
         raise VerificationError("Pick matches, does not match, or could not reach.", 400)
+    if note is not None and not isinstance(note, str):
+        raise VerificationError("The note must be text.", 400)
     note = (note or "").strip()[:500]
     if outcome == FulfilmentCheck.DOES_NOT_MATCH and not note:
         raise VerificationError("Say what does not match.", 400)
@@ -132,6 +134,9 @@ def mark_collected(order, staff, now=None):
         if check.collected_at is None:
             check.collected_at, check.collected_by = now, staff
             check.save(update_fields=["collected_at", "collected_by", "updated_at"])
+            # A pickup order has no delivery to finish, so collection is its delivery: Support can no longer cancel it.
+            order.delivery_status = Order.DELIVERED
+            order.save(update_fields=["delivery_status"])
         return check
 
 

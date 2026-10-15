@@ -1,11 +1,15 @@
-"""Order money in the ledger: record_order_payment (this task) and release_order (Task 8).
+"""Order money in the ledger: record_order_payment (the payment journal) and release_verified (the release).
 
 Payment journal for an order, in pesewas:
     Dr provider clearing   what the customer paid (order.total_amount)
     Dr promo subsidy       the coupon discount, funded by AshantiHub (order.discount_amount)
     Cr vendor pending      each vendor's item subtotal (Σ line_total)
     Cr delivery payable    the delivery fee, held until the delivery is paid out
-The two debits always equal the credits for a consistent order; if they do not, nothing is written."""
+The two debits always equal the credits for a consistent order; if they do not, nothing is written.
+
+release_verified moves the held money once Support records a positive verification (no timer): each vendor's Pending is
+debited, the snapshotted fee goes to platform fee income, the delivery fee to platform delivery income, and the rest to the
+vendor's Available. It is idempotent on its journal key and refuses while a dispute is open."""
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
@@ -46,7 +50,8 @@ def record_order_payment(order, *, at=None):
         subsidy = to_pesewas(order.discount_amount or 0)
         if not (paid or subsidy or delivery or any(sum(g["by_category"].values()) for g in groups.values())):
             return None  # a GHS 0.00 order has no money to record; write neither snapshots nor a journal
-        pendings = {pk: posting.account_for(Account.VENDOR_PENDING, g["owner"]) for pk, g in groups.items()}
+        # Created in primary-key order so two first payments sharing vendors cannot deadlock on the unique index.
+        pendings = {pk: posting.account_for(Account.VENDOR_PENDING, groups[pk]["owner"]) for pk in sorted(groups)}
         # Lock every vendor's pending account in primary-key order before reading fees charged so far,
         # so two payments for one vendor cannot both see the same cap remainder.
         list(Account.objects.select_for_update().filter(pk__in=[a.pk for a in pendings.values()]).order_by("pk"))
@@ -111,7 +116,7 @@ def release_verified(order, now=None):
         if not FulfilmentCheck.objects.filter(order=order, outcome=FulfilmentCheck.MATCHES).exists():
             return None
         snapshots = list(
-            OrderFeeSnapshot.objects.select_for_update()
+            OrderFeeSnapshot.objects.select_for_update(of=("self",))  # never lock the vendor's BusinessOwner row (deadlocks with a payment)
             .filter(order=order, released_at__isnull=True, reversed_at__isnull=True).select_related("business_owner")
         )
         if not snapshots or not Journal.objects.filter(key=pay_key(order)).exists():

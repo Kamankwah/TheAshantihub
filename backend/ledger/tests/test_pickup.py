@@ -58,6 +58,39 @@ class CollectionTests(PickupBase):
         self.assertEqual(self.collect(order).status_code, 200)
         self.assertEqual(FulfilmentCheck.objects.get(order=order).collected_at, stamped)
 
+    def test_collecting_marks_the_order_delivered_so_support_can_no_longer_cancel_it(self):
+        from orders.support import allowed_actions
+
+        order = self.pickup_order()
+        self.assertEqual(Order.objects.get(pk=order.pk).delivery_status, Order.PROCESSING)
+        self.as_staff(self.desk)
+        self.assertEqual(self.collect(order).status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.delivery_status, Order.DELIVERED)
+        self.assertEqual(allowed_actions(order), [])
+        self.as_staff(self.support)
+        response = self.client.post(
+            f"/api/orders/{order.pk}/support-status/", {"status": "cancelled_by_customer", "reason": "changed mind"}, format="json",
+        )
+        self.assertEqual(response.status_code, 409, response.content)
+        self.assertEqual(Order.objects.get(pk=order.pk).status, Order.PAID)
+
+    def test_a_second_collect_changes_nothing(self):
+        from ledger import verification
+
+        order = self.pickup_order()
+        verification.mark_collected(order, self.desk)
+        Order.objects.filter(pk=order.pk).update(delivery_status=Order.PROCESSING)  # would be restored only by a re-save
+        verification.mark_collected(order, self.desk)
+        self.assertEqual(Order.objects.get(pk=order.pk).delivery_status, Order.PROCESSING)
+
+    def test_a_door_to_door_order_is_left_untouched_by_a_refused_collect(self):
+        order = self.pickup_order()
+        Order.objects.filter(pk=order.pk).update(delivery_method=Order.DOOR_TO_DOOR)
+        self.as_staff(self.desk)
+        self.assertEqual(self.collect(order).status_code, 409)
+        self.assertEqual(Order.objects.get(pk=order.pk).delivery_status, Order.PROCESSING)
+
     def test_a_door_to_door_or_unpaid_order_cannot_be_collected(self):
         order = self.pickup_order()
         Order.objects.filter(pk=order.pk).update(delivery_method=Order.DOOR_TO_DOOR)
