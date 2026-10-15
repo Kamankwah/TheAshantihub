@@ -100,3 +100,69 @@ class JournalLine(_AppendOnly):
     class Meta:
         ordering = ["id"]
         constraints = [models.CheckConstraint(condition=models.Q(amount__gt=0), name="ledger_line_amount_positive")]
+
+
+class FeeRuleSet(models.Model):
+    """One version of a category's platform-fee tiers. Rows are never edited: the rule set in force
+    is the latest whose `effective_from` has passed (the approvals engine creates new ones)."""
+
+    PRODUCT, SERVICE, EVENT = "product", "service", "event"
+    CATEGORY_CHOICES = [(PRODUCT, "Products"), (SERVICE, "Services"), (EVENT, "Events")]
+
+    category = models.CharField(max_length=10, choices=CATEGORY_CHOICES)
+    effective_from = models.DateTimeField()
+    created_by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    approval_id = models.PositiveBigIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-effective_from", "-id"]
+        indexes = [models.Index(fields=["category", "-effective_from"])]
+
+    def __str__(self):
+        return f"{self.category} fees from {self.effective_from:%Y-%m-%d %H:%M}"
+
+
+class FeeBand(models.Model):
+    """One tier of a rule set: amounts from `lower_pesewas` to `upper_pesewas` inclusive (None = no upper
+    limit) cost `percent_bp` basis points (100 = 1%) or a flat `flat_pesewas`."""
+
+    rule_set = models.ForeignKey(FeeRuleSet, on_delete=models.CASCADE, related_name="bands")
+    lower_pesewas = models.BigIntegerField()
+    upper_pesewas = models.BigIntegerField(null=True, blank=True)
+    percent_bp = models.PositiveIntegerField(null=True, blank=True)
+    flat_pesewas = models.BigIntegerField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["lower_pesewas"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(percent_bp__isnull=False, flat_pesewas__isnull=True)
+                    | models.Q(percent_bp__isnull=True, flat_pesewas__isnull=False)
+                ),
+                name="ledger_band_percent_xor_flat",
+            ),
+        ]
+
+
+class OrderFeeSnapshot(models.Model):
+    """The fee fixed for one vendor and fee category of one order at payment time. Release reads this,
+    so later rule or cap edits never change an order already paid. `reversed_at` frees the cap again
+    (refunds, Stage 3)."""
+
+    order = models.ForeignKey("orders.Order", on_delete=models.PROTECT, related_name="fee_snapshots")
+    business_owner = models.ForeignKey("accounts.BusinessOwner", on_delete=models.PROTECT, related_name="fee_snapshots")
+    category = models.CharField(max_length=10, choices=FeeRuleSet.CATEGORY_CHOICES)
+    rule_set = models.ForeignKey(FeeRuleSet, on_delete=models.PROTECT, related_name="+")
+    base_pesewas = models.BigIntegerField()
+    computed_pesewas = models.BigIntegerField()
+    charged_pesewas = models.BigIntegerField()
+    cap_pesewas = models.BigIntegerField(null=True, blank=True)
+    released_at = models.DateTimeField(null=True, blank=True)
+    reversed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["order", "business_owner", "category"], name="ledger_one_snapshot_per_order_vendor_category")]
+        indexes = [models.Index(fields=["business_owner", "reversed_at"])]
