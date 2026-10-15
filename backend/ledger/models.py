@@ -166,3 +166,22 @@ class OrderFeeSnapshot(models.Model):
     class Meta:
         constraints = [models.UniqueConstraint(fields=["order", "business_owner", "category"], name="ledger_one_snapshot_per_order_vendor_category")]
         indexes = [models.Index(fields=["business_owner", "reversed_at"])]
+
+
+class MoneySetting(models.Model):
+    """One approved value of a money setting from `effective_from` on. Never edited: the value in force
+    is the latest row whose time has come. `value=None` is a deliberate blank (for the fee cap, no cap)."""
+
+    key = models.CharField(max_length=50)
+    value = models.BigIntegerField(null=True, blank=True)
+    effective_from = models.DateTimeField()
+    created_by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    approval_id = models.PositiveBigIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-effective_from", "-id"]
+        indexes = [models.Index(fields=["key", "-effective_from"])]
+
+    def __str__(self):
+        return f"{self.key}={self.value}"
