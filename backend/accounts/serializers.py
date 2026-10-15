@@ -481,7 +481,8 @@ class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
             "business_reg_certificate", "tin", "business_kind",
         ]
         extra_kwargs = {field: {"required": False} for field in fields}
-        # business_kind is set at trial-start (billing.StartTrialSerializer) and
+        # business_kind is set at trial-start (billing.StartTrialSerializer) or, while
+        # subscriptions are off, by billing.BusinessKindView, and
         # drives listing-category / subscription-plan gating on the frontend; it
         # is exposed here read-only so the owner's dashboard can read it, but
         # this KYC-edit endpoint must never let it be switched.

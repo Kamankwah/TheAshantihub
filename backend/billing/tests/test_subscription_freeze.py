@@ -49,6 +49,33 @@ class FrozenTests(TestCase):
         again = self.client.post("/api/billing/business-kind/", {"business_kind": "service"}, format="json")
         self.assertEqual(again.status_code, 400)
 
+    def test_business_kind_that_is_not_text_is_a_400(self):
+        for kind in (["product"], {"a": 1}, 5, None):
+            response = self.client.post("/api/billing/business-kind/", {"business_kind": kind}, format="json")
+            self.assertEqual(response.status_code, 400, (kind, response.content))
+        self.owner.profile.refresh_from_db()
+        self.assertFalse(self.owner.profile.business_kind)
+
+    def test_an_owner_with_no_profile_gets_a_400(self):
+        bare = BusinessOwner.objects.create(full_name="Ama", login_phone="+233207880002", password_hash="x")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(bare, 'business_owner')}")
+        response = self.client.post("/api/billing/business-kind/", {"business_kind": "product"}, format="json")
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("profile", str(response.json()).lower())
+
+    def test_a_kind_that_is_already_set_cannot_be_changed(self):
+        BusinessOwnerProfile.objects.filter(business_owner=self.owner).update(business_kind="service")
+        response = self.client.post("/api/billing/business-kind/", {"business_kind": "product"}, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.owner.profile.refresh_from_db()
+        self.assertEqual(self.owner.profile.business_kind, "service")
+
+    @override_settings(SUBSCRIPTIONS_ENABLED=True)
+    def test_with_subscriptions_on_the_endpoint_points_at_plan_selection(self):
+        response = self.client.post("/api/billing/business-kind/", {"business_kind": "product"}, format="json")
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["code"], "use_plan_selection")
+
     def test_the_clock_does_nothing(self):
         self.assertEqual(clock.tick(), {"overdue": 0, "reminders": 0, "paused": 0})
 

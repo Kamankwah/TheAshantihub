@@ -1,4 +1,4 @@
-from django.db.models import Count, F, Sum
+from django.db.models import Count, F, Q, Sum
 from django.db.models.functions import TruncMonth
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -249,13 +249,19 @@ class BusinessKindView(APIView):
         if switch.subscriptions_enabled():
             return Response({"detail": "Choose a plan to continue.", "code": "use_plan_selection"}, status=409)
         kind = request.data.get("business_kind") if isinstance(request.data, dict) else None
-        if kind not in dict(BusinessOwnerProfile.BUSINESS_KIND_CHOICES):
+        if not isinstance(kind, str) or kind not in dict(BusinessOwnerProfile.BUSINESS_KIND_CHOICES):
             return Response({"business_kind": "Pick products or services."}, status=400)
-        profile = request.user.profile
-        if profile.business_kind:
+        try:
+            profile = request.user.profile
+        except BusinessOwnerProfile.DoesNotExist:
+            return Response({"detail": "Fill in your business profile before choosing a business type."}, status=400)
+        # Conditional update so two concurrent requests cannot both "set once".
+        changed = BusinessOwnerProfile.objects.filter(pk=profile.pk).filter(
+            Q(business_kind__isnull=True) | Q(business_kind="")
+        ).update(business_kind=kind)
+        if not changed:
             return Response({"business_kind": "Your business type is already set."}, status=400)
-        profile.business_kind = kind
-        profile.save(update_fields=["business_kind"])
+        profile.business_kind = kind  # keep the cached profile current for compute_registration_step()
         return Response({"business_kind": kind, "registration_step": request.user.compute_registration_step()})
 
 
