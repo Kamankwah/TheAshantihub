@@ -219,6 +219,7 @@ def _policy_payload():
     return {
         "roles": roles,
         "limits": policy.limits(),
+        "otp": policy.otp_settings(),
         "password_protected": [{"title": t, "body": b} for t, b in policy.PASSWORD_PROTECTED],
         "updated_at": current.updated_at if current else None,
         "updated_by": current.updated_by.full_name if current and current.updated_by else None,
@@ -242,30 +243,62 @@ class PolicyView(APIView):
         return Response(_policy_payload())
 
     def patch(self, request):
-        wanted = request.data.get("two_factor_roles") if isinstance(request.data, dict) else None
-        if not isinstance(wanted, list) or not all(isinstance(r, str) for r in wanted):
+        data = request.data if isinstance(request.data, dict) else {}
+        otp_values = {key: data[key] for key in policy.OTP_DEFAULTS if key in data}
+        if "two_factor_roles" not in data and not otp_values:
             raise ValidationError({"two_factor_roles": "Send a list of role names."})
-        valid = {name for name, _ in Role.NAME_CHOICES}
-        unknown = sorted(set(wanted) - valid)
-        if unknown:
-            raise ValidationError({"two_factor_roles": f"Unknown role: {unknown[0]}."})
-        roles = set(wanted) - {Role.SUPER_ADMIN}
+        try:
+            otp_values = policy.clean_otp(otp_values)
+        except ValueError as exc:
+            key, message = exc.args
+            raise ValidationError({key: message}) from None
+        roles = None
+        if "two_factor_roles" in data:
+            wanted = data["two_factor_roles"]
+            if not isinstance(wanted, list) or not all(isinstance(r, str) for r in wanted):
+                raise ValidationError({"two_factor_roles": "Send a list of role names."})
+            valid = {name for name, _ in Role.NAME_CHOICES}
+            unknown = sorted(set(wanted) - valid)
+            if unknown:
+                raise ValidationError({"two_factor_roles": f"Unknown role: {unknown[0]}."})
+            roles = set(wanted) - {Role.SUPER_ADMIN}
         with transaction.atomic():
-            before = sorted(policy.required_roles())
-            policy.set_roles(roles, request.user)
-            after = sorted(roles)
-            added = sorted(set(after) - set(before))
-            removed = sorted(set(before) - set(after))
-            if added or removed:
-                summary = "; ".join(filter(None, [
-                    f"Now required: {', '.join(ROLE_LABELS[r] for r in added)}" if added else "",
-                    f"No longer required: {', '.join(ROLE_LABELS[r] for r in removed)}" if removed else "",
-                ]))
-                for other in StaffUser.objects.filter(role__name=Role.SUPER_ADMIN, is_active=True).exclude(pk=request.user.pk):
-                    notify_staff(other, "security_policy_changed", f"{request.user.full_name} changed the 2-step sign-in rules",
-                                 body=summary, link="security", icon="🔐")
+            events = []
+            if roles is not None:
+                before = sorted(policy.required_roles())
+                policy.set_roles(roles, request.user)
+                after = sorted(roles)
+                added = sorted(set(after) - set(before))
+                removed = sorted(set(before) - set(after))
+                if added or removed:
+                    summary = "; ".join(filter(None, [
+                        f"Now required: {', '.join(ROLE_LABELS[r] for r in added)}" if added else "",
+                        f"No longer required: {', '.join(ROLE_LABELS[r] for r in removed)}" if removed else "",
+                    ]))
+                    for other in StaffUser.objects.filter(role__name=Role.SUPER_ADMIN, is_active=True).exclude(pk=request.user.pk):
+                        notify_staff(other, "security_policy_changed", f"{request.user.full_name} changed the 2-step sign-in rules",
+                                     body=summary, link="security", icon="🔐")
+                events.append({
+                    "verb": "security.policy_changed", "target_label": "2-step sign-in by role",
+                    "summary": f"2-step sign-in required for: {', '.join(ROLE_LABELS[r] for r in ['super_admin', *after])}",
+                    "before": {"two_factor_roles": before}, "after": {"two_factor_roles": after},
+                })
+            if otp_values:
+                before_otp = policy.otp_settings()
+                policy.set_otp(otp_values, request.user)
+                changed = sorted(key for key, value in otp_values.items() if before_otp[key] != value)
+                if changed:
+                    summary = "; ".join(f"{policy.OTP_LABELS[k]}: {before_otp[k]} → {otp_values[k]}" for k in changed)
+                    for other in StaffUser.objects.filter(role__name=Role.SUPER_ADMIN, is_active=True).exclude(pk=request.user.pk):
+                        notify_staff(other, "security_policy_changed", f"{request.user.full_name} changed the one-time-code settings",
+                                     body=summary, link="security", icon="🔐")
+                    events.append({
+                        "verb": "security.otp_policy_changed", "target_label": "One-time codes",
+                        "summary": summary,
+                        "before": {k.removeprefix("otp_"): before_otp[k] for k in changed}, "after": {k.removeprefix("otp_"): otp_values[k] for k in changed},
+                    })
             # Last, because record() holds the chain lock until commit.
-            record(request.user, "security.policy_changed", target_type="security.policy", target_id="1", target_label="2-step sign-in by role",
-                   summary=f"2-step sign-in required for: {', '.join(ROLE_LABELS[r] for r in ['super_admin', *after])}",
-                   before={"two_factor_roles": before}, after={"two_factor_roles": after}, method="PATCH", request=request)
+            for event in events:
+                verb = event.pop("verb")
+                record(request.user, verb, target_type="security.policy", target_id="1", method="PATCH", request=request, **event)
         return Response(_policy_payload())
