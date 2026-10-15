@@ -123,6 +123,14 @@ class RecordOrderPaymentTests(OrderPaymentBase):
         total = sum(s.charged_pesewas for s in OrderFeeSnapshot.objects.filter(business_owner=kofi))
         self.assertEqual(total, 500)
 
+    def test_a_zero_total_order_records_nothing_and_does_not_fail(self):
+        kofi = self.owner("Kofi")
+        order = self.order([(self.listing(kofi, "0.00"), 1)])
+        self.assertIsNone(escrow.record_order_payment(order))
+        self.assertIsNone(escrow.record_order_payment(order))
+        self.assertFalse(Journal.objects.exists())
+        self.assertFalse(OrderFeeSnapshot.objects.exists())
+
 
 class DisabledTests(OrderPaymentBase):
     def test_nothing_is_recorded_while_the_ledger_is_off(self):
@@ -151,3 +159,17 @@ class CheckoutHookTests(OrderPaymentBase):
         order = Order.objects.get(pk=response.json()["id"])
         self.assertTrue(Journal.objects.filter(key=f"order-pay-{order.pk}").exists())
         self.assertEqual(self.balance(Account.VENDOR_PENDING, kofi), 12000)
+
+    def test_a_free_pickup_checkout_still_succeeds(self):
+        from rest_framework.test import APIClient
+
+        from accounts.authentication import issue_token
+
+        kofi = self.owner("Kofi")
+        listing = self.listing(kofi, "0.00")
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.customer, 'customer')}")
+        client.post("/api/cart/items/", {"listing": listing.id, "quantity": 1}, format="json")
+        response = client.post("/api/orders/checkout/")
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertFalse(Journal.objects.exists())

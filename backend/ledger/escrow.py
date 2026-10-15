@@ -41,6 +41,11 @@ def record_order_payment(order, *, at=None):
         if Journal.objects.filter(key=pay_key(order)).exists():
             return None
         groups = _vendor_groups(order)
+        delivery = to_pesewas(order.delivery_fee or 0)
+        paid = to_pesewas(order.total_amount)
+        subsidy = to_pesewas(order.discount_amount or 0)
+        if not (paid or subsidy or delivery or any(sum(g["by_category"].values()) for g in groups.values())):
+            return None  # a GHS 0.00 order has no money to record; write neither snapshots nor a journal
         pendings = {pk: posting.account_for(Account.VENDOR_PENDING, g["owner"]) for pk, g in groups.items()}
         # Lock every vendor's pending account in primary-key order before reading fees charged so far,
         # so two payments for one vendor cannot both see the same cap remainder.
@@ -64,9 +69,6 @@ def record_order_payment(order, *, at=None):
                 credits.append(posting.credit(pendings[pk], vendor_total))
             items_total += vendor_total
 
-        delivery = to_pesewas(order.delivery_fee or 0)
-        paid = to_pesewas(order.total_amount)
-        subsidy = to_pesewas(order.discount_amount or 0)
         if paid + subsidy != items_total + delivery:
             raise posting.PostingError(
                 f"Order {order.pk} does not reconcile: paid {paid} + discount {subsidy} != items {items_total} + delivery {delivery}"
