@@ -225,3 +225,15 @@ per-transaction limits are editable.
 - **Numbers owed by the owner:** services and events tier values, the verification-overdue (72 h)
   and pickup (24 h) windows, cooling period, withdrawal limits, SMS digest thresholds.
 - **Mixed-category vendor cart and cap:** the cap is cumulative across categories (§1 row 2).
+
+## 13. Reconciliation with the code (2026-10-15)
+
+Found while writing the Stage 1 plan (`docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md`, §0):
+
+- **D1 Fee base.** Coupon discounts are AshantiHub-funded and leave `OrderItem.line_total` untouched; flash-sale prices are seller-funded and already in `line_total`. The fee base is Σ `line_total` per vendor and category. The coupon is a platform subsidy, never charged to the vendor.
+- **D2 No order-escrow account.** The payment journal allocates directly into Vendor Pending and Delivery payable (equivalent, one fewer pass-through).
+- **D3 Governance.** Accounting proposes and Super Admin approves (existing maker-checker); Super Admin may apply directly (logged). Accounting does not approve.
+- **D5 Subscriptions.** Listing creation and the registration `plan_selection` step currently depend on a subscription. The freeze switch (`SUBSCRIPTIONS_ENABLED`) must stay on until the frontend registration change ships.
+- **D6 Release.** Owner decision (2026-10-15): no timed hold-back. Release follows Support's verification call (§4).
+- **D7 Scope.** Stage 1 covers product orders only; services, events and stays follow in Plan 1b.
+- **D8 Store pickup.** Collected at the AshantiHub office within 24 hours, confirmed by a new Pickup Desk role (§4.3).
