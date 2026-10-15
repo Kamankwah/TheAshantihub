@@ -83,6 +83,12 @@ class ValidateBandsTests(SimpleTestCase):
     def test_empty_is_refused(self):
         self.bad([])
 
+    def test_json_booleans_are_not_numbers(self):
+        self.bad([{"lower": False, "upper": None, "percent_bp": 100, "flat": None}])
+        self.bad([{"lower": 0, "upper": None, "percent_bp": True, "flat": None}])
+        self.bad([{"lower": 0, "upper": None, "percent_bp": None, "flat": True}])
+        self.bad([{"lower": 0, "upper": True, "percent_bp": 100, "flat": None}, {"lower": 2, "upper": None, "percent_bp": 100, "flat": None}])
+
 
 class SeededDefaultsTests(TestCase):
     def test_each_category_has_the_brief_tiers_in_force(self):

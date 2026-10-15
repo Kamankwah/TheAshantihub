@@ -58,6 +58,10 @@ def validate_bands(bands):
     ladder from 0 to no upper limit with exactly one of percent or flat on each band."""
     if not bands:
         raise FeeError("Add at least one fee band")
+    for band in bands:
+        # JSON true/false are ints in Python; they are never a valid amount.
+        if any(isinstance(band.get(field), bool) for field in ("lower", "upper", "percent_bp", "flat")):
+            raise FeeError("Fee band amounts must be whole numbers")
     previous_upper = -1
     for index, band in enumerate(bands):
         lower, upper = band.get("lower"), band.get("upper")
