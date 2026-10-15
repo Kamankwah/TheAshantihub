@@ -54,11 +54,11 @@ class FeeRulesView(APIView):
     def post(self, request):
         data = request.data if isinstance(request.data, dict) else {}
         category = data.get("category")
-        if category not in CATEGORY_LABELS:
+        if not isinstance(category, str) or category not in CATEGORY_LABELS:
             return Response({"detail": "Pick products, services or events."}, status=400)
         # submit() validates only a Super Admin's own change; refuse a bad ladder before anything is queued.
         try:
-            fees.validate_bands(data.get("bands") or [])
+            fees.validate_bands(data.get("bands") if data.get("bands") is not None else [])
             effective_time(data.get("effective_from"))
         except (fees.FeeError, approvals.ApprovalError) as exc:
             return Response({"detail": getattr(exc, "message", str(exc))}, status=400)
@@ -67,7 +67,7 @@ class FeeRulesView(APIView):
         return _submit(
             request, FEE_RULES_KEY, title=f"Platform fees: {CATEGORY_LABELS[category]}",
             target_type="ledger.feeruleset", target_id=category, target_label=CATEGORY_LABELS[category],
-            payload={"category": category, "bands": data.get("bands") or [], "effective_from": data.get("effective_from")},
+            payload={"category": category, "bands": data.get("bands"), "effective_from": data.get("effective_from")},
             maker_note=str(data.get("note") or ""),
         )
 

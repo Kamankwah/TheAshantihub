@@ -32,7 +32,7 @@ DEFINITIONS = {
 def _definition(key):
     try:
         return DEFINITIONS[key]
-    except KeyError:
+    except (KeyError, TypeError):
         raise SettingError(f"Unknown money setting {key!r}") from None
 
 

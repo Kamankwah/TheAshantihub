@@ -24,7 +24,10 @@ def effective_time(raw):
     now = timezone.now()
     if not raw:
         return now
-    parsed = parse_datetime(str(raw)) if not isinstance(raw, datetime) else raw
+    try:
+        parsed = parse_datetime(str(raw)) if not isinstance(raw, datetime) else raw
+    except ValueError:
+        parsed = None
     if parsed is None:
         raise ApprovalError("Use a full date and time, like 2026-11-01T09:00:00Z, for when it starts.")
     if timezone.is_naive(parsed):

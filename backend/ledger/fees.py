@@ -8,6 +8,9 @@ from django.utils import timezone
 from .models import FeeRuleSet, OrderFeeSnapshot
 
 
+MAX_PESEWAS = 10**12  # same ceiling as the fee-cap setting; keeps every amount inside a BigIntegerField
+
+
 class FeeError(Exception):
     pass
 
@@ -56,12 +59,16 @@ def charged_to_date(owner):
 def validate_bands(bands):
     """Raises FeeError unless `bands` (dicts with lower/upper/percent_bp/flat) form a complete, gap-free
     ladder from 0 to no upper limit with exactly one of percent or flat on each band."""
+    if not isinstance(bands, list) or not all(isinstance(b, dict) for b in bands):
+        raise FeeError("Fee bands must be a list of bands")
     if not bands:
         raise FeeError("Add at least one fee band")
     for band in bands:
         # JSON true/false are ints in Python; they are never a valid amount.
         if any(isinstance(band.get(field), bool) for field in ("lower", "upper", "percent_bp", "flat")):
             raise FeeError("Fee band amounts must be whole numbers")
+        if any(isinstance(band.get(f), int) and band[f] > MAX_PESEWAS for f in ("lower", "upper", "flat")):
+            raise FeeError(f"A fee band amount cannot exceed {MAX_PESEWAS} pesewas")
     previous_upper = -1
     for index, band in enumerate(bands):
         lower, upper = band.get("lower"), band.get("upper")

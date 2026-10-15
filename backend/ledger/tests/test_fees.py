@@ -83,6 +83,15 @@ class ValidateBandsTests(SimpleTestCase):
     def test_empty_is_refused(self):
         self.bad([])
 
+    def test_non_list_or_non_dict_bands_are_refused(self):
+        for spec in ([1], ["x"], [None], "abc", {"a": 1}, 5, True):
+            self.bad(spec)
+
+    def test_amounts_above_the_ceiling_are_refused(self):
+        big = fees.MAX_PESEWAS + 1
+        self.bad([{"lower": 0, "upper": None, "percent_bp": None, "flat": big}])
+        self.bad([{"lower": 0, "upper": big, "percent_bp": 1, "flat": None}, {"lower": big + 1, "upper": None, "percent_bp": 1, "flat": None}])
+
     def test_json_booleans_are_not_numbers(self):
         self.bad([{"lower": False, "upper": None, "percent_bp": 100, "flat": None}])
         self.bad([{"lower": 0, "upper": None, "percent_bp": True, "flat": None}])

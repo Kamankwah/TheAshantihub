@@ -7,6 +7,7 @@ from rest_framework.test import APIClient
 
 from accounts.testing import make_staff, staff_token
 from approvals import services as approvals
+from approvals.models import ApprovalRequest
 from ledger import fees, settings_store
 from ledger.models import FeeRuleSet, MoneySetting
 
@@ -52,6 +53,25 @@ class FeeRulesTests(GovernanceBase):
         bad = [{"lower": 5, "upper": None, "percent_bp": 100, "flat": None}]
         response = self.client.post("/api/ledger/fees/", {"category": "product", "bands": bad}, format="json")
         self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(ApprovalRequest.objects.count(), 0)
+
+    def test_malformed_bodies_are_400_never_500(self):
+        self.as_staff(self.accountant)
+        big = 10**12 + 1
+        for bands in ([1], ["x"], [None], "abc", {"a": 1}, 5, True,
+                      [{"lower": 0, "upper": None, "percent_bp": None, "flat": big}],
+                      [{"lower": 0, "upper": big, "percent_bp": 1, "flat": None}, {"lower": big + 1, "upper": None, "percent_bp": 1, "flat": None}]):
+            response = self.client.post("/api/ledger/fees/", {"category": "product", "bands": bands}, format="json")
+            self.assertEqual(response.status_code, 400, (bands, response.content))
+        for category in (["product"], {}, 5):
+            response = self.client.post("/api/ledger/fees/", {"category": category, "bands": TIERS}, format="json")
+            self.assertEqual(response.status_code, 400, category)
+        bad_date = "2026-13-45T10:00:00"
+        self.assertEqual(self.client.post("/api/ledger/fees/", {"category": "product", "bands": TIERS, "effective_from": bad_date}, format="json").status_code, 400)
+        self.assertEqual(self.client.post("/api/ledger/settings/", {"key": "fee_cap_pesewas", "value": 5, "effective_from": bad_date}, format="json").status_code, 400)
+        for key in (["holdback"], {}):
+            self.assertEqual(self.client.post("/api/ledger/settings/", {"key": key, "value": 1}, format="json").status_code, 400)
+        self.assertEqual(ApprovalRequest.objects.count(), 0)
 
     def test_an_unknown_category_is_refused(self):
         self.as_staff(self.accountant)
