@@ -1,6 +1,6 @@
 # Wallets, Escrow, Platform Fees, Stock Offers and OTP Security — Design
 
-**Status:** Design approved in conversation 2026-10-15; written spec awaiting owner review.
+**Status:** Approved 2026-10-15. Stage 1 plan: docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md.
 **Scope:** One system, built in the order given in §11. Not yet implemented.
 **Basis:** The owner's brief, plus the decisions in §1. This spec was written from the brief
 alone and has **not** yet been reconciled with the existing code (payments, billing, commission,
@@ -237,3 +237,20 @@ Found while writing the Stage 1 plan (`docs/superpowers/plans/2026-10-15-ledger-
 - **D6 Release.** Owner decision (2026-10-15): no timed hold-back. Release follows Support's verification call (§4).
 - **D7 Scope.** Stage 1 covers product orders only; services, events and stays follow in Plan 1b.
 - **D8 Store pickup.** Collected at the AshantiHub office within 24 hours, confirmed by a new Pickup Desk role (§4.3).
+
+### Before SUBSCRIPTIONS_ENABLED is turned off (Plan 1F)
+
+Follow-ups found in review; none is reachable while the switch stays on.
+
+- (a) `billing.clock.subscription_state` still derives "overdue" from `current_period_end` when the clock is stopped. That makes `marketing/featured.py` add a `subscription_overdue` blocker (so `book()` refuses and `public_listings()` drops paid promotions) and shows owners a renew banner they cannot use.
+- (b) `_hero_days_for` (`listings/views.py`) returns 0 for an owner with no subscription, so approved hero media expires at once.
+- (c) `listings/moderation_checks.py` shows FAIL "No subscription." on hero and promotion review.
+- (d) Businesses already paused stay hidden (`listings/visibility.py`) with no way to renew.
+- (e) Drafts can be created before `business_kind` is set.
+- (f) The registration UI must use `POST /api/billing/business-kind/` instead of plan selection.
+
+### Stage 3 carry-forward
+
+- Release pays every unreleased snapshot, so a refund resolution (skipped-stop "refund these lines only", or money-back) followed by "matches" would pay the vendor in full. Stage 3 must reverse those snapshots (`OrderFeeSnapshot.reversed_at`), or release must leave out disputed lines.
+- The money-releasing POST has no password re-check (`RequiresSudo`). Owner question: should it?
+- The waived delivery fee never reaches the ledger.
