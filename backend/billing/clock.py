@@ -380,6 +380,10 @@ def tick(now=None):
     and day-13 reminders, pause at the start of day 15 — the pause only while
     SUBSCRIPTION_PAUSE_ENABLED is on. Idempotent."""
     now = now or timezone.now()
+    from .switch import subscriptions_enabled
+
+    if not subscriptions_enabled():
+        return {"overdue": 0, "reminders": 0, "paused": 0}
     return {
         "overdue": _each(_overdue_due(now), _mark_overdue, now),
         "reminders": _each(_reminder_due(now), _send_reminder, now),

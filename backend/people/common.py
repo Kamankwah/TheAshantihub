@@ -10,7 +10,7 @@ from accounts.models import Role, StaffTwoFactor
 # The order the canvases list roles in.
 ROLE_ORDER = [
     Role.SUPER_ADMIN, Role.OPERATIONS, Role.DELIVERY_MANAGER, Role.ACCOUNTANT, Role.MARKETING,
-    Role.SUPPORT, Role.SCOUT, Role.DISPATCH, Role.COSIGNER,
+    Role.SUPPORT, Role.SCOUT, Role.DISPATCH, Role.PICKUP_DESK, Role.COSIGNER,
 ]
 ROLE_LABELS = dict(Role.NAME_CHOICES)
 

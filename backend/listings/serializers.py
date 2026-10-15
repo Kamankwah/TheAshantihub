@@ -196,6 +196,12 @@ PRODUCT_ANSWER_MESSAGES = {
 }
 
 
+def subscriptions_on():
+    from billing.switch import subscriptions_enabled
+
+    return subscriptions_enabled()
+
+
 def validate_listing_for_owner(owner, data, *, instance=None, initial_data=None):
     """The rules a business's listing must meet — shared by the owner's own
     form (OwnerListingSerializer.validate) and a scout's proposed listing
@@ -230,7 +236,7 @@ def validate_listing_for_owner(owner, data, *, instance=None, initial_data=None)
             {"category": f"Your business is registered for {profile.business_kind} listings only."}
         )
 
-    if instance is None:
+    if instance is None and subscriptions_on():
         subscription = getattr(owner, "subscription", None)
         if (
             subscription is None

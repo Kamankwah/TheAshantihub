@@ -177,6 +177,22 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
 
 - **Distances come from `routing.service`.** Never call `delivery.services.distance_estimate_km` for a figure shown to a user; use `routing.service.leg`/`legs_from`/`legs_between`, which return the road route or the labelled estimate (`basis`). Only `routing/client.py` talks to OSRM and converts lat/lng to lng/lat. The one exception until stage 2: `delivery.dispatching.rank` (the Dispatch queue ranking and its radius check) still uses the straight-line estimate and says so in its `distance_basis`. The service area is `routing.region.in_service_area` (an approximate rectangle, see its docstring).
 - **Multi-stop delivery.** Stop codes and wrong tries live on `PickupStop`; stop 1 is mirrored into the assignment's legacy fields (deliveries assigned before the release keep one stop and the old code). `stops.stops_of` never writes; write paths call `ensure_stops` first and must not prefetch `stops` on a locked row. Skip evidence (rider pin, time, note) lives on the append-only `skipped_stop` `DeliveryEvent` rows and survives a reset; a job with every shop skipped fails as `all_stops_skipped` and is requeued by resetting the same OneToOne row.
+- **The ledger (`ledger/`) is append-only and integer-pesewa.** A balance changes only inside `ledger.posting.post`
+  (balanced, idempotent on its key, accounts locked in primary-key order); Postgres triggers refuse `UPDATE`/`DELETE`
+  on journals and lines, so a correction is a new reversing journal. Convert money only through `ledger.money`. Fees
+  are snapshotted per order, vendor and category at payment (`OrderFeeSnapshot`): release reads the snapshot, never the
+  rules now, and `fees.quote` caps a fee at its line value. **No timer releases a vendor's money:** release happens only
+  on Support's positive call, `ledger.verification.record`, after the goods reached the customer (rider delivery or
+  pickup-desk collection) and the receipt is confirmed. With the ledger on, `verification.record` answers 409 and rolls
+  back if a verified order could not be released. The customer's phone appears only on the `orders.verify`-gated
+  Support list, never on the Pickup Desk queue. Fee rules and money settings change only through the
+  `ledger.fee_rules` / `ledger.setting` approval kinds (Super Admin approves; Accounting proposes). `LEDGER_ENABLED`
+  (default off) gates all recording, and `SUBSCRIPTIONS_ENABLED` (default on) must stay on until the frontend
+  registration change (Plan 1F) ships. Held customer money is exactly Σ Vendor Pending + Σ Delivery payable (no
+  order-escrow account). Follow-ups before flipping `SUBSCRIPTIONS_ENABLED` / `LEDGER_ENABLED` live are in
+  `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` section 13.
+- **Pickup Desk** is the `pickup_desk` staff role with the single permission `pickup.confirm` (store-pickup queue and
+  collection); only a Super Admin invites it.
 
 ## Test-fixture gotcha
 

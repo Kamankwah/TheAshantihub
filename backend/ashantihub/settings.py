@@ -117,6 +117,7 @@ INSTALLED_APPS = [
     "marketplace",
     "people",
     "commission",
+    "ledger",
     "marketing",
     "insights",
     "staffsecurity",
@@ -308,6 +309,16 @@ OWNER_TERMS_VERSION = "September 2026"
 # message counts down to a pause. Turn it on only when real payments (the
 # planned in-app wallet) can renew automatically.
 SUBSCRIPTION_PAUSE_ENABLED = env.bool("SUBSCRIPTION_PAUSE_ENABLED", default=False)
+
+# The ledger (docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md). Off by default: with it off
+# no journal is posted and no fee is snapshotted, so payments behave exactly as before. Turn it on per
+# environment once staging has been checked. Read at call time through ledger.escrow.enabled().
+LEDGER_ENABLED = env.bool("LEDGER_ENABLED", default=False)
+
+# Subscriptions as a product. On (default) = today's behaviour. Off = plans are hidden, nothing can be bought or
+# renewed, the billing clock stops, and listing creation no longer needs a plan. Keep it ON until the frontend
+# registration change (Plan 1F) ships, because registration still asks for a plan. See billing/switch.py.
+SUBSCRIPTIONS_ENABLED = env.bool("SUBSCRIPTIONS_ENABLED", default=True)
 
 # Checkout promotions (marketing flash sales and coupons). Off by default (owner
 # decision, 2026-10-13): staff can draft, edit and schedule both in the Marketing

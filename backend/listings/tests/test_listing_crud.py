@@ -297,6 +297,45 @@ class ListingCRUDTests(TestCase):
         self.assertEqual(response.status_code, 400, response.content)
         self.assertIn("max_active_listings", response.json())
 
+    @override_settings(SUBSCRIPTIONS_ENABLED=False)
+    def test_frozen_subscriptions_let_an_owner_without_one_create_a_listing(self):
+        no_sub_owner = BusinessOwner.objects.create(
+            full_name="No Sub Owner", login_phone="+233207445588", password_hash="x",
+        )
+        BusinessOwnerProfile.objects.create(
+            business_owner=no_sub_owner, ghana_card_number="GHA-333444555-6",
+            gps_address="AK-039-5061", business_contact_phone="+233207445588",
+            is_formal=False, default_payout_method="momo", payout_momo_network="MTN",
+            payout_momo_number="+233207445588", payout_momo_name="No Sub Owner",
+        )
+        self._auth(no_sub_owner)
+        response = self.client.post(
+            "/api/listings/mine/",
+            {"category": self.hotels.id, "zone": self.manhyia.id, "name": "Open", "description": "D."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+
+    @override_settings(SUBSCRIPTIONS_ENABLED=False)
+    def test_frozen_subscriptions_have_no_listing_cap(self):
+        basic_plan = SubscriptionPlan.objects.get(tier="product_basic")
+        self.owner.subscription.plan = basic_plan
+        self.owner.subscription.save()
+        for i in range(basic_plan.max_active_listings):
+            Listing.objects.create(
+                business_owner=self.owner, category=self.shops, zone=self.manhyia,
+                name=f"Published {i}", description="D.", contact_phone="+233207445566",
+                status=Listing.PUBLISHED,
+            )
+        self._auth(self.owner)
+        response = self.client.post(
+            "/api/listings/mine/",
+            {"category": self.shops.id, "zone": self.manhyia.id, "name": "Past The Cap", "description": "D.",
+             "has_warranty": False, "has_expiry": False, "return_policy": "No returns."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+
     def test_unlimited_plan_never_blocks_on_listing_count(self):
         unlimited_plan = SubscriptionPlan.objects.get(tier="product_unlimited")
         self.assertIsNone(unlimited_plan.max_active_listings)
