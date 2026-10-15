@@ -20,7 +20,7 @@
 | D4 | SMS | `OTP_SMS_PROVIDER`: `simulated` (default, sends nothing, keeps nothing), `hubtel` (reuses `marketing.providers.hubtel_sms.HubtelSmsProvider` with the `HUBTEL_SMS_*` keys and an Approved Sender ID), `locmem` (forced under `manage.py test`; texts kept in `otp.senders.sms_outbox` like `mail.outbox`). | A real Hubtel SMS client already exists (unverified against a live account, see its docstring). No new provider API is invented. Email goes through Django mail like every other AshantiHub email. |
 | D5 | SMS-spend alert | Count today's `OtpEvent(kind=sent, channel=sms)`; at the threshold, `notifications.services.notify_staff_role("security.manage", "otp_sms_spend", …)` once a day (advisory lock + an `sms_alert` event) | `fraud.raise_flag` cases are about a business or a staff member; `staff_tasks` are work items. This is a cost alarm for Super Admin. |
 | D6 | Rate limits | DRF `ScopedRateThrottle` scopes `otp_send` 5/min and `otp_verify` 10/min (the repo's mechanism, a per-process burst guard) **plus** hourly limits counted from `OtpEvent` rows: 5 per phone/email, 10 per account, 20 per IP | The default cache is local-memory per process (`settings.CACHES`), so a cache counter would not hold across gunicorn workers; database counts do. |
-| D7 | Response shapes | Mirror the existing staff 2-step (`accounts/views.py` `StaffLoginView`): `{"otp_required": true, "mfa_token", "channels"}` for a code, `{"two_factor_required": true, "mfa_token"}` for an authenticator; an expired ticket is `400 {"detail", "code": "challenge_expired"}` | The staff shape is a flag key + `mfa_token` (not `challenge` + `stage`); the frontend's staff 2-step screen can be reused. |
+| D7 | Response shapes | Mirror the existing staff 2-step (`accounts/views.py` `StaffLoginView`): `{"otp_required": true, "mfa_token", "channels"}` for a code, `{"two_factor_required": true, "mfa_token"}` for an authenticator; an expired ticket is `400 {"detail", "code": "challenge_expired"}` | The staff shape is a flag key + `mfa_token` (not `challenge` + `stage`); the frontend's staff 2-step screen can be reused, posting to /api/otp/sign-in/verify/. |
 | D8 | Step-up tokens | Random token, SHA-256 kept in `StepUpToken`, single use, 5 minutes, bound to action + the access token's `jti`, sent as `X-Step-Up-Token`; refused with `403 {"code": "step_up_required", "action"}` (same pattern as `sudo_required`) | Single use needs server state. Consumed inside the view's `transaction.atomic()`, so a change refused by validation keeps the token. |
 | D9 | Sensitive endpoints that exist now | `PATCH /api/accounts/business-owners/me/payout/` (`payout_destination`), `POST /api/accounts/customers/me/secondary-email/` and `/secondary-phone/` (`contact_change`: a verified secondary contact becomes a code channel), and the new authenticator settings (`authenticator_change`) | There is **no** authenticated change-password or change-primary-phone/email endpoint (customer `email`/`phone` are read-only in `CustomerProfileSerializer`; owners' `login_phone` is not editable by them). Password reset is unauthenticated, protected by the emailed link; it now revokes trusted devices. `password_change` and `withdrawal` are defined for later endpoints (Stage 3). |
 | D10 | Staff | `accounts.two_factor` (TOTP + recovery codes) is unchanged and checked first; staff without an authenticator stage get the OTP at every sign-in when `OTP_SIGNIN_ENFORCED`; staff step-up stays password re-entry (`RequiresSudo`); staff activation (emailed invite link) is unchanged | The invite link already proves the email; sudo already guards staff sensitive actions. |
@@ -33,15 +33,15 @@
 - Codes are exactly **6 digits** from `secrets` (`f"{secrets.randbelow(10**6):06d}"`), stored only as `salted_hmac("otp.code", f"{salt}:{code}").hexdigest()` with a 16-byte random hex salt, compared with `hmac.compare_digest`.
 - A code lives **5 minutes**; **5 tries** per challenge (a resend rotates the code and keeps the count); **60-second** resend cooldown.
 - Hourly send limits counted from `OtpEvent` (`sent` + `send_failed`): **5 per phone/email, 10 per account, 20 per IP**. DRF scopes: `otp_send` **5/min**, `otp_verify` **10/min**.
-- Lock: **5 wrong codes** (texted, emailed or authenticator) for one account within **15 minutes** lock sending and checking for that account for **15 minutes**. The lock and the hourly limits answer the same `429 {"detail": "Too many tries. Wait a while, then try again.", "code": "try_later"}`.
+- Lock: **5 wrong codes** (texted, emailed or authenticator) for one account within **15 minutes** lock sending and checking for that account while 5 or more of its wrong codes fall inside the last 15 minutes. The lock and the hourly limits answer the same `429 {"detail": "Too many tries. Wait a while, then try again.", "code": "try_later"}`.
 - Customer gap default **30 days** (editable 1–365); SMS-spend alert default **500 texts a day** (editable 1–1,000,000). Both on `staffsecurity.SecurityPolicy`.
 - Sign-in ticket (`mfa_token`) lives **600 s** and is bound to a random nonce and the password-hash fingerprint. Step-up token: **5 minutes**, single use, bound to action + access-token `jti`.
-- Switches, all default **off**: `OTP_SIGNIN_ENFORCED`, `OTP_STEP_UP_ENFORCED`, `OTP_SIGNUP_VERIFICATION_ENFORCED`. With all off, every existing test passes unchanged and every existing response body is identical.
+- Switches, all default **off**: `OTP_SIGNIN_ENFORCED`, `OTP_STEP_UP_ENFORCED`, `OTP_SIGNUP_VERIFICATION_ENFORCED`. With all off, every existing test passes unchanged and every existing sign-in, registration, payout and secondary-contact response body is identical (the staff Security policy GET/PATCH gains an "otp" block).
 - Never store or log a code, a device token or a step-up token in clear (random tokens: SHA-256). Never log a message body. New secret field names go in `backend/ashantihub/sentry.py` `EXTRA_DENYLIST`.
 - Destinations are normalised: phones through `accounts.phones.normalize_gh_phone` (`+233…`), emails stripped and lower-cased. Shown only through `accounts.phones.mask_phone` / `accounts.claims.mask_email`.
 - Public OTP endpoints take a signed `mfa_token`, never a phone/email, and set `authentication_classes = []`. Refusals are returned as a `Response`, never raised; never call `otp.service.verify` inside an atomic block that a refusal would roll back (the counted try would be undone).
 - `otp.step_up.require(request, ACTION)` is called **inside** the `transaction.atomic()` block that makes the change.
-- New OTP views are `activity_exempt = True` (their bodies carry codes; they keep `OtpEvent`), except the staff recovery request, which `approvals.submit()` records.
+- New OTP write views are `activity_exempt = True` (their bodies carry codes; they keep `OtpEvent`), except the staff recovery request, which `approvals.submit()` records.
 - Tests: Django `TestCase`/`APIClient`; `cache.clear()` in `setUp` of any class that calls the API; `otp.senders.sms_outbox.clear()` where texts are read; move time by back-dating rows with `.update(...)` or patching a module constant (as `accounts/tests/test_two_factor.py` patches `CHALLENGE_MAX_AGE`); TOTP time via `mock.patch("accounts.two_factor._clock")`; threads only in Task 5's `TransactionTestCase` (`serialized_rollback = True`).
 - Commands run from the worktree root `/home/righteoushack/projects/TheAshantihub/.worktrees/otp-security`: `docker compose -p otp1 run --rm web python manage.py test <label> --noinput`. Never run two docker commands at once.
 - Migrations: the accounts leaf today is `0052_seed_pickup_desk_role`. This plan adds `staffsecurity/migrations/0003_securitypolicy_otp_settings.py`, `otp/migrations/0001_initial.py`, `otp/migrations/0002_accountauthenticator.py` (both generated by `makemigrations`) and `accounts/migrations/0053_seed_otp_recovery_permission.py` (hand-written).
@@ -399,9 +399,20 @@ class OtpPolicyTests(SecurityBase):
         self.assertEqual((policy.otp_customer_gap_days(), policy.otp_sms_daily_alert()), (14, 800))
         self.assertTrue(policy.requires_two_factor("support"))
         event = ActivityEvent.objects.get(verb="security.otp_policy_changed")
-        self.assertEqual(event.before, {"otp_customer_gap_days": 30, "otp_sms_daily_alert": 500})
-        self.assertEqual(event.after, {"otp_customer_gap_days": 14, "otp_sms_daily_alert": 800})
+        # activity.services.redact blanks any key containing "otp", so the event drops the prefix.
+        self.assertEqual(event.before, {"customer_gap_days": 30, "sms_daily_alert": 500})
+        self.assertEqual(event.after, {"customer_gap_days": 14, "sms_daily_alert": 800})
         self.assertFalse(ActivityEvent.objects.filter(verb="security.policy_changed").exists())
+
+    def test_another_super_admin_is_told_of_an_otp_change(self):
+        from accounts.testing import make_staff
+        from notifications.models import Notification
+
+        second = make_staff("super_admin", "second@example.com")
+        self.as_staff(self.boss, sudo=True)
+        self.client.patch(URL, {"otp_customer_gap_days": 14}, format="json")
+        self.assertIn("Days a trusted customer device", Notification.objects.get(staff=second, kind="security_policy_changed").body)
+        self.assertFalse(Notification.objects.filter(staff=self.boss, kind="security_policy_changed").exists())
 
     def test_saving_the_same_value_records_nothing(self):
         self.as_staff(self.boss, sudo=True)
@@ -569,10 +580,14 @@ with
                 policy.set_otp(otp_values, request.user)
                 changed = sorted(key for key, value in otp_values.items() if before_otp[key] != value)
                 if changed:
+                    summary = "; ".join(f"{policy.OTP_LABELS[k]}: {before_otp[k]} → {otp_values[k]}" for k in changed)
+                    for other in StaffUser.objects.filter(role__name=Role.SUPER_ADMIN, is_active=True).exclude(pk=request.user.pk):
+                        notify_staff(other, "security_policy_changed", f"{request.user.full_name} changed the one-time-code settings",
+                                     body=summary, link="security", icon="🔐")
                     events.append({
                         "verb": "security.otp_policy_changed", "target_label": "One-time codes",
-                        "summary": "; ".join(f"{policy.OTP_LABELS[k]}: {before_otp[k]} → {otp_values[k]}" for k in changed),
-                        "before": {k: before_otp[k] for k in changed}, "after": {k: otp_values[k] for k in changed},
+                        "summary": summary,
+                        "before": {k.removeprefix("otp_"): before_otp[k] for k in changed}, "after": {k.removeprefix("otp_"): otp_values[k] for k in changed},
                     })
             # Last, because record() holds the chain lock until commit.
             for event in events:
@@ -1397,7 +1412,7 @@ class CodeTests(ServiceBase):
         challenge = self.send()
         code = last_sms_code()
         self.assertRegex(code, r"^\d{6}$")
-        self.assertEqual((len(challenge.code_hash), len(challenge.salt)), (64, 32))
+        self.assertEqual((len(challenge.code_hash), len(challenge.salt)), (40, 32))  # salted_hmac defaults to SHA-1
         self.assertEqual(challenge.code_hash, service.hash_code(challenge.salt, code))
         # No text column of any OTP row holds the code (the phone number and the hex hash/salt are left out
         # only because a run of six digits could appear in them by chance).
@@ -1612,8 +1627,8 @@ Expected: ERROR — `cannot import name 'service' from 'otp'`.
 """The one OTP service (spec §9). A code is 6 digits from `secrets`, kept only as a salted HMAC, alive 5 minutes,
 with 5 tries; a resend rotates it after a 60-second wait and keeps the tries. Sends are limited per hour per phone
 or email, per account and per IP, counted from the audit trail (otp.models.OtpEvent) so the limits hold across
-every server process. Five wrong codes for an account inside 15 minutes lock both sending and checking for 15
-minutes; the lock and the hourly limits answer the same words, so nobody can tell them apart.
+every server process. An account is locked for both sending and checking while 5 or more of its
+wrong codes fall inside the last 15 minutes; the lock and the hourly limits answer the same words, so nobody can tell them apart.
 
 verify() counts a try before comparing and must never run inside a transaction that is rolled back when it
 refuses (the counted try would be undone): the views call it outside any atomic block and answer refusals as a
@@ -2658,7 +2673,7 @@ with
     path("api/otp/", include("otp.urls")),
 ```
 
-- [ ] **Step 5: Wire the account views** — six edits in `backend/accounts/views.py`.
+- [ ] **Step 5: Wire the account views** — seven edits ((a)–(f) and the _device_token helper) in `backend/accounts/views.py`.
 
 (a) Imports — replace
 
@@ -4264,6 +4279,15 @@ class RecoveryTests(TestCase):
             approvals.approve(approval_id, self.boss)
         self.assertTrue(authenticator.is_enabled(self.customer))
 
+    def test_a_contact_swapped_for_one_with_the_same_mask_still_makes_it_stale(self):
+        self.as_staff(self.support)
+        approval_id = self.ask().json()["approval_id"]
+        local, domain = self.customer.email.split("@")
+        self.customer.email = f"{local[:2]}zzz{local[-1:]}@{domain}"  # the shown hint is unchanged; the real address is not
+        self.customer.save(update_fields=["email"])
+        with self.assertRaises(approvals.StaleRequest):
+            approvals.approve(approval_id, self.boss)
+
     def test_a_super_admin_request_needs_the_password_and_applies_at_once(self):
         self.as_staff(self.boss)
         self.assertEqual(self.ask().json()["code"], "sudo_required")
@@ -4316,10 +4340,12 @@ with the password re-entered (a Super Admin's own request applies at once). Appl
 turns the authenticator app off, restarts the wrong-code count (an OtpEvent "recovered") and sends a one-hour
 password-reset link to a contact the account already has - never to a new one: a contact changes only through the
 existing staff edit. Staff sign-ins are not recovered here; a Super Admin resets their 2-step sign-in."""
+import json
+
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
-from django.utils.crypto import get_random_string
+from django.utils.crypto import get_random_string, salted_hmac
 
 from accounts.emails import send_password_reset_email
 from accounts.models import BusinessOwner, PasswordResetToken
@@ -4369,7 +4395,11 @@ def current_state(request):
         account = check_payload(request.payload)
     except ApprovalError:
         return {"exists": False}
-    return {"name": account.full_name, "contacts": {c: hint(c, d) for c, d in contacts(account).items()}}
+    return {
+        "name": account.full_name,
+        "contacts": {c: hint(c, d) for c, d in contacts(account).items()},
+        "contacts_digest": salted_hmac("otp.recovery.contacts", json.dumps(contacts(account), sort_keys=True)).hexdigest(),
+    }
 
 
 def validate(request):
@@ -4609,7 +4639,7 @@ with
   collection); only a Super Admin invites it.
 - **One-time codes (`otp/`).** One OTP service for every account kind: 6-digit codes kept only as a salted HMAC,
   5 minutes, 5 tries per code (a resend keeps the count), 60 s resend wait, hourly send limits per phone/email,
-  account and IP counted from `OtpEvent` (so they hold across processes), and a 15-minute lock after 5 wrong codes
+  account and IP counted from `OtpEvent` (so they hold across processes), and a lock while 5 or more wrong codes fall inside the last 15 minutes
   (texted, emailed or authenticator) that answers the same `try_later` as a limit. Public endpoints take a signed
   `mfa_token` (nonce + password fingerprint), never an identifier; refusals are Responses, never raised - never call
   `otp.service.verify` inside an atomic block a refusal would roll back. Sensitive changes call
@@ -4649,22 +4679,22 @@ with
 | **2** OTP and security | One OTP service, step-up tokens, trusted devices, customer and vendor 2FA. Must precede any wallet going live. Backend: docs/superpowers/plans/2026-10-16-otp-security.md, behind three switches that default off; the screens are Plan 2F. |
 ```
 
-- [ ] **Step 4: Run the whole backend suite**
-
-Run: `docker compose -p otp1 run --rm web python manage.py test --noinput`
-Expected: PASS. If a failure is unrelated to this work, confirm it on the base commit (`git stash push -u -m otp-verify`, re-run the failing label, `git stash apply` by SHA, drop it) and report it rather than fixing it here.
-
-- [ ] **Step 5: Migrations check**
-
-Run: `docker compose -p otp1 run --rm web python manage.py makemigrations --check --dry-run`
-Expected: `No changes detected`.
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add backend/CLAUDE.md docs
 git commit -m "docs(otp): correctness core, spec status, stage index"
 ```
+
+- [ ] **Step 5: Run the whole backend suite**
+
+Run: `docker compose -p otp1 run --rm web python manage.py test --noinput`
+Expected: PASS. If a failure is unrelated to this work, confirm it on the base commit (`git switch --detach 2eee02f`, re-run the failing label, `git switch feature/otp-security`) and report it rather than fixing it here.
+
+- [ ] **Step 6: Migrations check**
+
+Run: `docker compose -p otp1 run --rm web python manage.py makemigrations --check --dry-run`
+Expected: `No changes detected`.
 
 ---
 
@@ -4672,7 +4702,7 @@ git commit -m "docs(otp): correctness core, spec status, stage index"
 
 | Plan | Scope | Why separate |
 |---|---|---|
-| **2F** Frontend | Code entry screen (channel chooser with hints, resend timer, "send by email instead"), trusted-device checkbox and keeping `device_token`, step-up prompt on `step_up_required` with one retry carrying `X-Step-Up-Token`, authenticator settings for customers and vendors, security overview and device list, Super Admin's two OTP numbers on the Security screen, Support's recovery request form, the `otp_sms_spend` notice. | Must ship before any switch is turned on; the current frontend expects a token from every login. |
+| **2F** Frontend | Code entry screen (a customer or vendor login answering `{"two_factor_required", "mfa_token"}` posts the code or recovery code to `/api/otp/sign-in/verify/`, not the staff `/api/accounts/staff/login/two-factor/`; channel chooser with hints, resend timer, "send by email instead"), trusted-device checkbox and keeping `device_token`, step-up prompt on `step_up_required` with one retry carrying `X-Step-Up-Token`, authenticator settings for customers and vendors, security overview and device list, Super Admin's two OTP numbers on the Security screen, Support's recovery request form, the `otp_sms_spend` notice. | Must ship before any switch is turned on; the current frontend expects a token from every login. |
 | **Real SMS** | Hubtel SMS credentials, an Approved Sender ID, then `OTP_SMS_PROVIDER=hubtel`; check the client against a live account; a `core.integrations` card for OTP texts. | Needs credentials and network approval. |
 | **3** Wallet | Step-up on withdrawals and wallet payout-destination changes (`step_up.WITHDRAWAL`, `PAYOUT_DESTINATION`), OTP-confirmed payout destinations and the cooling period (spec §8). | Those endpoints don't exist yet. |
 | **2c** Hardening | Move the customer secondary-contact codes onto the OTP service (drop `demo_code`); authenticated change-password and change-primary-contact endpoints with step-up; a verify-first sign-up (code before the account row) so registration stops revealing taken phones/emails; a staff screen for the OTP audit trail. | Each changes an existing API or needs frontend work. |
