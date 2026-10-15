@@ -15,16 +15,18 @@ cart, accounts, delivery). Reconciliation is the first step of the implementatio
 | 3 | Fee base | Vendor's item subtotal **after discounts, excluding delivery**. |
 | 4 | Delivery | Customer pays delivery **on top** of items. One delivery fee per order, never split across vendors, never borne by the vendor. Goes wholly to the rider (third party) or AshantiHub (company rider). |
 | 5 | Rider commission | **10% reserve held on every delivery credit** to a third-party rider; the other 90% is withdrawable immediately. Reserve is posted to platform income at end of day, with a true-up if the rate changed that day. |
-| 6 | Refund after release | Short **hold-back window** after completion before release. A later approved refund debits vendor Available (may go negative, recovered from future sales); platform fee is returned in proportion. |
+| 6 | Refund after release | **Amended 2026-10-15:** there is no timed hold-back (see row 17). A refund approved after release debits vendor Available (may go negative, recovered from future sales); platform fee is returned in proportion. |
 | 7 | Stock sourcing | **Amazon-style separate offers.** No auto-gathering and no price tolerance. Customer chooses to add other sellers' offers. |
 | 8 | Offer grouping | **Hybrid.** Branded/barcoded products attach to a staff-approved catalogue entry; unbranded/local goods stand alone; services, events and stays are never grouped. |
-| 9 | "Completed" | Per-type trigger with auto-confirm fallback, times editable (§4.2). |
+| 9 | "Completed" | **Amended 2026-10-15:** for products, completion is a person's verification, not a timer (row 17, §4). Services, events and stays are to be specified. |
 | 10 | Security | OTP (SMS or email) **mandatory for everyone**; authenticator-app 2FA **optional**. Risk-based timing (§9). |
 | 11 | Category rates | One editable tier table per category (products, services, events), services and events seeded from product tiers. Stays/bookings count as services. |
 | 12 | Subscriptions | Hidden and frozen behind a switch; existing paid businesses keep access until term end; plan-based limits lifted for all; no refunds. |
 | 13 | Payout destinations | Name-matched to verified name, OTP-confirmed, editable cooling period for new/changed destinations, editable limits. |
 | 14 | Provider charges | Customers pay the **collection charge** (shown as "payment processing"); vendors and riders bear their own **withdrawal charges**. Pass-through at cost; none for wallet payments; collection charge not refunded except on platform/vendor error. |
 | 15 | Low stock | Per-offer threshold with sales-based default (<7 days cover), fallback 5 units; alert once on crossing; sold-out alert at zero; zero-stock offers hidden. |
+| 17 | Release of vendor money (products) | **Owner decision 2026-10-15.** Vendor money is not held for long. Once the product reaches the customer and both the rider and the customer have confirmed, a **Support staff member calls the customer** to check it matches what was bought. A positive result releases the money at once. Otherwise a dispute is raised and settled within **72 hours of purchase**. |
+| 18 | Store pickup | **Owner decision 2026-10-15.** Collected at the AshantiHub office within **24 hours** of purchase. Confirmed by AshantiHub staff in a **new Pickup Desk role**. |
 | 16 | Governance | Super admin or accounts propose, the other approves; logged; applies only to later orders; super admin emergency edit, logged. |
 
 ## 2. Ledger core
@@ -54,8 +56,8 @@ statement and flags differences.
 
 1. **Pay** (MoMo or wallet). Full amount into the order's escrow. The same entry allocates it:
    each vendor's item subtotal to that vendor's Pending; the delivery fee to Delivery payable.
-2. **Finalize** (§4.2), then after the hold-back window **one atomic release entry**, posted in
-   the owner's order: (a) platform fee per vendor (cap applied) and, for a company rider, the
+2. **Release** (§4.1): when Support's verification call is positive, **one atomic release entry**,
+   posted in the owner's order: (a) platform fee per vendor (cap applied) and, for a company rider, the
    delivery fee, to platform income; (b) vendor Available = subtotal − fee; (c) third-party rider:
    90% to Rider balance, 10% to the reserve.
 3. **Refund before release.** Escrow-backed amounts return to the customer wallet.
@@ -110,7 +112,7 @@ MoMo/top-up, a "payment processing" line.
 
 ### 3.3 Governed settings
 
-Fee tables, the cap, the rider commission rate, hold-back windows, auto-confirm times, withdrawal
+Fee tables, the cap, the rider commission rate, the verification-overdue and pickup windows, withdrawal
 limits and the cooling period share one flow: super admin or accounts propose, the other
 approves; each change logs who/when/old/new and takes effect only for orders paid after its
 effective time. Super admin may edit directly in an emergency (logged).
@@ -123,19 +125,25 @@ data are retained so the feature can return.
 
 ## 4. Completion and release
 
-### 4.1 Hold-back window
+### 4.1 Products: release follows a verification call (amended 2026-10-15)
 
-Release to Available occurs a set time after completion (default 24 h, editable).
+No timer releases a vendor's money. For a product order:
 
-### 4.2 Completion triggers (editable times)
+1. **Handed over.** A rider marks the delivery done, or (store pickup) the Pickup Desk marks it collected.
+2. **Receipt confirmed.** The customer confirms it themselves, or Support records the customer's confirmation during the call (so a customer who never taps "confirm" cannot strand the vendor).
+3. **Support verification call.** A Support staff member calls the customer to check the product matches the description. They record one of:
+   - **Matches** → the money is released at once, in the order of §2.2 step 2.
+   - **Does not match** → a dispute is raised, due within **72 hours of purchase**. Nothing is released. When it ends (resolved or rejected), Support records the positive result to release, or the customer is refunded (Stage 3).
+   - **Could not reach** → recorded; the order stays on Support's list and is flagged overdue 72 hours after purchase. Nothing releases on its own.
+4. An **open dispute** blocks release.
 
-- **Products:** delivery confirmed (e.g. a code given to the rider); auto-completes after a set
-  time if the customer does not confirm.
-- **Services:** vendor marks done and customer confirms; auto-confirm after a set time.
-- **Events:** after the event date passes, or on ticket scan.
-- **Stays/bookings:** at check-in or the start date.
+### 4.2 Services, events and stays
 
-Disputes freeze release.
+To be specified once the owner describes their verification (the flow above was described for products). Until then the ledger does not record them (Plan 1b).
+
+### 4.3 Store pickup and the Pickup Desk
+
+A store-pickup order is collected at the AshantiHub office within 24 hours of purchase (editable). A new staff role, **Pickup Desk**, sees the queue (without customers' phone numbers) and marks an order collected. Collection stands in for the rider and the customer's confirmation; Support's call still follows. An order not collected inside the window is flagged overdue; refunding it to the customer's wallet is Stage 3. Only a Super Admin invites this role.
 
 ## 5. Customer wallet and payments
 
@@ -214,6 +222,6 @@ per-transaction limits are editable.
   it, recording any deviation here.
 - **Provider economics:** the platform fee (1% on small sales) may not cover provider charges
   absorbed by AshantiHub on payouts it initiates; review once real rates are known.
-- **Numbers owed by the owner:** services and events tier values, default hold-back and
-  auto-confirm times, cooling period, withdrawal limits, SMS digest thresholds.
+- **Numbers owed by the owner:** services and events tier values, the verification-overdue (72 h)
+  and pickup (24 h) windows, cooling period, withdrawal limits, SMS digest thresholds.
 - **Mixed-category vendor cart and cap:** the cap is cumulative across categories (§1 row 2).

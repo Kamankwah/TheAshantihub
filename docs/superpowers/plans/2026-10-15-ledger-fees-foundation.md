@@ -4,9 +4,9 @@
 
 **Goal:** Build the double-entry ledger, the editable platform-fee engine (with lifetime cap), governed money settings, ledger recording and release for product orders, and the subscription freeze — all on simulated rails, behind switches that default to today's behaviour.
 
-**Architecture:** A new Django app `ledger` owns immutable journal entries (integer pesewas, balanced, idempotent). Orders post a payment journal when `payments.services._finalize_order_checkout` runs and a release journal when a scheduled job finds a completed order past its hold-back window. Fee rules and money settings are versioned rows changed only through the existing `approvals` engine (maker-checker). Everything is gated by `LEDGER_ENABLED` (default off) and `SUBSCRIPTIONS_ENABLED` (default on) so merging changes nothing until each switch is flipped.
+**Architecture:** A new Django app `ledger` owns immutable journal entries (integer pesewas, balanced, idempotent). Orders post a payment journal when `payments.services._finalize_order_checkout` runs. The vendor's money is released by a person, not a timer: once the goods have reached the customer, a Support staff member's verification call records a positive result and the release journal posts at once (a mismatch raises a 72-hour dispute instead). A new Pickup Desk role confirms store-pickup collection. Fee rules and money settings are versioned rows changed only through the existing `approvals` engine (maker-checker). Everything is gated by `LEDGER_ENABLED` (default off) and `SUBSCRIPTIONS_ENABLED` (default on) so merging changes nothing until each switch is flipped.
 
-**Tech Stack:** Django 5.2, DRF, Postgres (triggers), Celery beat, the repo's `approvals` and `activity` apps. Tests: `docker compose run --rm web python manage.py test <label>` from the repo root.
+**Tech Stack:** Django 5.2, DRF, Postgres (triggers), the repo's `approvals` and `activity` apps. Tests: `docker compose run --rm web python manage.py test <label>` from the repo root.
 
 **Spec:** `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` (see §0 below for deviations found while reconciling it with the code).
 
@@ -20,9 +20,10 @@ These were found by reading the existing code; Task 1 records them in the spec.
 | D2 | Separate "Order escrow" account | Not needed: the payment journal allocates straight into Vendor Pending and Delivery payable. | No `order_escrow` account. Held funds are exactly Σ Vendor Pending + Σ Delivery payable. |
 | D3 | Either role proposes, the other approves | `approvals` is maker-checker with a Super Admin approver for money kinds (see `commission/approval_kinds.py`); a Super Admin's own change applies at once and is logged. | Accounting proposes, Super Admin approves; Super Admin can apply directly. Accounting never approves. |
 | D4 | Hubtel gated switch | `settings.PAYMENTS_PROVIDER` is derived from `HUBTEL_CLIENT_ID`. | Unchanged. Ledger records the same either way; no provider code is touched. |
-| D5 | Subscriptions "hidden and frozen" | Listing creation **requires** an active subscription (`listings/serializers.py:236`), and registration's `plan_selection` step also captures `business_kind` (`accounts/models.py:377`, `billing/serializers.py` `StartTrialSerializer`). | Task 9 adds `SUBSCRIPTIONS_ENABLED`, skips both when off, and adds a business-kind endpoint. The frontend registration change is **Plan 1F**; the flag must stay on until 1F ships. |
-| D6 | Completion triggers per type | Products only exist as `Order`s. Door-to-door has `DeliveryAssignment.confirmed_at`/`delivered_at`. **Store-pickup orders have no completion timestamp anywhere.** | Task 8 releases door-to-door orders only. Store-pickup release is an **open decision** (see Open Questions). |
-| D7 | Services, events, stays | They pay through `process_payment` with other kinds (`ticket_purchase`, `service_request`, `booking`). | Out of scope for Stage 1 (product orders only). Plan 1b covers them. |
+| D5 | Subscriptions "hidden and frozen" | Listing creation **requires** an active subscription (`listings/serializers.py:236`), and registration's `plan_selection` step also captures `business_kind` (`accounts/models.py:377`, `billing/serializers.py` `StartTrialSerializer`). | Task 10 adds `SUBSCRIPTIONS_ENABLED`, skips both when off, and adds a business-kind endpoint. The frontend registration change is **Plan 1F**; the flag must stay on until 1F ships. |
+| D6 | Timed hold-back, then auto-confirm | **Owner decision (2026-10-15):** vendor money is not held on a timer. Release happens when Support's verification call is positive. | `holdback_hours` and `product_auto_confirm_hours` are dropped. Task 8 adds `FulfilmentCheck`, the Support endpoints and release on a positive result. |
+| D8 | Store pickup | **Owner decision:** collected at the AshantiHub office within 24 hours of purchase, confirmed by an AshantiHub staff member in a role that does not exist yet. | Task 9 adds the `pickup_desk` role, the `pickup.confirm` permission, the queue and the collect endpoint. |
+| D7 | Services, events, stays | They pay through `process_payment` with other kinds (`ticket_purchase`, `service_request`, `booking`). The owner's verification flow was described for products only. | Out of scope for Stage 1 (product orders only). Plan 1b covers them once the owner says how their completion is verified. |
 
 ## Global Constraints
 
@@ -32,7 +33,9 @@ These were found by reading the existing code; Task 1 records them in the spec.
 - Fee cap is per vendor, **lifetime**, cumulative across categories; blank/None = no cap; the fee that crosses the cap is charged only up to the remainder.
 - Delivery is paid by the customer **on top**, one fee per order, never borne by the vendor; to platform income while all riders are company staff.
 - Journal rows are append-only (enforced by Postgres triggers). A balance is never edited outside `ledger.posting.post`.
-- Defaults owed by the owner and seeded as editable settings: hold-back `24` h, product auto-confirm `72` h, rider commission `1000` bp, cap blank.
+- Defaults seeded as editable settings: verification-overdue `72` h (from purchase), store-pickup window `24` h, rider commission `1000` bp, fee cap blank.
+- **No timer releases a vendor's money.** Release happens only inside `verification.record` on a positive Support outcome. A dispute that is open (any status not in `Dispute.FINAL_STATUSES`) blocks it.
+- Customer contact details (phone) are shown only to Support (`orders.verify`); the Pickup Desk never sees them, and vendors never do.
 - Staff-facing changes to fees/settings go through `approvals.services.submit()`; never write `FeeRuleSet`/`MoneySetting` rows from a view.
 - A new staff endpoint is covered by `StaffActivityMiddleware`; apply handlers call `activity.services.record()` last.
 - Match the repo's style: module docstrings, no type-annotation noise, tests in `<app>/tests/`.
@@ -44,27 +47,34 @@ These were found by reading the existing code; Task 1 records them in the spec.
 3. **Two payments for one vendor racing at the cap:** total fees never exceed the cap. Pinned in Task 7 (serialised by locking the vendor's Pending account).
 4. **Finalizer runs twice** (webhook retry): one journal, one set of snapshots. Pinned in Task 7.
 5. **Fee rules edited after an order is paid:** release uses the snapshot, not the new rules. Pinned in Task 8.
-6. **A dispute is open at release time:** the order is not released. Pinned in Task 8.
+6. **A dispute is open (or ended `rejected` rather than `resolved`):** an open one blocks a positive verification, and a rejected one no longer does. Pinned in Task 8.
+7. **The customer never taps "confirm receipt":** Support can record it on the call, so the vendor is not stuck. Pinned in Task 8.
+8. **A pickup order is verified before anyone collected it, or a door-to-door order before the rider delivered it:** refused with 409, nothing moves. Pinned in Tasks 8 and 9.
 
-## Open Questions for the owner (do not block Tasks 1–7)
+## Assumptions to confirm (decided here, cheap to change)
 
-- **Q1 (blocks store-pickup release):** a store-pickup order has no "collected" timestamp. When does it complete? Options: staff/vendor marks it collected (needs a new field and endpoint), or it auto-completes N hours after payment.
-- **Q2:** auto-confirm default is a placeholder of 72 h; confirm or change.
+- **A1 — customer confirmation.** You said both the rider and the customer confirm delivery. The plan requires the rider's delivery mark and **either** the customer's own confirmation **or** Support recording it on the verification call, so a customer who never taps "confirm" cannot strand the vendor's money.
+- **A2 — pickup orders are also verified by a Support call** after the desk marks them collected (same flow as delivery).
+- **A3 — a customer Support cannot reach** is recorded as "could not reach"; the order stays on Support's list, flagged overdue 72 hours after purchase. Nothing releases automatically.
+- **A4 — a mismatch** raises a dispute with `answer_due_at` = purchase + 72 hours. After it ends (resolved or rejected), Support records the positive result to release. A customer refund after a dispute is Stage 3.
+- **A5 — an uncollected pickup order** is only flagged overdue after 24 hours in Stage 1. Refunding it to the customer's wallet is Stage 3.
+- **A6 — only a Super Admin invites a Pickup Desk member** (no invite rule is added).
 
 ## File Structure
 
 Create:
-- `backend/ledger/__init__.py`, `apps.py`, `models.py`, `money.py`, `posting.py`, `fees.py`, `settings_store.py`, `escrow.py`, `approval_kinds.py`, `views.py`, `urls.py`, `tasks.py`
-- `backend/ledger/migrations/0001_initial.py` (generated), `0002_append_only_triggers.py`, `0003_seed_defaults.py`
-- `backend/accounts/migrations/0049_seed_ledger_permissions.py`
+- `backend/ledger/__init__.py`, `apps.py`, `models.py`, `money.py`, `posting.py`, `fees.py`, `settings_store.py`, `escrow.py`, `verification.py`, `approval_kinds.py`, `views.py`, `urls.py`
+- `backend/ledger/migrations/0001_initial.py` (generated), `0002_append_only_triggers.py`, `0003_fee_models.py`, `0004_seed_default_fee_rules.py`, `0005_moneysetting.py`, `0006_fulfilmentcheck.py`
+- `backend/accounts/migrations/0049_seed_ledger_permissions.py`, `0050_seed_order_verify_permission.py`, `0051_alter_role_name.py`, `0052_seed_pickup_desk_role.py`
 - `backend/billing/switch.py`
-- `backend/ledger/tests/__init__.py`, `test_money.py`, `test_models.py`, `test_posting.py`, `test_fees.py`, `test_settings_store.py`, `test_governance.py`, `test_order_payment.py`, `test_release.py`
+- `backend/ledger/tests/__init__.py`, `test_money.py`, `test_models.py`, `test_posting.py`, `test_fees.py`, `test_settings_store.py`, `test_governance.py`, `test_order_payment.py`, `test_verification.py`, `test_pickup.py`
 - `backend/billing/tests/test_subscription_freeze.py`
 
 Modify:
-- `backend/ashantihub/settings.py` (apps, flags, beat)
+- `backend/ashantihub/settings.py` (apps, flags)
 - `backend/ashantihub/urls.py`
 - `backend/payments/services.py` (finalizer hook)
+- `backend/accounts/models.py` (`Role.PICKUP_DESK`), `backend/accounts/tests/test_roles_seed.py`, `docs/STAFF_ROLES.md`
 - `backend/listings/serializers.py` (listing creation gate)
 - `backend/accounts/models.py` (`compute_registration_step`)
 - `backend/billing/views.py`, `billing/urls.py`, `billing/clock.py`
@@ -206,8 +216,9 @@ Found while writing the Stage 1 plan (`docs/superpowers/plans/2026-10-15-ledger-
 - **D2 No order-escrow account.** The payment journal allocates directly into Vendor Pending and Delivery payable (equivalent, one fewer pass-through).
 - **D3 Governance.** Accounting proposes and Super Admin approves (existing maker-checker); Super Admin may apply directly (logged). Accounting does not approve.
 - **D5 Subscriptions.** Listing creation and the registration `plan_selection` step currently depend on a subscription. The freeze switch (`SUBSCRIPTIONS_ENABLED`) must stay on until the frontend registration change ships.
-- **D6 Store pickup** has no completion timestamp; its release trigger is an open decision.
+- **D6 Release.** Owner decision (2026-10-15): no timed hold-back. Release follows Support's verification call (§4).
 - **D7 Scope.** Stage 1 covers product orders only; services, events and stays follow in Plan 1b.
+- **D8 Store pickup.** Collected at the AshantiHub office within 24 hours, confirmed by a new Pickup Desk role (§4.3).
 ```
 
 - [ ] **Step 7: Run the whole ledger label and commit**
@@ -980,7 +991,7 @@ git commit -m "feat(ledger): versioned fee rules, calculator with lifetime cap, 
 - Create: `backend/ledger/settings_store.py`, `backend/ledger/migrations/0005_moneysetting.py` (generated), `backend/ledger/tests/test_settings_store.py`
 
 **Interfaces:**
-- Produces: `MoneySetting(key, value, effective_from, created_by, approval_id)`; `settings_store.DEFINITIONS` (dict key → `Definition(default, nullable, minimum, maximum, label)`); `settings_store.current(key, at=None) -> int | None`; `settings_store.clean(key, raw) -> int | None` (raises `settings_store.SettingError`). Keys: `fee_cap_pesewas`, `holdback_hours`, `product_auto_confirm_hours`, `rider_commission_bp`.
+- Produces: `MoneySetting(key, value, effective_from, created_by, approval_id)`; `settings_store.DEFINITIONS` (dict key → `Definition(default, nullable, minimum, maximum, label)`); `settings_store.current(key, at=None) -> int | None`; `settings_store.clean(key, raw) -> int | None` (raises `settings_store.SettingError`). Keys: `fee_cap_pesewas`, `verification_overdue_hours`, `pickup_window_hours`, `rider_commission_bp`.
 
 - [ ] **Step 1: Write the failing tests** — `backend/ledger/tests/test_settings_store.py`
 
@@ -997,16 +1008,16 @@ from ledger.models import MoneySetting
 class DefaultsTests(TestCase):
     def test_defaults_when_nothing_is_set(self):
         self.assertIsNone(store.current("fee_cap_pesewas"))
-        self.assertEqual(store.current("holdback_hours"), 24)
-        self.assertEqual(store.current("product_auto_confirm_hours"), 72)
+        self.assertEqual(store.current("pickup_window_hours"), 24)
+        self.assertEqual(store.current("verification_overdue_hours"), 72)
         self.assertEqual(store.current("rider_commission_bp"), 1000)
 
     def test_the_latest_row_in_force_wins_and_a_future_row_waits(self):
         now = timezone.now()
-        MoneySetting.objects.create(key="holdback_hours", value=48, effective_from=now - timedelta(hours=2))
-        MoneySetting.objects.create(key="holdback_hours", value=12, effective_from=now - timedelta(hours=1))
-        MoneySetting.objects.create(key="holdback_hours", value=1, effective_from=now + timedelta(days=1))
-        self.assertEqual(store.current("holdback_hours", now), 12)
+        MoneySetting.objects.create(key="pickup_window_hours", value=48, effective_from=now - timedelta(hours=2))
+        MoneySetting.objects.create(key="pickup_window_hours", value=12, effective_from=now - timedelta(hours=1))
+        MoneySetting.objects.create(key="pickup_window_hours", value=1, effective_from=now + timedelta(days=1))
+        self.assertEqual(store.current("pickup_window_hours", now), 12)
 
     def test_a_blank_cap_row_means_no_cap(self):
         now = timezone.now()
@@ -1021,18 +1032,18 @@ class DefaultsTests(TestCase):
 
 class CleanTests(SimpleTestCase):
     def test_accepts_whole_numbers_in_range(self):
-        self.assertEqual(store.clean("holdback_hours", "36"), 36)
-        self.assertEqual(store.clean("holdback_hours", 0), 0)
+        self.assertEqual(store.clean("pickup_window_hours", "36"), 36)
+        self.assertEqual(store.clean("pickup_window_hours", 1), 1)
 
     def test_blank_is_allowed_only_for_nullable_keys(self):
         self.assertIsNone(store.clean("fee_cap_pesewas", ""))
         self.assertIsNone(store.clean("fee_cap_pesewas", None))
         with self.assertRaises(store.SettingError):
-            store.clean("holdback_hours", None)
+            store.clean("pickup_window_hours", None)
 
     def test_rejects_out_of_range_and_non_integers(self):
-        for key, raw in [("holdback_hours", -1), ("holdback_hours", 721), ("rider_commission_bp", 10001),
-                         ("fee_cap_pesewas", 0), ("holdback_hours", "abc"), ("holdback_hours", 1.5), ("holdback_hours", True)]:
+        for key, raw in [("pickup_window_hours", -1), ("pickup_window_hours", 721), ("rider_commission_bp", 10001),
+                         ("fee_cap_pesewas", 0), ("pickup_window_hours", "abc"), ("pickup_window_hours", 1.5), ("pickup_window_hours", True)]:
             with self.assertRaises(store.SettingError, msg=f"{key}={raw!r}"):
                 store.clean(key, raw)
 ```
@@ -1094,8 +1105,8 @@ class Definition:
 
 DEFINITIONS = {
     "fee_cap_pesewas": Definition("Lifetime platform-fee cap per vendor (pesewas; blank = no cap)", None, True, 1, 10**12),
-    "holdback_hours": Definition("Hours between completion and release to the vendor", 24, False, 0, 720),
-    "product_auto_confirm_hours": Definition("Hours after delivery before a product order confirms itself", 72, False, 1, 720),
+    "verification_overdue_hours": Definition("Hours after purchase by which an order must be verified or disputed", 72, False, 1, 720),
+    "pickup_window_hours": Definition("Hours after purchase within which a store-pickup order is collected", 24, False, 1, 168),
     "rider_commission_bp": Definition("Third-party rider commission (basis points; 1000 = 10%)", 1000, False, 0, 10000),
 }
 
@@ -1307,14 +1318,15 @@ class SettingsTests(GovernanceBase):
 
     def test_an_out_of_range_or_unknown_setting_is_refused(self):
         self.as_staff(self.accountant)
-        self.assertEqual(self.client.post("/api/ledger/settings/", {"key": "holdback_hours", "value": 9999}, format="json").status_code, 400)
+        self.assertEqual(self.client.post("/api/ledger/settings/", {"key": "pickup_window_hours", "value": 9999}, format="json").status_code, 400)
         self.assertEqual(self.client.post("/api/ledger/settings/", {"key": "nope", "value": 1}, format="json").status_code, 400)
 
     def test_get_shows_each_setting_with_its_value_in_force(self):
         self.as_staff(self.accountant)
         body = self.client.get("/api/ledger/settings/").json()
         keys = {row["key"]: row["value"] for row in body["settings"]}
-        self.assertEqual(keys["holdback_hours"], 24)
+        self.assertEqual(keys["pickup_window_hours"], 24)
+        self.assertEqual(keys["verification_overdue_hours"], 72)
         self.assertIn("fee_cap_pesewas", keys)
         self.assertIsNone(keys["fee_cap_pesewas"])
 ```
@@ -1475,7 +1487,7 @@ MONEY_SETTING = ApprovalKind(
     key=SETTING_KEY, label="Change a money setting", pool_permission="", current_state=setting_current_state,
     apply=setting_apply, response_hours=48, chain_note="Super Admin only", resolve_approver=super_admin_only,
     render_diff=setting_diff, validate=setting_validate, requires_sudo=True,
-    consequences=lambda request: ["Applies only to orders paid or completed after it starts."],
+    consequences=lambda request: ["Applies only to orders paid after it starts."],
 )
 ```
 
@@ -1908,130 +1920,267 @@ git commit -m "feat(ledger): record product-order payments with per-vendor fee s
 
 ---
 
-### Task 8: Release completed orders after the hold-back window
+### Task 8: Support verification and release to the vendor
+
+Money reaches the vendor only after a person has checked the order. The goods must have reached the customer (a rider marked the delivery done, or the pickup desk marked a store-pickup order collected), the customer's receipt must be confirmed (their own tap, or Support recording it on the call), and Support must record that a call confirmed the product matches its description. A positive result releases the money **at once**, inside the same transaction. A negative result raises a dispute due within 72 hours of purchase and releases nothing. There is no timer-based release.
 
 **Files:**
-- Modify: `backend/ledger/escrow.py` (append release functions)
-- Create: `backend/ledger/tasks.py`, `backend/ledger/tests/test_release.py`
-- Modify: `backend/ashantihub/settings.py` (`CELERY_BEAT_SCHEDULE`)
+- Modify: `backend/ledger/models.py` (append `FulfilmentCheck`), `backend/ledger/escrow.py` (append release), `backend/ledger/views.py`, `backend/ledger/urls.py`
+- Create: `backend/ledger/verification.py`, `backend/ledger/migrations/0006_fulfilmentcheck.py` (generated), `backend/accounts/migrations/0050_seed_order_verify_permission.py`, `backend/ledger/tests/test_verification.py`
 
 **Interfaces:**
-- Consumes: Task 7's journal and snapshots; `DeliveryAssignment.confirmed_at/delivered_at/status` via `order.delivery_assignment`; `disputes.models.Dispute`.
-- Produces: `escrow.completed_at(order) -> datetime | None`; `escrow.release_due(order, now=None) -> Journal | None` (journal key `order-release-<order id>`); `ledger.tasks.release_due_orders()` returning the count released.
+- Consumes: Task 7's journal and snapshots; `DeliveryAssignment.delivered_at/confirmed_at/status` via `order.delivery_assignment`; `disputes.models.Dispute` (`raised_by`, `logged_by`, `answer_due_at`, `FINAL_STATUSES`); `settings_store.current("verification_overdue_hours")`.
+- Produces: `FulfilmentCheck(order, collected_at, collected_by, phone_confirmed_at, outcome, outcome_note, outcome_at, outcome_by, dispute)` with `FulfilmentCheck.MATCHES / DOES_NOT_MATCH / UNREACHABLE`; `escrow.has_open_dispute(order) -> bool`; `escrow.release_verified(order, now=None) -> Journal | None` (journal key `order-release-<order id>`); `verification.VerificationError(message, status_code)`; `verification.check_for(order) -> FulfilmentCheck`; `verification.handed_over(order, check) -> bool`; `verification.record(order, staff, outcome, *, note="", customer_confirmed_by_phone=False, now=None) -> FulfilmentCheck`; `verification.awaiting(now=None) -> list[dict]`; permission `orders.verify` (Support, Super Admin); endpoints `GET /api/ledger/orders/awaiting-verification/` and `POST /api/ledger/orders/<id>/verification/`.
 
-- [ ] **Step 1: Write the failing tests** — `backend/ledger/tests/test_release.py`
+- [ ] **Step 1: Write the failing tests** — `backend/ledger/tests/test_verification.py`
 
 ```python
 from datetime import timedelta
 
+from django.core.cache import cache
 from django.test import override_settings
 from django.utils import timezone
+from rest_framework.test import APIClient
 
+from accounts.testing import make_staff, staff_token
 from disputes.models import Dispute
 from ledger import escrow
-from ledger.models import Account, Journal, MoneySetting, OrderFeeSnapshot
+from ledger.models import Account, FulfilmentCheck, Journal, OrderFeeSnapshot
 from orders.models import DeliveryAssignment, Order
 
 from .test_order_payment import OrderPaymentBase
 
 
-@override_settings(LEDGER_ENABLED=True)
-class ReleaseTests(OrderPaymentBase):
-    def paid_order(self, price="120.00", delivery="10.00", confirmed_ago_hours=30):
+class VerificationBase(OrderPaymentBase):
+    def setUp(self):
+        super().setUp()
+        cache.clear()
+        self.client = APIClient()
+        self.support = make_staff("support", "esi@example.com")
+        self.accountant = make_staff("accountant", "kofi@example.com")
+
+    def as_staff(self, staff):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(staff)}")
+
+    def paid_order(self, *, delivered=True, customer_confirmed=False, price="120.00", delivery="10.00"):
+        """A paid door-to-door order (items 120.00 + delivery 10.00) with its payment recorded."""
         self.kofi = self.owner("Kofi")
-        order = self.order([(self.listing(self.kofi, price), 1)], delivery=delivery, discount="0.00")
+        order = self.order([(self.listing(self.kofi, price), 1)], delivery=delivery)
         order.delivery_method = Order.DOOR_TO_DOOR
         order.save(update_fields=["delivery_method"])
         escrow.record_order_payment(order)
-        if confirmed_ago_hours is not None:
+        if delivered:
             DeliveryAssignment.objects.create(
-                order=order, status=DeliveryAssignment.CONFIRMED,
-                delivered_at=timezone.now() - timedelta(hours=confirmed_ago_hours + 1),
-                confirmed_at=timezone.now() - timedelta(hours=confirmed_ago_hours),
+                order=order, status=DeliveryAssignment.DELIVERED, delivered_at=timezone.now() - timedelta(hours=1),
             )
+        if customer_confirmed:
+            DeliveryAssignment.objects.filter(order=order).update(status=DeliveryAssignment.CONFIRMED, confirmed_at=timezone.now())
         return order
 
-    def test_a_confirmed_order_past_the_hold_back_releases_in_the_owners_order(self):
-        order = self.paid_order()
-        journal = escrow.release_due(order)
-        self.assertEqual(journal.key, f"order-release-{order.pk}")
+    def verify(self, order, outcome, **extra):
+        return self.client.post(f"/api/ledger/orders/{order.pk}/verification/", {"outcome": outcome, **extra}, format="json")
+
+
+@override_settings(LEDGER_ENABLED=True)
+class RecordVerificationTests(VerificationBase):
+    def test_a_positive_call_releases_at_once_in_the_owners_order(self):
+        order = self.paid_order(customer_confirmed=True)
+        self.as_staff(self.support)
+        response = self.verify(order, "matches")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(response.json()["released"])
         self.assertEqual(self.balance(Account.VENDOR_PENDING, self.kofi), 0)
-        self.assertEqual(self.balance(Account.VENDOR_AVAILABLE, self.kofi), 11500)         # 120.00 - GHS 5.00 fee
+        self.assertEqual(self.balance(Account.VENDOR_AVAILABLE, self.kofi), 11500)          # 120.00 - GHS 5.00 fee
         self.assertEqual(self.balance(Account.PLATFORM_FEE_INCOME), 500)
         self.assertEqual(self.balance(Account.DELIVERY_PAYABLE, order), 0)
-        self.assertEqual(self.balance(Account.PLATFORM_DELIVERY_INCOME), 1000)             # company rider: delivery fee is platform income
+        self.assertEqual(self.balance(Account.PLATFORM_DELIVERY_INCOME), 1000)              # company rider: delivery is platform income
         self.assertTrue(OrderFeeSnapshot.objects.get(order=order).released_at)
-        first_lines = [line.account.kind for line in journal.lines.order_by("id")]
-        self.assertLess(first_lines.index(Account.PLATFORM_FEE_INCOME), first_lines.index(Account.VENDOR_AVAILABLE))
+        kinds = [line.account.kind for line in Journal.objects.get(key=f"order-release-{order.pk}").lines.order_by("id")]
+        self.assertLess(kinds.index(Account.PLATFORM_FEE_INCOME), kinds.index(Account.VENDOR_AVAILABLE))
 
-    def test_nothing_releases_inside_the_hold_back_window(self):
-        order = self.paid_order(confirmed_ago_hours=2)
-        self.assertIsNone(escrow.release_due(order))
+    def test_nothing_moves_until_the_goods_have_reached_the_customer(self):
+        order = self.paid_order(delivered=False)
+        self.as_staff(self.support)
+        self.assertEqual(self.verify(order, "matches").status_code, 409)
         self.assertEqual(self.balance(Account.VENDOR_PENDING, self.kofi), 12000)
 
-    def test_an_unconfirmed_delivery_confirms_itself_after_the_auto_confirm_window(self):
-        order = self.paid_order(confirmed_ago_hours=None)
-        DeliveryAssignment.objects.create(order=order, status=DeliveryAssignment.DELIVERED, delivered_at=timezone.now() - timedelta(hours=72 + 25))
-        self.assertIsNotNone(escrow.release_due(order))
+    def test_the_customers_receipt_can_be_confirmed_on_the_call(self):
+        order = self.paid_order(customer_confirmed=False)
+        self.as_staff(self.support)
+        refused = self.verify(order, "matches")
+        self.assertEqual(refused.status_code, 409)
+        self.assertIn("confirmation of receipt", refused.json()["detail"])
+        ok = self.verify(order, "matches", customer_confirmed_by_phone=True)
+        self.assertEqual(ok.status_code, 200, ok.content)
+        self.assertIsNotNone(FulfilmentCheck.objects.get(order=order).phone_confirmed_at)
+        self.assertEqual(self.balance(Account.VENDOR_AVAILABLE, self.kofi), 11500)
 
-    def test_an_order_with_no_completion_signal_never_releases(self):
-        order = self.paid_order(confirmed_ago_hours=None)
-        self.assertIsNone(escrow.completed_at(order))
-        self.assertIsNone(escrow.release_due(order))
+    def test_a_mismatch_raises_a_dispute_due_within_72_hours_of_purchase_and_releases_nothing(self):
+        order = self.paid_order(customer_confirmed=True)
+        self.as_staff(self.support)
+        self.assertEqual(self.verify(order, "does_not_match").status_code, 400)             # a note is required
+        response = self.verify(order, "does_not_match", note="Customer received a different colour")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(response.json()["released"])
+        order.refresh_from_db()
+        dispute = Dispute.objects.get(order=order)
+        self.assertEqual((dispute.status, dispute.raised_by_id, dispute.logged_by_id), (Dispute.OPEN, self.customer.pk, self.support.pk))
+        self.assertEqual(dispute.answer_due_at, order.placed_at + timedelta(hours=72))
+        self.assertEqual(self.balance(Account.VENDOR_PENDING, self.kofi), 12000)
 
-    def test_review_focus_an_open_dispute_freezes_release(self):
-        order = self.paid_order()
-        Dispute.objects.create(order=order, customer=self.customer, reason=Dispute.ORDER_ISSUE, status=Dispute.OPEN, description="Wrong item")
-        self.assertIsNone(escrow.release_due(order))
-        Dispute.objects.filter(order=order).update(status=Dispute.RESOLVED)
-        self.assertIsNotNone(escrow.release_due(order))
+    def test_a_second_mismatch_note_does_not_open_a_second_dispute(self):
+        order = self.paid_order(customer_confirmed=True)
+        self.as_staff(self.support)
+        self.verify(order, "does_not_match", note="Wrong size")
+        self.verify(order, "does_not_match", note="Still wrong")
+        self.assertEqual(Dispute.objects.filter(order=order).count(), 1)
+
+    def test_unreachable_is_recorded_and_releases_nothing(self):
+        order = self.paid_order(customer_confirmed=True)
+        self.as_staff(self.support)
+        response = self.verify(order, "unreachable", note="Rang three times")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(FulfilmentCheck.objects.get(order=order).outcome, "unreachable")
+        self.assertEqual(self.balance(Account.VENDOR_PENDING, self.kofi), 12000)
+        self.assertFalse(Dispute.objects.filter(order=order).exists())
+
+    def test_review_focus_an_open_dispute_blocks_a_positive_result_until_it_is_final(self):
+        order = self.paid_order(customer_confirmed=True)
+        self.as_staff(self.support)
+        self.verify(order, "does_not_match", note="Wrong item")
+        self.assertEqual(self.verify(order, "matches").status_code, 409)
+        for final in Dispute.FINAL_STATUSES:                                                 # resolved and rejected both end it
+            Dispute.objects.filter(order=order).update(status=final)
+            self.assertFalse(escrow.has_open_dispute(order), final)
+        Dispute.objects.filter(order=order).update(status=Dispute.REJECTED)
+        self.assertEqual(self.verify(order, "matches").status_code, 200)
+        self.assertEqual(self.balance(Account.VENDOR_AVAILABLE, self.kofi), 11500)
+
+    def test_a_released_order_cannot_be_verified_again(self):
+        order = self.paid_order(customer_confirmed=True)
+        self.as_staff(self.support)
+        self.verify(order, "matches")
+        self.assertEqual(self.verify(order, "matches").status_code, 409)
+        self.assertEqual(Journal.objects.filter(key=f"order-release-{order.pk}").count(), 1)
+        self.assertEqual(self.balance(Account.VENDOR_AVAILABLE, self.kofi), 11500)
 
     def test_review_focus_release_uses_the_snapshot_not_the_rules_now(self):
         from ledger.models import FeeBand, FeeRuleSet
 
-        order = self.paid_order()
+        order = self.paid_order(customer_confirmed=True)
         newer = FeeRuleSet.objects.create(category="product", effective_from=timezone.now())
-        FeeBand.objects.create(rule_set=newer, lower_pesewas=0, upper_pesewas=None, percent_bp=5000)    # 50%!
-        escrow.release_due(order)
+        FeeBand.objects.create(rule_set=newer, lower_pesewas=0, upper_pesewas=None, percent_bp=5000)      # 50%!
+        self.as_staff(self.support)
+        self.verify(order, "matches")
         self.assertEqual(self.balance(Account.PLATFORM_FEE_INCOME), 500)
 
-    def test_releasing_twice_posts_once(self):
-        order = self.paid_order()
-        escrow.release_due(order)
-        self.assertIsNone(escrow.release_due(order))
-        self.assertEqual(Journal.objects.filter(key=f"order-release-{order.pk}").count(), 1)
-        self.assertEqual(self.balance(Account.VENDOR_AVAILABLE, self.kofi), 11500)
-
-    def test_a_longer_hold_back_setting_delays_release(self):
-        MoneySetting.objects.create(key="holdback_hours", value=48, effective_from=timezone.now() - timedelta(days=1))
-        order = self.paid_order(confirmed_ago_hours=30)
-        self.assertIsNone(escrow.release_due(order))
-
-    def test_the_scheduled_job_releases_every_due_order_and_counts_them(self):
-        from ledger.tasks import release_due_orders
-
-        due = self.paid_order()
-        not_due = self.paid_order(confirmed_ago_hours=1)
-        self.assertEqual(release_due_orders(), 1)
-        self.assertTrue(OrderFeeSnapshot.objects.get(order=due).released_at)
-        self.assertIsNone(OrderFeeSnapshot.objects.get(order=not_due).released_at)
-
-    def test_the_job_does_nothing_while_the_ledger_is_off(self):
-        from ledger.tasks import release_due_orders
-
-        self.paid_order()
+    def test_the_result_is_recorded_but_nothing_moves_while_the_ledger_is_off(self):
+        order = self.paid_order(customer_confirmed=True)
+        self.as_staff(self.support)
         with override_settings(LEDGER_ENABLED=False):
-            self.assertEqual(release_due_orders(), 0)
-```
+            response = self.verify(order, "matches")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["released"])
+        self.assertEqual(self.balance(Account.VENDOR_PENDING, self.kofi), 12000)
 
-(Notes for the implementer: the `Dispute.objects.create(...)` fields are assumed from `disputes/models.py`; if a required field differs, copy the fixture from `orders/tests/test_order_dispute.py`. `DeliveryAssignment.objects.create(...)` needs only `order` here because `dispatch` and `assigned_by` are nullable; if another field is required, mirror the helper in `orders/tests/test_delivery_assignment.py`.)
+    def test_only_support_and_super_admin_may_verify(self):
+        order = self.paid_order(customer_confirmed=True)
+        self.as_staff(self.accountant)
+        self.assertEqual(self.verify(order, "matches").status_code, 403)
+
+    def test_an_unknown_outcome_is_a_400(self):
+        order = self.paid_order(customer_confirmed=True)
+        self.as_staff(self.support)
+        self.assertEqual(self.verify(order, "maybe").status_code, 400)
+
+
+@override_settings(LEDGER_ENABLED=True)
+class AwaitingListTests(VerificationBase):
+    def get(self):
+        return self.client.get("/api/ledger/orders/awaiting-verification/")
+
+    def test_lists_delivered_unverified_orders_with_what_to_check_on_the_call(self):
+        order = self.paid_order(customer_confirmed=True)
+        self.as_staff(self.support)
+        rows = self.get().json()["results"]
+        self.assertEqual([r["order_id"] for r in rows], [order.pk])
+        row = rows[0]
+        self.assertEqual(row["customer_phone"], "+233200990001")
+        self.assertEqual(len(row["items"]), 1)
+        self.assertEqual(row["items"][0]["quantity"], 1)
+        self.assertTrue(row["customer_confirmed"])
+        self.assertFalse(row["overdue"])
+
+    def test_hides_undelivered_verified_and_released_orders(self):
+        undelivered = self.paid_order(delivered=False)
+        released = self.paid_order(customer_confirmed=True)
+        self.as_staff(self.support)
+        self.verify(released, "matches")
+        ids = [r["order_id"] for r in self.get().json()["results"]]
+        self.assertNotIn(undelivered.pk, ids)
+        self.assertNotIn(released.pk, ids)
+
+    def test_an_order_past_72_hours_from_purchase_is_flagged_overdue(self):
+        order = self.paid_order(customer_confirmed=True)
+        Order.objects.filter(pk=order.pk).update(placed_at=timezone.now() - timedelta(hours=73))
+        self.as_staff(self.support)
+        self.assertTrue(self.get().json()["results"][0]["overdue"])
+
+    def test_an_order_with_a_mismatch_stays_on_the_list_with_its_note(self):
+        order = self.paid_order(customer_confirmed=True)
+        self.as_staff(self.support)
+        self.verify(order, "does_not_match", note="Wrong colour")
+        row = self.get().json()["results"][0]
+        self.assertEqual((row["outcome"], row["outcome_note"]), ("does_not_match", "Wrong colour"))
+
+    def test_support_only(self):
+        self.as_staff(self.accountant)
+        self.assertEqual(self.get().status_code, 403)
+```
 
 - [ ] **Step 2: Run it to see it fail**
 
-Run: `docker compose run --rm web python manage.py test ledger.tests.test_release`
-Expected: ERROR `module 'ledger.escrow' has no attribute 'release_due'`.
+Run: `docker compose run --rm web python manage.py test ledger.tests.test_verification`
+Expected: ERROR `cannot import name 'FulfilmentCheck'`.
 
-- [ ] **Step 3: Implement** — append to `backend/ledger/escrow.py`
+- [ ] **Step 3: Add the model** — append to `backend/ledger/models.py`
+
+```python
+
+
+class FulfilmentCheck(models.Model):
+    """What happened to a product order after it was handed over: collected at the AshantiHub office (store pickup),
+    the customer's receipt confirmed by phone, and Support's verification call. The vendor's money is released only
+    on a positive outcome."""
+
+    MATCHES, DOES_NOT_MATCH, UNREACHABLE = "matches", "does_not_match", "unreachable"
+    OUTCOME_CHOICES = [
+        ("", "Not verified yet"), (MATCHES, "Matches the description"), (DOES_NOT_MATCH, "Does not match"),
+        (UNREACHABLE, "Could not reach the customer"),
+    ]
+
+    order = models.OneToOneField("orders.Order", on_delete=models.PROTECT, related_name="fulfilment_check")
+    collected_at = models.DateTimeField(null=True, blank=True)
+    collected_by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    phone_confirmed_at = models.DateTimeField(null=True, blank=True)
+    outcome = models.CharField(max_length=14, choices=OUTCOME_CHOICES, blank=True, default="")
+    outcome_note = models.CharField(max_length=500, blank=True, default="")
+    outcome_at = models.DateTimeField(null=True, blank=True)
+    outcome_by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    dispute = models.ForeignKey("disputes.Dispute", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Order {self.order_id}: {self.outcome or 'awaiting verification'}"
+```
+
+- [ ] **Step 4: Generate the migration**
+
+Run: `docker compose run --rm web python manage.py makemigrations ledger -n fulfilmentcheck`
+Expected: creates `ledger/migrations/0006_fulfilmentcheck.py`.
+
+- [ ] **Step 5: Add the release function** — append to `backend/ledger/escrow.py` (and add `FulfilmentCheck` to the `from .models import ...` line at the top)
 
 ```python
 # --- release ---------------------------------------------------------------------------------------------
@@ -2040,45 +2189,28 @@ def release_key(order):
     return f"order-release-{order.pk}"
 
 
-def completed_at(order):
-    """When a product order counts as complete, or None while it does not. A door-to-door order completes when
-    the customer confirms receipt, or `product_auto_confirm_hours` after the rider marks it delivered. A
-    store-pickup order has no completion signal yet (plan Open Question Q1), so it never completes here."""
-    from datetime import timedelta
-
-    from orders.models import DeliveryAssignment
-
-    assignment = getattr(order, "delivery_assignment", None)
-    if assignment is None or assignment.status == DeliveryAssignment.FAILED:
-        return None
-    if assignment.confirmed_at:
-        return assignment.confirmed_at
-    if assignment.delivered_at:
-        return assignment.delivered_at + timedelta(hours=settings_store.current("product_auto_confirm_hours"))
-    return None
-
-
-def _has_open_dispute(order):
+def has_open_dispute(order):
     from disputes.models import Dispute
 
-    return Dispute.objects.filter(order=order).exclude(status=Dispute.RESOLVED).exists()
+    return Dispute.objects.filter(order=order).exclude(status__in=Dispute.FINAL_STATUSES).exists()
 
 
-def release_due(order, now=None):
-    """Release a completed order once the hold-back has passed and no dispute is open. Returns the journal, or
-    None when it is not due, already released, or the ledger is off."""
-    from datetime import timedelta
-
+def release_verified(order, now=None):
+    """Release an order's held money to the vendor and the platform. Called when Support records a positive
+    verification; there is no timer. Returns the journal, or None when the ledger is off, the order has no positive
+    verification or an open dispute, or it was already released."""
     if not enabled():
         return None
     now = now or timezone.now()
-    done = completed_at(order)
-    if done is None or now < done + timedelta(hours=settings_store.current("holdback_hours", now)):
-        return None
     with transaction.atomic():
-        if Journal.objects.filter(key=release_key(order)).exists() or _has_open_dispute(order):
+        if Journal.objects.filter(key=release_key(order)).exists() or has_open_dispute(order):
             return None
-        snapshots = list(OrderFeeSnapshot.objects.select_for_update().filter(order=order, released_at__isnull=True, reversed_at__isnull=True).select_related("business_owner"))
+        if not FulfilmentCheck.objects.filter(order=order, outcome=FulfilmentCheck.MATCHES).exists():
+            return None
+        snapshots = list(
+            OrderFeeSnapshot.objects.select_for_update()
+            .filter(order=order, released_at__isnull=True, reversed_at__isnull=True).select_related("business_owner")
+        )
         if not snapshots or not Journal.objects.filter(key=pay_key(order)).exists():
             return None
         income = posting.account_for(Account.PLATFORM_FEE_INCOME)
@@ -2112,65 +2244,476 @@ def release_due(order, now=None):
         return journal
 ```
 
-`backend/ledger/tasks.py`:
+- [ ] **Step 6: Implement verification** — `backend/ledger/verification.py`
 
 ```python
-import logging
+"""Support's verification of a product order that has reached the customer, and the release it triggers. A positive
+result releases the money immediately; a negative one raises a dispute due within `verification_overdue_hours` of
+purchase and releases nothing; "could not reach" is only recorded (the order stays on Support's list)."""
+from datetime import timedelta
 
-from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
 
-from orders.models import Order
-
-from . import escrow
-
-logger = logging.getLogger(__name__)
+from . import escrow, settings_store
+from .models import FulfilmentCheck, Journal
 
 
-@shared_task
-def release_due_orders():
-    """Hourly: release every paid order whose completion plus hold-back has passed. One order failing never
-    stops the rest. Returns how many were released."""
-    if not escrow.enabled():
-        return 0
-    released = 0
-    now = timezone.now()
-    due = Order.objects.filter(status=Order.PAID, fee_snapshots__released_at__isnull=True).distinct()
-    for order in due:
-        try:
-            with transaction.atomic():
-                if escrow.release_due(order, now) is not None:
-                    released += 1
-        except Exception:
-            logger.exception("Releasing order %s failed", order.pk)
-    return released
+class VerificationError(Exception):
+    def __init__(self, message, status_code=409):
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
+
+
+def check_for(order):
+    check, _ = FulfilmentCheck.objects.get_or_create(order=order)
+    return check
+
+
+def handed_over(order, check):
+    """True once the goods have reached the customer: a rider marked the delivery done, or the pickup desk marked a
+    store-pickup order collected."""
+    from orders.models import DeliveryAssignment, Order
+
+    if order.delivery_method == Order.STORE_PICKUP:
+        return check.collected_at is not None
+    assignment = getattr(order, "delivery_assignment", None)
+    return assignment is not None and assignment.status != DeliveryAssignment.FAILED and assignment.delivered_at is not None
+
+
+def customer_confirmed(order, check):
+    from orders.models import Order
+
+    if order.delivery_method == Order.STORE_PICKUP:
+        return True  # the customer took the goods at the desk
+    assignment = getattr(order, "delivery_assignment", None)
+    return bool(assignment and assignment.confirmed_at) or check.phone_confirmed_at is not None
+
+
+def record(order, staff, outcome, *, note="", customer_confirmed_by_phone=False, now=None):
+    from disputes.models import Dispute
+    from orders.models import Order
+
+    now = now or timezone.now()
+    if outcome not in (FulfilmentCheck.MATCHES, FulfilmentCheck.DOES_NOT_MATCH, FulfilmentCheck.UNREACHABLE):
+        raise VerificationError("Pick matches, does not match, or could not reach.", 400)
+    note = (note or "").strip()[:500]
+    if outcome == FulfilmentCheck.DOES_NOT_MATCH and not note:
+        raise VerificationError("Say what does not match.", 400)
+    with transaction.atomic():
+        order = Order.objects.select_for_update().get(pk=order.pk)
+        if order.status != Order.PAID:
+            raise VerificationError("This order has not been paid.")
+        if Journal.objects.filter(key=escrow.release_key(order)).exists():
+            raise VerificationError("This order has already been released to the vendor.")
+        check = check_for(order)
+        if not handed_over(order, check):
+            raise VerificationError("This order has not been delivered or collected yet.")
+        if outcome == FulfilmentCheck.MATCHES:
+            if escrow.has_open_dispute(order):
+                raise VerificationError("A dispute is open on this order. It must be settled first.")
+            if customer_confirmed_by_phone and check.phone_confirmed_at is None:
+                check.phone_confirmed_at = now
+            if not customer_confirmed(order, check):
+                raise VerificationError("Record the customer's confirmation of receipt first.")
+        if outcome == FulfilmentCheck.DOES_NOT_MATCH and not escrow.has_open_dispute(order):
+            hours = settings_store.current("verification_overdue_hours", now)
+            check.dispute = Dispute.objects.create(
+                order=order, raised_by=order.customer, logged_by=staff, reason=Dispute.ORDER_ISSUE,
+                problem_type=Dispute.WRONG_OR_MISSING, description=note, status=Dispute.OPEN,
+                answer_due_at=order.placed_at + timedelta(hours=hours),
+            )
+        check.outcome, check.outcome_note, check.outcome_at, check.outcome_by = outcome, note, now, staff
+        check.save()
+        if outcome == FulfilmentCheck.MATCHES:
+            escrow.release_verified(order, now)
+        return check
+
+
+def awaiting(now=None):
+    """Paid orders that have reached the customer and are not yet verified positive, oldest first, with what Support
+    needs on the call. `overdue` means more than `verification_overdue_hours` have passed since purchase."""
+    from orders.models import Order
+
+    now = now or timezone.now()
+    limit = timedelta(hours=settings_store.current("verification_overdue_hours", now))
+    orders = (
+        Order.objects.filter(status=Order.PAID, fee_snapshots__released_at__isnull=True).distinct()
+        .select_related("customer").prefetch_related("items__listing__business_owner").order_by("placed_at", "id")
+    )
+    rows = []
+    for order in orders:
+        check = FulfilmentCheck.objects.filter(order=order).first() or FulfilmentCheck(order=order)
+        if not handed_over(order, check) or check.outcome == FulfilmentCheck.MATCHES:
+            continue
+        rows.append({
+            "order_id": order.pk, "placed_at": order.placed_at, "due_by": order.placed_at + limit,
+            "overdue": now > order.placed_at + limit, "delivery_method": order.delivery_method,
+            "customer_name": order.customer.full_name, "customer_phone": order.delivery_phone or order.customer.phone,
+            "items": [
+                {"name": item.listing.name, "quantity": item.quantity, "business": item.listing.business_owner.display_name}
+                for item in order.items.all()
+            ],
+            "customer_confirmed": customer_confirmed(order, check),
+            "outcome": check.outcome, "outcome_note": check.outcome_note,
+        })
+    return rows
 ```
 
-In `backend/ashantihub/settings.py`, add to `CELERY_BEAT_SCHEDULE`:
+- [ ] **Step 7: Add the endpoints** — append to `backend/ledger/views.py` (add `from django.shortcuts import get_object_or_404`, `from orders.models import Order` and `from . import escrow, verification` and `Journal` to the imports):
 
 ```python
-    "ledger-release-due-orders": {
-        "task": "ledger.tasks.release_due_orders",
-        "schedule": crontab(minute=10),  # hourly
-    },
+class AwaitingVerificationView(APIView):
+    """GET orders/awaiting-verification/ — delivered or collected orders waiting for Support's verification call."""
+
+    def get_permissions(self):
+        return [HasRolePermission("orders.verify")]
+
+    def get(self, request):
+        return Response({"results": verification.awaiting()})
+
+
+class OrderVerificationView(APIView):
+    """POST orders/<id>/verification/ {outcome: matches|does_not_match|unreachable, note?, customer_confirmed_by_phone?}.
+    A positive outcome releases the order's money at once."""
+
+    def get_permissions(self):
+        return [HasRolePermission("orders.verify")]
+
+    def post(self, request, pk):
+        order = get_object_or_404(Order, pk=pk)
+        data = request.data if isinstance(request.data, dict) else {}
+        try:
+            check = verification.record(
+                order, request.user, data.get("outcome"), note=data.get("note"),
+                customer_confirmed_by_phone=data.get("customer_confirmed_by_phone") is True,
+            )
+        except verification.VerificationError as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
+        return Response({
+            "order": order.pk, "outcome": check.outcome, "dispute_id": check.dispute_id,
+            "released": Journal.objects.filter(key=escrow.release_key(order)).exists(),
+        })
 ```
 
-- [ ] **Step 4: Run the tests**
+In `backend/ledger/urls.py` add:
 
-Run: `docker compose run --rm web python manage.py test ledger`
-Expected: all PASS.
+```python
+    path("orders/awaiting-verification/", views.AwaitingVerificationView.as_view(), name="ledger-awaiting-verification"),
+    path("orders/<int:pk>/verification/", views.OrderVerificationView.as_view(), name="ledger-order-verification"),
+```
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 8: Seed the permission** — `backend/accounts/migrations/0050_seed_order_verify_permission.py`
+
+```python
+from django.db import migrations
+
+# Support's verification call on a delivered or collected product order (ledger plan, Task 8).
+PERMISSIONS = [("orders.verify", "Verify a delivered order with the customer and release the vendor's money")]
+GRANTS = {"support": ["orders.verify"], "super_admin": ["orders.verify"]}
+
+
+def seed(apps, schema_editor):
+    Permission = apps.get_model("accounts", "Permission")
+    Role = apps.get_model("accounts", "Role")
+    by_code = {}
+    for codename, description in PERMISSIONS:
+        by_code[codename], _ = Permission.objects.get_or_create(codename=codename, defaults={"description": description})
+    for role_name, codenames in GRANTS.items():
+        Role.objects.get(name=role_name).permissions.add(*[by_code[c] for c in codenames])
+
+
+def unseed(apps, schema_editor):
+    apps.get_model("accounts", "Permission").objects.filter(codename__in=[c for c, _ in PERMISSIONS]).delete()
+
+
+class Migration(migrations.Migration):
+    dependencies = [("accounts", "0049_seed_ledger_permissions")]
+    operations = [migrations.RunPython(seed, unseed)]
+```
+
+- [ ] **Step 9: Run the tests**
+
+Run: `docker compose run --rm web python manage.py test ledger accounts.tests.test_roles_seed`
+Expected: all PASS. If `DeliveryAssignment.objects.create(order=..., status=..., delivered_at=...)` raises an `IntegrityError` for another required field, set it the way `orders/tests/test_delivery_assignment.py` does.
+
+- [ ] **Step 10: Commit**
 
 ```bash
-git add backend/ledger backend/ashantihub/settings.py
-git commit -m "feat(ledger): release completed product orders after the hold-back, honouring disputes"
+git add backend/ledger backend/accounts/migrations/0050_seed_order_verify_permission.py
+git commit -m "feat(ledger): Support verification call releases the vendor's money; mismatch raises a 72-hour dispute"
 ```
 
 ---
 
-### Task 9: Subscription freeze switch
+### Task 9: Pickup Desk role and store-pickup collection
+
+A store-pickup order is collected at the AshantiHub office within a window after purchase (default 24 hours). A new staff role, **Pickup Desk**, sees the queue and marks an order collected. Collection stands in for the rider's delivery and the customer's confirmation; Support's verification call (Task 8) still follows. What happens to an order not collected inside the window is Stage 3 (refund to the customer's wallet); here it is only flagged overdue.
+
+**Files:**
+- Modify: `backend/accounts/models.py` (`Role`), `backend/ledger/verification.py` (append), `backend/ledger/views.py`, `backend/ledger/urls.py`, `backend/accounts/tests/test_roles_seed.py`, `docs/STAFF_ROLES.md`
+- Create: `backend/accounts/migrations/0051_alter_role_name.py` (generated), `backend/accounts/migrations/0052_seed_pickup_desk_role.py`, `backend/ledger/tests/test_pickup.py`
+
+**Interfaces:**
+- Consumes: `FulfilmentCheck.collected_at/collected_by`, `verification.check_for`, `settings_store.current("pickup_window_hours")`.
+- Produces: `Role.PICKUP_DESK = "pickup_desk"`; permission `pickup.confirm` (Pickup Desk, Super Admin); `verification.mark_collected(order, staff, now=None) -> FulfilmentCheck`; `verification.pickup_queue(now=None) -> list[dict]`; endpoints `GET /api/ledger/pickup/` and `POST /api/ledger/pickup/<order id>/collected/`.
+
+- [ ] **Step 1: Write the failing tests** — `backend/ledger/tests/test_pickup.py`
+
+```python
+from datetime import timedelta
+
+from django.core.cache import cache
+from django.test import override_settings
+from django.utils import timezone
+from rest_framework.test import APIClient
+
+from accounts.models import Role
+from accounts.testing import make_staff, staff_token
+from ledger import escrow
+from ledger.models import Account, FulfilmentCheck
+from orders.models import DeliveryAssignment, Order
+
+from .test_order_payment import OrderPaymentBase
+
+
+class PickupBase(OrderPaymentBase):
+    def setUp(self):
+        super().setUp()
+        cache.clear()
+        self.client = APIClient()
+        self.desk = make_staff("pickup_desk", "yaa@example.com")
+        self.support = make_staff("support", "esi@example.com")
+        self.accountant = make_staff("accountant", "kofi@example.com")
+
+    def as_staff(self, staff):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(staff)}")
+
+    def pickup_order(self):
+        self.kofi = self.owner("Kofi")
+        order = self.order([(self.listing(self.kofi, "120.00"), 1)])
+        order.delivery_method = Order.STORE_PICKUP
+        order.save(update_fields=["delivery_method"])
+        escrow.record_order_payment(order)
+        return order
+
+
+class RoleTests(PickupBase):
+    def test_the_role_exists_with_its_permission_and_super_admin_holds_it_too(self):
+        role = Role.objects.get(name="pickup_desk")
+        self.assertEqual(list(role.permissions.values_list("codename", flat=True)), ["pickup.confirm"])
+        self.assertTrue(Role.objects.get(name="super_admin").permissions.filter(codename="pickup.confirm").exists())
+
+
+@override_settings(LEDGER_ENABLED=True)
+class CollectionTests(PickupBase):
+    def collect(self, order):
+        return self.client.post(f"/api/ledger/pickup/{order.pk}/collected/")
+
+    def test_the_desk_marks_a_store_pickup_order_collected_and_it_is_idempotent(self):
+        order = self.pickup_order()
+        self.as_staff(self.desk)
+        first = self.collect(order)
+        self.assertEqual(first.status_code, 200, first.content)
+        check = FulfilmentCheck.objects.get(order=order)
+        self.assertEqual(check.collected_by_id, self.desk.pk)
+        stamped = check.collected_at
+        self.assertEqual(self.collect(order).status_code, 200)
+        self.assertEqual(FulfilmentCheck.objects.get(order=order).collected_at, stamped)
+
+    def test_a_door_to_door_or_unpaid_order_cannot_be_collected(self):
+        order = self.pickup_order()
+        Order.objects.filter(pk=order.pk).update(delivery_method=Order.DOOR_TO_DOOR)
+        self.as_staff(self.desk)
+        self.assertEqual(self.collect(order).status_code, 409)
+        Order.objects.filter(pk=order.pk).update(delivery_method=Order.STORE_PICKUP, status=Order.PENDING)
+        self.assertEqual(self.collect(order).status_code, 409)
+
+    def test_a_collected_order_can_then_be_verified_and_released(self):
+        order = self.pickup_order()
+        self.as_staff(self.desk)
+        self.collect(order)
+        self.as_staff(self.support)
+        response = self.client.post(f"/api/ledger/orders/{order.pk}/verification/", {"outcome": "matches"}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(self.balance(Account.VENDOR_AVAILABLE, self.kofi), 11500)
+
+    def test_an_uncollected_pickup_order_cannot_be_verified(self):
+        order = self.pickup_order()
+        self.as_staff(self.support)
+        response = self.client.post(f"/api/ledger/orders/{order.pk}/verification/", {"outcome": "matches"}, format="json")
+        self.assertEqual(response.status_code, 409)
+
+    def test_only_the_desk_and_super_admin_may_collect(self):
+        order = self.pickup_order()
+        for staff in (self.support, self.accountant):
+            self.as_staff(staff)
+            self.assertEqual(self.collect(order).status_code, 403)
+
+
+@override_settings(LEDGER_ENABLED=True)
+class QueueTests(PickupBase):
+    def test_lists_uncollected_pickup_orders_with_the_collect_by_time_and_overdue_flag(self):
+        fresh = self.pickup_order()
+        late = self.pickup_order()
+        Order.objects.filter(pk=late.pk).update(placed_at=timezone.now() - timedelta(hours=25))
+        self.as_staff(self.desk)
+        rows = {r["order_id"]: r for r in self.client.get("/api/ledger/pickup/").json()["results"]}
+        self.assertFalse(rows[fresh.pk]["overdue"])
+        self.assertTrue(rows[late.pk]["overdue"])
+        self.assertEqual(rows[fresh.pk]["customer_name"], "Ama")
+
+    def test_collected_and_door_to_door_orders_are_not_listed(self):
+        collected = self.pickup_order()
+        self.as_staff(self.desk)
+        self.client.post(f"/api/ledger/pickup/{collected.pk}/collected/")
+        delivery = self.pickup_order()
+        Order.objects.filter(pk=delivery.pk).update(delivery_method=Order.DOOR_TO_DOOR)
+        ids = [r["order_id"] for r in self.client.get("/api/ledger/pickup/").json()["results"]]
+        self.assertNotIn(collected.pk, ids)
+        self.assertNotIn(delivery.pk, ids)
+
+    def test_the_desk_does_not_see_the_customers_phone_number(self):
+        self.pickup_order()
+        self.as_staff(self.desk)
+        self.assertNotIn("customer_phone", self.client.get("/api/ledger/pickup/").json()["results"][0])
+```
+
+- [ ] **Step 2: Add the role** — in `backend/accounts/models.py` `Role`, after `DISPATCH = "dispatch"` add `PICKUP_DESK = "pickup_desk"` and add `(PICKUP_DESK, "Pickup Desk"),` to `NAME_CHOICES` before `(COSIGNER, "Co-signer"),`. Then generate the migration:
+
+Run: `docker compose run --rm web python manage.py makemigrations accounts -n alter_role_name`
+Expected: creates `accounts/migrations/0051_alter_role_name.py`. If Django names it differently, use that name in Step 3's dependency.
+
+- [ ] **Step 3: Seed the role and permission** — `backend/accounts/migrations/0052_seed_pickup_desk_role.py`
+
+```python
+from django.db import migrations
+
+# The AshantiHub office desk that hands store-pickup orders to customers (ledger plan, Task 9). Only a Super Admin
+# invites this role (no RoleInviteRule); it holds one permission, and Super Admin holds it too.
+PERMISSION = ("pickup.confirm", "See the store-pickup queue and mark an order collected")
+
+
+def seed(apps, schema_editor):
+    Permission = apps.get_model("accounts", "Permission")
+    Role = apps.get_model("accounts", "Role")
+    permission, _ = Permission.objects.get_or_create(codename=PERMISSION[0], defaults={"description": PERMISSION[1]})
+    desk, _ = Role.objects.get_or_create(name="pickup_desk")
+    desk.permissions.add(permission)
+    Role.objects.get(name="super_admin").permissions.add(permission)
+
+
+def unseed(apps, schema_editor):
+    apps.get_model("accounts", "Role").objects.filter(name="pickup_desk").delete()
+    apps.get_model("accounts", "Permission").objects.filter(codename=PERMISSION[0]).delete()
+
+
+class Migration(migrations.Migration):
+    dependencies = [("accounts", "0051_alter_role_name")]
+    operations = [migrations.RunPython(seed, unseed)]
+```
+
+- [ ] **Step 4: Add the setting** — in `backend/ledger/settings_store.py`'s `DEFINITIONS` the key `pickup_window_hours` (Task 5) already exists; confirm it is there. Then append to `backend/ledger/verification.py`:
+
+```python
+def mark_collected(order, staff, now=None):
+    """The pickup desk hands a paid store-pickup order to the customer. Idempotent: a second call keeps the first stamp."""
+    from orders.models import Order
+
+    now = now or timezone.now()
+    with transaction.atomic():
+        order = Order.objects.select_for_update().get(pk=order.pk)
+        if order.status != Order.PAID or order.delivery_method != Order.STORE_PICKUP:
+            raise VerificationError("Only a paid store-pickup order can be marked collected.")
+        check = check_for(order)
+        if check.collected_at is None:
+            check.collected_at, check.collected_by = now, staff
+            check.save(update_fields=["collected_at", "collected_by", "updated_at"])
+        return check
+
+
+def pickup_queue(now=None):
+    """Paid store-pickup orders not yet collected, oldest first. Deliberately carries no phone number: the desk
+    hands over goods, it does not call customers."""
+    from orders.models import Order
+
+    now = now or timezone.now()
+    window = timedelta(hours=settings_store.current("pickup_window_hours", now))
+    orders = (
+        Order.objects.filter(status=Order.PAID, delivery_method=Order.STORE_PICKUP)
+        .exclude(fulfilment_check__collected_at__isnull=False)
+        .select_related("customer").prefetch_related("items__listing__business_owner").order_by("placed_at", "id")
+    )
+    return [
+        {
+            "order_id": order.pk, "placed_at": order.placed_at, "collect_by": order.placed_at + window,
+            "overdue": now > order.placed_at + window, "customer_name": order.customer.full_name,
+            "items": [
+                {"name": item.listing.name, "quantity": item.quantity, "business": item.listing.business_owner.display_name}
+                for item in order.items.all()
+            ],
+        }
+        for order in orders
+    ]
+```
+
+- [ ] **Step 5: Add the endpoints** — append to `backend/ledger/views.py`:
+
+```python
+class PickupQueueView(APIView):
+    """GET pickup/ — store-pickup orders waiting at the office, with the time each must be collected by."""
+
+    def get_permissions(self):
+        return [HasRolePermission("pickup.confirm")]
+
+    def get(self, request):
+        return Response({"results": verification.pickup_queue()})
+
+
+class PickupCollectedView(APIView):
+    """POST pickup/<order id>/collected/ — the desk hands the order to the customer."""
+
+    def get_permissions(self):
+        return [HasRolePermission("pickup.confirm")]
+
+    def post(self, request, pk):
+        order = get_object_or_404(Order, pk=pk)
+        try:
+            check = verification.mark_collected(order, request.user)
+        except verification.VerificationError as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
+        return Response({"order": order.pk, "collected_at": check.collected_at})
+```
+
+In `backend/ledger/urls.py` add:
+
+```python
+    path("pickup/", views.PickupQueueView.as_view(), name="ledger-pickup"),
+    path("pickup/<int:pk>/collected/", views.PickupCollectedView.as_view(), name="ledger-pickup-collected"),
+```
+
+- [ ] **Step 6: Keep the existing role tests and docs true.** Read `backend/accounts/tests/test_roles_seed.py::test_all_roles_exist` and add `"pickup_desk"` to the expected set. Then find anything else that lists every role:
+
+Run: `grep -rn "delivery_manager" backend --include=*.py | grep -v "migrations\|/tests/test_roles_seed"`
+Expected: a list of places that enumerate roles (permission maps, label tables, view-as sweeps). For each one that must know every role, add `pickup_desk` the same way `dispatch` is handled (a label of "Pickup Desk"); leave places that are specific to delivery alone.
+
+Add a row for **Pickup Desk** to `docs/STAFF_ROLES.md` (the role-count sentence, the "Roles at a glance" table and the permission matrix with `pickup.confirm`), and add `orders.verify` to the Support column of the matrix.
+
+- [ ] **Step 7: Run the tests**
+
+Run: `docker compose run --rm web python manage.py test ledger accounts people`
+Expected: all PASS. A failure in `accounts` or `people` that names `pickup_desk` is a role enumeration from Step 6 you still need to extend.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add backend/accounts backend/ledger docs/STAFF_ROLES.md
+git commit -m "feat(ledger): Pickup Desk role, store-pickup queue and collection"
+```
+
+---
+### Task 10: Subscription freeze switch
 
 **Files:**
 - Create: `backend/billing/switch.py`, `backend/billing/tests/test_subscription_freeze.py`
@@ -2411,7 +2954,7 @@ git commit -m "feat(billing): SUBSCRIPTIONS_ENABLED switch; plans, purchase, clo
 
 ---
 
-### Task 10: Documentation and full verification
+### Task 11: Documentation and full verification
 
 **Files:**
 - Modify: `backend/CLAUDE.md`, `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md`, `docs/IMPLEMENTATION_INSTRUCTIONS.md` (add the stage list)
@@ -2423,7 +2966,8 @@ git commit -m "feat(billing): SUBSCRIPTIONS_ENABLED switch; plans, purchase, clo
   (balanced, idempotent on its key, accounts locked in primary-key order); Postgres triggers refuse `UPDATE`/`DELETE`
   on journals and lines, so a correction is a new reversing journal. Convert money only through `ledger.money`. Fees
   are snapshotted per order, vendor and category at payment (`OrderFeeSnapshot`): release reads the snapshot, never the
-  rules now. Fee rules and money settings change only through the `ledger.fee_rules` / `ledger.setting` approval kinds
+  rules now. **No timer releases a vendor's money:** `verification.record` releases on Support's positive call, after the
+  goods reached the customer (rider delivery or pickup-desk collection) and the customer's receipt is confirmed. Fee rules and money settings change only through the `ledger.fee_rules` / `ledger.setting` approval kinds
   (Super Admin approves; Accounting proposes). `LEDGER_ENABLED` (default off) gates all recording, and
   `SUBSCRIPTIONS_ENABLED` (default on) must stay on until the frontend registration change (Plan 1F) ships. Held
   customer money is exactly Σ Vendor Pending + Σ Delivery payable (no order-escrow account).
@@ -2454,10 +2998,10 @@ git commit -m "docs(ledger): correctness core, spec status, stage index"
 
 | Plan | Scope | Why separate |
 |---|---|---|
-| **1F** Frontend | Accounting fee/settings screens; registration "business type" step replacing "pick a plan"; hide plan UI when plans list is empty. | Must ship before `SUBSCRIPTIONS_ENABLED` is turned off. |
-| **1b** | Ledger recording and release for services, events/tickets and bookings (their own completion triggers). | Each kind has different completion rules (spec §4.2). |
+| **1F** Frontend | Accounting fee/settings screens; Support "awaiting verification" screen; Pickup Desk dashboard and navigation; registration "business type" step replacing "pick a plan"; hide plan UI when the plans list is empty. | The registration change must ship before `SUBSCRIPTIONS_ENABLED` is turned off. |
+| **1b** | Ledger recording and release for services, events/tickets and bookings. | The owner has described the verification flow for products only; each kind needs its own completion rule. |
 | **2** OTP and security | One OTP service, step-up tokens, trusted devices, customer and vendor 2FA. | Independent of money; **must precede any wallet going live**. |
-| **3** Wallets and payments | Customer wallet, top-up, refunds (pre- and post-release), withdrawals, payout destinations, provider interface and simulated provider, reconciliation. | Needs Plan 2. |
+| **3** Wallets and payments | Customer wallet, top-up, refunds (pre- and post-release, including a customer refund after a dispute and an uncollected pickup order), withdrawals, payout destinations, provider interface and simulated provider, reconciliation. | Needs Plan 2. |
 | **4** Vendor dashboard and SMS | Statements, per-order SMS, digest, cap meter. | Reads Plan 1 data. |
 | **5** Third-party dispatch | `Rider` employment flag, rider wallet, 90/10 split on release, end-of-day commission job. | Needs the third-party/company distinction the code lacks. |
 | **6** Offers and stock | Catalogue entries, offers, "other sellers", stock reservation upgrade, low-stock alerts. | No money logic; large UI. |
