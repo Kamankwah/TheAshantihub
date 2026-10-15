@@ -108,6 +108,8 @@ background. These are **specs, not implemented state**; update them when code fr
 - `docs/superpowers/specs/2026-10-07-staff-platform-overview-design.md` — the staff-platform
   rebuild (every role's dashboard): roles and reporting lines, build order, decisions per phase;
   phase 1–2 specs sit beside it
+- `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` — wallet, escrow, platform fees,
+  OTP; Stage 1 (ledger) is implemented, later stages are specs only
 
 ## Design System
 

@@ -189,7 +189,8 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   `ledger.fee_rules` / `ledger.setting` approval kinds (Super Admin approves; Accounting proposes). `LEDGER_ENABLED`
   (default off) gates all recording, and `SUBSCRIPTIONS_ENABLED` (default on) must stay on until the frontend
   registration change (Plan 1F) ships. Held customer money is exactly Σ Vendor Pending + Σ Delivery payable (no
-  order-escrow account).
+  order-escrow account). Follow-ups before flipping `SUBSCRIPTIONS_ENABLED` / `LEDGER_ENABLED` live are in
+  `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` section 13.
 - **Pickup Desk** is the `pickup_desk` staff role with the single permission `pickup.confirm` (store-pickup queue and
   collection); only a Super Admin invites it.
 

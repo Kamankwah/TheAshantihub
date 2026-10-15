@@ -1,10 +1,9 @@
 # Wallets, Escrow, Platform Fees, Stock Offers and OTP Security — Design
 
 **Status:** Approved 2026-10-15. Stage 1 plan: docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md.
-**Scope:** One system, built in the order given in §11. Not yet implemented.
-**Basis:** The owner's brief, plus the decisions in §1. This spec was written from the brief
-alone and has **not** yet been reconciled with the existing code (payments, billing, commission,
-cart, accounts, delivery). Reconciliation is the first step of the implementation plan (§12).
+**Scope:** One system, built in the order given in §11. Stage 1 implemented on branch
+feature/ledger-stage1 (see section 13); later stages not started.
+**Basis:** The owner's brief, plus the decisions in §1, reconciled with the existing code in §13.
 
 ## 1. Decisions (settled in brainstorming)
 
@@ -249,7 +248,19 @@ Follow-ups found in review; none is reachable while the switch stays on.
 - (e) Drafts can be created before `business_kind` is set.
 - (f) The registration UI must use `POST /api/billing/business-kind/` instead of plan selection.
 
+### Before LEDGER_ENABLED is turned on
+
+Follow-ups found in the final review; none is reachable while the flag stays off.
+
+- (i) **Hubtel webhook failure mode.** If `record_order_payment` raises inside `payments.views.HubtelWebhookView`, the customer has paid but the order stays PENDING, the `WebhookEvent` row stays `processed=False` with no note, and Hubtel retries forever. Wire Sentry/alerting and write a `processing_note` before turning the ledger on with `PAYMENTS_PROVIDER=hubtel`.
+- (ii) **Queues.** `awaiting()` and `pickup_queue()` are unpaginated, `awaiting()` does per-order queries, and `pickup_queue()` is not gated by the ledger flag, so every historical paid store-pickup order (no FulfilmentCheck) would show as overdue to the desk. Add pagination and a go-live cut-off before Plan 1F ships the desk screen.
+- (iii) **Concurrency test.** Add a threaded `TransactionTestCase` covering the payment/release lock graph and the lifetime-cap race.
+- (iv) **Legacy vendor-shop store pickups** can never be marked collected once the ledger is on (the desk handles AshantiHub-office pickups), so their money would stay in Pending. A rollout/process decision for the owner.
+- (v) **Mismatch dispute.** The dispute created by `verification.record` sets `raised_by=customer` although it is staff-logged (the convention in `disputes/models.py` is `raised_by` null plus `logged_by`), and it neither notifies the customer nor tasks the account managers. Decide before Support uses it at volume.
+
 ### Stage 3 carry-forward
+
+- Cancelled paid orders keep their `OrderFeeSnapshot` counted against the lifetime cap and their money in Vendor Pending / Delivery payable. Stage 3 must reverse them (`OrderFeeSnapshot.reversed_at`) and refund.
 
 - Release pays every unreleased snapshot, so a refund resolution (skipped-stop "refund these lines only", or money-back) followed by "matches" would pay the vendor in full. Stage 3 must reverse those snapshots (`OrderFeeSnapshot.reversed_at`), or release must leave out disputed lines.
 - The money-releasing POST has no password re-check (`RequiresSudo`). Owner question: should it?

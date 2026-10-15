@@ -47,7 +47,7 @@ the role seeds in `backend/accounts/migrations/0002`–`0029`, the `HasRolePermi
 | **Scout** | Field visits that verify a business's address and legitimacy. | Users (read-only), Field Verification |
 | **Delivery Manager** | Assigns dispatch riders to paid door-to-door orders. | Delivery Coordination |
 | **Dispatch** | The courier: picks orders up and delivers them. | My Deliveries |
-| **Pickup Desk** | The AshantiHub office desk: hands store-pickup orders to customers and marks them collected. | Pickup Queue |
+| **Pickup Desk** | The AshantiHub office desk: hands store-pickup orders to customers and marks them collected. | None yet (API only; the Pickup Queue screen is planned) |
 
 ---
 
@@ -97,6 +97,8 @@ the role seeds in `backend/accounts/migrations/0002`–`0029`, the `HasRolePermi
 | | `delivery.manage` | See paid door-to-door orders; assign or reassign a dispatch | ✓ | | | | | | ✓ | | |
 | | `delivery.dispatch` | Own deliveries: confirm pickup and delivery | ✓ | | | | | | | ✓ | |
 | | `pickup.confirm` | See the store-pickup queue and mark an order collected | ✓ | | | | | | | | ✓ |
+| Money | `fees.view` | Read platform-fee rules and money settings | ✓ | | ✓ | | | | | | |
+| | `fees.manage` | Propose fee-rule and money-setting changes (a Super Admin's apply at once) | ✓ | | ✓ | | | | | | |
 | Support | `messaging.manage` | Every support conversation; reply as AshantiHub Support | ✓ | | | | ✓ | | | | |
 | | `orders.verify` | Verify a delivered or collected product order by phone; a match releases the vendor's money, a mismatch raises a dispute | ✓ | | | | ✓ | | | | |
 | | `contact_messages.manage` | Contact-form submissions: mark read, resolve | ✓ | ✓ | | | ✓ | | | | |
@@ -316,6 +318,13 @@ another scout's assignment.
   (picked up → delivered). Each step also updates the order's delivery status. The customer then
   confirms receipt separately.
 
+### Pickup Desk
+
+**Duties.** The AshantiHub office desk. Holds only `pickup.confirm`: it hands paid store-pickup
+orders to customers and marks them collected. Collecting also marks the order delivered, which
+starts Support's verification. The desk never sees a customer's phone number. Only a Super Admin
+invites it. The Pickup Queue dashboard tab is planned; today the desk works through the API only.
+
 ---
 
 ## Separation of duties
@@ -330,6 +339,8 @@ These rules keep one person from both proposing and approving the same thing.
 | Dispute | Support flags it (intake) | Accountant resolves or rejects it, and can reopen a wrong rejection |
 | Ticket refund | (Escrow view and release are Accountant duties) | Refund is Accountant + Super Admin only |
 | Field verification | Admin assigns a scout | The scout reports; the Admin then approves or rejects KYC |
+| Platform-fee rules and money settings | Accountant proposes | Super Admin approves or rejects |
+| Releasing an order's money | Pickup Desk or the rider marks it collected/delivered | Support records the verification call that releases it |
 | Delivery | Delivery Manager assigns | Dispatch picks up and delivers; the customer confirms receipt |
 | Staff accounts and permissions | — | Super Admin only, never on their own account |
 
