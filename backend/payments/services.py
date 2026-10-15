@@ -47,6 +47,10 @@ def _finalize_order_checkout(session):
     order.status = Order.PAID
     order.save(update_fields=["status"])
 
+    from ledger import escrow
+
+    escrow.record_order_payment(order)
+
     from orders.alerts import alert_owners_of_paid_order
 
     alert_owners_of_paid_order(order)
