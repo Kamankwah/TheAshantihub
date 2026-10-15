@@ -105,6 +105,77 @@ class FeeRulesTests(GovernanceBase):
         self.assertEqual(again.status_code, 409)
 
 
+class SparseLadderTests(GovernanceBase):
+    """A ladder that leaves out its null keys must not lock fee governance for the category."""
+
+    ONE = [{"lower": 0, "percent_bp": 150}]
+    TWO = [{"lower": 0, "upper": 99999, "percent_bp": 150}, {"lower": 100000, "flat": 2500}]
+    FULL = {"lower", "upper", "percent_bp", "flat"}
+
+    def propose(self, bands, category="service"):
+        self.as_staff(self.accountant)
+        response = self.client.post("/api/ledger/fees/", {"category": category, "bands": bands}, format="json")
+        self.assertEqual(response.status_code, 201, response.content)
+        return response.json()["approval_id"]
+
+    def test_a_sparse_ladder_is_stored_with_all_four_keys(self):
+        for bands in (self.ONE, self.TWO):
+            approval = ApprovalRequest.objects.get(pk=self.propose(bands, "event" if bands is self.ONE else "service"))
+            for band in approval.payload["bands"]:
+                self.assertEqual(set(band), self.FULL)
+
+    def test_its_approval_can_be_viewed_and_approved(self):
+        approval_id = self.propose(self.TWO)
+        self.as_staff(self.boss)
+        self.assertEqual(self.client.get(f"/api/approvals/{approval_id}/").status_code, 200)
+        approvals.approve(approval_id, self.boss)
+        bands = list(fees.rule_set_in_force("service").bands.all())
+        self.assertEqual(fees.band_fee(bands, 1000), 15)
+        self.assertEqual(fees.band_fee(bands, 100000), 2500)
+        self.assertIsNone(bands[1].upper_pesewas)
+
+    def test_a_single_open_ended_sparse_band_is_approved(self):
+        approvals.approve(self.propose(self.ONE), self.boss)
+        self.assertEqual(fees.band_fee(list(fees.rule_set_in_force("service").bands.all()), 1000), 15)
+
+    def test_it_can_be_rejected_and_cancelled_then_reproposed(self):
+        first = self.propose(self.ONE)
+        approvals.reject(first, self.boss, "Not now")
+        second = self.propose(self.TWO)
+        self.assertEqual(self.client.get(f"/api/approvals/{second}/").status_code, 200)
+        approvals.cancel(second, self.accountant)
+        self.assertEqual(ApprovalRequest.objects.get(pk=second).status, ApprovalRequest.CANCELLED)
+        self.propose(self.ONE)
+
+    def test_a_sparse_payload_that_bypassed_the_view_does_not_raise(self):
+        from ledger import approval_kinds
+        request = ApprovalRequest(payload={"category": "service", "bands": self.TWO}, before={"bands": self.ONE})
+        diff = approval_kinds.fee_diff(request)
+        self.assertIn("and above", diff[0]["after"])
+        self.assertIn("1.5%", diff[0]["before"])
+        approval = approvals.submit(
+            self.accountant, approval_kinds.FEE_RULES_KEY, title="x", payload={"category": "product", "bands": self.TWO},
+            target_type="ledger.feeruleset", target_id="product", target_label="Products",
+        )
+        approvals.approve(approval.pk, self.boss)
+        applied = fees.rule_set_in_force("product")
+        self.assertEqual(applied.created_by_id, self.boss.pk)
+        self.assertEqual(applied.bands.count(), 2)
+
+    def test_approve_itself_refuses_a_bad_payload(self):
+        from ledger import approval_kinds
+        approval = approvals.submit(
+            self.accountant, approval_kinds.FEE_RULES_KEY, title="x",
+            payload={"category": "product", "bands": [{"lower": 5, "upper": None, "percent_bp": 100, "flat": None}]},
+            target_type="ledger.feeruleset", target_id="product", target_label="Products",
+        )
+        seeded = fees.rule_set_in_force("product").pk
+        with self.assertRaises(approvals.ApprovalError):
+            approvals.approve(approval.pk, self.boss)
+        self.assertEqual(fees.rule_set_in_force("product").pk, seeded)
+        self.assertEqual(ApprovalRequest.objects.get(pk=approval.pk).status, ApprovalRequest.PENDING)
+
+
 class SettingsTests(GovernanceBase):
     def test_accounting_proposes_a_cap_and_a_super_admin_approves(self):
         self.as_staff(self.accountant)

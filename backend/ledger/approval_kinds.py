@@ -43,9 +43,10 @@ def bands_as_dicts(rule_set):
 
 
 def describe_band(band):
-    top = "and above" if band["upper"] is None else f"to {band['upper']}"
-    price = f"{band['percent_bp'] / 100:g}%" if band["percent_bp"] is not None else f"{band['flat']} pesewas flat"
-    return f"{band['lower']} {top}: {price}"
+    upper, percent, flat = band.get("upper"), band.get("percent_bp"), band.get("flat")
+    top = "and above" if upper is None else f"to {upper}"
+    price = f"{percent / 100:g}%" if percent is not None else f"{flat} pesewas flat"
+    return f"{band.get('lower')} {top}: {price}"
 
 
 # --- fee rules -------------------------------------------------------------------------------------------
@@ -75,8 +76,8 @@ def fee_apply(request):
     )
     for band in payload["bands"]:
         FeeBand.objects.create(
-            rule_set=rule_set, lower_pesewas=band["lower"], upper_pesewas=band["upper"],
-            percent_bp=band["percent_bp"], flat_pesewas=band["flat"],
+            rule_set=rule_set, lower_pesewas=band.get("lower"), upper_pesewas=band.get("upper"),
+            percent_bp=band.get("percent_bp"), flat_pesewas=band.get("flat"),
         )
     # Last: the event refreshes every open fee screen live.
     record(

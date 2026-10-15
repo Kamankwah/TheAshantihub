@@ -64,12 +64,14 @@ class FeeRulesView(APIView):
             effective_time(data.get("effective_from"))
         except (fees.FeeError, approvals.ApprovalError) as exc:
             return Response({"detail": getattr(exc, "message", str(exc))}, status=400)
+        # Canonical payload: every band carries exactly the four keys, absent ones as null.
+        bands = [{k: b.get(k) for k in ("lower", "upper", "percent_bp", "flat")} for b in data.get("bands") or []]
         if ApprovalRequest.objects.filter(kind=FEE_RULES_KEY, status=ApprovalRequest.PENDING, payload__category=category).exists():
             return Response({"detail": "A change to these fee rules is already waiting for approval."}, status=status.HTTP_409_CONFLICT)
         return _submit(
             request, FEE_RULES_KEY, title=f"Platform fees: {CATEGORY_LABELS[category]}",
             target_type="ledger.feeruleset", target_id=category, target_label=CATEGORY_LABELS[category],
-            payload={"category": category, "bands": data.get("bands"), "effective_from": data.get("effective_from")},
+            payload={"category": category, "bands": bands, "effective_from": data.get("effective_from")},
             maker_note=str(data.get("note") or ""),
         )
 
