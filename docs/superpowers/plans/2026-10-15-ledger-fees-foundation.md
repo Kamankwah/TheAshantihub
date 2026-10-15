@@ -23,7 +23,7 @@ These were found by reading the existing code; Task 1 records them in the spec.
 | D5 | Subscriptions "hidden and frozen" | Listing creation **requires** an active subscription (`listings/serializers.py:236`), and registration's `plan_selection` step also captures `business_kind` (`accounts/models.py:377`, `billing/serializers.py` `StartTrialSerializer`). | Task 10 adds `SUBSCRIPTIONS_ENABLED`, skips both when off, and adds a business-kind endpoint. The frontend registration change is **Plan 1F**; the flag must stay on until 1F ships. |
 | D6 | Timed hold-back, then auto-confirm | **Owner decision (2026-10-15):** vendor money is not held on a timer. Release happens when Support's verification call is positive. | `holdback_hours` and `product_auto_confirm_hours` are dropped. Task 8 adds `FulfilmentCheck`, the Support endpoints and release on a positive result. |
 | D8 | Store pickup | **Owner decision:** collected at the AshantiHub office within 24 hours of purchase, confirmed by an AshantiHub staff member in a role that does not exist yet. | Task 9 adds the `pickup_desk` role, the `pickup.confirm` permission, the queue and the collect endpoint. |
-| D7 | Services, events, stays | They pay through `process_payment` with other kinds (`ticket_purchase`, `service_request`, `booking`). The owner's verification flow was described for products only. | Out of scope for Stage 1 (product orders only). Plan 1b covers them once the owner says how their completion is verified. |
+| D7 | Services, events, stays | They pay through `process_payment` with other kinds (`ticket_purchase`, `service_request`, `booking`). Owner decision (2026-10-15): they use the same Support-verification release as products. | Out of scope for Stage 1 (product orders only). Plan 1b reuses `FulfilmentCheck`/`verification.record` and defines what "handed over" means for each kind. |
 
 ## Global Constraints
 
@@ -2999,7 +2999,7 @@ git commit -m "docs(ledger): correctness core, spec status, stage index"
 | Plan | Scope | Why separate |
 |---|---|---|
 | **1F** Frontend | Accounting fee/settings screens; Support "awaiting verification" screen; Pickup Desk dashboard and navigation; registration "business type" step replacing "pick a plan"; hide plan UI when the plans list is empty. | The registration change must ship before `SUBSCRIPTIONS_ENABLED` is turned off. |
-| **1b** | Ledger recording and release for services, events/tickets and bookings. | The owner has described the verification flow for products only; each kind needs its own completion rule. |
+| **1b** | Ledger recording and release for services, events/tickets and bookings. | Same verification flow as products; each kind needs its own definition of "handed over". |
 | **2** OTP and security | One OTP service, step-up tokens, trusted devices, customer and vendor 2FA. | Independent of money; **must precede any wallet going live**. |
 | **3** Wallets and payments | Customer wallet, top-up, refunds (pre- and post-release, including a customer refund after a dispute and an uncollected pickup order), withdrawals, payout destinations, provider interface and simulated provider, reconciliation. | Needs Plan 2. |
 | **4** Vendor dashboard and SMS | Statements, per-order SMS, digest, cap meter. | Reads Plan 1 data. |

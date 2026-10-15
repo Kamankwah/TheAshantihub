@@ -137,9 +137,9 @@ No timer releases a vendor's money. For a product order:
    - **Could not reach** → recorded; the order stays on Support's list and is flagged overdue 72 hours after purchase. Nothing releases on its own.
 4. An **open dispute** blocks release.
 
-### 4.2 Services, events and stays
+### 4.2 Services, events and stays (owner decision 2026-10-15)
 
-To be specified once the owner describes their verification (the flow above was described for products). Until then the ledger does not record them (Plan 1b).
+Same as products: the service is done, the event has taken place or the stay has begun, the customer confirms (or Support records it on the call), and a Support verification call releases the money; a mismatch raises a 72-hour dispute. What counts as "handed over" for each kind (provider marks the service done, event date passed or ticket scanned, check-in) is settled in Plan 1b. The ledger records only product orders until then.
 
 ### 4.3 Store pickup and the Pickup Desk
 
