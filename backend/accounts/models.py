@@ -280,6 +280,12 @@ class StaffTwoFactor(models.Model):
         return f"2-step for {self.staff.full_name}"
 
 
+def subscriptions_enabled():
+    from billing.switch import subscriptions_enabled as enabled
+
+    return enabled()
+
+
 class BusinessOwner(AuthenticatableAccountMixin, models.Model):
     PENDING = "pending"
     VERIFIED = "verified"
@@ -377,7 +383,7 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
             return "business_info"
         if profile.is_formal and not (profile.business_reg_certificate and profile.tin):
             return "business_info"
-        if not profile.business_kind or getattr(self, "subscription", None) is None:
+        if not profile.business_kind or (subscriptions_enabled() and getattr(self, "subscription", None) is None):
             return "plan_selection"
         if not profile.has_payout_details():
             return "payment_info"
@@ -391,7 +397,7 @@ class BusinessOwner(AuthenticatableAccountMixin, models.Model):
         payout details" — and only once KYC has verified the business."""
         if self.kyc_status != self.VERIFIED:
             return "complete"
-        if getattr(self, "subscription", None) is None:
+        if subscriptions_enabled() and getattr(self, "subscription", None) is None:
             return "plan_selection"
         profile = getattr(self, "profile", None)
         if profile is None or not profile.has_payout_details():

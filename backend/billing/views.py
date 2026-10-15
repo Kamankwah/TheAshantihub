@@ -9,10 +9,12 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.models import BusinessOwnerProfile
 from accounts.permissions import HasRolePermission
 from accounts.views import IsBusinessOwner
 from payments.services import process_payment
 
+from . import switch
 from .models import Subscription, SubscriptionPlan, Transaction
 from .serializers import (
     StartTrialSerializer,
@@ -36,6 +38,11 @@ class SubscriptionPlanListView(generics.ListAPIView):
     )
     serializer_class = SubscriptionPlanSerializer
     permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        if not switch.subscriptions_enabled():
+            return SubscriptionPlan.objects.none()
+        return super().get_queryset()
 
 
 class SubscriptionPlanAdminListCreateView(generics.ListCreateAPIView):
@@ -189,6 +196,8 @@ class SubscriptionMeView(APIView):
         return Response(SubscriptionSerializer(subscription).data)
 
     def post(self, request):
+        if not switch.subscriptions_enabled():
+            return switch.paused_response()
         serializer = SubscribeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         subscription = serializer.save(business_owner=request.user)
@@ -205,6 +214,8 @@ class SubscriptionStartTrialView(APIView):
     permission_classes = [IsAuthenticated, IsBusinessOwner]
 
     def post(self, request):
+        if not switch.subscriptions_enabled():
+            return switch.paused_response()
         owner = request.user
         if owner.compute_registration_step() != "plan_selection":
             return Response(
@@ -226,6 +237,26 @@ class SubscriptionStartTrialView(APIView):
             },
             status=201,
         )
+
+
+class BusinessKindView(APIView):
+    """POST /api/billing/business-kind/ {business_kind} — registration's replacement for "pick a plan" while
+    subscriptions are off: it records whether the business sells products or services, once."""
+
+    permission_classes = [IsAuthenticated, IsBusinessOwner]
+
+    def post(self, request):
+        if switch.subscriptions_enabled():
+            return Response({"detail": "Choose a plan to continue.", "code": "use_plan_selection"}, status=409)
+        kind = request.data.get("business_kind") if isinstance(request.data, dict) else None
+        if kind not in dict(BusinessOwnerProfile.BUSINESS_KIND_CHOICES):
+            return Response({"business_kind": "Pick products or services."}, status=400)
+        profile = request.user.profile
+        if profile.business_kind:
+            return Response({"business_kind": "Your business type is already set."}, status=400)
+        profile.business_kind = kind
+        profile.save(update_fields=["business_kind"])
+        return Response({"business_kind": kind, "registration_step": request.user.compute_registration_step()})
 
 
 class TransactionMineListCreateView(generics.ListAPIView):
@@ -253,6 +284,8 @@ class TransactionMineListCreateView(generics.ListAPIView):
         input_serializer = TransactionMineCreateSerializer(data=request.data)
         input_serializer.is_valid(raise_exception=True)
         data = input_serializer.validated_data
+        if data["kind"] == "subscription" and not switch.subscriptions_enabled():
+            return switch.paused_response()
         metadata = data.get("metadata") or {}
         if metadata.get("cycle_months") not in (None, ""):
             try:
