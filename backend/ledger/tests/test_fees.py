@@ -139,3 +139,16 @@ class SeededDefaultsTests(TestCase):
         OrderFeeSnapshot.objects.create(order=order, business_owner=owner, category="product", rule_set=rule_set, base_pesewas=1000, computed_pesewas=10, charged_pesewas=10)
         OrderFeeSnapshot.objects.create(order=order, business_owner=owner, category="service", rule_set=rule_set, base_pesewas=1000, computed_pesewas=10, charged_pesewas=10, reversed_at=timezone.now())
         self.assertEqual(fees.charged_to_date(owner), 10)
+
+
+class QuoteCapAtBaseTests(TestCase):
+    def test_a_fee_is_never_more_than_the_line_value(self):
+        from django.utils import timezone
+
+        from ledger.models import FeeBand, FeeRuleSet
+
+        rules = FeeRuleSet.objects.create(category="product", effective_from=timezone.now())
+        FeeBand.objects.create(rule_set=rules, lower_pesewas=0, upper_pesewas=None, flat_pesewas=500)
+        quote = fees.quote("product", 300, cap=None, already_charged=0)
+        self.assertEqual((quote.computed, quote.charged), (500, 300))
+        self.assertEqual(fees.quote("product", 0, cap=None, already_charged=0).charged, 0)

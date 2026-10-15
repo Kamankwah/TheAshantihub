@@ -48,7 +48,7 @@ def quote(category, base, *, cap, already_charged, at=None):
     if rule_set is None:
         raise FeeError(f"No fee rules are in force for {category}")
     computed = band_fee(list(rule_set.bands.all()), base)
-    return FeeQuote(rule_set.pk, base, computed, apply_cap(computed, cap, already_charged))
+    return FeeQuote(rule_set.pk, base, computed, min(apply_cap(computed, cap, already_charged), max(base, 0)))
 
 
 def charged_to_date(owner):

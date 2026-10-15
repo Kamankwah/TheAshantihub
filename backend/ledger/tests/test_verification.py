@@ -199,3 +199,133 @@ class AwaitingListTests(VerificationBase):
     def test_support_only(self):
         self.as_staff(self.accountant)
         self.assertEqual(self.get().status_code, 403)
+
+
+@override_settings(LEDGER_ENABLED=True)
+class ReleaseEdgeCaseTests(VerificationBase):
+    def _deliver(self, order):
+        order.delivery_method = Order.DOOR_TO_DOOR
+        order.save(update_fields=["delivery_method"])
+        DeliveryAssignment.objects.create(
+            order=order, status=DeliveryAssignment.CONFIRMED, delivered_at=timezone.now(), confirmed_at=timezone.now(),
+        )
+
+    def test_a_zero_value_vendor_does_not_block_the_other_vendor(self):
+        kofi, ama = self.owner("Kofi"), self.owner("Ama")
+        order = self.order([(self.listing(kofi, "120.00"), 1), (self.listing(ama, "0.00"), 1)], delivery="10.00")
+        escrow.record_order_payment(order)
+        self._deliver(order)
+        self.as_staff(self.support)
+        response = self.verify(order, "matches")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(response.json()["released"])
+        self.assertEqual(self.balance(Account.VENDOR_PENDING, kofi), 0)
+        self.assertEqual(self.balance(Account.VENDOR_AVAILABLE, kofi), 11500)
+        self.assertEqual(self.balance(Account.DELIVERY_PAYABLE, order), 0)
+
+    def test_a_zero_value_vendor_alone_with_a_delivery_fee_posts_only_the_delivery(self):
+        ama = self.owner("Ama")
+        order = self.order([(self.listing(ama, "0.00"), 1)], delivery="10.00")
+        escrow.record_order_payment(order)
+        self._deliver(order)
+        self.as_staff(self.support)
+        response = self.verify(order, "matches")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(self.balance(Account.PLATFORM_DELIVERY_INCOME), 1000)
+        self.assertEqual(self.balance(Account.DELIVERY_PAYABLE, order), 0)
+        self.assertEqual(self.balance(Account.VENDOR_AVAILABLE, ama), 0)
+
+    def test_a_flat_fee_above_the_base_is_capped_at_the_base(self):
+        from ledger.models import FeeBand, FeeRuleSet
+
+        rules = FeeRuleSet.objects.create(category="product", effective_from=timezone.now() - timedelta(minutes=1))
+        FeeBand.objects.create(rule_set=rules, lower_pesewas=0, upper_pesewas=None, flat_pesewas=500)
+        kofi = self.owner("Kofi")
+        order = self.order([(self.listing(kofi, "3.00"), 1)])
+        escrow.record_order_payment(order)
+        snap = OrderFeeSnapshot.objects.get(order=order)
+        self.assertEqual((snap.computed_pesewas, snap.charged_pesewas), (500, 300))
+        self._deliver(order)
+        self.as_staff(self.support)
+        self.assertEqual(self.verify(order, "matches").status_code, 200)
+        self.assertEqual(self.balance(Account.VENDOR_AVAILABLE, kofi), 0)
+        self.assertEqual(self.balance(Account.PLATFORM_FEE_INCOME), 300)
+        self.assertEqual(self.balance(Account.VENDOR_PENDING, kofi), 0)
+
+    def test_a_vendor_at_the_lifetime_cap_pays_no_fee(self):
+        from ledger.models import MoneySetting
+
+        MoneySetting.objects.create(key="fee_cap_pesewas", value=500, effective_from=timezone.now() - timedelta(days=1))
+        kofi = self.owner("Kofi")
+        first = self.order([(self.listing(kofi, "120.00"), 1)])
+        escrow.record_order_payment(first)
+        second = self.order([(self.listing(kofi, "120.00"), 1)])
+        escrow.record_order_payment(second)
+        self._deliver(second)
+        self.as_staff(self.support)
+        self.assertEqual(self.verify(second, "matches").status_code, 200)
+        self.assertEqual(self.balance(Account.VENDOR_AVAILABLE, kofi), 12000)
+        self.assertEqual(self.balance(Account.PLATFORM_FEE_INCOME), 0)
+
+    def test_an_order_with_no_delivery_fee_releases(self):
+        kofi = self.owner("Kofi")
+        order = self.order([(self.listing(kofi, "120.00"), 1)])
+        escrow.record_order_payment(order)
+        self._deliver(order)
+        self.as_staff(self.support)
+        self.assertEqual(self.verify(order, "matches").status_code, 200)
+        self.assertEqual(self.balance(Account.VENDOR_AVAILABLE, kofi), 11500)
+
+    def test_two_fee_categories_for_one_vendor_release_together(self):
+        from listings.models import Category
+
+        service = Category.objects.filter(kind="service").first()
+        kofi = self.owner("Kofi")
+        product = self.listing(kofi, "120.00")
+        other = self.listing(kofi, "50.00")
+        other.category = service
+        other.save()
+        order = self.order([(product, 1), (other, 1)])
+        escrow.record_order_payment(order)
+        self.assertEqual(OrderFeeSnapshot.objects.filter(order=order).count(), 2)
+        self._deliver(order)
+        self.as_staff(self.support)
+        self.assertEqual(self.verify(order, "matches").status_code, 200)
+        self.assertEqual(self.balance(Account.VENDOR_PENDING, kofi), 0)
+        fee = sum(OrderFeeSnapshot.objects.filter(order=order).values_list("charged_pesewas", flat=True))
+        self.assertEqual(self.balance(Account.VENDOR_AVAILABLE, kofi), 17000 - fee)
+
+    def test_a_super_admin_can_verify(self):
+        order = self.paid_order(customer_confirmed=True)
+        self.as_staff(make_staff("super_admin", "boss@example.com"))
+        self.assertEqual(self.verify(order, "matches").status_code, 200)
+
+
+@override_settings(LEDGER_ENABLED=True)
+class StrandedReleaseTests(VerificationBase):
+    def test_matches_recorded_while_the_ledger_was_off_stays_listed_and_can_be_released(self):
+        order = self.paid_order(customer_confirmed=True)
+        self.as_staff(self.support)
+        with override_settings(LEDGER_ENABLED=False):
+            self.assertFalse(self.verify(order, "matches").json()["released"])
+        row = self.client.get("/api/ledger/orders/awaiting-verification/").json()["results"][0]
+        self.assertEqual((row["order_id"], row["outcome"], row["released"]), (order.pk, "matches", False))
+        self.assertTrue(self.verify(order, "matches").json()["released"])
+        self.assertEqual(self.client.get("/api/ledger/orders/awaiting-verification/").json()["results"], [])
+
+    def test_a_dispute_appearing_between_the_check_and_the_release_is_a_409_and_not_recorded(self):
+        from unittest import mock
+
+        order = self.paid_order(customer_confirmed=True)
+        self.as_staff(self.support)
+        calls = {"n": 0}
+
+        def flaky(o):
+            calls["n"] += 1
+            return calls["n"] > 1  # false for record's check, true inside release_verified
+
+        with mock.patch.object(escrow, "has_open_dispute", side_effect=flaky):
+            response = self.verify(order, "matches")
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(FulfilmentCheck.objects.filter(order=order, outcome="matches").exists())
+        self.assertEqual(self.balance(Account.VENDOR_PENDING, self.kofi), 12000)

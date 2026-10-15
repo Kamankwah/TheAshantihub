@@ -127,8 +127,9 @@ def release_verified(order, now=None):
         debits, credits = [], []
         for vendor_id in sorted(by_vendor):
             entry = by_vendor[vendor_id]
-            debits.append(posting.debit(posting.account_for(Account.VENDOR_PENDING, entry["owner"]), entry["base"]))
-            if entry["fee"]:
+            if entry["base"] > 0:
+                debits.append(posting.debit(posting.account_for(Account.VENDOR_PENDING, entry["owner"]), entry["base"]))
+            if entry["fee"] > 0:
                 credits.append(posting.credit(income, entry["fee"]))
         delivery = to_pesewas(order.delivery_fee or 0)
         if delivery:
@@ -137,8 +138,11 @@ def release_verified(order, now=None):
         for vendor_id in sorted(by_vendor):
             entry = by_vendor[vendor_id]
             payable = entry["base"] - entry["fee"]
-            if payable:
+            if payable > 0:
                 credits.append(posting.credit(posting.account_for(Account.VENDOR_AVAILABLE, entry["owner"]), payable))
+        if len(debits) + len(credits) < 2:
+            OrderFeeSnapshot.objects.filter(pk__in=[s.pk for s in snapshots]).update(released_at=now)
+            return None  # nothing to post (every line was zero)
         journal = posting.post(
             key=release_key(order), kind="order_release", lines=debits + credits,
             reference_type="orders.order", reference_id=str(order.pk), memo=f"Release of order #{order.pk}",

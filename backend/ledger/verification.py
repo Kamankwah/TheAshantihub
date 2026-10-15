@@ -7,7 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from . import escrow, settings_store
-from .models import FulfilmentCheck, Journal
+from .models import FulfilmentCheck, Journal, OrderFeeSnapshot
 
 
 class VerificationError(Exception):
@@ -79,6 +79,13 @@ def record(order, staff, outcome, *, note="", customer_confirmed_by_phone=False,
         check.save()
         if outcome == FulfilmentCheck.MATCHES:
             escrow.release_verified(order, now)
+            if (
+                escrow.enabled()
+                and Journal.objects.filter(key=escrow.pay_key(order)).exists()
+                and not Journal.objects.filter(key=escrow.release_key(order)).exists()
+                and OrderFeeSnapshot.objects.filter(order=order, released_at__isnull=True, reversed_at__isnull=True).exists()
+            ):
+                raise VerificationError("The order could not be released. Check for an open dispute and try again.", 409)
         return check
 
 
@@ -96,7 +103,7 @@ def awaiting(now=None):
     rows = []
     for order in orders:
         check = FulfilmentCheck.objects.filter(order=order).first() or FulfilmentCheck(order=order)
-        if not handed_over(order, check) or check.outcome == FulfilmentCheck.MATCHES:
+        if not handed_over(order, check):
             continue
         rows.append({
             "order_id": order.pk, "placed_at": order.placed_at, "due_by": order.placed_at + limit,
@@ -107,6 +114,6 @@ def awaiting(now=None):
                 for item in order.items.all()
             ],
             "customer_confirmed": customer_confirmed(order, check),
-            "outcome": check.outcome, "outcome_note": check.outcome_note,
+            "outcome": check.outcome, "outcome_note": check.outcome_note, "released": False,
         })
     return rows
