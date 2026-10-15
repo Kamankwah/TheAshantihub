@@ -210,6 +210,31 @@ describe('TargetLimitsPanel', () => {
     expect(sent.limits.find((l) => l.metric === 'visits')).toEqual({ metric: 'visits', min_daily: 3, max_daily: 15 })
     expect(await screen.findByText(/Limits saved/)).toBeInTheDocument()
   })
+
+  it('with no saved limits shows 0 to 1000, enables Save, and sends every measure', async () => {
+    get('/api/targets/plans/', { ...plans, limits: [] })
+    let sent = null
+    server.use(http.put(`${API}/api/targets/limits/`, async ({ request }) => { sent = await request.json(); return HttpResponse.json([]) }))
+    wrap(<TargetLimitsPanel />)
+    expect(await screen.findByLabelText('Visits lowest a day')).toHaveValue('0')
+    expect(screen.getByLabelText('Visits highest a day')).toHaveValue('1000')
+    expect(screen.getByText('Measures without a saved limit use 0 to 1000 a day until you save.')).toBeInTheDocument()
+    const save = screen.getByRole('button', { name: 'Save limits' })
+    expect(save).toBeEnabled()
+    fireEvent.click(save)
+    await waitFor(() => expect(sent).not.toBeNull())
+    expect(sent.limits).toEqual(['registrations', 'visits', 'calls', 'renewals'].map((metric) => ({ metric, min_daily: 0, max_daily: 1000 })))
+  })
+
+  it('keeps Save disabled for existing limits until one is edited', async () => {
+    get('/api/targets/plans/', plans)
+    wrap(<TargetLimitsPanel />)
+    const save = await screen.findByRole('button', { name: 'Save limits' })
+    expect(save).toBeDisabled()
+    expect(screen.queryByText(/without a saved limit/)).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Calls highest a day'), { target: { value: '25' } })
+    expect(save).toBeEnabled()
+  })
 })
 
 describe('Commission policy: scouts\' tax status', () => {

@@ -31,7 +31,12 @@ export default function TargetLimitsPanel({ onOpenApproval }) {
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
   useEffect(() => {
-    if (data?.limits) setDraft(Object.fromEntries(data.limits.map((l) => [l.metric, { min: String(l.min_daily), max: String(l.max_daily) }])));
+    if (!data) return;
+    const saved = new Map((data.limits || []).map((l) => [l.metric, l]));
+    setDraft(Object.fromEntries((data.metrics || []).map((m) => {
+      const l = saved.get(m);
+      return [m, l ? { min: String(l.min_daily), max: String(l.max_daily) } : { min: "0", max: "1000" }];
+    })));
   }, [data]);
 
   const scouts = (data?.staff || []).filter((s) => s.role === "scout");
@@ -47,7 +52,13 @@ export default function TargetLimitsPanel({ onOpenApproval }) {
     if (low > high) return `${LABEL[metric] || metric}: the lowest target can't be above the highest.`;
     return null;
   }).filter(Boolean);
-  const changed = (data?.limits || []).some((l) => draft[l.metric] && (draft[l.metric].min !== String(l.min_daily) || draft[l.metric].max !== String(l.max_daily)));
+  const savedLimits = new Map((data?.limits || []).map((l) => [l.metric, l]));
+  const unsaved = metrics.filter((m) => !savedLimits.has(m));
+  const changed = metrics.some((m) => {
+    if (!draft[m]) return false;
+    const l = savedLimits.get(m);
+    return !l || draft[m].min !== String(l.min_daily) || draft[m].max !== String(l.max_daily);
+  });
 
   const save = async () => {
     setSaving(true);
@@ -101,6 +112,7 @@ export default function TargetLimitsPanel({ onOpenApproval }) {
                   </tbody>
                 </table>
               </div>
+              {unsaved.length > 0 && <div style={dim}>Measures without a saved limit use 0 to 1000 a day until you save.</div>}
               {problems.map((p) => <div key={p} role="alert" style={errorStyle}>{p}</div>)}
               {error && <div role="alert" style={errorStyle}>{error}</div>}
               {saved && <div role="status" style={callout(D.green)}>{saved}</div>}
