@@ -121,6 +121,7 @@ INSTALLED_APPS = [
     "marketing",
     "insights",
     "staffsecurity",
+    "otp",
     "announcements",
     "realtime",
     "delivery",
@@ -185,7 +186,8 @@ MEDIA_ROOT = BASE_DIR / "media"
 CORS_ALLOW_ALL_ORIGINS = env.bool("DJANGO_CORS_ALLOW_ALL_ORIGINS", default=True)
 CORS_ALLOWED_ORIGINS = env.list("DJANGO_CORS_ALLOWED_ORIGINS", default=[])
 # The Super Admin's step-in sends two extra headers (accounts/view_as.py).
-CORS_ALLOW_HEADERS = (*cors_default_headers, "x-view-as", "x-view-as-screen")
+# X-Step-Up-Token carries a one-time step-up permission (otp/step_up.py).
+CORS_ALLOW_HEADERS = (*cors_default_headers, "x-view-as", "x-view-as-screen", "x-step-up-token")
 
 # Email — defaults to Django's console backend so nothing breaks locally
 # without SMTP configured; set EMAIL_BACKEND (and the SMTP vars below) in
@@ -384,6 +386,10 @@ REST_FRAMEWORK = {
         "staff_activate_opened": "30/min",
         "login": "5/min",
         "two_factor": "10/min",
+        # One-time codes (otp app): a per-process burst guard. The real hourly limits per phone/email, account
+        # and IP are counted from otp.OtpEvent rows so they hold across server processes (otp/service.py).
+        "otp_send": "5/min",
+        "otp_verify": "10/min",
         "password_reset_request": "5/min",
         # Public claim page and the scout's hand-over (preview + claim).
         "owner_claim": "10/min",
@@ -575,3 +581,15 @@ PRIVATE_MEDIA_ROOT = BASE_DIR / "private"
 # Charge the delivery fee at checkout from the live rate card (delivery.RateCard). Off until the owner
 # decides: with it off, checkout is exactly as before and nothing is added to an order's total.
 DELIVERY_FEE_ENABLED = env.bool("DELIVERY_FEE_ENABLED", default=False)
+
+# One-time codes and 2-step sign-in for everyone (otp app; spec §9, plan docs/superpowers/plans/2026-10-16-otp-security.md).
+# All three default OFF: with them off, sign-in, sign-up and every sensitive endpoint behave exactly as before. Turn
+# them on only after the frontend screens (Plan 2F) ship, and the sign-in ones only once OTP_SMS_PROVIDER=hubtel
+# really sends: on a simulated provider a phone-only account could never receive its code.
+OTP_SIGNIN_ENFORCED = env.bool("OTP_SIGNIN_ENFORCED", default=False)
+OTP_STEP_UP_ENFORCED = env.bool("OTP_STEP_UP_ENFORCED", default=False)
+OTP_SIGNUP_VERIFICATION_ENFORCED = env.bool("OTP_SIGNUP_VERIFICATION_ENFORCED", default=False)
+# How codes travel by text (otp/senders.py): "simulated" (default) sends nothing to anyone and keeps nothing;
+# "hubtel" sends through Hubtel SMS with the HUBTEL_SMS_* keys above and an Approved Sender ID. Under
+# `manage.py test` it is always "locmem", which keeps texts in otp.senders.sms_outbox (like Django's mail.outbox).
+OTP_SMS_PROVIDER = "locmem" if TESTING else env("OTP_SMS_PROVIDER", default="simulated")
