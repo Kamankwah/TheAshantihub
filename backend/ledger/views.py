@@ -1,5 +1,6 @@
 """Ledger staff API: the fee rules and money settings in force, and proposals to change them
 (maker-checker through the approvals engine)."""
+from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -7,10 +8,11 @@ from rest_framework.views import APIView
 from accounts.permissions import HasAnyRolePermission, HasRolePermission
 from approvals import services as approvals
 from approvals.models import ApprovalRequest
+from orders.models import Order
 
-from . import fees, settings_store
+from . import escrow, fees, settings_store, verification
 from .approval_kinds import CATEGORY_LABELS, FEE_RULES_KEY, SETTING_KEY, bands_as_dicts, effective_time
-from .models import FeeRuleSet, MoneySetting
+from .models import FeeRuleSet, Journal, MoneySetting
 
 VIEW, MANAGE = "fees.view", "fees.manage"
 
@@ -112,3 +114,36 @@ class MoneySettingsView(APIView):
             payload={"key": key, "value": data.get("value"), "effective_from": data.get("effective_from")},
             maker_note=str(data.get("note") or ""),
         )
+
+
+class AwaitingVerificationView(APIView):
+    """GET orders/awaiting-verification/ — delivered or collected orders waiting for Support's verification call."""
+
+    def get_permissions(self):
+        return [HasRolePermission("orders.verify")]
+
+    def get(self, request):
+        return Response({"results": verification.awaiting()})
+
+
+class OrderVerificationView(APIView):
+    """POST orders/<id>/verification/ {outcome: matches|does_not_match|unreachable, note?, customer_confirmed_by_phone?}.
+    A positive outcome releases the order's money at once."""
+
+    def get_permissions(self):
+        return [HasRolePermission("orders.verify")]
+
+    def post(self, request, pk):
+        order = get_object_or_404(Order, pk=pk)
+        data = request.data if isinstance(request.data, dict) else {}
+        try:
+            check = verification.record(
+                order, request.user, data.get("outcome"), note=data.get("note"),
+                customer_confirmed_by_phone=data.get("customer_confirmed_by_phone") is True,
+            )
+        except verification.VerificationError as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
+        return Response({
+            "order": order.pk, "outcome": check.outcome, "dispute_id": check.dispute_id,
+            "released": Journal.objects.filter(key=escrow.release_key(order)).exists(),
+        })

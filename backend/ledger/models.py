@@ -185,3 +185,30 @@ class MoneySetting(models.Model):
 
     def __str__(self):
         return f"{self.key}={self.value}"
+
+
+class FulfilmentCheck(models.Model):
+    """What happened to a product order after it was handed over: collected at the AshantiHub office (store pickup),
+    the customer's receipt confirmed by phone, and Support's verification call. The vendor's money is released only
+    on a positive outcome."""
+
+    MATCHES, DOES_NOT_MATCH, UNREACHABLE = "matches", "does_not_match", "unreachable"
+    OUTCOME_CHOICES = [
+        ("", "Not verified yet"), (MATCHES, "Matches the description"), (DOES_NOT_MATCH, "Does not match"),
+        (UNREACHABLE, "Could not reach the customer"),
+    ]
+
+    order = models.OneToOneField("orders.Order", on_delete=models.PROTECT, related_name="fulfilment_check")
+    collected_at = models.DateTimeField(null=True, blank=True)
+    collected_by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    phone_confirmed_at = models.DateTimeField(null=True, blank=True)
+    outcome = models.CharField(max_length=14, choices=OUTCOME_CHOICES, blank=True, default="")
+    outcome_note = models.CharField(max_length=500, blank=True, default="")
+    outcome_at = models.DateTimeField(null=True, blank=True)
+    outcome_by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    dispute = models.ForeignKey("disputes.Dispute", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Order {self.order_id}: {self.outcome or 'awaiting verification'}"

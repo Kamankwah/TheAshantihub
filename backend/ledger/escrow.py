@@ -11,7 +11,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from . import fees, posting, settings_store
-from .models import Account, Journal, OrderFeeSnapshot
+from .models import Account, FulfilmentCheck, Journal, OrderFeeSnapshot
 from .money import to_pesewas
 
 
@@ -84,3 +84,64 @@ def record_order_payment(order, *, at=None):
             key=pay_key(order), kind="order_payment", lines=debits + credits,
             reference_type="orders.order", reference_id=str(order.pk), memo=f"Payment for order #{order.pk}",
         )
+
+
+# --- release ---------------------------------------------------------------------------------------------
+
+def release_key(order):
+    return f"order-release-{order.pk}"
+
+
+def has_open_dispute(order):
+    from disputes.models import Dispute
+
+    return Dispute.objects.filter(order=order).exclude(status__in=Dispute.FINAL_STATUSES).exists()
+
+
+def release_verified(order, now=None):
+    """Release an order's held money to the vendor and the platform. Called when Support records a positive
+    verification; there is no timer. Returns the journal, or None when the ledger is off, the order has no positive
+    verification or an open dispute, or it was already released."""
+    if not enabled():
+        return None
+    now = now or timezone.now()
+    with transaction.atomic():
+        if Journal.objects.filter(key=release_key(order)).exists() or has_open_dispute(order):
+            return None
+        if not FulfilmentCheck.objects.filter(order=order, outcome=FulfilmentCheck.MATCHES).exists():
+            return None
+        snapshots = list(
+            OrderFeeSnapshot.objects.select_for_update()
+            .filter(order=order, released_at__isnull=True, reversed_at__isnull=True).select_related("business_owner")
+        )
+        if not snapshots or not Journal.objects.filter(key=pay_key(order)).exists():
+            return None
+        income = posting.account_for(Account.PLATFORM_FEE_INCOME)
+        by_vendor = {}
+        for snap in snapshots:
+            entry = by_vendor.setdefault(snap.business_owner_id, {"owner": snap.business_owner, "base": 0, "fee": 0})
+            entry["base"] += snap.base_pesewas
+            entry["fee"] += snap.charged_pesewas
+
+        # The owner's order: AshantiHub first (fee, delivery), then each vendor, then any third-party rider (Stage 5).
+        debits, credits = [], []
+        for vendor_id in sorted(by_vendor):
+            entry = by_vendor[vendor_id]
+            debits.append(posting.debit(posting.account_for(Account.VENDOR_PENDING, entry["owner"]), entry["base"]))
+            if entry["fee"]:
+                credits.append(posting.credit(income, entry["fee"]))
+        delivery = to_pesewas(order.delivery_fee or 0)
+        if delivery:
+            debits.append(posting.debit(posting.account_for(Account.DELIVERY_PAYABLE, order), delivery))
+            credits.append(posting.credit(posting.account_for(Account.PLATFORM_DELIVERY_INCOME), delivery))
+        for vendor_id in sorted(by_vendor):
+            entry = by_vendor[vendor_id]
+            payable = entry["base"] - entry["fee"]
+            if payable:
+                credits.append(posting.credit(posting.account_for(Account.VENDOR_AVAILABLE, entry["owner"]), payable))
+        journal = posting.post(
+            key=release_key(order), kind="order_release", lines=debits + credits,
+            reference_type="orders.order", reference_id=str(order.pk), memo=f"Release of order #{order.pk}",
+        )
+        OrderFeeSnapshot.objects.filter(pk__in=[s.pk for s in snapshots]).update(released_at=now)
+        return journal
