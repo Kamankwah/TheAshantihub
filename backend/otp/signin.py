@@ -29,6 +29,7 @@ AUTHENTICATOR_STAGE = "authenticator"
 STAGES = (CODE_STAGE, AUTHENTICATOR_STAGE)
 PURPOSES = (SIGN_IN, SIGN_UP)
 TIMED_OUT = "Your sign-in timed out. Enter your password again."
+NO_CHANNEL = {"detail": "We have no phone or email on file to send a code to. Contact Support.", "code": "no_channel"}
 
 
 @dataclass
@@ -64,6 +65,11 @@ def read_ticket(token, stage=None):
     account = load(data.get("t"), data.get("i"))
     if not can_sign_in(account) or not hmac.compare_digest(str(data.get("pw", "")), fingerprint(account)):
         return None
+    if data["s"] == CODE_STAGE and data["t"] == STAFF:
+        from accounts import two_factor  # accounts.views imports this module
+
+        if two_factor.challenge_for(account) is not None:
+            return None  # a texted code never replaces the authenticator a staffer has or owes
     return Ticket(account=account, account_type=data["t"], stage=data["s"], purpose=data["p"], nonce=str(data.get("n", "")))
 
 
@@ -82,17 +88,31 @@ def has_verified_contact(account):
     return VerifiedContact.objects.filter(current, account_type=account_type, account_id=account_id).exists()
 
 
+def step_response(step):
+    """The login view's Response for a sign_in_step result: 409 when the account has no way to receive a code."""
+    from rest_framework.response import Response
+
+    return Response(step, status=409 if step.get("code") == NO_CHANNEL["code"] else 200)
+
+
 def sign_in_step(account, device_token=""):
     """The second step owed after a correct password, or None to sign in at once. Staff reach this only after
     accounts.two_factor found no authenticator stage for them."""
     kind = account_type_of(account)
     if kind != STAFF and flags.sign_up_enforced() and not has_verified_contact(account):
-        return code_challenge(account, SIGN_UP)
+        return _challenge_or_no_channel(account, SIGN_UP)
     if not flags.sign_in_enforced():
         return None
     if kind == CUSTOMER and devices.is_trusted(account, device_token):
         return None
-    return code_challenge(account, SIGN_IN)
+    return _challenge_or_no_channel(account, SIGN_IN)
+
+
+def _challenge_or_no_channel(account, purpose):
+    """Never hand out a challenge that can't be passed: with no phone or email to send to, say so."""
+    if not contacts(account):
+        return dict(NO_CHANNEL)
+    return code_challenge(account, purpose)
 
 
 def signed_in_body(account, request):
