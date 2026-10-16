@@ -18,11 +18,12 @@ grouped without a staff decision.
 import logging
 
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from cart import guard
 from listings.models import Listing
-from notifications.services import notify_staff_role
+from notifications.services import notify_business_owner, notify_staff_role
 
 from . import identity
 from .errors import CatalogueError
@@ -156,4 +157,220 @@ def state(listing):
         "store_code": identity.is_store_code(listing.barcode),
         "catalogue_product": product_row(listing.catalogue_product),
         "request": None if latest is None else request_row(latest),
+    }
+
+
+# --- Staff decisions (listings.moderate; the moderated-queue contract) ----------------------------------------------
+
+GROUPED, NOT_GROUPED, UNGROUPED = "catalogue_grouped", "catalogue_not_grouped", "catalogue_ungrouped"
+REASON_REQUIRED = "A reason is required."
+NOT_REJECTED = "Only a rejected request can be sent back for re-review."
+NOT_GROUPED_MESSAGE = "This listing is not grouped."
+LISTING_NOT_FOUND = "Listing not found."
+MATCH_LIMIT = 5
+
+
+def _locked_request(request_id):
+    request = CatalogueAttachRequest.objects.select_for_update().filter(pk=request_id).first()
+    if request is None:
+        raise CatalogueError(NOT_FOUND, "not_found", 404)
+    return request
+
+
+def _product_for(request, listing, staff, data):
+    """The entry the listing joins, and whether it was made now: the one staff name, else the one asked for, else the
+    one already holding the listing's barcode, else a new one from the request (staff may correct its brand and name).
+    The listing's barcode is read now, not from the request: it may have changed since."""
+    barcode = grouping_barcode(listing)
+    product = request.catalogue_product
+    if data.get("catalogue_product") not in (None, ""):
+        try:
+            product = CatalogueProduct.objects.get(pk=int(data["catalogue_product"]))
+        except (CatalogueProduct.DoesNotExist, TypeError, ValueError):
+            raise CatalogueError(UNKNOWN_PRODUCT, "unknown_product") from None
+    if product is None and barcode:
+        product = CatalogueProduct.objects.filter(barcode=barcode).first()
+    if product is not None:
+        if product.barcode and barcode and product.barcode != barcode:
+            raise CatalogueError(BARCODE_MISMATCH, "barcode_mismatch", 409)
+        return product, False
+    brand = _text(data, "brand", request.brand, 100)
+    name = _text(data, "name", request.name, 150)
+    if not name:
+        raise CatalogueError(NEEDS_NAME, "name_required")
+    if not brand and not barcode:
+        raise CatalogueError(NEEDS_BRAND, "brand_or_barcode_required")
+    if barcode:
+        # get_or_create: two approvals racing on one new barcode make one entry (the unique constraint decides).
+        return CatalogueProduct.objects.get_or_create(
+            barcode=barcode, defaults={"brand": brand, "name": name, "created_by": staff},
+        )
+    return CatalogueProduct.objects.create(brand=brand, name=name, created_by=staff), True
+
+
+def approve(request_id, staff, data=None):
+    """Group the request's listing. Locks the request, then the listing; re-checks both. Returns (request, product);
+    raises CatalogueError (409 when it was decided already or the listing was grouped meanwhile)."""
+    data = data or {}
+    with transaction.atomic():
+        request = _locked_request(request_id)
+        if request.status != CatalogueAttachRequest.PENDING:
+            raise CatalogueError(NOT_PENDING, "not_pending", 409)
+        listing = (
+            Listing.objects.select_for_update(of=("self",)).select_related("category", "business_owner")
+            .get(pk=request.listing_id)
+        )
+        if listing.catalogue_product_id is not None:
+            raise CatalogueError(ALREADY_GROUPED, "already_grouped", 409)
+        if not groupable(listing):
+            raise CatalogueError(NOT_GROUPABLE, "not_groupable", 409)
+        product, created = _product_for(request, listing, staff, data)
+        listing.catalogue_product = product
+        listing.save(update_fields=["catalogue_product"])
+        request.catalogue_product = product
+        request.status = CatalogueAttachRequest.APPROVED
+        request.rejection_reason = None
+        request.reviewed_by = staff
+        request.reviewed_at = timezone.now()
+        request.save(update_fields=["catalogue_product", "status", "rejection_reason", "reviewed_by", "reviewed_at"])
+    notify_business_owner(
+        listing.business_owner, GROUPED, "Listing grouped with other sellers",
+        body=f"“{listing.name}” now shows with other businesses' offers of {describe(request)}. Customers compare offers "
+             "by price.",
+        link="/business-dashboard", icon="🏷️",
+    )
+    return request, product
+
+
+def reject(request_id, staff, reason):
+    """Turn a waiting request down with a reason the business is told. Raises CatalogueError."""
+    reason = (reason or "").strip()
+    if not reason:
+        raise CatalogueError(REASON_REQUIRED, "reason_required")
+    with transaction.atomic():
+        request = _locked_request(request_id)
+        if request.status != CatalogueAttachRequest.PENDING:
+            raise CatalogueError(NOT_PENDING, "not_pending", 409)
+        request.status = CatalogueAttachRequest.REJECTED
+        request.rejection_reason = reason[:500]
+        request.reviewed_by = staff
+        request.reviewed_at = timezone.now()
+        request.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
+    listing = request.listing
+    notify_business_owner(
+        listing.business_owner, NOT_GROUPED, "Grouping not approved",
+        body=f"“{listing.name}” stays on its own: {request.rejection_reason}", link="/business-dashboard", icon="⚠️",
+    )
+    return request
+
+
+def re_review(request_id):
+    """Send a rejected request back to pending, clearing the reason and the reviewer pair. Refused (409) while another
+    request for the listing waits: one waits per listing. Locks the request, then the listing (as approve does)."""
+    with transaction.atomic():
+        request = _locked_request(request_id)
+        if request.status != CatalogueAttachRequest.REJECTED:
+            raise CatalogueError(NOT_REJECTED, "not_rejected")
+        Listing.objects.select_for_update(of=("self",)).get(pk=request.listing_id)
+        if CatalogueAttachRequest.objects.filter(
+            listing_id=request.listing_id, status=CatalogueAttachRequest.PENDING,
+        ).exists():
+            raise CatalogueError(REQUEST_PENDING, "request_pending", 409)
+        request.status = CatalogueAttachRequest.PENDING
+        request.rejection_reason = None
+        request.reviewed_by = None
+        request.reviewed_at = None
+        try:
+            with transaction.atomic():
+                request.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
+        except IntegrityError:
+            # The barcode matcher (it takes no listing lock) filed one meanwhile: one request waits per listing.
+            raise CatalogueError(REQUEST_PENDING, "request_pending", 409) from None
+    notify_staff_role(
+        "listings.moderate", NEEDS_REVIEW, "Catalogue grouping re-opened",
+        body=f"“{request.listing.name}” is waiting for a decision again.", link="catalogue", icon="🏷️",
+    )
+    return request
+
+
+def detach(listing_id, reason):
+    """Ungroup a listing (staff only); the entry stays for the other offers. Raises CatalogueError."""
+    reason = (reason or "").strip()
+    if not reason:
+        raise CatalogueError(REASON_REQUIRED, "reason_required")
+    with transaction.atomic():
+        listing = (
+            Listing.objects.select_for_update(of=("self",)).select_related("catalogue_product", "business_owner")
+            .filter(pk=listing_id).first()
+        )
+        if listing is None:
+            raise CatalogueError(LISTING_NOT_FOUND, "not_found", 404)
+        product = listing.catalogue_product
+        if product is None:
+            raise CatalogueError(NOT_GROUPED_MESSAGE, "not_grouped", 409)
+        listing.catalogue_product = None
+        listing.save(update_fields=["catalogue_product"])
+    notify_business_owner(
+        listing.business_owner, UNGROUPED, "Listing ungrouped",
+        body=f"“{listing.name}” no longer shows with other sellers of {product}: {reason[:500]}",
+        link="/business-dashboard", icon="🏷️",
+    )
+    return listing
+
+
+def matches(request, limit=MATCH_LIMIT):
+    """Entries a reviewer should see before a new one is made: the same barcode, or the same normalised brand and name
+    (exact only), apart from the entry the request already names."""
+    name = identity.normalise_name(request.brand, request.name)
+    condition = Q(normalised_name=name) if name else Q(pk__in=[])
+    if request.barcode:
+        condition |= Q(barcode=request.barcode)
+    queryset = CatalogueProduct.objects.filter(condition)
+    if request.catalogue_product_id:
+        queryset = queryset.exclude(pk=request.catalogue_product_id)
+    return list(queryset.order_by("pk")[:limit])
+
+
+def matches_for(requests, limit=MATCH_LIMIT):
+    """{request id: entries} for a page of pending requests in one query (the staff queue); as `matches`."""
+    keys = {r.pk: (identity.normalise_name(r.brand, r.name), r.barcode)
+            for r in requests if r.status == CatalogueAttachRequest.PENDING}
+    names = sorted({name for name, _ in keys.values() if name})
+    codes = sorted({code for _, code in keys.values() if code})
+    if not names and not codes:
+        return {}
+    entries = list(CatalogueProduct.objects.filter(Q(normalised_name__in=names) | Q(barcode__in=codes)).order_by("pk"))
+    found = {}
+    for request in requests:
+        if request.pk in keys:
+            name, code = keys[request.pk]
+            found[request.pk] = [
+                e for e in entries if e.pk != request.catalogue_product_id
+                and ((name and e.normalised_name == name) or (code and e.barcode == code))
+            ][:limit]
+    return found
+
+
+def staff_row(request, found=None):
+    """A request as the staff queue shows it: the listing (no contact details), the ask, and matches while pending
+    (`found`: the entries `matches_for` worked out for a whole page; else looked up for this one request)."""
+    listing = request.listing
+    return {
+        "id": request.pk, "status": request.status, "source": request.source,
+        "brand": request.brand, "name": request.name, "barcode": request.barcode,
+        "catalogue_product": product_row(request.catalogue_product),
+        "rejection_reason": request.rejection_reason, "created_at": request.created_at,
+        "reviewed_at": request.reviewed_at,
+        "reviewed_by_name": request.reviewed_by.full_name if request.reviewed_by_id else None,
+        "listing": {
+            "id": listing.pk, "name": listing.name, "brand": listing.brand, "barcode": listing.barcode,
+            "status": listing.status,
+            "price_amount": None if listing.price_amount is None else str(listing.price_amount),
+            "business_name": listing.business_owner.display_name,
+            "grouped_with": product_row(listing.catalogue_product),
+        },
+        "matches": (
+            [product_row(p) for p in (found if found is not None else matches(request))]
+            if request.status == CatalogueAttachRequest.PENDING else []
+        ),
     }
