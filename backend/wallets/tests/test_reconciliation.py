@@ -243,21 +243,41 @@ class ReconciliationTests(TestCase):
         self.assertEqual((run.status, run.unavailable), (ReconciliationRun.UNAVAILABLE, ["statement"]))
         self.assertFalse(FraudFlag.objects.exists())
 
-    def test_find_not_connected_skips_only_that_check(self):
+    def test_find_not_connected_is_unavailable_not_matched(self):
         self.top_up("10.00")
-        session = CheckoutSession.objects.get(kind=CheckoutSession.WALLET_TOPUP)
         self.fake(statement=[], find=providers.NotConnected("no"))
         run = reconciliation.reconcile(self.today)
-        self.assertEqual(run.unavailable, ["find"])
-        self.assertEqual(run.differences, [])
-        self.assertEqual(run.status, ReconciliationRun.MATCHED)
-        self.assertTrue(session.reference)
+        self.assertEqual((run.status, run.unavailable, run.differences), (ReconciliationRun.UNAVAILABLE, ["find"], []))
 
-    def test_pending_payouts_not_connected_skips_only_that_check(self):
+    def test_find_raising_is_unavailable_not_matched(self):
+        self.top_up("10.00")
+        self.fake(statement=[], find=TimeoutError("x"))
+        run = reconciliation.reconcile(self.today)
+        self.assertEqual((run.status, run.unavailable), (ReconciliationRun.UNAVAILABLE, ["find"]))
+
+    def test_pending_payouts_not_connected_is_unavailable(self):
         self.top_up("10.00")
         self.fake(pending=providers.NotConnected("no"))
         run = reconciliation.reconcile(self.today)
-        self.assertEqual((run.status, run.unavailable, run.differences), (ReconciliationRun.MATCHED, ["pending_payouts"], []))
+        self.assertEqual((run.status, run.unavailable, run.differences), (ReconciliationRun.UNAVAILABLE, ["pending_payouts"], []))
+
+    def test_pending_payouts_raising_is_unavailable(self):
+        self.fake(pending=TimeoutError("x"))
+        run = reconciliation.reconcile(self.today)
+        self.assertEqual((run.status, run.unavailable), (ReconciliationRun.UNAVAILABLE, ["pending_payouts"]))
+
+    def test_a_pending_difference_survives_a_failing_retry(self):
+        answers = iter([500, TimeoutError("x")])
+
+        def pending(*args):
+            answer = next(answers)
+            if isinstance(answer, BaseException):
+                raise answer
+            return answer
+        with mock.patch.object(providers.SimulatedProvider, "pending_payouts", pending):
+            run = reconciliation.reconcile(self.today)
+        self.assertEqual(run.status, ReconciliationRun.MISMATCHED)
+        self.assertEqual([d["problem"] for d in run.differences], ["pending_differs"])
 
     def test_reconciling_never_creates_the_in_transit_account(self):
         Account.objects.filter(kind=Account.WITHDRAWAL_IN_TRANSIT).delete()

@@ -168,17 +168,24 @@ def reconcile(day, now=None):
 
     # The provider is asked outside any transaction; ours is counted right after, and both once more if they differ,
     # so a payout confirmed in between is not a false alarm.
+    pending_gap = None                                 # (ours, theirs) from the last attempt that got an answer
     for _attempt in range(2):
         got, theirs_sent = _call(unavailable, "pending_payouts", provider.pending_payouts)
         if not got:
-            break
+            break                                      # a failing retry keeps what the first attempt found
         ours_sent = _ours_sent(provider)
-        if theirs_sent == ours_sent:
+        pending_gap = None if theirs_sent == ours_sent else (ours_sent, theirs_sent)
+        if pending_gap is None:
             break
-    if got and theirs_sent != ours_sent:
-        differences.append(_difference("pending_payouts", providers.PAYOUT, "pending_differs", ours_sent, theirs_sent))
+    if pending_gap is not None:
+        differences.append(_difference("pending_payouts", providers.PAYOUT, "pending_differs", *pending_gap))
 
-    status = ReconciliationRun.MISMATCHED if differences else ReconciliationRun.MATCHED
+    if differences:
+        status = ReconciliationRun.MISMATCHED
+    elif unavailable:
+        status = ReconciliationRun.UNAVAILABLE         # a skipped check never makes a green row
+    else:
+        status = ReconciliationRun.MATCHED
     return _record(day, provider, status, differences, now, in_transit=in_transit, unavailable=unavailable,
                    totals=(ledger_in, statement_in, ledger_out, statement_out))
 
