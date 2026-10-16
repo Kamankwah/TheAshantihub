@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from ledger import escrow
 
-from . import payouts
+from . import payouts, vendor_texts
 
 
 @shared_task
@@ -26,3 +26,17 @@ def reconcile_yesterday():
     from .reconciliation import reconcile
 
     return reconcile(timezone.localdate() - timedelta(days=1)).status
+
+
+@shared_task
+def send_vendor_text(pk):
+    """Send one business money text right after the payment or release that queued it committed."""
+    return vendor_texts.deliver(pk)
+
+
+@shared_task
+def send_due_vendor_texts():
+    """Every 5 minutes: business money texts not sent yet (a first try lost after commit, or a retry). Runs whatever
+    LEDGER_ENABLED says now: a text exists only if the ledger was on when it was queued, and a business told of a sale
+    should hear of it. The beat entry makes core.jobs keep a JobRun heartbeat for it."""
+    return vendor_texts.send_due()

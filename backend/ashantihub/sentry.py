@@ -19,6 +19,9 @@ EXTRA_DENYLIST = [
     "body", "codes", "uri", "recovery", "normalised",
     # Payout destinations (wallets): a whole MoMo or bank account number in a request body or a frame.
     "account_number",
+    # Business money texts (wallets.vendor_texts): the business's whole number in a frame. Not `to`: the daily summary
+    # answers a "to" key.
+    "phone",
 ]
 
 

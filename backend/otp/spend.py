@@ -1,6 +1,7 @@
-"""The SMS-spend alert (spec §9). OTP texts are counted per day from the audit trail; the first check that finds
-today's count at the threshold Super Admin set (staffsecurity.policy.otp_sms_daily_alert, default 500) tells
-everyone holding security.manage, once a day. Nothing is blocked: the alert is for a person to look at."""
+"""The SMS-spend alert (spec §9). Code texts (from the OTP audit trail) and business money texts (wallets.VendorText;
+spec §6, vendor plan 4) are counted per day; marketing campaign texts are not. The first check that finds today's count
+at the threshold Super Admin set (staffsecurity.policy.otp_sms_daily_alert, default 500) tells everyone holding
+security.manage, once a day. Nothing is blocked: the alert is for a person to look at."""
 import logging
 
 from django.db import connection, transaction
@@ -16,8 +17,16 @@ ALERT_KIND = "otp_sms_spend"
 ALERT_LOCK_KEY = 72210016  # pg_advisory_xact_lock key: one alert a day however many texts race
 
 
-def texts_sent_on(day):
+def code_texts_sent_on(day):
     return OtpEvent.objects.filter(kind=OtpEvent.SENT, channel=SMS, at__date=day).count()
+
+
+def texts_sent_on(day):
+    """Code texts plus business money texts sent on `day` (marketing campaign texts are not counted). Business texts are
+    never OtpEvents (the code send limits count those), so they are counted from their own outbox."""
+    from wallets.models import VendorText
+
+    return code_texts_sent_on(day) + VendorText.objects.filter(status=VendorText.SENT, sent_at__date=day).count()
 
 
 def check(now=None):
@@ -35,11 +44,13 @@ def check(now=None):
         if OtpEvent.objects.filter(kind=OtpEvent.SMS_ALERT, at__date=day).exists():
             return False
         OtpEvent.objects.create(kind=OtpEvent.SMS_ALERT, at=now, channel=SMS, note=f"{sent} texts on {day:%Y-%m-%d}; alert at {threshold}")
+    codes = code_texts_sent_on(day)
     notify_staff_role(
-        "security.manage", ALERT_KIND, f"One-time-code texts reached {threshold} today",
+        "security.manage", ALERT_KIND, f"Texts reached {threshold} today",
         body=(
-            f"{sent} code texts have been sent today ({day:%d %b}). A sudden rise can mean someone is abusing the "
-            "code requests. Look at the code log and the text balance."
+            f"{sent} texts have been sent today ({day:%d %b}): {codes} one-time codes and {sent - codes} business money "
+            "texts. A sudden rise in codes can mean someone is abusing the code requests. Look at the code log and the "
+            "text balance."
         ),
         link="security", icon="📱",
     )

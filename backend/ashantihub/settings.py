@@ -599,6 +599,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "wallets.tasks.reconcile_yesterday",
         "schedule": crontab(hour=2, minute=30),  # the day before; read-only; a no-op while the ledger is off
     },
+    "wallets-send-vendor-texts": {
+        "task": "wallets.tasks.send_due_vendor_texts",
+        "schedule": 300.0,  # every 5 minutes: business money texts not sent yet (spec §6: queued, retried)
+    },
 }
 
 # Production sets this True so the nightly activity check emails its seal to
