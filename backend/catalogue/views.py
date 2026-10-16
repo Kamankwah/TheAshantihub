@@ -3,6 +3,7 @@
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from accounts.views import IsBusinessOwner
@@ -36,9 +37,13 @@ class MineRequestView(APIView):
     Answers 201 with the listing's state; nothing is grouped until staff decide."""
 
     permission_classes = [IsAuthenticated, IsBusinessOwner]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "catalogue_request"
 
     def post(self, request, listing_id):
         listing = _own_listing(request, listing_id)
+        if request.user.is_suspended:
+            return Response(CatalogueError(attach.ACCOUNT_SUSPENDED, "account_suspended", 403).body(), status=403)
         try:
             attach.propose(listing, _body(request))
         except CatalogueError as exc:
@@ -50,6 +55,8 @@ class MineWithdrawView(APIView):
     """POST mine/requests/<id>/withdraw/ — take back a request still waiting."""
 
     permission_classes = [IsAuthenticated, IsBusinessOwner]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "catalogue_withdraw"
 
     def post(self, request, pk):
         try:

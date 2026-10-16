@@ -1,5 +1,9 @@
 """Catalogue plan 6, Task 2: a business asks to group its listing with a catalogue product (spec §1 row 8). Nothing is
 grouped until staff decide (Task 3). Review Focus 1 (store codes) and 5 (another business's listing)."""
+from unittest import mock
+
+from django.core.cache import cache
+from django.db import IntegrityError
 from django.test import TestCase
 from rest_framework.test import APIClient
 
@@ -91,6 +95,50 @@ class ProposeTests(TestCase):
         as_account(self.client, buyer(), "customer")
         self.assertEqual(self.propose().status_code, 403)
 
+    def test_a_customer_sharing_the_owners_pk_is_still_403(self):
+        customer = buyer()
+        as_account(self.client, customer, "customer")
+        self.assertEqual(self.propose().status_code, 403)
+        self.assertEqual(self.client.get(f"/api/catalogue/mine/{self.listing.pk}/").status_code, 403)
+
+    def test_a_suspended_business_cannot_ask(self):
+        owner = business("Held", suspended=True)
+        listing = product(owner, barcode=OTHER_BARCODE)
+        as_account(self.client, owner, "business_owner")
+        response = self.propose(listing)
+        self.assertEqual((response.status_code, response.json()["code"]), (403, "account_suspended"))
+        with self.assertRaises(attach.CatalogueError) as caught:
+            attach.propose(listing, {})
+        self.assertEqual(caught.exception.code, "account_suspended")
+        self.assertFalse(CatalogueAttachRequest.objects.exists())
+
+    def test_a_request_filed_meanwhile_answers_409(self):
+        CatalogueAttachRequest.objects.create(listing=self.listing, barcode=BARCODE, source=CatalogueAttachRequest.BACKFILL)
+        with mock.patch.object(attach.CatalogueAttachRequest.objects, "filter") as filtered:
+            filtered.return_value.exists.return_value = False
+            response = self.propose()
+        self.assertEqual((response.status_code, response.json()["code"]), (409, "request_pending"))
+
+    def test_a_non_object_body_is_400_not_500(self):
+        response = self.client.post(f"/api/catalogue/mine/{self.listing.pk}/requests/", [1, 2], format="json")
+        self.assertEqual(response.status_code, 201, response.content)   # treated as an empty body
+
+    def test_odd_product_values_are_400(self):
+        for value in (True, 10**30, "1e3", "abc", [1]):
+            response = self.propose(catalogue_product=value)
+            self.assertEqual((response.status_code, response.json()["code"]), (400, "unknown_product"), value)
+
+    def test_a_notice_failure_does_not_undo_the_request(self):
+        with mock.patch("catalogue.attach.notify_staff_role", side_effect=RuntimeError("boom")):
+            self.assertEqual(self.propose().status_code, 201)
+        self.assertEqual(CatalogueAttachRequest.objects.count(), 1)
+
+    def test_asking_is_throttled(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+        codes = [self.propose().status_code for _ in range(21)]
+        self.assertEqual(codes[-1], 429)
+
 
 class StateAndWithdrawTests(TestCase):
     def setUp(self):
@@ -112,7 +160,9 @@ class StateAndWithdrawTests(TestCase):
         response = self.client.post(f"/api/catalogue/mine/requests/{request.pk}/withdraw/")
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.json()["status"], "withdrawn")
+        self.assertIsNotNone(response.json()["withdrawn_at"])
         request.refresh_from_db()
+        self.assertIsNotNone(request.withdrawn_at)
         self.assertEqual(request.status, CatalogueAttachRequest.WITHDRAWN)
         again = self.client.post(f"/api/catalogue/mine/{self.listing.pk}/requests/", {}, format="json")
         self.assertEqual(again.status_code, 201, again.content)

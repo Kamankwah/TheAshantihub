@@ -68,11 +68,12 @@ class CatalogueAttachRequest(models.Model):
     barcode = models.CharField(max_length=14, blank=True, default="")
     source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default=VENDOR)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
-    rejection_reason = models.CharField(max_length=500, null=True, blank=True)
+    rejection_reason = models.CharField(max_length=500, blank=True, default="")
     reviewed_by = models.ForeignKey(
         "accounts.StaffUser", on_delete=models.SET_NULL, null=True, blank=True, related_name="reviewed_catalogue_requests",
     )
     reviewed_at = models.DateTimeField(null=True, blank=True)
+    withdrawn_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

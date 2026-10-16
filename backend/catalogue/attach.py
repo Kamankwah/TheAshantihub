@@ -15,7 +15,10 @@ grouped without a staff decision.
   constraint's IntegrityError and answer 409 request_pending.
 * A business may withdraw only a request it filed itself; a barcode match AshantiHub filed (source=backfill) is decided
   by staff alone (owner-confirmed: a business cannot opt out of one)."""
+import logging
+
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 
 from cart import guard
 from listings.models import Listing
@@ -36,6 +39,9 @@ BARCODE_MISMATCH = "That catalogue product has a different barcode from this lis
 NOT_PENDING = "Only a request still waiting can be changed."
 NOT_WITHDRAWABLE = "AshantiHub matched this listing by its barcode; AshantiHub decides it."
 NOT_FOUND = "Request not found."
+ACCOUNT_SUSPENDED = "Your account is suspended, so it cannot ask for grouping."
+
+logger = logging.getLogger(__name__)
 
 
 def groupable(listing):
@@ -64,7 +70,9 @@ def propose(listing, data):
     """File the business's request to group `listing` (the caller checked it is theirs). `data`: {"catalogue_product":
     id} for an existing entry, or {"brand", "name"} for a new one. Returns the request; raises CatalogueError."""
     with transaction.atomic():
-        listing = Listing.objects.select_for_update(of=("self",)).select_related("category").get(pk=listing.pk)
+        listing = Listing.objects.select_for_update(of=("self",)).select_related("category", "business_owner").get(pk=listing.pk)
+        if listing.business_owner.is_suspended:
+            raise CatalogueError(ACCOUNT_SUSPENDED, "account_suspended", 403)
         if not groupable(listing):
             raise CatalogueError(NOT_GROUPABLE, "not_groupable")
         if listing.catalogue_product_id is not None:
@@ -74,9 +82,12 @@ def propose(listing, data):
         barcode = grouping_barcode(listing)
         product, brand, name = None, "", ""
         if data.get("catalogue_product") not in (None, ""):
+            raw = data["catalogue_product"]
             try:
-                product = CatalogueProduct.objects.get(pk=int(data["catalogue_product"]))
-            except (CatalogueProduct.DoesNotExist, TypeError, ValueError):
+                if isinstance(raw, bool):
+                    raise ValueError(raw)
+                product = CatalogueProduct.objects.get(pk=int(raw))
+            except (CatalogueProduct.DoesNotExist, TypeError, ValueError, OverflowError):
                 raise CatalogueError(UNKNOWN_PRODUCT, "unknown_product") from None
             if product.barcode and barcode and product.barcode != barcode:
                 raise CatalogueError(BARCODE_MISMATCH, "barcode_mismatch", 409)
@@ -95,10 +106,13 @@ def propose(listing, data):
         except IntegrityError:
             # The barcode matcher (it takes no listing lock) filed one meanwhile: one request waits per listing.
             raise CatalogueError(REQUEST_PENDING, "request_pending", 409) from None
-    notify_staff_role(
-        "listings.moderate", NEEDS_REVIEW, "Catalogue grouping to review",
-        body=f"“{listing.name}” asks to be grouped with {describe(request)}.", link="catalogue", icon="🏷️",
-    )
+    try:
+        notify_staff_role(
+            "listings.moderate", NEEDS_REVIEW, "Catalogue grouping to review",
+            body=f"“{listing.name}” asks to be grouped with {describe(request)}.", link="catalogue", icon="🏷️",
+        )
+    except Exception as exc:  # the request is committed; a notice failure must not turn it into a 500
+        logger.warning("catalogue review notice failed: %s", type(exc).__name__)
     return request
 
 
@@ -118,7 +132,8 @@ def withdraw(owner, request_id):
         if request.source != CatalogueAttachRequest.VENDOR:
             raise CatalogueError(NOT_WITHDRAWABLE, "not_withdrawable", 409)
         request.status = CatalogueAttachRequest.WITHDRAWN
-        request.save(update_fields=["status"])
+        request.withdrawn_at = timezone.now()
+        request.save(update_fields=["status", "withdrawn_at"])
     return request
 
 
@@ -129,6 +144,7 @@ def request_row(request):
         "catalogue_product": product_row(request.catalogue_product),
         "brand": request.brand, "name": request.name, "barcode": request.barcode,
         "rejection_reason": request.rejection_reason, "created_at": request.created_at, "reviewed_at": request.reviewed_at,
+        "withdrawn_at": request.withdrawn_at,
     }
 
 
