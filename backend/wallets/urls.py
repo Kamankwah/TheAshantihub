@@ -10,4 +10,6 @@ urlpatterns = [
     path("top-up/", views.TopUpView.as_view(), name="wallet-top-up"),
     path("destinations/", views_payouts.DestinationsView.as_view(), name="wallet-destinations"),
     path("destinations/<int:pk>/remove/", views_payouts.DestinationRemoveView.as_view(), name="wallet-destination-remove"),
+    path("withdrawals/", views_payouts.WithdrawalsView.as_view(), name="wallet-withdrawals"),
+    path("withdrawals/<int:pk>/cancel/", views_payouts.WithdrawalCancelView.as_view(), name="wallet-withdrawal-cancel"),
 ]

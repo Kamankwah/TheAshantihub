@@ -16,8 +16,8 @@ from notifications.services import notify_business_owner, notify_customer
 from otp import step_up
 from otp.views_authenticator import IsCustomerOrOwner
 
-from . import destinations
-from .views import ledger_off
+from . import destinations, payouts, withdrawals
+from .views import AmountError, Pagination, ledger_off, parse_amount
 
 IF_NOT_YOU = "If this wasn't you, contact AshantiHub Support now."
 
@@ -92,3 +92,67 @@ class DestinationRemoveView(APIView):
             return Response(exc.body(), status=exc.status_code)
         _tell_holder(request.user, "A payout destination was removed", f"{_described(destination)} was removed. {IF_NOT_YOU}")
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class WithdrawalsView(APIView):
+    """GET withdrawals/ — the holder's withdrawals, newest first (20 a page).
+    POST withdrawals/ {destination, amount, request_id} + X-Step-Up-Token — withdraw to one of the holder's payout
+    destinations. A retry with the same request_id, destination and amount answers the withdrawal already made (200)
+    and needs no new code; the same request_id with a different destination or amount is refused (409
+    request_id_reused). A new one is held, sent at once and answered 201 with what the provider said (succeeded,
+    processing or failed)."""
+
+    permission_classes = [IsCustomerOrOwner]
+
+    def get(self, request):
+        if not escrow.enabled():
+            return ledger_off()
+        paginator = Pagination()
+        page = paginator.paginate_queryset(withdrawals.mine(request.user).select_related("destination"), request, view=self)
+        return paginator.get_paginated_response([withdrawals.row(withdrawal) for withdrawal in page])
+
+    def post(self, request):
+        if not escrow.enabled():
+            return ledger_off()
+        data = request.data if isinstance(request.data, dict) else {}
+        try:
+            request_id = withdrawals.clean_request_id(data.get("request_id"))
+        except withdrawals.WithdrawalError as exc:
+            return Response(exc.body(), status=exc.status_code)
+        try:
+            amount = parse_amount(data.get("amount"))
+        except AmountError as exc:
+            return Response({"amount": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        found = withdrawals.existing(request.user, request_id)
+        if found is not None:
+            if found.destination_id != data.get("destination") or found.amount_pesewas != amount:
+                return Response(
+                    {"detail": "That request_id was already used for a different withdrawal.", "code": "request_id_reused"},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            return Response(withdrawals.row(found), status=status.HTTP_200_OK)
+        try:
+            with transaction.atomic():
+                step_up.require(request, step_up.WITHDRAWAL, force=True)
+                withdrawal = withdrawals.request(
+                    request.user, destination_id=data.get("destination"), amount_pesewas=amount, request_id=request_id,
+                )
+        except withdrawals.WithdrawalError as exc:
+            return Response(exc.body(), status=exc.status_code)
+        # Sent outside the transaction: the hold is committed before the provider is asked (wallets.payouts).
+        return Response(withdrawals.row(payouts.submit(withdrawal.pk)), status=status.HTTP_201_CREATED)
+
+
+class WithdrawalCancelView(APIView):
+    """POST withdrawals/<id>/cancel/ — take back a withdrawal not sent yet; the money returns to the holder's balance."""
+
+    permission_classes = [IsCustomerOrOwner]
+
+    def post(self, request, pk):
+        if not escrow.enabled():
+            return ledger_off()
+        try:
+            withdrawal = withdrawals.cancel(request.user, pk)
+        except withdrawals.WithdrawalError as exc:
+            return Response(exc.body(), status=exc.status_code)
+        return Response(withdrawals.row(withdrawal))
