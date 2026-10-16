@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Branded and barcoded products can be grouped, by staff decision, under a shared catalogue entry so customers see every business's offer of the same product (cheapest first, a featured offer, no contact details) and businesses can look up the same product elsewhere; each business sees which of its offers need restocking from a days-of-cover measure, and is told once, in-app, when an offer runs low or sells out — without changing the listing API, the cart or the checkout stock reservation.
+**Goal:** Branded and barcoded products can be grouped, by staff decision, under a shared catalogue entry so customers see every business's offer of the same product (cheapest first, a featured offer, no contact details) and businesses can look up the same product elsewhere; each business sees which of its offers need restocking from a days-of-cover measure, and is told once, in-app, when an offer runs low or sells out — without changing the cart or the checkout stock reservation; search and the related list stop showing a counted product at 0 only once `SOLD_OUT_HIDDEN_ENABLED` is on.
 
 **Architecture:** A new `catalogue` app. Each `Listing` stays the offer and gains `barcode` (a 14-digit GTIN key) and an optional `catalogue_product` foreign key; a `CatalogueProduct` is made only when a member of staff with `listings.moderate` approves a business's `CatalogueAttachRequest` through the moderated-queue contract. Read models (`catalogue.offers`) answer "other sellers" and the business's catalogue lookup. `catalogue.stock` measures days of cover from paid order lines over a governed window; `catalogue.alerts`, run hourly by Celery beat behind `STOCK_ALERTS_ENABLED` (default off), moves a per-offer `StockAlertState` with conditional UPDATEs so each crossing is told once. The three stock numbers are governed settings in `ledger.settings_store` (Accounting proposes, Super Admin approves).
 
 **Tech Stack:** Django 5.2, DRF, Postgres, Celery beat (eager under tests); the repo's `listings`, `cart` (`cart.guard`), `orders`, `ledger` (`settings_store`, `approval_kinds`), `notifications`, `field` (`business_pin`, `haversine_m`), `accounts` apps.
 
-**Spec:** `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` — §1 rows 7 (stock sourcing: separate offers, the customer chooses), 8 (hybrid grouping), 15 (low stock), 16 (governance); §3.3 (governed settings); §10 (stock offers and alerts — the brief calls it "§7"; §7 in the file is third-party dispatch); §11 step 6; §13. Deviations and decisions are in §0 below; Task 1 records them in the spec and Task 9 adds the gate items (xci) onward.
+**Spec:** `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` — §1 rows 7 (stock sourcing: separate offers, the customer chooses), 8 (hybrid grouping), 15 (low stock), 16 (governance); §3.3 (governed settings); §10 (stock offers and alerts — the brief calls it "§7"; §7 in the file is third-party dispatch); §11 step 6; §13. Deviations and decisions are in §0 below; Task 1 records them in the spec and Task 9 adds the gate items (ci) onward.
 
 **Base:** branch `feature/catalogue-offers-6` from `origin/righteoushack` at `d26dd54` (ledger, OTP and wallet stages merged, all behind switches that default off). Work only in `/home/righteoushack/projects/TheAshantihub/.worktrees/catalog6`.
 
@@ -24,60 +24,60 @@ Claude-Session: https://claude.ai/code/session_01HDHNosHkqu4Wwocp7a2c8j
 | # | Question | Decision | Why (grounded in the code) |
 |---|---|---|---|
 | C1 | What is an "offer"? | **The existing `Listing` is the offer.** It gains `barcode` (CharField, 14 digits or "") and `catalogue_product` (nullable FK to `catalogue.CatalogueProduct`, `PROTECT`, `related_name="offers"`). Null means the listing stands alone. No new Offer model. | `Listing` is already the priced, stocked, carted, ordered and fee-snapshotted unit: `CartItem.listing`, `OrderItem.listing` (`PROTECT`), the stock reservation in `OrderCheckoutView` (`select_for_update` on `Listing.stock_quantity`), `_fail_order_checkout` and `orders.support.return_stock`, the per-vendor `OrderFeeSnapshot`. A separate Offer model would mean re-pointing every one of those, inside the correctness cores. One nullable FK changes nothing for existing rows, carts or orders; "each offer is its own cart line" (§10) is already true. |
-| C2 | Where the code lives | New app `catalogue`: `identity.py` (barcode and name keys), `models.py`, `errors.py`, `attach.py` (grouping requests, staff decisions, barcode matcher), `offers.py` (other sellers, featured offer, catalogue lookup), `stock.py` (days of cover), `alerts.py` + `tasks.py`, `views.py` (businesses and customers), `views_staff.py`, `urls.py` at `/api/catalogue/`, command `propose_catalogue_matches`. | Keeps `listings/views.py` (1,263 lines) and the checkout untouched except one browse filter (C9). PR #152 (Plan 1b) and PR #153 (Plan 4) touch `payments/services.py`, `orders/alerts.py`, `bookings/`, `events/`, `services/`, `wallets/`; Plan 5 touches `delivery/` and `wallets/`: none of those is edited here. |
+| C2 | Where the code lives | New app `catalogue`: `identity.py` (barcode and name keys), `models.py`, `errors.py`, `attach.py` (grouping requests, staff decisions, barcode matcher), `offers.py` (other sellers, featured offer, catalogue lookup), `stock.py` (days of cover), `alerts.py` + `tasks.py`, `views.py` (businesses and customers), `views_staff.py`, `urls.py` at `/api/catalogue/`, command `propose_catalogue_matches`. | Keeps `listings/views.py` (1,263 lines) and the checkout untouched except one browse filter (C9). PR #152 (Plan 1b) and PR #153 (Plan 4) touch `payments/services.py`, `orders/alerts.py`, `bookings/`, `events/`, `services/`, `wallets/`; Plan 5 touches `delivery/` and `wallets/`: none of those is edited here. Plan 5 also adds a beat entry (`ledger-post-rider-commission`, a different anchor from this plan's) and §13 items (xci)-(c); PR #153 adds `wallets-send-vendor-texts` and `wallets-vendor-digests` at the same `CELERY_BEAT_SCHEDULE` anchor as this plan's entry (keep all three). |
 | C3 | The catalogue entry | `CatalogueProduct(brand, name, normalised_name, barcode, created_by, created_at)`. A non-blank barcode belongs to one entry (partial unique constraint); an entry needs a brand or a barcode (check constraint). Made only inside a staff approval. No category on the entry (offers keep their own). | Spec §1 row 8: "staff-approved catalogue entry". The brief: "CatalogueProduct with brand/barcode/normalised name". |
 | C4 | Barcode key | `catalogue.identity.clean_barcode`: digits only (spaces and hyphens ignored), 8/12/13/14 digits, GS1 check digit verified, all-zero refused, stored zero-padded to 14 digits — so UPC-A `036000291452` and EAN-13 `0036000291452` are one key. A store's own code (GS1 restricted-circulation prefixes 020–029, 040–049, 200–299; GTIN-8 starting 0 or 2) is accepted on a listing but **never groups** and is never matched. | Barcode matches drive grouping proposals: a mistyped digit or an in-store number shared by two shops for different goods would group unrelated products. |
 | C5 | What may be grouped | Only listings whose `cart.guard.kind_of` is in `cart.guard.DELIVERABLE` (products and food). Services, stays (`is_accommodation`) and events never — events are not `Listing` rows at all. | Spec §1 row 8 ("services, events and stays are never grouped"); `cart.guard` is the existing single definition of "goods" (`kind_of`, `deliverable_q`). |
-| C6 | Attach flow | A business asks on its own listing (`POST /api/catalogue/mine/<id>/requests/`): an existing entry, or a new one by brand and name (defaults: the listing's own). One request waits per listing (row lock + partial unique constraint). Staff with `listings.moderate` decide through the **moderated-queue contract** (backend/CLAUDE.md): `staff/requests/pending/?status=`, unknown status falls back to pending, pending oldest first, history `-reviewed_at` then `-created_at`/`-id`, approve/reject set `reviewed_by`/`reviewed_at`, `re-review` 400s unless rejected and clears the reason and reviewer pair. Approval re-checks under lock (request row, then listing row); a barcode already in the catalogue joins that entry. **Only staff ungroup** (`staff/listings/<id>/detach/`, reason required); a business may withdraw a request still waiting. | Spec §1 row 8 (staff-approved). Reusing `listings.moderate` (Operations and Super Admin today, accounts migration 0002) needs no permission migration. Letting a business ungroup itself would let it leave a price comparison it dislikes; owner to confirm (G6). |
+| C6 | Attach flow | A business asks on its own listing (`POST /api/catalogue/mine/<id>/requests/`): an existing entry, or a new one by brand and name (defaults: the listing's own). One request waits per listing (row lock + partial unique constraint). Staff with `listings.moderate` decide through the **moderated-queue contract** (backend/CLAUDE.md): `staff/requests/pending/?status=`, unknown status falls back to pending, pending oldest first, history `-reviewed_at` then `-created_at`/`-id`, approve/reject set `reviewed_by`/`reviewed_at`, `re-review` 400s unless rejected and clears the reason and reviewer pair. Approval re-checks under lock (request row, then listing row); a barcode already in the catalogue joins that entry. **Only staff ungroup** (`staff/listings/<id>/detach/`, reason required); a business may withdraw a request it filed itself while it waits, but not a barcode match AshantiHub filed (`source=backfill`): it cannot opt out of one. | Spec §1 row 8 (staff-approved). Reusing `listings.moderate` (Operations and Super Admin today, accounts migration 0002) needs no permission migration. Letting a business ungroup itself, or withdraw a barcode match AshantiHub filed, would let it leave a price comparison it dislikes; the owner confirmed in the preflight (2026-10-16) that a business cannot opt out of a barcode match (G6). |
 | C7 | Other sellers (customers) | `GET /api/catalogue/listings/<id>/other-sellers/?ordering=price\|availability&lat=&lng=` (public, read-only): the other **live** offers of the same entry — published, business not hidden (`listings.visibility`), priced, in stock (uncounted counts as in stock) — cheapest first (or most available first), plus `featured_offer_id`: lowest price among live offers of KYC-verified businesses, ties to the shop nearest the customer's position when sent (straight-line from the business pin, used only to order, never shown), then the oldest offer. Rows carry no phone, email, address, pin or `contact_phone`; the business shows by `display_name`. An ungrouped listing answers an empty list. | Spec §10 ("featured offer … ties go to the nearest vendor", "other sellers … nothing is added without them"); CLAUDE.md "Businesses cannot be contacted directly" and "No fabricated data". backend/CLAUDE.md allows the straight-line estimate only for ordering, never for a figure shown (`delivery.dispatching.rank` precedent). |
 | C8 | Sourcing helper (businesses) | `GET /api/catalogue/products/?q=` or `?barcode=` (entries with live offer count and lowest live price, null when none) and `GET /api/catalogue/products/<id>/offers/` (other businesses' live offers, cheapest first, plus the caller's own grouped listing ids). Business owners only; read-only (no ordering between businesses, no contact). | The brief's "sourcing helper for vendors (read-only)". Prices and counted stock are already public (`PublicListingSerializer` exposes `stock_quantity`). |
-| C9 | Zero stock hides the offer | `PublicListingListView` and `RelatedListingsView` exclude `stock_quantity=0`; the listing's own page (`PublicListingDetailView`) still answers (links and carts keep working, it shows 0); other-sellers rows exclude it. | Spec §1 row 15 and §10 ("Zero stock hides the offer"). `marketing/featured.py` and `marketing/flash_sales.py` already refuse a 0-stock listing. |
+| C9 | Zero stock hides the offer | `PublicListingListView` and `RelatedListingsView` exclude counted goods at `stock_quantity=0` (`listings.visibility.sold_out_q`) **only while `SOLD_OUT_HIDDEN_ENABLED` is on** (env, default off until the Plan 6F screens tell a business to leave the count empty when it does not count stock). Never a service, stay or event: only products and food are offers with a stock count. The listing's own page (`PublicListingDetailView`) still answers (links and carts keep working, it shows 0); other-sellers rows (a new endpoint) always exclude it, whatever the switch says. | Spec §1 row 15 and §10 ("Zero stock hides the offer"); the switch decides only when, so deploying this plan changes no search result. `marketing/featured.py` and `marketing/flash_sales.py` already refuse a 0-stock listing. |
 | C10 | Days of cover | `catalogue.stock`: units on `OrderItem` lines of `Order.PAID` orders placed inside the governed window (default 28 days), over whole days on sale inside the window (since `Listing.reviewed_at`, else `created_at`; at least 1). Low: the business's own line for that offer if set (stock ≤ line); else, with sales, fewer than `low_stock_cover_days` (default 7) days left (`stock × days_on_sale < cover_days × units`, integers); else (no sales) stock ≤ `low_stock_fallback_units` (default 5). Sold out = 0 (always low). Only counted (`stock_quantity` set) product/food offers are measured; uncounted stock is never guessed. | Spec §1 row 15 ("per-offer threshold with sales-based default (<7 days cover), fallback 5 units"). `Order.placed_at` and `Order.status` exist; PENDING orders already hold their reservation, CANCELLED orders gave it back. |
 | C11 | Alert state and "once on crossing" | `StockAlertState` (one per offer): `threshold_units` (the business's own line), `low_alerted_at`, `low_alerted_stock`, `sold_out_alerted_at`. Sold out and not told → one sold-out notice (the low alert counts as told at stock 0). Low and not told → one low notice (remember the stock). The low alert is **re-armed only by a restock**: not low any more **and** stock above the stock it was told at; a new own line re-arms it too. Sold-out re-arms once stock > 0. Every move is a conditional `UPDATE … WHERE …_alerted_at IS NULL`. | The brief: "alerted flag reset when stock recovers above threshold" and "idempotent". Re-arming on "not low" alone would repeat alerts whenever old sales leave the 28-day window and the cover drifts over 7 days with no restock. |
-| C12 | Alert delivery | In-app only now (`notify_business_owner`, kinds `stock_low` and `stock_sold_out`, plain strings like `wallets` uses — no notifications migration), one notice per business per run per kind naming up to five offers. `catalogue.alerts.tell` is the single hook for texts and emails. | Stage 4's business text outbox (`wallets.vendor_texts`, `VendorPreference`) is on PR #153, **not** on `origin/righteoushack`; spec §10 "SMS/email by preference" becomes gate item (xcii). |
-| C13 | Governed thresholds | Three settings in `ledger.settings_store.DEFINITIONS`: `low_stock_cover_days` (7, 1–90), `low_stock_fallback_units` (5, 0–100,000), `stock_cover_window_days` (28, 7–180), changed only through the existing `ledger.setting` approval (Accounting proposes, Super Admin approves; the money-settings screen lists them). The approval says they apply to the hourly stock check, not to orders (`STOCK_SETTING_KEYS`). | Spec §3.3 and §1 row 16 govern editable numbers this way; Plan 3b set the pattern (`WALLET_SETTING_KEYS`). |
-| C14 | Switch and job | `STOCK_ALERTS_ENABLED` (env, default **False**) gates measuring and sending in the job only; `catalogue.tasks.check_stock_alerts` hourly at :35 in `CELERY_BEAT_SCHEDULE` (so `core.jobs` keeps its `JobRun` heartbeat and the System health page lists it). The needs-restocking list and the own-line endpoint work whatever the switch says. | Every stage so far ships behind a default-off switch; on the first run every offer already low is told once (gate (xcvi)). |
-| C15 | Stock reservation | **Unchanged.** Reserve at checkout, decrement under row lock, roll back on payment failure — a correctness core. The spec's "short window" release of an abandoned Hubtel checkout is not built here. | In simulated mode a checkout pays or rolls back in one transaction, so nothing is ever left reserved; in Hubtel mode the only release is the failure webhook in `payments/services.py`, which PR #152 is editing. Gate item (xciii), before Plan 7. |
-| C16 | Migrations and backfill | `catalogue/0001_catalogue_product` → `listings/0021_listing_barcode_catalogue_product` → `catalogue/0002_attach_requests` → `catalogue/0003_stock_alert_state`, all generated. **No data migration:** every existing listing starts standalone (`catalogue_product` null, `barcode` ""). The backfill is `manage.py propose_catalogue_matches [--dry-run]`: it files `source=backfill` requests for ungrouped product/food listings whose barcode equals an entry's (store codes never), skipping listings with a request waiting or one turned down for that entry; it never groups. A newly approved barcoded entry runs the same matcher for its barcode. | The brief: "nothing grouped automatically; barcode matches proposed not auto-applied". Real leaves checked: `listings` 0020, `accounts` 0054, `ledger` 0007, `notifications` 0002; neither PR #152 nor #153 adds a `listings` migration. |
+| C12 | Alert delivery | In-app only now (`notify_business_owner`, kinds `stock_low` and `stock_sold_out`, plain strings like `wallets` uses — no notifications migration), one notice per business per run per kind naming up to five offers. `catalogue.alerts.tell` is the single hook for texts and emails. | Stage 4's business text outbox (`wallets.vendor_texts`, `VendorPreference`) is on PR #153, **not** on `origin/righteoushack`; spec §10 "SMS/email by preference" becomes gate item (cii). |
+| C13 | Governed thresholds | Three settings in `ledger.settings_store.DEFINITIONS`: `low_stock_cover_days` (7, 1–90), `low_stock_fallback_units` (5, 0–100,000), `stock_cover_window_days` (28, 7–180), changed only through the existing `ledger.setting` approval (Accounting proposes, Super Admin approves; `GET /api/ledger/settings/` lists them, there is no money-settings screen yet). The approval says they apply to the hourly stock check, not to orders (`STOCK_SETTING_KEYS`). | Spec §3.3 and §1 row 16 govern editable numbers this way; Plan 3b set the pattern (`WALLET_SETTING_KEYS`). |
+| C14 | Switch and job | `STOCK_ALERTS_ENABLED` (env, default **False**) gates measuring and sending in the job only, and `SOLD_OUT_HIDDEN_ENABLED` (env, default **False**) gates only the sold-out hiding in browse (C9); `catalogue.tasks.check_stock_alerts` hourly at :35 in `CELERY_BEAT_SCHEDULE` (so `core.jobs` keeps its `JobRun` heartbeat and the System health page lists it). The needs-restocking list and the own-line endpoint work whatever the switch says. | Every stage so far ships behind a default-off switch; on the first run every offer already low is told once (gate (cvi)). |
+| C15 | Stock reservation | **Unchanged.** Reserve at checkout, decrement under row lock, roll back on payment failure — a correctness core. The spec's "short window" release of an abandoned Hubtel checkout is not built here. | In simulated mode a checkout pays or rolls back in one transaction, so nothing is ever left reserved; in Hubtel mode the only release is the failure webhook in `payments/services.py`, which PR #152 is editing. Gate item (ciii), before Plan 7. |
+| C16 | Migrations and backfill | `catalogue/0001_catalogue_product` → `listings/0021_listing_barcode_catalogue_product` → `catalogue/0002_attach_requests` → `catalogue/0003_stock_alert_state`, all generated. **No data migration:** every existing listing starts standalone (`catalogue_product` null, `barcode` ""). The backfill is `manage.py propose_catalogue_matches [--dry-run]`: it files `source=backfill` requests for ungrouped product/food listings whose barcode equals an entry's (store codes never), skipping listings with a request waiting or one turned down for that entry; it never groups. A newly approved barcoded entry runs the same matcher for its barcode once the approval has committed. | The brief: "nothing grouped automatically; barcode matches proposed not auto-applied". Real leaves checked: `listings` 0020, `accounts` 0054, `ledger` 0007, `notifications` 0002; neither PR #152 nor #153 adds a `listings` migration. |
 | C17 | Activity log and notices | Staff POSTs are recorded by `StaffActivityMiddleware` (body included). A business's request notifies `listings.moderate` holders (`catalogue_needs_review`); approve, reject and ungroup notify the business (`catalogue_grouped`, `catalogue_not_grouped`, `catalogue_ungrouped`). | backend/CLAUDE.md: "a new staff endpoint is covered automatically". |
 | C18 | Owner isolation | Every business endpoint reads the listing through `business_owner=request.user`: another business's listing or request answers **404** and changes nothing. | backend/CLAUDE.md owner-scoped isolation (`GET /api/orders/owner/`). |
 
 ## Global Constraints
 
-- Backend only. No frontend file changes; screens are Plan 6F (gate (xci)).
+- Backend only. No frontend file changes; screens are Plan 6F (gate (ci)).
 - **The stock reservation at checkout is a correctness core and is not touched:** do not edit `orders/views.py`, `payments/services.py`, `orders/support.py`, `cart/`, `ledger/escrow.py`, `ledger/refunds.py`, `wallets/` or `delivery/`.
-- **No existing response changes shape:** the public listing serializers gain nothing; the owner listing serializers gain only `barcode` (additive). Cart and checkout bodies are unchanged.
+- **No existing response changes shape:** the public listing serializers gain nothing; the owner listing serializers gain only `barcode` (additive). Cart and checkout bodies are unchanged. The owner edit forms save only the fields they were sent (`listings.serializers.save_sent_fields`), so a form never writes back a grouping or a stock count it read before staff or a checkout changed it.
 - **Businesses cannot be contacted directly:** no catalogue response carries a phone number, email, address, map pin, `contact_phone` or `login_phone`; a business shows by `BusinessOwner.display_name`.
 - **No fabricated data:** an uncounted stock is `null` (never 0 or a guess), no sales history is `days_of_cover: null` with `basis: "fallback"`, a product nobody offers now has `lowest_price: null`, an ungrouped listing has `offers: []`.
 - **Nothing is grouped automatically.** `Listing.catalogue_product` is written only by `catalogue.attach.approve` (set) and `catalogue.attach.detach` (cleared).
 - Owner-scoped: every business endpoint filters `business_owner=request.user`; others' rows are 404.
 - Defaults (owner may change through `ledger.setting`): fewer than **7** days of cover is low; with no sales in the window, **5** units or fewer; sales window **28** days. Sold out at 0.
-- `STOCK_ALERTS_ENABLED` (env, default False) gates the alert job only. Never turn it on in production without the owner's instruction.
+- `STOCK_ALERTS_ENABLED` (env, default False) gates the alert job only; `SOLD_OUT_HIDDEN_ENABLED` (env, default False) gates the sold-out hiding in search and the related list only. Never turn either on in production without the owner's instruction.
 - Commands, from `/home/righteoushack/projects/TheAshantihub/.worktrees/catalog6` (copy of `backend/.env` and `docker-compose.override.yml` already in place): tests `docker compose -p cat1 run --rm web python manage.py test <label> --noinput`; migrations `docker compose -p cat1 run --rm --user "$(id -u):$(id -g)" web python manage.py makemigrations <app> --name <name>` (so the file is not root-owned; if the container refuses to run as your user, drop `--user` and run `sudo chown "$(id -u):$(id -g)" <the new file>`). Never two docker commands at once.
 - Migrations, in order, all generated: `catalogue/0001_catalogue_product.py` and `listings/0021_listing_barcode_catalogue_product.py` (Task 1), `catalogue/0002_attach_requests.py` (Task 2), `catalogue/0003_stock_alert_state.py` (Task 6). No `accounts`, `ledger` or `notifications` migration.
-- Shared files also edited by other open work — append, never reorder, and on a merge conflict keep both sides: `ledger/settings_store.py` (PR #152 relabels `verification_overdue_hours`), `ashantihub/settings.py` (`CELERY_BEAT_SCHEDULE` and `DEFAULT_THROTTLE_RATES`, PR #153), `backend/CLAUDE.md`, `CLAUDE.md`, `docs/IMPLEMENTATION_INSTRUCTIONS.md`, the spec header and §13 (PRs #152/#153 add §13 items up to (xc); this plan numbers from (xci)).
+- Shared files also edited by other open work — append, never reorder, and on a merge conflict keep both sides: `ledger/settings_store.py` (PR #152 relabels `verification_overdue_hours`), `ashantihub/settings.py` (`CELERY_BEAT_SCHEDULE` and `DEFAULT_THROTTLE_RATES`, PR #153), `backend/CLAUDE.md`, `CLAUDE.md`, `docs/IMPLEMENTATION_INSTRUCTIONS.md`, the spec header and §13 (PRs #152/#153 add §13 items up to (xc) and Plan 5 (dispatch-wallets-5) takes (xci)–(c); this plan numbers from (ci)).
 - Never deploy, never touch the server or production. Pushing and PRs follow the `deploy` skill's flow only when the user asks.
 - Style: module docstrings, plain words in user-facing messages, no type annotations outside dataclasses, tests in `backend/catalogue/tests/`, `“…”` quotes around listing names in notices (as `listings/views.py` does).
 
 ## Review Focus
 
-1. **The same barcode typed different ways, and codes that must never group** — UPC-A vs EAN-13 with its leading zero, spaces and hyphens, all one key; a wrong check digit, letters or Arabic-Indic digits refused; a store's own code (prefix 200, 021, 041, GTIN-8 starting 2) accepted on a listing but never carried into a request or a barcode match. Pinned in Task 1 (`test_review_focus_one_product_typed_three_ways_is_one_key`, `test_review_focus_store_codes_never_group`), Task 2 (`test_review_focus_store_codes_never_group`) and Task 8 (`test_what_is_never_matched`).
-2. **Days of cover on thin or odd history** — an offer two days old is measured over two days, not 28; no sales in the window falls back to the units line; sales older than the window, cancelled and unpaid orders are not sales; the business's own line replaces the default; 0 is sold out. Pinned in Task 6 (`test_review_focus_a_new_offer_is_not_diluted_by_days_it_did_not_exist`, `test_review_focus_no_sales_uses_the_fallback_line`, `test_old_cancelled_and_unpaid_orders_are_not_sales`, `test_the_business_own_line_replaces_the_default`, `test_sold_out_is_low_and_sold_out`).
-3. **One alert per crossing** — repeated hourly runs, a sales rate drifting over the line with no restock, a partial restock still below the line, selling to zero twice, two runs at once (a stale state row), the switch off. Pinned in Task 7 (`test_review_focus_low_is_told_once_until_restocked`, `test_review_focus_a_drifting_sales_rate_never_repeats_the_alert`, `test_sold_out_is_told_once_and_a_partial_restock_says_nothing`, `test_review_focus_two_runs_at_once_tell_once`, `test_nothing_is_measured_or_sent_while_switched_off`).
+1. **The same barcode typed different ways, and codes that must never group** — UPC-A vs EAN-13 with its leading zero, an 8-digit UPC-E and the UPC-A it stands for, spaces and hyphens, all one key; a wrong check digit, letters or Arabic-Indic digits refused; a store's own code (prefix 200, 021, 041, GTIN-8 starting 2) accepted on a listing but never carried into a request or a barcode match. Pinned in Task 1 (`test_review_focus_one_product_typed_three_ways_is_one_key`, `test_review_focus_store_codes_never_group`, `test_a_upc_e_is_the_same_product_as_its_upc_a`), Task 2 (`test_review_focus_store_codes_never_group`) and Task 8 (`test_what_is_never_matched`).
+2. **Days of cover on thin or odd history** — an offer two days old is measured over two days, not 28, and a re-approval does not shrink the days already sold; no sales in the window falls back to the units line; sales older than the window, cancelled and unpaid orders are not sales; the business's own line replaces the default; 0 is sold out. Pinned in Task 6 (`test_review_focus_a_new_offer_is_not_diluted_by_days_it_did_not_exist`, `test_review_focus_no_sales_uses_the_fallback_line`, `test_old_cancelled_and_unpaid_orders_are_not_sales`, `test_the_business_own_line_replaces_the_default`, `test_sold_out_is_low_and_sold_out`, `test_a_re_approval_does_not_shrink_the_days_already_sold`).
+3. **One alert per crossing** — repeated hourly runs, a sales rate drifting over the line with no restock, a partial restock still below the line, selling to zero twice, two runs at once (a stale state row), a run that dies part-way, saving the same own line again, the switch off. Pinned in Task 6 (`test_saving_the_same_line_again_does_not_re_arm`) and Task 7 (`test_a_run_that_dies_part_way_leaves_every_state_as_it_was`, `test_review_focus_low_is_told_once_until_restocked`, `test_review_focus_a_drifting_sales_rate_never_repeats_the_alert`, `test_sold_out_is_told_once_and_a_partial_restock_says_nothing`, `test_review_focus_two_runs_at_once_tell_once`, `test_nothing_is_measured_or_sent_while_switched_off`).
 4. **Other sellers must neither leak nor invent** — suspended businesses, drafts, sold-out and unpriced offers never show; no contact field in any row; an uncounted stock is null; an unverified business is never featured; an ungrouped listing or a service answers an honest empty list; a listing customers cannot see is 404. Pinned in Task 4 (`test_review_focus_hidden_unpublished_sold_out_and_unpriced_offers_never_show`, `test_review_focus_no_contact_details_in_any_offer`, `test_review_focus_an_ungrouped_listing_answers_an_honest_empty_list`, `test_an_unverified_business_is_never_featured_even_when_cheapest`, `test_a_listing_customers_cannot_see_is_404`).
-5. **Another business's rows and moderation races** — a business proposing on, reading, withdrawing for, or setting a line on another business's listing gets 404 and nothing changes; approving a request whose listing was grouped meanwhile, deciding a request twice, or re-reviewing while another request waits answers 409 (never an IntegrityError 500). Pinned in Task 2 (`test_review_focus_another_business_listing_is_404_and_nothing_changes`, `test_another_businesses_request_is_404`), Task 3 (`test_review_focus_approving_after_the_listing_was_grouped_is_409`, `test_a_request_is_decided_once`, `test_review_focus_re_review_with_another_request_waiting_is_409`) and Task 6 (`test_review_focus_another_business_listing_is_404_and_nothing_changes`).
+5. **Another business's rows and moderation races** — a business proposing on, reading, withdrawing for, or setting a line on another business's listing gets 404 and nothing changes; approving a request whose listing was grouped meanwhile, deciding a request twice, or re-reviewing while another request waits answers 409 (never an IntegrityError 500: the barcode matcher files requests without the listing lock, so `propose` and `re_review` catch the constraint's error). Pinned in Task 2 (`test_review_focus_another_business_listing_is_404_and_nothing_changes`, `test_another_businesses_request_is_404`), Task 3 (`test_review_focus_approving_after_the_listing_was_grouped_is_409`, `test_a_request_is_decided_once`, `test_review_focus_re_review_with_another_request_waiting_is_409`) and Task 6 (`test_review_focus_another_business_listing_is_404_and_nothing_changes`).
 
 ## Assumptions made (decided here, cheap to change — for the owner to confirm)
 
-- **G1** Low means fewer than 7 days of sales left (strictly fewer); with no sales in the window, 5 units **or fewer**; sold out at 0. All three numbers editable through the money-settings approval.
+- **G1** Low means fewer than 7 days of sales left (strictly fewer); with no sales in the window, 5 units **or fewer**; sold out at 0. All three numbers editable through the money-settings approval. Once there is any sale in the window the units fallback stops applying: 1 left of something that sold once in 28 days is 28 days of cover and not low, while 5 left with no sales is low (owner to confirm; the alternative is to treat the fallback as a floor).
 - **G2** The sales window is 28 days; a sale is a line of a paid order (a cancelled order is not a sale); a new offer is measured over the days it has been live.
 - **G3** A business may set its own low-stock line (in units) per offer; it replaces the default for that offer, and changing it re-arms the low alert.
 - **G4** Alerts are in-app only until Stage 4's text outbox merges; one notice per business per hourly run per kind (low, sold out), naming up to five offers.
 - **G5** An offer is told again only after a restock above the stock it was told at (a drifting sales rate alone never repeats it).
-- **G6** Only staff (`listings.moderate`: Operations and Super Admin) group and ungroup; a business asks and may withdraw a request still waiting, but cannot ungroup by itself.
+- **G6** Only staff (`listings.moderate`: Operations and Super Admin) group and ungroup; a business asks and may withdraw a request it asked for, but not a barcode match AshantiHub filed, and cannot ungroup by itself. Owner-confirmed (preflight, 2026-10-16): a business cannot opt out of a barcode match AshantiHub filed. A branded listing without a barcode is grouped only if its business asks, because the matcher files barcode matches only (owner question: also file exact normalised brand-and-name matches, still decided by staff?).
 - **G7** Barcodes are compared as 14-digit GTINs; store-internal codes never group; names are only offered as exact normalised matches (no fuzzy matching).
 - **G8** The featured offer is the cheapest live offer from a KYC-verified business; a tie goes to the shop nearest the customer when the app sends a position, else the oldest offer. No distance is shown.
-- **G9** A sold-out offer drops out of search and the related list; its own page stays reachable and shows 0.
+- **G9** A sold-out offer (counted goods at 0) drops out of search and the related list once `SOLD_OUT_HIDDEN_ENABLED` is on (default off); its own page stays reachable and shows 0.
 - **G10** Businesses may see other businesses' prices and counted stock for the same product (both are already public).
 - **G11** Stock alerts stay off (`STOCK_ALERTS_ENABLED`) until the Plan 6F screens ship; at switch-on every offer already low is told once.
 - **G12** Suspended businesses get no stock alerts and their offers never show to customers.
@@ -91,8 +91,8 @@ Create:
 - `backend/catalogue/tests/__init__.py`, `helpers.py`, `test_identity.py`, `test_attach.py`, `test_attach_queue.py`, `test_other_sellers.py`, `test_sourcing.py`, `test_stock_cover.py`, `test_stock_alerts.py`, `test_backfill.py`
 
 Modify:
-- `backend/listings/models.py` (`barcode`, `catalogue_product`), `backend/listings/serializers.py` (`barcode` on the two owner serializers), `backend/listings/views.py` (browse hides sold-out offers)
-- `backend/ashantihub/settings.py` (`INSTALLED_APPS`, `STOCK_ALERTS_ENABLED`, beat entry), `backend/ashantihub/urls.py` (`api/catalogue/`)
+- `backend/listings/models.py` (`barcode`, `catalogue_product`), `backend/listings/serializers.py` (`barcode` and `save_sent_fields` on the two owner serializers), `backend/listings/views.py` (browse hides sold-out offers while `SOLD_OUT_HIDDEN_ENABLED` is on), `backend/listings/visibility.py` (`sold_out_q`)
+- `backend/ashantihub/settings.py` (`INSTALLED_APPS`, `STOCK_ALERTS_ENABLED`, `SOLD_OUT_HIDDEN_ENABLED`, beat entry), `backend/ashantihub/urls.py` (`api/catalogue/`)
 - `backend/ledger/settings_store.py` (three settings), `backend/ledger/approval_kinds.py` (`STOCK_SETTING_KEYS`, consequences text)
 - `backend/CLAUDE.md`, `CLAUDE.md`, `docs/IMPLEMENTATION_INSTRUCTIONS.md`, `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md`
 
@@ -102,7 +102,7 @@ API added or changed:
 |---|---|---|
 | `GET /api/catalogue/mine/<listing_id>/` | business owner (own listing) | → `{listing, groupable, barcode, store_code, catalogue_product, request}`; 404 for another business's listing |
 | `POST /api/catalogue/mine/<listing_id>/requests/` | business owner | `{catalogue_product}` or `{brand?, name?}` → 201 the state above. 400 `not_groupable` / `name_required` / `brand_or_barcode_required` / `unknown_product`; 409 `already_grouped` / `request_pending` / `barcode_mismatch`; 404 |
-| `POST /api/catalogue/mine/requests/<id>/withdraw/` | business owner | → 200 request row; 409 `not_pending`; 404 |
+| `POST /api/catalogue/mine/requests/<id>/withdraw/` | business owner | → 200 request row; 409 `not_pending` / `not_withdrawable`; 404 |
 | `GET /api/catalogue/staff/requests/pending/?status=pending\|approved\|rejected` | `listings.moderate` | → paginated `{count, next, previous, results: [staff row]}` |
 | `GET /api/catalogue/staff/requests/<id>/` | `listings.moderate` | → staff row (`listing`, the ask, `matches` while pending) |
 | `POST /api/catalogue/staff/requests/<id>/approve/` | `listings.moderate` | `{}` or `{catalogue_product}` or `{brand?, name?}` → 200 `{request, catalogue_product}`; 409 `not_pending` / `already_grouped` / `barcode_mismatch` / `not_groupable`; 400 `unknown_product` / `name_required` / `brand_or_barcode_required`; 404 |
@@ -114,16 +114,16 @@ API added or changed:
 | `GET /api/catalogue/products/<id>/offers/` | business owner | → `{catalogue_product, your_listings, offers}`; 404 |
 | `GET /api/catalogue/stock/` | business owner | → `{results: [{listing_id, name, stock, units_sold, days_on_sale, days_of_cover, basis, line, low, sold_out}], tracked_offers, untracked_offers, settings}` |
 | `PUT /api/catalogue/stock/<listing_id>/line/` | business owner | `{units: n \| null}` → 200 `{listing_id, line, cover}`; 400 `{"units": ...}` / `not_a_product`; 409 `not_counted`; 404 |
-| `PATCH /api/listings/mine/<id>/manage/`, `POST`/`PATCH /api/listings/mine/...` | changed (additive) | accept and return `barcode` (any spelling in, 14-digit key out); 400 on a bad check digit or on changing a grouped listing to another barcode |
-| `GET /api/listings/`, `GET /api/listings/<id>/related/` | changed | a listing with `stock_quantity` 0 no longer appears; the detail still does |
+| `PATCH /api/listings/mine/<id>/manage/`, `POST`/`PATCH /api/listings/mine/...` | changed (additive) | accept and return `barcode` (any spelling in, 14-digit key out); 400 on a bad check digit or on changing a grouped listing to another barcode; the forms save only the fields sent |
+| `GET /api/listings/`, `GET /api/listings/<id>/related/` | changed | while `SOLD_OUT_HIDDEN_ENABLED` is on (default off), a product or food listing with `stock_quantity` 0 does not appear; with it off nothing changes; the detail always answers |
 
 ---
 
 ### Task 1: The catalogue app, barcode and name keys, `Listing.barcode` and `Listing.catalogue_product`, spec reconciliation
 
 **Files:**
-- Create: `backend/catalogue/__init__.py`, `backend/catalogue/apps.py`, `backend/catalogue/identity.py`, `backend/catalogue/models.py`, `backend/catalogue/migrations/__init__.py`, `backend/catalogue/migrations/0001_catalogue_product.py` (generated), `backend/catalogue/tests/__init__.py`, `backend/catalogue/tests/helpers.py`, `backend/catalogue/tests/test_identity.py`
-- Modify: `backend/listings/models.py` (after `stock_quantity`), `backend/listings/migrations/0021_listing_barcode_catalogue_product.py` (generated), `backend/listings/serializers.py` (`OwnerListingManageSerializer`, `OwnerListingSerializer`), `backend/ashantihub/settings.py` (`INSTALLED_APPS`), `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` (append)
+- Create: `backend/catalogue/__init__.py`, `backend/catalogue/apps.py`, `backend/catalogue/identity.py`, `backend/catalogue/models.py`, `backend/catalogue/migrations/__init__.py`, `backend/catalogue/migrations/0001_catalogue_product.py` (generated), `backend/listings/migrations/0021_listing_barcode_catalogue_product.py` (generated), `backend/catalogue/tests/__init__.py`, `backend/catalogue/tests/helpers.py`, `backend/catalogue/tests/test_identity.py`
+- Modify: `backend/listings/models.py` (after `stock_quantity`), `backend/listings/serializers.py` (`OwnerListingManageSerializer`, `OwnerListingSerializer`), `backend/ashantihub/settings.py` (`INSTALLED_APPS`), `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` (append)
 
 **Interfaces:**
 - Consumes: `listings.models.Listing`, `Category`, `Zone`; `accounts.models.BusinessOwner`, `BusinessOwnerProfile`, `Customer`; `accounts.authentication.issue_token(account, kind)`; `accounts.testing.make_staff(role, email)`, `staff_token(staff)`; `orders.models.Order`, `OrderItem`.
@@ -131,7 +131,7 @@ API added or changed:
   - `catalogue.identity.clean_barcode(raw) -> str` (14 digits, or "" for blank; raises `BarcodeError`), `BARCODE_MESSAGE`, `CHECK_DIGIT_MESSAGE`, `is_store_code(key) -> bool`, `normalise_name(*parts) -> str`
   - `catalogue.models.CatalogueProduct` (`brand`, `name`, `normalised_name` set on every save, `barcode`, `created_by`, `created_at`), `catalogue.models.product_row(product) -> dict | None` (`{id, brand, name, barcode}`)
   - `Listing.barcode` (`""` or a 14-digit key), `Listing.catalogue_product` (nullable FK; `CatalogueProduct.offers`)
-  - `listings.serializers.clean_listing_barcode(value, instance=None) -> str`, `GROUPED_BARCODE_MESSAGE`
+  - `listings.serializers.clean_listing_barcode(value, instance=None) -> str`, `GROUPED_BARCODE_MESSAGE`, `save_sent_fields(instance, validated_data)` (the owner forms write only the fields they were sent)
   - test helpers in `catalogue.tests.helpers`: `BARCODE`, `OTHER_BARCODE`, `STORE_CODE`, `business(name="Adepa Ventures", *, verified=True, lat=None, lng=None, suspended=False)`, `product(owner, name="Milo 400g", *, price="25.00", stock=10, status=Listing.PUBLISHED, barcode="", brand="Nestle", category="grocery", catalogue_product=None)`, `service(owner, name="Haircut")`, `stay(owner, name="Garden Room")`, `buyer()`, `sell(listing, quantity, *, days_ago=0, status=Order.PAID)`, `go_live(listing, days_ago)`, `as_account(client, account, kind)`, `as_staff(client, role, email) -> StaffUser`
 
 - [ ] **Step 1: The test helpers** — create `backend/catalogue/tests/__init__.py` (empty) and `backend/catalogue/tests/helpers.py`:
@@ -241,7 +241,7 @@ from rest_framework.test import APIClient
 from catalogue import identity
 from catalogue.models import CatalogueProduct, product_row
 from catalogue.tests.helpers import BARCODE, STORE_CODE, as_account, business, product
-from listings.models import Category, Zone
+from listings.models import Category, Listing, Zone
 from listings.serializers import GROUPED_BARCODE_MESSAGE
 
 
@@ -256,6 +256,11 @@ class BarcodeTests(SimpleTestCase):
     def test_eight_and_fourteen_digit_codes(self):
         self.assertEqual(identity.clean_barcode("73513537"), "00000073513537")
         self.assertEqual(identity.clean_barcode("00012345600012"), "00012345600012")
+
+    def test_a_upc_e_is_the_same_product_as_its_upc_a(self):
+        # An 8-digit code starting 0 or 1 whose check digit holds over its UPC-A expansion is a UPC-E (small packs and cans).
+        self.assertEqual(identity.clean_barcode("01234565"), identity.clean_barcode("012345000065"))
+        self.assertEqual(identity.clean_barcode("01234565"), "00012345000065")
 
     def test_blank_is_no_barcode(self):
         for raw in ("", "   ", None):
@@ -282,6 +287,9 @@ class NameTests(SimpleTestCase):
         self.assertEqual(identity.normalise_name("Nestlé", "MILO  Activ-Go, 400g"), "nestle milo activ go 400g")
         self.assertEqual(identity.normalise_name("", "Milo"), "milo")
         self.assertEqual(identity.normalise_name(None, "  "), "")
+
+    def test_akan_and_ewe_letters_are_kept(self):
+        self.assertEqual(identity.normalise_name("", "Kɔkɔɔ Ɛnam"), "kɔkɔɔ ɛnam")
 
 
 class CatalogueProductTests(TestCase):
@@ -334,6 +342,25 @@ class ListingBarcodeTests(TestCase):
         self.assertEqual(refused.json()["barcode"], [GROUPED_BARCODE_MESSAGE])
         self.assertEqual(self.manage("4006381333931").status_code, 200)
 
+    def test_a_grouped_listing_without_a_barcode_can_send_its_form_unchanged(self):
+        self.listing.catalogue_product = CatalogueProduct.objects.create(brand="Nestle", name="Milo 400g", barcode=BARCODE)
+        self.listing.save(update_fields=["catalogue_product"])
+        self.assertEqual(self.manage("").status_code, 200)
+        self.assertEqual(self.manage("5000112637922").status_code, 400)
+
+    def test_an_owner_edit_never_writes_back_a_grouping_or_a_stock_count_it_read(self):
+        from listings.serializers import OwnerListingManageSerializer
+        entry = CatalogueProduct.objects.create(brand="Nestle", name="Milo 400g", barcode=BARCODE)
+        stale = Listing.objects.get(pk=self.listing.pk)
+        Listing.objects.filter(pk=self.listing.pk).update(catalogue_product=entry, stock_quantity=3)  # staff; a checkout
+        serializer = OwnerListingManageSerializer(stale, data={"price_amount": "26.00"}, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        self.listing.refresh_from_db()
+        self.assertEqual(
+            (self.listing.catalogue_product, self.listing.stock_quantity, str(self.listing.price_amount)), (entry, 3, "26.00"),
+        )
+
     @override_settings(SUBSCRIPTIONS_ENABLED=False)
     def test_a_new_listing_can_carry_a_barcode(self):
         response = self.client.post("/api/listings/mine/", {
@@ -375,13 +402,16 @@ class CatalogueConfig(AppConfig):
 """What makes two listings the same product (catalogue plan 6; spec §1 row 8, §10).
 
 * A barcode is kept as its 14-digit GTIN: digits only, zero-padded on the left, so the UPC-A 036000291452 and the
-  EAN-13 0036000291452 are one key. Spaces and hyphens may be typed. The check digit must be right (a mistyped digit
+  EAN-13 0036000291452 are one key. An 8-digit code starting 0 or 1 that checks as a UPC-E (printed on small packs and
+  cans) is read as the UPC-A it stands for. Spaces and hyphens may be typed. The check digit must be right (a mistyped digit
   must never group two different goods) and an all-zero code is refused.
 * A store's own code (a GS1 restricted-circulation number: a GTIN-13 prefix 020-029, 040-049 or 200-299, or a GTIN-8
   starting 0 or 2) is accepted on a listing but never groups anything: two shops may print the same in-store number on
   different goods. A key starting with six zeros is read as a padded GTIN-8 (GS1 keeps that GTIN-13 range for them).
+  Coupon and refund-receipt prefixes (GS1 050-059, 980-984, 99x) are not special-cased, and typed GS1-128 strings
+  (`(01)...`) and EAN add-ons (15 or 18 digits) are refused as malformed.
 * A name is compared by its normalised form: accents dropped, lower case, and every run of anything but a letter or a
-  digit turned into one space. Only exact normalised names are offered as matches; nothing is fuzzy."""
+  digit (any script, so the Akan and Ewe letters ɛ ɔ ŋ stay) turned into one space. Only exact normalised names are offered as matches; nothing is fuzzy."""
 import re
 import unicodedata
 
@@ -399,6 +429,22 @@ def _check_digit(body):
     return (10 - total % 10) % 10
 
 
+def _upc_e_to_a(code):
+    """The 12-digit UPC-A an 8-digit UPC-E (number system 0 or 1) stands for, or None."""
+    system, d, check = code[0], code[1:7], code[7]
+    if system not in "01":
+        return None
+    if d[5] in "012":
+        body = d[0:2] + d[5] + "0000" + d[2:5]
+    elif d[5] == "3":
+        body = d[0:3] + "00000" + d[3:5]
+    elif d[5] == "4":
+        body = d[0:4] + "00000" + d[4]
+    else:
+        body = d[0:5] + "0000" + d[5]
+    return system + body + check
+
+
 def clean_barcode(raw):
     """The 14-digit GTIN key for `raw`, or "" for a blank one. Raises BarcodeError."""
     text = re.sub(r"[\s-]", "", str(raw or ""))
@@ -406,6 +452,10 @@ def clean_barcode(raw):
         return ""
     if not re.fullmatch(r"[0-9]+", text) or len(text) not in GTIN_LENGTHS:
         raise BarcodeError(BARCODE_MESSAGE)
+    if len(text) == 8:
+        upc_a = _upc_e_to_a(text)
+        if upc_a is not None and _check_digit(upc_a[:-1]) == int(upc_a[-1]):
+            text = upc_a  # a UPC-E printed on small packs: the same product as its UPC-A
     if _check_digit(text[:-1]) != int(text[-1]):
         raise BarcodeError(CHECK_DIGIT_MESSAGE)
     key = text.zfill(14)
@@ -428,7 +478,7 @@ def normalise_name(*parts):
     """The comparable form of a product's words (brand first, then name)."""
     text = unicodedata.normalize("NFKD", " ".join(str(part) for part in parts if part))
     text = "".join(char for char in text if not unicodedata.combining(char)).lower()
-    return " ".join(re.sub(r"[^a-z0-9]+", " ", text).split())[:300]
+    return " ".join(re.sub(r"[\W_]+", " ", text).split())[:300]
 ```
 
 `backend/catalogue/models.py`:
@@ -537,7 +587,7 @@ GROUPED_BARCODE_MESSAGE = (
 
 def clean_listing_barcode(value, instance=None):
     """A listing's barcode as its 14-digit GTIN (catalogue plan 6; spaces and hyphens may be typed). A grouped listing
-    keeps its catalogue product's barcode."""
+    keeps its own barcode or takes its catalogue product's; it cannot change to another."""
     from catalogue.identity import BarcodeError, clean_barcode
 
     try:
@@ -545,9 +595,19 @@ def clean_listing_barcode(value, instance=None):
     except BarcodeError as exc:
         raise serializers.ValidationError(str(exc)) from None
     product = getattr(instance, "catalogue_product", None)
-    if product is not None and product.barcode and key != product.barcode:
+    if product is not None and product.barcode and key not in (product.barcode, instance.barcode):
         raise serializers.ValidationError(GROUPED_BARCODE_MESSAGE)
     return key
+
+
+def save_sent_fields(instance, validated_data):
+    """Write only the fields this request sent (catalogue plan 6). ModelSerializer.update saves the whole row, which would
+    write back the catalogue_product and stock_quantity this request read over a staff grouping decision or a
+    checkout's decrement that committed meanwhile."""
+    for attr, value in validated_data.items():
+        setattr(instance, attr, value)
+    instance.save(update_fields=[*validated_data, "updated_at"])
+    return instance
 
 
 class OwnerListingManageSerializer(serializers.ModelSerializer):
@@ -579,6 +639,9 @@ with
 
     def validate_barcode(self, value):
         return clean_listing_barcode(value, self.instance)
+
+    def update(self, instance, validated_data):
+        return save_sent_fields(instance, validated_data)
 ```
 
 (c) in `OwnerListingSerializer` replace
@@ -629,9 +692,12 @@ with
         return validate_listing_for_owner(
             self.context["request"].user, data, instance=self.instance, initial_data=self.initial_data,
         )
+
+    def update(self, instance, validated_data):
+        return save_sent_fields(instance, validated_data)
 ```
 
-(`barcode` is not added to `LISTING_DECISION_FIELDS`, which `PublicListingSerializer` also reads: the public shape stays as it is.)
+(`barcode` is not added to `LISTING_DECISION_FIELDS`, which `PublicListingSerializer` also reads: the public shape stays as it is. Both `update` methods save only the fields sent, so a PATCH never writes back a grouping or a stock count it read; a PATCH that sends `stock_quantity` itself still races, gate (civ).)
 
 - [ ] **Step 8: Generate the migrations**
 
@@ -644,7 +710,7 @@ Expected: `listings/migrations/0021_listing_barcode_catalogue_product.py` — `A
 - [ ] **Step 9: Run the tests**
 
 Run: `docker compose -p cat1 run --rm web python manage.py test catalogue.tests.test_identity listings --noinput`
-Expected: PASS (14 new tests; the `listings` suite unchanged).
+Expected: PASS (18 new tests; the `listings` suite unchanged).
 
 - [ ] **Step 10: Record the reconciliation in the spec** — append to the end of `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md`:
 
@@ -661,15 +727,16 @@ below are numbered K1–K8 so they do not clash with those. "Stock offers and al
   Stage 6) and a `barcode`. No listing, cart or checkout response changes shape; the owner listing forms gain `barcode`.
 - **K2 Catalogue entries** (`catalogue.CatalogueProduct`: brand, name, normalised name, barcode) are made only when staff
   approve a business's grouping request; a barcode belongs to one entry, and an entry needs a brand or a barcode.
-- **K3 Barcodes** are compared as 14-digit GTINs with the check digit verified; a store's own code (GS1
+- **K3 Barcodes** are compared as 14-digit GTINs with the check digit verified (an 8-digit code starting 0 or 1 that
+  checks as a UPC-E is read as its UPC-A); a store's own code (GS1
   restricted-circulation prefixes) may sit on a listing but never groups. Names are compared normalised, exact only.
 - **K4 Grouping** is asked for by the business on its own product or food listing (services, stays and events never)
   and decided by staff with `listings.moderate` through the moderated-queue contract; only staff ungroup. The barcode
   matcher (`manage.py propose_catalogue_matches`, and every newly approved barcoded entry) only files requests; nothing
   is grouped automatically.
 - **K5 Other sellers** (`GET /api/catalogue/listings/<id>/other-sellers/`) lists the live offers of the same entry,
-  cheapest (or most available) first, with the featured offer of §10; no contact details. A sold-out offer drops out of
-  search and related lists; its own page stays reachable. Businesses may look a product up (`/api/catalogue/products/`),
+  cheapest (or most available) first, with the featured offer of §10; no contact details. A sold-out offer (counted goods at 0)
+  drops out of search and related lists once `SOLD_OUT_HIDDEN_ENABLED` is on (default off); its own page stays reachable. Businesses may look a product up (`/api/catalogue/products/`),
   read-only.
 - **K6 Days of cover** = stock ÷ the sales rate over a governed window (default 28 days), counted over the days the offer
   was on sale. Low: the business's own line if set, else fewer than 7 days of cover, else (no sales) 5 units or fewer;
@@ -706,7 +773,7 @@ EOF
 - Produces:
   - `catalogue.models.CatalogueAttachRequest` (`listing`, `catalogue_product`, `brand`, `name`, `barcode`, `source` ∈ `VENDOR`/`BACKFILL`, `status` ∈ `PENDING`/`APPROVED`/`REJECTED`/`WITHDRAWN`, `rejection_reason`, `reviewed_by`, `reviewed_at`, `created_at`; at most one PENDING per listing; `Listing.catalogue_requests`)
   - `catalogue.errors.CatalogueError(message, code, status_code=400)` with `.message`, `.code`, `.status_code`, `.body() -> {"detail", "code"}`
-  - `catalogue.attach.groupable(listing) -> bool`, `grouping_barcode(listing) -> str`, `describe(request) -> str`, `propose(listing, data) -> CatalogueAttachRequest`, `withdraw(owner, request_id) -> CatalogueAttachRequest`, `request_row(request) -> dict`, `state(listing) -> dict`; constants `NEEDS_REVIEW = "catalogue_needs_review"`, `NOT_GROUPABLE`, `ALREADY_GROUPED`, `REQUEST_PENDING`, `NEEDS_BRAND`, `NEEDS_NAME`, `UNKNOWN_PRODUCT`, `BARCODE_MISMATCH`, `NOT_PENDING`, `NOT_FOUND`
+  - `catalogue.attach.groupable(listing) -> bool`, `grouping_barcode(listing) -> str`, `describe(request) -> str`, `propose(listing, data) -> CatalogueAttachRequest`, `withdraw(owner, request_id) -> CatalogueAttachRequest`, `request_row(request) -> dict`, `state(listing) -> dict`; constants `NEEDS_REVIEW = "catalogue_needs_review"`, `NOT_GROUPABLE`, `ALREADY_GROUPED`, `REQUEST_PENDING`, `NEEDS_BRAND`, `NEEDS_NAME`, `UNKNOWN_PRODUCT`, `BARCODE_MISMATCH`, `NOT_PENDING`, `NOT_WITHDRAWABLE`, `NOT_FOUND`
   - `catalogue.views._own_listing(request, listing_id) -> Listing` (404 unless the caller's), `MineGroupingView`, `MineRequestView`, `MineWithdrawView`; URLs under `/api/catalogue/`
 
 - [ ] **Step 1: Write the failing test** — `backend/catalogue/tests/test_attach.py`
@@ -837,6 +904,14 @@ class StateAndWithdrawTests(TestCase):
         response = self.client.post(f"/api/catalogue/mine/requests/{request.pk}/withdraw/")
         self.assertEqual((response.status_code, response.json()["code"]), (409, "not_pending"))
 
+    def test_a_barcode_match_filed_by_ashantihub_cannot_be_withdrawn(self):
+        request = CatalogueAttachRequest.objects.create(
+            listing=self.listing, barcode=BARCODE, source=CatalogueAttachRequest.BACKFILL,
+            catalogue_product=CatalogueProduct.objects.create(brand="Nestle", name="Milo 400g", barcode=BARCODE),
+        )
+        response = self.client.post(f"/api/catalogue/mine/requests/{request.pk}/withdraw/")
+        self.assertEqual((response.status_code, response.json()["code"]), (409, "not_withdrawable"))
+
     def test_another_businesses_request_is_404(self):
         request = attach.propose(product(business("Rival Mart"), barcode=BARCODE), {})
         self.assertEqual(self.client.post(f"/api/catalogue/mine/requests/{request.pk}/withdraw/").status_code, 404)
@@ -924,8 +999,12 @@ grouped without a staff decision.
 * A request names an existing entry, or describes a new one by brand and name (each defaults to the listing's own). A
   new entry needs a brand or the listing's barcode; a store's own code (catalogue.identity.is_store_code) never counts.
 * One request waits per listing: the check runs under the listing's row lock and a database constraint backs it.
-* Lock order: a request row before its listing row (approve, reject, re-review); propose locks only the listing."""
-from django.db import transaction
+* Lock order: a request row before its listing row (approve, reject, re-review); propose locks only the listing.
+* The barcode matcher (Task 8) files requests without the listing lock, so `propose` and `re_review` catch the
+  constraint's IntegrityError and answer 409 request_pending.
+* A business may withdraw only a request it filed itself; a barcode match AshantiHub filed (source=backfill) is decided
+  by staff alone (owner-confirmed: a business cannot opt out of one)."""
+from django.db import IntegrityError, transaction
 
 from cart import guard
 from listings.models import Listing
@@ -944,6 +1023,7 @@ NEEDS_NAME = "Give the product's name."
 UNKNOWN_PRODUCT = "That catalogue product does not exist."
 BARCODE_MISMATCH = "That catalogue product has a different barcode from this listing."
 NOT_PENDING = "Only a request still waiting can be changed."
+NOT_WITHDRAWABLE = "AshantiHub matched this listing by its barcode; AshantiHub decides it."
 NOT_FOUND = "Request not found."
 
 
@@ -996,9 +1076,14 @@ def propose(listing, data):
                 raise CatalogueError(NEEDS_NAME, "name_required")
             if not brand and not barcode:
                 raise CatalogueError(NEEDS_BRAND, "brand_or_barcode_required")
-        request = CatalogueAttachRequest.objects.create(
-            listing=listing, catalogue_product=product, brand=brand, name=name, barcode=barcode,
-        )
+        try:
+            with transaction.atomic():
+                request = CatalogueAttachRequest.objects.create(
+                    listing=listing, catalogue_product=product, brand=brand, name=name, barcode=barcode,
+                )
+        except IntegrityError:
+            # The barcode matcher (it takes no listing lock) filed one meanwhile: one request waits per listing.
+            raise CatalogueError(REQUEST_PENDING, "request_pending", 409) from None
     notify_staff_role(
         "listings.moderate", NEEDS_REVIEW, "Catalogue grouping to review",
         body=f"“{listing.name}” asks to be grouped with {describe(request)}.", link="catalogue", icon="🏷️",
@@ -1007,8 +1092,8 @@ def propose(listing, data):
 
 
 def withdraw(owner, request_id):
-    """The business takes back its own request while it still waits. Returns it; raises CatalogueError (404 for a
-    request on another business's listing)."""
+    """The business takes back a request it filed itself while it still waits (not a barcode match AshantiHub filed).
+    Returns it; raises CatalogueError (404 for a request on another business's listing)."""
     with transaction.atomic():
         request = (
             CatalogueAttachRequest.objects.select_for_update(of=("self",))
@@ -1019,6 +1104,8 @@ def withdraw(owner, request_id):
             raise CatalogueError(NOT_FOUND, "not_found", 404)
         if request.status != CatalogueAttachRequest.PENDING:
             raise CatalogueError(NOT_PENDING, "not_pending", 409)
+        if request.source != CatalogueAttachRequest.VENDOR:
+            raise CatalogueError(NOT_WITHDRAWABLE, "not_withdrawable", 409)
         request.status = CatalogueAttachRequest.WITHDRAWN
         request.save(update_fields=["status"])
     return request
@@ -1144,7 +1231,7 @@ Expected: `catalogue/migrations/0002_attach_requests.py` — `Create model Catal
 - [ ] **Step 9: Run the tests**
 
 Run: `docker compose -p cat1 run --rm web python manage.py test catalogue --noinput`
-Expected: PASS (15 new tests in `test_attach`; `test_identity` still passing).
+Expected: PASS (16 new tests in `test_attach`; `test_identity` still passing).
 
 - [ ] **Step 10: Commit**
 
@@ -1169,7 +1256,7 @@ EOF
 **Interfaces:**
 - Consumes: Task 2's `attach` (`groupable`, `grouping_barcode`, `describe`, `_text`, `propose`, the message constants), `CatalogueError`, `CatalogueAttachRequest`, `CatalogueProduct`, `product_row`; `accounts.permissions.HasRolePermission`; `notifications.services.notify_business_owner`, `notify_staff_role`.
 - Produces:
-  - `catalogue.attach.approve(request_id, staff, data=None) -> (CatalogueAttachRequest, CatalogueProduct)`, `reject(request_id, staff, reason) -> CatalogueAttachRequest`, `re_review(request_id) -> CatalogueAttachRequest`, `detach(listing_id, reason) -> Listing`, `matches(request, limit=5) -> list[CatalogueProduct]`, `staff_row(request) -> dict`; `_product_for(request, listing, staff, data) -> (CatalogueProduct, created: bool)` (Task 8 hooks the matcher on `created`)
+  - `catalogue.attach.approve(request_id, staff, data=None) -> (CatalogueAttachRequest, CatalogueProduct)`, `reject(request_id, staff, reason) -> CatalogueAttachRequest`, `re_review(request_id) -> CatalogueAttachRequest`, `detach(listing_id, reason) -> Listing`, `matches(request, limit=5) -> list[CatalogueProduct]`, `matches_for(requests, limit=5) -> dict[int, list[CatalogueProduct]]` (one query for a page), `staff_row(request, found=None) -> dict`; `_product_for(request, listing, staff, data) -> (CatalogueProduct, created: bool)` (Task 8 hooks the matcher on `created`)
   - constants `GROUPED = "catalogue_grouped"`, `NOT_GROUPED = "catalogue_not_grouped"`, `UNGROUPED = "catalogue_ungrouped"`, `REASON_REQUIRED`, `NOT_REJECTED`, `NOT_GROUPED_MESSAGE`, `LISTING_NOT_FOUND`
   - `catalogue.views_staff.PERMISSION = "listings.moderate"`, `ATTACH_STATUS_MAP`, `RequestQueueView`, `RequestDetailView`, `RequestApproveView`, `RequestRejectView`, `RequestReReviewView`, `ListingDetachView`
 
@@ -1180,7 +1267,9 @@ EOF
 and may ungroup a listing. Review Focus 5 (grouped meanwhile, decided twice, re-review with another request waiting)."""
 from datetime import timedelta
 
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -1234,6 +1323,17 @@ class QueueTests(TestCase):
         self.assertEqual(row["listing"]["business_name"], "Adepa Ventures")
         self.assertEqual((row["brand"], row["name"], row["status"]), ("Nestle", "Milo 900g", "pending"))
         self.assertEqual([m["name"] for m in row["matches"]], ["Milo 900g"])
+
+    def test_the_queue_costs_the_same_queries_whatever_its_length(self):
+        def queries():
+            with CaptureQueriesContext(connection) as captured:
+                self.assertEqual(self.client.get(QUEUE).status_code, 200)
+            return len(captured)
+
+        before = queries()
+        for n in range(4):
+            attach.propose(product(self.owner, f"Tin {n}", brand="Nestle"), {})
+        self.assertEqual(queries(), before)
 
 
 class DecisionTests(TestCase):
@@ -1379,7 +1479,7 @@ Expected: FAIL/ERROR — `404 != 200` on the staff URLs and `AttributeError: mod
 - [ ] **Step 3: The staff decisions** — in `backend/catalogue/attach.py`, (a) replace
 
 ```python
-from django.db import transaction
+from django.db import IntegrityError, transaction
 
 from cart import guard
 from listings.models import Listing
@@ -1389,7 +1489,7 @@ from notifications.services import notify_staff_role
 with
 
 ```python
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -1523,7 +1623,12 @@ def re_review(request_id):
         request.rejection_reason = None
         request.reviewed_by = None
         request.reviewed_at = None
-        request.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
+        try:
+            with transaction.atomic():
+                request.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
+        except IntegrityError:
+            # The barcode matcher (it takes no listing lock) filed one meanwhile: one request waits per listing.
+            raise CatalogueError(REQUEST_PENDING, "request_pending", 409) from None
     notify_staff_role(
         "listings.moderate", NEEDS_REVIEW, "Catalogue grouping re-opened",
         body=f"“{request.listing.name}” is waiting for a decision again.", link="catalogue", icon="🏷️",
@@ -1569,8 +1674,29 @@ def matches(request, limit=MATCH_LIMIT):
     return list(queryset.order_by("pk")[:limit])
 
 
-def staff_row(request):
-    """A request as the staff queue shows it: the listing (no contact details), the ask, and matches while pending."""
+def matches_for(requests, limit=MATCH_LIMIT):
+    """{request id: entries} for a page of pending requests in one query (the staff queue); as `matches`."""
+    keys = {r.pk: (identity.normalise_name(r.brand, r.name), r.barcode)
+            for r in requests if r.status == CatalogueAttachRequest.PENDING}
+    names = sorted({name for name, _ in keys.values() if name})
+    codes = sorted({code for _, code in keys.values() if code})
+    if not names and not codes:
+        return {}
+    entries = list(CatalogueProduct.objects.filter(Q(normalised_name__in=names) | Q(barcode__in=codes)).order_by("pk"))
+    found = {}
+    for request in requests:
+        if request.pk in keys:
+            name, code = keys[request.pk]
+            found[request.pk] = [
+                e for e in entries if e.pk != request.catalogue_product_id
+                and ((name and e.normalised_name == name) or (code and e.barcode == code))
+            ][:limit]
+    return found
+
+
+def staff_row(request, found=None):
+    """A request as the staff queue shows it: the listing (no contact details), the ask, and matches while pending
+    (`found`: the entries `matches_for` worked out for a whole page; else looked up for this one request)."""
     listing = request.listing
     return {
         "id": request.pk, "status": request.status, "source": request.source,
@@ -1587,7 +1713,8 @@ def staff_row(request):
             "grouped_with": product_row(listing.catalogue_product),
         },
         "matches": (
-            [product_row(p) for p in matches(request)] if request.status == CatalogueAttachRequest.PENDING else []
+            [product_row(p) for p in (found if found is not None else matches(request))]
+            if request.status == CatalogueAttachRequest.PENDING else []
         ),
     }
 ```
@@ -1657,7 +1784,8 @@ class RequestQueueView(generics.ListAPIView):
 
     def list(self, request, *args, **kwargs):
         page = self.paginate_queryset(self.get_queryset())
-        return self.get_paginated_response([attach.staff_row(row) for row in page])
+        found = attach.matches_for(page)  # one query for the whole page, not one per row
+        return self.get_paginated_response([attach.staff_row(row, found.get(row.pk, [])) for row in page])
 
 
 class RequestDetailView(ModeratorView):
@@ -1743,7 +1871,7 @@ urlpatterns = [
 - [ ] **Step 6: Run the tests**
 
 Run: `docker compose -p cat1 run --rm web python manage.py test catalogue --noinput`
-Expected: PASS (16 new tests in `test_attach_queue`).
+Expected: PASS (17 new tests in `test_attach_queue`).
 
 - [ ] **Step 7: Commit**
 
@@ -1763,21 +1891,22 @@ EOF
 
 **Files:**
 - Create: `backend/catalogue/offers.py`, `backend/catalogue/tests/test_other_sellers.py`
-- Modify: `backend/catalogue/views.py` (imports; append `OtherSellersView`), `backend/catalogue/urls.py`, `backend/listings/views.py` (`PublicListingListView.get_queryset`, `RelatedListingsView.get_queryset`)
+- Modify: `backend/catalogue/views.py` (imports; append `OtherSellersView`), `backend/catalogue/urls.py`, `backend/listings/visibility.py` (`sold_out_q`; docstring), `backend/listings/views.py` (import; `PublicListingListView.get_queryset`, `RelatedListingsView.get_queryset`)
 
 **Interfaces:**
 - Consumes: `catalogue.models.product_row`; `listings.visibility.hidden_business_q(prefix)`; `field.services.business_pin(owner) -> (lat, lng) | None`, `haversine_m(lat1, lng1, lat2, lng2) -> float`; `BusinessOwner.display_name`, `BusinessOwner.VERIFIED`.
 - Produces:
   - `catalogue.offers.PRICE = "price"`, `AVAILABILITY = "availability"`, `in_stock_q(prefix="")`, `live_q(prefix="")`, `live_offers(product_id) -> QuerySet[Listing]`, `position_from(params) -> (lat, lng) | None`, `featured(offers, position=None) -> Listing | None`, `ordered(offers, ordering=PRICE, position=None) -> list[Listing]`, `offer_row(listing) -> dict` (`{listing_id, name, price_amount, price_unit, condition, business_name, verified, zone, available_quantity}`), `other_sellers(listing, params) -> dict`
   - `catalogue.views.OtherSellersView` at `listings/<int:listing_id>/other-sellers/`
-  - public browse (`GET /api/listings/`, `GET /api/listings/<id>/related/`) excludes `stock_quantity=0`
+  - `listings.visibility.sold_out_q(prefix="") -> Q` (counted goods at 0 while `settings.SOLD_OUT_HIDDEN_ENABLED` is on; matches nothing while it is off)
+  - public browse (`GET /api/listings/`, `GET /api/listings/<id>/related/`) excludes `sold_out_q()` (nothing changes while the switch is off)
 
 - [ ] **Step 1: Write the failing test** — `backend/catalogue/tests/test_other_sellers.py`
 
 ```python
 """Catalogue plan 6, Task 4: other sellers of the same product for customers (spec §10), and sold-out offers leaving
 search (spec §1 row 15). Read-only. Review Focus 4 (no leaks, nothing made up)."""
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from catalogue.models import CatalogueProduct
@@ -1875,6 +2004,7 @@ class FeaturedOfferTests(TestCase):
         self.assertEqual(self.featured("?lat=abc&lng=-1.62"), far.pk)       # a position that is not one is ignored
 
 
+@override_settings(SOLD_OUT_HIDDEN_ENABLED=True)
 class SoldOutBrowseTests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -1893,6 +2023,16 @@ class SoldOutBrowseTests(TestCase):
         response = self.client.get(f"/api/listings/{self.empty.pk}/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["stock_quantity"], 0)
+
+    @override_settings(SOLD_OUT_HIDDEN_ENABLED=False)
+    def test_with_the_switch_off_search_is_as_before(self):
+        ids = {row["id"] for row in self.client.get("/api/listings/").json()["results"]}
+        self.assertEqual(ids, {self.counted.pk, self.uncounted.pk, self.empty.pk})
+
+    def test_a_service_at_zero_is_never_hidden(self):
+        salon = service(business("Salon"))
+        Listing.objects.filter(pk=salon.pk).update(stock_quantity=0)
+        self.assertIn(salon.pk, {row["id"] for row in self.client.get("/api/listings/").json()["results"]})
 ```
 
 - [ ] **Step 2: Run it to see it fail**
@@ -2076,7 +2216,25 @@ with
 ]
 ```
 
-- [ ] **Step 6: Sold-out offers leave search and the related list** — in `backend/listings/views.py`, (a) in `PublicListingListView.get_queryset` replace
+- [ ] **Step 6: Sold-out offers leave search and the related list (behind a switch)** — (a) append to `backend/listings/visibility.py` (it already imports `settings` and `Q`), and extend the "Used by" docstring lines to name `catalogue.offers` (other sellers), `catalogue.views.OtherSellersView` and `catalogue.alerts` as users of `hidden_business_q`:
+
+```python
+
+
+def sold_out_q(prefix=""):
+    """A Q matching counted goods with nothing left (catalogue plan 6; spec §1 row 15, §10 "zero stock hides the
+    offer"). Public search and the related list leave them out while settings.SOLD_OUT_HIDDEN_ENABLED is on (env,
+    default off until the Plan 6F screens tell a business to leave the count empty when it does not count stock).
+    Matches nothing while it is off, and never a service, stay or event: only products and food are offers with a stock
+    count. (Read with getattr: the setting itself is added with the alert switch in Task 7.)"""
+    if not getattr(settings, "SOLD_OUT_HIDDEN_ENABLED", False):
+        return Q(pk__in=[])
+    from cart.guard import deliverable_q  # cart.guard imports this module
+
+    return Q(**{f"{prefix}stock_quantity": 0}) & deliverable_q(prefix)
+```
+
+(b) in `backend/listings/views.py` replace `from .visibility import hidden_business_q` with `from .visibility import hidden_business_q, sold_out_q`; (c) in `PublicListingListView.get_queryset` replace
 
 ```python
         # Suspended and paused businesses' listings drop out of public browse
@@ -2093,18 +2251,19 @@ with
 ```python
         # Suspended and paused businesses' listings drop out of public browse
         # (listings.visibility) — enforced here rather than at suspend/pause
-        # time, so unsuspending or paying reverses it at once. A counted offer
-        # with nothing left drops out too (spec §1 row 15, catalogue plan 6);
-        # an uncounted one (stock_quantity null) stays, and the listing's own
-        # page still opens.
+        # time, so unsuspending or paying reverses it at once. While
+        # SOLD_OUT_HIDDEN_ENABLED is on, counted goods with nothing left drop
+        # out too (spec §1 row 15, catalogue plan 6); an uncounted one
+        # (stock_quantity null) and any service or stay stay, and the
+        # listing's own page still opens.
         queryset = (
             Listing.objects.filter(status=Listing.PUBLISHED)
             .exclude(hidden_business_q())
-            .exclude(stock_quantity=0)
+            .exclude(sold_out_q())
             .select_related("category", "zone", "business_owner__profile")
 ```
 
-and (b) in `RelatedListingsView.get_queryset` replace
+and (d) in `RelatedListingsView.get_queryset` replace
 
 ```python
             Listing.objects.filter(status=Listing.PUBLISHED)
@@ -2117,21 +2276,21 @@ with
 ```python
             Listing.objects.filter(status=Listing.PUBLISHED)
             .exclude(hidden_business_q())
-            .exclude(stock_quantity=0)  # sold out: hidden like search (catalogue plan 6)
+            .exclude(sold_out_q())  # sold out: hidden like search while the switch is on (catalogue plan 6)
             .filter(Q(category=anchor.category) | Q(zone=anchor.zone))
 ```
 
-(Django writes `exclude()` on a nullable column as `NOT (stock_quantity = 0 AND stock_quantity IS NOT NULL)`, so uncounted listings stay; the test pins it. `PublicListingDetailView` is left as it is.)
+(Django writes `exclude()` on a nullable column as `NOT (stock_quantity = 0 AND stock_quantity IS NOT NULL)`, so uncounted listings stay; the test pins it. With the switch off, `sold_out_q()` is an empty `pk__in`, which `exclude` turns into no filter at all. `PublicListingDetailView` is left as it is.)
 
 - [ ] **Step 7: Run the tests**
 
-Run: `docker compose -p cat1 run --rm web python manage.py test catalogue.tests.test_other_sellers listings --noinput`
-Expected: PASS (11 new tests; the `listings` suite unchanged).
+Run: `docker compose -p cat1 run --rm web python manage.py test catalogue.tests.test_other_sellers listings cart marketplace --noinput`
+Expected: PASS (13 new tests; the `listings`, `cart` and `marketplace` suites unchanged).
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add backend/catalogue backend/listings/views.py
+git add backend/catalogue backend/listings/views.py backend/listings/visibility.py
 git commit -F - <<'EOF'
 feat(catalogue): other sellers of a product with the featured offer, no contact details; sold-out offers leave search (plan 6)
 
@@ -2404,7 +2563,7 @@ EOF
 - Produces:
   - `catalogue.models.StockAlertState` (`listing` one-to-one, `threshold_units`, `low_alerted_at`, `low_alerted_stock`, `sold_out_alerted_at`, `updated_at`; `Listing.stock_alert`)
   - money settings `low_stock_cover_days` (7, 1–90), `low_stock_fallback_units` (5, 0–100,000), `stock_cover_window_days` (28, 7–180); `ledger.approval_kinds.STOCK_SETTING_KEYS`
-  - `catalogue.stock`: `COVER_DAYS`, `FALLBACK_UNITS`, `WINDOW_DAYS` (the setting keys), `SALES = "sales"`, `FALLBACK = "fallback"`, `OWN = "own_threshold"`, `MAX_LINE`, `LINE_MESSAGE`, `NOT_A_PRODUCT`, `NOT_COUNTED`; `Limits(cover_days, fallback_units, window_days)`; `Cover(stock, units_sold, days_on_sale, days_of_cover, basis, line, low, sold_out)`; `limits_at(now=None) -> Limits`; `tracked(queryset) -> QuerySet`; `days_on_sale(listing, window_days, now) -> int`; `units_sold(listing_ids, window_days, now) -> dict`; `measure(listing, sold, limits, *, own_line=None, now=None) -> Cover`; `own_lines(listing_ids) -> dict`; `measure_many(listings, now=None, limits=None, lines=None) -> dict[int, Cover]`; `cover_of(listing, now=None) -> Cover`; `row(listing, cover) -> dict`; `needs_restocking(owner, now=None) -> dict`; `parse_line(raw) -> int | None` (raises `ValueError`); `set_own_line(listing, units)`
+  - `catalogue.stock`: `COVER_DAYS`, `FALLBACK_UNITS`, `WINDOW_DAYS` (the setting keys), `SALES = "sales"`, `FALLBACK = "fallback"`, `OWN = "own_threshold"`, `MAX_LINE`, `LINE_MESSAGE`, `NOT_A_PRODUCT`, `NOT_COUNTED`; `Limits(cover_days, fallback_units, window_days)`; `Cover(stock, units_sold, days_on_sale, days_of_cover, basis, line, low, sold_out)`; `limits_at(now=None) -> Limits`; `tracked(queryset) -> QuerySet`; `days_on_sale(listing, window_days, now, first_sale=None) -> int`; `units_sold(listing_ids, window_days, now) -> {listing id: (units, first sale time)}`; `measure(listing, sold, limits, *, own_line=None, now=None, first_sale=None) -> Cover`; `own_lines(listing_ids) -> dict`; `measure_many(listings, now=None, limits=None, lines=None) -> dict[int, Cover]`; `cover_of(listing, now=None) -> Cover`; `row(listing, cover) -> dict`; `needs_restocking(owner, now=None) -> dict`; `parse_line(raw) -> int | None` (raises `ValueError`); `set_own_line(listing, units)`
   - `views.StockView` (`stock/`), `views.StockLineView` (`stock/<int:listing_id>/line/`)
 
 - [ ] **Step 1: Write the failing test** — `backend/catalogue/tests/test_stock_cover.py`
@@ -2426,6 +2585,7 @@ from catalogue.models import StockAlertState
 from catalogue.tests.helpers import as_account, as_staff, business, buyer, go_live, product, sell, service
 from ledger import approval_kinds, settings_store
 from ledger.models import MoneySetting
+from listings.models import Listing
 from orders.models import Order
 
 
@@ -2483,6 +2643,14 @@ class CoverTests(TestCase):
         sell(listing, 4, days_ago=1)                                                      # 2 a day over its 2 days
         cover = stock.cover_of(listing)
         self.assertEqual((cover.days_on_sale, cover.days_of_cover, cover.low), (2, Decimal("6.5"), True))
+
+    def test_a_re_approval_does_not_shrink_the_days_already_sold(self):
+        listing = go_live(product(self.owner, stock=20), 60)
+        sell(listing, 28, days_ago=20)
+        Listing.objects.filter(pk=listing.pk).update(reviewed_at=timezone.now())      # approved again today
+        listing.refresh_from_db()
+        cover = stock.cover_of(listing)
+        self.assertEqual((cover.days_on_sale, cover.low), (20, False))
 
     def test_review_focus_no_sales_uses_the_fallback_line(self):
         five = stock.cover_of(product(self.owner, stock=5))
@@ -2584,6 +2752,12 @@ class OwnLineTests(TestCase):
         response = self.put(service(self.owner), 5)
         self.assertEqual((response.status_code, response.json()["code"]), (400, "not_a_product"))
 
+    def test_saving_the_same_line_again_does_not_re_arm(self):
+        self.put(self.listing, 10)
+        StockAlertState.objects.filter(listing=self.listing).update(low_alerted_at=timezone.now(), low_alerted_stock=9)
+        self.put(self.listing, 10)
+        self.assertIsNotNone(StockAlertState.objects.get(listing=self.listing).low_alerted_at)
+
     def test_changing_the_line_re_arms_the_low_alert(self):
         StockAlertState.objects.create(listing=self.listing, low_alerted_at=timezone.now(), low_alerted_stock=20)
         self.put(self.listing, 10)
@@ -2680,8 +2854,9 @@ def setting_consequences(request):
 
 * Sales are the units on paid order lines (Order.PAID; a cancelled or unpaid order is not a sale) placed inside the
   window (the governed `stock_cover_window_days`, default 28), spread over the whole days the offer has been on sale
-  inside that window (since its approval, Listing.reviewed_at, else its creation; at least 1). A new offer is not
-  diluted by days it did not exist.
+  inside that window (since its approval, Listing.reviewed_at, else its creation, or since its first counted sale if
+  that is earlier: a re-approval moves reviewed_at forward but earlier sales still count; at least 1). A new offer is
+  not diluted by days it did not exist.
 * An offer is low when the business set its own line for it (StockAlertState.threshold_units) and stock is at or below
   it; otherwise, with sales in the window, when it has fewer than `low_stock_cover_days` (default 7) days of sales left;
   otherwise (no sales in the window) when stock is at or below `low_stock_fallback_units` (default 5). Sold out is 0,
@@ -2696,7 +2871,7 @@ from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional
 
-from django.db.models import Sum
+from django.db.models import Min, Sum
 from django.utils import timezone
 
 from cart import guard
@@ -2748,30 +2923,35 @@ def tracked(queryset):
     return queryset.filter(status=Listing.PUBLISHED, stock_quantity__isnull=False).filter(guard.deliverable_q())
 
 
-def days_on_sale(listing, window_days, now):
+def days_on_sale(listing, window_days, now, first_sale=None):
+    """Whole days on sale inside the window: since approval (else creation), or since its first counted sale if that is
+    earlier (a re-approval moves reviewed_at forward, but earlier sales still count); at least 1."""
     since = listing.reviewed_at or listing.created_at
+    if first_sale is not None and (since is None or first_sale < since):
+        since = first_sale
     days = int((now - since).total_seconds() // DAY_SECONDS) if since else window_days
     return max(1, min(window_days, days))
 
 
 def units_sold(listing_ids, window_days, now):
-    """{listing id: units on paid order lines placed inside the window}; a listing with none is absent."""
+    """{listing id: (units, first sale time)} on paid order lines placed inside the window; a listing with none is absent."""
     rows = (
         OrderItem.objects.filter(
             listing_id__in=listing_ids, order__status=Order.PAID,
             order__placed_at__gte=now - timedelta(days=window_days),
         )
         .values("listing_id")
-        .annotate(units=Sum("quantity"))
+        .annotate(units=Sum("quantity"), first=Min("order__placed_at"))
     )
-    return {row["listing_id"]: row["units"] for row in rows}
+    return {row["listing_id"]: (row["units"], row["first"]) for row in rows}
 
 
-def measure(listing, sold, limits, *, own_line=None, now=None):
-    """The Cover of one counted listing that sold `sold` units inside the window."""
+def measure(listing, sold, limits, *, own_line=None, now=None, first_sale=None):
+    """The Cover of one counted listing that sold `sold` units inside the window (`first_sale`: when the first of them
+    was placed, so days on sale never start after a sale it counts)."""
     now = now or timezone.now()
     stock = listing.stock_quantity
-    on_sale = days_on_sale(listing, limits.window_days, now)
+    on_sale = days_on_sale(listing, limits.window_days, now, first_sale)
     cover = None
     if sold:
         cover = (Decimal(stock * on_sale) / Decimal(sold)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
@@ -2799,10 +2979,13 @@ def measure_many(listings, now=None, limits=None, lines=None):
     ids = [listing.pk for listing in listings]
     sold = units_sold(ids, limits.window_days, now)
     lines = own_lines(ids) if lines is None else lines
-    return {
-        listing.pk: measure(listing, sold.get(listing.pk, 0), limits, own_line=lines.get(listing.pk), now=now)
-        for listing in listings
-    }
+    covers = {}
+    for listing in listings:
+        units, first = sold.get(listing.pk, (0, None))
+        covers[listing.pk] = measure(
+            listing, units, limits, own_line=lines.get(listing.pk), now=now, first_sale=first,
+        )
+    return covers
 
 
 def cover_of(listing, now=None):
@@ -2855,9 +3038,12 @@ def parse_line(raw):
 
 
 def set_own_line(listing, units):
-    """Set (or clear, with None) the business's own low-stock line for one offer. A new line re-arms the low alert, so
-    the offer is measured against it from the next run; the sold-out alert is left as it is."""
+    """Set (or clear, with None) the business's own low-stock line for one offer. A changed line re-arms the low alert,
+    so the offer is measured against it from the next run; saving the same line again changes nothing; the sold-out
+    alert is left as it is."""
     state, _ = StockAlertState.objects.get_or_create(listing=listing)
+    if state.threshold_units == units:
+        return
     StockAlertState.objects.filter(pk=state.pk).update(
         threshold_units=units, low_alerted_at=None, low_alerted_stock=None, updated_at=timezone.now(),
     )
@@ -2939,8 +3125,8 @@ Expected: `catalogue/migrations/0003_stock_alert_state.py` — `Create model Sto
 
 - [ ] **Step 9: Run the tests**
 
-Run: `docker compose -p cat1 run --rm web python manage.py test catalogue ledger wallets.tests.test_guards --noinput`
-Expected: PASS (18 new tests in `test_stock_cover`; `wallets.tests.test_guards` still sees its withdrawal wording and "Applies only to orders paid after it starts." for `rider_commission_bp`).
+Run: `docker compose -p cat1 run --rm web python manage.py test catalogue ledger approvals wallets.tests.test_guards --noinput`
+Expected: PASS (20 new tests in `test_stock_cover`; `wallets.tests.test_guards` still sees its withdrawal wording and "Applies only to orders paid after it starts." for `rider_commission_bp`).
 
 - [ ] **Step 10: Commit**
 
@@ -2964,7 +3150,7 @@ EOF
 
 **Interfaces:**
 - Consumes: `catalogue.stock.limits_at`, `tracked`, `measure_many(listings, now, limits, lines)`, `cover_of`, `set_own_line`, `Cover` (Task 6); `StockAlertState` (Task 6); `listings.visibility.hidden_business_q`; `notifications.services.notify_business_owner`; `core.jobs` (heartbeat for every beat entry).
-- Produces: `catalogue.alerts.LOW = "stock_low"`, `SOLD_OUT = "stock_sold_out"`, `CHUNK = 500`, `NAMED = 5`, `enabled() -> bool`, `tell(owner, kind, names) -> Notification | None`, `move_state(state, cover, now) -> str | None`, `run(now=None) -> int` (offers told); `catalogue.tasks.check_stock_alerts()`; `settings.STOCK_ALERTS_ENABLED` (env, default False); beat entry `catalogue-stock-alerts` (`crontab(minute=35)`).
+- Produces: `catalogue.alerts.LOW = "stock_low"`, `SOLD_OUT = "stock_sold_out"`, `CHUNK = 500`, `NAMED = 5`, `enabled() -> bool`, `tell(owner, kind, names) -> Notification | None`, `move_state(state, cover, now) -> str | None`, `run(now=None) -> int` (offers told; one transaction); `catalogue.tasks.check_stock_alerts()`; `settings.STOCK_ALERTS_ENABLED` and `settings.SOLD_OUT_HIDDEN_ENABLED` (env, default False); beat entry `catalogue-stock-alerts` (`crontab(minute=35)`).
 
 - [ ] **Step 1: Write the failing test** — `backend/catalogue/tests/test_stock_alerts.py`
 
@@ -2972,6 +3158,8 @@ EOF
 """Catalogue plan 6, Task 7: low-stock and sold-out alerts, told once per crossing and re-armed only by a restock
 (spec §1 row 15). Review Focus 3."""
 from datetime import timedelta
+
+from unittest import mock
 
 from django.conf import settings
 from django.test import TestCase, override_settings
@@ -3052,6 +3240,26 @@ class AlertTests(TestCase):
         self.assertIn("and 2 more", notice.body)
         self.assertEqual(Notification.objects.filter(business_owner=rival, kind=alerts.LOW).count(), 1)
 
+    def test_a_run_that_dies_part_way_leaves_every_state_as_it_was(self):
+        product(self.owner, "Milo", stock=3)
+        with mock.patch("catalogue.alerts.tell", side_effect=RuntimeError("worker killed")), self.assertRaises(RuntimeError):
+            alerts.run()
+        self.assertFalse(StockAlertState.objects.filter(low_alerted_at__isnull=False).exists())   # nothing marked told
+        self.assertEqual(alerts.run(), 1)                                          # the next run tells it
+
+    def test_the_sold_out_notice_claims_hiding_only_while_hiding_is_on(self):
+        product(self.owner, "Milo 400g", stock=0)
+        with override_settings(SOLD_OUT_HIDDEN_ENABLED=False):
+            alerts.run()
+        [notice] = self.notices(alerts.SOLD_OUT)
+        self.assertEqual(notice.body, "“Milo 400g” has sold out. Restock to keep selling.")
+        Notification.objects.all().delete()
+        StockAlertState.objects.all().delete()
+        with override_settings(SOLD_OUT_HIDDEN_ENABLED=True):
+            alerts.run()
+        [notice] = self.notices(alerts.SOLD_OUT)
+        self.assertIn("no longer shows in search", notice.body)
+
     def test_changing_the_own_line_re_arms_the_low_alert(self):
         listing = product(self.owner, "Milo", stock=4)
         self.assertEqual(alerts.run(), 1)
@@ -3105,13 +3313,17 @@ Expected: ERROR — `ImportError: cannot import name 'alerts' from 'catalogue'`.
   - the low alert is re-armed only by a restock: once the offer is no longer low and holds more than when it was told
     (a sales rate drifting over the line never repeats it), or when the business changes its own line
     (catalogue.stock.set_own_line); the sold-out alert once stock is above 0.
-* Every move is one conditional UPDATE (`... IS NULL`), so two runs at once tell a business once.
+* Every move is one conditional UPDATE (`... IS NULL`), so two runs at once tell a business once. The whole run is one
+  transaction: the state moves and their notices commit together, so a run that dies part-way leaves every state as it
+  was and the next run tells those offers.
 * One notice per business per run for each kind, naming up to five offers (`tell`).
-* In-app only. Texts and emails by the business's preference wait for Stage 4's outbox (spec §13 (xcii)): `tell` is the
+* In-app only. Texts and emails by the business's preference wait for Stage 4's outbox (spec §13 (cii)): `tell` is the
   one place to add them.
 * Nothing is measured or sent while STOCK_ALERTS_ENABLED is off (the default). A notice that fails to save
-  (notifications never raise) after its state moved is not retried (spec §13 (cii))."""
+  (notifications never raise) while its state moved is not retried until the next restock (spec §13 (cxii)); a run that
+  dies part-way is not that case: the run is one transaction, so nothing is marked told without its notice."""
 from django.conf import settings
+from django.db import transaction
 from django.utils import timezone
 
 from listings.models import Listing
@@ -3137,14 +3349,14 @@ def _names(names):
 
 
 def tell(owner, kind, names):
-    """The business's in-app notice for one kind, naming its offers. The texts-and-emails hook goes here (xcii)."""
+    """The business's in-app notice for one kind, naming its offers. The texts-and-emails hook goes here (cii)."""
     one = len(names) == 1
     if kind == SOLD_OUT:
         title = "Sold out" if one else f"{len(names)} products sold out"
-        body = (
-            f"{_names(names)} {'has' if one else 'have'} sold out and no longer {'shows' if one else 'show'} in search. "
-            f"Restock to show {'it' if one else 'them'} again."
-        )
+        body = f"{_names(names)} {'has' if one else 'have'} sold out. Restock to keep selling."
+        if getattr(settings, "SOLD_OUT_HIDDEN_ENABLED", False):
+            body = (f"{_names(names)} {'has' if one else 'have'} sold out and no longer {'shows' if one else 'show'} in "
+                    f"search. Restock to show {'it' if one else 'them'} again.")
         icon = "📭"
     else:
         title = "Running low" if one else f"{len(names)} products running low"
@@ -3178,17 +3390,21 @@ def move_state(state, cover, now):
 
 
 def run(now=None):
-    """Measure every offer and send what is due. Returns how many offers were told about (0 while switched off)."""
+    """Measure every offer and send what is due. Returns how many offers were told about (0 while switched off). One
+    transaction: the state moves and their notices commit together, so a run that dies part-way (a deploy, a timeout)
+    leaves every state as it was and the next run tells those offers. A second run at the same time waits on the rows the
+    first moved, then finds them moved: still told once."""
     if not enabled():
         return 0
     now = now or timezone.now()
     current = stock.limits_at(now)
     ids = list(stock.tracked(Listing.objects.exclude(hidden_business_q())).order_by("pk").values_list("pk", flat=True))
     notices = {}
-    for start in range(0, len(ids), CHUNK):
-        _run_chunk(ids[start:start + CHUNK], current, now, notices)
-    for (_, kind), (owner, names) in sorted(notices.items(), key=lambda item: item[0]):
-        tell(owner, kind, names)
+    with transaction.atomic():
+        for start in range(0, len(ids), CHUNK):
+            _run_chunk(ids[start:start + CHUNK], current, now, notices)
+        for (_, kind), (owner, names) in sorted(notices.items(), key=lambda item: item[0]):
+            tell(owner, kind, names)
     return sum(len(names) for _, names in notices.values())
 
 
@@ -3232,9 +3448,14 @@ with
 DELIVERY_FEE_ENABLED = env.bool("DELIVERY_FEE_ENABLED", default=False)
 
 # Low-stock and sold-out alerts to businesses (catalogue plan 6; spec §1 row 15). Off until the owner decides: with it off
-# the hourly job measures and sends nothing. The "needs restocking" list and search hiding sold-out offers do not depend
-# on it. On the first run after it is turned on, every offer already low is told once.
+# the hourly job measures and sends nothing. The "needs restocking" list does not depend on it. On the first run after it
+# is turned on, every offer already low is told once.
 STOCK_ALERTS_ENABLED = env.bool("STOCK_ALERTS_ENABLED", default=False)
+
+# Search and the related list stop showing counted goods at 0 stock (catalogue plan 6; spec §1 row 15, §10 "zero stock
+# hides the offer"). Off until the Plan 6F screens tell a business to leave the count empty when it does not count stock;
+# the listing's own page and the other-sellers list are not affected by it (see listings.visibility.sold_out_q).
+SOLD_OUT_HIDDEN_ENABLED = env.bool("SOLD_OUT_HIDDEN_ENABLED", default=False)
 ```
 
 and (b) replace
@@ -3264,7 +3485,7 @@ with
 - [ ] **Step 6: Run the tests**
 
 Run: `docker compose -p cat1 run --rm web python manage.py test catalogue core.tests.test_background_jobs --noinput`
-Expected: PASS (10 new tests in `test_stock_alerts`; `test_every_scheduled_job_names_a_registered_task` finds `catalogue.tasks.check_stock_alerts`).
+Expected: PASS (12 new tests in `test_stock_alerts`; `test_every_scheduled_job_names_a_registered_task` finds `catalogue.tasks.check_stock_alerts`).
 
 - [ ] **Step 7: Commit**
 
@@ -3284,11 +3505,11 @@ EOF
 
 **Files:**
 - Create: `backend/catalogue/management/__init__.py`, `backend/catalogue/management/commands/__init__.py`, `backend/catalogue/management/commands/propose_catalogue_matches.py`, `backend/catalogue/tests/test_backfill.py`
-- Modify: `backend/catalogue/attach.py` (import; `approve`; append the matcher)
+- Modify: `backend/catalogue/attach.py` (`approve`; append the matcher)
 
 **Interfaces:**
 - Consumes: `attach.approve`, `_product_for` (`created`), `NEEDS_REVIEW` (Tasks 2–3); `identity.is_store_code`; `cart.guard.deliverable_q()`; `notify_staff_role`.
-- Produces: `catalogue.attach.propose_barcode_matches(product=None, *, dry_run=False) -> int`, `TURNED_DOWN`; `approve` files matches for a newly made barcoded entry; `manage.py propose_catalogue_matches [--dry-run]`.
+- Produces: `catalogue.attach.propose_barcode_matches(product=None, *, dry_run=False) -> int`, `TURNED_DOWN`; `approve` files matches for a newly made barcoded entry once its transaction has committed (`transaction.on_commit`); `manage.py propose_catalogue_matches [--dry-run]`.
 
 - [ ] **Step 1: Write the failing test** — `backend/catalogue/tests/test_backfill.py`
 
@@ -3373,7 +3594,8 @@ class ApprovalMatchesTests(TestCase):
         first = product(business("Adepa Ventures"), barcode=BARCODE)
         second = product(business("Kumasi Mart"), barcode=BARCODE)
         request = attach.propose(first, {})
-        _, entry = attach.approve(request.pk, staff)
+        with self.captureOnCommitCallbacks(execute=True):   # the matcher runs once the approval has committed
+            _, entry = attach.approve(request.pk, staff)
         filed = CatalogueAttachRequest.objects.get(source=BACKFILL)
         self.assertEqual((filed.listing, filed.catalogue_product, filed.status), (second, entry, PENDING))
         second.refresh_from_db()
@@ -3385,21 +3607,7 @@ class ApprovalMatchesTests(TestCase):
 Run: `docker compose -p cat1 run --rm web python manage.py test catalogue.tests.test_backfill --noinput`
 Expected: ERROR — `AttributeError: module 'catalogue.attach' has no attribute 'propose_barcode_matches'` and `CommandError: Unknown command: 'propose_catalogue_matches'`.
 
-- [ ] **Step 3: The matcher** — in `backend/catalogue/attach.py`, (a) replace
-
-```python
-from django.db import transaction
-from django.db.models import Q
-```
-
-with
-
-```python
-from django.db import IntegrityError, transaction
-from django.db.models import Q
-```
-
-(b) in `approve` replace
+- [ ] **Step 3: The matcher** — in `backend/catalogue/attach.py`, (`IntegrityError` is already imported by Task 2.) (a) in `approve` replace
 
 ```python
         request.save(update_fields=["catalogue_product", "status", "rejection_reason", "reviewed_by", "reviewed_at"])
@@ -3413,13 +3621,15 @@ with
         request.save(update_fields=["catalogue_product", "status", "rejection_reason", "reviewed_by", "reviewed_at"])
         if created and product.barcode:
             # A new barcoded entry: other ungrouped listings carrying that barcode get a request to review (staff decide
-            # each one; nothing is grouped here).
-            propose_barcode_matches(product)
+            # each one; nothing is grouped here). Only after the whole approval has committed (the staff request's own
+            # transaction included): filing a request key-share-locks that listing, which must never wait on a checkout
+            # or another approval while this one still holds its own listing row.
+            transaction.on_commit(lambda: propose_barcode_matches(product))
     notify_business_owner(
         listing.business_owner, GROUPED, "Listing grouped with other sellers",
 ```
 
-and (c) append to the end of the file:
+and (b) append to the end of the file:
 
 ```python
 
@@ -3498,7 +3708,7 @@ class Command(BaseCommand):
 - [ ] **Step 5: Run the tests**
 
 Run: `docker compose -p cat1 run --rm web python manage.py test catalogue --noinput`
-Expected: PASS (7 new tests in `test_backfill`; Task 3's approval tests unchanged: no other listing shares their barcode).
+Expected: PASS (7 new tests in `test_backfill`; Task 3's approval tests unchanged: no other listing shares their barcode, and a `TestCase` never runs on-commit callbacks).
 
 - [ ] **Step 6: Commit**
 
@@ -3514,7 +3724,7 @@ EOF
 
 ---
 
-### Task 9: Correctness core, stage index, spec gate items (xci) onward, full suite
+### Task 9: Correctness core, stage index, spec gate items (ci) onward, full suite
 
 **Files:**
 - Modify: `backend/CLAUDE.md`, `CLAUDE.md`, `docs/IMPLEMENTATION_INSTRUCTIONS.md`, `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` (Status, Scope, append the gate section)
@@ -3546,8 +3756,10 @@ with
   `contact_phone`; an uncounted stock is null. Days of cover and the low line live in `catalogue.stock` (three governed
   settings in `ledger.settings_store`); alerts move `StockAlertState` with conditional UPDATEs (once per crossing,
   re-armed only by a restock or a new own line), in-app only, behind `STOCK_ALERTS_ENABLED` (default off). Search and
-  related lists hide `stock_quantity=0`; the detail page does not. The checkout stock reservation above is unchanged.
-  Follow-ups before the alerts go on or the screens ship are in the spec's §13 (xci) onward.
+  related lists hide counted goods at `stock_quantity=0` only while `SOLD_OUT_HIDDEN_ENABLED` is on (default off); the detail
+  page never does. The owner listing forms save only the fields sent (`listings.serializers.save_sent_fields`). The
+  featured-offer tie uses the straight-line pin distance only to order, never shown (as `delivery.dispatching.rank`). The checkout stock reservation above is unchanged.
+  Follow-ups before the alerts go on or the screens ship are in the spec's §13 (ci) onward.
 
 ## Test-fixture gotcha
 ```
@@ -3579,7 +3791,7 @@ and (b) in `docs/IMPLEMENTATION_INSTRUCTIONS.md` replace
 with
 
 ```markdown
-| **6** Offers and stock | Catalogue entries, offers, "other sellers", stock reservation upgrade, low-stock alerts. Backend: docs/superpowers/plans/2026-10-16-catalogue-offers-stock-6.md, built (grouping by staff approval, other sellers, the business's product lookup, days of cover, alerts behind `STOCK_ALERTS_ENABLED`, default off); the reservation upgrade is a gate before Plan 7 (spec §13 (xciii)); the screens are Plan 6F. |
+| **6** Offers and stock | Catalogue entries, offers, "other sellers", stock reservation upgrade, low-stock alerts. Backend: docs/superpowers/plans/2026-10-16-catalogue-offers-stock-6.md, built (grouping by staff approval, other sellers, the business's product lookup, days of cover, alerts behind `STOCK_ALERTS_ENABLED` and sold-out hiding behind `SOLD_OUT_HIDDEN_ENABLED`, both default off); the reservation upgrade is a gate before Plan 7 (spec §13 (ciii)); the screens are Plan 6F. |
 ```
 
 - [ ] **Step 3: The spec header** — in `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md`, (a) replace
@@ -3607,7 +3819,8 @@ with
 payments, refunds, withdrawals and reconciliation, backend) are implemented behind switches that default off (branches
 feature/ledger-stage1, feature/otp-security and feature/wallets; see section 13); Stage 6 backend (catalogue entries,
 offers, other sellers, stock cover and low-stock alerts; branch feature/catalogue-offers-6) is implemented with its
-alerts behind `STOCK_ALERTS_ENABLED` (default off); later stages are specs only.
+alerts behind `STOCK_ALERTS_ENABLED` and its sold-out hiding behind `SOLD_OUT_HIDDEN_ENABLED` (both default off); later stages
+are specs only.
 ```
 
 (When this branch meets Plans 1b and 4, which rewrite the same two lines, keep every stage named.)
@@ -3618,58 +3831,76 @@ alerts behind `STOCK_ALERTS_ENABLED` (default off); later stages are specs only.
 
 ### Before stock alerts are switched on and the catalogue screens ship (Stage 6)
 
-`STOCK_ALERTS_ENABLED` defaults off. The catalogue endpoints answer as soon as this is deployed, but nothing is grouped
-until staff approve a request; sold-out listings leave search at once (§10), whatever the switch says.
+`STOCK_ALERTS_ENABLED` and `SOLD_OUT_HIDDEN_ENABLED` default off. The catalogue endpoints answer as soon as this is
+deployed, but nothing is grouped until staff approve a request, and sold-out listings leave search (§10) only once
+`SOLD_OUT_HIDDEN_ENABLED` is on (gate (cx)).
 
-- (xci) **Frontend (Plan 6F).** The listing form's barcode field (show the 14-digit key without its leading zeros) and
+- (ci) **Frontend (Plan 6F).** The listing form's barcode field (show the 14-digit key without its leading zeros) and
   "group with a catalogue product" (look it up at `/api/catalogue/products/`, ask, see the request, withdraw it);
   "Needs restocking" and the per-offer line (replace the hard-coded `stock_quantity <= 3` badge in
   `frontend/components/dashboard/panels/OwnerListingCard.jsx` with the server's `low` / `sold_out`); the product page's
   "Other sellers" panel with the featured offer and the shortfall prompt (each offer added by the customer, never
   automatically); the staff catalogue queue and ungroup action (add a `catalogue` row to `realtime`
-  `QUEUE_INVALIDATIONS` so it refreshes live); the business's lookup screen. Until then no business can ask and nothing
-  is grouped.
-- (xcii) **Texts and emails "by preference" (§10).** Stock alerts are in-app only. Once Stage 4's outbox
+  `QUEUE_INVALIDATIONS` so it refreshes live, and a staff `catalogue` tab: the `catalogue_needs_review` notices link to
+  it); the business's lookup screen. Until then no business can ask and nothing is grouped. Also for 6F: each Other
+  sellers "add" must respect the cart guard (`cart.guard.blocked_reason`: 4 shops, 2 food places, 3 km; the API does not
+  say whether the customer's cart can take an offer); a sold-out listing's own page still lets a customer add it (the
+  cart does not check stock; checkout answers "Only 0 left"), so the product page should disable Add at 0; the staff
+  Marketplace screen counts a sold-out listing as live (`marketplace/listings.py:59`) while customers cannot find it;
+  promos are on, and Other sellers and the featured offer order by `price_amount`, not `marketing.checkout`'s live
+  flash-sale price, so "cheapest first" can be wrong during a flash sale: order by the price the customer would pay
+  before the panel ships. The shortfall prompt invites carts holding several offers of one product, which raises the
+  odds of the pre-existing checkout lock-order deadlock (spec (xvii)): fix that first.
+- (cii) **Texts and emails "by preference" (§10).** Stock alerts are in-app only. Once Stage 4's outbox
   (`wallets.vendor_texts.queue`, `VendorPreference`) is on `righteoushack`, queue a stock text from
   `catalogue.alerts.tell` (a new `VendorText` kind, a key per offer and alert time, a GSM-7 body naming offers only),
   honour the business's preference, and decide email.
-- (xciii) **The reservation window (§10 "for a short window").** An abandoned Hubtel checkout (no webhook ever arrives)
+- (ciii) **The reservation window (§10 "for a short window").** An abandoned Hubtel checkout (no webhook ever arrives)
   keeps its stock reserved for good: only `_fail_order_checkout` gives it back. It also makes the offer look low or
   sold out to the alerts and hides it from search. Add a timed release of PENDING order sessions (with the lock order of
   (xv) and (xvii)) before Plan 7 turns Hubtel on.
-- (xciv) **Restock writes do not lock the listing row (pre-existing).** `ListingRestockView` (`add`) and
-  `ListingManageView` (`stock_quantity`) read and save without `select_for_update`, so a restock racing a checkout can
-  lose the checkout's decrement (an oversell) or the restock. Lock the row for the read-modify-write; the alerts'
-  re-arm rule reads the same number.
-- (xcv) **The public listing serializer still carries `contact_phone` (pre-existing).** `PublicListingSerializer`
+- (civ) **Owner stock writes do not lock the listing row (pre-existing).** `ListingRestockView` reads and saves
+  `stock_quantity` without `select_for_update`, so a restock racing a checkout can lose the checkout's decrement (an
+  oversell) or the restock. Before Stage 6 the owner edit forms (`ListingManageView`, `OwnerListingUpdateView`) saved
+  every column, so any PATCH, even a price change, wrote back the stock it had read; Stage 6 saves only the sent fields
+  (`listings.serializers.save_sent_fields`), but a PATCH that sends `stock_quantity` still races. Lock the row for the
+  read-modify-write; the alerts' re-arm rule reads the same number.
+- (cv) **The public listing serializer still carries `contact_phone` (pre-existing).** `PublicListingSerializer`
   exposes the listing's `contact_phone` to anyone, against "businesses cannot be contacted directly". The catalogue rows
   leave it out; decide whether to drop it from the public shape (check the frontend first).
-- (xcvi) **The first switch-on tells every offer already low,** one notice per business and kind. Run it once on staging
+- (cvi) **The first switch-on tells every offer already low,** one notice per business and kind. Run it once on staging
   with realistic data and read the notices before production.
-- (xcvii) **Catalogue entries cannot be edited, merged or retired.** A duplicate entry for one unbarcoded product, or a
-  typo in an entry's name, can only be worked around by ungrouping and asking again. Add a staff edit and merge (with
-  the activity log) before grouping is used at volume.
-- (xcviii) **Grouping is one person's decision.** One `listings.moderate` holder groups or ungroups a business's
+- (cvii) **Catalogue entries cannot be edited, merged or retired.** A duplicate entry for one unbarcoded product, or a
+  typo in an entry's name, can only be worked around by ungrouping and asking again. A barcoded listing can also join a
+  brand-only entry that staff named, and a later approval for the same barcode then makes a second, barcoded entry,
+  splitting one product in two. Add a staff edit and merge (with the activity log) before grouping is used at volume.
+- (cviii) **Grouping is one person's decision.** One `listings.moderate` holder groups or ungroups a business's
   listing with no second check. Revisit if grouping ever affects fees, ranking or promotions.
-- (xcix) **Hourly cost.** The job measures every counted, published product each hour (one sales query and one bulk
+- (cix) **Hourly cost.** The job measures every counted, published product each hour (one sales query and one bulk
   insert per 500 offers). Watch its duration on System health; if it grows, measure only offers whose stock changed or
-  that sold since the last run.
-- (c) **Sold-out offers leave search without the switch.** A business that keeps a made-to-order product at 0
-  disappears from search; its screens must say "leave the count empty if you don't count stock".
-- (ci) **Owner questions (G1–G12 in the plan):** the 7-day, 5-unit and 28-day defaults and their edges (fewer than 7
-  days; 5 or fewer units), staff-only ungrouping, businesses seeing each other's prices and counts, the featured-offer
-  tie rule, sold-out hiding.
-- (cii) **A lost notice is not retried.** If the in-app notice fails to save after its state moved
-  (`notifications.services` never raises), that crossing is not told again until the next restock. Acceptable in-app;
-  revisit with texts (xcii).
+  that sold since the last run. A restock followed by a sell-down within the same hour is never told, because a run
+  re-arms an offer only when it sees it not low and above the stock it was told at; consider re-arming in
+  `ListingRestockView`.
+- (cx) **Sold-out hiding is off until the screens say how to use it.** Turn `SOLD_OUT_HIDDEN_ENABLED` on with the Plan
+  6F screens, which must tell a business to leave the count empty if it does not count stock: with the switch on, a
+  made-to-order product kept at 0 disappears from search. Counted goods only; a service or stay at 0 is never hidden.
+- (cxi) **Owner questions (G1–G12 in the plan):** the 7-day, 5-unit and 28-day defaults and their edges (fewer than 7
+  days; 5 or fewer units) and the single-sale edge of the units fallback (G1), staff-only ungrouping (owner-confirmed on
+  2026-10-16: a business also cannot withdraw a barcode match AshantiHub filed), whether the matcher should also file
+  exact brand-and-name matches for branded listings without a barcode (they are grouped today only if their business
+  asks), businesses seeing each other's prices and counts, the featured-offer tie rule, sold-out hiding.
+- (cxii) **A lost notice is not retried.** If the in-app notice fails to save while its state moved
+  (`notifications.services` never raises), that crossing is not told again until the next restock. A run that dies
+  part-way is not this case: the run is one transaction, so the next run tells those offers. Acceptable in-app;
+  revisit with texts (cii).
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/CLAUDE.md CLAUDE.md docs
+git add backend/CLAUDE.md CLAUDE.md docs/IMPLEMENTATION_INSTRUCTIONS.md docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md
 git commit -F - <<'EOF'
-docs(catalogue): correctness core, stage index, spec scope and gate items (xci)-(cii) for Stage 6
+docs(catalogue): correctness core, stage index, spec scope and gate items (ci)-(cxii) for Stage 6
 
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01HDHNosHkqu4Wwocp7a2c8j
@@ -3692,10 +3923,10 @@ Expected: `No changes detected`.
 
 | Plan | Scope | Why separate |
 |---|---|---|
-| **6F** Frontend | Barcode field and grouping request on the listing form, "Needs restocking" with the own line, the product page's "Other sellers" panel with the featured offer and shortfall prompt, the staff catalogue queue, the business's lookup screen (gate (xci)). | No screen ships in a backend plan; every endpoint answers honestly without one. |
-| **4** follow-up | Stock texts and emails by the business's preference through the Stage 4 outbox (gate (xcii)). | The outbox is on PR #153, not on `righteoushack`. |
-| **7** Hubtel live | The timed release of an abandoned Hubtel checkout's reservation (gate (xciii)). | Only reachable with a real provider; `payments/services.py` is being edited by PR #152. |
-| Catalogue curation | Editing, merging and retiring entries; entry photos and descriptions (gate (xcvii)). | Not needed to group; staff can ungroup and re-ask meanwhile. |
+| **6F** Frontend | Barcode field and grouping request on the listing form, "Needs restocking" with the own line, the product page's "Other sellers" panel with the featured offer and shortfall prompt, the staff catalogue queue, the business's lookup screen (gate (ci)). | No screen ships in a backend plan; every endpoint answers honestly without one. |
+| **4** follow-up | Stock texts and emails by the business's preference through the Stage 4 outbox (gate (cii)). | The outbox is on PR #153, not on `righteoushack`. |
+| **7** Hubtel live | The timed release of an abandoned Hubtel checkout's reservation (gate (ciii)). | Only reachable with a real provider; `payments/services.py` is being edited by PR #152. |
+| Catalogue curation | Editing, merging and retiring entries; entry photos and descriptions (gate (cvii)). | Not needed to group; staff can ungroup and re-ask meanwhile. |
 | Multi-offer cart helpers | Splitting a quantity across several offers for the customer. | Spec §10: "nothing is added without them"; the customer adds each offer. |
 | Fuzzy matching | Name similarity beyond exact normalised names. | Wrong groupings show a customer another product; exact barcode and exact names only. |
 
@@ -3709,11 +3940,11 @@ Expected: `No changes detected`.
 | §1 row 8 / §10: branded/barcoded products attach to a staff-approved entry; unbranded stand alone; services, events, stays never | 1 (keys, entry), 2 (ask; `not_groupable`, `brand_or_barcode_required`), 3 (staff decide), 8 (matcher files requests only) |
 | §10: featured offer = lowest price, in stock, verified; ties nearest; "other sellers" | 4 |
 | §1 row 15 / §10: per-offer threshold, default < 7 days cover, fallback 5 units, once on crossing, sold-out alert at zero, zero-stock offers hidden, "needs restocking" list | 4 (hidden), 6 (cover, own line, list), 7 (alerts) |
-| §10: SMS/email by preference | 7 (`tell` hook, in-app now), gate (xcii) |
-| §10: stock reservation at checkout, decrement, restore | C15 (unchanged), gate (xciii) for the timed window |
+| §10: SMS/email by preference | 7 (`tell` hook, in-app now), gate (cii) |
+| §10: stock reservation at checkout, decrement, restore | C15 (unchanged), gate (ciii) for the timed window |
 | §1 row 16 / §3.3: governed, maker-checker settings | 6 (three settings through `ledger.setting`, approval wording) |
 | §11 step 6 | Tasks 1–9 |
-| §13 | 1 (K1–K8), 9 ((xci)–(cii)) |
+| §13 | 1 (K1–K8), 9 ((ci)–(cxii)) |
 | Brief: sourcing helper for businesses, read-only, no contact | 5 |
 | Brief: Celery beat hourly with the core job registry | 7 (`catalogue-stock-alerts`, `core.jobs` heartbeat, `test_background_jobs`) |
 | Brief: migrations plan; backfill (nothing grouped automatically, barcode matches proposed) | 1, 2, 6 (migrations), 8 (backfill) |
@@ -3721,9 +3952,9 @@ Expected: `No changes detected`.
 
 **Placeholder scan:** every code step carries complete code and every test step complete test code; edits quote the exact text replaced; no "TBD", "similar to" or undefined names.
 
-**Name consistency:** `identity.clean_barcode/is_store_code/normalise_name/BarcodeError/BARCODE_MESSAGE/CHECK_DIGIT_MESSAGE` (1, 2, 5, 8); `models.CatalogueProduct`, `product_row` (1–5), `CatalogueAttachRequest.PENDING/APPROVED/REJECTED/WITHDRAWN/VENDOR/BACKFILL` (2, 3, 8), `StockAlertState` (6, 7); `errors.CatalogueError(message, code, status_code=400).body()` (2–5); `attach.groupable/grouping_barcode/describe/_text/propose(listing, data)/withdraw(owner, request_id)/request_row/state` (2), `approve(request_id, staff, data=None)/reject(request_id, staff, reason)/re_review(request_id)/detach(listing_id, reason)/matches/staff_row/_product_for` (3, 8), `propose_barcode_matches(product=None, *, dry_run=False)/TURNED_DOWN` (8), kinds `NEEDS_REVIEW/GROUPED/NOT_GROUPED/UNGROUPED`, `REASON_REQUIRED` (2, 3, 8); `offers.in_stock_q/live_q/live_offers/position_from/featured/ordered/offer_row/other_sellers/PRICE/AVAILABILITY` (4, 5), `search/sourcing/QUERY_REQUIRED` (5); `stock.COVER_DAYS/FALLBACK_UNITS/WINDOW_DAYS/SALES/FALLBACK/OWN/LINE_MESSAGE/NOT_A_PRODUCT/NOT_COUNTED/Limits/Cover/limits_at/tracked/days_on_sale/units_sold/measure/own_lines/measure_many/cover_of/row/needs_restocking/parse_line/set_own_line` (6, 7); `alerts.LOW/SOLD_OUT/enabled/tell/move_state/run` (7); `tasks.check_stock_alerts` (7); `views._own_listing/_body` (2, 6); `views_staff.PERMISSION/ATTACH_STATUS_MAP` (3); `approval_kinds.STOCK_SETTING_KEYS` (6); `listings.serializers.clean_listing_barcode/GROUPED_BARCODE_MESSAGE` (1); test helpers `BARCODE/OTHER_BARCODE/STORE_CODE/business/product/service/stay/buyer/sell/go_live/as_account/as_staff` (1–8).
+**Name consistency:** `identity.clean_barcode/is_store_code/normalise_name/BarcodeError/BARCODE_MESSAGE/CHECK_DIGIT_MESSAGE` (1, 2, 5, 8); `models.CatalogueProduct`, `product_row` (1–5), `CatalogueAttachRequest.PENDING/APPROVED/REJECTED/WITHDRAWN/VENDOR/BACKFILL` (2, 3, 8), `StockAlertState` (6, 7); `errors.CatalogueError(message, code, status_code=400).body()` (2–5); `attach.groupable/grouping_barcode/describe/_text/propose(listing, data)/withdraw(owner, request_id)/request_row/state` (2), `approve(request_id, staff, data=None)/reject(request_id, staff, reason)/re_review(request_id)/detach(listing_id, reason)/matches/matches_for/staff_row(request, found=None)/_product_for` (3, 8), `propose_barcode_matches(product=None, *, dry_run=False)/TURNED_DOWN` (8), kinds `NEEDS_REVIEW/GROUPED/NOT_GROUPED/UNGROUPED`, `REASON_REQUIRED`, `NOT_WITHDRAWABLE` (2, 3, 8); `offers.in_stock_q/live_q/live_offers/position_from/featured/ordered/offer_row/other_sellers/PRICE/AVAILABILITY` (4, 5), `search/sourcing/QUERY_REQUIRED` (5); `stock.COVER_DAYS/FALLBACK_UNITS/WINDOW_DAYS/SALES/FALLBACK/OWN/LINE_MESSAGE/NOT_A_PRODUCT/NOT_COUNTED/Limits/Cover/limits_at/tracked/days_on_sale(…, first_sale)/units_sold (units, first sale)/measure(…, first_sale)/own_lines/measure_many/cover_of/row/needs_restocking/parse_line/set_own_line` (6, 7); `alerts.LOW/SOLD_OUT/enabled/tell/move_state/run` (7); `tasks.check_stock_alerts` (7); `views._own_listing/_body` (2, 6); `views_staff.PERMISSION/ATTACH_STATUS_MAP` (3); `approval_kinds.STOCK_SETTING_KEYS` (6); `listings.serializers.clean_listing_barcode/GROUPED_BARCODE_MESSAGE/save_sent_fields` (1); `listings.visibility.sold_out_q` (4); settings `STOCK_ALERTS_ENABLED`, `SOLD_OUT_HIDDEN_ENABLED` (7); test helpers `BARCODE/OTHER_BARCODE/STORE_CODE/business/product/service/stay/buyer/sell/go_live/as_account/as_staff` (1–8).
 
-**Test counts:** Task 1 — 14 (`test_identity`: 5 + 1 + 3 + 5); Task 2 — 15 (`test_attach`: 11 + 4); Task 3 — 16 (`test_attach_queue`: 4 + 9 + 3); Task 4 — 11 (`test_other_sellers`: 7 + 2 + 2); Task 5 — 7 (`test_sourcing`: 5 + 2); Task 6 — 18 (`test_stock_cover`: 3 + 7 + 3 + 5); Task 7 — 10 (`test_stock_alerts`: 7 + 1 + 2); Task 8 — 7 (`test_backfill`: 6 + 1). 98 new tests in all.
+**Test counts:** Task 1 — 18 (`test_identity`: 6 + 2 + 3 + 7); Task 2 — 16 (`test_attach`: 11 + 5); Task 3 — 17 (`test_attach_queue`: 5 + 9 + 3); Task 4 — 13 (`test_other_sellers`: 7 + 2 + 4); Task 5 — 7 (`test_sourcing`: 5 + 2); Task 6 — 20 (`test_stock_cover`: 3 + 8 + 3 + 6); Task 7 — 12 (`test_stock_alerts`: 9 + 1 + 2); Task 8 — 7 (`test_backfill`: 6 + 1). 110 new tests in all.
 
 **Review Focus pins:** each of the five lines above names the task and the tests that pin it; all of those tests are written out in their tasks.
 
