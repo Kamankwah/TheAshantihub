@@ -182,13 +182,13 @@ class StaffWithdrawalFailView(APIView):
                      "code": "provider_unreachable"},
                     status=status.HTTP_503_SERVICE_UNAVAILABLE,
                 )
-            if answer is not None and answer.status == providers.PROCESSING:
+            if answer is not None and answer.status not in (providers.SUCCEEDED, providers.FAILED):  # fail closed: PROCESSING or anything unmapped
                 return Response(
                     {"detail": "The provider says this payout is still in progress. Nothing was changed; try again later or ask the provider.",
                      "code": "provider_processing"},
                     status=status.HTTP_409_CONFLICT,
                 )
-            if answer is not None and answer.status in (providers.SUCCEEDED, providers.FAILED):
+            if answer is not None:
                 settled = payouts.apply_result(
                     found.reference, answer.status, provider_reference=answer.provider_reference,
                     amount_pesewas=answer.amount_pesewas,

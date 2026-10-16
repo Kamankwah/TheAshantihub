@@ -487,10 +487,11 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
   name change must restart the cooling period or block withdrawals.
 - (xxxv) **Owner question: a second approver (maker-checker) for failing a stuck withdrawal by hand** is undecided (plan
   B6). Today `wallets.manage` plus sudo and a password suffice, after the provider is asked.
-- (xxxvi) **Amount cases and the staff fail action.** A CONFIRMED amount case is treated like a dismissed one: staff can
-  fail the withdrawal if the provider answers processing (an unreachable provider answers 503 and changes nothing).
-  Owner to confirm. Design gap: a payout the provider keeps reporting with a different amount can be neither failed nor
-  settled as paid; it needs a staff "settle as paid" action with evidence, before the ledger is on.
+- (xxxvi) **Amount cases and the staff fail action.** A CONFIRMED amount case is treated like a dismissed one. Staff fail
+  is REFUSED (409 `provider_processing`) while the provider says PROCESSING or answers any unmapped status; an
+  unreachable provider answers 503 and changes nothing. A payout the provider keeps reporting as PROCESSING, or with a
+  different amount, therefore cannot be ended in the app: a maker-checker "settle as paid / fail with provider evidence"
+  action is required before switch-on. Owner to confirm.
 - (xxxvii) **The simulated statement is built from AshantiHub's own records,** so reconciliation can only prove sessions
   and journals agree. Plan 7 must supply: a Hubtel status client that raises a distinct "unreachable" exception (see
   (xxvii-b)), real `find()`, `pending_payouts()` and `statement()` implementations, and a flag on any reference that
@@ -509,8 +510,8 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
   only by the throttle. Consider a per-holder mismatch counter before Plan 7 makes lookups paid.
 - (xlv) **Hand-failed withdrawals and a late "paid" (before switch-on).** Staff cannot fail a withdrawal the provider
   says is still PROCESSING (409 `provider_processing`), but once failed by hand nothing asks the provider again, and the
-  returned money can be withdrawn at once. Before switch-on: count staff-failed withdrawals toward that day's limit or
-  hold the returned amount briefly; keep asking the provider about hand-failed withdrawals for N days so a late "paid"
+  returned money can be withdrawn at once (the same holds for ANY FAILED return, not only staff-failed). Before switch-on: count any returned (FAILED) withdrawal toward that day's limit or
+  hold the returned amount briefly; keep asking the provider about failed withdrawals for N days so a late "paid"
   raises the case quickly; refuse new withdrawals for a holder while a late-paid case is open. Until Plan 7 a late
   "paid" is caught only by a webhook or the next night's reconciliation.
 - (xlvi) **Name-check stopwords.** Generic words (LTD, VENTURES, ENTERPRISE, GHANA, THE, CO) count toward the two-word
@@ -527,3 +528,4 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
   could cost AshantiHub money. Consider a hold period on newly topped-up funds.
 - (lii) **Migrations 0003 and 0004 of `wallets` could be folded into one before any deploy** (nothing is deployed yet;
   the 0003 file is root-owned, so fold it with the right permissions).
+- (liii) **Parked:** the daily/per-withdrawal limit check can race with a concurrent proposal and ignores future-dated rows.

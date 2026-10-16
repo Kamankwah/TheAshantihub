@@ -133,6 +133,27 @@ class StaffWithdrawalTests(TestCase):
         self.assertFalse(Journal.objects.filter(kind="withdrawal_reversed").exists())
         self.assertFalse(ActivityEvent.objects.filter(verb="wallets.withdrawal_failed").exists())
 
+    def test_an_unmapped_provider_status_refuses_like_processing(self):
+        withdrawal = self.sent()
+        self.as_staff(self.accountant, sudo=True)
+        with mock.patch.object(providers.SimulatedProvider, "status", return_value=providers.PayoutResult("queued")):
+            response = self.force_fail(withdrawal)
+        self.assertEqual((response.status_code, response.json()["code"]), (409, "provider_processing"))
+        self.assertEqual(self.wallet(), 15000)
+        self.assertFalse(Journal.objects.filter(kind="withdrawal_reversed").exists())
+
+    def test_a_resolved_case_with_the_provider_saying_processing_is_refused(self):
+        for outcome in (FraudFlag.CONFIRMED, FraudFlag.DISMISSED):
+            with self.subTest(outcome=outcome):
+                withdrawal = self.sent(request_id=f"req-res-{outcome}")
+                self.resolved_case(withdrawal, outcome)
+                before = self.wallet()
+                self.as_staff(self.accountant, sudo=True)
+                with mock.patch.object(providers.SimulatedProvider, "status", return_value=providers.PayoutResult(providers.PROCESSING)):
+                    response = self.force_fail(withdrawal)
+                self.assertEqual((response.status_code, response.json()["code"]), (409, "provider_processing"))
+                self.assertEqual(self.wallet(), before)
+
     def test_a_provider_answer_that_settles_it_is_recorded_with_the_masked_reference_only(self):
         withdrawal = self.sent()
         self.as_staff(self.accountant, sudo=True)

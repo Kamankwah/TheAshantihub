@@ -201,7 +201,8 @@ class EngineTests(TestCase):
         payouts.apply_result(sent.reference, providers.FAILED, amount_pesewas=3000)
         sent.refresh_from_db()
         self.assertEqual((sent.status, self.transit()), (Withdrawal.PROCESSING, 5000))
-        self.assertTrue(FraudFlag.objects.filter(dedupe_key=f"withdrawal-amount-{sent.reference}").exists())
+        flag = FraudFlag.objects.get(dedupe_key=f"withdrawal-amount-{sent.reference}")
+        self.assertIn("FAILED report carried", flag.detail)
 
     def test_a_vendor_withdrawal_case_appears_on_the_business_and_a_customers_has_none(self):
         owner = BusinessOwner.objects.create(
@@ -214,12 +215,13 @@ class EngineTests(TestCase):
             sent = payouts.submit(held.pk)
         payouts.apply_result(sent.reference, providers.SUCCEEDED, amount_pesewas=4000)
         flag = FraudFlag.objects.get(dedupe_key=f"withdrawal-amount-{sent.reference}")
-        self.assertEqual(flag.business_owner, owner)
+        self.assertEqual(flag.related_business_owner, owner)
+        self.assertIsNone(flag.business_owner)                                                  # never holds the business's promotions
         mine = self.withdraw(5000)
         with override_settings(SIMULATED_PAYOUT_OUTCOME="pending"):
             mine = payouts.submit(mine.pk)
         payouts.apply_result(mine.reference, providers.SUCCEEDED, amount_pesewas=4000)
-        self.assertIsNone(FraudFlag.objects.get(dedupe_key=f"withdrawal-amount-{mine.reference}").business_owner)
+        self.assertIsNone(FraudFlag.objects.get(dedupe_key=f"withdrawal-amount-{mine.reference}").related_business_owner)
 
     def test_an_unknown_reference_is_ignored(self):
         self.assertIsNone(payouts.apply_result("AH-WD-NOSUCH0000", providers.SUCCEEDED))

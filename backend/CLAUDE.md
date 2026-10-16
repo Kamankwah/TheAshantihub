@@ -229,7 +229,8 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   was sent; a report for a withdrawal never sent, a "paid" report after the money went back and a "failed" report
   after it was paid each open a fraud case and post nothing). **No provider call runs inside a transaction** (lookup,
   payout, status, statement), and the provider's own message is never stored or shown. Staff failing a stuck
-  withdrawal asks the provider first, never with an open amount case, and the holder sees only AshantiHub's fixed
+  withdrawal asks the provider first and is refused (409 `provider_processing`) while it says processing or anything
+  unmapped, never with an open amount case, and the holder sees only AshantiHub's fixed
   reason. The nightly `wallets.reconciliation` is read-only and compares by provider reference.
 - **Pickup Desk** is the `pickup_desk` staff role with the single permission `pickup.confirm` (store-pickup queue and
   collection); only a Super Admin invites it.

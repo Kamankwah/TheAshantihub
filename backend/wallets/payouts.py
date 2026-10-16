@@ -65,7 +65,8 @@ def source_account(withdrawal):
 
 
 def _case_owner(withdrawal):
-    """The business a withdrawal case belongs on (a vendor's withdrawal), else None: a customer has no business."""
+    """The business a withdrawal case is related to (a vendor's withdrawal), else None. Passed as related_business_owner, never
+    business_owner: that one holds promotions and marks the business at risk, which a payout question must not do."""
     return holder_of(withdrawal) if withdrawal.holder_type == "business_owner" else None
 
 
@@ -168,14 +169,14 @@ def apply_result(reference, status, *, provider_reference="", amount_pesewas=Non
                     detail=(f"The provider reported withdrawal {withdrawal.reference} paid, but it was already "
                             f"{withdrawal.get_status_display().lower()} and GH₵ {money(withdrawal.amount_pesewas)} went back to the "
                             "holder. Nothing was posted. Check with the provider."),
-                    dedupe_key=f"withdrawal-late-paid-{withdrawal.reference}", business_owner=_case_owner(withdrawal),
+                    dedupe_key=f"withdrawal-late-paid-{withdrawal.reference}", related_business_owner=_case_owner(withdrawal),
                 )
             elif status == providers.FAILED and withdrawal.status == Withdrawal.SUCCEEDED:
                 fraud.raise_flag(
                     FraudFlag.OTHER, title=f"Withdrawal {withdrawal.reference} reported failed after it was paid",
                     detail=(f"The provider reported withdrawal {withdrawal.reference} failed, but it was already paid and "
                             "posted. Nothing was returned to the holder. Check with the provider whether the money came back."),
-                    dedupe_key=f"withdrawal-late-failed-{withdrawal.reference}", business_owner=_case_owner(withdrawal),
+                    dedupe_key=f"withdrawal-late-failed-{withdrawal.reference}", related_business_owner=_case_owner(withdrawal),
                 )
             return withdrawal
         if withdrawal.status == Withdrawal.PENDING:
@@ -184,7 +185,7 @@ def apply_result(reference, status, *, provider_reference="", amount_pesewas=Non
                 FraudFlag.OTHER, title=f"Withdrawal {withdrawal.reference} reported before it was sent",
                 detail=(f"A {status} report arrived for withdrawal {withdrawal.reference}, which was never sent to the "
                         "provider. Nothing was posted. Check with the provider."),
-                dedupe_key=f"withdrawal-unsent-report-{withdrawal.reference}", business_owner=_case_owner(withdrawal),
+                dedupe_key=f"withdrawal-unsent-report-{withdrawal.reference}", related_business_owner=_case_owner(withdrawal),
             )
             return withdrawal
         if FraudFlag.objects.filter(dedupe_key=f"withdrawal-amount-{withdrawal.reference}", status=FraudFlag.OPEN).exists():
@@ -193,7 +194,7 @@ def apply_result(reference, status, *, provider_reference="", amount_pesewas=Non
             fraud.raise_flag(
                 FraudFlag.OTHER, title=f"Withdrawal {withdrawal.reference}: a paid report without an amount",
                 detail=f"A paid report for GH₵ {money(withdrawal.net_pesewas)} arrived without the amount it paid. Not applied.",
-                dedupe_key=f"withdrawal-amount-{withdrawal.reference}", business_owner=_case_owner(withdrawal),
+                dedupe_key=f"withdrawal-amount-{withdrawal.reference}", related_business_owner=_case_owner(withdrawal),
             )
             return withdrawal
         if status == providers.SUCCEEDED:
@@ -201,10 +202,12 @@ def apply_result(reference, status, *, provider_reference="", amount_pesewas=Non
         else:
             amount_differs = bool(amount_pesewas)  # a failed report carrying 0 or none means nothing reached the destination
         if amount_differs:
+            said = "paid" if status == providers.SUCCEEDED else "FAILED"
             fraud.raise_flag(
                 FraudFlag.OTHER, title=f"Withdrawal {withdrawal.reference}: the provider reported a different amount",
-                detail=f"Sent GH₵ {money(withdrawal.net_pesewas)}, reported GH₵ {money(amount_pesewas)}. Not applied.",
-                dedupe_key=f"withdrawal-amount-{withdrawal.reference}", business_owner=_case_owner(withdrawal),
+                detail=(f"Sent GH₵ {money(withdrawal.net_pesewas)}; the provider's {said} report carried GH₵ {money(amount_pesewas)}"
+                        + (" (money may have left although it says failed)" if status == providers.FAILED else "") + ". Not applied."),
+                dedupe_key=f"withdrawal-amount-{withdrawal.reference}", related_business_owner=_case_owner(withdrawal),
             )
             return withdrawal
         if provider_reference and not withdrawal.provider_reference:
@@ -279,7 +282,7 @@ def poll(now=None):
         try:
             submit(pk, now)
         except Exception as exc:
-            logger.warning("Could not send withdrawal %s (%s); the next poll tries again", pk, type(exc).__name__)
+            logger.error("Could not send withdrawal %s (%s); the next poll tries again", pk, type(exc).__name__)
             continue
         looked += 1
     prefix = "withdrawal-amount-"  # one that ever had an amount case (any status) is left to staff
@@ -292,7 +295,7 @@ def poll(now=None):
                 amount_pesewas=result.amount_pesewas, now=now,
             )
         except Exception as exc:
-            logger.warning("Could not settle payout %s (%s); the next poll asks again", withdrawal.reference, type(exc).__name__)
+            logger.error("Could not settle payout %s (%s); the next poll asks again", withdrawal.reference, type(exc).__name__)
             continue
         looked += 1
     return looked
