@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from accounts.models import BusinessOwner, Customer
 from ledger import fees, posting
-from ledger.models import Account, FeeRuleSet, OrderFeeSnapshot, OrderRefund
+from ledger.models import Account, FeeRuleSet, Journal, OrderFeeSnapshot, OrderRefund
 from orders.models import Order
 
 
@@ -38,6 +38,29 @@ class PostingGroundworkTests(TestCase):
         posting.post(key="paid", kind="t", lines=settle, allow_negative={Account.PROVIDER_CLEARING})
         self.clearing.refresh_from_db()
         self.assertEqual(self.clearing.balance, -500)
+
+    def test_a_posting_that_raises_a_negative_allowed_balance_still_succeeds(self):
+        subsidy = posting.account_for(Account.PLATFORM_PROMO_SUBSIDY)
+        transit = posting.account_for(Account.WITHDRAWAL_IN_TRANSIT)
+        posting.post(key="fund", kind="t", lines=[posting.debit(subsidy, 500), posting.credit(self.wallet, 500)])
+        posting.post(key="hold", kind="t", lines=[posting.debit(self.wallet, 500), posting.credit(transit, 500)])
+        posting.post(key="paid", kind="t", lines=[posting.debit(transit, 500), posting.credit(self.clearing, 500)],
+                     allow_negative={Account.PROVIDER_CLEARING})
+        posting.post(key="collect", kind="t", lines=[posting.debit(self.clearing, 200), posting.credit(self.wallet, 200)])
+        self.clearing.refresh_from_db()
+        self.assertEqual(self.clearing.balance, -300)
+
+    def test_a_posting_that_lowers_a_plain_account_below_zero_still_raises_and_writes_nothing(self):
+        posting.post(key="in", kind="t", lines=[posting.debit(self.clearing, 100), posting.credit(self.wallet, 100)])
+        with self.assertRaises(posting.InsufficientFunds):
+            posting.post(key="out", kind="t", lines=[posting.debit(self.wallet, 150), posting.credit(self.income, 150)])
+        self.assertFalse(Journal.objects.filter(key="out").exists())
+        self.assertEqual(posting.balance_of(Account.CUSTOMER_WALLET, self.customer), 100)
+
+    def test_allow_negative_must_be_a_collection_of_kinds_not_a_string(self):
+        lines = [posting.debit(self.clearing, 5), posting.credit(self.wallet, 5)]
+        with self.assertRaises(TypeError):
+            posting.post(key="x", kind="t", lines=lines, allow_negative=Account.PROVIDER_CLEARING)
 
     def test_lock_takes_accounts_in_primary_key_order_and_returns_them_fresh(self):
         Account.objects.filter(pk=self.wallet.pk).update(net_credit=700)

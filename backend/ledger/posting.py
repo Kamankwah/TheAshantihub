@@ -15,7 +15,8 @@ class PostingError(Exception):
 
 
 class InsufficientFunds(PostingError):
-    """A balance that may not go below zero would have. `account` names it (a wallet, a pending balance...)."""
+    """A balance that may not go below zero would have. `account` names it (a wallet, a pending balance...); it is the
+    locked copy carrying the would-be balance, not the committed one (nothing was written)."""
 
     def __init__(self, account):
         super().__init__(f"{account} would go below zero")
@@ -45,7 +46,8 @@ def account_for(kind, owner=None):
 
 
 def balance_of(kind, owner=None):
-    """`owner`'s balance on its `kind` account, 0 when that account was never opened. Never creates one."""
+    """`owner`'s balance on its `kind` account, 0 when that account was never opened. Never creates one. An unlocked
+    read, for display only: a decision on a balance uses `lock(...)[pk].balance` inside the transaction."""
     owner_type, owner_id = ("", "") if owner is None else (owner._meta.label_lower, str(owner.pk))
     account = Account.objects.filter(kind=kind, owner_type=owner_type, owner_id=owner_id).first()
     return account.balance if account is not None else 0
@@ -79,6 +81,9 @@ def post(*, key, kind, lines, reference_type="", reference_id="", memo="", allow
     writes nothing) when an account that may not go below zero would. `allow_negative` names account kinds this one
     posting may drive below zero: a payout the provider has already confirmed is a fact to record, whatever the
     provider-clearing balance says (Plan 3b)."""
+    if isinstance(allow_negative, str):
+        raise TypeError("allow_negative is a collection of account kinds, not a string")
+    allow_negative = frozenset(allow_negative)
     lines = list(lines)
     _validate(key, kind, lines)
     with transaction.atomic():
@@ -87,12 +92,14 @@ def post(*, key, kind, lines, reference_type="", reference_id="", memo="", allow
         if existing is not None:
             return existing
         journal = Journal.objects.create(key=key, kind=kind, reference_type=reference_type, reference_id=str(reference_id), memo=memo[:300])
+        before = {pk: account.balance for pk, account in locked.items()}
         for line in lines:
             JournalLine.objects.create(journal=journal, account_id=line.account.pk, side=line.side, amount=line.amount)
             delta = line.amount if line.side == JournalLine.CREDIT else -line.amount
             locked[line.account.pk].net_credit += delta
         for account in locked.values():
-            if account.balance < 0 and account.kind not in Account.MAY_GO_NEGATIVE and account.kind not in allow_negative:
+            lowered_below_zero = account.balance < 0 and account.balance < before[account.pk]
+            if lowered_below_zero and account.kind not in Account.MAY_GO_NEGATIVE and account.kind not in allow_negative:
                 raise InsufficientFunds(account)
             account.save(update_fields=["net_credit"])
         return journal
