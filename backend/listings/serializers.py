@@ -158,6 +158,37 @@ class CartTieredListingSerializer(PublicListingSerializer):
         return {"detail": reason[0], "code": reason[1]} if reason else None
 
 
+GROUPED_BARCODE_MESSAGE = (
+    "This listing is grouped with a catalogue product that has a different barcode. Ask AshantiHub Support to ungroup "
+    "it first."
+)
+
+
+def clean_listing_barcode(value, instance=None):
+    """A listing's barcode as its 14-digit GTIN (catalogue plan 6; spaces and hyphens may be typed). A grouped listing
+    keeps its own barcode or takes its catalogue product's; it cannot change to another."""
+    from catalogue.identity import BarcodeError, clean_barcode
+
+    try:
+        key = clean_barcode(value)
+    except BarcodeError as exc:
+        raise serializers.ValidationError(str(exc)) from None
+    product = getattr(instance, "catalogue_product", None)
+    if product is not None and product.barcode and key not in (product.barcode, instance.barcode):
+        raise serializers.ValidationError(GROUPED_BARCODE_MESSAGE)
+    return key
+
+
+def save_sent_fields(instance, validated_data):
+    """Write only the fields this request sent (catalogue plan 6). ModelSerializer.update saves the whole row, which would
+    write back the catalogue_product and stock_quantity this request read over a staff grouping decision or a
+    checkout's decrement that committed meanwhile."""
+    for attr, value in validated_data.items():
+        setattr(instance, attr, value)
+    instance.save(update_fields=[*validated_data, "updated_at"])
+    return instance
+
+
 class OwnerListingManageSerializer(serializers.ModelSerializer):
     """Light edit of a listing's *operational* fields (business item 2) —
     price, specs, stock, and the product/service decision fields — allowed
@@ -170,12 +201,21 @@ class OwnerListingManageSerializer(serializers.ModelSerializer):
     commercial changes shouldn't pull a live listing off the marketplace.
     """
 
+    # The product's barcode (catalogue plan 6): typed with spaces or hyphens, kept as its 14-digit GTIN.
+    barcode = serializers.CharField(required=False, allow_blank=True, max_length=40)
+
     class Meta:
         model = Listing
         fields = [
             "id", "price_amount", "price_unit", "tag", "contact_phone",
-            "specs", "service_duration", *LISTING_DECISION_FIELDS,
+            "specs", "service_duration", *LISTING_DECISION_FIELDS, "barcode",
         ]
+
+    def validate_barcode(self, value):
+        return clean_listing_barcode(value, self.instance)
+
+    def update(self, instance, validated_data):
+        return save_sent_fields(instance, validated_data)
 
 
 # Owner-facing wording of the listing rules below. portfolio.proposals words
@@ -305,21 +345,30 @@ class OwnerListingSerializer(serializers.ModelSerializer):
     # ModerationListingSerializer's `photos` field.
     photos = ListingPhotoSerializer(many=True, read_only=True)
 
+    # The product's barcode (catalogue plan 6): typed with spaces or hyphens, kept as its 14-digit GTIN.
+    barcode = serializers.CharField(required=False, allow_blank=True, max_length=40)
+
     class Meta:
         model = Listing
         fields = [
             "id", "category", "zone", "name", "description", "price_amount", "price_unit",
             "tag", "contact_phone", "lat", "lng", "main_photo", "photos", "specs",
-            "service_duration", "units_total", *LISTING_DECISION_FIELDS,
+            "service_duration", "units_total", *LISTING_DECISION_FIELDS, "barcode",
             "status", "rejection_reason", "created_at", "updated_at",
         ]
         read_only_fields = ["status", "rejection_reason", "created_at", "updated_at"]
         extra_kwargs = {"contact_phone": {"required": False}, "units_total": {"required": False}}
 
+    def validate_barcode(self, value):
+        return clean_listing_barcode(value, self.instance)
+
     def validate(self, data):
         return validate_listing_for_owner(
             self.context["request"].user, data, instance=self.instance, initial_data=self.initial_data,
         )
+
+    def update(self, instance, validated_data):
+        return save_sent_fields(instance, validated_data)
 
     def create(self, validated_data):
         owner = self.context["request"].user

@@ -529,3 +529,34 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
 - (lii) **Migrations 0003 and 0004 of `wallets` could be folded into one before any deploy** (nothing is deployed yet;
   the 0003 file is root-owned, so fold it with the right permissions).
 - (liii) **Parked:** the daily/per-withdrawal limit check can race with a concurrent proposal and ignores future-dated rows.
+
+### Stage 6 (catalogue, offers and stock alerts, backend) reconciliation (2026-10-16)
+
+Found while writing `docs/superpowers/plans/2026-10-16-catalogue-offers-stock-6.md` (§0 there; its C1–C18). The items
+below are numbered K1–K8 so they do not clash with those. "Stock offers and alerts" is §10 of this spec.
+
+- **K1 The offer is the Listing.** A listing already is the priced, stocked, carted and ordered unit (`CartItem`,
+  `OrderItem` with PROTECT, the fee snapshots, the stock reserved at checkout), so it stays the offer and gains an
+  optional `catalogue_product` (null = stands alone: unbranded goods, services, stays, and every listing made before
+  Stage 6) and a `barcode`. No listing, cart or checkout response changes shape; the owner listing forms gain `barcode`.
+- **K2 Catalogue entries** (`catalogue.CatalogueProduct`: brand, name, normalised name, barcode) are made only when staff
+  approve a business's grouping request; a barcode belongs to one entry, and an entry needs a brand or a barcode.
+- **K3 Barcodes** are compared as 14-digit GTINs with the check digit verified (an 8-digit code starting 0 or 1 that
+  checks as a UPC-E is read as its UPC-A); a store's own code (GS1
+  restricted-circulation prefixes) may sit on a listing but never groups. Names are compared normalised, exact only.
+- **K4 Grouping** is asked for by the business on its own product or food listing (services, stays and events never)
+  and decided by staff with `listings.moderate` through the moderated-queue contract; only staff ungroup. The barcode
+  matcher (`manage.py propose_catalogue_matches`, and every newly approved barcoded entry) only files requests; nothing
+  is grouped automatically.
+- **K5 Other sellers** (`GET /api/catalogue/listings/<id>/other-sellers/`) lists the live offers of the same entry,
+  cheapest (or most available) first, with the featured offer of §10; no contact details. A sold-out offer (counted goods at 0)
+  drops out of search and related lists once `SOLD_OUT_HIDDEN_ENABLED` is on (default off); its own page stays reachable. Businesses may look a product up (`/api/catalogue/products/`),
+  read-only.
+- **K6 Days of cover** = stock ÷ the sales rate over a governed window (default 28 days), counted over the days the offer
+  was on sale. Low: the business's own line if set, else fewer than 7 days of cover, else (no sales) 5 units or fewer;
+  sold out at 0. The three numbers are governed settings (`ledger.setting`: Accounting proposes, Super Admin approves).
+- **K7 Alerts** are told once per crossing (a conditional update per offer), re-armed only by a restock, one in-app
+  notice per business per hourly run and kind, behind `STOCK_ALERTS_ENABLED` (default off). Texts and emails "by
+  preference" (§10) wait for Stage 4's outbox.
+- **K8 Not changed:** the stock reservation at checkout (a correctness core). The timed release of an abandoned Hubtel
+  checkout's reservation ("for a short window", §10) is a gate item before Plan 7.

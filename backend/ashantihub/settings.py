@@ -90,6 +90,7 @@ INSTALLED_APPS = [
     "contact",
     "accounts",
     "listings",
+    "catalogue",
     "billing",
     "credit",
     "cart",

@@ -130,6 +130,14 @@ class Listing(models.Model):
     dimensions = models.CharField(max_length=100, blank=True)
     weight = models.CharField(max_length=50, blank=True)
     stock_quantity = models.PositiveIntegerField(null=True, blank=True)
+    # Catalogue plan 6 (spec §1 rows 7-8, §10): the product's barcode as its 14-digit GTIN (catalogue.identity), "" when
+    # none; and the shared catalogue entry this offer belongs to, set only when staff approve a grouping request
+    # (catalogue.attach). Null: the listing stands alone (unbranded goods, services, stays, and every listing made before
+    # plan 6). Neither is in the public serializers.
+    barcode = models.CharField(max_length=14, blank=True, default="", db_index=True)
+    catalogue_product = models.ForeignKey(
+        "catalogue.CatalogueProduct", on_delete=models.PROTECT, null=True, blank=True, related_name="offers",
+    )
 
     # ── Service decision fields ─────────────────────────────────────────────
     # Fiverr-style gig framing: what the buyer gets, what the seller needs
