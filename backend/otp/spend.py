@@ -3,6 +3,7 @@ spec §6, vendor plan 4) are counted per day; marketing campaign texts are not. 
 at the threshold Super Admin set (staffsecurity.policy.otp_sms_daily_alert, default 500) tells everyone holding
 security.manage, once a day. Nothing is blocked: the alert is for a person to look at."""
 import logging
+from datetime import datetime, time, timedelta
 
 from django.db import connection, transaction
 from django.utils import timezone
@@ -21,12 +22,20 @@ def code_texts_sent_on(day):
     return OtpEvent.objects.filter(kind=OtpEvent.SENT, channel=SMS, at__date=day).count()
 
 
-def texts_sent_on(day):
-    """Code texts plus business money texts sent on `day` (marketing campaign texts are not counted). Business texts are
-    never OtpEvents (the code send limits count those), so they are counted from their own outbox."""
+def business_texts_sent_on(day):
+    """Business money texts sent on `day`, by a range on sent_at (index-friendly)."""
     from wallets.models import VendorText
 
-    return code_texts_sent_on(day) + VendorText.objects.filter(status=VendorText.SENT, sent_at__date=day).count()
+    start = timezone.make_aware(datetime.combine(day, time.min))
+    end = timezone.make_aware(datetime.combine(day + timedelta(days=1), time.min))
+    return VendorText.objects.filter(status=VendorText.SENT, sent_at__gte=start, sent_at__lt=end).count()
+
+
+def texts_sent_on(day):
+    """Messages sent on `day`: code texts plus business money texts (marketing campaign texts are not counted). Business
+    texts are never OtpEvents (the code send limits count those), so they are counted from their own outbox. This counts
+    messages, not billed SMS parts: a two-part business text counts once."""
+    return code_texts_sent_on(day) + business_texts_sent_on(day)
 
 
 def check(now=None):
@@ -35,7 +44,8 @@ def check(now=None):
     now = now or timezone.now()
     day = timezone.localdate(now)
     threshold = policy.otp_sms_daily_alert()
-    sent = texts_sent_on(day)
+    codes, business = code_texts_sent_on(day), business_texts_sent_on(day)  # each counted once
+    sent = codes + business
     if sent < threshold:
         return False
     with transaction.atomic():
@@ -44,11 +54,10 @@ def check(now=None):
         if OtpEvent.objects.filter(kind=OtpEvent.SMS_ALERT, at__date=day).exists():
             return False
         OtpEvent.objects.create(kind=OtpEvent.SMS_ALERT, at=now, channel=SMS, note=f"{sent} texts on {day:%Y-%m-%d}; alert at {threshold}")
-    codes = code_texts_sent_on(day)
     notify_staff_role(
         "security.manage", ALERT_KIND, f"Texts reached {threshold} today",
         body=(
-            f"{sent} texts have been sent today ({day:%d %b}): {codes} one-time codes and {sent - codes} business money "
+            f"{sent} texts have been sent today ({day:%d %b}): {codes} one-time codes and {business} business money "
             "texts. A sudden rise in codes can mean someone is abusing the code requests. Look at the code log and the "
             "text balance."
         ),

@@ -9,9 +9,9 @@ release that asked for it ("SMS failure never blocks payment (queued, retried)")
   transaction. It claims the row first with one conditional UPDATE that also pushes `next_attempt_at` out by LEASE, so
   two workers never send it at once; a worker that dies mid-send leaves it to be tried again after the lease (a text may
   then go twice: at least once, never lost). A failure is retried after 5 minutes, 15 minutes, 1 hour and 4 hours, then
-  given up (FAILED; five tries in all); a business whose login phone is not a confirmed Ghana mobile (an otp.VerifiedContact,
-  the Stage 2 rule for lock notices) gets none (NO_PHONE). Every status change after the claim is conditional on the text
-  still being queued, so a worker that finishes after its lease ran out cannot undo what another did. The in-app copy stays
+  given up (FAILED; five tries in all); a business whose login phone is not a confirmed Ghana mobile (an otp.VerifiedContact: a stricter
+  rule than lock notices) gets none (NO_PHONE). Every status change after the claim is conditional on the text
+  still being queued with the claim's `attempts` value (a fencing token), so a worker that finishes after its lease ran out cannot undo what another did (it returns None). The in-app copy stays
   either way.
 * A sent text is counted by the SMS-spend alert (otp.spend, spec §9) with the code texts. It is never an OtpEvent: those
   rows are what the code send limits count, and a busy shop's order texts must never use up its own sign-in codes.
@@ -19,6 +19,7 @@ release that asked for it ("SMS failure never blocks payment (queued, retried)")
   most two text parts (306 characters), and hold no customer's name, phone or address. Never logged."""
 import logging
 import string
+import time
 from datetime import timedelta
 
 from django.db import transaction
@@ -37,6 +38,8 @@ logger = logging.getLogger(__name__)
 LEASE = timedelta(minutes=10)
 BACKOFF = (timedelta(minutes=5), timedelta(minutes=15), timedelta(hours=1), timedelta(hours=4))
 MAX_ATTEMPTS = len(BACKOFF) + 1
+SEND_BUDGET = timedelta(minutes=5)                          # send_due stops after about half a lease
+MAX_CONSECUTIVE_FAILURES = 3                                # ...or when the provider looks down
 MAX_LENGTH = 306                                            # two GSM-7 parts of 153 characters
 PLAIN = frozenset(string.ascii_letters + string.digits + " .,:;#'()-/!?&%+")
 STATUS_LABELS = {
@@ -58,7 +61,7 @@ def fits(body):
 def confirmed_phone(owner):
     """The Ghana mobile number a business's money texts go to: its login phone, and only when it is a confirmed contact
     (otp.VerifiedContact: a code sent to it was accepted - registration neither normalises nor verifies phones, and a
-    mistyped or recycled number must never receive a shop's order amounts; the Stage 2 rule for lock notices). None
+    mistyped or recycled number must never receive a shop's order amounts; a stricter rule than lock notices). None
     otherwise."""
     phone = contacts(owner).get(SMS)
     account_type, account_id = ref(owner)
@@ -81,11 +84,11 @@ def queue(owner, kind, key, body, *, order=None, day=None, notification=None, no
                 "business_owner": owner, "kind": kind, "order": order, "day": day, "body": body,
                 "next_attempt_at": now, "notification": notification,
             })
+        if created:
+            transaction.on_commit(lambda pk=text.pk: _send_soon(pk), robust=True)
     except Exception as exc:  # noqa: BLE001 - spec §6: a text never blocks the money movement that asked for it
         logger.error("Business text %s not queued: %s", kind, type(exc).__name__)
         return None
-    if created:
-        transaction.on_commit(lambda pk=text.pk: _send_soon(pk), robust=True)
     return text
 
 
@@ -112,24 +115,25 @@ def deliver(pk, now=None):
     if not claimed:
         return None
     text = VendorText.objects.select_related("business_owner").get(pk=pk)
+    # The claim bumped `attempts`; that value is this worker's fencing token. If the lease runs out and another worker
+    # re-claims the text, `attempts` moves on and every write below matches nothing: a late worker changes nothing.
+    mine = VendorText.objects.filter(pk=pk, status=VendorText.QUEUED, attempts=text.attempts)
     phone = confirmed_phone(text.business_owner)
     if not phone:
-        VendorText.objects.filter(pk=pk, status=VendorText.QUEUED).update(status=VendorText.NO_PHONE)
-        return VendorText.NO_PHONE
+        return VendorText.NO_PHONE if mine.update(status=VendorText.NO_PHONE) else None
     delivery = senders.deliver(SMS, phone, "", text.body)
     hint, provider = mask_phone(phone), (delivery.provider or "")[:20]
     if delivery.ok:
-        VendorText.objects.filter(pk=pk, status=VendorText.QUEUED).update(
+        if not mine.update(
             status=VendorText.SENT, sent_at=now, provider=provider, provider_ref=(delivery.ref or "")[:64], to_hint=hint,
-        )
+        ):
+            return None
         spend.check_quietly(now)
         return VendorText.SENT
     if text.attempts >= MAX_ATTEMPTS:
-        VendorText.objects.filter(pk=pk, status=VendorText.QUEUED).update(status=VendorText.FAILED, provider=provider, to_hint=hint)
-        return VendorText.FAILED
-    VendorText.objects.filter(pk=pk, status=VendorText.QUEUED).update(
-        next_attempt_at=now + BACKOFF[text.attempts - 1], provider=provider, to_hint=hint,
-    )
+        return VendorText.FAILED if mine.update(status=VendorText.FAILED, provider=provider, to_hint=hint) else None
+    if not mine.update(next_attempt_at=now + BACKOFF[text.attempts - 1], provider=provider, to_hint=hint):
+        return None
     return VendorText.QUEUED
 
 
@@ -143,12 +147,20 @@ def send_due(now=None, limit=200):
         VendorText.objects.filter(status=VendorText.QUEUED, next_attempt_at__lte=now)
         .order_by("next_attempt_at", "pk").values_list("pk", flat=True)[:limit]
     )
-    sent = 0
+    sent = failures = 0
+    started = time.monotonic()
     for pk in due:
+        if time.monotonic() - started >= SEND_BUDGET.total_seconds() or failures >= MAX_CONSECUTIVE_FAILURES:
+            break  # the rest wait for the next run; a slow or down provider must not hold the worker past its lease
         try:
-            sent += deliver(pk) == VendorText.SENT  # claimed and stamped at its own time
+            status = deliver(pk)  # claimed and stamped at its own time
         except Exception as exc:  # noqa: BLE001 - one bad row never stops the rest
             logger.error("Business text %s not sent: %s", pk, type(exc).__name__)
+            continue
+        if status == VendorText.SENT:
+            sent, failures = sent + 1, 0
+        elif status in (VendorText.QUEUED, VendorText.FAILED):
+            failures += 1  # the provider did not take it
     return sent
 
 

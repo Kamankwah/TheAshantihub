@@ -4,6 +4,7 @@ code send limits. Review Focus 2."""
 from datetime import timedelta
 from unittest import mock
 
+from django.db import transaction
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
@@ -75,6 +76,15 @@ class QueueTests(OutboxBase):
             text = self.queue()
         self.assertEqual(VendorText.objects.get(pk=text.pk).status, VendorText.QUEUED)   # the 5-minute job sends it
 
+    def test_a_payment_that_rolls_back_leaves_no_text_and_sends_none(self):
+        with self.captureOnCommitCallbacks(execute=True) as callbacks:
+            with self.assertRaises(RuntimeError), transaction.atomic():
+                self.queue()
+                raise RuntimeError("payment failed")
+        self.assertEqual(callbacks, [])
+        self.assertFalse(VendorText.objects.exists())
+        self.assertEqual(senders.sms_outbox, [])
+
     def test_a_body_that_is_not_plain_or_too_long_is_not_queued(self):
         for key, body in (("k-cedi", "GH₵ 5.00 due"), ("k-long", "x" * 307)):
             with self.assertLogs("wallets.vendor_texts", "ERROR"):
@@ -138,8 +148,38 @@ class DeliverTests(OutboxBase):
             return DOWN
 
         with mock.patch("wallets.vendor_texts.senders.deliver", side_effect=provider):
-            vendor_texts.deliver(text.pk, self.now)
+            self.assertIsNone(vendor_texts.deliver(text.pk, self.now))
         self.assertEqual(VendorText.objects.get(pk=text.pk).status, VendorText.SENT)
+
+    def test_review_focus_a_late_worker_cannot_give_up_a_text_another_worker_holds(self):
+        text = self.queue()
+        VendorText.objects.filter(pk=text.pk).update(attempts=vendor_texts.MAX_ATTEMPTS - 1)   # one more failure would be final
+        later = self.now + timedelta(minutes=30)
+
+        def provider(*args):
+            VendorText.objects.filter(pk=text.pk).update(attempts=vendor_texts.MAX_ATTEMPTS + 1, next_attempt_at=later)   # worker B re-claimed it
+            return DOWN
+
+        with mock.patch("wallets.vendor_texts.senders.deliver", side_effect=provider):
+            self.assertIsNone(vendor_texts.deliver(text.pk, self.now))
+        text.refresh_from_db()
+        self.assertEqual(
+            (text.status, text.attempts, text.next_attempt_at, text.provider, text.to_hint),
+            (VendorText.QUEUED, vendor_texts.MAX_ATTEMPTS + 1, later, "", ""),
+        )
+
+    def test_review_focus_a_late_worker_cannot_reopen_the_lease_of_one_that_re_claimed_the_text(self):
+        text = self.queue()
+        held_until = self.now + timedelta(hours=2)
+
+        def provider(*args):
+            VendorText.objects.filter(pk=text.pk).update(attempts=2, next_attempt_at=held_until)   # worker B holds it
+            return senders.Delivery(ok=True, provider="locmem")
+
+        with mock.patch("wallets.vendor_texts.senders.deliver", side_effect=provider):
+            self.assertIsNone(vendor_texts.deliver(text.pk, self.now))
+        text.refresh_from_db()
+        self.assertEqual((text.status, text.attempts, text.next_attempt_at, text.sent_at), (VendorText.QUEUED, 2, held_until, None))
 
     def test_a_crashed_send_is_tried_again_after_the_lease(self):
         text = self.queue()
@@ -164,6 +204,24 @@ class DeliverTests(OutboxBase):
         self.assertEqual(VendorText.objects.get(pk=fine.pk).status, VendorText.SENT)
         self.assertEqual(VendorText.objects.get(pk=broken.pk).status, VendorText.QUEUED)
 
+    def test_the_job_stops_when_its_time_budget_is_spent(self):
+        first, second = self.queue("k-1"), self.queue("k-2")
+        with mock.patch.object(vendor_texts, "SEND_BUDGET", timedelta(0)):
+            self.assertEqual(vendor_texts.send_due(self.now), 0)
+        self.assertEqual(VendorText.objects.filter(status=VendorText.QUEUED).count(), 2)
+
+    def test_the_job_stops_after_three_provider_failures_in_a_row(self):
+        for n in range(5):
+            self.queue(f"k-{n}")
+        with mock.patch("wallets.vendor_texts.senders.deliver", return_value=DOWN) as send:
+            self.assertEqual(vendor_texts.send_due(self.now), 0)
+        self.assertEqual(send.call_count, vendor_texts.MAX_CONSECUTIVE_FAILURES)
+
+    def test_a_text_another_worker_holds_is_not_counted_as_sent(self):
+        text = self.queue()
+        with mock.patch("wallets.vendor_texts.deliver", return_value=None):
+            self.assertEqual(vendor_texts.send_due(self.now), 0)
+
     @override_settings(OTP_SMS_PROVIDER="simulated")
     def test_a_simulated_text_says_it_was_not_sent(self):
         text = self.queue()
@@ -186,6 +244,14 @@ class SpendTests(OutboxBase):
         alert = Notification.objects.get(staff=self.boss, kind=spend.ALERT_KIND)
         self.assertIn("3", alert.title)
         self.assertIn("2 business money texts", alert.body)
+
+    def test_a_text_is_counted_on_its_own_local_day(self):
+        text = self.queue()
+        vendor_texts.deliver(text.pk, self.now)
+        day = timezone.localdate(self.now)
+        self.assertEqual(spend.texts_sent_on(day), 1)
+        self.assertEqual(spend.texts_sent_on(day - timedelta(days=1)), 0)
+        self.assertEqual(spend.texts_sent_on(day + timedelta(days=1)), 0)
 
     def test_review_focus_business_texts_never_use_up_the_code_send_limits(self):
         for n in range(25):                                                       # more than the 20-an-hour per-phone ceiling

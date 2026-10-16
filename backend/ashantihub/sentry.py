@@ -22,6 +22,8 @@ EXTRA_DENYLIST = [
     # Business money texts (wallets.vendor_texts): the business's whole number in a frame. Not `to`: the daily summary
     # answers a "to" key.
     "phone",
+    # A failing query's parameters (the same whole number, as a lookup value).
+    "params",
 ]
 
 
