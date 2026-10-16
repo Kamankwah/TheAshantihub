@@ -135,6 +135,7 @@ def refund_order(order, amount_pesewas=None, *, source, by=None, owner_ids=None,
             OrderFeeSnapshot.objects.select_for_update(of=("self",))
             .filter(order=order, reversed_at__isnull=True).select_related("business_owner").order_by("pk")
         )
+        unreversed = snapshots
         if owner_ids is not None:
             wanted = set(owner_ids)
             snapshots = [snap for snap in snapshots if snap.business_owner_id in wanted]
@@ -144,6 +145,7 @@ def refund_order(order, amount_pesewas=None, *, source, by=None, owner_ids=None,
         whole = owner_ids is None and (amount_pesewas is None or amount_pesewas == remaining.customer)
         if whole:
             if not (remaining.customer or remaining.delivery or remaining.subsidy or items_room or processing):
+                _free_promo(order, [])  # nothing left to refund, but the business must not stay charged for the promo
                 return None
             customer, delivery, subsidy, shares = remaining.customer, remaining.delivery, remaining.subsidy, dict(rooms)
         else:
@@ -165,17 +167,39 @@ def refund_order(order, amount_pesewas=None, *, source, by=None, owner_ids=None,
                 # gives back whatever is left of it (spec §1 row 14: AshantiHub bears only what went wrong).
                 paid = to_pesewas(order.total_amount)
                 processing = min(processing, (2 * processing_paid(order) * customer + paid) // (2 * paid)) if paid else 0
+        # The refund leaves the order with no item at all: if nothing was delivered either, the business owes no promo.
+        clears_promo = whole or (
+            all(shares.get(snap.pk, 0) >= snap.base_pesewas - snap.refunded_base_pesewas for snap in unreversed)
+            and not _delivery_made(order)
+        )
         refund = _post(
             order, snapshots, shares, customer=customer, delivery=delivery, subsidy=subsidy, processing=processing,
             whole=whole, source=source, by=by, note=note, now=now,
-            extra_locks=escrow.waiver_return_accounts(order) if whole else (),
+            extra_locks=escrow.waiver_return_accounts(order) if clears_promo else (),
         )
-        if whole:
+        if clears_promo:
+            escrow.return_waiver(order)               # charged at release: the business owes nothing for a refunded order
             from marketing.waivers import reverse_for_order
 
-            escrow.return_waiver(order)               # charged at release: the business owes nothing for a refunded order
             reverse_for_order(order, "order_refunded")
         return refund
+
+
+def _delivery_made(order):
+    """True once the goods reached the customer (or the pickup desk handed them over), so the delivery was made."""
+    from . import verification
+    from .models import FulfilmentCheck
+
+    return verification.handed_over(order, FulfilmentCheck.objects.filter(order=order).first() or FulfilmentCheck(order=order))
+
+
+def _free_promo(order, extra):
+    """Give a charged free-delivery promo back and reverse an owed one (locks first: spec W7)."""
+    from marketing.waivers import reverse_for_order
+
+    posting.lock(*escrow.waiver_return_accounts(order), *extra)
+    escrow.return_waiver(order)
+    reverse_for_order(order, "order_refunded")
 
 
 def _post(order, snapshots, shares, *, customer, delivery, subsidy, processing, whole, source, by, note, now, extra_locks=()):

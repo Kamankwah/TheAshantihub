@@ -9,7 +9,11 @@ The two debits always equal the credits for a consistent order; if they do not, 
 
 release_verified moves the held money once Support records a positive verification (no timer): each vendor's Pending is
 debited, the snapshotted fee goes to platform fee income, the delivery fee to platform delivery income, and the rest to the
-vendor's Available. It is idempotent on its journal key and refuses while a dispute is open."""
+vendor's Available. It is idempotent on its journal key and refuses (returns None) while a dispute or a delivery-case
+refund waiting for approval is open, and for an order no longer paid (cancelled). It pays only what refunds left (ledger.refunds):
+each snapshot's base and fee less what was refunded, and the delivery fee the order's Delivery payable still holds. A business
+that waived the delivery fee through its free-delivery promo pays it from its Available right after (charge_waiver, kind
+order_waiver_charge); a whole refund gives it back (return_waiver)."""
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
@@ -151,29 +155,35 @@ def release_verified(order, now=None):
             entry["base"] += snap.base_pesewas - snap.refunded_base_pesewas
             entry["fee"] += snap.charged_pesewas - snap.refunded_fee_pesewas
 
+        # Every account this transaction can post to, locked in one sorted pass (spec W7) before anything is decided
+        # from a balance: the Delivery payable's is read from the locked row, and the promo charge's accounts (the
+        # second posting, charge_waiver) are taken now so it never takes a new lock while the release's are held.
+        delivery_account = posting.account_for(Account.DELIVERY_PAYABLE, order)
+        delivery_income = posting.account_for(Account.PLATFORM_DELIVERY_INCOME)
+        pendings = {v: posting.account_for(Account.VENDOR_PENDING, by_vendor[v]["owner"]) for v in by_vendor}
+        availables = {v: posting.account_for(Account.VENDOR_AVAILABLE, by_vendor[v]["owner"]) for v in by_vendor}
+        locked = posting.lock(income, delivery_account, delivery_income, *pendings.values(), *availables.values(), *waiver_accounts(order))
+
         # The owner's order: AshantiHub first (fee, delivery), then each vendor, then any third-party rider (Stage 5).
         debits, credits = [], []
         for vendor_id in sorted(by_vendor):
             entry = by_vendor[vendor_id]
             if entry["base"] > 0:
-                debits.append(posting.debit(posting.account_for(Account.VENDOR_PENDING, entry["owner"]), entry["base"]))
+                debits.append(posting.debit(pendings[vendor_id], entry["base"]))
             if entry["fee"] > 0:
                 credits.append(posting.credit(income, entry["fee"]))
-        delivery = posting.balance_of(Account.DELIVERY_PAYABLE, order)
+        delivery = locked[delivery_account.pk].balance
         if delivery > 0:
-            debits.append(posting.debit(posting.account_for(Account.DELIVERY_PAYABLE, order), delivery))
-            credits.append(posting.credit(posting.account_for(Account.PLATFORM_DELIVERY_INCOME), delivery))
+            debits.append(posting.debit(delivery_account, delivery))
+            credits.append(posting.credit(delivery_income, delivery))
         for vendor_id in sorted(by_vendor):
             entry = by_vendor[vendor_id]
             payable = entry["base"] - entry["fee"]
             if payable > 0:
-                credits.append(posting.credit(posting.account_for(Account.VENDOR_AVAILABLE, entry["owner"]), payable))
+                credits.append(posting.credit(availables[vendor_id], payable))
         if len(debits) + len(credits) < 2:
             OrderFeeSnapshot.objects.filter(pk__in=[s.pk for s in snapshots]).update(released_at=now)
             return None  # nothing to post (every line was zero)
-        # One sorted pass over every account this transaction posts to, the promo charge's included (spec W7): the
-        # second posting (charge_waiver) must never take a new account lock while the release's are held.
-        posting.lock(*(line.account for line in debits + credits), *waiver_accounts(order))
         journal = posting.post(
             key=release_key(order), kind="order_release", lines=debits + credits,
             reference_type="orders.order", reference_id=str(order.pk), memo=f"Release of order #{order.pk}",
@@ -227,6 +237,8 @@ def charge_waiver(order):
     reverses it first); idempotent on the key. The customer never paid it, so no refund ever returns it to them."""
     from marketing.models_waivers import WaivedFeeCharge
 
+    if not enabled():
+        return None
     charge = WaivedFeeCharge.objects.filter(order=order, status=WaivedFeeCharge.OWED).select_related("business_owner").first()
     amount = to_pesewas(charge.amount) if charge is not None else 0
     if amount <= 0:
@@ -243,6 +255,8 @@ def charge_waiver(order):
 
 def return_waiver(order):
     """Give a charged promo back to the business when the order is refunded whole (it owes nothing for a refunded order)."""
+    if not enabled():
+        return None
     line = JournalLine.objects.filter(journal__key=waiver_key(order), side=JournalLine.DEBIT).select_related("account").first()
     if line is None:
         return None

@@ -7,6 +7,7 @@ from decimal import Decimal
 from django.test import override_settings
 from django.utils import timezone
 
+from accounts.models import Role, StaffUser
 from ledger import escrow, refunds, verification
 from ledger.models import Account, FulfilmentCheck, Journal, OrderFeeSnapshot
 from marketing.models_waivers import DeliveryWaiver, WaivedFeeCharge
@@ -17,6 +18,26 @@ from .test_refunds import RefundBase
 
 @override_settings(LEDGER_ENABLED=True)
 class ReleaseAfterRefundTests(RefundBase):
+    def staff(self):
+        return StaffUser.objects.get_or_create(email="maker@example.com", defaults=dict(full_name="Maker", password_hash="x", role=Role.objects.get(name="support")))[0]
+
+    def delivered(self, order):
+        order.delivery_method = Order.DOOR_TO_DOOR
+        order.save(update_fields=["delivery_method"])
+        DeliveryAssignment.objects.create(
+            order=order, status=DeliveryAssignment.CONFIRMED, delivered_at=timezone.now(), confirmed_at=timezone.now(),
+        )
+
+    def pending_refund(self, order):
+        from approvals.models import ApprovalRequest
+        from disputes.models import Dispute
+
+        dispute = Dispute.objects.create(order=order, raised_by=order.customer, reason=Dispute.ORDER_ISSUE, status=Dispute.FINAL_STATUSES[0])
+        return ApprovalRequest.objects.create(
+            maker=self.staff(), due_at=timezone.now() + timedelta(days=1), kind="delivery.refund_request",
+            status=ApprovalRequest.PENDING, target_type="disputes.dispute", target_id=str(dispute.pk),
+        )
+
     def test_review_focus_a_refund_then_matches_pays_only_the_rest(self):
         kofi, esi = self.owner("Kofi"), self.owner("Esi")
         order = self.paid([(self.listing(kofi, "60.00"), 1), (self.listing(esi, "600.00"), 1)], delivery="10.00")
@@ -116,9 +137,7 @@ class ReleaseAfterRefundTests(RefundBase):
         order = self.paid([(self.listing(kofi, "60.00"), 1)])
         dispute = Dispute.objects.create(order=order, raised_by=order.customer, reason=Dispute.ORDER_ISSUE, status=Dispute.FINAL_STATUSES[0])
         FulfilmentCheck.objects.create(order=order, outcome=FulfilmentCheck.MATCHES)
-        from accounts.models import Role, StaffUser
-
-        maker = StaffUser.objects.create(full_name="Maker", email="maker@example.com", password_hash="x", role=Role.objects.get(name="support"))
+        maker = self.staff()
         pending = ApprovalRequest.objects.create(
             maker=maker, due_at=timezone.now() + timedelta(days=1), kind="delivery.refund_request", status=ApprovalRequest.PENDING, target_type="disputes.dispute", target_id=str(dispute.pk),
         )
@@ -127,3 +146,73 @@ class ReleaseAfterRefundTests(RefundBase):
         ApprovalRequest.objects.filter(pk=pending.pk).update(status=ApprovalRequest.APPROVED)
         self.assertFalse(escrow.has_pending_refund(order))
         self.assertIsNotNone(escrow.release_verified(order))
+
+    def test_an_all_items_refunded_order_stays_on_supports_list_and_releases_through_record(self):
+        kofi = self.owner("Kofi")
+        order = self.paid([(self.listing(kofi, "60.00"), 1)], delivery="10.00")
+        self.delivered(order)
+        refunds.refund_order(order, source="dispute-1", owner_ids={kofi.pk})
+        self.assertEqual([row["order_id"] for row in verification.awaiting()], [order.pk])
+        verification.record(order, self.staff(), FulfilmentCheck.MATCHES)
+        self.assertEqual(verification.awaiting(), [])
+        self.assertEqual(self.balance(Account.PLATFORM_DELIVERY_INCOME), 1000)
+        self.assertEqual(self.balance(Account.VENDOR_AVAILABLE, kofi), 0)
+        self.assertEqual(Journal.objects.filter(key=f"order-release-{order.pk}").count(), 1)
+
+    def test_a_wholly_refunded_order_is_not_on_the_list_even_with_a_delivery_fee(self):
+        kofi = self.owner("Kofi")
+        order = self.paid([(self.listing(kofi, "60.00"), 1)], delivery="10.00")
+        self.delivered(order)
+        refunds.refund_order(order, source="cancel")
+        self.assertEqual(verification.awaiting(), [])
+
+    def test_the_r1_release_still_charges_a_promo_owed(self):
+        kofi = self.owner("Kofi")
+        order = self.paid([(self.listing(kofi, "60.00"), 1)], delivery="10.00")
+        self.delivered(order)
+        self.waived(kofi, order)
+        refunds.refund_order(order, source="dispute-1", owner_ids={kofi.pk})
+        self.release(order)
+        self.assertTrue(Journal.objects.filter(key=f"order-waiver-{order.pk}").exists())
+        self.assertEqual(self.balance(Account.VENDOR_AVAILABLE, kofi), -1500)
+        self.assertEqual(self.balance(Account.PLATFORM_DELIVERY_INCOME), 2500)
+
+    def test_all_items_refunded_before_any_delivery_reverses_the_promo_charge(self):
+        kofi = self.owner("Kofi")
+        order = self.paid([(self.listing(kofi, "120.00"), 1)], delivery="0.00")
+        charge = self.waived(kofi, order)
+        refunds.refund_order(order, source="dispute-1", owner_ids={kofi.pk})                 # nothing left to deliver
+        charge.refresh_from_db()
+        self.assertEqual(charge.status, WaivedFeeCharge.REVERSED)
+        self.assertFalse(WaivedFeeCharge.objects.filter(status=WaivedFeeCharge.OWED).exists())
+
+    def test_a_whole_refund_with_nothing_left_still_reverses_the_promo_charge(self):
+        kofi = self.owner("Kofi")
+        order = self.paid([(self.listing(kofi, "120.00"), 1)], delivery="0.00")
+        self.delivered(order)
+        charge = self.waived(kofi, order)
+        refunds.refund_order(order, source="dispute-1", owner_ids={kofi.pk})                 # delivered: charge stays owed
+        charge.refresh_from_db()
+        self.assertEqual(charge.status, WaivedFeeCharge.OWED)
+        self.assertIsNone(refunds.refund_order(order, source="cancel"))                       # nothing left to refund
+        charge.refresh_from_db()
+        self.assertEqual(charge.status, WaivedFeeCharge.REVERSED)
+
+    def test_matches_is_refused_while_a_delivery_refund_waits_and_nothing_is_saved(self):
+        kofi = self.owner("Kofi")
+        order = self.paid([(self.listing(kofi, "60.00"), 1)])
+        self.delivered(order)
+        self.pending_refund(order)
+        with self.assertRaises(verification.VerificationError) as caught:
+            verification.record(order, self.staff(), FulfilmentCheck.MATCHES)
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertIn("refund waiting for approval", caught.exception.message)
+        self.assertFalse(FulfilmentCheck.objects.filter(order=order, outcome=FulfilmentCheck.MATCHES).exists())
+
+    def test_ledger_off_the_promo_postings_do_nothing(self):
+        kofi = self.owner("Kofi")
+        order = self.paid([(self.listing(kofi, "120.00"), 1)], delivery="0.00")
+        self.waived(kofi, order)
+        with override_settings(LEDGER_ENABLED=False):
+            self.assertIsNone(escrow.charge_waiver(order))
+            self.assertIsNone(escrow.return_waiver(order))

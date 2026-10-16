@@ -4,10 +4,12 @@ purchase and releases nothing; "could not reach" is only recorded (the order sta
 from datetime import timedelta
 
 from django.db import transaction
+from django.db.models import CharField, Exists, OuterRef, Q
+from django.db.models.functions import Cast
 from django.utils import timezone
 
 from . import escrow, settings_store
-from .models import FulfilmentCheck, Journal, OrderFeeSnapshot
+from .models import Account, FulfilmentCheck, Journal, OrderFeeSnapshot
 
 
 class VerificationError(Exception):
@@ -99,8 +101,14 @@ def awaiting(now=None):
     now = now or timezone.now()
     limit = timedelta(hours=settings_store.current("verification_overdue_hours", now))
     orders = (
-        # A snapshot neither released nor refunded in full: a fully refunded order has nothing left to verify.
-        Order.objects.filter(status=Order.PAID, fee_snapshots__released_at__isnull=True, fee_snapshots__reversed_at__isnull=True).distinct()
+        # A snapshot neither released nor refunded in full, or (every item refunded, the order not wholly) a delivery
+        # fee still held in the order's Delivery payable: both wait for Support's call. A wholly refunded order holds nothing.
+        Order.objects.annotate(delivery_held=Exists(Account.objects.filter(
+            kind=Account.DELIVERY_PAYABLE, owner_type="orders.order", net_credit__gt=0,
+            owner_id=Cast(OuterRef("pk"), CharField()),
+        ))).filter(status=Order.PAID).filter(
+            Q(fee_snapshots__released_at__isnull=True, fee_snapshots__reversed_at__isnull=True) | Q(delivery_held=True)
+        ).distinct()
         .select_related("customer").prefetch_related("items__listing__business_owner").order_by("placed_at", "id")
     )
     rows = []
