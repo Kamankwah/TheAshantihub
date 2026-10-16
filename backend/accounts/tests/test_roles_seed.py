@@ -16,7 +16,7 @@ DEFAULT_MATRIX = {
     },
     "accountant": {
         "escrow.view", "escrow.release", "disputes.resolve_financial", "transactions.report",
-        "commission.view_all", "commission.policy",
+        "commission.view_all", "commission.policy", "wallets.view", "wallets.manage",
     },
     "marketing": {"promotions.manage", "analytics.view", "categories.manage"},
     "support": {"messaging.manage", "disputes.flag", "users.view", "fraud.flag", "otp.recovery"},
