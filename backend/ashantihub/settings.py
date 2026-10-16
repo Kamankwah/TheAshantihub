@@ -568,6 +568,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "delivery.tasks.purge_old_pings",
         "schedule": crontab(hour=3, minute=50),
     },
+    "otp-purge-old-rows": {
+        "task": "otp.tasks.purge_old_otp_rows",
+        "schedule": crontab(hour=3, minute=55),
+    },
 }
 
 # Production sets this True so the nightly activity check emails its seal to
