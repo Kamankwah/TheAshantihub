@@ -344,6 +344,17 @@ HUBTEL_WEBHOOK_SECRET = env("HUBTEL_WEBHOOK_SECRET", default="")
 HUBTEL_CALLBACK_URL = env("HUBTEL_CALLBACK_URL", default="")
 PAYMENTS_PROVIDER = "hubtel" if HUBTEL_CLIENT_ID else "simulated"
 
+# Payment provider knobs (payments/providers.py, wallets plan 3a). The simulated provider moves no money. Its charges
+# default to 0 because no real rate is known (the UI must not show a made-up number); staging or tests may set them
+# to see the "payment processing" and withdrawal-charge lines. SIMULATED_PAYOUT_OUTCOME is succeed (default), fail or
+# pending. SIMULATED_ACCOUNT_NAMES is for tests only: {account number: the name the simulated network answers}.
+# HUBTEL_COLLECTION_CHARGE_BP is Hubtel's contracted collection rate in basis points (Plan 7); 0 until it is known.
+SIMULATED_COLLECTION_CHARGE_BP = env.int("SIMULATED_COLLECTION_CHARGE_BP", default=0)
+SIMULATED_PAYOUT_CHARGE_PESEWAS = env.int("SIMULATED_PAYOUT_CHARGE_PESEWAS", default=0)
+SIMULATED_PAYOUT_OUTCOME = env("SIMULATED_PAYOUT_OUTCOME", default="succeed")
+SIMULATED_ACCOUNT_NAMES = {}
+HUBTEL_COLLECTION_CHARGE_BP = env.int("HUBTEL_COLLECTION_CHARGE_BP", default=0)
+
 # Road routing (docs/superpowers/specs/2026-10-13-delivery-routing-dispatch-design.md). Blank OSRM_URL means
 # routing is off and every distance is the labelled straight-line estimate.
 OSRM_URL = env("OSRM_URL", default="")

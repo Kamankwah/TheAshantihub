@@ -300,3 +300,59 @@ Found while writing the Stage 2 plan (`docs/superpowers/plans/2026-10-16-otp-sec
 - **The customer secondary-email confirmation view is unthrottled, unlimited and compares its code in clear** (`CustomerSecondaryEmailConfirmView`, `accounts/views.py`): because a verified secondary email is a sign-in channel, add a throttle scope, an attempt limit and a constant-time compare (or move it onto the OTP service, spec O6) before any switch is on.
 - **Staff authenticator failure path has the same check-then-act race as the customer path** (`accounts.two_factor` / `StaffLoginTwoFactorView`): it is live today because staff two-factor does not depend on the OTP switches. Apply the same per-account advisory-lock pattern.
 - **Minor races accepted for now:** two failing resends that both hang past 60 s can leave the challenge with a never-delivered code (an immediate resend recovers it); `verify` can compare against a stale read for the few milliseconds a resend rotates (only the previously delivered code is accepted); the typed code is held in the local `raw_code` of `verify`/`_check` (add to `EXTRA_DENYLIST`); `guessing()` has no `lock_timeout`.
+
+
+### Stage 3 (wallets and payments) reconciliation (2026-10-16)
+
+Found while writing the Stage 3 plans (`docs/superpowers/plans/2026-10-16-wallets-payments-3a.md` and
+`docs/superpowers/plans/2026-10-16-withdrawals-3b.md`, §0 of each):
+
+- **W1 Provider interface.** `collect` stays `payments.services.process_payment` and `handle_webhook` stays
+  `payments.views.HubtelWebhookView` (both already branch simulated/Hubtel and log, verify, de-duplicate and
+  amount-check). `payments/providers.py` adds the charges, the account-name lookup, `payout` and `status` (and, in 3b,
+  the statement the reconciliation reads). `payments/hubtel_client.py` has no payout, status or name-lookup call, so
+  the Hubtel provider raises `NotConnected` for them until Plan 7.
+- **W2 Collection charge.** Paid on top by the customer for MoMo payments and top-ups ("payment processing"), kept on
+  `CheckoutSession.processing_fee`; the ledger records only the net. Simulated charges are 0 unless set (no real rate is
+  known). When AshantiHub gives it back (its own or a vendor's error) it bears it: Dr provider fees. A partial refund
+  gives back only its share of the charge (half up); the refund that empties the order gives back what is left of it.
+- **W3 Paying from the wallet.** `payment_method` (`momo` default, `wallet`) on checkout; the payment journal debits
+  the customer's wallet instead of provider clearing; a wallet must cover the whole order.
+- **W4 Refunds.** Always to the wallet, per fee snapshot (`refunded_base_pesewas`, `refunded_fee_pesewas`, and
+  `reversed_at` when whole), recorded as `ledger.OrderRefund` (one per order and source). Release pays only what is
+  left and never a cancelled order. The delivery fee comes back only with the whole order, and a coupon goes back to
+  AshantiHub only on the refund that empties the order.
+- **W5 Waived delivery fee.** The business's free-delivery promo cost (`marketing.WaivedFeeCharge`) is taken from its
+  Available at release and given back on a whole refund.
+- **W6 Wiring.** Support's cancel of a paid order, an uncollected pickup after the window (hourly job), a dispute
+  resolved with a refund amount, and an approved delivery-case refund all refund through `ledger.refunds`. A dispute
+  and its delivery-case approval share one source key, so it is never refunded twice.
+- **W7 Lock order.** Order row, then fee snapshots, then ledger accounts in primary-key order, taken up front
+  (`ledger.posting.lock`). A transaction that posts twice (release then the promo charge; a whole refund then the promo
+  return) locks the accounts of both postings in its one up-front pass.
+- **W8 Decided in the 3a plan, for the owner to confirm (its A1-A11).** A top-up goes through the provider's hosted
+  checkout (no stored "attached" MoMo number yet, §5); a wallet payment must cover the whole order (no split wallet +
+  MoMo); an uncollected pickup is refunded automatically by an hourly job; the processing charge is refunded only when
+  staff record AshantiHub, rider or business fault, and a partial refund gives back only its share of it; with the
+  ledger on, order and top-up sessions carry `metadata["ledger"]` (a `provider="wallet"` session moved no provider
+  money, so reconciliation must skip it).
+
+### Before LEDGER_ENABLED is turned on — Stage 3 additions
+
+- (vi) **Simulated rails let anyone top up for free.** Never turn the ledger on in production before Plan 7 (Hubtel
+  live) and the regulatory route (§12); on staging it is safe.
+- (vii) **Top-ups share the Hubtel webhook failure mode (i).** A finalizer that raises leaves a paid top-up
+  uncredited with `processed=False`; the 3b reconciliation reports it as `missing_in_ledger`, but alerting is still owed.
+- (viii) **The hourly uncollected-pickup job refunds every ledger-recorded store-pickup order the Pickup Desk has not
+  marked collected within `pickup_window_hours`.** Item (iv) therefore stops being "money stays in Pending": a customer
+  who collected at a vendor's own shop is refunded in full and the vendor is never paid. Before the ledger is turned on,
+  every store pickup must be collected at the AshantiHub office desk (checkout and vendor screens must say so), or the
+  job must stay off.
+- (ix) **The transaction report double-counts wallet money.** `billing.TransactionReportView` sums every
+  `billing.Transaction`: a top-up and the order paid from it are both SUCCESS rows, and wallet refunds create no
+  REFUNDED row. Exclude `checkout_sessions__provider="wallet"` from its cash totals and count wallet refunds
+  (ledger `OrderRefund`) before the ledger is turned on.
+- (x) **The switch is one-way.** With it off, refunds are skipped silently: a paid order cancelled while it is off keeps
+  its money in Vendor Pending with no later refund path. Never turn it off once on.
+- (xi) **A Hubtel success webhook for an order Support already cancelled revives it to PAID** (`_finalize_order_checkout`
+  only checks for PAID) and now posts its payment to the ledger; refuse finalisation of a cancelled order first.
