@@ -23,6 +23,7 @@ import time
 from dataclasses import dataclass
 from datetime import timedelta
 
+from django.core.cache import cache
 from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
@@ -47,8 +48,11 @@ logger = logging.getLogger(__name__)
 LEASE = timedelta(minutes=10)
 BACKOFF = (timedelta(minutes=5), timedelta(minutes=15), timedelta(hours=1), timedelta(hours=4))
 MAX_ATTEMPTS = len(BACKOFF) + 1
-SEND_BUDGET = timedelta(minutes=5)                          # send_due stops after about half a lease
+SEND_BUDGET = timedelta(seconds=75)                         # send_due stops well inside its 280 s beat expiry and the lease
 MAX_CONSECUTIVE_FAILURES = 3                                # ...or when the provider looks down
+BREAKER_KEY = "vendor-texts-provider-down"                   # set (cache, shared by every worker) while the provider looks down
+BREAKER_COUNT_KEY = "vendor-texts-provider-failures"
+BREAKER_TTL = 120                                           # seconds the breaker stays open, and the window failures are counted in
 MAX_LENGTH = 306                                            # two GSM-7 parts of 153 characters
 PLAIN = frozenset(string.ascii_letters + string.digits + " .,:;#'()-/!?&%+")
 STATUS_LABELS = {
@@ -112,13 +116,38 @@ def _send_soon(pk):
         logger.error("Business text %s not handed to a worker: %s", pk, type(exc).__name__)
 
 
+def breaker_open():
+    """True while the provider looks down (MAX_CONSECUTIVE_FAILURES failures in a row, across processes): texts stay queued
+    for a later run instead of calling it."""
+    return bool(cache.get(BREAKER_KEY))
+
+
+def _provider_failed():
+    cache.add(BREAKER_COUNT_KEY, 0, BREAKER_TTL)
+    try:
+        count = cache.incr(BREAKER_COUNT_KEY)
+    except ValueError:  # expired between the two calls
+        count = 1
+    if count >= MAX_CONSECUTIVE_FAILURES:
+        cache.set(BREAKER_KEY, 1, BREAKER_TTL)
+
+
+def _provider_worked():
+    cache.delete(BREAKER_COUNT_KEY)
+
+
 def deliver(pk, now=None):
     """Send text `pk` if it is queued and due. Returns its new status, or None when it was not due or another sender
     holds it. Call outside any transaction: a real provider's call is a network round trip. The claim is one conditional
     UPDATE (still queued and due), and every later status change is conditional on the text still being queued, so a
     worker that finishes after its lease ran out cannot undo what another worker did."""
     now = now or timezone.now()
-    claimed = VendorText.objects.filter(pk=pk, status=VendorText.QUEUED, next_attempt_at__lte=now).update(
+    if breaker_open():
+        return None  # left queued; a later run tries it
+    # attempts below MAX_ATTEMPTS + 2: a text whose worker keeps dying mid-send is not claimed for ever
+    claimed = VendorText.objects.filter(
+        pk=pk, status=VendorText.QUEUED, next_attempt_at__lte=now, attempts__lt=MAX_ATTEMPTS + 2,
+    ).update(
         attempts=F("attempts") + 1, last_attempt_at=now, next_attempt_at=now + LEASE,
     )
     if not claimed:
@@ -130,15 +159,22 @@ def deliver(pk, now=None):
     phone = confirmed_phone(text.business_owner)
     if not phone:
         return VendorText.NO_PHONE if mine.update(status=VendorText.NO_PHONE) else None
-    delivery = senders.deliver(SMS, phone, "", text.body)
+    try:
+        delivery = senders.deliver(SMS, phone, "", text.body)
+    except Exception:
+        if text.attempts >= MAX_ATTEMPTS:  # a text that keeps raising is given up, not retried for ever
+            mine.update(status=VendorText.FAILED)
+        raise
     hint, provider = mask_phone(phone), (delivery.provider or "")[:20]
     if delivery.ok:
+        _provider_worked()
         if not mine.update(
             status=VendorText.SENT, sent_at=now, provider=provider, provider_ref=(delivery.ref or "")[:64], to_hint=hint,
         ):
             return None
         spend.check_quietly(now)
         return VendorText.SENT
+    _provider_failed()
     if text.attempts >= MAX_ATTEMPTS:
         return VendorText.FAILED if mine.update(status=VendorText.FAILED, provider=provider, to_hint=hint) else None
     if not mine.update(next_attempt_at=now + BACKOFF[text.attempts - 1], provider=provider, to_hint=hint):
@@ -156,10 +192,10 @@ def send_due(now=None, limit=200):
         VendorText.objects.filter(status=VendorText.QUEUED, next_attempt_at__lte=now)
         .order_by("next_attempt_at", "pk").values_list("pk", flat=True)[:limit]
     )
-    sent = failures = 0
+    sent = 0
     started = time.monotonic()
     for pk in due:
-        if time.monotonic() - started >= SEND_BUDGET.total_seconds() or failures >= MAX_CONSECUTIVE_FAILURES:
+        if time.monotonic() - started >= SEND_BUDGET.total_seconds() or breaker_open():
             break  # the rest wait for the next run; a slow or down provider must not hold the worker past its lease
         try:
             status = deliver(pk)  # claimed and stamped at its own time
@@ -167,9 +203,7 @@ def send_due(now=None, limit=200):
             logger.error("Business text %s not sent: %s", pk, type(exc).__name__)
             continue
         if status == VendorText.SENT:
-            sent, failures = sent + 1, 0
-        elif status in (VendorText.QUEUED, VendorText.FAILED):
-            failures += 1  # the provider did not take it
+            sent += 1
     return sent
 
 
@@ -179,7 +213,8 @@ def row(text):
     return {
         "id": text.pk, "kind": text.kind, "order": text.order_id, "day": text.day, "body": text.body,
         "status": text.status, "status_label": SIMULATED_LABEL if simulated else STATUS_LABELS[text.status],
-        "to": text.to_hint, "created_at": text.created_at, "sent_at": text.sent_at,
+        "to": text.to_hint, "created_at": text.created_at,
+        "simulated": simulated, "sent_at": None if simulated else text.sent_at,  # a simulated text was never sent
     }
 
 
@@ -275,6 +310,11 @@ def released_text(order, released, fee, promo):
     )
 
 
+def promo_only_text(order, promo):
+    """A business whose free-delivery promo is taken at this release but whose own share of the order is nothing."""
+    return f"AshantiHub: order #{order.pk} released. GHS {money(promo)} free-delivery promo was taken from your Available balance."
+
+
 def order_released(order, journal):
     """The release text and its in-app copy for each business the release paid, worked out from the journal just
     written (`journal`, the release's): its Pending debit (the subtotal released), its Available credit (that less the fee) and a free-delivery
@@ -296,9 +336,9 @@ def order_released(order, journal):
             promo_lines = JournalLine.objects.filter(
                 journal__key=escrow.waiver_key(order), side=JournalLine.DEBIT, account__owner_type=OWNER_TYPE,
             ).select_related("account")
-            for line in promo_lines:
-                if int(line.account.owner_id) in shares:
-                    shares[int(line.account.owner_id)]["promo"] += line.amount
+            for line in promo_lines:  # a business can owe a promo without a Pending debit on this release
+                share = shares.setdefault(int(line.account.owner_id), {"base": 0, "released": 0, "promo": 0})
+                share["promo"] += line.amount
             owners = BusinessOwner.objects.in_bulk(list(shares))
     except Exception as exc:  # noqa: BLE001 - spec §6: a text never stops a release
         logger.error("Release texts not worked out: %s", type(exc).__name__)
@@ -306,9 +346,14 @@ def order_released(order, journal):
     queued = 0
     for pk in sorted(shares):
         share, owner = shares[pk], owners.get(pk)
-        if owner is None or share["base"] <= 0:
+        if owner is None or (share["base"] <= 0 and share["promo"] <= 0):
             continue
-        body = released_text(order, share["released"], share["base"] - share["released"], share["promo"])
+        if VendorText.objects.filter(key=released_key(order, owner)).exists():
+            continue  # already texted (and noticed): a re-run adds neither
+        if share["base"] <= 0:
+            body = promo_only_text(order, share["promo"])
+        else:
+            body = released_text(order, share["released"], share["base"] - share["released"], share["promo"])
         notice = notify_business_owner(
             owner, VENDOR_MONEY, f"Order #{order.pk} released", body=body, link="/business-dashboard", icon="💰",
         )

@@ -577,8 +577,9 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
 - (lxx) **Owner question: texts on refunds, a negative Available, withdrawals, or a low balance.** The spec names none,
   so none is sent (3b's in-app withdrawal notices stay).
 - (lxxi) **Businesses whose login phone is not a confirmed Ghana mobile get no texts** (`no_phone`, in-app copy kept, the
-  texts screen says why). A phone is confirmed when a code sent to it was accepted (`otp.VerifiedContact`), the rule Stage 2
-  sets for lock notices; registration neither normalises nor verifies phones, so a business that never signed in with a
+  texts screen says why). A phone is confirmed when a code sent to it was accepted (`otp.VerifiedContact`). This is stricter than
+  today's lock notices, which text every contact on the account (the open must-fix above: lock notices should be
+  VerifiedContact-only too); registration neither normalises nor verifies phones, so a business that never signed in with a
   code gets none. There is no staff list of them yet; Support should check before switch-on.
 - (lxxii) **Booking sales are not covered.** Once Plan 1b records bookings: add them as a second row source
   (`kind: "booking"`) to `vendor.sale_groups` / `rows` / `statement`, their `booking_*` journal kinds to `vendor.FOLD`,
@@ -600,3 +601,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
   07:00 that day's digest is never sent (a manual `queue_digests(day)` can send it).
 - (lxxix) **Until Plan 1b merges, the fee page shows services and events as "not charged yet"** (`charged: false`); it
   follows `ledger.BookingSale` on its own once that exists.
+- (lxxx) **A dedicated `texts` Celery queue and worker before real SMS goes live.** Business texts share the default
+  queue with other jobs; a slow provider can hold a worker for up to the send budget (75 s) per run. A circuit breaker
+  (3 failures in a row opens it for 120 s, across workers) and the beat entry's 280 s expiry limit the harm, but route
+  `wallets.tasks.send_vendor_text` and `send_due_vendor_texts` to their own queue and worker first.

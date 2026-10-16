@@ -4,6 +4,7 @@ code send limits. Review Focus 2."""
 from datetime import timedelta
 from unittest import mock
 
+from django.core.cache import cache
 from django.db import transaction
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
@@ -32,6 +33,7 @@ class PlainTextTests(SimpleTestCase):
 
 class OutboxBase(TestCase):
     def setUp(self):
+        cache.clear()
         senders.sms_outbox.clear()
         self.owner = BusinessOwner.objects.create(full_name="Kofi Mensah", login_phone="0201110001", password_hash="x")
         VerifiedContact.objects.create(                                            # a code sent to this phone was accepted
@@ -98,11 +100,13 @@ class DeliverTests(OutboxBase):
         at = self.now
         with mock.patch("wallets.vendor_texts.senders.deliver", return_value=DOWN):
             for attempt, minutes in enumerate((5, 15, 60, 240), start=1):
+                cache.clear()                                                  # minutes apart: the provider-down breaker has closed
                 self.assertEqual(vendor_texts.deliver(text.pk, at), VendorText.QUEUED)
                 text.refresh_from_db()
                 self.assertEqual((text.attempts, text.next_attempt_at), (attempt, at + timedelta(minutes=minutes)))
                 self.assertIsNone(vendor_texts.deliver(text.pk, at + timedelta(minutes=minutes - 1)))   # not due yet
                 at += timedelta(minutes=minutes)
+            cache.clear()
             self.assertEqual(vendor_texts.deliver(text.pk, at), VendorText.FAILED)
         text.refresh_from_db()
         self.assertEqual((text.status, text.attempts, text.provider), (VendorText.FAILED, 5, "hubtel"))
@@ -228,6 +232,65 @@ class DeliverTests(OutboxBase):
         self.assertEqual(vendor_texts.deliver(text.pk, self.now), VendorText.SENT)
         text.refresh_from_db()
         self.assertEqual((text.provider, vendor_texts.row(text)["status_label"]), ("simulated", "Not sent: texts are simulated"))
+        shown = vendor_texts.row(text)
+        self.assertEqual((shown["simulated"], shown["sent_at"]), (True, None))
+
+    @override_settings(OTP_SMS_PROVIDER="locmem")
+    def test_a_really_sent_text_is_not_marked_simulated(self):
+        text = self.queue()
+        vendor_texts.deliver(text.pk, self.now)
+        text.refresh_from_db()
+        shown = vendor_texts.row(text)
+        self.assertEqual((shown["simulated"], shown["sent_at"]), (False, text.sent_at))
+        self.assertIsNotNone(shown["sent_at"])
+
+    def test_the_budget_and_the_beat_expiry_keep_the_job_inside_its_window(self):
+        from django.conf import settings
+        self.assertEqual(vendor_texts.SEND_BUDGET, timedelta(seconds=75))
+        entry = settings.CELERY_BEAT_SCHEDULE["wallets-send-vendor-texts"]
+        self.assertEqual(entry["options"], {"expires": 280})
+
+    def test_three_failures_across_separate_sends_open_a_breaker_that_leaves_texts_queued(self):
+        from wallets import tasks
+        texts = [self.queue(f"k-{n}") for n in range(5)]
+        with mock.patch("wallets.vendor_texts.senders.deliver", return_value=DOWN) as send:
+            for text in texts[:3]:
+                tasks.send_vendor_text(text.pk)                                  # three separate per-text tasks
+            self.assertTrue(vendor_texts.breaker_open())
+            self.assertIsNone(tasks.send_vendor_text(texts[3].pk))
+            self.assertEqual(vendor_texts.send_due(self.now + timedelta(hours=5)), 0)
+        self.assertEqual(send.call_count, 3)
+        fresh = VendorText.objects.get(pk=texts[3].pk)
+        self.assertEqual((fresh.status, fresh.attempts), (VendorText.QUEUED, 0))
+        cache.clear()                                                            # the breaker's 120 s are over
+        self.assertEqual(vendor_texts.deliver(texts[3].pk, self.now), VendorText.SENT)
+
+    def test_a_success_resets_the_failure_count(self):
+        texts = [self.queue(f"k-{n}") for n in range(4)]
+        with mock.patch("wallets.vendor_texts.senders.deliver", return_value=DOWN):
+            vendor_texts.deliver(texts[0].pk, self.now)
+            vendor_texts.deliver(texts[1].pk, self.now)
+        self.assertEqual(vendor_texts.deliver(texts[2].pk, self.now), VendorText.SENT)
+        with mock.patch("wallets.vendor_texts.senders.deliver", return_value=DOWN):
+            vendor_texts.deliver(texts[3].pk, self.now)
+        self.assertFalse(vendor_texts.breaker_open())
+
+    def test_a_text_claimed_too_often_is_not_claimed_again_and_one_that_raises_at_the_limit_is_given_up(self):
+        stuck = self.queue("k-stuck")
+        VendorText.objects.filter(pk=stuck.pk).update(attempts=vendor_texts.MAX_ATTEMPTS + 2)
+        self.assertIsNone(vendor_texts.deliver(stuck.pk, self.now))
+        self.assertEqual(VendorText.objects.get(pk=stuck.pk).attempts, vendor_texts.MAX_ATTEMPTS + 2)
+        last = self.queue("k-last")
+        VendorText.objects.filter(pk=last.pk).update(attempts=vendor_texts.MAX_ATTEMPTS - 1)
+        with mock.patch("wallets.vendor_texts.senders.deliver", side_effect=RuntimeError("boom")):
+            with self.assertRaises(RuntimeError):
+                vendor_texts.deliver(last.pk, self.now)
+        self.assertEqual(VendorText.objects.get(pk=last.pk).status, VendorText.FAILED)
+        early = self.queue("k-early")                                            # fewer tries so far: stays queued for a retry
+        with mock.patch("wallets.vendor_texts.senders.deliver", side_effect=RuntimeError("boom")):
+            with self.assertRaises(RuntimeError):
+                vendor_texts.deliver(early.pk, self.now)
+        self.assertEqual(VendorText.objects.get(pk=early.pk).status, VendorText.QUEUED)
 
 
 class SpendTests(OutboxBase):
@@ -258,3 +321,23 @@ class SpendTests(OutboxBase):
             vendor_texts.deliver(self.queue(f"k-{n}").pk, self.now)
         self.assertEqual(VendorText.objects.filter(status=VendorText.SENT).count(), 25)
         self.assertFalse(OtpEvent.objects.filter(kind__in=(OtpEvent.SENT, OtpEvent.SEND_FAILED)).exists())
+
+    @override_settings(OTP_SMS_PROVIDER="simulated")
+    def test_simulated_texts_are_not_counted(self):
+        vendor_texts.deliver(self.queue().pk, self.now)
+        self.assertEqual(VendorText.objects.get(key="paid-12-1").provider, "simulated")
+        self.assertEqual(spend.business_texts_sent_on(timezone.localdate(self.now)), 0)
+
+    def test_an_alert_already_sent_today_is_found_before_anything_is_counted(self):
+        OtpEvent.objects.create(kind=OtpEvent.SMS_ALERT, at=self.now, channel=SMS)
+        with mock.patch.object(spend, "code_texts_sent_on", side_effect=AssertionError("counted")), \
+                mock.patch.object(spend, "business_texts_sent_on", side_effect=AssertionError("counted")):
+            self.assertFalse(spend.check(self.now))
+
+    def test_code_texts_are_counted_by_a_day_range(self):
+        day = timezone.localdate(self.now)
+        start, _ = spend._bounds(day)
+        OtpEvent.objects.create(kind=OtpEvent.SENT, channel=SMS, at=start, provider="locmem")                       # first instant
+        OtpEvent.objects.create(kind=OtpEvent.SENT, channel=SMS, at=start - timedelta(microseconds=1), provider="locmem")
+        OtpEvent.objects.create(kind=OtpEvent.SENT, channel=SMS, at=start + timedelta(days=1), provider="locmem")  # next day
+        self.assertEqual(spend.code_texts_sent_on(day), 1)

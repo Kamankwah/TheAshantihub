@@ -276,8 +276,9 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   other line lands in `other`, so the columns always add up to the balance change), and no row, export or text holds a
   customer's name, phone or address. Texts to a business go through `wallets.VendorText`: `vendor_texts.queue` runs
   inside the payment (`orders.alerts`) or the release (`escrow.release_verified`, after every posting), in a savepoint,
-  and never raises; the send happens after commit through `otp.senders`, claimed with a 10-minute lease, tried at most 5 times, and only to a login phone that is an `otp.VerifiedContact` (the Stage 2
-  lock-notice rule). The hand-off after commit is a lambda that logs its own errors (Django's robust `on_commit` formats
+  and never raises; the send happens after commit through `otp.senders`, claimed with a 10-minute lease, tried at most 5 times, and only to a login phone that is an `otp.VerifiedContact` (stricter than
+  today's lock notices, which text every contact on the account: an open must-fix in spec §13, whose fix will make them
+  VerifiedContact-only too). A provider-down breaker (cache, 120 s, after 3 failures in a row) leaves texts queued. The hand-off after commit is a lambda that logs its own errors (Django's robust `on_commit` formats
   `func.__qualname__`, which a `functools.partial` lacks).
   A business text is **never an `OtpEvent`** (those count toward the code send limits) but is counted by the
   `otp.spend` alert. Bodies are GSM-7 plain text with "GHS" (never "GH₵"), at most 306 characters. `phone` is in

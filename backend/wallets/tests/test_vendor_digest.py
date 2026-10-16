@@ -41,6 +41,15 @@ class TextSettingsTests(VendorBase):
         self.assertFalse(self.esi.get(TEXTS).json()["daily_digest"])
         self.assertFalse(self.kofi.client.patch(TEXTS, {"daily_digest": False}, format="json").json()["daily_digest"])
 
+    def test_staff_cannot_read_or_change_the_texts(self):
+        from accounts.testing import make_staff, staff_token
+        from rest_framework.test import APIClient
+        staff = APIClient()
+        staff.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(make_staff('support', 'texts@example.com'))}")
+        self.assertEqual(staff.get(TEXTS).status_code, 403)
+        self.assertEqual(staff.patch(TEXTS, {"daily_digest": True}, format="json").status_code, 403)
+        self.assertFalse(VendorPreference.objects.exists())
+
     def test_only_true_or_false(self):
         for value in ("yes", 1, None):
             response = self.kofi.client.patch(TEXTS, {"daily_digest": value}, format="json")

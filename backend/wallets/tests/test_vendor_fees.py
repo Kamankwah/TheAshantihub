@@ -47,8 +47,6 @@ class FeeScheduleTests(VendorBase):
             ("Products", "Product orders", True, PRODUCT_LADDER, None),
         )
         self.assertIsNotNone(product["in_force_from"])
-        booked = hasattr(ledger_models, "BookingSale")                  # Plan 1b's model: services and events are charged once it exists
-        self.assertEqual((by_category["service"]["charged"], by_category["event"]["charged"]), (booked, booked))
         self.assertIn("never on delivery", body["fee_base"])
         self.assertEqual(body["fee_cap"], {"limit": None, "used": "0.00", "remaining": None})
         self.assertNotIn("quote", body)
@@ -140,3 +138,15 @@ class ChargedCategoriesTests(VendorBase):
         with mock.patch.object(ledger_models, "BookingSale", object, create=True):
             by_category = {c["category"]: c for c in self.kofi.get(FEES).json()["categories"]}
         self.assertEqual([by_category[c]["charged"] for c in ("product", "service", "event")], [True, True, True])
+
+    def test_services_and_events_are_not_charged_while_booking_sales_do_not_exist(self):
+        from unittest import mock
+        had, saved = hasattr(ledger_models, "BookingSale"), getattr(ledger_models, "BookingSale", None)
+        if had:
+            del ledger_models.BookingSale
+        try:
+            by_category = {c["category"]: c for c in self.kofi.get(FEES).json()["categories"]}
+        finally:
+            if had:
+                ledger_models.BookingSale = saved
+        self.assertEqual([by_category[c]["charged"] for c in ("product", "service", "event")], [True, False, False])

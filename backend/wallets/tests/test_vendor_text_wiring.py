@@ -187,6 +187,23 @@ class ReleaseTextTests(VendorBase):
         journal = Journal.objects.get(key=escrow.release_key(order))
         vendor_texts.order_released(order, journal)
         self.assertEqual(VendorText.objects.filter(kind=VendorText.ORDER_RELEASED).count(), 1)
+        self.assertEqual(Notification.objects.filter(business_owner=self.kofi.owner, kind="vendor_money").count(), 1)
+
+    def test_a_promo_charged_to_a_business_with_nothing_released_still_gets_a_promo_only_text(self):
+        from .helpers import fund
+        order = paid_order(self.buyer, [(self.kofi.listing("120.00"), 1)])
+        fund(Account.VENDOR_AVAILABLE, self.esi.owner, 5000, "fund-esi")
+        posting.post(key=escrow.waiver_key(order), kind="order_waiver_charge", lines=[
+            posting.debit(posting.account_for(Account.VENDOR_AVAILABLE, self.esi.owner), 1500),
+            posting.credit(posting.account_for(Account.PLATFORM_DELIVERY_INCOME), 1500),
+        ])
+        self.released(order)
+        esi_text = VendorText.objects.get(business_owner=self.esi.owner, kind=VendorText.ORDER_RELEASED)
+        self.assertEqual(
+            esi_text.body,
+            f"AshantiHub: order #{order.pk} released. GHS 15.00 free-delivery promo was taken from your Available balance.",
+        )
+        self.assertTrue(Notification.objects.filter(business_owner=self.esi.owner, kind="vendor_money").exists())
 
     def test_a_release_is_texted_once(self):
         order = paid_order(self.buyer, [(self.kofi.listing("120.00"), 1)])

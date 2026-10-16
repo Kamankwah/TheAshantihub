@@ -109,8 +109,9 @@ background. These are **specs, not implemented state**; update them when code fr
   rebuild (every role's dashboard): roles and reporting lines, build order, decisions per phase;
   phase 1–2 specs sit beside it
 - `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` — wallet, escrow, platform fees,
-  OTP; Stage 1 (ledger), Stage 2 (OTP, backend) and Stage 3 (wallets, withdrawals, reconciliation, backend) are
-  implemented behind switches that default off, later stages are specs only; §13 lists what must be done before each
+  OTP; Stage 1 (ledger), Stage 2 (OTP, backend), Stage 3 (wallets, withdrawals, reconciliation, backend) and
+  Stage 4 backend (vendor money API and business texts, Plan 4) are implemented behind switches that default off,
+  later stages are specs only; §13 lists what must be done before each
   switch is turned on
 
 ## Design System

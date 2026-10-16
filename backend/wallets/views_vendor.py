@@ -79,12 +79,13 @@ class VendorDailyView(APIView):
 class VendorStatementExportView(APIView):
     """GET vendor/statement/export/?date_from=&date_to= — the statement as a CSV download (the last 30 days by default,
     at most 366). Always CSV: it takes no ?format=, which is DRF's renderer override (backend/CLAUDE.md). Built in the
-    request (no throttle, unlike the staff reports' background exports). A client sending `Accept: text/csv` gets DRF's
+    request (throttled at 6 a minute, unlike the staff reports' background exports). A client sending `Accept: text/csv` gets DRF's
     406 before this view, as with OwnerSalesReportExportView: the screen must request `*/*`. UTF-8, and ASCII-only by
     design today (every cell is a date, number, fixed word or reference). More than vendor.EXPORT_MAX_ROWS rows is a 400.
     A withdrawal row's Gross is the amount asked for, its Amount the net that arrived."""
 
     permission_classes = [IsBusinessOwner]
+    throttle_scope = "vendor_statement_export"
 
     def get(self, request):
         if not escrow.enabled():

@@ -139,3 +139,12 @@ class StatementExportTests(VendorBase):
     def test_staff_get_no_statement(self):
         staff = signed_in(make_staff("support", "esi@example.com"), "staff")
         self.assertEqual(staff.get(EXPORT).status_code, 403)
+
+
+@override_settings(LEDGER_ENABLED=True)
+class ExportThrottleTests(VendorBase):
+    def test_the_export_is_limited_to_six_a_minute(self):
+        from django.core.cache import cache
+        cache.clear()
+        codes = [self.kofi.get("/api/wallet/vendor/statement/export/").status_code for _ in range(7)]
+        self.assertEqual(codes, [200] * 6 + [429])

@@ -18,17 +18,28 @@ ALERT_KIND = "otp_sms_spend"
 ALERT_LOCK_KEY = 72210016  # pg_advisory_xact_lock key: one alert a day however many texts race
 
 
+def _bounds(day):
+    """[start, next start) of the local `day`, for range filters on indexed timestamps."""
+    return (
+        timezone.make_aware(datetime.combine(day, time.min)),
+        timezone.make_aware(datetime.combine(day + timedelta(days=1), time.min)),
+    )
+
+
 def code_texts_sent_on(day):
-    return OtpEvent.objects.filter(kind=OtpEvent.SENT, channel=SMS, at__date=day).count()
+    start, end = _bounds(day)
+    return OtpEvent.objects.filter(kind=OtpEvent.SENT, channel=SMS, at__gte=start, at__lt=end).count()
 
 
 def business_texts_sent_on(day):
-    """Business money texts sent on `day`, by a range on sent_at (index-friendly)."""
+    """Business money texts actually sent on `day`, by a range on sent_at (index-friendly). A text the simulated provider
+    "sent" went nowhere and costs nothing, so it is not counted."""
     from wallets.models import VendorText
 
-    start = timezone.make_aware(datetime.combine(day, time.min))
-    end = timezone.make_aware(datetime.combine(day + timedelta(days=1), time.min))
-    return VendorText.objects.filter(status=VendorText.SENT, sent_at__gte=start, sent_at__lt=end).count()
+    start, end = _bounds(day)
+    return VendorText.objects.filter(
+        status=VendorText.SENT, sent_at__gte=start, sent_at__lt=end,
+    ).exclude(provider="simulated").count()
 
 
 def texts_sent_on(day):
@@ -43,6 +54,9 @@ def check(now=None):
 
     now = now or timezone.now()
     day = timezone.localdate(now)
+    start, end = _bounds(day)
+    if OtpEvent.objects.filter(kind=OtpEvent.SMS_ALERT, at__gte=start, at__lt=end).exists():
+        return False  # already alerted today: no need to count
     threshold = policy.otp_sms_daily_alert()
     codes, business = code_texts_sent_on(day), business_texts_sent_on(day)  # each counted once
     sent = codes + business
@@ -51,7 +65,7 @@ def check(now=None):
     with transaction.atomic():
         with connection.cursor() as cursor:
             cursor.execute("SELECT pg_advisory_xact_lock(%s)", [ALERT_LOCK_KEY])
-        if OtpEvent.objects.filter(kind=OtpEvent.SMS_ALERT, at__date=day).exists():
+        if OtpEvent.objects.filter(kind=OtpEvent.SMS_ALERT, at__gte=start, at__lt=end).exists():
             return False
         OtpEvent.objects.create(kind=OtpEvent.SMS_ALERT, at=now, channel=SMS, note=f"{sent} texts on {day:%Y-%m-%d}; alert at {threshold}")
     notify_staff_role(
