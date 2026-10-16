@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from django.db.models import F, Sum
 from django.utils import timezone
 
-from .models import FeeRuleSet, OrderFeeSnapshot
+from .models import BookingSale, FeeRuleSet, OrderFeeSnapshot
 
 
 MAX_PESEWAS = 10**12  # same ceiling as the fee-cap setting; keeps every amount inside a BigIntegerField
@@ -52,12 +52,12 @@ def quote(category, base, *, cap, already_charged, at=None):
 
 
 def charged_to_date(owner):
-    """Fees charged to `owner` so far, for the lifetime cap: every snapshot not fully reversed, less the part of its
-    fee a refund gave back (ledger.refunds)."""
-    total = OrderFeeSnapshot.objects.filter(business_owner=owner, reversed_at__isnull=True).aggregate(
-        total=Sum(F("charged_pesewas") - F("refunded_fee_pesewas"))
-    )["total"]
-    return total or 0
+    """Fees charged to `owner` so far, for the lifetime cap, across every category (spec §1 row 2): every product-order
+    snapshot and every booking sale (Plan 1b) not fully reversed, less the part of its fee a refund gave back."""
+    remaining = Sum(F("charged_pesewas") - F("refunded_fee_pesewas"))
+    orders = OrderFeeSnapshot.objects.filter(business_owner=owner, reversed_at__isnull=True).aggregate(total=remaining)["total"]
+    bookings = BookingSale.objects.filter(business_owner=owner, reversed_at__isnull=True).aggregate(total=remaining)["total"]
+    return (orders or 0) + (bookings or 0)
 
 
 def validate_bands(bands):

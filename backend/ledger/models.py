@@ -246,3 +246,101 @@ class OrderRefund(models.Model):
 
     def __str__(self):
         return f"Refund {self.source} on order {self.order_id}"
+
+
+class BookingSale(models.Model):
+    """A paid service request, stay booking or event-ticket purchase in the ledger (Plan 1b; spec §4.2): one customer,
+    one business and one fee category. The platform fee is fixed on the row at payment (spec §3.2 step 4), so later rule
+    or cap edits never change it; `refunded_*` and `reversed_at` work as on OrderFeeSnapshot, and Support's verification
+    call is recorded here as FulfilmentCheck records it for an order. Exactly one subject is set, the one its kind
+    names: the service request, the stay booking, or (tickets) the event; a purchase's tickets are those on its
+    session's transaction (Ticket.transaction). Written only by ledger.sales."""
+
+    SERVICE, STAY, TICKETS = "service", "stay", "tickets"
+    KIND_CHOICES = [(SERVICE, "Service"), (STAY, "Stay"), (TICKETS, "Event tickets")]
+
+    kind = models.CharField(max_length=8, choices=KIND_CHOICES)
+    session = models.OneToOneField("payments.CheckoutSession", on_delete=models.PROTECT, related_name="booking_sale")
+    service_request = models.OneToOneField(
+        "services.ServiceRequest", null=True, blank=True, on_delete=models.PROTECT, related_name="sale",
+    )
+    booking = models.OneToOneField("bookings.Booking", null=True, blank=True, on_delete=models.PROTECT, related_name="sale")
+    event = models.ForeignKey("events.Event", null=True, blank=True, on_delete=models.PROTECT, related_name="ticket_sales")
+    customer = models.ForeignKey("accounts.Customer", on_delete=models.PROTECT, related_name="booking_sales")
+    business_owner = models.ForeignKey("accounts.BusinessOwner", on_delete=models.PROTECT, related_name="booking_sales")
+    category = models.CharField(max_length=10, choices=FeeRuleSet.CATEGORY_CHOICES)
+    rule_set = models.ForeignKey(FeeRuleSet, on_delete=models.PROTECT, related_name="+")
+    base_pesewas = models.BigIntegerField()
+    computed_pesewas = models.BigIntegerField()
+    charged_pesewas = models.BigIntegerField()
+    cap_pesewas = models.BigIntegerField(null=True, blank=True)
+    refunded_base_pesewas = models.BigIntegerField(default=0)
+    refunded_fee_pesewas = models.BigIntegerField(default=0)
+    paid_at = models.DateTimeField()
+    released_at = models.DateTimeField(null=True, blank=True)
+    reversed_at = models.DateTimeField(null=True, blank=True)
+    phone_confirmed_at = models.DateTimeField(null=True, blank=True)
+    outcome = models.CharField(max_length=14, choices=FulfilmentCheck.OUTCOME_CHOICES, blank=True, default="")
+    outcome_note = models.CharField(max_length=500, blank=True, default="")
+    outcome_at = models.DateTimeField(null=True, blank=True)
+    outcome_by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    dispute = models.ForeignKey("disputes.Dispute", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["paid_at", "id"]
+        indexes = [
+            models.Index(fields=["business_owner", "reversed_at"]),
+            models.Index(fields=["released_at", "reversed_at"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(kind="service", service_request__isnull=False, booking__isnull=True, event__isnull=True)
+                    | models.Q(kind="stay", service_request__isnull=True, booking__isnull=False, event__isnull=True)
+                    | models.Q(kind="tickets", service_request__isnull=True, booking__isnull=True, event__isnull=False)
+                ),
+                name="ledger_booking_sale_one_subject_of_its_kind",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(refunded_base_pesewas__lte=models.F("base_pesewas")),
+                name="ledger_booking_sale_refund_within_base",
+            ),
+        ]
+
+    def label(self):
+        if self.kind == self.SERVICE:
+            return f"service request #{self.service_request_id}"
+        if self.kind == self.STAY:
+            return f"stay booking #{self.booking_id}"
+        return f"tickets for event #{self.event_id}"
+
+    def __str__(self):
+        return f"Booking sale {self.pk}: {self.label()}"
+
+
+class BookingRefund(models.Model):
+    """Money given back to a customer for a booking sale, always into their AshantiHub wallet (ledger.sales.refund).
+    One row per (sale, source) — "cancel", "dispute-<id>", "ticket-<id>" — so the same request never refunds twice.
+    Pesewas: `amount_pesewas` is booking money returned to the customer; `fee_pesewas` the share of the platform fee that
+    went with it (taken back from platform fee income when `released`, otherwise simply never charged);
+    `processing_pesewas` a collection charge AshantiHub gave back on its own or the business's error."""
+
+    sale = models.ForeignKey(BookingSale, on_delete=models.PROTECT, related_name="refunds")
+    source = models.CharField(max_length=60)
+    whole = models.BooleanField(default=False)
+    released = models.BooleanField(default=False)
+    amount_pesewas = models.BigIntegerField()
+    fee_pesewas = models.BigIntegerField(default=0)
+    processing_pesewas = models.BigIntegerField(default=0)
+    journal = models.OneToOneField(Journal, on_delete=models.PROTECT, related_name="booking_refund")
+    created_by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    note = models.CharField(max_length=300, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [models.UniqueConstraint(fields=["sale", "source"], name="ledger_one_booking_refund_per_source")]
+
+    def __str__(self):
+        return f"Refund {self.source} on booking sale {self.sale_id}"

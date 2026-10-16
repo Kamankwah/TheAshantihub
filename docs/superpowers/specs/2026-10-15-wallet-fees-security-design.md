@@ -529,3 +529,80 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
 - (lii) **Migrations 0003 and 0004 of `wallets` could be folded into one before any deploy** (nothing is deployed yet;
   the 0003 file is root-owned, so fold it with the right permissions).
 - (liii) **Parked:** the daily/per-withdrawal limit check can race with a concurrent proposal and ignores future-dated rows.
+
+### Stage 1b (services, events and stays) reconciliation (2026-10-16)
+
+Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-stays-1b.md` (§0 there; its S1–S18; the items below are numbered B1–B10 so they do not clash with those):
+
+- **B1 Where it lives.** One `ledger.BookingSale` per paid service request, stay or ticket purchase (its subject, its fee
+  snapshot, Support's call) and `ledger.BookingRefund` per sale and source, in `ledger/sales.py`; Support at
+  `/api/ledger/bookings/`. `OrderFeeSnapshot`, `FulfilmentCheck` and `OrderRefund` are unchanged (their order FK is
+  required). Event listing fees (`EVENT_PAY`, `EVENT_RENEW`) are platform revenue, out of scope like subscriptions.
+- **B2 Fees.** Services and stays use the services table, tickets the events table (§1 row 11), both already seeded as
+  copies of the product tiers. The base is the server's price (agreed price, stay total, unit price × quantity), which
+  must equal what was paid less the processing charge. The lifetime cap counts booking sales and order snapshots
+  together (`fees.charged_to_date`), read after the business's Pending account is locked.
+- **B3 Journals.** `booking-pay-<session reference>`, `booking-release-<sale>`, `booking-refund-<sale>-<source>`; the
+  nightly reconciliation expects `booking-pay-` for the three kinds when the session is marked `metadata["ledger"]`.
+- **B4 Handed over (§4.2).** A service the business marked done; a stay checked in; tickets once one of the purchase is
+  scanned or the event's date has passed. Receipt is confirmed by Support on the call, or by a ticket scanned at the
+  door. Provisional, owner to confirm (gate (lvii)): for bookings the 72-hour window runs from hand-over, not from purchase as §4.1 says for products.
+- **B5 Release and disputes.** As products: Support's "matches" releases at once; "does not match" opens a dispute
+  logged the disputes way (`raised_by` null, `logged_by` the staff member), linked on the sale, which alone blocks
+  release.
+- **B6 Ticket escrow flags.** With the ledger on, a ticket's held/released flag follows its sale: a scan no longer
+  releases it, release releases the purchase's tickets, the manual release and hold answer `409 ledger_on`, and the
+  Accountant's ticket refund pays the ticket's price to the wallet.
+- **B7 Paying.** The three pay endpoints take `payment_method` and carry "payment processing" on MoMo while the ledger is
+  on, like order checkout; a wallet must cover the whole booking. Tickets for customer-organised events stay outside the
+  ledger (gate (liv)).
+- **B8 Refunds and cancellations.** To the wallet only; before release out of Pending, after release out of Available
+  with the fee back in proportion; the processing charge only on fault. The refund that empties a sale reverses it and
+  cancels a booking not yet handed over. A customer's cancel of a paid stay before check-in, and Support's cancel of any
+  booking not yet handed over, refund it whole. No-shows are not handled (gate (lv)).
+- **B9 Lock order.** Service request or stay row (tickets: the purchase's tickets in primary-key order), then the sale,
+  then accounts in one sorted pass; the hand-over steps lock their own row.
+- **B10 Price check.** A service request's price must be above GH₵ 0.00 with at most two decimals.
+
+### Before LEDGER_ENABLED is turned on — Stage 1b additions
+
+- (liv) **Customer-organised paid events are outside the ledger.** Tickets for an event a customer (not a business)
+  submitted are paid by MoMo only and never recorded; only the old ticket escrow flags track their money. Decide before
+  switch-on: require paid-event organisers to register as a business, or refuse paid ticket types on customer-submitted
+  events.
+- (lv) **No-shows are not handled.** A stay whose guest never checks in, a service the business never marks done, and
+  tickets for an event that never took place (its date passes, so it counts as handed over) keep their money in Pending
+  until Support cancels or records the call. Owner to decide a rule.
+- (lvi) **Support calls every ticket purchase** before release, even when a ticket was scanned at the door; at a large
+  event that is many calls. Owner question: should a scan release without a call?
+- (lvii) **The 72-hour window for bookings runs from hand-over,** not from purchase, because a booking can be paid weeks
+  before it happens. Owner to confirm.
+- (lviii) **Cancellation policy.** A customer's cancel of a paid stay before check-in and Support's cancel of a booking
+  not yet handed over refund it in full, with no deadline or fee (the processing charge stays with the provider). Owner
+  to decide.
+- (lix) **A service request paid twice** (two Hubtel checkouts started for one accepted request, both paid) records only
+  the first; the second is never recorded (no sale, no journal; the provider holds the money) and the reconciliation reports it `missing_in_ledger`. Refuse a second
+  checkout while one is open, or refund the duplicate, before switch-on.
+- (lx) **Booking finalizers share the webhook failure mode (i)/(vii):** a finalizer that raises (a paid amount that is not
+  the price) leaves a paid booking unrecorded with `processed=False`.
+- (lxi) **Reports.** `billing.TransactionReportView` (ix) also counts wallet-paid bookings as cash, and
+  `insights/sales.refunds_total` does not count `BookingRefund`. Ticket refunds still write their old REFUNDED
+  `billing.Transaction` as well; do not count them twice when (ix) is fixed.
+- (lxii) **Stale copy with the ledger on:** `events.views.EscrowSummaryView` `not_recorded` ("Order and booking money is
+  not held in escrow yet", "No release-after-delivery rule is built") and the ticket escrow screen, whose flags now
+  follow the booking sale. Branch them on `LEDGER_ENABLED`.
+- (lxiii) **Booking disputes logged by hand** (not through the verification call) are not linked to the sale and do not
+  block its release; customers raise disputes only on orders. The mismatch dispute neither notifies the customer nor
+  tasks anyone ((v)), and a dispute's wallet refund sends no notice ((xvi)). The dispute rows carry no booking link
+  (`order` and `raised_by` are null; only the description names the booking), so the disputes screens cannot open the
+  booking or the customer.
+- (lxiv) **Frontend (Plan 1F):** Support's booking queue, the call and the cancel; `payment_method` and
+  `payment_processing` on the three pay screens; the accept screen must show the price error.
+- (lxv) **The ticket purchase's 201 is still a list,** so it carries no `payment_processing`; the screen must quote the
+  charge first (`GET /api/wallet/processing/?amount=`).
+- (lxvi) **A Hubtel success webhook for a stay the customer cancelled while its checkout was open is never recorded or
+  refunded.** The customer may cancel a PENDING booking; if they then pay at Hubtel, `_finalize_booking` returns early
+  (the booking is no longer PENDING), so the money is collected with no `BookingSale`, no journal and no refund (the
+  reconciliation reports `missing_in_ledger` once a statement exists). Before Plan 7: refuse the customer's cancel of a
+  PENDING booking whose checkout session is still PENDING, or have `_finalize_booking` record such a payment and refund it
+  whole to the wallet. Fix beside (xi), its order twin.
