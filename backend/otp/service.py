@@ -7,20 +7,27 @@ send that fails never kills the code already delivered and never starts the 60-s
 both sending and checking while 5 or more of its wrong codes fall inside the last 15 minutes; when sending, the
 lock and the hourly limits answer the same words, so nobody can tell them apart.
 
+Guesses are serialised per account (guessing()): the lock check, the comparison and the FAILED row happen one
+guess at a time under a Postgres advisory lock, in a short transaction that commits the FAILED row before the
+refusal is raised, so parallel wrong guesses can never pass 5. The holder is told when the lock engages
+(otp.notices).
+
 verify() counts a try before comparing and must never run inside a transaction that is rolled back when it
 refuses (the counted try would be undone): the views call it outside any atomic block and answer refusals as a
 Response."""
 import hmac
 import secrets
+from contextlib import contextmanager
 from datetime import timedelta
 
+from django.db import connection, transaction
 from django.db.models import F
 from django.utils import timezone
 from django.utils.crypto import salted_hmac
 
 from activity.services import client_ip
 
-from . import audit, senders, spend
+from . import audit, notices, senders, spend
 from .identity import contacts, ref
 from .models import SIGN_IN, SIGN_UP, SMS, STEP_UP, OtpChallenge, OtpEvent, VerifiedContact
 
@@ -39,6 +46,9 @@ PER_IP_HOURLY = 60
 HOUR = timedelta(hours=1)
 CODE_SALT = "otp.code"
 SEND_KINDS = (OtpEvent.SENT, OtpEvent.SEND_FAILED)
+# pg_advisory_xact_lock(namespace, account_id): one guess at a time per account. The two-int4 key space is separate
+# from the one-int8 keys (activity, spend); approvals' two-int4 namespace is 50117.
+GUESS_LOCK_NAMESPACE = {"customer": 72210101, "business_owner": 72210102, "staff": 72210103}
 SUBJECT = "Your AshantiHub code"
 
 TRY_LATER = "Too many tries. Wait a while, then try again."
@@ -109,8 +119,23 @@ def is_locked(account, now=None):
     return failures(account, now) >= LOCK_LIMIT
 
 
+@contextmanager
+def guessing(account):
+    """One guess at a time for this account: a transaction holding an advisory lock on (account_type, account_id).
+    Inside it the caller checks is_locked(), compares and calls note_failure(); keep it short (never send anything
+    inside) and RETURN the outcome from it - a refusal raised inside would roll the FAILED row back. Raise or answer
+    the refusal once the block has exited (committed). Never enter it inside another atomic block."""
+    account_type, account_id = ref(account)
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT pg_advisory_xact_lock(%s, %s)", [GUESS_LOCK_NAMESPACE[account_type], account_id])
+        yield
+
+
 def note_failure(account, *, purpose, channel, request=None, now=None):
-    """Count one wrong code towards the account's lock; logs the lock the moment it starts."""
+    """Count one wrong code towards the account's lock (call inside guessing()). Logs the lock the moment it starts
+    and answers True for exactly that wrong code, so the caller tells the holder (otp.notices.account_locked) once
+    the guess has committed."""
     now = now or timezone.now()
     audit.log(OtpEvent.FAILED, account=account, purpose=purpose, channel=channel, request=request, now=now)
     if failures(account, now) == LOCK_LIMIT:
@@ -118,6 +143,8 @@ def note_failure(account, *, purpose, channel, request=None, now=None):
             OtpEvent.LOCKED, account=account, purpose=purpose, channel=channel, request=request, now=now,
             note=f"{LOCK_LIMIT} wrong codes in {int(LOCK_WINDOW.total_seconds() // 60)} minutes",
         )
+        return True
+    return False
 
 
 def _ip(request):
@@ -207,11 +234,25 @@ def send(account, purpose, channel, *, action="", ticket="", request=None, now=N
 
 def verify(account, purpose, raw_code, *, action="", ticket="", request=None, now=None):
     """Accept the code for this ticket / step-up session once. Returns the consumed OtpChallenge; every refusal
-    raises OtpError. A try is counted before the comparison, so racing requests never get a sixth."""
-    now = now or timezone.now()
+    raises OtpError. A try is counted before the comparison, and guesses on one account run one at a time
+    (guessing()), so racing requests never get a sixth try or a sixth wrong code in the lock window."""
+    with guessing(account):
+        now = now or timezone.now()  # read once the lock is held
+        challenge, refusal, locked_now = _check(account, purpose, raw_code, action, ticket, request, now)
+    # The guess has committed (the FAILED row is kept); only now tell the holder and refuse.
+    if locked_now:
+        notices.account_locked(account, purpose=purpose, now=now)
+    if refusal is not None:
+        raise refusal
+    return challenge
+
+
+def _check(account, purpose, raw_code, action, ticket, request, now):
+    """verify()'s work inside guessing(): (challenge, None, False) when accepted, else (None, refusal, locked_now).
+    Never raises a refusal, so the FAILED row it writes commits."""
     account_type, account_id = ref(account)
     if is_locked(account, now):
-        raise OtpError(TRY_LATER, "try_later", status_code=429)
+        return None, OtpError(TRY_LATER, "try_later", status_code=429), False
     challenge = (
         OtpChallenge.objects.filter(
             account_type=account_type, account_id=account_id, purpose=purpose, action=action, ticket=ticket,
@@ -219,18 +260,18 @@ def verify(account, purpose, raw_code, *, action="", ticket="", request=None, no
         ).order_by("-id").first()
     )
     if challenge is None or challenge.expires_at <= now or challenge.attempts >= MAX_ATTEMPTS:
-        raise OtpError(EXPIRED, "code_expired")
+        return None, OtpError(EXPIRED, "code_expired"), False
     counted = OtpChallenge.objects.filter(
         pk=challenge.pk, consumed_at__isnull=True, attempts__lt=MAX_ATTEMPTS,
     ).update(attempts=F("attempts") + 1)
     if not counted:
-        raise OtpError(EXPIRED, "code_expired")
+        return None, OtpError(EXPIRED, "code_expired"), False
     code = clean_code(raw_code)
     if not code or not hmac.compare_digest(hash_code(challenge.salt, code), challenge.code_hash):
-        note_failure(account, purpose=purpose, channel=challenge.channel, request=request, now=now)
-        raise OtpError(WRONG, "wrong_code")
+        locked_now = note_failure(account, purpose=purpose, channel=challenge.channel, request=request, now=now)
+        return None, OtpError(WRONG, "wrong_code"), locked_now
     if not OtpChallenge.objects.filter(pk=challenge.pk, consumed_at__isnull=True).update(consumed_at=now):
-        raise OtpError(EXPIRED, "code_expired")
+        return None, OtpError(EXPIRED, "code_expired"), False
     VerifiedContact.objects.bulk_create(
         [VerifiedContact(account_type=account_type, account_id=account_id, channel=challenge.channel,
                          destination=challenge.destination, verified_at=now)],
@@ -239,4 +280,4 @@ def verify(account, purpose, raw_code, *, action="", ticket="", request=None, no
     audit.log(OtpEvent.VERIFIED, account=account, purpose=purpose, action=action, channel=challenge.channel,
               destination=challenge.destination, request=request, now=now)
     challenge.consumed_at = now
-    return challenge
+    return challenge, None, False

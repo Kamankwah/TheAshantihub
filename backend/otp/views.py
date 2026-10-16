@@ -17,7 +17,7 @@ from accounts.two_factor import SecretUnreadable
 from staffsecurity import signin as signin_log
 from staffsecurity.models import StaffSignInRecord
 
-from . import audit, authenticator, devices, service, signin
+from . import audit, authenticator, devices, notices, service, signin
 from .identity import CUSTOMER, STAFF, hint
 from .models import AUTHENTICATOR, SIGN_IN, SIGN_UP, OtpEvent
 from .service import OtpError
@@ -69,23 +69,38 @@ def _check_code(ticket, body, request):
 
 def _check_authenticator(account, body, request):
     """None when the authenticator code (or a recovery code) is right, else the refusal to answer. Wrong codes count
-    towards the same 15-minute lock as texted ones."""
-    if service.is_locked(account):
-        return _refused(OtpError(service.TRY_LATER, "try_later", status_code=429))
+    towards the same 15-minute lock as texted ones, one guess at a time per account (service.guessing). The holder
+    is told when the lock engages and whenever a recovery code signs someone in (otp.notices)."""
     recovery = _text(body.get("recovery_code"))
     try:
-        if recovery:
-            ok = authenticator.use_recovery_code(account, recovery)
-        else:
-            ok = authenticator.verify(account, _text(body.get("code")) or "")
+        with service.guessing(account):
+            refusal, locked_now = _authenticator_guess(account, body, recovery, request)
     except SecretUnreadable:
         return Response({"detail": UNREADABLE, "code": "authenticator_unreadable"}, status=400)
+    # The guess has committed; only now tell the holder.
+    if locked_now:
+        notices.account_locked(account, purpose=SIGN_IN)
+    if refusal is not None:
+        return _refused(refusal)
+    if recovery:
+        notices.recovery_code_used(account)
+    return None
+
+
+def _authenticator_guess(account, body, recovery, request):
+    """Inside service.guessing(): (refusal or None, whether this wrong code just locked the account)."""
+    if service.is_locked(account):
+        return OtpError(service.TRY_LATER, "try_later", status_code=429), False
+    if recovery:
+        ok = authenticator.use_recovery_code(account, recovery)
+    else:
+        ok = authenticator.verify(account, _text(body.get("code")) or "")
     if not ok:
-        service.note_failure(account, purpose=SIGN_IN, channel=AUTHENTICATOR, request=request)
-        return _refused(OtpError(WRONG_AUTHENTICATOR, "wrong_code"))
+        locked_now = service.note_failure(account, purpose=SIGN_IN, channel=AUTHENTICATOR, request=request)
+        return OtpError(WRONG_AUTHENTICATOR, "wrong_code"), locked_now
     audit.log(OtpEvent.VERIFIED, account=account, purpose=SIGN_IN, channel=AUTHENTICATOR,
               note="recovery code" if recovery else "", request=request)
-    return None
+    return None, False
 
 
 class SignInSendView(APIView):
