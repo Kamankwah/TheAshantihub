@@ -39,8 +39,8 @@ class PayoutResult:
 
 
 def basis_points(amount_pesewas, bp):
-    """`bp` basis points of an amount in pesewas, half up (100 bp = 1%)."""
-    return (int(amount_pesewas) * int(bp) + 5000) // 10000
+    """`bp` basis points of an amount in pesewas, half up (100 bp = 1%), never below 0."""
+    return max(0, (int(amount_pesewas) * int(bp) + 5000) // 10000)  # a mistyped negative rate must never pay the customer
 
 
 class PaymentProvider:

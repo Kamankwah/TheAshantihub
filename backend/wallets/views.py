@@ -2,6 +2,7 @@
 top-ups. Customers and business owners only (top-ups and quotes: customers). Every endpoint answers
 409 {"code": "ledger_off"} while LEDGER_ENABLED is off, so nothing changes until it is turned on. Staff reads are in
 views_staff.py."""
+import re
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
@@ -20,6 +21,7 @@ from payments.services import process_payment
 
 from . import services
 
+AMOUNT_PATTERN = re.compile(r"[0-9]+(\.[0-9]{1,2})?", re.ASCII)
 OFF = "Wallets aren't switched on yet."
 MAX_PESEWAS = 9_999_999_999  # a DecimalField(10, 2) holds at most GH₵ 99,999,999.99
 
@@ -36,6 +38,9 @@ def parse_amount(raw):
     """Pesewas from a GH₵ amount a person typed ("50", "50.5", 50.25). Raises AmountError with the message to show."""
     if raw is None or isinstance(raw, bool) or (isinstance(raw, str) and not raw.strip()):
         raise AmountError("Enter an amount in GH₵.")
+    if isinstance(raw, str) and not AMOUNT_PATTERN.fullmatch(raw.strip()):
+        # ASCII digits with at most two decimals: no "1_000", "1E+2", "NaN" or non-ASCII digits
+        raise AmountError("Enter an amount in GH₵, like 50.00.")
     try:
         value = Decimal(str(raw).strip())
     except InvalidOperation:

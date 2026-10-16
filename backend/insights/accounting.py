@@ -74,6 +74,7 @@ KIND_TYPE = {kind: key for key, _l, kinds in COLLECTION_TYPES for kind in kinds}
 STATUSES = ("success", "pending", "failed", "expired")
 PAGE_SIZE = 100
 COLLECTIONS_NOT_RECORDED = [
+    {"name": "Orders paid from a wallet", "why": "Orders paid from an AshantiHub wallet are not collections; the money was counted when the wallet was topped up."},
     {"name": "Delivery fees", "why": "Delivery fees are not charged yet, so no payment carries one."},
     {"name": "VAT, NHIL and GETFund", "why": "No tax is calculated anywhere yet, so no payment is split into tax."},
     {"name": "Where the money goes", "why": "Order and booking money is not held in escrow, so no payment is marked as held or released."},

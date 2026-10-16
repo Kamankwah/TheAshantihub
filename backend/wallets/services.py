@@ -3,7 +3,7 @@ pesewas inside and GH₵ strings at the API edge. Reading a balance never opens 
 from accounts.models import BusinessOwner, Customer
 from ledger import posting
 from ledger.models import Account, JournalLine
-from ledger.money import from_pesewas
+from ledger.money import from_pesewas, to_pesewas
 
 # What each journal kind is called on a holder's statement.
 LABELS = {
@@ -36,6 +36,9 @@ def record_top_up(session):
     credit = session.metadata.get("credit_pesewas")
     if isinstance(credit, bool) or not isinstance(credit, int) or credit <= 0 or session.customer_id is None:
         raise posting.PostingError(f"Top-up {session.reference} carries no amount to credit")
+    # Fail closed: the credit must be exactly what the customer paid less the provider's processing charge.
+    if credit != to_pesewas(session.amount) - to_pesewas(session.processing_fee):
+        raise posting.PostingError(f"Top-up {session.reference} credit does not match what was paid")
     return posting.post(
         key=topup_key(session.reference), kind="wallet_top_up",
         lines=[

@@ -16,6 +16,7 @@ from billing.models import Transaction
 from ledger import posting
 from ledger.models import Account, Journal
 from payments.models import CheckoutSession
+from wallets.services import record_top_up
 
 SECRET = "test-webhook-secret"
 
@@ -78,12 +79,28 @@ class TopUpTests(WalletApiBase):
         self.assertEqual(posting.balance_of(Account.PROVIDER_CLEARING), 5000)               # the provider kept GH₵ 1.00
 
     def test_bad_amounts_are_refused(self):
-        for raw in ("0", "-5", "1.005", "abc", "", None, True, "NaN", "100000000", "1e30"):
+        for raw in ("0", "-5", "1.005", "abc", "", None, True, "NaN", "100000000", "1e30", "1_000", "1E+2", "１２", "5.", ".5", " 1.2.3"):
             with self.subTest(raw=raw):
                 response = self.top_up(raw)
                 self.assertEqual(response.status_code, 400, response.content)
                 self.assertIn("amount", response.json())
         self.assertFalse(CheckoutSession.objects.exists())
+
+    @override_settings(SIMULATED_COLLECTION_CHARGE_BP=-500)
+    def test_a_negative_charge_setting_never_over_credits(self):
+        body = self.top_up("50.00").json()
+        self.assertEqual((body["payment_processing"], body["you_pay"], body["balance"]), ("0.00", "50.00", "50.00"))
+
+    def test_a_session_whose_credit_disagrees_with_its_amount_credits_nothing(self):
+        from ledger import posting as lp
+        session = CheckoutSession.objects.create(
+            customer=self.customer, kind=CheckoutSession.WALLET_TOPUP, amount="10.00", processing_fee="0.00",
+            metadata={"credit_pesewas": 99999, "ledger": True},
+        )
+        with self.assertRaises(lp.PostingError):
+            record_top_up(session)
+        self.assertEqual(self.wallet(), 0)
+        self.assertFalse(Journal.objects.exists())
 
     def test_business_owners_cannot_top_up(self):
         response = client_for(self.owner, "business_owner").post("/api/wallet/top-up/", {"amount": "10"}, format="json")
