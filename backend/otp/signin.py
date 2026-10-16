@@ -20,7 +20,7 @@ from django.db.models import Q
 
 from accounts.authentication import issue_token
 
-from . import devices, flags
+from . import authenticator, devices, flags
 from .identity import CUSTOMER, STAFF, account_type_of, can_sign_in, channel_list, contacts, fingerprint, load, ref
 from .models import SIGN_IN, SIGN_UP, VerifiedContact
 
@@ -108,6 +108,9 @@ def sign_in_step(account, device_token=""):
         return None
     if kind == CUSTOMER and devices.is_trusted(account, device_token):
         return None
+    if kind != STAFF and authenticator.is_enabled(account):
+        # The authenticator app replaces the texted or emailed code (spec §9). Staff use accounts.two_factor.
+        return {"two_factor_required": True, "mfa_token": make_ticket(account, AUTHENTICATOR_STAGE, SIGN_IN)}
     return _challenge_or_no_channel(account, SIGN_IN)
 
 

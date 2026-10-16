@@ -170,3 +170,27 @@ class VerifiedContact(models.Model):
 
     def __str__(self):
         return f"{self.channel} of {self.account_type} {self.account_id}"
+
+
+class AccountAuthenticator(models.Model):
+    """An authenticator app (TOTP) for a customer or a business owner (spec §9: optional for anyone). Staff keep
+    accounts.StaffTwoFactor. Same storage as the staff one: the secret Fernet-encrypted with STAFF_SECRETS_KEY, a
+    pending secret until its first code, the last 30-second step used (no code works twice) and HMAC-hashed
+    single-use recovery codes."""
+
+    account_type = models.CharField(max_length=20, choices=[("customer", "Customer"), ("business_owner", "Business owner")])
+    account_id = models.PositiveIntegerField()
+    secret_encrypted = models.TextField(blank=True, default="")
+    pending_secret_encrypted = models.TextField(blank=True, default="")
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    last_used_step = models.BigIntegerField(default=0)
+    recovery_code_hashes = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["account_type", "account_id"], name="otp_one_authenticator_per_account"),
+        ]
+
+    def __str__(self):
+        return f"Authenticator for {self.account_type} {self.account_id}"

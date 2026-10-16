@@ -13,12 +13,17 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.two_factor import SecretUnreadable
 from staffsecurity import signin as signin_log
 from staffsecurity.models import StaffSignInRecord
 
-from . import devices, service, signin
+from . import audit, authenticator, devices, service, signin
 from .identity import CUSTOMER, STAFF, hint
+from .models import AUTHENTICATOR, SIGN_IN, OtpEvent
 from .service import OtpError
+
+UNREADABLE = "Your authenticator app can't be checked right now. Ask AshantiHub Support to help you sign in."
+WRONG_AUTHENTICATOR = "That code isn't right. Check your authenticator app and try again."
 
 
 def _body(request):
@@ -62,6 +67,27 @@ def _check_code(ticket, body, request):
     return None
 
 
+def _check_authenticator(account, body, request):
+    """None when the authenticator code (or a recovery code) is right, else the refusal to answer. Wrong codes count
+    towards the same 15-minute lock as texted ones."""
+    if service.is_locked(account):
+        return _refused(OtpError(service.TRY_LATER, "try_later", status_code=429))
+    recovery = _text(body.get("recovery_code"))
+    try:
+        if recovery:
+            ok = authenticator.use_recovery_code(account, recovery)
+        else:
+            ok = authenticator.verify(account, _text(body.get("code")) or "")
+    except SecretUnreadable:
+        return Response({"detail": UNREADABLE, "code": "authenticator_unreadable"}, status=400)
+    if not ok:
+        service.note_failure(account, purpose=SIGN_IN, channel=AUTHENTICATOR, request=request)
+        return _refused(OtpError(WRONG_AUTHENTICATOR, "wrong_code"))
+    audit.log(OtpEvent.VERIFIED, account=account, purpose=SIGN_IN, channel=AUTHENTICATOR,
+              note="recovery code" if recovery else "", request=request)
+    return None
+
+
 class SignInSendView(APIView):
     """Send, or resend, the sign-in or sign-up code on the chosen way (switching way recovers a lost code)."""
 
@@ -92,10 +118,13 @@ class SignInVerifyView(APIView):
 
     def post(self, request):
         body = _body(request)
-        ticket = signin.read_ticket(body.get("mfa_token"), signin.CODE_STAGE)
+        ticket = signin.read_ticket(body.get("mfa_token"))
         if ticket is None:
             return _expired()
-        refused = _check_code(ticket, body, request)
+        if ticket.stage == signin.AUTHENTICATOR_STAGE:
+            refused = _check_authenticator(ticket.account, body, request)
+        else:
+            refused = _check_code(ticket, body, request)
         if refused is not None:
             return refused
         payload = signin.signed_in_body(ticket.account, request)
