@@ -15,7 +15,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from . import fees, posting, settings_store
-from .models import Account, FulfilmentCheck, Journal, OrderFeeSnapshot
+from .models import Account, FulfilmentCheck, Journal, JournalLine, OrderFeeSnapshot
 from .money import to_pesewas
 
 
@@ -116,28 +116,40 @@ def has_open_dispute(order):
 
 def release_verified(order, now=None):
     """Release an order's held money to the vendor and the platform. Called when Support records a positive
-    verification; there is no timer. Returns the journal, or None when the ledger is off, the order has no positive
-    verification or an open dispute, or it was already released."""
+    verification; there is no timer. Returns the journal, or None when the ledger is off, the order is no longer paid
+    (cancelled), has no positive verification, an open dispute or a delivery-case refund waiting for approval, or was already released.
+
+    Refunds come first (ledger.refunds): each snapshot pays only the base and fee not yet refunded, a fully refunded one
+    (reversed) pays nothing, and the delivery fee released is what the order's Delivery payable still holds. A business
+    that waived the delivery fee through its free-delivery promo pays it from its Available right after (charge_waiver)."""
+    from orders.models import Order
+
     if not enabled():
         return None
     now = now or timezone.now()
     with transaction.atomic():
-        if Journal.objects.filter(key=release_key(order)).exists() or has_open_dispute(order):
+        if Journal.objects.filter(key=release_key(order)).exists() or has_open_dispute(order) or has_pending_refund(order):
+            return None
+        if not Order.objects.filter(pk=order.pk, status=Order.PAID).exists():
             return None
         if not FulfilmentCheck.objects.filter(order=order, outcome=FulfilmentCheck.MATCHES).exists():
             return None
         snapshots = list(
             OrderFeeSnapshot.objects.select_for_update(of=("self",))  # never lock the vendor's BusinessOwner row (deadlocks with a payment)
             .filter(order=order, released_at__isnull=True, reversed_at__isnull=True).select_related("business_owner")
+            .order_by("pk")  # the same order as ledger.refunds, so a release and a refund can never deadlock
         )
-        if not snapshots or not Journal.objects.filter(key=pay_key(order)).exists():
+        if not Journal.objects.filter(key=pay_key(order)).exists():
             return None
+        # No snapshot left (a scoped refund took every item) is not the end: the delivery fee is still held in the
+        # order's Delivery payable until the order is released or refunded whole, and is released below. A wholly
+        # refunded order holds nothing, so the posting is empty and this returns None.
         income = posting.account_for(Account.PLATFORM_FEE_INCOME)
         by_vendor = {}
         for snap in snapshots:
             entry = by_vendor.setdefault(snap.business_owner_id, {"owner": snap.business_owner, "base": 0, "fee": 0})
-            entry["base"] += snap.base_pesewas
-            entry["fee"] += snap.charged_pesewas
+            entry["base"] += snap.base_pesewas - snap.refunded_base_pesewas
+            entry["fee"] += snap.charged_pesewas - snap.refunded_fee_pesewas
 
         # The owner's order: AshantiHub first (fee, delivery), then each vendor, then any third-party rider (Stage 5).
         debits, credits = [], []
@@ -147,8 +159,8 @@ def release_verified(order, now=None):
                 debits.append(posting.debit(posting.account_for(Account.VENDOR_PENDING, entry["owner"]), entry["base"]))
             if entry["fee"] > 0:
                 credits.append(posting.credit(income, entry["fee"]))
-        delivery = to_pesewas(order.delivery_fee or 0)
-        if delivery:
+        delivery = posting.balance_of(Account.DELIVERY_PAYABLE, order)
+        if delivery > 0:
             debits.append(posting.debit(posting.account_for(Account.DELIVERY_PAYABLE, order), delivery))
             credits.append(posting.credit(posting.account_for(Account.PLATFORM_DELIVERY_INCOME), delivery))
         for vendor_id in sorted(by_vendor):
@@ -159,9 +171,83 @@ def release_verified(order, now=None):
         if len(debits) + len(credits) < 2:
             OrderFeeSnapshot.objects.filter(pk__in=[s.pk for s in snapshots]).update(released_at=now)
             return None  # nothing to post (every line was zero)
+        # One sorted pass over every account this transaction posts to, the promo charge's included (spec W7): the
+        # second posting (charge_waiver) must never take a new account lock while the release's are held.
+        posting.lock(*(line.account for line in debits + credits), *waiver_accounts(order))
         journal = posting.post(
             key=release_key(order), kind="order_release", lines=debits + credits,
             reference_type="orders.order", reference_id=str(order.pk), memo=f"Release of order #{order.pk}",
         )
         OrderFeeSnapshot.objects.filter(pk__in=[s.pk for s in snapshots]).update(released_at=now)
+        charge_waiver(order)
         return journal
+
+
+# --- the business's free-delivery promo (marketing.WaivedFeeCharge; spec §13 Stage 3 carry-forward) -----------------
+
+def waiver_key(order):
+    return f"order-waiver-{order.pk}"
+
+
+def waiver_return_key(order):
+    return f"order-waiver-return-{order.pk}"
+
+
+def waiver_accounts(order):
+    """The accounts charge_waiver would post to (none when no promo charge is owed), for the release's up-front lock."""
+    from marketing.models_waivers import WaivedFeeCharge
+
+    charge = WaivedFeeCharge.objects.filter(order=order, status=WaivedFeeCharge.OWED).select_related("business_owner").first()
+    if charge is None or to_pesewas(charge.amount) <= 0:
+        return ()
+    return (posting.account_for(Account.VENDOR_AVAILABLE, charge.business_owner), posting.account_for(Account.PLATFORM_DELIVERY_INCOME))
+
+
+def waiver_return_accounts(order):
+    """The accounts return_waiver would post to (none when no promo was charged), for a whole refund's up-front lock."""
+    line = JournalLine.objects.filter(journal__key=waiver_key(order), side=JournalLine.DEBIT).select_related("account").first()
+    return () if line is None else (line.account, posting.account_for(Account.PLATFORM_DELIVERY_INCOME))
+
+
+def has_pending_refund(order):
+    """A delivery case on this order whose refund waits for the Super Admin (delivery.refund_request). The case is
+    already final, so has_open_dispute does not see it, but its lines must never be paid to the vendor first."""
+    from approvals.models import ApprovalRequest
+    from disputes.models import Dispute
+
+    ids = [str(pk) for pk in Dispute.objects.filter(order=order).values_list("pk", flat=True)]
+    return bool(ids) and ApprovalRequest.objects.filter(
+        kind="delivery.refund_request", status=ApprovalRequest.PENDING, target_type="disputes.dispute", target_id__in=ids,
+    ).exists()
+
+
+def charge_waiver(order):
+    """A business that waived the delivery fee through its free-delivery promo pays it at release: Dr its Available
+    (which may go negative), Cr platform delivery income. Only a charge still owed is taken (a cancel or a whole refund
+    reverses it first); idempotent on the key. The customer never paid it, so no refund ever returns it to them."""
+    from marketing.models_waivers import WaivedFeeCharge
+
+    charge = WaivedFeeCharge.objects.filter(order=order, status=WaivedFeeCharge.OWED).select_related("business_owner").first()
+    amount = to_pesewas(charge.amount) if charge is not None else 0
+    if amount <= 0:
+        return None
+    return posting.post(
+        key=waiver_key(order), kind="order_waiver_charge",
+        lines=[
+            posting.debit(posting.account_for(Account.VENDOR_AVAILABLE, charge.business_owner), amount),
+            posting.credit(posting.account_for(Account.PLATFORM_DELIVERY_INCOME), amount),
+        ],
+        reference_type="orders.order", reference_id=str(order.pk), memo=f"Free-delivery promo on order #{order.pk}, paid by the business",
+    )
+
+
+def return_waiver(order):
+    """Give a charged promo back to the business when the order is refunded whole (it owes nothing for a refunded order)."""
+    line = JournalLine.objects.filter(journal__key=waiver_key(order), side=JournalLine.DEBIT).select_related("account").first()
+    if line is None:
+        return None
+    return posting.post(
+        key=waiver_return_key(order), kind="order_waiver_return",
+        lines=[posting.debit(posting.account_for(Account.PLATFORM_DELIVERY_INCOME), line.amount), posting.credit(line.account, line.amount)],
+        reference_type="orders.order", reference_id=str(order.pk), memo=f"Free-delivery promo on order #{order.pk} returned (order refunded)",
+    )

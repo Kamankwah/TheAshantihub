@@ -12,8 +12,9 @@ A refund always goes to the customer's AshantiHub wallet and is recorded as an `
   taken and reaches it exactly when the whole base is refunded. That frees the lifetime cap (fees.charged_to_date), and
   release pays only what is left. A snapshot refunded in full gets `reversed_at`.
 * A partial refund of R comes out of the item lines in proportion to what is left of each (largest remainder); the
-  customer gets R. The delivery fee comes back only with the whole order, so no part of it is ever left held with no
-  way out. The refund that empties the order ("whole") also returns the rest of any coupon to AshantiHub (Cr promo
+  customer gets R. The delivery fee comes back only with the whole order. A scoped refund that takes every item
+  leaves it held until the order is released (escrow.release_verified then releases the Delivery payable balance) or
+  refunded whole. The refund that empties the order ("whole") also returns the rest of any coupon to AshantiHub (Cr promo
   subsidy), so the customer never gets back more than they paid.
 * The provider's collection charge ("payment processing") is not refunded, except when staff say AshantiHub or a vendor
   was at fault (`refund_processing=True`): AshantiHub then bears it (Dr provider fees, Cr wallet). A partial refund
@@ -167,10 +168,12 @@ def refund_order(order, amount_pesewas=None, *, source, by=None, owner_ids=None,
         refund = _post(
             order, snapshots, shares, customer=customer, delivery=delivery, subsidy=subsidy, processing=processing,
             whole=whole, source=source, by=by, note=note, now=now,
+            extra_locks=escrow.waiver_return_accounts(order) if whole else (),
         )
         if whole:
             from marketing.waivers import reverse_for_order
 
+            escrow.return_waiver(order)               # charged at release: the business owes nothing for a refunded order
             reverse_for_order(order, "order_refunded")
         return refund
 

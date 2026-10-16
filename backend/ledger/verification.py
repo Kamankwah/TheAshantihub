@@ -64,8 +64,8 @@ def record(order, staff, outcome, *, note="", customer_confirmed_by_phone=False,
         if not handed_over(order, check):
             raise VerificationError("This order has not been delivered or collected yet.")
         if outcome == FulfilmentCheck.MATCHES:
-            if escrow.has_open_dispute(order):
-                raise VerificationError("A dispute is open on this order. It must be settled first.")
+            if escrow.has_open_dispute(order) or escrow.has_pending_refund(order):
+                raise VerificationError("A dispute, or a refund waiting for approval, is open on this order. It must be settled first.")
             if customer_confirmed_by_phone and check.phone_confirmed_at is None:
                 check.phone_confirmed_at = now
             if not customer_confirmed(order, check):
@@ -99,7 +99,8 @@ def awaiting(now=None):
     now = now or timezone.now()
     limit = timedelta(hours=settings_store.current("verification_overdue_hours", now))
     orders = (
-        Order.objects.filter(status=Order.PAID, fee_snapshots__released_at__isnull=True).distinct()
+        # A snapshot neither released nor refunded in full: a fully refunded order has nothing left to verify.
+        Order.objects.filter(status=Order.PAID, fee_snapshots__released_at__isnull=True, fee_snapshots__reversed_at__isnull=True).distinct()
         .select_related("customer").prefetch_related("items__listing__business_owner").order_by("placed_at", "id")
     )
     rows = []
