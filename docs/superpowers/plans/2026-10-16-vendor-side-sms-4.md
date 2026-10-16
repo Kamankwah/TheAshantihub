@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` — §1 rows 2, 3, 6, 17; §2.1 (Vendor Pending / Available); §2.2 steps 1, 2, 4; §3.1 (tiers), §3.2 (base, cap, snapshot; "Platform fees are never shown to the customer"), §3.3 (changes apply only to later orders); §4.1 (release follows Support's call); **§6 Vendor wallets** (the two views, SMS on every paid order and on release, optional daily digest, in-app copy always kept, SMS failure never blocks payment, the transactions page with cap and export); §9 (the SMS-spend alert); §11 step 4; §12 (digest thresholds owed by the owner); §13. Deviations are in §0 below; Task 8 records them in the spec.
 
-**Depends on:** Stage 1 (ledger), Stage 2 (OTP), Stage 3a (wallets, payments, refunds) and Stage 3b (destinations, withdrawals, reconciliation), all on `origin/righteoushack` (this branch, `feature/vendor-side-4`, starts at `d26dd54`). Uses from them: `ledger.posting` (`balance_of`, `account_for`, `post`), `ledger.fees` (`quote`, `rule_set_in_force`, `charged_to_date`, `FeeError`), `ledger.settings_store.current`, `ledger.escrow` (`enabled`, `pay_key`, `release_key`, `waiver_key`, `record_order_payment`, `release_verified`), `ledger.verification` (`handed_over`, `record`), `ledger.refunds.refund_order`, `wallets.services.money`, `wallets.views` (`ledger_off`, `Pagination`, `parse_amount`, `AmountError`), `wallets.models.Withdrawal`, `otp.senders` (`deliver`, `Delivery`, `sms_outbox`), `otp.spend` (`check_quietly`, `texts_sent_on`, `ALERT_KIND`), `otp.identity` (`contacts`, `ref`), `accounts.phones.mask_phone`, `accounts.views.IsBusinessOwner`, `notifications.services.notify_business_owner`. **Plan 1b** (services, events and stays; branch `feature/ledger-services-1b`) is planned in parallel and is **not** needed: this plan reads and texts product orders only, and lists where booking sales slot in (§0 V15; spec gate (lxxi)).
+**Depends on:** Stage 1 (ledger), Stage 2 (OTP), Stage 3a (wallets, payments, refunds) and Stage 3b (destinations, withdrawals, reconciliation), all on `origin/righteoushack` (this branch, `feature/vendor-side-4`, starts at `d26dd54`). Uses from them: `ledger.posting` (`balance_of`, `account_for`, `post`), `ledger.fees` (`quote`, `rule_set_in_force`, `charged_to_date`, `FeeError`), `ledger.settings_store.current`, `ledger.escrow` (`enabled`, `pay_key`, `release_key`, `waiver_key`, `record_order_payment`, `release_verified`), `ledger.verification` (`handed_over`, `record`), `ledger.refunds.refund_order`, `wallets.services.money`, `wallets.views` (`ledger_off`, `Pagination`, `parse_amount`, `AmountError`), `wallets.models.Withdrawal`, `otp.senders` (`deliver`, `Delivery`, `sms_outbox`), `otp.spend` (`check_quietly`, `texts_sent_on`, `ALERT_KIND`), `otp.identity` (`contacts`, `ref`), `accounts.phones.mask_phone`, `accounts.views.IsBusinessOwner`, `notifications.services.notify_business_owner`. **Plan 1b** (services, events and stays; branch `feature/ledger-services-1b`) is planned in parallel and is **not** needed: this plan reads and texts product orders only, and lists where booking sales slot in (§0 V15; spec gate (lxxii)). One soft dependency: `vendor.charged_categories()` (the fee page's `charged` flags) checks whether Plan 1b's `ledger.models.BookingSale` exists, so the fee page follows Plan 1b the moment it merges (in either order); nothing else in this plan reads it.
 
 **Commits:** every commit step ends with the two attribution trailers shown (`git commit ... --trailer ...`, git 2.32 or later):
 `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>` and `Claude-Session: https://claude.ai/code/session_01HDHNosHkqu4Wwocp7a2c8j`. An executing session that was given its own attribution lines uses those instead.
@@ -29,18 +29,18 @@ How the vendor side works today (surveyed 2026-10-16):
 | V1 | Spec sections | The vendor dashboard and texts are **spec §6** (the brief's "§9" is the OTP section; what Stage 4 takes from §9 is its SMS-spend alert). §6's "Transactions page" is the sale rows plus withdrawals; its "cap used and remaining" is in the overview and the fee endpoint. | Spec §6 and §9 as written. |
 | V2 | Where the code lives | `wallets/vendor.py` (read model), `wallets/vendor_texts.py` (text outbox), `wallets/views_vendor.py` at `/api/wallet/vendor/`; models `VendorText` and `VendorPreference` appended to `wallets/models.py` (migration `0005_vendor_texts`). Hooks: `orders/alerts.py` (paid) and `ledger/escrow.release_verified` (release). | `/api/wallet/` is the holder's money API (3a). The paid alert and the release each have one door. Plan 1b edits `wallets/services.py`, `payments/services.py`, `ledger/fees.py` and `wallets/reconciliation.py`; this plan edits none of them, so the two branches merge cleanly. |
 | V3 | Where the figures come from | Sale rows: the business's `OrderFeeSnapshot`s summed per order (base, fee charged, refunded base and fee, released / reversed stamps) and its owed `WaivedFeeCharge`. Daily summary: `JournalLine`s on the business's own Pending and Available accounts, folded by journal kind. Balances: the accounts. Never today's fee rules. | §3.2 step 4 ("release reads the snapshot"); §6 "ledger-backed statement". The snapshot already carries `refunded_base_pesewas` / `refunded_fee_pesewas` (3a W4). |
-| V4 | Sale status | `awaiting_call` while any of the business's snapshots on the order is neither released nor reversed (its label says "Waiting for delivery or collection", "Waiting for Support's call to the customer", or "On hold while AshantiHub checks the order" while a dispute is open); `released` once every snapshot left was released; `refunded` once every snapshot is reversed. A partial refund keeps the status and shows `refunded`; the fee and `net` show what is left. Export words: Pending / Available / Refunded, and Withdrawn / Withdrawal in progress / Returned to Available for withdrawals. | §4.1 (no timer; release only on Support's call), §6 status words; refunds as 3a W4 (`fee_share`, `reversed_at` when whole). |
+| V4 | Sale status | `awaiting_call` while any of the business's snapshots on the order is neither released nor reversed (its label says "Waiting for delivery or collection", "Waiting for Support's call to the customer", or "On hold while AshantiHub checks the order" while a dispute is open or a delivery-case refund waits for approval); `released` once every snapshot left was released; `refunded` once every snapshot is reversed. A partial refund keeps the status and shows `refunded`; the fee and `net` show what is left. Export words: Pending / Available / Refunded, and Withdrawn / Withdrawal in progress / Returned to Available for withdrawals. | §4.1 (no timer; release only on Support's call), §6 status words; refunds as 3a W4 (`fee_share`, `reversed_at` when whole). |
 | V5 | Privacy | No customer name, phone or address in any sale row, daily summary, export or text. Rows list the business's own item lines only; the export holds no free text at all. An open dispute shows only "On hold while AshantiHub checks the order". | `GET /api/orders/owner/` already gives the name and address needed for fulfilment, never the phone (backend/CLAUDE.md owner-scoped isolation); a money screen needs neither. |
 | V6 | Who sees fees | Business owners only (`IsBusinessOwner`): a customer, whatever their id, and a staff member get 403. The customer's checkout answer, order detail and notices are unchanged. Staff already have `/api/ledger/fees/`. | §3.2 "Platform fees are never shown to the customer." |
-| V7 | Texts: outbox and channel | One `VendorText` per (order, business) paid, per (order, business) released, per (business, day) digest, keyed so it is written once. Queued inside the money transaction in a savepoint that never raises; sent after commit (`transaction.on_commit(..., robust=True)` → Celery) through `otp.senders.deliver`; claimed by one conditional UPDATE that pushes `next_attempt_at` out by a 10-minute lease (never sent twice at once; a crash mid-send is retried after the lease); retried after 5 min, 15 min, 1 h and 4 h, then `failed`; no usable Ghana mobile number → `no_phone`. **Never an `OtpEvent`.** | §6 "SMS failure never blocks payment (queued, retried)". An `OtpEvent` SENT row counts toward the 20-an-hour per-phone code ceiling: a busy shop's order texts would lock the business out of its own sign-in codes. |
-| V8 | Spend guard | `otp.spend.texts_sent_on` counts code texts plus sent business texts, so the one daily alert watches all SMS spend; its wording and the policy label say so. Nothing is blocked; no throttle, no quiet hours. | §9 "an SMS-spend alert"; §6 names no throttle or quiet hours (brief: only if the spec says). |
+| V7 | Texts: outbox and channel | One `VendorText` per (order, business) paid, per (order, business) released, per (business, day) digest, keyed so it is written once. Queued inside the money transaction in a savepoint that never raises; sent after commit (`transaction.on_commit(lambda ..., robust=True)` → Celery; the hand-off catches and logs its own errors) through `otp.senders.deliver`; claimed by one conditional UPDATE that pushes `next_attempt_at` out by a 10-minute lease (never sent twice at once; a crash mid-send is retried after the lease); tried at most 5 times (retries after 5 min, 15 min, 1 h and 4 h), then `failed`; no confirmed Ghana mobile number (the login phone is not an `otp.VerifiedContact`) → `no_phone`. **Never an `OtpEvent`.** | §6 "SMS failure never blocks payment (queued, retried)". An `OtpEvent` SENT row counts toward the 20-an-hour per-phone code ceiling: a busy shop's order texts would lock the business out of its own sign-in codes. |
+| V8 | Spend guard | `otp.spend.texts_sent_on` counts code texts plus sent business texts, so the one daily alert watches all SMS spend; its wording and the policy label say so, and its body gives the code count and the business-text count separately. Nothing is blocked; no throttle, no quiet hours. | §9 "an SMS-spend alert"; §6 names no throttle or quiet hours (brief: only if the spec says). |
 | V9 | Text wording | Plain GSM-7 characters and "GHS" (never "GH₵"), at most 306 characters (two parts). Paid: order reference, item subtotal, platform fee, any free-delivery promo, amount due. Release: what reached Available, the fee taken, any promo taken after. Digest: orders, items sold, released, fees, refunds, balances now. | §6 "reference, item subtotal, platform fee, amount due". "₵" is not GSM-7: one in a text turns it into UCS-2 (70 characters a part), about three times the cost. |
 | V10 | In-app copy | Paid: the existing "New order #N" notice also carries the fee line and is the text's copy (one notice per order, not two). Release and digest: a `vendor_money` notice. The copy is written even when the text cannot be queued or sent. | §6 "in-app copy always kept". `Notification.kind` is a free-form slug (its model docstring), so no migration. |
 | V11 | Digest | Optional, off by default, per business (`VendorPreference.daily_digest`); queued at 07:00 Accra for the day before, only when money moved that day, once per day (keyed). | §6 "Optional daily digest"; §12 leaves "SMS digest thresholds" to the owner (A5). |
-| V12 | Not built | No low-balance, negative-Available, refund or withdrawal text (3b's in-app withdrawal notices stay); no staff outbox screen. | The spec names none (§6, §9); brief: "low-balance per spec". Owner question (A6; gate (lxix)). |
-| V13 | Fee transparency | `GET vendor/fees/`: the approved tiers in force per category with their start, the next approved change with its start (never a proposal still waiting), `charged` (true only for product orders today), how the fee base works, the cap used and left, and an optional server-side quote (`?amount=&category=`, cap counted). | §3.1 tiers; §3.2 base and cap; §3.3 changes apply only later. A server quote means no screen re-implements the band maths (and its half-up rounding). |
-| V14 | Export | Synchronous CSV at `vendor/statement/export/` (no `?format=`, DRF's renderer override, backend/CLAUDE.md), the last 30 days by default, at most 366. | Same shape as `OwnerSalesReportExportView`; no free text, so no spreadsheet-formula risk. |
-| V15 | Bookings | Product orders only. Slot-in points once Plan 1b records bookings: a second row source with `kind: "booking"` in `vendor.sale_groups` / `rows` / `statement`, the `booking_*` journal kinds in `vendor.FOLD`, services and events in `vendor.CHARGED`, booking texts in `vendor_texts`. Until then booking journals land in the daily summary's `other` column, so its columns still add up. | Brief; Plan 1b's `ledger.BookingSale` is a separate model (its S1). Gate (lxxi). |
+| V12 | Not built | No low-balance, negative-Available, refund or withdrawal text (3b's in-app withdrawal notices stay); no staff outbox screen. | The spec names none (§6, §9); brief: "low-balance per spec". Owner question (A6; gate (lxx)). |
+| V13 | Fee transparency | `GET vendor/fees/`: the approved tiers in force per category with their start, the next approved change with its start (never a proposal still waiting), `charged` (product orders; services and events once Plan 1b's booking sales exist, `vendor.charged_categories()`), how the fee base works, the cap used and left, and an optional server-side quote (`?amount=&category=`, cap counted). | §3.1 tiers; §3.2 base and cap; §3.3 changes apply only later. A server quote means no screen re-implements the band maths (and its half-up rounding). |
+| V14 | Export | Synchronous CSV at `vendor/statement/export/` (no `?format=`, DRF's renderer override, backend/CLAUDE.md), the last 30 days by default, at most 366. | Same shape as `OwnerSalesReportExportView`; no free text, so no spreadsheet-formula risk (the text cells still go through `reports.exports.escape_cell`, as the repo's other exports do). |
+| V15 | Bookings | Product orders only. Slot-in points once Plan 1b records bookings: a second row source with `kind: "booking"` in `vendor.sale_groups` / `rows` / `statement`, the `booking_*` journal kinds in `vendor.FOLD`, booking texts in `vendor_texts` (services and events turn `charged` on the fee page by themselves once `ledger.BookingSale` exists: `vendor.charged_categories()`). Until then booking journals land in the daily summary's `other` column, so its columns still add up. | Brief; Plan 1b's `ledger.BookingSale` is a separate model (its S1). Gate (lxxii). |
 | V16 | Ledger off | Every vendor endpoint answers `409 ledger_off`; no text is queued; the new-order notice is exactly as before; the send job still sends texts already queued (it never queues one); the digest job is a no-op. | 3a/3b switch rule; a text exists only if the ledger was on when it was queued. |
 
 ## Global Constraints
@@ -54,28 +54,28 @@ How the vendor side works today (surveyed 2026-10-16):
 - **Never deploy and never touch production or staging.** No frontend: the screens are a later Plan 4F.
 - Commands, from `/home/righteoushack/projects/TheAshantihub/.worktrees/vendor4`: `docker compose -p vend1 run --rm web python manage.py test <label> --noinput`. Never two docker commands at once.
 - Migrations (check with `ls backend/wallets/migrations`): today's wallets leaf is `0004_reconciliation_unavailable`. This plan adds one generated migration, `wallets/0005_vendor_texts.py` (Task 5). No `ledger`, `accounts` or `notifications` migration.
-- Doc edits stay merge-safe with Plan 1b: append only; this plan's spec §13 items are numbered from **(lxvi)**; do not edit the spec's Status / Scope lines or the root `CLAUDE.md` (Plan 1b rewrites those).
+- Doc edits stay merge-safe with Plan 1b: append only; this plan's spec §13 items are numbered from **(lxvii)** (Plan 1b's block ends at (lxvi)); do not edit the spec's Status / Scope lines or the root `CLAUDE.md` (Plan 1b rewrites those).
 - Style: module docstrings, no type annotations, tests in `wallets/tests/`, plain words in user-facing messages, GH₵ in API messages and GHS in texts.
 
 ## Review Focus
 
 1. **Another business's money or a customer's details reaching a business, or the fee reaching a customer** — a shared order shows each business only its own lines, fee and texts; no customer name, phone or address in any vendor row, summary, export or text; a customer whose id equals the business's id gets 403 and their wallet never counts in the business's summary; the checkout answer, order detail and customer notices never say "platform". Pinned in Task 1 (`test_review_focus_a_shared_order_shows_each_business_only_its_own_lines`, `test_review_focus_no_customer_detail_reaches_a_business`, `test_review_focus_a_customer_with_the_same_id_or_staff_are_refused`), Task 2 (`test_review_focus_only_the_businesss_own_accounts_count`), Task 3 (`test_review_focus_only_the_businesss_own_rows_and_no_free_text`), Task 4 (`test_review_focus_customers_and_staff_never_see_the_fees`), Task 6 (`test_review_focus_each_business_is_texted_its_own_subtotal_fee_and_amount_due`, `test_review_focus_the_customer_never_sees_the_platform_fee`, `test_review_focus_a_shared_order_texts_each_business_its_own_release`) and Task 7 (`test_review_focus_a_customer_with_the_same_id_cannot_read_or_change_them`).
-2. **A text that cannot be sent** — the queue failing, the provider down, no usable phone, two workers at once, a worker dying mid-send — never stops the payment or the release, keeps the in-app copy, is retried with backoff and then given up, is never sent twice at once, and never uses up the business's own code send limits. Pinned in Task 5 (`test_review_focus_a_text_that_cannot_be_queued_never_raises`, `test_review_focus_a_failed_send_is_retried_with_backoff_then_given_up`, `test_review_focus_no_usable_phone_is_final_and_the_in_app_copy_stays`, `test_review_focus_a_send_in_progress_is_not_picked_up_again`, `test_review_focus_business_texts_never_use_up_the_code_send_limits`), Task 6 (`test_review_focus_a_text_that_cannot_be_queued_never_stops_the_payment`, `test_review_focus_a_provider_that_is_down_leaves_the_text_queued_for_a_retry`, `test_review_focus_a_text_that_cannot_be_queued_never_stops_a_release`) and Task 7 (`test_review_focus_a_business_with_no_ghana_mobile_is_told_plainly`).
-3. **Partial and late refunds** — a sale refunded in part before or after release shows the refunded amount and the fee and net left; a whole refund shows `refunded` with nothing due; a late refund can leave Available negative with nothing withdrawable; Pending equals the sum of the waiting rows; the daily columns add up to the change in the balances. Pinned in Task 1 (`test_review_focus_a_partial_refund_after_release_shows_what_is_left`, `test_review_focus_a_whole_refund_shows_refunded_with_nothing_due`, `test_review_focus_pending_is_the_sum_of_the_rows_still_waiting`, `test_a_late_refund_can_leave_available_negative_and_nothing_withdrawable`) and Task 2 (`test_review_focus_the_columns_add_up_to_the_change_in_the_balances`).
-4. **Day boundaries and ranges** — a sale at 23:59 and its release at 00:00 Accra time fall on their own days; a digest covers exactly yesterday; a malformed, reversed or too-long range is a 400. Pinned in Task 2 (`test_review_focus_a_sale_before_midnight_and_its_release_after_fall_on_their_own_days`, `test_review_focus_bad_or_too_long_ranges_are_refused`), Task 3 (`test_review_focus_bad_ranges_are_refused`) and Task 7 (`test_review_focus_yesterdays_digest_goes_once_to_a_business_that_asked`).
+2. **A text that cannot be sent** — the queue failing, the provider down, no usable phone, two workers at once, a worker dying mid-send — never stops the payment or the release, keeps the in-app copy, is retried with backoff and then given up, is never sent twice at once, and never uses up the business's own code send limits. Pinned in Task 5 (`test_review_focus_a_text_that_cannot_be_queued_never_raises`, `test_review_focus_a_worker_that_cannot_be_reached_never_breaks_the_commit`, `test_review_focus_a_phone_nobody_confirmed_gets_no_text_and_the_in_app_copy_stays`, `test_review_focus_a_worker_finishing_late_cannot_undo_a_text_another_worker_sent`, `test_review_focus_a_failed_send_is_retried_with_backoff_then_given_up`, `test_review_focus_no_usable_phone_is_final_and_the_in_app_copy_stays`, `test_review_focus_a_send_in_progress_is_not_picked_up_again`, `test_review_focus_business_texts_never_use_up_the_code_send_limits`), Task 6 (`test_review_focus_a_text_that_cannot_be_queued_never_stops_the_payment`, `test_review_focus_a_provider_that_is_down_leaves_the_text_queued_for_a_retry`, `test_review_focus_a_text_that_cannot_be_queued_never_stops_a_release`) and Task 7 (`test_review_focus_a_business_with_no_ghana_mobile_is_told_plainly`).
+3. **Partial and late refunds** — a sale refunded in part before or after release shows the refunded amount and the fee and net left; a whole refund shows `refunded` with nothing due; a late refund can leave Available negative with nothing withdrawable; Pending equals the sum of the waiting rows; the daily columns add up to the change in the balances. Pinned in Task 1 (`test_review_focus_a_partial_refund_after_release_shows_what_is_left`, `test_review_focus_a_whole_refund_shows_refunded_with_nothing_due`, `test_review_focus_pending_is_the_sum_of_the_rows_still_waiting`, `test_a_late_refund_can_leave_available_negative_and_nothing_withdrawable`, `test_review_focus_a_delivery_case_refund_waiting_for_approval_is_on_hold`: a sale shows "On hold", not "Waiting for Support's call", while a delivery-case refund waits for approval) and Task 2 (`test_review_focus_the_columns_add_up_to_the_change_in_the_balances`).
+4. **Day boundaries and ranges** — a sale at 23:59 and its release at 00:00 Accra time fall on their own days; a digest covers exactly yesterday; a malformed, reversed, too-long or out-of-range (before 2020, after 2100) date is a 400, never a 500. Pinned in Task 2 (`test_review_focus_a_sale_before_midnight_and_its_release_after_fall_on_their_own_days`, `test_review_focus_bad_or_too_long_ranges_are_refused`), Task 3 (`test_review_focus_bad_ranges_are_refused`) and Task 7 (`test_review_focus_yesterdays_digest_goes_once_to_a_business_that_asked`).
 5. **Switches-off regression** — with the ledger off every new endpoint answers `ledger_off`, nothing is texted, the new-order notice is exactly as before, and the digest job does nothing. Pinned in Tasks 1–4 and 7 (`LedgerOffTests`), Task 6 (`test_review_focus_with_the_ledger_off_nothing_is_texted_and_the_notice_is_as_before`) and Task 7 (`test_the_digest_job_is_a_no_op_with_the_ledger_off_and_both_jobs_are_scheduled`).
 
 ## Assumptions made (decided here, cheap to change — for the owner to confirm)
 
 - **A1** Order and release texts go to every business with a ledger-recorded sale and cannot be turned off (§6: "every paid order"); the daily digest is opt-in, off by default.
-- **A2** Texts go to the business's login phone (where its sign-in codes go). A business whose login phone is not a Ghana mobile gets none; its in-app copy is kept and its texts screen says so.
+- **A2** Texts go to the business's login phone (where its sign-in codes go). Only when that phone is a confirmed contact (`otp.VerifiedContact`: a code sent to it was accepted, the rule Stage 2 sets for lock notices), so a mistyped or recycled number never receives a shop's order amounts. A business whose login phone is not a Ghana mobile, or was never confirmed, gets none; its in-app copy is kept and its texts screen says so.
 - **A3** Texts use "GHS" and plain characters, at most two SMS parts, never "GH₵" (cost).
 - **A4** No quiet hours and no per-business throttle; business texts count toward the existing daily SMS-spend alert (default 500 texts a day) together with code texts; nothing is ever blocked.
 - **A5** The digest goes at 07:00 Accra for the day before, only when money moved that day (the "digest thresholds" §12 leaves to the owner: none).
 - **A6** No text on refunds, a negative Available, withdrawals or a low balance (the spec names none).
-- **A7** A failed text is retried after 5 min, 15 min, 1 h and 4 h, then given up; a worker crash mid-send may send it twice (at least once, never lost).
+- **A7** A failed text is tried at most 5 times (retries after 5 min, 15 min, 1 h and 4 h), then given up; a worker crash mid-send may send it twice (at least once, never lost).
 - **A8** Vendor money screens show no customer details at all; an open dispute shows only "On hold while AshantiHub checks the order".
-- **A9** The fee page shows the approved tiers in force and the next approved change with its start, never a proposal waiting for approval; services and events tables are shown marked not charged yet (only product orders are charged until bookings are recorded).
+- **A9** The fee page shows the approved tiers in force and the next approved change with its start, never a proposal waiting for approval; services and events tables are shown marked not charged until Plan 1b's booking sales exist (`vendor.charged_categories()` flips them).
 - **A10** The paid order's "New order #N" notice carries the platform fee and amount due instead of a second notice.
 - **A11** A suspended business still gets money texts (its money still moves).
 
@@ -91,7 +91,7 @@ Create:
 Modify:
 - `backend/wallets/models.py` (`VendorText`, `VendorPreference`), `backend/wallets/urls.py`, `backend/wallets/tasks.py`
 - `backend/orders/alerts.py` (paid texts and the in-app copy), `backend/ledger/escrow.py` (`release_verified`: release texts)
-- `backend/otp/spend.py` (count business texts), `backend/staffsecurity/policy.py` (the alert's label)
+- `backend/otp/spend.py` (count business texts), `backend/staffsecurity/policy.py` (the alert's label), `backend/ashantihub/sentry.py` (`phone` in the frame-locals denylist)
 - `backend/ashantihub/settings.py` (two beat entries)
 - `backend/CLAUDE.md`, `docs/IMPLEMENTATION_INSTRUCTIONS.md`, `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` (Task 8)
 
@@ -104,7 +104,7 @@ API added or changed:
 | `GET /api/wallet/vendor/daily/?date_from=&date_to=` | owner | → `{from, to, days: [{day, orders, sold, fees, released, refunded, free_delivery_promo, withdrawn, other, net_change}], totals: {...}}`, newest first, only days with movement; 400 |
 | `GET /api/wallet/vendor/statement/export/?date_from=&date_to=` | owner | → `text/csv` attachment `ashantihub-statement-<from>-to-<to>.csv`; 400 |
 | `GET /api/wallet/vendor/fees/?amount=&category=` | owner | → `{categories: [{category, label, applies_to, charged, in_force_from, bands: [{from, to, percent, flat, fee}], next: {from, bands} \| null}], fee_base, fee_cap, quote?: {category, amount, fee, you_receive, charged}}`; 400 `{amount}` / `{category}` |
-| `GET /api/wallet/vendor/texts/` | owner | → `{order_texts: true, daily_digest, phone: "020 *** 0001" \| null, recent: [{id, kind, order, day, body, status, status_label, to, created_at, sent_at}]}` |
+| `GET /api/wallet/vendor/texts/` | owner | → `{order_texts: true, daily_digest, phone: "020 *** 0001" \| null (only a confirmed number), note: null \| "why no texts go", recent: [{id, kind, order, day, body, status, status_label, to, created_at, sent_at}]}` |
 | `PATCH /api/wallet/vendor/texts/` | owner | `{daily_digest: true\|false}` → as GET; 400 `{daily_digest}` |
 | all of the above | customer, staff | 403; with the ledger off `409 {"code": "ledger_off"}` |
 | paid order (checkout, Hubtel webhook) | changed | ledger on: each business's "New order #N" notice also says the platform fee and the amount due, and a text is queued to it |
@@ -127,7 +127,7 @@ API added or changed:
   - `vendor.status_of(group) -> str`; `vendor.rows(owner, groups) -> list[dict]` (the API row shape in the table above)
   - `vendor.fee_cap(owner, now=None) -> {limit, used, remaining}`; `vendor.overview(owner, now=None) -> dict`
   - `wallets.views_vendor.VendorOverviewView`, `VendorSalesView`; URLs `wallet-vendor`, `wallet-vendor-sales`
-  - test fixtures `wallets.tests.vendor_helpers`: `VendorBase` (`self.kofi`, `self.esi`: `Shop`; `self.buyer`; `twin()`), `Shop(name, phone)` (`.owner`, `.client`, `.listing(price)`, `.get(url, params=None)`), `signed_in(account, kind)`, `customer(phone=..., name=...)`, `paid_order(buyer, lines, *, delivery=None, record=True)`, `deliver(order)`, `release(order)`, `waived(owner, order, amount)`, `hold(owner, pesewas, key)`
+  - test fixtures `wallets.tests.vendor_helpers`: `VendorBase` (`self.kofi`, `self.esi`: `Shop`; `self.buyer`; `twin()`), `Shop(name, phone)` (`.owner`, `.client`, `.listing(price)`, `.get(url, params=None)`; its login phone is a confirmed `VerifiedContact`), `signed_in(account, kind)`, `customer(phone=..., name=...)`, `paid_order(buyer, lines, *, delivery=None, record=True)`, `deliver(order)`, `release(order)`, `waived(owner, order, amount)`, `hold(owner, pesewas, key)`
 
 - [ ] **Step 1: Write the fixtures** — `backend/wallets/tests/vendor_helpers.py`
 
@@ -151,6 +151,8 @@ from listings.models import Category, Listing, Zone
 from marketing.models_waivers import DeliveryWaiver, WaivedFeeCharge
 from orders.models import DeliveryAssignment, Order, OrderItem
 from otp import senders
+from otp.identity import contacts
+from otp.models import SMS, VerifiedContact
 
 
 def signed_in(account, kind):
@@ -164,6 +166,10 @@ class Shop:
 
     def __init__(self, name, phone):
         self.owner = BusinessOwner.objects.create(full_name=name, login_phone=phone, password_hash="x")
+        # The login phone is a confirmed contact (a code to it was accepted): money texts only go to those.
+        VerifiedContact.objects.create(
+            account_type="business_owner", account_id=self.owner.pk, channel=SMS, destination=contacts(self.owner)[SMS],
+        )
         self.client = signed_in(self.owner, "business_owner")
         self.count = 0
 
@@ -265,6 +271,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.testing import make_staff, staff_token
+from approvals.models import ApprovalRequest
 from disputes.models import Dispute
 from ledger import refunds
 from ledger.models import MoneySetting
@@ -352,6 +359,25 @@ class SaleRowTests(VendorBase):
             ("awaiting_call", "On hold while AshantiHub checks the order", True),
         )
         self.assertNotIn("Torn", str(row))
+
+    def test_review_focus_a_delivery_case_refund_waiting_for_approval_is_on_hold(self):
+        order = paid_order(self.buyer, [(self.kofi.listing("120.00"), 1)])
+        deliver(order)
+        dispute = Dispute.objects.create(
+            order=order, raised_by=self.buyer, reason=Dispute.ORDER_ISSUE, status=Dispute.FINAL_STATUSES[0],
+        )
+        pending = ApprovalRequest.objects.create(
+            maker=make_staff("support", "maker@example.com"), due_at=timezone.now() + timedelta(days=1),
+            kind="delivery.refund_request", status=ApprovalRequest.PENDING, target_type="disputes.dispute",
+            target_id=str(dispute.pk),
+        )
+        row = self.rows()[0]                                          # Support's call cannot release it yet
+        self.assertEqual(
+            (row["status"], row["status_label"], row["on_hold"]),
+            ("awaiting_call", "On hold while AshantiHub checks the order", True),
+        )
+        ApprovalRequest.objects.filter(pk=pending.pk).update(status=ApprovalRequest.APPROVED)
+        self.assertEqual(self.rows()[0]["status_label"], "Waiting for Support's call to the customer")
 
     def test_status_and_date_filters(self):
         waiting = paid_order(self.buyer, [(self.kofi.listing("50.00"), 1)])
@@ -448,7 +474,7 @@ class IsolationTests(VendorBase):
 - [ ] **Step 3: Run it to see it fail**
 
 Run: `docker compose -p vend1 run --rm web python manage.py test wallets.tests.test_vendor_sales --noinput`
-Expected: FAIL — every request answers 404 (no `/api/wallet/vendor/` route yet).
+Expected: FAIL/ERROR — every request answers 404 (no `/api/wallet/vendor/` route yet); the ledger-off test errors on `.json()` of the HTML 404.
 
 - [ ] **Step 4: The read model** — create `backend/wallets/vendor.py`
 
@@ -463,7 +489,7 @@ business's own snapshots, item lines and accounts are read: an order can span se
 owner-scoped order isolation). No customer's name, phone or address appears here: the order screen
 (GET /api/orders/owner/) already carries what fulfilment needs. Money is integer pesewas inside and GH₵ strings in the
 rows. Only product orders are in the ledger today; booking sales (Plan 1b) slot in as a second source of rows with kind
-"booking" (spec §13 (lxxi))."""
+"booking" (spec §13 (lxxii))."""
 from django.db.models import Count, F, Max, Q, Sum
 from django.utils.dateparse import parse_date
 
@@ -480,7 +506,7 @@ AWAITING, RELEASED, REFUNDED = "awaiting_call", "released", "refunded"
 STATUSES = (AWAITING, RELEASED, REFUNDED)
 WAITING_FOR_HANDOVER = "Waiting for delivery or collection"
 WAITING_FOR_CALL = "Waiting for Support's call to the customer"
-ON_HOLD = "On hold while AshantiHub checks the order"  # an open dispute: never more than this (no reason, no customer)
+ON_HOLD = "On hold while AshantiHub checks the order"  # an open dispute or a refund awaiting approval: never more than this
 LABELS = {RELEASED: "Released to your Available balance", REFUNDED: "Refunded to the customer"}
 
 
@@ -505,6 +531,8 @@ def _date(params, field):
         value = None
     if value is None:
         raise RangeError(field, "Use a date like 2026-10-16.")
+    if not 2020 <= value.year <= 2100:  # no ledger row is older; keeps the day arithmetic below from overflowing
+        raise RangeError(field, "Choose a date from 2020 on.")
     return value
 
 
@@ -577,6 +605,17 @@ def rows(owner, groups):
     held = set(
         Dispute.objects.filter(order_id__in=ids).exclude(status__in=Dispute.FINAL_STATUSES).values_list("order_id", flat=True)
     )
+    # A delivery case already final whose refund waits for approval also stops the release (the bulk form of
+    # ledger.escrow.has_pending_refund), so Support's call cannot release the money yet.
+    from approvals.models import ApprovalRequest
+
+    dispute_orders = dict(Dispute.objects.filter(order_id__in=ids).values_list("pk", "order_id"))
+    held |= {
+        dispute_orders[int(target)] for target in ApprovalRequest.objects.filter(
+            kind="delivery.refund_request", status=ApprovalRequest.PENDING, target_type="disputes.dispute",
+            target_id__in=[str(pk) for pk in dispute_orders],
+        ).values_list("target_id", flat=True)
+    }
     out = []
     for group in groups:
         order = orders[group["order_id"]]
@@ -614,7 +653,8 @@ def fee_cap(owner, now=None):
 
 def overview(owner, now=None):
     """Pending (waiting for Support's call), Available (released; may be negative after a late refund, which blocks
-    withdrawals), what can be withdrawn, how many sales wait, and the fee cap."""
+    withdrawals), what can be withdrawn (Available when positive, before the per-withdrawal and daily limits and a usable
+    payout destination, which wallets.withdrawals checks), how many sales wait, and the fee cap."""
     pending = posting.balance_of(Account.VENDOR_PENDING, owner)
     available = posting.balance_of(Account.VENDOR_AVAILABLE, owner)
     return {
@@ -710,7 +750,7 @@ with
 - [ ] **Step 7: Run the tests**
 
 Run: `docker compose -p vend1 run --rm web python manage.py test wallets.tests.test_vendor_sales --noinput`
-Expected: PASS (17 tests).
+Expected: PASS (18 tests).
 
 - [ ] **Step 8: Commit**
 
@@ -741,7 +781,7 @@ git commit -m "feat(wallets): vendor overview and per-sale rows - subtotal, plat
 ```python
 """The business's money day by day (vendor plan 4, Task 2), from its own ledger lines. Review Focus 1 (only its own
 accounts), 3 (the columns add up to the change in its balances) and 4 (day boundaries, ranges)."""
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from unittest import mock
 from zoneinfo import ZoneInfo
@@ -751,6 +791,7 @@ from django.utils import timezone
 
 from ledger import refunds
 from ledger.models import Account
+from wallets import vendor
 
 from .helpers import fund
 from .vendor_helpers import VendorBase, hold, paid_order, release, signed_in, waived
@@ -822,11 +863,17 @@ class DailySummaryTests(VendorBase):
         )
         only_the_14th = self.kofi.get(DAILY, {"date_from": "2026-10-14", "date_to": "2026-10-14"}).json()
         self.assertEqual([d["day"] for d in only_the_14th["days"]], ["2026-10-14"])
+        # Africa/Accra is UTC+0, so the checks above cannot tell an Accra day from a UTC day. This one can: in a zone an
+        # hour ahead, the 14th starts at 23:00 UTC on the 13th.
+        with override_settings(TIME_ZONE="Africa/Lagos"):
+            start, _ = vendor.bounds(date(2026, 10, 14), date(2026, 10, 14))
+        self.assertEqual(start, datetime(2026, 10, 13, 23, 0, tzinfo=ZoneInfo("UTC")))
 
     def test_review_focus_bad_or_too_long_ranges_are_refused(self):
         for params in (
             {"date_from": "2026-13-01"}, {"date_from": "yesterday"}, {"date_from": "2026-10-10", "date_to": "2026-10-01"},
             {"date_from": "2026-01-01", "date_to": "2026-10-16"},
+            {"date_to": "0001-01-05"}, {"date_from": "9999-12-30", "date_to": "9999-12-31"},      # would overflow a day sum
         ):
             response = self.kofi.get(DAILY, params)
             self.assertEqual(response.status_code, 400, params)
@@ -850,7 +897,7 @@ class DailySummaryTests(VendorBase):
 - [ ] **Step 2: Run it to see it fail**
 
 Run: `docker compose -p vend1 run --rm web python manage.py test wallets.tests.test_vendor_daily --noinput`
-Expected: FAIL — 404 for `/api/wallet/vendor/daily/`.
+Expected: FAIL/ERROR — 404 for `/api/wallet/vendor/daily/` (the ledger-off test errors on `.json()` of the HTML 404).
 
 - [ ] **Step 3: The imports** — in `backend/wallets/vendor.py` replace
 
@@ -891,7 +938,7 @@ DR, CR = JournalLine.DEBIT, JournalLine.CREDIT
 # (column, sign). The release takes the item subtotal out of Pending (a debit) and credits Available with it less the
 # platform fee, so the fee is the difference. Any other line lands in "other" (credits in, debits out), so for every day
 #   sold - fees - refunded - free_delivery_promo - withdrawn + other = net_change (the change in Pending + Available).
-# Booking sales (Plan 1b) add their booking_* kinds here (spec §13 (lxxi)).
+# Booking sales (Plan 1b) add their booking_* kinds here (spec §13 (lxxii)).
 FOLD = {
     ("order_payment", P, CR): ("sold", 1),
     ("order_release", P, DR): ("fees", 1),
@@ -914,7 +961,8 @@ def account(owner, kind):
 
 def date_range(params, *, default_days, max_days, today=None):
     """(first, last) Accra days, inclusive, from ?date_from=&date_to=: by default the last `default_days` days up to
-    today; at most `max_days` days. Raises RangeError."""
+    today; at most `max_days` days. Raises RangeError (a date outside 2020..2100 is refused by optional_dates, so the day
+    sums below never overflow)."""
     today = today or timezone.localdate()
     date_from, date_to = optional_dates(params)
     date_to = date_to or today
@@ -1021,7 +1069,7 @@ with
 - [ ] **Step 7: Run the tests**
 
 Run: `docker compose -p vend1 run --rm web python manage.py test wallets.tests.test_vendor_daily wallets.tests.test_vendor_sales --noinput`
-Expected: PASS (7 new tests; Task 1's 17 unchanged).
+Expected: PASS (7 new tests; Task 1's 18 unchanged).
 
 - [ ] **Step 8: Commit**
 
@@ -1145,6 +1193,7 @@ class StatementExportTests(VendorBase):
         for params in (
             {"date_from": "2025-01-01", "date_to": "2026-10-16"}, {"date_to": "16-10-2026"},
             {"date_from": "2026-10-10", "date_to": "2026-10-01"},
+            {"date_to": "0001-01-05"}, {"date_from": "9999-12-30", "date_to": "9999-12-31"},
         ):
             self.assertEqual(self.kofi.get(EXPORT, params).status_code, 400, params)
 
@@ -1156,7 +1205,7 @@ class StatementExportTests(VendorBase):
 - [ ] **Step 2: Run it to see it fail**
 
 Run: `docker compose -p vend1 run --rm web python manage.py test wallets.tests.test_vendor_statement --noinput`
-Expected: ERROR — `AttributeError: module 'wallets.vendor' has no attribute 'STATEMENT_HEADER'`.
+Expected: FAIL/ERROR — 404 for `/api/wallet/vendor/statement/export/` (the tests fail on the status assertion; the ledger-off test errors on `.json()` of the HTML 404). `vendor.STATEMENT_HEADER` is only reached after that.
 
 - [ ] **Step 3: The imports** — in `backend/wallets/vendor.py` replace
 
@@ -1197,13 +1246,17 @@ def statement(owner, first, last):
     each sale bought on those days (gross, the platform fee shown separately, the free-delivery promo, what was refunded,
     the amount due or paid, and Pending / Available / Refunded) and each withdrawal asked for on them (what left
     Available, the provider's charge, what arrived; Withdrawn, in progress or returned). Every cell is a date, a number,
-    a fixed word or an AshantiHub reference - no item name, note or person - so a spreadsheet never runs a formula from it."""
+    a fixed word or an AshantiHub reference - no item name, note or person - so a spreadsheet never runs a formula from it
+    (the text cells still go through reports.exports.escape_cell, as the repo's other exports do; numbers are left alone,
+    a net can be negative)."""
+    from reports.exports import escape_cell
+
     entries = []
     for row in rows(owner, sale_groups(owner, date_from=first, date_to=last)):
         entries.append((row["placed_at"], 0, row["order"], [
-            timezone.localdate(row["placed_at"]).isoformat(), "Sale", row["reference"], row["item_subtotal"],
+            timezone.localdate(row["placed_at"]).isoformat(), "Sale", escape_cell(row["reference"]), row["item_subtotal"],
             row["platform_fee"], row["free_delivery_promo"], row["refunded"], "", row["net"],
-            SALE_STATEMENT_STATUS[row["status"]],
+            escape_cell(SALE_STATEMENT_STATUS[row["status"]]),
         ]))
     holder_type, holder_id = ref(owner)
     start, end = bounds(first, last)
@@ -1211,9 +1264,9 @@ def statement(owner, first, last):
         holder_type=holder_type, holder_id=holder_id, created_at__gte=start, created_at__lt=end,
     ):
         entries.append((withdrawal.created_at, 1, withdrawal.pk, [
-            timezone.localdate(withdrawal.created_at).isoformat(), "Withdrawal", withdrawal.reference,
+            timezone.localdate(withdrawal.created_at).isoformat(), "Withdrawal", escape_cell(withdrawal.reference),
             money(withdrawal.amount_pesewas), "", "", "", money(withdrawal.charge_pesewas), money(withdrawal.net_pesewas),
-            WITHDRAWAL_STATEMENT_STATUS[withdrawal.status],
+            escape_cell(WITHDRAWAL_STATEMENT_STATUS[withdrawal.status]),
         ]))
     entries.sort(key=lambda entry: entry[:3])
     return [entry[3] for entry in entries]
@@ -1241,7 +1294,9 @@ and append
 ```python
 class VendorStatementExportView(APIView):
     """GET vendor/statement/export/?date_from=&date_to= — the statement as a CSV download (the last 30 days by default,
-    at most 366). Always CSV: it takes no ?format=, which is DRF's renderer override (backend/CLAUDE.md)."""
+    at most 366). Always CSV: it takes no ?format=, which is DRF's renderer override (backend/CLAUDE.md). Built in the
+    request (no throttle, unlike the staff reports' background exports). A client sending `Accept: text/csv` gets DRF's
+    406 before this view, as with OwnerSalesReportExportView: the screen must request `*/*`."""
 
     permission_classes = [IsBusinessOwner]
 
@@ -1296,7 +1351,7 @@ git commit -m "feat(wallets): vendor statement CSV - sales with the platform fee
 **Interfaces:**
 - Consumes: Task 1 (`fee_cap`, `money`), `ledger.fees.rule_set_in_force(category, at)`, `fees.quote(category, base, *, cap, already_charged, at) -> FeeQuote(rule_set_id, base, computed, charged)`, `fees.charged_to_date(owner)`, `fees.FeeError`, `ledger.models.FeeRuleSet` (`CATEGORY_CHOICES`, `PRODUCT`, `SERVICE`, `EVENT`) / `FeeBand`, `wallets.views.parse_amount(raw) -> pesewas` / `AmountError`.
 - Produces:
-  - `vendor.APPLIES_TO`, `vendor.CHARGED = (FeeRuleSet.PRODUCT,)`, `vendor.FEE_BASE`
+  - `vendor.APPLIES_TO`, `vendor.charged_categories() -> tuple` (product; plus service and event when Plan 1b's `ledger.models.BookingSale` exists), `vendor.FEE_BASE`
   - `vendor.band_row(band) -> {from, to, percent, flat, fee}`; `vendor.fee_schedule(owner, now=None) -> {categories, fee_base, fee_cap}`; `vendor.fee_quote(owner, category, amount, now=None) -> {category, amount, fee, you_receive, charged}` (raises `fees.FeeError`)
   - `views_vendor.VendorFeesView`; URL `wallet-vendor-fees`
 
@@ -1313,6 +1368,7 @@ from django.utils.dateparse import parse_datetime
 from rest_framework.test import APIClient
 
 from accounts.testing import make_staff, staff_token
+from ledger import models as ledger_models
 from ledger.models import FeeBand, FeeRuleSet, MoneySetting
 
 from .vendor_helpers import VendorBase, paid_order, signed_in
@@ -1348,7 +1404,8 @@ class FeeScheduleTests(VendorBase):
             ("Products", "Product orders", True, PRODUCT_LADDER, None),
         )
         self.assertIsNotNone(product["in_force_from"])
-        self.assertEqual((by_category["service"]["charged"], by_category["event"]["charged"]), (False, False))
+        booked = hasattr(ledger_models, "BookingSale")                  # Plan 1b's model: services and events are charged once it exists
+        self.assertEqual((by_category["service"]["charged"], by_category["event"]["charged"]), (booked, booked))
         self.assertIn("never on delivery", body["fee_base"])
         self.assertEqual(body["fee_cap"], {"limit": None, "used": "0.00", "remaining": None})
         self.assertNotIn("quote", body)
@@ -1397,7 +1454,7 @@ class FeeScheduleTests(VendorBase):
 - [ ] **Step 2: Run it to see it fail**
 
 Run: `docker compose -p vend1 run --rm web python manage.py test wallets.tests.test_vendor_fees --noinput`
-Expected: FAIL — 404 for `/api/wallet/vendor/fees/`.
+Expected: FAIL/ERROR — 404 for `/api/wallet/vendor/fees/` (the ledger-off test errors on `.json()` of the HTML 404).
 
 - [ ] **Step 3: The imports** — in `backend/wallets/vendor.py` replace
 
@@ -1421,6 +1478,7 @@ from ledger.models import Account, FulfilmentCheck, JournalLine, OrderFeeSnapsho
 with
 
 ```python
+from ledger import models as ledger_models
 from ledger.models import Account, FeeRuleSet, FulfilmentCheck, JournalLine, OrderFeeSnapshot
 ```
 
@@ -1430,14 +1488,22 @@ from ledger.models import Account, FeeRuleSet, FulfilmentCheck, JournalLine, Ord
 # --- the platform fees, for the business (Task 4) ------------------------------------------------------------------
 
 APPLIES_TO = {FeeRuleSet.PRODUCT: "Product orders", FeeRuleSet.SERVICE: "Services and stays", FeeRuleSet.EVENT: "Event tickets"}
-# The categories the ledger charges today: only product orders are recorded until booking sales are (Plan 1b). The
-# follow-up that slots them in adds services and events here (spec §13 (lxxi)).
-CHARGED = (FeeRuleSet.PRODUCT,)
+
 FEE_BASE = (
-    "Worked out per order on your items' total after your own sale prices, never on delivery; a coupon AshantiHub gives "
+    "Worked out per order or booking on your items' total after your own sale prices, never on delivery; a coupon AshantiHub gives "
     "the customer does not change it. It is taken when the money is released to you, and stops once your lifetime cap, "
     "if there is one, is reached."
 )
+
+
+def charged_categories():
+    """The fee categories the ledger charges now: product orders since Stage 1, and services (stays count as services)
+    and events once Plan 1b's booking sales exist. Plan 1b adds `ledger.models.BookingSale`; looking for it (instead of
+    hard-coding product only) keeps the fee page truthful whichever branch merges first. The one dependency this plan has
+    on Plan 1b (spec §13 (lxxii))."""
+    if hasattr(ledger_models, "BookingSale"):
+        return (FeeRuleSet.PRODUCT, FeeRuleSet.SERVICE, FeeRuleSet.EVENT)
+    return (FeeRuleSet.PRODUCT,)
 
 
 def band_row(band):
@@ -1459,11 +1525,12 @@ def fee_schedule(owner, now=None):
     shown. Plus how the fee is worked out and the business's lifetime cap."""
     now = now or timezone.now()
     categories = []
+    charged = charged_categories()
     for category, label in FeeRuleSet.CATEGORY_CHOICES:
         current = fees.rule_set_in_force(category, now)
         upcoming = FeeRuleSet.objects.filter(category=category, effective_from__gt=now).order_by("effective_from", "id").first()
         categories.append({
-            "category": category, "label": label, "applies_to": APPLIES_TO[category], "charged": category in CHARGED,
+            "category": category, "label": label, "applies_to": APPLIES_TO[category], "charged": category in charged,
             "in_force_from": current.effective_from if current is not None else None,
             "bands": [band_row(band) for band in current.bands.all()] if current is not None else [],
             "next": (
@@ -1483,7 +1550,7 @@ def fee_quote(owner, category, amount, now=None):
     )
     return {
         "category": category, "amount": money(amount), "fee": money(quote.charged),
-        "you_receive": money(amount - quote.charged), "charged": category in CHARGED,
+        "you_receive": money(amount - quote.charged), "charged": category in charged_categories(),
     }
 ```
 
@@ -1569,19 +1636,19 @@ git commit -m "feat(wallets): vendor fee transparency - approved tiers in force,
 ### Task 5: The text outbox — queued, sent after commit, retried, counted by the spend alert
 
 **Files:**
-- Modify: `backend/wallets/models.py`, `backend/wallets/tasks.py`, `backend/otp/spend.py`, `backend/staffsecurity/policy.py`, `backend/ashantihub/settings.py`
+- Modify: `backend/wallets/models.py`, `backend/wallets/tasks.py`, `backend/otp/spend.py`, `backend/staffsecurity/policy.py`, `backend/ashantihub/settings.py`, `backend/ashantihub/sentry.py`
 - Create: `backend/wallets/vendor_texts.py`, `backend/wallets/migrations/0005_vendor_texts.py` (generated), `backend/wallets/tests/test_vendor_texts.py`
 
 **Interfaces:**
-- Consumes: `otp.senders.deliver(channel, to, subject, body) -> Delivery(ok, provider, ref)` (never raises), `otp.senders.sms_outbox`, `otp.spend.check_quietly(now)`, `otp.identity.contacts(account) -> {channel: destination}` (`+233…` phones), `otp.models.SMS`, `accounts.phones.mask_phone`, `staffsecurity.policy.set_otp(values, staff)`.
+- Consumes: `otp.senders.deliver(channel, to, subject, body) -> Delivery(ok, provider, ref)` (never raises), `otp.senders.sms_outbox`, `otp.spend.check_quietly(now)`, `otp.identity.contacts(account) -> {channel: destination}` (`+233…` phones) and `ref(account)`, `otp.models.SMS` / `VerifiedContact` (the phone a code was accepted at), `accounts.phones.mask_phone`, `staffsecurity.policy.set_otp(values, staff)`.
 - Produces:
   - models `wallets.VendorText` (`ORDER_PAID`, `ORDER_RELEASED`, `DAILY_DIGEST`; `QUEUED`, `SENT`, `FAILED`, `NO_PHONE`; fields `key` unique, `business_owner`, `kind`, `order`, `day`, `body`, `status`, `attempts`, `next_attempt_at`, `last_attempt_at`, `sent_at`, `provider`, `provider_ref`, `to_hint`, `notification`, `created_at`) and `wallets.VendorPreference` (`business_owner` one-to-one, `daily_digest`, `updated_at`)
-  - `wallets.vendor_texts.LEASE`, `BACKOFF`, `MAX_ATTEMPTS`, `MAX_LENGTH`, `fits(body) -> bool`
+  - `wallets.vendor_texts.LEASE`, `BACKOFF`, `MAX_ATTEMPTS`, `MAX_LENGTH`, `fits(body) -> bool`, `confirmed_phone(owner) -> str | None` (the login phone, only when it is a `VerifiedContact`), `NO_PHONE_NOTE`
   - `vendor_texts.queue(owner, kind, key, body, *, order=None, day=None, notification=None, now=None) -> VendorText | None` (never raises)
   - `vendor_texts.deliver(pk, now=None) -> str | None` (the new status, or None when not due / held by another sender)
-  - `vendor_texts.send_due(now=None, limit=200) -> int`; `vendor_texts.row(text) -> dict`
+  - `vendor_texts.send_due(now=None, limit=200) -> int` (lists what is due at `now`; each text is then claimed and stamped at its own time); `vendor_texts.row(text) -> dict`
   - tasks `wallets.tasks.send_vendor_text(pk)`, `wallets.tasks.send_due_vendor_texts()`; beat entry `wallets-send-vendor-texts`
-  - `otp.spend.texts_sent_on(day)` counts code texts plus sent business texts
+  - `otp.spend.code_texts_sent_on(day)`; `otp.spend.texts_sent_on(day)` counts code texts plus sent business texts (the alert body gives both counts)
 
 - [ ] **Step 1: Write the failing test** — `backend/wallets/tests/test_vendor_texts.py`
 
@@ -1599,12 +1666,13 @@ from accounts.models import BusinessOwner
 from accounts.testing import make_staff
 from notifications.models import Notification
 from otp import senders, spend
-from otp.models import SMS, OtpEvent
+from otp.identity import contacts
+from otp.models import SMS, OtpEvent, VerifiedContact
 from staffsecurity import policy
 from wallets import vendor_texts
 from wallets.models import VendorText
 
-BODY = "AshantiHub: order #12 paid. Items GHS 120.00, platform fee GHS 5.00, due to you GHS 115.00 after delivery and Support's check."
+BODY = "AshantiHub: order #12 paid. Items GHS 120.00, platform fee GHS 5.00, due to you GHS 115.00 after hand-over and Support's check."
 DOWN = senders.Delivery(ok=False, provider="hubtel")
 
 
@@ -1620,6 +1688,9 @@ class OutboxBase(TestCase):
     def setUp(self):
         senders.sms_outbox.clear()
         self.owner = BusinessOwner.objects.create(full_name="Kofi Mensah", login_phone="0201110001", password_hash="x")
+        VerifiedContact.objects.create(                                            # a code sent to this phone was accepted
+            account_type="business_owner", account_id=self.owner.pk, channel=SMS, destination=contacts(self.owner)[SMS],
+        )
         self.now = timezone.now()
 
     def queue(self, key="paid-12-1", **extra):
@@ -1652,6 +1723,12 @@ class QueueTests(OutboxBase):
             self.assertIsNone(self.queue())
         self.assertIn("RuntimeError", "\n".join(logs.output))
         self.assertNotIn("115.00", "\n".join(logs.output))                                  # never the body
+
+    def test_review_focus_a_worker_that_cannot_be_reached_never_breaks_the_commit(self):
+        with mock.patch("wallets.tasks.send_vendor_text.delay", side_effect=RuntimeError("broker down")), \
+                self.assertLogs("wallets.vendor_texts", "ERROR"), self.captureOnCommitCallbacks(execute=True):
+            text = self.queue()
+        self.assertEqual(VendorText.objects.get(pk=text.pk).status, VendorText.QUEUED)   # the 5-minute job sends it
 
     def test_a_body_that_is_not_plain_or_too_long_is_not_queued(self):
         for key, body in (("k-cedi", "GH₵ 5.00 due"), ("k-long", "x" * 307)):
@@ -1686,6 +1763,15 @@ class DeliverTests(OutboxBase):
         self.assertEqual(senders.sms_outbox, [])
         self.assertIsNone(vendor_texts.deliver(text.pk, self.now + timedelta(days=1)))
 
+    def test_review_focus_a_phone_nobody_confirmed_gets_no_text_and_the_in_app_copy_stays(self):
+        VerifiedContact.objects.all().delete()                                  # the login phone was never confirmed by a code
+        notice = Notification.objects.create(business_owner=self.owner, kind="vendor_money", title="Order #12 released", body=BODY)
+        with self.captureOnCommitCallbacks(execute=True):
+            text = self.queue(notification=notice)
+        text.refresh_from_db()
+        self.assertEqual((text.status, text.notification_id), (VendorText.NO_PHONE, notice.pk))
+        self.assertEqual(senders.sms_outbox, [])
+
     def test_review_focus_a_send_in_progress_is_not_picked_up_again(self):
         text = self.queue()
         second = []
@@ -1698,6 +1784,17 @@ class DeliverTests(OutboxBase):
             self.assertEqual(vendor_texts.deliver(text.pk, self.now), VendorText.SENT)
         self.assertEqual(second, [None])
         self.assertIsNone(vendor_texts.deliver(text.pk, self.now + timedelta(hours=1)))  # sent: never again
+
+    def test_review_focus_a_worker_finishing_late_cannot_undo_a_text_another_worker_sent(self):
+        text = self.queue()
+
+        def provider(*args):
+            VendorText.objects.filter(pk=text.pk).update(status=VendorText.SENT)   # its lease ran out; another worker sent it
+            return DOWN
+
+        with mock.patch("wallets.vendor_texts.senders.deliver", side_effect=provider):
+            vendor_texts.deliver(text.pk, self.now)
+        self.assertEqual(VendorText.objects.get(pk=text.pk).status, VendorText.SENT)
 
     def test_a_crashed_send_is_tried_again_after_the_lease(self):
         text = self.queue()
@@ -1743,7 +1840,7 @@ class SpendTests(OutboxBase):
         self.assertEqual(spend.texts_sent_on(timezone.localdate(self.now)), 3)
         alert = Notification.objects.get(staff=self.boss, kind=spend.ALERT_KIND)
         self.assertIn("3", alert.title)
-        self.assertIn("business money texts", alert.body)
+        self.assertIn("2 business money texts", alert.body)
 
     def test_review_focus_business_texts_never_use_up_the_code_send_limits(self):
         for n in range(25):                                                       # more than the 20-an-hour per-phone ceiling
@@ -1827,12 +1924,17 @@ Expected: `wallets/migrations/0005_vendor_texts.py` with `Create model VendorPre
 release that asked for it ("SMS failure never blocks payment (queued, retried)").
 
 * `queue` writes one VendorText (idempotent on its key) inside the caller's transaction, in a savepoint, and never
-  raises; the send waits for the commit (`transaction.on_commit`, robust), so a rolled-back payment texts nobody.
+  raises; the send waits for the commit (`transaction.on_commit`, robust), so a rolled-back payment texts nobody. The
+  hand-off is a lambda (Django's robust handler logs `func.__qualname__`, which a `functools.partial` lacks) and
+  catches and logs its own errors, so a broker that is down never breaks the commit.
 * `deliver` sends one due text through otp.senders (the one door for texts: simulated / locmem / Hubtel), outside any
   transaction. It claims the row first with one conditional UPDATE that also pushes `next_attempt_at` out by LEASE, so
   two workers never send it at once; a worker that dies mid-send leaves it to be tried again after the lease (a text may
   then go twice: at least once, never lost). A failure is retried after 5 minutes, 15 minutes, 1 hour and 4 hours, then
-  given up (FAILED); a business with no usable Ghana mobile number gets none (NO_PHONE). The in-app copy stays either way.
+  given up (FAILED; five tries in all); a business whose login phone is not a confirmed Ghana mobile (an otp.VerifiedContact,
+  the Stage 2 rule for lock notices) gets none (NO_PHONE). Every status change after the claim is conditional on the text
+  still being queued, so a worker that finishes after its lease ran out cannot undo what another did. The in-app copy stays
+  either way.
 * A sent text is counted by the SMS-spend alert (otp.spend, spec §9) with the code texts. It is never an OtpEvent: those
   rows are what the code send limits count, and a busy shop's order texts must never use up its own sign-in codes.
 * Bodies are plain GSM-7 characters ("GHS", never "GH₵", which would make every text cost about three times as much), at
@@ -1840,7 +1942,6 @@ release that asked for it ("SMS failure never blocks payment (queued, retried)")
 import logging
 import string
 from datetime import timedelta
-from functools import partial
 
 from django.db import transaction
 from django.db.models import F
@@ -1848,8 +1949,8 @@ from django.utils import timezone
 
 from accounts.phones import mask_phone
 from otp import senders, spend
-from otp.identity import contacts
-from otp.models import SMS
+from otp.identity import contacts, ref
+from otp.models import SMS, VerifiedContact
 
 from .models import VendorText
 
@@ -1862,14 +1963,32 @@ MAX_LENGTH = 306                                            # two GSM-7 parts of
 PLAIN = frozenset(string.ascii_letters + string.digits + " .,:;#'()-/!?&%+")
 STATUS_LABELS = {
     VendorText.QUEUED: "Waiting to send", VendorText.SENT: "Sent", VendorText.FAILED: "Could not be sent",
-    VendorText.NO_PHONE: "Not sent: no Ghana mobile number on your account",
+    VendorText.NO_PHONE: "Not sent: no confirmed Ghana mobile number on your account",
 }
 SIMULATED_LABEL = "Not sent: texts are simulated"
+NO_PHONE_NOTE = (
+    "Money texts go only to a Ghana mobile number you have confirmed with a code. Yours is not confirmed, so your money "
+    "notices stay in the app."
+)
 
 
 def fits(body):
     """True for a body that is plain GSM-7 characters and at most two text parts."""
     return bool(body) and len(body) <= MAX_LENGTH and all(char in PLAIN for char in body)
+
+
+def confirmed_phone(owner):
+    """The Ghana mobile number a business's money texts go to: its login phone, and only when it is a confirmed contact
+    (otp.VerifiedContact: a code sent to it was accepted - registration neither normalises nor verifies phones, and a
+    mistyped or recycled number must never receive a shop's order amounts; the Stage 2 rule for lock notices). None
+    otherwise."""
+    phone = contacts(owner).get(SMS)
+    account_type, account_id = ref(owner)
+    if phone and VerifiedContact.objects.filter(
+        account_type=account_type, account_id=account_id, channel=SMS, destination=phone,
+    ).exists():
+        return phone
+    return None
 
 
 def queue(owner, kind, key, body, *, order=None, day=None, notification=None, now=None):
@@ -1888,19 +2007,26 @@ def queue(owner, kind, key, body, *, order=None, day=None, notification=None, no
         logger.error("Business text %s not queued: %s", kind, type(exc).__name__)
         return None
     if created:
-        transaction.on_commit(partial(_send_soon, text.pk), robust=True)
+        transaction.on_commit(lambda pk=text.pk: _send_soon(pk), robust=True)
     return text
 
 
 def _send_soon(pk):
-    from .tasks import send_vendor_text
+    """After commit: hand the text to a worker. A broker that cannot be reached is fine (send_due_vendor_texts picks
+    the text up within 5 minutes). Never raises: a text never stops the payment or release that queued it."""
+    try:
+        from .tasks import send_vendor_text
 
-    send_vendor_text.delay(pk)
+        send_vendor_text.delay(pk)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Business text %s not handed to a worker: %s", pk, type(exc).__name__)
 
 
 def deliver(pk, now=None):
     """Send text `pk` if it is queued and due. Returns its new status, or None when it was not due or another sender
-    holds it. Call outside any transaction: a real provider's call is a network round trip."""
+    holds it. Call outside any transaction: a real provider's call is a network round trip. The claim is one conditional
+    UPDATE (still queued and due), and every later status change is conditional on the text still being queued, so a
+    worker that finishes after its lease ran out cannot undo what another worker did."""
     now = now or timezone.now()
     claimed = VendorText.objects.filter(pk=pk, status=VendorText.QUEUED, next_attempt_at__lte=now).update(
         attempts=F("attempts") + 1, last_attempt_at=now, next_attempt_at=now + LEASE,
@@ -1908,28 +2034,32 @@ def deliver(pk, now=None):
     if not claimed:
         return None
     text = VendorText.objects.select_related("business_owner").get(pk=pk)
-    phone = contacts(text.business_owner).get(SMS)
+    phone = confirmed_phone(text.business_owner)
     if not phone:
-        VendorText.objects.filter(pk=pk).update(status=VendorText.NO_PHONE)
+        VendorText.objects.filter(pk=pk, status=VendorText.QUEUED).update(status=VendorText.NO_PHONE)
         return VendorText.NO_PHONE
     delivery = senders.deliver(SMS, phone, "", text.body)
     hint, provider = mask_phone(phone), (delivery.provider or "")[:20]
     if delivery.ok:
-        VendorText.objects.filter(pk=pk).update(
+        VendorText.objects.filter(pk=pk, status=VendorText.QUEUED).update(
             status=VendorText.SENT, sent_at=now, provider=provider, provider_ref=(delivery.ref or "")[:64], to_hint=hint,
         )
         spend.check_quietly(now)
         return VendorText.SENT
     if text.attempts >= MAX_ATTEMPTS:
-        VendorText.objects.filter(pk=pk).update(status=VendorText.FAILED, provider=provider, to_hint=hint)
+        VendorText.objects.filter(pk=pk, status=VendorText.QUEUED).update(status=VendorText.FAILED, provider=provider, to_hint=hint)
         return VendorText.FAILED
-    VendorText.objects.filter(pk=pk).update(next_attempt_at=now + BACKOFF[text.attempts - 1], provider=provider, to_hint=hint)
+    VendorText.objects.filter(pk=pk, status=VendorText.QUEUED).update(
+        next_attempt_at=now + BACKOFF[text.attempts - 1], provider=provider, to_hint=hint,
+    )
     return VendorText.QUEUED
 
 
 def send_due(now=None, limit=200):
     """Send the texts that are due, oldest first: first tries whose send after commit was lost, and retries. One text
-    that raises is logged and skipped. Returns how many were sent."""
+    that raises is logged and skipped. Returns how many were sent. `now` only decides what is due: each text is claimed and
+    stamped at its own time (a run of 200 against a slow provider can outlast the lease, and a claim made late in it must
+    get a lease that starts then, or an overlapping run would claim the same text and send it twice)."""
     now = now or timezone.now()
     due = list(
         VendorText.objects.filter(status=VendorText.QUEUED, next_attempt_at__lte=now)
@@ -1938,7 +2068,7 @@ def send_due(now=None, limit=200):
     sent = 0
     for pk in due:
         try:
-            sent += deliver(pk, now) == VendorText.SENT
+            sent += deliver(pk) == VendorText.SENT  # claimed and stamped at its own time
         except Exception as exc:  # noqa: BLE001 - one bad row never stops the rest
             logger.error("Business text %s not sent: %s", pk, type(exc).__name__)
     return sent
@@ -2007,7 +2137,7 @@ with
 }
 ```
 
-- [ ] **Step 7: One spend alert for every text** — in `backend/otp/spend.py` (a) replace
+- [ ] **Step 7: One spend alert for every text, and `phone` kept out of Sentry** — in `backend/otp/spend.py` (a) replace
 
 ```python
 """The SMS-spend alert (spec §9). OTP texts are counted per day from the audit trail; the first check that finds
@@ -2018,9 +2148,9 @@ everyone holding security.manage, once a day. Nothing is blocked: the alert is f
 with
 
 ```python
-"""The SMS-spend alert (spec §9). Every text AshantiHub pays for is counted per day: code texts from the OTP audit trail
-and business money texts from wallets.VendorText (spec §6; vendor plan 4). The first check that finds today's count at
-the threshold Super Admin set (staffsecurity.policy.otp_sms_daily_alert, default 500) tells everyone holding
+"""The SMS-spend alert (spec §9). Code texts (from the OTP audit trail) and business money texts (wallets.VendorText;
+spec §6, vendor plan 4) are counted per day; marketing campaign texts are not. The first check that finds today's count
+at the threshold Super Admin set (staffsecurity.policy.otp_sms_daily_alert, default 500) tells everyone holding
 security.manage, once a day. Nothing is blocked: the alert is for a person to look at."""
 ```
 
@@ -2034,18 +2164,22 @@ def texts_sent_on(day):
 with
 
 ```python
+def code_texts_sent_on(day):
+    return OtpEvent.objects.filter(kind=OtpEvent.SENT, channel=SMS, at__date=day).count()
+
+
 def texts_sent_on(day):
-    """Code texts plus business money texts sent on `day`. Business texts are never OtpEvents (the code send limits
-    count those), so they are counted from their own outbox."""
+    """Code texts plus business money texts sent on `day` (marketing campaign texts are not counted). Business texts are
+    never OtpEvents (the code send limits count those), so they are counted from their own outbox."""
     from wallets.models import VendorText
 
-    codes = OtpEvent.objects.filter(kind=OtpEvent.SENT, channel=SMS, at__date=day).count()
-    return codes + VendorText.objects.filter(status=VendorText.SENT, sent_at__date=day).count()
+    return code_texts_sent_on(day) + VendorText.objects.filter(status=VendorText.SENT, sent_at__date=day).count()
 ```
 
 and (c) replace
 
 ```python
+    notify_staff_role(
         "security.manage", ALERT_KIND, f"One-time-code texts reached {threshold} today",
         body=(
             f"{sent} code texts have been sent today ({day:%d %b}). A sudden rise can mean someone is abusing the "
@@ -2056,10 +2190,13 @@ and (c) replace
 with
 
 ```python
+    codes = code_texts_sent_on(day)
+    notify_staff_role(
         "security.manage", ALERT_KIND, f"Texts reached {threshold} today",
         body=(
-            f"{sent} texts have been sent today ({day:%d %b}), one-time codes and business money texts together. A "
-            "sudden rise can mean someone is abusing the code requests. Look at the code log and the text balance."
+            f"{sent} texts have been sent today ({day:%d %b}): {codes} one-time codes and {sent - codes} business money "
+            "texts. A sudden rise in codes can mean someone is abusing the code requests. Look at the code log and the "
+            "text balance."
         ),
 ```
 
@@ -2075,15 +2212,34 @@ with
     "otp_sms_daily_alert": "Texts a day (codes and business money texts) before Super Admin is alerted",
 ```
 
+and (d) in `backend/ashantihub/sentry.py` replace
+
+```python
+    # Payout destinations (wallets): a whole MoMo or bank account number in a request body or a frame.
+    "account_number",
+]
+```
+
+with
+
+```python
+    # Payout destinations (wallets): a whole MoMo or bank account number in a request body or a frame.
+    "account_number",
+    # Business money texts (wallets.vendor_texts): the business's whole number in a frame. Not `to`: the daily summary
+    # answers a "to" key.
+    "phone",
+]
+```
+
 - [ ] **Step 8: Run the tests**
 
 Run: `docker compose -p vend1 run --rm web python manage.py test wallets.tests.test_vendor_texts otp.tests.test_senders --noinput`
-Expected: PASS (13 new tests; `otp.tests.test_senders` unchanged — its alert test checks only the threshold in the title).
+Expected: PASS (16 new tests; `otp.tests.test_senders` unchanged — its alert test checks only the threshold in the title).
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add backend/wallets/models.py backend/wallets/migrations/0005_vendor_texts.py backend/wallets/vendor_texts.py backend/wallets/tasks.py backend/wallets/tests/test_vendor_texts.py backend/otp/spend.py backend/staffsecurity/policy.py backend/ashantihub/settings.py
+git add backend/wallets/models.py backend/wallets/migrations/0005_vendor_texts.py backend/wallets/vendor_texts.py backend/wallets/tasks.py backend/wallets/tests/test_vendor_texts.py backend/otp/spend.py backend/staffsecurity/policy.py backend/ashantihub/settings.py backend/ashantihub/sentry.py
 git commit -m "feat(wallets): business money-text outbox - queued in a savepoint, sent after commit, leased claim, retried, counted by the SMS-spend alert" --trailer "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>" --trailer "Claude-Session: https://claude.ai/code/session_01HDHNosHkqu4Wwocp7a2c8j"
 ```
 
@@ -2128,7 +2284,7 @@ DOWN = senders.Delivery(ok=False, provider="hubtel")
 
 def paid_body(order_id, items, fee, due):
     return (f"AshantiHub: order #{order_id} paid. Items GHS {items}, platform fee GHS {fee}, due to you GHS {due} after "
-            "delivery and Support's check.")
+            "hand-over and Support's check.")
 
 
 class CheckoutBase(VendorBase):
@@ -2257,7 +2413,6 @@ Expected: FAIL — `senders.sms_outbox` is empty and no `VendorText` exists (not
 import logging
 import string
 from datetime import timedelta
-from functools import partial
 
 from django.db import transaction
 from django.db.models import F
@@ -2265,8 +2420,8 @@ from django.utils import timezone
 
 from accounts.phones import mask_phone
 from otp import senders, spend
-from otp.identity import contacts
-from otp.models import SMS
+from otp.identity import contacts, ref
+from otp.models import SMS, VerifiedContact
 
 from .models import VendorText
 ```
@@ -2278,7 +2433,6 @@ import logging
 import string
 from dataclasses import dataclass
 from datetime import timedelta
-from functools import partial
 
 from django.db import transaction
 from django.db.models import F
@@ -2292,8 +2446,8 @@ from ledger.money import to_pesewas
 from marketing.models_waivers import WaivedFeeCharge
 from notifications.services import notify_business_owner
 from otp import senders, spend
-from otp.identity import contacts
-from otp.models import SMS
+from otp.identity import contacts, ref
+from otp.models import SMS, VerifiedContact
 
 from .models import VendorText
 from .services import money
@@ -2334,9 +2488,11 @@ def paid_amounts(order):
     """{business owner pk: Amounts} for an order whose payment the ledger has just recorded (its fee snapshots); {} when
     it was not (ledger off, a GH₵ 0.00 order, one paid before the ledger was on). A business whose lines are worth
     nothing is left out. Never raises: it runs inside the payment."""
+    if not escrow.enabled():
+        return {}  # ledger off: nothing new runs, not even a savepoint
     try:
         with transaction.atomic():
-            if not escrow.enabled() or not Journal.objects.filter(key=escrow.pay_key(order)).exists():
+            if not Journal.objects.filter(key=escrow.pay_key(order)).exists():
                 return {}
             totals = {}
             for snap in OrderFeeSnapshot.objects.filter(order=order).order_by("pk"):
@@ -2360,7 +2516,7 @@ def paid_text(order, amounts):
     """Spec §6: reference, item subtotal, platform fee, amount due."""
     return (
         f"AshantiHub: order #{order.pk} paid. Items GHS {money(amounts.subtotal)}, platform fee GHS {money(amounts.fee)}"
-        f"{_promo_part(amounts.promo)}, due to you GHS {money(amounts.due)} after delivery and Support's check."
+        f"{_promo_part(amounts.promo)}, due to you GHS {money(amounts.due)} after hand-over and Support's check."
     )
 
 
@@ -2368,7 +2524,7 @@ def paid_line(amounts):
     """The money line added to the in-app "New order" notice (the paid text's in-app copy)."""
     return (
         f"Platform fee GHS {money(amounts.fee)}{_promo_part(amounts.promo)}; due to you GHS {money(amounts.due)} once the "
-        "order is delivered and Support has checked it."
+        "order is handed over and Support has checked it."
     )
 
 
@@ -2525,7 +2681,7 @@ git commit -m "feat(wallets): text each business on a paid order (subtotal, fee,
 - Create: `backend/wallets/tests/test_vendor_digest.py`
 
 **Interfaces:**
-- Consumes: Task 2 (`vendor.daily(owner, first, last)`), Tasks 5–6 (`queue`, `row`, `VENDOR_MONEY`, `VendorText`, `VendorPreference`), `ledger.posting.balance_of`, `otp.identity.contacts`, `accounts.phones.mask_phone`.
+- Consumes: Task 2 (`vendor.daily(owner, first, last)`), Tasks 5–6 (`queue`, `row`, `confirmed_phone`, `NO_PHONE_NOTE`, `VENDOR_MONEY`, `VendorText`, `VendorPreference`), `ledger.posting.balance_of`, `accounts.phones.mask_phone`.
 - Produces:
   - `vendor_texts.wants_digest(owner) -> bool`, `digest_key(owner, day)`, `digest_text(day, summary, pending, available)`, `queue_digests(day, now=None) -> int`
   - `views_vendor.VendorTextsView` (GET, PATCH); URL `wallet-vendor-texts`
@@ -2567,6 +2723,7 @@ class TextSettingsTests(VendorBase):
     def test_the_digest_is_off_until_turned_on(self):
         body = self.kofi.get(TEXTS).json()
         self.assertEqual((body["order_texts"], body["daily_digest"], body["phone"], body["recent"]), (True, False, "020 *** 0001", []))
+        self.assertIsNone(body["note"])
         turned_on = self.kofi.client.patch(TEXTS, {"daily_digest": True}, format="json")
         self.assertEqual((turned_on.status_code, turned_on.json()["daily_digest"]), (200, True))
         self.assertTrue(self.kofi.get(TEXTS).json()["daily_digest"])
@@ -2598,9 +2755,10 @@ class TextSettingsTests(VendorBase):
             release(order)
         body = self.kofi.get(TEXTS).json()
         self.assertIsNone(body["phone"])
+        self.assertIn("confirmed", body["note"])
         self.assertEqual(
             (body["recent"][0]["status"], body["recent"][0]["status_label"]),
-            ("no_phone", "Not sent: no Ghana mobile number on your account"),
+            ("no_phone", "Not sent: no confirmed Ghana mobile number on your account"),
         )
         self.assertTrue(Notification.objects.filter(business_owner=self.kofi.owner, kind="vendor_money").exists())
 
@@ -2660,7 +2818,7 @@ class DigestTests(VendorBase):
 - [ ] **Step 2: Run it to see it fail**
 
 Run: `docker compose -p vend1 run --rm web python manage.py test wallets.tests.test_vendor_digest --noinput`
-Expected: ERROR — `AttributeError: module 'wallets.tasks' has no attribute 'queue_vendor_digests'` (and 404 for `/api/wallet/vendor/texts/`).
+Expected: FAIL/ERROR — the job test raises `AttributeError: module 'wallets.tasks' has no attribute 'queue_vendor_digests'`; the others fail or error on a 404 for `/api/wallet/vendor/texts/` (the ledger-off test errors on `.json()` of the HTML 404).
 
 - [ ] **Step 3: The imports** — in `backend/wallets/vendor_texts.py` replace
 
@@ -2715,11 +2873,13 @@ def digest_text(day, summary, pending, available):
 def queue_digests(day, now=None):
     """Queue `day`'s digest (spec §6, "optional daily digest") with its in-app copy for each business that turned it on
     and whose money moved that Accra day. A business already sent that day's digest is skipped, so a re-run adds
-    nothing; one business that fails is logged and skipped. Returns how many were queued."""
+    nothing; two runs at once (the beat entry and a manual run) also give one text and one in-app notice, because the text
+    is queued first (its key is unique) and the notice is made only if the text has none yet, under a lock on its row; one
+    business that fails is logged and skipped. Returns how many were queued."""
     queued = 0
     for owner in BusinessOwner.objects.filter(vendor_preference__daily_digest=True).order_by("pk"):
         key = digest_key(owner, day)
-        if VendorText.objects.filter(key=key).exists():
+        if VendorText.objects.filter(key=key, notification__isnull=False).exists():
             continue
         try:
             days = vendor.daily(owner, day, day)["days"]
@@ -2728,14 +2888,18 @@ def queue_digests(day, now=None):
             body = digest_text(
                 day, days[0], posting.balance_of(Account.VENDOR_PENDING, owner), posting.balance_of(Account.VENDOR_AVAILABLE, owner),
             )
+            with transaction.atomic():
+                text = queue(owner, VendorText.DAILY_DIGEST, key, body, day=day, now=now)  # first: an overlapping run gets this row
+                if text is None:
+                    continue
+                if VendorText.objects.select_for_update().get(pk=text.pk).notification_id is None:
+                    notice = notify_business_owner(
+                        owner, VENDOR_MONEY, f"Your AshantiHub day, {day:%d %b}", body=body, link="/business-dashboard", icon="💰",
+                    )
+                    VendorText.objects.filter(pk=text.pk).update(notification=notice)
+                    queued += 1
         except Exception as exc:  # noqa: BLE001 - one business never stops the others' digests
             logger.error("Digest for business %s not worked out: %s", owner.pk, type(exc).__name__)
-            continue
-        notice = notify_business_owner(
-            owner, VENDOR_MONEY, f"Your AshantiHub day, {day:%d %b}", body=body, link="/business-dashboard", icon="💰",
-        )
-        if queue(owner, VendorText.DAILY_DIGEST, key, body, day=day, notification=notice, now=now) is not None:
-            queued += 1
     return queued
 ```
 
@@ -2757,8 +2921,6 @@ from accounts.phones import mask_phone
 from accounts.views import IsBusinessOwner
 from ledger import escrow, fees
 from ledger.models import FeeRuleSet
-from otp.identity import contacts
-from otp.models import SMS
 
 from . import vendor, vendor_texts
 from .models import VendorPreference, VendorText
@@ -2770,16 +2932,16 @@ and append
 ```python
 class VendorTextsView(APIView):
     """GET vendor/texts/ — the business's money texts: order and release texts always go (spec §6), whether the daily
-    digest is on, the masked number they go to (null: no Ghana mobile number on the account, so none can be sent) and
-    its last 20 texts with what happened to each. PATCH {daily_digest: true|false} — turn the digest on or off."""
+    digest is on, the masked number they go to (null unless the login phone is a confirmed Ghana mobile; then `note` says why no
+    texts can be sent) and its last 20 texts with what happened to each. PATCH {daily_digest: true|false} — turn the digest on or off."""
 
     permission_classes = [IsBusinessOwner]
 
     def _body(self, owner):
-        phone = contacts(owner).get(SMS)
+        phone = vendor_texts.confirmed_phone(owner)
         return {
             "order_texts": True, "daily_digest": vendor_texts.wants_digest(owner),
-            "phone": mask_phone(phone) if phone else None,
+            "phone": mask_phone(phone) if phone else None, "note": None if phone else vendor_texts.NO_PHONE_NOTE,
             "recent": [vendor_texts.row(text) for text in VendorText.objects.filter(business_owner=owner)[:20]],
         }
 
@@ -2816,8 +2978,8 @@ append to `backend/wallets/tasks.py`
 ```python
 @shared_task
 def queue_vendor_digests():
-    """07:00 every day: yesterday's digest for each business that asked for one (a no-op while the ledger is off). The
-    beat entry makes core.jobs keep a JobRun heartbeat for it."""
+    """07:00 every day: yesterday's digest for each business that asked for one (a no-op while the ledger is off). A
+    missed 07:00 run is not caught up. The beat entry makes core.jobs keep a JobRun heartbeat for it."""
     if not escrow.enabled():
         return 0
     return vendor_texts.queue_digests(timezone.localdate() - timedelta(days=1))
@@ -2869,7 +3031,7 @@ git commit -m "feat(wallets): vendor texts screen API and the optional daily dig
 **Interfaces:**
 - Consumes: everything above. Produces: no code.
 
-- [ ] **Step 1: Line up with Plan 1b first** — if Plan 1b (`feature/ledger-services-1b`) has merged into `righteoushack`, run `git fetch origin && git rebase origin/righteoushack` now, so this task's spec block lands after Plan 1b's (both append to the end of the spec). If it has not, carry on: whichever branch merges second keeps both appended blocks, Stage 1b's first. Do **not** edit the spec's Status / Scope lines, its §4.2 line, or the root `CLAUDE.md` (Plan 1b rewrites those).
+- [ ] **Step 1: Line up with Plan 1b first** — if Plan 1b (`feature/ledger-services-1b`) has merged into `righteoushack`, run `git fetch origin && git rebase origin/righteoushack` now, so this task's spec block lands after Plan 1b's (both append to the end of the spec). If it has not, carry on: whichever branch merges second keeps both appended blocks, Stage 1b's first. Before appending the gate list in Step 4, read the last gate number in the spec on `origin/righteoushack` (and on `feature/ledger-services-1b` if it has not merged) and continue from it: this plan was written for (lxvii) onward, after Plan 1b's block ending at (lxvi). Do **not** edit the spec's Status / Scope lines, its §4.2 line, or the root `CLAUDE.md` (Plan 1b rewrites those).
 
 - [ ] **Step 2: Correctness core** — in `backend/CLAUDE.md` replace
 
@@ -2890,10 +3052,14 @@ with
   other line lands in `other`, so the columns always add up to the balance change), and no row, export or text holds a
   customer's name, phone or address. Texts to a business go through `wallets.VendorText`: `vendor_texts.queue` runs
   inside the payment (`orders.alerts`) or the release (`escrow.release_verified`, after every posting), in a savepoint,
-  and never raises; the send happens after commit through `otp.senders`, claimed with a 10-minute lease, retried 5 times.
+  and never raises; the send happens after commit through `otp.senders`, claimed with a 10-minute lease, tried at most 5 times, and only to a login phone that is an `otp.VerifiedContact` (the Stage 2
+  lock-notice rule). The hand-off after commit is a lambda that logs its own errors (Django's robust `on_commit` formats
+  `func.__qualname__`, which a `functools.partial` lacks).
   A business text is **never an `OtpEvent`** (those count toward the code send limits) but is counted by the
-  `otp.spend` alert. Bodies are GSM-7 plain text with "GHS" (never "GH₵"), at most 306 characters. Only product orders
-  are covered; booking sales slot in later (spec §13 (lxxi)).
+  `otp.spend` alert. Bodies are GSM-7 plain text with "GHS" (never "GH₵"), at most 306 characters. `phone` is in
+  `ashantihub/sentry.py`'s denylist (the whole number is a local in `vendor_texts.deliver`). Only product orders are in the
+  rows and texts; booking sales slot in later (spec §13 (lxxii)), and `vendor.charged_categories()` already follows
+  `ledger.BookingSale`.
 
 ## Test-fixture gotcha
 ```
@@ -2924,55 +3090,66 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
 - **V3 Figures.** Sale rows from the business's own fee snapshots and owed promo; the daily summary from journal lines on
   its own Pending and Available; balances from the accounts. Never today's fee rules.
 - **V4 Status.** `awaiting_call` (labelled waiting for delivery or collection, waiting for Support's call, or on hold while
-  a dispute is open), `released`, `refunded`; the export says Pending / Available / Refunded and Withdrawn / in progress /
-  Returned for withdrawals.
-- **V5 Privacy.** No customer name, phone or address in any vendor row, summary, export or text; the export has no free
-  text. Fees are shown to business owners only.
-- **V6 Texts.** One per paid order and business, per release and business, per digest day; queued inside the money
-  transaction (never raises), sent after commit through `otp.senders`, leased, retried 5 times, `no_phone` when the login
-  phone is not a Ghana mobile. Never an `OtpEvent` (the code send limits count those); counted by the `otp.spend` alert,
-  which now watches all SMS spend. GSM-7 plain text with "GHS", at most 306 characters. No throttle or quiet hours.
-- **V7 In-app copy.** The paid order's "New order" notice carries the fee and amount due; release and digest copies are
+  a dispute is open or a delivery-case refund waits for approval), `released`, `refunded`; the export says Pending /
+  Available / Refunded and Withdrawn / in progress / Returned for withdrawals.
+- **V5-V6 Privacy and who sees fees.** No customer name, phone or address in any vendor row, summary, export or text; the
+  export has no free text. Fees are shown to business owners only (a customer, whatever their id, and staff get 403).
+- **V7-V9 Texts.** One per paid order and business, per release and business, per digest day; queued inside the money
+  transaction (never raises), sent after commit through `otp.senders`, leased, tried at most 5 times (retries after 5 min,
+  15 min, 1 h, 4 h), `no_phone` when the login phone is not a confirmed Ghana mobile (`otp.VerifiedContact`). Never an
+  `OtpEvent` (the code send limits count those); counted by the `otp.spend` alert, which now watches all SMS spend and
+  gives the code count and the business-text count separately. GSM-7 plain text with "GHS", at most 306 characters. No
+  throttle or quiet hours.
+- **V10 In-app copy.** The paid order's "New order" notice carries the fee and amount due; release and digest copies are
   `vendor_money` notices. Kept when a text fails.
-- **V8 Digest.** Opt-in per business, 07:00 Accra for the day before, only when money moved.
-- **V9 Fee transparency.** Approved tiers in force and the next approved change with its start (never a waiting
-  proposal), `charged` only for products today, the fee base explained, the cap used and left, a server quote.
-- **V10 Not built.** No low-balance, negative-Available, refund or withdrawal text (the spec names none); no staff
-  outbox screen; booking sales (Plan 1b) not yet covered.
+- **V11 Digest.** Opt-in per business, 07:00 Accra for the day before, only when money moved.
+- **V12, V15 Not built.** No low-balance, negative-Available, refund or withdrawal text (the spec names none); no staff
+  outbox screen; booking sales (Plan 1b) not yet covered in rows and texts.
+- **V13 Fee transparency.** Approved tiers in force and the next approved change with its start (never a waiting
+  proposal), `charged` for products (and services and events once `ledger.BookingSale` exists), the fee base explained,
+  the cap used and left, a server quote.
+- **V14 Export.** A synchronous CSV of sales and withdrawals, at most 366 days, no free text.
+- **V16 Ledger off.** Every vendor endpoint answers `409 ledger_off`; nothing is texted; the digest job is a no-op.
 
 ### Before LEDGER_ENABLED is turned on — Stage 4 additions
 
-- (lxvi) **Business texts need a real SMS provider.** They go through `otp.senders` (`OTP_SMS_PROVIDER`): with
+- (lxvii) **Business texts need a real SMS provider.** They go through `otp.senders` (`OTP_SMS_PROVIDER`): with
   `simulated` nothing is sent and the texts screen says "Not sent: texts are simulated"; the Hubtel SMS client is
   unverified (the OTP gate items apply).
-- (lxvii) **Text cost and the spend alert.** Every paid order texts each business in it, and every release texts it
+- (lxviii) **Text cost and the spend alert.** Every paid order texts each business in it, and every release texts it
   again (two texts per business per order, plus opted-in digests). The daily SMS-spend alert (`otp_sms_daily_alert`,
-  default 500) now counts these with the code texts; set it from the expected order volume. Nothing is ever blocked.
-- (lxviii) **Sender ID and content.** Hubtel needs an Approved Sender ID; confirm whether transactional texts need
+  default 500) now counts these with the code texts; set it from the expected order volume. Nothing is ever blocked. The
+  alert fires once a day: on a day business texts reach the threshold first, a later surge of code requests raises no second
+  alert. Before switch-on, decide a separate code-only threshold (or a second alert) for §9's abuse signal. A two-part text
+  (a promo, or a release with a promo, up to 306 characters) counts as one text in the alert; count parts if cost matters.
+- (lxix) **Sender ID and content.** Hubtel needs an Approved Sender ID; confirm whether transactional texts need
   template approval with the networks.
-- (lxix) **Owner question: texts on refunds, a negative Available, withdrawals, or a low balance.** The spec names none,
+- (lxx) **Owner question: texts on refunds, a negative Available, withdrawals, or a low balance.** The spec names none,
   so none is sent (3b's in-app withdrawal notices stay).
-- (lxx) **Businesses whose login phone is not a Ghana mobile get no texts** (`no_phone`, in-app copy kept). There is no
-  staff list of them yet; Support should check before switch-on.
-- (lxxi) **Booking sales are not covered.** Once Plan 1b records bookings: add them as a second row source
+- (lxxi) **Businesses whose login phone is not a confirmed Ghana mobile get no texts** (`no_phone`, in-app copy kept, the
+  texts screen says why). A phone is confirmed when a code sent to it was accepted (`otp.VerifiedContact`), the rule Stage 2
+  sets for lock notices; registration neither normalises nor verifies phones, so a business that never signed in with a
+  code gets none. There is no staff list of them yet; Support should check before switch-on.
+- (lxxii) **Booking sales are not covered.** Once Plan 1b records bookings: add them as a second row source
   (`kind: "booking"`) to `vendor.sale_groups` / `rows` / `statement`, their `booking_*` journal kinds to `vendor.FOLD`,
-  services and events to `vendor.CHARGED`, and booking paid / release texts to `vendor_texts`. Until then a booking's
+  and booking paid / release texts to `vendor_texts`. (`vendor.charged_categories()` already marks services and events
+  charged as soon as `ledger.BookingSale` exists, so the fee page is truthful at once, ahead of the rows.) Until then a booking's
   money is in Pending but not in the sale rows (Pending no longer equals the waiting rows) and lands in the daily
   summary's `other` column. Do it before the ledger is on if Plan 1b ships.
-- (lxxii) **Retention.** `VendorText` rows (amounts and order numbers only) are kept indefinitely; decide a purge beside
+- (lxxiii) **Retention.** `VendorText` rows (amounts and order numbers only) are kept indefinitely; decide a purge beside
   `otp.retention`.
-- (lxxiii) **Frontend (Plan 4F):** the overview with the cap meter, sales with filters, the daily summary, the export,
+- (lxxiv) **Frontend (Plan 4F):** the overview with the cap meter, sales with filters, the daily summary, the export,
   the fee page and the texts settings.
-- (lxxiv) **At-least-once texts.** A worker that dies between the claim and the provider's answer leaves the text to be
+- (lxxv) **At-least-once texts.** A worker that dies between the claim and the provider's answer leaves the text to be
   tried again after 10 minutes; with a real provider the business may get it twice.
-- (lxxv) **Owner question: a suspended business still gets money texts** (its money still moves).
+- (lxxvi) **Owner question: a suspended business still gets money texts** (its money still moves).
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add backend/CLAUDE.md docs
-git commit -m "docs(wallets): correctness core for the vendor money API and texts; spec V1-V10 and gates (lxvi)-(lxxv); stage index (4)" --trailer "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>" --trailer "Claude-Session: https://claude.ai/code/session_01HDHNosHkqu4Wwocp7a2c8j"
+git commit -m "docs(wallets): correctness core for the vendor money API and texts; spec V1-V16 and gates (lxvii)-(lxxvi); stage index (4)" --trailer "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>" --trailer "Claude-Session: https://claude.ai/code/session_01HDHNosHkqu4Wwocp7a2c8j"
 ```
 
 - [ ] **Step 6: Run the whole backend suite**
@@ -2992,11 +3169,11 @@ Expected: `No changes detected`.
 | Plan | Scope | Why separate |
 |---|---|---|
 | **4F** Frontend | The vendor money screens: overview with the cap meter, sales with filters and labels, daily summary, the statement download, the fee page with the quote, the texts settings and recent texts. | No screen ships in a backend plan; the API answers `ledger_off` and 403 for it to handle. |
-| **1b follow-up** | Booking sales in the vendor rows, statement, daily columns, fee `charged` flags and texts (gate (lxxi)). | Plan 1b is planned in parallel; its `ledger.BookingSale` must land first. |
+| **1b follow-up** | Booking sales in the vendor rows, statement, daily columns, fee `charged` flags (which follow `ledger.BookingSale` on their own) and texts (gate (lxxii)). | Plan 1b is planned in parallel; its `ledger.BookingSale` must land first. |
 | **5** Third-party riders | Rider earnings view and texts. | Spec §7. |
 | **6** Stock offers | Low-stock and sold-out alerts by SMS/email (§1 row 15, §10). | Spec §11 step 6; not a money text. |
-| **7** Hubtel live | A verified Hubtel SMS send and an Approved Sender ID (gates (lxvi), (lxviii)). | Needs credentials (§11 step 7). |
-| Owner decisions | Texts on refunds / negative Available / withdrawals, digest thresholds, retention, texts to suspended businesses (A1–A11; gates (lxix), (lxxii), (lxxv)). | Not decided. |
+| **7** Hubtel live | A verified Hubtel SMS send and an Approved Sender ID (gates (lxvii), (lxix)). | Needs credentials (§11 step 7). |
+| Owner decisions | Texts on refunds / negative Available / withdrawals, digest thresholds, retention, texts to suspended businesses (A1–A11; gates (lxx), (lxxiii), (lxxvi)). | Not decided. |
 
 ## Self-review
 
@@ -3017,20 +3194,20 @@ Expected: `No changes detected`.
 | §6 optional daily digest | 7 |
 | §6 in-app copy always kept | 5 (copy kept on `no_phone`), 6 (the new-order notice; `vendor_money` on release), 7 (digest copy) |
 | §6 SMS failure never blocks payment (queued, retried) | 5 (outbox, lease, backoff), 6 (payment and release tests with the queue failing) |
-| §9 SMS-spend alert | 5 (`texts_sent_on` counts business texts) |
+| §9 SMS-spend alert | 5 (`texts_sent_on` counts business texts; the body splits codes from business texts) |
 | §3.2 fees never shown to the customer | 1, 4 (403 for customers and staff), 6 (checkout, order detail, notices) |
 | §3.1 / §3.3 tiers, changes apply only later | 4 (tiers in force, next approved change, no waiting proposal) |
 | Brief: owner-scoped isolation, customer vs owner same pk | 1, 2, 3, 4, 7 (twin tests), 6 (shared order texts) |
 | Brief: privacy | 1, 3, 6 (no customer detail) |
 | Brief: ledger off → 409 ledger_off | 1–4, 7 (`LedgerOffTests`), 6 (no text, notice as before) |
 | Brief: throttles / quiet hours only if the spec says | none built (V8) |
-| Brief: low-balance only per spec | none built (V12; gate (lxix)) |
+| Brief: low-balance only per spec | none built (V12; gate (lxx)) |
 | §11 step 4 behind the switch | every task |
 
 **Placeholder scan:** every code step carries complete code and every test step complete test code; every edit quotes the exact text it replaces; no "TBD", "similar to" or undefined names.
 
-**Name consistency:** `vendor.AWAITING/RELEASED/REFUNDED/STATUSES`, `RangeError(field, message).body()`, `optional_dates`, `sale_groups(owner, *, status, date_from, date_to)`, `status_of`, `rows(owner, groups)`, `fee_cap`, `overview` (1, 2, 3, 4); `vendor.OWNER_TYPE`, `account`, `date_range(params, *, default_days, max_days)`, `bounds`, `FOLD`, `COLUMNS`, `daily(owner, first, last)` (2, 3, 7); `vendor.STATEMENT_HEADER`, `statement` (3); `vendor.APPLIES_TO`, `CHARGED`, `FEE_BASE`, `band_row`, `fee_schedule`, `fee_quote` (4); `VendorText.ORDER_PAID/ORDER_RELEASED/DAILY_DIGEST`, `QUEUED/SENT/FAILED/NO_PHONE`, `VendorPreference.daily_digest` (5, 6, 7); `vendor_texts.LEASE/BACKOFF/MAX_ATTEMPTS/MAX_LENGTH/fits/queue/deliver/send_due/row` (5, 6, 7); `vendor_texts.VENDOR_MONEY`, `Amounts`, `paid_amounts`, `paid_key`, `released_key`, `paid_text`, `paid_line`, `released_text`, `order_released` (6); `vendor_texts.wants_digest`, `digest_key`, `digest_text`, `queue_digests` (7); tasks `send_vendor_text`, `send_due_vendor_texts` (5), `queue_vendor_digests` (7); views `VendorOverviewView`, `VendorSalesView` (1), `VendorDailyView` (2), `VendorStatementExportView` (3), `VendorFeesView` (4), `VendorTextsView` (7); fixtures `VendorBase`, `Shop`, `signed_in`, `customer`, `paid_order`, `deliver`, `release`, `waived`, `hold` (1–7) and 3b's `fund`, `destination` (2, 3).
+**Name consistency:** `vendor.AWAITING/RELEASED/REFUNDED/STATUSES`, `RangeError(field, message).body()`, `optional_dates`, `sale_groups(owner, *, status, date_from, date_to)`, `status_of`, `rows(owner, groups)`, `fee_cap`, `overview` (1, 2, 3, 4); `vendor.OWNER_TYPE`, `account`, `date_range(params, *, default_days, max_days)`, `bounds`, `FOLD`, `COLUMNS`, `daily(owner, first, last)` (2, 3, 7); `vendor.STATEMENT_HEADER`, `statement` (3); `vendor.APPLIES_TO`, `charged_categories`, `FEE_BASE`, `band_row`, `fee_schedule`, `fee_quote` (4); `VendorText.ORDER_PAID/ORDER_RELEASED/DAILY_DIGEST`, `QUEUED/SENT/FAILED/NO_PHONE`, `VendorPreference.daily_digest` (5, 6, 7); `vendor_texts.LEASE/BACKOFF/MAX_ATTEMPTS/MAX_LENGTH/NO_PHONE_NOTE/fits/confirmed_phone/queue/deliver/send_due/row` (5, 6, 7); `otp.spend.code_texts_sent_on/texts_sent_on` (5); `vendor_texts.VENDOR_MONEY`, `Amounts`, `paid_amounts`, `paid_key`, `released_key`, `paid_text`, `paid_line`, `released_text`, `order_released` (6); `vendor_texts.wants_digest`, `digest_key`, `digest_text`, `queue_digests` (7); tasks `send_vendor_text`, `send_due_vendor_texts` (5), `queue_vendor_digests` (7); views `VendorOverviewView`, `VendorSalesView` (1), `VendorDailyView` (2), `VendorStatementExportView` (3), `VendorFeesView` (4), `VendorTextsView` (7); fixtures `VendorBase`, `Shop`, `signed_in`, `customer`, `paid_order`, `deliver`, `release`, `waived`, `hold` (1–7) and 3b's `fund`, `destination` (2, 3).
 
-**Test counts:** Task 1 — 17 (`test_vendor_sales`: 1 + 8 + 5 + 3); Task 2 — 7 (`test_vendor_daily`: 1 + 6); Task 3 — 6 (`test_vendor_statement`: 1 + 5); Task 4 — 6 (`test_vendor_fees`: 1 + 5); Task 5 — 13 (`test_vendor_texts`: 1 + 4 + 6 + 2); Task 6 — 11 (`test_vendor_text_wiring`: 1 + 5 + 5); Task 7 — 9 (`test_vendor_digest`: 1 + 5 + 3). 69 new tests in all.
+**Test counts:** Task 1 — 18 (`test_vendor_sales`: 1 + 9 + 5 + 3); Task 2 — 7 (`test_vendor_daily`: 1 + 6); Task 3 — 6 (`test_vendor_statement`: 1 + 5); Task 4 — 6 (`test_vendor_fees`: 1 + 5); Task 5 — 16 (`test_vendor_texts`: 1 + 5 + 8 + 2); Task 6 — 11 (`test_vendor_text_wiring`: 1 + 5 + 5); Task 7 — 9 (`test_vendor_digest`: 1 + 5 + 3). 73 new tests in all.
 
 **Review Focus pins:** each of the five lines above names the tasks and tests that pin it; all of those tests are written out in their tasks.
