@@ -4,8 +4,9 @@ The client sends it once in the X-Step-Up-Token header. A view calls require(req
 transaction.atomic() block that makes the change: the token is spent only if the change commits, so a change
 refused by validation leaves it usable for the retry.
 
-While settings.OTP_STEP_UP_ENFORCED is off, require() does nothing; force=True (the authenticator settings) asks for
-it anyway. Only customers and business owners can get a token (otp.views_step_up); staff use sudo."""
+While settings.OTP_STEP_UP_ENFORCED is off, require() does nothing; force=True asks for it anyway: the authenticator
+settings, and - while LEDGER_ENABLED is on - adding a customer recovery contact and the wallet actions (withdrawal,
+payout_destination, contact_change), so a code can be sent for those whatever the OTP switches say. Only customers and business owners can get a token (otp.views_step_up); staff use sudo."""
 import hashlib
 import secrets
 from datetime import timedelta

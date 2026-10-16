@@ -1,8 +1,8 @@
 """Is the name on a payout account the holder's own? (spec §8). A destination is accepted only when the name the
 network or bank returns matches a verified name: a customer's profile name; a KYC-verified vendor's owner name or
 registered business name. Names are compared as sets of words, accents and punctuation dropped and case ignored:
-equal, or every word of the shorter name (at least two words) found in the longer, so a middle name or "LTD" may be
-missing. One word alone never matches a longer name.
+the account's name must contain every word of the verified name (so it may carry a middle name or "LTD" the verified
+name lacks, never the reverse), and the verified name needs at least two words of two letters or more.
 
 A customer's profile name is self-declared (there is no customer KYC) and can be changed without a code, so for
 customers this stops typing mistakes, not a determined holder (a recorded deviation: spec §13 (xxix))."""
@@ -18,13 +18,10 @@ def words(name):
 
 
 def matches(account_name, verified_name):
-    a, b = words(account_name), words(verified_name)
-    if not a or not b:
-        return False
-    if a == b:
-        return True
-    shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
-    return len(shorter) >= 2 and shorter <= longer
+    """The account's name must contain every word of the verified name, and the verified name must have at least two
+    words of two letters or more (an initial does not count toward that floor)."""
+    account, verified = words(account_name), words(verified_name)
+    return sum(len(w) >= 2 for w in verified) >= 2 and verified <= account
 
 
 def verified_names(holder):

@@ -395,6 +395,11 @@ Found while writing the Stage 3 plans (`docs/superpowers/plans/2026-10-16-wallet
   processing-charge share is per-refund half-up, not cumulative. No top-up throttle. The Hubtel checkout call happens
   inside the DB transaction (Plan 7). The top-up finalizer relies on the webhook's amount check; a top-up success
   webhook with no amount must not credit (it now fails closed on a credit/amount mismatch).
+- (xxi) **Assumptions for owner confirmation are A1-A11 in the 3a plan:** collection charge 0 on simulated rails, no
+  wallet cap, no split payment, the partial-refund and processing-charge policy, immediate refund on cancel, and the
+  24-hour pickup-expiry job. As item (viii) says, that job refunds every ledger-recorded store pickup (vendor-shop
+  pickups included) not marked collected by the Pickup Desk within the window, so before the ledger is on every store
+  pickup must be collected at the AshantiHub office desk.
 - (xxii) **Re-dispatch after a refund (the rest of the whole-refund fix).** A whole refund now cancels an order not
   yet handed over and the board, pickup desk and pickup queue refuse a wholly refunded order, but two deeper gaps remain.
   `delivery/stops.py` `reopen_for_new_rider(all_skipped=True)` reopens every stop, including a shop whose lines were
@@ -408,11 +413,6 @@ Found while writing the Stage 3 plans (`docs/superpowers/plans/2026-10-16-wallet
   commit; Support cancel has the same pre-existing exposure). Before the ledger is on: withdraw not-yet-picked-up
   assignments and expire open offers in the helper, and make rider delivery steps refuse a CANCELLED order (decide what
   to do for an order already in transit).
-- (xxi) **Assumptions for owner confirmation are A1-A11 in the 3a plan:** collection charge 0 on simulated rails, no
-  wallet cap, no split payment, the partial-refund and processing-charge policy, immediate refund on cancel, and the
-  24-hour pickup-expiry job. As item (viii) says, that job refunds every ledger-recorded store pickup (vendor-shop
-  pickups included) not marked collected by the Pickup Desk within the window, so before the ledger is on every store
-  pickup must be collected at the AshantiHub office desk.
 
 ### Stage 3b (payout destinations, withdrawals, reconciliation) reconciliation (2026-10-16)
 
@@ -443,7 +443,9 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
 
 ### Before LEDGER_ENABLED is turned on — Stage 3b additions
 
-- (xxiv) **Wallet and recovery-contact step-up is forced while the ledger is on,** so every must-fix in "Before the OTP
+- (xxiv) **Wallet and recovery-contact step-up is forced while the ledger is on,** so the Plan 2F frontend must handle
+  `step_up_required` on the add-recovery-contact screens (they answer 403 with the ledger on until it does), and a
+  customer with no usable contact (`no_channel`) cannot add one. Every must-fix in "Before the OTP
   switches are turned on" (notice send limits, a real SMS provider, the secondary-email confirmation) must be done
   before the ledger is on.
 - (xxv) **Hubtel payouts, status and name lookups are not connected:** with `PAYMENTS_PROVIDER=hubtel`, adding a
@@ -472,3 +474,11 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
   name-checked, code-confirmed and cooled, but anything else that pays from those details (a manual staff payout) is
   exposed. 3b leaves it because registration's payment step uses the same PATCH and cannot answer a step-up yet; force
   it (`force=escrow.enabled()`) once registration can, before the ledger is on.
+- (xxxiii) **Recovery emails verified while the ledger was off remain step-up code channels once it is on**
+  (`otp/identity.py` ~66, `otp/service.py` ~191). Before switch-on, re-confirm pre-switch recovery emails under step-up or
+  exclude secondary emails from wallet-action channels, and notify the primary contacts whenever a recovery email is added.
+- (xxxiv) **Staff can change a customer's or owner's contacts and the matched name without a second person:**
+  `PATCH accounts/customers/<id>/` and `business-owners/<id>/` (`accounts/views.py` ~720-758) need only `users.manage`,
+  no sudo, and send no notice; the portfolio `business.update` approval can change a KYC-verified owner's name with no
+  re-KYC. While the ledger is on these need sudo and maker-checker, the old contacts must be notified, and a contact or
+  name change must restart the cooling period or block withdrawals.

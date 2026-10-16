@@ -62,7 +62,7 @@ class WalletStepUpTests(TestCase):
     def send(self, action):
         return self.client.post("/api/otp/step-up/send/", {"action": action, "channel": "sms"}, format="json")
 
-    @override_settings(LEDGER_ENABLED=True)
+    @override_settings(LEDGER_ENABLED=True, OTP_STEP_UP_ENFORCED=False, OTP_SIGNIN_ENFORCED=False)
     def test_with_the_ledger_on_wallet_actions_get_a_code_whatever_the_otp_switches_say(self):
         for action in ("withdrawal", "payout_destination", "contact_change"):
             with self.subTest(action=action):
@@ -72,7 +72,7 @@ class WalletStepUpTests(TestCase):
                 self.assertEqual(verified.json()["action"], action)
         self.assertEqual(self.send("authenticator_change").json()["code"], "otp_off")          # not the other actions
 
-    @override_settings(LEDGER_ENABLED=True)
+    @override_settings(LEDGER_ENABLED=True, OTP_STEP_UP_ENFORCED=False, OTP_SIGNIN_ENFORCED=False)
     def test_review_focus_a_recovery_email_needs_a_code_while_the_ledger_is_on(self):
         # A verified recovery email is a code channel for a customer with no email (otp.identity.contacts): a stolen
         # session must not be able to add its own and then confirm withdrawals with it.
@@ -83,6 +83,14 @@ class WalletStepUpTests(TestCase):
         self.customer.refresh_from_db()
         self.assertEqual((self.customer.secondary_email, self.customer.secondary_phone), (None, None))
 
+    @override_settings(LEDGER_ENABLED=True, OTP_STEP_UP_ENFORCED=False, OTP_SIGNIN_ENFORCED=False)
+    def test_a_contact_change_token_lets_the_recovery_email_through(self):
+        self.send("contact_change")
+        token = self.client.post("/api/otp/step-up/verify/", {"action": "contact_change", "code": last_sms_code()}, format="json").json()["step_up_token"]
+        response = self.client.post(SECONDARY_EMAIL, {"secondary_email": "x@example.com"}, format="json", HTTP_X_STEP_UP_TOKEN=token)
+        self.assertEqual(response.status_code, 200, response.content)
+
+    @override_settings(LEDGER_ENABLED=False, OTP_STEP_UP_ENFORCED=False, OTP_SIGNIN_ENFORCED=False)
     def test_review_focus_with_the_ledger_off_nothing_changes(self):
         for action in ("withdrawal", "contact_change"):
             response = self.send(action)
@@ -98,12 +106,22 @@ class NameMatchTests(SimpleTestCase):
         self.assertTrue(names.matches("Owusu, Ama", "Ama Owusu"))
         self.assertTrue(names.matches("Ábena Ófori", "Abena Ofori"))
 
-    def test_a_missing_middle_name_or_company_suffix_still_matches(self):
-        self.assertTrue(names.matches("KWAME ASANTE MENSAH", "Kwame Mensah"))
+    def test_extra_words_on_the_account_still_match(self):
+        self.assertTrue(names.matches("KWAME ASANTE MENSAH JR", "Kwame Asante Mensah"))
         self.assertTrue(names.matches("ADEPA VENTURES LTD", "Adepa Ventures"))
+        self.assertTrue(names.matches("KWAME ASANTE MENSAH", "Kwame Mensah"))
+
+    def test_the_account_must_carry_every_word_of_the_verified_name(self):
+        for account, verified in (
+            ("ASANTE MENSAH", "Kwame Asante Mensah"), ("VENTURES LTD", "Adepa Ventures Ltd"),
+            ("ENTERPRISE GHANA", "Ama Owusu Enterprise Ghana"), ("A MENSAH", "Kwame A Mensah"),
+        ):
+            self.assertFalse(names.matches(account, verified), (account, verified))
 
     def test_one_word_alone_or_another_person_never_matches(self):
         self.assertFalse(names.matches("MENSAH", "Kwame Mensah"))
+        self.assertFalse(names.matches("MENSAH", "Mensah"))
+        self.assertFalse(names.matches("Kwame A", "Kwame A"))                                   # an initial is not a word
         self.assertFalse(names.matches("Kofi Boateng", "Ama Owusu"))
         self.assertFalse(names.matches("", "Ama Owusu"))
         self.assertFalse(names.matches("Ama Owusu", None))
