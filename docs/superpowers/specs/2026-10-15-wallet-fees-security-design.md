@@ -1,9 +1,9 @@
 # Wallets, Escrow, Platform Fees, Stock Offers and OTP Security — Design
 
 **Status:** Approved 2026-10-15. Stage 1 plan: docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md. Stage 2 (OTP, backend) plan: docs/superpowers/plans/2026-10-16-otp-security.md. Stage 3 plans: docs/superpowers/plans/2026-10-16-wallets-payments-3a.md (wallet payments and refunds) and docs/superpowers/plans/2026-10-16-withdrawals-3b.md (payout destinations, withdrawals, reconciliation).
-**Scope:** One system, built in the order given in §11. Stage 1 (ledger), Stage 2 (OTP, backend) and Stage 3a (wallet
-payments and refunds, backend) are implemented behind switches that default off (branches feature/ledger-stage1,
-feature/otp-security and feature/wallets; see section 13); later stages are specs only.
+**Scope:** One system, built in the order given in §11. Stage 1 (ledger), Stage 2 (OTP, backend) and Stage 3 (wallets,
+payments, refunds, withdrawals and reconciliation, backend) are implemented behind switches that default off (branches
+feature/ledger-stage1, feature/otp-security and feature/wallets; see section 13); later stages are specs only.
 **Basis:** The owner's brief, plus the decisions in §1, reconciled with the existing code in §13.
 
 ## 1. Decisions (settled in brainstorming)
@@ -485,3 +485,25 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
   no sudo, and send no notice; the portfolio `business.update` approval can change a KYC-verified owner's name with no
   re-KYC. While the ledger is on these need sudo and maker-checker, the old contacts must be notified, and a contact or
   name change must restart the cooling period or block withdrawals.
+- (xxxv) **Owner question: a second approver (maker-checker) for failing a stuck withdrawal by hand** is undecided (plan
+  B6). Today `wallets.manage` plus sudo and a password suffice, after the provider is asked.
+- (xxxvi) **Amount cases and the staff fail action.** A CONFIRMED amount case is treated like a dismissed one: staff can
+  fail the withdrawal if the provider answers processing (an unreachable provider answers 503 and changes nothing).
+  Owner to confirm. Design gap: a payout the provider keeps reporting with a different amount can be neither failed nor
+  settled as paid; it needs a staff "settle as paid" action with evidence, before the ledger is on.
+- (xxxvii) **The simulated statement is built from AshantiHub's own records,** so reconciliation can only prove sessions
+  and journals agree. Plan 7 must supply: a Hubtel status client that raises a distinct "unreachable" exception (see
+  (xxvii-b)), real `find()`, `pending_payouts()` and `statement()` implementations, and a flag on any reference that
+  appears on the statement but is unknown to AshantiHub.
+- (xxxviii) **Reconciliation catch-up and case cadence.** A missed night (beat down at 02:30) is not caught up; add a
+  catch-up run. One fraud case per day exists only while it is OPEN; a closed case reopens as a new one.
+- (xxxix) **The 5-minute payout poll stops settling when the ledger switch is off.** Decide to keep settling open
+  withdrawals regardless of the switch, so money in transit is never stranded by switching the ledger off.
+- (xl) **Masking in staff notes:** digit runs of 6 or more in a staff note are masked before storage.
+- (xli) **`mask_but_last` keeps 5 digits;** consider 4 for MoMo numbers.
+- (xlii) **Throttle buckets are keyed by user pk** across customers and owners (project-wide), so a customer and an owner
+  never share a bucket only because their pks differ in kind; review before go-live.
+- (xliii) **Money-settings approval screen wording** for the withdrawal settings (per-withdrawal and daily limits,
+  `payout_cooling_hours`) needs owner review.
+- (xliv) **Name oracle.** One valid step-up code allows repeated account-name lookups within its 5-minute life, capped
+  only by the throttle. Consider a per-holder mismatch counter before Plan 7 makes lookups paid.
