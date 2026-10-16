@@ -941,6 +941,21 @@ def _checkin_serializer_for(user):
     return StaffTicketCheckinListSerializer if isinstance(user, StaffUser) else TicketCheckinListSerializer
 
 
+LEDGER_RELEASES = "With the ledger on, this ticket's money is released by Support's call to the customer."
+
+
+def _ledger_sale(ticket):
+    """The ledger's booking sale this ticket was bought in (ledger Plan 1b), or None: the ledger is off, the purchase
+    was made before it was on, or the event's organiser is a customer. Only a ticket in a sale has its money in the
+    ledger, and then its escrow flag follows the sale (ledger.sales.release)."""
+    from ledger import escrow
+    from ledger.models import BookingSale
+
+    if not escrow.enabled():
+        return None
+    return BookingSale.objects.filter(session__transaction_id=ticket.transaction_id).first()
+
+
 class EventCheckinListView(generics.ListAPIView):
     """GET /api/events/{id}/tickets/checkin-list/ — organizer/staff-only
     (same gate as GET .../rsvps/) roster of every ticket sold for this
@@ -978,25 +993,30 @@ class EventCheckinView(APIView):
         self.check_object_permissions(request, event)
 
         code = (request.data.get("code") or "").strip()
-        ticket = generics.get_object_or_404(Ticket, code=code, ticket_type__event=event)
-
-        if ticket.delivered_at is not None:
-            return Response({"detail": "This ticket has already been checked in."}, status=400)
-        if ticket.refunded_at is not None:
-            return Response(
-                {"detail": "This ticket was refunded and cannot be checked in."}, status=400
+        with db_transaction.atomic():
+            # Locked, so a scan and a refund of the same ticket never cross (ledger Plan 1b S15).
+            ticket = generics.get_object_or_404(
+                Ticket.objects.select_for_update(of=("self",)), code=code, ticket_type__event=event,
             )
 
-        ticket.delivered_at = timezone.now()
-        ticket.delivered_by_staff = request.user if isinstance(request.user, StaffUser) else None
-        update_fields = ["delivered_at", "delivered_by_staff"]
+            if ticket.delivered_at is not None:
+                return Response({"detail": "This ticket has already been checked in."}, status=400)
+            if ticket.refunded_at is not None:
+                return Response(
+                    {"detail": "This ticket was refunded and cannot be checked in."}, status=400
+                )
 
-        if ticket.escrow_status == Ticket.HELD:
-            ticket.escrow_status = Ticket.RELEASED
-            ticket.escrow_released_at = timezone.now()
-            update_fields += ["escrow_status", "escrow_released_at"]
+            ticket.delivered_at = timezone.now()
+            ticket.delivered_by_staff = request.user if isinstance(request.user, StaffUser) else None
+            update_fields = ["delivered_at", "delivered_by_staff"]
 
-        ticket.save(update_fields=update_fields)
+            # With the ledger on, a ticket bought in a booking sale is released by Support's call, not by the scan.
+            if ticket.escrow_status == Ticket.HELD and _ledger_sale(ticket) is None:
+                ticket.escrow_status = Ticket.RELEASED
+                ticket.escrow_released_at = timezone.now()
+                update_fields += ["escrow_status", "escrow_released_at"]
+
+            ticket.save(update_fields=update_fields)
         return Response(_checkin_serializer_for(request.user)(ticket).data)
 
 
@@ -1099,6 +1119,8 @@ class EscrowReleaseView(APIView):
         note = _required_note(request.data.get("note"))
         if note is None:
             return Response({"note": "Write a note of at least 3 characters: every release is explained."}, status=400)
+        if _ledger_sale(generics.get_object_or_404(Ticket, pk=ticket_id)) is not None:
+            return Response({"detail": LEDGER_RELEASES, "code": "ledger_on"}, status=409)
         with db_transaction.atomic():
             ticket = generics.get_object_or_404(Ticket.objects.select_for_update(), pk=ticket_id)
 
@@ -1135,6 +1157,8 @@ class EscrowHoldView(APIView):
         note = _required_note(request.data.get("note"))
         if note is None:
             return Response({"note": "Write a note of at least 3 characters: every hold is explained."}, status=400)
+        if _ledger_sale(generics.get_object_or_404(Ticket, pk=ticket_id)) is not None:
+            return Response({"detail": LEDGER_RELEASES, "code": "ledger_on"}, status=409)
         with db_transaction.atomic():
             ticket = generics.get_object_or_404(Ticket.objects.select_for_update(), pk=ticket_id)
 

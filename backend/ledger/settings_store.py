@@ -23,7 +23,10 @@ class Definition:
 
 DEFINITIONS = {
     "fee_cap_pesewas": Definition("Lifetime platform-fee cap per vendor (pesewas; blank = no cap)", None, True, 1, 10**12),
-    "verification_overdue_hours": Definition("Hours after purchase by which an order must be verified or disputed", 72, False, 1, 720),
+    "verification_overdue_hours": Definition(
+        "Hours after purchase (orders) or after hand-over (services, stays, tickets) by which a sale must be verified or disputed",
+        72, False, 1, 720,
+    ),
     "pickup_window_hours": Definition("Hours after purchase within which a store-pickup order is collected", 24, False, 1, 168),
     "rider_commission_bp": Definition("Third-party rider commission (basis points; 1000 = 10%)", 1000, False, 0, 10000),
     # Withdrawals and payout destinations (wallets plan 3b; spec §3.3, §8). The cooling period never goes below an hour,

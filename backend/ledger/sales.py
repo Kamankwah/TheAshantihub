@@ -14,12 +14,15 @@ Lock order (spec W7, extended to bookings): the service request or stay booking 
 rows, in primary-key order), then the sale row, then the ledger accounts in primary-key order in one pass
 (posting.lock). A business's Pending account is locked before its fees so far are read, as escrow.record_order_payment
 does, so a product payment and a booking payment for one business never both see the same cap remainder."""
+from datetime import timedelta
+
 from django.db import transaction
 from django.utils import timezone
 
 from . import escrow, fees, posting, settings_store
-from .models import Account, BookingSale, FeeRuleSet
+from .models import Account, BookingSale, FeeRuleSet, FulfilmentCheck, Journal
 from .money import to_pesewas
+from .verification import VerificationError
 
 # Spec §1 row 11: stays count as services; tickets use the events table, whatever category the listing or event is in.
 CATEGORY = {BookingSale.SERVICE: FeeRuleSet.SERVICE, BookingSale.STAY: FeeRuleSet.SERVICE, BookingSale.TICKETS: FeeRuleSet.EVENT}
@@ -93,4 +96,153 @@ def record_payment(session, kind, subject, business_owner, *, at=None):
             key=pay_key(session), kind="booking_payment", lines=[posting.debit(source, base), posting.credit(pending, base)],
             reference_type="ledger.bookingsale", reference_id=str(sale.pk), memo=f"Payment for {sale.label()}",
         )
+        return sale
+
+
+# --- after payment: hand-over, Support's call and the release (spec §4.2; Plan 1b S5–S9) ---------------------------
+
+MATCHES, DOES_NOT_MATCH, UNREACHABLE = FulfilmentCheck.MATCHES, FulfilmentCheck.DOES_NOT_MATCH, FulfilmentCheck.UNREACHABLE
+NOT_HANDED_OVER = {
+    BookingSale.SERVICE: "The business has not marked this service done yet.",
+    BookingSale.STAY: "The guest has not checked in yet.",
+    BookingSale.TICKETS: "The event has not taken place yet and no ticket was scanned.",
+}
+
+
+def tickets_of(sale):
+    """A ticket purchase's tickets (those bought on its checkout session's transaction); none for another kind."""
+    from events.models import Ticket
+
+    if sale.kind != BookingSale.TICKETS:
+        return Ticket.objects.none()
+    return Ticket.objects.filter(transaction_id=sale.session.transaction_id)
+
+
+def handed_over_at(sale, now=None):
+    """When the booking reached the customer, or None (spec §4.2, settled in Plan 1b S5): the business marked the
+    service done; the guest checked in; for tickets, the first scan at the door, or else the event's date once it has
+    passed."""
+    now = now or timezone.now()
+    if sale.kind == BookingSale.SERVICE:
+        return sale.service_request.completed_at
+    if sale.kind == BookingSale.STAY:
+        return sale.booking.checked_in_at
+    first_scan = (
+        tickets_of(sale).filter(delivered_at__isnull=False).order_by("delivered_at").values_list("delivered_at", flat=True).first()
+    )
+    if first_scan is not None:
+        return first_scan
+    return sale.event.event_date if sale.event.event_date <= now else None
+
+
+def customer_confirmed(sale):
+    """Support recorded the customer's confirmation on the call, or a ticket of the purchase was scanned at the door."""
+    if sale.phone_confirmed_at is not None:
+        return True
+    return tickets_of(sale).filter(delivered_at__isnull=False).exists()
+
+
+def has_open_dispute(sale):
+    from disputes.models import Dispute
+
+    return sale.dispute_id is not None and Dispute.objects.filter(pk=sale.dispute_id).exclude(status__in=Dispute.FINAL_STATUSES).exists()
+
+
+def lock(sale):
+    """Take the locks a money step on `sale` needs, in the one order every path uses (module docstring): the service
+    request or stay booking row (tickets: the purchase's tickets in primary-key order), then the sale row. Returns the
+    sale fresh from its locked row. Call inside transaction.atomic()."""
+    from bookings.models import Booking
+    from events.models import Ticket
+    from services.models import ServiceRequest
+
+    if sale.kind == BookingSale.SERVICE:
+        ServiceRequest.objects.select_for_update().get(pk=sale.service_request_id)
+    elif sale.kind == BookingSale.STAY:
+        Booking.objects.select_for_update().get(pk=sale.booking_id)
+    else:
+        list(Ticket.objects.select_for_update().filter(transaction_id=sale.session.transaction_id).order_by("pk"))
+    return BookingSale.objects.select_for_update(of=("self",)).select_related(
+        "session", "service_request", "booking", "event", "customer", "business_owner",
+    ).get(pk=sale.pk)
+
+
+def release(sale, now=None):
+    """Pay a verified booking's held money out (spec §4.2 and §2.2 step 2): AshantiHub's fee first, then the business's
+    Available, only what refunds left. Never by a timer: record_verification, on "matches", is the only caller and holds
+    lock(sale). Returns the journal, or None while the ledger is off, without a positive call, with a dispute open, or
+    once released or refunded in full. It also marks the purchase's tickets released (their old escrow flag, S9)."""
+    from events.models import Ticket
+
+    if not escrow.enabled():
+        return None
+    now = now or timezone.now()
+    if sale.outcome != MATCHES or sale.released_at is not None or sale.reversed_at is not None or has_open_dispute(sale):
+        return None
+    if Journal.objects.filter(key=release_key(sale)).exists() or not Journal.objects.filter(key=pay_key(sale.session)).exists():
+        return None
+    base = sale.base_pesewas - sale.refunded_base_pesewas
+    fee = sale.charged_pesewas - sale.refunded_fee_pesewas
+    pending = posting.account_for(Account.VENDOR_PENDING, sale.business_owner)
+    income = posting.account_for(Account.PLATFORM_FEE_INCOME)
+    available = posting.account_for(Account.VENDOR_AVAILABLE, sale.business_owner)
+    posting.lock(pending, income, available)
+    lines = [posting.debit(pending, base)]
+    if fee > 0:
+        lines.append(posting.credit(income, fee))
+    if base - fee > 0:
+        lines.append(posting.credit(available, base - fee))
+    journal = posting.post(
+        key=release_key(sale), kind="booking_release", lines=lines,
+        reference_type="ledger.bookingsale", reference_id=str(sale.pk), memo=f"Release of {sale.label()}",
+    )
+    sale.released_at = now
+    sale.save(update_fields=["released_at"])
+    tickets_of(sale).filter(refunded_at__isnull=True, escrow_status=Ticket.HELD).update(
+        escrow_status=Ticket.RELEASED, escrow_released_at=now,
+    )
+    return journal
+
+
+def record_verification(sale, staff, outcome, *, note="", customer_confirmed_by_phone=False, now=None):
+    """Support's verification call for a booking (spec §4.2). "matches" releases the money at once; "does not match"
+    opens a dispute due `verification_overdue_hours` after hand-over (S7) and releases nothing; "could not reach" is only
+    recorded. Raises VerificationError, saving nothing, when the booking cannot be verified now. Returns the sale."""
+    from disputes.models import Dispute
+
+    now = now or timezone.now()
+    if outcome not in (MATCHES, DOES_NOT_MATCH, UNREACHABLE):
+        raise VerificationError("Pick matches, does not match, or could not reach.", 400)
+    if note is not None and not isinstance(note, str):
+        raise VerificationError("The note must be text.", 400)
+    note = (note or "").strip()[:500]
+    if outcome == DOES_NOT_MATCH and not note:
+        raise VerificationError("Say what does not match.", 400)
+    with transaction.atomic():
+        sale = lock(sale)
+        if sale.reversed_at is not None:
+            raise VerificationError("This booking was refunded in full.")
+        if sale.released_at is not None:
+            raise VerificationError("This booking has already been released to the business.")
+        handed = handed_over_at(sale, now)
+        if handed is None:
+            raise VerificationError(NOT_HANDED_OVER[sale.kind])
+        if outcome == MATCHES:
+            if has_open_dispute(sale):
+                raise VerificationError("A dispute is open on this booking. It must be settled first.")
+            if customer_confirmed_by_phone and sale.phone_confirmed_at is None:
+                sale.phone_confirmed_at = now
+            if not customer_confirmed(sale):
+                raise VerificationError("Record the customer's confirmation first.")
+        if outcome == DOES_NOT_MATCH and not has_open_dispute(sale):
+            hours = settings_store.current("verification_overdue_hours", now)
+            # Logged by staff on the customer's behalf: raised_by stays null (the disputes convention, S8).
+            sale.dispute = Dispute.objects.create(
+                order=None, raised_by=None, logged_by=staff, reason=Dispute.QUALITY_ISSUE, status=Dispute.OPEN,
+                description=f"{sale.label().capitalize()} does not match: {note}", answer_due_at=handed + timedelta(hours=hours),
+            )
+        sale.outcome, sale.outcome_note, sale.outcome_at, sale.outcome_by = outcome, note, now, staff
+        sale.save(update_fields=["phone_confirmed_at", "outcome", "outcome_note", "outcome_at", "outcome_by", "dispute"])
+        if outcome == MATCHES and escrow.enabled() and release(sale, now) is None:
+            raise VerificationError("The booking could not be released. Check for an open dispute and try again.", 409)
         return sale
