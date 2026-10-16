@@ -75,7 +75,7 @@ KIND_TYPE = {kind: key for key, _l, kinds in COLLECTION_TYPES for kind in kinds}
 STATUSES = ("success", "pending", "failed", "expired")
 PAGE_SIZE = 100
 WALLET_NOT_RECORDED = {
-    "name": "Orders paid from a wallet",
+    "name": "Paid from a wallet",
     "why": "Orders, services, stays and tickets paid from an AshantiHub wallet are not collections; the money was counted when the wallet was topped up.",
 }
 COLLECTIONS_NOT_RECORDED = [

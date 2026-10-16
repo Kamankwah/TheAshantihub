@@ -138,6 +138,9 @@ def _finalize_ticket_purchase(session):
     process_payment() is ever called — this finalizer only ever creates
     tickets, it never touches quantity_sold. See _fail_ticket_purchase below
     for the rollback path when a session instead fails/expires.
+
+    With the ledger on it also records the purchase's ledger.BookingSale (ledger.sales.record_payment), and can refuse
+    (raise) when the paid amount is not the price, rolling the payment back.
     """
     from events.models import Ticket
 
@@ -387,7 +390,8 @@ def process_payment(*, kind, amount, purpose, business_owner=None, customer=None
     `processing_fee` is the provider's collection charge already included in `amount` (kept on the session; 0 by
     default). `wallet=True` pays a customer's order from their AshantiHub wallet: the session's provider is "wallet",
     it is immediate whatever PAYMENTS_PROVIDER says, and the order finalizer debits the wallet instead of provider
-    clearing (ledger.posting.InsufficientFunds when the balance is too low, which rolls the caller's transaction back).
+    clearing; wallet payment also pays service requests, stays and ticket purchases (WALLET_KINDS), not only orders
+    (ledger.posting.InsufficientFunds when the balance is too low, which rolls the caller's transaction back).
     """
     if bool(business_owner) == bool(customer):
         raise ValueError("process_payment requires exactly one of business_owner or customer")

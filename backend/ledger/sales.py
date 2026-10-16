@@ -238,9 +238,13 @@ def record_verification(sale, staff, outcome, *, note="", customer_confirmed_by_
     if outcome == DOES_NOT_MATCH and not note:
         raise VerificationError("Say what does not match.", 400)
     with transaction.atomic():
+        locked_dispute_id = sale.dispute_id
         if sale.dispute_id is not None:  # dispute → subject → sale, the order disputes resolve in (no deadlock with it)
             Dispute.objects.select_for_update().get(pk=sale.dispute_id)
         sale = lock(sale)
+        if sale.dispute_id is not None and sale.dispute_id != locked_dispute_id:
+            # Another call linked a dispute after we read the sale: we hold no lock on it, so touch nothing; retry.
+            raise VerificationError("Another call just logged a dispute — try again.", 409)
         if sale.reversed_at is not None:
             raise VerificationError("This booking was refunded in full.")
         if sale.released_at is not None:
@@ -294,8 +298,11 @@ def description(sale):
 
 
 def awaiting(now=None):
-    """Bookings handed over (S5) and waiting for Support's call: not released and not refunded in full, oldest paid
-    first. A queryset, for a paginated screen."""
+    """Bookings handed over (S5) and waiting for Support's call: not released and not refunded in full, longest since
+    hand-over first (so every overdue one comes before any that is not: overdue is hand-over + hours < now), then oldest
+    paid. A queryset, for a paginated screen."""
+    from django.db.models import Case, DateTimeField, Min, Subquery, When
+    from django.db.models.functions import Coalesce
     from events.models import Ticket
 
     now = now or timezone.now()
@@ -303,6 +310,16 @@ def awaiting(now=None):
     return (
         BookingSale.objects.filter(released_at__isnull=True, reversed_at__isnull=True)
         .annotate(scanned=Exists(scanned))
+        .annotate(first_scan=Subquery(
+            Ticket.objects.filter(transaction_id=OuterRef("session__transaction_id"), delivered_at__isnull=False)
+            .values("transaction_id").annotate(first=Min("delivered_at")).values("first")[:1]
+        ))
+        .annotate(handed_at=Case(
+            When(kind=BookingSale.SERVICE, then="service_request__completed_at"),
+            When(kind=BookingSale.STAY, then="booking__checked_in_at"),
+            default=Coalesce("first_scan", "event__event_date"),
+            output_field=DateTimeField(),
+        ))
         .filter(
             Q(kind=BookingSale.SERVICE, service_request__completed_at__isnull=False)
             | Q(kind=BookingSale.STAY, booking__checked_in_at__isnull=False)
@@ -312,7 +329,7 @@ def awaiting(now=None):
         .select_related(
             "session", "customer", "business_owner__profile", "service_request__listing", "booking__listing", "event",
         )
-        .order_by("paid_at", "id")
+        .order_by("handed_at", "paid_at", "id")
     )
 
 

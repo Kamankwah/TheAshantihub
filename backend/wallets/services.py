@@ -91,6 +91,6 @@ def line_row(line):
         # Every holder account grows with credits, so a credit is money in.
         "direction": "in" if line.side == JournalLine.CREDIT else "out",
         "amount": money(line.amount), "order": int(journal.reference_id) if is_order else None,
-        "booking": int(journal.reference_id) if is_booking else None,
+        "booking_sale": int(journal.reference_id) if is_booking else None,
         "reference": "" if (is_order or is_booking) else journal.reference_id,
     }

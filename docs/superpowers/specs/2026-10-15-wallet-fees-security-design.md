@@ -580,6 +580,8 @@ Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-st
 - (lvi) **Support calls every ticket purchase** before release, even when a ticket was scanned at the door; at a large
   event that is many calls. Owner question: should a scan release without a call? A door scan is forgeable by the organiser (the paid business holds the ticket codes), so a scan
   shown as `customer_confirmed: true` in Support's queue must not invite a "matches" without reaching the customer.
+  Related: ticket hand-over follows the live, organiser-editable `Event.event_date` (`EventOwnerUpdateView`), so moving
+  the date drops or adds purchases to Support's queue. Owner question: refuse date edits on events that have ledger sales?
 - (lvii) **The 72-hour window for bookings runs from hand-over,** not from purchase, because a booking can be paid weeks
   before it happens. Owner to confirm.
 - (lviii) **Cancellation policy.** A customer's cancel of a paid stay before check-in and Support's cancel of a booking
@@ -593,7 +595,9 @@ Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-st
   the price) leaves a paid booking unrecorded with `processed=False`.
 - (lxi) **Reports.** `billing.TransactionReportView` (ix) also counts wallet-paid bookings as cash, and
   `insights/sales.refunds_total` does not count `BookingRefund`. Ticket refunds still write their old REFUNDED
-  `billing.Transaction` as well; do not count them twice when (ix) is fixed.
+  `billing.Transaction` as well; do not count them twice when (ix) is fixed. Whole refunds through a dispute, and the
+  last-ticket refund that empties a purchase, mark tickets refunded without per-ticket REFUNDED `Transaction` rows
+  (reporting only).
 - (lxii) **Stale copy with the ledger on:** `events.views.EscrowSummaryView` `not_recorded` ("Order and booking money is
   not held in escrow yet", "No release-after-delivery rule is built") and the ticket escrow screen, whose flags now
   follow the booking sale. Branch them on `LEDGER_ENABLED`.
@@ -620,8 +624,9 @@ Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-st
   records it at the full price with no processing charge, and reconciliation skips it. Let every open session resolve
   or expire before turning the switch on.
 - (lxix) **A price near GH₵ 99,999,999.99 plus the processing charge overflows `CheckoutSession.amount`
-  (`max_digits=10`) and answers 500.** `clean_price` allows 8 integer digits. Cap the agreed price (or widen the
-  column) so the amount with its charge always fits.
+  (`max_digits=10`) and answers 500.** `clean_price` allows 8 integer digits. The same overflow applies to a stay's
+  `total_price` (12 digits) and to a ticket purchase (price × quantity). Cap those prices (or widen the column) so the
+  amount with its charge always fits.
 - (lxx) **The Hubtel checkout call is made while the service request row is locked** (`ServiceRequestPayView` holds
   `select_for_update` across `booking_pay.pay`), like the order and top-up flows ((xx)): a slow Hubtel call holds
   the row. Plan 7.
@@ -639,6 +644,9 @@ Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-st
   complaint after release is handled and recovered from the business's Available.
 - (lxxv) **Cross-reference to (lxvi):** a Hubtel success for a cancelled PENDING booking is not recorded; the fix there
   covers it.
-- (lxxvi) **Stale copy: wallet-paid services, stays and tickets are also excluded from Collections.**
-  `insights/accounting.py` `WALLET_NOT_RECORDED` says "Orders paid from a wallet" and `_wallet_in_use`'s docstring says
-  "wallet-paid orders", but wallet-paid service requests, stays and tickets are not collections either.
+- (lxxvi) **Wallet-paid services, stays and tickets are also excluded from Collections.** The
+  `insights/accounting.py` `WALLET_NOT_RECORDED` note is now titled "Paid from a wallet" and says so, and
+  `_wallet_in_use`'s docstring names them. Done in Plan 1b; kept here so the Collections screen copy is checked.
+- (lxxvii) **`ServicesPanel.jsx` (about lines 77-78) sends the raw number input** as the quote price. The always-on price
+  check (gate (lxvii)) answers 400 `price`, which the panel shows as a generic error: the frontend must surface it
+  before this ships to production.

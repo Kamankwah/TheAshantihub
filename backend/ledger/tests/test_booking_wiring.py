@@ -85,7 +85,7 @@ class BookingPaymentWiringTests(BookingBase):
         self.as_owner()
         row = self.client.get("/api/wallet/transactions/").json()["results"][0]
         self.assertEqual(
-            (row["label"], row["account"], row["direction"], row["amount"], row["booking"], row["order"], row["reference"]),
+            (row["label"], row["account"], row["direction"], row["amount"], row["booking_sale"], row["order"], row["reference"]),
             ("Booking payment", "pending", "in", "200.00", sale.pk, None, ""),
         )
 

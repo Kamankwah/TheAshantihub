@@ -936,6 +936,7 @@ class TicketPurchaseView(APIView):
             TicketSerializer(tickets, many=True, context={"request": request}).data, status=201
         )
 
+
 def _checkin_serializer_for(user):
     """Staff see the ticket buyer's phone; an event's organizer never does."""
     return StaffTicketCheckinListSerializer if isinstance(user, StaffUser) else TicketCheckinListSerializer
@@ -1192,6 +1193,10 @@ class EscrowRefundView(APIView):
     a negative-amount Transaction as the refund's ledger record, mirroring
     how every other financial action in this app books a Transaction
     rather than mutating one in place.
+
+    With the ledger on (the ticket has a BookingSale) the price goes back to the buyer's AshantiHub wallet instead,
+    through ledger.sales.refund_ticket: one BookingRefund per ticket, plus the same REFUNDED Transaction; the response
+    adds `wallet_refund`.
     """
 
     def get_permissions(self):

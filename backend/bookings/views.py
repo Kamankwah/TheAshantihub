@@ -122,6 +122,7 @@ class BookingCreateView(APIView):
         )
         return Response(booking_pay.with_terms(BookingSerializer(booking).data, processing, method=method), status=201)
 
+
 class MyBookingsView(generics.ListAPIView):
     """GET /api/bookings/mine/ — the customer's own bookings."""
 

@@ -175,6 +175,16 @@ class BookingReleaseTests(BookingBase):
         order = [next(i for i, sql in enumerate(locking) if f'FROM "{t}"' in sql) for t in tables]
         self.assertEqual(order, sorted(order), locking)
 
+    def test_a_call_that_read_the_sale_before_another_call_linked_a_dispute_is_asked_to_retry(self):
+        sale = self.paid_service()
+        self.complete(sale)
+        stale = type(sale).objects.get(pk=sale.pk)                       # read while no dispute was linked
+        self.call(sale, "does_not_match", note="First call")             # the other call logs the dispute
+        self.assertIsNone(stale.dispute_id)
+        with self.assertRaisesMessage(VerificationError, "Another call just logged a dispute — try again."):
+            self.call(stale, "does_not_match", note="Second call")
+        self.assertEqual(Dispute.objects.get().description.count("Second call"), 0)
+
     def test_a_repeat_mismatch_appends_its_note_to_the_open_dispute(self):
         sale = self.paid_service()
         self.complete(sale)

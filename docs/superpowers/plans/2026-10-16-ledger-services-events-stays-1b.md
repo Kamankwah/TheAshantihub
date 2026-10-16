@@ -924,7 +924,7 @@ git commit -m "feat(ledger): record paid services, stays and ticket purchases wi
   - `services.views.clean_price(raw) -> Decimal | None`, `PRICE_HINT`
   - the three finalizers call `sales.record_payment` (tickets only for a business-organised event)
   - `wallets.reconciliation.BOOKING_KINDS`; `expected_key` returns `booking-pay-<reference>` for marked booking sessions; `provider_reference` reads `booking-pay-` keys
-  - `wallets.services.LABELS` gains `booking_payment`, `booking_release`, `booking_refund`; `line_row(...)` gains `"booking"` (the sale id, else None)
+  - `wallets.services.LABELS` gains `booking_payment`, `booking_release`, `booking_refund`; `line_row(...)` gains `"booking_sale"` (the sale id, else None)
 
 - [ ] **Step 1: Write the failing test** — `backend/ledger/tests/test_booking_wiring.py`
 
@@ -1011,7 +1011,7 @@ class BookingPaymentWiringTests(BookingBase):
         self.as_owner()
         row = self.client.get("/api/wallet/transactions/").json()["results"][0]
         self.assertEqual(
-            (row["label"], row["account"], row["direction"], row["amount"], row["booking"], row["order"], row["reference"]),
+            (row["label"], row["account"], row["direction"], row["amount"], row["booking_sale"], row["order"], row["reference"]),
             ("Booking payment", "pending", "in", "200.00", sale.pk, None, ""),
         )
 
@@ -1527,7 +1527,7 @@ with
         # Every holder account grows with credits, so a credit is money in.
         "direction": "in" if line.side == JournalLine.CREDIT else "out",
         "amount": money(line.amount), "order": int(journal.reference_id) if is_order else None,
-        "booking": int(journal.reference_id) if is_booking else None,
+        "booking_sale": int(journal.reference_id) if is_booking else None,
         "reference": "" if (is_order or is_booking) else journal.reference_id,
     }
 ```

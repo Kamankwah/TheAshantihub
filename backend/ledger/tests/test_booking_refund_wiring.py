@@ -178,6 +178,39 @@ class BookingRefundWiringTests(BookingBase):
         self.assertEqual(self.client.post(url.format(second.pk), {"reason": "Cannot attend"}, format="json").status_code, 400)
         self.assertEqual(self.wallet(), 5000)
 
+    @override_settings(SIMULATED_COLLECTION_CHARGE_BP=200)
+    def test_a_booking_dispute_resolved_with_refund_processing_returns_its_share_of_the_charge(self):
+        sale = self.paid_service("200.00")                                                     # paid 204.00
+        ServiceRequest.objects.filter(pk=sale.service_request_id).update(status=ServiceRequest.COMPLETED, completed_at=timezone.now())
+        sale = sales.record_verification(sale, self.support, "does_not_match", note="Half done")
+        self.as_staff(self.accountant, sudo=True)
+        response = self.client.post(
+            f"/api/disputes/{sale.dispute_id}/resolve/",
+            {"refund_amount": "100.00", "refund_processing": True, "resolution_notes": "Half the job"}, format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["wallet_refund"], "102.00")                           # 100.00 + half of the 4.00 charge
+        self.assertEqual(self.wallet(), 10200)
+        self.assertEqual(self.balance(Account.PROVIDER_FEES), 200)
+
+    def test_with_the_ledger_on_a_ticket_with_no_sale_takes_the_legacy_refund_release_and_hold_path(self):
+        with override_settings(LEDGER_ENABLED=False):
+            self.buy_tickets(quantity=2)
+        first, second = Ticket.objects.order_by("pk")
+        self.as_staff(self.accountant, sudo=True)
+        url = "/api/events/tickets/{}/escrow/{}/"
+        released = self.client.post(url.format(first.pk, "release"), {"note": "Checked by hand"}, format="json")
+        self.assertEqual(released.status_code, 200, released.content)
+        held = self.client.post(url.format(first.pk, "hold"), {"note": "Hold it again"}, format="json")
+        self.assertEqual(held.status_code, 200, held.content)
+        refunded = self.client.post(url.format(second.pk, "refund"), {"reason": "Cannot attend"}, format="json")
+        self.assertEqual(refunded.status_code, 200, refunded.content)
+        self.assertNotIn("wallet_refund", refunded.json())
+        second.refresh_from_db()
+        self.assertIsNotNone(second.refunded_at)
+        self.assertTrue(Transaction.objects.filter(status=Transaction.REFUNDED).exists())
+        self.assertFalse(Account.objects.exists())
+
     def test_a_booking_dispute_resolved_with_a_refund_pays_the_wallet_once_and_the_rest_is_released(self):
         sale = self.paid_service("200.00")
         ServiceRequest.objects.filter(pk=sale.service_request_id).update(status=ServiceRequest.COMPLETED, completed_at=timezone.now())

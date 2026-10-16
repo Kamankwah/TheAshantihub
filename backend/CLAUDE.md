@@ -248,7 +248,7 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   hand-over steps (service done, check-in, ticket scan) lock their own row. `record_verification` locks the linked
   dispute first (dispute, then subject, then sale, as disputes resolve). The three pay endpoints take
   `payment_method` and add "payment processing" on MoMo through `payments/booking_pay.py`; a service request's price
-  must be above GH₵ 0.00 with at most two decimals.
+  must be above GH₵ 0.00 with at most two decimals (this check is always on, ledger on or off: spec §13 (lxvii)).
 - **Pickup Desk** is the `pickup_desk` staff role with the single permission `pickup.confirm` (store-pickup queue and
   collection); only a Super Admin invites it.
 - **One-time codes (`otp/`).** One OTP service for every account kind: 6-digit codes kept only as a salted HMAC

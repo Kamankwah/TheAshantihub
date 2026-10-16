@@ -126,3 +126,16 @@ class BookingQueueApiTests(BookingBase):
         self.client.credentials()
         self.assertIn(self.client.get(QUEUE).status_code, (401, 403))
         self.assertIn(self.verify(sale, outcome="unreachable").status_code, (401, 403))
+
+    def test_the_queue_puts_overdue_first_then_by_hand_over_not_by_payment_date(self):
+        stay = self.paid_stay(nights=1)                                        # paid first, checked in only now
+        BookingSale.objects.filter(pk=stay.pk).update(paid_at=timezone.now() - timedelta(days=20))
+        Booking.objects.filter(pk=stay.booking_id).update(status=Booking.CHECKED_IN, checked_in_at=timezone.now())
+        overdue = self.paid_service()                                          # paid later, done 100 hours ago
+        self.done(overdue, at=timezone.now() - timedelta(hours=100))
+        recent = self.paid_service("120.00")
+        self.done(recent, at=timezone.now() - timedelta(hours=5))
+        self.as_staff(self.support)
+        rows = self.client.get(QUEUE).json()["results"]
+        self.assertEqual([row["sale_id"] for row in rows], [overdue.pk, recent.pk, stay.pk])
+        self.assertEqual([row["overdue"] for row in rows], [True, False, False])
