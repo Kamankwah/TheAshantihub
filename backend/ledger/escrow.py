@@ -1,7 +1,7 @@
 """Order money in the ledger: record_order_payment (the payment journal) and release_verified (the release).
 
 Payment journal for an order, in pesewas:
-    Dr provider clearing   what the customer paid (order.total_amount)
+    Dr provider clearing   what the customer paid (order.total_amount), or Dr customer wallet when paid from the wallet
     Dr promo subsidy       the coupon discount, funded by AshantiHub (order.discount_amount)
     Cr vendor pending      each vendor's item subtotal (Σ line_total)
     Cr delivery payable    the delivery fee, held until the delivery is paid out
@@ -37,7 +37,12 @@ def _vendor_groups(order):
     return groups
 
 
-def record_order_payment(order, *, at=None):
+def record_order_payment(order, *, at=None, wallet=False):
+    """The payment journal for a paid order (see the module docstring). `wallet=True`: the customer paid from their
+    AshantiHub wallet, so the wallet is debited instead of provider clearing; a wallet that is too low raises
+    posting.InsufficientFunds and nothing is written. Every account the journal touches is locked up front in
+    primary-key order before the fees charged so far are read: two payments for one vendor cannot both see the same
+    cap remainder, and a wallet payment cannot deadlock with a refund to the same wallet."""
     if not enabled():
         return None
     at = at or timezone.now()
@@ -52,9 +57,15 @@ def record_order_payment(order, *, at=None):
             return None  # a GHS 0.00 order has no money to record; write neither snapshots nor a journal
         # Created in primary-key order so two first payments sharing vendors cannot deadlock on the unique index.
         pendings = {pk: posting.account_for(Account.VENDOR_PENDING, groups[pk]["owner"]) for pk in sorted(groups)}
-        # Lock every vendor's pending account in primary-key order before reading fees charged so far,
-        # so two payments for one vendor cannot both see the same cap remainder.
-        list(Account.objects.select_for_update().filter(pk__in=[a.pk for a in pendings.values()]).order_by("pk"))
+        source = None
+        if paid:
+            source = (
+                posting.account_for(Account.CUSTOMER_WALLET, order.customer) if wallet
+                else posting.account_for(Account.PROVIDER_CLEARING)
+            )
+        payable = posting.account_for(Account.DELIVERY_PAYABLE, order) if delivery else None
+        promo = posting.account_for(Account.PLATFORM_PROMO_SUBSIDY) if subsidy else None
+        posting.lock(*pendings.values(), source, payable, promo)
         cap = settings_store.current("fee_cap_pesewas", at)
 
         credits, items_total = [], 0
@@ -79,12 +90,12 @@ def record_order_payment(order, *, at=None):
                 f"Order {order.pk} does not reconcile: paid {paid} + discount {subsidy} != items {items_total} + delivery {delivery}"
             )
         if delivery:
-            credits.append(posting.credit(posting.account_for(Account.DELIVERY_PAYABLE, order), delivery))
+            credits.append(posting.credit(payable, delivery))
         debits = []
         if paid:
-            debits.append(posting.debit(posting.account_for(Account.PROVIDER_CLEARING), paid))
+            debits.append(posting.debit(source, paid))
         if subsidy:
-            debits.append(posting.debit(posting.account_for(Account.PLATFORM_PROMO_SUBSIDY), subsidy))
+            debits.append(posting.debit(promo, subsidy))
         return posting.post(
             key=pay_key(order), kind="order_payment", lines=debits + credits,
             reference_type="orders.order", reference_id=str(order.pk), memo=f"Payment for order #{order.pk}",

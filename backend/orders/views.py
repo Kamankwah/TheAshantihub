@@ -25,6 +25,10 @@ from marketing import checkout as promo_checkout
 from marketing import code_guard
 from marketing import promos
 from marketing import waivers
+from ledger import escrow, posting
+from ledger.models import Account
+from ledger.money import from_pesewas, to_pesewas
+from payments.providers import get_provider
 from payments.services import process_payment
 
 from .models import DeliveryAssignment, Order, OrderItem
@@ -37,6 +41,14 @@ from .serializers import (
     OwnerOrderSerializer,
     StaffOrderSerializer,
 )
+
+
+# How a customer pays at checkout (wallets plan 3a): by mobile money through the provider (the default, today's path)
+# or from their AshantiHub wallet, which needs LEDGER_ENABLED.
+MOMO, WALLET = "momo", "wallet"
+PAYMENT_METHODS = (MOMO, WALLET)
+WALLET_OFF = "Paying from your AshantiHub wallet isn't switched on yet."
+WALLET_TOO_LOW = "Your AshantiHub wallet doesn't hold enough for this order."
 
 
 class OrderCheckoutView(APIView):
@@ -66,6 +78,13 @@ class OrderCheckoutView(APIView):
         items = list(cart.items.select_related("listing__business_owner__profile", "listing__category")) if cart is not None else []
         if not items:
             return Response({"detail": "Your cart is empty."}, status=status.HTTP_400_BAD_REQUEST)
+
+        payment_method = request.data.get("payment_method") or MOMO
+        if payment_method not in PAYMENT_METHODS:
+            return Response({"payment_method": "Pay by mobile money or from your AshantiHub wallet."}, status=status.HTTP_400_BAD_REQUEST)
+        if payment_method == WALLET and not escrow.enabled():
+            return Response({"detail": WALLET_OFF, "code": "ledger_off"}, status=status.HTTP_409_CONFLICT)
+        processing = Decimal("0.00")
 
         # Delivery method + address (Wave F). Defaults to store pickup so an
         # older client that sends no delivery fields still checks out.
@@ -191,25 +210,43 @@ class OrderCheckoutView(APIView):
                         line_total=line_total,
                     )
 
-            result = process_payment(
-                kind=CheckoutSession.ORDER_CHECKOUT,
-                amount=total,
-                purpose=f"AshantiHub Order #{order.id}",
-                customer=request.user,
-                # stock_reservations lets _fail_order_checkout put the stock
-                # back if a (Hubtel-mode) payment later fails/expires.
-                metadata={"order_id": order.id, "stock_reservations": reservations, **({"promos": True} if promo else {})},
-            )
+            # The provider's collection charge ("payment processing", spec §1 row 14) is paid on top of a MoMo payment
+            # while the ledger is on; a wallet payment carries none. With the ledger off nothing is added.
+            if escrow.enabled() and payment_method == MOMO:
+                processing = from_pesewas(get_provider().collection_charge(to_pesewas(total)))
+            try:
+                with db_transaction.atomic():
+                    result = process_payment(
+                        kind=CheckoutSession.ORDER_CHECKOUT,
+                        amount=total + processing,
+                        processing_fee=processing,
+                        wallet=payment_method == WALLET,
+                        purpose=f"AshantiHub Order #{order.id}",
+                        customer=request.user,
+                        # stock_reservations lets _fail_order_checkout put the stock
+                        # back if a (Hubtel-mode) payment later fails/expires. "ledger" tells the nightly
+                        # reconciliation (wallets plan 3b) that the ledger was asked to record this payment.
+                        metadata={
+                            "order_id": order.id, "stock_reservations": reservations,
+                            **({"promos": True} if promo else {}), **({"ledger": True} if escrow.enabled() else {}),
+                        },
+                    )
+            except posting.InsufficientFunds as exc:
+                if exc.account.kind != Account.CUSTOMER_WALLET:
+                    raise
+                # Nothing is paid in part: the order, its lines, the stock reservation and any coupon use all roll back.
+                db_transaction.set_rollback(True)
+                return Response({"detail": WALLET_TOO_LOW, "code": "insufficient_funds"}, status=status.HTTP_409_CONFLICT)
 
             if result["mode"] == "redirect":
-                return Response(
-                    {
-                        "mode": "redirect",
-                        "checkout_url": result["checkout_url"],
-                        "reference": result["reference"],
-                    },
-                    status=status.HTTP_200_OK,
-                )
+                redirect = {
+                    "mode": "redirect",
+                    "checkout_url": result["checkout_url"],
+                    "reference": result["reference"],
+                }
+                if escrow.enabled():
+                    redirect["payment_processing"] = str(processing)
+                return Response(redirect, status=status.HTTP_200_OK)
 
             # Immediate/simulated mode — process_payment() has already
             # created the Transaction and run _finalize_order_checkout
@@ -218,7 +255,10 @@ class OrderCheckoutView(APIView):
             order.refresh_from_db()
             cart.items.all().delete()
 
-        return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
+        body = OrderSerializer(order).data
+        if escrow.enabled():
+            body = {**body, "payment_method": payment_method, "payment_processing": str(processing)}
+        return Response(body, status=status.HTTP_201_CREATED)
 
 
 class OrderListView(generics.ListAPIView):
