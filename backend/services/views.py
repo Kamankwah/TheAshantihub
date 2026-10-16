@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.views import IsBusinessOwner, IsCustomer
+from ledger import posting
 from notifications.services import notify_business_owner, notify_customer
 from payments import booking_pay
 from payments.models import CheckoutSession
@@ -135,10 +136,11 @@ class ServiceRequestRespondView(APIView):
 
 
 class ServiceRequestPayView(APIView):
-    """POST /api/services/requests/{id}/pay/ — the customer pays for an accepted request, which moves it to
-    in_progress. Routes through payments.booking_pay (simulated mode finalizes synchronously; with the ledger on, MoMo
-    carries "payment processing" and the sale is recorded). The payment is one transaction, so a payment the ledger
-    refuses leaves the request accepted and nothing else behind.
+    """POST /api/services/requests/{id}/pay/ {payment_method?} — the customer pays for an accepted request, which moves
+    it to in_progress. Routes through payments.booking_pay (simulated mode finalizes synchronously): by mobile money
+    (the default; with the ledger on it carries "payment processing") or, with the ledger on, from the AshantiHub
+    wallet, which must cover the whole price. The payment is one transaction, so a refused one leaves the request
+    accepted and nothing else behind.
     """
 
     permission_classes = [IsAuthenticated, IsCustomer]
@@ -147,24 +149,32 @@ class ServiceRequestPayView(APIView):
         sr = generics.get_object_or_404(ServiceRequest, pk=pk, customer=request.user)
         if sr.status != ServiceRequest.ACCEPTED:
             return Response({"detail": "Only an accepted request can be paid for."}, status=400)
+        try:
+            method = booking_pay.method_from(request.data)
+        except booking_pay.Refused as exc:
+            return Response(exc.body, status=exc.status_code)
 
-        with db_transaction.atomic():
-            # Locked and re-checked, so two taps on Pay never start two payments for one request (Plan 1b S15); the
-            # finalizer locks the same row again. A second Hubtel checkout is still possible: gate (lix).
-            sr = ServiceRequest.objects.select_for_update().get(pk=sr.pk)
-            if sr.status != ServiceRequest.ACCEPTED:
-                return Response({"detail": "Only an accepted request can be paid for."}, status=400)
-            result, processing = booking_pay.pay(
-                kind=CheckoutSession.SERVICE_REQUEST,
-                amount=sr.agreed_price,
-                purpose=f"Service: {sr.listing.name}",
-                customer=request.user,
-                metadata={"service_request_id": sr.id},
-            )
+        try:
+            with db_transaction.atomic():
+                # Locked and re-checked, so two taps on Pay never start two payments for one request (Plan 1b S15);
+                # the finalizer locks the same row again. A second Hubtel checkout is still possible: gate (lix).
+                sr = ServiceRequest.objects.select_for_update().get(pk=sr.pk)
+                if sr.status != ServiceRequest.ACCEPTED:
+                    return Response({"detail": "Only an accepted request can be paid for."}, status=400)
+                result, processing = booking_pay.pay(
+                    kind=CheckoutSession.SERVICE_REQUEST,
+                    amount=sr.agreed_price,
+                    purpose=f"Service: {sr.listing.name}",
+                    customer=request.user,
+                    metadata={"service_request_id": sr.id},
+                    method=method,
+                )
+        except posting.InsufficientFunds as exc:
+            return booking_pay.too_low(exc)
         if result["mode"] == "redirect":
             return Response(booking_pay.redirect_body(result, processing), status=status.HTTP_200_OK)
         sr.refresh_from_db()
-        return Response(booking_pay.with_terms(ServiceRequestSerializer(sr).data, processing))
+        return Response(booking_pay.with_terms(ServiceRequestSerializer(sr).data, processing, method=method))
 
 
 class ServiceRequestProgressView(APIView):

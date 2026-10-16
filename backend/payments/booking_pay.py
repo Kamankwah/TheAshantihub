@@ -5,13 +5,45 @@ reconciliation expects its journal (wallets plan 3b). Tickets for an event no bu
 ledger (`in_ledger=False`): no charge, no mark. With the ledger off this is exactly process_payment."""
 from decimal import Decimal
 
+from rest_framework.response import Response
+
 from ledger import escrow
+from ledger.models import Account
 from ledger.money import from_pesewas, to_pesewas
 
 from .providers import get_provider
 from .services import process_payment
 
 MOMO, WALLET = "momo", "wallet"
+WALLET_OFF = "Paying from your AshantiHub wallet isn't switched on yet."
+WALLET_TOO_LOW = "Your AshantiHub wallet doesn't hold enough for this."
+
+
+class Refused(Exception):
+    """A payment_method the request cannot use: `body` and `status_code` are the answer to give."""
+
+    def __init__(self, body, status_code):
+        super().__init__(body)
+        self.body, self.status_code = body, status_code
+
+
+def method_from(data):
+    """`momo` (the default) or `wallet` from the request body. Raises Refused for anything else, and for the wallet while
+    the ledger is off (only the ledger can debit it)."""
+    method = (data.get("payment_method") if hasattr(data, "get") else None) or MOMO
+    if method not in (MOMO, WALLET):
+        raise Refused({"payment_method": "Pay by mobile money or from your AshantiHub wallet."}, 400)
+    if method == WALLET and not escrow.enabled():
+        raise Refused({"detail": WALLET_OFF, "code": "ledger_off"}, 409)
+    return method
+
+
+def too_low(exc):
+    """The answer to posting.InsufficientFunds from a wallet payment (the caller's transaction has rolled back). Any other
+    account going short is a bug and is raised again."""
+    if exc.account.kind != Account.CUSTOMER_WALLET:
+        raise exc
+    return Response({"detail": WALLET_TOO_LOW, "code": "insufficient_funds"}, status=409)
 
 
 def _recorded(in_ledger):

@@ -175,6 +175,11 @@ def _finalize_ticket_purchase(session):
     event = Event.objects.select_related("submitted_by_business").get(pk=meta["event_id"])
     if event.submitted_by_business_id is not None:  # a customer-organised event has no business to hold money for (Plan 1b S10)
         sales.record_payment(session, BookingSale.TICKETS, event, event.submitted_by_business)
+    elif session.provider == CheckoutSession.WALLET:
+        # Nothing would debit the wallet, so the tickets would be free: refuse, which rolls the purchase back.
+        from ledger.posting import PostingError
+
+        raise PostingError(f"Tickets {session.reference}: no business organises event {event.pk}, so the wallet cannot pay")
 
 
 def _fail_ticket_purchase(session):
@@ -339,6 +344,12 @@ FAILURE_HANDLERS = {
     CheckoutSession.ORDER_CHECKOUT: _fail_order_checkout,
 }
 
+# What a customer may pay from their AshantiHub wallet: orders (wallets plan 3a) and, since ledger Plan 1b, services,
+# stays and event tickets. Everything else (subscriptions, event listing fees, top-ups) goes through the provider.
+WALLET_KINDS = (
+    CheckoutSession.ORDER_CHECKOUT, CheckoutSession.SERVICE_REQUEST, CheckoutSession.BOOKING, CheckoutSession.TICKET_PURCHASE,
+)
+
 
 def finalize_success(session):
     """Runs the kind-specific "payment confirmed" effect. Called from both
@@ -380,8 +391,8 @@ def process_payment(*, kind, amount, purpose, business_owner=None, customer=None
     """
     if bool(business_owner) == bool(customer):
         raise ValueError("process_payment requires exactly one of business_owner or customer")
-    if wallet and (customer is None or kind != CheckoutSession.ORDER_CHECKOUT):
-        raise ValueError("Only a customer's order can be paid from the wallet")
+    if wallet and (customer is None or kind not in WALLET_KINDS):
+        raise ValueError("Only a customer's order or booking can be paid from the wallet")
     if wallet:
         from ledger import escrow
 

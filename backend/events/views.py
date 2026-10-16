@@ -23,6 +23,7 @@ from notifications.services import (
     notify_customer,
     notify_staff_role,
 )
+from ledger import posting
 from payments import booking_pay
 from payments.models import CheckoutSession
 from payments.services import process_payment
@@ -865,62 +866,75 @@ class TicketPurchaseView(APIView):
         input_serializer = TicketPurchaseInputSerializer(data=request.data)
         input_serializer.is_valid(raise_exception=True)
         quantity = input_serializer.validated_data["quantity"]
+        try:
+            method = booking_pay.method_from(request.data)
+        except booking_pay.Refused as exc:
+            return Response(exc.body, status=exc.status_code)
 
         event = generics.get_object_or_404(_live_events_queryset(), pk=pk)
-
-        with db_transaction.atomic():
-            try:
-                ticket_type = EventTicketType.objects.select_for_update().get(
-                    pk=input_serializer.validated_data["ticket_type"].pk,
-                    event=event,
-                    is_active=True,
-                )
-            except EventTicketType.DoesNotExist:
-                return Response({"detail": "Ticket type not found for this event."}, status=404)
-
-            if (
-                ticket_type.quantity_total is not None
-                and ticket_type.quantity_sold + quantity > ticket_type.quantity_total
-            ):
-                return Response({"detail": "Not enough tickets remaining."}, status=400)
-
-            # Reserve inventory now, under this lock, regardless of provider
-            # — see docstring above for why this can't wait for webhook
-            # confirmation.
-            ticket_type.quantity_sold += quantity
-            ticket_type.save(update_fields=["quantity_sold"])
-
-            # Tickets for an event a customer organised stay outside the ledger (Plan 1b S10): no business holds them.
-            in_ledger = event.submitted_by_business_id is not None
-            result, processing = booking_pay.pay(
-                kind=CheckoutSession.TICKET_PURCHASE,
-                amount=ticket_type.price * quantity,
-                purpose=f"{quantity}x '{ticket_type.name}' ticket(s) for '{event.name}'",
-                customer=request.user,
-                metadata={
-                    "event_id": event.id,
-                    "ticket_type_id": ticket_type.id,
-                    "quantity": quantity,
-                    "customer_id": request.user.id,
-                    "delivery_method": ticket_type.delivery_method,
-                    "unit_price": str(ticket_type.price),
-                },
-                in_ledger=in_ledger,
+        # Tickets for an event a customer organised stay outside the ledger (Plan 1b S10): no business holds them, so
+        # nothing could take the money from a wallet.
+        in_ledger = event.submitted_by_business_id is not None
+        if method == booking_pay.WALLET and not in_ledger:
+            return Response(
+                {"detail": "Tickets for this event can only be paid by mobile money.", "code": "wallet_not_accepted"},
+                status=409,
             )
 
-            if result["mode"] == "redirect":
-                return Response(booking_pay.redirect_body(result, processing, in_ledger=in_ledger), status=200)
+        try:
+            with db_transaction.atomic():
+                try:
+                    ticket_type = EventTicketType.objects.select_for_update().get(
+                        pk=input_serializer.validated_data["ticket_type"].pk,
+                        event=event,
+                        is_active=True,
+                    )
+                except EventTicketType.DoesNotExist:
+                    return Response({"detail": "Ticket type not found for this event."}, status=404)
 
-            # Immediate/simulated mode — process_payment() already ran
-            # payments.services._finalize_ticket_purchase, which created the
-            # Ticket row(s) and recorded their ids on the session's metadata.
-            ticket_ids = result["session"].metadata.get("ticket_ids", [])
-            tickets = Ticket.objects.filter(id__in=ticket_ids)
+                if (
+                    ticket_type.quantity_total is not None
+                    and ticket_type.quantity_sold + quantity > ticket_type.quantity_total
+                ):
+                    return Response({"detail": "Not enough tickets remaining."}, status=400)
+
+                # Reserve inventory now, under this lock, regardless of provider
+                # — see docstring above for why this can't wait for webhook
+                # confirmation.
+                ticket_type.quantity_sold += quantity
+                ticket_type.save(update_fields=["quantity_sold"])
+
+                result, processing = booking_pay.pay(
+                    kind=CheckoutSession.TICKET_PURCHASE,
+                    amount=ticket_type.price * quantity,
+                    purpose=f"{quantity}x '{ticket_type.name}' ticket(s) for '{event.name}'",
+                    customer=request.user,
+                    metadata={
+                        "event_id": event.id,
+                        "ticket_type_id": ticket_type.id,
+                        "quantity": quantity,
+                        "customer_id": request.user.id,
+                        "delivery_method": ticket_type.delivery_method,
+                        "unit_price": str(ticket_type.price),
+                    },
+                    method=method,
+                    in_ledger=in_ledger,
+                )
+
+                if result["mode"] == "redirect":
+                    return Response(booking_pay.redirect_body(result, processing, in_ledger=in_ledger), status=200)
+
+                # Immediate/simulated mode — process_payment() already ran
+                # payments.services._finalize_ticket_purchase, which created the
+                # Ticket row(s) and recorded their ids on the session's metadata.
+                ticket_ids = result["session"].metadata.get("ticket_ids", [])
+                tickets = Ticket.objects.filter(id__in=ticket_ids)
+        except posting.InsufficientFunds as exc:
+            return booking_pay.too_low(exc)  # the reservation rolled back with the payment
 
         return Response(
             TicketSerializer(tickets, many=True, context={"request": request}).data, status=201
         )
-
 
 def _checkin_serializer_for(user):
     """Staff see the ticket buyer's phone; an event's organizer never does."""
