@@ -119,6 +119,27 @@ class RecordBookingPaymentTests(BookingBase):
             sales.record_payment(self.session(CheckoutSession.SERVICE_REQUEST, "-5.00"), BookingSale.SERVICE, negative, self.owner)
         self.assertFalse(BookingSale.objects.exists())
 
+    def test_a_customer_organised_event_has_no_business_to_pay(self):
+        session = self.session(CheckoutSession.TICKET_PURCHASE, "100.00", unit_price="50.00", quantity=2)
+        self.assertIsNone(sales.record_payment(session, BookingSale.TICKETS, self.event, None))
+        self.assertFalse(BookingSale.objects.exists())
+        self.assertFalse(Account.objects.exists())
+
+    def test_a_wallet_payment_with_a_processing_charge_is_refused(self):
+        fund(self.customer, 25000, "fund-1b-proc")
+        sr = self.accepted_service("200.00")
+        session = self.session(CheckoutSession.SERVICE_REQUEST, "204.00", wallet=True, processing="4.00", service_request_id=sr.pk)
+        with self.assertRaises(posting.PostingError):
+            sales.record_payment(session, BookingSale.SERVICE, sr, self.owner)
+        self.assertFalse(BookingSale.objects.exists())
+
+    def test_a_booking_with_no_price_is_refused_cleanly(self):
+        sr = self.accepted_service("200.00")
+        sr.agreed_price = None
+        with self.assertRaises(posting.PostingError):
+            sales.record_payment(self.session(CheckoutSession.SERVICE_REQUEST, "200.00"), BookingSale.SERVICE, sr, self.owner)
+        self.assertFalse(BookingSale.objects.exists())
+
     @override_settings(LEDGER_ENABLED=False)
     def test_with_the_ledger_off_nothing_is_recorded(self):
         self.assertIsNone(self.service_sale("200.00"))
@@ -153,6 +174,9 @@ class CapRaceTests(TransactionTestCase):
             customer=customer, kind=CheckoutSession.SERVICE_REQUEST, amount=Decimal("200.00"), status=CheckoutSession.SUCCESS,
             purpose="Service", metadata={"service_request_id": sr.pk},
         )
+        # Open both accounts first: the race must resolve on posting.lock, not on the accounts' first INSERT.
+        posting.account_for(Account.VENDOR_PENDING, owner)
+        posting.account_for(Account.PROVIDER_CLEARING)
         outcomes, barrier = [], threading.Barrier(2)
 
         def run(step):

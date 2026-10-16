@@ -42,10 +42,14 @@ def price_of(kind, subject, session):
     """What the business is owed, in pesewas, from what the server priced (never the client): a service request's agreed
     price, a stay's total, or the ticket unit price times the quantity the purchase view put on the session."""
     if kind == BookingSale.SERVICE:
-        return to_pesewas(subject.agreed_price)
-    if kind == BookingSale.STAY:
-        return to_pesewas(subject.total_price)
-    return to_pesewas(session.metadata["unit_price"]) * int(session.metadata["quantity"])
+        amount = subject.agreed_price
+    elif kind == BookingSale.STAY:
+        amount = subject.total_price
+    else:
+        return to_pesewas(session.metadata["unit_price"]) * int(session.metadata["quantity"])
+    if amount is None:
+        raise posting.PostingError(f"Booking payment {session.reference} has no price to record")
+    return to_pesewas(amount)
 
 
 def record_payment(session, kind, subject, business_owner, *, at=None):
@@ -56,13 +60,15 @@ def record_payment(session, kind, subject, business_owner, *, at=None):
     zero), and posting.InsufficientFunds, writing nothing, when a wallet paying for it is too low."""
     from payments.models import CheckoutSession
 
-    if not escrow.enabled():
-        return None
+    if not escrow.enabled() or business_owner is None:
+        return None  # ledger off, or a customer-organised event: no business is owed anything
     at = at or timezone.now()
     with transaction.atomic():
         existing = BookingSale.objects.filter(session=session).first()
         if existing is not None:
             return existing
+        if session.provider == CheckoutSession.WALLET and to_pesewas(session.processing_fee or 0):
+            raise posting.PostingError(f"Booking payment {session.reference} is from the wallet but carries a processing charge")
         base = price_of(kind, subject, session)
         paid = to_pesewas(session.amount) - to_pesewas(session.processing_fee or 0)
         if base < 0 or paid != base:
