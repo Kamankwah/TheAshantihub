@@ -11,13 +11,12 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.crypto import get_random_string, salted_hmac
 
-from accounts.emails import send_password_reset_email
 from accounts.models import BusinessOwner, PasswordResetToken
 from accounts.serializers import PASSWORD_RESET_TOKEN_LIFETIME
 from activity.services import record
 from approvals.models import ApprovalRequest
 from approvals.registry import ApprovalKind
-from approvals.services import ApprovalError
+from approvals.services import ApprovalError, StaleRequest
 
 from . import audit, authenticator, devices, senders, spend
 from .identity import BUSINESS_OWNER, CUSTOMER, contacts, hint, load, ref
@@ -53,6 +52,10 @@ def check_payload(payload):
     return account
 
 
+def _digest(account):
+    return salted_hmac("otp.recovery.contacts", json.dumps(contacts(account), sort_keys=True)).hexdigest()
+
+
 def current_state(request):
     """What the decision is made on. A contact that changes after the request makes it stale (409)."""
     try:
@@ -62,7 +65,7 @@ def current_state(request):
     return {
         "name": account.full_name,
         "contacts": {c: hint(c, d) for c, d in contacts(account).items()},
-        "contacts_digest": salted_hmac("otp.recovery.contacts", json.dumps(contacts(account), sort_keys=True)).hexdigest(),
+        "contacts_digest": _digest(account),
     }
 
 
@@ -70,23 +73,45 @@ def validate(request):
     check_payload(request.payload)
 
 
-def _send_link(account, channel, destination, link):
-    if channel == SMS:
-        delivery = senders.send_sms(destination, f"AshantiHub Support reset your sign-in. Choose a new password within 1 hour: {link}")
-        audit.log(OtpEvent.SENT if delivery.ok else OtpEvent.SEND_FAILED, account=account, purpose=RECOVERY,
-                  channel=SMS, destination=destination, provider=delivery.provider)
-        if delivery.ok:
-            spend.check()
-        return
-    send_password_reset_email(destination, link)
-    audit.log(OtpEvent.SENT, account=account, purpose=RECOVERY, channel=EMAIL, destination=destination, provider="email")
+LINK_SMS = "AshantiHub Support helped you recover your sign-in and removed your authenticator app. Choose a new password within 1 hour: {link} Not you? Contact AshantiHub Support now."
+LINK_EMAIL_SUBJECT = "Your AshantiHub sign-in was recovered"
+LINK_EMAIL = (
+    "AshantiHub Support helped this account recover access. Your authenticator app and trusted devices were removed.\n\n"
+    "Choose a new password with this link, which works for 1 hour:\n\n{link}\n\n"
+    "If you did not ask for this, contact AshantiHub Support immediately.\n\n- AshantiHub"
+)
+NOTICE = "AshantiHub Support removed your authenticator and sent a sign-in reset link to {where}. If this wasn't you, contact Support."
+
+
+def _deliver(account, channel, destination, subject, body):
+    """Send and record the real outcome; never raises."""
+    try:
+        delivery = senders.deliver(channel, destination, subject, body)
+    except Exception:
+        delivery = senders.Delivery(ok=False, provider="")
+    audit.log(OtpEvent.SENT if delivery.ok else OtpEvent.SEND_FAILED, account=account, purpose=RECOVERY,
+              channel=channel, destination=destination, provider=delivery.provider)
+    if delivery.ok and channel == SMS:
+        spend.check()
+    return delivery.ok
+
+
+def _send_link(account, channel, destination, link, others):
+    _deliver(account, channel, destination, LINK_EMAIL_SUBJECT,
+             LINK_SMS.format(link=link) if channel == SMS else LINK_EMAIL.format(link=link))
+    where = hint(channel, destination)
+    for other, other_destination in others.items():  # a notice without the link, so the real holder learns of it
+        _deliver(account, other, other_destination, LINK_EMAIL_SUBJECT, NOTICE.format(where=where))
 
 
 def apply(request):
     account = check_payload(request.payload)
+    if (request.before or {}).get("contacts_digest") != _digest(account):
+        raise StaleRequest("This person's contact details changed after the request was made. Ask again.")
     account_type, account_id = ref(account)
     channel = request.payload["send_to"]
     destination = contacts(account)[channel]
+    others = {c: d for c, d in contacts(account).items() if c != channel}
     decider = request.decided_by or request.maker
     had_authenticator = authenticator.disable(account)
     ended = devices.revoke_all(account, TrustedDevice.STAFF_RECOVERY)
@@ -97,7 +122,7 @@ def apply(request):
     )
     link = f"{settings.FRONTEND_BASE_URL}/reset-password?token={raw}&type={account_type}"
     # After commit, so a decision that rolls back sends nothing.
-    transaction.on_commit(lambda: _send_link(account, channel, destination, link), robust=True)
+    transaction.on_commit(lambda: _send_link(account, channel, destination, link, others), robust=True)
     # Last: record() holds the activity chain lock until commit. The link and its token never go in it.
     record(
         decider, "otp.recovered", target=account,
