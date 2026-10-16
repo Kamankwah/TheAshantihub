@@ -191,6 +191,25 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   registration change (Plan 1F) ships. Held customer money is exactly Σ Vendor Pending + Σ Delivery payable (no
   order-escrow account). Follow-ups before flipping `SUBSCRIPTIONS_ENABLED` / `LEDGER_ENABLED` live are in
   `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` section 13.
+- **Wallets, payments and refunds (`wallets/`, `ledger/refunds.py`, `payments/providers.py`).** Behind `LEDGER_ENABLED`
+  like the rest of the ledger: with it off every `/api/wallet/` endpoint answers `409 ledger_off` and checkout, cancel,
+  dispute and approval responses are exactly as before. A customer pays by MoMo (`payment_method` `momo`, the default)
+  or from the wallet (`wallet`: the payment journal debits `customer_wallet` instead of provider clearing; a wallet must
+  cover the whole order, else `409 insufficient_funds` and the checkout rolls back). The provider's collection charge
+  is paid on top of MoMo payments and top-ups (`CheckoutSession.processing_fee`, "payment processing"); the ledger
+  records only the net. Refunds always go to the wallet through `ledger.refunds.refund_order` (one `OrderRefund` per
+  order and source, e.g. `dispute-<id>`, so never twice), per fee snapshot (`refunded_base_pesewas` /
+  `refunded_fee_pesewas`, `reversed_at` when whole), which frees the lifetime cap; release pays only what is left and
+  never a cancelled order; after release the vendor's Available is debited (may go negative) and the fee returned in
+  proportion; the delivery fee comes back only with the whole order; the collection charge only on a platform/vendor
+  error (its proportional share on a partial refund). Release (and Support's "matches") also waits while a
+  delivery-case refund is pending the Super Admin's approval (`escrow.has_pending_refund`). Support's cancel, the hourly uncollected-pickup job, dispute resolution and the delivery-case refund approval
+  all call it. A business's free-delivery promo (`WaivedFeeCharge`) is taken from its Available at release. **Lock
+  order for money:** the order row, its fee snapshots, then ledger accounts in primary-key order taken up front with
+  `posting.lock` in one sorted pass, including the accounts of a second posting in the same transaction (the promo
+  charge at release, the promo return on a whole refund; `posting.post` takes them the same way). `collect` is `payments.services.process_payment` and
+  `handle_webhook` is `HubtelWebhookView` (both unchanged); the Hubtel provider's payout, status and name lookup raise
+  `NotConnected` until Plan 7.
 - **Pickup Desk** is the `pickup_desk` staff role with the single permission `pickup.confirm` (store-pickup queue and
   collection); only a Super Admin invites it.
 - **One-time codes (`otp/`).** One OTP service for every account kind: 6-digit codes kept only as a salted HMAC

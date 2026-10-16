@@ -1,9 +1,9 @@
 # Wallets, Escrow, Platform Fees, Stock Offers and OTP Security — Design
 
-**Status:** Approved 2026-10-15. Stage 1 plan: docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md. Stage 2 (OTP, backend) plan: docs/superpowers/plans/2026-10-16-otp-security.md.
-**Scope:** One system, built in the order given in §11. Stage 1 (ledger) and Stage 2 (OTP, backend) are implemented
-behind switches that default off (branches feature/ledger-stage1 and feature/otp-security; see section 13); later
-stages are specs only.
+**Status:** Approved 2026-10-15. Stage 1 plan: docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md. Stage 2 (OTP, backend) plan: docs/superpowers/plans/2026-10-16-otp-security.md. Stage 3 plans: docs/superpowers/plans/2026-10-16-wallets-payments-3a.md (wallet payments and refunds) and docs/superpowers/plans/2026-10-16-withdrawals-3b.md (payout destinations, withdrawals, reconciliation).
+**Scope:** One system, built in the order given in §11. Stage 1 (ledger), Stage 2 (OTP, backend) and Stage 3a (wallet
+payments and refunds, backend) are implemented behind switches that default off (branches feature/ledger-stage1,
+feature/otp-security and feature/wallets; see section 13); later stages are specs only.
 **Basis:** The owner's brief, plus the decisions in §1, reconciled with the existing code in §13.
 
 ## 1. Decisions (settled in brainstorming)
@@ -261,11 +261,16 @@ Follow-ups found in the final review; none is reachable while the flag stays off
 
 ### Stage 3 carry-forward
 
-- Cancelled paid orders keep their `OrderFeeSnapshot` counted against the lifetime cap and their money in Vendor Pending / Delivery payable. Stage 3 must reverse them (`OrderFeeSnapshot.reversed_at`) and refund.
-
-- Release pays every unreleased snapshot, so a refund resolution (skipped-stop "refund these lines only", or money-back) followed by "matches" would pay the vendor in full. Stage 3 must reverse those snapshots (`OrderFeeSnapshot.reversed_at`), or release must leave out disputed lines.
-- The money-releasing POST has no password re-check (`RequiresSudo`). Owner question: should it?
-- The waived delivery fee never reaches the ledger.
+- **Done in Stage 3a (W4, W6).** Cancelled paid orders kept their `OrderFeeSnapshot` counted against the lifetime cap
+  and their money in Vendor Pending / Delivery payable: Support's cancel and the uncollected-pickup job now refund the
+  order whole to the wallet and reverse its snapshots.
+- **Done in Stage 3a (W4).** Release paid every unreleased snapshot, so a refund resolution followed by "matches" would
+  have paid the vendor in full: refunds now raise each snapshot's refunded base and fee (reversed when whole), release
+  pays only what is left, a skipped stop's case refunds that shop's lines only, and release waits while a delivery-case
+  refund is pending the Super Admin's approval.
+- The money-releasing POST has no password re-check (`RequiresSudo`). Owner question: should it? (Still open.)
+- **Done in Stage 3a (W5).** The waived delivery fee never reached the ledger: the business's promo cost is now taken
+  from its Available at release and given back on a whole refund.
 
 ### Stage 2 (OTP) reconciliation (2026-10-16)
 
@@ -356,3 +361,32 @@ Found while writing the Stage 3 plans (`docs/superpowers/plans/2026-10-16-wallet
   its money in Vendor Pending with no later refund path. Never turn it off once on.
 - (xi) **A Hubtel success webhook for an order Support already cancelled revives it to PAID** (`_finalize_order_checkout`
   only checks for PAID) and now posts its payment to the ledger; refuse finalisation of a cancelled order first.
+- (xii) **Delivery-case approval text is wrong for pre-ledger orders.** Its "consequences" text says the money "returns
+  to the customer's AshantiHub wallet at once" even for an order paid before the ledger was on (nothing moves then):
+  branch on the order-pay journal (`delivery/config.py` ~348-352).
+- (xiii) **Stale "no money moves" copy with the ledger on:** `delivery/views_cases.py` ~145 and `orders/support.py`
+  `payments_note()` ~76-81.
+- (xiv) **The Support-cancel customer money email is sent inside the transaction, before commit**
+  (`orders/support.py` ~269): send it via `transaction.on_commit`.
+- (xv) **A Hubtel FAILURE webhook after Support cancelled a PENDING order restocks a second time**
+  (`_fail_order_checkout`, `payments/services.py` ~73-77). Fix beside (xi), which is the success-webhook twin.
+- (xvi) **Owner question: the Accountant's dispute-resolve door can refund an undecided delivery case** when the ledger
+  is on, so money moves without the Delivery Manager's decision or the Super Admin's approval. Also, dispute and
+  delivery wallet refunds send the customer no notice.
+- (xvii) **Checkout locks listings in cart order, not primary-key order** (`orders/views.py` ~160), so a checkout can
+  deadlock against the cancel or pickup-expiry job (Postgres aborts one; no corruption). Sort the listings in checkout.
+- (xviii) **`refunds.check` duplicates `refund_order`'s rules**, and two pending delivery cases on one order both pass
+  the decision-time check; the second approval then fails and needs a manual reject.
+- (xix) **Release edge cases.** A delivered free-delivery order with every item refunded and a zero delivery fee never
+  releases: its `WaivedFeeCharge` stays OWED. `refund_order`'s nothing-left guard reverses and returns the promo even if
+  delivery was made (rare: cancel is blocked after delivery).
+- (xx) **Stage 3a minor parked items.** `posting.post()`'s `MAY_GO_NEGATIVE` exempts `VENDOR_AVAILABLE` in every posting
+  (3b withdrawals must keep their own check under lock). No database check constraints on the refund fields. The
+  processing-charge share is per-refund half-up, not cumulative. No top-up throttle. The Hubtel checkout call happens
+  inside the DB transaction (Plan 7). The top-up finalizer relies on the webhook's amount check; a top-up success
+  webhook with no amount must not credit (it now fails closed on a credit/amount mismatch).
+- (xxi) **Assumptions for owner confirmation are A1-A11 in the 3a plan:** collection charge 0 on simulated rails, no
+  wallet cap, no split payment, the partial-refund and processing-charge policy, immediate refund on cancel, and the
+  24-hour pickup-expiry job. As item (viii) says, that job refunds every ledger-recorded store pickup (vendor-shop
+  pickups included) not marked collected by the Pickup Desk within the window, so before the ledger is on every store
+  pickup must be collected at the AshantiHub office desk.
