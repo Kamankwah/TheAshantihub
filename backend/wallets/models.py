@@ -93,3 +93,31 @@ class Withdrawal(models.Model):
 
     def __str__(self):
         return f"Withdrawal {self.reference}"
+
+
+class ReconciliationRun(models.Model):
+    """One night's comparison of the ledger with the provider's statement for `day` (wallets.reconciliation). A report
+    only: it never changes a balance. Re-running a day replaces its row. The totals cover the movements compared: the
+    statement lines the ledger was asked to record, what the ledger booked for them (whatever day), and the day's
+    provider-clearing journals no statement holds; so a matched day shows equal totals."""
+
+    MATCHED, MISMATCHED, UNAVAILABLE = "matched", "mismatched", "unavailable"
+    STATUS_CHOICES = [(MATCHED, "Matches"), (MISMATCHED, "Differences found"), (UNAVAILABLE, "No statement from the provider")]
+
+    day = models.DateField(unique=True)
+    provider = models.CharField(max_length=20)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES)
+    ledger_in_pesewas = models.BigIntegerField(default=0)
+    statement_in_pesewas = models.BigIntegerField(default=0)
+    ledger_out_pesewas = models.BigIntegerField(default=0)
+    statement_out_pesewas = models.BigIntegerField(default=0)
+    in_transit_pesewas = models.BigIntegerField(default=0)
+    differences = models.JSONField(default=list, blank=True)
+    flag = models.ForeignKey("fraud.FraudFlag", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    ran_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["-day"]
+
+    def __str__(self):
+        return f"Reconciliation {self.day}: {self.status}"

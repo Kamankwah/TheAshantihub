@@ -6,6 +6,7 @@ urlpatterns = [
     path("staff/wallets/", views_staff.StaffWalletsView.as_view(), name="wallet-staff-wallets"),
     path("staff/withdrawals/", views_staff.StaffWithdrawalsView.as_view(), name="wallet-staff-withdrawals"),
     path("staff/withdrawals/<int:pk>/fail/", views_staff.StaffWithdrawalFailView.as_view(), name="wallet-staff-withdrawal-fail"),
+    path("staff/reconciliation/", views_staff.StaffReconciliationView.as_view(), name="wallet-staff-reconciliation"),
     path("", views.WalletView.as_view(), name="wallet"),
     path("transactions/", views.TransactionsView.as_view(), name="wallet-transactions"),
     path("processing/", views.ProcessingView.as_view(), name="wallet-processing"),

@@ -213,3 +213,26 @@ class StaffWithdrawalFailView(APIView):
                 before={"status": before}, after={"status": withdrawal.status, "reason": mask_numbers(reason)[:300]}, request=request,
             )
         return Response(staff_row(withdrawal, holders_of([withdrawal])))
+
+
+class StaffReconciliationView(APIView):
+    """GET staff/reconciliation/ — the last 30 nightly runs, newest day first (wallets.view)."""
+
+    def get_permissions(self):
+        return [HasRolePermission(VIEW)]
+
+    def get(self, request):
+        if not escrow.enabled():
+            return ledger_off()
+        from .models import ReconciliationRun
+
+        return Response({"results": [
+            {
+                "day": run.day, "provider": run.provider, "status": run.status, "status_label": run.get_status_display(),
+                "ledger_in": money(run.ledger_in_pesewas), "statement_in": money(run.statement_in_pesewas),
+                "ledger_out": money(run.ledger_out_pesewas), "statement_out": money(run.statement_out_pesewas),
+                "in_transit": money(run.in_transit_pesewas), "differences": run.differences, "fraud_case_id": run.flag_id,
+                "ran_at": run.ran_at,
+            }
+            for run in ReconciliationRun.objects.order_by("-day")[:30]
+        ]})
