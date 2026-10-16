@@ -50,8 +50,10 @@ def _date(params, field):
         value = None
     if value is None:
         raise RangeError(field, "Use a date like 2026-10-16.")
-    if not 2020 <= value.year <= 2100:  # no ledger row is older; keeps the day arithmetic below from overflowing
+    if value.year < 2020:  # no ledger row is older
         raise RangeError(field, "Choose a date from 2020 on.")
+    if value.year > 2100:  # keeps day arithmetic on the range from overflowing
+        raise RangeError(field, "Choose a date up to 2100.")
     return value
 
 
@@ -113,7 +115,7 @@ def rows(owner, groups):
     items = {}
     for item in OrderItem.objects.filter(order_id__in=ids, listing__business_owner=owner).select_related("listing").order_by("pk"):
         items.setdefault(item.order_id, []).append(
-            {"name": item.listing.name, "quantity": item.quantity, "line_total": str(item.line_total)}
+            {"name": item.listing.name, "quantity": item.quantity, "line_total": money(to_pesewas(item.line_total))}
         )
     # The business's free-delivery promo on the order: owed until release, charged from Available then, reversed (and
     # given back) on a whole refund (ledger.escrow.charge_waiver / return_waiver), so OWED is what it pays.

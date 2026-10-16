@@ -3,15 +3,19 @@
 from datetime import timedelta
 from decimal import Decimal
 
+from django.db import connection
 from django.test import override_settings
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from accounts.models import Customer
 from accounts.testing import make_staff, staff_token
 from approvals.models import ApprovalRequest
 from disputes.models import Dispute
 from ledger import refunds
-from ledger.models import MoneySetting
+from ledger.models import Account, FulfilmentCheck, MoneySetting, OrderFeeSnapshot
+from listings.models import Category, Listing, Zone
 from orders.models import Order
 
 from .vendor_helpers import VendorBase, deliver, hold, paid_order, release, signed_in, waived
@@ -21,9 +25,11 @@ OVERVIEW, SALES = "/api/wallet/vendor/", "/api/wallet/vendor/sales/"
 
 class LedgerOffTests(VendorBase):
     def test_review_focus_the_overview_and_sales_say_ledger_off(self):
+        accounts = Account.objects.count()
         for url in (OVERVIEW, SALES):
             response = self.kofi.get(url)
             self.assertEqual((response.status_code, response.json()["code"]), (409, "ledger_off"), url)
+        self.assertEqual(Account.objects.count(), accounts)
 
 
 @override_settings(LEDGER_ENABLED=True)
@@ -194,8 +200,13 @@ class IsolationTests(VendorBase):
     def test_review_focus_no_customer_detail_reaches_a_business(self):
         order = paid_order(self.buyer, [(self.kofi.listing("120.00"), 1)])
         deliver(order)
-        seen = str(self.kofi.get(SALES).json()) + str(self.kofi.get(OVERVIEW).json())
-        for detail in ("Ama Buyer", "241110001", "Kejetia"):
+        Customer.objects.filter(pk=self.buyer.pk).update(email="ama.buyer@example.com")
+        sales = self.kofi.get(SALES)
+        self.assertEqual((sales.status_code, sales.json()["count"]), (200, 1))
+        overview = self.kofi.get(OVERVIEW)
+        self.assertEqual(overview.status_code, 200)
+        seen = str(sales.json()) + str(overview.json())
+        for detail in ("Ama Buyer", "241110001", "Kejetia", "ama.buyer@example.com"):
             self.assertNotIn(detail, seen)
 
     def test_review_focus_a_customer_with_the_same_id_or_staff_are_refused(self):
@@ -206,3 +217,71 @@ class IsolationTests(VendorBase):
         for client in (twin, support):
             for url in (OVERVIEW, SALES):
                 self.assertEqual(client.get(url).status_code, 403, url)
+
+
+@override_settings(LEDGER_ENABLED=True)
+class SaleRowEdgeTests(VendorBase):
+    def rows(self, params=None):
+        response = self.kofi.get(SALES, params)
+        self.assertEqual(response.status_code, 200, response.content)
+        return response.json()["results"]
+
+    def test_a_partial_refund_before_release_keeps_the_rest_waiting(self):
+        order = paid_order(self.buyer, [(self.kofi.listing("600.00"), 1)])
+        refunds.refund_order(order, 10000, source="dispute-4")                                   # 100.00 of 600.00 back
+        row = self.rows()[0]
+        self.assertEqual(
+            (row["status"], row["item_subtotal"], row["refunded"], row["platform_fee"], row["net"]),
+            ("awaiting_call", "600.00", "100.00", "5.00", "495.00"),
+        )
+
+    def test_two_fee_categories_one_reversed_the_rest_released_reads_released(self):
+        events = Category.objects.create(slug="gigs", icon="x", label="Gigs", color="#000", kind=Category.EVENT)
+        listing = Listing.objects.create(
+            business_owner=self.kofi.owner, category=events, zone=Zone.objects.get(name="Manhyia"), name="Gig ticket",
+            description="D.", contact_phone="+233201110001", price_amount=Decimal("100.00"), status=Listing.PUBLISHED,
+        )
+        order = paid_order(self.buyer, [(self.kofi.listing("200.00"), 1), (listing, 1)])
+        self.assertEqual(OrderFeeSnapshot.objects.filter(order=order).count(), 2)
+        snap = OrderFeeSnapshot.objects.get(order=order, category="event")
+        OrderFeeSnapshot.objects.filter(pk=snap.pk).update(
+            reversed_at=timezone.now(), refunded_base_pesewas=snap.base_pesewas, refunded_fee_pesewas=snap.charged_pesewas,
+        )
+        release(order)
+        row = self.rows()[0]
+        self.assertEqual((row["status"], row["item_subtotal"], row["refunded"]), ("released", "300.00", "100.00"))
+
+    def test_paging_past_twenty_rows(self):
+        listing = self.kofi.listing("10.00")
+        for _ in range(23):
+            paid_order(self.buyer, [(listing, 1)])
+        first = self.kofi.get(SALES).json()
+        second = self.kofi.get(SALES, {"page": 2}).json()
+        self.assertEqual((first["count"], len(first["results"]), len(second["results"])), (23, 20, 3))
+        self.assertFalse({r["order"] for r in first["results"]} & {r["order"] for r in second["results"]})
+
+    def test_year_bounds(self):
+        for params, message in (
+            ({"date_from": "2019-12-31"}, "Choose a date from 2020 on."),
+            ({"date_to": "2101-01-01"}, "Choose a date up to 2100."),
+        ):
+            response = self.kofi.get(SALES, params)
+            self.assertEqual((response.status_code, list(response.json().values())), (400, [message]), params)
+        self.assertEqual(self.kofi.get(SALES, {"date_from": "2020-01-01", "date_to": "2100-12-31"}).status_code, 200)
+
+    def test_the_sales_list_does_not_query_per_row(self):
+        first = paid_order(self.buyer, [(self.kofi.listing("50.00"), 1)])
+        deliver(first)
+        Dispute.objects.create(order=first, raised_by=self.buyer, reason=Dispute.ORDER_ISSUE, status=Dispute.OPEN)
+        self.kofi.get(SALES)                                                                     # warm one-off queries
+        with CaptureQueriesContext(connection) as few:
+            self.kofi.get(SALES)
+        pickup = paid_order(self.buyer, [(self.kofi.listing("50.00"), 1)])
+        Order.objects.filter(pk=pickup.pk).update(delivery_method=Order.STORE_PICKUP)
+        FulfilmentCheck.objects.create(order=pickup, collected_at=timezone.now())
+        promo = paid_order(self.buyer, [(self.kofi.listing("120.00"), 1)], delivery="0.00")
+        waived(self.kofi.owner, promo, "15.00")
+        paid_order(self.buyer, [(self.kofi.listing("70.00"), 1), (self.esi.listing("80.00"), 1)])
+        release(paid_order(self.buyer, [(self.esi.listing("60.00"), 1), (self.kofi.listing("60.00"), 1)]))
+        with self.assertNumQueries(len(few)):
+            self.assertEqual(self.kofi.get(SALES).json()["count"], 5)
