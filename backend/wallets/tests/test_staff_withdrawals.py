@@ -5,7 +5,9 @@ from datetime import timedelta
 from unittest import mock
 
 from django.core.cache import cache
+from django.db import connection
 from django.test import TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -197,6 +199,108 @@ class StaffWithdrawalTests(TestCase):
         withdrawal.refresh_from_db()
         self.assertEqual(withdrawal.failure_reason, views_staff.STAFF_FAILED_REASON)
         self.assertNotIn("secret", withdrawal.failure_reason)
+
+    def held(self, minutes, request_id="req-held-0001"):
+        """A withdrawal held and never sent, created `minutes` ago."""
+        withdrawal = withdrawals.request(self.customer, destination_id=self.dest.pk, amount_pesewas=5000, request_id=request_id)
+        Withdrawal.objects.filter(pk=withdrawal.pk).update(created_at=timezone.now() - timedelta(minutes=minutes))
+        return withdrawal
+
+    def test_the_staff_note_is_stored_with_any_long_number_masked(self):
+        withdrawal = self.sent()
+        self.as_staff(self.accountant, sudo=True)
+        self.force_fail(withdrawal, reason="Customer 0241234567 and +233 24 123 4567 asked; ref 12345 ok")
+        event = ActivityEvent.objects.get(verb="wallets.withdrawal_failed")
+        note = event.after["reason"]
+        self.assertNotRegex(note, r"\d{6,}")
+        self.assertNotIn("241234567", note)
+        self.assertIn("*******567", note)
+        self.assertIn("ref 12345 ok", note)                                                        # a short number is left alone
+
+    def test_a_provider_that_is_not_wired_leaves_the_staff_check_standing(self):
+        withdrawal = self.sent()
+        self.as_staff(self.accountant, sudo=True)
+        with mock.patch.object(providers.SimulatedProvider, "status", side_effect=providers.NotConnected("not wired")):
+            response = self.force_fail(withdrawal)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(self.wallet(), 20000)
+
+    def test_a_provider_that_cannot_be_reached_changes_nothing(self):
+        withdrawal = self.sent()
+        self.as_staff(self.accountant, sudo=True)
+        with mock.patch.object(providers.SimulatedProvider, "status", side_effect=TimeoutError("slow")):
+            response = self.force_fail(withdrawal)
+        self.assertEqual((response.status_code, response.json()["code"]), (503, "provider_unreachable"))
+        withdrawal.refresh_from_db()
+        self.assertEqual((withdrawal.status, self.wallet()), (Withdrawal.PROCESSING, 15000))
+        self.assertFalse(ActivityEvent.objects.filter(verb="wallets.withdrawal_failed").exists())
+
+    def test_a_held_withdrawal_never_sent_for_eleven_minutes_is_failed_without_asking_the_provider(self):
+        withdrawal = self.held(11)
+        self.assertEqual(self.wallet(), 15000)
+        self.as_staff(self.accountant, sudo=True)
+        with mock.patch.object(providers.SimulatedProvider, "status") as ask:
+            response = self.force_fail(withdrawal)
+            self.assertEqual(response.status_code, 200, response.content)
+            ask.assert_not_called()
+        self.assertEqual(self.wallet(), 20000)
+        self.force_fail(withdrawal)
+        self.assertEqual(Journal.objects.filter(key=f"withdrawal-reversed-{withdrawal.reference}").count(), 1)
+
+    def test_a_held_withdrawal_of_five_minutes_is_not_stuck(self):
+        withdrawal = self.held(5)
+        self.as_staff(self.accountant, sudo=True)
+        response = self.force_fail(withdrawal)
+        self.assertEqual((response.status_code, response.json()["code"]), (409, "not_stuck"))
+        self.assertEqual(self.wallet(), 15000)
+
+    def test_a_held_one_the_poll_sent_after_the_first_read_is_not_stuck_under_the_lock(self):
+        withdrawal = self.held(11)
+        self.as_staff(self.accountant, sudo=True)
+        real = payouts.stuck
+        calls = []
+
+        def stuck_then_claimed(found, now=None):
+            answer = real(found, now)
+            calls.append(answer)
+            if len(calls) == 1:                                                                    # the view's first read said stuck
+                Withdrawal.objects.filter(pk=withdrawal.pk).update(status=Withdrawal.PROCESSING, submitted_at=timezone.now())
+            return answer
+        with mock.patch.object(payouts, "stuck", side_effect=stuck_then_claimed):
+            response = self.force_fail(withdrawal)
+        self.assertEqual((response.status_code, response.json()["code"]), (409, "not_stuck"))
+        self.assertEqual(self.wallet(), 15000)
+
+    def test_a_not_stuck_one_costs_no_provider_call(self):
+        withdrawal = self.sent()
+        Withdrawal.objects.filter(pk=withdrawal.pk).update(submitted_at=timezone.now() - timedelta(minutes=5))
+        self.as_staff(self.accountant, sudo=True)
+        with mock.patch.object(providers.SimulatedProvider, "status") as ask:
+            self.assertEqual(self.force_fail(withdrawal).json()["code"], "not_stuck")
+            ask.assert_not_called()
+
+    def test_the_provider_saying_failed_settles_it_returns_the_money_once_and_the_holder_sees_fixed_text(self):
+        withdrawal = self.sent()
+        self.as_staff(self.accountant, sudo=True)
+        with override_settings(SIMULATED_PAYOUT_OUTCOME="fail"):
+            response = self.force_fail(withdrawal, reason="secret staff note")
+        self.assertEqual((response.status_code, response.json()["code"], response.json()["status"]), (409, "provider_answered", "failed"))
+        self.assertEqual(self.wallet(), 20000)
+        self.assertEqual(Journal.objects.filter(key=f"withdrawal-reversed-{withdrawal.reference}").count(), 1)
+        withdrawal.refresh_from_db()
+        self.assertNotIn("secret", withdrawal.failure_reason)
+        self.assertFalse(ActivityEvent.objects.filter(verb="wallets.withdrawal_failed").exists())
+
+    def test_the_list_does_not_query_per_row(self):
+        self.sent(amount=1000, request_id="req-list-0000")
+        self.as_staff(self.accountant)
+        self.client.get(URL)                                                                       # warm any one-off queries
+        with CaptureQueriesContext(connection) as few:
+            self.client.get(URL)
+        for n in range(1, 4):
+            self.sent(amount=1000, request_id=f"req-list-{n:04d}")
+        with self.assertNumQueries(len(few)):
+            self.assertEqual(self.client.get(URL).json()["count"], 4)
 
 
 class StaffWithdrawalLedgerOffTests(TestCase):

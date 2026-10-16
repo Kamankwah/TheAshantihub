@@ -458,6 +458,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
   this: a SUCCEEDED report that names no amount is not settled unless the withdrawal's provider is `simulated` (the
   simulated status answers none); it opens a `withdrawal-amount-<ref>` case instead. Plan 7's Hubtel client must still
   return the amount it paid.
+- (xxvii-b) **Hubtel's status client must tell "unreachable" from "not wired":** raise `NotConnected` only when the call is not built yet; a timeout, 5xx or any other failure after a request must raise a different exception. Staff failing a stuck withdrawal treat `NotConnected` as "check was done by hand" but answer 503 `provider_unreachable` (changing nothing) for anything else.
 - (xxviii) **Destination changes are told in-app only:** before the ledger is on, a payout destination added or removed
   should also be texted or emailed to the contacts on file.
 - (xxix) **Customer names are not verified:** before the ledger is on, either require a step-up code for a `full_name`

@@ -1,5 +1,8 @@
 """Staff reads of holders' money (wallets.view: Accountant, Super Admin). Never an account or MoMo number. Answers
 409 ledger_off while the ledger is off. Plan 3b adds withdrawals and the reconciliation runs here."""
+import logging
+import re
+
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -20,6 +23,7 @@ from .models import Withdrawal
 from .services import money
 from .views import Pagination, ledger_off
 
+logger = logging.getLogger(__name__)
 VIEW, MANAGE = "wallets.view", "wallets.manage"
 
 
@@ -108,6 +112,26 @@ class StaffWithdrawalsView(APIView):
         return paginator.get_paginated_response([staff_row(withdrawal, holders) for withdrawal in page])
 
 
+def not_stuck_response():
+    return Response(
+        {"detail": "Only a withdrawal stuck (sent 30+ minutes ago with no answer, or held and never sent for 10+ minutes) "
+                   "can be failed by hand.", "code": "not_stuck"},
+        status=status.HTTP_409_CONFLICT,
+    )
+
+
+_NUMBER = re.compile(r"\d(?:[\s-]?\d){5,}")
+
+
+def mask_numbers(text):
+    """A staff note lives in the append-only activity log for good: any run of 6+ digits (spaces or dashes between them
+    allowed, as a phone or MoMo number is written) keeps only its last 3 digits."""
+    def hide(match):
+        digits = re.sub(r"\D", "", match.group())
+        return "*" * (len(digits) - 3) + digits[-3:]
+    return _NUMBER.sub(hide, text)
+
+
 def amount_case_open(withdrawal):
     """The provider reported a different amount for it (so money may have left) and fraud staff have not resolved the case."""
     return FraudFlag.objects.filter(dedupe_key=payouts.amount_case_key(withdrawal), status=FraudFlag.OPEN).exists()
@@ -122,7 +146,9 @@ class StaffWithdrawalFailView(APIView):
     amount_case_open); that is checked again under the row lock, and payouts.close refuses it too. The 5-minute poll
     skips any withdrawal that ever had an amount case, so once fraud staff have RESOLVED the case (confirmed or
     dismissed) this is staff's way out: it can be failed here if it is still stuck and the provider does not say it
-    paid. The holder sees STAFF_FAILED_REASON; the staff member's reason stays in the activity event. If the provider
+    paid. A provider that cannot be reached (any error but NotConnected) answers 503 provider_unreachable and changes
+    nothing; NotConnected means "not wired to report", so staff's own check stands. A held one never sent is failed
+    without asking any provider. The staff note is stored with any 6+ digit run masked. The holder sees STAFF_FAILED_REASON; the staff member's reason stays in the activity event. If the provider
     pays after a hand fail, its late report opens a fraud case and is never posted. No provider text is kept."""
 
     activity_exempt = True  # records its own event below, and keeps the provider call outside the middleware's transaction
@@ -136,13 +162,23 @@ class StaffWithdrawalFailView(APIView):
         data = request.data if isinstance(request.data, dict) else {}
         reason = str(data.get("reason") or "").strip()
         if not reason:
-            return Response({"reason": "Say why, after checking with the provider."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"reason": "Say why you are failing it."}, status=status.HTTP_400_BAD_REQUEST)
         found = get_object_or_404(Withdrawal, pk=pk)
+        if not payouts.stuck(found):  # first, so a not-stuck one costs no provider call and changes nothing
+            return not_stuck_response()
         if found.status == Withdrawal.PROCESSING:
             try:
                 answer = providers.get_provider(found.provider).status(found.reference)  # outside any transaction
-            except Exception:
-                answer = None  # a provider that cannot report (Hubtel until Plan 7): staff checked with it themselves
+            except providers.NotConnected:
+                answer = None  # a provider not wired to report (Hubtel until Plan 7): staff checked with it themselves
+            except Exception as exc:
+                # A timeout or a 5xx says nothing about the payout: change nothing, staff retry. Only the type is logged.
+                logger.warning("Provider status for %s unreachable (%s)", found.reference, type(exc).__name__)
+                return Response(
+                    {"detail": "The provider could not be reached to check this withdrawal. Nothing was changed; try again shortly.",
+                     "code": "provider_unreachable"},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
             if answer is not None and answer.status in (providers.SUCCEEDED, providers.FAILED):
                 settled = payouts.apply_result(
                     found.reference, answer.status, provider_reference=answer.provider_reference,
@@ -155,17 +191,14 @@ class StaffWithdrawalFailView(APIView):
                         status=status.HTTP_409_CONFLICT,
                     )
         case_open = Response(
-            {"detail": "The provider reported a different amount for this withdrawal. Resolve that case first.",
+            {"detail": "A payout report for this withdrawal needs a person to review it first. Resolve that case, then try again.",
              "code": "amount_case_open"},
             status=status.HTTP_409_CONFLICT,
         )
         with transaction.atomic():
             withdrawal = get_object_or_404(Withdrawal.objects.select_for_update(), pk=pk)
             if not payouts.stuck(withdrawal):
-                return Response(
-                    {"detail": "Only a withdrawal stuck with the provider can be failed by hand.", "code": "not_stuck"},
-                    status=status.HTTP_409_CONFLICT,
-                )
+                return not_stuck_response()
             if amount_case_open(withdrawal):  # inside the lock: a case the poll opened a moment ago is not missed
                 return case_open
             before = withdrawal.status
@@ -177,6 +210,6 @@ class StaffWithdrawalFailView(APIView):
             record(
                 request.user, "wallets.withdrawal_failed", target=withdrawal,
                 summary=f"Withdrawal {withdrawal.reference} failed by staff; GH₵ {money(withdrawal.amount_pesewas)} returned",
-                before={"status": before}, after={"status": withdrawal.status, "reason": reason[:300]}, request=request,
+                before={"status": before}, after={"status": withdrawal.status, "reason": mask_numbers(reason)[:300]}, request=request,
             )
         return Response(staff_row(withdrawal, holders_of([withdrawal])))
