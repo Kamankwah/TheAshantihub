@@ -13,6 +13,7 @@ from activity.models import ActivityEvent, ChainCheck
 from commission.models import CommissionAccrual
 from disputes.models import Dispute
 from fraud.models import FraudFlag
+from ledger import escrow
 from payments.models import CheckoutSession
 
 from . import money, sales
@@ -73,12 +74,21 @@ KIND_LABEL = {kind: label for _k, label, kinds in COLLECTION_TYPES for kind in k
 KIND_TYPE = {kind: key for key, _l, kinds in COLLECTION_TYPES for kind in kinds}
 STATUSES = ("success", "pending", "failed", "expired")
 PAGE_SIZE = 100
+WALLET_NOT_RECORDED = {
+    "name": "Orders paid from a wallet",
+    "why": "Orders paid from an AshantiHub wallet are not collections; the money was counted when the wallet was topped up.",
+}
 COLLECTIONS_NOT_RECORDED = [
-    {"name": "Orders paid from a wallet", "why": "Orders paid from an AshantiHub wallet are not collections; the money was counted when the wallet was topped up."},
     {"name": "Delivery fees", "why": "Delivery fees are not charged yet, so no payment carries one."},
     {"name": "VAT, NHIL and GETFund", "why": "No tax is calculated anywhere yet, so no payment is split into tax."},
     {"name": "Where the money goes", "why": "Order and booking money is not held in escrow, so no payment is marked as held or released."},
 ]
+
+
+def _wallet_in_use():
+    """Wallet top-ups and wallet-paid orders only exist once the ledger is on (or after it was): until then the screen
+    shows no top-ups tile and no wallet note, exactly as before the wallets."""
+    return escrow.enabled() or CheckoutSession.objects.filter(kind=CheckoutSession.WALLET_TOPUP).exists()
 
 
 def _payer(session):
@@ -122,14 +132,16 @@ def collections(start, end, *, kind=None, status=None, query="", page=1):
         bucket["count"] += row["n"]
         bucket["amount"] += row["total"] or ZERO
     total = base.count()
+    wallet = _wallet_in_use()
+    shown = [t for t in COLLECTION_TYPES if wallet or t[0] != "topups"]
     page = max(1, page)
     rows = base.select_related("customer", "business_owner__profile", "transaction").order_by("-created_at", "-id")[(page - 1) * PAGE_SIZE: page * PAGE_SIZE]
     return {
         "from": start, "to": end, "simulated": sales.simulated(), "count": total, "page": page, "page_size": PAGE_SIZE,
-        "types": [{"key": key, "label": label} for key, label, _k in COLLECTION_TYPES],
-        "summary": [{"key": key, "label": label, "count": summary[key]["count"], "amount": sales.money(summary[key]["amount"])} for key, label, _k in COLLECTION_TYPES],
+        "types": [{"key": key, "label": label} for key, label, _k in shown],
+        "summary": [{"key": key, "label": label, "count": summary[key]["count"], "amount": sales.money(summary[key]["amount"])} for key, label, _k in shown],
         "rows": [_collection_row(s) for s in rows],
-        "not_recorded": COLLECTIONS_NOT_RECORDED,
+        "not_recorded": ([WALLET_NOT_RECORDED] if wallet else []) + COLLECTIONS_NOT_RECORDED,
     }
 
 

@@ -356,7 +356,11 @@ Found while writing the Stage 3 plans (`docs/superpowers/plans/2026-10-16-wallet
 - (ix) **The transaction report double-counts wallet money.** `billing.TransactionReportView` sums every
   `billing.Transaction`: a top-up and the order paid from it are both SUCCESS rows, and wallet refunds create no
   REFUNDED row. Exclude `checkout_sessions__provider="wallet"` from its cash totals and count wallet refunds
-  (ledger `OrderRefund`) before the ledger is turned on.
+  (ledger `OrderRefund`) before the ledger is turned on. The same gap hits the refund totals:
+  `insights/sales.refunds_total` counts only `Dispute.refund_amount` and event tickets, so wallet refunds from Support's
+  cancel and the pickup job (`OrderRefund`, sources `cancel` and `pickup_expired`) never appear in them (a dispute's own
+  `OrderRefund` must not be counted twice). And `insights/accounting.py` ~80 ("Where the money goes ... not held in
+  escrow") is wrong once the ledger is on: product-order money then sits in Vendor Pending and Delivery payable.
 - (x) **The switch is one-way.** With it off, refunds are skipped silently: a paid order cancelled while it is off keeps
   its money in Vendor Pending with no later refund path. Never turn it off once on.
 - (xi) **A Hubtel success webhook for an order Support already cancelled revives it to PAID** (`_finalize_order_checkout`
@@ -366,10 +370,13 @@ Found while writing the Stage 3 plans (`docs/superpowers/plans/2026-10-16-wallet
   branch on the order-pay journal (`delivery/config.py` ~348-352).
 - (xiii) **Stale "no money moves" copy with the ledger on:** `delivery/views_cases.py` ~145 and `orders/support.py`
   `payments_note()` ~76-81.
-- (xiv) **The Support-cancel customer money email is sent inside the transaction, before commit**
-  (`orders/support.py` ~269): send it via `transaction.on_commit`.
 - (xv) **A Hubtel FAILURE webhook after Support cancelled a PENDING order restocks a second time**
   (`_fail_order_checkout`, `payments/services.py` ~73-77). Fix beside (xi), which is the success-webhook twin.
+  The same function also takes its locks in a different order from Support's cancel: `_fail_order_checkout` locks the
+  listings unsorted, then the promo charge row, then the order last, while the cancel locks the order, the listings (in
+  primary-key order), then the promo charge row. A failure webhook and a cancel on the same PENDING order can therefore
+  deadlock (Postgres aborts one). Lock the order first, then listings sorted by primary key, then the charge row, as the
+  cancel does, when (xi) is fixed.
 - (xvi) **Owner question: the Accountant's dispute-resolve door can refund an undecided delivery case** when the ledger
   is on, so money moves without the Delivery Manager's decision or the Super Admin's approval. Also, dispute and
   delivery wallet refunds send the customer no notice.
@@ -377,6 +384,9 @@ Found while writing the Stage 3 plans (`docs/superpowers/plans/2026-10-16-wallet
   deadlock against the cancel or pickup-expiry job (Postgres aborts one; no corruption). Sort the listings in checkout.
 - (xviii) **`refunds.check` duplicates `refund_order`'s rules**, and two pending delivery cases on one order both pass
   the decision-time check; the second approval then fails and needs a manual reject.
+  Support's cancel and the pickup job do not check `escrow.has_pending_refund` either: a delivery-case approval still
+  pending on an order they then refund whole can never be approved (`RefundError` leaves it pending) and needs a manual
+  reject. Have both refuse, or reject the pending request, before refunding.
 - (xix) **Release edge cases.** A delivered free-delivery order with every item refunded and a zero delivery fee never
   releases: its `WaivedFeeCharge` stays OWED. `refund_order`'s nothing-left guard reverses and returns the promo even if
   delivery was made (rare: cancel is blocked after delivery).
@@ -385,6 +395,12 @@ Found while writing the Stage 3 plans (`docs/superpowers/plans/2026-10-16-wallet
   processing-charge share is per-refund half-up, not cumulative. No top-up throttle. The Hubtel checkout call happens
   inside the DB transaction (Plan 7). The top-up finalizer relies on the webhook's amount check; a top-up success
   webhook with no amount must not credit (it now fails closed on a credit/amount mismatch).
+- (xxii) **Re-dispatch after a refund (the rest of the whole-refund fix).** A whole refund now cancels an order not
+  yet handed over and the board, pickup desk and pickup queue refuse a wholly refunded order, but two deeper gaps remain.
+  `delivery/stops.py` `reopen_for_new_rider(all_skipped=True)` reopens every stop, including a shop whose lines were
+  already refunded through a skipped-stop case. And `refunds.check` / `refund_apply` do not refuse lines whose stop is
+  now COLLECTED or whose order has since been delivered, so a refund approved after a re-dispatch can pay for goods the
+  customer received. Make both consult the stop and delivery state before the ledger is turned on.
 - (xxi) **Assumptions for owner confirmation are A1-A11 in the 3a plan:** collection charge 0 on simulated rails, no
   wallet cap, no split payment, the partial-refund and processing-charge policy, immediate refund on cancel, and the
   24-hour pickup-expiry job. As item (viii) says, that job refunds every ledger-recorded store pickup (vendor-shop

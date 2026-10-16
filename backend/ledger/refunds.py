@@ -53,6 +53,11 @@ class Left:
     processing: int
 
 
+def is_wholly_refunded(order):
+    """True once a whole refund (one that emptied the order) was given: it can no longer be delivered or collected."""
+    return OrderRefund.objects.filter(order=order, whole=True).exists()
+
+
 def refund_key(order, source):
     return f"order-refund-{order.pk}-{source}"
 
@@ -182,7 +187,24 @@ def refund_order(order, amount_pesewas=None, *, source, by=None, owner_ids=None,
             from marketing.waivers import reverse_for_order
 
             reverse_for_order(order, "order_refunded")
+        if whole:
+            _cancel_if_not_handed_over(order)
         return refund
+
+
+def _cancel_if_not_handed_over(order):
+    """A whole refund of an order the customer never received cancels it and puts its stock back, in the refund's own
+    transaction, as Support's cancel and the pickup job do: otherwise it stays paid and could still be delivered or
+    collected (customer gets goods and money, the vendor nothing). An order already cancelled by the caller (those two)
+    or already handed over is left alone."""
+    from orders.models import Order
+    from orders.support import return_stock
+
+    if order.status != Order.PAID or _delivery_made(order):
+        return
+    return_stock(order)
+    order.status = Order.CANCELLED
+    order.save(update_fields=["status"])
 
 
 def _delivery_made(order):

@@ -203,7 +203,7 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   never a cancelled order; after release the vendor's Available is debited (may go negative) and the fee returned in
   proportion; the delivery fee comes back only with the whole order; the collection charge only on a platform/vendor
   error (its proportional share on a partial refund). Release (and Support's "matches") also waits while a
-  delivery-case refund is pending the Super Admin's approval (`escrow.has_pending_refund`). Support's cancel, the hourly uncollected-pickup job, dispute resolution and the delivery-case refund approval
+  delivery-case refund is pending the Super Admin's approval (`escrow.has_pending_refund`; with the ledger off Support's answers are the old ones). A whole refund of an order not yet handed over also cancels it and returns its stock in the same transaction (`refunds._cancel_if_not_handed_over`), and the delivery board, pickup queue and pickup desk refuse a wholly refunded order (`refunds.is_wholly_refunded`). Support's cancel, the hourly uncollected-pickup job, dispute resolution and the delivery-case refund approval
   all call it. A business's free-delivery promo (`WaivedFeeCharge`) is taken from its Available at release. **Lock
   order for money:** the order row, its fee snapshots, then ledger accounts in primary-key order taken up front with
   `posting.lock` in one sorted pass, including the accounts of a second posting in the same transaction (the promo

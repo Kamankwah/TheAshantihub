@@ -72,8 +72,10 @@ class PickupExpiryTests(RefundBase):
         self.assertEqual((order.status, self.wallet(), OrderRefund.objects.count()), (Order.PAID, 0, 0))
 
     def test_one_order_the_ledger_refuses_does_not_stop_the_others(self):
-        self.pickup(hours_ago=30)
-        self.pickup(hours_ago=29)
+        first = self.pickup(hours_ago=30)
+        first_item = self.item
+        second = self.pickup(hours_ago=29)
+        second_item = self.item
         real, calls = refunds.refund_order, []
 
         def flaky(order, *args, **kwargs):
@@ -84,6 +86,10 @@ class PickupExpiryTests(RefundBase):
 
         with patch("ledger.refunds.refund_order", side_effect=flaky), self.assertLogs("ledger.verification", level="ERROR"):
             self.assertEqual(verification.expire_uncollected(), 1)
+        self.assertEqual(calls, [first.pk, second.pk])
+        first.refresh_from_db(), second.refresh_from_db(), first_item.refresh_from_db(), second_item.refresh_from_db()
+        self.assertEqual((first.status, first_item.stock_quantity), (Order.PAID, 3))          # rolled back: still paid, stock untouched
+        self.assertEqual((second.status, second_item.stock_quantity), (Order.CANCELLED, 5))
 
     def test_an_order_with_an_open_dispute_is_left_for_a_person(self):
         order = self.pickup(hours_ago=30)
@@ -98,6 +104,15 @@ class PickupExpiryTests(RefundBase):
         self.assertEqual(verification.expire_uncollected(), 0)
         order.refresh_from_db()
         self.assertEqual(order.status, Order.PAID)
+
+    def test_an_order_paid_before_the_ledger_was_on_is_not_even_selected(self):
+        kofi = self.owner("Kofi")
+        old = self.order([(self.listing(kofi, "60.00"), 1)])                                  # no payment journal
+        Order.objects.filter(pk=old.pk).update(placed_at=timezone.now() - timedelta(hours=30))
+        recorded = self.pickup(hours_ago=30)
+        with patch("ledger.verification.expire_one", return_value=0) as expire:
+            verification.expire_uncollected()
+        self.assertEqual([call.args[0] for call in expire.call_args_list], [recorded.pk])
 
     def test_the_hourly_task_runs_it(self):
         self.pickup(hours_ago=25)

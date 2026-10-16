@@ -158,7 +158,12 @@ def release_verified(order, now=None):
         # Every account this transaction can post to, locked in one sorted pass (spec W7) before anything is decided
         # from a balance: the Delivery payable's is read from the locked row, and the promo charge's accounts (the
         # second posting, charge_waiver) are taken now so it never takes a new lock while the release's are held.
-        delivery_account = posting.account_for(Account.DELIVERY_PAYABLE, order)
+        if to_pesewas(order.delivery_fee or 0) > 0:
+            delivery_account = posting.account_for(Account.DELIVERY_PAYABLE, order)
+        else:  # no fee: look the account up (a refund may have opened none either) but never create an empty one
+            delivery_account = Account.objects.filter(
+                kind=Account.DELIVERY_PAYABLE, owner_type="orders.order", owner_id=str(order.pk)
+            ).first()
         delivery_income = posting.account_for(Account.PLATFORM_DELIVERY_INCOME)
         pendings = {v: posting.account_for(Account.VENDOR_PENDING, by_vendor[v]["owner"]) for v in by_vendor}
         availables = {v: posting.account_for(Account.VENDOR_AVAILABLE, by_vendor[v]["owner"]) for v in by_vendor}
@@ -172,7 +177,7 @@ def release_verified(order, now=None):
                 debits.append(posting.debit(pendings[vendor_id], entry["base"]))
             if entry["fee"] > 0:
                 credits.append(posting.credit(income, entry["fee"]))
-        delivery = locked[delivery_account.pk].balance
+        delivery = locked[delivery_account.pk].balance if delivery_account is not None else 0
         if delivery > 0:
             debits.append(posting.debit(delivery_account, delivery))
             credits.append(posting.credit(delivery_income, delivery))

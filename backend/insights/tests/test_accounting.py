@@ -109,6 +109,21 @@ class CollectionsTests(AccountingBase):
         self.assertEqual(summary["orders"], (1, "150.00"))          # the wallet-paid 40.00 is not counted again
         self.assertNotIn("wallet", {r["provider"] for r in body["rows"]})
 
+    def test_with_the_ledger_off_and_no_top_ups_there_is_no_wallet_tile_or_note(self):
+        self.as_staff(self.accountant)
+        body = self.get().json()
+        self.assertNotIn("topups", [s["key"] for s in body["summary"]])
+        self.assertNotIn("Orders paid from a wallet", [n["name"] for n in body["not_recorded"]])
+
+    def test_with_the_ledger_on_the_wallet_tile_and_note_show_even_before_a_top_up(self):
+        from django.test import override_settings
+
+        self.as_staff(self.accountant)
+        with override_settings(LEDGER_ENABLED=True):
+            body = self.get().json()
+        self.assertIn("topups", [s["key"] for s in body["summary"]])
+        self.assertIn("Orders paid from a wallet", [n["name"] for n in body["not_recorded"]])
+
     def test_filters_by_type_and_search(self):
         self.as_staff(self.accountant)
         self.assertEqual({r["type"] for r in self.get("&kind=subscriptions").json()["rows"]}, {"subscriptions"})

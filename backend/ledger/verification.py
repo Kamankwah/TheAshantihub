@@ -5,8 +5,8 @@ import logging
 from datetime import timedelta
 
 from django.db import transaction
-from django.db.models import CharField, Exists, OuterRef, Q
-from django.db.models.functions import Cast
+from django.db.models import CharField, Exists, OuterRef, Q, Value
+from django.db.models.functions import Cast, Concat
 from django.utils import timezone
 
 from . import escrow, settings_store
@@ -70,8 +70,10 @@ def record(order, staff, outcome, *, note="", customer_confirmed_by_phone=False,
         if not handed_over(order, check):
             raise VerificationError("This order has not been delivered or collected yet.")
         if outcome == FulfilmentCheck.MATCHES:
-            if escrow.has_open_dispute(order) or escrow.has_pending_refund(order):
-                raise VerificationError("A dispute, or a refund waiting for approval, is open on this order. It must be settled first.")
+            if escrow.has_open_dispute(order):
+                raise VerificationError("A dispute is open on this order. It must be settled first.")
+            if escrow.enabled() and escrow.has_pending_refund(order):
+                raise VerificationError("A refund waiting for approval is open on this order. It must be settled first.")
             if customer_confirmed_by_phone and check.phone_confirmed_at is None:
                 check.phone_confirmed_at = now
             if not customer_confirmed(order, check):
@@ -143,6 +145,10 @@ def mark_collected(order, staff, now=None):
         order = Order.objects.select_for_update().get(pk=order.pk)
         if order.status != Order.PAID or order.delivery_method != Order.STORE_PICKUP:
             raise VerificationError("Only a paid store-pickup order can be marked collected.")
+        from . import refunds
+
+        if refunds.is_wholly_refunded(order):
+            raise VerificationError("This order was refunded in full, so it cannot be handed over.")
         check = check_for(order)
         if check.collected_at is None:
             check.collected_at, check.collected_by = now, staff
@@ -162,7 +168,7 @@ def pickup_queue(now=None):
     window = timedelta(hours=settings_store.current("pickup_window_hours", now))
     orders = (
         Order.objects.filter(status=Order.PAID, delivery_method=Order.STORE_PICKUP)
-        .exclude(fulfilment_check__collected_at__isnull=False)
+        .exclude(fulfilment_check__collected_at__isnull=False).exclude(refunds__whole=True)
         .select_related("customer").prefetch_related("items__listing__business_owner").order_by("placed_at", "id")
     )
     return [
@@ -191,8 +197,11 @@ def expire_uncollected(now=None):
         return 0
     now = now or timezone.now()
     hours = settings_store.current("pickup_window_hours", now)
+    # Only orders the ledger recorded are selected (in SQL), so a pre-ledger order is never row-locked every hour.
     due = list(
-        Order.objects.filter(status=Order.PAID, delivery_method=Order.STORE_PICKUP, placed_at__lt=now - timedelta(hours=hours))
+        Order.objects.annotate(pay_key=Concat(Value("order-pay-"), Cast("pk", CharField())))
+        .filter(Exists(Journal.objects.filter(key=OuterRef("pay_key"))))
+        .filter(status=Order.PAID, delivery_method=Order.STORE_PICKUP, placed_at__lt=now - timedelta(hours=hours))
         .exclude(fulfilment_check__collected_at__isnull=False).order_by("placed_at", "id").values_list("pk", flat=True)
     )
     done = 0

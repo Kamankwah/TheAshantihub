@@ -209,6 +209,32 @@ class ReleaseAfterRefundTests(RefundBase):
         self.assertIn("refund waiting for approval", caught.exception.message)
         self.assertFalse(FulfilmentCheck.objects.filter(order=order, outcome=FulfilmentCheck.MATCHES).exists())
 
+    def test_ledger_off_a_waiting_refund_does_not_change_the_old_verification_answer(self):
+        kofi = self.owner("Kofi")
+        order = self.paid([(self.listing(kofi, "60.00"), 1)])
+        self.delivered(order)
+        self.pending_refund(order)
+        with override_settings(LEDGER_ENABLED=False):
+            check = verification.record(order, self.staff(), FulfilmentCheck.MATCHES)       # not the new "refund waiting" 409
+        self.assertEqual(check.outcome, FulfilmentCheck.MATCHES)
+
+    def test_ledger_off_an_open_dispute_keeps_the_old_text(self):
+        from disputes.models import Dispute
+
+        kofi = self.owner("Kofi")
+        order = self.paid([(self.listing(kofi, "60.00"), 1)])
+        self.delivered(order)
+        Dispute.objects.create(order=order, raised_by=order.customer, reason=Dispute.ORDER_ISSUE, status=Dispute.OPEN)
+        with override_settings(LEDGER_ENABLED=False), self.assertRaises(verification.VerificationError) as caught:
+            verification.record(order, self.staff(), FulfilmentCheck.MATCHES)
+        self.assertEqual(caught.exception.message, "A dispute is open on this order. It must be settled first.")
+
+    def test_release_of_an_order_without_a_delivery_fee_opens_no_delivery_payable_account(self):
+        kofi = self.owner("Kofi")
+        order = self.paid([(self.listing(kofi, "60.00"), 1)])                                # no delivery fee
+        self.release(order)
+        self.assertFalse(Account.objects.filter(kind=Account.DELIVERY_PAYABLE, owner_id=str(order.pk)).exists())
+
     def test_ledger_off_the_promo_postings_do_nothing(self):
         kofi = self.owner("Kofi")
         order = self.paid([(self.listing(kofi, "120.00"), 1)], delivery="0.00")
