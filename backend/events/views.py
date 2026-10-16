@@ -837,11 +837,11 @@ class TicketPurchaseView(APIView):
     select_for_update()-then-check-then-create oversell-prevention pattern
     (locked on EventTicketType rather than Event, since the thing being
     contended over is ticket inventory, not RSVP capacity), and is routed
-    through payments.services.process_payment() (docs/HUBTEL_INTEGRATION.md,
-    plan Workstream E) rather than writing a billing.Transaction directly.
+    through payments.booking_pay.pay(), which wraps payments.services.process_payment()
+    (docs/HUBTEL_INTEGRATION.md, plan Workstream E, and the ledger's processing charge) rather than writing a billing.Transaction directly.
 
     Inventory (`quantity_sold`) is reserved **optimistically, under this same
-    lock, before process_payment() is ever called** — in simulated mode this
+    lock, before the payment is ever started** — in simulated mode this
     is no different from before (the reservation and the Transaction are
     both committed together, synchronously). In Hubtel mode it means a
     ticket is provisionally "sold" the moment checkout starts, not once

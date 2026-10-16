@@ -2,8 +2,12 @@
 the pay endpoints put the payment-processing charge on top and mark the session for the reconciliation, and nothing
 changes while the ledger is off. Review Focus 2 (a confirmation that arrives twice), 6 (switches off) and 7 (the price
 check)."""
+import hashlib
+import hmac
+import json
 from datetime import timedelta
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.test import override_settings
 from django.utils import timezone
@@ -11,6 +15,7 @@ from django.utils import timezone
 from accounts.models import Customer
 from billing.models import Transaction
 from events.models import Event, EventTicketType, Ticket
+from ledger import posting
 from ledger.models import Account, BookingSale, Journal
 from payments.models import CheckoutSession
 from payments.services import finalize_success
@@ -122,6 +127,74 @@ class BookingReconciliationTests(BookingBase):
         self.assertEqual([(d["reference"], d["problem"]) for d in run.differences], [(reference, "missing_in_ledger")])
 
 
+WEBHOOK_SECRET = "test-webhook-secret"
+FAKE_CHECKOUT = {"checkout_url": "https://checkout.hubtel.com/fake", "checkout_id": "hb-1"}
+
+
+@override_settings(LEDGER_ENABLED=True, PAYMENTS_PROVIDER="hubtel", HUBTEL_WEBHOOK_SECRET=WEBHOOK_SECRET, HUBTEL_COLLECTION_CHARGE_BP=200)
+class BookingHubtelWebhookTests(BookingBase):
+    def webhook(self, reference, amount):
+        raw = json.dumps({"ClientReference": reference, "Status": "Success", "Amount": amount}).encode()
+        signature = hmac.new(WEBHOOK_SECRET.encode(), raw, hashlib.sha256).hexdigest()
+        return self.client.generic(
+            "POST", "/api/payments/webhook/hubtel/", data=raw, content_type="application/json", HTTP_X_HUBTEL_SIGNATURE=signature,
+        )
+
+    @patch("payments.services.hubtel_client.create_checkout", return_value=FAKE_CHECKOUT)
+    def test_a_hubtel_confirmation_records_one_sale_at_the_net_and_a_replay_adds_none(self, _create):
+        sr = self.accepted_service("200.00")
+        response = self.pay_service(sr)
+        self.assertEqual((response.status_code, response.json()["mode"], response.json()["payment_processing"]), (200, "redirect", "4.00"))
+        session = CheckoutSession.objects.get(reference=response.json()["reference"])
+        self.assertEqual((session.status, session.amount, session.processing_fee), (CheckoutSession.PENDING, Decimal("204.00"), Decimal("4.00")))
+        self.assertFalse(BookingSale.objects.exists())
+
+        first = self.webhook(session.reference, 204.0)
+        self.assertEqual((first.status_code, first.json()["detail"]), (200, "Processed."))
+        sale = BookingSale.objects.get()
+        self.assertEqual((sale.base_pesewas, sale.service_request), (20000, sr))
+        self.assertEqual(self.balance(Account.VENDOR_PENDING, self.owner), 20000)
+
+        replay = self.webhook(session.reference, 204.0)
+        self.assertEqual((replay.status_code, replay.json()["detail"]), (200, "Already processed."))
+        self.assertEqual(BookingSale.objects.count(), 1)
+        self.assertEqual(Journal.objects.filter(kind="booking_payment").count(), 1)
+
+    def test_a_payment_that_is_not_the_price_rolls_the_whole_confirmation_back(self):
+        sr = self.accepted_service("200.00")
+        txn_count = Transaction.objects.count()
+        session = CheckoutSession.objects.create(
+            customer=self.customer, kind=CheckoutSession.SERVICE_REQUEST, amount=Decimal("150.00"), processing_fee=Decimal("0.00"),
+            purpose="Service", provider="hubtel", metadata={"service_request_id": sr.id, "ledger": True},
+        )
+        with self.assertRaises(posting.PostingError):
+            self.webhook(session.reference, 150.0)
+        session.refresh_from_db()
+        sr.refresh_from_db()
+        self.assertEqual((session.status, session.transaction), (CheckoutSession.PENDING, None))
+        self.assertEqual(sr.status, ServiceRequest.ACCEPTED)
+        self.assertEqual(Transaction.objects.count(), txn_count)
+        self.assertFalse(BookingSale.objects.exists())
+
+
+class LedgerOffChargeLeakTests(BookingBase):
+    @override_settings(LEDGER_ENABLED=False, SIMULATED_COLLECTION_CHARGE_BP=200)
+    def test_with_the_ledger_off_no_session_carries_a_processing_charge(self):
+        self.pay_service(self.accepted_service("200.00"))
+        self.book_stay(nights=1)
+        self.buy_tickets(quantity=1)
+        sessions = {s.kind: s for s in CheckoutSession.objects.all()}
+        self.assertEqual(len(sessions), 3)
+        self.assertEqual(
+            {k: (s.amount, s.processing_fee) for k, s in sessions.items()},
+            {
+                CheckoutSession.SERVICE_REQUEST: (Decimal("200.00"), Decimal("0.00")),
+                CheckoutSession.BOOKING: (Decimal("150.00"), Decimal("0.00")),
+                CheckoutSession.TICKET_PURCHASE: (Decimal("50.00"), Decimal("0.00")),
+            },
+        )
+
+
 class ServicePriceTests(BookingBase):
     def respond(self, sr, price):
         self.as_owner()
@@ -143,3 +216,11 @@ class ServicePriceTests(BookingBase):
         self.assertEqual(self.respond(sr, "150.5").status_code, 200)
         sr.refresh_from_db()
         self.assertEqual((sr.status, sr.agreed_price), (ServiceRequest.ACCEPTED, Decimal("150.50")))
+
+    def test_a_second_accept_cannot_rewrite_the_agreed_price(self):
+        sr = self.requested()
+        self.assertEqual(self.respond(sr, "150.00").status_code, 200)
+        again = self.respond(sr, "999.00")
+        self.assertEqual(again.status_code, 400)
+        sr.refresh_from_db()
+        self.assertEqual((sr.status, sr.agreed_price), (ServiceRequest.ACCEPTED, Decimal("150.00")))

@@ -92,7 +92,13 @@ class ServiceRequestRespondView(APIView):
     permission_classes = [IsAuthenticated, IsBusinessOwner]
 
     def post(self, request, pk):
-        sr = generics.get_object_or_404(ServiceRequest, pk=pk, business_owner=request.user)
+        generics.get_object_or_404(ServiceRequest, pk=pk, business_owner=request.user)
+        with db_transaction.atomic():
+            # Locked and re-checked, so two taps on Accept cannot rewrite the agreed price after the first one.
+            sr = ServiceRequest.objects.select_for_update().select_related("listing", "customer").get(pk=pk)
+            return self._respond(request, sr)
+
+    def _respond(self, request, sr):
         if sr.status != ServiceRequest.REQUESTED:
             return Response({"detail": "This request has already been responded to."}, status=400)
 

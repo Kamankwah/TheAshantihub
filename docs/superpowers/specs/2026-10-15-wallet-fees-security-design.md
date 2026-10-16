@@ -607,3 +607,16 @@ Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-st
   reconciliation reports `missing_in_ledger` once a statement exists). Before Plan 7: refuse the customer's cancel of a
   PENDING booking whose checkout session is still PENDING, or have `_finalize_booking` record such a payment and refund it
   whole to the wallet. Fix beside (xi), its order twin.
+- (lxvii) **The `ServicesPanel` shows a generic error for the new price validation.** `ServiceRequestRespondView` now
+  answers 400 `{"price": "Enter a price in GH₵ above 0.00, like 150.00."}`, but the frontend does not surface the
+  `price` error. This ships as soon as Plan 1b merges, with the ledger on or off: surface it before merging.
+- (lxviii) **The switch-on runbook must drain open Hubtel sessions.** A service, stay or ticket session started while
+  the ledger was off carries no charge and no `metadata["ledger"]` mark; if it is paid after switch-on its finalizer
+  records it at the full price with no processing charge, and reconciliation skips it. Let every open session resolve
+  or expire before turning the switch on.
+- (lxix) **A price near GH₵ 99,999,999.99 plus the processing charge overflows `CheckoutSession.amount`
+  (`max_digits=10`) and answers 500.** `clean_price` allows 8 integer digits. Cap the agreed price (or widen the
+  column) so the amount with its charge always fits.
+- (lxx) **The Hubtel checkout call is made while the service request row is locked** (`ServiceRequestPayView` holds
+  `select_for_update` across `booking_pay.pay`), like the order and top-up flows ((xx)): a slow Hubtel call holds
+  the row. Plan 7.
