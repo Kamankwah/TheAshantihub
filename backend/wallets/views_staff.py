@@ -216,7 +216,8 @@ class StaffWithdrawalFailView(APIView):
 
 
 class StaffReconciliationView(APIView):
-    """GET staff/reconciliation/ — the last 30 nightly runs, newest day first (wallets.view)."""
+    """GET staff/reconciliation/ — the last 30 nightly runs, newest day first (wallets.view). With the simulated provider the
+    "statement" is built from AshantiHub's own records, not a real provider's; statement_source says so."""
 
     def get_permissions(self):
         return [HasRolePermission(VIEW)]
@@ -231,7 +232,10 @@ class StaffReconciliationView(APIView):
                 "day": run.day, "provider": run.provider, "status": run.status, "status_label": run.get_status_display(),
                 "ledger_in": money(run.ledger_in_pesewas), "statement_in": money(run.statement_in_pesewas),
                 "ledger_out": money(run.ledger_out_pesewas), "statement_out": money(run.statement_out_pesewas),
-                "in_transit": money(run.in_transit_pesewas), "differences": run.differences, "fraud_case_id": run.flag_id,
+                "in_transit": money(run.in_transit_pesewas), "in_transit_note": "snapshot at run time, not as of the day",
+                "unavailable_checks": run.unavailable,
+                "statement_source": "simulated (AshantiHub's own records)" if run.provider == "simulated" else run.provider,
+                "differences": run.differences, "fraud_case_id": run.flag_id,
                 "ran_at": run.ran_at,
             }
             for run in ReconciliationRun.objects.order_by("-day")[:30]

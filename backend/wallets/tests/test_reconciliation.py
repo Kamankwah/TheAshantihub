@@ -1,6 +1,7 @@
 """The nightly reconciliation (wallets plan 3b, Task 6; spec §2 "compares the ledger to the provider statement and flags
 differences"). Review Focus 7: no false alarms, and a real difference opens one case."""
 from datetime import timedelta
+from unittest import mock
 from decimal import Decimal
 
 from django.conf import settings
@@ -20,6 +21,7 @@ from listings.models import Category, Listing, Zone
 from notifications.models import Notification
 from orders.models import Order, OrderItem
 from payments.models import CheckoutSession
+from payments import providers
 from payments.services import process_payment
 from wallets import payouts, reconciliation, tasks, withdrawals
 from wallets.models import ReconciliationRun
@@ -112,7 +114,8 @@ class ReconciliationTests(TestCase):
         self.buy("momo")
         session = CheckoutSession.objects.get(kind=CheckoutSession.ORDER_CHECKOUT)
         Transaction.objects.filter(pk=session.transaction_id).update(created_at=timezone.now() - timedelta(days=1))
-        self.assertEqual(reconciliation.reconcile(self.today - timedelta(days=1)).differences, [])
+        yesterday = reconciliation.reconcile(self.today - timedelta(days=1))
+        self.assertEqual((yesterday.differences, yesterday.statement_in_pesewas), ([], 6000))
         self.assertEqual(reconciliation.reconcile(self.today).differences, [])
 
     def test_in_transit_must_equal_the_open_withdrawals(self):
@@ -144,7 +147,9 @@ class ReconciliationTests(TestCase):
     def test_the_nightly_task_reconciles_yesterday(self):
         self.assertEqual(tasks.reconcile_yesterday(), ReconciliationRun.MATCHED)
         self.assertTrue(ReconciliationRun.objects.filter(day=self.today - timedelta(days=1)).exists())
-        self.assertEqual(settings.CELERY_BEAT_SCHEDULE["wallets-reconcile"]["task"], "wallets.tasks.reconcile_yesterday")
+        entry = settings.CELERY_BEAT_SCHEDULE["wallets-reconcile"]
+        self.assertEqual(entry["task"], "wallets.tasks.reconcile_yesterday")
+        self.assertEqual((entry["schedule"].hour, entry["schedule"].minute), ({2}, {30}))
 
     def test_staff_read_the_runs(self):
         reconciliation.reconcile(self.today)
@@ -152,8 +157,112 @@ class ReconciliationTests(TestCase):
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(self.accountant)}")
         body = client.get("/api/wallet/staff/reconciliation/").json()
         self.assertEqual((body["results"][0]["day"], body["results"][0]["status"]), (self.today.isoformat(), "matched"))
+        self.assertEqual(body["results"][0]["statement_source"], "simulated (AshantiHub's own records)")
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(make_staff('support', 'esi@example.com'))}")
         self.assertEqual(client.get("/api/wallet/staff/reconciliation/").status_code, 403)
+        self.assertEqual(self.ama.client.get("/api/wallet/staff/reconciliation/").status_code, 403)
+        self.assertIn(APIClient().get("/api/wallet/staff/reconciliation/").status_code, (401, 403))
+        with override_settings(LEDGER_ENABLED=False):
+            client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(self.accountant)}")
+            self.assertEqual(client.get("/api/wallet/staff/reconciliation/").status_code, 409)
+
+    # -- fix round 1 --------------------------------------------------------------------------------------------------
+
+    def fake(self, statement=None, find=None, pending=None):
+        """Patch the simulated provider's statement calls; each may be a list/value or an exception to raise."""
+        def call(value):
+            def fn(*args):
+                if isinstance(value, BaseException):
+                    raise value
+                return value
+            return fn
+        real = providers.SimulatedProvider
+        patches = []
+        if statement is not None:
+            patches.append(mock.patch.object(real, "statement", call(statement)))
+        if find is not None:
+            patches.append(mock.patch.object(real, "find", call(find)))
+        if pending is not None:
+            patches.append(mock.patch.object(real, "pending_payouts", call(pending)))
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def line(self, reference, kind, amount):
+        return providers.StatementLine(reference, kind, amount, timezone.now())
+
+    def test_a_doubled_statement_line_is_a_difference_not_a_match(self):
+        self.top_up("10.00")
+        session = CheckoutSession.objects.get(kind=CheckoutSession.WALLET_TOPUP)
+        one = self.line(session.reference, providers.COLLECTION, 1000)
+        self.fake(statement=[one, one])
+        run = reconciliation.reconcile(self.today)
+        self.assertEqual(run.status, ReconciliationRun.MISMATCHED)
+        self.assertEqual([d["problem"] for d in run.differences], ["duplicate_on_statement"])
+        self.assertEqual((run.ledger_in_pesewas, run.statement_in_pesewas), (1000, 1000))
+
+    def test_a_collection_with_an_unknown_reference_is_a_difference(self):
+        self.fake(statement=[self.line("AH-NOPE-0001", providers.COLLECTION, 700)])
+        run = reconciliation.reconcile(self.today)
+        self.assertEqual(run.differences, [{"reference": "AH-NOPE-0001", "kind": "collection", "problem": "unknown_reference", "ledger": None, "statement": 700}])
+
+    def test_an_amount_that_differs_is_reported(self):
+        self.top_up("10.00")
+        session = CheckoutSession.objects.get(kind=CheckoutSession.WALLET_TOPUP)
+        self.fake(statement=[self.line(session.reference, providers.COLLECTION, 900)])
+        run = reconciliation.reconcile(self.today)
+        self.assertEqual(run.differences, [{"reference": session.reference, "kind": "collection", "problem": "amount_differs", "ledger": 1000, "statement": 900}])
+
+    def test_a_top_up_with_no_journal_is_missing_in_ledger(self):
+        txn = Transaction.objects.create(customer=self.customer, amount=Decimal("10.00"), purpose="Top-up", reference="AH-WALLET_TOPUP-LOST000001")
+        CheckoutSession.objects.create(
+            customer=self.customer, kind=CheckoutSession.WALLET_TOPUP, amount=Decimal("10.00"), purpose="Top-up", reference=txn.reference,
+            status=CheckoutSession.SUCCESS, transaction=txn, metadata={"ledger": True},
+        )
+        run = reconciliation.reconcile(self.today)
+        self.assertEqual([(d["problem"], d["statement"]) for d in run.differences], [("missing_in_ledger", 1000)])
+
+    def test_a_statement_that_times_out_is_recorded_and_still_raises_one_case(self):
+        posting.post(key="stray", kind="test", lines=[
+            posting.debit(posting.account_for(Account.PROVIDER_CLEARING), 500),
+            posting.credit(posting.account_for(Account.WITHDRAWAL_IN_TRANSIT), 500),
+        ])
+        self.fake(statement=TimeoutError("secret +233241234567"))
+        with self.assertLogs("wallets.reconciliation", level="WARNING") as logged:
+            run = reconciliation.reconcile(self.today)
+        self.assertNotIn("233241234567", "".join(logged.output))
+        self.assertIn("TimeoutError", "".join(logged.output))
+        self.assertEqual((run.status, run.unavailable), (ReconciliationRun.MISMATCHED, ["statement"]))
+        self.assertEqual([d["problem"] for d in run.differences], ["in_transit_differs"])
+        self.assertEqual(FraudFlag.objects.filter(dedupe_key=f"reconciliation-{self.today.isoformat()}").count(), 1)
+        self.assertEqual(Notification.objects.filter(staff=self.accountant, kind="reconciliation_mismatch").count(), 1)
+
+    def test_a_statement_that_times_out_with_nothing_else_wrong_is_unavailable(self):
+        self.fake(statement=TimeoutError("x"))
+        run = reconciliation.reconcile(self.today)
+        self.assertEqual((run.status, run.unavailable), (ReconciliationRun.UNAVAILABLE, ["statement"]))
+        self.assertFalse(FraudFlag.objects.exists())
+
+    def test_find_not_connected_skips_only_that_check(self):
+        self.top_up("10.00")
+        session = CheckoutSession.objects.get(kind=CheckoutSession.WALLET_TOPUP)
+        self.fake(statement=[], find=providers.NotConnected("no"))
+        run = reconciliation.reconcile(self.today)
+        self.assertEqual(run.unavailable, ["find"])
+        self.assertEqual(run.differences, [])
+        self.assertEqual(run.status, ReconciliationRun.MATCHED)
+        self.assertTrue(session.reference)
+
+    def test_pending_payouts_not_connected_skips_only_that_check(self):
+        self.top_up("10.00")
+        self.fake(pending=providers.NotConnected("no"))
+        run = reconciliation.reconcile(self.today)
+        self.assertEqual((run.status, run.unavailable, run.differences), (ReconciliationRun.MATCHED, ["pending_payouts"], []))
+
+    def test_reconciling_never_creates_the_in_transit_account(self):
+        Account.objects.filter(kind=Account.WITHDRAWAL_IN_TRANSIT).delete()
+        reconciliation.reconcile(self.today)
+        self.assertFalse(Account.objects.filter(kind=Account.WITHDRAWAL_IN_TRANSIT).exists())
 
 
 class ReconciliationLedgerOffTests(TestCase):

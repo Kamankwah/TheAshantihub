@@ -111,7 +111,8 @@ class ReconciliationRun(models.Model):
     statement_in_pesewas = models.BigIntegerField(default=0)
     ledger_out_pesewas = models.BigIntegerField(default=0)
     statement_out_pesewas = models.BigIntegerField(default=0)
-    in_transit_pesewas = models.BigIntegerField(default=0)
+    in_transit_pesewas = models.BigIntegerField(default=0)  # a snapshot at run time, not as of `day`
+    unavailable = models.JSONField(default=list, blank=True)  # provider checks it could not make: statement, find, pending_payouts
     differences = models.JSONField(default=list, blank=True)
     flag = models.ForeignKey("fraud.FraudFlag", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     ran_at = models.DateTimeField()
