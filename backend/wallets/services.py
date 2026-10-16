@@ -12,6 +12,9 @@ LABELS = {
     "order_refund": "Refund",
     "order_waiver_charge": "Free-delivery promo",
     "order_waiver_return": "Free-delivery promo returned",
+    "booking_payment": "Booking payment",
+    "booking_release": "Released to you",
+    "booking_refund": "Refund",
     "wallet_top_up": "Top-up",
     "withdrawal_hold": "Withdrawal",
     "withdrawal_reversed": "Withdrawal returned",
@@ -81,11 +84,13 @@ def statement_lines(holder):
 def line_row(line):
     journal = line.journal
     is_order = journal.reference_type == "orders.order" and journal.reference_id.isdigit()
+    is_booking = journal.reference_type == "ledger.bookingsale" and journal.reference_id.isdigit()
     return {
         "id": line.pk, "at": journal.created_at, "account": ACCOUNT_NAMES[line.account.kind], "kind": journal.kind,
         "label": LABELS.get(journal.kind, "Other"),
         # Every holder account grows with credits, so a credit is money in.
         "direction": "in" if line.side == JournalLine.CREDIT else "out",
         "amount": money(line.amount), "order": int(journal.reference_id) if is_order else None,
-        "reference": "" if is_order else journal.reference_id,
+        "booking": int(journal.reference_id) if is_booking else None,
+        "reference": "" if (is_order or is_booking) else journal.reference_id,
     }

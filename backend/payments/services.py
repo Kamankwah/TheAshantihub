@@ -165,6 +165,17 @@ def _finalize_ticket_purchase(session):
     session.metadata = {**meta, "ticket_ids": [t.id for t in tickets]}
     session.save(update_fields=["metadata", "updated_at"])
 
+    from ledger import escrow, sales
+    from ledger.models import BookingSale
+
+    if not escrow.enabled():
+        return  # with the ledger off this finalizer is exactly as before (no event lookup either)
+    from events.models import Event
+
+    event = Event.objects.select_related("submitted_by_business").get(pk=meta["event_id"])
+    if event.submitted_by_business_id is not None:  # a customer-organised event has no business to hold money for (Plan 1b S10)
+        sales.record_payment(session, BookingSale.TICKETS, event, event.submitted_by_business)
+
 
 def _fail_ticket_purchase(session):
     """Rolls back the optimistic quantity_sold reservation made at checkout-
@@ -288,6 +299,11 @@ def _finalize_service_request(session):
     service_request.paid_at = timezone.now()
     service_request.save(update_fields=["status", "paid_at"])
 
+    from ledger import sales
+    from ledger.models import BookingSale
+
+    sales.record_payment(session, BookingSale.SERVICE, service_request, service_request.business_owner)
+
 
 def _finalize_booking(session):
     """Confirms a pending accommodation booking once payment lands (Wave H3)."""
@@ -300,6 +316,11 @@ def _finalize_booking(session):
     booking.status = Booking.CONFIRMED
     booking.paid_at = timezone.now()
     booking.save(update_fields=["status", "paid_at"])
+
+    from ledger import sales
+    from ledger.models import BookingSale
+
+    sales.record_payment(session, BookingSale.STAY, booking, booking.business_owner)
 
 
 FINALIZERS = {

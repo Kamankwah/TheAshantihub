@@ -1,3 +1,7 @@
+import re
+from decimal import Decimal
+
+from django.db import transaction as db_transaction
 from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
@@ -6,11 +10,26 @@ from rest_framework.views import APIView
 
 from accounts.views import IsBusinessOwner, IsCustomer
 from notifications.services import notify_business_owner, notify_customer
+from payments import booking_pay
 from payments.models import CheckoutSession
-from payments.services import process_payment
 
 from .models import ServiceRequest
 from .serializers import ServiceRequestCreateSerializer, ServiceRequestSerializer
+
+PRICE_PATTERN = re.compile(r"[0-9]{1,8}(\.[0-9]{1,2})?", re.ASCII)
+PRICE_HINT = "Enter a price in GH₵ above 0.00, like 150.00."
+
+
+def clean_price(raw):
+    """The agreed price as a Decimal from what the business typed ("150", "150.5", 150.25), or None when it is not a
+    price: above GH₵ 0.00, at most two decimal places, plain digits (no "1e3", "NaN" or minus sign; ledger Plan 1b S16)."""
+    if raw is None or isinstance(raw, bool):
+        return None
+    text = str(raw).strip()
+    if not PRICE_PATTERN.fullmatch(text):
+        return None
+    value = Decimal(text)
+    return value if value > 0 else None
 
 
 class ServiceRequestCreateView(generics.CreateAPIView):
@@ -79,9 +98,12 @@ class ServiceRequestRespondView(APIView):
 
         action = request.data.get("action")
         if action == "accept":
-            price = request.data.get("price")
-            if price in (None, ""):
+            raw = request.data.get("price")
+            if raw in (None, ""):
                 return Response({"price": "A price is required to accept."}, status=400)
+            price = clean_price(raw)
+            if price is None:
+                return Response({"price": PRICE_HINT}, status=400)
             sr.status = ServiceRequest.ACCEPTED
             sr.agreed_price = price
             sr.responded_at = timezone.now()
@@ -107,9 +129,10 @@ class ServiceRequestRespondView(APIView):
 
 
 class ServiceRequestPayView(APIView):
-    """POST /api/services/requests/{id}/pay/ — the customer pays for an
-    accepted request, which moves it to in_progress. Routes through
-    process_payment (simulated mode finalizes synchronously).
+    """POST /api/services/requests/{id}/pay/ — the customer pays for an accepted request, which moves it to
+    in_progress. Routes through payments.booking_pay (simulated mode finalizes synchronously; with the ledger on, MoMo
+    carries "payment processing" and the sale is recorded). The payment is one transaction, so a payment the ledger
+    refuses leaves the request accepted and nothing else behind.
     """
 
     permission_classes = [IsAuthenticated, IsCustomer]
@@ -119,20 +142,23 @@ class ServiceRequestPayView(APIView):
         if sr.status != ServiceRequest.ACCEPTED:
             return Response({"detail": "Only an accepted request can be paid for."}, status=400)
 
-        result = process_payment(
-            kind=CheckoutSession.SERVICE_REQUEST,
-            amount=sr.agreed_price,
-            purpose=f"Service: {sr.listing.name}",
-            customer=request.user,
-            metadata={"service_request_id": sr.id},
-        )
-        if result["mode"] == "redirect":
-            return Response(
-                {"mode": "redirect", "checkout_url": result["checkout_url"], "reference": result["reference"]},
-                status=status.HTTP_200_OK,
+        with db_transaction.atomic():
+            # Locked and re-checked, so two taps on Pay never start two payments for one request (Plan 1b S15); the
+            # finalizer locks the same row again. A second Hubtel checkout is still possible: gate (lix).
+            sr = ServiceRequest.objects.select_for_update().get(pk=sr.pk)
+            if sr.status != ServiceRequest.ACCEPTED:
+                return Response({"detail": "Only an accepted request can be paid for."}, status=400)
+            result, processing = booking_pay.pay(
+                kind=CheckoutSession.SERVICE_REQUEST,
+                amount=sr.agreed_price,
+                purpose=f"Service: {sr.listing.name}",
+                customer=request.user,
+                metadata={"service_request_id": sr.id},
             )
+        if result["mode"] == "redirect":
+            return Response(booking_pay.redirect_body(result, processing), status=status.HTTP_200_OK)
         sr.refresh_from_db()
-        return Response(ServiceRequestSerializer(sr).data)
+        return Response(booking_pay.with_terms(ServiceRequestSerializer(sr).data, processing))
 
 
 class ServiceRequestProgressView(APIView):

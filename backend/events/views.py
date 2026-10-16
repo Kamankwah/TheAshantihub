@@ -23,6 +23,7 @@ from notifications.services import (
     notify_customer,
     notify_staff_role,
 )
+from payments import booking_pay
 from payments.models import CheckoutSession
 from payments.services import process_payment
 
@@ -889,7 +890,9 @@ class TicketPurchaseView(APIView):
             ticket_type.quantity_sold += quantity
             ticket_type.save(update_fields=["quantity_sold"])
 
-            result = process_payment(
+            # Tickets for an event a customer organised stay outside the ledger (Plan 1b S10): no business holds them.
+            in_ledger = event.submitted_by_business_id is not None
+            result, processing = booking_pay.pay(
                 kind=CheckoutSession.TICKET_PURCHASE,
                 amount=ticket_type.price * quantity,
                 purpose=f"{quantity}x '{ticket_type.name}' ticket(s) for '{event.name}'",
@@ -902,17 +905,11 @@ class TicketPurchaseView(APIView):
                     "delivery_method": ticket_type.delivery_method,
                     "unit_price": str(ticket_type.price),
                 },
+                in_ledger=in_ledger,
             )
 
             if result["mode"] == "redirect":
-                return Response(
-                    {
-                        "mode": "redirect",
-                        "checkout_url": result["checkout_url"],
-                        "reference": result["reference"],
-                    },
-                    status=200,
-                )
+                return Response(booking_pay.redirect_body(result, processing, in_ledger=in_ledger), status=200)
 
             # Immediate/simulated mode — process_payment() already ran
             # payments.services._finalize_ticket_purchase, which created the

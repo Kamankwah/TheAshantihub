@@ -11,8 +11,8 @@ from rest_framework.views import APIView
 from accounts.views import IsBusinessOwner, IsCustomer
 from listings.models import Listing
 from notifications.services import notify_business_owner, notify_customer
+from payments import booking_pay
 from payments.models import CheckoutSession
-from payments.services import process_payment
 
 from .availability import is_available, min_units_free
 from .models import Booking
@@ -93,7 +93,7 @@ class BookingCreateView(APIView):
                 status=Booking.PENDING,
             )
 
-            result = process_payment(
+            result, processing = booking_pay.pay(
                 kind=CheckoutSession.BOOKING,
                 amount=total,
                 purpose=f"Booking: {listing.name} ({data['check_in']} → {data['check_out']})",
@@ -101,10 +101,7 @@ class BookingCreateView(APIView):
                 metadata={"booking_id": booking.id},
             )
             if result["mode"] == "redirect":
-                return Response(
-                    {"mode": "redirect", "checkout_url": result["checkout_url"], "reference": result["reference"]},
-                    status=status.HTTP_200_OK,
-                )
+                return Response(booking_pay.redirect_body(result, processing), status=status.HTTP_200_OK)
             booking.refresh_from_db()
 
         notify_business_owner(
@@ -112,7 +109,7 @@ class BookingCreateView(APIView):
             body=f"A customer booked “{listing.name}” for {nights} night(s).",
             link="/business-dashboard", icon="🏨",
         )
-        return Response(BookingSerializer(booking).data, status=201)
+        return Response(booking_pay.with_terms(BookingSerializer(booking).data, processing), status=201)
 
 
 class MyBookingsView(generics.ListAPIView):
