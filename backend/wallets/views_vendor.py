@@ -3,6 +3,9 @@ Available, the lifetime fee cap), one row per sale, the daily summary, the state
 and the texts about its money. Business owners only: a customer (whatever their id) or a staff member gets 403, so a
 platform fee never reaches a customer (spec §3.2). Read-only, except the digest choice. Every endpoint answers
 409 ledger_off while LEDGER_ENABLED is off."""
+import csv
+
+from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -68,3 +71,26 @@ class VendorDailyView(APIView):
         except vendor.RangeError as exc:
             return Response(exc.body(), status=status.HTTP_400_BAD_REQUEST)
         return Response(vendor.daily(request.user, first, last))
+
+
+class VendorStatementExportView(APIView):
+    """GET vendor/statement/export/?date_from=&date_to= — the statement as a CSV download (the last 30 days by default,
+    at most 366). Always CSV: it takes no ?format=, which is DRF's renderer override (backend/CLAUDE.md). Built in the
+    request (no throttle, unlike the staff reports' background exports). A client sending `Accept: text/csv` gets DRF's
+    406 before this view, as with OwnerSalesReportExportView: the screen must request `*/*`."""
+
+    permission_classes = [IsBusinessOwner]
+
+    def get(self, request):
+        if not escrow.enabled():
+            return ledger_off()
+        try:
+            first, last = vendor.date_range(request.query_params, default_days=30, max_days=366)
+        except vendor.RangeError as exc:
+            return Response(exc.body(), status=status.HTTP_400_BAD_REQUEST)
+        response = HttpResponse(content_type="text/csv")
+        response["Content-Disposition"] = f'attachment; filename="ashantihub-statement-{first.isoformat()}-to-{last.isoformat()}.csv"'
+        writer = csv.writer(response)
+        writer.writerow(vendor.STATEMENT_HEADER)
+        writer.writerows(vendor.statement(request.user, first, last))
+        return response

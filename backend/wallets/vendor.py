@@ -23,7 +23,9 @@ from ledger.models import Account, FulfilmentCheck, JournalLine, OrderFeeSnapsho
 from ledger.money import to_pesewas
 from marketing.models_waivers import WaivedFeeCharge
 from orders.models import Order, OrderItem
+from otp.identity import ref
 
+from .models import Withdrawal
 from .services import money
 
 AWAITING, RELEASED, REFUNDED = "awaiting_call", "released", "refunded"
@@ -291,3 +293,47 @@ def daily(owner, first, last):
         "days": [{"day": day, **_shown(days[day])} for day in sorted(days, reverse=True)],
         "totals": _shown(totals),
     }
+
+
+# --- the statement (Task 3) ----------------------------------------------------------------------------------------
+
+STATEMENT_HEADER = [
+    "Date", "Type", "Reference", "Gross (GHS)", "Platform fee (GHS)", "Free-delivery promo (GHS)", "Refunded (GHS)",
+    "Withdrawal charge (GHS)", "Amount (GHS)", "Status",
+]
+SALE_STATEMENT_STATUS = {AWAITING: "Pending", RELEASED: "Available", REFUNDED: "Refunded"}
+WITHDRAWAL_STATEMENT_STATUS = {
+    Withdrawal.PENDING: "Withdrawal in progress", Withdrawal.PROCESSING: "Withdrawal in progress",
+    Withdrawal.SUCCEEDED: "Withdrawn", Withdrawal.FAILED: "Returned to Available", Withdrawal.CANCELLED: "Returned to Available",
+}
+
+
+def statement(owner, first, last):
+    """The business's statement for the Accra days first..last, oldest first (spec §6, the transactions page's export):
+    each sale bought on those days (gross, the platform fee shown separately, the free-delivery promo, what was refunded,
+    the amount due or paid, and Pending / Available / Refunded) and each withdrawal asked for on them (what left
+    Available, the provider's charge, what arrived; Withdrawn, in progress or returned). Every cell is a date, a number,
+    a fixed word or an AshantiHub reference - no item name, note or person - so a spreadsheet never runs a formula from it
+    (the text cells still go through reports.exports.escape_cell, as the repo's other exports do; numbers are left alone,
+    a net can be negative)."""
+    from reports.exports import escape_cell
+
+    entries = []
+    for row in rows(owner, sale_groups(owner, date_from=first, date_to=last)):
+        entries.append((row["placed_at"], 0, row["order"], [
+            timezone.localdate(row["placed_at"]).isoformat(), "Sale", escape_cell(row["reference"]), row["item_subtotal"],
+            row["platform_fee"], row["free_delivery_promo"], row["refunded"], "", row["net"],
+            escape_cell(SALE_STATEMENT_STATUS[row["status"]]),
+        ]))
+    holder_type, holder_id = ref(owner)
+    start, end = bounds(first, last)
+    for withdrawal in Withdrawal.objects.filter(
+        holder_type=holder_type, holder_id=holder_id, created_at__gte=start, created_at__lt=end,
+    ):
+        entries.append((withdrawal.created_at, 1, withdrawal.pk, [
+            timezone.localdate(withdrawal.created_at).isoformat(), "Withdrawal", escape_cell(withdrawal.reference),
+            money(withdrawal.amount_pesewas), "", "", "", money(withdrawal.charge_pesewas), money(withdrawal.net_pesewas),
+            escape_cell(WITHDRAWAL_STATEMENT_STATUS[withdrawal.status]),
+        ]))
+    entries.sort(key=lambda entry: entry[:3])
+    return [entry[3] for entry in entries]
