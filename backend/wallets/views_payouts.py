@@ -58,8 +58,8 @@ class DestinationsView(APIView):
     def post(self, request):
         if not escrow.enabled():
             return ledger_off()
-        if not request.META.get(step_up.HEADER):
-            raise step_up.StepUpRequired(step_up.PAYOUT_DESTINATION)  # no name lookup for a request with no code
+        if not step_up.valid(request, step_up.PAYOUT_DESTINATION, force=True):
+            raise step_up.StepUpRequired(step_up.PAYOUT_DESTINATION)  # no name lookup without a good code (it spends nothing)
         data = request.data if isinstance(request.data, dict) else {}
         try:
             checked = destinations.check(request.user, data)  # outside any transaction: a provider call

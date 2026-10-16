@@ -21,7 +21,12 @@ def matches(account_name, verified_name):
     """The account's name must contain every word of the verified name, and the verified name must have at least two
     words of two letters or more (an initial does not count toward that floor)."""
     account, verified = words(account_name), words(verified_name)
-    return sum(len(w) >= 2 for w in verified) >= 2 and verified <= account
+    return usable(verified_name) and verified <= account
+
+
+def usable(verified_name):
+    """Whether a name could ever match: at least two words of two letters or more."""
+    return sum(len(w) >= 2 for w in words(verified_name)) >= 2
 
 
 def verified_names(holder):

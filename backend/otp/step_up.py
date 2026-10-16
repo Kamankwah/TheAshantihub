@@ -74,6 +74,31 @@ def enforced(force=False):
     return force or flags.step_up_enforced()
 
 
+def _live_tokens(request, action, now):
+    """The unspent, unexpired tokens this request's header holds for `action` (this account and sign-in), or None
+    when there is no header or no sign-in."""
+    raw = request.META.get(HEADER, "")
+    jti = session_key(request)
+    if not raw or not jti:
+        return None
+    account_type, account_id = ref(request.user)
+    return StepUpToken.objects.filter(
+        token_hash=_hash(raw), account_type=account_type, account_id=account_id, action=action, jti=jti,
+        used_at__isnull=True, expires_at__gt=now,
+    )
+
+
+def valid(request, action, *, force=False):
+    """True when require() would accept this request's token now. Spends nothing: a view uses it to refuse a request
+    with no good code before doing anything costly (a provider lookup), then require() still spends it."""
+    if action not in ACTIONS:
+        raise ValueError(f"Unknown step-up action: {action}")
+    if not enforced(force):
+        return True
+    live = _live_tokens(request, action, timezone.now())
+    return live is not None and live.exists()
+
+
 def require(request, action, *, force=False):
     """Spend this request's step-up token for `action`, or raise StepUpRequired. Call inside the atomic block that
     saves the change."""
@@ -81,16 +106,11 @@ def require(request, action, *, force=False):
         raise ValueError(f"Unknown step-up action: {action}")
     if not enforced(force):
         return
-    raw = request.META.get(HEADER, "")
-    jti = session_key(request)
-    if not raw or not jti:
-        raise StepUpRequired(action)
-    account_type, account_id = ref(request.user)
     now = timezone.now()
-    spent = StepUpToken.objects.filter(
-        token_hash=_hash(raw), account_type=account_type, account_id=account_id, action=action, jti=jti,
-        used_at__isnull=True, expires_at__gt=now,
-    ).update(used_at=now)
+    live = _live_tokens(request, action, now)
+    if live is None:
+        raise StepUpRequired(action)
+    spent = live.update(used_at=now)
     if spent != 1:
         raise StepUpRequired(action)
     audit.log(OtpEvent.STEP_UP_USED, account=request.user, purpose=STEP_UP, action=action, request=request, now=now)

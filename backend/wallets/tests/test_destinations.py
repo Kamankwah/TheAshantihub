@@ -1,6 +1,7 @@
 """Payout destinations (wallets plan 3b, Task 2; spec §8): name-checked, confirmed with a step-up code, usable after the
 cooling period, never shown whole. Review Focus 6 (numbers leaking) and 8 (ledger off)."""
 from datetime import timedelta
+from unittest import mock
 
 from django.core.cache import cache
 from django.test import SimpleTestCase, TestCase, override_settings
@@ -170,6 +171,87 @@ class DestinationTests(DestinationBase):
         Customer.objects.filter(pk=self.customer.pk).update(is_suspended=True)
         response = self.add()
         self.assertEqual((response.status_code, response.json()["code"]), (403, "suspended"))
+
+
+@override_settings(LEDGER_ENABLED=True)
+class DestinationFixRoundTests(DestinationBase):
+    def test_a_bad_token_never_reaches_the_provider(self):
+        used = self.ama.step_up(step_up.PAYOUT_DESTINATION)
+        self.assertEqual(self.ama.post(URL, MOMO, token=used).status_code, 201)
+        expired = self.ama.step_up(step_up.PAYOUT_DESTINATION)
+        from otp.models import StepUpToken
+        StepUpToken.objects.filter(used_at__isnull=True).update(expires_at=timezone.now() - timedelta(minutes=1))
+        cases = {"bogus": "nope", "wrong action": self.ama.step_up(step_up.WITHDRAWAL), "expired": expired, "used": used}
+        with mock.patch("payments.providers.SimulatedProvider.lookup_account_name") as lookup:
+            for label, token in cases.items():
+                with self.subTest(label):
+                    response = self.ama.post(URL, {**MOMO, "account_number": "0241234568"}, token=token)
+                    self.assertEqual((response.status_code, response.json()["code"]), (403, "step_up_required"))
+            lookup.assert_not_called()
+
+    def test_six_adds_from_none_cannot_exceed_five(self):
+        from wallets import destinations
+        checked = [destinations.check(self.customer, {**MOMO, "account_number": f"024123450{n}"}) for n in range(6)]
+        saved, refused = 0, []
+        for item in checked:
+            try:
+                destinations.save(Customer.objects.get(pk=self.customer.pk), item)
+                saved += 1
+            except destinations.DestinationError as exc:
+                refused.append(exc.code)
+        self.assertEqual((saved, refused), (5, ["too_many"]))
+
+    def test_save_rechecks_the_holder(self):
+        from accounts.models import Customer as C
+        from wallets import destinations
+        checked = destinations.check(self.customer, MOMO)
+        C.objects.filter(pk=self.customer.pk).update(full_name="Kofi Mensah")        # name changed after the check
+        with self.assertRaises(destinations.DestinationError) as ctx:
+            destinations.save(self.customer, checked)
+        self.assertEqual(ctx.exception.code, "name_mismatch")
+        C.objects.filter(pk=self.customer.pk).update(full_name="Ama Owusu", is_suspended=True)
+        with self.assertRaises(destinations.DestinationError) as ctx:
+            destinations.save(self.customer, checked)
+        self.assertEqual(ctx.exception.code, "suspended")
+        self.assertFalse(PayoutDestination.objects.exists())
+
+    def test_save_rechecks_kyc(self):
+        from wallets import destinations
+        owner = self.kyc_vendor()
+        with override_settings(SIMULATED_ACCOUNT_NAMES={MOMO_NUMBER: "KWAME MENSAH"}):
+            checked = destinations.check(owner, MOMO)
+        BusinessOwner.objects.filter(pk=owner.pk).update(kyc_status=BusinessOwner.PENDING)
+        with self.assertRaises(destinations.DestinationError) as ctx:
+            destinations.save(owner, checked)
+        self.assertEqual(ctx.exception.code, "kyc_required")
+
+    def test_a_one_word_name_gets_its_own_code(self):
+        Customer.objects.filter(pk=self.customer.pk).update(full_name="Ama")
+        response = self.add()
+        self.assertEqual((response.status_code, response.json()["code"]), (400, "name_unusable"))
+
+    def test_odd_institution_characters_are_refused(self):
+        for bank in ("GCB <b>", "x" * 61, "Bank;DROP"):
+            with self.subTest(bank):
+                self.assertEqual(self.add(body={"rail": "bank", "institution": bank, "account_number": "1234567890"}).status_code, 400)
+        self.assertEqual(self.add(body={"rail": "bank", "institution": "Barclays & Co. St-Mary's", "account_number": "1234567890"}).status_code, 201)
+
+    def test_remove_says_ledger_off_when_off(self):
+        with override_settings(LEDGER_ENABLED=False):
+            response = self.ama.post(f"{URL}1/remove/", action=step_up.PAYOUT_DESTINATION)
+        self.assertEqual((response.status_code, response.json()["code"]), (409, "ledger_off"))
+
+    def test_same_pk_customer_and_owner_do_not_see_each_other(self):
+        owner = BusinessOwner.objects.create(id=self.customer.pk, full_name="Kwame Mensah", login_phone="+233201112233", password_hash="x")
+        mine = destination(self.customer)
+        other_holder = Holder(owner, "business_owner")
+        self.assertEqual(other_holder.get(URL).json()["results"], [])
+        self.assertEqual(other_holder.post(f"{URL}{mine.pk}/remove/", action=step_up.PAYOUT_DESTINATION).status_code, 404)
+
+    def test_a_removed_number_can_be_added_again(self):
+        first = self.add().json()["id"]
+        self.assertEqual(self.ama.post(f"{URL}{first}/remove/", action=step_up.PAYOUT_DESTINATION).status_code, 204)
+        self.assertEqual(self.add().status_code, 201)
 
 
 class SentryTests(SimpleTestCase):

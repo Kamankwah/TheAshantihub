@@ -28,6 +28,7 @@ from .models import PayoutDestination
 MAX_LIVE = 5
 NETWORKS = {"MTN": "MTN", "TELECEL": "Telecel", "AIRTELTIGO": "AirtelTigo"}
 _BANK_NUMBER = re.compile(r"[0-9]{6,20}")
+_INSTITUTION = re.compile(r"[A-Za-z0-9 &.'-]{1,60}")
 DUPLICATE = "That account is already one of your payout destinations."
 TOO_MANY = f"You can keep at most {MAX_LIVE} payout destinations. Remove one first."
 
@@ -76,7 +77,7 @@ def clean(data, holder):
             return rail, network, normalize_gh_phone(account_number)
         except ValueError as exc:
             raise DestinationError(str(exc), "invalid", field="account_number") from None
-    if not institution or len(institution) > 60:
+    if not _INSTITUTION.fullmatch(institution):
         raise DestinationError("Name the bank.", "invalid", field="institution")
     account_number = re.sub(r"[\s-]", "", account_number)
     if not _BANK_NUMBER.fullmatch(account_number):
@@ -84,17 +85,30 @@ def clean(data, holder):
     return rail, institution, account_number
 
 
+def _holder_problem(holder):
+    """The DestinationError that stops this holder adding a destination now, or None."""
+    if getattr(holder, "is_suspended", False):
+        return DestinationError("This account is suspended.", "suspended", 403)
+    if not names.verified_names(holder):
+        if isinstance(holder, BusinessOwner):
+            return DestinationError("Your business must pass KYC before money can be paid out to it.", "kyc_required", 409)
+        return DestinationError("Add your full name to your profile first.", "name_required", 409)
+    return None
+
+
 def check(holder, data):
     """Everything about a new destination that needs no lock, including the provider's name lookup (a network call for
     a real provider, so never inside a transaction). Returns what save() writes. Raises DestinationError when anything
     is wrong."""
-    if getattr(holder, "is_suspended", False):
-        raise DestinationError("This account is suspended.", "suspended", 403)
+    problem = _holder_problem(holder)
+    if problem:
+        raise problem
     verified = names.verified_names(holder)
-    if not verified:
-        if isinstance(holder, BusinessOwner):
-            raise DestinationError("Your business must pass KYC before money can be paid out to it.", "kyc_required", 409)
-        raise DestinationError("Add your full name to your profile first.", "name_required", 409)
+    if not any(names.usable(name) for name in verified):
+        raise DestinationError(
+            "The name on your profile is too short to check against a bank or mobile money account. "
+            "Put your full name, at least two words, on your profile first.", "name_unusable", 400, field="full_name",
+        )
     rail, institution, account_number = clean(data if isinstance(data, dict) else {}, holder)
     live = live_for(holder)
     if live.filter(rail=rail, account_number=account_number).exists():
@@ -117,13 +131,22 @@ def check(holder, data):
 
 
 def save(holder, checked, now=None):
-    """Write a destination `check` accepted. Call inside the transaction that spends the step-up code. The holder's live
-    destinations are locked first, so two adds at once cannot both pass the duplicate and five-destination checks (the
-    count after the lock sees a destination the other add committed). Raises DestinationError, saving nothing."""
+    """Write a destination `check` accepted. Call inside the transaction that spends the step-up code. The holder's
+    own row is locked and reloaded first (a lock on live destinations would lock nothing for the first adds), so two
+    adds at once are taken one after the other; then, on the fresh row, the suspension, KYC and name checks are run
+    again (they may have changed since `check`) and the duplicate and five-destination checks see what the other add
+    committed. Raises DestinationError, saving nothing."""
     now = now or timezone.now()
     holder_type, holder_id = ref(holder)
+    fresh = type(holder).objects.select_for_update().get(pk=holder.pk)
+    problem = _holder_problem(fresh)
+    if problem:
+        raise problem
+    matched = names.matching_name(checked["account_name"], fresh)
+    if matched is None:
+        raise DestinationError("The name on that account doesn't match the name we have verified for you.", "name_mismatch", 400)
+    checked = {**checked, "matched_name": matched[:150]}
     live = live_for(holder)
-    list(live.select_for_update())
     if live.filter(rail=checked["rail"], account_number=checked["account_number"]).exists():
         raise DestinationError(DUPLICATE, "duplicate", 409)
     if live.count() >= MAX_LIVE:
