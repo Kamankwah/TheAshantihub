@@ -45,3 +45,43 @@ def product_row(product):
     if product is None:
         return None
     return {"id": product.pk, "brand": product.brand, "name": product.name, "barcode": product.barcode}
+
+
+class CatalogueAttachRequest(models.Model):
+    """A request to group one listing with a catalogue product (spec §1 row 8): an existing entry (`catalogue_product`)
+    or a new one described by `brand` and `name`. Staff with listings.moderate decide it through the moderated-queue
+    contract (backend/CLAUDE.md). `barcode` is the listing's own barcode when it was asked (never a store's own code). A
+    backfill request (`source=backfill`) was filed by the barcode matcher; it is decided the same way and never applied
+    by itself. At most one request waits per listing."""
+
+    PENDING, APPROVED, REJECTED, WITHDRAWN = "pending", "approved", "rejected", "withdrawn"
+    STATUS_CHOICES = [(PENDING, "Pending"), (APPROVED, "Approved"), (REJECTED, "Rejected"), (WITHDRAWN, "Withdrawn")]
+    VENDOR, BACKFILL = "vendor", "backfill"
+    SOURCE_CHOICES = [(VENDOR, "Asked by the business"), (BACKFILL, "Matched by barcode")]
+
+    listing = models.ForeignKey("listings.Listing", on_delete=models.CASCADE, related_name="catalogue_requests")
+    catalogue_product = models.ForeignKey(
+        CatalogueProduct, on_delete=models.PROTECT, null=True, blank=True, related_name="requests",
+    )
+    brand = models.CharField(max_length=100, blank=True, default="")
+    name = models.CharField(max_length=150, blank=True, default="")
+    barcode = models.CharField(max_length=14, blank=True, default="")
+    source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default=VENDOR)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
+    rejection_reason = models.CharField(max_length=500, null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        "accounts.StaffUser", on_delete=models.SET_NULL, null=True, blank=True, related_name="reviewed_catalogue_requests",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["listing"], condition=models.Q(status="pending"), name="catalogue_request_one_pending_per_listing",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Catalogue request {self.pk} for listing {self.listing_id} ({self.status})"
