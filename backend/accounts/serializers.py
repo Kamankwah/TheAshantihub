@@ -299,6 +299,9 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         return attrs
 
     def save(self):
+        from otp import devices  # otp imports accounts
+        from otp.models import TrustedDevice
+
         with transaction.atomic():
             self.account.password_hash = make_password(self.validated_data["password"])
             self.account.save(update_fields=["password_hash"])
@@ -308,6 +311,9 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
                 # A reset is often "someone else may have my password": end
                 # every device's session.
                 sessions.revoke_all(self.account, StaffSession.PASSWORD_RESET)
+            # Trusted devices already stop working with the old password (their fingerprint); this ends them and
+            # records it (otp.devices).
+            devices.revoke_all(self.account, TrustedDevice.PASSWORD_RESET)
         return self.account
 
 
