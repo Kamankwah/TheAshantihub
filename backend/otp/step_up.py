@@ -4,8 +4,9 @@ The client sends it once in the X-Step-Up-Token header. A view calls require(req
 transaction.atomic() block that makes the change: the token is spent only if the change commits, so a change
 refused by validation leaves it usable for the retry.
 
-While settings.OTP_STEP_UP_ENFORCED is off, require() does nothing; force=True (the authenticator settings) asks for
-it anyway. Only customers and business owners can get a token (otp.views_step_up); staff use sudo."""
+While settings.OTP_STEP_UP_ENFORCED is off, require() does nothing; force=True asks for it anyway: the authenticator
+settings, and - while LEDGER_ENABLED is on - adding a customer recovery contact and the wallet actions (withdrawal,
+payout_destination, contact_change), so a code can be sent for those whatever the OTP switches say. Only customers and business owners can get a token (otp.views_step_up); staff use sudo."""
 import hashlib
 import secrets
 from datetime import timedelta
@@ -73,6 +74,31 @@ def enforced(force=False):
     return force or flags.step_up_enforced()
 
 
+def _live_tokens(request, action, now):
+    """The unspent, unexpired tokens this request's header holds for `action` (this account and sign-in), or None
+    when there is no header or no sign-in."""
+    raw = request.META.get(HEADER, "")
+    jti = session_key(request)
+    if not raw or not jti:
+        return None
+    account_type, account_id = ref(request.user)
+    return StepUpToken.objects.filter(
+        token_hash=_hash(raw), account_type=account_type, account_id=account_id, action=action, jti=jti,
+        used_at__isnull=True, expires_at__gt=now,
+    )
+
+
+def valid(request, action, *, force=False):
+    """True when require() would accept this request's token now. Spends nothing: a view uses it to refuse a request
+    with no good code before doing anything costly (a provider lookup), then require() still spends it."""
+    if action not in ACTIONS:
+        raise ValueError(f"Unknown step-up action: {action}")
+    if not enforced(force):
+        return True
+    live = _live_tokens(request, action, timezone.now())
+    return live is not None and live.exists()
+
+
 def require(request, action, *, force=False):
     """Spend this request's step-up token for `action`, or raise StepUpRequired. Call inside the atomic block that
     saves the change."""
@@ -80,16 +106,11 @@ def require(request, action, *, force=False):
         raise ValueError(f"Unknown step-up action: {action}")
     if not enforced(force):
         return
-    raw = request.META.get(HEADER, "")
-    jti = session_key(request)
-    if not raw or not jti:
-        raise StepUpRequired(action)
-    account_type, account_id = ref(request.user)
     now = timezone.now()
-    spent = StepUpToken.objects.filter(
-        token_hash=_hash(raw), account_type=account_type, account_id=account_id, action=action, jti=jti,
-        used_at__isnull=True, expires_at__gt=now,
-    ).update(used_at=now)
+    live = _live_tokens(request, action, now)
+    if live is None:
+        raise StepUpRequired(action)
+    spent = live.update(used_at=now)
     if spent != 1:
         raise StepUpRequired(action)
     audit.log(OtpEvent.STEP_UP_USED, account=request.user, purpose=STEP_UP, action=action, request=request, now=now)

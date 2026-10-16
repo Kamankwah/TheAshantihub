@@ -35,8 +35,10 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   editor can tell an individual grant from a role grant (an effective-set-only view would let
   `.set([])` silently clear one).
 - **Payout account and MoMo numbers are stored unmasked.** `accounts/serializers.py`'s
-  `mask_but_last()` in `StaffBusinessOwnerDetailSerializer.get_profile` is the **only** place they
-  ever leave the server, always masked. Don't add a second path.
+  `mask_but_last()` is the **only** way they ever leave the server, always masked: in
+  `StaffBusinessOwnerDetailSerializer.get_profile`, and for wallet payout destinations in
+  `wallets.destinations.row` (every holder and staff response, withdrawals included). Never put one in a log line, an
+  activity body, a fraud case or a notice; `account_number` is in Sentry's denylist. Don't add another path.
 - **Stock is reserved at checkout, not at payment.** `OrderCheckoutView` decrements
   `Listing.stock_quantity` with a 400 oversell guard before creating anything; a
   `stock_quantity=None` listing is untracked and never decremented. `_fail_order_checkout` in
@@ -210,6 +212,26 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   charge at release, the promo return on a whole refund; `posting.post` takes them the same way). `collect` is `payments.services.process_payment` and
   `handle_webhook` is `HubtelWebhookView` (both unchanged); the Hubtel provider's payout, status and name lookup raise
   `NotConnected` until Plan 7.
+- **Payout destinations, withdrawals, reconciliation (`wallets/`, Stage 3b).** A destination is accepted only when the
+  provider's account name matches the holder's verified name (`wallets.names`: customer profile name, which is
+  self-declared, spec §13 (xxix); KYC-verified vendor's owner or business name) and a step-up code is spent; the name
+  lookup runs before that transaction (`destinations.check`, then `save`). It can receive money after
+  `payout_cooling_hours`, is never edited (remove + add), and every add and remove sends the holder a notice.
+  Destination add/remove and withdrawals call `step_up.require(..., force=True)`, and adding a customer recovery email
+  or phone calls it with `force=escrow.enabled()`: while the ledger is on they always need a code, and the step-up
+  endpoints send codes for those three actions. `wallets.withdrawals.request` locks the destination, then the source
+  and in-transit accounts together (`posting.lock`), then checks balance and limits (governed
+  `withdrawal_per_tx_limit_pesewas` / `withdrawal_daily_limit_pesewas`, per holder account); a vendor's negative
+  Available blocks it. Every hold and settlement locks the one `withdrawal_in_transit` account, so withdrawals
+  serialise (throughput only). A withdrawal is claimed before the provider is called (sent once; returned instead if
+  the holder was suspended or the destination removed) and ends only through `wallets.payouts.apply_result` / `close`
+  (row lock, per-reference journal keys, a final status never changes, the amount the provider reports must equal what
+  was sent; a report for a withdrawal never sent, a "paid" report after the money went back and a "failed" report
+  after it was paid each open a fraud case and post nothing). **No provider call runs inside a transaction** (lookup,
+  payout, status, statement), and the provider's own message is never stored or shown. Staff failing a stuck
+  withdrawal asks the provider first and is refused (409 `provider_processing`) while it says processing or anything
+  unmapped, never with an open amount case, and the holder sees only AshantiHub's fixed
+  reason. The nightly `wallets.reconciliation` is read-only and compares by provider reference.
 - **Pickup Desk** is the `pickup_desk` staff role with the single permission `pickup.confirm` (store-pickup queue and
   collection); only a Super Admin invites it.
 - **One-time codes (`otp/`).** One OTP service for every account kind: 6-digit codes kept only as a salted HMAC

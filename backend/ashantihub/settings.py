@@ -426,6 +426,9 @@ REST_FRAMEWORK = {
         # Marketing banner view/click beacons: public, count-only. Generous because many
         # phones share one mobile-carrier address; repeats are also de-duplicated per banner.
         "banner_beacon": "240/min",
+        # Adding a wallet payout destination (wallets.views_payouts.DestinationsView, POST only): each add asks the
+        # payment provider for the name on an account.
+        "wallet_destination": "20/hour",
     },
 }
 
@@ -587,6 +590,14 @@ CELERY_BEAT_SCHEDULE = {
     "ledger-refund-uncollected-pickups": {
         "task": "ledger.tasks.refund_uncollected_pickups",
         "schedule": crontab(minute=25),  # hourly, at twenty-five past: a no-op while the ledger is off
+    },
+    "wallets-poll-withdrawals": {
+        "task": "wallets.tasks.poll_withdrawals",
+        "schedule": 300.0,  # every 5 minutes: a no-op while the ledger is off
+    },
+    "wallets-reconcile": {
+        "task": "wallets.tasks.reconcile_yesterday",
+        "schedule": crontab(hour=2, minute=30),  # the day before; read-only; a no-op while the ledger is off
     },
 }
 

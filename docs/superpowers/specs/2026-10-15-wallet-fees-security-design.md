@@ -1,9 +1,9 @@
 # Wallets, Escrow, Platform Fees, Stock Offers and OTP Security — Design
 
 **Status:** Approved 2026-10-15. Stage 1 plan: docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md. Stage 2 (OTP, backend) plan: docs/superpowers/plans/2026-10-16-otp-security.md. Stage 3 plans: docs/superpowers/plans/2026-10-16-wallets-payments-3a.md (wallet payments and refunds) and docs/superpowers/plans/2026-10-16-withdrawals-3b.md (payout destinations, withdrawals, reconciliation).
-**Scope:** One system, built in the order given in §11. Stage 1 (ledger), Stage 2 (OTP, backend) and Stage 3a (wallet
-payments and refunds, backend) are implemented behind switches that default off (branches feature/ledger-stage1,
-feature/otp-security and feature/wallets; see section 13); later stages are specs only.
+**Scope:** One system, built in the order given in §11. Stage 1 (ledger), Stage 2 (OTP, backend) and Stage 3 (wallets,
+payments, refunds, withdrawals and reconciliation, backend) are implemented behind switches that default off (branches
+feature/ledger-stage1, feature/otp-security and feature/wallets; see section 13); later stages are specs only.
 **Basis:** The owner's brief, plus the decisions in §1, reconciled with the existing code in §13.
 
 ## 1. Decisions (settled in brainstorming)
@@ -395,6 +395,11 @@ Found while writing the Stage 3 plans (`docs/superpowers/plans/2026-10-16-wallet
   processing-charge share is per-refund half-up, not cumulative. No top-up throttle. The Hubtel checkout call happens
   inside the DB transaction (Plan 7). The top-up finalizer relies on the webhook's amount check; a top-up success
   webhook with no amount must not credit (it now fails closed on a credit/amount mismatch).
+- (xxi) **Assumptions for owner confirmation are A1-A11 in the 3a plan:** collection charge 0 on simulated rails, no
+  wallet cap, no split payment, the partial-refund and processing-charge policy, immediate refund on cancel, and the
+  24-hour pickup-expiry job. As item (viii) says, that job refunds every ledger-recorded store pickup (vendor-shop
+  pickups included) not marked collected by the Pickup Desk within the window, so before the ledger is on every store
+  pickup must be collected at the AshantiHub office desk.
 - (xxii) **Re-dispatch after a refund (the rest of the whole-refund fix).** A whole refund now cancels an order not
   yet handed over and the board, pickup desk and pickup queue refuse a wholly refunded order, but two deeper gaps remain.
   `delivery/stops.py` `reopen_for_new_rider(all_skipped=True)` reopens every stop, including a shop whose lines were
@@ -408,8 +413,119 @@ Found while writing the Stage 3 plans (`docs/superpowers/plans/2026-10-16-wallet
   commit; Support cancel has the same pre-existing exposure). Before the ledger is on: withdraw not-yet-picked-up
   assignments and expire open offers in the helper, and make rider delivery steps refuse a CANCELLED order (decide what
   to do for an order already in transit).
-- (xxi) **Assumptions for owner confirmation are A1-A11 in the 3a plan:** collection charge 0 on simulated rails, no
-  wallet cap, no split payment, the partial-refund and processing-charge policy, immediate refund on cancel, and the
-  24-hour pickup-expiry job. As item (viii) says, that job refunds every ledger-recorded store pickup (vendor-shop
-  pickups included) not marked collected by the Pickup Desk within the window, so before the ledger is on every store
-  pickup must be collected at the AshantiHub office desk.
+
+### Stage 3b (payout destinations, withdrawals, reconciliation) reconciliation (2026-10-16)
+
+Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 there); W1–W8 are above.
+
+- **W9 Payout destinations.** The provider looks up the name on the account (before the transaction that spends the
+  code: no provider call runs inside a transaction); it must match the holder's verified name (customer profile name;
+  KYC-verified vendor's owner or business name) as a set of words, and the holder confirms with a step-up code. A
+  customer's profile name is self-declared and can be changed without a code, so for customers this falls short of
+  §8's "verified name" (a deviation; see (xxix)). Usable after `payout_cooling_hours` (governed, default 24, at least 1);
+  never edited (a change is remove + add); every add and remove sends the holder an in-app notice; numbers stored
+  unmasked and sent only through `mask_but_last`. `BusinessOwnerProfile.payout_*` are untouched; a vendor may copy
+  them into a new destination.
+- **W10 Withdrawals.** Held in withdrawal in transit in the request's transaction, sent once (claimed under a row lock;
+  a held one is returned instead of sent once its holder is suspended or its destination removed), ended by
+  `wallets.payouts.apply_result` (idempotent; monotonic; amount-checked against the amount the provider itself reports;
+  a report for a withdrawal never sent, a "paid" report after the money was returned and a "failed" report after it
+  was paid each open a fraud case and post nothing). The provider's own message is never stored or shown. The holder's
+  charge comes out of the amount sent. Limits per withdrawal and per day (per holder account) are governed settings; a
+  negative vendor Available blocks withdrawal. Staff may fail a stuck one only after asking the provider, never with an
+  open amount case, and the holder sees AshantiHub's fixed reason, not the staff member's note.
+- **W11 Step-up while the OTP switches are off.** With the ledger on, destinations and withdrawals always ask for a code
+  (`force=True`), and adding a customer recovery email or phone needs a step-up code too (`force=escrow.enabled()`),
+  so a stolen session cannot add its own code channel. The step-up endpoints send codes for those three actions.
+- **W12 Reconciliation.** Nightly, by provider reference, read-only; skips what the ledger was not asked to record;
+  checks in transit against the open withdrawals even without a statement; asks the provider outside any transaction;
+  a difference opens one fraud case per day.
+
+### Before LEDGER_ENABLED is turned on — Stage 3b additions
+
+- (xxiv) **Wallet and recovery-contact step-up is forced while the ledger is on,** so the Plan 2F frontend must handle
+  `step_up_required` on the add-recovery-contact screens (they answer 403 with the ledger on until it does), and a
+  customer with no usable contact (`no_channel`) cannot add one. Every must-fix in "Before the OTP
+  switches are turned on" (notice send limits, a real SMS provider, the secondary-email confirmation) must be done
+  before the ledger is on.
+- (xxv) **Hubtel payouts, status and name lookups are not connected:** with `PAYMENTS_PROVIDER=hubtel`, adding a
+  destination answers `name_check_unavailable`, withdrawals `payouts_unavailable`, and the reconciliation has no
+  statement (`unavailable`, or `mismatched` only when in transit differs) until Plan 7.
+- (xxvi) **Provider float.** When AshantiHub funds coupons, payouts can exceed collections; a confirmed payout still posts
+  and provider clearing may read below zero. Fund the float before go-live and watch the nightly run.
+- (xxvii) **Payout reports must carry an amount before Plan 7:** a Hubtel SUCCEEDED report (webhook or status) with no
+  amount must not be applied (fail closed, like the top-up rule in (xx)). `wallets.payouts.apply_result` now enforces
+  this: a SUCCEEDED report that names no amount is not settled unless the withdrawal's provider is `simulated` (the
+  simulated status answers none); it opens a `withdrawal-amount-<ref>` case instead. Plan 7's Hubtel client must still
+  return the amount it paid.
+- (xxvii-b) **Hubtel's status client must tell "unreachable" from "not wired":** raise `NotConnected` only when the call is not built yet; a timeout, 5xx or any other failure after a request must raise a different exception. Staff failing a stuck withdrawal treat `NotConnected` as "check was done by hand" but answer 503 `provider_unreachable` (changing nothing) for anything else.
+- (xxviii) **Destination changes are told in-app only:** before the ledger is on, a payout destination added or removed
+  should also be texted or emailed to the contacts on file.
+- (xxix) **Customer names are not verified:** before the ledger is on, either require a step-up code for a `full_name`
+  change while the ledger is on and restart the cooling period of every live destination on a rename, or decide
+  customer KYC (§8).
+- (xxx) **Item (vii)'s safety net needs a statement:** the reconciliation reports a paid but uncredited top-up only where
+  the provider gives a statement; with `PAYMENTS_PROVIDER=hubtel` no run has one until Plan 7 (only the in-transit
+  check runs), so (vii)'s alerting is the only guard. Item (xx)'s withdrawal check is done
+  (`wallets.withdrawals.request` refuses a negative Available and checks the balance under `posting.lock`).
+- (xxxi) **Stale "not built" copy once the ledger is on:** `core/later_phase.py` ~47 ("Sellers are not paid through
+  AshantiHub yet"), `insights/accounting.py` ~182 ("Needs reconciliation, which does not exist yet") and ~179 ("none is
+  kept"; `wallets.PayoutDestination` is now that record). Branch them on `LEDGER_ENABLED` (same class as (xiii)).
+- (xxxii) **The registered payout details keep an unforced step-up:** `PATCH business-owners/me/payout/`
+  (`accounts.views.PayoutDetailUpdateView`) calls `step_up.require` without `force`, so with the ledger on and the OTP
+  switches off a session can change them with no code. A `from_profile` copy into a payout destination is still
+  name-checked, code-confirmed and cooled, but anything else that pays from those details (a manual staff payout) is
+  exposed. 3b leaves it because registration's payment step uses the same PATCH and cannot answer a step-up yet; force
+  it (`force=escrow.enabled()`) once registration can, before the ledger is on.
+- (xxxiii) **Recovery emails verified while the ledger was off remain step-up code channels once it is on**
+  (`otp/identity.py` ~66, `otp/service.py` ~191). Before switch-on, re-confirm pre-switch recovery emails under step-up or
+  exclude secondary emails from wallet-action channels, and notify the primary contacts whenever a recovery email is added.
+- (xxxiv) **Staff can change a customer's or owner's contacts and the matched name without a second person:**
+  `PATCH accounts/customers/<id>/` and `business-owners/<id>/` (`accounts/views.py` ~720-758) need only `users.manage`,
+  no sudo, and send no notice; the portfolio `business.update` approval can change a KYC-verified owner's name with no
+  re-KYC. While the ledger is on these need sudo and maker-checker, the old contacts must be notified, and a contact or
+  name change must restart the cooling period or block withdrawals.
+- (xxxv) **Owner question: a second approver (maker-checker) for failing a stuck withdrawal by hand** is undecided (plan
+  B6). Today `wallets.manage` plus sudo and a password suffice, after the provider is asked.
+- (xxxvi) **Amount cases and the staff fail action.** A CONFIRMED amount case is treated like a dismissed one. Staff fail
+  is REFUSED (409 `provider_processing`) while the provider says PROCESSING or answers any unmapped status; an
+  unreachable provider answers 503 and changes nothing. A payout the provider keeps reporting as PROCESSING, or with a
+  different amount, therefore cannot be ended in the app: a maker-checker "settle as paid / fail with provider evidence"
+  action is required before switch-on. Owner to confirm.
+- (xxxvii) **The simulated statement is built from AshantiHub's own records,** so reconciliation can only prove sessions
+  and journals agree. Plan 7 must supply: a Hubtel status client that raises a distinct "unreachable" exception (see
+  (xxvii-b)), real `find()`, `pending_payouts()` and `statement()` implementations, and a flag on any reference that
+  appears on the statement but is unknown to AshantiHub.
+- (xxxviii) **Reconciliation catch-up and case cadence.** A missed night (beat down at 02:30) is not caught up; add a
+  catch-up run. One fraud case per day exists only while it is OPEN; a closed case reopens as a new one.
+- (xxxix) **The 5-minute payout poll stops settling when the ledger switch is off.** Decide to keep settling open
+  withdrawals regardless of the switch, so money in transit is never stranded by switching the ledger off.
+- (xl) **Masking in staff notes:** digit runs of 6 or more in a staff note are masked before storage.
+- (xli) **`mask_but_last` keeps 5 digits;** consider 4 for MoMo numbers.
+- (xlii) **Throttle buckets are keyed by user pk** across customers and owners (project-wide), so a customer and an owner
+  never share a bucket only because their pks differ in kind; review before go-live.
+- (xliii) **Money-settings approval screen wording** for the withdrawal settings (per-withdrawal and daily limits,
+  `payout_cooling_hours`) needs owner review.
+- (xliv) **Name oracle.** One valid step-up code allows repeated account-name lookups within its 5-minute life, capped
+  only by the throttle. Consider a per-holder mismatch counter before Plan 7 makes lookups paid.
+- (xlv) **Hand-failed withdrawals and a late "paid" (before switch-on).** Staff cannot fail a withdrawal the provider
+  says is still PROCESSING (409 `provider_processing`), but once failed by hand nothing asks the provider again, and the
+  returned money can be withdrawn at once (the same holds for ANY FAILED return, not only staff-failed). Before switch-on: count any returned (FAILED) withdrawal toward that day's limit or
+  hold the returned amount briefly; keep asking the provider about failed withdrawals for N days so a late "paid"
+  raises the case quickly; refuse new withdrawals for a holder while a late-paid case is open. Until Plan 7 a late
+  "paid" is caught only by a webhook or the next night's reconciliation.
+- (xlvi) **Name-check stopwords.** Generic words (LTD, VENTURES, ENTERPRISE, GHANA, THE, CO) count toward the two-word
+  floor of the name match; add a stopword list in `wallets/names.py` before switch-on.
+- (xlvii) **Reconciliation drops one difference when `find()` fails** (a clearing journal with no provider reference);
+  record it as its own difference instead.
+- (xlviii) **A recovery email requested while the ledger is off and confirmed after switch-on** becomes a code channel
+  without a step-up. Void unconfirmed recovery-contact requests at switch-on.
+- (xlix) **`NETWORKS` has no VODAFONE to Telecel alias** for older `payout_momo_network` rows, so `from_profile` refuses
+  them; add the alias.
+- (l) **Test and plan-text notes.** The nested-dict/frame scrubber test is weak, and the contact-change happy path does
+  not assert the token was spent. Plan text B6, E5 and the line near 428 is stale; this spec is correct.
+- (li) **Owner question: top-up money can be withdrawn immediately,** so a MoMo collection reversal after a withdrawal
+  could cost AshantiHub money. Consider a hold period on newly topped-up funds.
+- (lii) **Migrations 0003 and 0004 of `wallets` could be folded into one before any deploy** (nothing is deployed yet;
+  the 0003 file is root-owned, so fold it with the right permissions).
+- (liii) **Parked:** the daily/per-withdrawal limit check can race with a concurrent proposal and ignores future-dated rows.
