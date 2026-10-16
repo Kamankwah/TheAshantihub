@@ -10,11 +10,13 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.phones import mask_phone
 from accounts.views import IsBusinessOwner
 from ledger import escrow, fees
 from ledger.models import FeeRuleSet
 
-from . import vendor
+from . import vendor, vendor_texts
+from .models import VendorPreference, VendorText
 from .views import AmountError, Pagination, ledger_off, parse_amount
 
 SALE_STATUSES = ("all", *vendor.STATUSES)
@@ -129,3 +131,33 @@ class VendorFeesView(APIView):
             except fees.FeeError:
                 body["quote"] = None
         return Response(body)
+
+
+class VendorTextsView(APIView):
+    """GET vendor/texts/ — the business's money texts: order and release texts always go (spec §6), whether the daily
+    digest is on, the masked number they go to (null unless the login phone is a confirmed Ghana mobile; then `note` says why no
+    texts can be sent) and its last 20 texts with what happened to each. PATCH {daily_digest: true|false} — turn the digest on or off."""
+
+    permission_classes = [IsBusinessOwner]
+
+    def _body(self, owner):
+        phone = vendor_texts.confirmed_phone(owner)
+        return {
+            "order_texts": True, "daily_digest": vendor_texts.wants_digest(owner),
+            "phone": mask_phone(phone) if phone else None, "note": None if phone else vendor_texts.NO_PHONE_NOTE,
+            "recent": [vendor_texts.row(text) for text in VendorText.objects.filter(business_owner=owner)[:20]],
+        }
+
+    def get(self, request):
+        if not escrow.enabled():
+            return ledger_off()
+        return Response(self._body(request.user))
+
+    def patch(self, request):
+        if not escrow.enabled():
+            return ledger_off()
+        data = request.data if isinstance(request.data, dict) else {}
+        if not isinstance(data.get("daily_digest"), bool):
+            return Response({"daily_digest": "Choose true or false."}, status=status.HTTP_400_BAD_REQUEST)
+        VendorPreference.objects.update_or_create(business_owner=request.user, defaults={"daily_digest": data["daily_digest"]})
+        return Response(self._body(request.user))

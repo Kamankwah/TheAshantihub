@@ -29,7 +29,7 @@ from django.utils import timezone
 
 from accounts.models import BusinessOwner
 from accounts.phones import mask_phone
-from ledger import escrow
+from ledger import escrow, posting
 from ledger.models import Account, Journal, JournalLine, OrderFeeSnapshot
 from ledger.money import to_pesewas
 from marketing.models_waivers import WaivedFeeCharge
@@ -38,7 +38,8 @@ from otp import senders, spend
 from otp.identity import contacts, ref
 from otp.models import SMS, VerifiedContact
 
-from .models import VendorText
+from . import vendor
+from .models import VendorPreference, VendorText
 from .services import money
 
 logger = logging.getLogger(__name__)
@@ -313,4 +314,57 @@ def order_released(order, journal):
         )
         if queue(owner, VendorText.ORDER_RELEASED, released_key(order, owner), body, order=order, notification=notice) is not None:
             queued += 1
+    return queued
+
+
+# --- the optional daily digest (Task 7) ----------------------------------------------------------------------------
+
+def wants_digest(owner):
+    return VendorPreference.objects.filter(business_owner=owner, daily_digest=True).exists()
+
+
+def digest_key(owner, day):
+    return f"digest-{owner.pk}-{day:%Y-%m-%d}"
+
+
+def digest_text(day, summary, pending, available):
+    """`summary` is one day of vendor.daily (GH₵ strings); `pending` and `available` are pesewas now."""
+    orders = summary["orders"]
+    return (
+        f"AshantiHub {day:%d %b}: {orders} order{'' if orders == 1 else 's'} paid, items GHS {summary['sold']}. "
+        f"Released GHS {summary['released']}, fees GHS {summary['fees']}, refunds GHS {summary['refunded']}. "
+        f"Now Pending GHS {money(pending)}, Available GHS {money(available)}."
+    )
+
+
+def queue_digests(day, now=None):
+    """Queue `day`'s digest (spec §6, "optional daily digest") with its in-app copy for each business that turned it on
+    and whose money moved that Accra day. A business already sent that day's digest is skipped, so a re-run adds
+    nothing; two runs at once (the beat entry and a manual run) also give one text and one in-app notice, because the text
+    is queued first (its key is unique) and the notice is made only if the text has none yet, under a lock on its row; one
+    business that fails is logged and skipped. Returns how many were queued."""
+    queued = 0
+    for owner in BusinessOwner.objects.filter(vendor_preference__daily_digest=True).order_by("pk"):
+        key = digest_key(owner, day)
+        if VendorText.objects.filter(key=key, notification__isnull=False).exists():
+            continue
+        try:
+            days = vendor.daily(owner, day, day)["days"]
+            if not days:
+                continue  # nothing moved: no text
+            body = digest_text(
+                day, days[0], posting.balance_of(Account.VENDOR_PENDING, owner), posting.balance_of(Account.VENDOR_AVAILABLE, owner),
+            )
+            with transaction.atomic():
+                text = queue(owner, VendorText.DAILY_DIGEST, key, body, day=day, now=now)  # first: an overlapping run gets this row
+                if text is None:
+                    continue
+                if VendorText.objects.select_for_update().get(pk=text.pk).notification_id is None:
+                    notice = notify_business_owner(
+                        owner, VENDOR_MONEY, f"Your AshantiHub day, {day:%d %b}", body=body, link="/business-dashboard", icon="💰",
+                    )
+                    VendorText.objects.filter(pk=text.pk).update(notification=notice)
+                    queued += 1
+        except Exception as exc:  # noqa: BLE001 - one business never stops the others' digests
+            logger.error("Digest for business %s not worked out: %s", owner.pk, type(exc).__name__)
     return queued

@@ -40,3 +40,12 @@ def send_due_vendor_texts():
     LEDGER_ENABLED says now: a text exists only if the ledger was on when it was queued, and a business told of a sale
     should hear of it. The beat entry makes core.jobs keep a JobRun heartbeat for it."""
     return vendor_texts.send_due()
+
+
+@shared_task
+def queue_vendor_digests():
+    """07:00 every day: yesterday's digest for each business that asked for one (a no-op while the ledger is off). A
+    missed 07:00 run is not caught up. The beat entry makes core.jobs keep a JobRun heartbeat for it."""
+    if not escrow.enabled():
+        return 0
+    return vendor_texts.queue_digests(timezone.localdate() - timedelta(days=1))
