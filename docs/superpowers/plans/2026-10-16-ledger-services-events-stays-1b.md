@@ -32,7 +32,7 @@ How these bookings take payment today (surveyed 2026-10-16):
 | S4 | Journals | `booking-pay-<session reference>` (kind `booking_payment`: Dr provider clearing — or customer wallet — Cr vendor Pending); `booking-release-<sale>` (`booking_release`: Dr Pending, Cr platform fee income, Cr vendor Available); `booking-refund-<sale>-<source>` (`booking_refund`). `reference_type="ledger.bookingsale"`. | The pay key names the session so the nightly reconciliation can expect it from the session alone (a payment whose sale was never written still has a key to miss). |
 | S5 | "Handed over" (spec §4.2 leaves it to this plan) | Service: the business marked it done (`completed_at`). Stay: the guest checked in (`checked_in_at`). Tickets: the first scan of any ticket of the purchase, or else the event's date once it has passed. Derived from those existing stamps; no new hook. | §4.2: "the service is done, the event has taken place or the stay has begun". |
 | S6 | Receipt confirmed | Support records it on the call (`customer_confirmed_by_phone`), or a ticket of the purchase was scanned at the door. No customer "confirm" endpoint here (the frontend plan may add one). | §4.2 "the customer confirms (or Support records it on the call)"; Support calls every booking anyway before release. |
-| S7 | The 72-hour clock | For bookings it runs from **hand-over**, not from purchase: Support's "due by", the overdue flag and a mismatch dispute's `answer_due_at` are hand-over + `verification_overdue_hours`. | A service, stay or event can be paid weeks before it happens; "72 hours of purchase" would already be over at hand-over. Owner to confirm (SA5; spec gate (lvii)). |
+| S7 | The 72-hour clock | For bookings it runs from **hand-over**, not from purchase: Support's "due by", the overdue flag and a mismatch dispute's `answer_due_at` are hand-over + `verification_overdue_hours`. | A service, stay or event can be paid weeks before it happens; "72 hours of purchase" would already be over at hand-over. Provisional: owner to confirm (SA5; spec gate (lvii)). |
 | S8 | Verification and release | The same three outcomes as products (`matches` → release at once, fee first; `does_not_match` → a `Dispute`; `unreachable` → recorded). The dispute is logged the disputes way — `order` null, `raised_by` null, `logged_by` the staff member (unlike the product path, spec (v)) — and linked on the sale; only that dispute blocks release. | `Dispute` has only an order FK; customers raise disputes only against orders. |
 | S9 | Tickets' escrow flags | With the ledger on and a sale behind the ticket: a scan no longer flips `escrow_status` to released; release flips the purchase's unrefunded tickets; the manual release and hold answer `409 ledger_on`; the Accountant's ticket refund pays the ticket's price to the wallet (source `ticket-<id>`) and still writes its REFUNDED `billing.Transaction`. Without a sale (ledger off, or a customer-organised event) everything is as today. | Otherwise the Accountant's ticket screen would show money "released" that the ledger still holds in Pending, and a manual release would bypass Support's call (owner rule 17). |
 | S10 | Customer-organised events | Tickets for an event `submitted_by_customer` are **not recorded** (no business to hold money for): MoMo only (`409 wallet_not_accepted` for the wallet), no processing charge, no reconciliation mark. | `BookingSale.business_owner` and vendor wallets are businesses only. Owner to decide (SA7; gate (liv)). |
@@ -42,20 +42,20 @@ How these bookings take payment today (surveyed 2026-10-16):
 | S14 | No-shows | Not handled: the spec decides nothing. A stay never checked in, a service never marked done, tickets for an event that never happened keep their money in Pending until Support cancels or verifies. | The brief: "no-show handling only if the spec decides it". Owner question (SA6; gate (lv)). |
 | S15 | Lock order | The service request or stay booking row (tickets: the purchase's ticket rows in primary-key order), then the sale row, then the ledger accounts in one sorted pass (`posting.lock`). `sales.lock(sale)` takes the first two; the hand-over steps (service done, check-in, ticket scan) now lock their own row, so a refund and a hand-over never cross. | 3a W7 extended. Without the row locks, a check-in read before a cancel commits could re-open a cancelled, refunded stay. |
 | S16 | Price check | A service request's `price` must be digits with at most two decimals and above GH₵ 0.00 (`400 {"price": ...}`), ledger on or off. | S2's equality check needs a sane price; a negative `agreed_price` would otherwise be paid as a negative checkout. |
-| S17 | Ledger off | Nothing is recorded, no session is marked, the three pay endpoints, the cancel, the ticket check-in and escrow views and dispute resolution answer exactly as today; `/api/ledger/bookings/*` answers `409 {"code": "ledger_off"}`. | Spec §11; every Stage 1–3 switch-off rule. |
+| S17 | Ledger off | Nothing is recorded, no session is marked, the three pay endpoints (for a request that sends no `payment_method`; like order checkout, an unknown method answers 400 and `wallet` 409 `ledger_off` either way), the cancel, the ticket check-in and escrow views and dispute resolution answer exactly as today; the service accept's price check (S16) applies either way; `/api/ledger/bookings/*` answers `409 {"code": "ledger_off"}`. | Spec §11; every Stage 1–3 switch-off rule. |
 | S18 | Reconciliation and statements | `wallets.reconciliation` expects `booking-pay-<reference>` for the three kinds when the session is marked; the holder statement labels `booking_payment` / `booking_release` / `booking_refund` and gives the sale id as `booking`. | 3b E10 skipped these kinds only because the ledger did not record them. |
 
 ## Global Constraints
 
 - Everything in Plan 3a's and 3b's Global Constraints applies: integer pesewas converted only through `ledger.money`; a balance changes only inside `ledger.posting.post`; `LEDGER_ENABLED` (default off) gates everything; simulated rails only; nothing moves real money.
 - New journal keys and kinds: `booking-pay-<session reference>` (`booking_payment`), `booking-release-<sale id>` (`booking_release`), `booking-refund-<sale id>-<source>` (`booking_refund`); `reference_type="ledger.bookingsale"`, `reference_id` the sale id. Refund sources: `cancel`, `dispute-<id>`, `ticket-<id>`.
-- **Lock order:** subject row (service request / stay booking; tickets: the purchase's tickets in primary-key order) → the sale row → ledger accounts in primary-key order, taken in one pass with `posting.lock(...)` before any balance-based decision, inside `transaction.atomic()`. Every booking money step goes through `sales.lock(sale)` first.
+- **Lock order:** subject row (service request / stay booking; tickets: the purchase's tickets in primary-key order) → the sale row → ledger accounts in primary-key order, taken in one pass with `posting.lock(...)` before any balance-based decision, inside `transaction.atomic()`. Every booking money step after payment goes through `sales.lock(sale)` first (dispute resolution takes the dispute row before it, as for orders).
 - **No timer releases a business's money:** release happens only in `sales.record_verification` on `matches`, after hand-over and the customer's confirmation, with no open dispute.
 - Refunds go **only** to the customer's AshantiHub wallet. Vendor Available may go negative after a late refund; no other holder balance may go below zero.
 - Platform fees are never shown to customers; a customer sees the price and "payment processing".
 - The customer's phone appears only on the `orders.verify`-gated booking queue (as on the products queue).
 - Fee categories: services and stays `FeeRuleSet.SERVICE`, tickets `FeeRuleSet.EVENT`; no new fee seed (ledger 0004 already seeded both).
-- Tests: Django `TestCase` / `APIClient`; `@override_settings(LEDGER_ENABLED=True)`; staff tokens through `accounts.testing.staff_token(staff, sudo=...)`; customers and owners through `accounts.authentication.issue_token(account, "customer" | "business_owner")`; `cache.clear()` in `setUp`; time travel by back-dating rows with `.update(...)` (never journals: they are append-only); threaded `TransactionTestCase` with `serialized_rollback = True` only for the cap race and the ticket-refund race.
+- Tests: Django `TestCase` / `APIClient`; `@override_settings(LEDGER_ENABLED=True)`; staff tokens through `accounts.testing.staff_token(staff, sudo=...)`; customers and owners through `accounts.authentication.issue_token(account, "customer" | "business_owner")`; `cache.clear()` in `setUp`; time travel by back-dating rows with `.update(...)` (never journals: they are append-only); threaded `TransactionTestCase` with `serialized_rollback = True` only for the cap race, the ticket-refund race and the same-moment races (two taps on Pay; a check-in against a cancel).
 - Commands, from `/home/righteoushack/projects/TheAshantihub/.worktrees/wallets`: `docker compose -p svc1 run --rm web python manage.py test <label> --noinput`. Never run two docker commands at once.
 - Migrations (check with `ls backend/ledger/migrations`): today's ledger leaf is `0007_order_refunds`. This plan adds one generated migration, `ledger/0008_booking_sales.py` (Task 1). No accounts migration (`orders.verify`, `orders.support_update`, `escrow.refund`, `disputes.resolve_financial` already exist).
 - Style: module docstrings, no type annotations, tests in `<app>/tests/`, plain words in user-facing messages, GH₵ in API messages.
@@ -63,13 +63,14 @@ How these bookings take payment today (surveyed 2026-10-16):
 ## Review Focus
 
 1. **The lifetime cap across categories, at the same moment** — a product order and a service for one business paid at once, with GH₵ 6.00 of cap left and GH₵ 5.00 due on each: together they charge exactly GH₵ 6.00. Pinned in Task 2 (`CapRaceTests.test_review_focus_a_product_and_a_service_paid_at_once_never_pass_the_cap`) and Task 2 (`test_review_focus_the_lifetime_cap_is_shared_with_product_orders`).
-2. **A payment confirmed twice, or for the wrong amount** — Hubtel retrying the success callback records one sale and one journal; a paid amount that is not the price writes nothing. Pinned in Task 3 (`test_review_focus_a_confirmation_that_arrives_twice_records_once`) and Task 2 (`test_review_focus_a_payment_that_does_not_match_the_price_writes_nothing`).
+2. **A payment confirmed twice, or for the wrong amount** — Hubtel retrying the success callback records one sale and one journal; a paid amount that is not the price writes nothing. Pinned in Task 3 (`test_review_focus_a_confirmation_that_arrives_twice_records_once`), Task 2 (`test_recording_twice_keeps_one_sale_and_one_journal`) and Task 2 (`test_review_focus_a_payment_that_does_not_match_the_price_writes_nothing`).
 3. **Release at the wrong moment** — refused before hand-over, without the customer's confirmation, while a mismatch dispute is open, after a whole refund; a refund then "matches" pays only the rest. Pinned in Task 5 (`test_a_service_is_released_once_done_and_confirmed_fee_first`, `test_review_focus_a_mismatch_opens_a_dispute_due_72_hours_after_hand_over_and_releases_nothing`) and Task 7 (`test_review_focus_a_refund_then_matches_pays_only_the_rest`, `test_review_focus_a_wholly_refunded_booking_is_never_released_and_leaves_supports_list`).
 4. **Refund arithmetic** — the same source refunds once; more than is left writes nothing; fee given back in three parts adds up to the fee taken (1.67 + 1.66 + 1.67); a late refund may drive Available below zero. Pinned in Task 7 (`test_review_focus_the_same_source_refunds_once_and_more_than_is_left_writes_nothing`, `test_review_focus_fee_given_back_in_parts_adds_up_to_the_fee_taken`, `test_a_refund_after_release_may_drive_available_below_zero`).
 5. **A wallet that covers only part of a booking** — refused with `409 insufficient_funds`; no booking, no session, no ticket reservation, no sale survives, the service request stays accepted, the wallet untouched. Pinned in Task 4 (`test_review_focus_a_wallet_that_covers_only_part_pays_nothing_and_keeps_nothing`).
-6. **A hand-over racing a refund** — two ticket refunds from one purchase at once both land (no deadlock); a check-in after a cancel is refused because both lock the booking row. Pinned in Task 8 (`TicketRefundRaceTests.test_review_focus_two_ticket_refunds_from_one_purchase_at_once_both_land`, `test_review_focus_a_cancelled_stay_cannot_be_checked_in`).
+6. **A hand-over racing a refund** — two ticket refunds from one purchase at once both land (no deadlock); a check-in and a cancel of one stay at once never both land, because both lock the booking row. Pinned in Task 8 (`TicketRefundRaceTests.test_review_focus_two_ticket_refunds_from_one_purchase_at_once_both_land`, `SameMomentRaceTests.test_review_focus_a_check_in_and_a_cancel_at_once_never_both_land`, and the sequential `test_review_focus_a_cancelled_stay_cannot_be_checked_in`).
 7. **A service accepted at a negative or fractional price** — refused at accept (400), so it can never be paid. Pinned in Task 3 (`test_review_focus_a_service_price_must_be_above_zero_with_two_decimals_at_most`).
 8. **Switches-off regression** — with the ledger off the three pay endpoints, the customer's stay cancel and the ticket views answer as today and open no account; the booking screens say `ledger_off`. Pinned in Task 3 (`test_review_focus_with_the_ledger_off_paying_is_exactly_as_before`), Task 6 (`test_review_focus_with_the_ledger_off_the_booking_screens_say_so`) and Task 8 (`test_review_focus_with_the_ledger_off_a_cancelled_stay_moves_no_money`).
+9. **Two taps on Pay** — a service request paid from the wallet twice at once records one payment: one SUCCESS session, one sale, one debit; the second tap answers 400. Pinned in Task 8 (`SameMomentRaceTests.test_review_focus_two_taps_on_pay_charge_a_service_request_once`).
 
 ## Assumptions made (decided here, cheap to change — for the owner to confirm)
 
@@ -77,7 +78,7 @@ How these bookings take payment today (surveyed 2026-10-16):
 - **SA2** Handed over = the business marks the service done; the guest is checked in; a ticket of the purchase is scanned, or the event's date has passed.
 - **SA3** Support calls the customer for every booking before release — once per ticket purchase, not per ticket — even when a ticket was scanned (the scan counts as the customer's confirmation, not as the call).
 - **SA4** A customer's cancel of a paid stay before check-in is a full refund to the wallet at once, with no deadline or fee; Support may cancel any booking not yet handed over with a full refund. The processing charge stays with the provider (the customer asked).
-- **SA5** For bookings, the 72-hour verification window runs from hand-over, not from purchase.
+- **SA5** For bookings, the 72-hour verification window runs from hand-over, not from purchase. This is a provisional assumption the spec does not state (§4.1 says "of purchase" for products; §4.2 fixes the length, not the start); it awaits the owner (gate (lvii)).
 - **SA6** No-shows are not handled automatically; their money stays in Pending until Support acts.
 - **SA7** Paid tickets for an event a customer organised stay outside the ledger (MoMo only) until the owner decides whether organisers must register as a business.
 - **SA8** Bookings pay like orders: "payment processing" on top of MoMo; a wallet must cover the whole price.
@@ -382,8 +383,8 @@ Expected: `ledger/migrations/0008_booking_sales.py` with `Create model BookingSa
 
 - [ ] **Step 6: Run the tests**
 
-Run: `docker compose -p svc1 run --rm web python manage.py test ledger.tests.test_booking_models ledger.tests.test_fees --noinput`
-Expected: PASS (4 new tests; `test_fees` unchanged).
+Run: `docker compose -p svc1 run --rm web python manage.py test ledger --noinput`
+Expected: PASS (4 new tests; the rest of `ledger` unchanged: `charged_to_date` also feeds every order payment).
 
 - [ ] **Step 7: Record the decisions in the spec.** Append to the end of `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md`:
 
@@ -391,37 +392,37 @@ Expected: PASS (4 new tests; `test_fees` unchanged).
 
 ### Stage 1b (services, events and stays) reconciliation (2026-10-16)
 
-Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-stays-1b.md` (§0 there; its S1–S18):
+Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-stays-1b.md` (§0 there; its S1–S18; the items below are numbered B1–B10 so they do not clash with those):
 
-- **S1 Where it lives.** One `ledger.BookingSale` per paid service request, stay or ticket purchase (its subject, its fee
+- **B1 Where it lives.** One `ledger.BookingSale` per paid service request, stay or ticket purchase (its subject, its fee
   snapshot, Support's call) and `ledger.BookingRefund` per sale and source, in `ledger/sales.py`; Support at
   `/api/ledger/bookings/`. `OrderFeeSnapshot`, `FulfilmentCheck` and `OrderRefund` are unchanged (their order FK is
   required). Event listing fees (`EVENT_PAY`, `EVENT_RENEW`) are platform revenue, out of scope like subscriptions.
-- **S2 Fees.** Services and stays use the services table, tickets the events table (§1 row 11), both already seeded as
+- **B2 Fees.** Services and stays use the services table, tickets the events table (§1 row 11), both already seeded as
   copies of the product tiers. The base is the server's price (agreed price, stay total, unit price × quantity), which
   must equal what was paid less the processing charge. The lifetime cap counts booking sales and order snapshots
   together (`fees.charged_to_date`), read after the business's Pending account is locked.
-- **S3 Journals.** `booking-pay-<session reference>`, `booking-release-<sale>`, `booking-refund-<sale>-<source>`; the
+- **B3 Journals.** `booking-pay-<session reference>`, `booking-release-<sale>`, `booking-refund-<sale>-<source>`; the
   nightly reconciliation expects `booking-pay-` for the three kinds when the session is marked `metadata["ledger"]`.
-- **S4 Handed over (§4.2).** A service the business marked done; a stay checked in; tickets once one of the purchase is
+- **B4 Handed over (§4.2).** A service the business marked done; a stay checked in; tickets once one of the purchase is
   scanned or the event's date has passed. Receipt is confirmed by Support on the call, or by a ticket scanned at the
-  door. For bookings the 72-hour window runs from hand-over (gate (lvii)).
-- **S5 Release and disputes.** As products: Support's "matches" releases at once; "does not match" opens a dispute
+  door. Provisional, owner to confirm (gate (lvii)): for bookings the 72-hour window runs from hand-over, not from purchase as §4.1 says for products.
+- **B5 Release and disputes.** As products: Support's "matches" releases at once; "does not match" opens a dispute
   logged the disputes way (`raised_by` null, `logged_by` the staff member), linked on the sale, which alone blocks
   release.
-- **S6 Ticket escrow flags.** With the ledger on, a ticket's held/released flag follows its sale: a scan no longer
+- **B6 Ticket escrow flags.** With the ledger on, a ticket's held/released flag follows its sale: a scan no longer
   releases it, release releases the purchase's tickets, the manual release and hold answer `409 ledger_on`, and the
   Accountant's ticket refund pays the ticket's price to the wallet.
-- **S7 Paying.** The three pay endpoints take `payment_method` and carry "payment processing" on MoMo while the ledger is
+- **B7 Paying.** The three pay endpoints take `payment_method` and carry "payment processing" on MoMo while the ledger is
   on, like order checkout; a wallet must cover the whole booking. Tickets for customer-organised events stay outside the
   ledger (gate (liv)).
-- **S8 Refunds and cancellations.** To the wallet only; before release out of Pending, after release out of Available
+- **B8 Refunds and cancellations.** To the wallet only; before release out of Pending, after release out of Available
   with the fee back in proportion; the processing charge only on fault. The refund that empties a sale reverses it and
   cancels a booking not yet handed over. A customer's cancel of a paid stay before check-in, and Support's cancel of any
   booking not yet handed over, refund it whole. No-shows are not handled (gate (lv)).
-- **S9 Lock order.** Service request or stay row (tickets: the purchase's tickets in primary-key order), then the sale,
+- **B9 Lock order.** Service request or stay row (tickets: the purchase's tickets in primary-key order), then the sale,
   then accounts in one sorted pass; the hand-over steps lock their own row.
-- **S10 Price check.** A service request's price must be above GH₵ 0.00 with at most two decimals.
+- **B10 Price check.** A service request's price must be above GH₵ 0.00 with at most two decimals.
 
 ### Before LEDGER_ENABLED is turned on — Stage 1b additions
 
@@ -440,7 +441,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-st
   not yet handed over refund it in full, with no deadline or fee (the processing charge stays with the provider). Owner
   to decide.
 - (lix) **A service request paid twice** (two Hubtel checkouts started for one accepted request, both paid) records only
-  the first; the second stays in provider clearing and the reconciliation reports it `missing_in_ledger`. Refuse a second
+  the first; the second is never recorded (no sale, no journal; the provider holds the money) and the reconciliation reports it `missing_in_ledger`. Refuse a second
   checkout while one is open, or refund the duplicate, before switch-on.
 - (lx) **Booking finalizers share the webhook failure mode (i)/(vii):** a finalizer that raises (a paid amount that is not
   the price) leaves a paid booking unrecorded with `processed=False`.
@@ -452,11 +453,19 @@ Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-st
   follow the booking sale. Branch them on `LEDGER_ENABLED`.
 - (lxiii) **Booking disputes logged by hand** (not through the verification call) are not linked to the sale and do not
   block its release; customers raise disputes only on orders. The mismatch dispute neither notifies the customer nor
-  tasks anyone ((v)), and a dispute's wallet refund sends no notice ((xvi)).
+  tasks anyone ((v)), and a dispute's wallet refund sends no notice ((xvi)). The dispute rows carry no booking link
+  (`order` and `raised_by` are null; only the description names the booking), so the disputes screens cannot open the
+  booking or the customer.
 - (lxiv) **Frontend (Plan 1F):** Support's booking queue, the call and the cancel; `payment_method` and
   `payment_processing` on the three pay screens; the accept screen must show the price error.
 - (lxv) **The ticket purchase's 201 is still a list,** so it carries no `payment_processing`; the screen must quote the
   charge first (`GET /api/wallet/processing/?amount=`).
+- (lxvi) **A Hubtel success webhook for a stay the customer cancelled while its checkout was open is never recorded or
+  refunded.** The customer may cancel a PENDING booking; if they then pay at Hubtel, `_finalize_booking` returns early
+  (the booking is no longer PENDING), so the money is collected with no `BookingSale`, no journal and no refund (the
+  reconciliation reports `missing_in_ledger` once a statement exists). Before Plan 7: refuse the customer's cancel of a
+  PENDING booking whose checkout session is still PENDING, or have `_finalize_booking` record such a payment and refund it
+  whole to the wallet. Fix beside (xi), its order twin.
 ```
 
 - [ ] **Step 8: Commit**
@@ -1289,6 +1298,11 @@ class ServiceRequestPayView(APIView):
             return Response({"detail": "Only an accepted request can be paid for."}, status=400)
 
         with db_transaction.atomic():
+            # Locked and re-checked, so two taps on Pay never start two payments for one request (Plan 1b S15); the
+            # finalizer locks the same row again. A second Hubtel checkout is still possible: gate (lix).
+            sr = ServiceRequest.objects.select_for_update().get(pk=sr.pk)
+            if sr.status != ServiceRequest.ACCEPTED:
+                return Response({"detail": "Only an accepted request can be paid for."}, status=400)
             result, processing = booking_pay.pay(
                 kind=CheckoutSession.SERVICE_REQUEST,
                 amount=sr.agreed_price,
@@ -1805,6 +1819,11 @@ class ServiceRequestPayView(APIView):
 
         try:
             with db_transaction.atomic():
+                # Locked and re-checked, so two taps on Pay never start two payments for one request (Plan 1b S15);
+                # the finalizer locks the same row again. A second Hubtel checkout is still possible: gate (lix).
+                sr = ServiceRequest.objects.select_for_update().get(pk=sr.pk)
+                if sr.status != ServiceRequest.ACCEPTED:
+                    return Response({"detail": "Only an accepted request can be paid for."}, status=400)
                 result, processing = booking_pay.pay(
                     kind=CheckoutSession.SERVICE_REQUEST,
                     amount=sr.agreed_price,
@@ -1978,7 +1997,7 @@ from payments import booking_pay
 
 - [ ] **Step 8: Run the tests**
 
-Run: `docker compose -p svc1 run --rm web python manage.py test ledger.tests.test_booking_wallet ledger.tests.test_booking_wiring payments services bookings events --noinput`
+Run: `docker compose -p svc1 run --rm web python manage.py test ledger.tests.test_booking_wallet ledger.tests.test_booking_wiring ledger.tests.test_wallet_payment orders payments services bookings events --noinput`
 Expected: PASS (7 new tests; Task 3's and the existing suites unchanged).
 
 - [ ] **Step 9: Commit**
@@ -1993,7 +2012,7 @@ git commit -m "feat(ledger): pay a service, a stay or tickets from the wallet; n
 ### Task 5: Hand-over, Support's verification call and the release
 
 **Files:**
-- Modify: `backend/ledger/sales.py` (imports; append the after-payment section), `backend/events/views.py` (`_ledger_sale`, `LEDGER_RELEASES`, `EventCheckinView.post`, `EscrowReleaseView.post`, `EscrowHoldView.post`)
+- Modify: `backend/ledger/sales.py` (imports; append the after-payment section), `backend/ledger/settings_store.py` (the label of `verification_overdue_hours`), `backend/events/views.py` (`_ledger_sale`, `LEDGER_RELEASES`, `EventCheckinView.post`, `EscrowReleaseView.post`, `EscrowHoldView.post`)
 - Create: `backend/ledger/tests/test_booking_release.py`
 
 **Interfaces:**
@@ -2427,15 +2446,32 @@ with
         with db_transaction.atomic():
 ```
 
-- [ ] **Step 6: Run the tests**
+- [ ] **Step 6: The setting's label says both anchors** — in `backend/ledger/settings_store.py` replace
+
+```python
+    "verification_overdue_hours": Definition("Hours after purchase by which an order must be verified or disputed", 72, False, 1, 720),
+```
+
+with
+
+```python
+    "verification_overdue_hours": Definition(
+        "Hours after purchase (orders) or after hand-over (services, stays, tickets) by which a sale must be verified or disputed",
+        72, False, 1, 720,
+    ),
+```
+
+The label is shown on the Accounting money-settings screen and its approvals (`ledger/views.py`); no test asserts it. If the owner wants the two anchors to take different hours, add a separate `booking_verification_overdue_hours` setting instead (gate (lvii)).
+
+- [ ] **Step 7: Run the tests**
 
 Run: `docker compose -p svc1 run --rm web python manage.py test ledger.tests.test_booking_release events --noinput`
 Expected: PASS (8 new tests; the events suite unchanged — with the ledger off a scan still releases the flag).
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add backend/ledger/sales.py backend/events/views.py backend/ledger/tests/test_booking_release.py
+git add backend/ledger/sales.py backend/ledger/settings_store.py backend/events/views.py backend/ledger/tests/test_booking_release.py
 git commit -m "feat(ledger): booking hand-over, Support's verification call and the release; ticket flags follow the sale (1b)" --trailer "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>" --trailer "Claude-Session: https://claude.ai/code/session_01HDHNosHkqu4Wwocp7a2c8j"
 ```
 
@@ -2744,7 +2780,7 @@ git commit -m "feat(ledger): Support's booking queue and verification call over 
 **Interfaces:**
 - Consumes: `sales.lock`, `refund_key`, `tickets_of`, `handed_over_at` (Tasks 2, 5); `ledger.refunds.RefundError(message, status_code=400)`, `ledger.refunds.fee_share(snapshot, refunded_base)` (reads `base_pesewas` and `charged_pesewas`, which a `BookingSale` has); `BookingRefund` (Task 1).
 - Produces (module `ledger.sales`):
-  - `refund(sale, amount_pesewas=None, *, source, by=None, refund_processing=False, note="", now=None) -> BookingRefund | None` (raises `RefundError`, writing nothing; `ValueError` for a bad source)
+  - `refund(sale, amount_pesewas=None, *, source, by=None, refund_processing=False, note="", now=None) -> BookingRefund | None` (raises `RefundError`, writing nothing, also when an explicit amount is asked of a sale with nothing left; returns None, with no amount, for a sale already refunded in full; `ValueError` for a bad source)
   - `_processing_share(sale, customer, whole) -> int`, `_cancel_if_not_handed_over(sale, by, note, now)`
 
 - [ ] **Step 1: Write the failing test** — `backend/ledger/tests/test_booking_refunds.py`
@@ -2752,7 +2788,7 @@ git commit -m "feat(ledger): Support's booking queue and verification call over 
 ```python
 """Refunds of booking sales into the customer's wallet (Plan 1b, Task 7; spec §2.2 steps 3-4, §5): before and after
 release, in parts, with the processing charge only on fault, and the whole refund cancelling a booking not yet handed
-over. Review Focus 3 (release after a refund) and 4 (refund arithmetic)."""
+over. Review Focus 3 (release after a refund) and 4 (refund arithmetic, and nothing left to refund)."""
 from django.test import override_settings
 from django.utils import timezone
 
@@ -2889,6 +2925,13 @@ class BookingRefundTests(BookingBase):
         with override_settings(LEDGER_ENABLED=False):
             self.assertIsNone(sales.refund(sale, source="cancel"))
         self.assertEqual(self.wallet(), 0)
+
+    def test_an_amount_asked_of_a_booking_refunded_in_full_is_refused(self):
+        sale = self.paid_service()
+        sales.refund(sale, source="cancel")
+        with self.assertRaisesMessage(refunds.RefundError, "Nothing is left to refund on this booking."):
+            sales.refund(sale, 100, source="dispute-9")
+        self.assertEqual(self.wallet(), 20000)
 ```
 
 - [ ] **Step 2: Run it to see it fail**
@@ -2991,6 +3034,8 @@ def refund(sale, amount_pesewas=None, *, source, by=None, refund_processing=Fals
             return existing
         room = sale.base_pesewas - sale.refunded_base_pesewas
         if room <= 0:
+            if amount_pesewas is not None:
+                raise RefundError("Nothing is left to refund on this booking.")
             return None
         customer = room if amount_pesewas is None else amount_pesewas
         if customer > room:
@@ -3034,7 +3079,7 @@ def refund(sale, amount_pesewas=None, *, source, by=None, refund_processing=Fals
 - [ ] **Step 5: Run the tests**
 
 Run: `docker compose -p svc1 run --rm web python manage.py test ledger.tests.test_booking_refunds ledger.tests.test_refunds --noinput`
-Expected: PASS (10 new tests; the order refund tests unchanged).
+Expected: PASS (11 new tests; the order refund tests unchanged).
 
 - [ ] **Step 6: Commit**
 
@@ -3064,15 +3109,18 @@ git commit -m "feat(ledger): booking refunds to the wallet; the whole refund can
 ```python
 """Refunds wired into the booking flows (Plan 1b, Task 8): the customer's stay cancel, Support's cancel, the Accountant's
 ticket refund and dispute resolution, and the hand-over steps locking their row. Review Focus 6 (a hand-over or a second
-refund racing a refund) and 8 (switches off)."""
+refund racing a refund), 9 (two taps on Pay) and 8 (switches off)."""
 import threading
 from datetime import timedelta
 from decimal import Decimal
 
+from django.core.cache import cache
 from django.db import connection
 from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
+from rest_framework.test import APIClient
 
+from accounts.authentication import issue_token
 from accounts.models import BusinessOwner, Customer
 from accounts.testing import make_staff
 from billing.models import Transaction
@@ -3081,13 +3129,13 @@ from disputes.models import Dispute
 from events.models import Event, EventTicketType, Ticket
 from ledger import posting, sales
 from ledger.models import Account, BookingSale
-from listings.models import Category, Zone
+from listings.models import Category, Listing, Zone
 from notifications.models import Notification
 from payments.models import CheckoutSession
 from payments.services import process_payment
 from services.models import ServiceRequest
 
-from .booking_helpers import BookingBase
+from .booking_helpers import BookingBase, fund
 
 
 @override_settings(LEDGER_ENABLED=True)
@@ -3161,6 +3209,9 @@ class BookingRefundWiringTests(BookingBase):
         self.as_staff(self.support)
         self.assertEqual(self.support_cancel(sale, "Customer cannot come").status_code, 200)
         self.assertEqual(self.wallet(), 10000)
+        notice = Notification.objects.get(customer=self.customer, title="Your booking was cancelled")
+        self.assertIn("2 tickets for Highlife Night", notice.body)       # in words, never an internal id
+        self.assertNotIn("#", notice.body)
         self.assertEqual(Ticket.objects.filter(transaction=sale.session.transaction, refunded_at__isnull=False).count(), 2)
 
     def test_only_support_may_cancel(self):
@@ -3248,6 +3299,99 @@ class TicketRefundRaceTests(TransactionTestCase):
         sale.refresh_from_db()
         self.assertIsNotNone(sale.reversed_at)
         self.assertEqual(Ticket.objects.filter(refunded_at__isnull=False).count(), 2)
+
+
+@override_settings(LEDGER_ENABLED=True)
+class SameMomentRaceTests(TransactionTestCase):
+    """Two requests at the same moment on one booking: the row lock decides who goes first (Plan 1b S15)."""
+
+    serialized_rollback = True
+
+    def setUp(self):
+        cache.clear()
+        self.customer = Customer.objects.create(full_name="Ama", phone="+233200770401", password_hash="x")
+        self.owner = BusinessOwner.objects.create(full_name="Kwame", login_phone="+233207770401", password_hash="x")
+        self.zone = Zone.objects.get(name="Manhyia")
+
+    def listing(self, name, price, category, **extra):
+        return Listing.objects.create(
+            business_owner=self.owner, category=category, zone=self.zone, name=name, description="D.",
+            contact_phone=self.owner.login_phone, price_amount=Decimal(price), status=Listing.PUBLISHED, **extra,
+        )
+
+    def client_for(self, account, kind):
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(account, kind)}")
+        return client
+
+    def run_together(self, *calls):
+        """Each call in its own thread, released at once; returns what each returned (an exception's name if it raised)."""
+        results, barrier = [None] * len(calls), threading.Barrier(len(calls))
+
+        def run(index, call):
+            try:
+                barrier.wait()
+                results[index] = call()
+            except Exception as exc:  # noqa: BLE001 - a failure must show in the assertion, not hang the test
+                results[index] = type(exc).__name__
+            finally:
+                connection.close()
+
+        threads = [threading.Thread(target=run, args=(index, call)) for index, call in enumerate(calls)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=15)
+            self.assertFalse(thread.is_alive(), "a racing request hung")
+        return results
+
+    def test_review_focus_two_taps_on_pay_charge_a_service_request_once(self):
+        service = self.listing("Home Cleaning", "200.00", Category.objects.create(slug="cleaning-1b-race", label="Cleaning", kind="service"))
+        request = ServiceRequest.objects.create(
+            customer=self.customer, listing=service, business_owner=self.owner, message="Clean my house.",
+            agreed_price=Decimal("200.00"), status=ServiceRequest.ACCEPTED,
+        )
+        fund(self.customer, 50000, "fund-1b-race-pay")
+
+        def tap():
+            client = self.client_for(self.customer, "customer")
+            return client.post(f"/api/services/requests/{request.pk}/pay/", {"payment_method": "wallet"}, format="json").status_code
+
+        self.assertEqual(sorted(self.run_together(tap, tap)), [200, 400])
+        self.assertEqual(CheckoutSession.objects.filter(status=CheckoutSession.SUCCESS).count(), 1)
+        self.assertEqual(Transaction.objects.count(), 1)
+        self.assertEqual(BookingSale.objects.filter(service_request=request).count(), 1)
+        self.assertEqual(posting.balance_of(Account.CUSTOMER_WALLET, self.customer), 30000)         # debited once
+
+    def test_review_focus_a_check_in_and_a_cancel_at_once_never_both_land(self):
+        lodge = self.listing(
+            "Ashanti Lodge", "150.00",
+            Category.objects.create(slug="lodge-1b-race", label="Lodge", kind="service", is_accommodation=True), units_total=2,
+        )
+        check_in = timezone.localdate() + timedelta(days=1)
+        paid = self.client_for(self.customer, "customer").post("/api/bookings/", {
+            "listing": lodge.pk, "check_in": check_in.isoformat(), "check_out": (check_in + timedelta(days=2)).isoformat(), "units": 1,
+        }, format="json")
+        self.assertEqual(paid.status_code, 201, paid.content)
+        booking_id = paid.json()["id"]
+
+        def check_in_call():
+            return self.client_for(self.owner, "business_owner").post(f"/api/bookings/{booking_id}/check-in/").status_code
+
+        def cancel_call():
+            return self.client_for(self.customer, "customer").post(f"/api/bookings/{booking_id}/cancel/").status_code
+
+        self.assertEqual(sorted(self.run_together(check_in_call, cancel_call)), [200, 400])
+        booking = Booking.objects.get(pk=booking_id)
+        sale = BookingSale.objects.get(booking=booking)
+        wallet = posting.balance_of(Account.CUSTOMER_WALLET, self.customer)
+        if booking.status == Booking.CANCELLED:                      # the cancel went first: refunded, never checked in
+            self.assertEqual((wallet, booking.checked_in_at), (30000, None))
+            self.assertIsNotNone(sale.reversed_at)
+        else:                                                         # the check-in went first: the cancel was refused
+            self.assertEqual(booking.status, Booking.CHECKED_IN)
+            self.assertEqual(wallet, 0)
+            self.assertIsNone(sale.reversed_at)
 ```
 
 - [ ] **Step 2: Run it to see it fail**
@@ -3384,14 +3528,15 @@ class BookingCancelView(APIView):
         except sales.CancelError as exc:
             return Response({"detail": exc.message}, status=exc.status_code)
         back = from_pesewas(refund.amount_pesewas)
+        what = sales.description(sale)
         notify_customer(
             sale.customer, "booking", "Your booking was cancelled",
-            body=f"Your {sale.label()} was cancelled by AshantiHub Support. GH₵ {back} went back to your AshantiHub wallet.",
+            body=f"AshantiHub Support cancelled your booking ({what}). GH₵ {back} went back to your AshantiHub wallet.",
             link="/my-account", icon="🧾",
         )
         notify_business_owner(
             sale.business_owner, "booking", "Booking cancelled",
-            body=f"AshantiHub Support cancelled {sale.label()} before it took place. The customer was refunded.",
+            body=f"AshantiHub Support cancelled a booking ({what}) before it took place. The customer was refunded.",
             link="/business-dashboard", icon="⚠️",
         )
         return Response({"sale": sale.pk, "refunded": str(back)})
@@ -3571,7 +3716,7 @@ with
 - [ ] **Step 9: Run the tests**
 
 Run: `docker compose -p svc1 run --rm web python manage.py test ledger.tests.test_booking_refund_wiring ledger.tests.test_refund_wiring services bookings events disputes --noinput`
-Expected: PASS (10 new tests: 9 + 1 threaded; the existing suites unchanged).
+Expected: PASS (12 new tests: 9 + 3 threaded; the existing suites unchanged).
 
 - [ ] **Step 10: Commit**
 
@@ -3600,7 +3745,7 @@ git commit -m "feat(ledger): booking refunds wired into cancels, ticket refunds 
   lifetime cap counts sales and order snapshots together (`fees.charged_to_date`), read after the business's Pending is
   locked. Handed over = service marked done, guest checked in, a ticket scanned or the event's date passed; release only
   on Support's "matches" (`sales.record_verification`, `/api/ledger/bookings/`), with the 72-hour window counted from
-  hand-over. Tickets for a customer-organised event stay outside the ledger (MoMo only). With the ledger on a ticket's
+  hand-over (provisional until the owner confirms it: spec gate (lvii)). Tickets for a customer-organised event stay outside the ledger (MoMo only). With the ledger on a ticket's
   escrow flag follows its sale: a scan no longer releases it, the manual release and hold answer `409 ledger_on`.
   Refunds go to the wallet through `sales.refund` (one `BookingRefund` per sale and source; the refund that empties a
   sale cancels a booking not yet handed over), wired into the customer's stay cancel, Support's booking cancel, the
@@ -3649,8 +3794,9 @@ check-in) is settled in Plan 1b. The ledger records only product orders until th
 with
 
 ```markdown
-check-in) is settled in Plan 1b (§13 S4): the business marks the service done, the guest checks in, a ticket is scanned or
-the event's date passes; for bookings the 72-hour window runs from that hand-over.
+check-in) is settled in Plan 1b (§13 B4): the business marks the service done, the guest checks in, a ticket is scanned or
+the event's date passes. Plan 1b counts the 72 hours from that hand-over, not from purchase as §4.1 does for products;
+that reading is provisional until the owner confirms it (gate (lvii)).
 ```
 
 - [ ] **Step 3: The stage index** — (a) in the root `CLAUDE.md` replace
@@ -3681,7 +3827,7 @@ with
 - [ ] **Step 4: Commit**
 
 ```bash
-git add backend/CLAUDE.md CLAUDE.md docs
+git add backend/CLAUDE.md CLAUDE.md docs/IMPLEMENTATION_INSTRUCTIONS.md docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md
 git commit -m "docs(ledger): correctness core for booking sales; spec scope, hand-over and stage index (1b)" --trailer "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>" --trailer "Claude-Session: https://claude.ai/code/session_01HDHNosHkqu4Wwocp7a2c8j"
 ```
 
@@ -3703,8 +3849,8 @@ Expected: `No changes detected`.
 |---|---|---|
 | **1F** Frontend | Support's booking queue, the call and the cancel; `payment_method` and "payment processing" on the three pay screens; the accept screen's price error; the Accountant's ticket screen with the ledger on. | No screen ships in a backend plan; the API answers `ledger_off` / `insufficient_funds` / `wallet_not_accepted` for it to handle. |
 | **4** Vendor side and SMS | The business's sales list (bookings as well as orders), daily summary, statement export, fee card, texts on paid sales and releases. | Spec §6; planned separately. Booking rows and booking texts there build on this plan's `BookingSale` and `ledger.sales`. |
-| **7** Hubtel live | The booking finalizers on the webhook path with alerting (gate (lx)); a refund path for a booking paid twice (gate (lix)). | Needs credentials and regulatory clearance (§11 step 7). |
-| Owner decisions | A no-show rule, a cancellation policy, paid events organised by customers, whether a door scan releases without a call, the 72-hour window from hand-over, real services and events fee tiers. | Not decided; this plan's defaults are SA1–SA9 and gates (liv)–(lxv). |
+| **7** Hubtel live | The booking finalizers on the webhook path with alerting (gate (lx)); a refund path for a booking paid twice (gate (lix)); a Hubtel payment for a stay cancelled while its checkout was open (gate (lxvi)). | Needs credentials and regulatory clearance (§11 step 7). |
+| Owner decisions | A no-show rule, a cancellation policy, paid events organised by customers, whether a door scan releases without a call, the 72-hour window from hand-over, real services and events fee tiers. | Not decided; this plan's defaults are SA1–SA9 and gates (liv)–(lxvi). |
 
 ## Self-review
 
@@ -3728,12 +3874,12 @@ Expected: `No changes detected`.
 | §11 behind a switch; nothing moves real money | every task (`LEDGER_ENABLED`; simulated provider) |
 | Brief: cancellations | 8 (customer stay cancel, Support's cancel); service requests had none |
 | Brief: no-show only if the spec decides | not built (S14, gate (lv)) |
-| Brief: gate items for §13 | 1 (Step 7: (liv)–(lxv)) |
+| Brief: gate items for §13 | 1 (Step 7: (liv)–(lxvi)) |
 
 **Placeholder scan:** every code step carries complete code and every test step complete test code; edits quote the exact text they replace (or name the whole method or class replaced); no "TBD", "similar to" or undefined names.
 
 **Name consistency:** `BookingSale.SERVICE/STAY/TICKETS`, `label()`, `BookingRefund` (1, 2, 5–8); `sales.CATEGORY`, `SUBJECT`, `pay_key(session)`, `release_key(sale)`, `refund_key(sale, source)`, `price_of`, `record_payment(session, kind, subject, business_owner, *, at=None)` (2, 3, 5, 7); `sales.MATCHES/DOES_NOT_MATCH/UNREACHABLE`, `NOT_HANDED_OVER`, `tickets_of`, `handed_over_at`, `customer_confirmed`, `has_open_dispute`, `lock`, `release`, `record_verification(sale, staff, outcome, *, note, customer_confirmed_by_phone, now)` (5–8); `sales.description`, `awaiting(now=None)`, `queue_row(sale, now, hours)` (6, 7); `sales.refund(sale, amount_pesewas=None, *, source, by, refund_processing, note, now)`, `_processing_share`, `_cancel_if_not_handed_over` (7, 8); `sales.CancelError`, `ALREADY_HANDED_OVER`, `cancel(sale, staff, reason, now=None)`, `TicketRefundError`, `refund_ticket(sale, ticket_id, *, by, reason, now=None)` (8); `booking_pay.MOMO/WALLET`, `pay(*, kind, amount, purpose, customer, metadata, method, in_ledger)`, `with_terms(body, processing, *, method, in_ledger)`, `redirect_body(result, processing, *, in_ledger)` (3, 4), `WALLET_OFF`, `WALLET_TOO_LOW`, `Refused`, `method_from`, `too_low` (4); `payments.services.WALLET_KINDS` (4); `services.views.clean_price`, `PRICE_HINT` (3); `events.views._ledger_sale`, `LEDGER_RELEASES` (5, 8); `views_bookings.VERIFY`, `SUPPORT`, `ledger_off`, `Pagination`, `AwaitingBookingsView`, `BookingVerificationView`, `BookingCancelView` (6, 8); `wallets.reconciliation.BOOKING_KINDS` (3); test helpers `BookingBase`, `fund` and their methods (2–8). From earlier stages: `posting.lock/post/account_for/balance_of/InsufficientFunds/PostingError`, `fees.quote/rule_set_in_force/charged_to_date`, `settings_store.current`, `escrow.enabled/record_order_payment`, `refunds.RefundError/fee_share`, `verification.VerificationError`, `process_payment(..., processing_fee=, wallet=)`, `get_provider().collection_charge`.
 
-**Test counts:** Task 1 — 4 (`test_booking_models`); Task 2 — 10 (`test_booking_payment`: 9 + 1 threaded); Task 3 — 10 (`test_booking_wiring`: 7 + 2 + 1); Task 4 — 7 (`test_booking_wallet`); Task 5 — 8 (`test_booking_release`); Task 6 — 5 (`test_booking_verification_api`); Task 7 — 10 (`test_booking_refunds`); Task 8 — 10 (`test_booking_refund_wiring`: 9 + 1 threaded). 64 new tests in all.
+**Test counts:** Task 1 — 4 (`test_booking_models`); Task 2 — 10 (`test_booking_payment`: 9 + 1 threaded); Task 3 — 10 (`test_booking_wiring`: 7 + 2 + 1); Task 4 — 7 (`test_booking_wallet`); Task 5 — 8 (`test_booking_release`); Task 6 — 5 (`test_booking_verification_api`); Task 7 — 11 (`test_booking_refunds`); Task 8 — 12 (`test_booking_refund_wiring`: 9 + 3 threaded). 67 new tests in all.
 
 **Review Focus pins:** each of the eight lines above names the task and the test that pins it; all of those tests are written out in their tasks.
