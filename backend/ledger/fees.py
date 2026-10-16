@@ -2,7 +2,7 @@
 rule set in force and a vendor's fees charged so far (for the lifetime cap)."""
 from dataclasses import dataclass
 
-from django.db.models import Sum
+from django.db.models import F, Sum
 from django.utils import timezone
 
 from .models import FeeRuleSet, OrderFeeSnapshot
@@ -52,7 +52,11 @@ def quote(category, base, *, cap, already_charged, at=None):
 
 
 def charged_to_date(owner):
-    total = OrderFeeSnapshot.objects.filter(business_owner=owner, reversed_at__isnull=True).aggregate(total=Sum("charged_pesewas"))["total"]
+    """Fees charged to `owner` so far, for the lifetime cap: every snapshot not fully reversed, less the part of its
+    fee a refund gave back (ledger.refunds)."""
+    total = OrderFeeSnapshot.objects.filter(business_owner=owner, reversed_at__isnull=True).aggregate(
+        total=Sum(F("charged_pesewas") - F("refunded_fee_pesewas"))
+    )["total"]
     return total or 0
 
 
