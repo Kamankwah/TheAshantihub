@@ -401,6 +401,13 @@ Found while writing the Stage 3 plans (`docs/superpowers/plans/2026-10-16-wallet
   already refunded through a skipped-stop case. And `refunds.check` / `refund_apply` do not refuse lines whose stop is
   now COLLECTED or whose order has since been delivered, so a refund approved after a re-dispatch can pay for goods the
   customer received. Make both consult the stop and delivery state before the ledger is turned on.
+- (xxiii) **`_cancel_if_not_handed_over` (whole refund via dispute / delivery approval) does not withdraw a live rider
+  assignment as Support's `_cancel` does:** an ASSIGNED/ACCEPTED/AT_PICKUP rider job and its dispatch offers stay live and,
+  because rider `deliver`/`legacy_deliver` lock only the assignment and check no order status, the goods can still go out
+  against a cancelled, refunded order (also a small race where a delivery commits between the refund's read and its
+  commit; Support cancel has the same pre-existing exposure). Before the ledger is on: withdraw not-yet-picked-up
+  assignments and expire open offers in the helper, and make rider delivery steps refuse a CANCELLED order (decide what
+  to do for an order already in transit).
 - (xxi) **Assumptions for owner confirmation are A1-A11 in the 3a plan:** collection charge 0 on simulated rails, no
   wallet cap, no split payment, the partial-refund and processing-charge policy, immediate refund on cancel, and the
   24-hour pickup-expiry job. As item (viii) says, that job refunds every ledger-recorded store pickup (vendor-shop
