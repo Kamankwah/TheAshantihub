@@ -174,6 +174,15 @@ class DecideView(APIView):
                 return Response({"detail": "This case has already been decided.", "code": "already_decided"}, status=409)
             if amount is not None and (amount <= 0 or (d.order_id and amount > d.order.total_amount)):
                 return Response({"detail": "The refund must be more than 0 and no more than the order total.", "field": "refund_amount"}, status=400)
+            if amount is not None and d.order_id:
+                # With the ledger on, refuse now what the Super Admin's approval could never pay: the case is final after this.
+                from ledger import refunds
+                from ledger.money import to_pesewas
+
+                try:
+                    refunds.check(d.order, to_pesewas(amount), owner_ids=refunds.scope_for_dispute(d))
+                except refunds.RefundError as exc:
+                    return Response({"detail": exc.message, "field": "refund_amount"}, status=400)
             d.status = Dispute.RESOLVED
             d.outcome, d.fault, d.resolution_notes = outcome, fault, note[:2000]
             d.refund_amount, d.resolved_by, d.decided_at = amount, request.user, timezone.now()

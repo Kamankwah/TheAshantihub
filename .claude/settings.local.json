@@ -5,6 +5,7 @@
       "Bash(npm install *)",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
+      "Bash(git push:*)",
       "mcp__claude_ai_Vercel__deploy_to_vercel",
       "mcp__claude_ai_Vercel__list_teams",
       "mcp__claude_ai_Vercel__get_project",
@@ -48,6 +49,11 @@
     ]
   },
   "enabledMcpjsonServers": [],
+  "disabledMcpjsonServers": [
+    "magic",
+    "postgres",
+    "semgrep"
+  ],
   "enabledPlugins": {
     "code-review@claude-plugins-official": true,
     "superpowers@claude-plugins-official": true,
@@ -55,9 +61,5 @@
     "skill-creator@claude-plugins-official": false,
     "figma@claude-plugins-official": false
   },
-  "disabledMcpjsonServers": [
-    "magic",
-    "postgres",
-    "semgrep"
-  ]
+  "prefersReducedMotion": false
 }

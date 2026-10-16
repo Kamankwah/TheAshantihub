@@ -44,6 +44,7 @@ def waiting_orders():
     return (
         Order.objects.filter(status=Order.PAID, delivery_method=Order.DOOR_TO_DOOR)
         .exclude(delivery_status=Order.DELIVERED)
+        .exclude(refunds__whole=True)  # a wholly refunded order must never be sent out (ledger.refunds.is_wholly_refunded)
         .filter(Q(delivery_assignment__isnull=True) | Q(delivery_assignment__status=DeliveryAssignment.FAILED))
         .select_related("customer", "delivery_assignment")
         .prefetch_related("items__listing__business_owner__profile", "items__listing__category",

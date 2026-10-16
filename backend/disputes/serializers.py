@@ -52,6 +52,8 @@ class DisputeResolveSerializer(serializers.Serializer):
         max_digits=10, decimal_places=2, required=False, allow_null=True, default=None
     )
     resolution_notes = serializers.CharField(required=False, allow_blank=True, default="")
+    # With the ledger on: also give back the payment-processing charge, because AshantiHub or the business was at fault.
+    refund_processing = serializers.BooleanField(required=False, default=False)
 
 
 class DisputeEvidenceSerializer(serializers.ModelSerializer):

@@ -313,17 +313,50 @@ def refund_current_state(request):
 
 
 def refund_apply(request):
-    """Records that a refund was asked for. No money moves: payments are simulated until a payment provider is connected."""
+    """Records the approved refund. With the ledger on, the money goes back to the customer's AshantiHub wallet
+    (ledger.refunds, source dispute-<id>: the same source dispute resolution uses, so never twice); a skipped shop's case
+    refunds that shop's lines only, and the payment-processing charge too when the rider or the business was at fault.
+    A refund the ledger cannot give raises ApprovalError, so the request stays pending. With the ledger off nothing
+    moves: payments are simulated until a payment provider is connected."""
     from activity.services import record
+    from disputes.models import Dispute
+    from ledger import refunds
+    from ledger.money import from_pesewas, to_pesewas
 
-    record(request.decided_by or request.maker, "delivery.refund_request_decided", target_type="disputes.dispute", target_id=str(request.payload.get("dispute_id")),
-           summary=f"Refund of GH₵ {request.payload.get('amount')} for case #{request.payload.get('dispute_id')} approved (recorded only; payments are simulated)")
+    decider = request.decided_by or request.maker
+    dispute_id, amount = request.payload.get("dispute_id"), request.payload.get("amount")
+    dispute = Dispute.objects.select_related("order").filter(pk=dispute_id).first()
+    refund = None
+    if dispute is not None and dispute.order_id:
+        try:
+            refund = refunds.refund_order(
+                dispute.order, to_pesewas(amount), source=f"dispute-{dispute.pk}", by=decider,
+                owner_ids=refunds.scope_for_dispute(dispute), refund_processing=dispute.fault in ("rider", "business"),
+                note=f"Delivery case #{dispute.pk}",
+            )
+        except refunds.RefundError as exc:
+            raise ApprovalError(exc.message) from exc
+    if refund is not None:
+        summary = (f"Refund of GH₵ {from_pesewas(refund.amount_pesewas + refund.processing_pesewas)} for case #{dispute_id} approved "
+                   "and returned to the customer's AshantiHub wallet")
+    else:
+        summary = f"Refund of GH₵ {amount} for case #{dispute_id} approved (recorded only; payments are simulated)"
+    # Last: record() holds the activity chain lock until commit.
+    record(decider, "delivery.refund_request_decided", target_type="disputes.dispute", target_id=str(dispute_id), summary=summary)
+
+
+def refund_consequences(request):
+    from ledger import escrow
+
+    if escrow.enabled():
+        return ["Approving returns the amount to the customer's AshantiHub wallet at once. Payments are simulated until a payment provider is connected."]
+    return ["Approving records the decision. No money moves: payments are simulated until a payment provider is connected."]
 
 
 REFUND_KIND = ApprovalKind(
     key=REFUND, label="Refund asked for a delivery case", pool_permission="", current_state=refund_current_state, apply=refund_apply, response_hours=48,
     resolve_approver=lambda request: [(ApprovalRequest.SUPER_ADMIN, None)], chain_note="Super Admin only", requires_sudo=True,
-    consequences=lambda request: ["Approving records the decision. No money moves: payments are simulated until a payment provider is connected."],
+    consequences=refund_consequences,
     render_diff=lambda request: [{"field": "Refund (GH₵)", "before": None, "after": str(request.payload.get("amount"))}],
 )
 

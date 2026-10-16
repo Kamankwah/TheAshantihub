@@ -49,12 +49,12 @@ def individual_grant_refusal(role_name, codenames):
     return None
 
 GROUPS = [
-    ("People and access", ("staff.", "leave.", "calendar.", "activity.", "roles.")),
+    ("People and access", ("staff.", "leave.", "calendar.", "activity.", "roles.", "otp.")),
     ("Approvals and reports", ("approvals.", "reports.")),
     ("Businesses and listings", ("kyc.", "listings.", "businesses.", "portfolio.", "fraud.", "scouts.", "users.", "zones.", "categories.")),
     ("Content and moderation", ("reviews.", "event.", "hero_media.", "site_settings.", "promotions.", "analytics.")),
-    ("Orders, delivery and support", ("orders.", "delivery.", "calls.", "support.", "service_issues.", "messaging.", "contact_messages.", "disputes.")),
-    ("Money", ("escrow.", "transactions.", "commission.", "subscription_plans.", "event_pricing.", "credit.", "targets.")),
+    ("Orders, delivery and support", ("orders.", "delivery.", "calls.", "support.", "service_issues.", "messaging.", "contact_messages.", "disputes.", "pickup.")),
+    ("Money", ("escrow.", "transactions.", "commission.", "subscription_plans.", "event_pricing.", "credit.", "targets.", "wallets.")),
 ]
 OTHER = "Other"
 

@@ -40,6 +40,7 @@ urlpatterns = [
         views.SubscriptionStartTrialView.as_view(),
         name="subscription-start-trial",
     ),
+    path("business-kind/", views.BusinessKindView.as_view(), name="business-kind"),
     path(
         "transactions/mine/",
         views.TransactionMineListCreateView.as_view(),

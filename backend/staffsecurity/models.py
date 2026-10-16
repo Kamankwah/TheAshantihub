@@ -57,6 +57,11 @@ class SecurityPolicy(models.Model):
     always needs 2-step sign-in whatever is stored here."""
 
     two_factor_roles = models.JSONField(default=list, blank=True)
+    # One-time codes (otp app, spec §9): a customer's trusted device skips the sign-in code for this many days after
+    # their last code, and everyone holding security.manage hears once a day when OTP texts reach the alert count.
+    # Defaults and limits: staffsecurity.policy.OTP_DEFAULTS / OTP_LIMITS.
+    otp_customer_gap_days = models.PositiveSmallIntegerField(default=30)
+    otp_sms_daily_alert = models.PositiveIntegerField(default=500)
     updated_at = models.DateTimeField(null=True, blank=True)
     updated_by = models.ForeignKey(StaffUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
 

@@ -19,6 +19,10 @@ from notifications.services import notify_business_owner, notify_customer, notif
 from activity.services import record as record_activity
 from realtime.publish import force_disconnect_on_commit
 
+from ledger import escrow
+from otp import flags as otp_flags
+from otp import signin as otp_signin
+from otp import step_up
 from staffsecurity import signin as signin_log
 from staffsecurity.models import StaffSignInRecord
 
@@ -124,6 +128,11 @@ class CustomerRegisterView(generics.CreateAPIView):
     def create(self, request, *args, **kwargs):
         response = super().create(request, *args, **kwargs)
         customer = Customer.objects.get(pk=response.data["id"])
+        if otp_flags.sign_up_enforced():
+            # The contact is confirmed before the account gets a token (spec §9): the token comes from
+            # POST /api/otp/sign-in/verify/ once the code is right.
+            response.data.update(otp_signin.code_challenge(customer, otp_signin.SIGN_UP))
+            return response
         response.data["token"] = issue_token(customer, "customer")
         return response
 
@@ -165,6 +174,9 @@ class BusinessOwnerRegisterView(generics.CreateAPIView):
     def create(self, request, *args, **kwargs):
         response = super().create(request, *args, **kwargs)
         owner = BusinessOwner.objects.get(pk=response.data["id"])
+        if otp_flags.sign_up_enforced():
+            response.data.update(otp_signin.code_challenge(owner, otp_signin.SIGN_UP))
+            return response
         response.data["token"] = issue_token(owner, "business_owner")
         return response
 
@@ -254,6 +266,9 @@ class CustomerLoginView(generics.GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         account = serializer.account
+        step = otp_signin.sign_in_step(account, _device_token(request))
+        if step is not None:
+            return otp_signin.step_response(step)
         return Response({
             "token": issue_token(account, "customer"),
             "account_type": "customer",
@@ -271,6 +286,9 @@ class BusinessOwnerLoginView(generics.GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         account = serializer.account
+        step = otp_signin.sign_in_step(account)
+        if step is not None:
+            return otp_signin.step_response(step)
         return Response({
             "token": issue_token(account, "business_owner"),
             "account_type": "business_owner",
@@ -350,6 +368,11 @@ def _text(value):
     return value if isinstance(value, str) else None
 
 
+def _device_token(request):
+    """The trusted-device token a customer's browser sends with the password (otp.devices), or ""."""
+    return _text(_body(request).get("device_token")) or ""
+
+
 def _email_after_commit(staff, change):
     transaction.on_commit(lambda: send_two_factor_changed_email(staff, change), robust=True)
 
@@ -376,6 +399,10 @@ class StaffLoginView(generics.GenericAPIView):
             return Response({"two_factor_required": True, "mfa_token": two_factor.make_challenge(account, stage)})
         if stage == two_factor.ENROL:
             return Response({"two_factor_setup_required": True, "mfa_token": two_factor.make_challenge(account, stage)})
+        # No authenticator stage: a texted or emailed code at every sign-in while OTP_SIGNIN_ENFORCED is on.
+        step = otp_signin.sign_in_step(account)
+        if step is not None:
+            return otp_signin.step_response(step)
         return Response(_staff_sign_in_response(account, request))
 
 
@@ -1282,6 +1309,12 @@ class PayoutDetailUpdateView(generics.UpdateAPIView):
     def get_object(self):
         return self.request.user.profile
 
+    def update(self, request, *args, **kwargs):
+        # Where a business is paid is a sensitive change (spec §9): a step-up code first, spent only if it saves.
+        with transaction.atomic():
+            step_up.require(request, step_up.PAYOUT_DESTINATION)
+            return super().update(request, *args, **kwargs)
+
 
 class BusinessOwnerProfileUpdateView(generics.RetrieveUpdateAPIView):
     serializer_class = BusinessOwnerProfileUpdateSerializer
@@ -1316,8 +1349,13 @@ class CustomerSecondaryEmailRequestView(generics.GenericAPIView):
 
     def post(self, request):
         serializer = self.get_serializer(data=request.data, context={"request": request})
-        serializer.is_valid(raise_exception=True)
-        customer = serializer.save()
+        with transaction.atomic():
+            # A verified recovery email becomes a way to receive sign-in codes (otp.identity.contacts): a step-up
+            # code first (spec §9), spent only if the change saves. While the ledger is on it is always asked (wallets
+            # 3b): otherwise a stolen session could add its own email as a code channel and confirm withdrawals with it.
+            step_up.require(request, step_up.CONTACT_CHANGE, force=escrow.enabled())
+            serializer.is_valid(raise_exception=True)
+            customer = serializer.save()
         send_verification_code_email(customer.secondary_email, customer.secondary_email_verify_code)
         return Response({
             "secondary_email": customer.secondary_email,
@@ -1342,8 +1380,11 @@ class CustomerSecondaryPhoneRequestView(generics.GenericAPIView):
 
     def post(self, request):
         serializer = self.get_serializer(data=request.data, context={"request": request})
-        serializer.is_valid(raise_exception=True)
-        customer = serializer.save()
+        with transaction.atomic():
+            # Always asked while the ledger is on, like the recovery email above (wallets 3b).
+            step_up.require(request, step_up.CONTACT_CHANGE, force=escrow.enabled())
+            serializer.is_valid(raise_exception=True)
+            customer = serializer.save()
         return Response({
             "secondary_phone": customer.secondary_phone,
             "demo_code": customer.secondary_phone_verify_code,

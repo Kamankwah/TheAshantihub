@@ -84,3 +84,18 @@ Phase 2-4: real-time+AI, credit scoring v2, DevOps hardening (docs/PROJECT_SCOPE
 | PWA staff dashboard | Frontend modernization's React 19 bump lands + Option A/B scoping decision (`docs/PWA_STAFF_DASHBOARD.md` §4) made with the user |
 | Mobile app | Separate repo created; Mobile Phase 1 can start immediately, Phase 2 waits on live Hubtel |
 | MCP servers going live | User supplies 21st.dev API key and (once provisioned) the Postgres connection string |
+
+## 6. Ledger plan stages
+
+Stage 1 (`docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md`, spec `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md`) is built. Later stages:
+
+| Plan | Scope |
+| --- | --- |
+| **1F** Frontend | Accounting fee/settings screens; Support "awaiting verification" screen; Pickup Desk dashboard and navigation; registration "business type" step replacing "pick a plan"; hide plan UI when the plans list is empty. Must ship before `SUBSCRIPTIONS_ENABLED` is turned off. |
+| **1b** | Ledger recording and release for services, events/tickets and bookings. |
+| **2** OTP and security | One OTP service, step-up tokens, trusted devices, customer and vendor 2FA. Must precede any wallet going live. Backend: docs/superpowers/plans/2026-10-16-otp-security.md, behind three switches that default off; the screens are Plan 2F. |
+| **3** Wallets and payments | Customer wallet, top-up, refunds, withdrawals, payout destinations, provider interface and simulated provider, reconciliation. Needs Plan 2. Backend: 3a docs/superpowers/plans/2026-10-16-wallets-payments-3a.md (provider interface, top-up, paying from the wallet, refunds) then 3b docs/superpowers/plans/2026-10-16-withdrawals-3b.md (payout destinations, withdrawals, reconciliation), both built, behind `LEDGER_ENABLED` (default off); the screens are Plan 3F. |
+| **4** Vendor dashboard and SMS | Statements, per-order SMS, digest, cap meter. |
+| **5** Third-party dispatch | `Rider` employment flag, rider wallet, 90/10 split on release, end-of-day commission job. |
+| **6** Offers and stock | Catalogue entries, offers, "other sellers", stock reservation upgrade, low-stock alerts. |
+| **7** Hubtel live switch | Credentials, webhook verification against sandbox, regulatory clearance. |

@@ -117,9 +117,12 @@ INSTALLED_APPS = [
     "marketplace",
     "people",
     "commission",
+    "ledger",
     "marketing",
     "insights",
     "staffsecurity",
+    "otp",
+    "wallets",
     "announcements",
     "realtime",
     "delivery",
@@ -184,7 +187,8 @@ MEDIA_ROOT = BASE_DIR / "media"
 CORS_ALLOW_ALL_ORIGINS = env.bool("DJANGO_CORS_ALLOW_ALL_ORIGINS", default=True)
 CORS_ALLOWED_ORIGINS = env.list("DJANGO_CORS_ALLOWED_ORIGINS", default=[])
 # The Super Admin's step-in sends two extra headers (accounts/view_as.py).
-CORS_ALLOW_HEADERS = (*cors_default_headers, "x-view-as", "x-view-as-screen")
+# X-Step-Up-Token carries a one-time step-up permission (otp/step_up.py).
+CORS_ALLOW_HEADERS = (*cors_default_headers, "x-view-as", "x-view-as-screen", "x-step-up-token")
 
 # Email — defaults to Django's console backend so nothing breaks locally
 # without SMTP configured; set EMAIL_BACKEND (and the SMTP vars below) in
@@ -309,6 +313,16 @@ OWNER_TERMS_VERSION = "September 2026"
 # planned in-app wallet) can renew automatically.
 SUBSCRIPTION_PAUSE_ENABLED = env.bool("SUBSCRIPTION_PAUSE_ENABLED", default=False)
 
+# The ledger (docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md). Off by default: with it off
+# no journal is posted and no fee is snapshotted, so payments behave exactly as before. Turn it on per
+# environment once staging has been checked. Read at call time through ledger.escrow.enabled().
+LEDGER_ENABLED = env.bool("LEDGER_ENABLED", default=False)
+
+# Subscriptions as a product. On (default) = today's behaviour. Off = plans are hidden, nothing can be bought or
+# renewed, the billing clock stops, and listing creation no longer needs a plan. Keep it ON until the frontend
+# registration change (Plan 1F) ships, because registration still asks for a plan. See billing/switch.py.
+SUBSCRIPTIONS_ENABLED = env.bool("SUBSCRIPTIONS_ENABLED", default=True)
+
 # Checkout promotions (marketing flash sales and coupons). Off by default (owner
 # decision, 2026-10-13): staff can draft, edit and schedule both in the Marketing
 # dashboard, but checkout prices, totals, stock and orders are exactly what they were
@@ -330,6 +344,17 @@ HUBTEL_MERCHANT_ACCOUNT = env("HUBTEL_MERCHANT_ACCOUNT", default="")
 HUBTEL_WEBHOOK_SECRET = env("HUBTEL_WEBHOOK_SECRET", default="")
 HUBTEL_CALLBACK_URL = env("HUBTEL_CALLBACK_URL", default="")
 PAYMENTS_PROVIDER = "hubtel" if HUBTEL_CLIENT_ID else "simulated"
+
+# Payment provider knobs (payments/providers.py, wallets plan 3a). The simulated provider moves no money. Its charges
+# default to 0 because no real rate is known (the UI must not show a made-up number); staging or tests may set them
+# to see the "payment processing" and withdrawal-charge lines. SIMULATED_PAYOUT_OUTCOME is succeed (default), fail or
+# pending. SIMULATED_ACCOUNT_NAMES is for tests only: {account number: the name the simulated network answers}.
+# HUBTEL_COLLECTION_CHARGE_BP is Hubtel's contracted collection rate in basis points (Plan 7); 0 until it is known.
+SIMULATED_COLLECTION_CHARGE_BP = env.int("SIMULATED_COLLECTION_CHARGE_BP", default=0)
+SIMULATED_PAYOUT_CHARGE_PESEWAS = env.int("SIMULATED_PAYOUT_CHARGE_PESEWAS", default=0)
+SIMULATED_PAYOUT_OUTCOME = env("SIMULATED_PAYOUT_OUTCOME", default="succeed")
+SIMULATED_ACCOUNT_NAMES = {}
+HUBTEL_COLLECTION_CHARGE_BP = env.int("HUBTEL_COLLECTION_CHARGE_BP", default=0)
 
 # Road routing (docs/superpowers/specs/2026-10-13-delivery-routing-dispatch-design.md). Blank OSRM_URL means
 # routing is off and every distance is the labelled straight-line estimate.
@@ -373,6 +398,10 @@ REST_FRAMEWORK = {
         "staff_activate_opened": "30/min",
         "login": "5/min",
         "two_factor": "10/min",
+        # One-time codes (otp app): a per-process burst guard. The real hourly limits per phone/email, account
+        # and IP are counted from otp.OtpEvent rows so they hold across server processes (otp/service.py).
+        "otp_send": "5/min",
+        "otp_verify": "10/min",
         "password_reset_request": "5/min",
         # Public claim page and the scout's hand-over (preview + claim).
         "owner_claim": "10/min",
@@ -397,6 +426,9 @@ REST_FRAMEWORK = {
         # Marketing banner view/click beacons: public, count-only. Generous because many
         # phones share one mobile-carrier address; repeats are also de-duplicated per banner.
         "banner_beacon": "240/min",
+        # Adding a wallet payout destination (wallets.views_payouts.DestinationsView, POST only): each add asks the
+        # payment provider for the name on an account.
+        "wallet_destination": "20/hour",
     },
 }
 
@@ -551,6 +583,22 @@ CELERY_BEAT_SCHEDULE = {
         "task": "delivery.tasks.purge_old_pings",
         "schedule": crontab(hour=3, minute=50),
     },
+    "otp-purge-old-rows": {
+        "task": "otp.tasks.purge_old_otp_rows",
+        "schedule": crontab(hour=3, minute=55),
+    },
+    "ledger-refund-uncollected-pickups": {
+        "task": "ledger.tasks.refund_uncollected_pickups",
+        "schedule": crontab(minute=25),  # hourly, at twenty-five past: a no-op while the ledger is off
+    },
+    "wallets-poll-withdrawals": {
+        "task": "wallets.tasks.poll_withdrawals",
+        "schedule": 300.0,  # every 5 minutes: a no-op while the ledger is off
+    },
+    "wallets-reconcile": {
+        "task": "wallets.tasks.reconcile_yesterday",
+        "schedule": crontab(hour=2, minute=30),  # the day before; read-only; a no-op while the ledger is off
+    },
 }
 
 # Production sets this True so the nightly activity check emails its seal to
@@ -564,3 +612,15 @@ PRIVATE_MEDIA_ROOT = BASE_DIR / "private"
 # Charge the delivery fee at checkout from the live rate card (delivery.RateCard). Off until the owner
 # decides: with it off, checkout is exactly as before and nothing is added to an order's total.
 DELIVERY_FEE_ENABLED = env.bool("DELIVERY_FEE_ENABLED", default=False)
+
+# One-time codes and 2-step sign-in for everyone (otp app; spec §9, plan docs/superpowers/plans/2026-10-16-otp-security.md).
+# All three default OFF: with them off, sign-in, sign-up and every sensitive endpoint behave exactly as before. Turn
+# them on only after the frontend screens (Plan 2F) ship, and the sign-in ones only once OTP_SMS_PROVIDER=hubtel
+# really sends: on a simulated provider a phone-only account could never receive its code.
+OTP_SIGNIN_ENFORCED = env.bool("OTP_SIGNIN_ENFORCED", default=False)
+OTP_STEP_UP_ENFORCED = env.bool("OTP_STEP_UP_ENFORCED", default=False)
+OTP_SIGNUP_VERIFICATION_ENFORCED = env.bool("OTP_SIGNUP_VERIFICATION_ENFORCED", default=False)
+# How codes travel by text (otp/senders.py): "simulated" (default) sends nothing to anyone and keeps nothing;
+# "hubtel" sends through Hubtel SMS with the HUBTEL_SMS_* keys above and an Approved Sender ID. Under
+# `manage.py test` it is always "locmem", which keeps texts in otp.senders.sms_outbox (like Django's mail.outbox).
+OTP_SMS_PROVIDER = "locmem" if TESTING else env("OTP_SMS_PROVIDER", default="simulated")

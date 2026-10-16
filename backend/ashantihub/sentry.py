@@ -9,7 +9,17 @@ import re
 
 from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
 
-EXTRA_DENYLIST = ["password_confirm", "raw", "token", "claim_link"]
+EXTRA_DENYLIST = [
+    "password_confirm", "raw", "token", "claim_link",
+    # One-time codes (otp app): request bodies and the step-up header.
+    "code", "mfa_token", "recovery_code", "device_token", "step_up_token", "otpauth_uri",
+    "x-step-up-token", "x_step_up_token",
+    # ...and the local variables that hold them inside otp (frame vars): a message body with the live code
+    # (otp.senders), new recovery codes, the authenticator URI and a typed recovery code (otp.authenticator).
+    "body", "codes", "uri", "recovery", "normalised",
+    # Payout destinations (wallets): a whole MoMo or bank account number in a request body or a frame.
+    "account_number",
+]
 
 
 def event_scrubber():
