@@ -10,6 +10,7 @@ owner-scoped order isolation). No customer's name, phone or address appears here
 rows. Only product orders are in the ledger today; booking sales (Plan 1b) slot in as a second source of rows with kind
 "booking" (spec §13 (lxxii))."""
 from datetime import datetime, time, timedelta
+from decimal import Decimal
 
 from django.db.models import Count, F, Max, Q, Sum
 from django.db.models.functions import TruncDate
@@ -19,7 +20,8 @@ from django.utils.dateparse import parse_date
 from accounts.models import BusinessOwner
 from disputes.models import Dispute
 from ledger import fees, posting, settings_store, verification
-from ledger.models import Account, FulfilmentCheck, JournalLine, OrderFeeSnapshot
+from ledger import models as ledger_models
+from ledger.models import Account, FeeRuleSet, FulfilmentCheck, JournalLine, OrderFeeSnapshot
 from ledger.money import to_pesewas
 from marketing.models_waivers import WaivedFeeCharge
 from orders.models import Order, OrderItem
@@ -350,3 +352,72 @@ def statement(owner, first, last):
         ]))
     entries.sort(key=lambda entry: entry[:3])
     return [entry[3] for entry in entries]
+
+
+# --- the platform fees, for the business (Task 4) ------------------------------------------------------------------
+
+APPLIES_TO = {FeeRuleSet.PRODUCT: "Product orders", FeeRuleSet.SERVICE: "Services and stays", FeeRuleSet.EVENT: "Event tickets"}
+
+FEE_BASE = (
+    "Worked out per order or booking on your items' total after your own sale prices, never on delivery; a coupon AshantiHub gives "
+    "the customer does not change it. It is taken when the money is released to you, and stops once your lifetime cap, "
+    "if there is one, is reached."
+)
+
+
+def charged_categories():
+    """The fee categories the ledger charges now: product orders since Stage 1, and services (stays count as services)
+    and events once Plan 1b's booking sales exist. Plan 1b adds `ledger.models.BookingSale`; looking for it (instead of
+    hard-coding product only) keeps the fee page truthful whichever branch merges first. The one dependency this plan has
+    on Plan 1b (spec §13 (lxxii))."""
+    if hasattr(ledger_models, "BookingSale"):
+        return (FeeRuleSet.PRODUCT, FeeRuleSet.SERVICE, FeeRuleSet.EVENT)
+    return (FeeRuleSet.PRODUCT,)
+
+
+def band_row(band):
+    """One tier as the business reads it: GH₵ amounts, the percentage without trailing zeros ("1", "1.5")."""
+    if band.percent_bp is not None:
+        percent = format(Decimal(band.percent_bp) / 100, "f")
+        fee = f"{percent}%"
+    else:
+        percent, fee = None, f"GH₵ {money(band.flat_pesewas)} flat"
+    return {
+        "from": money(band.lower_pesewas), "to": money(band.upper_pesewas) if band.upper_pesewas is not None else None,
+        "percent": percent, "flat": money(band.flat_pesewas) if band.flat_pesewas is not None else None, "fee": fee,
+    }
+
+
+def fee_schedule(owner, now=None):
+    """The approved platform fees for each category: the tiers in force and since when, and the next approved change
+    with when it starts (§3.3: it applies only to orders paid after). A proposal still waiting for approval is never
+    shown. Plus how the fee is worked out and the business's lifetime cap."""
+    now = now or timezone.now()
+    categories = []
+    charged = charged_categories()
+    for category, label in FeeRuleSet.CATEGORY_CHOICES:
+        current = fees.rule_set_in_force(category, now)
+        upcoming = FeeRuleSet.objects.filter(category=category, effective_from__gt=now).order_by("effective_from", "id").first()
+        categories.append({
+            "category": category, "label": label, "applies_to": APPLIES_TO[category], "charged": category in charged,
+            "in_force_from": current.effective_from if current is not None else None,
+            "bands": [band_row(band) for band in current.bands.all()] if current is not None else [],
+            "next": (
+                {"from": upcoming.effective_from, "bands": [band_row(band) for band in upcoming.bands.all()]}
+                if upcoming is not None else None
+            ),
+        })
+    return {"categories": categories, "fee_base": FEE_BASE, "fee_cap": fee_cap(owner, now)}
+
+
+def fee_quote(owner, category, amount, now=None):
+    """The fee the business would pay on a sale of `amount` pesewas in `category` now, its lifetime cap counted (the
+    same ledger.fees.quote the payment uses). Raises fees.FeeError when no rules are in force."""
+    now = now or timezone.now()
+    quote = fees.quote(
+        category, amount, cap=settings_store.current("fee_cap_pesewas", now), already_charged=fees.charged_to_date(owner), at=now,
+    )
+    return {
+        "category": category, "amount": money(amount), "fee": money(quote.charged),
+        "you_receive": money(amount - quote.charged), "charged": category in charged_categories(),
+    }

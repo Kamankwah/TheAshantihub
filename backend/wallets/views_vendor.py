@@ -11,10 +11,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.views import IsBusinessOwner
-from ledger import escrow
+from ledger import escrow, fees
+from ledger.models import FeeRuleSet
 
 from . import vendor
-from .views import Pagination, ledger_off
+from .views import AmountError, Pagination, ledger_off, parse_amount
 
 SALE_STATUSES = ("all", *vendor.STATUSES)
 
@@ -100,3 +101,31 @@ class VendorStatementExportView(APIView):
         writer.writerow(vendor.STATEMENT_HEADER)
         writer.writerows(vendor.statement(request.user, first, last))
         return response
+
+
+class VendorFeesView(APIView):
+    """GET vendor/fees/ — the platform fees in force for each category (and the next approved change, with when it
+    starts; never a proposal still waiting), how the fee is worked out, and the business's lifetime cap.
+    ?amount=&category= (category defaults to product) adds `quote`: the fee on a sale of that amount now, cap counted;
+    null when no rules are in force."""
+
+    permission_classes = [IsBusinessOwner]
+
+    def get(self, request):
+        if not escrow.enabled():
+            return ledger_off()
+        body = vendor.fee_schedule(request.user)
+        params = request.query_params
+        if params.get("amount") is not None or params.get("category") is not None:
+            category = params.get("category") or FeeRuleSet.PRODUCT
+            if category not in dict(FeeRuleSet.CATEGORY_CHOICES):
+                return Response({"category": "Choose product, service or event."}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                amount = parse_amount(params.get("amount"))
+            except AmountError as exc:
+                return Response({"amount": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                body["quote"] = vendor.fee_quote(request.user, category, amount)
+            except fees.FeeError:
+                body["quote"] = None
+        return Response(body)

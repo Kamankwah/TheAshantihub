@@ -11,6 +11,7 @@ urlpatterns = [
     path("vendor/sales/", views_vendor.VendorSalesView.as_view(), name="wallet-vendor-sales"),
     path("vendor/daily/", views_vendor.VendorDailyView.as_view(), name="wallet-vendor-daily"),
     path("vendor/statement/export/", views_vendor.VendorStatementExportView.as_view(), name="wallet-vendor-statement-export"),
+    path("vendor/fees/", views_vendor.VendorFeesView.as_view(), name="wallet-vendor-fees"),
     path("", views.WalletView.as_view(), name="wallet"),
     path("transactions/", views.TransactionsView.as_view(), name="wallet-transactions"),
     path("processing/", views.ProcessingView.as_view(), name="wallet-processing"),
