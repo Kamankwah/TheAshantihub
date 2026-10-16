@@ -529,3 +529,74 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
 - (lii) **Migrations 0003 and 0004 of `wallets` could be folded into one before any deploy** (nothing is deployed yet;
   the 0003 file is root-owned, so fold it with the right permissions).
 - (liii) **Parked:** the daily/per-withdrawal limit check can race with a concurrent proposal and ignores future-dated rows.
+
+### Stage 4 (vendor dashboard and texts, backend) reconciliation (2026-10-16)
+
+Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§0 there; its V1–V16):
+
+- **V1 Sections.** The vendor dashboard and texts are §6; §9 contributes its SMS-spend alert.
+- **V2 Where it lives.** `wallets/vendor.py` (read model), `wallets/vendor_texts.py` (text outbox), `/api/wallet/vendor/`;
+  `wallets.VendorText` and `wallets.VendorPreference`. Hooks: `orders.alerts` (paid) and `escrow.release_verified` (release).
+- **V3 Figures.** Sale rows from the business's own fee snapshots and owed promo; the daily summary from journal lines on
+  its own Pending and Available; balances from the accounts. Never today's fee rules.
+- **V4 Status.** `awaiting_call` (labelled waiting for delivery or collection, waiting for Support's call, or on hold while
+  a dispute is open or a delivery-case refund waits for approval), `released`, `refunded`; the export says Pending /
+  Available / Refunded and Withdrawn / in progress / Returned for withdrawals.
+- **V5-V6 Privacy and who sees fees.** No customer name, phone or address in any vendor row, summary, export or text; the
+  export has no free text. Fees are shown to business owners only (a customer, whatever their id, and staff get 403).
+- **V7-V9 Texts.** One per paid order and business, per release and business, per digest day; queued inside the money
+  transaction (never raises), sent after commit through `otp.senders`, leased, tried at most 5 times (retries after 5 min,
+  15 min, 1 h, 4 h), `no_phone` when the login phone is not a confirmed Ghana mobile (`otp.VerifiedContact`). Never an
+  `OtpEvent` (the code send limits count those); counted by the `otp.spend` alert, which now watches all SMS spend and
+  gives the code count and the business-text count separately. GSM-7 plain text with "GHS", at most 306 characters. No
+  throttle or quiet hours.
+- **V10 In-app copy.** The paid order's "New order" notice carries the fee and amount due; release and digest copies are
+  `vendor_money` notices. Kept when a text fails.
+- **V11 Digest.** Opt-in per business, 07:00 Accra for the day before, only when money moved.
+- **V12, V15 Not built.** No low-balance, negative-Available, refund or withdrawal text (the spec names none); no staff
+  outbox screen; booking sales (Plan 1b) not yet covered in rows and texts.
+- **V13 Fee transparency.** Approved tiers in force and the next approved change with its start (never a waiting
+  proposal), `charged` for products (and services and events once `ledger.BookingSale` exists), the fee base explained,
+  the cap used and left, a server quote.
+- **V14 Export.** A synchronous CSV of sales and withdrawals, at most 366 days, no free text.
+- **V16 Ledger off.** Every vendor endpoint answers `409 ledger_off`; nothing is texted; the digest job is a no-op.
+
+### Before LEDGER_ENABLED is turned on — Stage 4 additions
+
+- (lxvii) **Business texts need a real SMS provider.** They go through `otp.senders` (`OTP_SMS_PROVIDER`): with
+  `simulated` nothing is sent and the texts screen says "Not sent: texts are simulated"; the Hubtel SMS client is
+  unverified (the OTP gate items apply).
+- (lxviii) **Text cost and the spend alert.** Every paid order texts each business in it, and every release texts it
+  again (two texts per business per order, plus opted-in digests). The daily SMS-spend alert (`otp_sms_daily_alert`,
+  default 500) now counts these with the code texts; set it from the expected order volume. Nothing is ever blocked. The
+  alert fires once a day: on a day business texts reach the threshold first, a later surge of code requests raises no second
+  alert. Before switch-on, decide a separate code-only threshold (or a second alert) for §9's abuse signal. A two-part text
+  (a promo, or a release with a promo, up to 306 characters) counts as one text in the alert; count parts if cost matters.
+- (lxix) **Sender ID and content.** Hubtel needs an Approved Sender ID; confirm whether transactional texts need
+  template approval with the networks.
+- (lxx) **Owner question: texts on refunds, a negative Available, withdrawals, or a low balance.** The spec names none,
+  so none is sent (3b's in-app withdrawal notices stay).
+- (lxxi) **Businesses whose login phone is not a confirmed Ghana mobile get no texts** (`no_phone`, in-app copy kept, the
+  texts screen says why). A phone is confirmed when a code sent to it was accepted (`otp.VerifiedContact`), the rule Stage 2
+  sets for lock notices; registration neither normalises nor verifies phones, so a business that never signed in with a
+  code gets none. There is no staff list of them yet; Support should check before switch-on.
+- (lxxii) **Booking sales are not covered.** Once Plan 1b records bookings: add them as a second row source
+  (`kind: "booking"`) to `vendor.sale_groups` / `rows` / `statement`, their `booking_*` journal kinds to `vendor.FOLD`,
+  and booking paid / release texts to `vendor_texts`. (`vendor.charged_categories()` already marks services and events
+  charged as soon as `ledger.BookingSale` exists, so the fee page is truthful at once, ahead of the rows.) Until then a booking's
+  money is in Pending but not in the sale rows (Pending no longer equals the waiting rows) and lands in the daily
+  summary's `other` column. Do it before the ledger is on if Plan 1b ships.
+- (lxxiii) **Retention.** `VendorText` rows (amounts and order numbers only) are kept indefinitely; decide a purge beside
+  `otp.retention`.
+- (lxxiv) **Frontend (Plan 4F):** the overview with the cap meter, sales with filters, the daily summary, the export,
+  the fee page and the texts settings.
+- (lxxv) **At-least-once texts.** A worker that dies between the claim and the provider's answer leaves the text to be
+  tried again after 10 minutes; with a real provider the business may get it twice.
+- (lxxvi) **Owner question: a suspended business still gets money texts** (its money still moves).
+- (lxxvii) **Owner question: the digest loop has no cap or time budget.** `queue_digests` visits every opted-in business in
+  one run, one at a time; at a large number of opted-in businesses the 07:00 run could take long. Decide a batch size or
+  a time budget before switch-on.
+- (lxxviii) **A missed 07:00 run is not caught up.** The job digests "yesterday" only; if the worker or beat is down at
+  07:00 that day's digest is never sent (a manual `queue_digests(day)` can send it).
+- (lxxix) **Until Plan 1b merges, the fee page shows services and events as "not charged yet"** (`charged: false`); it
+  follows `ledger.BookingSale` on its own once that exists.

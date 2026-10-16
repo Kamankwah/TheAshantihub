@@ -2,13 +2,16 @@
 approved change, the cap, and a server-side quote. Review Focus 1 (customers and staff never see them)."""
 from datetime import timedelta
 
+from django.db import connection
 from django.test import override_settings
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework.test import APIClient
 
 from accounts.testing import make_staff, staff_token
 from ledger import models as ledger_models
+from wallets import vendor
 from ledger.models import FeeBand, FeeRuleSet, MoneySetting
 
 from .vendor_helpers import VendorBase, paid_order, signed_in
@@ -90,6 +93,45 @@ class FeeScheduleTests(VendorBase):
         self.assertEqual(signed_in(self.buyer, "customer").get(FEES).status_code, 403)
         self.assertEqual(signed_in(self.twin(), "customer").get(FEES, {"amount": "120"}).status_code, 403)
 
+    def test_the_cap_used_is_the_businesss_own(self):
+        MoneySetting.objects.create(key="fee_cap_pesewas", value=700, effective_from=timezone.now() - timedelta(days=1))
+        paid_order(self.buyer, [(self.esi.listing("120.00"), 1)])                            # Esi's 5.00, not Kofi's
+        twin = self.twin()
+        self.assertEqual(self.kofi.get(FEES).json()["fee_cap"], {"limit": "7.00", "used": "0.00", "remaining": "7.00"})
+        self.assertEqual(self.esi.get(FEES).json()["fee_cap"], {"limit": "7.00", "used": "5.00", "remaining": "2.00"})
+        self.assertEqual(signed_in(twin, "customer").get(FEES).status_code, 403)
+
+    def test_a_category_with_no_rules_in_force_has_no_tiers_and_no_quote(self):
+        FeeRuleSet.objects.filter(category=FeeRuleSet.SERVICE).delete()
+        body = self.kofi.get(FEES, {"amount": "100", "category": "service"}).json()
+        service = {c["category"]: c for c in body["categories"]}["service"]
+        self.assertEqual((service["in_force_from"], service["bands"], service["next"]), (None, [], None))
+        self.assertIsNone(body["quote"])
+
+    def test_a_version_starting_exactly_now_is_current_and_the_soonest_future_one_is_next(self):
+        now = timezone.now()
+        FeeRuleSet.objects.filter(category=FeeRuleSet.EVENT).delete()
+        for offset, bp in ((0, 200), (3, 300), (9, 900), (6, 600)):                          # created out of order
+            rules = FeeRuleSet.objects.create(category=FeeRuleSet.EVENT, effective_from=now + timedelta(days=offset))
+            FeeBand.objects.create(rule_set=rules, lower_pesewas=0, upper_pesewas=None, percent_bp=bp)
+        event = {c["category"]: c for c in vendor.fee_schedule(self.kofi.owner, now)["categories"]}["event"]
+        self.assertEqual(event["bands"][0]["percent"], "2")
+        self.assertEqual(event["in_force_from"], now)
+        self.assertEqual((event["next"]["from"], event["next"]["bands"][0]["percent"]), (now + timedelta(days=3), "3"))
+
+    def test_the_number_of_queries_does_not_grow_with_the_number_of_versions(self):
+        def add(days):
+            rules = FeeRuleSet.objects.create(category=FeeRuleSet.PRODUCT, effective_from=timezone.now() + timedelta(days=days))
+            FeeBand.objects.create(rule_set=rules, lower_pesewas=0, upper_pesewas=None, percent_bp=100 + days)
+
+        add(1)                                                                               # one change waiting: the baseline
+        self.kofi.get(FEES)                                                                  # warm caches
+        with CaptureQueriesContext(connection) as before:
+            self.kofi.get(FEES)
+        for days in range(2, 6):
+            add(days)
+        with self.assertNumQueries(len(before.captured_queries)):
+            self.kofi.get(FEES)
 
 @override_settings(LEDGER_ENABLED=True)
 class ChargedCategoriesTests(VendorBase):

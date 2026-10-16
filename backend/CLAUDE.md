@@ -269,6 +269,21 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
     the `otp.E001` system check. Texts go through `otp.senders` only (`locmem` under tests: read
     `otp.senders.sms_outbox`). Codes and device/step-up tokens are never stored or logged in clear; add any new
     secret field or local-variable name to `ashantihub/sentry.py`.
+- **A business's money and texts (`wallets/vendor.py`, `vendor_texts.py`, Stage 4).** `/api/wallet/vendor/*` is
+  business-owner only (a customer with the same id, or staff, gets 403: platform fees never reach a customer) and answers
+  `409 ledger_off` while the ledger is off. Read-only: sale rows come from the business's own `OrderFeeSnapshot`s (never
+  today's rules), the daily summary from journal lines on its own Pending and Available accounts (`vendor.FOLD`; any
+  other line lands in `other`, so the columns always add up to the balance change), and no row, export or text holds a
+  customer's name, phone or address. Texts to a business go through `wallets.VendorText`: `vendor_texts.queue` runs
+  inside the payment (`orders.alerts`) or the release (`escrow.release_verified`, after every posting), in a savepoint,
+  and never raises; the send happens after commit through `otp.senders`, claimed with a 10-minute lease, tried at most 5 times, and only to a login phone that is an `otp.VerifiedContact` (the Stage 2
+  lock-notice rule). The hand-off after commit is a lambda that logs its own errors (Django's robust `on_commit` formats
+  `func.__qualname__`, which a `functools.partial` lacks).
+  A business text is **never an `OtpEvent`** (those count toward the code send limits) but is counted by the
+  `otp.spend` alert. Bodies are GSM-7 plain text with "GHS" (never "GH₵"), at most 306 characters. `phone` is in
+  `ashantihub/sentry.py`'s denylist (the whole number is a local in `vendor_texts.deliver`). Only product orders are in the
+  rows and texts; booking sales slot in later (spec §13 (lxxii)), and `vendor.charged_categories()` already follows
+  `ledger.BookingSale`.
 
 ## Test-fixture gotcha
 

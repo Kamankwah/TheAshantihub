@@ -9,7 +9,7 @@ owner-scoped order isolation). No customer's name, phone or address appears here
 (GET /api/orders/owner/) already carries what fulfilment needs. Money is integer pesewas inside and GH₵ strings in the
 rows. Only product orders are in the ledger today; booking sales (Plan 1b) slot in as a second source of rows with kind
 "booking" (spec §13 (lxxii))."""
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 from django.db.models import Count, F, Max, Q, Sum
@@ -224,6 +224,9 @@ def account(owner, kind):
     return Account.objects.filter(kind=kind, owner_type=OWNER_TYPE, owner_id=str(owner.pk)).first()
 
 
+FIRST_DAY = date(2020, 1, 1)
+
+
 def date_range(params, *, default_days, max_days, today=None):
     """(first, last) Accra days, inclusive, from ?date_from=&date_to=: by default the last `default_days` days up to
     today; at most `max_days` days. Raises RangeError (a date outside 2020..2100 is refused by optional_dates, so the day
@@ -231,7 +234,7 @@ def date_range(params, *, default_days, max_days, today=None):
     today = today or timezone.localdate()
     date_from, date_to = optional_dates(params)
     date_to = date_to or today
-    date_from = date_from or date_to - timedelta(days=default_days - 1)
+    date_from = date_from or max(date_to - timedelta(days=default_days - 1), FIRST_DAY)  # no ledger row is older
     if date_from > date_to:
         raise RangeError("date_from", "The start date is after the end date.")
     if (date_to - date_from).days + 1 > max_days:

@@ -5,11 +5,16 @@ from decimal import Decimal
 from unittest import mock
 from zoneinfo import ZoneInfo
 
+from django.db import connection
 from django.test import override_settings
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from ledger import refunds
 from ledger.models import Account
+from accounts.testing import make_staff, staff_token
+from rest_framework.test import APIClient
+from ledger import posting
 from wallets import vendor
 
 from .helpers import fund
@@ -111,3 +116,45 @@ class DailySummaryTests(VendorBase):
         totals = self.kofi.get(DAILY).json()["totals"]
         self.assertEqual((totals["orders"], totals["sold"], totals["net_change"]), (1, "120.00", "120.00"))
         self.assertEqual(signed_in(twin, "customer").get(DAILY).status_code, 403)
+
+    def test_staff_get_403(self):
+        staff = APIClient()
+        staff.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(make_staff('support', 'daily@example.com'))}")
+        self.assertEqual(staff.get(DAILY).status_code, 403)
+
+    def test_the_number_of_queries_does_not_grow_with_the_number_of_days(self):
+        with at(datetime(2026, 10, 1, 12, 0, tzinfo=ACCRA)):
+            paid_order(self.buyer, [(self.kofi.listing("120.00"), 1)])
+        params = {"date_from": "2026-10-01", "date_to": "2026-10-16"}
+        self.kofi.get(DAILY, params)                                                             # warm caches (content types)
+        with CaptureQueriesContext(connection) as one_day:
+            self.assertEqual(len(self.kofi.get(DAILY, params).json()["days"]), 1)
+        for day in range(2, 7):
+            with at(datetime(2026, 10, day, 12, 0, tzinfo=ACCRA)):
+                paid_order(self.buyer, [(self.kofi.listing("120.00"), 1)])
+        with self.assertNumQueries(len(one_day.captured_queries)):
+            body = self.kofi.get(DAILY, params).json()
+        self.assertEqual(len(body["days"]), 6)
+
+    def test_a_returned_withdrawal_and_a_returned_promo_count_the_other_way(self):
+        owner = self.kofi.owner
+        fund(Account.VENDOR_AVAILABLE, owner, 30000, "fund-for-withdrawal")
+        fund(Account.PLATFORM_DELIVERY_INCOME, None, 1500, "fund-platform")
+        hold(owner, 20000, "hold-2")
+        posting.post(key="reverse-2", kind="withdrawal_reversed", lines=[
+            posting.debit(posting.account_for(Account.WITHDRAWAL_IN_TRANSIT), 5000),
+            posting.credit(posting.account_for(Account.VENDOR_AVAILABLE, owner), 5000),
+        ])
+        posting.post(key="promo-back", kind="order_waiver_return", lines=[
+            posting.debit(posting.account_for(Account.PLATFORM_DELIVERY_INCOME), 1500),
+            posting.credit(posting.account_for(Account.VENDOR_AVAILABLE, owner), 1500),
+        ])
+        totals = self.kofi.get(DAILY).json()["totals"]
+        self.assertEqual((totals["withdrawn"], totals["free_delivery_promo"], totals["other"]), ("150.00", "-15.00", "300.00"))
+        self.assertEqual(totals["net_change"], "165.00")
+
+    def test_an_end_date_of_the_first_day_of_2020_with_no_start_is_clamped_not_broken(self):
+        response = self.kofi.get(DAILY, {"date_to": "2020-01-01"})
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertEqual((body["from"], body["to"], body["days"]), ("2020-01-01", "2020-01-01", []))
