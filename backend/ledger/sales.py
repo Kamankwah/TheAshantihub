@@ -17,12 +17,13 @@ does, so a product payment and a booking payment for one business never both see
 from datetime import timedelta
 
 from django.db import transaction
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Exists, OuterRef, Q, Sum
 from django.utils import timezone
 
 from . import escrow, fees, posting, settings_store
-from .models import Account, BookingSale, FeeRuleSet, FulfilmentCheck, Journal
+from .models import Account, BookingRefund, BookingSale, FeeRuleSet, FulfilmentCheck, Journal
 from .money import from_pesewas, to_pesewas
+from .refunds import RefundError, fee_share
 from .verification import VerificationError
 
 # Spec §1 row 11: stays count as services; tickets use the events table, whatever category the listing or event is in.
@@ -316,3 +317,118 @@ def queue_row(sale, now, hours):
         "customer_confirmed": customer_confirmed(sale), "outcome": sale.outcome, "outcome_note": sale.outcome_note,
         "dispute_id": sale.dispute_id,
     }
+from django.db.models import Exists, OuterRef, Q, Sum
+from django.utils import timezone
+
+from . import escrow, fees, posting, settings_store
+from .models import Account, BookingRefund, BookingSale, FeeRuleSet, FulfilmentCheck, Journal
+from .money import from_pesewas, to_pesewas
+from .refunds import RefundError, fee_share
+from .verification import VerificationError
+
+
+# --- refunds, always to the customer's wallet (spec §2.2 steps 3-4, §5; Plan 1b S12) -------------------------------
+
+def _processing_share(sale, customer, whole):
+    """The payment-processing charge to give back with `customer` pesewas of the price: what is left of it on the refund
+    that empties the sale, else its share of the price, half up, never more than is left (3a W2)."""
+    paid = to_pesewas(sale.session.processing_fee or 0)
+    done = BookingRefund.objects.filter(sale=sale).aggregate(total=Sum("processing_pesewas"))["total"] or 0
+    remaining = paid - done
+    if remaining <= 0:
+        return 0
+    if whole:
+        return remaining
+    return min(remaining, (2 * paid * customer + sale.base_pesewas) // (2 * sale.base_pesewas))
+
+
+def _cancel_if_not_handed_over(sale, by, note, now):
+    """A booking refunded in full that never reached the customer is cancelled in the refund's own transaction, so it
+    can no longer be done, checked into or used (the customer would have the money and the booking): a service request
+    still accepted or in progress, a stay not yet checked in (its nights are freed). For tickets, every ticket of the
+    purchase not yet scanned is marked refunded. The caller holds lock(sale)."""
+    from accounts.models import StaffUser
+    from bookings.models import Booking
+    from services.models import ServiceRequest
+
+    if sale.kind == BookingSale.SERVICE:
+        ServiceRequest.objects.filter(
+            pk=sale.service_request_id, status__in=(ServiceRequest.ACCEPTED, ServiceRequest.IN_PROGRESS),
+        ).update(status=ServiceRequest.CANCELLED)
+    elif sale.kind == BookingSale.STAY:
+        Booking.objects.filter(pk=sale.booking_id, status__in=(Booking.PENDING, Booking.CONFIRMED)).update(
+            status=Booking.CANCELLED, cancelled_at=now,
+        )
+    else:
+        tickets_of(sale).filter(delivered_at__isnull=True, refunded_at__isnull=True).update(
+            refunded_at=now, refunded_by_staff=by if isinstance(by, StaffUser) else None,
+            refund_reason=(note or "Refunded with the purchase")[:500],
+        )
+
+
+def refund(sale, amount_pesewas=None, *, source, by=None, refund_processing=False, note="", now=None):
+    """Give `amount_pesewas` of a booking back to the customer's AshantiHub wallet (None: all that is left). Returns the
+    BookingRefund (the one already made when this source refunded before), or None while the ledger is off or when
+    nothing is left. Raises RefundError, writing nothing, for an amount it cannot give.
+
+    Before release the money comes out of the business's Pending (the fee on it is simply never charged); after release
+    it comes out of the business's Available, which may go negative (later sales recover it), and the platform fee
+    taken on it comes back in proportion (Dr platform fee income, Cr Available). The fee share is cumulative and half up
+    (refunds.fee_share), so parts add up exactly to the fee taken, and it frees the lifetime cap. The payment-processing
+    charge comes back only when staff say AshantiHub or the business was at fault (`refund_processing`): AshantiHub
+    bears it (Dr provider fees), its share on a partial refund. The refund that empties the sale ("whole") marks it
+    reversed and cancels a booking not yet handed over (_cancel_if_not_handed_over)."""
+    if not escrow.enabled():
+        return None
+    if not source or len(source) > 60 or len(refund_key(sale, source)) > 120:  # BookingRefund.source is 60, the key 120
+        raise ValueError(f"Bad refund source {source!r}")
+    if amount_pesewas is not None and (isinstance(amount_pesewas, bool) or not isinstance(amount_pesewas, int) or amount_pesewas <= 0):
+        raise RefundError("The refund must be more than GH₵ 0.00.")
+    now = now or timezone.now()
+    with transaction.atomic():
+        sale = lock(sale)
+        existing = BookingRefund.objects.filter(sale=sale, source=source).first()
+        if existing is not None:
+            return existing
+        room = sale.base_pesewas - sale.refunded_base_pesewas
+        if room <= 0:
+            if amount_pesewas is not None:
+                raise RefundError("Nothing is left to refund on this booking.")
+            return None
+        customer = room if amount_pesewas is None else amount_pesewas
+        if customer > room:
+            raise RefundError(f"Only GH₵ {from_pesewas(room)} of this booking can still be refunded.")
+        whole = customer == room
+        processing = _processing_share(sale, customer, whole) if refund_processing else 0
+        after = sale.refunded_base_pesewas + customer
+        fee_after = fee_share(sale, after)
+        fee = fee_after - sale.refunded_fee_pesewas
+        released = sale.released_at is not None
+        owner = sale.business_owner
+        lines = []
+        if released:
+            available = posting.account_for(Account.VENDOR_AVAILABLE, owner)
+            lines.append(posting.debit(available, customer))
+            if fee:
+                lines += [posting.debit(posting.account_for(Account.PLATFORM_FEE_INCOME), fee), posting.credit(available, fee)]
+        else:
+            lines.append(posting.debit(posting.account_for(Account.VENDOR_PENDING, owner), customer))
+        if processing:
+            lines.append(posting.debit(posting.account_for(Account.PROVIDER_FEES), processing))
+        lines.append(posting.credit(posting.account_for(Account.CUSTOMER_WALLET, sale.customer), customer + processing))
+        posting.lock(*(line.account for line in lines))
+        journal = posting.post(
+            key=refund_key(sale, source), kind="booking_refund", lines=lines,
+            reference_type="ledger.bookingsale", reference_id=str(sale.pk), memo=f"Refund for {sale.label()} ({source})",
+        )
+        sale.refunded_base_pesewas, sale.refunded_fee_pesewas = after, fee_after
+        if whole:
+            sale.reversed_at = now
+        sale.save(update_fields=["refunded_base_pesewas", "refunded_fee_pesewas", "reversed_at"])
+        given = BookingRefund.objects.create(
+            sale=sale, source=source, whole=whole, released=released, amount_pesewas=customer, fee_pesewas=fee,
+            processing_pesewas=processing, journal=journal, created_by=by, note=(note or "")[:300],
+        )
+        if whole:
+            _cancel_if_not_handed_over(sale, by, note, now)
+        return given
