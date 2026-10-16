@@ -584,6 +584,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "otp.tasks.purge_old_otp_rows",
         "schedule": crontab(hour=3, minute=55),
     },
+    "ledger-refund-uncollected-pickups": {
+        "task": "ledger.tasks.refund_uncollected_pickups",
+        "schedule": crontab(minute=25),  # hourly, at twenty-five past: a no-op while the ledger is off
+    },
 }
 
 # Production sets this True so the nightly activity check emails its seal to

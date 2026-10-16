@@ -1,6 +1,7 @@
 """Support's verification of a product order that has reached the customer, and the release it triggers. A positive
 result releases the money immediately; a negative one raises a dispute due within `verification_overdue_hours` of
 purchase and releases nothing; "could not reach" is only recorded (the order stays on Support's list)."""
+import logging
 from datetime import timedelta
 
 from django.db import transaction
@@ -10,6 +11,9 @@ from django.utils import timezone
 
 from . import escrow, settings_store
 from .models import Account, FulfilmentCheck, Journal, OrderFeeSnapshot
+from .money import from_pesewas
+
+logger = logging.getLogger(__name__)
 
 
 class VerificationError(Exception):
@@ -172,3 +176,60 @@ def pickup_queue(now=None):
         }
         for order in orders
     ]
+
+
+def expire_uncollected(now=None):
+    """Refund and cancel paid store-pickup orders nobody collected within `pickup_window_hours` of purchase (spec §4.3,
+    Stage 3): the whole order goes back to the customer's AshantiHub wallet (not the payment-processing charge: the
+    customer did not come), its stock back on the shelf, and the customer is told. Only orders whose payment the ledger
+    recorded (older ones stay on the desk's list for a person) and never one with an open dispute. The desk's collection
+    and `expire_one` both lock the order row, so a collected order is never refunded. One order the ledger refuses is
+    logged and skipped, so it never stops the others. Returns how many were refunded."""
+    from orders.models import Order
+
+    if not escrow.enabled():
+        return 0
+    now = now or timezone.now()
+    hours = settings_store.current("pickup_window_hours", now)
+    due = list(
+        Order.objects.filter(status=Order.PAID, delivery_method=Order.STORE_PICKUP, placed_at__lt=now - timedelta(hours=hours))
+        .exclude(fulfilment_check__collected_at__isnull=False).order_by("placed_at", "id").values_list("pk", flat=True)
+    )
+    done = 0
+    for pk in due:
+        try:
+            done += expire_one(pk, hours)
+        except Exception:  # one order the ledger refuses must not stop every later customer's refund
+            logger.exception("Uncollected-pickup refund failed for order %s", pk)
+    return done
+
+
+def expire_one(pk, hours):
+    """Refund, cancel and restock one uncollected pickup under its order row lock. Returns 1, or 0 when it no longer
+    qualifies (collected by the desk, disputed, not paid, or paid before the ledger was on)."""
+    from notifications.services import notify_customer
+    from orders.models import Order
+    from orders.support import return_stock
+
+    from . import refunds
+
+    with transaction.atomic():
+        order = Order.objects.select_for_update(of=("self",)).select_related("customer").get(pk=pk)
+        if order.status != Order.PAID or not Journal.objects.filter(key=escrow.pay_key(order)).exists():
+            return 0
+        if FulfilmentCheck.objects.filter(order=order, collected_at__isnull=False).exists() or escrow.has_open_dispute(order):
+            return 0
+        return_stock(order)
+        order.status = Order.CANCELLED
+        order.save(update_fields=["status"])
+        refund = refunds.refund_order(order, source="pickup_expired", note=f"Not collected within {hours} hours")
+        back = (
+            f" GH₵ {from_pesewas(refund.amount_pesewas)} went back to your AshantiHub wallet."
+            if refund is not None and refund.amount_pesewas > 0 else ""
+        )
+        notify_customer(
+            order.customer, "order_status", "Your order was not collected",
+            body=f"Order #{order.pk} was not collected within {hours} hours of purchase, so it was cancelled.{back}",
+            link="/my-account", icon="🧾",
+        )
+    return 1
