@@ -20,18 +20,26 @@ release that asked for it ("SMS failure never blocks payment (queued, retried)")
 import logging
 import string
 import time
+from dataclasses import dataclass
 from datetime import timedelta
 
 from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 
+from accounts.models import BusinessOwner
 from accounts.phones import mask_phone
+from ledger import escrow
+from ledger.models import Account, Journal, JournalLine, OrderFeeSnapshot
+from ledger.money import to_pesewas
+from marketing.models_waivers import WaivedFeeCharge
+from notifications.services import notify_business_owner
 from otp import senders, spend
 from otp.identity import contacts, ref
 from otp.models import SMS, VerifiedContact
 
 from .models import VendorText
+from .services import money
 
 logger = logging.getLogger(__name__)
 
@@ -172,3 +180,126 @@ def row(text):
         "status": text.status, "status_label": SIMULATED_LABEL if simulated else STATUS_LABELS[text.status],
         "to": text.to_hint, "created_at": text.created_at, "sent_at": text.sent_at,
     }
+
+
+# --- texts on a paid order and on release (Task 6) -----------------------------------------------------------------
+
+VENDOR_MONEY = "vendor_money"  # the in-app kind of a release or digest text's copy (Notification kinds are free slugs)
+OWNER_TYPE = BusinessOwner._meta.label_lower
+
+
+@dataclass(frozen=True)
+class Amounts:
+    """One business's share of a paid order, in pesewas: its item subtotal, the platform fee snapshotted on it, and the
+    free-delivery promo it owes for the order (taken from its Available at release)."""
+
+    subtotal: int
+    fee: int
+    promo: int
+
+    @property
+    def due(self):
+        return self.subtotal - self.fee - self.promo
+
+
+def paid_key(order, owner):
+    return f"paid-{order.pk}-{owner.pk}"
+
+
+def released_key(order, owner):
+    return f"released-{order.pk}-{owner.pk}"
+
+
+def paid_amounts(order):
+    """{business owner pk: Amounts} for an order whose payment the ledger has just recorded (its fee snapshots); {} when
+    it was not (ledger off, a GH₵ 0.00 order, one paid before the ledger was on). A business whose lines are worth
+    nothing is left out. Never raises: it runs inside the payment."""
+    if not escrow.enabled():
+        return {}  # ledger off: nothing new runs, not even a savepoint
+    try:
+        with transaction.atomic():
+            if not Journal.objects.filter(key=escrow.pay_key(order)).exists():
+                return {}
+            totals = {}
+            for snap in OrderFeeSnapshot.objects.filter(order=order).order_by("pk"):
+                base, fee = totals.get(snap.business_owner_id, (0, 0))
+                totals[snap.business_owner_id] = (base + snap.base_pesewas, fee + snap.charged_pesewas)
+            promos = {
+                charge.business_owner_id: to_pesewas(charge.amount)
+                for charge in WaivedFeeCharge.objects.filter(order=order, status=WaivedFeeCharge.OWED)
+            }
+    except Exception as exc:  # noqa: BLE001 - a text never stops a payment
+        logger.error("Paid-order texts not worked out: %s", type(exc).__name__)
+        return {}
+    return {pk: Amounts(base, fee, promos.get(pk, 0)) for pk, (base, fee) in totals.items() if base > 0}
+
+
+def _promo_part(promo):
+    return f", free-delivery promo GHS {money(promo)}" if promo else ""
+
+
+def paid_text(order, amounts):
+    """Spec §6: reference, item subtotal, platform fee, amount due."""
+    return (
+        f"AshantiHub: order #{order.pk} paid. Items GHS {money(amounts.subtotal)}, platform fee GHS {money(amounts.fee)}"
+        f"{_promo_part(amounts.promo)}, due to you GHS {money(amounts.due)} after hand-over and Support's check."
+    )
+
+
+def paid_line(amounts):
+    """The money line added to the in-app "New order" notice (the paid text's in-app copy)."""
+    return (
+        f"Platform fee GHS {money(amounts.fee)}{_promo_part(amounts.promo)}; due to you GHS {money(amounts.due)} once the "
+        "order is handed over and Support has checked it."
+    )
+
+
+def released_text(order, released, fee, promo):
+    """Spec §6 "second SMS on release": what reached Available, the fee taken, and a promo taken after."""
+    then = f" GHS {money(promo)} free-delivery promo was then taken from it." if promo else ""
+    return (
+        f"AshantiHub: order #{order.pk} released. GHS {money(released)} added to your Available balance after the "
+        f"GHS {money(fee)} platform fee.{then}"
+    )
+
+
+def order_released(order):
+    """The release text and its in-app copy for each business the release paid, worked out from the journals just
+    written: its Pending debit (the subtotal released), its Available credit (that less the fee) and a free-delivery
+    promo charged right after (ledger.escrow.charge_waiver). Called inside the release's transaction after every posting;
+    takes no lock and never raises. Returns how many texts were queued."""
+    try:
+        with transaction.atomic():
+            shares = {}
+            lines = JournalLine.objects.filter(
+                journal__key=escrow.release_key(order), account__owner_type=OWNER_TYPE,
+                account__kind__in=(Account.VENDOR_PENDING, Account.VENDOR_AVAILABLE),
+            ).select_related("account")
+            for line in lines:
+                share = shares.setdefault(int(line.account.owner_id), {"base": 0, "released": 0, "promo": 0})
+                if line.account.kind == Account.VENDOR_PENDING and line.side == JournalLine.DEBIT:
+                    share["base"] += line.amount
+                elif line.account.kind == Account.VENDOR_AVAILABLE and line.side == JournalLine.CREDIT:
+                    share["released"] += line.amount
+            promo_lines = JournalLine.objects.filter(
+                journal__key=escrow.waiver_key(order), side=JournalLine.DEBIT, account__owner_type=OWNER_TYPE,
+            ).select_related("account")
+            for line in promo_lines:
+                if int(line.account.owner_id) in shares:
+                    shares[int(line.account.owner_id)]["promo"] += line.amount
+            owners = BusinessOwner.objects.in_bulk(list(shares))
+    except Exception as exc:  # noqa: BLE001 - spec §6: a text never stops a release
+        logger.error("Release texts not worked out: %s", type(exc).__name__)
+        return 0
+    queued = 0
+    for pk in sorted(shares):
+        share, owner = shares[pk], owners.get(pk)
+        if owner is None or share["base"] <= 0:
+            continue
+        body = released_text(order, share["released"], share["base"] - share["released"], share["promo"])
+        notice = notify_business_owner(
+            owner, VENDOR_MONEY, f"Order #{order.pk} released", body=body, link="/business-dashboard", icon="💰",
+        )
+        if queue(owner, VendorText.ORDER_RELEASED, released_key(order, owner), body, order=order, notification=notice) is not None:
+            queued += 1
+    return queued
