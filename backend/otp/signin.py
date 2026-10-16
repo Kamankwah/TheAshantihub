@@ -5,6 +5,8 @@ shape in accounts/views.py, so the frontend can reuse that screen):
 * {"otp_required": true, "mfa_token": …, "channels": [{"channel", "hint"}, …]} — a code by text or email;
 * {"two_factor_required": true, "mfa_token": …} — the person's authenticator app (customers and business owners,
   otp.authenticator; staff keep accounts.two_factor and its own endpoints);
+* {"detail", "code": "no_channel"} (the login views answer it as a 409) — the account owes a code but has no phone
+  or email a code can reach, so no ticket is handed out;
 * None — sign in at once (always, while the switches are off).
 
 The mfa_token is a signed ticket: account, stage, purpose, a random nonce that binds the code to this attempt, and
@@ -97,7 +99,8 @@ def step_response(step):
 
 def sign_in_step(account, device_token=""):
     """The second step owed after a correct password, or None to sign in at once. Staff reach this only after
-    accounts.two_factor found no authenticator stage for them."""
+    accounts.two_factor found no authenticator stage for them. Answers the no_channel body (409 via step_response)
+    when a code is owed but contacts() is empty."""
     kind = account_type_of(account)
     if kind != STAFF and flags.sign_up_enforced() and not has_verified_contact(account):
         return _challenge_or_no_channel(account, SIGN_UP)

@@ -89,6 +89,19 @@ def _capture_marketing_consent(subject, choices, context):
     consent.capture_at_signup(subject, choices, request=context.get("request"))
 
 
+NO_CODE_CONTACT = "Enter a Ghana mobile number or an email so we can send you a code."
+
+
+def _require_usable_contact(unsaved_account, field):
+    """While sign-up verification is enforced, refuse (before anything is saved) an account that could never
+    receive its confirmation code. With the switch off this does nothing."""
+    from otp import flags as otp_flags  # lazy: otp imports accounts
+    from otp.identity import contacts
+
+    if otp_flags.sign_up_enforced() and not contacts(unsaved_account):
+        raise serializers.ValidationError({field: [NO_CODE_CONTACT]})
+
+
 class CustomerRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
     # {"sms": true, "email": true, ...} - the sign-up form's marketing boxes, each separate and unticked by default.
@@ -105,6 +118,7 @@ class CustomerRegistrationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "At least one of phone or email is required."
             )
+        _require_usable_contact(Customer(phone=phone or "", email=email or ""), "phone")
         return attrs
 
     def create(self, validated_data):
@@ -325,6 +339,12 @@ class BusinessOwnerRegistrationSerializer(serializers.ModelSerializer):
     class Meta:
         model = BusinessOwner
         fields = ["id", "full_name", "login_phone", "email", "password", "kyc_status", "marketing_consent"]
+
+    def validate(self, attrs):
+        _require_usable_contact(
+            BusinessOwner(login_phone=attrs.get("login_phone") or "", email=attrs.get("email") or ""), "login_phone"
+        )
+        return attrs
 
     def create(self, validated_data):
         password = validated_data.pop("password")

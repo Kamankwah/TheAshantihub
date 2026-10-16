@@ -246,7 +246,7 @@ class SignedInBodyTests(SignInApiBase):
         existing = self.login(kind, identifier).json()
         request = APIRequestFactory().post("/x/")
         body = signin.signed_in_body(account, request)
-        self.assertEqual(set(body), set(existing))
+        self.assertEqual(list(body), list(existing))
         for key in existing:
             if key != "token":
                 self.assertEqual(body[key], existing[key], key)
@@ -261,10 +261,67 @@ class SignedInBodyTests(SignInApiBase):
     def test_staff_records_the_same_history_as_the_existing_path(self):
         existing = self.login("staff", "esi@example.com").json()
         body = signin.signed_in_body(self.staff, APIRequestFactory().post("/x/"))
-        self.assertEqual(set(body), set(existing))
+        self.assertEqual(list(body), list(existing))
         for key in existing:
             if key != "token":
                 self.assertEqual(body[key], existing[key], key)
         self.assertEqual(StaffSignInRecord.objects.filter(kind=StaffSignInRecord.SIGNED_IN, staff=self.staff).count(), 2)
         self.assertEqual(ActivityEvent.objects.filter(verb="staff.signed_in").count(), 2)
         self.assertEqual(StaffSession.objects.filter(staff=self.staff).count(), 2)
+
+
+NO_CODE = "Enter a Ghana mobile number or an email so we can send you a code."
+
+
+class RegistrationWithoutContactTests(SignInApiBase):
+    def register_customer(self, **extra):
+        return self.client.post("/api/accounts/customers/register/", {"full_name": "Kojo", "password": PASSWORD, **extra}, format="json")
+
+    def register_owner(self, **extra):
+        return self.client.post("/api/accounts/business-owners/register/", {"full_name": "Yaw", "password": PASSWORD, **extra}, format="json")
+
+    @SIGN_UP_ON
+    def test_customer_with_only_a_foreign_phone_is_refused_and_nothing_is_created(self):
+        response = self.register_customer(phone="+447700900123")
+        self.assertEqual((response.status_code, response.json()), (400, {"phone": [NO_CODE]}))
+        self.assertFalse(Customer.objects.filter(full_name="Kojo").exists())
+        self.assertEqual(OtpChallenge.objects.count(), 0)
+
+    @SIGN_UP_ON
+    def test_customer_with_a_foreign_phone_and_an_email_gets_an_email_challenge(self):
+        response = self.register_customer(phone="+447700900123", email="kojo@example.com")
+        self.assertEqual(response.status_code, 201, response.content)
+        body = response.json()
+        self.assertNotIn("token", body)
+        self.assertEqual([c["channel"] for c in body["channels"]], ["email"])
+
+    @SIGN_UP_ON
+    def test_owner_with_only_a_foreign_phone_is_refused_and_nothing_is_created(self):
+        response = self.register_owner(login_phone="+447700900124")
+        self.assertEqual((response.status_code, response.json()), (400, {"login_phone": [NO_CODE]}))
+        self.assertFalse(BusinessOwner.objects.filter(full_name="Yaw").exists())
+
+    @SIGN_UP_ON
+    def test_owner_with_a_foreign_phone_and_an_email_gets_an_email_challenge(self):
+        response = self.register_owner(login_phone="+447700900124", email="yaw@example.com")
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual([c["channel"] for c in response.json()["channels"]], ["email"])
+
+    @SIGN_UP_ON
+    def test_a_ghana_mobile_without_an_email_still_registers(self):
+        self.assertEqual(self.register_customer(phone="0245550001").status_code, 201)
+        self.assertEqual(self.register_owner(login_phone="0207770001").status_code, 201)
+
+    @SIGN_UP_ON
+    def test_an_existing_foreign_customer_owing_the_sign_up_check_gets_no_channel(self):
+        Customer.objects.create(full_name="Old", phone="+447700900125", email="", password_hash=HASHED)
+        response = self.login("customer", "+447700900125")
+        self.assertEqual((response.status_code, response.json()["code"]), (409, "no_channel"))
+
+    def test_with_the_switch_off_the_same_registration_is_unchanged(self):
+        response = self.register_customer(phone="+447700900123")
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(set(response.json()), {"id", "full_name", "phone", "email", "token"})
+        owner = self.register_owner(login_phone="+447700900124")
+        self.assertEqual(owner.status_code, 201)
+        self.assertIn("token", owner.json())
