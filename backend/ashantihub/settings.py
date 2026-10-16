@@ -122,6 +122,7 @@ INSTALLED_APPS = [
     "insights",
     "staffsecurity",
     "otp",
+    "wallets",
     "announcements",
     "realtime",
     "delivery",

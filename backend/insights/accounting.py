@@ -67,6 +67,7 @@ COLLECTION_TYPES = [
     ("promotions", "Promotions and hero", (CheckoutSession.LISTING_PROMOTION, CheckoutSession.HERO_EXTEND)),
     ("event_fees", "Event listings", (CheckoutSession.EVENT_PAY, CheckoutSession.EVENT_RENEW)),
     ("tickets", "Tickets", (CheckoutSession.TICKET_PURCHASE,)),
+    ("topups", "Wallet top-ups", (CheckoutSession.WALLET_TOPUP,)),
 ]
 KIND_LABEL = {kind: label for _k, label, kinds in COLLECTION_TYPES for kind in kinds}
 KIND_TYPE = {kind: key for key, _l, kinds in COLLECTION_TYPES for kind in kinds}
@@ -88,7 +89,8 @@ def _payer(session):
 
 def _filtered(start, end, kind, status, query):
     low, high = sales.window(start, end)
-    base = CheckoutSession.objects.filter(created_at__gte=low, created_at__lt=high)
+    # Wallet-paid sessions moved no provider money (the top-up that funded the wallet is already counted).
+    base = CheckoutSession.objects.filter(created_at__gte=low, created_at__lt=high).exclude(provider=CheckoutSession.WALLET)
     if kind and kind != "all":
         wanted = next((kinds for key, _l, kinds in COLLECTION_TYPES if key == kind), ())
         base = base.filter(kind__in=wanted)

@@ -90,6 +90,14 @@ def _fail_order_checkout(session):
     session.save(update_fields=["metadata", "updated_at"])
 
 
+def _finalize_wallet_topup(session):
+    """A paid top-up credits the customer's wallet (wallets.services.record_top_up; idempotent on the reference, so a
+    retried webhook credits once)."""
+    from wallets.services import record_top_up
+
+    record_top_up(session)
+
+
 def _finalize_event_pay(session):
     from events.models import Event
 
@@ -302,6 +310,7 @@ FINALIZERS = {
     CheckoutSession.SUBSCRIPTION: _finalize_subscription,
     CheckoutSession.SERVICE_REQUEST: _finalize_service_request,
     CheckoutSession.BOOKING: _finalize_booking,
+    CheckoutSession.WALLET_TOPUP: _finalize_wallet_topup,
 }
 
 FAILURE_HANDLERS = {
@@ -352,6 +361,11 @@ def process_payment(*, kind, amount, purpose, business_owner=None, customer=None
         raise ValueError("process_payment requires exactly one of business_owner or customer")
     if wallet and (customer is None or kind != CheckoutSession.ORDER_CHECKOUT):
         raise ValueError("Only a customer's order can be paid from the wallet")
+    if wallet:
+        from ledger import escrow
+
+        if not escrow.enabled():
+            raise ValueError("The wallet cannot pay while the ledger is off")  # else the order would be PAID with nothing debited
 
     session = CheckoutSession.objects.create(
         business_owner=business_owner,
