@@ -17,7 +17,7 @@ from accounts.serializers import invite_state
 from accounts import sessions
 from notifications.services import notify_staff
 
-from . import files, fleet, payloads, services
+from . import employment, files, fleet, payloads, services
 from .models import DeliveryZone, Rider, RiderDocument, Vehicle, VehicleHandover, VEHICLE_TYPES
 
 PERMISSION = "delivery.fleet"
@@ -86,6 +86,25 @@ class RiderJobHoldView(FleetView):
         rider.job_hold_reason = str(request.data.get("reason", ""))[:300] if hold else ""
         rider.save(update_fields=["job_hold", "job_hold_reason"])
         return Response({"id": rider.pk, "job_hold": rider.job_hold, "job_hold_reason": rider.job_hold_reason})
+
+
+class RiderEmploymentView(FleetView):
+    """POST riders/<id>/employment/ {"employment": "ashantihub"|"third_party", "company_name", "note"} — propose who the
+    rider works for (wallets Plan 5). A Super Admin approves it with the password (their own change applies at once).
+    201 {approval_id, status, employment}; 409 no_change / already_pending / rider_money_open (+ open)."""
+
+    def post(self, request, pk):
+        rider = get_object_or_404(Rider.objects.select_related("staff"), pk=pk)
+        data = request.data if isinstance(request.data, dict) else {}
+        try:
+            approval = employment.propose(request.user, rider, data, note=data.get("note", ""), request=request)
+        except employment.EmploymentError as exc:
+            return Response(exc.body(), status=exc.status_code)
+        rider.refresh_from_db()
+        return Response(
+            {"approval_id": approval.pk, "status": approval.status, "employment": employment.row(rider)},
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class RiderReinstateView(FleetView):

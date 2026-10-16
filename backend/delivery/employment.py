@@ -1,0 +1,274 @@
+"""Who a rider works for (spec §1 rows 4-5, §2.2, §7; wallets Plan 5).
+
+AshantiHub's own rider (`Rider.ASHANTIHUB`, the default for every rider): no wallet, every delivery fee they carry is
+AshantiHub's income, and their pay stays with payroll (the rate card's `rider_pay` record). A third-party rider
+(`Rider.THIRD_PARTY`, from a rider company, not an AshantiHub employee): the delivery fee of each order they deliver from
+`third_party_since` on is paid into their wallet when the order's money is released (ledger.riders), less AshantiHub's
+commission.
+
+The flag decides whether a delivery fee becomes AshantiHub's income or a third party's withdrawable money, so it changes
+only through the `delivery.rider_employment` approval: a Delivery Manager (delivery.fleet) proposes, a Super Admin
+approves with the password (a Super Admin's own change applies at once). Switching a rider back to AshantiHub's own is
+refused while they still have money with AshantiHub, a withdrawal on its way, or a delivered order whose money Support has
+not released yet (`money_open`). That is checked when proposed, when approved, and again under the rider row's lock when
+applied; a release takes the same lock before paying a rider (ledger.riders.rider_for_release)."""
+from django.db.models import CharField, Exists, F, OuterRef, Q, Value
+from django.db.models.functions import Cast, Concat
+from django.utils import timezone
+
+from approvals import services as approvals
+from approvals.models import ApprovalRequest
+from approvals.registry import ApprovalKind
+from ledger.models import Journal
+from orders.models import DeliveryAssignment, Order
+
+from .models import Rider, RiderDocument
+
+KIND = "delivery.rider_employment"
+WALLET_DISABLED = "Wallets are for third-party riders. AshantiHub's own riders are paid through payroll."
+OPEN_LABELS = {
+    "balance": "money in their wallet (to withdraw, or owed after a refund)",
+    "reserve": "commission held until the end of the day",
+    "withdrawal": "a withdrawal on its way",
+    "deliveries": "delivered orders waiting for Support's call",
+}
+
+
+class EmploymentError(Exception):
+    def __init__(self, message, code, status_code=400, field=None, **extra):
+        super().__init__(message)
+        self.message, self.code, self.status_code, self.field, self.extra = message, code, status_code, field, extra
+
+    def body(self):
+        data = {"detail": self.message, "code": self.code, **self.extra}
+        if self.field:
+            data["field"] = self.field
+        return data
+
+
+def is_third_party(rider):
+    return rider is not None and rider.employment == Rider.THIRD_PARTY and rider.third_party_since is not None
+
+
+def wallet_rider(staff):
+    """The staff member's Rider when they are a third-party rider (their wallet is on), else None. The staff member must
+    still hold the Dispatch role: a re-roled ex-rider keeps a Rider row but no wallet (and no step-up codes)."""
+    if getattr(staff, "pk", None) is None:
+        return None
+    return Rider.objects.select_related("staff").filter(
+        staff_id=staff.pk, staff__role__name="dispatch", employment=Rider.THIRD_PARTY, third_party_since__isnull=False,
+    ).first()
+
+
+def id_verified(rider, today=None):
+    """An approved Ghana Card in date is on file (the Delivery Manager reviews riders' papers). The name on the rider's
+    staff account is then their verified name for payout destinations (wallets.names)."""
+    today = today or timezone.localdate()
+    return rider.documents.filter(kind=RiderDocument.GHANA_CARD, status=RiderDocument.APPROVED).filter(
+        Q(expires_on__isnull=True) | Q(expires_on__gte=today)
+    ).exists()
+
+
+def unreleased_deliveries(rider):
+    """Door-to-door orders this rider delivered as a third-party rider whose payment the ledger recorded and whose money
+    is not released yet (Support's call is still to come), and not refunded whole. None for AshantiHub's own riders."""
+    if not is_third_party(rider):
+        return DeliveryAssignment.objects.none()
+    jobs = (
+        DeliveryAssignment.objects.filter(
+            dispatch_id=rider.staff_id, delivered_at__gte=rider.third_party_since,
+            order__status=Order.PAID, order__delivery_method=Order.DOOR_TO_DOOR,
+        )
+        .exclude(status=DeliveryAssignment.FAILED).exclude(order__refunds__whole=True)
+        .annotate(
+            pay_key=Concat(Value("order-pay-"), Cast("order_id", CharField())),
+            release_key=Concat(Value("order-release-"), Cast("order_id", CharField())),
+        )
+    )
+    return jobs.filter(Exists(Journal.objects.filter(key=OuterRef("pay_key")))).exclude(
+        Exists(Journal.objects.filter(key=OuterRef("release_key")))
+    )
+
+
+def payroll_jobs(jobs):
+    """`jobs` (a DeliveryAssignment queryset) without the deliveries made as a third-party rider (delivered_at on or after
+    their Rider.third_party_since): those are paid into the rider's wallet at release, so a payroll figure that counted them
+    would let Accounting pay the same delivery twice. Used by the payroll screens (delivery.views_rules RiderEarnedView /
+    RiderEarningsLinesView) and the rider app's rider/earnings/ figures."""
+    return jobs.exclude(
+        dispatch__rider__third_party_since__isnull=False, delivered_at__gte=F("dispatch__rider__third_party_since"),
+    )
+
+
+def money_open(rider):
+    """What stops this rider's wallet closing now, as OPEN_LABELS keys in a fixed order ([] when nothing does)."""
+    from ledger import posting
+    from ledger.models import Account
+    from otp.identity import ref
+    from wallets.models import Withdrawal
+
+    staff, found = rider.staff, []
+    if posting.balance_of(Account.RIDER_BALANCE, staff) != 0:
+        found.append("balance")
+    if posting.balance_of(Account.RIDER_RESERVE, staff) != 0:
+        found.append("reserve")
+    holder_type, holder_id = ref(staff)
+    if Withdrawal.objects.filter(holder_type=holder_type, holder_id=holder_id, status__in=Withdrawal.OPEN).exists():
+        found.append("withdrawal")
+    if unreleased_deliveries(rider).exists():
+        found.append("deliveries")
+    return found
+
+
+def clean(data):
+    """(employment, company_name) from a request body or an approval payload. Raises EmploymentError (400)."""
+    employment = data.get("employment")
+    if employment not in (Rider.ASHANTIHUB, Rider.THIRD_PARTY):
+        raise EmploymentError("Choose AshantiHub's own rider or a third-party rider.", "invalid", field="employment")
+    if employment == Rider.ASHANTIHUB:
+        return employment, ""
+    company = str(data.get("company_name") or "").strip()
+    if not 2 <= len(company) <= 120:
+        raise EmploymentError("Name the rider company (2 to 120 characters).", "invalid", field="company_name")
+    return employment, company
+
+
+def check(rider, employment, company, maker=None):
+    """Raise EmploymentError when this change cannot be made now. `maker` is the staff member who proposed it: nobody
+    changes who they themselves work for (a Super Admin holds every permission, and their own change applies at once, so
+    without this rule they could route delivery fees into their own wallet)."""
+    if maker is not None and maker.pk == rider.staff_id:
+        raise EmploymentError("You can't change who you work for.", "own_rider", 403)
+    if employment == Rider.THIRD_PARTY and getattr(rider.staff.role, "name", "") != "dispatch":
+        raise EmploymentError("Only a Dispatch rider can be a third-party rider.", "not_a_rider", 409)
+    if rider.employment == employment and rider.company_name == company:
+        raise EmploymentError("Nothing would change.", "no_change", 409)
+    if employment == Rider.ASHANTIHUB and rider.employment == Rider.THIRD_PARTY:
+        found = money_open(rider)
+        if found:
+            raise EmploymentError(
+                "This rider still has " + "; ".join(OPEN_LABELS[key] for key in found) + ". Settle that first.",
+                "rider_money_open", 409, open=found,
+            )
+
+
+def pending_for(rider):
+    return ApprovalRequest.objects.filter(
+        kind=KIND, status=ApprovalRequest.PENDING, target_type=Rider._meta.label_lower, target_id=str(rider.pk),
+    ).select_related("maker").first()
+
+
+def _label(employment, company):
+    label = dict(Rider.EMPLOYMENT_CHOICES).get(employment, employment or "")
+    return f"{label} ({company})" if company else label
+
+
+def propose(maker, rider, data, *, note="", request=None):
+    """Stage the change for a Super Admin (applied at once when the maker is one). Returns the ApprovalRequest; raises
+    EmploymentError."""
+    employment, company = clean(data if isinstance(data, dict) else {})
+    if pending_for(rider) is not None:
+        raise EmploymentError("A change for this rider is already waiting for approval.", "already_pending", 409)
+    check(rider, employment, company, maker)
+    try:
+        return approvals.submit(
+            maker, KIND, title=f"{rider.staff.full_name}: {_label(employment, company)}",
+            payload={"rider_id": rider.pk, "employment": employment, "company_name": company},
+            target=rider, maker_note=str(note or "")[:500], request=request,
+        )
+    except approvals.ApprovalError as exc:
+        raise EmploymentError(exc.message, "refused", exc.status_code) from exc
+
+
+def row(rider):
+    """What the fleet screens show of a rider's employment, with any change waiting for approval."""
+    pending = pending_for(rider)
+    return {
+        "employment": rider.employment, "employment_label": rider.get_employment_display(),
+        "company_name": rider.company_name, "third_party_since": rider.third_party_since, "wallet": is_third_party(rider),
+        "pending": None if pending is None else {
+            "approval_id": pending.pk, "employment": pending.payload.get("employment"),
+            "company_name": pending.payload.get("company_name"), "proposed_by": pending.maker.full_name,
+            "created_at": pending.created_at,
+        },
+    }
+
+
+# --- the approval kind --------------------------------------------------------------------------------------------
+
+def _rider(request):
+    return Rider.objects.select_related("staff").get(pk=request.payload["rider_id"])
+
+
+def current_state(request):
+    rider = _rider(request)
+    return {"employment": rider.employment, "company_name": rider.company_name}
+
+
+def validate(request):
+    try:
+        employment, company = clean(request.payload)
+        check(_rider(request), employment, company, request.maker)
+    except EmploymentError as exc:
+        raise approvals.ApprovalError(exc.message) from exc
+
+
+def apply(request):
+    """Inside the decision's transaction: lock the rider row, check again (a release locks it before paying a rider), set
+    the flag. Becoming third-party starts `third_party_since` now (deliveries before it stay AshantiHub's); a new company
+    name keeps it; going back clears it."""
+    from activity.services import record
+
+    decider = request.decided_by or request.maker
+    rider = Rider.objects.select_for_update(of=("self",)).select_related("staff").get(pk=request.payload["rider_id"])
+    try:
+        employment, company = clean(request.payload)
+        check(rider, employment, company, request.maker)
+    except EmploymentError as exc:
+        raise approvals.ApprovalError(exc.message) from exc
+    before = {"employment": rider.employment, "company_name": rider.company_name}
+    if employment == Rider.THIRD_PARTY and rider.employment != Rider.THIRD_PARTY:
+        rider.third_party_since = timezone.now()
+    elif employment == Rider.ASHANTIHUB:
+        rider.third_party_since = None
+    rider.employment, rider.company_name = employment, company
+    rider.save(update_fields=["employment", "company_name", "third_party_since"])
+    # Last: record() holds the activity chain lock until commit.
+    record(
+        decider, "delivery.rider_employment_applied", target=rider,
+        summary=f"{rider.staff.full_name}: {_label(employment, company)}", before=before,
+        after={"employment": employment, "company_name": company},
+    )
+
+
+def render_diff(request):
+    before = request.before or {}
+    return [{
+        "field": "Works for", "before": _label(before.get("employment"), before.get("company_name")),
+        "after": _label(request.payload.get("employment"), request.payload.get("company_name")),
+    }]
+
+
+def consequences(request):
+    if request.payload.get("employment") == Rider.THIRD_PARTY:
+        from ledger import settings_store
+
+        rate = settings_store.current("rider_commission_bp") / 100
+        return [
+            "From approval, each delivery this rider makes is paid into their AshantiHub wallet when Support confirms the "
+            f"order with the customer: the delivery fee less AshantiHub's commission ({rate:g}% now, held until the end of "
+            "the day). Deliveries made before approval stay AshantiHub's. They can withdraw to an account in their own "
+            "name once their Ghana Card is approved."
+        ]
+    return [
+        "From approval, this rider's deliveries are AshantiHub's: delivery fees stay with AshantiHub and their pay stays "
+        "with payroll. Their wallet closes. This is refused while they still have money with AshantiHub or a delivered "
+        "order waiting for Support's call."
+    ]
+
+
+EMPLOYMENT_KIND = ApprovalKind(
+    key=KIND, label="Change who a rider works for", pool_permission="", current_state=current_state, apply=apply,
+    response_hours=48, resolve_approver=lambda request: [(ApprovalRequest.SUPER_ADMIN, None)], render_diff=render_diff,
+    validate=validate, consequences=consequences, requires_sudo=True, chain_note="Super Admin only",
+)

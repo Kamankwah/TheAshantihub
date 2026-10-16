@@ -45,6 +45,8 @@ class Rider(models.Model):
 
     MANUAL, DOCUMENTS = "manual", "documents"
     SUSPENSION_SOURCE_CHOICES = [("", "Not suspended"), (MANUAL, "Suspended by a manager"), (DOCUMENTS, "A required paper expired")]
+    ASHANTIHUB, THIRD_PARTY = "ashantihub", "third_party"
+    EMPLOYMENT_CHOICES = [(ASHANTIHUB, "AshantiHub's own rider"), (THIRD_PARTY, "Third-party rider (from a rider company)")]
 
     staff = models.OneToOneField("accounts.StaffUser", on_delete=models.CASCADE, related_name="rider")
     vehicle_type = models.CharField(max_length=10, choices=VEHICLE_TYPES, default=MOTORBIKE)
@@ -57,6 +59,12 @@ class Rider(models.Model):
     job_hold = models.BooleanField(default=False)
     job_hold_reason = models.CharField(max_length=300, blank=True)
     suspension_source = models.CharField(max_length=10, choices=SUSPENSION_SOURCE_CHOICES, blank=True, default="")
+    # Who the rider works for (spec §1 rows 4-5, §7; wallets Plan 5). Changed only through the delivery.rider_employment
+    # approval (delivery.employment). A third-party rider is paid the delivery fee of each order they deliver from
+    # `third_party_since` on, at release, into a wallet (ledger.riders); AshantiHub's own riders have no wallet.
+    employment = models.CharField(max_length=12, choices=EMPLOYMENT_CHOICES, default=ASHANTIHUB)
+    company_name = models.CharField(max_length=120, blank=True, default="")
+    third_party_since = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

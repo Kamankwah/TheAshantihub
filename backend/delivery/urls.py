@@ -41,6 +41,7 @@ urlpatterns = [
     path("riders/<int:pk>/", views_fleet.RiderDetailView.as_view(), name="delivery-rider"),
     path("riders/<int:pk>/job-hold/", views_fleet.RiderJobHoldView.as_view(), name="delivery-rider-job-hold"),
     path("riders/<int:pk>/reinstate/", views_fleet.RiderReinstateView.as_view(), name="delivery-rider-reinstate"),
+    path("riders/<int:pk>/employment/", views_fleet.RiderEmploymentView.as_view(), name="delivery-rider-employment"),
     path("documents/", views_fleet.DocumentsView.as_view(), name="delivery-documents"),
     path("documents/<int:pk>/review/", views_fleet.DocumentReviewView.as_view(), name="delivery-document-review"),
     path("documents/<int:pk>/remind/", views_fleet.DocumentRemindView.as_view(), name="delivery-document-remind"),
