@@ -61,3 +61,19 @@ class SecretsNeverLeakTests(SimpleTestCase):
         self.assertEqual(data["channel"], "sms")
         self.assertEqual(shown(event["request"]["headers"]["X-Step-Up-Token"]), "[Filtered]")
         self.assertEqual(event["request"]["headers"]["User-Agent"], "Chrome")
+
+    def test_sentry_scrubs_the_otp_code_paths_local_variables(self):
+        # Final review F6: a crash inside otp.senders / otp.authenticator would otherwise ship the live code, the new
+        # recovery codes or the authenticator URI from the frame's local variables.
+        local_names = {
+            "body": "123456 is your AshantiHub code", "codes": ["abcde-fghij"], "uri": "otpauth://totp/x?secret=S",
+            "recovery": "abcde-fghij", "normalised": "abcdefghij",
+        }
+        for key in local_names:
+            self.assertIn(key, EXTRA_DENYLIST)
+        event = {"exception": {"values": [{"stacktrace": {"frames": [{"vars": {**local_names, "channel": "sms"}}]}}]}}
+        event_scrubber().scrub_event(event)
+        frame_vars = event["exception"]["values"][0]["stacktrace"]["frames"][0]["vars"]
+        for key in local_names:
+            self.assertEqual(shown(frame_vars[key]), "[Filtered]", key)
+        self.assertEqual(frame_vars["channel"], "sms")

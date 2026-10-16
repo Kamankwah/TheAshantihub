@@ -45,10 +45,35 @@ class SenderTests(TestCase):
         self.assertEqual(senders.sms_outbox, [])
 
     @override_settings(OTP_SMS_PROVIDER="twilio")
-    def test_an_unknown_sms_provider_fails_loudly(self):
+    def test_an_unknown_sms_provider_sends_nothing_and_says_so(self):
+        # The system check (otp.checks) stops such a setting at start-up; deliver itself never raises (final review F6).
         with self.assertRaisesMessage(ImproperlyConfigured, "OTP_SMS_PROVIDER"):
-            senders.deliver(SMS, "+233241234567", "s", BODY)
+            senders.sms_provider()
+        with self.assertLogs("otp.senders", "ERROR") as logs:
+            delivery = senders.deliver(SMS, "+233241234567", "s", BODY)
+        self.assertEqual((delivery.ok, delivery.provider), (False, ""))
+        self.assertIn("ImproperlyConfigured", "\n".join(logs.output))
         self.assertEqual(senders.sms_outbox, [])
+
+    @HUBTEL
+    def test_deliver_never_raises_and_logs_only_the_error_type(self):
+        SenderId.objects.create(name="AshantiHub", network="mtn", status=SenderId.APPROVED)
+        with mock.patch("marketing.providers.hubtel_sms.HubtelSmsProvider.send", side_effect=RuntimeError(f"choked on {BODY}")), \
+                self.assertLogs("otp.senders", "ERROR") as logs:
+            delivery = senders.deliver(SMS, "+233241234567", "Your AshantiHub code", BODY)
+        self.assertEqual((delivery.ok, delivery.provider), (False, "hubtel"))
+        output = "\n".join(logs.output)
+        self.assertIn("RuntimeError", output)
+        self.assertNotIn("123456", output)
+        self.assertNotIn("+233241234567", output)
+        for record in logs.records:
+            self.assertIsNone(record.exc_info)  # no traceback, so no frame holding the body
+
+    def test_an_exception_from_the_mail_layer_is_a_failed_delivery_too(self):
+        with mock.patch("otp.senders.send_email", side_effect=KeyError("123456")), self.assertLogs("otp.senders", "ERROR") as logs:
+            delivery = senders.deliver(EMAIL, "ama@example.com", "Your AshantiHub code", BODY)
+        self.assertEqual((delivery.ok, delivery.provider), (False, "email"))
+        self.assertNotIn("123456", "\n".join(logs.output))
 
     def test_email_goes_through_django_mail(self):
         delivery = senders.deliver(EMAIL, "ama@example.com", "Your AshantiHub code", BODY)
@@ -61,9 +86,39 @@ class SenderTests(TestCase):
         self.assertFalse(delivery.ok)
         self.assertNotIn("123456", "\n".join(logs.output))
 
-    def test_an_unknown_channel_is_a_programming_error(self):
-        with self.assertRaises(ValueError):
-            senders.deliver("pigeon", "x", "s", BODY)
+    def test_an_unknown_channel_sends_nothing_and_is_logged(self):
+        with self.assertLogs("otp.senders", "ERROR") as logs:
+            delivery = senders.deliver("pigeon", "x", "s", BODY)
+        self.assertFalse(delivery.ok)
+        self.assertIn("ValueError", "\n".join(logs.output))
+
+
+class SmsProviderCheckTests(TestCase):
+    """Final review F6: a mistyped OTP_SMS_PROVIDER stops `manage.py check` / migrate, not the first text."""
+
+    def test_an_unknown_provider_is_an_error(self):
+        from otp.checks import check_sms_provider
+
+        with override_settings(OTP_SMS_PROVIDER="hubtell"):
+            errors = check_sms_provider(None)
+        self.assertEqual([e.id for e in errors], ["otp.E001"])
+        self.assertIn("hubtell", errors[0].msg)
+
+    def test_the_known_providers_pass(self):
+        from otp.checks import check_sms_provider
+
+        for value in ("locmem", "simulated", "hubtel", "", None):
+            with override_settings(OTP_SMS_PROVIDER=value):
+                self.assertEqual(check_sms_provider(None), [], value)
+
+    def test_it_is_registered(self):
+        from django.core import checks
+
+        from otp.checks import check_sms_provider
+
+        self.assertIn(check_sms_provider, checks.registry.registry.get_checks())
+        with override_settings(OTP_SMS_PROVIDER="twilio"):
+            self.assertIn("otp.E001", [e.id for e in checks.run_checks()])
 
     @HUBTEL
     def test_hubtel_sends_through_the_marketing_client(self):

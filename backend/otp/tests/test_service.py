@@ -12,7 +12,7 @@ from otp import senders, service
 from otp.models import EMAIL, SIGN_IN, SMS, STEP_UP, OtpChallenge, OtpEvent, VerifiedContact
 from otp.service import OtpError
 
-from .helpers import last_email_code, last_sms_code, make_customer, make_owner, wrong_code
+from .helpers import SIX_DIGITS, last_email_code, last_sms_code, make_customer, make_owner, wrong_code
 
 
 class ServiceBase(TestCase):
@@ -95,10 +95,11 @@ class CodeTests(ServiceBase):
         self.assertTrue(OtpEvent.objects.filter(kind=OtpEvent.VERIFIED, channel=EMAIL).exists())
 
     def test_a_channel_the_account_lacks_is_refused(self):
+        # `no_channel` is kept for the login's 409 "no phone or email on file"; this is "not that way".
         owner = make_owner(email=None)
         error = self.refused(service.send, owner, SIGN_IN, EMAIL, ticket="t")
-        self.assertEqual((error.code, error.status_code), ("no_channel", 400))
-        self.assertEqual(self.refused(service.send, owner, SIGN_IN, ["sms"], ticket="t").code, "no_channel")
+        self.assertEqual((error.code, error.status_code), ("channel_unavailable", 400))
+        self.assertEqual(self.refused(service.send, owner, SIGN_IN, ["sms"], ticket="t").code, "channel_unavailable")
 
 
 class GuessingTests(ServiceBase):
@@ -180,17 +181,43 @@ class ResendAndLimitTests(ServiceBase):
             OtpEvent.objects.create(kind=OtpEvent.SENT, account_type="customer", account_id=self.customer.pk, channel=SMS, destination=f"+23320000{n:04d}")
         self.assertEqual(self.refused(self.send).code, "try_later")
 
-    def test_twenty_codes_an_hour_from_one_address(self):
-        for n in range(20):
+    def test_sixty_codes_an_hour_from_one_address(self):
+        # Final review F7: carrier NAT puts many people behind one address; 60 is a guess to tune with traffic data.
+        for n in range(59):
             OtpEvent.objects.create(kind=OtpEvent.SENT, ip="154.160.24.91", channel=SMS, destination=f"+23320000{n:04d}")
-        self.assertEqual(self.refused(self.send, request=RequestFactory().post("/", REMOTE_ADDR="154.160.24.91")).code, "try_later")
-        self.send(request=RequestFactory().post("/", REMOTE_ADDR="154.160.24.92"))
+        here = RequestFactory().post("/", REMOTE_ADDR="154.160.24.91")
+        self.send(ticket="a", request=here)
+        self.assertEqual(self.refused(self.send, ticket="b", request=here).code, "try_later")
+        self.send(ticket="b", request=RequestFactory().post("/", REMOTE_ADDR="154.160.24.92"))
+
+    def test_another_accounts_codes_to_my_number_do_not_use_up_my_allowance(self):
+        # Final review F3: an account registered with someone else's number (typed another way) cannot lock them out.
+        attacker = make_customer(phone="0241234567", email="kofi@example.com")
+        for ticket in "abcde":
+            service.send(attacker, SIGN_IN, SMS, ticket=ticket)
+        self.assertEqual(self.refused(service.send, attacker, SIGN_IN, SMS, ticket="f").code, "try_later")
+        self.send(ticket="mine")
+        self.assertEqual(senders.sms_outbox[-1].to, "+233241234567")
+
+    def test_one_number_gets_at_most_twenty_codes_an_hour_from_every_account_together(self):
+        for n in range(19):
+            OtpEvent.objects.create(
+                kind=OtpEvent.SENT if n % 2 else OtpEvent.SEND_FAILED, account_type="customer", account_id=100000 + n,
+                channel=SMS, destination="+233241234567",
+            )
+        self.send(ticket="a")  # the 20th
+        other = make_customer(phone="0241234567", email="kofi@example.com")
+        error = self.refused(service.send, other, SIGN_IN, SMS, ticket="b")
+        self.assertEqual((error.code, error.status_code), ("try_later", 429))
+        self.assertEqual(len(senders.sms_outbox), 1)
+        self.assertTrue(OtpEvent.objects.filter(kind=OtpEvent.SEND_REFUSED, note="hourly limit").exists())
+        service.send(other, SIGN_IN, EMAIL, ticket="b")  # another destination is unaffected
 
     def test_a_lock_and_an_hourly_limit_give_the_same_answer(self):
         # Review Focus 3: nobody can tell "this account is locked" from "too many texts".
         owner = make_owner()
         for _ in range(5):
-            OtpEvent.objects.create(kind=OtpEvent.SENT, channel=SMS, destination="+233201112233")
+            OtpEvent.objects.create(kind=OtpEvent.SENT, account_type="business_owner", account_id=owner.pk, channel=SMS, destination="+233201112233")
         limited = self.refused(service.send, owner, SIGN_IN, SMS, ticket="x")
         for _ in range(5):
             OtpEvent.objects.create(kind=OtpEvent.FAILED, account_type="customer", account_id=self.customer.pk)
@@ -203,12 +230,71 @@ class ResendAndLimitTests(ServiceBase):
         self.assertEqual((error.code, error.status_code), ("send_failed", 502))
         self.assertTrue(OtpEvent.objects.filter(kind=OtpEvent.SEND_FAILED, provider="hubtel").exists())
 
+    def test_a_broken_spend_check_never_fails_a_code_already_sent(self):
+        with mock.patch("otp.spend.check", side_effect=RuntimeError("db hiccup")), self.assertLogs("otp.spend", "WARNING") as logs:
+            challenge = self.send()
+        self.assertIsNotNone(challenge.pk)
+        self.assertEqual(len(senders.sms_outbox), 1)
+        self.assertIn("RuntimeError", "\n".join(logs.output))
+        self.assertNotIn("db hiccup", "\n".join(logs.output))
+
     def test_every_text_and_no_email_is_checked_against_the_spend_alert(self):
         with mock.patch("otp.spend.check") as check:
             self.send()
             self.age_last_send()
             self.send(channel=EMAIL)
         check.assert_called_once()
+
+
+FAILED_DELIVERY = mock.patch("otp.senders.deliver", return_value=senders.Delivery(ok=False, provider="hubtel"))
+
+
+class DeliveryFailureTests(ServiceBase):
+    """Final review F6: a send that fails is counted, never escapes, never kills the code already delivered and never
+    starts the 60-second wait."""
+
+    def test_an_exception_inside_a_sender_is_a_counted_failure_not_a_crash(self):
+        with mock.patch("otp.senders.send_sms", side_effect=RuntimeError("socket said 123456")):
+            error = self.refused(self.send)
+        self.assertEqual((error.code, error.status_code), ("send_failed", 502))
+        self.assertEqual(OtpEvent.objects.filter(kind=OtpEvent.SEND_FAILED).count(), 1)
+
+    def test_a_failed_resend_keeps_the_code_already_delivered(self):
+        self.send()
+        first = last_sms_code()
+        self.age_last_send()
+        before = OtpChallenge.objects.values("code_hash", "salt", "last_sent_at", "expires_at", "channel", "destination", "sends").get()
+        with FAILED_DELIVERY:
+            self.assertEqual(self.refused(self.send, channel=EMAIL).code, "send_failed")
+        self.assertEqual(
+            OtpChallenge.objects.values("code_hash", "salt", "last_sent_at", "expires_at", "channel", "destination", "sends").get(), before,
+        )
+        self.verify(first)
+
+    def test_a_failed_resend_starts_no_wait(self):
+        self.send()
+        self.age_last_send()
+        with FAILED_DELIVERY:
+            self.refused(self.send)
+        challenge = self.send(channel=EMAIL)  # at once: the failure did not start the 60 seconds
+        self.assertEqual(challenge.channel, EMAIL)
+        self.verify(last_email_code())
+
+    def test_a_failed_first_send_starts_no_wait_and_its_code_never_works(self):
+        with mock.patch("otp.senders.deliver", side_effect=lambda *args: senders.Delivery(ok=False, provider="hubtel")) as failing:
+            self.refused(self.send)
+        undelivered_body = failing.call_args.args[3]
+        undelivered = SIX_DIGITS.search(undelivered_body).group(1)
+        self.assertEqual(self.refused(self.verify, undelivered).code, "code_expired")
+        self.send(channel=EMAIL)
+        self.verify(last_email_code())
+
+    def test_failed_sends_still_count_towards_the_hourly_limits(self):
+        with FAILED_DELIVERY:
+            for _ in range(5):
+                self.assertEqual(self.refused(self.send).code, "send_failed")
+            self.assertEqual(self.refused(self.send).code, "try_later")
+        self.assertEqual(OtpEvent.objects.filter(kind=OtpEvent.SEND_FAILED).count(), 5)
 
 
 class ConcurrentUseTests(TransactionTestCase):

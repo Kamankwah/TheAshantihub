@@ -49,7 +49,14 @@ def check_payload(payload):
     send_to = payload.get("send_to")
     if not isinstance(send_to, str) or send_to not in contacts(account):
         raise ApprovalError("Send the reset link to their phone or their email, whichever they still have.")
+    if send_to == SMS and _texts_simulated():
+        raise ApprovalError("Texts aren't being sent yet (no SMS provider is connected). Send the reset link by email.")
     return account
+
+
+def _texts_simulated():
+    """While OTP_SMS_PROVIDER is "simulated" a text reaches nobody, yet its delivery reads as sent."""
+    return (getattr(settings, "OTP_SMS_PROVIDER", "simulated") or "simulated") == "simulated"
 
 
 def _digest(account):
@@ -92,7 +99,7 @@ def _deliver(account, channel, destination, subject, body):
     audit.log(OtpEvent.SENT if delivery.ok else OtpEvent.SEND_FAILED, account=account, purpose=RECOVERY,
               channel=channel, destination=destination, provider=delivery.provider)
     if delivery.ok and channel == SMS:
-        spend.check()
+        spend.check_quietly()
     return delivery.ok
 
 

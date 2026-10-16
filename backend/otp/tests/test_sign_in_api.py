@@ -106,6 +106,11 @@ class VendorSignInTests(SignInApiBase):
         response = self.verify(second, last_sms_code())
         self.assertEqual((response.status_code, response.json()["code"]), (400, "code_expired"))
 
+    def test_a_way_the_account_cannot_receive_is_channel_unavailable_not_no_channel(self):
+        # Final review m2: `no_channel` is only the login's 409 "nothing on file"; the frontend offers another way here.
+        response = self.send(self.ticket(), "whatsapp")
+        self.assertEqual((response.status_code, response.json()["code"]), (400, "channel_unavailable"))
+
     def test_a_bad_or_stale_ticket_is_challenge_expired(self):
         for path in ("send", "verify"):
             response = self.client.post(f"/api/otp/sign-in/{path}/", {"mfa_token": "junk", "code": "123456", "channel": "sms"}, format="json")

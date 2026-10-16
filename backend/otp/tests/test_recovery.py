@@ -3,7 +3,7 @@ reaches the activity log)."""
 import pyotp
 from django.core import mail
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -84,6 +84,16 @@ class RecoveryTests(TestCase):
         self.assertEqual(senders.sms_outbox[-1].to, "+233241234567")
         self.assertIn(reset.token, senders.sms_outbox[-1].body)
         self.assertTrue(OtpEvent.objects.filter(kind=OtpEvent.SENT, purpose="recovery").exists())
+
+    def test_a_text_is_refused_while_texts_are_only_simulated(self):
+        # Final review m1: with the simulated provider nothing reaches the phone, so the link must go by email.
+        self.as_staff(self.support)
+        with override_settings(OTP_SMS_PROVIDER="simulated"):
+            response = self.ask(send_to="sms")
+            self.assertEqual(response.status_code, 400, response.content)
+            self.assertIn("email", response.json()["detail"])
+            self.assertEqual(ApprovalRequest.objects.count(), 0)
+            self.assertEqual(self.ask(send_to="email").status_code, 201)
 
     def test_only_otp_recovery_holders_may_ask(self):
         self.as_staff(make_staff("operations", "ama@example.com"))

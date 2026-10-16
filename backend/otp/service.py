@@ -1,8 +1,11 @@
 """The one OTP service (spec §9). A code is 6 digits from `secrets`, kept only as a salted HMAC, alive 5 minutes,
-with 5 tries; a resend rotates it after a 60-second wait and keeps the tries. Sends are limited per hour per phone
-or email, per account and per IP, counted from the audit trail (otp.models.OtpEvent) so the limits hold across
-every server process. An account is locked for both sending and checking while 5 or more of its
-wrong codes fall inside the last 15 minutes; the lock and the hourly limits answer the same words, so nobody can tell them apart.
+with 5 tries; a resend rotates it after a 60-second wait and keeps the tries. Sends are limited per hour, counted
+from the audit trail (otp.models.OtpEvent) so the limits hold across every server process: 5 per account and
+phone/email, 20 per phone/email from every account together (so an account registered with someone else's number
+cannot use up their allowance, yet nobody can be flooded), 10 per account and 60 per IP. Failed sends count too. A
+send that fails never kills the code already delivered and never starts the 60-second wait. An account is locked for
+both sending and checking while 5 or more of its wrong codes fall inside the last 15 minutes; when sending, the
+lock and the hourly limits answer the same words, so nobody can tell them apart.
 
 verify() counts a try before comparing and must never run inside a transaction that is rolled back when it
 refuses (the counted try would be undone): the views call it outside any atomic block and answer refusals as a
@@ -27,9 +30,12 @@ MAX_ATTEMPTS = 5
 RESEND_COOLDOWN = timedelta(seconds=60)
 LOCK_LIMIT = 5
 LOCK_WINDOW = timedelta(minutes=15)
-PER_DESTINATION_HOURLY = 5
+PER_DESTINATION_HOURLY = 5  # one account to one phone/email
+DESTINATION_CEILING_HOURLY = 20  # one phone/email, every account together
 PER_ACCOUNT_HOURLY = 10
-PER_IP_HOURLY = 20
+# An assumption to tune with real traffic: Ghanaian mobile carriers put many people behind one address (carrier NAT),
+# so this is looser than the per-account limits. Listed in the spec's §13 gate.
+PER_IP_HOURLY = 60
 HOUR = timedelta(hours=1)
 CODE_SALT = "otp.code"
 SEND_KINDS = (OtpEvent.SENT, OtpEvent.SEND_FAILED)
@@ -39,7 +45,7 @@ TRY_LATER = "Too many tries. Wait a while, then try again."
 WAIT = "Wait a minute before asking for another code."
 WRONG = "That code isn't right. Check the message and try again."
 EXPIRED = "That code has expired or was already used. Ask for a new one."
-NO_CHANNEL = "We can't send a code that way. Choose another way."
+CHANNEL_UNAVAILABLE = "We can't send a code that way. Choose another way."
 NOT_SENT = "We couldn't send the code. Try again, or choose another way."
 PURPOSE_WORDS = {SIGN_IN: "sign in", SIGN_UP: "confirm your phone or email", STEP_UP: "confirm a change to your account"}
 
@@ -123,6 +129,16 @@ def _sent_in_last_hour(now, **match):
     return OtpEvent.objects.filter(kind__in=SEND_KINDS, at__gte=now - HOUR, **match).count()
 
 
+def _over_hourly_limits(now, account_type, account_id, destination, ip):
+    mine = {"account_type": account_type, "account_id": account_id}
+    return (
+        _sent_in_last_hour(now, destination=destination, **mine) >= PER_DESTINATION_HOURLY
+        or _sent_in_last_hour(now, destination=destination) >= DESTINATION_CEILING_HOURLY
+        or _sent_in_last_hour(now, **mine) >= PER_ACCOUNT_HOURLY
+        or (ip is not None and _sent_in_last_hour(now, ip=ip) >= PER_IP_HOURLY)
+    )
+
+
 def _open_challenge(account, purpose, action, ticket):
     account_type, account_id = ref(account)
     return (
@@ -140,12 +156,14 @@ def _cooldown(challenge, now):
 
 def send(account, purpose, channel, *, action="", ticket="", request=None, now=None):
     """Send, or resend, the code for this sign-in ticket / step-up session on `channel` ("sms" or "email").
-    Returns the OtpChallenge. Every refusal raises OtpError and sends nothing."""
+    Returns the OtpChallenge. Every refusal raises OtpError and sends nothing. A failed delivery (counted as
+    SEND_FAILED, answered 502) puts the challenge back as it was: the code delivered before still works and no wait
+    starts; a first code that never arrived is dead and can be replaced at once."""
     now = now or timezone.now()
     account_type, account_id = ref(account)
     destination = contacts(account).get(channel) if isinstance(channel, str) else None
     if not destination:
-        raise OtpError(NO_CHANNEL, "no_channel")
+        raise OtpError(CHANNEL_UNAVAILABLE, "channel_unavailable")
     ip = _ip(request)
     details = {"account": account, "purpose": purpose, "action": action, "channel": channel,
                "destination": destination, "request": request, "now": now}
@@ -155,11 +173,7 @@ def send(account, purpose, channel, *, action="", ticket="", request=None, now=N
     challenge = _open_challenge(account, purpose, action, ticket)
     if challenge is not None and challenge.last_sent_at > now - RESEND_COOLDOWN:
         raise _cooldown(challenge, now)
-    if (
-        _sent_in_last_hour(now, destination=destination) >= PER_DESTINATION_HOURLY
-        or _sent_in_last_hour(now, account_type=account_type, account_id=account_id) >= PER_ACCOUNT_HOURLY
-        or (ip is not None and _sent_in_last_hour(now, ip=ip) >= PER_IP_HOURLY)
-    ):
+    if _over_hourly_limits(now, account_type, account_id, destination, ip):
         audit.log(OtpEvent.SEND_REFUSED, note="hourly limit", **details)
         raise OtpError(TRY_LATER, "try_later", status_code=429)
     code, salt = new_code(), secrets.token_hex(16)
@@ -170,7 +184,9 @@ def send(account, purpose, channel, *, action="", ticket="", request=None, now=N
             account_type=account_type, account_id=account_id, purpose=purpose, action=action, ticket=ticket,
             created_at=now, **fields,
         )
+        undo = {"expires_at": now, "last_sent_at": now - RESEND_COOLDOWN}  # never delivered: dead, and no wait
     else:
+        undo = {**{name: getattr(challenge, name) for name in fields}, "sends": challenge.sends}
         # Conditional, so two resends racing past the check above still send one code. Tries are kept.
         rotated = OtpChallenge.objects.filter(pk=challenge.pk, last_sent_at__lte=now - RESEND_COOLDOWN).update(
             sends=F("sends") + 1, **fields,
@@ -181,9 +197,11 @@ def send(account, purpose, channel, *, action="", ticket="", request=None, now=N
     delivery = senders.deliver(channel, destination, SUBJECT, message_for(code, purpose))
     audit.log(OtpEvent.SENT if delivery.ok else OtpEvent.SEND_FAILED, provider=delivery.provider, **details)
     if not delivery.ok:
+        # Only if the row still holds the code this call wrote (a resend that raced in after it is left alone).
+        OtpChallenge.objects.filter(pk=challenge.pk, code_hash=fields["code_hash"]).update(**undo)
         raise OtpError(NOT_SENT, "send_failed", status_code=502)
     if channel == SMS:
-        spend.check(now)
+        spend.check_quietly(now)
     return challenge
 
 

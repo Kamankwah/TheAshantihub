@@ -9,6 +9,7 @@ class OtpConfig(AppConfig):
     def ready(self):
         from approvals import registry
 
+        from . import checks  # noqa: F401 - registers the OTP_SMS_PROVIDER system check
         from .approval_kinds import RECOVERY_KIND
 
         if registry.get_kind(RECOVERY_KIND.key) is None:

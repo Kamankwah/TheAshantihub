@@ -7,7 +7,11 @@ other AshantiHub email). Texts go through settings.OTP_SMS_PROVIDER:
 * "locmem": keeps each text in `sms_outbox` (settings forces it under `manage.py test`).
 
 A message body holds a code or a reset link, so it is never logged: a failure logs only the provider and the
-error type."""
+error type, never with a traceback (a frame's local `body` holds the live code).
+
+deliver() never raises: an unexpected error anywhere below it (a provider bug, a mistyped OTP_SMS_PROVIDER - which
+the otp.checks system check also stops at start-up - or an unknown channel) is a failed Delivery, so the caller
+counts it (OtpEvent SEND_FAILED) and answers it like any other failed send."""
 import logging
 from dataclasses import dataclass
 
@@ -77,9 +81,24 @@ def send_email(to, subject, body):
     return Delivery(ok=True, provider="email")
 
 
-def deliver(channel, to, subject, body):
-    if channel == SMS:
-        return send_sms(to, body)
+def _provider_for(channel):
+    """The provider name an audit row records for a failed delivery on `channel` ("" when unknown)."""
     if channel == EMAIL:
-        return send_email(to, subject, body)
-    raise ValueError(f"Cannot deliver on {channel!r}")
+        return "email"
+    if channel == SMS:
+        provider = getattr(settings, "OTP_SMS_PROVIDER", "simulated") or "simulated"
+        return provider if provider in PROVIDERS else ""
+    return ""
+
+
+def deliver(channel, to, subject, body):
+    """Send `body` to `to`; a Delivery whatever happens (never raises - see the module text)."""
+    try:
+        if channel == SMS:
+            return send_sms(to, body)
+        if channel == EMAIL:
+            return send_email(to, subject, body)
+        raise ValueError("unknown channel")
+    except Exception as exc:  # noqa: BLE001 - every failure is a counted failed send; only its type is logged
+        logger.error("OTP message not sent: %s", type(exc).__name__)
+        return Delivery(ok=False, provider=_provider_for(channel))
