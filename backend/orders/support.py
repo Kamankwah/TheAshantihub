@@ -16,6 +16,7 @@ from accounts.claims import mask_email
 from accounts.emails import _send
 from accounts.permissions import HasRolePermission
 from accounts.phones import filter_by_phone, mask_phone, phone_key
+from ledger.money import from_pesewas
 from notifications.services import notify_customer
 
 from .models import DeliveryAssignment, Order, OrderSupportNote
@@ -78,6 +79,20 @@ def payments_note():
     if provider == "hubtel":
         return {"provider": provider, "text": ""}
     return {"provider": provider, "text": f"Payments are {provider} until Hubtel is connected, so no money moves."}
+
+
+def return_stock(order):
+    """Put the stock an order reserved at checkout back on the shelf (tracked listings only). The listing rows are
+    locked in one pass in primary-key order, so a cancel or the pickup job never deadlocks with a checkout."""
+    from listings.models import Listing
+
+    quantities = {}
+    for line in order.items.all():
+        quantities[line.listing_id] = quantities.get(line.listing_id, 0) + line.quantity
+    for listing in Listing.objects.select_for_update().filter(pk__in=quantities).order_by("pk"):
+        if listing.stock_quantity is not None:
+            listing.stock_quantity += quantities[listing.pk]
+            listing.save(update_fields=["stock_quantity"])
 
 
 def _base():
@@ -207,9 +222,10 @@ class SupportOrderStatusView(APIView):
                 order=order, staff=request.user, kind=kind, reason=reason,
                 expected_time=expected if kind == OrderSupportNote.RUNNING_LATE else "",
             )
+            refund = None
             if kind == OrderSupportNote.CANCELLED_BY_CUSTOMER:
-                self._cancel(order)
-        self._tell_customer(order, note)
+                refund = self._cancel(order, request.user)
+        self._tell_customer(order, note, refund)
         order = _base().get(pk=order.pk)
         return Response({
             "id": order.pk, "status": order.status, "delivery_status": order.delivery_status,
@@ -217,17 +233,14 @@ class SupportOrderStatusView(APIView):
         })
 
     @staticmethod
-    def _cancel(order):
+    def _cancel(order, staff=None):
         """Cancel through the order's own fields: stock reserved at checkout goes
         back on the shelf (tracked listings only), a courier assignment not yet
-        picked up is withdrawn. No money moves: payments are not refunded here."""
-        from listings.models import Listing
-
-        for line in order.items.all():
-            listing = Listing.objects.select_for_update().get(pk=line.listing_id)
-            if listing.stock_quantity is not None:
-                listing.stock_quantity += line.quantity
-                listing.save(update_fields=["stock_quantity"])
+        picked up is withdrawn. With the ledger on, a paid order's money goes back to
+        the customer's AshantiHub wallet in full (ledger.refunds; the payment-processing
+        charge stays with the provider, because the customer asked to cancel). Returns
+        that OrderRefund, or None (ledger off, not paid, or paid before the ledger was on)."""
+        return_stock(order)
         assignment = getattr(order, "delivery_assignment", None)
         if assignment is not None:
             assignment.delete()
@@ -236,15 +249,23 @@ class SupportOrderStatusView(APIView):
         from marketing.waivers import reverse_for_order
 
         reverse_for_order(order, "order_cancelled")
+        from ledger import refunds
+
+        return refunds.refund_order(order, source="cancel", by=staff, note="Cancelled at the customer's request")
 
     @staticmethod
-    def _tell_customer(order, note):
+    def _tell_customer(order, note, refund=None):
         if note.kind == OrderSupportNote.RUNNING_LATE:
             title = "Your order is running late"
             body = f"Your order #{order.pk} is running late. New expected time: {note.expected_time}. Sorry for the wait."
         else:
             title = "Your order was cancelled"
             body = f"Your order #{order.pk} was cancelled at your request. Contact AshantiHub Support with any question."
+            if refund is not None and refund.amount_pesewas > 0:
+                body = (
+                    f"Your order #{order.pk} was cancelled at your request. GH₵ {from_pesewas(refund.amount_pesewas)} went back "
+                    "to your AshantiHub wallet. Contact AshantiHub Support with any question."
+                )
         notify_customer(order.customer, "order_status", title, body=body, link="/my-account", icon="🚚")
         if order.customer.email:
             _send(f"{title} (order #{order.pk})", body, order.customer.email)

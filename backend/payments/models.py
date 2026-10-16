@@ -40,6 +40,8 @@ class CheckoutSession(models.Model):
     SERVICE_REQUEST = "service_request"
     BOOKING = "booking"
     EVENT_RENEW = "event_renew"
+    # Money added to a customer's AshantiHub wallet by mobile money (wallets plan 3a; finalizer in services.py).
+    WALLET_TOPUP = "wallet_topup"
     KIND_CHOICES = [
         (ORDER_CHECKOUT, "Order Checkout"),
         (EVENT_PAY, "Event Pay"),
@@ -50,7 +52,11 @@ class CheckoutSession(models.Model):
         (SERVICE_REQUEST, "Service Request"),
         (BOOKING, "Booking"),
         (EVENT_RENEW, "Event Renewal"),
+        (WALLET_TOPUP, "Wallet Top-up"),
     ]
+
+    # The `provider` of an order paid from the customer's AshantiHub wallet: no provider moved any money.
+    WALLET = "wallet"
 
     PENDING = "pending"
     SUCCESS = "success"
@@ -79,6 +85,9 @@ class CheckoutSession(models.Model):
     # max_digits/decimal_places) since this is the amount that field is
     # eventually populated from.
     amount = models.DecimalField(max_digits=10, decimal_places=2)
+    # The provider's collection charge the customer pays on top ("payment processing", spec §1 row 14), already inside
+    # `amount`. 0 for a wallet payment and whenever the ledger is off. The provider keeps it; the ledger records the rest.
+    processing_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     purpose = models.CharField(max_length=255)
     # Our own id, sent to Hubtel as `clientReference` — this is what webhook
     # processing looks the session up by (see views.HubtelWebhookView), and

@@ -161,6 +161,11 @@ class OrderFeeSnapshot(models.Model):
     cap_pesewas = models.BigIntegerField(null=True, blank=True)
     released_at = models.DateTimeField(null=True, blank=True)
     reversed_at = models.DateTimeField(null=True, blank=True)
+    # What refunds have taken back so far (ledger.refunds; cumulative, pesewas): release pays only base and fee not
+    # yet refunded, and the refunded fee no longer counts against the lifetime cap. `reversed_at` is set once the
+    # whole base is refunded.
+    refunded_base_pesewas = models.BigIntegerField(default=0)
+    refunded_fee_pesewas = models.BigIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -212,3 +217,32 @@ class FulfilmentCheck(models.Model):
 
     def __str__(self):
         return f"Order {self.order_id}: {self.outcome or 'awaiting verification'}"
+
+
+class OrderRefund(models.Model):
+    """Money given back to a customer for a paid order, always into their AshantiHub wallet (ledger.refunds). One row
+    per (order, source): the source names what asked for it ("cancel", "pickup_expired", "dispute-<id>"), so the same
+    request can never refund twice. Pesewas: `amount_pesewas` is order money returned to the customer (items_pesewas +
+    delivery_pesewas − subsidy_pesewas); `processing_pesewas` is a collection charge AshantiHub gave back on its own or
+    a vendor's error. `allocation` lists what each fee snapshot gave. `journal` is null only when nothing had to move."""
+
+    order = models.ForeignKey("orders.Order", on_delete=models.PROTECT, related_name="refunds")
+    source = models.CharField(max_length=60)
+    whole = models.BooleanField(default=False)
+    amount_pesewas = models.BigIntegerField()
+    items_pesewas = models.BigIntegerField(default=0)
+    delivery_pesewas = models.BigIntegerField(default=0)
+    subsidy_pesewas = models.BigIntegerField(default=0)
+    processing_pesewas = models.BigIntegerField(default=0)
+    allocation = models.JSONField(default=list, blank=True)
+    journal = models.OneToOneField(Journal, null=True, blank=True, on_delete=models.PROTECT, related_name="refund")
+    created_by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    note = models.CharField(max_length=300, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [models.UniqueConstraint(fields=["order", "source"], name="ledger_one_refund_per_order_and_source")]
+
+    def __str__(self):
+        return f"Refund {self.source} on order {self.order_id}"

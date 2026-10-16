@@ -1,8 +1,9 @@
 """Free-delivery promos (a business waives the delivery fee on its own items for a window).
 
 Who pays: the business. The waived fee is written on the order (Order.delivery_fee = 0 and the
-original amount in delivery_fee_breakdown["waived"]) so the cost is recorded; no payout ledger
-charges it back yet, and the UI says so rather than implying it does.
+original amount in delivery_fee_breakdown["waived"]) so the cost is recorded. With the ledger on
+(LEDGER_ENABLED) the fee is charged to the business's Available balance when Support releases the order
+(ledger.escrow.charge_waiver) and given back on a whole refund; with it off nothing is charged.
 
 Moderation follows the queue contract: an owner-submitted promo is `pending` until staff with
 site_promo.manage approve it; a promo staff create on a business's behalf is active at once.
@@ -63,8 +64,9 @@ class DeliveryWaiver(models.Model):
 class WaivedFeeCharge(models.Model):
     """The delivery fee a business covered on one order through its free-delivery promo: one row per
     waived order, written in the checkout transaction. `owed` is a recorded charge against the business
-    that no payout run has settled (no payout ledger exists yet, so nothing moves automatically);
-    `reversed` means the order was cancelled, its payment failed or it was fully refunded, so the
+    that has not yet been taken or cancelled: with the ledger on it is charged to the business at release
+    (ledger.escrow.charge_waiver, which leaves the row `owed` as the record of what was charged), with it off
+    nothing moves; `reversed` means the order was cancelled, its payment failed or it was fully refunded, so the
     business owes nothing for it. Rows are never deleted or edited otherwise."""
 
     OWED = "owed"

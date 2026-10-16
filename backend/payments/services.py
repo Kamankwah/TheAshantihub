@@ -49,7 +49,9 @@ def _finalize_order_checkout(session):
 
     from ledger import escrow
 
-    escrow.record_order_payment(order)
+    # Paid from the customer's wallet (process_payment(wallet=True)): the wallet is debited instead of provider
+    # clearing; a balance too low raises posting.InsufficientFunds, which rolls the checkout back.
+    escrow.record_order_payment(order, wallet=session.provider == CheckoutSession.WALLET)
 
     from orders.alerts import alert_owners_of_paid_order
 
@@ -86,6 +88,14 @@ def _fail_order_checkout(session):
         release_order(meta["order_id"])
     session.metadata = {**meta, "rolled_back": True}
     session.save(update_fields=["metadata", "updated_at"])
+
+
+def _finalize_wallet_topup(session):
+    """A paid top-up credits the customer's wallet (wallets.services.record_top_up; idempotent on the reference, so a
+    retried webhook credits once)."""
+    from wallets.services import record_top_up
+
+    record_top_up(session)
 
 
 def _finalize_event_pay(session):
@@ -300,6 +310,7 @@ FINALIZERS = {
     CheckoutSession.SUBSCRIPTION: _finalize_subscription,
     CheckoutSession.SERVICE_REQUEST: _finalize_service_request,
     CheckoutSession.BOOKING: _finalize_booking,
+    CheckoutSession.WALLET_TOPUP: _finalize_wallet_topup,
 }
 
 FAILURE_HANDLERS = {
@@ -331,32 +342,47 @@ def finalize_failure(session):
         handler(session)
 
 
-def process_payment(*, kind, amount, purpose, business_owner=None, customer=None, metadata=None):
+def process_payment(*, kind, amount, purpose, business_owner=None, customer=None, metadata=None, processing_fee=None, wallet=False):
     """The shared entrypoint described in this module's docstring. Returns:
     - `{"mode": "immediate", "transaction": Transaction, "session": CheckoutSession}`
-      when PAYMENTS_PROVIDER != "hubtel" — the Transaction already exists and
+      when PAYMENTS_PROVIDER != "hubtel" (or for a wallet payment) — the Transaction already exists and
       the finalizer has already run, exactly as every pre-existing call site
       used to do inline.
     - `{"mode": "redirect", "checkout_url": str, "reference": str, "session": CheckoutSession}`
       when PAYMENTS_PROVIDER == "hubtel" — nothing is finalized yet; the
       caller must return this shape to the frontend so it can redirect.
+
+    `processing_fee` is the provider's collection charge already included in `amount` (kept on the session; 0 by
+    default). `wallet=True` pays a customer's order from their AshantiHub wallet: the session's provider is "wallet",
+    it is immediate whatever PAYMENTS_PROVIDER says, and the order finalizer debits the wallet instead of provider
+    clearing (ledger.posting.InsufficientFunds when the balance is too low, which rolls the caller's transaction back).
     """
     if bool(business_owner) == bool(customer):
         raise ValueError("process_payment requires exactly one of business_owner or customer")
+    if wallet and (customer is None or kind != CheckoutSession.ORDER_CHECKOUT):
+        raise ValueError("Only a customer's order can be paid from the wallet")
+    if wallet:
+        from ledger import escrow
+
+        if not escrow.enabled():
+            raise ValueError("The wallet cannot pay while the ledger is off")  # else the order would be PAID with nothing debited
 
     session = CheckoutSession.objects.create(
         business_owner=business_owner,
         customer=customer,
         kind=kind,
         amount=amount,
+        processing_fee=processing_fee or 0,
+        provider=CheckoutSession.WALLET if wallet else "simulated",
         purpose=purpose,
         metadata=metadata or {},
     )
 
-    if settings.PAYMENTS_PROVIDER != "hubtel":
+    if wallet or settings.PAYMENTS_PROVIDER != "hubtel":
         txn_kwargs = {
             "amount": amount,
-            "purpose": purpose,
+            # a wallet-paid order is told apart from the cash top-up that funded the wallet (report double count, S7)
+            "purpose": f"{purpose} (paid from AshantiHub wallet)"[:255] if wallet else purpose,
             "status": Transaction.SUCCESS,
             "reference": session.reference,
         }

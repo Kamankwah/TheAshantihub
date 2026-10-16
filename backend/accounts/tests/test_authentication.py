@@ -57,6 +57,6 @@ class MultiAccountAuthenticationTests(TestCase):
             [
                 "messaging.manage", "disputes.flag", "users.view", "reviews.moderate",
                 "orders.support_update", "calls.view_peers", "contact_messages.manage", "calls.log",
-                "fraud.flag", "orders.verify",
+                "fraud.flag", "orders.verify", "otp.recovery",
             ],
         )

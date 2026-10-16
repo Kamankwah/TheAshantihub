@@ -1,8 +1,9 @@
 # Wallets, Escrow, Platform Fees, Stock Offers and OTP Security — Design
 
-**Status:** Approved 2026-10-15. Stage 1 plan: docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md.
-**Scope:** One system, built in the order given in §11. Stage 1 implemented on branch
-feature/ledger-stage1 (see section 13); later stages not started.
+**Status:** Approved 2026-10-15. Stage 1 plan: docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md. Stage 2 (OTP, backend) plan: docs/superpowers/plans/2026-10-16-otp-security.md. Stage 3 plans: docs/superpowers/plans/2026-10-16-wallets-payments-3a.md (wallet payments and refunds) and docs/superpowers/plans/2026-10-16-withdrawals-3b.md (payout destinations, withdrawals, reconciliation).
+**Scope:** One system, built in the order given in §11. Stage 1 (ledger), Stage 2 (OTP, backend) and Stage 3a (wallet
+payments and refunds, backend) are implemented behind switches that default off (branches feature/ledger-stage1,
+feature/otp-security and feature/wallets; see section 13); later stages are specs only.
 **Basis:** The owner's brief, plus the decisions in §1, reconciled with the existing code in §13.
 
 ## 1. Decisions (settled in brainstorming)
@@ -260,8 +261,155 @@ Follow-ups found in the final review; none is reachable while the flag stays off
 
 ### Stage 3 carry-forward
 
-- Cancelled paid orders keep their `OrderFeeSnapshot` counted against the lifetime cap and their money in Vendor Pending / Delivery payable. Stage 3 must reverse them (`OrderFeeSnapshot.reversed_at`) and refund.
+- **Done in Stage 3a (W4, W6).** Cancelled paid orders kept their `OrderFeeSnapshot` counted against the lifetime cap
+  and their money in Vendor Pending / Delivery payable: Support's cancel and the uncollected-pickup job now refund the
+  order whole to the wallet and reverse its snapshots.
+- **Done in Stage 3a (W4).** Release paid every unreleased snapshot, so a refund resolution followed by "matches" would
+  have paid the vendor in full: refunds now raise each snapshot's refunded base and fee (reversed when whole), release
+  pays only what is left, a skipped stop's case refunds that shop's lines only, and release waits while a delivery-case
+  refund is pending the Super Admin's approval.
+- The money-releasing POST has no password re-check (`RequiresSudo`). Owner question: should it? (Still open.)
+- **Done in Stage 3a (W5).** The waived delivery fee never reached the ledger: the business's promo cost is now taken
+  from its Available at release and given back on a whole refund.
 
-- Release pays every unreleased snapshot, so a refund resolution (skipped-stop "refund these lines only", or money-back) followed by "matches" would pay the vendor in full. Stage 3 must reverse those snapshots (`OrderFeeSnapshot.reversed_at`), or release must leave out disputed lines.
-- The money-releasing POST has no password re-check (`RequiresSudo`). Owner question: should it?
-- The waived delivery fee never reaches the ledger.
+### Stage 2 (OTP) reconciliation (2026-10-16)
+
+Found while writing the Stage 2 plan (`docs/superpowers/plans/2026-10-16-otp-security.md`, §0):
+
+- **O1 Where it lives.** A new `otp` app; rows name `(account_type, account_id)` because the three account kinds are separate tables. Staff keep their authenticator in `accounts.two_factor`; customers and business owners get `otp.AccountAuthenticator`.
+- **O2 Sign-up.** The account row is created first; registration answers a code challenge instead of a token, and the token comes after the code. Customers and vendors who never confirmed a contact confirm once at their next sign-in. For staff the emailed invite link is the check.
+- **O3 Policy numbers** (customer gap 30 days, SMS alert 500/day) live on `staffsecurity.SecurityPolicy`, changed by a Super Admin with the password re-entered, not through the money-settings maker-checker.
+- **O4 Step-up.** Customers and vendors confirm with a texted or emailed code (an authenticator code is not accepted for step-up); staff keep password re-entry (`RequiresSudo`). Applied now to payout details, adding a recovery email/phone, and authenticator changes. There is no change-password or change-primary-contact endpoint yet; `password_change` and `withdrawal` are defined for when they exist (Stage 3).
+- **O5 SMS.** The Hubtel SMS client in `marketing/providers/hubtel_sms.py` (unverified against a live account) is reused through `OTP_SMS_PROVIDER=hubtel`; the default `simulated` sends nothing.
+- **O6 Not yet moved.** The customer secondary-contact codes (`accounts.serializers.CustomerSecondary*`) still keep their code in clear and return `demo_code` for SMS; moving them onto the OTP service changes their API and is a follow-up. Until then a secondary phone is never a code channel (`otp.identity.contacts()` ignores it, however `secondary_phone_verified` reads); a verified secondary email still is (its code is emailed).
+- **O7 Audit.** OTP events go to `otp.OtpEvent`, not the hash-chained activity log (high volume, customer-side, and the lock and the hourly limits are counted from it). Staff wrong codes also reach the sign-in history; policy changes and staff-assisted recovery also reach the activity log.
+
+### Before the OTP switches are turned on (Plan 2F)
+
+`OTP_SIGNIN_ENFORCED`, `OTP_STEP_UP_ENFORCED` and `OTP_SIGNUP_VERIFICATION_ENFORCED` all default off and must stay off until every item below is done.
+
+- **Frontend screens (Plan 2F):** code entry (a customer or vendor login answers `two_factor_required` + `mfa_token`; the code goes to `/api/otp/sign-in/verify/`, not the staff two-factor URL); a trusted-device checkbox and keeping `device_token` (customers only); step-up prompts (on `step_up_required`, one retry carrying `X-Step-Up-Token`; the step-up endpoints answer `409 otp_off` while no switch asks for a code); 2FA settings for customers and vendors. The code-entry screen must also handle `two_factor_required` answered by `/api/otp/sign-in/verify/` itself (a correct SIGN_UP code does not skip an enabled authenticator) and resend `trust_device` with the authenticator step, handle `409 no_channel` (nothing on file: contact Support) and `400 channel_unavailable` (offer the other way).
+- **A real SMS provider:** Hubtel SMS credentials and an Approved Sender ID, then `OTP_SMS_PROVIDER=hubtel` (the default `simulated` sends nothing).
+- **Hubtel SMS client unverified:** `marketing/providers/hubtel_sms.py` has never sent through a live account; prove one real OTP text first.
+- **Existing accounts with only a foreign phone (or no usable contact):** they get `409 no_channel` and cannot sign in; Support must add an email first (the operational path is not built).
+- **Last contact removed by a staff edit is not re-checked:** a profile or staff edit can leave an account with no usable contact; re-validate before enforcing.
+- **Owner question, long-horizon guessing:** the 15-minute lock still lets someone holding the password try ~20 wrong codes an hour indefinitely; decide a daily cap before enabling.
+- **Owner question:** should an opted-in authenticator be honoured even when `OTP_SIGNIN_ENFORCED` is off?
+- **Devices trusted before authenticator setup keep skipping it** (up to the customer gap); offer "sign out other devices" (revoke trusted devices) when an authenticator is turned on.
+- **Per-IP hourly limit 60 is a guess** (carrier NAT); tune it with real traffic data.
+- **Phones are not normalised at registration**, so several accounts can name one number and share its 20-codes-an-hour ceiling; normalise registration phones (and lower-case emails).
+- **`OtpEvent` keeps full phone numbers, emails and IPs for 400 days:** any staff view of it must mask them (`otp.identity.hint`).
+- **Password-reset tokens are stored raw:** hash `PasswordResetToken.token` for both uses (password reset and `otp.recovery`), as claim, step-up and device tokens already are.
+- **Lock and recovery-code notices bypass the send limits (must fix before ANY switch):** `otp/notices.py` `_send` texts/emails every contact on the account with no hourly or per-destination limit and no per-IP count, and the lock fires for any purpose including SIGN_UP. An attacker can register accounts naming a victim's phone (typed in different spellings, because registration does not normalise phones) plus the attacker's own email, lock each with 5 wrong codes, and make AshantiHub text the victim once an hour per account at AshantiHub's SMS cost. Fix: check the 20/hour per-destination ceiling in `_send` (record a refused send), and send lock notices only to destinations that are in `VerifiedContact`.
+- **Normalise phones at registration and enforce uniqueness on the normalised value:** the 20/hour global per-destination ceiling can still be used up by several accounts naming one number, and the shared `try_later` leaks, by counting sends before refusal, roughly how many codes the number got in the last hour.
+- **The customer secondary-email confirmation view is unthrottled, unlimited and compares its code in clear** (`CustomerSecondaryEmailConfirmView`, `accounts/views.py`): because a verified secondary email is a sign-in channel, add a throttle scope, an attempt limit and a constant-time compare (or move it onto the OTP service, spec O6) before any switch is on.
+- **Staff authenticator failure path has the same check-then-act race as the customer path** (`accounts.two_factor` / `StaffLoginTwoFactorView`): it is live today because staff two-factor does not depend on the OTP switches. Apply the same per-account advisory-lock pattern.
+- **Minor races accepted for now:** two failing resends that both hang past 60 s can leave the challenge with a never-delivered code (an immediate resend recovers it); `verify` can compare against a stale read for the few milliseconds a resend rotates (only the previously delivered code is accepted); the typed code is held in the local `raw_code` of `verify`/`_check` (add to `EXTRA_DENYLIST`); `guessing()` has no `lock_timeout`.
+
+
+### Stage 3 (wallets and payments) reconciliation (2026-10-16)
+
+Found while writing the Stage 3 plans (`docs/superpowers/plans/2026-10-16-wallets-payments-3a.md` and
+`docs/superpowers/plans/2026-10-16-withdrawals-3b.md`, §0 of each):
+
+- **W1 Provider interface.** `collect` stays `payments.services.process_payment` and `handle_webhook` stays
+  `payments.views.HubtelWebhookView` (both already branch simulated/Hubtel and log, verify, de-duplicate and
+  amount-check). `payments/providers.py` adds the charges, the account-name lookup, `payout` and `status` (and, in 3b,
+  the statement the reconciliation reads). `payments/hubtel_client.py` has no payout, status or name-lookup call, so
+  the Hubtel provider raises `NotConnected` for them until Plan 7.
+- **W2 Collection charge.** Paid on top by the customer for MoMo payments and top-ups ("payment processing"), kept on
+  `CheckoutSession.processing_fee`; the ledger records only the net. Simulated charges are 0 unless set (no real rate is
+  known). When AshantiHub gives it back (its own or a vendor's error) it bears it: Dr provider fees. A partial refund
+  gives back only its share of the charge (half up); the refund that empties the order gives back what is left of it.
+- **W3 Paying from the wallet.** `payment_method` (`momo` default, `wallet`) on checkout; the payment journal debits
+  the customer's wallet instead of provider clearing; a wallet must cover the whole order.
+- **W4 Refunds.** Always to the wallet, per fee snapshot (`refunded_base_pesewas`, `refunded_fee_pesewas`, and
+  `reversed_at` when whole), recorded as `ledger.OrderRefund` (one per order and source). Release pays only what is
+  left and never a cancelled order. The delivery fee comes back only with the whole order, and a coupon goes back to
+  AshantiHub only on the refund that empties the order.
+- **W5 Waived delivery fee.** The business's free-delivery promo cost (`marketing.WaivedFeeCharge`) is taken from its
+  Available at release and given back on a whole refund.
+- **W6 Wiring.** Support's cancel of a paid order, an uncollected pickup after the window (hourly job), a dispute
+  resolved with a refund amount, and an approved delivery-case refund all refund through `ledger.refunds`. A dispute
+  and its delivery-case approval share one source key, so it is never refunded twice.
+- **W7 Lock order.** Order row, then fee snapshots, then ledger accounts in primary-key order, taken up front
+  (`ledger.posting.lock`). A transaction that posts twice (release then the promo charge; a whole refund then the promo
+  return) locks the accounts of both postings in its one up-front pass.
+- **W8 Decided in the 3a plan, for the owner to confirm (its A1-A11).** A top-up goes through the provider's hosted
+  checkout (no stored "attached" MoMo number yet, §5); a wallet payment must cover the whole order (no split wallet +
+  MoMo); an uncollected pickup is refunded automatically by an hourly job; the processing charge is refunded only when
+  staff record AshantiHub, rider or business fault, and a partial refund gives back only its share of it; with the
+  ledger on, order and top-up sessions carry `metadata["ledger"]` (a `provider="wallet"` session moved no provider
+  money, so reconciliation must skip it).
+
+### Before LEDGER_ENABLED is turned on — Stage 3 additions
+
+- (vi) **Simulated rails let anyone top up for free.** Never turn the ledger on in production before Plan 7 (Hubtel
+  live) and the regulatory route (§12); on staging it is safe.
+- (vii) **Top-ups share the Hubtel webhook failure mode (i).** A finalizer that raises leaves a paid top-up
+  uncredited with `processed=False`; the 3b reconciliation reports it as `missing_in_ledger`, but alerting is still owed.
+- (viii) **The hourly uncollected-pickup job refunds every ledger-recorded store-pickup order the Pickup Desk has not
+  marked collected within `pickup_window_hours`.** Item (iv) therefore stops being "money stays in Pending": a customer
+  who collected at a vendor's own shop is refunded in full and the vendor is never paid. Before the ledger is turned on,
+  every store pickup must be collected at the AshantiHub office desk (checkout and vendor screens must say so), or the
+  job must stay off.
+- (ix) **The transaction report double-counts wallet money.** `billing.TransactionReportView` sums every
+  `billing.Transaction`: a top-up and the order paid from it are both SUCCESS rows, and wallet refunds create no
+  REFUNDED row. Exclude `checkout_sessions__provider="wallet"` from its cash totals and count wallet refunds
+  (ledger `OrderRefund`) before the ledger is turned on. The same gap hits the refund totals:
+  `insights/sales.refunds_total` counts only `Dispute.refund_amount` and event tickets, so wallet refunds from Support's
+  cancel and the pickup job (`OrderRefund`, sources `cancel` and `pickup_expired`) never appear in them (a dispute's own
+  `OrderRefund` must not be counted twice). And `insights/accounting.py` ~80 ("Where the money goes ... not held in
+  escrow") is wrong once the ledger is on: product-order money then sits in Vendor Pending and Delivery payable.
+- (x) **The switch is one-way.** With it off, refunds are skipped silently: a paid order cancelled while it is off keeps
+  its money in Vendor Pending with no later refund path. Never turn it off once on.
+- (xi) **A Hubtel success webhook for an order Support already cancelled revives it to PAID** (`_finalize_order_checkout`
+  only checks for PAID) and now posts its payment to the ledger; refuse finalisation of a cancelled order first.
+- (xii) **Delivery-case approval text is wrong for pre-ledger orders.** Its "consequences" text says the money "returns
+  to the customer's AshantiHub wallet at once" even for an order paid before the ledger was on (nothing moves then):
+  branch on the order-pay journal (`delivery/config.py` ~348-352).
+- (xiii) **Stale "no money moves" copy with the ledger on:** `delivery/views_cases.py` ~145 and `orders/support.py`
+  `payments_note()` ~76-81.
+- (xv) **A Hubtel FAILURE webhook after Support cancelled a PENDING order restocks a second time**
+  (`_fail_order_checkout`, `payments/services.py` ~73-77). Fix beside (xi), which is the success-webhook twin.
+  The same function also takes its locks in a different order from Support's cancel: `_fail_order_checkout` locks the
+  listings unsorted, then the promo charge row, then the order last, while the cancel locks the order, the listings (in
+  primary-key order), then the promo charge row. A failure webhook and a cancel on the same PENDING order can therefore
+  deadlock (Postgres aborts one). Lock the order first, then listings sorted by primary key, then the charge row, as the
+  cancel does, when (xi) is fixed.
+- (xvi) **Owner question: the Accountant's dispute-resolve door can refund an undecided delivery case** when the ledger
+  is on, so money moves without the Delivery Manager's decision or the Super Admin's approval. Also, dispute and
+  delivery wallet refunds send the customer no notice.
+- (xvii) **Checkout locks listings in cart order, not primary-key order** (`orders/views.py` ~160), so a checkout can
+  deadlock against the cancel or pickup-expiry job (Postgres aborts one; no corruption). Sort the listings in checkout.
+- (xviii) **`refunds.check` duplicates `refund_order`'s rules**, and two pending delivery cases on one order both pass
+  the decision-time check; the second approval then fails and needs a manual reject.
+  Support's cancel and the pickup job do not check `escrow.has_pending_refund` either: a delivery-case approval still
+  pending on an order they then refund whole can never be approved (`RefundError` leaves it pending) and needs a manual
+  reject. Have both refuse, or reject the pending request, before refunding.
+- (xix) **Release edge cases.** A delivered free-delivery order with every item refunded and a zero delivery fee never
+  releases: its `WaivedFeeCharge` stays OWED. `refund_order`'s nothing-left guard reverses and returns the promo even if
+  delivery was made (rare: cancel is blocked after delivery).
+- (xx) **Stage 3a minor parked items.** `posting.post()`'s `MAY_GO_NEGATIVE` exempts `VENDOR_AVAILABLE` in every posting
+  (3b withdrawals must keep their own check under lock). No database check constraints on the refund fields. The
+  processing-charge share is per-refund half-up, not cumulative. No top-up throttle. The Hubtel checkout call happens
+  inside the DB transaction (Plan 7). The top-up finalizer relies on the webhook's amount check; a top-up success
+  webhook with no amount must not credit (it now fails closed on a credit/amount mismatch).
+- (xxii) **Re-dispatch after a refund (the rest of the whole-refund fix).** A whole refund now cancels an order not
+  yet handed over and the board, pickup desk and pickup queue refuse a wholly refunded order, but two deeper gaps remain.
+  `delivery/stops.py` `reopen_for_new_rider(all_skipped=True)` reopens every stop, including a shop whose lines were
+  already refunded through a skipped-stop case. And `refunds.check` / `refund_apply` do not refuse lines whose stop is
+  now COLLECTED or whose order has since been delivered, so a refund approved after a re-dispatch can pay for goods the
+  customer received. Make both consult the stop and delivery state before the ledger is turned on.
+- (xxiii) **`_cancel_if_not_handed_over` (whole refund via dispute / delivery approval) does not withdraw a live rider
+  assignment as Support's `_cancel` does:** an ASSIGNED/ACCEPTED/AT_PICKUP rider job and its dispatch offers stay live and,
+  because rider `deliver`/`legacy_deliver` lock only the assignment and check no order status, the goods can still go out
+  against a cancelled, refunded order (also a small race where a delivery commits between the refund's read and its
+  commit; Support cancel has the same pre-existing exposure). Before the ledger is on: withdraw not-yet-picked-up
+  assignments and expire open offers in the helper, and make rider delivery steps refuse a CANCELLED order (decide what
+  to do for an order already in transit).
+- (xxi) **Assumptions for owner confirmation are A1-A11 in the 3a plan:** collection charge 0 on simulated rails, no
+  wallet cap, no split payment, the partial-refund and processing-charge policy, immediate refund on cancel, and the
+  24-hour pickup-expiry job. As item (viii) says, that job refunds every ledger-recorded store pickup (vendor-shop
+  pickups included) not marked collected by the Pickup Desk within the window, so before the ledger is on every store
+  pickup must be collected at the AshantiHub office desk.

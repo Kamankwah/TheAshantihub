@@ -51,3 +51,48 @@ PASSWORD_PROTECTED = [
     ("Security settings", "Changing who must use 2-step sign-in, and making new recovery codes."),
     ("Inviting and moving staff", "Inviting staff, changing a manager, resetting someone's 2-step sign-in."),
 ]
+
+
+# One-time codes (otp app). Read through these helpers so a missing policy row means the defaults.
+OTP_DEFAULTS = {"otp_customer_gap_days": 30, "otp_sms_daily_alert": 500}
+OTP_LIMITS = {"otp_customer_gap_days": (1, 365), "otp_sms_daily_alert": (1, 1000000)}
+OTP_LABELS = {
+    "otp_customer_gap_days": "Days a trusted customer device skips the sign-in code",
+    "otp_sms_daily_alert": "Code texts a day before Super Admin is alerted",
+}
+
+
+def otp_settings():
+    policy = current()
+    return {key: getattr(policy, key) if policy else default for key, default in OTP_DEFAULTS.items()}
+
+
+def otp_customer_gap_days():
+    return otp_settings()["otp_customer_gap_days"]
+
+
+def otp_sms_daily_alert():
+    return otp_settings()["otp_sms_daily_alert"]
+
+
+def clean_otp(values):
+    """{key: whole number} for the OTP settings in `values`; ValueError(key, message) for a bad one."""
+    cleaned = {}
+    for key, raw in values.items():
+        low, high = OTP_LIMITS[key]
+        if isinstance(raw, bool) or not isinstance(raw, int) or not low <= raw <= high:
+            raise ValueError(key, f"Use a whole number from {low} to {high}.")
+        cleaned[key] = raw
+    return cleaned
+
+
+def set_otp(values, staff):
+    from django.utils import timezone
+
+    policy = current() or SecurityPolicy()
+    for key, value in values.items():
+        setattr(policy, key, value)
+    policy.updated_at = timezone.now()
+    policy.updated_by = staff
+    policy.save()
+    return policy

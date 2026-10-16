@@ -191,8 +191,62 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   registration change (Plan 1F) ships. Held customer money is exactly Σ Vendor Pending + Σ Delivery payable (no
   order-escrow account). Follow-ups before flipping `SUBSCRIPTIONS_ENABLED` / `LEDGER_ENABLED` live are in
   `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` section 13.
+- **Wallets, payments and refunds (`wallets/`, `ledger/refunds.py`, `payments/providers.py`).** Behind `LEDGER_ENABLED`
+  like the rest of the ledger: with it off every `/api/wallet/` endpoint answers `409 ledger_off` and checkout, cancel,
+  dispute and approval responses are exactly as before. A customer pays by MoMo (`payment_method` `momo`, the default)
+  or from the wallet (`wallet`: the payment journal debits `customer_wallet` instead of provider clearing; a wallet must
+  cover the whole order, else `409 insufficient_funds` and the checkout rolls back). The provider's collection charge
+  is paid on top of MoMo payments and top-ups (`CheckoutSession.processing_fee`, "payment processing"); the ledger
+  records only the net. Refunds always go to the wallet through `ledger.refunds.refund_order` (one `OrderRefund` per
+  order and source, e.g. `dispute-<id>`, so never twice), per fee snapshot (`refunded_base_pesewas` /
+  `refunded_fee_pesewas`, `reversed_at` when whole), which frees the lifetime cap; release pays only what is left and
+  never a cancelled order; after release the vendor's Available is debited (may go negative) and the fee returned in
+  proportion; the delivery fee comes back only with the whole order; the collection charge only on a platform/vendor
+  error (its proportional share on a partial refund). Release (and Support's "matches") also waits while a
+  delivery-case refund is pending the Super Admin's approval (`escrow.has_pending_refund`; with the ledger off Support's answers are the old ones). A whole refund of an order not yet handed over also cancels it and returns its stock in the same transaction (`refunds._cancel_if_not_handed_over`), and the delivery board, pickup queue and pickup desk refuse a wholly refunded order (`refunds.is_wholly_refunded`). Support's cancel, the hourly uncollected-pickup job, dispute resolution and the delivery-case refund approval
+  all call it. A business's free-delivery promo (`WaivedFeeCharge`) is taken from its Available at release. **Lock
+  order for money:** the order row, its fee snapshots, then ledger accounts in primary-key order taken up front with
+  `posting.lock` in one sorted pass, including the accounts of a second posting in the same transaction (the promo
+  charge at release, the promo return on a whole refund; `posting.post` takes them the same way). `collect` is `payments.services.process_payment` and
+  `handle_webhook` is `HubtelWebhookView` (both unchanged); the Hubtel provider's payout, status and name lookup raise
+  `NotConnected` until Plan 7.
 - **Pickup Desk** is the `pickup_desk` staff role with the single permission `pickup.confirm` (store-pickup queue and
   collection); only a Super Admin invites it.
+- **One-time codes (`otp/`).** One OTP service for every account kind: 6-digit codes kept only as a salted HMAC
+  (SHA-1, 40 hex, 32-hex salt - the attempt and lock limits, not the hash, defend the 6-digit space), 5 minutes,
+  5 tries per code (a resend keeps the count), 60 s resend wait. Hourly send limits, counted from `OtpEvent` (so they
+  hold across processes; failed sends count): 5 per (account, phone/email), 20 per phone/email across all accounts,
+  10 per account, 60 per IP. A failed send never kills the code already delivered or starts the wait;
+  `otp.senders.deliver` never raises.
+  - **Guessing.** A sliding lock while 5 or more wrong codes (texted, emailed or authenticator) fall inside the last
+    15 minutes; sending answers the same `try_later` as a limit. Guesses run one at a time per account in
+    `otp.service.guessing()` (advisory lock; the outcome is returned from the block so the FAILED row commits, the
+    refusal is raised after) - a new guess path must use it. The holder gets a link-free notice (`otp.notices`) when
+    the lock engages (at most hourly) and when a recovery code signs in.
+  - **Sign-in.** Public endpoints take a signed `mfa_token` (nonce + password fingerprint, 600 s), never an
+    identifier; refusals are Responses, never raised - never call `otp.service.verify` inside an atomic block a
+    refusal would roll back. Login views ask `otp.signin.sign_in_step()` (staff authenticators in
+    `accounts.two_factor` are checked first); registration with the sign-up switch on answers
+    `otp.signin.code_challenge()` directly, and refuses (400) up front when the submitted contact is unusable. An
+    account that owes a code but has no phone/email on file gets `409 no_channel`; the send endpoint's "not that
+    way" is `400 channel_unavailable`. A correct SIGN_UP code does not skip an enabled authenticator (it answers
+    `two_factor_required`), and a code ticket stops working once an authenticator is on. A customer's secondary
+    phone is never a channel (its check answers `demo_code`, spec O6). Only customers get a `device_token`; trusted
+    devices die with any password change (fingerprint) and are revoked on reset; the stale-device purge uses the
+    configured customer gap, not a fixed number.
+  - **Step-up.** Sensitive changes call `otp.step_up.require(request, ACTION)` **inside** the `transaction.atomic()`
+    that saves (a refused change keeps the token); tokens are single-use, 5 minutes, bound to the action and the
+    access token's `jti` (`X-Step-Up-Token`, `403 step_up_required`). A new sensitive endpoint (password change,
+    withdrawal, payout destination) must call it. Only customers and owners may ask for step-up codes (staff use
+    sudo), and the endpoints answer `409 otp_off` unless a code could be owed.
+  - **Recovery and rollout.** Staff recovery is the `otp.recovery` approval (Support asks, Super Admin approves; no
+    text while `OTP_SMS_PROVIDER` is `simulated`); it sends a recovery-specific message plus a link-free notice to the
+    account's other contacts. Three switches default off (`OTP_SIGNIN_ENFORCED`, `OTP_STEP_UP_ENFORCED`,
+    `OTP_SIGNUP_VERIFICATION_ENFORCED`); turn them on only after every item in the spec's §13 "Before the OTP
+    switches are turned on" (frontend Plan 2F, `OTP_SMS_PROVIDER=hubtel`, ...). An unknown `OTP_SMS_PROVIDER` fails
+    the `otp.E001` system check. Texts go through `otp.senders` only (`locmem` under tests: read
+    `otp.senders.sms_outbox`). Codes and device/step-up tokens are never stored or logged in clear; add any new
+    secret field or local-variable name to `ashantihub/sentry.py`.
 
 ## Test-fixture gotcha
 
