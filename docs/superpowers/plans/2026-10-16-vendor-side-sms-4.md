@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` — §1 rows 2, 3, 6, 17; §2.1 (Vendor Pending / Available); §2.2 steps 1, 2, 4; §3.1 (tiers), §3.2 (base, cap, snapshot; "Platform fees are never shown to the customer"), §3.3 (changes apply only to later orders); §4.1 (release follows Support's call); **§6 Vendor wallets** (the two views, SMS on every paid order and on release, optional daily digest, in-app copy always kept, SMS failure never blocks payment, the transactions page with cap and export); §9 (the SMS-spend alert); §11 step 4; §12 (digest thresholds owed by the owner); §13. Deviations are in §0 below; Task 8 records them in the spec.
 
-**Depends on:** Stage 1 (ledger), Stage 2 (OTP), Stage 3a (wallets, payments, refunds) and Stage 3b (destinations, withdrawals, reconciliation), all on `origin/righteoushack` (this branch, `feature/vendor-side-4`, starts at `d26dd54`). Uses from them: `ledger.posting` (`balance_of`, `account_for`, `post`), `ledger.fees` (`quote`, `rule_set_in_force`, `charged_to_date`, `FeeError`), `ledger.settings_store.current`, `ledger.escrow` (`enabled`, `pay_key`, `release_key`, `waiver_key`, `record_order_payment`, `release_verified`), `ledger.verification` (`handed_over`, `record`), `ledger.refunds.refund_order`, `wallets.services.money`, `wallets.views` (`ledger_off`, `Pagination`, `parse_amount`, `AmountError`), `wallets.models.Withdrawal`, `otp.senders` (`deliver`, `Delivery`, `sms_outbox`), `otp.spend` (`check_quietly`, `texts_sent_on`, `ALERT_KIND`), `otp.identity` (`contacts`, `ref`), `accounts.phones.mask_phone`, `accounts.views.IsBusinessOwner`, `notifications.services.notify_business_owner`. **Plan 1b** (services, events and stays; branch `feature/ledger-services-1b`) is planned in parallel and is **not** needed: this plan reads and texts product orders only, and lists where booking sales slot in (§0 V15; spec gate (lxxii)). One soft dependency: `vendor.charged_categories()` (the fee page's `charged` flags) checks whether Plan 1b's `ledger.models.BookingSale` exists, so the fee page follows Plan 1b the moment it merges (in either order); nothing else in this plan reads it.
+**Depends on:** Stage 1 (ledger), Stage 2 (OTP), Stage 3a (wallets, payments, refunds) and Stage 3b (destinations, withdrawals, reconciliation), all on `origin/righteoushack` (this branch, `feature/vendor-side-4`, starts at `d26dd54`). Uses from them: `ledger.posting` (`balance_of`, `account_for`, `post`), `ledger.fees` (`quote`, `rule_set_in_force`, `charged_to_date`, `FeeError`), `ledger.settings_store.current`, `ledger.escrow` (`enabled`, `pay_key`, `release_key`, `waiver_key`, `record_order_payment`, `release_verified`), `ledger.verification` (`handed_over`, `record`), `ledger.refunds.refund_order`, `wallets.services.money`, `wallets.views` (`ledger_off`, `Pagination`, `parse_amount`, `AmountError`), `wallets.models.Withdrawal`, `otp.senders` (`deliver`, `Delivery`, `sms_outbox`), `otp.spend` (`check_quietly`, `texts_sent_on`, `ALERT_KIND`), `otp.identity` (`contacts`, `ref`), `accounts.phones.mask_phone`, `accounts.views.IsBusinessOwner`, `notifications.services.notify_business_owner`. **Plan 1b** (services, events and stays; branch `feature/ledger-services-1b`) is planned in parallel and is **not** needed: this plan reads and texts product orders only, and lists where booking sales slot in (§0 V15; spec gate (lxxxiii)). One soft dependency: `vendor.charged_categories()` (the fee page's `charged` flags) checks whether Plan 1b's `ledger.models.BookingSale` exists, so the fee page follows Plan 1b the moment it merges (in either order); nothing else in this plan reads it.
 
 **Commits:** every commit step ends with the two attribution trailers shown (`git commit ... --trailer ...`, git 2.32 or later):
 `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>` and `Claude-Session: https://claude.ai/code/session_01HDHNosHkqu4Wwocp7a2c8j`. An executing session that was given its own attribution lines uses those instead.
@@ -37,10 +37,10 @@ How the vendor side works today (surveyed 2026-10-16):
 | V9 | Text wording | Plain GSM-7 characters and "GHS" (never "GH₵"), at most 306 characters (two parts). Paid: order reference, item subtotal, platform fee, any free-delivery promo, amount due. Release: what reached Available, the fee taken, any promo taken after. Digest: orders, items sold, released, fees, refunds, balances now. | §6 "reference, item subtotal, platform fee, amount due". "₵" is not GSM-7: one in a text turns it into UCS-2 (70 characters a part), about three times the cost. |
 | V10 | In-app copy | Paid: the existing "New order #N" notice also carries the fee line and is the text's copy (one notice per order, not two). Release and digest: a `vendor_money` notice. The copy is written even when the text cannot be queued or sent. | §6 "in-app copy always kept". `Notification.kind` is a free-form slug (its model docstring), so no migration. |
 | V11 | Digest | Optional, off by default, per business (`VendorPreference.daily_digest`); queued at 07:00 Accra for the day before, only when money moved that day, once per day (keyed). | §6 "Optional daily digest"; §12 leaves "SMS digest thresholds" to the owner (A5). |
-| V12 | Not built | No low-balance, negative-Available, refund or withdrawal text (3b's in-app withdrawal notices stay); no staff outbox screen. | The spec names none (§6, §9); brief: "low-balance per spec". Owner question (A6; gate (lxx)). |
+| V12 | Not built | No low-balance, negative-Available, refund or withdrawal text (3b's in-app withdrawal notices stay); no staff outbox screen. | The spec names none (§6, §9); brief: "low-balance per spec". Owner question (A6; gate (lxxxi)). |
 | V13 | Fee transparency | `GET vendor/fees/`: the approved tiers in force per category with their start, the next approved change with its start (never a proposal still waiting), `charged` (product orders; services and events once Plan 1b's booking sales exist, `vendor.charged_categories()`), how the fee base works, the cap used and left, and an optional server-side quote (`?amount=&category=`, cap counted). | §3.1 tiers; §3.2 base and cap; §3.3 changes apply only later. A server quote means no screen re-implements the band maths (and its half-up rounding). |
 | V14 | Export | Synchronous CSV at `vendor/statement/export/` (no `?format=`, DRF's renderer override, backend/CLAUDE.md), the last 30 days by default, at most 366. | Same shape as `OwnerSalesReportExportView`; no free text, so no spreadsheet-formula risk (the text cells still go through `reports.exports.escape_cell`, as the repo's other exports do). |
-| V15 | Bookings | Product orders only. Slot-in points once Plan 1b records bookings: a second row source with `kind: "booking"` in `vendor.sale_groups` / `rows` / `statement`, the `booking_*` journal kinds in `vendor.FOLD`, booking texts in `vendor_texts` (services and events turn `charged` on the fee page by themselves once `ledger.BookingSale` exists: `vendor.charged_categories()`). Until then booking journals land in the daily summary's `other` column, so its columns still add up. | Brief; Plan 1b's `ledger.BookingSale` is a separate model (its S1). Gate (lxxii). |
+| V15 | Bookings | Product orders only. Slot-in points once Plan 1b records bookings: a second row source with `kind: "booking"` in `vendor.sale_groups` / `rows` / `statement`, the `booking_*` journal kinds in `vendor.FOLD`, booking texts in `vendor_texts` (services and events turn `charged` on the fee page by themselves once `ledger.BookingSale` exists: `vendor.charged_categories()`). Until then booking journals land in the daily summary's `other` column, so its columns still add up. | Brief; Plan 1b's `ledger.BookingSale` is a separate model (its S1). Gate (lxxxiii). |
 | V16 | Ledger off | Every vendor endpoint answers `409 ledger_off`; no text is queued; the new-order notice is exactly as before; the send job still sends texts already queued (it never queues one); the digest job is a no-op. | 3a/3b switch rule; a text exists only if the ledger was on when it was queued. |
 
 ## Global Constraints
@@ -54,7 +54,7 @@ How the vendor side works today (surveyed 2026-10-16):
 - **Never deploy and never touch production or staging.** No frontend: the screens are a later Plan 4F.
 - Commands, from `/home/righteoushack/projects/TheAshantihub/.worktrees/vendor4`: `docker compose -p vend1 run --rm web python manage.py test <label> --noinput`. Never two docker commands at once.
 - Migrations (check with `ls backend/wallets/migrations`): today's wallets leaf is `0004_reconciliation_unavailable`. This plan adds one generated migration, `wallets/0005_vendor_texts.py` (Task 5). No `ledger`, `accounts` or `notifications` migration.
-- Doc edits stay merge-safe with Plan 1b: append only; this plan's spec §13 items are numbered from **(lxvii)** (Plan 1b's block ends at (lxvi)); do not edit the spec's Status / Scope lines or the root `CLAUDE.md` (Plan 1b rewrites those).
+- Doc edits stay merge-safe with Plan 1b: append only; this plan's spec §13 items are numbered from **(lxxviii)** (Plan 1b's block ends at (lxxvii); they were written as (lxvii) onward, when Plan 1b's block ended at (lxvi), and renumbered when Plan 1b was merged into this branch); do not edit the spec's Status / Scope lines or the root `CLAUDE.md` (Plan 1b rewrites those).
 - Style: module docstrings, no type annotations, tests in `wallets/tests/`, plain words in user-facing messages, GH₵ in API messages and GHS in texts.
 
 ## Review Focus
@@ -489,7 +489,7 @@ business's own snapshots, item lines and accounts are read: an order can span se
 owner-scoped order isolation). No customer's name, phone or address appears here: the order screen
 (GET /api/orders/owner/) already carries what fulfilment needs. Money is integer pesewas inside and GH₵ strings in the
 rows. Only product orders are in the ledger today; booking sales (Plan 1b) slot in as a second source of rows with kind
-"booking" (spec §13 (lxxii))."""
+"booking" (spec §13 (lxxxiii))."""
 from django.db.models import Count, F, Max, Q, Sum
 from django.utils.dateparse import parse_date
 
@@ -938,7 +938,7 @@ DR, CR = JournalLine.DEBIT, JournalLine.CREDIT
 # (column, sign). The release takes the item subtotal out of Pending (a debit) and credits Available with it less the
 # platform fee, so the fee is the difference. Any other line lands in "other" (credits in, debits out), so for every day
 #   sold - fees - refunded - free_delivery_promo - withdrawn + other = net_change (the change in Pending + Available).
-# Booking sales (Plan 1b) add their booking_* kinds here (spec §13 (lxxii)).
+# Booking sales (Plan 1b) add their booking_* kinds here (spec §13 (lxxxiii)).
 FOLD = {
     ("order_payment", P, CR): ("sold", 1),
     ("order_release", P, DR): ("fees", 1),
@@ -1500,7 +1500,7 @@ def charged_categories():
     """The fee categories the ledger charges now: product orders since Stage 1, and services (stays count as services)
     and events once Plan 1b's booking sales exist. Plan 1b adds `ledger.models.BookingSale`; looking for it (instead of
     hard-coding product only) keeps the fee page truthful whichever branch merges first. The one dependency this plan has
-    on Plan 1b (spec §13 (lxxii))."""
+    on Plan 1b (spec §13 (lxxxiii))."""
     if hasattr(ledger_models, "BookingSale"):
         return (FeeRuleSet.PRODUCT, FeeRuleSet.SERVICE, FeeRuleSet.EVENT)
     return (FeeRuleSet.PRODUCT,)
@@ -3031,7 +3031,7 @@ git commit -m "feat(wallets): vendor texts screen API and the optional daily dig
 **Interfaces:**
 - Consumes: everything above. Produces: no code.
 
-- [ ] **Step 1: Line up with Plan 1b first** — if Plan 1b (`feature/ledger-services-1b`) has merged into `righteoushack`, run `git fetch origin && git rebase origin/righteoushack` now, so this task's spec block lands after Plan 1b's (both append to the end of the spec). If it has not, carry on: whichever branch merges second keeps both appended blocks, Stage 1b's first. Before appending the gate list in Step 4, read the last gate number in the spec on `origin/righteoushack` (and on `feature/ledger-services-1b` if it has not merged) and continue from it: this plan was written for (lxvii) onward, after Plan 1b's block ending at (lxvi). Do **not** edit the spec's Status / Scope lines, its §4.2 line, or the root `CLAUDE.md` (Plan 1b rewrites those).
+- [ ] **Step 1: Line up with Plan 1b first** — if Plan 1b (`feature/ledger-services-1b`) has merged into `righteoushack`, run `git fetch origin && git rebase origin/righteoushack` now, so this task's spec block lands after Plan 1b's (both append to the end of the spec). If it has not, carry on: whichever branch merges second keeps both appended blocks, Stage 1b's first. Before appending the gate list in Step 4, read the last gate number in the spec on `origin/righteoushack` (and on `feature/ledger-services-1b` if it has not merged) and continue from it: this plan was written for (lxvii) onward, after Plan 1b's block ending at (lxvi); Plan 1b's block grew to (lxxvii), so this plan's items are now (lxxviii) onward (the gate numbers elsewhere in this plan are the renumbered ones). Do **not** edit the spec's Status / Scope lines, its §4.2 line, or the root `CLAUDE.md` (Plan 1b rewrites those).
 
 - [ ] **Step 2: Correctness core** — in `backend/CLAUDE.md` replace
 
@@ -3058,7 +3058,7 @@ with
   A business text is **never an `OtpEvent`** (those count toward the code send limits) but is counted by the
   `otp.spend` alert. Bodies are GSM-7 plain text with "GHS" (never "GH₵"), at most 306 characters. `phone` is in
   `ashantihub/sentry.py`'s denylist (the whole number is a local in `vendor_texts.deliver`). Only product orders are in the
-  rows and texts; booking sales slot in later (spec §13 (lxxii)), and `vendor.charged_categories()` already follows
+  rows and texts; booking sales slot in later (spec §13 (lxxxiii)), and `vendor.charged_categories()` already follows
   `ledger.BookingSale`.
 
 ## Test-fixture gotcha
@@ -3113,43 +3113,43 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
 
 ### Before LEDGER_ENABLED is turned on — Stage 4 additions
 
-- (lxvii) **Business texts need a real SMS provider.** They go through `otp.senders` (`OTP_SMS_PROVIDER`): with
+- (lxxviii) **Business texts need a real SMS provider.** They go through `otp.senders` (`OTP_SMS_PROVIDER`): with
   `simulated` nothing is sent and the texts screen says "Not sent: texts are simulated"; the Hubtel SMS client is
   unverified (the OTP gate items apply).
-- (lxviii) **Text cost and the spend alert.** Every paid order texts each business in it, and every release texts it
+- (lxxix) **Text cost and the spend alert.** Every paid order texts each business in it, and every release texts it
   again (two texts per business per order, plus opted-in digests). The daily SMS-spend alert (`otp_sms_daily_alert`,
   default 500) now counts these with the code texts; set it from the expected order volume. Nothing is ever blocked. The
   alert fires once a day: on a day business texts reach the threshold first, a later surge of code requests raises no second
   alert. Before switch-on, decide a separate code-only threshold (or a second alert) for §9's abuse signal. A two-part text
   (a promo, or a release with a promo, up to 306 characters) counts as one text in the alert; count parts if cost matters.
-- (lxix) **Sender ID and content.** Hubtel needs an Approved Sender ID; confirm whether transactional texts need
+- (lxxx) **Sender ID and content.** Hubtel needs an Approved Sender ID; confirm whether transactional texts need
   template approval with the networks.
-- (lxx) **Owner question: texts on refunds, a negative Available, withdrawals, or a low balance.** The spec names none,
+- (lxxxi) **Owner question: texts on refunds, a negative Available, withdrawals, or a low balance.** The spec names none,
   so none is sent (3b's in-app withdrawal notices stay).
-- (lxxi) **Businesses whose login phone is not a confirmed Ghana mobile get no texts** (`no_phone`, in-app copy kept, the
+- (lxxxii) **Businesses whose login phone is not a confirmed Ghana mobile get no texts** (`no_phone`, in-app copy kept, the
   texts screen says why). A phone is confirmed when a code sent to it was accepted (`otp.VerifiedContact`), the rule Stage 2
   sets for lock notices; registration neither normalises nor verifies phones, so a business that never signed in with a
   code gets none. There is no staff list of them yet; Support should check before switch-on.
-- (lxxii) **Booking sales are not covered.** Once Plan 1b records bookings: add them as a second row source
+- (lxxxiii) **Booking sales are not covered.** Once Plan 1b records bookings: add them as a second row source
   (`kind: "booking"`) to `vendor.sale_groups` / `rows` / `statement`, their `booking_*` journal kinds to `vendor.FOLD`,
   and booking paid / release texts to `vendor_texts`. (`vendor.charged_categories()` already marks services and events
   charged as soon as `ledger.BookingSale` exists, so the fee page is truthful at once, ahead of the rows.) Until then a booking's
   money is in Pending but not in the sale rows (Pending no longer equals the waiting rows) and lands in the daily
   summary's `other` column. Do it before the ledger is on if Plan 1b ships.
-- (lxxiii) **Retention.** `VendorText` rows (amounts and order numbers only) are kept indefinitely; decide a purge beside
+- (lxxxiv) **Retention.** `VendorText` rows (amounts and order numbers only) are kept indefinitely; decide a purge beside
   `otp.retention`.
-- (lxxiv) **Frontend (Plan 4F):** the overview with the cap meter, sales with filters, the daily summary, the export,
+- (lxxxv) **Frontend (Plan 4F):** the overview with the cap meter, sales with filters, the daily summary, the export,
   the fee page and the texts settings.
-- (lxxv) **At-least-once texts.** A worker that dies between the claim and the provider's answer leaves the text to be
+- (lxxxvi) **At-least-once texts.** A worker that dies between the claim and the provider's answer leaves the text to be
   tried again after 10 minutes; with a real provider the business may get it twice.
-- (lxxvi) **Owner question: a suspended business still gets money texts** (its money still moves).
+- (lxxxvii) **Owner question: a suspended business still gets money texts** (its money still moves).
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add backend/CLAUDE.md docs
-git commit -m "docs(wallets): correctness core for the vendor money API and texts; spec V1-V16 and gates (lxvii)-(lxxvi); stage index (4)" --trailer "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>" --trailer "Claude-Session: https://claude.ai/code/session_01HDHNosHkqu4Wwocp7a2c8j"
+git commit -m "docs(wallets): correctness core for the vendor money API and texts; spec V1-V16 and gates (lxxviii)-(lxxxvii); stage index (4)" --trailer "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>" --trailer "Claude-Session: https://claude.ai/code/session_01HDHNosHkqu4Wwocp7a2c8j"
 ```
 
 - [ ] **Step 6: Run the whole backend suite**
@@ -3169,11 +3169,11 @@ Expected: `No changes detected`.
 | Plan | Scope | Why separate |
 |---|---|---|
 | **4F** Frontend | The vendor money screens: overview with the cap meter, sales with filters and labels, daily summary, the statement download, the fee page with the quote, the texts settings and recent texts. | No screen ships in a backend plan; the API answers `ledger_off` and 403 for it to handle. |
-| **1b follow-up** | Booking sales in the vendor rows, statement, daily columns, fee `charged` flags (which follow `ledger.BookingSale` on their own) and texts (gate (lxxii)). | Plan 1b is planned in parallel; its `ledger.BookingSale` must land first. |
+| **1b follow-up** | Booking sales in the vendor rows, statement, daily columns, fee `charged` flags (which follow `ledger.BookingSale` on their own) and texts (gate (lxxxiii)). | Plan 1b is planned in parallel; its `ledger.BookingSale` must land first. |
 | **5** Third-party riders | Rider earnings view and texts. | Spec §7. |
 | **6** Stock offers | Low-stock and sold-out alerts by SMS/email (§1 row 15, §10). | Spec §11 step 6; not a money text. |
-| **7** Hubtel live | A verified Hubtel SMS send and an Approved Sender ID (gates (lxvii), (lxix)). | Needs credentials (§11 step 7). |
-| Owner decisions | Texts on refunds / negative Available / withdrawals, digest thresholds, retention, texts to suspended businesses (A1–A11; gates (lxx), (lxxiii), (lxxvi)). | Not decided. |
+| **7** Hubtel live | A verified Hubtel SMS send and an Approved Sender ID (gates (lxxviii), (lxxx)). | Needs credentials (§11 step 7). |
+| Owner decisions | Texts on refunds / negative Available / withdrawals, digest thresholds, retention, texts to suspended businesses (A1–A11; gates (lxxxi), (lxxxiv), (lxxxvii)). | Not decided. |
 
 ## Self-review
 
@@ -3201,7 +3201,7 @@ Expected: `No changes detected`.
 | Brief: privacy | 1, 3, 6 (no customer detail) |
 | Brief: ledger off → 409 ledger_off | 1–4, 7 (`LedgerOffTests`), 6 (no text, notice as before) |
 | Brief: throttles / quiet hours only if the spec says | none built (V8) |
-| Brief: low-balance only per spec | none built (V12; gate (lxx)) |
+| Brief: low-balance only per spec | none built (V12; gate (lxxxi)) |
 | §11 step 4 behind the switch | every task |
 
 **Placeholder scan:** every code step carries complete code and every test step complete test code; every edit quotes the exact text it replaces; no "TBD", "similar to" or undefined names.

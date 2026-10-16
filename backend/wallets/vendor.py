@@ -8,7 +8,7 @@ business's own snapshots, item lines and accounts are read: an order can span se
 owner-scoped order isolation). No customer's name, phone or address appears here: the order screen
 (GET /api/orders/owner/) already carries what fulfilment needs. Money is integer pesewas inside and GH₵ strings in the
 rows. Only product orders are in the ledger today; booking sales (Plan 1b) slot in as a second source of rows with kind
-"booking" (spec §13 (lxxii))."""
+"booking" (spec §13 (lxxxiii))."""
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
@@ -203,7 +203,7 @@ DR, CR = JournalLine.DEBIT, JournalLine.CREDIT
 # (column, sign). The release takes the item subtotal out of Pending (a debit) and credits Available with it less the
 # platform fee, so the fee is the difference. Any other line lands in "other" (credits in, debits out), so for every day
 #   sold - fees - refunded - free_delivery_promo - withdrawn + other = net_change (the change in Pending + Available).
-# Booking sales (Plan 1b) add their booking_* kinds here (spec §13 (lxxii)).
+# Booking sales (Plan 1b) add their booking_* kinds here (spec §13 (lxxxiii)).
 FOLD = {
     ("order_payment", P, CR): ("sold", 1),
     ("order_release", P, DR): ("fees", 1),
@@ -372,7 +372,7 @@ def charged_categories():
     """The fee categories the ledger charges now: product orders since Stage 1, and services (stays count as services)
     and events once Plan 1b's booking sales exist. Plan 1b adds `ledger.models.BookingSale`; looking for it (instead of
     hard-coding product only) keeps the fee page truthful whichever branch merges first. The one dependency this plan has
-    on Plan 1b (spec §13 (lxxii))."""
+    on Plan 1b (spec §13 (lxxxiii))."""
     if hasattr(ledger_models, "BookingSale"):
         return (FeeRuleSet.PRODUCT, FeeRuleSet.SERVICE, FeeRuleSet.EVENT)
     return (FeeRuleSet.PRODUCT,)

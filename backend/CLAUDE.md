@@ -300,7 +300,7 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   A business text is **never an `OtpEvent`** (those count toward the code send limits) but is counted by the
   `otp.spend` alert. Bodies are GSM-7 plain text with "GHS" (never "GH₵"), at most 306 characters. `phone` is in
   `ashantihub/sentry.py`'s denylist (the whole number is a local in `vendor_texts.deliver`). Only product orders are in the
-  rows and texts; booking sales slot in later (spec §13 (lxxii)), and `vendor.charged_categories()` already follows
+  rows and texts; booking sales slot in later (spec §13 (lxxxiii)), and `vendor.charged_categories()` already follows
   `ledger.BookingSale`.
 
 ## Test-fixture gotcha
