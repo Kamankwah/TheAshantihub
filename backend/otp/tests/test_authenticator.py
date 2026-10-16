@@ -153,3 +153,72 @@ class ManageTests(AuthenticatorBase):
     def test_nothing_to_turn_off_spends_no_code(self):
         self.assertEqual(self.client.post("/api/otp/authenticator/disable/").status_code, 400)
         self.assertEqual(self.client.post("/api/otp/authenticator/recovery-codes/").status_code, 400)
+
+
+class SignUpCodeDoesNotSkipAuthenticatorTests(TestCase):
+    """A correct sign-up code must not finish the sign-in of an account with an authenticator."""
+
+    def setUp(self):
+        cache.clear()
+        senders.sms_outbox.clear()
+        self.t0 = int(time.time())
+        self.secret = pyotp.random_base32()
+
+    def enrol(self, account, kind):
+        AccountAuthenticator.objects.create(
+            account_type=kind, account_id=account.pk, secret_encrypted=encrypt_secret(self.secret), confirmed_at=timezone.now(),
+        )
+
+    def sign_up_ticket(self, url, identifier, **extra):
+        body = APIClient().post(url, {"identifier": identifier, "password": PASSWORD, **extra}, format="json").json()
+        self.assertIn("otp_required", body)
+        client = APIClient()
+        client.post("/api/otp/sign-in/send/", {"mfa_token": body["mfa_token"], "channel": "sms"}, format="json")
+        return body["mfa_token"], last_sms_code()
+
+    @override_settings(OTP_SIGNIN_ENFORCED=True, OTP_SIGNUP_VERIFICATION_ENFORCED=True)
+    def test_a_sign_up_code_then_the_authenticator(self):
+        owner = make_owner()
+        self.enrol(owner, "business_owner")
+        ticket, code = self.sign_up_ticket("/api/accounts/business-owners/login/", "+233201112233")
+        response = APIClient().post("/api/otp/sign-in/verify/", {"mfa_token": ticket, "code": code}, format="json")
+        body = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("token", body)
+        self.assertEqual(set(body), {"two_factor_required", "mfa_token"})
+        with mock.patch("accounts.two_factor._clock", return_value=self.t0 + 30):
+            done = APIClient().post(
+                "/api/otp/sign-in/verify/", {"mfa_token": body["mfa_token"], "code": pyotp.TOTP(self.secret).at(self.t0 + 30)}, format="json",
+            )
+        self.assertIn("token", done.json())
+
+    @override_settings(OTP_SIGNIN_ENFORCED=True, OTP_SIGNUP_VERIFICATION_ENFORCED=True)
+    def test_a_trusted_customer_device_gets_the_token_directly(self):
+        customer = make_customer()
+        self.enrol(customer, "customer")
+        raw = devices.trust(customer, None)
+        ticket, code = self.sign_up_ticket("/api/accounts/customers/login/", "+233241234567")
+        response = APIClient().post("/api/otp/sign-in/verify/", {"mfa_token": ticket, "code": code, "device_token": raw}, format="json")
+        self.assertIn("token", response.json())
+
+    @override_settings(OTP_SIGNUP_VERIFICATION_ENFORCED=True)
+    def test_with_sign_in_codes_off_the_sign_up_code_signs_in_as_before(self):
+        owner = make_owner()
+        self.enrol(owner, "business_owner")
+        ticket, code = self.sign_up_ticket("/api/accounts/business-owners/login/", "+233201112233")
+        response = APIClient().post("/api/otp/sign-in/verify/", {"mfa_token": ticket, "code": code}, format="json")
+        self.assertIn("token", response.json())
+
+    @override_settings(OTP_SIGNIN_ENFORCED=True, OTP_SIGNUP_VERIFICATION_ENFORCED=True)
+    def test_a_changed_verified_contact_does_not_open_a_way_round_the_authenticator(self):
+        from otp.models import VerifiedContact
+
+        owner = make_owner()
+        self.enrol(owner, "business_owner")
+        VerifiedContact.objects.create(account_type="business_owner", account_id=owner.pk, channel="email", destination="kwame@example.com")
+        owner.email = "attacker@example.com"
+        owner.save()
+        ticket, code = self.sign_up_ticket("/api/accounts/business-owners/login/", "+233201112233")
+        response = APIClient().post("/api/otp/sign-in/verify/", {"mfa_token": ticket, "code": code}, format="json")
+        self.assertNotIn("token", response.json())
+        self.assertTrue(response.json()["two_factor_required"])

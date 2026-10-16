@@ -114,6 +114,20 @@ def sign_in_step(account, device_token=""):
     return _challenge_or_no_channel(account, SIGN_IN)
 
 
+def authenticator_after_sign_up(account, device_token=""):
+    """After a correct sign-up code: the authenticator ticket when one is still owed (sign-in codes on, the account
+    has an authenticator, and this is not a trusted customer device), else None. A sign-up code never stands in for
+    the authenticator."""
+    kind = account_type_of(account)
+    if kind == STAFF or not flags.sign_in_enforced():
+        return None
+    if kind == CUSTOMER and devices.is_trusted(account, device_token):
+        return None
+    if authenticator.is_enabled(account):
+        return {"two_factor_required": True, "mfa_token": make_ticket(account, AUTHENTICATOR_STAGE, SIGN_IN)}
+    return None
+
+
 def _challenge_or_no_channel(account, purpose):
     """Never hand out a challenge that can't be passed: with no phone or email to send to, say so."""
     if not contacts(account):

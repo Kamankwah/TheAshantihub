@@ -19,7 +19,7 @@ from staffsecurity.models import StaffSignInRecord
 
 from . import audit, authenticator, devices, service, signin
 from .identity import CUSTOMER, STAFF, hint
-from .models import AUTHENTICATOR, SIGN_IN, OtpEvent
+from .models import AUTHENTICATOR, SIGN_IN, SIGN_UP, OtpEvent
 from .service import OtpError
 
 UNREADABLE = "Your authenticator app can't be checked right now. Ask AshantiHub Support to help you sign in."
@@ -127,6 +127,10 @@ class SignInVerifyView(APIView):
             refused = _check_code(ticket, body, request)
         if refused is not None:
             return refused
+        if ticket.purpose == SIGN_UP:
+            owed = signin.authenticator_after_sign_up(ticket.account, _text(body.get("device_token")) or "")
+            if owed is not None:
+                return Response(owed)
         payload = signin.signed_in_body(ticket.account, request)
         if ticket.account_type == CUSTOMER and _truthy(body.get("trust_device")):
             payload["device_token"] = devices.trust(ticket.account, request, existing=_text(body.get("device_token")) or "")
