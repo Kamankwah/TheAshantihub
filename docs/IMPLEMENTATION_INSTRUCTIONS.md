@@ -93,7 +93,7 @@ Stage 1 (`docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md`, spec `do
 | --- | --- |
 | **1F** Frontend | Accounting fee/settings screens; Support "awaiting verification" screen; Pickup Desk dashboard and navigation; registration "business type" step replacing "pick a plan"; hide plan UI when the plans list is empty. Must ship before `SUBSCRIPTIONS_ENABLED` is turned off. |
 | **1b** | Ledger recording and release for services, events/tickets and bookings. |
-| **2** OTP and security | One OTP service, step-up tokens, trusted devices, customer and vendor 2FA. Must precede any wallet going live. |
+| **2** OTP and security | One OTP service, step-up tokens, trusted devices, customer and vendor 2FA. Must precede any wallet going live. Backend: docs/superpowers/plans/2026-10-16-otp-security.md, behind three switches that default off; the screens are Plan 2F. |
 | **3** Wallets and payments | Customer wallet, top-up, refunds, withdrawals, payout destinations, provider interface and simulated provider, reconciliation. Needs Plan 2. |
 | **4** Vendor dashboard and SMS | Statements, per-order SMS, digest, cap meter. |
 | **5** Third-party dispatch | `Rider` employment flag, rider wallet, 90/10 split on release, end-of-day commission job. |

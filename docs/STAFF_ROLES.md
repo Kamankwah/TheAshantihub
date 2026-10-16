@@ -101,6 +101,7 @@ the role seeds in `backend/accounts/migrations/0002`–`0029`, the `HasRolePermi
 | | `fees.manage` | Propose fee-rule and money-setting changes (a Super Admin's apply at once) | ✓ | | ✓ | | | | | | |
 | Support | `messaging.manage` | Every support conversation; reply as AshantiHub Support | ✓ | | | | ✓ | | | | |
 | | `orders.verify` | Verify a delivered or collected product order by phone; a match releases the vendor's money, a mismatch raises a dispute | ✓ | | | | ✓ | | | | |
+| | `otp.recovery` | Ask for a customer's or business owner's sign-in to be recovered (ends trusted devices and the authenticator, sends a reset link); a Super Admin approves | ✓ | | | | ✓ | | | | |
 | | `contact_messages.manage` | Contact-form submissions: mark read, resolve | ✓ | ✓ | | | ✓ | | | | |
 | | `calls.view_peers` | See calls logged by teammates in the same role (Support team call log) | ✓ | | | | ✓ | | | | |
 | | `orders.support_update` | Order status screen: note a delay, cancel for the customer (never Delivered) | ✓ | ✓ | | | ✓ | | | | |

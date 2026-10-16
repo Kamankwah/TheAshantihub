@@ -19,7 +19,7 @@ DEFAULT_MATRIX = {
         "commission.view_all", "commission.policy",
     },
     "marketing": {"promotions.manage", "analytics.view", "categories.manage"},
-    "support": {"messaging.manage", "disputes.flag", "users.view", "fraud.flag"},
+    "support": {"messaging.manage", "disputes.flag", "users.view", "fraud.flag", "otp.recovery"},
     "scout": {
         "scouts.verify", "users.view", "calls.log",
         "businesses.register", "businesses.manage_portfolio", "commission.view_own",
