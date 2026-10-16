@@ -437,3 +437,73 @@ def refund(sale, amount_pesewas=None, *, source, by=None, refund_processing=Fals
                 for name in ("service_request", "booking"):
                     held._state.fields_cache.pop(name, None)
         return given
+
+
+# --- cancels and ticket refunds (Plan 1b S9, S13) ----------------------------------------------------------------
+
+class CancelError(Exception):
+    def __init__(self, message, status_code=409):
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
+
+
+ALREADY_HANDED_OVER = {
+    BookingSale.SERVICE: "The business has already marked this service done. Open a dispute instead.",
+    BookingSale.STAY: "The guest has already checked in. Open a dispute instead.",
+    BookingSale.TICKETS: "The event has taken place or a ticket was scanned. Open a dispute instead.",
+}
+
+
+def cancel(sale, staff, reason, now=None):
+    """Support cancels a paid booking the customer has not received yet (S13): refunded whole to the customer's wallet
+    (not the processing charge: the customer asked) and cancelled with it (_cancel_if_not_handed_over). Raises
+    CancelError, changing nothing, once it was refunded in full, released, or handed over (that is a dispute). Returns
+    the BookingRefund."""
+    now = now or timezone.now()
+    with transaction.atomic():
+        sale = lock(sale)
+        if sale.reversed_at is not None:
+            raise CancelError("This booking was already refunded in full.")
+        if sale.released_at is not None:
+            raise CancelError("This booking's money was already released to the business. Open a dispute instead.")
+        if handed_over_at(sale, now) is not None:
+            raise CancelError(ALREADY_HANDED_OVER[sale.kind])
+        return refund(sale, source="cancel", by=staff, note=reason, now=now)
+
+
+class TicketRefundError(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+        self.message = message
+
+
+def refund_ticket(sale, ticket_id, *, by, reason, now=None):
+    """The Accountant's refund of one ticket of a purchase (S9): its price back to the buyer's AshantiHub wallet (source
+    ticket-<id>), with today's REFUNDED billing.Transaction and the ticket marked refunded. Takes lock(sale) first (the
+    purchase's tickets, then the sale), so it never deadlocks with a scan, the call or another ticket's refund. A scanned
+    or already refunded ticket cannot be refunded (TicketRefundError); RefundError when the ledger cannot give it.
+    Returns (ticket, BookingRefund)."""
+    from billing.models import Transaction
+    from django.utils.crypto import get_random_string
+    from events.models import Ticket
+
+    now = now or timezone.now()
+    with transaction.atomic():
+        sale = lock(sale)
+        ticket = Ticket.objects.select_related("ticket_type__event", "purchased_by").get(
+            pk=ticket_id, transaction_id=sale.session.transaction_id,
+        )
+        if ticket.delivered_at is not None:
+            raise TicketRefundError("This ticket has already been delivered and cannot be refunded.")
+        if ticket.refunded_at is not None:
+            raise TicketRefundError("This ticket has already been refunded.")
+        given = refund(sale, to_pesewas(ticket.price), source=f"ticket-{ticket.pk}", by=by, note=reason, now=now)
+        Transaction.objects.create(
+            customer=ticket.purchased_by, amount=-ticket.price, status=Transaction.REFUNDED,
+            purpose=f"Refund for ticket {ticket.code} ('{ticket.ticket_type.event.name}')",
+            reference=f"AH-REFUND-{ticket.id}-{get_random_string(8).upper()}",
+        )
+        Ticket.objects.filter(pk=ticket.pk).update(refunded_at=now, refunded_by_staff=by, refund_reason=reason)
+        ticket.refresh_from_db()
+        return ticket, given

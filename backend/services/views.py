@@ -206,12 +206,14 @@ class ServiceRequestCompleteView(APIView):
     permission_classes = [IsAuthenticated, IsBusinessOwner]
 
     def post(self, request, pk):
-        sr = generics.get_object_or_404(ServiceRequest, pk=pk, business_owner=request.user)
-        if sr.status != ServiceRequest.IN_PROGRESS:
-            return Response({"detail": "Only an in-progress job can be completed."}, status=400)
-        sr.status = ServiceRequest.COMPLETED
-        sr.completed_at = timezone.now()
-        sr.save(update_fields=["status", "completed_at"])
+        with db_transaction.atomic():
+            # Locked, so marking the job done and a cancel (with its refund) never cross (ledger Plan 1b S15).
+            sr = generics.get_object_or_404(ServiceRequest.objects.select_for_update(), pk=pk, business_owner=request.user)
+            if sr.status != ServiceRequest.IN_PROGRESS:
+                return Response({"detail": "Only an in-progress job can be completed."}, status=400)
+            sr.status = ServiceRequest.COMPLETED
+            sr.completed_at = timezone.now()
+            sr.save(update_fields=["status", "completed_at"])
         notify_customer(
             sr.customer, "service_request", "Service completed",
             body=f"“{sr.listing.name}” has been marked complete.",

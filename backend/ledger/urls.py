@@ -11,4 +11,5 @@ urlpatterns = [
     path("pickup/<int:pk>/collected/", views.PickupCollectedView.as_view(), name="ledger-pickup-collected"),
     path("bookings/awaiting-verification/", views_bookings.AwaitingBookingsView.as_view(), name="ledger-bookings-awaiting"),
     path("bookings/<int:pk>/verification/", views_bookings.BookingVerificationView.as_view(), name="ledger-booking-verification"),
+    path("bookings/<int:pk>/cancel/", views_bookings.BookingCancelView.as_view(), name="ledger-booking-cancel"),
 ]

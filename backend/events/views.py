@@ -1201,6 +1201,26 @@ class EscrowRefundView(APIView):
         reason = _required_note(request.data.get("reason"))
         if reason is None:
             return Response({"reason": "Write a reason of at least 3 characters: every refund is explained."}, status=400)
+        sale = _ledger_sale(generics.get_object_or_404(Ticket, pk=ticket_id))
+        if sale is not None:
+            # With the ledger on, the ticket's price goes back to the buyer's AshantiHub wallet (ledger Plan 1b S9).
+            from ledger import sales
+            from ledger.money import from_pesewas
+            from ledger.refunds import RefundError
+
+            try:
+                ticket, given = sales.refund_ticket(sale, ticket_id, by=request.user, reason=reason)
+            except sales.TicketRefundError as exc:
+                return Response({"detail": exc.message}, status=400)
+            except RefundError as exc:
+                return Response({"detail": exc.message}, status=exc.status_code)
+            back = from_pesewas(given.amount_pesewas)
+            notify_customer(
+                ticket.purchased_by, "booking", "Your ticket was refunded",
+                body=f"GH₵ {back} for your ticket to “{ticket.ticket_type.event.name}” went back to your AshantiHub wallet.",
+                link="/my-account", icon="🎟️",
+            )
+            return Response({**TicketEscrowLedgerSerializer(ticket).data, "wallet_refund": str(back)})
         with db_transaction.atomic():
             ticket = generics.get_object_or_404(Ticket.objects.select_for_update(), pk=ticket_id)
 

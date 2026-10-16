@@ -8,12 +8,15 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import HasRolePermission
+from notifications.services import notify_business_owner, notify_customer
 
 from . import escrow, sales, settings_store
 from .models import BookingSale
+from .money import from_pesewas
 from .verification import VerificationError
 
 VERIFY = "orders.verify"
+SUPPORT = "orders.support_update"  # the permission of Support's order status screen, which cancels orders
 OFF = "The ledger isn't switched on yet."
 
 
@@ -66,3 +69,39 @@ class BookingVerificationView(APIView):
         return Response({
             "sale": sale.pk, "outcome": sale.outcome, "dispute_id": sale.dispute_id, "released": sale.released_at is not None,
         })
+
+
+class BookingCancelView(APIView):
+    """POST bookings/<id>/cancel/ {reason} — Support cancels a paid booking the customer has not received yet: a service
+    not done, a stay not checked in, tickets for an event not yet held with none scanned. It goes back to the customer's
+    AshantiHub wallet in full (not the processing charge: the customer asked); the customer and the business are told.
+    Once handed over it is a dispute, not a cancel (409)."""
+
+    def get_permissions(self):
+        return [HasRolePermission(SUPPORT)]
+
+    def post(self, request, pk):
+        if not escrow.enabled():
+            return ledger_off()
+        data = request.data if isinstance(request.data, dict) else {}
+        reason = str(data.get("reason") or "").strip()[:300]
+        if len(reason) < 3:
+            return Response({"reason": "Say why it is cancelled (at least 3 characters)."}, status=400)
+        sale = get_object_or_404(BookingSale.objects.select_related("customer", "business_owner"), pk=pk)
+        try:
+            refund = sales.cancel(sale, request.user, reason)
+        except sales.CancelError as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
+        back = from_pesewas(refund.amount_pesewas)
+        what = sales.description(sale)
+        notify_customer(
+            sale.customer, "booking", "Your booking was cancelled",
+            body=f"AshantiHub Support cancelled your booking ({what}). GH₵ {back} went back to your AshantiHub wallet.",
+            link="/my-account", icon="🧾",
+        )
+        notify_business_owner(
+            sale.business_owner, "booking", "Booking cancelled",
+            body=f"AshantiHub Support cancelled a booking ({what}) before it took place. The customer was refunded.",
+            link="/business-dashboard", icon="⚠️",
+        )
+        return Response({"sale": sale.pk, "refunded": str(back)})
