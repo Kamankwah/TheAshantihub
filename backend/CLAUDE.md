@@ -232,6 +232,23 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   withdrawal asks the provider first and is refused (409 `provider_processing`) while it says processing or anything
   unmapped, never with an open amount case, and the holder sees only AshantiHub's fixed
   reason. The nightly `wallets.reconciliation` is read-only and compares by provider reference.
+- **Services, stays and event tickets in the ledger (`ledger/sales.py`, Plan 1b).** Behind `LEDGER_ENABLED` like the
+  rest. A paid service request, stay or ticket purchase is one `ledger.BookingSale` (its subject; its fee snapshot from
+  the services table — stays count as services — or the events table; Support's call), recorded by the payment
+  finalizers (`booking-pay-<session reference>`: Dr provider clearing or customer wallet, Cr vendor Pending). The
+  lifetime cap counts sales and order snapshots together (`fees.charged_to_date`), read after the business's Pending is
+  locked. Handed over = service marked done, guest checked in, a ticket scanned or the event's date passed; release only
+  on Support's "matches" (`sales.record_verification`, `/api/ledger/bookings/`), with the 72-hour window counted from
+  hand-over (provisional until the owner confirms it: spec gate (lvii)). Tickets for a customer-organised event stay outside the ledger (MoMo only). With the ledger on a ticket's
+  escrow flag follows its sale: a scan no longer releases it, the manual release and hold answer `409 ledger_on`.
+  Refunds go to the wallet through `sales.refund` (one `BookingRefund` per sale and source; the refund that empties a
+  sale cancels a booking not yet handed over), wired into the customer's stay cancel, Support's booking cancel, the
+  Accountant's ticket refund and dispute resolution. **Lock order:** the service request or stay row (tickets: the
+  purchase's tickets in primary-key order), then the sale, then accounts in one sorted pass (`sales.lock(sale)`); the
+  hand-over steps (service done, check-in, ticket scan) lock their own row. `record_verification` locks the linked
+  dispute first (dispute, then subject, then sale, as disputes resolve). The three pay endpoints take
+  `payment_method` and add "payment processing" on MoMo through `payments/booking_pay.py`; a service request's price
+  must be above GH₵ 0.00 with at most two decimals (this check is always on, ledger on or off: spec §13 (lxvii)).
 - **Pickup Desk** is the `pickup_desk` staff role with the single permission `pickup.confirm` (store-pickup queue and
   collection); only a Super Admin invites it.
 - **One-time codes (`otp/`).** One OTP service for every account kind: 6-digit codes kept only as a salted HMAC

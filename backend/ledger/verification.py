@@ -17,10 +17,11 @@ logger = logging.getLogger(__name__)
 
 
 class VerificationError(Exception):
-    def __init__(self, message, status_code=409):
+    def __init__(self, message, status_code=409, code=None):
         super().__init__(message)
         self.message = message
         self.status_code = status_code
+        self.code = code
 
 
 def check_for(order):

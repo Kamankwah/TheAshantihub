@@ -11,8 +11,11 @@ from rest_framework.views import APIView
 from accounts.views import IsBusinessOwner, IsCustomer
 from listings.models import Listing
 from notifications.services import notify_business_owner, notify_customer
+from ledger import escrow, posting, sales
+from ledger.models import BookingSale
+from ledger.money import from_pesewas
+from payments import booking_pay
 from payments.models import CheckoutSession
-from payments.services import process_payment
 
 from .availability import is_available, min_units_free
 from .models import Booking
@@ -57,62 +60,67 @@ class BookingCreateView(APIView):
         serializer = BookingCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        try:
+            method = booking_pay.method_from(request.data)
+        except booking_pay.Refused as exc:
+            return Response(exc.body, status=exc.status_code)
 
         today = timezone.now().date()
         if data["check_in"] < today:
             return Response({"check_in": "Check-in can't be in the past."}, status=400)
 
-        with db_transaction.atomic():
-            listing = generics.get_object_or_404(
-                Listing.objects.select_for_update(), pk=data["listing"]
-            )
-            if listing.status != Listing.PUBLISHED:
-                return Response({"listing": "This listing isn't available."}, status=400)
-            if not (listing.category and listing.category.is_accommodation):
-                return Response({"listing": "This listing isn't a bookable accommodation."}, status=400)
-            if listing.price_amount is None:
-                return Response({"listing": "This listing has no nightly rate set."}, status=400)
+        try:
+            with db_transaction.atomic():
+                listing = generics.get_object_or_404(
+                    Listing.objects.select_for_update(), pk=data["listing"]
+                )
+                if listing.status != Listing.PUBLISHED:
+                    return Response({"listing": "This listing isn't available."}, status=400)
+                if not (listing.category and listing.category.is_accommodation):
+                    return Response({"listing": "This listing isn't a bookable accommodation."}, status=400)
+                if listing.price_amount is None:
+                    return Response({"listing": "This listing has no nightly rate set."}, status=400)
 
-            if not is_available(listing, data["check_in"], data["check_out"], data["units"]):
-                return Response(
-                    {"detail": "Those dates aren't available for the number of units requested."},
-                    status=status.HTTP_409_CONFLICT,
+                if not is_available(listing, data["check_in"], data["check_out"], data["units"]):
+                    return Response(
+                        {"detail": "Those dates aren't available for the number of units requested."},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+
+                nights = (data["check_out"] - data["check_in"]).days
+                total = listing.price_amount * nights * data["units"]
+                booking = Booking.objects.create(
+                    customer=request.user,
+                    listing=listing,
+                    business_owner=listing.business_owner,
+                    check_in=data["check_in"],
+                    check_out=data["check_out"],
+                    units=data["units"],
+                    nightly_rate=listing.price_amount,
+                    total_price=total,
+                    status=Booking.PENDING,
                 )
 
-            nights = (data["check_out"] - data["check_in"]).days
-            total = listing.price_amount * nights * data["units"]
-            booking = Booking.objects.create(
-                customer=request.user,
-                listing=listing,
-                business_owner=listing.business_owner,
-                check_in=data["check_in"],
-                check_out=data["check_out"],
-                units=data["units"],
-                nightly_rate=listing.price_amount,
-                total_price=total,
-                status=Booking.PENDING,
-            )
-
-            result = process_payment(
-                kind=CheckoutSession.BOOKING,
-                amount=total,
-                purpose=f"Booking: {listing.name} ({data['check_in']} → {data['check_out']})",
-                customer=request.user,
-                metadata={"booking_id": booking.id},
-            )
-            if result["mode"] == "redirect":
-                return Response(
-                    {"mode": "redirect", "checkout_url": result["checkout_url"], "reference": result["reference"]},
-                    status=status.HTTP_200_OK,
+                result, processing = booking_pay.pay(
+                    kind=CheckoutSession.BOOKING,
+                    amount=total,
+                    purpose=f"Booking: {listing.name} ({data['check_in']} → {data['check_out']})",
+                    customer=request.user,
+                    metadata={"booking_id": booking.id},
+                    method=method,
                 )
-            booking.refresh_from_db()
+                if result["mode"] == "redirect":
+                    return Response(booking_pay.redirect_body(result, processing), status=status.HTTP_200_OK)
+                booking.refresh_from_db()
+        except posting.InsufficientFunds as exc:
+            return booking_pay.too_low(exc)  # the booking rolled back with the payment: its nights stay free
 
         notify_business_owner(
             listing.business_owner, "booking", "New booking",
             body=f"A customer booked “{listing.name}” for {nights} night(s).",
             link="/business-dashboard", icon="🏨",
         )
-        return Response(BookingSerializer(booking).data, status=201)
+        return Response(booking_pay.with_terms(BookingSerializer(booking).data, processing, method=method), status=201)
 
 
 class MyBookingsView(generics.ListAPIView):
@@ -138,25 +146,41 @@ class IncomingBookingsView(generics.ListAPIView):
 
 
 class BookingCancelView(APIView):
-    """POST /api/bookings/{id}/cancel/ — the customer cancels their own
-    booking, freeing the dates. Only before check-in.
+    """POST /api/bookings/{id}/cancel/ — the customer cancels their own booking, freeing the dates. Only before
+    check-in. With the ledger on, a paid booking goes back to the customer's AshantiHub wallet in full at once
+    (ledger.sales.refund; the payment-processing charge stays with the provider: the customer asked), and the customer
+    is told how much. The booking row is locked, so a cancel and a check-in never cross.
     """
 
     permission_classes = [IsAuthenticated, IsCustomer]
 
     def post(self, request, pk):
-        booking = generics.get_object_or_404(Booking, pk=pk, customer=request.user)
-        if booking.status not in (Booking.PENDING, Booking.CONFIRMED):
-            return Response({"detail": "This booking can no longer be cancelled."}, status=400)
-        booking.status = Booking.CANCELLED
-        booking.cancelled_at = timezone.now()
-        booking.save(update_fields=["status", "cancelled_at"])
+        refund = None
+        with db_transaction.atomic():
+            booking = generics.get_object_or_404(Booking.objects.select_for_update(), pk=pk, customer=request.user)
+            if booking.status not in (Booking.PENDING, Booking.CONFIRMED):
+                return Response({"detail": "This booking can no longer be cancelled."}, status=400)
+            sale = BookingSale.objects.filter(booking=booking).first() if escrow.enabled() else None
+            if sale is not None:
+                refund = sales.refund(sale, source="cancel", note="Cancelled by the customer before check-in")
+            booking.status = Booking.CANCELLED
+            booking.cancelled_at = timezone.now()
+            booking.save(update_fields=["status", "cancelled_at"])
         notify_business_owner(
             booking.business_owner, "booking", "Booking cancelled",
             body=f"A booking for “{booking.listing.name}” was cancelled.",
             link="/business-dashboard", icon="⚠️",
         )
-        return Response(BookingSerializer(booking).data)
+        body = BookingSerializer(booking).data
+        if refund is not None:
+            back = from_pesewas(refund.amount_pesewas)
+            notify_customer(
+                booking.customer, "booking", "Your booking was cancelled",
+                body=f"Your booking for “{booking.listing.name}” was cancelled. GH₵ {back} went back to your AshantiHub wallet.",
+                link="/my-account", icon="🧾",
+            )
+            body = {**body, "wallet_refund": str(back)}
+        return Response(body)
 
 
 class BookingCheckInView(APIView):
@@ -165,12 +189,14 @@ class BookingCheckInView(APIView):
     permission_classes = [IsAuthenticated, IsBusinessOwner]
 
     def post(self, request, pk):
-        booking = generics.get_object_or_404(Booking, pk=pk, business_owner=request.user)
-        if booking.status != Booking.CONFIRMED:
-            return Response({"detail": "Only a confirmed booking can be checked in."}, status=400)
-        booking.status = Booking.CHECKED_IN
-        booking.checked_in_at = timezone.now()
-        booking.save(update_fields=["status", "checked_in_at"])
+        with db_transaction.atomic():
+            # Locked, so a check-in and a cancel (with its refund) never cross (ledger Plan 1b S15).
+            booking = generics.get_object_or_404(Booking.objects.select_for_update(), pk=pk, business_owner=request.user)
+            if booking.status != Booking.CONFIRMED:
+                return Response({"detail": "Only a confirmed booking can be checked in."}, status=400)
+            booking.status = Booking.CHECKED_IN
+            booking.checked_in_at = timezone.now()
+            booking.save(update_fields=["status", "checked_in_at"])
         return Response(BookingSerializer(booking).data)
 
 
