@@ -17,11 +17,12 @@ does, so a product payment and a booking payment for one business never both see
 from datetime import timedelta
 
 from django.db import transaction
+from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 
 from . import escrow, fees, posting, settings_store
 from .models import Account, BookingSale, FeeRuleSet, FulfilmentCheck, Journal
-from .money import to_pesewas
+from .money import from_pesewas, to_pesewas
 from .verification import VerificationError
 
 # Spec §1 row 11: stays count as services; tickets use the events table, whatever category the listing or event is in.
@@ -261,3 +262,57 @@ def record_verification(sale, staff, outcome, *, note="", customer_confirmed_by_
         if outcome == MATCHES and release(sale, now) is None:
             raise VerificationError("The booking could not be released. Check for an open dispute and try again.", 409)
         return sale
+
+
+# --- Support's list (Plan 1b; paginated from the start, unlike the products list, spec §13 (ii)) --------------------
+
+def description(sale):
+    """What was bought, in words, for Support's call and the business's sales list."""
+    if sale.kind == BookingSale.SERVICE:
+        return sale.service_request.listing.name
+    if sale.kind == BookingSale.STAY:
+        booking = sale.booking
+        units = f", {booking.units} units" if booking.units != 1 else ""
+        return f"{booking.listing.name}, {booking.check_in:%d %b} to {booking.check_out:%d %b}{units}"
+    quantity = int(sale.session.metadata.get("quantity") or 0)
+    noun = "ticket" if quantity == 1 else "tickets"
+    return f"{quantity} {noun} for {sale.event.name}, {timezone.localtime(sale.event.event_date):%d %b %Y}"
+
+
+def awaiting(now=None):
+    """Bookings handed over (S5) and waiting for Support's call: not released and not refunded in full, oldest paid
+    first. A queryset, for a paginated screen."""
+    from events.models import Ticket
+
+    now = now or timezone.now()
+    scanned = Ticket.objects.filter(transaction_id=OuterRef("session__transaction_id"), delivered_at__isnull=False)
+    return (
+        BookingSale.objects.filter(released_at__isnull=True, reversed_at__isnull=True)
+        .annotate(scanned=Exists(scanned))
+        .filter(
+            Q(kind=BookingSale.SERVICE, service_request__completed_at__isnull=False)
+            | Q(kind=BookingSale.STAY, booking__checked_in_at__isnull=False)
+            | Q(kind=BookingSale.TICKETS, scanned=True)
+            | Q(kind=BookingSale.TICKETS, event__event_date__lte=now)
+        )
+        .select_related(
+            "session", "customer", "business_owner__profile", "service_request__listing", "booking__listing", "event",
+        )
+        .order_by("paid_at", "id")
+    )
+
+
+def queue_row(sale, now, hours):
+    """One row of Support's list. `due_by` and `overdue` count `hours` (verification_overdue_hours) from hand-over (S7).
+    Carries the customer's phone: only for the orders.verify screen."""
+    handed = handed_over_at(sale, now)
+    due = handed + timedelta(hours=hours) if handed is not None else None
+    return {
+        "sale_id": sale.pk, "kind": sale.kind, "label": sale.label(), "what": description(sale), "paid_at": sale.paid_at,
+        "handed_over_at": handed, "due_by": due, "overdue": due is not None and now > due,
+        "business": sale.business_owner.display_name, "customer_name": sale.customer.full_name,
+        "customer_phone": sale.customer.phone,
+        "amount": str(from_pesewas(sale.base_pesewas - sale.refunded_base_pesewas)),
+        "customer_confirmed": customer_confirmed(sale), "outcome": sale.outcome, "outcome_note": sale.outcome_note,
+        "dispute_id": sale.dispute_id,
+    }
