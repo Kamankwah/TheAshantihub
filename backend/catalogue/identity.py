@@ -9,6 +9,8 @@
   different goods. A key starting with six zeros is read as a padded GTIN-8 (GS1 keeps that GTIN-13 range for them).
   Coupon and refund-receipt prefixes (GS1 050-059, 980-984, 99x) are not special-cased, and typed GS1-128 strings
   (`(01)...`) and EAN add-ons (15 or 18 digits) are refused as malformed.
+* The UPC-E reading is a heuristic: about a tenth of valid 0/1-prefixed EAN-8s also check as a UPC-E, and those are
+  keyed deterministically as the UPC-A they expand to (12345670 -> 00123456000070). Accepted.
 * A name is compared by its normalised form: accents dropped, lower case, and every run of anything but a letter or a
   digit (any script, so the Akan and Ewe letters ɛ ɔ ŋ stay) turned into one space. Only exact normalised names are offered as matches; nothing is fuzzy."""
 import re

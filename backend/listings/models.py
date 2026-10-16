@@ -136,7 +136,7 @@ class Listing(models.Model):
     # plan 6). Neither is in the public serializers.
     barcode = models.CharField(max_length=14, blank=True, default="", db_index=True)
     catalogue_product = models.ForeignKey(
-        "catalogue.CatalogueProduct", on_delete=models.PROTECT, null=True, blank=True, related_name="offers",
+        "catalogue.CatalogueProduct", on_delete=models.SET_NULL, null=True, blank=True, related_name="offers",
     )
 
     # ── Service decision fields ─────────────────────────────────────────────

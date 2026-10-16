@@ -8,7 +8,7 @@ from catalogue import identity
 from catalogue.models import CatalogueProduct, product_row
 from catalogue.tests.helpers import BARCODE, STORE_CODE, as_account, business, product
 from listings.models import Category, Listing, Zone
-from listings.serializers import GROUPED_BARCODE_MESSAGE
+from listings.serializers import GROUPED_BARCODE_MESSAGE, NOT_GOODS_MESSAGE
 
 
 class BarcodeTests(SimpleTestCase):
@@ -27,6 +27,17 @@ class BarcodeTests(SimpleTestCase):
         # An 8-digit code starting 0 or 1 whose check digit holds over its UPC-A expansion is a UPC-E (small packs and cans).
         self.assertEqual(identity.clean_barcode("01234565"), identity.clean_barcode("012345000065"))
         self.assertEqual(identity.clean_barcode("01234565"), "00012345000065")
+
+    def test_an_ean8_the_upc_e_reading_captures_maps_to_the_upc_a_key(self):
+        # Accepted: about a tenth of valid 0/1-prefixed EAN-8s also check as a UPC-E and are keyed as its UPC-A.
+        self.assertEqual(identity.clean_barcode("12345670"), "00123456000070")
+
+    def test_gtin14_isbn_and_repeated_digit_codes(self):
+        self.assertEqual(identity.clean_barcode("14006381333938"), "14006381333938")   # indicator digit 1
+        self.assertEqual(identity.clean_barcode("9780306406157"), "09780306406157")    # ISBN-13 is an EAN-13
+        self.assertEqual(identity.clean_barcode("1111111111116"), "01111111111116")    # valid check digit, repeated digits
+        with self.assertRaises(identity.BarcodeError):
+            identity.clean_barcode("1111111111111")
 
     def test_blank_is_no_barcode(self):
         for raw in ("", "   ", None):
@@ -137,6 +148,39 @@ class ListingBarcodeTests(TestCase):
         }, format="json")
         self.assertEqual(response.status_code, 201, response.content)
         self.assertEqual(response.json()["barcode"], BARCODE)
+
+    def test_the_owner_form_serializer_never_writes_back_a_grouping_or_stock_it_read(self):
+        from listings.serializers import OwnerListingSerializer
+        entry = CatalogueProduct.objects.create(brand="Nestle", name="Milo 400g", barcode=BARCODE)
+        self.listing.status = Listing.DRAFT
+        self.listing.save(update_fields=["status"])
+        stale = Listing.objects.get(pk=self.listing.pk)
+        Listing.objects.filter(pk=self.listing.pk).update(catalogue_product=entry, stock_quantity=3)
+        request = type("R", (), {"user": self.owner})()
+        serializer = OwnerListingSerializer(stale, data={"tag": "new"}, partial=True, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        self.listing.refresh_from_db()
+        self.assertEqual((self.listing.catalogue_product, self.listing.stock_quantity, self.listing.tag), (entry, 3, "new"))
+
+    def test_deleting_a_catalogue_entry_leaves_its_offers_standing_alone(self):
+        entry = CatalogueProduct.objects.create(brand="Nestle", name="Milo 400g", barcode=BARCODE)
+        self.listing.catalogue_product = entry
+        self.listing.save(update_fields=["catalogue_product"])
+        entry.delete()
+        self.listing.refresh_from_db()
+        self.assertIsNone(self.listing.catalogue_product)
+
+    def test_a_barcode_on_a_service_or_stay_is_refused(self):
+        from catalogue.tests.helpers import service, stay
+        for listing in (service(self.owner), stay(self.owner)):
+            with self.subTest(listing=listing.name):
+                response = self.client.patch(
+                    f"/api/listings/mine/{listing.pk}/manage/", {"barcode": BARCODE}, format="json")
+                self.assertEqual(response.status_code, 400, response.content)
+                self.assertEqual(response.json()["barcode"], [NOT_GOODS_MESSAGE])
+                self.assertEqual(
+                    self.client.patch(f"/api/listings/mine/{listing.pk}/manage/", {"barcode": ""}, format="json").status_code, 200)
 
     def test_the_public_listing_shape_is_unchanged(self):
         self.client.credentials()
