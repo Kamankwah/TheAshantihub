@@ -454,8 +454,10 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
 - (xxvi) **Provider float.** When AshantiHub funds coupons, payouts can exceed collections; a confirmed payout still posts
   and provider clearing may read below zero. Fund the float before go-live and watch the nightly run.
 - (xxvii) **Payout reports must carry an amount before Plan 7:** a Hubtel SUCCEEDED report (webhook or status) with no
-  amount must not be applied (fail closed, like the top-up rule in (xx)). Today `wallets.payouts.apply_result` applies a
-  report that names no amount, because the simulated status answers none.
+  amount must not be applied (fail closed, like the top-up rule in (xx)). `wallets.payouts.apply_result` now enforces
+  this: a SUCCEEDED report that names no amount is not settled unless the withdrawal's provider is `simulated` (the
+  simulated status answers none); it opens a `withdrawal-amount-<ref>` case instead. Plan 7's Hubtel client must still
+  return the amount it paid.
 - (xxviii) **Destination changes are told in-app only:** before the ledger is on, a payout destination added or removed
   should also be texted or emailed to the contacts on file.
 - (xxix) **Customer names are not verified:** before the ledger is on, either require a step-up code for a `full_name`

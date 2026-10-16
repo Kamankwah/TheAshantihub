@@ -390,6 +390,43 @@ class EngineFixRoundTests(TestCase):
         self.assertGreater(paid.submitted_at, past + timedelta(days=1))
 
 
+    def flagged_short(self):
+        def short(provider, **kwargs):
+            return providers.PayoutResult(providers.SUCCEEDED, amount_pesewas=4000)
+
+        with mock.patch.object(providers.SimulatedProvider, "payout", short):
+            return payouts.submit(self.withdraw().pk)
+
+    def test_close_refuses_a_withdrawal_with_an_open_amount_case(self):
+        sent = self.flagged_short()
+        with transaction.atomic():
+            locked = Withdrawal.objects.select_for_update().get(pk=sent.pk)
+            payouts.close(locked, Withdrawal.FAILED, "Staff failed it.", timezone.now())
+        sent.refresh_from_db()
+        self.assertEqual(sent.status, Withdrawal.PROCESSING)
+        self.assertEqual((self.wallet(), self.transit()), (15000, 5000))
+        self.assertFalse(Journal.objects.filter(kind="withdrawal_reversed").exists())
+        self.assertEqual(payouts._unsent(sent).status, Withdrawal.PROCESSING)                 # the NotConnected path too
+
+    def test_the_poll_leaves_a_withdrawal_that_ever_had_an_amount_case_to_staff(self):
+        sent = self.flagged_short()
+        FraudFlag.objects.filter(dedupe_key=f"withdrawal-amount-{sent.reference}").update(status=FraudFlag.DISMISSED)
+        Withdrawal.objects.filter(pk=sent.pk).update(submitted_at=timezone.now() - timedelta(minutes=3))
+        with mock.patch.object(providers.SimulatedProvider, "status") as status:
+            self.assertEqual(payouts.poll(), 0)
+        status.assert_not_called()
+        self.assertEqual(FraudFlag.objects.filter(dedupe_key=f"withdrawal-amount-{sent.reference}").count(), 1)
+        sent.refresh_from_db()
+        self.assertEqual(sent.status, Withdrawal.PROCESSING)
+
+    def test_any_other_send_failure_keeps_the_withdrawal_processing(self):
+        with mock.patch.object(providers.SimulatedProvider, "payout", side_effect=ConnectionError("reset after the request")):
+            sent = payouts.submit(self.withdraw().pk)
+        self.assertEqual(sent.status, Withdrawal.PROCESSING)
+        self.assertEqual((self.wallet(), self.transit()), (15000, 5000))
+        self.assertFalse(Journal.objects.filter(kind="withdrawal_reversed").exists())
+
+
 @override_settings(LEDGER_ENABLED=True)
 class ConcurrentWithdrawalTests(TransactionTestCase):
     serialized_rollback = True

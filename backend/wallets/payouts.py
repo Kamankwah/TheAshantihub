@@ -1,15 +1,20 @@
 """Sending a held withdrawal to the provider and settling it (spec §2.2 step 5, §2.3).
 
 A withdrawal is claimed (PENDING → PROCESSING under its row lock) before the provider is asked, so it is sent once even
-when the request and the poll race; a held one whose holder was suspended (or is gone) or whose destination was removed
-since is returned instead. No provider call runs inside a transaction. `apply_result` is the one way a withdrawal ends,
+when the request and the poll race. Before sending, a held one is re-checked (holder suspended or gone, destination
+removed, still inside its cooling period, name or KYC no longer matching) and returned instead if any fails. No provider
+call runs inside a transaction (claim is durable and raises RuntimeError when nested). A provider that raises
+NotConnected sent nothing, so the hold goes back at once; any other failure leaves the outcome unknown and the
+withdrawal PROCESSING. `apply_result` is the one way a withdrawal ends,
 whoever reports it - the provider's answer, the 5-minute poll, a payout webhook (Plan 7), staff asking the provider -
 and `close` the one way its money goes back (a failure, the holder's cancel, staff failing a stuck one). Both lock the
 row first; the journal keys are per reference, so a report applied twice posts once. A final status never changes: a
 "paid" report on a withdrawal already failed or cancelled is never posted (its money went back), a "failed" report on
 one already paid changes nothing, and a report on one never sent is not applied; each opens a fraud case. A report
-whose amount (as the provider states it) differs from what was sent is not applied and opens one too. The provider's
-own message is never stored or shown, and nothing here logs an account number."""
+whose amount (as the provider states it) differs from what was sent, or a paid report that names none from a provider
+other than the simulated one, is not applied and opens a `withdrawal-amount-<ref>` case; while that case is open
+neither `apply_result` nor `close` ends the withdrawal, and the poll never asks about one that ever had such a case:
+staff resolve it. The provider's own message is never stored or shown, and nothing here logs an account number."""
 import logging
 from datetime import timedelta
 
@@ -64,9 +69,11 @@ def _tell(withdrawal, title, body):
 
 
 def claim(withdrawal_pk, now=None):
-    """PENDING → PROCESSING under the row lock. Returns the withdrawal if this caller won it, else None. A held
-    withdrawal whose holder was suspended (or is gone), or whose destination was removed, since it was asked for is not
-    sent: its money goes back (CANCELLED) and None is returned."""
+    """PENDING → PROCESSING under the row lock (and the destination's). Returns the withdrawal if this caller won it,
+    else None. Re-checks what request() checked: the holder is not suspended (and exists), the destination is not
+    removed and is past its cooling period, and its name still matches the holder's verified name (which includes
+    business KYC). If any fails the money goes back (CANCELLED) and None is returned. Raises RuntimeError inside an
+    open transaction (durable)."""
     now = timezone.now()  # real time: a poll that started minutes ago must not backdate the send
     # durable: a caller's open transaction would hold these locks across the provider call and could roll back after it
     with transaction.atomic(durable=True):
@@ -88,8 +95,10 @@ def claim(withdrawal_pk, now=None):
 
 
 def submit(withdrawal_pk, now=None):
-    """Send a held withdrawal to the provider once, then apply what it answered. Never raises for a provider problem:
-    a send with no answer stays PROCESSING for the poll (or staff) to settle. Returns the withdrawal as it now is."""
+    """Send a held withdrawal to the provider once, then apply what it answered. A provider problem never raises: a
+    send that failed or got no answer stays PROCESSING for the poll (or staff) to settle, except NotConnected (nothing
+    was sent), which returns the hold. Raises RuntimeError when called inside a transaction (claim is durable).
+    Returns the withdrawal as it now is."""
     withdrawal = claim(withdrawal_pk, now)
     if withdrawal is None:
         return Withdrawal.objects.get(pk=withdrawal_pk)
@@ -113,7 +122,8 @@ def submit(withdrawal_pk, now=None):
 
 
 def _unsent(withdrawal):
-    """The provider refused to even take the payout (NotConnected): return the hold, exactly once."""
+    """The provider refused to even take the payout (NotConnected): return the hold, exactly once (close refuses when
+    an amount case is open)."""
     with transaction.atomic():
         locked = Withdrawal.objects.select_for_update().get(pk=withdrawal.pk)
         if locked.status == Withdrawal.PROCESSING:
@@ -121,11 +131,11 @@ def _unsent(withdrawal):
     return Withdrawal.objects.get(pk=withdrawal.pk)
 
 
-def apply_result(reference, status, *, provider_reference="", amount_pesewas=None, message="", now=None):
+def apply_result(reference, status, *, provider_reference="", amount_pesewas=None, now=None):
     """End a withdrawal from a report: SUCCEEDED posts the payout, FAILED returns the money, PROCESSING changes nothing.
     `amount_pesewas` is what the provider says reached the destination; None means the report did not say (the
-    simulated status). A Hubtel report must carry it (spec §13 (xxvii)). `message` is the provider's own text and is
-    dropped: it may hold an account number. Returns the withdrawal, or None for an unknown reference."""
+    simulated status). A Hubtel report must carry it (spec §13 (xxvii)). The provider's own message text is never passed
+    in: it may hold an account number. Returns the withdrawal, or None for an unknown reference."""
     now = now or timezone.now()
     if status not in (providers.SUCCEEDED, providers.FAILED):
         if provider_reference:
@@ -206,9 +216,20 @@ def apply_result(reference, status, *, provider_reference="", amount_pesewas=Non
         return withdrawal
 
 
+def amount_case_key(withdrawal):
+    return f"withdrawal-amount-{withdrawal.reference}"
+
+
 def close(withdrawal, status, reason, now):
     """Return a held withdrawal's money to its source (FAILED or CANCELLED). The caller holds the row lock. `reason` is
-    shown to the holder: AshantiHub's own words, never the provider's message or a staff member's note."""
+    shown to the holder: AshantiHub's own words, never the provider's message or a staff member's note. A PROCESSING
+    withdrawal with an OPEN amount case is NOT closed: the provider may have paid, so the withdrawal is returned
+    unchanged (status still PROCESSING) and callers must not assume it ended. Staff resolve the case first."""
+    if withdrawal.status == Withdrawal.PROCESSING and FraudFlag.objects.filter(
+        dedupe_key=amount_case_key(withdrawal), status=FraudFlag.OPEN,
+    ).exists():
+        logger.warning("Withdrawal %s has an open amount case; not returned", withdrawal.reference)
+        return withdrawal
     source = source_account(withdrawal)
     posting.post(
         key=reversed_key(withdrawal.reference), kind="withdrawal_reversed",
@@ -248,7 +269,9 @@ def poll(now=None):
             logger.exception("Could not send withdrawal %s; the next poll tries again", pk)
             continue
         looked += 1
-    for withdrawal in Withdrawal.objects.filter(status=Withdrawal.PROCESSING, submitted_at__lt=now - ASK_AFTER):
+    prefix = "withdrawal-amount-"  # one that ever had an amount case (any status) is left to staff
+    held_for_staff = {key[len(prefix):] for key in FraudFlag.objects.filter(dedupe_key__startswith=prefix).values_list("dedupe_key", flat=True)}
+    for withdrawal in Withdrawal.objects.filter(status=Withdrawal.PROCESSING, submitted_at__lt=now - ASK_AFTER).exclude(reference__in=held_for_staff):
         try:
             result = providers.get_provider(withdrawal.provider).status(withdrawal.reference)
             apply_result(

@@ -64,7 +64,11 @@ class PaymentProvider:
         raise NotConnected(f"{self.name} cannot look up account names yet")
 
     def payout(self, *, reference, rail, institution, account_number, amount_pesewas):
-        """Instruct a payout of `amount_pesewas` (what reaches the destination) under our `reference`."""
+        """Instruct a payout of `amount_pesewas` (what reaches the destination) under our `reference`.
+
+        Contract: raise NotConnected ONLY when no request has left the server. Any other failure after a request may
+        have been sent must raise another exception or return PROCESSING - the engine treats other exceptions as an
+        unknown outcome and never returns the hold."""
         raise NotConnected(f"{self.name} cannot make payouts yet")
 
     def status(self, reference):
