@@ -3,18 +3,28 @@
 text never stops the money) and 5 (ledger off)."""
 from unittest import mock
 
+from django.db import connection
 from django.test import override_settings
 
 from ledger import escrow, posting
 from ledger.models import Account, Journal
 from notifications.models import Notification
+from orders import alerts
 from orders.models import Order
 from otp import senders
+from wallets import vendor_texts
 from wallets.models import VendorText
 
 from .vendor_helpers import VendorBase, paid_order, release, signed_in, waived
 
 DOWN = senders.Delivery(ok=False, provider="hubtel")
+
+
+def db_error(*args, **kwargs):
+    """A REAL database error (aborts the transaction unless a savepoint contains it), not a python exception raised
+    before any SQL."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT 1/0")
 
 
 def paid_body(order_id, items, fee, due):
@@ -44,7 +54,8 @@ class LedgerOffTests(CheckoutBase):
         self.checkout((self.kofi_item, 1))
         self.assertEqual(senders.sms_outbox, [])
         self.assertFalse(VendorText.objects.exists())
-        self.assertNotIn("Platform fee", Notification.objects.get(business_owner=self.kofi.owner).body)
+        listing_name = self.kofi_item.name
+        self.assertEqual(Notification.objects.get(business_owner=self.kofi.owner).body, f"1 × {listing_name} — GHS 120.00")
 
 
 @override_settings(LEDGER_ENABLED=True)
@@ -75,13 +86,46 @@ class PaidTextTests(CheckoutBase):
         self.assertNotIn("+233241110001", [text.to for text in senders.sms_outbox])
 
     def test_review_focus_a_text_that_cannot_be_queued_never_stops_the_payment(self):
-        with mock.patch.object(VendorText.objects, "get_or_create", side_effect=RuntimeError("down")), \
+        with mock.patch.object(VendorText.objects, "get_or_create", side_effect=db_error), \
                 self.assertLogs("wallets.vendor_texts", "ERROR"):
             response = self.checkout((self.kofi_item, 1))
         order = Order.objects.get(pk=response.json()["id"])
         self.assertEqual(order.status, Order.PAID)
         self.assertTrue(Journal.objects.filter(key=escrow.pay_key(order)).exists())
         self.assertIn("Platform fee", Notification.objects.get(business_owner=self.kofi.owner).body)   # the copy stays
+        self.assertFalse(VendorText.objects.exists())                       # and the transaction still works after it
+
+    def test_a_body_too_long_for_its_column_is_a_database_error_the_payment_survives(self):
+        with mock.patch("wallets.vendor_texts.fits", return_value=True), \
+                mock.patch("wallets.vendor_texts.paid_text", return_value="x" * 400), \
+                self.assertLogs("wallets.vendor_texts", "ERROR"):
+            response = self.checkout((self.kofi_item, 1))
+        order = Order.objects.get(pk=response.json()["id"])
+        self.assertEqual(order.status, Order.PAID)
+        self.assertTrue(Journal.objects.filter(key=escrow.pay_key(order)).exists())
+
+    def test_reading_the_fee_snapshots_failing_never_stops_the_payment(self):
+        with mock.patch("wallets.vendor_texts.OrderFeeSnapshot", **{"objects.filter.side_effect": db_error}), \
+                self.assertLogs("wallets.vendor_texts", "ERROR"):
+            response = self.checkout((self.kofi_item, 1))
+        order = Order.objects.get(pk=response.json()["id"])
+        self.assertEqual(order.status, Order.PAID)
+        self.assertTrue(Journal.objects.filter(key=escrow.pay_key(order)).exists())
+        self.assertEqual(Notification.objects.get(business_owner=self.kofi.owner).body, f"1 × {self.kofi_item.name} — GHS 120.00")
+
+    def test_a_sale_smaller_than_its_free_delivery_promo_says_what_comes_off_the_balance(self):
+        amounts = vendor_texts.Amounts(subtotal=1000, fee=50, promo=1975)
+        text = vendor_texts.paid_text(Order(pk=7), amounts)
+        self.assertNotIn("-10", text)
+        self.assertIn("GHS 10.25 will come off your balance after hand-over", text)
+        self.assertTrue(vendor_texts.fits(text))
+        self.assertIn("GHS 10.25 will come off your balance", vendor_texts.paid_line(amounts))
+
+    def test_the_alert_run_twice_queues_one_text(self):
+        self.checkout((self.kofi_item, 1))
+        order = Order.objects.get()
+        alerts.alert_owners_of_paid_order(order)
+        self.assertEqual(VendorText.objects.filter(kind=VendorText.ORDER_PAID).count(), 1)
 
     def test_review_focus_a_provider_that_is_down_leaves_the_text_queued_for_a_retry(self):
         with mock.patch("wallets.vendor_texts.senders.deliver", return_value=DOWN):
@@ -122,12 +166,27 @@ class ReleaseTextTests(VendorBase):
 
     def test_review_focus_a_text_that_cannot_be_queued_never_stops_a_release(self):
         order = paid_order(self.buyer, [(self.kofi.listing("120.00"), 1)])
-        with mock.patch.object(VendorText.objects, "get_or_create", side_effect=RuntimeError("down")), \
+        with mock.patch.object(VendorText.objects, "get_or_create", side_effect=db_error), \
                 self.assertLogs("wallets.vendor_texts", "ERROR"):
             self.released(order)
         self.assertTrue(Journal.objects.filter(key=escrow.release_key(order)).exists())
         self.assertEqual(posting.balance_of(Account.VENDOR_AVAILABLE, self.kofi.owner), 11500)
         self.assertTrue(Notification.objects.filter(business_owner=self.kofi.owner, kind="vendor_money").exists())
+
+    def test_reading_the_release_journal_failing_never_stops_a_release(self):
+        order = paid_order(self.buyer, [(self.kofi.listing("120.00"), 1)])
+        with mock.patch("wallets.vendor_texts.JournalLine", **{"objects.filter.side_effect": db_error}), \
+                self.assertLogs("wallets.vendor_texts", "ERROR"):
+            self.released(order)
+        self.assertTrue(Journal.objects.filter(key=escrow.release_key(order)).exists())
+        self.assertEqual(posting.balance_of(Account.VENDOR_AVAILABLE, self.kofi.owner), 11500)
+
+    def test_order_released_run_twice_queues_one_text(self):
+        order = paid_order(self.buyer, [(self.kofi.listing("120.00"), 1)])
+        self.released(order)
+        journal = Journal.objects.get(key=escrow.release_key(order))
+        vendor_texts.order_released(order, journal)
+        self.assertEqual(VendorText.objects.filter(kind=VendorText.ORDER_RELEASED).count(), 1)
 
     def test_a_release_is_texted_once(self):
         order = paid_order(self.buyer, [(self.kofi.listing("120.00"), 1)])

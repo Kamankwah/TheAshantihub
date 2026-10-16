@@ -240,14 +240,25 @@ def _promo_part(promo):
 
 def paid_text(order, amounts):
     """Spec §6: reference, item subtotal, platform fee, amount due."""
-    return (
+    head = (
         f"AshantiHub: order #{order.pk} paid. Items GHS {money(amounts.subtotal)}, platform fee GHS {money(amounts.fee)}"
-        f"{_promo_part(amounts.promo)}, due to you GHS {money(amounts.due)} after hand-over and Support's check."
+        f"{_promo_part(amounts.promo)}"
     )
+    if amounts.due < 0:  # the free-delivery promo costs more than the sale earns: say so, never a negative "due to you"
+        return (
+            f"{head}. GHS {money(-amounts.due)} will come off your balance after hand-over: free-delivery cost exceeds "
+            "this sale."
+        )
+    return f"{head}, due to you GHS {money(amounts.due)} after hand-over and Support's check."
 
 
 def paid_line(amounts):
     """The money line added to the in-app "New order" notice (the paid text's in-app copy)."""
+    if amounts.due < 0:
+        return (
+            f"Platform fee GHS {money(amounts.fee)}{_promo_part(amounts.promo)}; GHS {money(-amounts.due)} will come off "
+            "your balance after hand-over: free-delivery cost exceeds this sale."
+        )
     return (
         f"Platform fee GHS {money(amounts.fee)}{_promo_part(amounts.promo)}; due to you GHS {money(amounts.due)} once the "
         "order is handed over and Support has checked it."
@@ -263,16 +274,16 @@ def released_text(order, released, fee, promo):
     )
 
 
-def order_released(order):
-    """The release text and its in-app copy for each business the release paid, worked out from the journals just
-    written: its Pending debit (the subtotal released), its Available credit (that less the fee) and a free-delivery
+def order_released(order, journal):
+    """The release text and its in-app copy for each business the release paid, worked out from the journal just
+    written (`journal`, the release's): its Pending debit (the subtotal released), its Available credit (that less the fee) and a free-delivery
     promo charged right after (ledger.escrow.charge_waiver). Called inside the release's transaction after every posting;
-    takes no lock and never raises. Returns how many texts were queued."""
+    takes no new row lock beyond foreign-key key-share locks, and never raises. Returns how many texts were queued."""
     try:
         with transaction.atomic():
             shares = {}
             lines = JournalLine.objects.filter(
-                journal__key=escrow.release_key(order), account__owner_type=OWNER_TYPE,
+                journal=journal, account__owner_type=OWNER_TYPE,
                 account__kind__in=(Account.VENDOR_PENDING, Account.VENDOR_AVAILABLE),
             ).select_related("account")
             for line in lines:
