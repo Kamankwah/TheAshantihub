@@ -983,7 +983,9 @@ class EventCheckinView(APIView):
     non-exceptional path by which escrow is released: a held, undelivered,
     non-refunded ticket is marked delivered and auto-released in the same
     write (escrow_released_by_staff stays null, distinguishing an
-    auto-release from a manual EscrowReleaseView override).
+    auto-release from a manual EscrowReleaseView override). With the ledger
+    on and the ticket in a booking sale, the scan only marks it delivered and
+    leaves it held: it counts as hand-over, and Support's call releases it.
     """
 
     permission_classes = [IsAuthenticated, IsEventOwnerOrCanApproveEvents]
@@ -1108,7 +1110,8 @@ class EscrowReleaseView(APIView):
     `escrow.release` manually releases a held ticket's payment before/
     without a normal check-in (exception path — e.g. a physical-delivery
     ticket where check-in doesn't apply). Body may carry an optional
-    `note` recorded as escrow_override_note.
+    `note` recorded as escrow_override_note. A ticket in a ledger booking sale
+    answers 409 {"code": "ledger_on"}: Support's call releases it.
     """
 
     def get_permissions(self):
@@ -1147,7 +1150,8 @@ class EscrowHoldView(APIView):
     `escrow.release` reverses an escrow release back to held (exception
     path — e.g. a dispute raised after an already-checked-in ticket was
     released). Deliberately leaves delivered_at untouched: "held" is purely
-    an escrow-ledger state here, not an undo of check-in itself.
+    an escrow-ledger state here, not an undo of check-in itself. A ticket in a
+    ledger booking sale answers 409 {"code": "ledger_on"}.
     """
 
     def get_permissions(self):

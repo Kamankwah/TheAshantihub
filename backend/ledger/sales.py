@@ -182,6 +182,8 @@ def release(sale, now=None):
     if Journal.objects.filter(key=release_key(sale)).exists() or not Journal.objects.filter(key=pay_key(sale.session)).exists():
         return None
     base = sale.base_pesewas - sale.refunded_base_pesewas
+    if base <= 0:
+        return None
     fee = sale.charged_pesewas - sale.refunded_fee_pesewas
     pending = posting.account_for(Account.VENDOR_PENDING, sale.business_owner)
     income = posting.account_for(Account.PLATFORM_FEE_INCOME)
@@ -207,10 +209,16 @@ def release(sale, now=None):
 def record_verification(sale, staff, outcome, *, note="", customer_confirmed_by_phone=False, now=None):
     """Support's verification call for a booking (spec §4.2). "matches" releases the money at once; "does not match"
     opens a dispute due `verification_overdue_hours` after hand-over (S7) and releases nothing; "could not reach" is only
-    recorded. Raises VerificationError, saving nothing, when the booking cannot be verified now. Returns the sale."""
+    recorded. Raises VerificationError, saving nothing, when the ledger is off or the booking cannot be verified now.
+    A repeat "does not match" while the dispute is open adds its note to that dispute; if the earlier dispute was
+    rejected a new one is refused (it is reopened instead), so the sale's linked dispute is never replaced while it
+    could still be reopened. The dispute's due time is hand-over + verification_overdue_hours: provisional, owner to
+    confirm (spec gate (lvii)). Returns the sale."""
     from disputes.models import Dispute
 
     now = now or timezone.now()
+    if not escrow.enabled():
+        raise VerificationError("The ledger is off.", 409)
     if outcome not in (MATCHES, DOES_NOT_MATCH, UNREACHABLE):
         raise VerificationError("Pick matches, does not match, or could not reach.", 400)
     if note is not None and not isinstance(note, str):
@@ -234,15 +242,22 @@ def record_verification(sale, staff, outcome, *, note="", customer_confirmed_by_
                 sale.phone_confirmed_at = now
             if not customer_confirmed(sale):
                 raise VerificationError("Record the customer's confirmation first.")
-        if outcome == DOES_NOT_MATCH and not has_open_dispute(sale):
+        if outcome == DOES_NOT_MATCH and sale.dispute_id is not None:
+            existing = sale.dispute
+            if existing.status == Dispute.REJECTED:
+                raise VerificationError("The earlier dispute was rejected — reopen it instead of logging a new one.")
+            if existing.status not in Dispute.FINAL_STATUSES:
+                existing.description = f"{existing.description}\n[{timezone.localtime(now):%Y-%m-%d %H:%M}] Still does not match: {note}"
+                existing.save(update_fields=["description"])
+        elif outcome == DOES_NOT_MATCH:
             hours = settings_store.current("verification_overdue_hours", now)
             # Logged by staff on the customer's behalf: raised_by stays null (the disputes convention, S8).
             sale.dispute = Dispute.objects.create(
                 order=None, raised_by=None, logged_by=staff, reason=Dispute.QUALITY_ISSUE, status=Dispute.OPEN,
-                description=f"{sale.label().capitalize()} does not match: {note}", answer_due_at=handed + timedelta(hours=hours),
+                description=f"{sale.label().capitalize()} does not match: {note}", answer_due_at=handed + timedelta(hours=hours),  # provisional, owner to confirm (gate (lvii))
             )
         sale.outcome, sale.outcome_note, sale.outcome_at, sale.outcome_by = outcome, note, now, staff
         sale.save(update_fields=["phone_confirmed_at", "outcome", "outcome_note", "outcome_at", "outcome_by", "dispute"])
-        if outcome == MATCHES and escrow.enabled() and release(sale, now) is None:
+        if outcome == MATCHES and release(sale, now) is None:
             raise VerificationError("The booking could not be released. Check for an open dispute and try again.", 409)
         return sale

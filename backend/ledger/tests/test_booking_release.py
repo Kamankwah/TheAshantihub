@@ -127,3 +127,75 @@ class BookingReleaseTests(BookingBase):
         ticket.refresh_from_db()
         self.assertEqual(ticket.escrow_status, Ticket.HELD)
         self.assertEqual(self.balance(Account.VENDOR_PENDING, self.owner), 5000)
+
+    # --- fix round 1 ---
+
+    def scan(self, ticket):
+        self.as_owner()
+        response = self.client.post(f"/api/events/{self.event.pk}/tickets/checkin/", {"code": ticket.code}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        ticket.refresh_from_db()
+        return ticket
+
+    def test_a_rejected_dispute_is_never_replaced_and_a_reopened_one_blocks_release(self):
+        sale = self.paid_service()
+        self.complete(sale)
+        sale = self.call(sale, "does_not_match", note="Half done")
+        dispute = sale.dispute
+        Dispute.objects.filter(pk=dispute.pk).update(status=Dispute.REJECTED)
+        with self.assertRaisesMessage(VerificationError, "The earlier dispute was rejected"):
+            self.call(sale, "does_not_match", note="Again")
+        sale.refresh_from_db()
+        self.assertEqual((sale.dispute_id, Dispute.objects.count()), (dispute.pk, 1))
+        Dispute.objects.filter(pk=dispute.pk).update(status=Dispute.OPEN)
+        with self.assertRaisesMessage(VerificationError, "A dispute is open on this booking."):
+            self.call(sale, "matches", customer_confirmed_by_phone=True)
+        self.assertEqual(self.balance(Account.VENDOR_PENDING, self.owner), 20000)
+
+    def test_a_repeat_mismatch_appends_its_note_to_the_open_dispute(self):
+        sale = self.paid_service()
+        self.complete(sale)
+        sale = self.call(sale, "does_not_match", note="Half done")
+        self.call(sale, "does_not_match", note="Still half done")
+        description = Dispute.objects.get().description
+        self.assertIn("Half done", description)
+        self.assertIn("Still half done", description)
+
+    def test_a_mismatch_or_unreachable_is_refused_before_hand_over(self):
+        sale = self.paid_service()
+        for outcome in ("does_not_match", "unreachable"):
+            with self.subTest(outcome=outcome), self.assertRaisesMessage(VerificationError, "has not marked this service done"):
+                self.call(sale, outcome, note="x")
+        self.assertEqual(Dispute.objects.count(), 0)
+
+    def test_the_call_is_refused_while_the_ledger_is_off(self):
+        sale = self.paid_service()
+        with override_settings(LEDGER_ENABLED=False), self.assertRaisesMessage(VerificationError, "The ledger is off."):
+            self.call(sale, "unreachable")
+
+    def test_a_ticket_dispute_is_due_72_hours_after_the_first_scan(self):
+        sale = self.paid_tickets(quantity=2)
+        ticket = self.scan(Ticket.objects.filter(transaction=sale.session.transaction).order_by("pk").first())
+        sale = self.call(sale, "does_not_match", note="Wrong event")
+        self.assertEqual(sale.dispute.answer_due_at, ticket.delivered_at + timedelta(hours=72))
+
+    def test_a_ticket_dispute_without_a_scan_is_due_72_hours_after_the_event_date(self):
+        sale = self.paid_tickets(quantity=1)
+        date = timezone.now() - timedelta(hours=5)
+        Event.objects.filter(pk=self.event.pk).update(event_date=date)
+        sale = self.call(sale, "does_not_match", note="Cancelled on the day")
+        self.assertEqual(sale.dispute.answer_due_at, date + timedelta(hours=72))
+
+    @override_settings(LEDGER_ENABLED=False)
+    def test_a_scan_still_releases_the_flag_with_the_ledger_off(self):
+        self.buy_tickets(quantity=1)
+        ticket = self.scan(Ticket.objects.get())
+        self.assertEqual(ticket.escrow_status, Ticket.RELEASED)
+        self.assertIsNotNone(ticket.escrow_released_at)
+
+    def test_a_scan_still_releases_a_ticket_that_has_no_sale(self):
+        with override_settings(LEDGER_ENABLED=False):
+            self.buy_tickets(quantity=1)
+        ticket = self.scan(Ticket.objects.get())
+        self.assertEqual(ticket.escrow_status, Ticket.RELEASED)
+        self.assertIsNotNone(ticket.escrow_released_at)

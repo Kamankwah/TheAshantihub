@@ -434,7 +434,8 @@ Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-st
   tickets for an event that never took place (its date passes, so it counts as handed over) keep their money in Pending
   until Support cancels or records the call. Owner to decide a rule.
 - (lvi) **Support calls every ticket purchase** before release, even when a ticket was scanned at the door; at a large
-  event that is many calls. Owner question: should a scan release without a call?
+  event that is many calls. Owner question: should a scan release without a call? A door scan is forgeable by the organiser (the paid business holds the ticket codes), so a scan
+  shown as `customer_confirmed: true` in Support's queue must not invite a "matches" without reaching the customer.
 - (lvii) **The 72-hour window for bookings runs from hand-over,** not from purchase, because a booking can be paid weeks
   before it happens. Owner to confirm.
 - (lviii) **Cancellation policy.** A customer's cancel of a paid stay before check-in and Support's cancel of a booking
