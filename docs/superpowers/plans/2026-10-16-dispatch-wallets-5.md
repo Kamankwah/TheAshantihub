@@ -19,9 +19,9 @@
 | # | Question | Decision | Why (grounded in the code) |
 |---|---|---|---|
 | R1 | The third-party flag (none exists today) | `delivery.Rider` gains `employment` (`ashantihub` — the default, so every existing rider is unchanged — or `third_party`), a free-text `company_name` (required for third-party) and `third_party_since` (when the current third-party engagement started; null for AshantiHub's own). **No `RiderCompany` table.** | Surveyed: `delivery/models.py` has `Rider` (one row per Dispatch `StaffUser`, made by `delivery.signals`), `Vehicle.owner_kind` and nothing about who employs a rider; its docstring says "no payout, payroll or ledger model". `docs/IMPLEMENTATION_INSTRUCTIONS.md` row 5 names a "`Rider` employment flag". The spec pays the rider personally (§2.1 Rider balance per rider; §8 destinations name-matched to the holder), so nothing in the money keys on the company; a company record is only needed if a company itself is contracted or paid (owner question, gate (xcix)). |
-| R2 | Who changes it | A new approval kind `delivery.rider_employment` (`delivery/employment.py`): a Delivery Manager (`delivery.fleet`) proposes at `POST /api/delivery/riders/<id>/employment/`, a Super Admin approves with the password (`requires_sudo`); a Super Admin's own proposal applies at once. One pending request per rider. | The flag routes delivery fees from AshantiHub's income to a third party's withdrawable money: a money decision (spec §1 row 16; backend/CLAUDE.md "Approvals: the maker never decides"). Every other fleet edit (`RiderDetailView.patch`, `RiderJobHoldView`) is one Delivery Manager alone, which must not hold here. |
+| R2 | Who changes it | A new approval kind `delivery.rider_employment` (`delivery/employment.py`): a Delivery Manager (`delivery.fleet`) proposes at `POST /api/delivery/riders/<id>/employment/`, a Super Admin approves with the password (`requires_sudo`); a Super Admin's own proposal for another rider applies at once (so it is not password-gated, like the other `requires_sudo` kinds a Super Admin proposes). Nobody may change their own employment (`own_rider` 403, a Super Admin included) and only a Dispatch role holder can be third-party (`not_a_rider` 409). One pending request per rider (best effort: the approval re-checks at decision time). | The flag routes delivery fees from AshantiHub's income to a third party's withdrawable money: a money decision (spec §1 row 16; backend/CLAUDE.md "Approvals: the maker never decides"). Every other fleet edit (`RiderDetailView.patch`, `RiderJobHoldView`) is one Delivery Manager alone, which must not hold here. |
 | R3 | Switching back to AshantiHub's own | Refused (`409 rider_money_open`, with `open`: `balance`, `reserve`, `withdrawal`, `deliveries`) while the rider's balance is not zero, a reserve is still held, a withdrawal is open, or a door-to-door order they delivered as third-party is paid in the ledger but not yet released (and not refunded whole). Checked when proposed, again when approved (`validate`), and again in `apply` under the rider row's lock; a release takes the same row lock before paying a rider. | "AshantiHub-own riders have wallets disabled": a wallet must never close with money in it, and a delivery made as third-party must not silently become AshantiHub's income. |
-| R4 | When the rider is credited | **At release only**: Support's positive verification call (`ledger.verification.record` → `escrow.release_verified`), in the release's own transaction, never at the doorstep or on a timer. The rider is the assignment's `dispatch` when the order is door to door, the assignment is not `FAILED`, `delivered_at` is set, and that rider is third-party with `third_party_since <= delivered_at`. | Spec §2.2 step 2(c) puts the rider's 90/10 inside the release, and §4.1 releases only on the call. `orders.DeliveryAssignment` is one-to-one with the order and a re-dispatch replaces `dispatch` on the same row (`delivery.services.assign` refuses once delivered), so the row names the rider who delivered; a failed attempt earns nothing (its fee goes to whoever delivers). `escrow.release_verified` already says "then any third-party rider (Stage 5)". |
+| R4 | When the rider is credited | **At release only**: Support's positive verification call (`ledger.verification.record` → `escrow.release_verified`), in the release's own transaction, never at the doorstep or on a timer. The rider is the assignment's `dispatch` when the order is door to door, the assignment is not `FAILED`, `delivered_at` is set, and that rider is third-party with `third_party_since <= delivered_at`. | Spec §2.2 step 2(c) puts the rider's 90/10 inside the release, and §4.1 releases only on the call. `orders.DeliveryAssignment` is one-to-one with the order and a re-dispatch replaces `dispatch` on the same row (`delivery.services.assign` refuses once delivered), so the row names the rider who delivered; a failed attempt earns nothing (its fee goes to whoever delivers). `escrow.release_verified` already says "then any third-party rider (Stage 5)". The wait for Support's call is an owner question (gate (c), RA12). |
 | R5 | What the rider is paid, and how it is posted | The whole delivery fee AshantiHub took at release: what the release credited to platform delivery income (the Delivery payable) plus the business's free-delivery promo charge (`charge_waiver`). One journal right after both, same transaction: `order-rider-<order>` (kind `rider_earning`): Dr platform delivery income gross, Cr rider balance net, Cr rider reserve reserve. Recorded on a `delivery.RiderEarning` row. The rate-card `DeliveryAssignment.rider_pay` is not what a third-party rider is paid; it stays a payroll record for AshantiHub's own riders. | §1 row 4: the fee "goes wholly to the rider (third party)". Posting through platform delivery income leaves `release_verified`, `charge_waiver` and every Stage 3a refund path as they are (a refund after release already takes the fee back from platform delivery income); both journals commit together, so §2.2's "one atomic release" holds. |
 | R6 | Rate, rounding, true-up | reserve = gross × `rider_commission_bp` ÷ 10,000, half up; net = gross − reserve. The rate is the one in force **when the order was paid** (the `order-pay-<order>` journal's `created_at`), kept on the earning. The end-of-day posting sums stored reserves, so **no true-up** is needed. The setting is the existing Stage 1 `rider_commission_bp` (default 1000, 0–10000), changed through the `ledger.setting` approval (Accounting proposes, Super Admin approves) — **not** a new `dispatch_commission_bp`. | §3.3: a change "takes effect only for orders paid after its effective time" (and `ledger.approval_kinds.setting_consequences` already tells the approver exactly that for this key, pinned in `wallets/tests/test_guards.py`). §1 row 5's true-up assumed the reserve was computed at end of day. A second key with the same meaning could disagree with the first. |
 | R7 | Whose accounts | `rider_balance` and `rider_reserve` (Stage 1 kinds, unused so far) held by the rider's `StaffUser` (`accounts.staffuser:<pk>`). Destinations and withdrawals name the holder `("staff", pk)` (`otp.identity.ref`). | A rider signs in as staff (`delivery.views_rider.RiderView`, `delivery.dispatch`); every Stage 3b helper keys on the signed-in account through `ref()` and `posting.account_for(kind, holder)`. |
@@ -37,7 +37,7 @@
 
 - Money is integer pesewas, converted only through `ledger.money`; a balance changes only through `ledger.posting.post`; journals and lines are never edited (a correction is a new reversing journal).
 - `LEDGER_ENABLED` (default off) gates everything: with it off no rider is credited, the end-of-day job is a no-op, and every new endpoint answers `409 {"code": "ledger_off"}`. Rider wallet endpoints then answer `409 {"code": "wallet_disabled"}` for AshantiHub's own riders.
-- **Lock order:** the order row, its fee snapshots, then the rider row (release) or the earning row (refund), then every ledger account in one sorted pass (`posting.lock`), including the accounts of every later posting in the same transaction. The end-of-day job locks the day's earning rows, then the accounts. `select_for_update(of=("self",))` whenever a query joins (never lock a `StaffUser` or `BusinessOwner` row by accident).
+- **Lock order:** the order row, its fee snapshots, then the rider row (release) or the earning row (refund), then every ledger account in one sorted pass (`posting.lock`), including the accounts of every later posting in the same transaction. The end-of-day job locks the day's earning rows, then the accounts. `select_for_update(of=("self",))` whenever a query joins (never lock a `StaffUser` or `BusinessOwner` row by accident, except `wallets.destinations.save`'s deliberate no-key lock on the holder row, which for a rider is the `StaffUser` row).
 - New journal keys and kinds: `order-rider-<order>` (`rider_earning`), `order-rider-reversal-<order>` (`rider_earning_reversal`), `rider-commission-<staff pk>-<YYYY-MM-DD>-<first earning pk>` (`rider_commission`).
 - The commission rate is the existing money setting `rider_commission_bp` (default 1000 = 10%), changed only through the `ledger.setting` approval.
 - Payout account and MoMo numbers leave the server only through `accounts.serializers.mask_but_last`; never in a log line, an activity event, a fraud case or a notice. Rider wallet write views are `activity_exempt`.
@@ -46,7 +46,7 @@
 - Simulated rails only. Never deploy, never touch staging or production, never turn `LEDGER_ENABLED` on outside tests.
 - Commands, from `/home/righteoushack/projects/TheAshantihub/.worktrees/dispatch5`: `docker compose -p disp1 run --rm web python manage.py test <label> --noinput`. Never two docker commands at once. Migrations are generated with `docker compose -p disp1 run --rm --user "$(id -u):$(id -g)" web python manage.py makemigrations ...` (the `--user` keeps the file yours: spec §13 (lii)); if the container cannot run as your user, drop `--user` and `sudo chown "$(id -u):$(id -g)"` the new file before committing.
 - Migrations: `delivery/0007_rider_employment.py` (Task 1) and `delivery/0008_rider_earnings.py` (Task 2), both generated. No `ledger`, `wallets` or `accounts` migration.
-- **In-flight branches.** Plan 4 (PR #153) inserts `vendor_texts.order_released(order, journal)` right after `charge_waiver(order)` in `escrow.release_verified`, where Task 2 inserts `riders.credit_delivery(order, rider, now)`: whichever merges second keeps both lines, the rider credit first. Plans 1b and 4 also append to the end of spec §13 and edit the stage index lines in `CLAUDE.md` and the spec header: if either merged first, append after their sections and fold the Stage 5 words into their wording.
+- **In-flight branches.** Plan 4 (PR #153) inserts `vendor_texts.order_released(order, journal)` right after `charge_waiver(order)` in `escrow.release_verified`, where Task 2 inserts `riders.credit_delivery(order, rider, now)`: whichever merges second keeps both lines, the rider credit first. Plans 1b and 4 also append to the end of spec §13 and edit the stage index lines in `CLAUDE.md` and the spec header: if either merged first, append after their sections and fold the Stage 5 words into their wording. Plan 6 also appends gates after (xc): Plan 5 keeps (xci)-(c) and Plan 6 renumbers to start at (ci).
 - Every commit message ends with these two trailer lines (each commit step below shows them):
   `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`
   `Claude-Session: https://claude.ai/code/session_01HDHNosHkqu4Wwocp7a2c8j`
@@ -54,10 +54,10 @@
 
 ## Review Focus
 
-1. **A whole refund after release, after the rider already withdrew** — the earning is taken back, the rider's balance goes below zero, further withdrawals are refused (`negative_balance`, "recovers from your next deliveries"), and AshantiHub never ends short (platform delivery income and commission income end at 0). Pinned in Task 4 (`test_review_focus_a_rider_who_already_withdrew_goes_below_zero`) and Task 5 (`test_review_focus_a_negative_balance_blocks_withdrawal`).
+1. **A whole refund after release, after the rider already withdrew** — the earning is taken back, the rider's balance goes below zero, further withdrawals are refused (`negative_balance`, "recovers from your next deliveries"), and AshantiHub never ends short (platform delivery income and commission income end at 0); the rider is told in-app that the delivery was taken back, and the day's commission shown as given back. Pinned in Task 4 (`test_review_focus_a_rider_who_already_withdrew_goes_below_zero`) and Task 5 (`test_review_focus_a_negative_balance_blocks_withdrawal`).
 2. **The commission rate changed between payment and release** — each earning keeps the rate in force when its order was paid; the end-of-day posting needs no true-up. Pinned in Task 2 (`test_review_focus_the_rate_is_the_one_in_force_when_the_order_was_paid`).
 3. **The end-of-day job run twice, at the same time, after a missed night, or racing a refund** — each reserve is posted exactly once and never taken twice. Pinned in Task 3 (`test_review_focus_end_of_day_posts_each_riders_reserve_once`, `test_review_focus_a_missed_night_is_caught_up_day_by_day`, `ConcurrentEndOfDayTests.test_review_focus_two_runs_at_once_post_once`) and Task 4 (`ConcurrentRiderRefundTests.test_review_focus_a_refund_racing_the_end_of_day_never_takes_the_commission_twice`).
-4. **Employment changing around a delivery** — a delivery made before the rider became third-party stays AshantiHub's; switching back is refused while money is open; AshantiHub's own riders get `wallet_disabled` everywhere. Pinned in Task 1 (`test_review_focus_switching_back_is_refused_while_the_rider_has_money`, `test_review_focus_the_manager_proposes_and_only_a_super_admin_makes_a_rider_third_party`), Task 2 (`test_review_focus_a_delivery_made_before_the_rider_became_third_party_stays_with_ashantihub`) and Task 6 (`test_review_focus_an_ashantihub_rider_is_told_wallets_are_off_everywhere`).
+4. **Employment changing around a delivery** — a delivery made before the rider became third-party stays AshantiHub's; switching back is refused while money is open; AshantiHub's own riders get `wallet_disabled` everywhere. Pinned in Task 1 (`test_review_focus_switching_back_is_refused_while_the_rider_has_money`, `test_review_focus_the_manager_proposes_and_only_a_super_admin_makes_a_rider_third_party`, `test_a_super_admin_cannot_make_themselves_third_party`), Task 2 (`test_review_focus_a_delivery_made_before_the_rider_became_third_party_stays_with_ashantihub`, `test_a_redispatched_delivery_pays_the_rider_who_delivered`, `test_a_skipped_shops_refund_still_pays_the_rider_the_whole_fee`, and the threaded `ConcurrentReleaseSwitchBackTests.test_review_focus_a_release_and_a_switch_back_never_close_a_paid_wallet` for the rider row lock) and Task 6 (`test_review_focus_an_ashantihub_rider_is_told_wallets_are_off_everywhere`).
 5. **Isolation and number leaks** — a rider sees only their own earnings, statement and withdrawals; no response, staff read or activity event holds a whole account number. Pinned in Task 6 (`test_review_focus_each_rider_sees_only_their_own_earnings_and_statement`, `test_review_focus_a_rider_cannot_cancel_another_riders_withdrawal`, `test_review_focus_a_rider_adds_a_destination_with_a_code_and_withdraws`) and Task 7 (`test_review_focus_staff_see_rider_balances_with_wallets_view_only`).
 6. **A rider with no checked identity** — no approved, in-date Ghana Card: no destination (`id_required`). Pinned in Task 5 (`test_review_focus_without_an_approved_ghana_card_no_destination`).
 7. **A delivered order refunded whole before release** — the customer gets everything back and the rider is paid nothing (and no empty rider account is opened). Pinned in Task 4 (`test_review_focus_a_whole_refund_before_release_pays_the_rider_nothing`).
@@ -75,6 +75,7 @@
 - **RA9** Riders confirm wallet actions with a texted or emailed code, like customers and vendors (not with their password).
 - **RA10** A delivery fee a business covered with its free-delivery promo is paid to the rider like a fee the customer paid.
 - **RA11** A rider cannot be switched back to AshantiHub's own while they hold money, a withdrawal is on its way, or a delivered order still waits for Support's call.
+- **RA12** A third-party rider is paid when Support's call releases the order, which may be days after delivery, or never when the customer cannot be reached; "withdrawable immediately" runs from release (spec gate (c)).
 
 ## File Structure
 
@@ -85,21 +86,21 @@ Create:
 - Tests: `backend/delivery/tests/test_employment.py` (1), `backend/ledger/tests/rider_helpers.py` and `test_rider_release.py` (2), `test_rider_commission.py` (3), `test_rider_refunds.py` (4), `backend/wallets/tests/test_rider_engine.py` (5), `test_rider_api.py` (6), `test_rider_staff.py` (7)
 
 Modify:
-- `backend/delivery/models.py` (1, 2), `apps.py` (1), `fleet.py` (1), `views_fleet.py` (1), `urls.py` (1, 6, 7), `views_rider.py` (6)
+- `backend/delivery/models.py` (1, 2), `apps.py` (1), `fleet.py` (1), `views_fleet.py` (1), `urls.py` (1, 6, 7), `views_rider.py` (6), `views_rules.py` and `views_rider_money.py` (6: payroll leaves out third-party deliveries)
 - `backend/ledger/escrow.py` (2), `refunds.py` (4), `tasks.py` (3); `backend/ashantihub/settings.py` (3: beat entry)
-- `backend/wallets/names.py`, `destinations.py`, `withdrawals.py`, `payouts.py` (5), `views_payouts.py` (6), `views_staff.py` (7), `tests/test_staff_wallets.py` (7); `backend/otp/views_step_up.py` (5)
+- `backend/wallets/names.py`, `destinations.py`, `withdrawals.py`, `payouts.py` (5), `views_payouts.py` (6), `views_staff.py` (7), `tests/test_staff_wallets.py` (7); `backend/otp/views_step_up.py` and `backend/otp/step_up.py` (5)
 - `backend/CLAUDE.md`, `CLAUDE.md`, `docs/IMPLEMENTATION_INSTRUCTIONS.md` (8), `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` (1, 8)
 
 API added or changed:
 
 | Method + path | Who | Body → answer |
 |---|---|---|
-| `POST /api/delivery/riders/<id>/employment/` | `delivery.fleet` | `{employment: "ashantihub" \| "third_party", company_name, note}` → 201 `{approval_id, status, employment}` (`status` `approved` when a Super Admin proposed it); 400 `invalid` (+`field`); 403; 409 `no_change` / `already_pending` / `rider_money_open` (+`open`) |
+| `POST /api/delivery/riders/<id>/employment/` | `delivery.fleet` | `{employment: "ashantihub" \| "third_party", company_name, note}` → 201 `{approval_id, status, employment}` (`status` `approved` when a Super Admin proposed it); 400 `invalid` (+`field`); 403; 409 `no_change` / `already_pending` / `rider_money_open` (+`open`) / `not_a_rider`; 403 `own_rider` |
 | `GET /api/delivery/riders/<id>/` | changed | + `employment: {employment, employment_label, company_name, third_party_since, wallet, pending}` |
 | `GET /api/delivery/rider/me/` | changed | `rider` + `employment`, `wallet` |
 | `GET /api/delivery/rider/wallet/` | `delivery.dispatch`, third-party | → `{kind: "rider", balance, reserve, reserve_note, commission_bp, company_name, awaiting_release}` |
 | `GET /api/delivery/rider/wallet/earnings/?day=YYYY-MM-DD` | same | → paginated `{id, order, delivered_at, earned_at, earned_on, gross, commission_bp, commission, you_got, status, status_label, reversed_at}`; 400 bad day |
-| `GET /api/delivery/rider/wallet/days/` | same | → `{results: [{day, deliveries, gross, commission, net}]}` (last 30 posted days) |
+| `GET /api/delivery/rider/wallet/days/` | same | → `{results: [{day, deliveries, gross, commission, net, given_back}]}` (last 30 posted days) |
 | `GET /api/delivery/rider/wallet/statement/` | same | → paginated `{id, at, account: balance \| reserve, kind, label, direction, amount, order, reference}` |
 | `GET/POST /api/delivery/rider/wallet/destinations/`, `POST .../destinations/<id>/remove/`, `GET/POST .../withdrawals/`, `POST .../withdrawals/<id>/cancel/` | same + `X-Step-Up-Token` on writes | exactly as `/api/wallet/` (Stage 3b), plus 409 `id_required` (no approved Ghana Card); a rider's withdrawal draws on the balance only |
 | every `/api/delivery/rider/wallet/*` | — | 409 `ledger_off` while the ledger is off; 409 `wallet_disabled` for AshantiHub's own riders; 403 for staff without `delivery.dispatch` |
@@ -107,7 +108,7 @@ API added or changed:
 | `GET /api/wallet/staff/wallets/?kind=rider` | `wallets.view` | → paginated `{holder_id, rider_id, name, company_name, employment, balance, reserve}`, largest balance first |
 | `GET /api/wallet/staff/withdrawals/` | changed | `holder_name` filled for riders (`holder_type` `staff`) |
 | `GET /api/delivery/riders/<id>/wallet/` | `wallets.view` | → `{rider: {...}, <summary>, earnings: [last 20], days: [last 30]}` |
-| `GET /api/delivery/rider-commission/?day=YYYY-MM-DD` | `wallets.view` | → `{day, results: [...], totals: {deliveries, gross, commission, net}}` (default: yesterday, Accra); 400 bad day |
+| `GET /api/delivery/rider-commission/?day=YYYY-MM-DD` | `wallets.view` | → `{day, results: [... + given_back], totals: {deliveries, gross, commission, net, given_back}}` (default: yesterday, Accra); 400 bad day |
 
 ---
 
@@ -123,7 +124,7 @@ API added or changed:
   - `Rider.ASHANTIHUB = "ashantihub"`, `Rider.THIRD_PARTY = "third_party"`, `Rider.EMPLOYMENT_CHOICES`; fields `Rider.employment`, `Rider.company_name`, `Rider.third_party_since`
   - `delivery.employment.KIND = "delivery.rider_employment"`, `WALLET_DISABLED` (str), `OPEN_LABELS` (dict)
   - `EmploymentError(message, code, status_code=400, field=None, **extra)` with `.body()`
-  - `is_third_party(rider) -> bool`, `wallet_rider(staff) -> Rider | None`, `id_verified(rider, today=None) -> bool`, `unreleased_deliveries(rider) -> QuerySet[DeliveryAssignment]`, `money_open(rider) -> list[str]`, `clean(data) -> (employment, company_name)`, `check(rider, employment, company)`, `pending_for(rider) -> ApprovalRequest | None`, `propose(maker, rider, data, *, note="", request=None) -> ApprovalRequest`, `row(rider) -> dict`, `EMPLOYMENT_KIND` (registered in `DeliveryConfig.ready`)
+  - `is_third_party(rider) -> bool`, `wallet_rider(staff) -> Rider | None`, `id_verified(rider, today=None) -> bool`, `unreleased_deliveries(rider) -> QuerySet[DeliveryAssignment]`, `payroll_jobs(jobs) -> QuerySet[DeliveryAssignment]`, `money_open(rider) -> list[str]`, `clean(data) -> (employment, company_name)`, `check(rider, employment, company, maker=None)`, `pending_for(rider) -> ApprovalRequest | None`, `propose(maker, rider, data, *, note="", request=None) -> ApprovalRequest`, `row(rider) -> dict`, `EMPLOYMENT_KIND` (registered in `DeliveryConfig.ready`)
   - `POST /api/delivery/riders/<id>/employment/`; `fleet.profile(rider)["employment"]`
 
 - [ ] **Step 1: Write the failing test** — `backend/delivery/tests/test_employment.py`
@@ -212,6 +213,18 @@ class EmploymentTests(DeliveryCase):
 
     def test_a_rider_cannot_change_their_own_employment(self):
         self.assertEqual(self.propose(self.rider_staff, {"employment": "third_party", "company_name": "Me Ltd"}).status_code, 403)
+
+    def test_a_super_admin_cannot_make_themselves_third_party(self):
+        sa = self.super_admin()
+        own = Rider.objects.get_or_create(staff=sa)[0]                    # any Dispatch holder gets a Rider row; a Super Admin holds every permission
+        body = {"employment": "third_party", "company_name": "Me Ltd"}
+        mine = self.as_staff(sa).post(URL.format(own.pk), body, format="json")
+        self.assertEqual((mine.status_code, mine.json()["code"]), (403, "own_rider"))
+        other = StaffUser.objects.filter(email="sa2@example.com").first() or make_staff("super_admin", "sa2@example.com")
+        not_a_rider = self.as_staff(other).post(URL.format(own.pk), body, format="json")   # the row's owner is no Dispatch rider
+        self.assertEqual((not_a_rider.status_code, not_a_rider.json()["code"]), (409, "not_a_rider"))
+        own.refresh_from_db()
+        self.assertEqual(own.employment, Rider.ASHANTIHUB)
 
     def test_the_approval_needs_the_password_and_says_what_it_does(self):
         kind = registry.get_kind(employment.KIND)
@@ -329,7 +342,7 @@ approves with the password (a Super Admin's own change applies at once). Switchi
 refused while they still have money with AshantiHub, a withdrawal on its way, or a delivered order whose money Support has
 not released yet (`money_open`). That is checked when proposed, when approved, and again under the rider row's lock when
 applied; a release takes the same lock before paying a rider (ledger.riders.rider_for_release)."""
-from django.db.models import CharField, Exists, OuterRef, Q, Value
+from django.db.models import CharField, Exists, F, OuterRef, Q, Value
 from django.db.models.functions import Cast, Concat
 from django.utils import timezone
 
@@ -368,11 +381,12 @@ def is_third_party(rider):
 
 
 def wallet_rider(staff):
-    """The staff member's Rider when they are a third-party rider (their wallet is on), else None."""
+    """The staff member's Rider when they are a third-party rider (their wallet is on), else None. The staff member must
+    still hold the Dispatch role: a re-roled ex-rider keeps a Rider row but no wallet (and no step-up codes)."""
     if getattr(staff, "pk", None) is None:
         return None
     return Rider.objects.select_related("staff").filter(
-        staff_id=staff.pk, employment=Rider.THIRD_PARTY, third_party_since__isnull=False,
+        staff_id=staff.pk, staff__role__name="dispatch", employment=Rider.THIRD_PARTY, third_party_since__isnull=False,
     ).first()
 
 
@@ -403,6 +417,16 @@ def unreleased_deliveries(rider):
     )
     return jobs.filter(Exists(Journal.objects.filter(key=OuterRef("pay_key")))).exclude(
         Exists(Journal.objects.filter(key=OuterRef("release_key")))
+    )
+
+
+def payroll_jobs(jobs):
+    """`jobs` (a DeliveryAssignment queryset) without the deliveries made as a third-party rider (delivered_at on or after
+    their Rider.third_party_since): those are paid into the rider's wallet at release, so a payroll figure that counted them
+    would let Accounting pay the same delivery twice. Used by the payroll screens (delivery.views_rules RiderEarnedView /
+    RiderEarningsLinesView) and the rider app's rider/earnings/ figures."""
+    return jobs.exclude(
+        dispatch__rider__third_party_since__isnull=False, delivered_at__gte=F("dispatch__rider__third_party_since"),
     )
 
 
@@ -439,8 +463,14 @@ def clean(data):
     return employment, company
 
 
-def check(rider, employment, company):
-    """Raise EmploymentError when this change cannot be made now."""
+def check(rider, employment, company, maker=None):
+    """Raise EmploymentError when this change cannot be made now. `maker` is the staff member who proposed it: nobody
+    changes who they themselves work for (a Super Admin holds every permission, and their own change applies at once, so
+    without this rule they could route delivery fees into their own wallet)."""
+    if maker is not None and maker.pk == rider.staff_id:
+        raise EmploymentError("You can't change who you work for.", "own_rider", 403)
+    if employment == Rider.THIRD_PARTY and getattr(rider.staff.role, "name", "") != "dispatch":
+        raise EmploymentError("Only a Dispatch rider can be a third-party rider.", "not_a_rider", 409)
     if rider.employment == employment and rider.company_name == company:
         raise EmploymentError("Nothing would change.", "no_change", 409)
     if employment == Rider.ASHANTIHUB and rider.employment == Rider.THIRD_PARTY:
@@ -469,7 +499,7 @@ def propose(maker, rider, data, *, note="", request=None):
     employment, company = clean(data if isinstance(data, dict) else {})
     if pending_for(rider) is not None:
         raise EmploymentError("A change for this rider is already waiting for approval.", "already_pending", 409)
-    check(rider, employment, company)
+    check(rider, employment, company, maker)
     try:
         return approvals.submit(
             maker, KIND, title=f"{rider.staff.full_name}: {_label(employment, company)}",
@@ -508,7 +538,7 @@ def current_state(request):
 def validate(request):
     try:
         employment, company = clean(request.payload)
-        check(_rider(request), employment, company)
+        check(_rider(request), employment, company, request.maker)
     except EmploymentError as exc:
         raise approvals.ApprovalError(exc.message) from exc
 
@@ -523,7 +553,7 @@ def apply(request):
     rider = Rider.objects.select_for_update(of=("self",)).select_related("staff").get(pk=request.payload["rider_id"])
     try:
         employment, company = clean(request.payload)
-        check(rider, employment, company)
+        check(rider, employment, company, request.maker)
     except EmploymentError as exc:
         raise approvals.ApprovalError(exc.message) from exc
     before = {"employment": rider.employment, "company_name": rider.company_name}
@@ -656,7 +686,7 @@ with
 - [ ] **Step 9: Run the test to see it pass**
 
 Run: `docker compose -p disp1 run --rm web python manage.py test delivery.tests.test_employment --noinput`
-Expected: PASS (10 tests).
+Expected: PASS (11 tests).
 
 - [ ] **Step 10: The spec addendum** — append to the end of `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` (after Plan 1b's and Plan 4's sections if they have merged):
 
@@ -812,18 +842,24 @@ def ghana_card(rider_row, *, expires_on=None, status=RiderDocument.APPROVED):
 """A third-party rider is paid at release (wallets Plan 5, Task 2; spec §1 row 4, §2.2 step 2(c), §3.3, §4.1): the delivery
 fee AshantiHub took for the order, 90% to their balance and 10% held in the reserve, at the rate in force when the order
 was paid. Review Focus 2 and 4."""
+import threading
 from datetime import timedelta
+from decimal import Decimal
 
-from django.test import SimpleTestCase, override_settings
+from django.db import connection
+from django.test import SimpleTestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from accounts.models import BusinessOwner, Customer
 from accounts.testing import make_staff, staff_token
 from approvals import services as approvals
-from delivery.models import RiderEarning
-from ledger import escrow, posting, riders, settings_store, verification
+from delivery import services as delivery_services
+from delivery.models import Rider, RiderEarning
+from ledger import escrow, posting, refunds, riders, settings_store, verification
 from ledger.models import Account, FulfilmentCheck, Journal, MoneySetting
-from orders.models import DeliveryAssignment
+from listings.models import Category, Listing, Zone
+from orders.models import DeliveryAssignment, Order, OrderItem
 
 from . import rider_helpers
 from .test_refunds import RefundBase
@@ -905,6 +941,30 @@ class RiderReleaseTests(RefundBase):
         self.assertEqual(self.balance(Account.RIDER_RESERVE, swift.staff), 150)
         self.assertEqual(self.balance(Account.PLATFORM_DELIVERY_INCOME), 0)
 
+    def test_a_redispatched_delivery_pays_the_rider_who_delivered(self):
+        first, second = rider_helpers.rider(), rider_helpers.rider("rider2@example.com", name="Yaw Boateng", phone="+233244000003")
+        order = self.delivered_order(first)
+        DeliveryAssignment.objects.filter(order=order).update(status=DeliveryAssignment.FAILED, delivered_at=None, failed_at=timezone.now())
+        manager = make_staff("delivery_manager", "dm@example.com")
+        delivery_services.assign(order, second.staff, manager, mode=DeliveryAssignment.MANUAL)   # the same row, a new rider
+        DeliveryAssignment.objects.filter(order=order).update(
+            status=DeliveryAssignment.CONFIRMED, delivered_at=timezone.now(), confirmed_at=timezone.now(), failed_at=None,
+        )
+        self.release(order)
+        self.assertEqual(RiderEarning.objects.get(order=order).rider, second)
+        self.assertEqual(self.balance(Account.RIDER_BALANCE, second.staff), 900)
+        self.assertEqual(self.balance(Account.RIDER_BALANCE, first.staff), 0)                    # the failed attempt earned nothing
+        self.assertFalse(Account.objects.filter(kind=Account.RIDER_BALANCE, owner_id=str(first.staff.pk)).exists())
+
+    def test_a_skipped_shops_refund_still_pays_the_rider_the_whole_fee(self):
+        swift, esi = rider_helpers.rider(), self.owner("Esi")
+        order = self.paid([(self.listing(self.kofi, "60.00"), 1), (self.listing(esi, "40.00"), 1)], delivery="10.00")
+        rider_helpers.delivered_by(order, swift)
+        refunds.refund_order(order, 4000, source="skipped-shop-1", owner_ids={esi.pk})          # Esi's shop could not hand over
+        self.release(order)
+        self.assertEqual(self.balance(Account.RIDER_BALANCE, swift.staff), 900)                 # one order, one fee, never reduced
+        self.assertEqual(self.balance(Account.RIDER_RESERVE, swift.staff), 100)
+
     def test_releasing_twice_pays_the_rider_once(self):
         swift = rider_helpers.rider()
         order = self.delivered_order(swift)
@@ -929,6 +989,70 @@ class RiderReleaseTests(RefundBase):
         self.assertEqual(settings_store.current("rider_commission_bp"), 1000)                   # waits for a Super Admin
         approvals.approve(response.json()["approval_id"], make_staff("super_admin", "sa@example.com"))
         self.assertEqual(settings_store.current("rider_commission_bp"), 1500)
+
+
+@override_settings(LEDGER_ENABLED=True)
+class ConcurrentReleaseSwitchBackTests(TransactionTestCase):
+    """The reason release takes the rider row lock (R3): a release and the switch back to AshantiHub's own, at the same
+    moment, never leave an AshantiHub rider holding a wallet's money."""
+
+    serialized_rollback = True
+
+    def test_review_focus_a_release_and_a_switch_back_never_close_a_paid_wallet(self):
+        customer = Customer.objects.create(full_name="Ama", phone="+233200990001", password_hash="x")
+        owner = BusinessOwner.objects.create(full_name="Kofi", login_phone="+233207990001", password_hash="x")
+        listing = Listing.objects.create(
+            business_owner=owner, category=Category.objects.get(slug="shops"), zone=Zone.objects.get(name="Manhyia"),
+            name="Kente", description="D.", contact_phone=owner.login_phone, price_amount=Decimal("60.00"), status=Listing.PUBLISHED,
+        )
+        order = Order.objects.create(customer=customer, status=Order.PAID, total_amount=Decimal("70.00"), delivery_fee=Decimal("10.00"))
+        OrderItem.objects.create(order=order, listing=listing, quantity=1, unit_price=Decimal("60.00"), line_total=Decimal("60.00"))
+        swift = rider_helpers.rider()
+        support, super_admin = make_staff("support", "support@example.com"), make_staff("super_admin", "sa@example.com")
+        manager = make_staff("delivery_manager", "dm@example.com")
+        # The manager stages the switch back while nothing is open yet (no delivery exists), so it can be proposed. Then the
+        # order is paid and delivered, and the Super Admin's approval races Support's call.
+        request = approvals.submit(
+            manager, "delivery.rider_employment", title="Back to AshantiHub",
+            payload={"rider_id": swift.pk, "employment": Rider.ASHANTIHUB, "company_name": ""}, target=swift,
+        )
+        escrow.record_order_payment(order)
+        rider_helpers.delivered_by(order, swift)
+        errors, barrier = [], threading.Barrier(2)
+
+        def release():
+            try:
+                barrier.wait()
+                verification.record(order, support, FulfilmentCheck.MATCHES)
+            except Exception as exc:                                     # noqa: BLE001 - collected and asserted below
+                errors.append(exc)
+            finally:
+                connection.close()
+
+        def switch_back():
+            try:
+                barrier.wait()
+                approvals.approve(request.pk, super_admin)
+            except approvals.ApprovalError as exc:
+                errors.append(exc)
+            finally:
+                connection.close()
+
+        threads = [threading.Thread(target=release), threading.Thread(target=switch_back)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=15)
+            self.assertFalse(thread.is_alive(), "a racing thread hung")
+        self.assertTrue(all(isinstance(error, approvals.ApprovalError) for error in errors), errors)   # only a refusal, never a crash
+        swift.refresh_from_db()
+        balance = posting.balance_of(Account.RIDER_BALANCE, swift.staff)
+        if swift.employment == Rider.THIRD_PARTY:                        # the switch back was refused: the rider was paid
+            self.assertEqual((len(errors), balance, posting.balance_of(Account.RIDER_RESERVE, swift.staff)), (1, 900, 100))
+        else:                                                            # it applied first: AshantiHub's own, so no wallet, fee kept
+            self.assertEqual((balance, RiderEarning.objects.count()), (0, 0))
+            self.assertEqual(posting.balance_of(Account.PLATFORM_DELIVERY_INCOME), 1000)
+        self.assertFalse(swift.employment == Rider.ASHANTIHUB and balance != 0)
 
 
 class RiderReleaseLedgerOffTests(RefundBase):
@@ -1219,13 +1343,14 @@ with
         # No snapshot left (a scoped refund took every item) is not the end: the delivery fee is still held in the
 ```
 
-(d) replace
+(d) two separate edits, in this order. The release's set-up between them (the Delivery payable, platform delivery income, the pendings and the availables) stays untouched, and `riders.release_accounts(rider)` stays inside the single sorted `posting.lock(...)` pass (spec W7): if it were dropped, `credit_delivery` would take the rider's account locks after the release's, which is the deadlock class Stage 3a closed.
+
+(d1) replace the three comment lines
 
 ```python
         # Every account this transaction can post to, locked in one sorted pass (spec W7) before anything is decided
         # from a balance: the Delivery payable's is read from the locked row, and the promo charge's accounts (the
         # second posting, charge_waiver) are taken now so it never takes a new lock while the release's are held.
-        locked = posting.lock(income, delivery_account, delivery_income, *pendings.values(), *availables.values(), *waiver_accounts(order))
 ```
 
 with
@@ -1235,6 +1360,17 @@ with
         # from a balance: the Delivery payable's is read from the locked row, and the promo charge's accounts (the
         # second posting, charge_waiver) and a third-party rider's (the third, riders.credit_delivery) are taken now so
         # neither takes a new lock while the release's are held.
+```
+
+(d2) replace the single line (several lines below the comment, after the set-up of `delivery_account`, `delivery_income`, `pendings` and `availables`)
+
+```python
+        locked = posting.lock(income, delivery_account, delivery_income, *pendings.values(), *availables.values(), *waiver_accounts(order))
+```
+
+with
+
+```python
         locked = posting.lock(
             income, delivery_account, delivery_income, *pendings.values(), *availables.values(), *waiver_accounts(order),
             *riders.release_accounts(rider),
@@ -1263,7 +1399,9 @@ with
 - [ ] **Step 8: Run the tests to see them pass**
 
 Run: `docker compose -p disp1 run --rm web python manage.py test ledger.tests.test_rider_release --noinput`
-Expected: PASS (11 tests).
+Expected: PASS (14 tests).
+
+Run: `grep -n "riders.release_accounts(rider)" -B3 -A1 backend/ledger/escrow.py` and check the line sits inside the `posting.lock(` call of `release_verified` (not after it, not in a later statement).
 
 Run: `docker compose -p disp1 run --rm web python manage.py test ledger --noinput`
 Expected: PASS (every Stage 1/3a release and refund test unchanged: their orders have no rider, or a rider with no `dispatch`).
@@ -1636,6 +1774,7 @@ from delivery.models import RiderEarning
 from ledger import escrow, posting, refunds, riders
 from ledger.models import Account, FulfilmentCheck
 from listings.models import Category, Listing, Zone
+from notifications.models import Notification
 from orders.models import Order, OrderItem
 
 from . import rider_helpers
@@ -1696,6 +1835,10 @@ class RiderRefundTests(RefundBase):
         )
         self.assertEqual(riders.post_commission(today=timezone.localdate() + timedelta(days=1)), 0)  # a reversed one is never posted
         self.assertEqual(self.balance(Account.PLATFORM_COMMISSION_INCOME), 0)
+        told = Notification.objects.filter(staff=self.swift.staff, title="A delivery was taken back")   # the rider is told (S5)
+        self.assertEqual(told.count(), 1)
+        self.assertIn(f"Order #{order.pk} was refunded in full", told.get().body)
+        self.assertIn("GH₵ 9", told.get().body)
 
     def test_after_the_days_commission_was_posted_ashantihub_gives_its_commission_back(self):
         order = self.delivered_order()
@@ -1708,6 +1851,9 @@ class RiderRefundTests(RefundBase):
         self.assertEqual(self.rider_balances(), (0, 0))
         self.assertEqual(self.balance(Account.PLATFORM_DELIVERY_INCOME), 0)
         self.assertEqual(self.wallet(), 7000)
+        # The day record still names the delivery; the views show what was given back from the reversed earnings (S4).
+        earning = RiderEarning.objects.get(order=order)
+        self.assertEqual((earning.commission_posting.commission_pesewas, earning.reserve_pesewas, earning.reversed_at is not None), (100, 100, True))
 
     def test_review_focus_a_rider_who_already_withdrew_goes_below_zero(self):
         order = self.delivered_order()
@@ -1858,6 +2004,18 @@ def reverse_earning(earning, now=None):
     )
     earning.reversed_at, earning.reversal_journal = now, journal
     earning.save(update_fields=["reversed_at", "reversal_journal"])
+    # Tell the rider: money left their balance (possibly below zero, which blocks withdrawals). This runs inside the refund's
+    # transaction; notify only creates a row. The day's RiderCommissionPosting row is never edited (records are append-only);
+    # the rider's days and the Accountant's commission report show the commission given back from the reversed earnings.
+    from notifications.services import notify_staff
+
+    from .money import from_pesewas
+
+    notify_staff(
+        earning.rider.staff, "withdrawal", "A delivery was taken back",
+        body=f"Order #{earning.order_id} was refunded in full, so GH₵ {from_pesewas(earning.net_pesewas)} came back out of your balance.",
+        link="/staff", icon="↩️",
+    )
     return journal
 ```
 
@@ -1972,7 +2130,7 @@ EOF
 ### Task 5: The withdrawal engine serves third-party riders; step-up codes for riders
 
 **Files:**
-- Modify: `backend/wallets/names.py` (`verified_names`, docstring), `backend/wallets/destinations.py` (`_holder_problem`, `_rider_problem`, imports), `backend/wallets/withdrawals.py` (`source_kind`, `request`, `NEGATIVE`, imports, docstring), `backend/wallets/payouts.py` (`_holder_model`, `claim`, `_tell`, imports), `backend/otp/views_step_up.py` (`IsCustomerOwnerOrWalletRider`, `RIDER_ACTIONS`, `_codes_off`, module text)
+- Modify: `backend/wallets/names.py` (`verified_names`, docstring), `backend/wallets/destinations.py` (`_holder_problem`, `_rider_problem`, imports), `backend/wallets/withdrawals.py` (`source_kind`, `request`, `NEGATIVE`, imports, docstring), `backend/wallets/payouts.py` (`_holder_model`, `claim`, `_tell`, imports), `backend/otp/views_step_up.py` (`IsCustomerOwnerOrWalletRider`, `RIDER_ACTIONS`, `_codes_off`, module text), `backend/otp/step_up.py` (module text only)
 - Create: `backend/wallets/tests/test_rider_engine.py`
 
 **Interfaces:**
@@ -2469,6 +2627,8 @@ def _codes_off(account, action):
 
 (d) in both `StepUpSendView` and `StepUpVerifyView` replace `permission_classes = [IsCustomerOrOwner]` with `permission_classes = [IsCustomerOwnerOrWalletRider]` (two occurrences; use replace-all).
 
+(e) in `backend/otp/step_up.py`, whose module text (line 9) still says the opposite, replace the sentence `Only customers and business owners can get a token (otp.views_step_up); staff use sudo.` (keep the file's own line wrapping) with `Only customers, business owners and third-party riders (withdrawal and payout_destination) can get a token (otp.views_step_up); other staff use sudo.`
+
 - [ ] **Step 8: Run the tests to see them pass**
 
 Run: `docker compose -p disp1 run --rm web python manage.py test wallets.tests.test_rider_engine --noinput`
@@ -2480,7 +2640,7 @@ Expected: PASS (customers' and vendors' destinations, withdrawals and step-up un
 - [ ] **Step 9: Commit**
 
 ```bash
-git add backend/wallets/names.py backend/wallets/destinations.py backend/wallets/withdrawals.py backend/wallets/payouts.py backend/otp/views_step_up.py backend/wallets/tests/test_rider_engine.py
+git add backend/wallets/names.py backend/wallets/destinations.py backend/wallets/withdrawals.py backend/wallets/payouts.py backend/otp/views_step_up.py backend/otp/step_up.py backend/wallets/tests/test_rider_engine.py
 git commit -F - <<'EOF'
 feat(wallets): third-party riders withdraw their balance (never the reserve), name-checked on an approved Ghana Card, with step-up codes
 
@@ -2494,13 +2654,13 @@ EOF
 ### Task 6: The rider's own wallet API
 
 **Files:**
-- Modify: `backend/wallets/views_payouts.py` (`SavedHook`, the four holder views, `_tell_holder`, imports, docstring), `backend/delivery/urls.py` (rider wallet routes), `backend/delivery/views_rider.py` (`MeView`, imports)
+- Modify: `backend/wallets/views_payouts.py` (`SavedHook`, the four holder views, `_tell_holder`, imports, docstring), `backend/delivery/urls.py` (rider wallet routes), `backend/delivery/views_rider.py` (`MeView`, imports), `backend/delivery/views_rules.py` (`RiderEarnedView`, `RiderEarningsLinesView`: payroll leaves out third-party deliveries), `backend/delivery/views_rider_money.py` (`EarningsView`)
 - Create: `backend/wallets/rider_wallet.py`, `backend/wallets/views_rider_wallet.py`, `backend/wallets/tests/test_rider_api.py`
 
 **Interfaces:**
 - Consumes: Task 1's `employment.wallet_rider`, `is_third_party`, `unreleased_deliveries`, `WALLET_DISABLED`; Task 2's `RiderEarning`; Task 3's `RiderCommissionPosting`, `riders.post_commission`; Task 5's engine; `wallets.views.OFF`, `Pagination`; `wallets.services.money`; `activity.services.record`.
 - Produces:
-  - `wallets.rider_wallet`: `LABELS`, `ACCOUNT_NAMES`, `STATUS_LABELS`, `summary(rider) -> dict`, `earnings(rider, day=None) -> QuerySet`, `status_of(earning) -> str`, `earning_row(earning) -> dict`, `days(rider, limit=30) -> list[dict]`, `statement_lines(rider) -> QuerySet[JournalLine]`, `line_row(line) -> dict`
+  - `wallets.rider_wallet`: `LABELS`, `ACCOUNT_NAMES`, `STATUS_LABELS`, `summary(rider) -> dict`, `earnings(rider, day=None) -> QuerySet`, `status_of(earning) -> str`, `earning_row(earning) -> dict`, `days(rider, limit=30) -> list[dict]` (each with `given_back`), `given_back(day_filter) -> dict`, `statement_lines(rider) -> QuerySet[JournalLine]`, `line_row(line) -> dict`
   - `wallets.views_payouts.SavedHook` with `saved(request, event, obj)` (a no-op), called inside the saving transaction with `destination_added`, `destination_removed`, `withdrawal_requested`, `withdrawal_cancelled`
   - `wallets.views_rider_wallet`: `LedgerOff`, `WalletDisabled` (409 API exceptions), `parse_day(raw) -> date | None` (raises `ValueError`), `RiderWalletMixin`, `RiderWalletView`, `RiderEarningsView`, `RiderDaysView`, `RiderStatementView`, `RiderDestinationsView`, `RiderDestinationRemoveView`, `RiderWithdrawalsView`, `RiderWithdrawalCancelView`
   - routes `delivery-rider-wallet`, `-earnings`, `-days`, `-statement`, `-destinations`, `-destination-remove`, `-withdrawals`, `-withdrawal-cancel` under `/api/delivery/rider/wallet/`; `GET rider/me/` carries `rider.employment` and `rider.wallet`
@@ -2513,6 +2673,7 @@ commission, the statement, payout destinations and withdrawals, always the calle
 wallet_disabled; every endpoint answers 409 ledger_off while the ledger is off. Review Focus 4 and 5."""
 import json
 from datetime import timedelta
+from decimal import Decimal
 
 from django.db import transaction
 from django.test import TestCase, override_settings
@@ -2520,9 +2681,11 @@ from django.utils import timezone
 
 from accounts.testing import make_staff
 from activity.models import ActivityEvent
+from delivery.models import RiderEarning
 from ledger import riders
 from ledger.tests import rider_helpers
 from notifications.models import Notification
+from orders.models import DeliveryAssignment
 from wallets import withdrawals
 from wallets.models import PayoutDestination
 
@@ -2600,8 +2763,31 @@ class RiderWalletApiTests(TestCase):
         riders.post_commission(today=timezone.localdate())
         self.assertEqual(self.me.get(BASE + "days/").json()["results"], [{
             "day": timezone.localdate(yesterday).isoformat(), "deliveries": 2, "gross": "30.00", "commission": "3.00", "net": "27.00",
+            "given_back": "0.00",
         }])
         self.assertEqual({row["status"] for row in self.me.get(BASE + "earnings/").json()["results"]}, {"commission_taken"})
+
+    def test_a_delivery_taken_back_after_the_day_was_posted_shows_the_commission_given_back(self):
+        yesterday = timezone.now() - timedelta(days=1)
+        self.credited(1000, at=yesterday)
+        taken_back = self.credited(2000, at=yesterday)
+        riders.post_commission(today=timezone.localdate())
+        RiderEarning.objects.filter(pk=taken_back.pk).update(reversed_at=timezone.now())     # what riders.reverse_earning records
+        day = self.me.get(BASE + "days/").json()["results"][0]
+        self.assertEqual((day["commission"], day["given_back"]), ("3.00", "2.00"))            # the day's record is never edited
+
+    def test_payroll_figures_leave_out_a_third_party_riders_deliveries(self):
+        own = rider_helpers.rider("own@example.com", third_party=False, phone="+233244000009")
+        for row, pay in ((self.swift, "12.00"), (own, "8.00")):
+            order = rider_helpers.earning(row, gross=1000, at=timezone.now()).order
+            job = rider_helpers.delivered_by(order, row)
+            DeliveryAssignment.objects.filter(pk=job.pk).update(rider_pay=Decimal(pay))
+        manager = Holder(make_staff("delivery_manager", "dm@example.com"), "staff")
+        paid = manager.get("/api/delivery/payouts/").json()["riders"]
+        self.assertEqual([row["staff_id"] for row in paid], [own.staff.pk])                    # Accounting cannot pay the wallet rider twice
+        self.assertEqual(manager.get(f"/api/delivery/payouts/{self.swift.staff.pk}/").json()["results"], [])
+        mine = self.me.get("/api/delivery/rider/earnings/?period=week").json()
+        self.assertEqual((mine["jobs"], mine["total"]), (0, None))                              # the rider's pay is the wallet
 
     def test_review_focus_a_rider_adds_a_destination_with_a_code_and_withdraws(self):
         self.credited(1000)
@@ -2686,7 +2872,7 @@ def summary(rider):
         "kind": "rider",
         "balance": money(posting.balance_of(Account.RIDER_BALANCE, staff)),
         "reserve": money(posting.balance_of(Account.RIDER_RESERVE, staff)),
-        "reserve_note": "AshantiHub's commission on today's paid deliveries. It is taken after midnight and cannot be withdrawn.",
+        "reserve_note": "AshantiHub's commission, held until it is taken after midnight. It cannot be withdrawn.",
         "commission_bp": settings_store.current("rider_commission_bp"),
         "company_name": rider.company_name,
         "awaiting_release": employment.unreleased_deliveries(rider).count(),
@@ -2718,16 +2904,28 @@ def earning_row(earning):
     }
 
 
+def given_back(day_filter):
+    """{day: pesewas of commission AshantiHub gave back} for deliveries taken back (a whole refund) after their day's
+    commission was posted. A RiderCommissionPosting row is never edited, so the views add this beside it. `day_filter` is
+    a RiderEarning filter (a rider, or every rider) already narrowed to the days shown."""
+    return dict(
+        RiderEarning.objects.filter(reversed_at__isnull=False, commission_posting__isnull=False, **day_filter)
+        .values("commission_posting__day").annotate(total=Sum("reserve_pesewas")).values_list("commission_posting__day", "total")
+    )
+
+
 def days(rider, limit=30):
-    """Each posted day, newest first: deliveries, gross, AshantiHub's commission and net (several postings of one day add up)."""
-    rows = (
+    """Each posted day, newest first: deliveries, gross, AshantiHub's commission and net (several postings of one day add
+    up), and `given_back`: the part of that commission given back because a delivery of the day was refunded in full."""
+    rows = list(
         RiderCommissionPosting.objects.filter(rider=rider).values("day")
         .annotate(deliveries=Sum("deliveries"), gross=Sum("gross_pesewas"), commission=Sum("commission_pesewas"), net=Sum("net_pesewas"))
         .order_by("-day")[:limit]
     )
+    back = given_back({"rider": rider, "commission_posting__day__in": [row["day"] for row in rows]})
     return [
         {"day": row["day"], "deliveries": row["deliveries"], "gross": money(row["gross"]), "commission": money(row["commission"]),
-         "net": money(row["net"])}
+         "net": money(row["net"]), "given_back": money(back.get(row["day"], 0))}
         for row in rows
     ]
 
@@ -2981,7 +3179,7 @@ class RiderWalletMixin:
 
 class RiderWalletView(RiderWalletMixin, APIView):
     """GET rider/wallet/ — the balance (withdrawable; below zero after a refund took a delivery back), the reserve
-    (AshantiHub's commission on today's paid deliveries, read-only), the commission rate for orders paid now, the rider
+    (AshantiHub's commission, held until it is taken after midnight; read-only), the commission rate for orders paid now, the rider
     company, and how many delivered orders still wait for Support's call."""
 
     def get(self, request):
@@ -3090,10 +3288,48 @@ with
             },
 ```
 
+Payroll must not pay a third-party rider a second time (their pay is the wallet; the rate-card `rider_pay` stays a payroll record for AshantiHub's own riders only). In `backend/delivery/views_rules.py` replace
+
+```python
+            DeliveryAssignment.objects.filter(delivered_at__gte=since, dispatch__isnull=False)
+```
+
+with
+
+```python
+            employment.payroll_jobs(DeliveryAssignment.objects.filter(delivered_at__gte=since, dispatch__isnull=False))
+```
+
+in `RiderEarnedView`, and in `RiderEarningsLinesView` replace
+
+```python
+        jobs = DeliveryAssignment.objects.filter(dispatch_id=staff_id, delivered_at__gte=since).order_by("-delivered_at")
+```
+
+with
+
+```python
+        jobs = employment.payroll_jobs(DeliveryAssignment.objects.filter(dispatch_id=staff_id, delivered_at__gte=since)).order_by("-delivered_at")
+```
+
+and change the file's `from . import config, rates, services` to `from . import config, employment, rates, services`. In `backend/delivery/views_rider_money.py`, in `EarningsView.get` replace
+
+```python
+        jobs = DeliveryAssignment.objects.filter(dispatch=request.user, delivered_at__date__gte=start).order_by("-delivered_at")
+```
+
+with
+
+```python
+        jobs = employment.payroll_jobs(DeliveryAssignment.objects.filter(dispatch=request.user, delivered_at__date__gte=start)).order_by("-delivered_at")
+```
+
+and add `from . import employment` to that module's imports (merge with its existing `from . import ...` line if it has one). Both payroll screens now show only deliveries that are AshantiHub's own; the "Your AshantiHub earnings" figures of a third-party rider read zero jobs, and their money is on `rider/wallet/`.
+
 - [ ] **Step 7: Run the tests to see them pass**
 
 Run: `docker compose -p disp1 run --rm web python manage.py test wallets.tests.test_rider_api --noinput`
-Expected: PASS (8 tests).
+Expected: PASS (10 tests).
 
 Run: `docker compose -p disp1 run --rm web python manage.py test wallets delivery --noinput`
 Expected: PASS (the customer and vendor holder views behave as before: their `saved()` is a no-op).
@@ -3101,7 +3337,7 @@ Expected: PASS (the customer and vendor holder views behave as before: their `sa
 - [ ] **Step 8: Commit**
 
 ```bash
-git add backend/wallets/rider_wallet.py backend/wallets/views_rider_wallet.py backend/wallets/views_payouts.py backend/delivery/urls.py backend/delivery/views_rider.py backend/wallets/tests/test_rider_api.py
+git add backend/wallets/rider_wallet.py backend/wallets/views_rider_wallet.py backend/wallets/views_payouts.py backend/delivery/urls.py backend/delivery/views_rider.py backend/delivery/views_rules.py backend/delivery/views_rider_money.py backend/wallets/tests/test_rider_api.py
 git commit -F - <<'EOF'
 feat(wallets): the rider's own wallet API - balance, reserve, earnings, days, statement, destinations, withdrawals; own rows only
 
@@ -3137,6 +3373,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.testing import make_staff, staff_token
+from delivery.models import RiderEarning
 from ledger import riders
 from ledger.tests import rider_helpers
 from wallets import withdrawals
@@ -3189,11 +3426,18 @@ class StaffRiderWalletTests(TestCase):
         self.assertEqual(body["days"][0]["commission"], "1.00")
         self.assertEqual(self.manager.get(f"/api/delivery/riders/{self.swift.pk}/wallet/").status_code, 403)
         day = self.accountant.get("/api/delivery/rider-commission/", {"day": timezone.localdate(self.yesterday).isoformat()}).json()
-        self.assertEqual(day["totals"], {"deliveries": 1, "gross": "10.00", "commission": "1.00", "net": "9.00"})
+        self.assertEqual(day["totals"], {"deliveries": 1, "gross": "10.00", "commission": "1.00", "net": "9.00", "given_back": "0.00"})
         self.assertEqual([(row["name"], row["company_name"]) for row in day["results"]], [("Kojo Mensah", "Swift Riders Ltd")])
         default = self.accountant.get("/api/delivery/rider-commission/").json()
         self.assertEqual(default["day"], (timezone.localdate() - timedelta(days=1)).isoformat())
         self.assertEqual(self.accountant.get("/api/delivery/rider-commission/", {"day": "yesterday"}).status_code, 400)
+
+    def test_a_day_shows_the_commission_given_back_after_a_full_refund(self):
+        RiderEarning.objects.filter(rider=self.swift, earned_on=timezone.localdate(self.yesterday)).update(reversed_at=timezone.now())
+        day = self.accountant.get("/api/delivery/rider-commission/", {"day": timezone.localdate(self.yesterday).isoformat()}).json()
+        self.assertEqual((day["results"][0]["commission"], day["results"][0]["given_back"], day["totals"]["given_back"]), ("1.00", "1.00", "1.00"))
+        wallet = self.accountant.get(f"/api/delivery/riders/{self.swift.pk}/wallet/").json()
+        self.assertEqual((wallet["days"][0]["commission"], wallet["days"][0]["given_back"]), ("1.00", "1.00"))
 
     def test_with_the_ledger_off_staff_reads_answer_ledger_off(self):
         with override_settings(LEDGER_ENABLED=False):
@@ -3377,7 +3621,7 @@ with
 
 ```python
 from delivery import employment
-from delivery.models import Rider, RiderCommissionPosting
+from delivery.models import Rider, RiderCommissionPosting, RiderEarning
 from ledger import escrow
 ```
 
@@ -3430,19 +3674,25 @@ class StaffRiderCommissionView(APIView):
         totals = rows.aggregate(
             deliveries=Sum("deliveries"), gross=Sum("gross_pesewas"), commission=Sum("commission_pesewas"), net=Sum("net_pesewas"),
         )
+        # A posting row is never edited: commission given back for a delivery refunded in full afterwards is shown beside it.
+        back = dict(
+            RiderEarning.objects.filter(reversed_at__isnull=False, commission_posting__day=day)
+            .values("rider_id").annotate(total=Sum("reserve_pesewas")).values_list("rider_id", "total")
+        )
         return Response({
             "day": day,
             "results": [
                 {
                     "rider_id": row.rider_id, "name": row.rider.staff.full_name, "company_name": row.rider.company_name,
                     "deliveries": row.deliveries, "gross": money(row.gross_pesewas), "commission": money(row.commission_pesewas),
-                    "net": money(row.net_pesewas), "posted_at": row.posted_at,
+                    "net": money(row.net_pesewas), "given_back": money(back.get(row.rider_id, 0)), "posted_at": row.posted_at,
                 }
                 for row in rows
             ],
             "totals": {
                 "deliveries": totals["deliveries"] or 0, "gross": money(totals["gross"] or 0),
                 "commission": money(totals["commission"] or 0), "net": money(totals["net"] or 0),
+                "given_back": money(sum(back.values())),
             },
         })
 ```
@@ -3464,7 +3714,7 @@ with
 - [ ] **Step 5: Run the tests to see them pass**
 
 Run: `docker compose -p disp1 run --rm web python manage.py test wallets.tests.test_rider_staff wallets.tests.test_staff_wallets wallets.tests.test_staff_withdrawals --noinput`
-Expected: PASS.
+Expected: PASS (5 new tests in `test_rider_staff`, 1 changed in `test_staff_wallets`).
 
 - [ ] **Step 6: Commit**
 
@@ -3513,9 +3763,30 @@ with
   destinations and withdrawals serve riders (`holder_type` "staff"; verified name = staff name with an approved, in-date
   Ghana Card; step-up codes for `withdrawal` / `payout_destination` only). Rider wallet writes are `activity_exempt`
   (as staff writes they would run inside the middleware's transaction and store the account number) and record their
-  own event, without the number, through `views_payouts`' `saved()` hook.
+  own event, without the number, through `views_payouts`' `saved()` hook. Nobody changes their own employment
+  (`own_rider` 403, a Super Admin included) and only a Dispatch rider can be third-party; `wallet_rider()` also checks
+  the Dispatch role. Payroll (`RiderEarnedView`, `rider/earnings/`) leaves out a third-party rider's deliveries
+  (`employment.payroll_jobs`), so Accounting cannot pay them twice. A day's `RiderCommissionPosting` is never edited:
+  commission given back by a later full refund shows as `given_back` beside it.
 - **The ledger (`ledger/`) is append-only and integer-pesewa.** A balance changes only inside `ledger.posting.post`
 ```
+
+(1b) in the same file, two sentences the new rider rules make stale. Replace
+
+```markdown
+withdrawal, payout destination) must call it. Only customers and owners may ask for step-up codes (staff use
+    sudo), and the endpoints answer `409 otp_off` unless a code could be owed.
+```
+
+with
+
+```markdown
+withdrawal, payout destination) must call it. Only customers, owners and third-party riders (riders: withdrawal and
+    payout_destination only, while the ledger is on) may ask for step-up codes (other staff use sudo), and the
+    endpoints answer `409 otp_off` unless a code could be owed.
+```
+
+(keep the file's own indentation and line breaks around the replaced words), and replace `a vendor's negative` / `  Available blocks it.` (two lines in the withdrawals bullet) with `a negative vendor` / `  Available or rider balance blocks it.`. The matching sentence in `backend/otp/step_up.py` is fixed in Task 5 Step 7(e).
 
 - [ ] **Step 2: The stage index** — (a) in the root `CLAUDE.md` replace
 
@@ -3578,7 +3849,7 @@ feature/wallets and feature/dispatch-wallets-5; see section 13); later stages ar
 
 (fold the Stage 5 words into Plan 1b's and Plan 4's wording if either changed these lines first).
 
-- [ ] **Step 4: The switch-on gates** — append to the end of the spec, after Task 1's "Stage 5 (third-party dispatch) reconciliation" section (numbering continues from Plan 4's (xc)):
+- [ ] **Step 4: The switch-on gates** — append to the end of the spec, after Task 1's "Stage 5 (third-party dispatch) reconciliation" section (numbering continues from Plan 4's (xc)). **Plan 5 keeps gates (xci)-(c).** Plan 6 (catalogue) also appended after (xc) and used (xci)-(cii): whichever merges second renumbers; Plan 6 will renumber to start at (ci), and when it does, every cross-reference in this plan follows (the `wallets/names.py` docstring's "(xcii)", the §0 R1 row's "(xcix)", the table below):
 
 ```markdown
 
@@ -3590,18 +3861,25 @@ feature/wallets and feature/dispatch-wallets-5; see section 13); later stages ar
   `409 id_required` until the Ghana Card is approved. The Delivery Manager's "works for" control on the rider profile (it
   raises an approval; `409 rider_money_open` lists what is open). The Accountant's rider wallets, rider withdrawals and
   daily commission screens.
-- (xcii) **Rider names are not locked.** A third-party rider's verified name is their staff `full_name`, accepted once the
-  Delivery Manager has approved an in-date Ghana Card; nothing compares the name on the card with `full_name`, and
-  `staff.manage` can rename a staff member with no second person and no notice. Before switch-on: have the paper review
-  confirm the card's name, and make a rename of a third-party rider restart every live destination's cooling period (or
-  need a second approver), as (xxix) and (xxxiv) ask for customers and owners.
+- (xcii) **Rider identity rests on one person.** A third-party rider's verified name (staff `full_name`) and code channel
+  (staff `phone` / `email`) are typed by whoever invited them, usually the Delivery Manager, who also approves their Ghana
+  Card; nothing compares the card's name with `full_name`. (No staff-edit endpoint exists today: `staff.manage` has
+  manager, permissions, suspend, deactivate and invite, not rename or change phone.) Before switch-on: record the card's
+  name at review and match it, and have a second person (or the Super Admin's employment approval) confirm both the name
+  and the contacts. Any future staff-edit endpoint that changes a third-party rider's name or contacts must restart
+  destination cooling and notify the old contacts, as (xxix) and (xxxiv) ask for customers and owners.
 - (xciii) **Owner question: a rider is paid nothing for a delivery whose order is refunded whole,** before release (the fee
   goes back to the customer, W4) or after it (the earning is taken back and the balance may go below zero), even when the
   business was at fault and the rider did the work. The alternative is for AshantiHub to pay the rider from its own
-  income in those cases.
+  income in those cases. (See also (c): the same wait applies to an unreachable customer.)
 - (xciv) **A rider switched back to AshantiHub's own can still owe money later.** The switch is refused while money is
   open, but a whole refund after release of an older third-party delivery still reverses its earning, leaving a negative
   balance on a closed wallet with no way to recover it in the app (payroll deduction or write-off is a process decision).
+  **Deactivating or suspending a third-party rider strands their wallet:** `staff/<id>/deactivate/` is not blocked by
+  `employment.money_open` (deactivation is not a switch back), and a deactivated or suspended staff member can neither sign
+  in nor withdraw (a paper-expiry auto-suspension does the same until reinstated). Before switch-on: refuse the
+  deactivation while `money_open(rider)` is non-empty (409 `rider_money_open`), and flag a suspension with money open, or
+  provide a maker-checker staff payout to a verified destination.
 - (xcv) **The end-of-day commission job is a no-op while the ledger is off** (like (xxxix)). The switch is one-way ((x)),
   so a reserve is stranded only if the ledger is switched off, which it must never be. A missed night is caught up by the
   next run (built).
@@ -3609,7 +3887,10 @@ feature/wallets and feature/dispatch-wallets-5; see section 13); later stages ar
   neither platform commission income nor AshantiHub's liability to riders (Σ rider balance + Σ rider reserve); add both.
   The pay screens built for payroll (`delivery/views_rules.py` `RiderEarnedView` at `payouts/`, the rider app's
   `rider/earnings/`) still show rate-card pay with "no money has moved", which is not what a third-party rider is paid:
-  hide or reword them for third-party riders (the same class as (xiii)).
+  exclude deliveries made by a third-party rider (`delivered_at >= Rider.third_party_since`) from `RiderEarnedView` /
+  `RiderEarningsLinesView` and the rider app's `rider/earnings/` payroll figures before the ledger is on, or Accounting can
+  pay a third-party rider twice (wallet plus payroll). **Built in Task 6** (`employment.payroll_jobs`, tested); what stays
+  open is the Accounting dashboard's liability and commission lines.
 - (xcvii) **Delivery fees are off (`DELIVERY_FEE_ENABLED`, default off).** Until they are charged most orders carry no
   delivery fee, and a third-party rider earns only fees a business covered with its free-delivery promo. Third-party
   riders need delivery fees on (owner decision 2026-10-13).
@@ -3617,9 +3898,12 @@ feature/wallets and feature/dispatch-wallets-5; see section 13); later stages ar
   (GH₵ 5,000 per withdrawal, GH₵ 10,000 a day, 24-hour cooling); separate rider limits would need new settings.
 - (xcix) **Owner question: rider companies.** `Rider.company_name` is free text. If a rider company itself is to be
   contracted, invoiced or paid (instead of each rider), a company record and company payouts are a new plan.
-- (c) **A rider's code channels can be changed by staff without notice.** A third-party rider's step-up codes go to the
-  phone and email on their staff record, which `staff.manage` can change with no notice to the rider (the same class as
-  (xxxiv)). Before switch-on: notify the old contacts and restart destination cooling on such a change.
+- (c) **Owner question: rider pay waits for Support's verification call.** A third-party rider is credited only when
+  Support records "matches" (spec §2.2 step 2(c), §4.1), so their pay can wait up to 72 hours, or indefinitely when the
+  customer cannot be reached ("could not reach" releases nothing, and nothing releases on its own). Their switch back to
+  AshantiHub's own is blocked meanwhile (R3, `deliveries`). Decide whether the delivery fee should be released to the rider
+  at delivery (or after the customer's own confirmation) separately from the vendor's money. The spec's "90% withdrawable
+  immediately" holds from release, not from delivery. (RA12.)
 ```
 
 - [ ] **Step 5: Commit**
@@ -3653,7 +3937,7 @@ Expected: `No changes detected`.
 | **5F** Frontend | The rider app's wallet screens, the fleet "works for" control, the Accountant's rider wallet, withdrawals and daily commission screens (spec §13 (xci)). | No screen ships in a backend plan; the API answers `wallet_disabled` / `id_required` / `step_up_required` / `ledger_off` for it to handle. |
 | **7** Hubtel live | Real payouts to riders, name lookups and the payout webhook (`wallets.payouts.apply_result`), as for customers and vendors. | Needs credentials and regulatory clearance (§11 step 7, §12). |
 | Accounting | Commission income and rider liabilities on the Accountant's dashboard; payroll for AshantiHub's own riders (`rider_pay` stays a record). | §13 (xcvi); payroll is not in the spec. |
-| Owner decisions | Paying riders for deliveries refunded whole (xciii), recovering a closed wallet's negative balance (xciv), rider-specific limits (xcviii), rider companies as payees (xcix). | Not decided; the plan's defaults are RA1–RA11. |
+| Owner decisions | Paying riders for deliveries refunded whole (xciii), recovering a closed wallet's negative balance (xciv), rider-specific limits (xcviii), rider companies as payees (xcix), paying riders before Support's call (c). | Not decided; the plan's defaults are RA1–RA11. |
 
 ## Self-review
 
@@ -3670,6 +3954,8 @@ Expected: `No changes detected`.
 | §2.2 step 6 day's gross, commission and net recorded; a reversed delivery reverses its share | 3 (`RiderCommissionPosting`), 4 (`reverse_earning`; reserve or commission) |
 | §2.2 steps 3-4 refunds before and after release | 4 |
 | §2.2 step 5 / §8 withdrawals to a verified, name-matched, OTP-confirmed destination, cooling, limits, holder-borne charge | 5 (engine), 6 (API with step-up) |
+| §2.2 "a reversed delivery reverses its share" visible to the rider and Accounting | 4 (rider notice), 6 and 7 (`given_back` beside the never-edited day record) |
+| Brief: no double pay with payroll; nobody makes themselves a wallet rider | 6 (`payroll_jobs`), 1 (`own_rider`, `not_a_rider`) |
 | §9 OTP before withdrawal and payout-destination actions for everyone | 5 (step-up codes for third-party riders), 6 |
 | Brief: rider-facing reads (balance, earnings per delivery, statement) with isolation | 6 |
 | Brief: staff reads under `wallets.view` | 7 |
@@ -3678,8 +3964,8 @@ Expected: `No changes detected`.
 
 **Placeholder scan:** every code step carries complete code and every test step complete test code; every edit quotes the exact text it replaces; no "TBD", "similar to" or undefined names.
 
-**Name consistency:** `Rider.ASHANTIHUB/THIRD_PARTY/EMPLOYMENT_CHOICES`, `employment/company_name/third_party_since` (1–7); `delivery.employment.KIND`, `WALLET_DISABLED`, `OPEN_LABELS`, `EmploymentError`, `is_third_party`, `wallet_rider`, `id_verified`, `unreleased_deliveries`, `money_open`, `clean`, `check`, `pending_for`, `propose`, `row`, `EMPLOYMENT_KIND` (1, 5, 6); `RiderEarning` (`gross_pesewas`, `commission_bp`, `reserve_pesewas`, `net_pesewas`, `earned_at`, `earned_on`, `journal`, `commission_posting`, `reversed_at`, `reversal_journal`) and `RiderCommissionPosting` (`rider`, `day`, `deliveries`, `gross_pesewas`, `commission_pesewas`, `net_pesewas`, `journal`, `posted_at`) (2–7); `ledger.riders.COMMISSION_SETTING`, `earning_key`, `split`, `accounts_of`, `third_party_rider`, `rider_for_release`, `release_accounts`, `credit_delivery(order, rider, now=None)` (2), `commission_key`, `post_day(rider_id, day, now=None)`, `post_commission(today=None, now=None)` (3), `reversal_key`, `earning_to_reverse`, `reversal_accounts`, `reverse_earning(earning, now=None)` (4); `ledger.tasks.post_rider_commission` (3); `withdrawals.NEGATIVE`, `payouts.HOLDER_MODELS`, `otp.views_step_up.RIDER_ACTIONS`, `IsCustomerOwnerOrWalletRider` (5); `views_payouts.SavedHook.saved(request, event, obj)` with events `destination_added`, `destination_removed`, `withdrawal_requested`, `withdrawal_cancelled` (6); `rider_wallet.summary/earnings/status_of/earning_row/days/statement_lines/line_row` (6, 7); `views_rider_wallet.LedgerOff`, `WalletDisabled`, `parse_day`, `BAD_DAY`, `RiderWalletMixin` and the eight rider views (6), `StaffRiderWalletView`, `StaffRiderCommissionView` (7); `views_staff.rider_rows` (7); test helpers `rider_helpers.rider/delivered_by/waived/earning/ghana_card` (2–7). From Stage 3: `posting.post(..., allow_negative=...)`, `lock`, `account_for`, `balance_of`; `escrow.pay_key/release_key/waiver_key/waiver_return_accounts/return_waiver`; `wallets.tests.helpers.Holder/destination`; `views.ledger_off/OFF/Pagination`; `services.money`.
+**Name consistency:** `Rider.ASHANTIHUB/THIRD_PARTY/EMPLOYMENT_CHOICES`, `employment/company_name/third_party_since` (1–7); `delivery.employment.KIND`, `WALLET_DISABLED`, `OPEN_LABELS`, `EmploymentError`, `is_third_party`, `wallet_rider`, `id_verified`, `unreleased_deliveries`, `payroll_jobs`, `money_open`, `clean`, `check(rider, employment, company, maker=None)`, `pending_for`, `propose`, `row`, `EMPLOYMENT_KIND` (1, 5, 6); `RiderEarning` (`gross_pesewas`, `commission_bp`, `reserve_pesewas`, `net_pesewas`, `earned_at`, `earned_on`, `journal`, `commission_posting`, `reversed_at`, `reversal_journal`) and `RiderCommissionPosting` (`rider`, `day`, `deliveries`, `gross_pesewas`, `commission_pesewas`, `net_pesewas`, `journal`, `posted_at`) (2–7); `ledger.riders.COMMISSION_SETTING`, `earning_key`, `split`, `accounts_of`, `third_party_rider`, `rider_for_release`, `release_accounts`, `credit_delivery(order, rider, now=None)` (2), `commission_key`, `post_day(rider_id, day, now=None)`, `post_commission(today=None, now=None)` (3), `reversal_key`, `earning_to_reverse`, `reversal_accounts`, `reverse_earning(earning, now=None)` (4); `ledger.tasks.post_rider_commission` (3); `withdrawals.NEGATIVE`, `payouts.HOLDER_MODELS`, `otp.views_step_up.RIDER_ACTIONS`, `IsCustomerOwnerOrWalletRider` (5); `views_payouts.SavedHook.saved(request, event, obj)` with events `destination_added`, `destination_removed`, `withdrawal_requested`, `withdrawal_cancelled` (6); `rider_wallet.summary/earnings/status_of/earning_row/given_back/days/statement_lines/line_row` (6, 7); `views_rider_wallet.LedgerOff`, `WalletDisabled`, `parse_day`, `BAD_DAY`, `RiderWalletMixin` and the eight rider views (6), `StaffRiderWalletView`, `StaffRiderCommissionView` (7); `views_staff.rider_rows` (7); test helpers `rider_helpers.rider/delivered_by/waived/earning/ghana_card` (2–7). From Stage 3: `posting.post(..., allow_negative=...)`, `lock`, `account_for`, `balance_of`; `escrow.pay_key/release_key/waiver_key/waiver_return_accounts/return_waiver`; `wallets.tests.helpers.Holder/destination`; `views.ledger_off/OFF/Pagination`; `services.money`.
 
-**Test counts:** Task 1 — 10 (`test_employment`); Task 2 — 11 (`test_rider_release`: 9 + 1 + 1); Task 3 — 6 (`test_rider_commission`: 5 + 1 threaded); Task 4 — 10 (`test_rider_refunds`: 9 + 1 threaded); Task 5 — 11 (`test_rider_engine`: 8 + 3); Task 6 — 8 (`test_rider_api`); Task 7 — 4 (`test_rider_staff`) and one changed (`test_staff_wallets`). 60 new tests in all.
+**Test counts:** Task 1 — 11 (`test_employment`); Task 2 — 14 (`test_rider_release`: 11 + 1 ledger-off + 1 split + 1 threaded `ConcurrentReleaseSwitchBackTests`); Task 3 — 6 (`test_rider_commission`: 5 + 1 threaded); Task 4 — 10 (`test_rider_refunds`: 9 + 1 threaded); Task 5 — 11 (`test_rider_engine`: 8 + 3); Task 6 — 10 (`test_rider_api`); Task 7 — 5 (`test_rider_staff`) and one changed (`test_staff_wallets`). 67 new tests in all.
 
 **Review Focus pins:** each of the seven lines above names the task and the test that pins it; all of those tests are written out in their tasks.
