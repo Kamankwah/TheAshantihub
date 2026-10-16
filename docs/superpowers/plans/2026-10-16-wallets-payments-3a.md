@@ -22,12 +22,12 @@
 | D4 | Paying from the wallet | New optional `payment_method` on `POST /api/orders/checkout/`: `momo` (default — exactly today's path) or `wallet`. `process_payment(..., wallet=True)` makes an immediate session with provider `"wallet"` whatever `PAYMENTS_PROVIDER` says; `_finalize_order_checkout` calls `escrow.record_order_payment(order, wallet=True)`, which debits `customer_wallet` instead of `provider_clearing`. A balance that is too low raises `posting.InsufficientFunds` from `post()`; the checkout catches it, rolls the whole order back and answers `409 insufficient_funds`. | The wallet is just another source in the existing payment journal (§2.2 step 1, "MoMo or wallet"). `post()` already refuses to drive a non-vendor balance below zero under the account lock, so it is the one authority for "enough money" (no separate pre-check race). |
 | D5 | Account kinds | **None added.** `customer_wallet`, `provider_fees` (a refunded collection charge AshantiHub bears), `platform_promo_subsidy` (a coupon returned on the refund that empties an order), `platform_delivery_income` (a business's waived delivery fee) and `withdrawal_in_transit` (3b) already exist in `ledger.models.Account`. | Every movement in this plan fits the Stage 1 chart of accounts. |
 | D6 | Refund granularity | Per fee snapshot (order, vendor, category) — the unit release pays and the cap counts — not per order line. `OrderFeeSnapshot` gains `refunded_base_pesewas` and `refunded_fee_pesewas` (cumulative); `reversed_at` is set when the whole base is refunded. A refund's scope is the whole order or a set of vendors (a skipped stop is one vendor's lines: `delivery.stops.stop_lines` filters by `business_owner_id`). An amount is spread over the snapshots in proportion to what is left of each (largest remainder); the fee share is cumulative and rounded half up. | §13 carry-forward: "Stage 3 must reverse them (`OrderFeeSnapshot.reversed_at`)" and "release must leave out disputed lines". Dispute and delivery-case refunds carry a GH₵ amount, not lines (`Dispute.refund_amount`, `delivery.refund_request` payload), so the amount must be allocated. |
-| D7 | Coupons, delivery and partial refunds | A partial refund of R gives the customer R and takes R from the vendors' lines; it may not exceed the items left. The delivery fee comes back only with the whole order. The refund that empties the order returns the rest of the coupon to AshantiHub (Cr `platform_promo_subsidy`). The customer can never get back more than they paid (`total_amount`). | Coupons are AshantiHub-funded (§13 D1). Keeps every refund journal balanced (items + delivery = customer + subsidy) and never leaves part of a delivery fee held with no release and no refund path (release follows the item snapshots). |
+| D7 | Coupons, delivery and partial refunds | A partial refund of R gives the customer R and takes R from the vendors' lines; it may not exceed the items left. The delivery fee comes back only with the whole order. The refund that empties the order returns the rest of the coupon to AshantiHub (Cr `platform_promo_subsidy`). The customer can never get back more than they paid (`total_amount`). | Coupons are AshantiHub-funded (§13 D1). Keeps every refund journal balanced (items + delivery = customer + subsidy). A delivery fee is never part-refunded; but scoped refunds that take back every item leave it held in Delivery payable (release follows the item snapshots and has none left, so it returns None) until a later whole refund frees it. Known gap, for the owner to rule on. |
 | D8 | Waived delivery fee (§13 carry-forward) | `marketing.WaivedFeeCharge` (the business pays its free-delivery promo, `models_waivers.py`) is charged at release from the business's Available to platform delivery income (journal `order-waiver-<order>`); a whole refund after release gives it back (`order-waiver-return-<order>`). A refund never pays the waived fee to the customer (they never paid it). `WaivedFeeCharge.status` is not changed (no marketing migration). | "The waived delivery fee never reaches the ledger" — today the charge is only a row nothing settles. |
 | D9 | Release | `release_verified` never releases an order that is no longer `paid` (cancelled), pays each snapshot's base and fee **less what was refunded**, and releases the delivery fee still held in the order's Delivery payable (its balance), not `order.delivery_fee`. | §13 carry-forward: a refund followed by Support's "matches" must never pay the vendor in full. |
-| D10 | Disputes | `DisputeResolveView` (Accountant, `disputes.resolve_financial` + password, unchanged) posts the refund for `refund_amount` with source `dispute-<id>`; the delivery-case approval `delivery.refund_request` (Super Admin, unchanged) posts it on approve with the **same source**, so one dispute can never be refunded twice. A case opened by a skipped stop refunds that shop's lines only. The processing charge is refunded on a delivery case whose `fault` is `rider` or `business`, and on dispute resolve when the Accountant sends `refund_processing: true`. A refund the ledger cannot give rolls the decision back (400). | Permissions and doors stay as they are (brief). `delivery.config.refund_apply` today only records an activity line. |
+| D10 | Disputes | `DisputeResolveView` (Accountant, `disputes.resolve_financial` + password, unchanged) posts the refund for `refund_amount` with source `dispute-<id>`; the delivery-case approval `delivery.refund_request` (Super Admin, unchanged) posts it on approve with the **same source**, so one dispute can never be refunded twice. A case opened by a skipped stop refunds that shop's lines only. The processing charge is refunded (its proportional share on a partial refund, what is left on the refund that empties the order) on a delivery case whose `fault` is `rider` or `business`, and on dispute resolve when the Accountant sends `refund_processing: true`. A refund the ledger cannot give rolls the decision back (400). | Permissions and doors stay as they are (brief). `delivery.config.refund_apply` today only records an activity line. |
 | D11 | Cancel and uncollected pickup | Support's cancel of a **paid** order (`orders.support`) refunds it whole to the wallet (no processing refund: the customer asked). An hourly job refunds, cancels and restocks a paid store-pickup order not collected within `pickup_window_hours` of purchase — only orders whose payment the ledger recorded, never one with an open dispute. | §4.3 / §13: "Cancelled paid orders keep their snapshot counted against the cap and their money in Pending"; "refunding it to the customer's wallet is Stage 3". |
-| D12 | Lock order | Order row → its fee snapshots → ledger accounts in primary-key order, all taken up front (`posting.lock`, which `post` also uses). `record_order_payment` now locks **every** account it will touch up front (Stage 1 locked only the vendors' Pending first, then the rest inside `post`), so a wallet payment and a refund to the same wallet cannot deadlock. | With Stage 1's order, a wallet payment would hold a vendor's Pending while asking for the wallet, and a refund to that wallet (sorted inside `post`) could hold the wallet while asking for that Pending: each would wait for the other. One sorted pass up front removes the cycle. |
+| D12 | Lock order | Order row → its fee snapshots → ledger accounts in primary-key order, all taken up front (`posting.lock`, which `post` also uses). `record_order_payment` now locks **every** account it will touch up front (Stage 1 locked only the vendors' Pending first, then the rest inside `post`), so a wallet payment and a refund to the same wallet cannot deadlock. A transaction that posts **twice** (release, then the promo charge; a whole refund, then the promo return) locks the accounts of both postings in its one pass (`escrow.waiver_accounts`, `waiver_return_accounts`, `_post(extra_locks=)`). | With Stage 1's order, a wallet payment would hold a vendor's Pending while asking for the wallet, and a refund to that wallet (sorted inside `post`) could hold the wallet while asking for that Pending: each would wait for the other. One sorted pass up front removes the cycle. |
 | D13 | Ledger off | No wallet account is ever opened; every `/api/wallet/*` endpoint answers `409 {"code": "ledger_off"}`; `payment_method: "wallet"` answers the same; checkout, cancel, dispute and approval responses are byte-for-byte today's. With the ledger on, checkout's body gains `payment_method` and `payment_processing`. | Brief and §11: everything gated by `LEDGER_ENABLED`. |
 | D14 | Reconciliation marker | With the ledger on, order and top-up sessions carry `metadata["ledger"] = true`. | Plan 3b's nightly reconciliation expects a journal only for payments the ledger was asked to record, so payments made while it was off are never false alarms. |
 
@@ -36,8 +36,8 @@
 - Ledger amounts are **integer pesewas**; convert only through `ledger.money` (`to_pesewas`, `from_pesewas`). API amounts are GH₵ strings with two decimals (`"50.00"`).
 - A balance changes only inside `ledger.posting.post`, with a deterministic key: `order-pay-<order>`, `order-release-<order>`, `order-refund-<order>-<source>`, `order-waiver-<order>`, `order-waiver-return-<order>`, `wallet-topup-<session reference>` (Plan 3b adds `withdrawal-hold-<ref>`, `withdrawal-paid-<ref>`, `withdrawal-reversed-<ref>`).
 - **`LEDGER_ENABLED` (default off) gates everything.** With it off: no account is opened, `/api/wallet/*` answers `409 {"detail": "Wallets aren't switched on yet.", "code": "ledger_off"}`, and every existing response and test is unchanged.
-- **Lock order:** order row → fee snapshots → ledger accounts in primary-key order, taken up front with `posting.lock(*accounts)` inside `transaction.atomic()`.
-- Customers pay the provider's collection charge on top of MoMo payments and top-ups ("payment processing"); wallet payments carry none; it is not refunded except on a platform/vendor error (`refund_processing=True`), when AshantiHub bears it (Dr `provider_fees`).
+- **Lock order:** order row → fee snapshots → ledger accounts in primary-key order, taken up front with `posting.lock(*accounts)` inside `transaction.atomic()`. A transaction that posts twice locks the accounts of every posting in that one pass (the promo charge at release, the promo return on a whole refund), never a new account after its first posting.
+- Customers pay the provider's collection charge on top of MoMo payments and top-ups ("payment processing"); wallet payments carry none; it is not refunded except on a platform/vendor error (`refund_processing=True`), when AshantiHub bears it (Dr `provider_fees`) — proportionally on a partial refund.
 - Refunds go **only** to the customer's AshantiHub wallet. Vendor Available may go negative after a late refund (recovered from later sales); no other holder balance may go below zero.
 - Platform fees are never shown to customers; a customer sees items, delivery and "payment processing".
 - Simulated rails only: `SIMULATED_COLLECTION_CHARGE_BP` 0, `SIMULATED_PAYOUT_CHARGE_PESEWAS` 0, `SIMULATED_PAYOUT_OUTCOME` `"succeed"`, `SIMULATED_ACCOUNT_NAMES` `{}`, `HUBTEL_COLLECTION_CHARGE_BP` 0 (all env-settable except the dict). Nothing here moves real money (§11 step 7 is Plan 7).
@@ -53,10 +53,10 @@
 2. **A wallet that covers only part of an order** — refused whole: no order, session, snapshot or stock reservation survives, the cart is kept, the wallet untouched. Pinned in Task 3 (`test_review_focus_a_wallet_that_covers_only_part_pays_nothing_and_changes_nothing`).
 3. **A line refunded twice, or more than was paid** — the same source refunds once; amounts are capped by what the customer has left and by each snapshot's base; a scoped refund never takes the delivery fee. Pinned in Task 5 (`test_review_focus_the_same_source_refunds_once`, `test_review_focus_more_than_is_left_is_refused_and_writes_nothing`, `test_review_focus_a_scoped_refund_takes_only_that_vendors_lines`).
 4. **Partial-refund fee rounding** — fee shares are cumulative and half up: three refunds of a GH₵ 100.00 line return 1.67 + 1.66 + 1.67 = GH₵ 5.00 exactly, never more than was taken. Pinned in Task 5 (`test_review_focus_fee_returned_in_parts_adds_up_to_the_fee_taken`).
-5. **Release after refund** — a refund then Support's "matches" pays the vendor only what is left; a cancelled order is never released; a fully refunded order leaves Support's list. Pinned in Task 6 (`test_review_focus_a_refund_then_matches_pays_only_the_rest`, `test_review_focus_a_cancelled_order_is_never_released`) and Task 7 (`test_review_focus_mismatch_money_back_then_matches_pays_the_rest`).
+5. **Release after refund** — a refund then Support's "matches" pays the vendor only what is left; a cancelled order is never released; a fully refunded order leaves Support's list. A delivery-case refund still waiting for the Super Admin also blocks release (`escrow.has_pending_refund`). Pinned in Task 6 (`test_review_focus_a_refund_then_matches_pays_only_the_rest`, `test_review_focus_a_cancelled_order_is_never_released`) and Task 7 (`test_review_focus_mismatch_money_back_then_matches_pays_the_rest`, `DeliveryCaseRefundTests.test_a_refund_waiting_for_the_super_admin_blocks_release`).
 6. **A duplicate provider callback for a top-up** — Hubtel's retry of the same success webhook credits the wallet once. Pinned in Task 4 (`test_review_focus_the_wallet_is_credited_once_when_hubtel_confirms`).
 7. **Switches-off regression** — with the ledger off, checkout, cancel, dispute resolve and the delivery refund approval answer exactly as today and open no account. Pinned in Task 3 (`test_review_focus_with_the_ledger_off_checkout_is_exactly_as_before`), Task 4 (`test_review_focus_every_wallet_endpoint_says_ledger_off_and_opens_nothing`), Task 7 (`LedgerOffWiringTests`).
-8. **The pickup desk racing the expiry job** — an order collected before the job runs is never refunded; one with an open dispute is left for a person. Pinned in Task 8 (`test_review_focus_a_collected_order_is_never_refunded`).
+8. **The pickup desk racing the expiry job** — an order collected before the job runs is never refunded (including the desk collecting after the job read its list: the re-check under the order lock); one with an open dispute is left for a person; one order the ledger refuses never stops the others. Pinned in Task 8 (`test_review_focus_a_collected_order_is_never_refunded`, `test_review_focus_the_desk_collecting_after_the_job_read_its_list_wins`, `test_one_order_the_ledger_refuses_does_not_stop_the_others`).
 
 ## Assumptions made (decided here, cheap to change — for the owner to confirm)
 
@@ -65,7 +65,7 @@
 - **A3** No wallet balance cap and no top-up limit (the spec sets none); add one when the regulatory route (§12) is known.
 - **A4** A wallet payment must cover the whole order; no split wallet + MoMo payment.
 - **A5** A partial refund comes out of the item lines and may not exceed them; the delivery fee comes back only with the whole order; the coupon goes back to AshantiHub only on the refund that empties the order; the total refunded never exceeds what the customer paid.
-- **A6** The processing charge is refunded only when staff say AshantiHub or the vendor was at fault: `refund_processing: true` on dispute resolve, and delivery cases decided with fault `rider` or `business`; never on a customer cancel or an uncollected pickup.
+- **A6** The processing charge is refunded only when staff say AshantiHub or the vendor was at fault: `refund_processing: true` on dispute resolve, and delivery cases decided with fault `rider` or `business`; never on a customer cancel or an uncollected pickup. A partial refund gives back only its proportional share of the charge (its share of the order total, half up); the refund that empties the order gives back what is left of it. (Owner ruling: proportional, not the whole charge.)
 - **A7** Support's cancel of a paid order refunds it whole to the wallet at once (no approval step).
 - **A8** An uncollected store pickup is refunded, cancelled and restocked by an hourly job once `pickup_window_hours` (24) have passed since purchase, unless a dispute is open; only orders paid while the ledger was on.
 - **A9** A business's free-delivery promo cost is taken from its Available at release (may go negative) and given back if the order is later refunded whole.
@@ -378,7 +378,8 @@ Found while writing the Stage 3 plans (`docs/superpowers/plans/2026-10-16-wallet
   the Hubtel provider raises `NotConnected` for them until Plan 7.
 - **W2 Collection charge.** Paid on top by the customer for MoMo payments and top-ups ("payment processing"), kept on
   `CheckoutSession.processing_fee`; the ledger records only the net. Simulated charges are 0 unless set (no real rate is
-  known). When AshantiHub gives it back (its own or a vendor's error) it bears it: Dr provider fees.
+  known). When AshantiHub gives it back (its own or a vendor's error) it bears it: Dr provider fees. A partial refund
+  gives back only its share of the charge (half up); the refund that empties the order gives back what is left of it.
 - **W3 Paying from the wallet.** `payment_method` (`momo` default, `wallet`) on checkout; the payment journal debits
   the customer's wallet instead of provider clearing; a wallet must cover the whole order.
 - **W4 Refunds.** Always to the wallet, per fee snapshot (`refunded_base_pesewas`, `refunded_fee_pesewas`, and
@@ -391,7 +392,14 @@ Found while writing the Stage 3 plans (`docs/superpowers/plans/2026-10-16-wallet
   resolved with a refund amount, and an approved delivery-case refund all refund through `ledger.refunds`. A dispute
   and its delivery-case approval share one source key, so it is never refunded twice.
 - **W7 Lock order.** Order row, then fee snapshots, then ledger accounts in primary-key order, taken up front
-  (`ledger.posting.lock`).
+  (`ledger.posting.lock`). A transaction that posts twice (release then the promo charge; a whole refund then the promo
+  return) locks the accounts of both postings in its one up-front pass.
+- **W8 Decided in the 3a plan, for the owner to confirm (its A1-A11).** A top-up goes through the provider's hosted
+  checkout (no stored "attached" MoMo number yet, §5); a wallet payment must cover the whole order (no split wallet +
+  MoMo); an uncollected pickup is refunded automatically by an hourly job; the processing charge is refunded only when
+  staff record AshantiHub, rider or business fault, and a partial refund gives back only its share of it; with the
+  ledger on, order and top-up sessions carry `metadata["ledger"]` (a `provider="wallet"` session moved no provider
+  money, so reconciliation must skip it).
 
 ### Before LEDGER_ENABLED is turned on — Stage 3 additions
 
@@ -399,6 +407,19 @@ Found while writing the Stage 3 plans (`docs/superpowers/plans/2026-10-16-wallet
   live) and the regulatory route (§12); on staging it is safe.
 - (vii) **Top-ups share the Hubtel webhook failure mode (i).** A finalizer that raises leaves a paid top-up
   uncredited with `processed=False`; the 3b reconciliation reports it as `missing_in_ledger`, but alerting is still owed.
+- (viii) **The hourly uncollected-pickup job refunds every ledger-recorded store-pickup order the Pickup Desk has not
+  marked collected within `pickup_window_hours`.** Item (iv) therefore stops being "money stays in Pending": a customer
+  who collected at a vendor's own shop is refunded in full and the vendor is never paid. Before the ledger is turned on,
+  every store pickup must be collected at the AshantiHub office desk (checkout and vendor screens must say so), or the
+  job must stay off.
+- (ix) **The transaction report double-counts wallet money.** `billing.TransactionReportView` sums every
+  `billing.Transaction`: a top-up and the order paid from it are both SUCCESS rows, and wallet refunds create no
+  REFUNDED row. Exclude `checkout_sessions__provider="wallet"` from its cash totals and count wallet refunds
+  (ledger `OrderRefund`) before the ledger is turned on.
+- (x) **The switch is one-way.** With it off, refunds are skipped silently: a paid order cancelled while it is off keeps
+  its money in Vendor Pending with no later refund path. Never turn it off once on.
+- (xi) **A Hubtel success webhook for an order Support already cancelled revives it to PAID** (`_finalize_order_checkout`
+  only checks for PAID) and now posts its payment to the ledger; refuse finalisation of a cancelled order first.
 ```
 
 - [ ] **Step 7: Commit**
@@ -1050,7 +1071,8 @@ def process_payment(*, kind, amount, purpose, business_owner=None, customer=None
     if wallet or settings.PAYMENTS_PROVIDER != "hubtel":
         txn_kwargs = {
             "amount": amount,
-            "purpose": purpose,
+            # a wallet-paid order is told apart from the cash top-up that funded the wallet (report double count, S7)
+            "purpose": f"{purpose} (paid from AshantiHub wallet)"[:255] if wallet else purpose,
             "status": Transaction.SUCCESS,
             "reference": session.reference,
         }
@@ -1409,7 +1431,7 @@ class TopUpTests(WalletApiBase):
         self.assertEqual(posting.balance_of(Account.PROVIDER_CLEARING), 5000)               # the provider kept GH₵ 1.00
 
     def test_bad_amounts_are_refused(self):
-        for raw in ("0", "-5", "1.005", "abc", "", None, True, "NaN", "100000000"):
+        for raw in ("0", "-5", "1.005", "abc", "", None, True, "NaN", "100000000", "1e30"):
             with self.subTest(raw=raw):
                 response = self.top_up(raw)
                 self.assertEqual(response.status_code, 400, response.content)
@@ -1666,9 +1688,11 @@ def parse_amount(raw):
         raise AmountError("Enter an amount in GH₵, like 50.00.") from None
     if not value.is_finite():
         raise AmountError("Enter an amount in GH₵, like 50.00.")
+    if value.copy_abs() > Decimal(MAX_PESEWAS) / 100:
+        raise AmountError("That amount is too large.")  # before to_pesewas, which raises InvalidOperation on 1e30
     try:
         pesewas = to_pesewas(value)
-    except ValueError:
+    except (ValueError, InvalidOperation):
         raise AmountError("Use at most two decimal places.") from None
     if pesewas <= 0:
         raise AmountError("The amount must be more than GH₵ 0.00.")
@@ -2002,11 +2026,11 @@ class RefundTests(RefundBase):
         refunds.refund_order(order, 1000, source="dispute-1")
         self.assertEqual(self.wallet(), 1000)
         refund = refunds.refund_order(order, 1000, source="dispute-2", refund_processing=True)
-        self.assertEqual(refund.processing_pesewas, 120)
-        self.assertEqual(self.wallet(), 2120)
-        self.assertEqual(self.balance(Account.PROVIDER_FEES), 120)                            # AshantiHub bears it
+        self.assertEqual(refund.processing_pesewas, 20)                                       # 10.00 of 60.00 of the 1.20 charge
+        self.assertEqual(self.wallet(), 2020)
+        self.assertEqual(self.balance(Account.PROVIDER_FEES), 20)                             # AshantiHub bears its share
         refunds.refund_order(order, source="cancel", refund_processing=True)
-        self.assertEqual(self.wallet(), 6120)                                                  # the rest, without the charge again
+        self.assertEqual(self.wallet(), 6120)                                                  # the rest, and what is left of the charge (1.00)
 
 
 class RefundGateTests(RefundBase):
@@ -2066,11 +2090,14 @@ A refund always goes to the customer's AshantiHub wallet and is recorded as an `
   way out. The refund that empties the order ("whole") also returns the rest of any coupon to AshantiHub (Cr promo
   subsidy), so the customer never gets back more than they paid.
 * The provider's collection charge ("payment processing") is not refunded, except when staff say AshantiHub or a vendor
-  was at fault (`refund_processing=True`): AshantiHub then bears it (Dr provider fees, Cr wallet).
+  was at fault (`refund_processing=True`): AshantiHub then bears it (Dr provider fees, Cr wallet). A partial refund
+  gives back only its share of the charge (its share of the order total, half up, never more than is left); the refund
+  that empties the order gives back whatever is left of it.
 
 Callers: Support's cancel (orders.support), the uncollected-pickup job (ledger.verification), dispute resolution
 (disputes.views) and the delivery-case refund approval (delivery.config). Lock order: the order row, its fee
-snapshots, then the accounts in primary-key order (inside posting.post)."""
+snapshots, then every account the transaction posts to, in one sorted pass before the first posting (`_post` locks them;
+`extra_locks` carries the accounts of a later posting, such as the promo return)."""
 from dataclasses import dataclass
 
 from django.db import transaction
@@ -2165,7 +2192,7 @@ def refund_order(order, amount_pesewas=None, *, source, by=None, owner_ids=None,
 
     if not escrow.enabled():
         return None
-    if not source or len(refund_key(order, source)) > 120:
+    if not source or len(source) > 60 or len(refund_key(order, source)) > 120:  # OrderRefund.source is 60, the key 120
         raise ValueError(f"Bad refund source {source!r}")
     _check_amount(amount_pesewas)
     now = now or timezone.now()
@@ -2206,6 +2233,11 @@ def refund_order(order, amount_pesewas=None, *, source, by=None, owner_ids=None,
             if customer <= 0:
                 raise RefundError("Nothing is left to refund on those items.")
             delivery, subsidy, shares = 0, 0, allocate(customer, rooms)
+            if processing:
+                # A partial refund gives back only its share of the charge, half up; the refund that empties the order
+                # gives back whatever is left of it (spec §1 row 14: AshantiHub bears only what went wrong).
+                paid = to_pesewas(order.total_amount)
+                processing = min(processing, (2 * processing_paid(order) * customer + paid) // (2 * paid)) if paid else 0
         refund = _post(
             order, snapshots, shares, customer=customer, delivery=delivery, subsidy=subsidy, processing=processing,
             whole=whole, source=source, by=by, note=note, now=now,
@@ -2217,7 +2249,7 @@ def refund_order(order, amount_pesewas=None, *, source, by=None, owner_ids=None,
         return refund
 
 
-def _post(order, snapshots, shares, *, customer, delivery, subsidy, processing, whole, source, by, note, now):
+def _post(order, snapshots, shares, *, customer, delivery, subsidy, processing, whole, source, by, note, now, extra_locks=()):
     released = Journal.objects.filter(key=escrow.release_key(order)).exists()
     by_vendor, allocation = {}, []
     for snap in snapshots:
@@ -2264,6 +2296,9 @@ def _post(order, snapshots, shares, *, customer, delivery, subsidy, processing, 
         credits.append(posting.credit(posting.account_for(Account.PLATFORM_PROMO_SUBSIDY), subsidy))
     if customer + processing:
         credits.append(posting.credit(posting.account_for(Account.CUSTOMER_WALLET, order.customer), customer + processing))
+    # Every account this transaction posts to, in one sorted pass before the first posting (spec W7); `extra_locks`
+    # are the accounts a later posting in the same transaction touches (Task 6: the promo return).
+    posting.lock(*(line.account for line in debits + credits), *extra_locks)
     journal = None
     if len(debits) + len(credits) >= 2:
         journal = posting.post(
@@ -2295,15 +2330,17 @@ git commit -m "feat(ledger): refunds into the customer's wallet, per fee snapsho
 ### Task 6: Release pays only what refunds left; the waived delivery fee reaches the ledger
 
 **Files:**
-- Modify: `backend/ledger/escrow.py` (`release_verified`; new `waiver_key`, `waiver_return_key`, `charge_waiver`, `return_waiver`), `backend/ledger/refunds.py` (a whole refund gives the waiver back), `backend/ledger/verification.py` (`awaiting` leaves out fully refunded orders)
+- Modify: `backend/ledger/escrow.py` (`release_verified`; new `waiver_key`, `waiver_return_key`, `charge_waiver`, `return_waiver`, `waiver_accounts`, `waiver_return_accounts`, `has_pending_refund`), `backend/ledger/refunds.py` (a whole refund gives the waiver back; it locks the promo return's accounts up front), `backend/ledger/verification.py` (`awaiting` leaves out fully refunded orders; Support's "matches" is refused while a delivery-case refund waits for approval)
 - Create: `backend/ledger/tests/test_release_after_refund.py`
 
 **Interfaces:**
 - Consumes: `refunds.refund_order` (Task 5), `posting.balance_of` (Task 2), `marketing.models_waivers.WaivedFeeCharge` (`OWED`, `REVERSED`, `amount`, `business_owner`).
 - Produces:
-  - `escrow.release_verified(order, now=None)` — unchanged signature; returns None for an order whose status is not `paid`; pays per snapshot `base − refunded_base` to Pending/Available and `charged − refunded_fee` to fee income; releases the order's Delivery payable **balance**; then calls `charge_waiver(order)`
+  - `escrow.release_verified(order, now=None)` — unchanged signature; returns None for an order whose status is not `paid` or that has an open dispute or a delivery-case refund still waiting for the Super Admin (`has_pending_refund`); pays per snapshot `base − refunded_base` to Pending/Available and `charged − refunded_fee` to fee income; releases the order's Delivery payable **balance**; then calls `charge_waiver(order)`
   - `escrow.waiver_key(order) -> "order-waiver-<order>"`, `escrow.waiver_return_key(order) -> "order-waiver-return-<order>"`
   - `escrow.charge_waiver(order) -> Journal | None` (kind `"order_waiver_charge"`), `escrow.return_waiver(order) -> Journal | None` (kind `"order_waiver_return"`)
+  - `escrow.waiver_accounts(order) -> tuple`, `escrow.waiver_return_accounts(order) -> tuple` — the accounts those two postings touch, so the transaction that posts twice locks them all in its one up-front pass (spec W7)
+  - `escrow.has_pending_refund(order) -> bool` — a delivery case on the order whose `delivery.refund_request` approval is still PENDING (the case is already final, so `has_open_dispute` does not see it)
   - `verification.awaiting()` lists only orders with a snapshot neither released nor reversed
 
 - [ ] **Step 1: Write the failing test** — `backend/ledger/tests/test_release_after_refund.py`
@@ -2399,7 +2436,7 @@ class ReleaseAfterRefundTests(RefundBase):
 - [ ] **Step 2: Run it to see it fail**
 
 Run: `docker compose -p wal1 run --rm web python manage.py test ledger.tests.test_release_after_refund --noinput`
-Expected: FAIL — Esi's Available is 59400 (release paid the whole snapshot), the cancelled order is released, the refunded order stays on Support's list, and no `order-waiver-` journal exists.
+Expected: ERROR — `InsufficientFunds` from `release_verified` (Esi's Pending holds 30000 after the refund; the old release debits her whole 60000 base), the cancelled order is released, the refunded order stays on Support's list, and no `order-waiver-` journal exists.
 
 - [ ] **Step 3: Release** — in `backend/ledger/escrow.py`, (a) replace
 
@@ -2419,7 +2456,7 @@ and (b) replace the whole `release_verified` function with
 def release_verified(order, now=None):
     """Release an order's held money to the vendor and the platform. Called when Support records a positive
     verification; there is no timer. Returns the journal, or None when the ledger is off, the order is no longer paid
-    (cancelled), has no positive verification or an open dispute, or was already released.
+    (cancelled), has no positive verification, an open dispute or a delivery-case refund waiting for approval, or was already released.
 
     Refunds come first (ledger.refunds): each snapshot pays only the base and fee not yet refunded, a fully refunded one
     (reversed) pays nothing, and the delivery fee released is what the order's Delivery payable still holds. A business
@@ -2430,7 +2467,7 @@ def release_verified(order, now=None):
         return None
     now = now or timezone.now()
     with transaction.atomic():
-        if Journal.objects.filter(key=release_key(order)).exists() or has_open_dispute(order):
+        if Journal.objects.filter(key=release_key(order)).exists() or has_open_dispute(order) or has_pending_refund(order):
             return None
         if not Order.objects.filter(pk=order.pk, status=Order.PAID).exists():
             return None
@@ -2469,6 +2506,9 @@ def release_verified(order, now=None):
         if len(debits) + len(credits) < 2:
             OrderFeeSnapshot.objects.filter(pk__in=[s.pk for s in snapshots]).update(released_at=now)
             return None  # nothing to post (every line was zero)
+        # One sorted pass over every account this transaction posts to, the promo charge's included (spec W7): the
+        # second posting (charge_waiver) must never take a new account lock while the release's are held.
+        posting.lock(*(line.account for line in debits + credits), *waiver_accounts(order))
         journal = posting.post(
             key=release_key(order), kind="order_release", lines=debits + credits,
             reference_type="orders.order", reference_id=str(order.pk), memo=f"Release of order #{order.pk}",
@@ -2486,6 +2526,34 @@ def waiver_key(order):
 
 def waiver_return_key(order):
     return f"order-waiver-return-{order.pk}"
+
+
+def waiver_accounts(order):
+    """The accounts charge_waiver would post to (none when no promo charge is owed), for the release's up-front lock."""
+    from marketing.models_waivers import WaivedFeeCharge
+
+    charge = WaivedFeeCharge.objects.filter(order=order, status=WaivedFeeCharge.OWED).select_related("business_owner").first()
+    if charge is None or to_pesewas(charge.amount) <= 0:
+        return ()
+    return (posting.account_for(Account.VENDOR_AVAILABLE, charge.business_owner), posting.account_for(Account.PLATFORM_DELIVERY_INCOME))
+
+
+def waiver_return_accounts(order):
+    """The accounts return_waiver would post to (none when no promo was charged), for a whole refund's up-front lock."""
+    line = JournalLine.objects.filter(journal__key=waiver_key(order), side=JournalLine.DEBIT).select_related("account").first()
+    return () if line is None else (line.account, posting.account_for(Account.PLATFORM_DELIVERY_INCOME))
+
+
+def has_pending_refund(order):
+    """A delivery case on this order whose refund waits for the Super Admin (delivery.refund_request). The case is
+    already final, so has_open_dispute does not see it, but its lines must never be paid to the vendor first."""
+    from approvals.models import ApprovalRequest
+    from disputes.models import Dispute
+
+    ids = [str(pk) for pk in Dispute.objects.filter(order=order).values_list("pk", flat=True)]
+    return bool(ids) and ApprovalRequest.objects.filter(
+        kind="delivery.refund_request", status=ApprovalRequest.PENDING, target_type="disputes.dispute", target_id__in=ids,
+    ).exists()
 
 
 def charge_waiver(order):
@@ -2541,6 +2609,21 @@ with
         return refund
 ```
 
+and, so the promo return's accounts are locked in the same up-front pass as the refund's own (spec W7), replace in `_post`'s call
+
+```python
+            whole=whole, source=source, by=by, note=note, now=now,
+        )
+```
+
+with
+
+```python
+            whole=whole, source=source, by=by, note=note, now=now,
+            extra_locks=escrow.waiver_return_accounts(order) if whole else (),
+        )
+```
+
 - [ ] **Step 5: Support's list** — in `backend/ledger/verification.py` replace
 
 ```python
@@ -2553,6 +2636,22 @@ with
         # A snapshot neither released nor refunded in full: a fully refunded order has nothing left to verify.
         Order.objects.filter(status=Order.PAID, fee_snapshots__released_at__isnull=True, fee_snapshots__reversed_at__isnull=True).distinct()
 ```
+
+- [ ] **Step 5b: Support's "matches" waits for a pending refund** — in `backend/ledger/verification.py` (`record`) replace
+
+```python
+            if escrow.has_open_dispute(order):
+                raise VerificationError("A dispute is open on this order. It must be settled first.")
+```
+
+with
+
+```python
+            if escrow.has_open_dispute(order) or escrow.has_pending_refund(order):
+                raise VerificationError("A dispute, or a refund waiting for approval, is open on this order. It must be settled first.")
+```
+
+(Release is gated the same way inside `release_verified`, so even a "matches" recorded earlier cannot pay the vendor while the Super Admin's approval of a delivery-case refund is pending. Task 7 pins it.)
 
 - [ ] **Step 6: Run the tests**
 
@@ -2571,14 +2670,15 @@ git commit -m "feat(ledger): release pays only what refunds left, never a cancel
 ### Task 7: Wire refunds into Support's cancel, dispute resolution and the delivery-case approval
 
 **Files:**
-- Modify: `backend/ledger/refunds.py` (`scope_for_dispute`), `backend/orders/support.py` (cancel refunds; `return_stock`), `backend/disputes/views.py` and `backend/disputes/serializers.py` (`DisputeResolveView`), `backend/delivery/config.py` (`refund_apply`, consequences)
+- Modify: `backend/ledger/refunds.py` (`scope_for_dispute`, `check`), `backend/orders/support.py` (cancel refunds; `return_stock`), `backend/disputes/views.py` and `backend/disputes/serializers.py` (`DisputeResolveView`), `backend/delivery/config.py` (`refund_apply`, consequences), `backend/delivery/views_cases.py` (`DecideView` refuses at decision time a refund the ledger could never pay)
 - Create: `backend/ledger/tests/test_refund_wiring.py`
 
 **Interfaces:**
 - Consumes: `refunds.refund_order`, `refunds.RefundError` (Task 5), release after refunds (Task 6), `approvals.services.submit/approve/ApprovalError`, `delivery.models.DeliveryEvent.SKIPPED_STOP` / `PickupStop.business_owner`.
 - Produces:
   - `refunds.scope_for_dispute(dispute) -> set[int] | None` — the business owners of the skipped stops whose `DeliveryEvent` names this dispute, else None (whole order)
-  - `orders.support.return_stock(order)` (used by Task 8)
+  - `refunds.check(order, amount_pesewas, *, owner_ids=None)` — raises `RefundError` when `refund_order` could not give the amount now, writes nothing (a pre-check; nothing to check while the ledger is off or for an order paid before it was on)
+  - `orders.support.return_stock(order)` (used by Task 8); it locks the listing rows in one pass in primary-key order
   - `SupportOrderStatusView._cancel(order, staff=None) -> OrderRefund | None` (`staff` defaults to None because `marketing/tests/test_waivers.py` calls `_cancel(order)`); `_tell_customer(order, note, refund=None)`
   - `DisputeResolveSerializer.refund_processing` (bool, default False); the resolve body gains `wallet_refund` (GH₵ string) when a refund was posted; `400 {"refund_amount": message}` when the ledger cannot give it (the decision is rolled back)
   - `delivery.config.refund_apply` posts the refund (source `dispute-<id>`) and raises `ApprovalError` when it cannot
@@ -2602,8 +2702,8 @@ from approvals.models import ApprovalRequest
 from delivery import config
 from delivery.models import DeliveryEvent, PickupStop
 from disputes.models import Dispute
-from ledger import refunds
-from ledger.models import Account, OrderFeeSnapshot, OrderRefund
+from ledger import escrow, refunds
+from ledger.models import Account, FulfilmentCheck, OrderFeeSnapshot, OrderRefund
 from notifications.models import Notification
 from orders.models import DeliveryAssignment, Order
 from payments.models import CheckoutSession
@@ -2749,7 +2849,7 @@ class DeliveryCaseRefundTests(WiringBase):
         order, case = self.skipped_case()
         self.assertEqual(refunds.scope_for_dispute(case), {self.esi.pk})
         approvals.approve(self.ask_refund(case, "600.00").pk, self.boss)
-        self.assertEqual(self.wallet(), 61340)                                                    # Esi's 600.00 + the 13.40 charge (business at fault)
+        self.assertEqual(self.wallet(), 61200)                                                    # Esi's 600.00 + 12.00, her share of the 13.40 charge (business at fault)
         self.assertEqual(self.balance(Account.VENDOR_PENDING, self.esi), 0)
         self.assertEqual(self.balance(Account.VENDOR_PENDING, self.kofi), 6000)
         self.assertEqual(OrderRefund.objects.get(order=order).source, f"dispute-{case.pk}")
@@ -2757,6 +2857,7 @@ class DeliveryCaseRefundTests(WiringBase):
         self.assertIn("returned to the customer's AshantiHub wallet", event.summary)
 
     def test_a_refund_beyond_the_shops_lines_leaves_the_request_pending(self):
+        # DecideView now refuses such an amount up front; this is a balance that changed after the decision.
         order, case = self.skipped_case()
         approval = self.ask_refund(case, "700.00")
         with self.assertRaises(approvals.ApprovalError):
@@ -2765,12 +2866,33 @@ class DeliveryCaseRefundTests(WiringBase):
         self.assertEqual(approval.status, ApprovalRequest.PENDING)
         self.assertEqual(self.wallet(), 0)
 
+    def test_a_refund_waiting_for_the_super_admin_blocks_release(self):
+        order, case = self.skipped_case()
+        self.ask_refund(case, "600.00")
+        FulfilmentCheck.objects.create(order=order, outcome=FulfilmentCheck.MATCHES)
+        self.assertIsNone(escrow.release_verified(order))
+        self.assertEqual(self.balance(Account.VENDOR_PENDING, self.esi), 60000)
+
+    def test_a_decision_the_ledger_could_not_pay_is_refused_and_the_case_stays_undecided(self):
+        order, case = self.skipped_case()
+        Dispute.objects.filter(pk=case.pk).update(status=Dispute.INVESTIGATING, refund_amount=None)     # not decided yet
+        self.as_staff(self.manager, sudo=True)
+        response = self.client.post(
+            f"/api/delivery/cases/{case.pk}/decide/",
+            {"outcome": "refund", "fault": "business", "note": "Esi's shop could not hand over", "refund_amount": "650.00"}, format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)                          # above Esi's 600.00 of lines
+        self.assertEqual(response.json()["field"], "refund_amount")
+        case.refresh_from_db()
+        self.assertEqual((case.status, case.refund_amount), (Dispute.INVESTIGATING, None))
+        self.assertFalse(ApprovalRequest.objects.filter(kind=config.REFUND).exists())
+
     def test_a_dispute_is_never_refunded_twice_across_both_doors(self):
         order, case = self.skipped_case()
         approvals.approve(self.ask_refund(case, "600.00").pk, self.boss)
         refunds.refund_order(order, 60000, source=f"dispute-{case.pk}")                       # the same source again
         self.assertEqual(OrderRefund.objects.filter(order=order).count(), 1)
-        self.assertEqual(self.wallet(), 61340)
+        self.assertEqual(self.wallet(), 61200)
 
     def test_a_case_without_a_skipped_stop_refunds_from_the_whole_order(self):
         kofi = self.owner("Kofi")
@@ -2805,7 +2927,7 @@ class LedgerOffWiringTests(WiringBase):
 - [ ] **Step 2: Run it to see it fail**
 
 Run: `docker compose -p wal1 run --rm web python manage.py test ledger.tests.test_refund_wiring --noinput`
-Expected: FAIL/ERROR — `AttributeError: module 'ledger.refunds' has no attribute 'scope_for_dispute'`, the wallet stays at 0 after a cancel or a resolve, and `wallet_refund` is missing.
+Expected: FAIL/ERROR — `AttributeError: module 'ledger.refunds' has no attribute 'scope_for_dispute'`, the wallet stays at 0 after a cancel or a resolve, `wallet_refund` is missing, `escrow.has_pending_refund` does not exist, and the delivery decision accepts an amount the ledger could never pay.
 
 - [ ] **Step 3: Which lines a dispute may refund** — append to `backend/ledger/refunds.py`
 
@@ -2822,6 +2944,57 @@ def scope_for_dispute(dispute):
         .values_list("stop__business_owner_id", flat=True)
     )
     return owners or None
+```
+
+- [ ] **Step 3b: Refuse at decision time what the approval could never pay** — the Delivery Manager's decision closes the case for good (a second decision answers 409), so a refund the ledger will refuse must not get that far. (a) Append to `backend/ledger/refunds.py`
+
+```python
+
+
+def check(order, amount_pesewas, *, owner_ids=None):
+    """Raise RefundError when refund_order could not give `amount_pesewas` now; writes nothing. A pre-check for a
+    decision approved later (the delivery-case refund), so a case is never closed on a refund the ledger will refuse.
+    Nothing to check while the ledger is off or for an order paid before it was on."""
+    if not escrow.enabled() or not Journal.objects.filter(key=escrow.pay_key(order)).exists():
+        return
+    _check_amount(amount_pesewas)
+    remaining = left(order)
+    snaps = OrderFeeSnapshot.objects.filter(order=order, reversed_at__isnull=True)
+    if owner_ids is not None:
+        snaps = snaps.filter(business_owner_id__in=owner_ids)
+    items_room = sum(s.base_pesewas - s.refunded_base_pesewas for s in snaps)
+    if amount_pesewas > remaining.customer:
+        raise RefundError(f"Only GH₵ {from_pesewas(remaining.customer)} of this order can still be refunded.")
+    if owner_ids is not None and amount_pesewas > items_room:
+        raise RefundError(f"Only GH₵ {from_pesewas(items_room)} of those items can still be refunded.")
+    if owner_ids is None and amount_pesewas != remaining.customer and amount_pesewas > items_room:
+        raise RefundError(
+            f"The items left are worth GH₵ {from_pesewas(items_room)}. The delivery fee comes back only with the "
+            f"whole order: GH₵ {from_pesewas(remaining.customer)}."
+        )
+```
+
+(b) In `backend/delivery/views_cases.py` (`DecideView.post`) replace
+
+```python
+            if amount is not None and (amount <= 0 or (d.order_id and amount > d.order.total_amount)):
+                return Response({"detail": "The refund must be more than 0 and no more than the order total.", "field": "refund_amount"}, status=400)
+```
+
+with
+
+```python
+            if amount is not None and (amount <= 0 or (d.order_id and amount > d.order.total_amount)):
+                return Response({"detail": "The refund must be more than 0 and no more than the order total.", "field": "refund_amount"}, status=400)
+            if amount is not None and d.order_id:
+                # With the ledger on, refuse now what the Super Admin's approval could never pay: the case is final after this.
+                from ledger import refunds
+                from ledger.money import to_pesewas
+
+                try:
+                    refunds.check(d.order, to_pesewas(amount), owner_ids=refunds.scope_for_dispute(d))
+                except refunds.RefundError as exc:
+                    return Response({"detail": exc.message, "field": "refund_amount"}, status=400)
 ```
 
 - [ ] **Step 4: Support's cancel** — four edits in `backend/orders/support.py`.
@@ -2849,13 +3022,16 @@ with
 
 ```python
 def return_stock(order):
-    """Put the stock an order reserved at checkout back on the shelf (tracked listings only)."""
+    """Put the stock an order reserved at checkout back on the shelf (tracked listings only). The listing rows are
+    locked in one pass in primary-key order, so a cancel or the pickup job never deadlocks with a checkout."""
     from listings.models import Listing
 
+    quantities = {}
     for line in order.items.all():
-        listing = Listing.objects.select_for_update().get(pk=line.listing_id)
+        quantities[line.listing_id] = quantities.get(line.listing_id, 0) + line.quantity
+    for listing in Listing.objects.select_for_update().filter(pk__in=quantities).order_by("pk"):
         if listing.stock_quantity is not None:
-            listing.stock_quantity += line.quantity
+            listing.stock_quantity += quantities[listing.pk]
             listing.save(update_fields=["stock_quantity"])
 
 
@@ -3063,12 +3239,12 @@ REFUND_KIND = ApprovalKind(
 - [ ] **Step 7: Run the tests**
 
 Run: `docker compose -p wal1 run --rm web python manage.py test ledger disputes orders delivery marketing.tests.test_waivers --noinput`
-Expected: PASS — the 10 new tests, and the existing disputes, orders (support cancel), delivery (case decision) and waiver tests unchanged with the ledger off (`test_cancel_reverses_the_charge_once` still calls `_cancel(order)` with no staff).
+Expected: PASS — the 12 new tests, and the existing disputes, orders (support cancel), delivery (case decision) and waiver tests unchanged with the ledger off (`test_cancel_reverses_the_charge_once` still calls `_cancel(order)` with no staff).
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add backend/ledger backend/orders/support.py backend/disputes backend/delivery/config.py
+git add backend/ledger backend/orders/support.py backend/disputes backend/delivery/config.py backend/delivery/views_cases.py
 git commit -m "feat(ledger): Support cancel, dispute resolution and delivery-case approval refund into the wallet"
 ```
 
@@ -3082,7 +3258,7 @@ git commit -m "feat(ledger): Support cancel, dispute resolution and delivery-cas
 
 **Interfaces:**
 - Consumes: `refunds.refund_order` (Task 5), `orders.support.return_stock` (Task 7), `settings_store.current("pickup_window_hours", now)`, `escrow.pay_key`, `escrow.has_open_dispute`, `notifications.services.notify_customer`.
-- Produces: `verification.expire_uncollected(now=None) -> int` (how many orders it refunded); Celery task `ledger.tasks.refund_uncollected_pickups`; beat entry `"ledger-refund-uncollected-pickups"` (hourly at :25).
+- Produces: `verification.expire_uncollected(now=None) -> int` (how many orders it refunded; one order the ledger refuses is logged and skipped, never stopping the others); `verification.expire_one(pk, hours) -> int` (1 when it refunded, cancelled and restocked that order under its row lock, 0 when it no longer qualifies); Celery task `ledger.tasks.refund_uncollected_pickups`; beat entry `"ledger-refund-uncollected-pickups"` (hourly at :25).
 
 - [ ] **Step 1: Write the failing test** — `backend/ledger/tests/test_pickup_expiry.py`
 
@@ -3091,12 +3267,14 @@ git commit -m "feat(ledger): Support cancel, dispute resolution and delivery-cas
 (wallets plan 3a, Task 8; spec §4.3). Review Focus 8: the desk racing the job."""
 from datetime import timedelta
 
+from unittest.mock import patch
+
 from django.conf import settings
 from django.test import override_settings
 from django.utils import timezone
 
 from disputes.models import Dispute
-from ledger import tasks, verification
+from ledger import posting, refunds, tasks, verification
 from ledger.models import Account, FulfilmentCheck, MoneySetting, OrderRefund
 from notifications.models import Notification
 from orders.models import Order
@@ -3151,6 +3329,27 @@ class PickupExpiryTests(RefundBase):
         self.assertEqual(order.status, Order.PAID)
         self.assertEqual(self.wallet(), 0)
 
+    def test_review_focus_the_desk_collecting_after_the_job_read_its_list_wins(self):
+        order = self.pickup(hours_ago=30)
+        FulfilmentCheck.objects.create(order=order, collected_at=timezone.now())              # collected after `due` was read
+        self.assertEqual(verification.expire_one(order.pk, 24), 0)
+        order.refresh_from_db()
+        self.assertEqual((order.status, self.wallet(), OrderRefund.objects.count()), (Order.PAID, 0, 0))
+
+    def test_one_order_the_ledger_refuses_does_not_stop_the_others(self):
+        self.pickup(hours_ago=30)
+        self.pickup(hours_ago=29)
+        real, calls = refunds.refund_order, []
+
+        def flaky(order, *args, **kwargs):
+            calls.append(order.pk)
+            if len(calls) == 1:
+                raise posting.PostingError("refused")
+            return real(order, *args, **kwargs)
+
+        with patch("ledger.refunds.refund_order", side_effect=flaky), self.assertLogs("ledger.verification", level="ERROR"):
+            self.assertEqual(verification.expire_uncollected(), 1)
+
     def test_an_order_with_an_open_dispute_is_left_for_a_person(self):
         order = self.pickup(hours_ago=30)
         Dispute.objects.create(order=order, raised_by=self.customer, reason=Dispute.ORDER_ISSUE, description="Wrong item", status=Dispute.OPEN)
@@ -3202,7 +3401,7 @@ from .models import FulfilmentCheck, Journal, OrderFeeSnapshot
 from .money import from_pesewas
 ```
 
-and (b) append at the end of the file
+(a2) add `import logging` above `from datetime import timedelta` and `logger = logging.getLogger(__name__)` after the imports, and (b) append at the end of the file
 
 ```python
 
@@ -3212,12 +3411,9 @@ def expire_uncollected(now=None):
     Stage 3): the whole order goes back to the customer's AshantiHub wallet (not the payment-processing charge: the
     customer did not come), its stock back on the shelf, and the customer is told. Only orders whose payment the ledger
     recorded (older ones stay on the desk's list for a person) and never one with an open dispute. The desk's collection
-    and this job both lock the order row, so a collected order is never refunded. Returns how many were refunded."""
-    from notifications.services import notify_customer
+    and `expire_one` both lock the order row, so a collected order is never refunded. One order the ledger refuses is
+    logged and skipped, so it never stops the others. Returns how many were refunded."""
     from orders.models import Order
-    from orders.support import return_stock
-
-    from . import refunds
 
     if not escrow.enabled():
         return 0
@@ -3229,27 +3425,42 @@ def expire_uncollected(now=None):
     )
     done = 0
     for pk in due:
-        with transaction.atomic():
-            order = Order.objects.select_for_update(of=("self",)).select_related("customer").get(pk=pk)
-            if order.status != Order.PAID or not Journal.objects.filter(key=escrow.pay_key(order)).exists():
-                continue
-            if FulfilmentCheck.objects.filter(order=order, collected_at__isnull=False).exists() or escrow.has_open_dispute(order):
-                continue
-            return_stock(order)
-            order.status = Order.CANCELLED
-            order.save(update_fields=["status"])
-            refund = refunds.refund_order(order, source="pickup_expired", note=f"Not collected within {hours} hours")
-            back = (
-                f" GH₵ {from_pesewas(refund.amount_pesewas)} went back to your AshantiHub wallet."
-                if refund is not None and refund.amount_pesewas > 0 else ""
-            )
-            notify_customer(
-                order.customer, "order_status", "Your order was not collected",
-                body=f"Order #{order.pk} was not collected within {hours} hours of purchase, so it was cancelled.{back}",
-                link="/my-account", icon="🧾",
-            )
-        done += 1
+        try:
+            done += expire_one(pk, hours)
+        except Exception:  # one order the ledger refuses must not stop every later customer's refund
+            logger.exception("Uncollected-pickup refund failed for order %s", pk)
     return done
+
+
+def expire_one(pk, hours):
+    """Refund, cancel and restock one uncollected pickup under its order row lock. Returns 1, or 0 when it no longer
+    qualifies (collected by the desk, disputed, not paid, or paid before the ledger was on)."""
+    from notifications.services import notify_customer
+    from orders.models import Order
+    from orders.support import return_stock
+
+    from . import refunds
+
+    with transaction.atomic():
+        order = Order.objects.select_for_update(of=("self",)).select_related("customer").get(pk=pk)
+        if order.status != Order.PAID or not Journal.objects.filter(key=escrow.pay_key(order)).exists():
+            return 0
+        if FulfilmentCheck.objects.filter(order=order, collected_at__isnull=False).exists() or escrow.has_open_dispute(order):
+            return 0
+        return_stock(order)
+        order.status = Order.CANCELLED
+        order.save(update_fields=["status"])
+        refund = refunds.refund_order(order, source="pickup_expired", note=f"Not collected within {hours} hours")
+        back = (
+            f" GH₵ {from_pesewas(refund.amount_pesewas)} went back to your AshantiHub wallet."
+            if refund is not None and refund.amount_pesewas > 0 else ""
+        )
+        notify_customer(
+            order.customer, "order_status", "Your order was not collected",
+            body=f"Order #{order.pk} was not collected within {hours} hours of purchase, so it was cancelled.{back}",
+            link="/my-account", icon="🧾",
+        )
+    return 1
 ```
 
 - [ ] **Step 4: The task and its schedule** — `backend/ledger/tasks.py`
@@ -3294,7 +3505,7 @@ with
 - [ ] **Step 5: Run the tests**
 
 Run: `docker compose -p wal1 run --rm web python manage.py test ledger core.tests.test_background_jobs --noinput`
-Expected: PASS (8 new tests; `test_every_scheduled_job_names_a_registered_task` finds the new task).
+Expected: PASS (10 new tests; `test_every_scheduled_job_names_a_registered_task` finds the new task).
 
 - [ ] **Step 6: Commit**
 
@@ -3604,10 +3815,12 @@ with
   `refunded_fee_pesewas`, `reversed_at` when whole), which frees the lifetime cap; release pays only what is left and
   never a cancelled order; after release the vendor's Available is debited (may go negative) and the fee returned in
   proportion; the delivery fee comes back only with the whole order; the collection charge only on a platform/vendor
-  error. Support's cancel, the hourly uncollected-pickup job, dispute resolution and the delivery-case refund approval
+  error (its proportional share on a partial refund). Release (and Support's "matches") also waits while a
+  delivery-case refund is pending the Super Admin's approval (`escrow.has_pending_refund`). Support's cancel, the hourly uncollected-pickup job, dispute resolution and the delivery-case refund approval
   all call it. A business's free-delivery promo (`WaivedFeeCharge`) is taken from its Available at release. **Lock
   order for money:** the order row, its fee snapshots, then ledger accounts in primary-key order taken up front with
-  `posting.lock` (`posting.post` takes them the same way). `collect` is `payments.services.process_payment` and
+  `posting.lock` in one sorted pass, including the accounts of a second posting in the same transaction (the promo
+  charge at release, the promo return on a whole refund; `posting.post` takes them the same way). `collect` is `payments.services.process_payment` and
   `handle_webhook` is `HubtelWebhookView` (both unchanged); the Hubtel provider's payout, status and name lookup raise
   `NotConnected` until Plan 7.
 - **Pickup Desk** is the `pickup_desk` staff role with the single permission `pickup.confirm` (store-pickup queue and
@@ -3653,7 +3866,8 @@ with
   order whole to the wallet and reverse its snapshots.
 - **Done in Stage 3a (W4).** Release paid every unreleased snapshot, so a refund resolution followed by "matches" would
   have paid the vendor in full: refunds now raise each snapshot's refunded base and fee (reversed when whole), release
-  pays only what is left, and a skipped stop's case refunds that shop's lines only.
+  pays only what is left, a skipped stop's case refunds that shop's lines only, and release waits while a delivery-case
+  refund is pending the Super Admin's approval.
 - The money-releasing POST has no password re-check (`RequiresSudo`). Owner question: should it? (Still open.)
 - **Done in Stage 3a (W5).** The waived delivery fee never reached the ledger: the business's promo cost is now taken
   from its Available at release and given back on a whole refund.
@@ -3722,13 +3936,13 @@ Expected: `No changes detected`.
 | §6 Pending and Available views | 4 (`GET /api/wallet/` for owners); statement page is Plan 4 |
 | §6 withdrawal; negative Available blocks it | Plan 3b |
 | §13 carry-forward: cancelled paid orders reversed (`reversed_at`) and refunded, cap freed | 2 (`charged_to_date`), 5, 7 (cancel), 8 (pickup) |
-| §13 carry-forward: release leaves out refunded lines | 6, 7 (`test_review_focus_mismatch_money_back_then_matches_pays_the_rest`) |
+| §13 carry-forward: release leaves out refunded lines, and out lines whose delivery-case refund awaits approval | 6, 7 (`test_review_focus_mismatch_money_back_then_matches_pays_the_rest`, `test_a_refund_waiting_for_the_super_admin_blocks_release`) |
 | §13 carry-forward: waived delivery fee reaches the ledger | 6 |
 | §13 carry-forward: `RequiresSudo` on release | not in scope (owner question) |
 | §11 step 3 behind a switch; nothing moves real money | every task (`LEDGER_ENABLED`; simulated provider) |
 
 **Placeholder scan:** every code step carries complete code and every test step complete test code; edits to existing files quote the exact text replaced; no "TBD", "similar to" or undefined names.
 
-**Name consistency:** `payments.providers.get_provider(name=None)`, `collection_charge(amount_pesewas)`, `payout_charge(amount_pesewas, rail)`, `lookup_account_name(rail, institution, account_number, *, holder_name="")`, `payout(*, reference, rail, institution, account_number, amount_pesewas)`, `status(reference)`, `payouts_available()`, `NotConnected`, `MOMO`/`BANK`, `SUCCEEDED`/`FAILED`/`PROCESSING` (Tasks 1, 3, 4; Plan 3b); `posting.lock(*accounts)`, `posting.balance_of(kind, owner=None)`, `posting.InsufficientFunds.account`, `post(..., allow_negative=())` (Tasks 2, 3, 6; 3b); `escrow.record_order_payment(order, *, at=None, wallet=False)` (3); `process_payment(..., processing_fee=None, wallet=False)`, `CheckoutSession.WALLET`, `WALLET_TOPUP`, `processing_fee` (3, 4, 5); `refunds.refund_order(order, amount_pesewas=None, *, source, by=None, owner_ids=None, refund_processing=False, note="", now=None)`, `RefundError.message/.status_code`, `scope_for_dispute(dispute)` (5, 6, 7, 8); `escrow.charge_waiver`, `return_waiver`, `waiver_key`, `waiver_return_key` (6); `orders.support.return_stock(order)` (7, 8); `verification.expire_uncollected(now=None)` (8); `wallets.views.ledger_off`, `parse_amount`, `AmountError`, `Pagination`, `wallets.services.money` (4, 9; 3b); permissions `wallets.view`, `wallets.manage` (9; 3b).
+**Name consistency:** `payments.providers.get_provider(name=None)`, `collection_charge(amount_pesewas)`, `payout_charge(amount_pesewas, rail)`, `lookup_account_name(rail, institution, account_number, *, holder_name="")`, `payout(*, reference, rail, institution, account_number, amount_pesewas)`, `status(reference)`, `payouts_available()`, `NotConnected`, `MOMO`/`BANK`, `SUCCEEDED`/`FAILED`/`PROCESSING` (Tasks 1, 3, 4; Plan 3b); `posting.lock(*accounts)`, `posting.balance_of(kind, owner=None)`, `posting.InsufficientFunds.account`, `post(..., allow_negative=())` (Tasks 2, 3, 6; 3b); `escrow.record_order_payment(order, *, at=None, wallet=False)` (3); `process_payment(..., processing_fee=None, wallet=False)`, `CheckoutSession.WALLET`, `WALLET_TOPUP`, `processing_fee` (3, 4, 5); `refunds.refund_order(order, amount_pesewas=None, *, source, by=None, owner_ids=None, refund_processing=False, note="", now=None)`, `RefundError.message/.status_code`, `scope_for_dispute(dispute)` (7), `refunds.check(order, amount_pesewas, *, owner_ids=None)` (7); `escrow.charge_waiver`, `return_waiver`, `waiver_key`, `waiver_return_key`, `waiver_accounts`, `waiver_return_accounts`, `has_pending_refund` (6, 7); `orders.support.return_stock(order)` (7, 8); `verification.expire_uncollected(now=None)`, `verification.expire_one(pk, hours)` (8); `wallets.views.ledger_off`, `parse_amount`, `AmountError`, `Pagination`, `wallets.services.money` (4, 9; 3b); permissions `wallets.view`, `wallets.manage` (9; 3b).
 
 **Review Focus pins:** each of the eight lines above names the task and the test that pins it; all of those tests are written out in their tasks.
