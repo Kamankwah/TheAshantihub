@@ -20,6 +20,14 @@ class ContactsTests(TestCase):
         customer.secondary_email_verified = True
         self.assertEqual(identity.contacts(customer), {SMS: "+233241234567", EMAIL: "backup@example.com"})
 
+    def test_a_secondary_phone_is_never_a_channel_even_when_marked_verified(self):
+        # Final review F5: its "verification" code is answered in the API response (demo_code, spec O6), so it proves
+        # nothing about who holds the phone.
+        for n, primary in enumerate((None, "", "+447700900123")):
+            customer = make_customer(phone=primary, email=f"c{n}@example.com", secondary_phone="+233245550000", secondary_phone_verified=True)
+            self.assertEqual(identity.contacts(customer), {EMAIL: f"c{n}@example.com"}, primary)
+        self.assertEqual(identity.contacts(make_customer(phone=None, email=None, secondary_phone="+233245550000", secondary_phone_verified=True)), {})
+
     def test_a_phone_that_is_not_a_ghana_mobile_is_not_a_channel(self):
         self.assertEqual(identity.contacts(make_customer(phone="12345")), {EMAIL: "ama@example.com"})
 

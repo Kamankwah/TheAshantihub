@@ -220,6 +220,22 @@ class NoUsableChannelTests(SignInApiBase):
         Customer.objects.create(full_name="Kojo", phone="+447700900123", email="", password_hash=HASHED)
         self.assertEqual(set(self.login("customer", "+447700900123").json()), SIGNED_IN)
 
+    def test_a_secondary_phone_verified_with_a_demo_code_is_not_a_way_in(self):
+        # Final review F5 (spec O6): only a verified-looking secondary phone, so no code can be sent anywhere.
+        Customer.objects.create(
+            full_name="Kojo", phone="+447700900123", email="", password_hash=HASHED,
+            secondary_phone="+233245550000", secondary_phone_verified=True,
+        )
+        with ON:
+            response = self.login("customer", "+447700900123")
+            self.assertEqual((response.status_code, response.json()), (409, self.NO_CHANNEL))
+            no_primary = Customer.objects.create(
+                full_name="Esi", phone=None, email=None, password_hash=HASHED,
+                secondary_phone="+233245550001", secondary_phone_verified=True,
+            )
+            self.assertEqual(signin.sign_in_step(no_primary), self.NO_CHANNEL)
+        self.assertEqual(senders.sms_outbox, [])
+
 
 @ON
 class StaffOrderingTests(SignInApiBase):

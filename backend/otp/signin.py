@@ -53,7 +53,9 @@ def make_ticket(account, stage, purpose):
 
 def read_ticket(token, stage=None):
     """The Ticket, or None unless it is genuine, fresh, for an account that may sign in, issued under its current
-    password and (when `stage` is given) at that stage."""
+    password and (when `stage` is given) at that stage. A texted/emailed-code sign-in ticket is also refused once an
+    authenticator stands in its place (staff: accounts.two_factor; customers and owners: otp.authenticator while
+    sign-in codes are on), even when it was minted before the authenticator was set up."""
     if not isinstance(token, str) or not token:
         return None
     try:
@@ -72,6 +74,11 @@ def read_ticket(token, stage=None):
 
         if two_factor.challenge_for(account) is not None:
             return None  # a texted code never replaces the authenticator a staffer has or owes
+    if (
+        data["s"] == CODE_STAGE and data["p"] == SIGN_IN and data["t"] != STAFF
+        and flags.sign_in_enforced() and authenticator.is_enabled(account)
+    ):
+        return None  # minted before the authenticator was turned on; it replaces the texted code from then on
     return Ticket(account=account, account_type=data["t"], stage=data["s"], purpose=data["p"], nonce=str(data.get("n", "")))
 
 

@@ -55,9 +55,14 @@ def _email(raw):
 
 def contacts(account):
     """{channel: destination} this account can receive a code on, normalised (+233… phones, lower-case emails): its
-    own phone and email; a customer without one falls back to the verified secondary of that kind."""
+    own phone and email; a customer without an email falls back to a verified secondary email.
+
+    A customer's secondary PHONE is never a channel, however `secondary_phone_verified` reads: its "verification"
+    answers the code in the API response (`demo_code`), so it proves nothing about who holds the phone. Use it only
+    once that flow sends its code through otp.service (spec 2026-10-15-wallet-fees-security-design.md §13, O6). The
+    secondary email is different: its code is emailed, never answered (accounts.views.CustomerSecondaryEmailRequestView)."""
     if isinstance(account, Customer):
-        phone = account.phone or (account.secondary_phone if account.secondary_phone_verified else "")
+        phone = account.phone
         email = account.email or (account.secondary_email if account.secondary_email_verified else "")
     elif isinstance(account, BusinessOwner):
         phone, email = account.login_phone, account.email

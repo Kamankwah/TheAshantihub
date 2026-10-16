@@ -1,6 +1,8 @@
 """Step-up tokens before sensitive changes (otp plan Task 8). Review Focus 5 and 7."""
 from datetime import timedelta
 
+import pyotp
+from django.core import mail
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -8,10 +10,12 @@ from rest_framework.test import APIClient
 
 from accounts.authentication import issue_token
 from accounts.models import BusinessOwnerProfile
+from accounts.testing import staff_token
+from accounts.two_factor import encrypt_secret
 from otp import senders, step_up
-from otp.models import OtpEvent, StepUpToken
+from otp.models import AccountAuthenticator, OtpChallenge, OtpEvent, StepUpToken
 
-from .helpers import last_sms_code, make_customer, make_owner
+from .helpers import last_sms_code, make_customer, make_owner, make_support
 
 ON = override_settings(OTP_STEP_UP_ENFORCED=True)
 PAYOUT = "/api/accounts/business-owners/me/payout/"
@@ -44,6 +48,52 @@ class StepUpBase(TestCase):
     def patch_payout(self, token=None, body=NEW_MOMO):
         headers = {"HTTP_X_STEP_UP_TOKEN": token} if token else {}
         return self.client.patch(PAYOUT, body, format="json", **headers)
+
+
+SEND = "/api/otp/step-up/send/"
+VERIFY = "/api/otp/step-up/verify/"
+
+
+class WhoMayAskTests(StepUpBase):
+    """Final review F2: only customers and business owners, and only while codes are switched on."""
+
+    def assertOff(self, response):
+        self.assertEqual((response.status_code, response.json()["code"]), (409, "otp_off"), response.content)
+
+    def test_with_every_switch_off_no_code_is_sent_and_both_endpoints_say_otp_off(self):
+        customer = client_for(make_customer(), "customer")
+        for client in (self.client, customer):
+            self.assertOff(client.post(SEND, {"action": "payout_destination", "channel": "email"}, format="json"))
+            self.assertOff(client.post(SEND, {"action": "contact_change", "channel": "sms"}, format="json"))
+            self.assertOff(client.post(VERIFY, {"action": "payout_destination", "code": "123456"}, format="json"))
+        self.assertEqual((mail.outbox, senders.sms_outbox), ([], []))
+        self.assertFalse(OtpChallenge.objects.exists())
+        self.assertFalse(OtpEvent.objects.exists())
+
+    def test_staff_use_sudo_and_are_refused_whatever_the_switches_say(self):
+        staff = APIClient()
+        staff.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(make_support(), sudo=True)}")
+        for switches in ({}, {"OTP_STEP_UP_ENFORCED": True, "OTP_SIGNIN_ENFORCED": True}):
+            with override_settings(**switches):
+                self.assertEqual(staff.post(SEND, {"action": "payout_destination", "channel": "email"}, format="json").status_code, 403)
+                self.assertEqual(staff.post(VERIFY, {"action": "payout_destination", "code": "123456"}, format="json").status_code, 403)
+        self.assertEqual(mail.outbox, [])
+        self.assertFalse(OtpChallenge.objects.exists())
+
+    @override_settings(OTP_SIGNIN_ENFORCED=True)
+    def test_sign_in_codes_alone_open_step_up(self):
+        self.assertTrue(self.step_up(step_up.AUTHENTICATOR_CHANGE))
+
+    def test_an_authenticator_already_on_can_still_be_managed_after_the_switches_go_off(self):
+        AccountAuthenticator.objects.create(
+            account_type="business_owner", account_id=self.owner.pk, secret_encrypted=encrypt_secret(pyotp.random_base32()),
+            confirmed_at=timezone.now(),
+        )
+        token = self.step_up(step_up.AUTHENTICATOR_CHANGE)
+        self.assertEqual(self.client.post("/api/otp/authenticator/disable/", HTTP_X_STEP_UP_TOKEN=token).status_code, 204)
+        # ...but that opens only the authenticator action, and only while one is on.
+        self.assertOff(self.client.post(SEND, {"action": "payout_destination", "channel": "sms"}, format="json"))
+        self.assertOff(self.client.post(SEND, {"action": "authenticator_change", "channel": "sms"}, format="json"))
 
 
 class SwitchedOffTests(StepUpBase):

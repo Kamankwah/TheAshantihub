@@ -126,6 +126,27 @@ class SignInTests(AuthenticatorBase):
         body = APIClient().post("/api/accounts/customers/login/", {"identifier": "+233241234567", "password": PASSWORD, "device_token": raw}, format="json").json()
         self.assertIn("token", body)
 
+    def test_a_code_ticket_from_before_the_authenticator_was_turned_on_stops_working(self):
+        # Final review F8: the texted-code ticket must not outlive the authenticator that now replaces it.
+        customer = make_customer()
+        login = {"identifier": "+233241234567", "password": PASSWORD}
+        old = APIClient().post("/api/accounts/customers/login/", login, format="json").json()
+        self.assertTrue(old["otp_required"])
+        self.assertEqual(APIClient().post("/api/otp/sign-in/send/", {"mfa_token": old["mfa_token"], "channel": "sms"}, format="json").status_code, 200)
+        code = last_sms_code()
+        secret = pyotp.random_base32()
+        AccountAuthenticator.objects.create(
+            account_type="customer", account_id=customer.pk, secret_encrypted=encrypt_secret(secret), confirmed_at=timezone.now(),
+        )
+        for path, body in (("send", {"channel": "email"}), ("verify", {"code": code})):
+            response = APIClient().post(f"/api/otp/sign-in/{path}/", {"mfa_token": old["mfa_token"], **body}, format="json")
+            self.assertEqual((response.status_code, response.json()["code"]), (400, "challenge_expired"), path)
+        new = APIClient().post("/api/accounts/customers/login/", login, format="json").json()
+        self.assertEqual(set(new), {"two_factor_required", "mfa_token"})
+        with self.clock(30):
+            done = self.finish(new["mfa_token"], code=pyotp.TOTP(secret).at(self.t0 + 30))
+        self.assertIn("token", done.json())
+
     def test_an_authenticator_ticket_cannot_ask_for_a_text(self):
         self.turn_on()
         ticket = self.password_step()["mfa_token"]

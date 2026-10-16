@@ -4,8 +4,8 @@ The client sends it once in the X-Step-Up-Token header. A view calls require(req
 transaction.atomic() block that makes the change: the token is spent only if the change commits, so a change
 refused by validation leaves it usable for the retry.
 
-While settings.OTP_STEP_UP_ENFORCED is off, require() does nothing; force=True (the authenticator settings, which
-exist only while sign-in codes are on) asks for it anyway."""
+While settings.OTP_STEP_UP_ENFORCED is off, require() does nothing; force=True (the authenticator settings) asks for
+it anyway. Only customers and business owners can get a token (otp.views_step_up); staff use sudo."""
 import hashlib
 import secrets
 from datetime import timedelta
