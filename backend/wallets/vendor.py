@@ -7,8 +7,10 @@ payment), so they show what the ledger recorded, never today's rules; balances c
 business's own snapshots, item lines and accounts are read: an order can span several businesses (backend/CLAUDE.md,
 owner-scoped order isolation). No customer's name, phone or address appears here: the order screen
 (GET /api/orders/owner/) already carries what fulfilment needs. Money is integer pesewas inside and GH₵ strings in the
-rows. Only product orders are in the ledger today; booking sales (Plan 1b) slot in as a second source of rows with kind
-"booking" (spec §13 (lxxxiii))."""
+rows. Only product orders have rows here. Plan 1b's booking sales (ledger.BookingSale) are in the ledger, so their
+money is in Pending and Available, their fees count toward the cap, and their journal lines land in the daily summary's
+"other" column, but they have no sale rows, statement lines or texts until a follow-up adds them as a second source of
+rows with kind "booking": a gate before the ledger is turned on (spec §13 (lxxxiii))."""
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
@@ -20,7 +22,6 @@ from django.utils.dateparse import parse_date
 from accounts.models import BusinessOwner
 from disputes.models import Dispute
 from ledger import fees, posting, settings_store, verification
-from ledger import models as ledger_models
 from ledger.models import Account, FeeRuleSet, FulfilmentCheck, JournalLine, OrderFeeSnapshot
 from ledger.money import to_pesewas
 from marketing.models_waivers import WaivedFeeCharge
@@ -203,7 +204,8 @@ DR, CR = JournalLine.DEBIT, JournalLine.CREDIT
 # (column, sign). The release takes the item subtotal out of Pending (a debit) and credits Available with it less the
 # platform fee, so the fee is the difference. Any other line lands in "other" (credits in, debits out), so for every day
 #   sold - fees - refunded - free_delivery_promo - withdrawn + other = net_change (the change in Pending + Available).
-# Booking sales (Plan 1b) add their booking_* kinds here (spec §13 (lxxxiii)).
+# Plan 1b's booking_payment / booking_release / booking_refund lines are not folded yet, so they land in "other"; the
+# follow-up that adds booking sales to the rows adds them here (spec §13 (lxxxiii)).
 FOLD = {
     ("order_payment", P, CR): ("sold", 1),
     ("order_release", P, DR): ("fees", 1),
@@ -368,14 +370,14 @@ FEE_BASE = (
 )
 
 
+CHARGED = (FeeRuleSet.PRODUCT, FeeRuleSet.SERVICE, FeeRuleSet.EVENT)
+
+
 def charged_categories():
-    """The fee categories the ledger charges now: product orders since Stage 1, and services (stays count as services)
-    and events once Plan 1b's booking sales exist. Plan 1b adds `ledger.models.BookingSale`; looking for it (instead of
-    hard-coding product only) keeps the fee page truthful whichever branch merges first. The one dependency this plan has
-    on Plan 1b (spec §13 (lxxxiii))."""
-    if hasattr(ledger_models, "BookingSale"):
-        return (FeeRuleSet.PRODUCT, FeeRuleSet.SERVICE, FeeRuleSet.EVENT)
-    return (FeeRuleSet.PRODUCT,)
+    """The fee categories the ledger charges: product orders (Stage 1), and services (stays count as services) and
+    event tickets (Plan 1b's booking sales). Booking sales are charged, but not yet in this module's rows (spec §13
+    (lxxxiii))."""
+    return CHARGED
 
 
 def band_row(band):

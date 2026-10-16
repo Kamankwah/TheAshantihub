@@ -299,9 +299,11 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   `func.__qualname__`, which a `functools.partial` lacks).
   A business text is **never an `OtpEvent`** (those count toward the code send limits) but is counted by the
   `otp.spend` alert. Bodies are GSM-7 plain text with "GHS" (never "GH₵"), at most 306 characters. `phone` is in
-  `ashantihub/sentry.py`'s denylist (the whole number is a local in `vendor_texts.deliver`). Only product orders are in the
-  rows and texts; booking sales slot in later (spec §13 (lxxxiii)), and `vendor.charged_categories()` already follows
-  `ledger.BookingSale`.
+  `ashantihub/sentry.py`'s denylist (the whole number is a local in `vendor_texts.deliver`). **Booking sales (Plan 1b)
+  are not on these screens yet.** Their money is in Pending and Available and their fees count toward the cap (the fee
+  page marks all three categories `charged`), but the sale rows, `awaiting_call`, the statement and the texts come from
+  `OrderFeeSnapshot` only, and `booking_*` journal lines land in the daily summary's `other` column. A follow-up (Plan
+  4F or 4b) must add `BookingSale` rows, `FOLD` kinds and texts before the ledger is turned on (spec §13 (lxxxiii)).
 
 ## Test-fixture gotcha
 

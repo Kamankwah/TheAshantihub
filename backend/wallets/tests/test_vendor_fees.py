@@ -10,7 +10,6 @@ from django.utils.dateparse import parse_datetime
 from rest_framework.test import APIClient
 
 from accounts.testing import make_staff, staff_token
-from ledger import models as ledger_models
 from wallets import vendor
 from ledger.models import FeeBand, FeeRuleSet, MoneySetting
 
@@ -131,22 +130,17 @@ class FeeScheduleTests(VendorBase):
         with self.assertNumQueries(len(before.captured_queries)):
             self.kofi.get(FEES)
 
+
 @override_settings(LEDGER_ENABLED=True)
 class ChargedCategoriesTests(VendorBase):
-    def test_services_and_events_are_charged_once_booking_sales_exist(self):
-        from unittest import mock
-        with mock.patch.object(ledger_models, "BookingSale", object, create=True):
-            by_category = {c["category"]: c for c in self.kofi.get(FEES).json()["categories"]}
-        self.assertEqual([by_category[c]["charged"] for c in ("product", "service", "event")], [True, True, True])
+    """Plan 1b records services, stays and tickets in the ledger, so every category's fee is charged."""
 
-    def test_services_and_events_are_not_charged_while_booking_sales_do_not_exist(self):
-        from unittest import mock
-        had, saved = hasattr(ledger_models, "BookingSale"), getattr(ledger_models, "BookingSale", None)
-        if had:
-            del ledger_models.BookingSale
-        try:
-            by_category = {c["category"]: c for c in self.kofi.get(FEES).json()["categories"]}
-        finally:
-            if had:
-                ledger_models.BookingSale = saved
-        self.assertEqual([by_category[c]["charged"] for c in ("product", "service", "event")], [True, False, False])
+    def test_products_services_and_events_are_all_charged(self):
+        by_category = {c["category"]: c for c in self.kofi.get(FEES).json()["categories"]}
+        self.assertEqual([by_category[c]["charged"] for c in ("product", "service", "event")], [True, True, True])
+        self.assertEqual(vendor.charged_categories(), (FeeRuleSet.PRODUCT, FeeRuleSet.SERVICE, FeeRuleSet.EVENT))
+
+    def test_a_service_or_event_quote_says_it_is_charged(self):
+        for category in ("service", "event"):
+            quote = self.kofi.get(FEES, {"amount": "120.00", "category": category}).json()["quote"]
+            self.assertEqual((quote["category"], quote["charged"]), (category, True))

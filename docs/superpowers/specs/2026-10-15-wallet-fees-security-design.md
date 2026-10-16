@@ -676,10 +676,11 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
   `vendor_money` notices. Kept when a text fails.
 - **V11 Digest.** Opt-in per business, 07:00 Accra for the day before, only when money moved.
 - **V12, V15 Not built.** No low-balance, negative-Available, refund or withdrawal text (the spec names none); no staff
-  outbox screen; booking sales (Plan 1b) not yet covered in rows and texts.
+  outbox screen; Plan 1b's booking sales are in the balances and the fee cap but not in the sale rows, statement, daily
+  columns or texts (gate (lxxxiii)).
 - **V13 Fee transparency.** Approved tiers in force and the next approved change with its start (never a waiting
-  proposal), `charged` for products (and services and events once `ledger.BookingSale` exists), the fee base explained,
-  the cap used and left, a server quote.
+  proposal), `charged` true for products, services and events (Plan 1b charges booking sales), the fee base explained,
+  the cap used and left (booking fees included, `fees.charged_to_date`), a server quote.
 - **V14 Export.** A synchronous CSV of sales and withdrawals, at most 366 days, no free text.
 - **V16 Ledger off.** Every vendor endpoint answers `409 ledger_off`; nothing is texted; the digest job is a no-op.
 
@@ -703,12 +704,16 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
   today's lock notices, which text every contact on the account (the open must-fix above: lock notices should be
   VerifiedContact-only too); registration neither normalises nor verifies phones, so a business that never signed in with a
   code gets none. There is no staff list of them yet; Support should check before switch-on.
-- (lxxxiii) **Booking sales are not covered.** Once Plan 1b records bookings: add them as a second row source
-  (`kind: "booking"`) to `vendor.sale_groups` / `rows` / `statement`, their `booking_*` journal kinds to `vendor.FOLD`,
-  and booking paid / release texts to `vendor_texts`. (`vendor.charged_categories()` already marks services and events
-  charged as soon as `ledger.BookingSale` exists, so the fee page is truthful at once, ahead of the rows.) Until then a booking's
-  money is in Pending but not in the sale rows (Pending no longer equals the waiting rows) and lands in the daily
-  summary's `other` column. Do it before the ledger is on if Plan 1b ships.
+- (lxxxiii) **The vendor money screens do not show booking sales yet: fix before the ledger is on.** Plan 1b records
+  service, stay and ticket sales (`ledger.BookingSale`), so from the day the ledger is on a booking's money sits in the
+  business's Pending and then Available, and its fee counts toward the lifetime cap (`fees.charged_to_date`), and the fee
+  page marks services and events `charged`. But the vendor sale rows, the overview's `awaiting_call` count, the
+  statement export and the paid / release texts come from `OrderFeeSnapshot` only, and the `booking_payment`,
+  `booking_release` and `booking_refund` journal lines land in the daily summary's `other` column. So Pending and
+  Available include money the business cannot find in any row, and a booking sale is never texted. A follow-up (Plan 4F
+  or a Plan 4b) must add `BookingSale` as a second row source (`kind: "booking"`) to `vendor.sale_groups` / `rows` /
+  `statement` and the `awaiting_call` count, the three booking kinds to `vendor.FOLD`, and booking paid / release texts
+  to `vendor_texts`, before `LEDGER_ENABLED` is turned on.
 - (lxxxiv) **Retention.** `VendorText` rows (amounts and order numbers only) are kept indefinitely; decide a purge beside
   `otp.retention`.
 - (lxxxv) **Frontend (Plan 4F):** the overview with the cap meter, sales with filters, the daily summary, the export,
@@ -721,9 +726,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
   a time budget before switch-on.
 - (lxxxix) **A missed 07:00 run is not caught up.** The job digests "yesterday" only; if the worker or beat is down at
   07:00 that day's digest is never sent (a manual `queue_digests(day)` can send it).
-- (xc) **Until Plan 1b merges, the fee page shows services and events as "not charged yet"** (`charged: false`); it
-  follows `ledger.BookingSale` on its own once that exists.
-- (xci) **A dedicated `texts` Celery queue and worker before real SMS goes live.** Business texts share the default
+- (xc) **A dedicated `texts` Celery queue and worker before real SMS goes live.** Business texts share the default
   queue with other jobs; a slow provider can hold a worker for up to the send budget (75 s) per run. A circuit breaker
   (3 failures in a row opens it for 120 s, across workers) and the beat entry's 280 s expiry limit the harm, but route
   `wallets.tasks.send_vendor_text` and `send_due_vendor_texts` to their own queue and worker first.
