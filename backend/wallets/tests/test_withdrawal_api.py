@@ -1,5 +1,7 @@
 """Withdrawals over the API (wallets plan 3b, Task 4). Review Focus 1 (cooling), 4 (negative Available), 5 (step-up
 replay) and 8 (ledger off)."""
+from unittest import mock
+
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 
@@ -143,3 +145,59 @@ class WithdrawalApiTests(WithdrawalApiBase):
         verified = self.ama.client.post("/api/otp/step-up/verify/", {"action": "withdrawal", "code": last_sms_code()}, format="json")
         self.assertEqual(verified.status_code, 200, verified.content)
         self.assertEqual(self.ama.post(URL, self.body(), token=verified.json()["step_up_token"]).status_code, 201)
+
+
+@override_settings(LEDGER_ENABLED=True)
+class WithdrawalApiRobustnessTests(WithdrawalApiBase):
+    def setUp(self):
+        super().setUp()
+        fund(Account.CUSTOMER_WALLET, self.customer, 20000, "fund-1")
+
+    def test_same_pk_owner_does_not_see_or_touch_a_customers_withdrawals(self):
+        held = withdrawals.request(self.customer, destination_id=self.dest.pk, amount_pesewas=1000, request_id="req-held-0002")
+        owner = BusinessOwner.objects.create(id=self.customer.pk, full_name="Kwame Mensah", login_phone="+233201112233", password_hash="x")
+        other = Holder(owner, "business_owner")
+        self.assertEqual(other.get(URL).json()["count"], 0)
+        self.assertEqual(other.post(f"{URL}{held.pk}/cancel/").status_code, 404)
+        refused = other.post(URL, self.body(), action=step_up.WITHDRAWAL)
+        self.assertEqual((refused.status_code, refused.json()["code"]), (404, "unknown_destination"))
+
+    def test_request_id_reused_with_another_destination(self):
+        self.ama.post(URL, self.body(request_id="req-reuse-0002"), action=step_up.WITHDRAWAL)
+        second = destination(self.customer, number="+233241234577")
+        other = self.ama.post(URL, self.body(dest=second, request_id="req-reuse-0002"))
+        self.assertEqual((other.status_code, other.json()["code"]), (409, "request_id_reused"))
+
+    def test_cancelling_twice(self):
+        held = withdrawals.request(self.customer, destination_id=self.dest.pk, amount_pesewas=1000, request_id="req-held-0003")
+        self.assertEqual(self.ama.post(f"{URL}{held.pk}/cancel/").status_code, 200)
+        again = self.ama.post(f"{URL}{held.pk}/cancel/")
+        self.assertEqual((again.status_code, again.json()["code"]), (409, "not_pending"))
+        self.assertEqual(self.wallet(), 20000)
+
+    def test_a_suspended_holder_is_refused(self):
+        self.customer.is_suspended = True
+        self.customer.save()
+        response = self.ama.post(URL, self.body(), action=step_up.WITHDRAWAL)
+        self.assertEqual(response.status_code, 403, response.content)
+        self.assertEqual((self.wallet(), Withdrawal.objects.count()), (20000, 0))
+
+    def test_a_concurrent_duplicate_with_a_spent_code_answers_the_existing_withdrawal(self):
+        token = self.ama.step_up(step_up.WITHDRAWAL)
+        first = self.ama.post(URL, self.body(request_id="req-race-0001"), token=token)
+        real = withdrawals.existing
+        calls = []
+
+        def late(holder, request_id):  # the pre-check misses (the other request was not committed yet)
+            calls.append(1)
+            return None if len(calls) == 1 else real(holder, request_id)
+
+        with mock.patch.object(withdrawals, "existing", late):
+            again = self.ama.post(URL, self.body(request_id="req-race-0001"), token=token)
+        self.assertEqual((again.status_code, again.json()["id"]), (200, first.json()["id"]))
+
+    def test_a_provider_error_in_send_still_answers_201(self):
+        with mock.patch("wallets.payouts.submit", side_effect=RuntimeError("boom")):
+            response = self.ama.post(URL, self.body(), action=step_up.WITHDRAWAL)
+        self.assertEqual((response.status_code, response.json()["status"]), (201, "pending"))
+        self.assertEqual(self.wallet(), 15000)

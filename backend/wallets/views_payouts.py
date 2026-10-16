@@ -4,6 +4,8 @@ is on, whatever OTP_STEP_UP_ENFORCED says (force=True; spec §8 and §11: OTP mu
 code is spent inside the transaction that saves, so a refused request keeps it for the retry. No provider call runs
 inside a transaction: the account-name lookup comes before it, the payout after it. The holder gets an in-app notice
 of every destination added or removed (no number in it). Every endpoint answers 409 ledger_off while the ledger is off."""
+import logging
+
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import status
@@ -17,7 +19,10 @@ from otp import step_up
 from otp.views_authenticator import IsCustomerOrOwner
 
 from . import destinations, payouts, withdrawals
+from .models import Withdrawal
 from .views import AmountError, Pagination, ledger_off, parse_amount
+
+logger = logging.getLogger(__name__)
 
 IF_NOT_YOU = "If this wasn't you, contact AshantiHub Support now."
 
@@ -137,10 +142,21 @@ class WithdrawalsView(APIView):
                 withdrawal = withdrawals.request(
                     request.user, destination_id=data.get("destination"), amount_pesewas=amount, request_id=request_id,
                 )
-        except withdrawals.WithdrawalError as exc:
-            return Response(exc.body(), status=exc.status_code)
+        except (step_up.StepUpRequired, withdrawals.WithdrawalError) as exc:
+            # A concurrent duplicate may have committed (and spent the code) meanwhile: answer it as a retry would.
+            found = withdrawals.existing(request.user, request_id)
+            if found is not None and found.destination_id == data.get("destination") and found.amount_pesewas == amount:
+                return Response(withdrawals.row(found), status=status.HTTP_200_OK)
+            if isinstance(exc, withdrawals.WithdrawalError):
+                return Response(exc.body(), status=exc.status_code)
+            raise
         # Sent outside the transaction: the hold is committed before the provider is asked (wallets.payouts).
-        return Response(withdrawals.row(payouts.submit(withdrawal.pk)), status=status.HTTP_201_CREATED)
+        try:
+            sent = payouts.submit(withdrawal.pk)
+        except Exception as exc:  # the hold is made; the 5-minute poll recovers it. Type only: never log a payload.
+            logger.error("Withdrawal %s send raised %s", withdrawal.reference, type(exc).__name__)
+            sent = Withdrawal.objects.select_related("destination").get(pk=withdrawal.pk)
+        return Response(withdrawals.row(sent), status=status.HTTP_201_CREATED)
 
 
 class WithdrawalCancelView(APIView):
