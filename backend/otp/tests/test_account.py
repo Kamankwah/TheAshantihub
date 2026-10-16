@@ -1,6 +1,7 @@
 """The account security overview, removing trusted devices and the nightly clean-up (otp plan Task 10)."""
 import hashlib
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.core.cache import cache
 from django.test import TestCase
@@ -113,6 +114,44 @@ class RetentionTests(TestCase):
         self.assertEqual(mine.count(), 10)
         self.assertFalse(mine.filter(token_hash=f"{11:064d}").exists())
         self.assertEqual(TrustedDevice.objects.filter(account_id=2).count(), 1)
+
+    def _device(self, key, days_ago, now, **extra):
+        extra.setdefault("token_hash", key * 64)
+        return TrustedDevice.objects.create(
+            account_type="customer", account_id=1, password_fingerprint="f",
+            verified_at=now - timedelta(days=days_ago), **extra,
+        )
+
+    def _survivors(self, gap, *ages):
+        now = timezone.now()
+        for i, age in enumerate(ages):
+            self._device(str(i), age, now)
+        with patch("staffsecurity.policy.otp_customer_gap_days", return_value=gap):
+            purge_old_otp_rows()
+        return sorted(TrustedDevice.objects.values_list("token_hash", flat=True))
+
+    def test_stale_means_older_than_the_configured_gap(self):
+        self.assertEqual(self._survivors(180, 100, 181), ["0" * 64])
+        TrustedDevice.objects.all().delete()
+        self.assertEqual(self._survivors(30, 31, 29), ["1" * 64])
+
+    def test_a_device_exactly_at_the_gap_survives(self):
+        now = timezone.now()
+        self._device("a", 30, now)
+        with patch("staffsecurity.policy.otp_customer_gap_days", return_value=30), patch("otp.retention.timezone.now", return_value=now):
+            purge_old_otp_rows()
+        self.assertEqual(TrustedDevice.objects.count(), 1)
+
+    def test_the_cap_keeps_the_ten_most_recently_seen_and_ignores_revoked(self):
+        now = timezone.now()
+        for i in range(12):
+            self._device(f"{i:x}", 1, now, last_seen_at=now - timedelta(minutes=i), token_hash=f"{i:064d}")
+        for i in range(3):
+            self._device("r", 1, now, token_hash=f"{100 + i:064d}", revoked_at=now, last_seen_at=now)
+        purge_old_otp_rows()
+        live = TrustedDevice.objects.filter(revoked_at__isnull=True)
+        self.assertEqual(sorted(live.values_list("token_hash", flat=True)), [f"{i:064d}" for i in range(10)])
+        self.assertEqual(TrustedDevice.objects.filter(revoked_at__isnull=False).count(), 3)
 
     def test_it_is_a_scheduled_job(self):
         from core.jobs import scheduled_task_names
