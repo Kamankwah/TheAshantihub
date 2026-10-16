@@ -19,6 +19,7 @@ from notifications.services import notify_business_owner, notify_customer, notif
 from activity.services import record as record_activity
 from realtime.publish import force_disconnect_on_commit
 
+from ledger import escrow
 from otp import flags as otp_flags
 from otp import signin as otp_signin
 from otp import step_up
@@ -1350,8 +1351,9 @@ class CustomerSecondaryEmailRequestView(generics.GenericAPIView):
         serializer = self.get_serializer(data=request.data, context={"request": request})
         with transaction.atomic():
             # A verified recovery email becomes a way to receive sign-in codes (otp.identity.contacts): a step-up
-            # code first (spec §9), spent only if the change saves.
-            step_up.require(request, step_up.CONTACT_CHANGE)
+            # code first (spec §9), spent only if the change saves. While the ledger is on it is always asked (wallets
+            # 3b): otherwise a stolen session could add its own email as a code channel and confirm withdrawals with it.
+            step_up.require(request, step_up.CONTACT_CHANGE, force=escrow.enabled())
             serializer.is_valid(raise_exception=True)
             customer = serializer.save()
         send_verification_code_email(customer.secondary_email, customer.secondary_email_verify_code)
@@ -1379,7 +1381,8 @@ class CustomerSecondaryPhoneRequestView(generics.GenericAPIView):
     def post(self, request):
         serializer = self.get_serializer(data=request.data, context={"request": request})
         with transaction.atomic():
-            step_up.require(request, step_up.CONTACT_CHANGE)
+            # Always asked while the ledger is on, like the recovery email above (wallets 3b).
+            step_up.require(request, step_up.CONTACT_CHANGE, force=escrow.enabled())
             serializer.is_valid(raise_exception=True)
             customer = serializer.save()
         return Response({

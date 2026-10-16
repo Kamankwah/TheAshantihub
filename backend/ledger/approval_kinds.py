@@ -146,9 +146,20 @@ def setting_diff(request):
     return [{"field": definition.label, "before": None if before is None else str(before), "after": "blank" if request.payload.get("value") in (None, "") else str(request.payload["value"])}]
 
 
+WALLET_SETTING_KEYS = ("withdrawal_per_tx_limit_pesewas", "withdrawal_daily_limit_pesewas", "payout_cooling_hours")
+
+
+def setting_consequences(request):
+    """What the approver is told the change touches: withdrawal settings never touch an order (wallets plan 3b)."""
+    if request.payload.get("key") in WALLET_SETTING_KEYS:
+        return ["Applies to withdrawals asked for, and payout destinations added, after it starts. Destinations already "
+                "added keep the waiting time they were given."]
+    return ["Applies only to orders paid after it starts."]
+
+
 MONEY_SETTING = ApprovalKind(
     key=SETTING_KEY, label="Change a money setting", pool_permission="", current_state=setting_current_state,
     apply=setting_apply, response_hours=48, chain_note="Super Admin only", resolve_approver=super_admin_only,
     render_diff=setting_diff, validate=setting_validate, requires_sudo=True,
-    consequences=lambda request: ["Applies only to orders paid after it starts."],
+    consequences=setting_consequences,
 )
