@@ -77,7 +77,9 @@ class VendorStatementExportView(APIView):
     """GET vendor/statement/export/?date_from=&date_to= — the statement as a CSV download (the last 30 days by default,
     at most 366). Always CSV: it takes no ?format=, which is DRF's renderer override (backend/CLAUDE.md). Built in the
     request (no throttle, unlike the staff reports' background exports). A client sending `Accept: text/csv` gets DRF's
-    406 before this view, as with OwnerSalesReportExportView: the screen must request `*/*`."""
+    406 before this view, as with OwnerSalesReportExportView: the screen must request `*/*`. UTF-8, and ASCII-only by
+    design today (every cell is a date, number, fixed word or reference). More than vendor.EXPORT_MAX_ROWS rows is a 400.
+    A withdrawal row's Gross is the amount asked for, its Amount the net that arrived."""
 
     permission_classes = [IsBusinessOwner]
 
@@ -88,7 +90,11 @@ class VendorStatementExportView(APIView):
             first, last = vendor.date_range(request.query_params, default_days=30, max_days=366)
         except vendor.RangeError as exc:
             return Response(exc.body(), status=status.HTTP_400_BAD_REQUEST)
-        response = HttpResponse(content_type="text/csv")
+        try:
+            vendor.check_statement_size(request.user, first, last)
+        except vendor.RangeError as exc:
+            return Response(exc.body(), status=status.HTTP_400_BAD_REQUEST)
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = f'attachment; filename="ashantihub-statement-{first.isoformat()}-to-{last.isoformat()}.csv"'
         writer = csv.writer(response)
         writer.writerow(vendor.STATEMENT_HEADER)

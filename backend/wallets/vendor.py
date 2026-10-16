@@ -307,6 +307,21 @@ WITHDRAWAL_STATEMENT_STATUS = {
     Withdrawal.SUCCEEDED: "Withdrawn", Withdrawal.FAILED: "Returned to Available", Withdrawal.CANCELLED: "Returned to Available",
 }
 
+EXPORT_MAX_ROWS = 20000  # sales + withdrawals in one export; the statement is built in memory
+
+
+def _withdrawals(owner, first, last):
+    holder_type, holder_id = ref(owner)
+    start, end = bounds(first, last)
+    return Withdrawal.objects.filter(holder_type=holder_type, holder_id=holder_id, created_at__gte=start, created_at__lt=end)
+
+
+def check_statement_size(owner, first, last):
+    """Raises RangeError when the range holds more than EXPORT_MAX_ROWS rows, counted in SQL before any row is loaded."""
+    total = sale_groups(owner, date_from=first, date_to=last).count() + _withdrawals(owner, first, last).count()
+    if total > EXPORT_MAX_ROWS:
+        raise RangeError("date_from", "Too many rows \u2014 choose a shorter date range.")
+
 
 def statement(owner, first, last):
     """The business's statement for the Accra days first..last, oldest first (spec §6, the transactions page's export):
@@ -314,7 +329,9 @@ def statement(owner, first, last):
     the amount due or paid, and Pending / Available / Refunded) and each withdrawal asked for on them (what left
     Available, the provider's charge, what arrived; Withdrawn, in progress or returned). Every cell is a date, a number,
     a fixed word or an AshantiHub reference - no item name, note or person - so a spreadsheet never runs a formula from it
-    (the text cells still go through reports.exports.escape_cell, as the repo's other exports do; numbers are left alone,
+    On a withdrawal row, Gross is the amount asked for and Amount is the net that arrived (Gross minus the charge). The
+    sale rows still go through rows(), which also builds item names and dispute holds the CSV never prints: it has no
+    slim path, and the ceiling keeps it bounded. (the text cells still go through reports.exports.escape_cell, as the repo's other exports do; numbers are left alone,
     a net can be negative)."""
     from reports.exports import escape_cell
 
@@ -325,11 +342,7 @@ def statement(owner, first, last):
             row["platform_fee"], row["free_delivery_promo"], row["refunded"], "", row["net"],
             escape_cell(SALE_STATEMENT_STATUS[row["status"]]),
         ]))
-    holder_type, holder_id = ref(owner)
-    start, end = bounds(first, last)
-    for withdrawal in Withdrawal.objects.filter(
-        holder_type=holder_type, holder_id=holder_id, created_at__gte=start, created_at__lt=end,
-    ):
+    for withdrawal in _withdrawals(owner, first, last):
         entries.append((withdrawal.created_at, 1, withdrawal.pk, [
             timezone.localdate(withdrawal.created_at).isoformat(), "Withdrawal", escape_cell(withdrawal.reference),
             money(withdrawal.amount_pesewas), "", "", "", money(withdrawal.charge_pesewas), money(withdrawal.net_pesewas),

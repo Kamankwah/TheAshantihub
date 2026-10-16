@@ -3,19 +3,24 @@ status, and each withdrawal. Review Focus 1 (its own rows, no customer detail, n
 import csv
 import io
 from datetime import timedelta
+from decimal import Decimal
+
+from unittest.mock import patch
 
 from django.test import override_settings
 from django.utils import timezone
 
+from accounts.testing import make_staff
 from ledger import refunds
-from ledger.models import Account
+from ledger.models import Account, OrderFeeSnapshot
 from orders.models import Order
 from wallets import vendor
 from wallets.models import PayoutDestination, Withdrawal
 
 from .helpers import destination
-from .vendor_helpers import VendorBase, paid_order, release, signed_in
+from .vendor_helpers import VendorBase, paid_order, release, signed_in, waived
 
+ACCEPT_CSV_STATUS = 406  # DRF refuses it before the view (no CSV renderer)
 EXPORT = "/api/wallet/vendor/statement/export/"
 
 
@@ -54,7 +59,7 @@ class StatementExportTests(VendorBase):
         paid_out = withdrawal(self.kofi, "req-0001", 5000, 100, Withdrawal.SUCCEEDED)
         returned = withdrawal(self.kofi, "req-0002", 2000, 0, Withdrawal.FAILED)
         response = self.kofi.get(EXPORT)
-        self.assertEqual((response.status_code, response["Content-Type"]), (200, "text/csv"))
+        self.assertEqual((response.status_code, response["Content-Type"]), (200, "text/csv; charset=utf-8"))
         today = timezone.localdate()
         self.assertIn(
             f'filename="ashantihub-statement-{(today - timedelta(days=29)).isoformat()}-to-{today.isoformat()}.csv"',
@@ -102,3 +107,35 @@ class StatementExportTests(VendorBase):
     def test_a_customer_with_the_same_id_gets_no_statement(self):
         paid_order(self.buyer, [(self.kofi.listing("120.00"), 1)])
         self.assertEqual(signed_in(self.twin(), "customer").get(EXPORT).status_code, 403)
+
+    def test_the_row_ceiling_refuses_before_loading(self):
+        paid_order(self.buyer, [(self.kofi.listing("120.00"), 1)])
+        withdrawal(self.kofi, "req-cap", 2000, 0, Withdrawal.SUCCEEDED)
+        with patch.object(vendor, "EXPORT_MAX_ROWS", 2):
+            self.assertEqual(self.kofi.get(EXPORT).status_code, 200)
+        with patch.object(vendor, "EXPORT_MAX_ROWS", 1), patch.object(vendor, "rows", side_effect=AssertionError("loaded")):
+            response = self.kofi.get(EXPORT)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"date_from": "Too many rows \u2014 choose a shorter date range."})
+
+    def test_accept_header_behaviour(self):
+        paid_order(self.buyer, [(self.kofi.listing("120.00"), 1)])
+        self.assertEqual(self.kofi.client.get(EXPORT, HTTP_ACCEPT="*/*").status_code, 200)
+        self.assertEqual(self.kofi.client.get(EXPORT, HTTP_ACCEPT="text/csv").status_code, ACCEPT_CSV_STATUS)
+
+    def test_a_negative_net_stays_a_plain_number(self):
+        order = paid_order(self.buyer, [(self.kofi.listing("10.00"), 1)])
+        waived(self.kofi.owner, order, "15.00")
+        row = csv_rows(self.kofi.get(EXPORT))[1]
+        self.assertLess(Decimal(row[8]), 0)  # parses as a number, so it was not prefixed against formulas
+        self.assertTrue(row[8].startswith("-"))
+
+    def test_a_partial_refund_row(self):
+        order = paid_order(self.buyer, [(self.kofi.listing("100.00"), 1)])
+        OrderFeeSnapshot.objects.filter(order=order).update(refunded_base_pesewas=4000, refunded_fee_pesewas=100)
+        row = csv_rows(self.kofi.get(EXPORT))[1]
+        self.assertEqual((row[3], row[6], row[9]), ("100.00", "40.00", "Pending"))
+
+    def test_staff_get_no_statement(self):
+        staff = signed_in(make_staff("support", "esi@example.com"), "staff")
+        self.assertEqual(staff.get(EXPORT).status_code, 403)
