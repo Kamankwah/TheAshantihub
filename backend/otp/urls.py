@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views, views_account, views_authenticator, views_step_up
+from . import views, views_account, views_authenticator, views_recovery, views_step_up
 
 urlpatterns = [
     path("sign-in/send/", views.SignInSendView.as_view(), name="otp-sign-in-send"),
@@ -15,4 +15,5 @@ urlpatterns = [
     path("me/", views_account.SecurityOverviewView.as_view(), name="otp-me"),
     path("devices/<int:pk>/remove/", views_account.TrustedDeviceRemoveView.as_view(), name="otp-device-remove"),
     path("devices/remove-all/", views_account.TrustedDeviceRemoveAllView.as_view(), name="otp-devices-remove-all"),
+    path("recovery/", views_recovery.RecoveryRequestView.as_view(), name="otp-recovery"),
 ]
