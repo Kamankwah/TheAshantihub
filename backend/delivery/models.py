@@ -468,3 +468,23 @@ class Shift(models.Model):
     class Meta:
         ordering = ["starts_at", "id"]
         indexes = [models.Index(fields=["starts_at"])]
+
+
+class RiderEmploymentPeriod(models.Model):
+    """One stretch during which a rider was a third-party rider (opened when the delivery.rider_employment approval makes
+    them one, closed when it switches them back; `ended_at` null while it runs). Who a delivery's money belongs to is
+    decided from these periods by the delivery's time, never from the rider's current flag, so a later switch back (or
+    forward again) cannot re-label history: payroll still leaves out the days a rider was third-party and the wallet
+    still pays them. `Rider.third_party_since` is the start of the open period."""
+
+    rider = models.ForeignKey(Rider, on_delete=models.CASCADE, related_name="employment_periods")
+    started_at = models.DateTimeField()
+    ended_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["started_at"]
+        indexes = [models.Index(fields=["rider", "started_at"])]
+        constraints = [models.UniqueConstraint(fields=["rider"], condition=models.Q(ended_at__isnull=True), name="one_open_employment_period")]
+
+    def __str__(self):
+        return f"{self.rider_id}: {self.started_at:%Y-%m-%d} to {self.ended_at or 'now'}"

@@ -534,27 +534,32 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
 
 Found while writing `docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md` (§0 there):
 
-- **R1 Third-party flag.** The code had no rider company or employment concept. `delivery.Rider` gains `employment`
+- **S5-1 Third-party flag.** The code had no rider company or employment concept. `delivery.Rider` gains `employment`
   (`ashantihub`, the default for every existing rider, or `third_party`), a free-text `company_name` and
   `third_party_since`. No rider-company table: each rider is paid personally (§2.1, §8), so nothing keys on the company.
-- **R2 Who sets it.** The `delivery.rider_employment` approval: the Delivery Manager (`delivery.fleet`) proposes, a Super
-  Admin approves with the password (their own change applies at once). Switching back to AshantiHub's own is refused while
+- **S5-2 Who sets it.** The `delivery.rider_employment` approval: the Delivery Manager (`delivery.fleet`) proposes, a Super
+  Admin approves with the password (their own change applies at once, and needs the password too). Nobody changes their own
+  employment (`403 own_rider`), and only a Dispatch rider can be made third-party (`409 not_a_rider`). Switching back to AshantiHub's own is refused while
   the rider holds money, has a withdrawal on its way or a delivered order waiting for Support's call.
-- **R3 When a rider is paid.** At release only (Support's positive call, §4.1), in the release's transaction, for a
+- **S5-3 When a rider is paid.** At release only (Support's positive call, §4.1), in the release's transaction, for a
   door-to-door order the rider delivered after becoming third-party. The whole fee AshantiHub took at release (the
   customer's delivery fee plus a fee the business covered with its free-delivery promo) moves from platform delivery
   income to the rider (`order-rider-<order>`): 90% to Rider balance, 10% to the reserve. The rate-card `rider_pay` stays a
   payroll record for AshantiHub's own riders.
-- **R4 Rate.** The existing `rider_commission_bp` (default 1000) as it stood when the order was paid (§3.3), kept on the
+- **S5-4 Rate.** The existing `rider_commission_bp` (default 1000) as it stood when the order was paid (§3.3), kept on the
   earning, so the end-of-day posting needs no true-up (§1 row 5).
-- **R5 End of day.** At 00:20 Accra each rider's reserve of every earlier day still held goes to platform commission
+- **S5-5 End of day.** At 00:20 Accra each rider's reserve of every earlier day still held goes to platform commission
   income, with the day's deliveries, gross, commission and net recorded; a missed night is caught up.
-- **R6 Refunds.** Before release a whole refund returns the delivery fee to the customer and the rider is never paid.
+- **S5-6 Refunds.** Before release a whole refund returns the delivery fee to the customer and the rider is never paid.
   After release a partial refund leaves the rider paid; a whole refund takes the earning back first (the rider's balance
   may go below zero and then blocks withdrawals; the reserve is taken back, or the commission once posted).
-- **R7 Wallet.** A rider's accounts are held by their staff account; the Stage 3b destinations and withdrawals serve them
+- **S5-7 Wallet.** A rider's accounts are held by their staff account; the Stage 3b destinations and withdrawals serve them
   (`holder_type` "staff") with the rider's staff name as the verified name once an approved, in-date Ghana Card is on
   file, the same limits and cooling, and step-up codes (third-party riders, unlike office staff, may ask for
   `withdrawal` and `payout_destination` codes). AshantiHub's own riders get `409 wallet_disabled`.
-- **R8 Reconciliation.** Unchanged: rider money touches provider clearing only through the withdrawal journals the
+- **S5-8 Reconciliation.** Unchanged: rider money touches provider clearing only through the withdrawal journals the
   nightly run already compares.
+- **S5-9 History.** `delivery.RiderEmploymentPeriod` rows (opened when a rider becomes third-party, closed when switched
+  back) decide who a delivery's money belongs to by its time, so payroll and the wallet never depend on the current flag.
+- **Owner note.** A delivered order that Support never releases blocks switching its rider back to AshantiHub's own
+  forever; there is no way out yet (a Support release or a refund is the only exit).

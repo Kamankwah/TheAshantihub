@@ -21,7 +21,7 @@
 | R1 | The third-party flag (none exists today) | `delivery.Rider` gains `employment` (`ashantihub` — the default, so every existing rider is unchanged — or `third_party`), a free-text `company_name` (required for third-party) and `third_party_since` (when the current third-party engagement started; null for AshantiHub's own). **No `RiderCompany` table.** | Surveyed: `delivery/models.py` has `Rider` (one row per Dispatch `StaffUser`, made by `delivery.signals`), `Vehicle.owner_kind` and nothing about who employs a rider; its docstring says "no payout, payroll or ledger model". `docs/IMPLEMENTATION_INSTRUCTIONS.md` row 5 names a "`Rider` employment flag". The spec pays the rider personally (§2.1 Rider balance per rider; §8 destinations name-matched to the holder), so nothing in the money keys on the company; a company record is only needed if a company itself is contracted or paid (owner question, gate (xcix)). |
 | R2 | Who changes it | A new approval kind `delivery.rider_employment` (`delivery/employment.py`): a Delivery Manager (`delivery.fleet`) proposes at `POST /api/delivery/riders/<id>/employment/`, a Super Admin approves with the password (`requires_sudo`); a Super Admin's own proposal for another rider applies at once (so it is not password-gated, like the other `requires_sudo` kinds a Super Admin proposes). Nobody may change their own employment (`own_rider` 403, a Super Admin included) and only a Dispatch role holder can be third-party (`not_a_rider` 409). One pending request per rider (best effort: the approval re-checks at decision time). | The flag routes delivery fees from AshantiHub's income to a third party's withdrawable money: a money decision (spec §1 row 16; backend/CLAUDE.md "Approvals: the maker never decides"). Every other fleet edit (`RiderDetailView.patch`, `RiderJobHoldView`) is one Delivery Manager alone, which must not hold here. |
 | R3 | Switching back to AshantiHub's own | Refused (`409 rider_money_open`, with `open`: `balance`, `reserve`, `withdrawal`, `deliveries`) while the rider's balance is not zero, a reserve is still held, a withdrawal is open, or a door-to-door order they delivered as third-party is paid in the ledger but not yet released (and not refunded whole). Checked when proposed, again when approved (`validate`), and again in `apply` under the rider row's lock; a release takes the same row lock before paying a rider. | "AshantiHub-own riders have wallets disabled": a wallet must never close with money in it, and a delivery made as third-party must not silently become AshantiHub's income. |
-| R4 | When the rider is credited | **At release only**: Support's positive verification call (`ledger.verification.record` → `escrow.release_verified`), in the release's own transaction, never at the doorstep or on a timer. The rider is the assignment's `dispatch` when the order is door to door, the assignment is not `FAILED`, `delivered_at` is set, and that rider is third-party with `third_party_since <= delivered_at`. | Spec §2.2 step 2(c) puts the rider's 90/10 inside the release, and §4.1 releases only on the call. `orders.DeliveryAssignment` is one-to-one with the order and a re-dispatch replaces `dispatch` on the same row (`delivery.services.assign` refuses once delivered), so the row names the rider who delivered; a failed attempt earns nothing (its fee goes to whoever delivers). `escrow.release_verified` already says "then any third-party rider (Stage 5)". The wait for Support's call is an owner question (gate (c), RA12). |
+| R4 | When the rider is credited | **At release only**: Support's positive verification call (`ledger.verification.record` → `escrow.release_verified`), in the release's own transaction, never at the doorstep or on a timer. The rider is the assignment's `dispatch` when the order is door to door, the assignment is not `FAILED`, `delivered_at` is set, and that rider was third-party at `delivered_at` (inside one of their `RiderEmploymentPeriod` rows; a later switch back does not change it). | Spec §2.2 step 2(c) puts the rider's 90/10 inside the release, and §4.1 releases only on the call. `orders.DeliveryAssignment` is one-to-one with the order and a re-dispatch replaces `dispatch` on the same row (`delivery.services.assign` refuses once delivered), so the row names the rider who delivered; a failed attempt earns nothing (its fee goes to whoever delivers). `escrow.release_verified` already says "then any third-party rider (Stage 5)". The wait for Support's call is an owner question (gate (c), RA12). |
 | R5 | What the rider is paid, and how it is posted | The whole delivery fee AshantiHub took at release: what the release credited to platform delivery income (the Delivery payable) plus the business's free-delivery promo charge (`charge_waiver`). One journal right after both, same transaction: `order-rider-<order>` (kind `rider_earning`): Dr platform delivery income gross, Cr rider balance net, Cr rider reserve reserve. Recorded on a `delivery.RiderEarning` row. The rate-card `DeliveryAssignment.rider_pay` is not what a third-party rider is paid; it stays a payroll record for AshantiHub's own riders. | §1 row 4: the fee "goes wholly to the rider (third party)". Posting through platform delivery income leaves `release_verified`, `charge_waiver` and every Stage 3a refund path as they are (a refund after release already takes the fee back from platform delivery income); both journals commit together, so §2.2's "one atomic release" holds. |
 | R6 | Rate, rounding, true-up | reserve = gross × `rider_commission_bp` ÷ 10,000, half up; net = gross − reserve. The rate is the one in force **when the order was paid** (the `order-pay-<order>` journal's `created_at`), kept on the earning. The end-of-day posting sums stored reserves, so **no true-up** is needed. The setting is the existing Stage 1 `rider_commission_bp` (default 1000, 0–10000), changed through the `ledger.setting` approval (Accounting proposes, Super Admin approves) — **not** a new `dispatch_commission_bp`. | §3.3: a change "takes effect only for orders paid after its effective time" (and `ledger.approval_kinds.setting_consequences` already tells the approver exactly that for this key, pinned in `wallets/tests/test_guards.py`). §1 row 5's true-up assumed the reserve was computed at end of day. A second key with the same meaning could disagree with the first. |
 | R7 | Whose accounts | `rider_balance` and `rider_reserve` (Stage 1 kinds, unused so far) held by the rider's `StaffUser` (`accounts.staffuser:<pk>`). Destinations and withdrawals name the holder `("staff", pk)` (`otp.identity.ref`). | A rider signs in as staff (`delivery.views_rider.RiderView`, `delivery.dispatch`); every Stage 3b helper keys on the signed-in account through `ref()` and `posting.account_for(kind, holder)`. |
@@ -781,6 +781,7 @@ def rider(email="rider@example.com", *, name="Kojo Mensah", phone="+233244000002
         row.employment, row.company_name = Rider.THIRD_PARTY, company
         row.third_party_since = since or timezone.now() - timedelta(days=30)
         row.save(update_fields=["employment", "company_name", "third_party_since"])
+        RiderEmploymentPeriod.objects.create(rider=row, started_at=row.third_party_since)    # the periods decide who was paid
     return row
 
 
@@ -1236,9 +1237,11 @@ def third_party_rider(order, *, lock=False):
     if lock:
         rows = rows.select_for_update(of=("self",))
     rider = rows.first()
-    if rider is None or rider.employment != Rider.THIRD_PARTY or rider.third_party_since is None:
+    if rider is None:
         return None
-    return rider if rider.third_party_since <= assignment.delivered_at else None
+    # History reads the employment periods (delivery.RiderEmploymentPeriod), never the current flag, so a later switch
+    # back or forward cannot re-label this delivery.
+    return rider if employment.third_party_at(rider, assignment.delivered_at) else None
 
 
 def rider_for_release(order):
@@ -2269,6 +2272,7 @@ class RiderEngineTests(TestCase):
         self.dest = destination(self.staff, name="Kojo Mensah")
         held = self.hold(500)
         Rider.objects.filter(pk=self.swift.pk).update(employment=Rider.ASHANTIHUB, third_party_since=None)
+        RiderEmploymentPeriod.objects.filter(rider=self.swift).update(ended_at=timezone.now())
         self.assertIsNone(payouts.claim(held.pk))
         held.refresh_from_db()
         self.assertEqual(held.status, Withdrawal.CANCELLED)
@@ -3887,7 +3891,7 @@ feature/wallets and feature/dispatch-wallets-5; see section 13); later stages ar
   neither platform commission income nor AshantiHub's liability to riders (Σ rider balance + Σ rider reserve); add both.
   The pay screens built for payroll (`delivery/views_rules.py` `RiderEarnedView` at `payouts/`, the rider app's
   `rider/earnings/`) still show rate-card pay with "no money has moved", which is not what a third-party rider is paid:
-  exclude deliveries made by a third-party rider (`delivered_at >= Rider.third_party_since`) from `RiderEarnedView` /
+  exclude deliveries made while the rider was third-party (`delivered_at` inside one of their `RiderEmploymentPeriod` rows, past ones too) from `RiderEarnedView` /
   `RiderEarningsLinesView` and the rider app's `rider/earnings/` payroll figures before the ledger is on, or Accounting can
   pay a third-party rider twice (wallet plus payroll). **Built in Task 6** (`employment.payroll_jobs`, tested); what stays
   open is the Accounting dashboard's liability and commission lines.

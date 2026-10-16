@@ -96,6 +96,8 @@ class RiderEmploymentView(FleetView):
     def post(self, request, pk):
         rider = get_object_or_404(Rider.objects.select_related("staff"), pk=pk)
         data = request.data if isinstance(request.data, dict) else {}
+        if request.user.role.name == Role.SUPER_ADMIN:
+            sessions.require_sudo(request)          # a Super Admin's own change applies at once: the password, as for approval
         try:
             approval = employment.propose(request.user, rider, data, note=data.get("note", ""), request=request)
         except employment.EmploymentError as exc:
