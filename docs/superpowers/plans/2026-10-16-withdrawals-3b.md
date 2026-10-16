@@ -4,38 +4,39 @@
 
 **Goal:** Customers withdraw their wallet and vendors their Available balance to verified MoMo numbers or bank accounts — name-matched, confirmed with a texted or emailed code, usable after a cooling period, within editable limits — on simulated rails, with payouts settled or returned exactly once, staff able to fail a stuck one, and a nightly reconciliation that compares the ledger with the provider's statement and raises a case on any difference. All behind `LEDGER_ENABLED` (default off).
 
-**Architecture:** The `wallets` app (created by Plan 3a) gains `PayoutDestination`, `Withdrawal` and `ReconciliationRun`. A withdrawal is held in `withdrawal_in_transit` in the request's transaction (which also spends the step-up code), claimed and sent to the provider outside any transaction, and ended by one function, `wallets.payouts.apply_result`, whoever reports the outcome (the provider's answer, the 5-minute poll, a future webhook, or staff). The provider interface from Plan 3a gains a statement for the nightly reconciliation. Step-up codes are always required for wallet actions while the ledger is on.
+**Architecture:** The `wallets` app (created by Plan 3a) gains `PayoutDestination`, `Withdrawal` and `ReconciliationRun`. A withdrawal is held in `withdrawal_in_transit` in the request's transaction (which also spends the step-up code), claimed and sent to the provider outside any transaction, and ended by one function, `wallets.payouts.apply_result`, whoever reports the outcome (the provider's answer, the 5-minute poll, a future webhook, or staff). The provider interface from Plan 3a gains a statement for the nightly reconciliation, and a payout answer carries the amount the provider says it paid. Step-up codes are always required for wallet actions, and for adding a customer's recovery email or phone, while the ledger is on. Every provider call (name lookup, payout, status, statement) runs outside any database transaction.
 
 **Tech Stack:** Django 5.2, DRF, Postgres, Celery beat (eager under tests), the repo's `ledger`, `payments`, `otp`, `fraud`, `notifications`, `activity` apps.
 
 **Spec:** `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` — §1 rows 1, 6, 13, 14; §2 (nightly reconciliation), §2.1 (withdrawal in transit), §2.2 step 5, §2.3; §3.3 (withdrawal limits and cooling period are governed settings); §5 (withdrawal); §6 (vendor withdrawal, negative Available blocks it); §8 (payout destinations); §9 (step-up before withdrawal and payout-destination actions); §11 step 3; §13. Deviations are in §0 below; Task 1 records them in the spec.
 
-**Depends on:** **Plan 3a** (`docs/superpowers/plans/2026-10-16-wallets-payments-3a.md`) — every task of it must be done first. This plan uses, from 3a: `payments.providers` (`get_provider`, `payout`, `status`, `payout_charge`, `lookup_account_name`, `payouts_available`, `NotConnected`), `ledger.posting.lock` / `balance_of` / `InsufficientFunds` / `post(..., allow_negative=...)`, `CheckoutSession.processing_fee` / `WALLET` / `WALLET_TOPUP` and `metadata["ledger"]`, the `wallets` app with `wallets.views.ledger_off` / `parse_amount` / `AmountError` / `Pagination`, `wallets.services.money`, `wallets.views_staff` (`VIEW`, `MANAGE`), and the `wallets.view` / `wallets.manage` permissions (accounts migration 0054). Stage 2 (OTP) provides `otp.step_up` with the `WITHDRAWAL` and `PAYOUT_DESTINATION` actions.
+**Depends on:** **Plan 3a** (`docs/superpowers/plans/2026-10-16-wallets-payments-3a.md`) — every task of it must be done first. This plan uses, from 3a: `payments.providers` (`get_provider`, `payout`, `status`, `payout_charge`, `lookup_account_name`, `payouts_available`, `NotConnected`), `ledger.posting.lock` / `balance_of` / `InsufficientFunds` / `post(..., allow_negative=...)`, `CheckoutSession.processing_fee` / `WALLET` / `WALLET_TOPUP` and `metadata["ledger"]`, the `wallets` app with `wallets.views.ledger_off` / `parse_amount` / `AmountError` / `Pagination`, `wallets.services.money`, `wallets.views_staff` (`VIEW`, `MANAGE`), and the `wallets.view` / `wallets.manage` permissions (accounts migration 0054). Stage 2 (OTP) provides `otp.step_up` with the `WITHDRAWAL`, `PAYOUT_DESTINATION` and `CONTACT_CHANGE` actions.
 
 ## 0. Decisions and reconciliation with the code
 
 | # | Question | Decision | Why (grounded in the code) |
 |---|---|---|---|
 | E1 | Where the code lives | `wallets/models.py` (`PayoutDestination`, `Withdrawal`, `ReconciliationRun`), `wallets/names.py` (name check), `destinations.py`, `withdrawals.py` (asking), `payouts.py` (sending and settling), `reconciliation.py`, `tasks.py`; holder API in `wallets/views_payouts.py` under `/api/wallet/`; staff in `wallets/views_staff.py`. | Plan 3a made `/api/wallet/` the holder's money API and `wallets/views_staff.py` the staff reads. |
-| E2 | How a destination is verified (§8) | The provider looks up the name on the account (`lookup_account_name`); it must match a verified name word for word, or contain every word of it (at least two words): a customer's profile name; a KYC-verified vendor's owner name or business name. The holder confirms with a step-up code (Plan 2's `otp.service` texts or emails it to the holder's own phone or email) spent in the same transaction. No new OTP purpose: `step_up.PAYOUT_DESTINATION` already exists. | `otp.step_up.ACTIONS` already holds `payout_destination` and `withdrawal` "for when they exist (Stage 3)" (spec O4). `payments/hubtel_client.py` has no name lookup, so the Hubtel provider answers `NotConnected` → `409 name_check_unavailable`; the simulated provider answers the holder's own name unless a test lists the number in `SIMULATED_ACCOUNT_NAMES` (the response says `name_check: "simulated"`). |
-| E3 | Step-up while the OTP switches are off | Destination add/remove and withdrawals call `step_up.require(request, ACTION, force=True)`: a code is always required while the ledger is on. `otp/views_step_up._codes_off` lets the step-up send/verify endpoints work for `withdrawal` and `payout_destination` whenever `LEDGER_ENABLED` is on. | Spec §8 ("confirms by OTP") and §11 ("OTP must precede any wallet going live"). With `force=True` alone the code could never be obtained: the step-up endpoints answer `409 otp_off` while every OTP switch is off. With the ledger off nothing changes (Plan 2's tests keep passing). |
-| E4 | Existing payout details | `BusinessOwnerProfile.payout_*` stay exactly as they are (registration's `payment_info` step, `PATCH business-owners/me/payout/`, the staff detail view's `mask_but_last`). A vendor may copy them into a new destination with `{"from_profile": true}`, which is still name-checked, code-confirmed and cooled. They are not migrated automatically. | They were never name-checked or OTP-confirmed, and changing them would break registration and the masking rule (backend/CLAUDE.md). |
-| E5 | Cooling period | `usable_from` = time added + `payout_cooling_hours` in force then; fixed on the row. A destination is never edited: a change is a removal plus a new one (new cooling). At most 5 live per holder. | §8 "new or changed destinations cannot receive money for an editable cooling period"; like fee snapshots, later setting changes never rewrite a row. |
+| E2 | How a destination is verified (§8) | The provider looks up the name on the account (`lookup_account_name`); it must match a verified name word for word, or contain every word of it (at least two words): a customer's profile name; a KYC-verified vendor's owner name or business name. The lookup runs before the transaction that spends the code (`destinations.check`, then `destinations.save`), and only for a request that carries a code. The holder confirms with a step-up code (Plan 2's `otp.service` texts or emails it to the holder's own phone or email) spent in the same transaction as the save. No new OTP purpose: `step_up.PAYOUT_DESTINATION` already exists. **Deviation for customers:** a customer's profile name is self-declared (no KYC) and editable without a code, so it is not the "verified name" §8 asks for (B4; spec §13 (xxix)). | `otp.step_up.ACTIONS` already holds `payout_destination` and `withdrawal` "for when they exist (Stage 3)" (spec O4). `payments/hubtel_client.py` has no name lookup, so the Hubtel provider answers `NotConnected` → `409 name_check_unavailable`; the simulated provider answers the holder's own name unless a test lists the number in `SIMULATED_ACCOUNT_NAMES` (the response says `name_check: "simulated"`). For Hubtel the lookup is a network call, so it must never run while the step-up token row is locked. `CustomerProfileSerializer` writes `full_name` with no step-up (`accounts/serializers.py`, `accounts/views.py` `CustomerProfileUpdateView`). |
+| E3 | Step-up while the OTP switches are off | Destination add/remove and withdrawals call `step_up.require(request, ACTION, force=True)`: a code is always required while the ledger is on. Adding a customer's recovery email or phone (`accounts.views.CustomerSecondaryEmailRequestView` / `CustomerSecondaryPhoneRequestView`) calls `step_up.require(request, CONTACT_CHANGE, force=escrow.enabled())`. `otp/views_step_up._codes_off` lets the step-up send/verify endpoints work for `withdrawal`, `payout_destination` and `contact_change` whenever `LEDGER_ENABLED` is on. | Spec §8 ("confirms by OTP") and §11 ("OTP must precede any wallet going live"). With `force=True` alone the code could never be obtained: the step-up endpoints answer `409 otp_off` while every OTP switch is off. Without the contact change, a stolen session could add its own email as a recovery address with no code; a verified secondary email is a code channel for a customer with no email (`otp.identity.contacts`), so the thief could then confirm destinations and withdrawals with it. With the ledger off nothing changes (Plan 2's tests keep passing). |
+| E4 | Existing payout details | `BusinessOwnerProfile.payout_*` stay exactly as they are (registration's `payment_info` step, `PATCH business-owners/me/payout/` with its unforced step-up, the staff detail view's `mask_but_last`). A vendor may copy them into a new destination with `{"from_profile": true}`, which is still name-checked, code-confirmed and cooled. They are not migrated automatically. | They were never name-checked or OTP-confirmed, and changing them would break registration and the masking rule (backend/CLAUDE.md). Registration's payment step (frontend `submitPayoutInfo`) uses the same PATCH and cannot answer a step-up yet, so forcing it is a gate item (spec §13 (xxxii)). |
+| E5 | Cooling period | `usable_from` = time added + `payout_cooling_hours` in force then (at least 1 hour); fixed on the row. A destination is never edited: a change is a removal plus a new one (new cooling). At most 5 live per holder (checked again under a lock on the holder's live destinations). The holder gets an in-app notice of every add and remove, with no number in it. | §8 "new or changed destinations cannot receive money for an editable cooling period"; like fee snapshots, later setting changes never rewrite a row. A cooling period protects only someone who hears of the change in time. |
 | E6 | Withdrawal journals and the charge | Hold: Dr source (customer wallet or vendor Available) Cr `withdrawal_in_transit` (`withdrawal-hold-<ref>`). Paid: Dr in transit Cr `provider_clearing` (`withdrawal-paid-<ref>`, posted with `allow_negative={provider_clearing}` because the provider has confirmed it). Returned: Dr in transit Cr source (`withdrawal-reversed-<ref>`). The holder bears the provider's charge: it is taken out of the amount sent (`net = amount − charge`); clearing falls by the full amount (what the provider's statement shows: sent plus its charge), so there is no `provider_fees` line — AshantiHub bears nothing. | §2.2 step 5; §1 row 14. `provider_fees` is kept for charges AshantiHub bears (Plan 3a's refunded collection charge). |
-| E7 | Limits | Governed money settings in `ledger.settings_store.DEFINITIONS`, changed only through the existing `ledger.setting` approval: `withdrawal_per_tx_limit_pesewas` 500,000 (GH₵ 5,000), `withdrawal_daily_limit_pesewas` 1,000,000 (GH₵ 10,000), `payout_cooling_hours` 24. The day is the calendar day in Africa/Accra; pending, processing and paid withdrawals count; failed and cancelled do not. | §3.3: "withdrawal limits and the cooling period share one flow" (Accounting proposes, Super Admin approves). |
-| E8 | Concurrency | `request` locks the destination row, then the source and in-transit accounts together in primary-key order (`posting.lock`), and only then reads the balance and today's total. `apply_result` and `close` lock the withdrawal row, then post. A withdrawal is claimed (pending → processing) under its row lock before the provider is called, so it is sent once. | Two withdrawals of one balance, or a request racing a return to the same wallet, must neither overspend nor deadlock (Plan 3a D12 lock order). |
-| E9 | Idempotency and reports | The client sends a `request_id` (unique per holder): a retry answers the same withdrawal (200) without a new code. A report (provider answer, poll, callback, staff) is applied once: journal keys are per reference, a final status never changes, a report whose amount differs from what was sent is not applied (fraud case), and a "paid" report on a withdrawal already failed or cancelled is never posted and opens a fraud case. | §2.3: "idempotent on the provider reference, amount-verified ... monotonic in status". |
-| E10 | Reconciliation | Nightly at 02:30 for the day before, by provider reference: every statement line has its journal for the same amount; every journal of the day that moved provider clearing names a movement the provider confirms on any day; in transit equals the open withdrawals; the provider's unconfirmed payouts equal ours. Skipped (never a false alarm): payments made while the ledger was off (no `metadata["ledger"]`), kinds the ledger does not record (subscriptions, tickets, bookings...), GH₵ 0.00 payments, wallet payments (no provider movement: Plan 3a marks a wallet-paid order session `metadata["ledger"]` too, but its `provider` is `"wallet"`, so the reconciliation must skip every `provider="wallet"` session whatever its marker). A difference opens one fraud case per day (`fraud.services.raise_flag`, `dedupe_key="reconciliation-<day>"`) and tells `wallets.view` holders once. It never posts or corrects. The simulated provider's statement is read from our own paid checkout sessions and settled withdrawals (what it "did"); Hubtel's is Plan 7, so a Hubtel run is recorded `unavailable`. | §2 "A nightly reconciliation compares the ledger to the provider statement and flags differences." |
-| E11 | Staff | `GET staff/withdrawals/` (`wallets.view`); `POST staff/withdrawals/<id>/fail/` (`wallets.manage` + password) only for one stuck (sent 30+ minutes ago with no answer, or held and never sent for 10+ minutes); it returns the money and records `wallets.withdrawal_failed` itself, last, with no account number. | Brief: "force-fail a stuck withdrawal"; backend/CLAUDE.md sudo and `record()` rules. |
+| E7 | Limits | Governed money settings in `ledger.settings_store.DEFINITIONS`, changed only through the existing `ledger.setting` approval: `withdrawal_per_tx_limit_pesewas` 500,000 (GH₵ 5,000), `withdrawal_daily_limit_pesewas` 1,000,000 (GH₵ 10,000), `payout_cooling_hours` 24 (1–720). The day is the calendar day in Africa/Accra, and the limits are per holder account (someone with a customer and a vendor account has a pair on each); pending, processing and paid withdrawals count; failed and cancelled do not. The approval screen says these apply to withdrawals and destinations, not orders (`ledger.approval_kinds.setting_consequences`). | §3.3: "withdrawal limits and the cooling period share one flow" (Accounting proposes, Super Admin approves). `ledger/approval_kinds.py` today says "Applies only to orders paid after it starts." for every money setting. |
+| E8 | Concurrency | `request` locks the destination row, then the source and in-transit accounts together in primary-key order (`posting.lock`), and only then reads the balance and today's total. `apply_result` and `close` lock the withdrawal row, then post. A withdrawal is claimed (pending → processing) under its row lock before the provider is called, so it is sent once; a held one whose holder was suspended (or is gone) or whose destination was removed since is returned instead of sent. No provider call runs inside a transaction: the name lookup comes before the add's transaction, the payout after the request's, and the poll, the staff fail view and the reconciliation ask the provider before (or between) their transactions. Every hold and settlement locks the one `withdrawal_in_transit` account, so withdrawals serialise (throughput only). | Two withdrawals of one balance, or a request racing a return to the same wallet, must neither overspend nor deadlock (Plan 3a D12 lock order). A network call while a row lock is held would block every withdrawal for its length. |
+| E9 | Idempotency and reports | The client sends a `request_id` (unique per holder): a retry with the same destination and amount answers the same withdrawal (200) without a new code; the same `request_id` with a different destination or amount answers `409 request_id_reused`. A report (provider answer, poll, callback, staff) is applied once: journal keys are per reference and a final status never changes. The provider's answer carries the amount it says it paid (`PayoutResult.amount_pesewas`), and a report whose amount differs from what was sent is not applied (fraud case). A report for a withdrawal never sent (still held), a "paid" report on a withdrawal already failed or cancelled, and a "failed" report on one already paid are never posted and each open a fraud case. The provider's own message is never stored or shown: the holder sees AshantiHub's fixed text. | §2.3: "idempotent on the provider reference, amount-verified ... monotonic in status". A provider error message may hold the whole account number. |
+| E10 | Reconciliation | Nightly at 02:30 for the day before, by provider reference: every statement line has its journal for the same amount; every journal of the day that moved provider clearing names a movement the provider confirms on any day; in transit equals the open withdrawals (checked even when the provider has no statement); the provider's unconfirmed payouts equal ours (asked outside any transaction, and asked once more before a difference is recorded). The day's totals are those of the movements compared, so a matched day shows equal totals. Skipped (never a false alarm): payments made while the ledger was off (no `metadata["ledger"]`), kinds the ledger does not record (subscriptions, tickets, bookings...), GH₵ 0.00 payments, wallet payments (no provider movement: Plan 3a marks a wallet-paid order session `metadata["ledger"]` too, but its `provider` is `"wallet"`, so the reconciliation must skip every `provider="wallet"` session whatever its marker). A difference opens one fraud case per day (`fraud.services.raise_flag`, `dedupe_key="reconciliation-<day>"`) and tells `wallets.view` holders once. It never posts or corrects. The simulated provider's statement is read from our own paid checkout sessions and settled withdrawals (what it "did"); Hubtel's is Plan 7, so a Hubtel run is recorded `unavailable` (or `mismatched` when in transit differs from the open withdrawals, which needs no statement). | §2 "A nightly reconciliation compares the ledger to the provider statement and flags differences." |
+| E11 | Staff | `GET staff/withdrawals/` (`wallets.view`); `POST staff/withdrawals/<id>/fail/` (`wallets.manage` + password) only for one stuck (sent 30+ minutes ago with no answer, or held and never sent for 10+ minutes). It asks the provider for the status first, outside any transaction: an answer (paid or failed) settles it through `apply_result` instead (`409 provider_answered`). A withdrawal with an open amount case (the provider said it paid a different amount, so money did leave) is never failed by hand (`409 amount_case_open`). Otherwise it returns the money with AshantiHub's fixed reason (the holder never sees the staff member's free text, which stays in the activity event) and records `wallets.withdrawal_failed` itself, last, with no account number (`activity_exempt`, so the provider call is outside the middleware's transaction). | Brief: "force-fail a stuck withdrawal"; backend/CLAUDE.md sudo and `record()` rules. `stuck()` is purely time-based: without asking the provider, money it did pay would come back to the holder and could be withdrawn twice. |
 | E12 | Riders, Hubtel | Third-party rider wallets are Stage 5. Hubtel payouts, status, name lookups and the payout webhook are Plan 7: `wallets.payouts.apply_result(reference, status, ...)` is the function that webhook will call. | Spec §11. |
 
 ## Global Constraints
 
 - Everything in Plan 3a's Global Constraints applies (integer pesewas; `post` only; `LEDGER_ENABLED` gates everything and every `/api/wallet/*` endpoint answers `409 {"code": "ledger_off"}` while it is off; lock order; simulated rails; test and command conventions).
 - New journal keys: `withdrawal-hold-<ref>`, `withdrawal-paid-<ref>`, `withdrawal-reversed-<ref>`; kinds `withdrawal_hold`, `withdrawal_paid`, `withdrawal_reversed`. Withdrawal references look like `AH-WD-XXXXXXXXXX`.
-- **Payout destination numbers are stored unmasked and only ever leave the server through `accounts.serializers.mask_but_last`** (as `account_number_masked`), in every holder and staff response; never in a log line, an activity body, a fraud case or a notification. `account_number` is added to Sentry's denylist.
-- Adding or removing a destination and asking for a withdrawal call `step_up.require(request, ACTION, force=True)` **inside** the `transaction.atomic()` that saves; a refused request keeps the code.
-- Defaults (owner may change through `ledger.setting`): per withdrawal GH₵ 5,000 (`500000`), per day GH₵ 10,000 (`1000000`), cooling 24 hours.
+- **Payout destination numbers are stored unmasked and only ever leave the server through `accounts.serializers.mask_but_last`** (as `account_number_masked`), in every holder and staff response; never in a log line, an activity body, a fraud case or a notification. `account_number` is added to Sentry's denylist, and every local variable that holds a whole number is named `account_number` (Sentry filters frame variables by name). The provider's own message text is never stored or shown (it may hold a number); holders see AshantiHub's fixed wording.
+- Adding or removing a destination and asking for a withdrawal call `step_up.require(request, ACTION, force=True)` **inside** the `transaction.atomic()` that saves; a refused request keeps the code. Adding a customer recovery email or phone calls `step_up.require(request, CONTACT_CHANGE, force=escrow.enabled())`.
+- **No provider call inside a database transaction** (name lookup, payout, status, statement, pending payouts): a real provider's call is a network round trip, and a lock held across it blocks every withdrawal.
+- Defaults (owner may change through `ledger.setting`): per withdrawal GH₵ 5,000 (`500000`), per day GH₵ 10,000 (`1000000`), cooling 24 hours (at least 1).
 - Vendors may withdraw only a positive Available; a negative Available blocks every withdrawal. Third-party riders are not in this plan.
 - Reconciliation is read-only: it records a run, raises a fraud case and notifies; it never posts a journal or changes a balance.
 - Commands from `/home/righteoushack/projects/TheAshantihub/.worktrees/wallets`: `docker compose -p wal1 run --rm web python manage.py test <label> --noinput`; never two docker commands at once.
@@ -46,22 +47,22 @@
 
 1. **A withdrawal to a destination still in its cooling period** — refused with `409 destination_cooling` and the time it can receive money; nothing held. Pinned in Task 3 (`test_review_focus_a_destination_in_its_cooling_period_cannot_receive_money`) and Task 4 (`test_review_focus_cooling_answers_409_and_the_code_is_kept`).
 2. **Two withdrawals of one balance at once** — one is held, the other answers `insufficient_funds`; the balance is never overspent. Pinned in Task 3 (`ConcurrentWithdrawalTests.test_review_focus_two_withdrawals_of_one_balance_at_once_hold_it_once`).
-3. **Provider reports duplicated, racing or out of order** — one settlement journal; a final status never changes; "paid" after the money was returned is never posted and opens one fraud case; a different amount is not applied. Pinned in Task 3 (`test_review_focus_reports_are_applied_once_and_never_backwards`, `test_review_focus_a_paid_report_after_the_money_was_returned_opens_a_case`, `test_two_paid_reports_at_once_settle_once`, `test_two_senders_at_once_send_once`).
+3. **Provider reports duplicated, racing or out of order** — one settlement journal; a final status never changes; "paid" after the money was returned is never posted and opens one fraud case; "failed" after it was paid opens one too; a report for a withdrawal never sent is not applied; a different amount (in a report, or in the provider's own payout answer) is not applied; staff cannot fail one the provider has answered, or one with an open amount case. Pinned in Task 3 (`test_review_focus_reports_are_applied_once_and_never_backwards`, `test_review_focus_a_paid_report_after_the_money_was_returned_opens_a_case`, `test_a_report_for_a_withdrawal_never_sent_is_not_applied`, `test_a_payout_answer_for_a_different_amount_is_not_applied`, `test_two_paid_reports_at_once_settle_once`, `test_two_senders_at_once_send_once`) and Task 5 (`test_a_withdrawal_the_provider_has_answered_is_settled_not_failed`, `test_a_withdrawal_with_an_open_amount_case_is_never_failed_by_hand`).
 4. **Balance and limit checks** — a vendor whose Available went negative after a late refund is refused (`negative_balance`); the per-withdrawal and daily limits hold, with failed withdrawals and yesterday's not counted. Pinned in Task 3 (`test_review_focus_a_vendor_with_a_negative_available_cannot_withdraw`, `test_review_focus_limits_per_withdrawal_and_per_day`) and Task 4 (`test_review_focus_a_vendor_with_a_negative_available_is_refused`).
-5. **Step-up replay** — the same token cannot pay a second withdrawal, a token for another action is refused, and a refused withdrawal keeps the token. Pinned in Task 4 (`test_review_focus_a_step_up_token_pays_once`, `test_a_code_for_another_action_is_refused`).
-6. **Account numbers leaking** — no holder or staff response, activity event or fraud case holds a whole number; Sentry filters `account_number`. Pinned in Task 2 (`test_review_focus_no_response_holds_a_whole_number`, `test_sentry_filters_account_numbers`) and Task 5 (`test_review_focus_failing_a_stuck_withdrawal_returns_the_money_and_logs_no_number`).
-7. **Reconciliation false alarms** — payments made while the ledger was off, kinds it does not record, GH₵ 0.00 orders, wallet payments and a payment confirmed just before midnight are not differences; a paid session with no journal is one, and opens one case however often the day is re-run. Pinned in Task 6 (`test_review_focus_payments_the_ledger_was_not_asked_to_record_are_not_differences`, `test_review_focus_a_payment_confirmed_before_midnight_is_not_a_difference_either_day`, `test_review_focus_a_payment_with_no_journal_is_a_difference_and_opens_one_case`).
-8. **Switches-off regression** — with the ledger off, the step-up endpoints still answer `otp_off` for wallet actions and every new endpoint answers `ledger_off`. Pinned in Task 1 (`test_review_focus_with_the_ledger_off_nothing_changes`), Task 2 and Task 4 (`LedgerOff...` tests).
+5. **Step-up replay and the code channel** — the same token cannot pay a second withdrawal, a token for another action is refused, and a refused withdrawal keeps the token; with the ledger on, a customer cannot add a recovery email or phone (a new code channel) without a code. Pinned in Task 1 (`test_review_focus_a_recovery_email_needs_a_code_while_the_ledger_is_on`) and Task 4 (`test_review_focus_a_step_up_token_pays_once`, `test_a_code_for_another_action_is_refused`).
+6. **Account numbers leaking** — no holder or staff response, activity event, fraud case or notice holds a whole number, nor the provider's own message; Sentry filters `account_number`. Pinned in Task 2 (`test_review_focus_no_response_holds_a_whole_number`, `test_the_holder_is_told_when_a_destination_is_added_or_removed`, `test_sentry_filters_account_numbers`), Task 3 (`test_a_failed_payout_returns_the_money_and_never_repeats_the_providers_words`) and Task 5 (`test_review_focus_failing_a_stuck_withdrawal_returns_the_money_and_logs_no_number`).
+7. **Reconciliation false alarms** — payments made while the ledger was off, kinds it does not record, GH₵ 0.00 orders, wallet payments and a payment confirmed just before midnight are not differences; a paid session with no journal is one, and opens one case however often the day is re-run; in transit is checked even when the provider has no statement. Pinned in Task 6 (`test_review_focus_payments_the_ledger_was_not_asked_to_record_are_not_differences`, `test_review_focus_a_payment_confirmed_before_midnight_is_not_a_difference_either_day`, `test_review_focus_a_payment_with_no_journal_is_a_difference_and_opens_one_case`, `test_with_no_statement_in_transit_is_still_checked`).
+8. **Switches-off regression** — with the ledger off, the step-up endpoints still answer `otp_off` for wallet and contact actions and every new endpoint answers `ledger_off`. Pinned in Task 1 (`test_review_focus_with_the_ledger_off_nothing_changes`), Task 2 and Task 4 (`LedgerOff...` tests).
 
 ## Assumptions made (decided here, cheap to change — for the owner to confirm)
 
-- **B1** Limits: GH₵ 5,000 per withdrawal and GH₵ 10,000 per person per calendar day (Accra time), cooling 24 hours; one pair of limits for customers and vendors alike; all three editable through the money-settings approval.
+- **B1** Limits: GH₵ 5,000 per withdrawal and GH₵ 10,000 per holder account per calendar day (Accra time; a person with both a customer and a vendor account has a limit on each), cooling 24 hours and never below 1 hour (so one approval cannot switch the cooling control off); one pair of limits for customers and vendors alike; all three editable through the money-settings approval.
 - **B2** The withdrawal charge is taken out of the amount: ask for X, X − charge arrives; the amount must be more than the charge.
-- **B3** While the ledger is on, adding or removing a payout destination and every withdrawal always need a texted or emailed code, whatever `OTP_STEP_UP_ENFORCED` says; the step-up endpoints send codes for those two actions whenever the ledger is on.
-- **B4** Name check: the name the network or bank returns must have the same words as the verified name, or contain all of them (at least two words; a middle name or "LTD" may be missing). Customers: their profile name; vendors: the KYC-verified owner name or business name, and only KYC-verified vendors may add destinations. It is checked again at every withdrawal, so renaming a profile makes old destinations unusable until added again (with a new cooling period). The simulated lookup answers the holder's own name.
-- **B5** Destinations are never edited (a change = remove + add, new cooling); at most 5 live per person; the business's registered payout details are left as they are and can be copied into a new destination.
-- **B6** Simulated payouts settle at once by default (`SIMULATED_PAYOUT_OUTCOME` = succeed, fail or pending). A held withdrawal not yet sent can be cancelled by its holder; staff may fail one stuck 30+ minutes after sending (or 10+ minutes held and never sent), which returns the money.
-- **B7** A "paid" report on a withdrawal already failed or cancelled is never posted; it opens a fraud case for staff to check with the provider.
+- **B3** While the ledger is on, adding or removing a payout destination, every withdrawal, and adding a customer recovery email or phone always need a texted or emailed code, whatever `OTP_STEP_UP_ENFORCED` says; the step-up endpoints send codes for those three actions whenever the ledger is on.
+- **B4** Name check: the name the network or bank returns must have the same words as the verified name, or contain all of them (at least two words; a middle name or "LTD" may be missing). Customers: their profile name; vendors: the KYC-verified owner name or business name, and only KYC-verified vendors may add destinations. It is checked again at every withdrawal, so renaming a profile makes old destinations unusable until added again (with a new cooling period). The simulated lookup answers the holder's own name. A customer's profile name is self-declared (no KYC); it can be changed without a code, so for customers the check stops typing mistakes, not a determined holder. Closing that needs customer KYC or a locked name (owner decision; spec §13 (xxix)).
+- **B5** Destinations are never edited (a change = remove + add, new cooling); at most 5 live per person; every add and remove sends the holder an in-app notice; the business's registered payout details are left as they are and can be copied into a new destination.
+- **B6** Simulated payouts settle at once by default (`SIMULATED_PAYOUT_OUTCOME` = succeed, fail or pending). A held withdrawal not yet sent can be cancelled by its holder; staff may fail one stuck 30+ minutes after sending (or 10+ minutes held and never sent), which returns the money, but only after the provider is asked and has no answer, and never while a case says the provider paid a different amount. The holder sees "AshantiHub stopped it after checking with the provider."; the staff member's reason stays in the activity log. One Accountant with the password can do it (owner question: should a second person approve?).
+- **B7** A "paid" report on a withdrawal already failed or cancelled, a "failed" report on one already paid, and any report on one never sent are never posted; each opens a fraud case for staff to check with the provider.
 - **B8** Reconciliation runs at 02:30 for the previous day; a mismatch opens one fraud case per day and notifies `wallets.view` holders once; it never corrects anything.
 - **B9** Suspended customers and businesses can neither add destinations nor withdraw.
 
@@ -73,47 +74,53 @@ Create:
 - `backend/wallets/tests/helpers.py`, `test_guards.py`, `test_destinations.py`, `test_withdrawal_engine.py`, `test_withdrawal_api.py`, `test_staff_withdrawals.py`, `test_reconciliation.py`
 
 Modify:
-- `backend/ledger/settings_store.py` (three settings), `backend/otp/views_step_up.py` (`_codes_off`)
-- `backend/payments/providers.py` (statement, `find`, `pending_payouts`, `day_bounds`, `StatementLine`)
+- `backend/ledger/settings_store.py` (three settings), `backend/ledger/approval_kinds.py` (the money-setting approval's consequences text), `backend/otp/views_step_up.py` (`_codes_off`), `backend/accounts/views.py` (recovery email and phone step-up while the ledger is on)
+- `backend/payments/providers.py` (Task 3: `PayoutResult.amount_pesewas`; Task 6: statement, `find`, `pending_payouts`, `day_bounds`, `StatementLine`)
 - `backend/wallets/urls.py`, `backend/wallets/views_staff.py`
-- `backend/ashantihub/settings.py` (beat entries), `backend/ashantihub/sentry.py` (`account_number`)
-- `backend/CLAUDE.md`, `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md`
+- `backend/ashantihub/settings.py` (the `wallet_destination` throttle rate, beat entries), `backend/ashantihub/sentry.py` (`account_number`)
+- `backend/CLAUDE.md`, `CLAUDE.md`, `docs/IMPLEMENTATION_INSTRUCTIONS.md`, `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md`
 
 API added or changed:
 
 | Method + path | Who | Body → answer |
 |---|---|---|
-| `GET /api/wallet/destinations/` | customer, owner | → `{results: [{id, rail, institution, account_number_masked, account_name, name_check, usable_from, usable, removed, created_at}], cooling_hours}` |
-| `POST /api/wallet/destinations/` | customer, owner + `X-Step-Up-Token` | `{rail, institution, account_number}` or `{from_profile: true}` → 201 destination. 400 `invalid` / `name_mismatch` / `no_profile_details`; 403 `step_up_required` / `suspended`; 409 `kyc_required` / `name_required` / `duplicate` / `too_many` / `name_check_unavailable` |
-| `POST /api/wallet/destinations/<id>/remove/` | customer, owner + token | → 204; 404 `not_found` |
+| `GET /api/wallet/destinations/` | customer, owner | → `{results: [{id, rail, institution, account_number_masked, account_name, name_check, usable_from, usable, removed, created_at}], cooling_hours}` (live destinations only, so `removed` is always false here; it matters in a withdrawal's `destination`) |
+| `POST /api/wallet/destinations/` | customer, owner + `X-Step-Up-Token` | `{rail, institution, account_number}` or `{from_profile: true}` → 201 destination (and an in-app notice to the holder). 400 `invalid` / `name_mismatch` / `no_profile_details`; 403 `step_up_required` (also before any name lookup when the header is missing) / `suspended`; 409 `kyc_required` / `name_required` / `duplicate` / `too_many` / `name_check_unavailable`; 429 (throttle `wallet_destination`, 20 an hour) |
+| `POST /api/wallet/destinations/<id>/remove/` | customer, owner + token | → 204 (and an in-app notice); 404 `not_found` |
 | `GET /api/wallet/withdrawals/` | customer, owner | → paginated `{id, reference, amount, charge, you_receive, status, status_label, destination, created_at, settled_at, failure_reason}` |
-| `POST /api/wallet/withdrawals/` | customer, owner + token | `{destination, amount, request_id}` → 201 (sent: `succeeded`, `processing` or `failed`) or 200 (a retry of the same `request_id`, no code needed). 400 `invalid` / `below_charge`; 403 `step_up_required` / `suspended`; 404 `unknown_destination`; 409 `destination_cooling` (+ `usable_from`) / `name_mismatch` / `payouts_unavailable` / `over_limit` / `negative_balance` / `insufficient_funds` / `daily_limit` |
+| `POST /api/wallet/withdrawals/` | customer, owner + token | `{destination, amount, request_id}` → 201 (sent: `succeeded`, `processing` or `failed`) or 200 (a retry of the same `request_id` with the same destination and amount, no code needed). 400 `invalid` / `below_charge`; 403 `step_up_required` / `suspended`; 404 `unknown_destination`; 409 `request_id_reused` / `duplicate_request` / `destination_cooling` (+ `usable_from`) / `name_mismatch` / `payouts_unavailable` / `over_limit` / `negative_balance` / `insufficient_funds` / `daily_limit` |
 | `POST /api/wallet/withdrawals/<id>/cancel/` | the holder | → 200 cancelled (money back); 409 `not_pending`; 404 |
 | `GET /api/wallet/staff/withdrawals/?status=open\|succeeded\|failed\|cancelled\|all` | `wallets.view` | → paginated rows with the holder's name, `stuck` |
-| `POST /api/wallet/staff/withdrawals/<id>/fail/` | `wallets.manage` + password | `{reason}` → 200 (failed, money back); 409 `not_stuck` |
+| `POST /api/wallet/staff/withdrawals/<id>/fail/` | `wallets.manage` + password | `{reason}` → 200 (failed, money back); 409 `not_stuck` / `provider_answered` (+ `status`: the provider's answer settled it) / `amount_case_open` |
 | `GET /api/wallet/staff/reconciliation/` | `wallets.view` | → `{results: [...]}` the last 30 runs |
-| `POST /api/otp/step-up/send/`, `verify/` | changed | with the ledger on, `withdrawal` and `payout_destination` codes are sent whatever the OTP switches say |
+| `POST /api/otp/step-up/send/`, `verify/` | changed | with the ledger on, `withdrawal`, `payout_destination` and `contact_change` codes are sent whatever the OTP switches say |
+| `POST /api/accounts/customers/me/secondary-email/`, `secondary-phone/` | changed | with the ledger on, `403 step_up_required` without an `X-Step-Up-Token` for `contact_change`, whatever the OTP switches say; unchanged with the ledger off |
 
 ---
 
-### Task 1: Governed limits, step-up codes for wallet actions, the name check, spec addendum
+### Task 1: Governed limits, step-up codes for wallet actions and recovery contacts, the name check, spec addendum
 
 **Files:**
-- Modify: `backend/ledger/settings_store.py` (`DEFINITIONS`), `backend/otp/views_step_up.py` (`_codes_off`, module text), `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` (append)
+- Modify: `backend/ledger/settings_store.py` (`DEFINITIONS`), `backend/ledger/approval_kinds.py` (`MONEY_SETTING` consequences), `backend/otp/views_step_up.py` (`_codes_off`, `WALLET_ACTIONS`, module text), `backend/accounts/views.py` (`CustomerSecondaryEmailRequestView`, `CustomerSecondaryPhoneRequestView`, imports), `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` (append)
 - Create: `backend/wallets/names.py`, `backend/wallets/tests/test_guards.py`
 
 **Interfaces:**
-- Consumes: `ledger.settings_store.Definition`, `ledger.escrow.enabled()`, `otp.step_up.WITHDRAWAL` / `PAYOUT_DESTINATION`.
+- Consumes: `ledger.settings_store.Definition`, `ledger.escrow.enabled()`, `otp.step_up.WITHDRAWAL` / `PAYOUT_DESTINATION` / `CONTACT_CHANGE`, `otp.step_up.require(request, action, *, force=False)`, `approvals.registry.ApprovalKind(consequences=...)`.
 - Produces:
-  - money settings `withdrawal_per_tx_limit_pesewas` (default 500000, 100–10¹⁰), `withdrawal_daily_limit_pesewas` (default 1000000, 100–10¹⁰), `payout_cooling_hours` (default 24, 0–720)
-  - `otp.views_step_up.WALLET_ACTIONS = (step_up.WITHDRAWAL, step_up.PAYOUT_DESTINATION)`; `_codes_off(account, action)` is False for those while the ledger is on
+  - money settings `withdrawal_per_tx_limit_pesewas` (default 500000, 100–10¹⁰), `withdrawal_daily_limit_pesewas` (default 1000000, 100–10¹⁰), `payout_cooling_hours` (default 24, 1–720)
+  - `ledger.approval_kinds.WALLET_SETTING_KEYS`, `setting_consequences(request) -> list[str]` (the `MONEY_SETTING` consequences)
+  - `otp.views_step_up.WALLET_ACTIONS = (step_up.WITHDRAWAL, step_up.PAYOUT_DESTINATION, step_up.CONTACT_CHANGE)`; `_codes_off(account, action)` is False for those while the ledger is on
+  - `POST /api/accounts/customers/me/secondary-email/` and `secondary-phone/` call `step_up.require(request, step_up.CONTACT_CHANGE, force=escrow.enabled())`
   - `wallets.names.words(name) -> set[str]`, `matches(account_name, verified_name) -> bool`, `verified_names(holder) -> list[str]`, `matching_name(account_name, holder) -> str | None`
 
 - [ ] **Step 1: Write the failing test** — `backend/wallets/tests/test_guards.py`
 
 ```python
 """Plan 3b groundwork: the withdrawal limits and the cooling period as governed money settings, step-up codes for wallet
-actions whenever the ledger is on (spec §8, §11), and the name check. Review Focus 8 (switches off)."""
+actions and for adding a recovery contact whenever the ledger is on (spec §8, §11), and the name check. Review Focus 5
+(the code channel) and 8 (switches off)."""
+from types import SimpleNamespace
+
 from django.core.cache import cache
 from django.test import SimpleTestCase, TestCase, override_settings
 from rest_framework.test import APIClient
@@ -121,10 +128,13 @@ from rest_framework.test import APIClient
 from accounts.authentication import issue_token
 from accounts.models import BusinessOwner, BusinessOwnerProfile, Customer
 from accounts.testing import make_staff, staff_token
-from ledger import settings_store
+from ledger import approval_kinds, settings_store
 from otp import senders
 from otp.tests.helpers import last_sms_code
 from wallets import names
+
+SECONDARY_EMAIL = "/api/accounts/customers/me/secondary-email/"
+SECONDARY_PHONE = "/api/accounts/customers/me/secondary-phone/"
 
 
 class LimitSettingsTests(TestCase):
@@ -134,8 +144,11 @@ class LimitSettingsTests(TestCase):
         self.assertEqual(settings_store.current("payout_cooling_hours"), 24)
 
     def test_their_bounds(self):
-        self.assertEqual(settings_store.clean("payout_cooling_hours", 0), 0)
-        for key, raw in (("payout_cooling_hours", 721), ("withdrawal_per_tx_limit_pesewas", 99), ("withdrawal_daily_limit_pesewas", None)):
+        self.assertEqual(settings_store.clean("payout_cooling_hours", 1), 1)
+        for key, raw in (
+            ("payout_cooling_hours", 0), ("payout_cooling_hours", 721), ("withdrawal_per_tx_limit_pesewas", 99),
+            ("withdrawal_daily_limit_pesewas", None),
+        ):
             with self.assertRaises(settings_store.SettingError, msg=f"{key}={raw!r}"):
                 settings_store.clean(key, raw)
 
@@ -145,6 +158,15 @@ class LimitSettingsTests(TestCase):
         response = client.post("/api/ledger/settings/", {"key": "payout_cooling_hours", "value": 48}, format="json")
         self.assertEqual(response.status_code, 201, response.content)
         self.assertEqual(settings_store.current("payout_cooling_hours"), 24)                    # waits for a Super Admin
+
+    def test_the_approval_says_what_a_withdrawal_setting_applies_to(self):
+        said = approval_kinds.setting_consequences(SimpleNamespace(payload={"key": "payout_cooling_hours"}))
+        self.assertIn("withdrawals", said[0])
+        self.assertNotIn("orders", said[0])
+        self.assertEqual(
+            approval_kinds.setting_consequences(SimpleNamespace(payload={"key": "rider_commission_bp"})),
+            ["Applies only to orders paid after it starts."],
+        )
 
 
 class WalletStepUpTests(TestCase):
@@ -160,18 +182,32 @@ class WalletStepUpTests(TestCase):
 
     @override_settings(LEDGER_ENABLED=True)
     def test_with_the_ledger_on_wallet_actions_get_a_code_whatever_the_otp_switches_say(self):
-        for action in ("withdrawal", "payout_destination"):
+        for action in ("withdrawal", "payout_destination", "contact_change"):
             with self.subTest(action=action):
                 self.assertEqual(self.send(action).status_code, 200)
                 verified = self.client.post("/api/otp/step-up/verify/", {"action": action, "code": last_sms_code()}, format="json")
                 self.assertEqual(verified.status_code, 200, verified.content)
                 self.assertEqual(verified.json()["action"], action)
-        self.assertEqual(self.send("contact_change").json()["code"], "otp_off")                # only the wallet actions
+        self.assertEqual(self.send("authenticator_change").json()["code"], "otp_off")          # not the other actions
+
+    @override_settings(LEDGER_ENABLED=True)
+    def test_review_focus_a_recovery_email_needs_a_code_while_the_ledger_is_on(self):
+        # A verified recovery email is a code channel for a customer with no email (otp.identity.contacts): a stolen
+        # session must not be able to add its own and then confirm withdrawals with it.
+        for url, body in ((SECONDARY_EMAIL, {"secondary_email": "x@example.com"}), (SECONDARY_PHONE, {"secondary_phone": "0241234599"})):
+            with self.subTest(url=url):
+                response = self.client.post(url, body, format="json")
+                self.assertEqual((response.status_code, response.json()["code"]), (403, "step_up_required"))
+        self.customer.refresh_from_db()
+        self.assertEqual((self.customer.secondary_email, self.customer.secondary_phone), (None, None))
 
     def test_review_focus_with_the_ledger_off_nothing_changes(self):
-        response = self.send("withdrawal")
-        self.assertEqual((response.status_code, response.json()["code"]), (409, "otp_off"))
+        for action in ("withdrawal", "contact_change"):
+            response = self.send(action)
+            self.assertEqual((response.status_code, response.json()["code"]), (409, "otp_off"), action)
         self.assertEqual(senders.sms_outbox, [])
+        added = self.client.post(SECONDARY_EMAIL, {"secondary_email": "x@example.com"}, format="json")
+        self.assertEqual(added.status_code, 200, added.content)                                  # no code asked, as before
 
 
 class NameMatchTests(SimpleTestCase):
@@ -224,10 +260,11 @@ with
 
 ```python
     "rider_commission_bp": Definition("Third-party rider commission (basis points; 1000 = 10%)", 1000, False, 0, 10000),
-    # Withdrawals and payout destinations (wallets plan 3b; spec §3.3, §8).
-    "withdrawal_per_tx_limit_pesewas": Definition("Most one withdrawal may be (pesewas)", 500_000, False, 100, 10**10),
-    "withdrawal_daily_limit_pesewas": Definition("Most one person may withdraw in a day (pesewas)", 1_000_000, False, 100, 10**10),
-    "payout_cooling_hours": Definition("Hours a new payout destination waits before it can receive money", 24, False, 0, 720),
+    # Withdrawals and payout destinations (wallets plan 3b; spec §3.3, §8). The cooling period never goes below an hour,
+    # so one approval cannot switch that control off.
+    "withdrawal_per_tx_limit_pesewas": Definition("Largest single withdrawal (pesewas)", 500_000, False, 100, 10**10),
+    "withdrawal_daily_limit_pesewas": Definition("Most a person may withdraw in one day, per account (pesewas)", 1_000_000, False, 100, 10**10),
+    "payout_cooling_hours": Definition("Hours a new payout destination waits before it can receive money", 24, False, 1, 720),
 }
 ```
 
@@ -242,8 +279,9 @@ with
 
 ```python
 * Only while a code could be owed: OTP_STEP_UP_ENFORCED or OTP_SIGNIN_ENFORCED is on, or - for
-  `authenticator_change` alone - the person has an authenticator app on, or - for `withdrawal` and
-  `payout_destination` - LEDGER_ENABLED is on (the wallet endpoints always ask: spec §8 and §11). The authenticator settings ask for a
+  `authenticator_change` alone - the person has an authenticator app on, or - for `withdrawal`,
+  `payout_destination` and `contact_change` - LEDGER_ENABLED is on (the wallet endpoints and adding a customer's
+  recovery email or phone always ask then: spec §8 and §11). The authenticator settings ask for a
 ```
 
 (b) replace
@@ -279,9 +317,10 @@ def _codes_off(account, action):
 with
 
 ```python
-# Wallet money actions (wallets plan 3b): while the ledger is on the wallet endpoints always ask for a code
-# (step_up.require(..., force=True)), so a code can be sent for them whatever the OTP switches say.
-WALLET_ACTIONS = (step_up.WITHDRAWAL, step_up.PAYOUT_DESTINATION)
+# Wallet money actions (wallets plan 3b), and the one change that adds a code channel (a customer's recovery email,
+# otp.identity.contacts): while the ledger is on these always ask for a code (force=True), so a code can be sent for
+# them whatever the OTP switches say.
+WALLET_ACTIONS = (step_up.WITHDRAWAL, step_up.PAYOUT_DESTINATION, step_up.CONTACT_CHANGE)
 
 
 def _codes_off(account, action):
@@ -293,14 +332,104 @@ def _codes_off(account, action):
     return not (action == step_up.AUTHENTICATOR_CHANGE and authenticator.is_enabled(account))
 ```
 
-- [ ] **Step 5: The name check** — `backend/wallets/names.py`
+- [ ] **Step 5: A recovery contact needs a code while the ledger is on** — in `backend/accounts/views.py`, (a) replace
+
+```python
+from otp import flags as otp_flags
+from otp import signin as otp_signin
+from otp import step_up
+```
+
+with
+
+```python
+from ledger import escrow
+from otp import flags as otp_flags
+from otp import signin as otp_signin
+from otp import step_up
+```
+
+(b) in `CustomerSecondaryEmailRequestView.post` replace
+
+```python
+            # A verified recovery email becomes a way to receive sign-in codes (otp.identity.contacts): a step-up
+            # code first (spec §9), spent only if the change saves.
+            step_up.require(request, step_up.CONTACT_CHANGE)
+```
+
+with
+
+```python
+            # A verified recovery email becomes a way to receive sign-in codes (otp.identity.contacts): a step-up
+            # code first (spec §9), spent only if the change saves. While the ledger is on it is always asked (wallets
+            # 3b): otherwise a stolen session could add its own email as a code channel and confirm withdrawals with it.
+            step_up.require(request, step_up.CONTACT_CHANGE, force=escrow.enabled())
+```
+
+and (c) in `CustomerSecondaryPhoneRequestView.post` replace
+
+```python
+        with transaction.atomic():
+            step_up.require(request, step_up.CONTACT_CHANGE)
+            serializer.is_valid(raise_exception=True)
+```
+
+with
+
+```python
+        with transaction.atomic():
+            # Always asked while the ledger is on, like the recovery email above (wallets 3b).
+            step_up.require(request, step_up.CONTACT_CHANGE, force=escrow.enabled())
+            serializer.is_valid(raise_exception=True)
+```
+
+(`PayoutDetailUpdateView` keeps its unforced step-up: registration's payment step uses the same PATCH and cannot answer
+a step-up yet. Spec §13 (xxxii), added in Step 9, gates the ledger on it.)
+
+- [ ] **Step 6: The approval says what a withdrawal setting applies to** — in `backend/ledger/approval_kinds.py` replace
+
+```python
+MONEY_SETTING = ApprovalKind(
+    key=SETTING_KEY, label="Change a money setting", pool_permission="", current_state=setting_current_state,
+    apply=setting_apply, response_hours=48, chain_note="Super Admin only", resolve_approver=super_admin_only,
+    render_diff=setting_diff, validate=setting_validate, requires_sudo=True,
+    consequences=lambda request: ["Applies only to orders paid after it starts."],
+)
+```
+
+with
+
+```python
+WALLET_SETTING_KEYS = ("withdrawal_per_tx_limit_pesewas", "withdrawal_daily_limit_pesewas", "payout_cooling_hours")
+
+
+def setting_consequences(request):
+    """What the approver is told the change touches: withdrawal settings never touch an order (wallets plan 3b)."""
+    if request.payload.get("key") in WALLET_SETTING_KEYS:
+        return ["Applies to withdrawals asked for, and payout destinations added, after it starts. Destinations already "
+                "added keep the waiting time they were given."]
+    return ["Applies only to orders paid after it starts."]
+
+
+MONEY_SETTING = ApprovalKind(
+    key=SETTING_KEY, label="Change a money setting", pool_permission="", current_state=setting_current_state,
+    apply=setting_apply, response_hours=48, chain_note="Super Admin only", resolve_approver=super_admin_only,
+    render_diff=setting_diff, validate=setting_validate, requires_sudo=True,
+    consequences=setting_consequences,
+)
+```
+
+- [ ] **Step 7: The name check** — `backend/wallets/names.py`
 
 ```python
 """Is the name on a payout account the holder's own? (spec §8). A destination is accepted only when the name the
 network or bank returns matches a verified name: a customer's profile name; a KYC-verified vendor's owner name or
 registered business name. Names are compared as sets of words, accents and punctuation dropped and case ignored:
 equal, or every word of the shorter name (at least two words) found in the longer, so a middle name or "LTD" may be
-missing. One word alone never matches a longer name."""
+missing. One word alone never matches a longer name.
+
+A customer's profile name is self-declared (there is no customer KYC) and can be changed without a code, so for
+customers this stops typing mistakes, not a determined holder (a recorded deviation: spec §13 (xxix))."""
 import re
 import unicodedata
 
@@ -342,49 +471,80 @@ def matching_name(account_name, holder):
     return next((name for name in verified_names(holder) if matches(account_name, name)), None)
 ```
 
-- [ ] **Step 6: Run the tests**
+- [ ] **Step 8: Run the tests**
 
-Run: `docker compose -p wal1 run --rm web python manage.py test wallets.tests.test_guards otp.tests.test_step_up ledger.tests.test_settings_store --noinput`
-Expected: PASS — 10 new tests; Plan 2's step-up tests unchanged (they run with the ledger off).
+Run: `docker compose -p wal1 run --rm web python manage.py test wallets.tests.test_guards otp.tests.test_step_up ledger.tests.test_settings_store ledger.tests.test_governance accounts.tests.test_customer_secondary_contact_verification --noinput`
+Expected: PASS — 12 new tests; Plan 2's step-up tests, the money-setting approval tests and the secondary-contact tests unchanged (they run with the ledger off).
 
-- [ ] **Step 7: Record the decisions in the spec.** Append to the end of `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` (after Plan 3a's "Before LEDGER_ENABLED is turned on — Stage 3 additions" list):
+- [ ] **Step 9: Record the decisions in the spec.** Append to the end of `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` (after Plan 3a's "Before LEDGER_ENABLED is turned on — Stage 3 additions" list, whose last item is (xxi); the list runs to (xxiii), so the 3b items start at (xxiv)):
 
 ```markdown
 
 ### Stage 3b (payout destinations, withdrawals, reconciliation) reconciliation (2026-10-16)
 
-Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 there); W1–W7 are above.
+Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 there); W1–W8 are above.
 
-- **W8 Payout destinations.** The provider looks up the name on the account; it must match the holder's verified name
-  (customer profile name; KYC-verified vendor's owner or business name) as a set of words, and the holder confirms with
-  a step-up code. Usable after `payout_cooling_hours` (governed, default 24); never edited (a change is remove + add);
-  numbers stored unmasked and sent only through `mask_but_last`. `BusinessOwnerProfile.payout_*` are untouched; a vendor
-  may copy them into a new destination.
-- **W9 Withdrawals.** Held in withdrawal in transit in the request's transaction, sent once (claimed under a row lock),
-  ended by `wallets.payouts.apply_result` (idempotent, amount-checked, monotonic; a "paid" report after the money was
-  returned opens a fraud case and is never posted). The holder's charge comes out of the amount sent. Limits per
-  withdrawal and per day are governed settings; a negative vendor Available blocks withdrawal.
-- **W10 Step-up while the OTP switches are off.** With the ledger on, destinations and withdrawals always ask for a code
-  (`force=True`) and the step-up endpoints send codes for those two actions.
-- **W11 Reconciliation.** Nightly, by provider reference, read-only; skips what the ledger was not asked to record;
+- **W9 Payout destinations.** The provider looks up the name on the account (before the transaction that spends the
+  code: no provider call runs inside a transaction); it must match the holder's verified name (customer profile name;
+  KYC-verified vendor's owner or business name) as a set of words, and the holder confirms with a step-up code. A
+  customer's profile name is self-declared and can be changed without a code, so for customers this falls short of
+  §8's "verified name" (a deviation; see (xxix)). Usable after `payout_cooling_hours` (governed, default 24, at least 1);
+  never edited (a change is remove + add); every add and remove sends the holder an in-app notice; numbers stored
+  unmasked and sent only through `mask_but_last`. `BusinessOwnerProfile.payout_*` are untouched; a vendor may copy
+  them into a new destination.
+- **W10 Withdrawals.** Held in withdrawal in transit in the request's transaction, sent once (claimed under a row lock;
+  a held one is returned instead of sent once its holder is suspended or its destination removed), ended by
+  `wallets.payouts.apply_result` (idempotent; monotonic; amount-checked against the amount the provider itself reports;
+  a report for a withdrawal never sent, a "paid" report after the money was returned and a "failed" report after it
+  was paid each open a fraud case and post nothing). The provider's own message is never stored or shown. The holder's
+  charge comes out of the amount sent. Limits per withdrawal and per day (per holder account) are governed settings; a
+  negative vendor Available blocks withdrawal. Staff may fail a stuck one only after asking the provider, never with an
+  open amount case, and the holder sees AshantiHub's fixed reason, not the staff member's note.
+- **W11 Step-up while the OTP switches are off.** With the ledger on, destinations and withdrawals always ask for a code
+  (`force=True`), and adding a customer recovery email or phone needs a step-up code too (`force=escrow.enabled()`),
+  so a stolen session cannot add its own code channel. The step-up endpoints send codes for those three actions.
+- **W12 Reconciliation.** Nightly, by provider reference, read-only; skips what the ledger was not asked to record;
+  checks in transit against the open withdrawals even without a statement; asks the provider outside any transaction;
   a difference opens one fraud case per day.
 
 ### Before LEDGER_ENABLED is turned on — Stage 3b additions
 
-- (viii) **Wallet step-up is forced while the ledger is on,** so every must-fix in "Before the OTP switches are turned
-  on" (notice send limits, a real SMS provider, the secondary-email confirmation) must be done before the ledger is on.
-- (ix) **Hubtel payouts, status and name lookups are not connected:** with `PAYMENTS_PROVIDER=hubtel`, adding a
-  destination answers `name_check_unavailable`, withdrawals `payouts_unavailable`, and the reconciliation `unavailable`
-  until Plan 7.
-- (x) **Provider float.** When AshantiHub funds coupons, payouts can exceed collections; a confirmed payout still posts
+- (xxiv) **Wallet and recovery-contact step-up is forced while the ledger is on,** so every must-fix in "Before the OTP
+  switches are turned on" (notice send limits, a real SMS provider, the secondary-email confirmation) must be done
+  before the ledger is on.
+- (xxv) **Hubtel payouts, status and name lookups are not connected:** with `PAYMENTS_PROVIDER=hubtel`, adding a
+  destination answers `name_check_unavailable`, withdrawals `payouts_unavailable`, and the reconciliation has no
+  statement (`unavailable`, or `mismatched` only when in transit differs) until Plan 7.
+- (xxvi) **Provider float.** When AshantiHub funds coupons, payouts can exceed collections; a confirmed payout still posts
   and provider clearing may read below zero. Fund the float before go-live and watch the nightly run.
+- (xxvii) **Payout reports must carry an amount before Plan 7:** a Hubtel SUCCEEDED report (webhook or status) with no
+  amount must not be applied (fail closed, like the top-up rule in (xx)). Today `wallets.payouts.apply_result` applies a
+  report that names no amount, because the simulated status answers none.
+- (xxviii) **Destination changes are told in-app only:** before the ledger is on, a payout destination added or removed
+  should also be texted or emailed to the contacts on file.
+- (xxix) **Customer names are not verified:** before the ledger is on, either require a step-up code for a `full_name`
+  change while the ledger is on and restart the cooling period of every live destination on a rename, or decide
+  customer KYC (§8).
+- (xxx) **Item (vii)'s safety net needs a statement:** the reconciliation reports a paid but uncredited top-up only where
+  the provider gives a statement; with `PAYMENTS_PROVIDER=hubtel` no run has one until Plan 7 (only the in-transit
+  check runs), so (vii)'s alerting is the only guard. Item (xx)'s withdrawal check is done
+  (`wallets.withdrawals.request` refuses a negative Available and checks the balance under `posting.lock`).
+- (xxxi) **Stale "not built" copy once the ledger is on:** `core/later_phase.py` ~47 ("Sellers are not paid through
+  AshantiHub yet"), `insights/accounting.py` ~182 ("Needs reconciliation, which does not exist yet") and ~179 ("none is
+  kept"; `wallets.PayoutDestination` is now that record). Branch them on `LEDGER_ENABLED` (same class as (xiii)).
+- (xxxii) **The registered payout details keep an unforced step-up:** `PATCH business-owners/me/payout/`
+  (`accounts.views.PayoutDetailUpdateView`) calls `step_up.require` without `force`, so with the ledger on and the OTP
+  switches off a session can change them with no code. A `from_profile` copy into a payout destination is still
+  name-checked, code-confirmed and cooled, but anything else that pays from those details (a manual staff payout) is
+  exposed. 3b leaves it because registration's payment step uses the same PATCH and cannot answer a step-up yet; force
+  it (`force=escrow.enabled()`) once registration can, before the ledger is on.
 ```
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
-git add backend/ledger/settings_store.py backend/otp/views_step_up.py backend/wallets/names.py backend/wallets/tests/test_guards.py docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md
-git commit -m "feat(wallets): governed withdrawal limits and cooling, step-up codes for wallet actions, name check"
+git add backend/ledger/settings_store.py backend/ledger/approval_kinds.py backend/otp/views_step_up.py backend/accounts/views.py backend/wallets/names.py backend/wallets/tests/test_guards.py docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md
+git commit -m "feat(wallets): governed withdrawal limits and cooling, step-up codes for wallet actions and recovery contacts, name check"
 ```
 
 ---
@@ -393,14 +553,14 @@ git commit -m "feat(wallets): governed withdrawal limits and cooling, step-up co
 
 **Files:**
 - Create: `backend/wallets/models.py`, `backend/wallets/migrations/0001_payout_destinations.py` (generated), `backend/wallets/destinations.py`, `backend/wallets/views_payouts.py`, `backend/wallets/tests/helpers.py`, `backend/wallets/tests/test_destinations.py`
-- Modify: `backend/wallets/urls.py`, `backend/ashantihub/sentry.py` (`EXTRA_DENYLIST`)
+- Modify: `backend/wallets/urls.py`, `backend/ashantihub/sentry.py` (`EXTRA_DENYLIST`), `backend/ashantihub/settings.py` (`DEFAULT_THROTTLE_RATES`)
 
 **Interfaces:**
-- Consumes: `wallets.names` (Task 1), `payments.providers.get_provider().lookup_account_name`, `NotConnected` (Plan 3a), `settings_store.current("payout_cooling_hours")` (Task 1), `otp.step_up.require(request, step_up.PAYOUT_DESTINATION, force=True)`, `otp.identity.ref(account) -> (account_type, account_id)`, `accounts.serializers.mask_but_last`, `accounts.phones.normalize_gh_phone`, `wallets.views.ledger_off` (Plan 3a).
+- Consumes: `wallets.names` (Task 1), `payments.providers.get_provider().lookup_account_name`, `NotConnected` (Plan 3a), `settings_store.current("payout_cooling_hours")` (Task 1), `otp.step_up.require(request, step_up.PAYOUT_DESTINATION, force=True)`, `otp.step_up.HEADER`, `otp.step_up.StepUpRequired`, `otp.identity.ref(account) -> (account_type, account_id)`, `accounts.serializers.mask_but_last`, `accounts.phones.normalize_gh_phone`, `notifications.services.notify_customer` / `notify_business_owner`, `wallets.views.ledger_off` (Plan 3a).
 - Produces:
   - model `wallets.PayoutDestination(holder_type, holder_id, rail, institution, account_number, account_name, matched_name, name_source, usable_from, created_at, removed_at)`; `PayoutDestination.MOMO = "momo"`, `BANK = "bank"`; `str()` never contains the number
-  - `wallets.destinations`: `DestinationError(message, code, status_code=400, field=None)` with `.body()`, `MAX_LIVE = 5`, `NETWORKS`, `live_for(holder) -> QuerySet`, `clean(data, holder) -> (rail, institution, number)`, `add(holder, data, now=None) -> PayoutDestination`, `remove(holder, destination_id, now=None)`, `row(destination, now=None) -> dict` (with `account_number_masked`)
-  - endpoints `GET/POST /api/wallet/destinations/`, `POST /api/wallet/destinations/<id>/remove/`
+  - `wallets.destinations`: `DestinationError(message, code, status_code=400, field=None)` with `.body()`, `MAX_LIVE = 5`, `NETWORKS`, `live_for(holder) -> QuerySet`, `clean(data, holder) -> (rail, institution, account_number)`, `check(holder, data) -> dict` (no transaction; the provider's name lookup), `save(holder, checked, now=None) -> PayoutDestination` (inside the transaction that spends the code), `remove(holder, destination_id, now=None) -> PayoutDestination`, `row(destination, now=None) -> dict` (with `account_number_masked`)
+  - endpoints `GET/POST /api/wallet/destinations/`, `POST /api/wallet/destinations/<id>/remove/`; throttle scope `wallet_destination` (20 an hour, adds only); notification kind `payout_destination` on every add and remove
   - test helpers `wallets.tests.helpers.Holder(account, kind)` (`.client`, `.step_up(action)`, `.post(url, body=None, *, action=None, token=None)`, `.get(url, params=None)`), `fund(kind, owner, pesewas, key)`, `destination(holder, *, number=MOMO_NUMBER, usable=True, name="Ama Owusu", rail="momo", institution="MTN")`, `MOMO_NUMBER = "+233241234567"`
 
 - [ ] **Step 1: Test helpers** — `backend/wallets/tests/helpers.py`
@@ -482,6 +642,7 @@ from django.utils import timezone
 from accounts.models import BusinessOwner, BusinessOwnerProfile, Customer
 from ashantihub.sentry import EXTRA_DENYLIST
 from ledger.models import MoneySetting
+from notifications.models import Notification
 from otp import step_up
 from wallets.models import PayoutDestination
 
@@ -617,9 +778,21 @@ class DestinationTests(DestinationBase):
         self.assertEqual(listed.json()["cooling_hours"], 24)
         self.assertNotIn("241234567", str(PayoutDestination.objects.get()))
 
+    def test_the_holder_is_told_when_a_destination_is_added_or_removed(self):
+        added = self.add()
+        notice = Notification.objects.filter(customer=self.customer).latest("id")
+        self.assertEqual((notice.kind, notice.title), ("payout_destination", "A payout destination was added"))
+        self.assertIn("If this wasn't you", notice.body)
+        self.assertNotIn("241234567", notice.body)
+        removed = self.ama.post(f"{URL}{added.json()['id']}/remove/", action=step_up.PAYOUT_DESTINATION)
+        self.assertEqual(removed.status_code, 204)
+        self.assertEqual(Notification.objects.filter(customer=self.customer).latest("id").title, "A payout destination was removed")
+
     def test_the_cooling_period_is_the_governed_setting(self):
-        MoneySetting.objects.create(key="payout_cooling_hours", value=0, effective_from=timezone.now() - timedelta(days=1))
-        self.assertTrue(self.add().json()["usable"])
+        MoneySetting.objects.create(key="payout_cooling_hours", value=1, effective_from=timezone.now() - timedelta(days=1))
+        body = self.add().json()
+        self.assertFalse(body["usable"])
+        self.assertAlmostEqual(PayoutDestination.objects.get().usable_from, timezone.now() + timedelta(hours=1), delta=timedelta(minutes=1))
 
     @override_settings(PAYMENTS_PROVIDER="hubtel")
     def test_with_hubtel_names_cannot_be_checked_yet(self):
@@ -640,7 +813,7 @@ class SentryTests(SimpleTestCase):
 - [ ] **Step 3: Run it to see it fail**
 
 Run: `docker compose -p wal1 run --rm web python manage.py test wallets.tests.test_destinations --noinput`
-Expected: ERROR — `ImportError: cannot import name 'PayoutDestination' from 'wallets.models'` (the module does not exist).
+Expected: ERROR — `ModuleNotFoundError: No module named 'wallets.models'`.
 
 - [ ] **Step 4: The model** — `backend/wallets/models.py`
 
@@ -692,12 +865,15 @@ Expected: `backend/wallets/migrations/__init__.py` and `0001_payout_destinations
 ```python
 """Payout destinations (spec §8): a MoMo number or bank account a customer or business owner may withdraw to.
 
-Adding one: the holder proves it is them with a step-up code (the view spends it in the same transaction, so a refused
-add keeps the code); the provider looks up the name on the account and that name must match a verified name
-(wallets.names); it can receive money from `usable_from` = now + `payout_cooling_hours` (governed, default 24). A
-destination is never edited: a change is a removal and a new one, with a new cooling period. The business's registered
-payout details (BusinessOwnerProfile.payout_*) are left as they are; `from_profile` copies them into a new destination.
-Numbers are stored unmasked and only ever leave the server through mask_but_last."""
+Adding one is two calls. `check` does everything that needs no lock (the holder may add one, the details are sound, the
+provider's name on the account matches a verified name in wallets.names) and runs outside any transaction, because for
+a real provider the name lookup is a network call. `save` then writes it inside the transaction in which the view spends
+the holder's step-up code (so a refused add keeps the code), checking duplicates and the five-destination limit again
+under a lock on the holder's live destinations. A destination can receive money from `usable_from` = now +
+`payout_cooling_hours` (governed, default 24). It is never edited: a change is a removal and a new one, with a new
+cooling period. The business's registered payout details (BusinessOwnerProfile.payout_*) are left as they are;
+`from_profile` copies them into a new destination. Numbers are stored unmasked and only ever leave the server through
+mask_but_last; every local variable holding one is named `account_number`, which Sentry filters by name."""
 import re
 from datetime import timedelta
 
@@ -717,6 +893,8 @@ from .models import PayoutDestination
 MAX_LIVE = 5
 NETWORKS = {"MTN": "MTN", "TELECEL": "Telecel", "AIRTELTIGO": "AirtelTigo"}
 _BANK_NUMBER = re.compile(r"[0-9]{6,20}")
+DUPLICATE = "That account is already one of your payout destinations."
+TOO_MANY = f"You can keep at most {MAX_LIVE} payout destinations. Remove one first."
 
 
 class DestinationError(Exception):
@@ -754,27 +932,27 @@ def clean(data, holder):
     if rail not in (PayoutDestination.MOMO, PayoutDestination.BANK):
         raise DestinationError("Choose mobile money or a bank account.", "invalid", field="rail")
     institution = str(data.get("institution") or "").strip()
-    number = str(data.get("account_number") or "").strip()
+    account_number = str(data.get("account_number") or "").strip()
     if rail == PayoutDestination.MOMO:
         network = NETWORKS.get(re.sub(r"[^A-Z]", "", institution.upper()))
         if network is None:
             raise DestinationError("Choose MTN, Telecel or AirtelTigo.", "invalid", field="institution")
         try:
-            return rail, network, normalize_gh_phone(number)
+            return rail, network, normalize_gh_phone(account_number)
         except ValueError as exc:
             raise DestinationError(str(exc), "invalid", field="account_number") from None
     if not institution or len(institution) > 60:
         raise DestinationError("Name the bank.", "invalid", field="institution")
-    digits = re.sub(r"[\s-]", "", number)
-    if not _BANK_NUMBER.fullmatch(digits):
+    account_number = re.sub(r"[\s-]", "", account_number)
+    if not _BANK_NUMBER.fullmatch(account_number):
         raise DestinationError("A bank account number is 6 to 20 digits.", "invalid", field="account_number")
-    return rail, institution, digits
+    return rail, institution, account_number
 
 
-def add(holder, data, now=None):
-    """Check and save a new destination for `holder`. The caller has already spent the step-up code inside the same
-    transaction. Raises DestinationError, saving nothing, when anything is wrong."""
-    now = now or timezone.now()
+def check(holder, data):
+    """Everything about a new destination that needs no lock, including the provider's name lookup (a network call for
+    a real provider, so never inside a transaction). Returns what save() writes. Raises DestinationError when anything
+    is wrong."""
     if getattr(holder, "is_suspended", False):
         raise DestinationError("This account is suspended.", "suspended", 403)
     verified = names.verified_names(holder)
@@ -782,32 +960,47 @@ def add(holder, data, now=None):
         if isinstance(holder, BusinessOwner):
             raise DestinationError("Your business must pass KYC before money can be paid out to it.", "kyc_required", 409)
         raise DestinationError("Add your full name to your profile first.", "name_required", 409)
-    rail, institution, number = clean(data if isinstance(data, dict) else {}, holder)
-    holder_type, holder_id = ref(holder)
+    rail, institution, account_number = clean(data if isinstance(data, dict) else {}, holder)
     live = live_for(holder)
-    if live.filter(rail=rail, account_number=number).exists():
-        raise DestinationError("That account is already one of your payout destinations.", "duplicate", 409)
+    if live.filter(rail=rail, account_number=account_number).exists():
+        raise DestinationError(DUPLICATE, "duplicate", 409)
     if live.count() >= MAX_LIVE:
-        raise DestinationError(f"You can keep at most {MAX_LIVE} payout destinations. Remove one first.", "too_many", 409)
+        raise DestinationError(TOO_MANY, "too_many", 409)
     provider = providers.get_provider()
     try:
-        account_name = provider.lookup_account_name(rail, institution, number, holder_name=verified[0])
+        account_name = provider.lookup_account_name(rail, institution, account_number, holder_name=verified[0])
     except providers.NotConnected:
         raise DestinationError("Account names can't be checked yet, so payout destinations can't be added.", "name_check_unavailable", 409) from None
     matched = names.matching_name(account_name, holder) if account_name else None
     if matched is None:
         # Never echo the name the network answered: it may be someone else's.
         raise DestinationError("The name on that account doesn't match the name we have verified for you.", "name_mismatch", 400)
+    return {
+        "rail": rail, "institution": institution, "account_number": account_number,
+        "account_name": account_name[:150], "matched_name": matched[:150], "name_source": provider.name,
+    }
+
+
+def save(holder, checked, now=None):
+    """Write a destination `check` accepted. Call inside the transaction that spends the step-up code. The holder's live
+    destinations are locked first, so two adds at once cannot both pass the duplicate and five-destination checks (the
+    count after the lock sees a destination the other add committed). Raises DestinationError, saving nothing."""
+    now = now or timezone.now()
+    holder_type, holder_id = ref(holder)
+    live = live_for(holder)
+    list(live.select_for_update())
+    if live.filter(rail=checked["rail"], account_number=checked["account_number"]).exists():
+        raise DestinationError(DUPLICATE, "duplicate", 409)
+    if live.count() >= MAX_LIVE:
+        raise DestinationError(TOO_MANY, "too_many", 409)
     hours = settings_store.current("payout_cooling_hours", now)
     try:
         with transaction.atomic():
             return PayoutDestination.objects.create(
-                holder_type=holder_type, holder_id=holder_id, rail=rail, institution=institution, account_number=number,
-                account_name=account_name[:150], matched_name=matched[:150], name_source=provider.name,
-                usable_from=now + timedelta(hours=hours),
+                holder_type=holder_type, holder_id=holder_id, usable_from=now + timedelta(hours=hours), **checked,
             )
     except IntegrityError:
-        raise DestinationError("That account is already one of your payout destinations.", "duplicate", 409) from None
+        raise DestinationError(DUPLICATE, "duplicate", 409) from None
 
 
 def remove(holder, destination_id, now=None):
@@ -839,27 +1032,50 @@ def row(destination, now=None):
 """Payout destinations and withdrawals for customers and business owners (spec §8, §2.2 step 5), at /api/wallet/.
 Adding or removing a destination and asking for a withdrawal need a step-up code (X-Step-Up-Token) whenever the ledger
 is on, whatever OTP_STEP_UP_ENFORCED says (force=True; spec §8 and §11: OTP must precede any wallet going live). The
-code is spent inside the transaction that saves, so a refused request keeps it for the retry. Every endpoint answers
-409 ledger_off while the ledger is off."""
+code is spent inside the transaction that saves, so a refused request keeps it for the retry. No provider call runs
+inside a transaction: the account-name lookup comes before it, the payout after it. The holder gets an in-app notice
+of every destination added or removed (no number in it). Every endpoint answers 409 ledger_off while the ledger is off."""
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.models import Customer
 from ledger import escrow, settings_store
+from notifications.services import notify_business_owner, notify_customer
 from otp import step_up
 from otp.views_authenticator import IsCustomerOrOwner
 
 from . import destinations
 from .views import ledger_off
 
+IF_NOT_YOU = "If this wasn't you, contact AshantiHub Support now."
+
+
+def _tell_holder(holder, title, body):
+    """An in-app notice about where the holder's money can go. Never a number: rail and institution only."""
+    if isinstance(holder, Customer):
+        notify_customer(holder, "payout_destination", title, body=body, link="/my-account", icon="🏦")
+    else:
+        notify_business_owner(holder, "payout_destination", title, body=body, link="/business", icon="🏦")
+
+
+def _described(destination):
+    return f"A {destination.get_rail_display().lower()} ({destination.institution}) payout destination"
+
 
 class DestinationsView(APIView):
     """GET destinations/ — the holder's live payout destinations (numbers masked) and the cooling period in force.
-    POST destinations/ {rail, institution, account_number} or {from_profile: true} + X-Step-Up-Token — add one."""
+    POST destinations/ {rail, institution, account_number} or {from_profile: true} + X-Step-Up-Token — add one. A
+    request without a code is refused before the provider is asked for the account's name, and adds are throttled
+    (each is a provider lookup: a cost, and an answer to "is this account in my name?")."""
 
     permission_classes = [IsCustomerOrOwner]
+    throttle_scope = "wallet_destination"
+
+    def get_throttles(self):
+        return super().get_throttles() if self.request.method == "POST" else []
 
     def get(self, request):
         if not escrow.enabled():
@@ -873,13 +1089,21 @@ class DestinationsView(APIView):
     def post(self, request):
         if not escrow.enabled():
             return ledger_off()
+        if not request.META.get(step_up.HEADER):
+            raise step_up.StepUpRequired(step_up.PAYOUT_DESTINATION)  # no name lookup for a request with no code
         data = request.data if isinstance(request.data, dict) else {}
         try:
+            checked = destinations.check(request.user, data)  # outside any transaction: a provider call
             with transaction.atomic():
                 step_up.require(request, step_up.PAYOUT_DESTINATION, force=True)
-                destination = destinations.add(request.user, data)
+                destination = destinations.save(request.user, checked)
         except destinations.DestinationError as exc:
             return Response(exc.body(), status=exc.status_code)
+        _tell_holder(
+            request.user, "A payout destination was added",
+            f"{_described(destination)} was added. It can receive money from "
+            f"{timezone.localtime(destination.usable_from):%d %b %Y %H:%M}. {IF_NOT_YOU}",
+        )
         return Response(destinations.row(destination), status=status.HTTP_201_CREATED)
 
 
@@ -894,9 +1118,10 @@ class DestinationRemoveView(APIView):
         try:
             with transaction.atomic():
                 step_up.require(request, step_up.PAYOUT_DESTINATION, force=True)
-                destinations.remove(request.user, pk)
+                destination = destinations.remove(request.user, pk)
         except destinations.DestinationError as exc:
             return Response(exc.body(), status=exc.status_code)
+        _tell_holder(request.user, "A payout destination was removed", f"{_described(destination)} was removed. {IF_NOT_YOU}")
         return Response(status=status.HTTP_204_NO_CONTENT)
 ```
 
@@ -928,6 +1153,25 @@ with
 ]
 ```
 
+and in `backend/ashantihub/settings.py` (`REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]`) replace
+
+```python
+        "banner_beacon": "240/min",
+    },
+}
+```
+
+with
+
+```python
+        "banner_beacon": "240/min",
+        # Adding a wallet payout destination (wallets.views_payouts.DestinationsView, POST only): each add asks the
+        # payment provider for the name on an account.
+        "wallet_destination": "20/hour",
+    },
+}
+```
+
 - [ ] **Step 7: Sentry** — in `backend/ashantihub/sentry.py` replace
 
 ```python
@@ -947,13 +1191,13 @@ with
 - [ ] **Step 8: Run the tests**
 
 Run: `docker compose -p wal1 run --rm web python manage.py test wallets core.tests.test_sentry_scrubber --noinput`
-Expected: PASS (15 new tests; Plan 3a's wallets tests and the scrubber tests unchanged).
+Expected: PASS (16 new tests; Plan 3a's wallets tests and the scrubber tests unchanged).
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add backend/wallets backend/ashantihub/sentry.py
-git commit -m "feat(wallets): payout destinations - name-checked, step-up confirmed, cooling period, masked"
+git add backend/wallets backend/ashantihub/sentry.py backend/ashantihub/settings.py
+git commit -m "feat(wallets): payout destinations - name-checked outside the transaction, step-up confirmed, cooling period, masked, holder told"
 ```
 
 ---
@@ -961,15 +1205,17 @@ git commit -m "feat(wallets): payout destinations - name-checked, step-up confir
 ### Task 3: The withdrawal engine — hold, send once, settle or return exactly once
 
 **Files:**
-- Modify: `backend/wallets/models.py` (`Withdrawal`), `backend/ashantihub/settings.py` (`CELERY_BEAT_SCHEDULE`)
+- Modify: `backend/wallets/models.py` (`Withdrawal`), `backend/payments/providers.py` (`PayoutResult.amount_pesewas`, the simulated payout's answer), `backend/ashantihub/settings.py` (`CELERY_BEAT_SCHEDULE`)
 - Create: `backend/wallets/migrations/0002_withdrawals.py` (generated), `backend/wallets/withdrawals.py`, `backend/wallets/payouts.py`, `backend/wallets/tasks.py`, `backend/wallets/tests/test_withdrawal_engine.py`
 
 **Interfaces:**
-- Consumes: `PayoutDestination`, `destinations.row` (Task 2), `names.matching_name` (Task 1), settings `withdrawal_per_tx_limit_pesewas` / `withdrawal_daily_limit_pesewas` (Task 1), `posting.lock`, `posting.post(..., allow_negative=...)`, `posting.balance_of` (Plan 3a), `providers.get_provider(name)`, `.payout(...)`, `.status(reference)`, `.payout_charge(...)`, `.payouts_available()`, `SUCCEEDED`/`FAILED`/`PROCESSING` (Plan 3a), `fraud.services.raise_flag`, `notifications.services.notify_customer` / `notify_business_owner`, `wallets.services.money` (Plan 3a).
+- Consumes: `PayoutDestination`, `destinations.row` (Task 2), `names.matching_name` (Task 1), settings `withdrawal_per_tx_limit_pesewas` / `withdrawal_daily_limit_pesewas` (Task 1), `posting.lock`, `posting.post(..., allow_negative=...)`, `posting.balance_of` (Plan 3a), `providers.get_provider(name)`, `.payout(...)`, `.status(reference)`, `.payout_charge(...)`, `.payouts_available()`, `PayoutResult`, `SUCCEEDED`/`FAILED`/`PROCESSING` (Plan 3a), `fraud.services.raise_flag`, `notifications.services.notify_customer` / `notify_business_owner`, `wallets.services.money` (Plan 3a).
 - Produces:
-  - model `wallets.Withdrawal(reference, holder_type, holder_id, source_kind, destination, request_id, amount_pesewas, charge_pesewas, net_pesewas, status, provider, provider_reference, failure_reason, created_at, submitted_at, settled_at)`; statuses `PENDING`, `PROCESSING`, `SUCCEEDED`, `FAILED`, `CANCELLED`; groups `OPEN`, `FINAL`, `COUNTED`
+  - `payments.providers.PayoutResult(status, provider_reference="", message="", amount_pesewas=None)` (`amount_pesewas`: what the provider says reached the destination, when it says); `SimulatedProvider.payout` answers the amount it was asked to pay
+  - model `wallets.Withdrawal(reference, holder_type, holder_id, source_kind, destination, request_id, amount_pesewas, charge_pesewas, net_pesewas, status, provider, provider_reference, failure_reason, created_at, submitted_at, settled_at)` with the database checks `net > 0`, `charge ≥ 0` and `amount = net + charge`; statuses `PENDING`, `PROCESSING`, `SUCCEEDED`, `FAILED`, `CANCELLED`; groups `OPEN`, `FINAL`, `COUNTED`
   - `wallets.withdrawals`: `WithdrawalError(message, code, status_code=409, **extra)` with `.code`, `.body()`; `hold_key(ref)`, `paid_key(ref)`, `reversed_key(ref)`; `source_kind(holder)`; `start_of_day(now)`; `clean_request_id(raw) -> str`; `mine(holder)`; `existing(holder, request_id)`; `request(holder, *, destination_id, amount_pesewas, request_id, now=None) -> Withdrawal` (call inside `transaction.atomic()`); `cancel(holder, withdrawal_id, now=None) -> Withdrawal`; `row(withdrawal) -> dict`
-  - `wallets.payouts`: `RESEND_AFTER`, `ASK_AFTER` (2 minutes), `STUCK_AFTER` (30 minutes), `STUCK_PENDING` (10 minutes); `holder_of(w)`; `claim(pk, now=None)`; `submit(pk, now=None) -> Withdrawal`; `apply_result(reference, status, *, provider_reference="", amount_pesewas=None, message="", now=None) -> Withdrawal | None`; `close(w, status, reason, now) -> Withdrawal` (row locked by the caller); `stuck(w, now=None) -> bool`; `poll(now=None) -> int`
+  - `wallets.payouts`: `RESEND_AFTER`, `ASK_AFTER` (2 minutes), `STUCK_AFTER` (30 minutes), `STUCK_PENDING` (10 minutes), `FAILED_REASON`; `holder_of(w) -> Customer | BusinessOwner | None`; `source_account(w) -> Account`; `claim(pk, now=None)`; `submit(pk, now=None) -> Withdrawal`; `apply_result(reference, status, *, provider_reference="", amount_pesewas=None, message="", now=None) -> Withdrawal | None` (`message` is never stored); `close(w, status, reason, now) -> Withdrawal` (row locked by the caller; `reason` is AshantiHub's own text); `stuck(w, now=None) -> bool`; `poll(now=None) -> int`
+  - fraud case dedupe keys `withdrawal-late-paid-<ref>`, `withdrawal-late-failed-<ref>`, `withdrawal-unsent-report-<ref>`, `withdrawal-amount-<ref>`
   - Celery task `wallets.tasks.poll_withdrawals`; beat entry `"wallets-poll-withdrawals"` (every 300 s)
 
 - [ ] **Step 1: Write the failing test** — `backend/wallets/tests/test_withdrawal_engine.py`
@@ -993,7 +1239,7 @@ from ledger.models import Account, Journal, MoneySetting
 from notifications.models import Notification
 from payments import providers
 from wallets import payouts, tasks, withdrawals
-from wallets.models import Withdrawal
+from wallets.models import PayoutDestination, Withdrawal
 
 from .helpers import destination, fund
 
@@ -1047,13 +1293,29 @@ class EngineTests(TestCase):
         self.assertEqual(posting.balance_of(Account.PROVIDER_CLEARING), 15000)                 # 4850 sent + 150 kept by the provider
         self.refused("below_charge", amount=150)
 
-    @override_settings(SIMULATED_PAYOUT_OUTCOME="fail")
-    def test_a_failed_payout_returns_the_money(self):
-        failed = payouts.submit(self.withdraw(5000).pk)
-        self.assertEqual(failed.status, Withdrawal.FAILED)
-        self.assertTrue(failed.failure_reason)
+    def test_a_failed_payout_returns_the_money_and_never_repeats_the_providers_words(self):
+        def refused(provider, **kwargs):
+            return providers.PayoutResult(providers.FAILED, message=f"Invalid account {kwargs['account_number']}")
+
+        with mock.patch.object(providers.SimulatedProvider, "payout", refused):
+            failed = payouts.submit(self.withdraw(5000).pk)
+        self.assertEqual((failed.status, failed.failure_reason), (Withdrawal.FAILED, payouts.FAILED_REASON))
         self.assertEqual((self.wallet(), self.transit()), (20000, 0))
         self.assertTrue(Journal.objects.filter(key=f"withdrawal-reversed-{failed.reference}").exists())
+        self.assertNotIn("241234567", Notification.objects.filter(customer=self.customer).latest("id").body)
+
+    def test_a_payout_answer_for_a_different_amount_is_not_applied(self):
+        def short(provider, **kwargs):
+            return providers.PayoutResult(
+                providers.SUCCEEDED, provider_reference=f"SIM-{kwargs['reference']}", amount_pesewas=kwargs["amount_pesewas"] - 100,
+            )
+
+        with mock.patch.object(providers.SimulatedProvider, "payout", short):
+            sent = payouts.submit(self.withdraw(5000).pk)
+        self.assertEqual(sent.status, Withdrawal.PROCESSING)
+        self.assertFalse(Journal.objects.filter(kind="withdrawal_paid").exists())
+        self.assertEqual(self.transit(), 5000)
+        self.assertTrue(FraudFlag.objects.filter(dedupe_key=f"withdrawal-amount-{sent.reference}").exists())
 
     def test_a_payout_the_provider_has_not_answered_is_settled_by_the_poll(self):
         with override_settings(SIMULATED_PAYOUT_OUTCOME="pending"):
@@ -1074,6 +1336,36 @@ class EngineTests(TestCase):
         self.assertEqual(held.status, Withdrawal.SUCCEEDED)
         self.assertEqual(settings.CELERY_BEAT_SCHEDULE["wallets-poll-withdrawals"]["task"], "wallets.tasks.poll_withdrawals")
 
+    def test_one_withdrawal_that_cannot_be_settled_does_not_stop_the_poll(self):
+        with override_settings(SIMULATED_PAYOUT_OUTCOME="pending"):
+            first = payouts.submit(self.withdraw(5000).pk)
+            second = payouts.submit(self.withdraw(5000).pk)
+        Withdrawal.objects.filter(pk__in=[first.pk, second.pk]).update(submitted_at=timezone.now() - timedelta(minutes=3))
+        real = providers.SimulatedProvider.status
+
+        def broken_for_first(provider, reference):
+            if reference == first.reference:
+                raise RuntimeError("a bad row")
+            return real(provider, reference)
+
+        with mock.patch.object(providers.SimulatedProvider, "status", broken_for_first):
+            self.assertEqual(payouts.poll(), 1)
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual((first.status, second.status), (Withdrawal.PROCESSING, Withdrawal.SUCCEEDED))
+
+    def test_a_held_withdrawal_is_not_sent_once_the_holder_is_suspended_or_the_destination_removed(self):
+        held = self.withdraw(5000)
+        Customer.objects.filter(pk=self.customer.pk).update(is_suspended=True)
+        self.assertEqual(payouts.submit(held.pk).status, Withdrawal.CANCELLED)
+        self.assertEqual((self.wallet(), self.transit()), (20000, 0))
+        Customer.objects.filter(pk=self.customer.pk).update(is_suspended=False)
+        other = self.withdraw(5000)
+        PayoutDestination.objects.filter(pk=self.dest.pk).update(removed_at=timezone.now())
+        self.assertEqual(payouts.submit(other.pk).status, Withdrawal.CANCELLED)
+        self.assertEqual((self.wallet(), self.transit()), (20000, 0))
+        self.assertFalse(Journal.objects.filter(kind="withdrawal_paid").exists())
+
     def test_review_focus_reports_are_applied_once_and_never_backwards(self):
         with override_settings(SIMULATED_PAYOUT_OUTCOME="pending"):
             sent = payouts.submit(self.withdraw(5000).pk)
@@ -1085,6 +1377,16 @@ class EngineTests(TestCase):
         self.assertEqual(Journal.objects.filter(kind="withdrawal_paid").count(), 1)
         self.assertFalse(Journal.objects.filter(kind="withdrawal_reversed").exists())
         self.assertEqual(self.wallet(), 15000)
+        self.assertTrue(FraudFlag.objects.filter(dedupe_key=f"withdrawal-late-failed-{sent.reference}").exists())
+
+    def test_a_report_for_a_withdrawal_never_sent_is_not_applied(self):
+        held = self.withdraw(5000)
+        payouts.apply_result(held.reference, providers.SUCCEEDED, amount_pesewas=5000)
+        held.refresh_from_db()
+        self.assertEqual(held.status, Withdrawal.PENDING)
+        self.assertFalse(Journal.objects.filter(kind="withdrawal_paid").exists())
+        self.assertEqual(self.transit(), 5000)
+        self.assertEqual(FraudFlag.objects.filter(dedupe_key=f"withdrawal-unsent-report-{held.reference}").count(), 1)
 
     def test_review_focus_a_paid_report_after_the_money_was_returned_opens_a_case(self):
         with override_settings(SIMULATED_PAYOUT_OUTCOME="fail"):
@@ -1196,9 +1498,9 @@ class ConcurrentWithdrawalTests(TransactionTestCase):
         self.dest = destination(self.customer)
         fund(Account.CUSTOMER_WALLET, self.customer, 10000, "fund-1")
 
-    def hold(self, amount, request_id):
+    def hold(self, amount, request_id, dest=None):
         with transaction.atomic():
-            return withdrawals.request(self.customer, destination_id=self.dest.pk, amount_pesewas=amount, request_id=request_id)
+            return withdrawals.request(self.customer, destination_id=(dest or self.dest).pk, amount_pesewas=amount, request_id=request_id)
 
     def race(self, work):
         results, barrier = [], threading.Barrier(2)
@@ -1221,7 +1523,9 @@ class ConcurrentWithdrawalTests(TransactionTestCase):
         return results
 
     def test_review_focus_two_withdrawals_of_one_balance_at_once_hold_it_once(self):
-        results = self.race(lambda i: self.hold(10000, f"req-race-{i:04d}").status)
+        # Two destinations, so the destination row lock does not serialise them: the account lock (posting.lock) must.
+        to = [self.dest, destination(self.customer, number="+233241234599")]
+        results = self.race(lambda i: self.hold(10000, f"req-race-{i:04d}", to[i]).status)
         self.assertEqual(sorted(results), ["insufficient_funds", Withdrawal.PENDING])
         self.assertEqual(posting.balance_of(Account.CUSTOMER_WALLET, self.customer), 0)
         self.assertEqual(posting.balance_of(Account.WITHDRAWAL_IN_TRANSIT), 10000)
@@ -1307,6 +1611,10 @@ class Withdrawal(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["holder_type", "holder_id", "request_id"], name="wallets_one_withdrawal_per_request"),
             models.CheckConstraint(condition=models.Q(net_pesewas__gt=0, charge_pesewas__gte=0), name="wallets_withdrawal_amounts_positive"),
+            models.CheckConstraint(
+                condition=models.Q(amount_pesewas=models.F("net_pesewas") + models.F("charge_pesewas")),
+                name="wallets_withdrawal_amount_is_net_plus_charge",
+            ),
         ]
 
     def __str__(self):
@@ -1314,7 +1622,7 @@ class Withdrawal(models.Model):
 ```
 
 Run: `docker compose -p wal1 run --rm web python manage.py makemigrations wallets --name withdrawals`
-Expected: `backend/wallets/migrations/0002_withdrawals.py` with `CreateModel` `Withdrawal` (its indexes and both constraints), depending on `("wallets", "0001_payout_destinations")`.
+Expected: `backend/wallets/migrations/0002_withdrawals.py` with `CreateModel` `Withdrawal` (its indexes and its three constraints), depending on `("wallets", "0001_payout_destinations")`.
 
 - [ ] **Step 4: Asking for a withdrawal** — `backend/wallets/withdrawals.py`
 
@@ -1481,18 +1789,59 @@ def row(withdrawal):
     }
 ```
 
-- [ ] **Step 5: Sending and settling** — `backend/wallets/payouts.py`
+- [ ] **Step 5: The provider reports what it paid** — in `backend/payments/providers.py`, (a) replace
+
+```python
+@dataclass(frozen=True)
+class PayoutResult:
+    status: str  # SUCCEEDED, FAILED or PROCESSING
+    provider_reference: str = ""
+    message: str = ""
+```
+
+with
+
+```python
+@dataclass(frozen=True)
+class PayoutResult:
+    status: str  # SUCCEEDED, FAILED or PROCESSING
+    provider_reference: str = ""
+    message: str = ""  # the provider's own words: never stored or shown (they may hold an account number)
+    amount_pesewas: object = None  # what the provider says reached the destination (pesewas), when it says
+```
+
+and (b) in `SimulatedProvider` replace
+
+```python
+    def payout(self, *, reference, rail, institution, account_number, amount_pesewas):
+        return self.status(reference)
+```
+
+with
+
+```python
+    def payout(self, *, reference, rail, institution, account_number, amount_pesewas):
+        answer = self.status(reference)
+        return PayoutResult(answer.status, provider_reference=answer.provider_reference, amount_pesewas=amount_pesewas)
+```
+
+(`payments/tests/test_providers.py` compares `(status, provider_reference)` and keeps passing.)
+
+- [ ] **Step 6: Sending and settling** — `backend/wallets/payouts.py`
 
 ```python
 """Sending a held withdrawal to the provider and settling it (spec §2.2 step 5, §2.3).
 
 A withdrawal is claimed (PENDING → PROCESSING under its row lock) before the provider is asked, so it is sent once even
-when the request and the poll race; the provider call runs outside any transaction. `apply_result` is the one way a
-withdrawal ends, whoever reports it - the provider's answer, the 5-minute poll, a payout webhook (Plan 7) - and `close`
-the one way its money goes back (a failure, the holder's cancel, staff failing a stuck one). Both lock the row first;
-the journal keys are per reference, so a report applied twice posts once. A final status never changes: a "paid" report
-on a withdrawal already failed or cancelled is never posted (its money went back) and opens a fraud case; a report
-whose amount differs from what was sent is not applied and opens one too. Nothing here logs an account number."""
+when the request and the poll race; a held one whose holder was suspended (or is gone) or whose destination was removed
+since is returned instead. No provider call runs inside a transaction. `apply_result` is the one way a withdrawal ends,
+whoever reports it - the provider's answer, the 5-minute poll, a payout webhook (Plan 7), staff asking the provider -
+and `close` the one way its money goes back (a failure, the holder's cancel, staff failing a stuck one). Both lock the
+row first; the journal keys are per reference, so a report applied twice posts once. A final status never changes: a
+"paid" report on a withdrawal already failed or cancelled is never posted (its money went back), a "failed" report on
+one already paid changes nothing, and a report on one never sent is not applied; each opens a fraud case. A report
+whose amount (as the provider states it) differs from what was sent is not applied and opens one too. The provider's
+own message is never stored or shown, and nothing here logs an account number."""
 import logging
 from datetime import timedelta
 
@@ -1516,30 +1865,46 @@ RESEND_AFTER = timedelta(minutes=2)    # a held withdrawal nobody sent (the proc
 ASK_AFTER = timedelta(minutes=2)       # a sent one is asked about after this
 STUCK_AFTER = timedelta(minutes=30)    # staff may fail one sent this long ago with no answer (views_staff)
 STUCK_PENDING = timedelta(minutes=10)  # ...or one held and never sent for this long
+FAILED_REASON = "The provider could not pay it."  # what the holder sees, never the provider's own message
+
+
+def _holder_model(withdrawal):
+    return Customer if withdrawal.holder_type == "customer" else BusinessOwner
 
 
 def holder_of(withdrawal):
-    model = Customer if withdrawal.holder_type == "customer" else BusinessOwner
-    holder = model.objects.filter(pk=withdrawal.holder_id).first()
-    if holder is None:
-        raise RuntimeError(f"Withdrawal {withdrawal.reference} has no holder")
-    return holder
+    """The customer or business owner the withdrawal belongs to, or None when that account is gone."""
+    return _holder_model(withdrawal).objects.filter(pk=withdrawal.holder_id).first()
+
+
+def source_account(withdrawal):
+    """The ledger account the money came from, found from the withdrawal alone: money goes back to it even when the
+    holder's account row is gone, instead of staying in transit."""
+    return Account.objects.get(
+        kind=withdrawal.source_kind, owner_type=_holder_model(withdrawal)._meta.label_lower, owner_id=str(withdrawal.holder_id),
+    )
 
 
 def _tell(withdrawal, title, body):
     holder = holder_of(withdrawal)
     if isinstance(holder, Customer):
         notify_customer(holder, "withdrawal", title, body=body, link="/my-account", icon="💸")
-    else:
+    elif holder is not None:
         notify_business_owner(holder, "withdrawal", title, body=body, link="/business", icon="💸")
 
 
 def claim(withdrawal_pk, now=None):
-    """PENDING → PROCESSING under the row lock. Returns the withdrawal if this caller won it, else None."""
+    """PENDING → PROCESSING under the row lock. Returns the withdrawal if this caller won it, else None. A held
+    withdrawal whose holder was suspended (or is gone), or whose destination was removed, since it was asked for is not
+    sent: its money goes back (CANCELLED) and None is returned."""
     now = now or timezone.now()
     with transaction.atomic():
         withdrawal = Withdrawal.objects.select_for_update().filter(pk=withdrawal_pk, status=Withdrawal.PENDING).first()
         if withdrawal is None:
+            return None
+        holder = holder_of(withdrawal)
+        if holder is None or holder.is_suspended or withdrawal.destination.removed_at is not None:
+            close(withdrawal, Withdrawal.CANCELLED, "Stopped before it was sent: the account or the destination changed.", now)
             return None
         withdrawal.status, withdrawal.submitted_at = Withdrawal.PROCESSING, now
         withdrawal.save(update_fields=["status", "submitted_at"])
@@ -1563,14 +1928,16 @@ def submit(withdrawal_pk, now=None):
         return Withdrawal.objects.get(pk=withdrawal.pk)
     applied = apply_result(
         withdrawal.reference, result.status, provider_reference=result.provider_reference,
-        amount_pesewas=withdrawal.net_pesewas, message=result.message, now=now,
+        amount_pesewas=result.amount_pesewas, message=result.message, now=now,
     )
     return applied or Withdrawal.objects.get(pk=withdrawal.pk)
 
 
 def apply_result(reference, status, *, provider_reference="", amount_pesewas=None, message="", now=None):
     """End a withdrawal from a report: SUCCEEDED posts the payout, FAILED returns the money, PROCESSING changes nothing.
-    Returns the withdrawal, or None for an unknown reference."""
+    `amount_pesewas` is what the provider says reached the destination; None means the report did not say (the
+    simulated status). A Hubtel report must carry it (spec §13 (xxvii)). `message` is the provider's own text and is
+    dropped: it may hold an account number. Returns the withdrawal, or None for an unknown reference."""
     now = now or timezone.now()
     if status not in (providers.SUCCEEDED, providers.FAILED):
         return Withdrawal.objects.filter(reference=reference).first()
@@ -1588,6 +1955,22 @@ def apply_result(reference, status, *, provider_reference="", amount_pesewas=Non
                             "holder. Nothing was posted. Check with the provider."),
                     dedupe_key=f"withdrawal-late-paid-{withdrawal.reference}",
                 )
+            elif status == providers.FAILED and withdrawal.status == Withdrawal.SUCCEEDED:
+                fraud.raise_flag(
+                    FraudFlag.OTHER, title=f"Withdrawal {withdrawal.reference} reported failed after it was paid",
+                    detail=(f"The provider reported withdrawal {withdrawal.reference} failed, but it was already paid and "
+                            "posted. Nothing was returned to the holder. Check with the provider whether the money came back."),
+                    dedupe_key=f"withdrawal-late-failed-{withdrawal.reference}",
+                )
+            return withdrawal
+        if withdrawal.status == Withdrawal.PENDING:
+            # Never sent (not claimed): no provider can have an answer for it, so the report is misrouted or forged.
+            fraud.raise_flag(
+                FraudFlag.OTHER, title=f"Withdrawal {withdrawal.reference} reported before it was sent",
+                detail=(f"A {status} report arrived for withdrawal {withdrawal.reference}, which was never sent to the "
+                        "provider. Nothing was posted. Check with the provider."),
+                dedupe_key=f"withdrawal-unsent-report-{withdrawal.reference}",
+            )
             return withdrawal
         if amount_pesewas is not None and amount_pesewas != withdrawal.net_pesewas:
             fraud.raise_flag(
@@ -1599,7 +1982,8 @@ def apply_result(reference, status, *, provider_reference="", amount_pesewas=Non
         if provider_reference and not withdrawal.provider_reference:
             withdrawal.provider_reference = provider_reference[:128]
         if status == providers.FAILED:
-            return close(withdrawal, Withdrawal.FAILED, message or "The provider could not pay it.", now)
+            logger.info("Payout %s failed at the provider", withdrawal.reference)
+            return close(withdrawal, Withdrawal.FAILED, FAILED_REASON, now)
         posting.post(
             key=paid_key(withdrawal.reference), kind="withdrawal_paid",
             lines=[
@@ -1607,7 +1991,7 @@ def apply_result(reference, status, *, provider_reference="", amount_pesewas=Non
                 posting.credit(posting.account_for(Account.PROVIDER_CLEARING), withdrawal.amount_pesewas),
             ],
             reference_type="wallets.withdrawal", reference_id=withdrawal.reference, memo=f"Withdrawal {withdrawal.reference} paid",
-            allow_negative={Account.PROVIDER_CLEARING},  # the provider confirmed it: a fact to record (spec §13 x)
+            allow_negative={Account.PROVIDER_CLEARING},  # the provider confirmed it: a fact to record (spec §13 xxvi)
         )
         withdrawal.status, withdrawal.settled_at = Withdrawal.SUCCEEDED, now
         withdrawal.save(update_fields=["status", "settled_at", "provider_reference"])
@@ -1618,8 +2002,9 @@ def apply_result(reference, status, *, provider_reference="", amount_pesewas=Non
 
 
 def close(withdrawal, status, reason, now):
-    """Return a held withdrawal's money to its source (FAILED or CANCELLED). The caller holds the row lock."""
-    source = posting.account_for(withdrawal.source_kind, holder_of(withdrawal))
+    """Return a held withdrawal's money to its source (FAILED or CANCELLED). The caller holds the row lock. `reason` is
+    shown to the holder: AshantiHub's own words, never the provider's message or a staff member's note."""
+    source = source_account(withdrawal)
     posting.post(
         key=reversed_key(withdrawal.reference), kind="withdrawal_reversed",
         lines=[
@@ -1647,24 +2032,32 @@ def stuck(withdrawal, now=None):
 
 def poll(now=None):
     """Send held withdrawals nobody sent, and ask the provider about sent ones. Returns how many it looked at. A provider
-    that cannot report (NotConnected) leaves them for staff."""
+    that cannot report (NotConnected) leaves them for staff. One withdrawal that fails (a provider error, a bad row) is
+    logged and skipped, so it never stops the poll for everyone else."""
     now = now or timezone.now()
     looked = 0
     for pk in Withdrawal.objects.filter(status=Withdrawal.PENDING, created_at__lt=now - RESEND_AFTER).values_list("pk", flat=True):
-        submit(pk, now)
+        try:
+            submit(pk, now)
+        except Exception:
+            logger.exception("Could not send withdrawal %s; the next poll tries again", pk)
+            continue
         looked += 1
     for withdrawal in Withdrawal.objects.filter(status=Withdrawal.PROCESSING, submitted_at__lt=now - ASK_AFTER):
         try:
             result = providers.get_provider(withdrawal.provider).status(withdrawal.reference)
+            apply_result(
+                withdrawal.reference, result.status, provider_reference=result.provider_reference,
+                amount_pesewas=result.amount_pesewas, message=result.message, now=now,
+            )
         except Exception:
-            logger.warning("Could not ask about payout %s", withdrawal.reference)
+            logger.warning("Could not settle payout %s; the next poll asks again", withdrawal.reference)
             continue
-        apply_result(withdrawal.reference, result.status, provider_reference=result.provider_reference, message=result.message, now=now)
         looked += 1
     return looked
 ```
 
-- [ ] **Step 6: The task and its schedule** — `backend/wallets/tasks.py`
+- [ ] **Step 7: The task and its schedule** — `backend/wallets/tasks.py`
 
 ```python
 from celery import shared_task
@@ -1707,16 +2100,16 @@ with
 }
 ```
 
-- [ ] **Step 7: Run the tests**
+- [ ] **Step 8: Run the tests**
 
-Run: `docker compose -p wal1 run --rm web python manage.py test wallets core.tests.test_background_jobs --noinput`
-Expected: PASS (23 new tests, 3 of them threaded).
+Run: `docker compose -p wal1 run --rm web python manage.py test wallets payments.tests.test_providers core.tests.test_background_jobs --noinput`
+Expected: PASS (27 new tests, 3 of them threaded; Plan 3a's provider tests unchanged).
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add backend/wallets backend/ashantihub/settings.py
-git commit -m "feat(wallets): withdrawal engine - hold, send once, settle or return exactly once; 5-minute poll"
+git add backend/wallets backend/payments/providers.py backend/ashantihub/settings.py
+git commit -m "feat(wallets): withdrawal engine - hold, send once, settle or return exactly once, amount-checked; 5-minute poll"
 ```
 
 ---
@@ -1729,7 +2122,7 @@ git commit -m "feat(wallets): withdrawal engine - hold, send once, settle or ret
 
 **Interfaces:**
 - Consumes: `withdrawals.clean_request_id`, `existing`, `request`, `cancel`, `mine`, `row`, `WithdrawalError`, `payouts.submit` (Task 3); `wallets.views.parse_amount`, `AmountError`, `Pagination`, `ledger_off` (Plan 3a); `otp.step_up.require(request, step_up.WITHDRAWAL, force=True)`.
-- Produces: `GET/POST /api/wallet/withdrawals/`, `POST /api/wallet/withdrawals/<id>/cancel/`; views `WithdrawalsView`, `WithdrawalCancelView`.
+- Produces: `GET/POST /api/wallet/withdrawals/`, `POST /api/wallet/withdrawals/<id>/cancel/`; views `WithdrawalsView`, `WithdrawalCancelView`; `409 request_id_reused` (a known `request_id` with a different destination or amount).
 
 - [ ] **Step 1: Write the failing test** — `backend/wallets/tests/test_withdrawal_api.py`
 
@@ -1814,6 +2207,12 @@ class WithdrawalApiTests(WithdrawalApiBase):
         again = self.ama.post(URL, self.body(request_id="req-retry-0001"))
         self.assertEqual((first.status_code, again.status_code), (201, 200))
         self.assertEqual(first.json()["id"], again.json()["id"])
+        self.assertEqual((Withdrawal.objects.count(), self.wallet()), (1, 15000))
+
+    def test_a_request_id_used_for_another_withdrawal_is_refused(self):
+        self.assertEqual(self.ama.post(URL, self.body(request_id="req-reuse-0001"), action=step_up.WITHDRAWAL).status_code, 201)
+        other = self.ama.post(URL, self.body(amount="20.00", request_id="req-reuse-0001"))
+        self.assertEqual((other.status_code, other.json()["code"]), (409, "request_id_reused"))
         self.assertEqual((Withdrawal.objects.count(), self.wallet()), (1, 15000))
 
     def test_review_focus_cooling_answers_409_and_the_code_is_kept(self):
@@ -1902,8 +2301,10 @@ and (b) append at the end of the file
 class WithdrawalsView(APIView):
     """GET withdrawals/ — the holder's withdrawals, newest first (20 a page).
     POST withdrawals/ {destination, amount, request_id} + X-Step-Up-Token — withdraw to one of the holder's payout
-    destinations. A retry with the same request_id answers the withdrawal already made (200) and needs no new code; a
-    new one is held, sent at once and answered 201 with what the provider said (succeeded, processing or failed)."""
+    destinations. A retry with the same request_id, destination and amount answers the withdrawal already made (200)
+    and needs no new code; the same request_id with a different destination or amount is refused (409
+    request_id_reused). A new one is held, sent at once and answered 201 with what the provider said (succeeded,
+    processing or failed)."""
 
     permission_classes = [IsCustomerOrOwner]
 
@@ -1922,13 +2323,18 @@ class WithdrawalsView(APIView):
             request_id = withdrawals.clean_request_id(data.get("request_id"))
         except withdrawals.WithdrawalError as exc:
             return Response(exc.body(), status=exc.status_code)
-        found = withdrawals.existing(request.user, request_id)
-        if found is not None:
-            return Response(withdrawals.row(found), status=status.HTTP_200_OK)
         try:
             amount = parse_amount(data.get("amount"))
         except AmountError as exc:
             return Response({"amount": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        found = withdrawals.existing(request.user, request_id)
+        if found is not None:
+            if found.destination_id != data.get("destination") or found.amount_pesewas != amount:
+                return Response(
+                    {"detail": "That request_id was already used for a different withdrawal.", "code": "request_id_reused"},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            return Response(withdrawals.row(found), status=status.HTTP_200_OK)
         try:
             with transaction.atomic():
                 step_up.require(request, step_up.WITHDRAWAL, force=True)
@@ -1975,7 +2381,7 @@ with
 - [ ] **Step 4: Run the tests**
 
 Run: `docker compose -p wal1 run --rm web python manage.py test wallets --noinput`
-Expected: PASS (11 new tests, and every earlier wallets test).
+Expected: PASS (12 new tests, and every earlier wallets test).
 
 - [ ] **Step 5: Commit**
 
@@ -1993,14 +2399,15 @@ git commit -m "feat(wallets): withdrawal API with step-up, idempotent retries, l
 - Create: `backend/wallets/tests/test_staff_withdrawals.py`
 
 **Interfaces:**
-- Consumes: `Withdrawal`, `withdrawals.row`, `payouts.stuck`, `payouts.close`, `payouts.apply_result` (Task 3); `VIEW`, `MANAGE`, `Pagination`, `ledger_off`, `money` (Plan 3a); `accounts.permissions.HasRolePermission`, `RequiresSudo`; `activity.services.record`.
-- Produces: `GET /api/wallet/staff/withdrawals/?status=open|succeeded|failed|cancelled|all` (unknown → `open`); `POST /api/wallet/staff/withdrawals/<id>/fail/ {reason}`; activity verb `wallets.withdrawal_failed`; `views_staff.STATUS_FILTERS`, `staff_row(withdrawal, holders)`, `holders_of(withdrawals)`.
+- Consumes: `Withdrawal`, `withdrawals.row`, `payouts.stuck`, `payouts.close`, `payouts.apply_result`, `providers.PayoutResult.amount_pesewas` (Task 3); `providers.get_provider(name).status(reference)` (Plan 3a); `fraud.models.FraudFlag` (`OPEN`; the `withdrawal-amount-<ref>` case from Task 3); `VIEW`, `MANAGE`, `Pagination`, `ledger_off`, `money` (Plan 3a); `accounts.permissions.HasRolePermission`, `RequiresSudo`; `activity.services.record`.
+- Produces: `GET /api/wallet/staff/withdrawals/?status=open|succeeded|failed|cancelled|all` (unknown → `open`); `POST /api/wallet/staff/withdrawals/<id>/fail/ {reason}` (409 `not_stuck` / `provider_answered` / `amount_case_open`; `activity_exempt`); `views_staff.STAFF_FAILED_REASON` (what the holder sees); activity verb `wallets.withdrawal_failed`; `views_staff.STATUS_FILTERS`, `staff_row(withdrawal, holders)`, `holders_of(withdrawals)`.
 
 - [ ] **Step 1: Write the failing test** — `backend/wallets/tests/test_staff_withdrawals.py`
 
 ```python
 """Staff and withdrawals (wallets plan 3b, Task 5): the list (wallets.view) and failing a stuck one (wallets.manage and
-the password again). Review Focus 3 (a late "paid" after staff failed it) and 6 (no number in the activity log)."""
+the password again; the provider is asked first). Review Focus 3 (a late "paid" after staff failed it, a provider
+answer or an amount case stops a hand fail) and 6 (no number in the activity log)."""
 from datetime import timedelta
 
 from django.core.cache import cache
@@ -2015,7 +2422,7 @@ from fraud.models import FraudFlag
 from ledger import posting
 from ledger.models import Account, Journal
 from payments import providers
-from wallets import payouts, withdrawals
+from wallets import payouts, views_staff, withdrawals
 from wallets.models import Withdrawal
 
 from .helpers import destination, fund
@@ -2023,7 +2430,8 @@ from .helpers import destination, fund
 URL = "/api/wallet/staff/withdrawals/"
 
 
-@override_settings(LEDGER_ENABLED=True)
+# The provider has not answered unless a test says so: failing by hand asks it first, and "succeed" would settle it.
+@override_settings(LEDGER_ENABLED=True, SIMULATED_PAYOUT_OUTCOME="pending")
 class StaffWithdrawalTests(TestCase):
     def setUp(self):
         cache.clear()
@@ -2038,11 +2446,11 @@ class StaffWithdrawalTests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(staff, sudo=sudo)}")
 
     def sent(self, amount=5000, request_id="req-staff-0001"):
-        """A withdrawal the provider has not answered, sent 31 minutes ago."""
-        with override_settings(SIMULATED_PAYOUT_OUTCOME="pending"):
-            withdrawal = payouts.submit(
-                withdrawals.request(self.customer, destination_id=self.dest.pk, amount_pesewas=amount, request_id=request_id).pk,
-            )
+        """A withdrawal the provider has not answered (the class runs with SIMULATED_PAYOUT_OUTCOME=pending), sent 31
+        minutes ago."""
+        withdrawal = payouts.submit(
+            withdrawals.request(self.customer, destination_id=self.dest.pk, amount_pesewas=amount, request_id=request_id).pk,
+        )
         Withdrawal.objects.filter(pk=withdrawal.pk).update(submitted_at=timezone.now() - timedelta(minutes=31))
         return withdrawal
 
@@ -2095,11 +2503,13 @@ class StaffWithdrawalTests(TestCase):
         self.as_staff(self.accountant, sudo=True)
         response = self.force_fail(withdrawal)
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual(response.json()["status"], "failed")
+        self.assertEqual((response.json()["status"], response.json()["failure_reason"]), ("failed", views_staff.STAFF_FAILED_REASON))
         self.assertEqual(self.wallet(), 20000)
         self.assertEqual(posting.balance_of(Account.WITHDRAWAL_IN_TRANSIT), 0)
         event = ActivityEvent.objects.get(verb="wallets.withdrawal_failed")
-        self.assertEqual((event.before, event.after["status"]), ({"status": "processing"}, "failed"))
+        self.assertEqual(
+            (event.before, event.after["status"], event.after["reason"]), ({"status": "processing"}, "failed", "Hubtel says it never left"),
+        )                                                                                         # the staff reason stays here only
         for text in (event.summary, event.target_label, str(event.before), str(event.after)):
             self.assertNotIn("241234567", text)
         self.assertEqual(ActivityEvent.objects.filter(target_id=str(withdrawal.pk), target_type="wallets.withdrawal").count(), 1)
@@ -2112,6 +2522,25 @@ class StaffWithdrawalTests(TestCase):
         self.assertFalse(Journal.objects.filter(kind="withdrawal_paid").exists())
         self.assertTrue(FraudFlag.objects.filter(dedupe_key=f"withdrawal-late-paid-{withdrawal.reference}").exists())
         self.assertEqual(self.wallet(), 20000)
+
+    def test_a_withdrawal_the_provider_has_answered_is_settled_not_failed(self):
+        withdrawal = self.sent()
+        self.as_staff(self.accountant, sudo=True)
+        with override_settings(SIMULATED_PAYOUT_OUTCOME="succeed"):                               # it did pay after all
+            response = self.force_fail(withdrawal)
+        self.assertEqual((response.status_code, response.json()["code"], response.json()["status"]), (409, "provider_answered", "succeeded"))
+        self.assertTrue(Journal.objects.filter(key=f"withdrawal-paid-{withdrawal.reference}").exists())
+        self.assertEqual(self.wallet(), 15000)                                                    # paid out, never credited back
+        self.assertFalse(ActivityEvent.objects.filter(verb="wallets.withdrawal_failed").exists())
+
+    def test_a_withdrawal_with_an_open_amount_case_is_never_failed_by_hand(self):
+        withdrawal = self.sent()
+        payouts.apply_result(withdrawal.reference, providers.SUCCEEDED, amount_pesewas=4000)      # money did leave
+        self.as_staff(self.accountant, sudo=True)
+        response = self.force_fail(withdrawal)
+        self.assertEqual((response.status_code, response.json()["code"]), (409, "amount_case_open"))
+        withdrawal.refresh_from_db()
+        self.assertEqual((withdrawal.status, self.wallet()), (Withdrawal.PROCESSING, 15000))
 
 
 class StaffWithdrawalLedgerOffTests(TestCase):
@@ -2156,8 +2585,10 @@ from rest_framework.views import APIView
 from accounts.models import BusinessOwner, Customer
 from accounts.permissions import HasRolePermission, RequiresSudo
 from activity.services import record
+from fraud.models import FraudFlag
 from ledger import escrow
 from ledger.models import Account
+from payments import providers
 
 from . import payouts, withdrawals
 from .models import Withdrawal
@@ -2174,6 +2605,7 @@ STATUS_FILTERS = {
     "open": Withdrawal.OPEN, "succeeded": (Withdrawal.SUCCEEDED,), "failed": (Withdrawal.FAILED,),
     "cancelled": (Withdrawal.CANCELLED,), "all": None,
 }
+STAFF_FAILED_REASON = "AshantiHub stopped it after checking with the provider."  # what the holder sees, never staff text
 
 
 def holders_of(rows):
@@ -2218,7 +2650,13 @@ class StaffWithdrawalsView(APIView):
 class StaffWithdrawalFailView(APIView):
     """POST staff/withdrawals/<id>/fail/ {reason} — fail a withdrawal stuck with the provider (sent 30+ minutes ago with
     no answer, or held and never sent for 10+ minutes) and return the money. wallets.manage and the password again.
-    Check with the provider first: if it did pay after all, its late report opens a fraud case and is never posted."""
+    The provider is asked first, outside any transaction: if it has answered (paid or failed), that answer settles it
+    instead (409 provider_answered), so money it did pay never comes back to be withdrawn twice. A withdrawal with an
+    open amount case (the provider said it paid a different amount, so money did leave) is never failed by hand (409
+    amount_case_open). The holder sees STAFF_FAILED_REASON; the staff member's reason stays in the activity event. If
+    the provider pays after a hand fail, its late report opens a fraud case and is never posted."""
+
+    activity_exempt = True  # records its own event below, and keeps the provider call outside the middleware's transaction
 
     def get_permissions(self):
         return [HasRolePermission(MANAGE), RequiresSudo()]
@@ -2230,6 +2668,29 @@ class StaffWithdrawalFailView(APIView):
         reason = str(data.get("reason") or "").strip()
         if not reason:
             return Response({"reason": "Say why, after checking with the provider."}, status=status.HTTP_400_BAD_REQUEST)
+        found = get_object_or_404(Withdrawal, pk=pk)
+        if found.status == Withdrawal.PROCESSING:
+            try:
+                answer = providers.get_provider(found.provider).status(found.reference)
+            except Exception:
+                answer = None  # a provider that cannot report (Hubtel until Plan 7): staff checked with it themselves
+            if answer is not None and answer.status in (providers.SUCCEEDED, providers.FAILED):
+                settled = payouts.apply_result(
+                    found.reference, answer.status, provider_reference=answer.provider_reference,
+                    amount_pesewas=answer.amount_pesewas, message=answer.message,
+                )
+                if settled is not None and settled.status in Withdrawal.FINAL:
+                    return Response(
+                        {"detail": "The provider has answered for this withdrawal, so its answer settled it.",
+                         "code": "provider_answered", "status": settled.status},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+        if FraudFlag.objects.filter(dedupe_key=f"withdrawal-amount-{found.reference}", status=FraudFlag.OPEN).exists():
+            return Response(
+                {"detail": "The provider reported a different amount for this withdrawal. Settle that case first.",
+                 "code": "amount_case_open"},
+                status=status.HTTP_409_CONFLICT,
+            )
         with transaction.atomic():
             withdrawal = get_object_or_404(Withdrawal.objects.select_for_update(), pk=pk)
             if not payouts.stuck(withdrawal):
@@ -2238,8 +2699,9 @@ class StaffWithdrawalFailView(APIView):
                     status=status.HTTP_409_CONFLICT,
                 )
             before = withdrawal.status
-            payouts.close(withdrawal, Withdrawal.FAILED, f"Failed by AshantiHub: {reason}", timezone.now())
-            # Last: record() holds the activity chain lock until commit. No account number, ever.
+            payouts.close(withdrawal, Withdrawal.FAILED, STAFF_FAILED_REASON, timezone.now())
+            # Last: record() holds the activity chain lock until commit. No account number, ever; the staff reason is
+            # kept here and never shown to the holder.
             record(
                 request.user, "wallets.withdrawal_failed", target=withdrawal,
                 summary=f"Withdrawal {withdrawal.reference} failed by staff; GH₵ {money(withdrawal.amount_pesewas)} returned",
@@ -2265,13 +2727,13 @@ with
 - [ ] **Step 4: Run the tests**
 
 Run: `docker compose -p wal1 run --rm web python manage.py test wallets --noinput`
-Expected: PASS (7 new tests, and every earlier wallets test).
+Expected: PASS (9 new tests, and every earlier wallets test).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add backend/wallets
-git commit -m "feat(wallets): staff withdrawal list and failing a stuck withdrawal (wallets.manage, password)"
+git commit -m "feat(wallets): staff withdrawal list and failing a stuck withdrawal (wallets.manage, password, provider asked first)"
 ```
 
 ---
@@ -2286,8 +2748,8 @@ git commit -m "feat(wallets): staff withdrawal list and failing a stuck withdraw
 - Consumes: `CheckoutSession` (`processing_fee`, `WALLET_TOPUP`, `metadata["ledger"]`, `metadata["order_id"]`) and `wallets.services.topup_key` (Plan 3a); `Withdrawal`, `withdrawals.paid_key` (Task 3); `posting.lock`; `fraud.services.raise_flag`; `notifications.services.notify_staff_role`; `VIEW`, `ledger_off`, `money` (Plan 3a).
 - Produces:
   - `payments.providers`: `COLLECTION = "collection"`, `PAYOUT = "payout"`, `StatementLine(reference, kind, amount_pesewas, at)`, `day_bounds(day) -> (start, end)`; `PaymentProvider.statement(day) -> list[StatementLine]`, `.find(reference) -> StatementLine | None`, `.pending_payouts() -> int` (NotConnected by default; implemented by `SimulatedProvider`)
-  - model `wallets.ReconciliationRun(day unique, provider, status, ledger_in_pesewas, statement_in_pesewas, ledger_out_pesewas, statement_out_pesewas, in_transit_pesewas, differences, flag, ran_at)`; statuses `MATCHED`, `MISMATCHED`, `UNAVAILABLE`
-  - `wallets.reconciliation.reconcile(day, now=None) -> ReconciliationRun`; difference problems `missing_in_ledger`, `amount_differs`, `missing_on_statement`, `in_transit_differs`, `pending_differs`
+  - model `wallets.ReconciliationRun(day unique, provider, status, ledger_in_pesewas, statement_in_pesewas, ledger_out_pesewas, statement_out_pesewas, in_transit_pesewas, differences, flag, ran_at)`; statuses `MATCHED`, `MISMATCHED`, `UNAVAILABLE`; the totals cover the movements compared, so a matched day shows equal totals
+  - `wallets.reconciliation.reconcile(day, now=None) -> ReconciliationRun` (every provider call outside a transaction; the in-transit check runs even without a statement; a re-run that now matches clears `flag`); difference problems `missing_in_ledger`, `amount_differs`, `missing_on_statement`, `in_transit_differs`, `pending_differs`
   - Celery task `wallets.tasks.reconcile_yesterday`; beat entry `"wallets-reconcile"` (02:30); `GET /api/wallet/staff/reconciliation/`
 
 - [ ] **Step 1: Write the failing test** — `backend/wallets/tests/test_reconciliation.py`
@@ -2424,6 +2886,17 @@ class ReconciliationTests(TestCase):
         run = reconciliation.reconcile(self.today)
         self.assertEqual((run.status, run.provider), (ReconciliationRun.UNAVAILABLE, "hubtel"))
         self.assertFalse(FraudFlag.objects.exists())
+
+    @override_settings(PAYMENTS_PROVIDER="hubtel")
+    def test_with_no_statement_in_transit_is_still_checked(self):
+        posting.post(key="stray", kind="test", lines=[
+            posting.debit(posting.account_for(Account.PROVIDER_CLEARING), 500),
+            posting.credit(posting.account_for(Account.WITHDRAWAL_IN_TRANSIT), 500),
+        ])
+        run = reconciliation.reconcile(self.today)
+        self.assertEqual(run.status, ReconciliationRun.MISMATCHED)
+        self.assertEqual(run.differences, [{"reference": "withdrawal_in_transit", "kind": "payout", "problem": "in_transit_differs", "ledger": 500, "statement": 0}])
+        self.assertTrue(FraudFlag.objects.filter(dedupe_key=f"reconciliation-{self.today.isoformat()}").exists())
 
     def test_the_nightly_task_reconciles_yesterday(self):
         self.assertEqual(tasks.reconcile_yesterday(), ReconciliationRun.MATCHED)
@@ -2601,7 +3074,9 @@ with
 
 class ReconciliationRun(models.Model):
     """One night's comparison of the ledger with the provider's statement for `day` (wallets.reconciliation). A report
-    only: it never changes a balance. Re-running a day replaces its row."""
+    only: it never changes a balance. Re-running a day replaces its row. The totals cover the movements compared: the
+    statement lines the ledger was asked to record, what the ledger booked for them (whatever day), and the day's
+    provider-clearing journals no statement holds; so a matched day shows equal totals."""
 
     MATCHED, MISMATCHED, UNAVAILABLE = "matched", "mismatched", "unavailable"
     STATUS_CHOICES = [(MATCHED, "Matches"), (MISMATCHED, "Differences found"), (UNAVAILABLE, "No statement from the provider")]
@@ -2640,9 +3115,12 @@ flags differences"). Read-only: it never posts or corrects anything. For a day i
 * every journal of the day that moved provider clearing names a movement the provider confirms, on any day
   (missing_on_statement; so a payment confirmed a second before midnight is not a false alarm);
 
-and, as it runs, that withdrawal in transit equals the open withdrawals (in_transit_differs) and that the provider's
-unconfirmed payouts equal ours (pending_differs). A difference opens one fraud case per day and tells wallets.view
-holders once. A provider that cannot give a statement (Hubtel until Plan 7) is recorded as unavailable."""
+and, as it runs, that withdrawal in transit equals the open withdrawals (in_transit_differs; this needs no provider, so
+it runs even without a statement) and that the provider's unconfirmed payouts equal ours (pending_differs). Every
+provider call (statement, find, pending payouts) runs outside any transaction: for a real provider each is a network
+call, and the in-transit lock must never be held across one. The totals cover the movements compared, so a matched day
+shows equal totals. A difference opens one fraud case per day and tells wallets.view holders once. A provider that
+cannot give a statement (Hubtel until Plan 7) is recorded as unavailable, or mismatched when in transit differs."""
 from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
@@ -2697,69 +3175,97 @@ def clearing_amount(key, side):
     return line.amount if line is not None else None
 
 
+def _in_transit():
+    """(withdrawal in transit, the open withdrawals' total), counted together under the in-transit lock so no hold or
+    settlement moves in between. Asks no provider."""
+    with transaction.atomic():
+        transit = posting.account_for(Account.WITHDRAWAL_IN_TRANSIT)
+        in_transit = posting.lock(transit)[transit.pk].balance
+        open_total = Withdrawal.objects.filter(status__in=Withdrawal.OPEN).aggregate(total=Sum("amount_pesewas"))["total"] or 0
+    return in_transit, open_total
+
+
+def _ours_sent(provider):
+    return Withdrawal.objects.filter(status=Withdrawal.PROCESSING, provider=provider.name).aggregate(total=Sum("amount_pesewas"))["total"] or 0
+
+
 def reconcile(day, now=None):
     now = now or timezone.now()
     provider = providers.get_provider()
+    differences = []
+    in_transit, open_total = _in_transit()
+    if in_transit != open_total:
+        differences.append(_difference("withdrawal_in_transit", providers.PAYOUT, "in_transit_differs", in_transit, open_total))
     try:
         lines = provider.statement(day)
     except providers.NotConnected:
-        run, _ = ReconciliationRun.objects.update_or_create(day=day, defaults={
-            "provider": provider.name, "status": ReconciliationRun.UNAVAILABLE, "differences": [], "ran_at": now,
-            "ledger_in_pesewas": 0, "statement_in_pesewas": 0, "ledger_out_pesewas": 0, "statement_out_pesewas": 0, "in_transit_pesewas": 0,
-        })
-        return run
+        # No statement to compare (Hubtel until Plan 7); the in-transit check needs none, so a difference there counts.
+        status = ReconciliationRun.MISMATCHED if differences else ReconciliationRun.UNAVAILABLE
+        return _record(day, provider, status, differences, now, in_transit=in_transit)
 
-    differences, seen = [], set()
-    statement_in = statement_out = 0
+    seen = set()
+    statement_in = statement_out = ledger_in = ledger_out = 0
     for line in lines:
         key = expected_key(line)
         if key is None:
             continue
         seen.add(key)
-        if line.kind == providers.COLLECTION:
-            statement_in += line.amount_pesewas
-        else:
-            statement_out += line.amount_pesewas
         side = JournalLine.DEBIT if line.kind == providers.COLLECTION else JournalLine.CREDIT
         booked = clearing_amount(key, side)
+        if line.kind == providers.COLLECTION:
+            statement_in += line.amount_pesewas
+            ledger_in += booked or 0
+        else:
+            statement_out += line.amount_pesewas
+            ledger_out += booked or 0
         if booked is None:
             differences.append(_difference(line.reference, line.kind, "missing_in_ledger", None, line.amount_pesewas))
         elif booked != line.amount_pesewas:
             differences.append(_difference(line.reference, line.kind, "amount_differs", booked, line.amount_pesewas))
 
     start, end = providers.day_bounds(day)
-    ledger_in = ledger_out = 0
     entries = JournalLine.objects.filter(
         account__kind=Account.PROVIDER_CLEARING, journal__created_at__gte=start, journal__created_at__lt=end,
     ).select_related("journal").order_by("id")
     for entry in entries:
+        if entry.journal.key in seen:
+            continue                                   # compared above, against this day's statement
+        reference = provider_reference(entry.journal)
+        if reference is not None and provider.find(reference) is not None:
+            continue                                   # the provider confirms it on another day's statement
         kind = providers.COLLECTION if entry.side == JournalLine.DEBIT else providers.PAYOUT
         if entry.side == JournalLine.DEBIT:
             ledger_in += entry.amount
         else:
             ledger_out += entry.amount
-        if entry.journal.key in seen:
-            continue
-        reference = provider_reference(entry.journal)
-        if reference is None or provider.find(reference) is None:
-            differences.append(_difference(reference or entry.journal.key, kind, "missing_on_statement", entry.amount, None))
+        differences.append(_difference(reference or entry.journal.key, kind, "missing_on_statement", entry.amount, None))
 
-    with transaction.atomic():
-        transit = posting.account_for(Account.WITHDRAWAL_IN_TRANSIT)
-        in_transit = posting.lock(transit)[transit.pk].balance          # no hold or settlement moves while we count
-        open_total = Withdrawal.objects.filter(status__in=Withdrawal.OPEN).aggregate(total=Sum("amount_pesewas"))["total"] or 0
-        ours_sent = Withdrawal.objects.filter(status=Withdrawal.PROCESSING, provider=provider.name).aggregate(total=Sum("amount_pesewas"))["total"] or 0
+    # The provider is asked outside any transaction; ours is counted right after, and both once more if they differ,
+    # so a payout confirmed in between is not a false alarm.
+    for _attempt in range(2):
         theirs_sent = provider.pending_payouts()
-    if in_transit != open_total:
-        differences.append(_difference("withdrawal_in_transit", providers.PAYOUT, "in_transit_differs", in_transit, open_total))
+        ours_sent = _ours_sent(provider)
+        if theirs_sent == ours_sent:
+            break
     if theirs_sent != ours_sent:
         differences.append(_difference("pending_payouts", providers.PAYOUT, "pending_differs", ours_sent, theirs_sent))
 
-    run, _ = ReconciliationRun.objects.update_or_create(day=day, defaults={
-        "provider": provider.name, "status": ReconciliationRun.MISMATCHED if differences else ReconciliationRun.MATCHED,
-        "differences": differences, "ran_at": now, "ledger_in_pesewas": ledger_in, "statement_in_pesewas": statement_in,
-        "ledger_out_pesewas": ledger_out, "statement_out_pesewas": statement_out, "in_transit_pesewas": in_transit,
-    })
+    status = ReconciliationRun.MISMATCHED if differences else ReconciliationRun.MATCHED
+    return _record(day, provider, status, differences, now, in_transit=in_transit,
+                   totals=(ledger_in, statement_in, ledger_out, statement_out))
+
+
+def _record(day, provider, status, differences, now, *, in_transit, totals=(0, 0, 0, 0)):
+    """Write the day's run (a re-run replaces it) and, when there is a difference, raise its case."""
+    ledger_in, statement_in, ledger_out, statement_out = totals
+    defaults = {
+        "provider": provider.name, "status": status, "differences": differences, "ran_at": now,
+        "ledger_in_pesewas": ledger_in, "statement_in_pesewas": statement_in, "ledger_out_pesewas": ledger_out,
+        "statement_out_pesewas": statement_out, "in_transit_pesewas": in_transit,
+    }
+    if not differences:
+        defaults["flag"] = None  # a re-run that now matches drops the link; the case itself stays open for staff
+    run, _ = ReconciliationRun.objects.update_or_create(day=day, defaults=defaults)
     if differences:
         _raise(run, provider, differences)
     return run
@@ -2770,7 +3276,7 @@ def _raise(run, provider, differences):
     References only: no account number ever reaches a case or a notice."""
     flag = fraud.raise_flag(
         FraudFlag.OTHER, title=f"Money reconciliation for {run.day:%d %b %Y} does not match",
-        detail=(f"{len(differences)} difference(s) between the ledger and the {provider.name} statement. "
+        detail=(f"{len(differences)} difference(s) found reconciling the ledger ({provider.name}). "
                 "Nothing was corrected; see Wallets, Reconciliation."),
         evidence=[f"{d['problem']}: {d['reference']}" for d in differences[:20]],
         dedupe_key=f"reconciliation-{run.day.isoformat()}",
@@ -2892,7 +3398,7 @@ with
 - [ ] **Step 7: Run the tests**
 
 Run: `docker compose -p wal1 run --rm web python manage.py test wallets payments core.tests.test_background_jobs --noinput`
-Expected: PASS (11 new tests; Plan 3a's `payments.tests.test_providers` unchanged).
+Expected: PASS (12 new tests; Plan 3a's `payments.tests.test_providers` unchanged).
 
 - [ ] **Step 8: Commit**
 
@@ -2906,7 +3412,7 @@ git commit -m "feat(wallets): nightly reconciliation of the ledger against the p
 ### Task 7: Documentation and full verification
 
 **Files:**
-- Modify: `backend/CLAUDE.md`, `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md`
+- Modify: `backend/CLAUDE.md`, `CLAUDE.md`, `docs/IMPLEMENTATION_INSTRUCTIONS.md`, `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md`
 
 **Interfaces:**
 - Consumes: everything above. Produces: no code.
@@ -2942,16 +3448,24 @@ with
   `handle_webhook` is `HubtelWebhookView` (both unchanged); the Hubtel provider's payout, status and name lookup raise
   `NotConnected` until Plan 7.
 - **Payout destinations, withdrawals, reconciliation (`wallets/`, Stage 3b).** A destination is accepted only when the
-  provider's account name matches the holder's verified name (`wallets.names`: customer profile name; KYC-verified
-  vendor's owner or business name) and a step-up code is spent; it can receive money after `payout_cooling_hours`;
-  it is never edited (remove + add). Destination add/remove and withdrawals call `step_up.require(..., force=True)`:
-  while the ledger is on they always need a code, and the step-up endpoints send codes for those two actions.
-  `wallets.withdrawals.request` locks the destination, then the source and in-transit accounts together
-  (`posting.lock`), then checks balance and limits (governed `withdrawal_per_tx_limit_pesewas` /
-  `withdrawal_daily_limit_pesewas`); a vendor's negative Available blocks it. A withdrawal is claimed before the
-  provider is called (sent once) and ends only through `wallets.payouts.apply_result` / `close` (row lock, per-reference
-  journal keys, a final status never changes; a "paid" report after the money went back is never posted and opens a
-  fraud case). The nightly `wallets.reconciliation` is read-only and compares by provider reference.
+  provider's account name matches the holder's verified name (`wallets.names`: customer profile name, which is
+  self-declared, spec §13 (xxix); KYC-verified vendor's owner or business name) and a step-up code is spent; the name
+  lookup runs before that transaction (`destinations.check`, then `save`). It can receive money after
+  `payout_cooling_hours`, is never edited (remove + add), and every add and remove sends the holder a notice.
+  Destination add/remove and withdrawals call `step_up.require(..., force=True)`, and adding a customer recovery email
+  or phone calls it with `force=escrow.enabled()`: while the ledger is on they always need a code, and the step-up
+  endpoints send codes for those three actions. `wallets.withdrawals.request` locks the destination, then the source
+  and in-transit accounts together (`posting.lock`), then checks balance and limits (governed
+  `withdrawal_per_tx_limit_pesewas` / `withdrawal_daily_limit_pesewas`, per holder account); a vendor's negative
+  Available blocks it. Every hold and settlement locks the one `withdrawal_in_transit` account, so withdrawals
+  serialise (throughput only). A withdrawal is claimed before the provider is called (sent once; returned instead if
+  the holder was suspended or the destination removed) and ends only through `wallets.payouts.apply_result` / `close`
+  (row lock, per-reference journal keys, a final status never changes, the amount the provider reports must equal what
+  was sent; a report for a withdrawal never sent, a "paid" report after the money went back and a "failed" report
+  after it was paid each open a fraud case and post nothing). **No provider call runs inside a transaction** (lookup,
+  payout, status, statement), and the provider's own message is never stored or shown. Staff failing a stuck
+  withdrawal asks the provider first, never with an open amount case, and the holder sees only AshantiHub's fixed
+  reason. The nightly `wallets.reconciliation` is read-only and compares by provider reference.
 ```
 
 - [ ] **Step 2: Spec scope** — in `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` replace
@@ -2970,19 +3484,48 @@ payments, refunds, withdrawals and reconciliation, backend) are implemented behi
 feature/ledger-stage1, feature/otp-security and feature/wallets; see section 13); later stages are specs only.
 ```
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: The stage index** — (a) in the root `CLAUDE.md` replace
 
-```bash
-git add backend/CLAUDE.md docs
-git commit -m "docs(wallets): correctness cores for destinations, withdrawals and reconciliation; spec scope (3b)"
+```markdown
+- `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` — wallet, escrow, platform fees,
+  OTP; Stage 1 (ledger) and Stage 2 (OTP, backend) are implemented behind switches that default off, later
+  stages are specs only; §13 lists what must be done before each switch is turned on
 ```
 
-- [ ] **Step 4: Run the whole backend suite**
+with
+
+```markdown
+- `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` — wallet, escrow, platform fees,
+  OTP; Stage 1 (ledger), Stage 2 (OTP, backend) and Stage 3 (wallets, withdrawals, reconciliation, backend) are
+  implemented behind switches that default off, later stages are specs only; §13 lists what must be done before each
+  switch is turned on
+```
+
+and (b) in `docs/IMPLEMENTATION_INSTRUCTIONS.md` (the **3** Wallets and payments row) replace
+
+```markdown
+behind `LEDGER_ENABLED`; the screens are Plan 3F.
+```
+
+with
+
+```markdown
+both built, behind `LEDGER_ENABLED` (default off); the screens are Plan 3F.
+```
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add backend/CLAUDE.md CLAUDE.md docs
+git commit -m "docs(wallets): correctness cores for destinations, withdrawals and reconciliation; spec scope and stage index (3b)"
+```
+
+- [ ] **Step 5: Run the whole backend suite**
 
 Run: `docker compose -p wal1 run --rm web python manage.py test --noinput`
-Expected: PASS. If a failure is unrelated to this work, confirm it on the last commit of Plan 3a (`git log --oneline` shows "docs(wallets): correctness core, spec status and carry-forward, stage index (3a)"; `git switch --detach <sha>`, re-run the failing label, `git switch feature/wallets`) and report it rather than fixing it here.
+Expected: PASS. If a failure is unrelated to this work, confirm it on the last commit of Plan 3a (`63488ef`, "docs(wallets): park the live-rider-assignment gap of the whole-refund cancel (3a)"; `git switch --detach 63488ef`, re-run the failing label, `git switch feature/wallets`) and report it rather than fixing it here.
 
-- [ ] **Step 5: Migrations check**
+- [ ] **Step 6: Migrations check**
 
 Run: `docker compose -p wal1 run --rm web python manage.py makemigrations --check --dry-run`
 Expected: `No changes detected`.
@@ -2996,8 +3539,8 @@ Expected: `No changes detected`.
 | **3F** Frontend | Payout destinations screen (add with the step-up prompt, masked list, "can receive money from"), withdrawal form with the charge and "you receive", withdrawal history, the staff withdrawals queue and reconciliation screen. | No screen ships in a backend plan; the API answers `step_up_required` / `ledger_off` for it to handle. |
 | **4** Vendor dashboard and SMS | Vendor statement with Withdrawn status, withdrawal SMS. | Spec §6. |
 | **5** Third-party riders | Rider wallet withdrawals (90% share), reserve, daily commission. | Spec §7; riders have no wallet yet. |
-| **7** Hubtel live | Hubtel payouts, payout status, account-name lookups, the payout webhook (it calls `wallets.payouts.apply_result`), Hubtel's statement for the reconciliation, credentials, float funding. | Needs credentials and regulatory clearance (§11 step 7, §12). |
-| Owner decisions | Limits per role (vendors vs customers), a minimum withdrawal, a wallet balance cap, customer KYC for a stronger name check. | Not decided; the plan's defaults are listed as assumptions B1–B9. |
+| **7** Hubtel live | Hubtel payouts, payout status, account-name lookups, the payout webhook (it calls `wallets.payouts.apply_result`), Hubtel's statement for the reconciliation, credentials, float funding. Every Hubtel payout answer and report must carry the amount paid (spec §13 (xxvii)); Hubtel's `status` must look the reference up (the simulated one ignores it, so on staging a payout a bug never really sent is still "settled" by the poll). | Needs credentials and regulatory clearance (§11 step 7, §12). |
+| Owner decisions | Limits per role (vendors vs customers), limits per person rather than per account, a minimum withdrawal, a wallet balance cap, customer KYC or a code-guarded name change for a stronger customer name check (spec §13 (xxix)), a cooling period below 1 hour, a second approver for failing a stuck withdrawal by hand. | Not decided; the plan's defaults are listed as assumptions B1–B9. |
 
 ## Self-review
 
@@ -3005,23 +3548,27 @@ Expected: `No changes detected`.
 
 | Requirement | Task(s) |
 |---|---|
-| §1 row 13 / §8 destination name-matched to the verified name (customer profile or vendor KYC) | 1 (`wallets.names`), 2 (`add`, `name_mismatch`, `kyc_required`) |
-| §8 owner confirms by OTP | 1 (step-up codes for wallet actions with the ledger on), 2 (`force=True`), 4 (end to end with a texted code) |
-| §8 new or changed destinations cannot receive money for an editable cooling period (default 24 h) | 1 (`payout_cooling_hours`), 2 (`usable_from`, never edited), 3 and 4 (`destination_cooling`) |
+| §1 row 13 / §8 destination name-matched to the verified name (customer profile or vendor KYC) | 1 (`wallets.names`), 2 (`check`, `name_mismatch`, `kyc_required`). Deviation for customers: the profile name is self-declared, recorded in B4 and spec §13 (xxix) |
+| §8 owner confirms by OTP | 1 (step-up codes for wallet actions and recovery contacts with the ledger on, so the code channel cannot be swapped), 2 (`force=True`), 4 (end to end with a texted code) |
+| §8 new or changed destinations cannot receive money for an editable cooling period (default 24 h) | 1 (`payout_cooling_hours`, at least 1), 2 (`usable_from`, never edited, the holder told), 3 and 4 (`destination_cooling`) |
 | §8 vendors withdraw only to a destination matching their registered business or owner name | 1, 2, 3 (re-checked at every withdrawal) |
 | §8 / §3.3 daily and per-transaction limits, editable through the governed flow | 1 (settings via `ledger.setting`), 3 (`over_limit`, `daily_limit`) |
 | §5 withdrawal to a verified MoMo number or bank account, the user bears the charge | 2, 3 (charge out of the amount), 4 |
 | §6 vendor withdrawal; negative Available blocks it | 3, 4 |
 | §2.2 step 5 in transit, instructed, completes on confirmation, reverses on failure | 3 |
-| §2.3 payout and status behind the provider interface; idempotent, amount-verified, monotonic reports | 3 (`apply_result`), Plan 3a Task 1 (interface) |
+| §2.3 payout and status behind the provider interface; idempotent, amount-verified, monotonic reports | 3 (`apply_result`, `PayoutResult.amount_pesewas`), Plan 3a Task 1 (interface) |
 | §2 nightly reconciliation flags differences | 6 |
 | §9 step-up before withdrawal and payout-destination actions | 2, 4 |
 | §11 step 3 behind a switch; nothing moves real money | every task (`LEDGER_ENABLED`; simulated provider) |
-| Brief: staff lists, force-fail a stuck withdrawal | 5 |
+| Brief: staff lists, force-fail a stuck withdrawal (never one the provider paid) | 5 |
 | Brief: threaded tests for double withdrawal and duplicate callbacks | 3 (`ConcurrentWithdrawalTests`) |
 
 **Placeholder scan:** every code step carries complete code and every test step complete test code; edits quote the exact text replaced; no "TBD", "similar to" or undefined names.
 
-**Name consistency:** `wallets.names.words/matches/verified_names/matching_name` (1, 2, 3); `destinations.DestinationError(message, code, status_code=400, field=None)`, `live_for`, `clean`, `add`, `remove`, `row` with `account_number_masked` (2, 3, 5); `withdrawals.WithdrawalError(message, code, status_code=409, **extra)`, `hold_key`, `paid_key`, `reversed_key`, `source_kind`, `start_of_day`, `clean_request_id`, `mine`, `existing`, `request(holder, *, destination_id, amount_pesewas, request_id, now=None)`, `cancel(holder, withdrawal_id, now=None)`, `row` (3, 4, 5, 6); `payouts.claim/submit/apply_result(reference, status, *, provider_reference="", amount_pesewas=None, message="", now=None)/close(withdrawal, status, reason, now)/stuck/poll`, `STUCK_AFTER`, `STUCK_PENDING` (3, 4, 5); `providers.StatementLine`, `COLLECTION`, `PAYOUT`, `day_bounds`, `statement`, `find`, `pending_payouts` (6); `reconciliation.reconcile(day, now=None)` (6); `Withdrawal.OPEN/FINAL/COUNTED` (3, 5, 6); test helpers `Holder`, `fund`, `destination`, `MOMO_NUMBER` (2–6). From Plan 3a: `posting.lock`, `posting.balance_of`, `post(..., allow_negative=...)`, `get_provider`, `ledger_off`, `parse_amount`, `AmountError`, `Pagination`, `money`, `topup_key`, `VIEW`, `MANAGE`.
+**Name consistency:** `otp.views_step_up.WALLET_ACTIONS` (1); `ledger.approval_kinds.WALLET_SETTING_KEYS`, `setting_consequences` (1); `wallets.names.words/matches/verified_names/matching_name` (1, 2, 3); `destinations.DestinationError(message, code, status_code=400, field=None)`, `live_for`, `clean`, `check(holder, data)`, `save(holder, checked, now=None)`, `remove`, `row` with `account_number_masked` (2, 3, 5); `providers.PayoutResult(status, provider_reference="", message="", amount_pesewas=None)` (3, 5); `withdrawals.WithdrawalError(message, code, status_code=409, **extra)`, `hold_key`, `paid_key`, `reversed_key`, `source_kind`, `start_of_day`, `clean_request_id`, `mine`, `existing`, `request(holder, *, destination_id, amount_pesewas, request_id, now=None)`, `cancel(holder, withdrawal_id, now=None)`, `row` (3, 4, 5, 6); `payouts.holder_of/source_account/claim/submit/apply_result(reference, status, *, provider_reference="", amount_pesewas=None, message="", now=None)/close(withdrawal, status, reason, now)/stuck/poll`, `FAILED_REASON`, `STUCK_AFTER`, `STUCK_PENDING` (3, 4, 5); `views_staff.STAFF_FAILED_REASON` (5); `providers.StatementLine`, `COLLECTION`, `PAYOUT`, `day_bounds`, `statement`, `find`, `pending_payouts` (6); `reconciliation.reconcile(day, now=None)` (6); `Withdrawal.OPEN/FINAL/COUNTED` (3, 5, 6); test helpers `Holder`, `fund`, `destination`, `MOMO_NUMBER` (2–6). From Plan 3a: `posting.lock`, `posting.balance_of`, `post(..., allow_negative=...)`, `get_provider`, `ledger_off`, `parse_amount`, `AmountError`, `Pagination`, `money`, `topup_key`, `VIEW`, `MANAGE`.
+
+**Test counts:** Task 1 — 12 (`test_guards`: 4 + 3 + 3 + 2); Task 2 — 16 (`test_destinations`: 1 + 14 + 1); Task 3 — 27 (`test_withdrawal_engine`: 24 + 3 threaded); Task 4 — 12 (`test_withdrawal_api`: 1 + 11); Task 5 — 9 (`test_staff_withdrawals`: 8 + 1); Task 6 — 12 (`test_reconciliation`: 11 + 1). 88 new tests in all.
+
+**Pre-flight rulings applied (2026-10-16):** the contact-change step-up while the ledger is on (Task 1); the §13 addendum numbered W9–W12 and (xxiv)–(xxxii) so it never reuses an existing number; the name lookup, the reconciliation's provider calls and the staff fail view's status call outside any transaction; the provider-reported payout amount; reports on never-sent withdrawals, late "failed" after paid, the provider's message never stored; the poll skipping one bad row; the holder told of destination changes; `account_number` as the only local name for a whole number; the approval screen wording; the Plan 3a commit `63488ef`.
 
 **Review Focus pins:** each of the eight lines above names the task and the test that pins it; all of those tests are written out in their tasks.
