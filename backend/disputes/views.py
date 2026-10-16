@@ -121,6 +121,7 @@ class DisputeResolveView(APIView):
         serializer = DisputeResolveSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        refund = None
         # Two staff resolving at once must not both book a refund: lock the row.
         with transaction.atomic():
             dispute = generics.get_object_or_404(Dispute.objects.select_for_update(), pk=pk)
@@ -135,13 +136,34 @@ class DisputeResolveView(APIView):
             dispute.save(
                 update_fields=["status", "refund_amount", "resolution_notes", "resolved_by", "updated_at"]
             )
+            # With the ledger on, the refund goes to the customer's AshantiHub wallet now (ledger.refunds; nothing
+            # happens while it is off). Its source dispute-<id> is the one the delivery-case approval uses too, so a
+            # dispute is never refunded twice. A refund the ledger cannot give undoes the whole decision.
+            if dispute.order_id and dispute.refund_amount:
+                from ledger import refunds
+                from ledger.money import to_pesewas
+
+                try:
+                    refund = refunds.refund_order(
+                        dispute.order, to_pesewas(dispute.refund_amount), source=f"dispute-{dispute.pk}", by=request.user,
+                        owner_ids=refunds.scope_for_dispute(dispute), refund_processing=data.get("refund_processing", False),
+                        note=f"Dispute #{dispute.pk}",
+                    )
+                except refunds.RefundError as exc:
+                    transaction.set_rollback(True)
+                    return Response({"refund_amount": exc.message}, status=exc.status_code)
             # A full refund of the order also reverses the delivery fee its business covered through a
             # free-delivery promo; a partial one leaves that charge standing.
             if dispute.order_id and dispute.refund_amount and dispute.refund_amount >= dispute.order.total_amount:
                 from marketing.waivers import reverse_for_order
 
                 reverse_for_order(dispute.order, "order_refunded")
-        return Response(DisputeSerializer(dispute).data)
+        body = DisputeSerializer(dispute).data
+        if refund is not None:
+            from ledger.money import from_pesewas
+
+            body = {**body, "wallet_refund": str(from_pesewas(refund.amount_pesewas + refund.processing_pesewas))}
+        return Response(body)
 
 
 class DisputeReReviewView(APIView):

@@ -264,3 +264,38 @@ def _post(order, snapshots, shares, *, customer, delivery, subsidy, processing, 
         subsidy_pesewas=subsidy, processing_pesewas=processing, allocation=allocation, journal=journal, created_by=by,
         note=(note or "")[:300],
     )
+
+
+def scope_for_dispute(dispute):
+    """The vendors a dispute's refund may come from: the businesses whose stop a rider skipped and whose skip opened this
+    case (that shop's lines only, delivery.services.open_case_for_skipped_stop), or None for the whole order."""
+    from delivery.models import DeliveryEvent
+
+    owners = set(
+        DeliveryEvent.objects.filter(dispute=dispute, step=DeliveryEvent.SKIPPED_STOP, stop__isnull=False)
+        .values_list("stop__business_owner_id", flat=True)
+    )
+    return owners or None
+
+
+def check(order, amount_pesewas, *, owner_ids=None):
+    """Raise RefundError when refund_order could not give `amount_pesewas` now; writes nothing. A pre-check for a
+    decision approved later (the delivery-case refund), so a case is never closed on a refund the ledger will refuse.
+    Nothing to check while the ledger is off or for an order paid before it was on."""
+    if not escrow.enabled() or not Journal.objects.filter(key=escrow.pay_key(order)).exists():
+        return
+    _check_amount(amount_pesewas)
+    remaining = left(order)
+    snaps = OrderFeeSnapshot.objects.filter(order=order, reversed_at__isnull=True)
+    if owner_ids is not None:
+        snaps = snaps.filter(business_owner_id__in=owner_ids)
+    items_room = sum(s.base_pesewas - s.refunded_base_pesewas for s in snaps)
+    if amount_pesewas > remaining.customer:
+        raise RefundError(f"Only GH₵ {from_pesewas(remaining.customer)} of this order can still be refunded.")
+    if owner_ids is not None and amount_pesewas > items_room:
+        raise RefundError(f"Only GH₵ {from_pesewas(items_room)} of those items can still be refunded.")
+    if owner_ids is None and amount_pesewas != remaining.customer and amount_pesewas > items_room:
+        raise RefundError(
+            f"The items left are worth GH₵ {from_pesewas(items_room)}. The delivery fee comes back only with the "
+            f"whole order: GH₵ {from_pesewas(remaining.customer)}."
+        )
