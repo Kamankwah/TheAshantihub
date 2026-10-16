@@ -306,6 +306,21 @@ class BookingSale(models.Model):
                 condition=models.Q(refunded_base_pesewas__lte=models.F("base_pesewas")),
                 name="ledger_booking_sale_refund_within_base",
             ),
+            models.CheckConstraint(
+                condition=models.Q(refunded_base_pesewas__gte=0),
+                name="ledger_booking_sale_refunded_base_not_negative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(refunded_fee_pesewas__gte=0, refunded_fee_pesewas__lte=models.F("charged_pesewas")),
+                name="ledger_booking_sale_refunded_fee_within_charge",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(kind__in=["service", "stay"], category="service")
+                    | models.Q(kind="tickets", category="event")
+                ),
+                name="ledger_booking_sale_category_follows_kind",
+            ),
         ]
 
     def label(self):
@@ -340,7 +355,12 @@ class BookingRefund(models.Model):
 
     class Meta:
         ordering = ["created_at", "id"]
-        constraints = [models.UniqueConstraint(fields=["sale", "source"], name="ledger_one_booking_refund_per_source")]
+        constraints = [
+            models.UniqueConstraint(fields=["sale", "source"], name="ledger_one_booking_refund_per_source"),
+            models.CheckConstraint(
+                condition=models.Q(amount_pesewas__gt=0, fee_pesewas__gte=0), name="ledger_booking_refund_amounts_valid",
+            ),
+        ]
 
     def __str__(self):
         return f"Refund {self.source} on booking sale {self.sale_id}"

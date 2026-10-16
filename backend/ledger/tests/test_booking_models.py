@@ -92,3 +92,29 @@ class BookingSaleModelTests(TestCase):
         self.assertEqual(fees.charged_to_date(self.owner), 500 + 500 + 300)
         other = BusinessOwner.objects.create(full_name="Esi", login_phone="+233207770102", password_hash="x")
         self.assertEqual(fees.charged_to_date(other), 0)
+
+    def test_fee_refund_stays_within_zero_and_the_charge(self):
+        sale = self.sale(service_request=self.service_request())
+        for field, value in [("refunded_fee_pesewas", 501), ("refunded_fee_pesewas", -1), ("refunded_base_pesewas", -1)]:
+            with self.assertRaises(IntegrityError), transaction.atomic():
+                BookingSale.objects.filter(pk=sale.pk).update(**{field: value})
+
+    def test_category_follows_kind(self):
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            self.sale(kind=BookingSale.STAY, booking=self.booking()).__class__.objects.filter(
+                kind=BookingSale.STAY).update(category=FeeRuleSet.EVENT)
+        sale = self.sale(service_request=self.service_request())
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            BookingSale.objects.filter(pk=sale.pk).update(category=FeeRuleSet.PRODUCT)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            BookingSale.objects.filter(pk=sale.pk).update(kind=BookingSale.TICKETS)
+
+    def test_refund_amounts_are_positive_and_fee_not_negative(self):
+        sale = self.sale(service_request=self.service_request())
+        for i, (amount, fee) in enumerate([(0, 0), (100, -1)]):
+            journal = posting.post(key=f"test-booking-refund-bad-{i}", kind="test_refund", lines=[
+                posting.debit(posting.account_for(Account.PROVIDER_CLEARING), 100),
+                posting.credit(posting.account_for(Account.CUSTOMER_WALLET, self.customer), 100),
+            ])
+            with self.assertRaises(IntegrityError), transaction.atomic():
+                BookingRefund.objects.create(sale=sale, source=f"bad{i}", amount_pesewas=amount, fee_pesewas=fee, journal=journal)
