@@ -35,7 +35,8 @@ class NotConnected(ProviderError):
 class PayoutResult:
     status: str  # SUCCEEDED, FAILED or PROCESSING
     provider_reference: str = ""
-    message: str = ""
+    message: str = ""  # the provider's own words: never stored or shown (they may hold an account number)
+    amount_pesewas: object = None  # what the provider says reached the destination (pesewas), when it says
 
 
 def basis_points(amount_pesewas, bp):
@@ -91,7 +92,8 @@ class SimulatedProvider(PaymentProvider):
         return settings.SIMULATED_ACCOUNT_NAMES.get(account_number, holder_name) or None
 
     def payout(self, *, reference, rail, institution, account_number, amount_pesewas):
-        return self.status(reference)
+        answer = self.status(reference)
+        return PayoutResult(answer.status, provider_reference=answer.provider_reference, amount_pesewas=amount_pesewas)
 
     def status(self, reference):
         outcome = _OUTCOMES.get(settings.SIMULATED_PAYOUT_OUTCOME, PROCESSING)

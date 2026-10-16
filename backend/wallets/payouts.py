@@ -1,0 +1,225 @@
+"""Sending a held withdrawal to the provider and settling it (spec §2.2 step 5, §2.3).
+
+A withdrawal is claimed (PENDING → PROCESSING under its row lock) before the provider is asked, so it is sent once even
+when the request and the poll race; a held one whose holder was suspended (or is gone) or whose destination was removed
+since is returned instead. No provider call runs inside a transaction. `apply_result` is the one way a withdrawal ends,
+whoever reports it - the provider's answer, the 5-minute poll, a payout webhook (Plan 7), staff asking the provider -
+and `close` the one way its money goes back (a failure, the holder's cancel, staff failing a stuck one). Both lock the
+row first; the journal keys are per reference, so a report applied twice posts once. A final status never changes: a
+"paid" report on a withdrawal already failed or cancelled is never posted (its money went back), a "failed" report on
+one already paid changes nothing, and a report on one never sent is not applied; each opens a fraud case. A report
+whose amount (as the provider states it) differs from what was sent is not applied and opens one too. The provider's
+own message is never stored or shown, and nothing here logs an account number."""
+import logging
+from datetime import timedelta
+
+from django.db import transaction
+from django.utils import timezone
+
+from accounts.models import BusinessOwner, Customer
+from fraud import services as fraud
+from fraud.models import FraudFlag
+from ledger import posting
+from ledger.models import Account
+from notifications.services import notify_business_owner, notify_customer
+from payments import providers
+
+from .models import Withdrawal
+from .services import money
+from .withdrawals import paid_key, reversed_key
+
+logger = logging.getLogger(__name__)
+RESEND_AFTER = timedelta(minutes=2)    # a held withdrawal nobody sent (the process died) is sent by the poll
+ASK_AFTER = timedelta(minutes=2)       # a sent one is asked about after this
+STUCK_AFTER = timedelta(minutes=30)    # staff may fail one sent this long ago with no answer (views_staff)
+STUCK_PENDING = timedelta(minutes=10)  # ...or one held and never sent for this long
+FAILED_REASON = "The provider could not pay it."  # what the holder sees, never the provider's own message
+
+
+def _holder_model(withdrawal):
+    return Customer if withdrawal.holder_type == "customer" else BusinessOwner
+
+
+def holder_of(withdrawal):
+    """The customer or business owner the withdrawal belongs to, or None when that account is gone."""
+    return _holder_model(withdrawal).objects.filter(pk=withdrawal.holder_id).first()
+
+
+def source_account(withdrawal):
+    """The ledger account the money came from, found from the withdrawal alone: money goes back to it even when the
+    holder's account row is gone, instead of staying in transit."""
+    return Account.objects.get(
+        kind=withdrawal.source_kind, owner_type=_holder_model(withdrawal)._meta.label_lower, owner_id=str(withdrawal.holder_id),
+    )
+
+
+def _tell(withdrawal, title, body):
+    holder = holder_of(withdrawal)
+    if isinstance(holder, Customer):
+        notify_customer(holder, "withdrawal", title, body=body, link="/my-account", icon="💸")
+    elif holder is not None:
+        notify_business_owner(holder, "withdrawal", title, body=body, link="/business", icon="💸")
+
+
+def claim(withdrawal_pk, now=None):
+    """PENDING → PROCESSING under the row lock. Returns the withdrawal if this caller won it, else None. A held
+    withdrawal whose holder was suspended (or is gone), or whose destination was removed, since it was asked for is not
+    sent: its money goes back (CANCELLED) and None is returned."""
+    now = now or timezone.now()
+    with transaction.atomic():
+        withdrawal = Withdrawal.objects.select_for_update().filter(pk=withdrawal_pk, status=Withdrawal.PENDING).first()
+        if withdrawal is None:
+            return None
+        holder = holder_of(withdrawal)
+        if holder is None or holder.is_suspended or withdrawal.destination.removed_at is not None:
+            close(withdrawal, Withdrawal.CANCELLED, "Stopped before it was sent: the account or the destination changed.", now)
+            return None
+        withdrawal.status, withdrawal.submitted_at = Withdrawal.PROCESSING, now
+        withdrawal.save(update_fields=["status", "submitted_at"])
+        return withdrawal
+
+
+def submit(withdrawal_pk, now=None):
+    """Send a held withdrawal to the provider once, then apply what it answered. Never raises for a provider problem:
+    a send with no answer stays PROCESSING for the poll (or staff) to settle. Returns the withdrawal as it now is."""
+    withdrawal = claim(withdrawal_pk, now)
+    if withdrawal is None:
+        return Withdrawal.objects.get(pk=withdrawal_pk)
+    destination = withdrawal.destination
+    try:
+        result = providers.get_provider(withdrawal.provider).payout(
+            reference=withdrawal.reference, rail=destination.rail, institution=destination.institution,
+            account_number=destination.account_number, amount_pesewas=withdrawal.net_pesewas,
+        )
+    except Exception:
+        logger.warning("Payout %s could not be sent; the poll will ask about it", withdrawal.reference)
+        return Withdrawal.objects.get(pk=withdrawal.pk)
+    applied = apply_result(
+        withdrawal.reference, result.status, provider_reference=result.provider_reference,
+        amount_pesewas=result.amount_pesewas, message=result.message, now=now,
+    )
+    return applied or Withdrawal.objects.get(pk=withdrawal.pk)
+
+
+def apply_result(reference, status, *, provider_reference="", amount_pesewas=None, message="", now=None):
+    """End a withdrawal from a report: SUCCEEDED posts the payout, FAILED returns the money, PROCESSING changes nothing.
+    `amount_pesewas` is what the provider says reached the destination; None means the report did not say (the
+    simulated status). A Hubtel report must carry it (spec §13 (xxvii)). `message` is the provider's own text and is
+    dropped: it may hold an account number. Returns the withdrawal, or None for an unknown reference."""
+    now = now or timezone.now()
+    if status not in (providers.SUCCEEDED, providers.FAILED):
+        return Withdrawal.objects.filter(reference=reference).first()
+    with transaction.atomic():
+        withdrawal = Withdrawal.objects.select_for_update().filter(reference=reference).first()
+        if withdrawal is None:
+            logger.warning("A payout report names an unknown withdrawal %s", reference)
+            return None
+        if withdrawal.status in Withdrawal.FINAL:
+            if status == providers.SUCCEEDED and withdrawal.status != Withdrawal.SUCCEEDED:
+                fraud.raise_flag(
+                    FraudFlag.OTHER, title=f"Withdrawal {withdrawal.reference} reported paid after its money was returned",
+                    detail=(f"The provider reported withdrawal {withdrawal.reference} paid, but it was already "
+                            f"{withdrawal.get_status_display().lower()} and GH₵ {money(withdrawal.amount_pesewas)} went back to the "
+                            "holder. Nothing was posted. Check with the provider."),
+                    dedupe_key=f"withdrawal-late-paid-{withdrawal.reference}",
+                )
+            elif status == providers.FAILED and withdrawal.status == Withdrawal.SUCCEEDED:
+                fraud.raise_flag(
+                    FraudFlag.OTHER, title=f"Withdrawal {withdrawal.reference} reported failed after it was paid",
+                    detail=(f"The provider reported withdrawal {withdrawal.reference} failed, but it was already paid and "
+                            "posted. Nothing was returned to the holder. Check with the provider whether the money came back."),
+                    dedupe_key=f"withdrawal-late-failed-{withdrawal.reference}",
+                )
+            return withdrawal
+        if withdrawal.status == Withdrawal.PENDING:
+            # Never sent (not claimed): no provider can have an answer for it, so the report is misrouted or forged.
+            fraud.raise_flag(
+                FraudFlag.OTHER, title=f"Withdrawal {withdrawal.reference} reported before it was sent",
+                detail=(f"A {status} report arrived for withdrawal {withdrawal.reference}, which was never sent to the "
+                        "provider. Nothing was posted. Check with the provider."),
+                dedupe_key=f"withdrawal-unsent-report-{withdrawal.reference}",
+            )
+            return withdrawal
+        if amount_pesewas is not None and amount_pesewas != withdrawal.net_pesewas:
+            fraud.raise_flag(
+                FraudFlag.OTHER, title=f"Withdrawal {withdrawal.reference}: the provider reported a different amount",
+                detail=f"Sent GH₵ {money(withdrawal.net_pesewas)}, reported GH₵ {money(amount_pesewas)}. Not applied.",
+                dedupe_key=f"withdrawal-amount-{withdrawal.reference}",
+            )
+            return withdrawal
+        if provider_reference and not withdrawal.provider_reference:
+            withdrawal.provider_reference = provider_reference[:128]
+        if status == providers.FAILED:
+            logger.info("Payout %s failed at the provider", withdrawal.reference)
+            return close(withdrawal, Withdrawal.FAILED, FAILED_REASON, now)
+        posting.post(
+            key=paid_key(withdrawal.reference), kind="withdrawal_paid",
+            lines=[
+                posting.debit(posting.account_for(Account.WITHDRAWAL_IN_TRANSIT), withdrawal.amount_pesewas),
+                posting.credit(posting.account_for(Account.PROVIDER_CLEARING), withdrawal.amount_pesewas),
+            ],
+            reference_type="wallets.withdrawal", reference_id=withdrawal.reference, memo=f"Withdrawal {withdrawal.reference} paid",
+            allow_negative={Account.PROVIDER_CLEARING},  # the provider confirmed it: a fact to record (spec §13 xxvi)
+        )
+        withdrawal.status, withdrawal.settled_at = Withdrawal.SUCCEEDED, now
+        withdrawal.save(update_fields=["status", "settled_at", "provider_reference"])
+        destination = withdrawal.destination
+        _tell(withdrawal, "Your withdrawal was paid",
+              f"GH₵ {money(withdrawal.net_pesewas)} was sent to your {destination.get_rail_display().lower()} ({destination.institution}).")
+        return withdrawal
+
+
+def close(withdrawal, status, reason, now):
+    """Return a held withdrawal's money to its source (FAILED or CANCELLED). The caller holds the row lock. `reason` is
+    shown to the holder: AshantiHub's own words, never the provider's message or a staff member's note."""
+    source = source_account(withdrawal)
+    posting.post(
+        key=reversed_key(withdrawal.reference), kind="withdrawal_reversed",
+        lines=[
+            posting.debit(posting.account_for(Account.WITHDRAWAL_IN_TRANSIT), withdrawal.amount_pesewas),
+            posting.credit(source, withdrawal.amount_pesewas),
+        ],
+        reference_type="wallets.withdrawal", reference_id=withdrawal.reference, memo=f"Withdrawal {withdrawal.reference} returned",
+    )
+    withdrawal.status, withdrawal.settled_at, withdrawal.failure_reason = status, now, (reason or "")[:300]
+    withdrawal.save(update_fields=["status", "settled_at", "failure_reason", "provider_reference"])
+    title = "Your withdrawal was cancelled" if status == Withdrawal.CANCELLED else "Your withdrawal didn't go through"
+    _tell(withdrawal, title, f"GH₵ {money(withdrawal.amount_pesewas)} is back in your balance. {withdrawal.failure_reason}")
+    return withdrawal
+
+
+def stuck(withdrawal, now=None):
+    """Staff may fail it by hand: sent STUCK_AFTER ago with no answer, or held and never sent for STUCK_PENDING."""
+    now = now or timezone.now()
+    if withdrawal.status == Withdrawal.PROCESSING:
+        return withdrawal.submitted_at is not None and withdrawal.submitted_at <= now - STUCK_AFTER
+    if withdrawal.status == Withdrawal.PENDING:
+        return withdrawal.created_at <= now - STUCK_PENDING
+    return False
+
+
+def poll(now=None):
+    """Send held withdrawals nobody sent, and ask the provider about sent ones. Returns how many it looked at. A provider
+    that cannot report (NotConnected) leaves them for staff. One withdrawal that fails (a provider error, a bad row) is
+    logged and skipped, so it never stops the poll for everyone else."""
+    now = now or timezone.now()
+    looked = 0
+    for pk in Withdrawal.objects.filter(status=Withdrawal.PENDING, created_at__lt=now - RESEND_AFTER).values_list("pk", flat=True):
+        try:
+            submit(pk, now)
+        except Exception:
+            logger.exception("Could not send withdrawal %s; the next poll tries again", pk)
+            continue
+        looked += 1
+    for withdrawal in Withdrawal.objects.filter(status=Withdrawal.PROCESSING, submitted_at__lt=now - ASK_AFTER):
+        try:
+            result = providers.get_provider(withdrawal.provider).status(withdrawal.reference)
+            apply_result(
+                withdrawal.reference, result.status, provider_reference=result.provider_reference,
+                amount_pesewas=result.amount_pesewas, message=result.message, now=now,
+            )
+        except Exception:
+            logger.warning("Could not settle payout %s; the next poll asks again", withdrawal.reference)
+            continue
+        looked += 1
+    return looked

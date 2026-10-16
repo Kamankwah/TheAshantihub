@@ -591,6 +591,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "ledger.tasks.refund_uncollected_pickups",
         "schedule": crontab(minute=25),  # hourly, at twenty-five past: a no-op while the ledger is off
     },
+    "wallets-poll-withdrawals": {
+        "task": "wallets.tasks.poll_withdrawals",
+        "schedule": 300.0,  # every 5 minutes: a no-op while the ledger is off
+    },
 }
 
 # Production sets this True so the nightly activity check emails its seal to

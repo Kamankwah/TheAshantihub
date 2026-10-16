@@ -35,3 +35,61 @@ class PayoutDestination(models.Model):
 
     def __str__(self):
         return f"{self.get_rail_display()} ({self.institution}) of {self.holder_type} {self.holder_id}"  # never the number
+
+
+def _withdrawal_reference():
+    from django.utils.crypto import get_random_string
+
+    return f"AH-WD-{get_random_string(10).upper()}"
+
+
+class Withdrawal(models.Model):
+    """Money leaving a holder's balance for one of their payout destinations (spec §2.2 step 5). The amount is held in
+    withdrawal in transit at once (journal withdrawal-hold-<reference>), sent to the provider, then settled
+    (withdrawal-paid-<reference>: in transit to provider clearing) or returned (withdrawal-reversed-<reference>). The
+    holder bears the provider's charge: `net_pesewas` = `amount_pesewas` − `charge_pesewas` reaches the destination. A
+    final status never changes (wallets.payouts.apply_result)."""
+
+    PENDING, PROCESSING, SUCCEEDED, FAILED, CANCELLED = "pending", "processing", "succeeded", "failed", "cancelled"
+    STATUS_CHOICES = [
+        (PENDING, "Held, not sent yet"), (PROCESSING, "Sent, waiting for the provider"), (SUCCEEDED, "Paid"),
+        (FAILED, "Failed, money returned"), (CANCELLED, "Cancelled, money returned"),
+    ]
+    OPEN = (PENDING, PROCESSING)
+    FINAL = (SUCCEEDED, FAILED, CANCELLED)
+    COUNTED = (PENDING, PROCESSING, SUCCEEDED)  # what counts against the daily limit
+
+    reference = models.CharField(max_length=20, unique=True, default=_withdrawal_reference)
+    holder_type = models.CharField(max_length=20)            # "customer" or "business_owner" (otp.identity.ref)
+    holder_id = models.PositiveBigIntegerField()
+    source_kind = models.CharField(max_length=32)            # the ledger account it came from: customer_wallet or vendor_available
+    destination = models.ForeignKey(PayoutDestination, on_delete=models.PROTECT, related_name="withdrawals")
+    request_id = models.CharField(max_length=64)             # the client's idempotency key, unique per holder
+    amount_pesewas = models.BigIntegerField()
+    charge_pesewas = models.BigIntegerField(default=0)
+    net_pesewas = models.BigIntegerField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
+    provider = models.CharField(max_length=20)
+    provider_reference = models.CharField(max_length=128, blank=True, default="")
+    failure_reason = models.CharField(max_length=300, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    settled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["holder_type", "holder_id", "created_at"]),
+            models.Index(fields=["status", "submitted_at"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(fields=["holder_type", "holder_id", "request_id"], name="wallets_one_withdrawal_per_request"),
+            models.CheckConstraint(condition=models.Q(net_pesewas__gt=0, charge_pesewas__gte=0), name="wallets_withdrawal_amounts_positive"),
+            models.CheckConstraint(
+                condition=models.Q(amount_pesewas=models.F("net_pesewas") + models.F("charge_pesewas")),
+                name="wallets_withdrawal_amount_is_net_plus_charge",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Withdrawal {self.reference}"
