@@ -13,7 +13,7 @@ payout and payout status (Plan 3b adds the daily statement used by the reconcili
 everything it answers comes from settings, so tests and staging can steer it. The Hubtel provider knows only its
 collection charge (`HUBTEL_COLLECTION_CHARGE_BP`); `payments/hubtel_client.py` has no payout, status or name-lookup
 call, so those raise NotConnected until Plan 7 builds them against Hubtel's real API."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from django.conf import settings
 
@@ -35,7 +35,7 @@ class NotConnected(ProviderError):
 class PayoutResult:
     status: str  # SUCCEEDED, FAILED or PROCESSING
     provider_reference: str = ""
-    message: str = ""  # the provider's own words: never stored or shown (they may hold an account number)
+    message: str = field(default="", repr=False)  # the provider's own words: never stored, shown or logged (they may hold an account number)
     amount_pesewas: object = None  # what the provider says reached the destination (pesewas), when it says
 
 

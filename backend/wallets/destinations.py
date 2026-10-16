@@ -4,7 +4,7 @@ Adding one is two calls. `check` does everything that needs no lock (the holder 
 provider's name on the account matches a verified name in wallets.names) and runs outside any transaction, because for
 a real provider the name lookup is a network call. `save` then writes it inside the transaction in which the view spends
 the holder's step-up code (so a refused add keeps the code), checking duplicates and the five-destination limit again
-under a lock on the holder's live destinations. A destination can receive money from `usable_from` = now +
+under a lock on the holder's own row. A destination can receive money from `usable_from` = now +
 `payout_cooling_hours` (governed, default 24). It is never edited: a change is a removal and a new one, with a new
 cooling period. The business's registered payout details (BusinessOwnerProfile.payout_*) are left as they are;
 `from_profile` copies them into a new destination. Numbers are stored unmasked and only ever leave the server through
@@ -138,7 +138,7 @@ def save(holder, checked, now=None):
     committed. Raises DestinationError, saving nothing."""
     now = now or timezone.now()
     holder_type, holder_id = ref(holder)
-    fresh = type(holder).objects.select_for_update().get(pk=holder.pk)
+    fresh = type(holder).objects.select_for_update(no_key=True).get(pk=holder.pk)
     problem = _holder_problem(fresh)
     if problem:
         raise problem

@@ -102,6 +102,8 @@ def request(holder, *, destination_id, amount_pesewas, request_id, now=None):
     if not provider.payouts_available():
         raise WithdrawalError("Withdrawals aren't available yet.", "payouts_unavailable", 409)
     charge = provider.payout_charge(amount_pesewas, destination.rail)
+    if isinstance(charge, bool) or not isinstance(charge, int) or charge < 0:
+        raise WithdrawalError("Withdrawals aren't available yet.", "payouts_unavailable", 409)
     if amount_pesewas <= charge:
         raise WithdrawalError(f"The amount must be more than the GH₵ {from_pesewas(charge)} withdrawal charge.", "below_charge", 400)
     per_withdrawal = settings_store.current("withdrawal_per_tx_limit_pesewas", now)
@@ -126,7 +128,10 @@ def request(holder, *, destination_id, amount_pesewas, request_id, now=None):
                 holder_type=holder_type, holder_id=holder_id, source_kind=kind, destination=destination, request_id=request_id,
                 amount_pesewas=amount_pesewas, charge_pesewas=charge, net_pesewas=amount_pesewas - charge, provider=provider.name,
             )
-    except IntegrityError:
+    except IntegrityError as exc:
+        diag = getattr(exc.__cause__, "diag", None)
+        if getattr(diag, "constraint_name", None) != "wallets_one_withdrawal_per_request":
+            raise
         raise WithdrawalError("This withdrawal was already asked for.", "duplicate_request", 409) from None
     posting.post(
         key=hold_key(withdrawal.reference), kind="withdrawal_hold",

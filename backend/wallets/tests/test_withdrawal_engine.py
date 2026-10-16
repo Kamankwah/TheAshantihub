@@ -267,6 +267,130 @@ class EngineTests(TestCase):
 
 
 @override_settings(LEDGER_ENABLED=True)
+class EngineFixRoundTests(TestCase):
+    def setUp(self):
+        self.customer = Customer.objects.create(full_name="Ama Owusu", phone="+233241234567", password_hash="x")
+        self.dest = destination(self.customer)
+        fund(Account.CUSTOMER_WALLET, self.customer, 20000, "fund-1")
+        self.n = 0
+
+    def withdraw(self, amount=5000):
+        self.n += 1
+        return withdrawals.request(self.customer, destination_id=self.dest.pk, amount_pesewas=amount, request_id=f"req-fix-{self.n:06d}")
+
+    def wallet(self):
+        return posting.balance_of(Account.CUSTOMER_WALLET, self.customer)
+
+    def transit(self):
+        return posting.balance_of(Account.WITHDRAWAL_IN_TRANSIT)
+
+    def sent_pending(self):
+        with override_settings(SIMULATED_PAYOUT_OUTCOME="pending"):
+            return payouts.submit(self.withdraw().pk)
+
+    def test_an_open_amount_case_freezes_settlement_whatever_the_next_report_says(self):
+        def short(provider, **kwargs):
+            return providers.PayoutResult(providers.SUCCEEDED, amount_pesewas=4000)
+
+        with mock.patch.object(providers.SimulatedProvider, "payout", short):
+            sent = payouts.submit(self.withdraw().pk)
+        self.assertEqual(sent.status, Withdrawal.PROCESSING)
+        payouts.apply_result(sent.reference, providers.FAILED)                                 # no amount
+        payouts.apply_result(sent.reference, providers.SUCCEEDED)
+        payouts.apply_result(sent.reference, providers.SUCCEEDED, amount_pesewas=5000)
+        sent.refresh_from_db()
+        self.assertEqual(sent.status, Withdrawal.PROCESSING)
+        self.assertEqual((self.wallet(), self.transit()), (15000, 5000))
+        self.assertFalse(Journal.objects.filter(kind__in=["withdrawal_reversed", "withdrawal_paid"]).exists())
+
+    def test_submit_inside_a_transaction_fails_loudly_and_sends_nothing(self):
+        held = self.withdraw()
+        with mock.patch.object(providers.SimulatedProvider, "payout") as payout:
+            with self.assertRaises(RuntimeError):
+                with transaction.atomic():
+                    payouts.submit(held.pk)
+        payout.assert_not_called()
+
+    def test_a_send_that_times_out_stays_with_the_provider_and_the_poll_only_asks(self):
+        held = self.withdraw()
+        with mock.patch.object(providers.SimulatedProvider, "payout", side_effect=TimeoutError("account 0241234567 timed out")):
+            sent = payouts.submit(held.pk)
+        self.assertEqual(sent.status, Withdrawal.PROCESSING)
+        self.assertEqual(self.transit(), 5000)
+        self.assertFalse(Journal.objects.filter(kind="withdrawal_reversed").exists())
+        Withdrawal.objects.filter(pk=sent.pk).update(submitted_at=timezone.now() - timedelta(minutes=3))
+        with mock.patch.object(providers.SimulatedProvider, "payout") as payout:
+            self.assertEqual(payouts.poll(), 1)
+        payout.assert_not_called()
+        sent.refresh_from_db()
+        self.assertEqual(sent.status, Withdrawal.SUCCEEDED)
+
+    def test_a_provider_that_cannot_pay_out_returns_the_hold_at_once(self):
+        with mock.patch.object(providers.SimulatedProvider, "payout", side_effect=providers.NotConnected("no payouts")):
+            failed = payouts.submit(self.withdraw().pk)
+        self.assertEqual(failed.status, Withdrawal.FAILED)
+        self.assertEqual((self.wallet(), self.transit()), (20000, 0))
+        self.assertEqual(Journal.objects.filter(kind="withdrawal_reversed").count(), 1)
+        self.assertEqual(payouts.poll(), 0)
+        self.assertEqual(Journal.objects.filter(kind="withdrawal_reversed").count(), 1)
+
+    def test_a_held_withdrawal_is_rechecked_before_it_is_sent_late(self):
+        held = self.withdraw()
+        PayoutDestination.objects.filter(pk=self.dest.pk).update(usable_from=timezone.now() + timedelta(hours=1))
+        self.assertEqual(payouts.submit(held.pk).status, Withdrawal.CANCELLED)
+        self.assertEqual((self.wallet(), self.transit()), (20000, 0))
+        PayoutDestination.objects.filter(pk=self.dest.pk).update(usable_from=timezone.now() - timedelta(hours=1))
+        other = self.withdraw()
+        Customer.objects.filter(pk=self.customer.pk).update(full_name="Akosua Mensah")
+        self.assertEqual(payouts.submit(other.pk).status, Withdrawal.CANCELLED)
+        self.assertEqual((self.wallet(), self.transit()), (20000, 0))
+        self.assertEqual(Journal.objects.filter(kind="withdrawal_reversed").count(), 2)
+        self.assertFalse(Journal.objects.filter(kind="withdrawal_paid").exists())
+
+    def test_a_vendor_who_lost_kyc_is_not_paid_by_a_late_send(self):
+        owner = BusinessOwner.objects.create(
+            full_name="Kwame Mensah", login_phone="+233201112233", password_hash="x", kyc_status=BusinessOwner.VERIFIED,
+        )
+        to_kwame = destination(owner, number="+233201112233", name="Kwame Mensah")
+        fund(Account.VENDOR_AVAILABLE, owner, 5000, "fund-vendor")
+        held = withdrawals.request(owner, destination_id=to_kwame.pk, amount_pesewas=3000, request_id="req-kyc-0001")
+        BusinessOwner.objects.filter(pk=owner.pk).update(kyc_status=BusinessOwner.PENDING)
+        self.assertEqual(payouts.submit(held.pk).status, Withdrawal.CANCELLED)
+        self.assertEqual(posting.balance_of(Account.VENDOR_AVAILABLE, owner), 5000)
+
+    def test_a_paid_report_without_an_amount_is_not_settled_unless_simulated(self):
+        sent = self.sent_pending()
+        Withdrawal.objects.filter(pk=sent.pk).update(provider="hubtel")
+        payouts.apply_result(sent.reference, providers.SUCCEEDED)
+        sent.refresh_from_db()
+        self.assertEqual(sent.status, Withdrawal.PROCESSING)
+        self.assertTrue(FraudFlag.objects.filter(dedupe_key=f"withdrawal-amount-{sent.reference}").exists())
+        self.assertFalse(Journal.objects.filter(kind="withdrawal_paid").exists())
+
+    def test_a_processing_answer_keeps_the_providers_reference(self):
+        answer = providers.PayoutResult(providers.PROCESSING, provider_reference="HUB-123")
+        with mock.patch.object(providers.SimulatedProvider, "payout", return_value=answer):
+            sent = payouts.submit(self.withdraw().pk)
+        self.assertEqual((sent.status, sent.provider_reference), (Withdrawal.PROCESSING, "HUB-123"))
+
+    def test_a_negative_provider_charge_is_refused(self):
+        with mock.patch.object(providers.SimulatedProvider, "payout_charge", return_value=-5):
+            with self.assertRaises(withdrawals.WithdrawalError) as caught:
+                self.withdraw()
+        self.assertEqual(caught.exception.code, "payouts_unavailable")
+        self.assertEqual(Withdrawal.objects.count(), 0)
+
+    def test_the_providers_message_is_not_in_the_results_repr(self):
+        self.assertNotIn("0241234567", repr(providers.PayoutResult(providers.FAILED, message="Invalid account 0241234567")))
+
+    def test_settled_at_is_the_real_time_not_the_polls_start(self):
+        past = timezone.now() - timedelta(days=2)
+        paid = payouts.submit(self.withdraw().pk, now=past)
+        self.assertGreater(paid.settled_at, past + timedelta(days=1))
+        self.assertGreater(paid.submitted_at, past + timedelta(days=1))
+
+
+@override_settings(LEDGER_ENABLED=True)
 class ConcurrentWithdrawalTests(TransactionTestCase):
     serialized_rollback = True
 
@@ -318,13 +442,15 @@ class ConcurrentWithdrawalTests(TransactionTestCase):
 
     def test_two_senders_at_once_send_once(self):
         held = self.hold(4000, "req-send-0001")
-        calls, real = [], providers.SimulatedProvider.payout
+        calls, in_atomic, real = [], [], providers.SimulatedProvider.payout
 
         def counting(provider, **kwargs):
             calls.append(kwargs["reference"])
+            in_atomic.append(connection.in_atomic_block)
             return real(provider, **kwargs)
 
         with mock.patch.object(providers.SimulatedProvider, "payout", counting):
             self.race(lambda i: payouts.submit(held.pk).status)
         self.assertEqual(calls, [held.reference])
+        self.assertEqual(in_atomic, [False])                                                   # never sent inside a transaction
         self.assertEqual(Journal.objects.filter(kind="withdrawal_paid").count(), 1)
