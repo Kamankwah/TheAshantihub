@@ -70,7 +70,7 @@ STATUS_FILTERS = {
     "open": Withdrawal.OPEN, "succeeded": (Withdrawal.SUCCEEDED,), "failed": (Withdrawal.FAILED,),
     "cancelled": (Withdrawal.CANCELLED,), "all": None,
 }
-STAFF_FAILED_REASON = "AshantiHub stopped it after checking with the provider."  # what the holder sees, never staff text
+STAFF_FAILED_REASON = "AshantiHub could not complete it, so the money is back in your balance."  # what the holder sees, never staff text
 
 
 def holders_of(rows):

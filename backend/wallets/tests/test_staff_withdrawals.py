@@ -93,6 +93,12 @@ class StaffWithdrawalTests(TestCase):
         response = self.force_fail(withdrawal)
         self.assertEqual((response.status_code, response.json()["code"]), (409, "not_stuck"))
 
+    def test_holder_text_makes_no_claim_about_the_provider(self):
+        self.assertEqual(
+            views_staff.STAFF_FAILED_REASON,
+            "AshantiHub could not complete it, so the money is back in your balance.",
+        )
+
     def test_review_focus_failing_a_stuck_withdrawal_returns_the_money_and_logs_no_number(self):
         withdrawal = self.sent()
         self.assertEqual(self.wallet(), 15000)
