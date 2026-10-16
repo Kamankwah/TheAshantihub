@@ -144,3 +144,51 @@ class BookingRefundTests(BookingBase):
         with self.assertRaisesMessage(refunds.RefundError, "Nothing is left to refund on this booking."):
             sales.refund(sale, 100, source="dispute-9")
         self.assertEqual(self.wallet(), 20000)
+
+    @override_settings(SIMULATED_COLLECTION_CHARGE_BP=200)
+    def test_a_flagged_whole_refund_returns_the_rest_of_the_processing_charge(self):
+        sale = self.paid_service("200.00")                                                     # paid 204.00
+        sales.refund(sale, 10000, source="dispute-1", refund_processing=True)
+        last = sales.refund(sale, source="dispute-2", refund_processing=True)
+        self.assertEqual((last.whole, last.processing_pesewas), (True, 200))
+        self.assertEqual(self.wallet(), 20400)
+        self.assertEqual(self.balance(Account.PROVIDER_FEES), 400)
+
+    @override_settings(SIMULATED_COLLECTION_CHARGE_BP=200)
+    def test_nothing_more_of_the_processing_charge_comes_back_once_it_is_all_returned(self):
+        sale = self.paid_service("200.00")
+        first = sales.refund(sale, 19999, source="dispute-1", refund_processing=True)          # rounds up to all 4.00
+        self.assertEqual(first.processing_pesewas, 400)
+        last = sales.refund(sale, 1, source="dispute-2", refund_processing=True)
+        self.assertEqual(last.processing_pesewas, 0)
+        self.assertEqual(self.balance(Account.PROVIDER_FEES), 400)
+        self.assertEqual(self.wallet(), 20400)
+
+    def test_no_amount_on_a_booking_refunded_in_full_returns_none(self):
+        sale = self.paid_service()
+        sales.refund(sale, source="cancel")
+        self.assertIsNone(sales.refund(sale, source="dispute-9"))
+        self.assertEqual(BookingRefund.objects.count(), 1)
+
+    def test_a_whole_refund_of_a_checked_in_stay_leaves_it_checked_in(self):
+        sale = self.paid_stay(nights=2)
+        Booking.objects.filter(pk=sale.booking_id).update(status=Booking.CHECKED_IN)
+        sales.refund(sale, source="dispute-1")
+        self.assertEqual(Booking.objects.get(pk=sale.booking_id).status, Booking.CHECKED_IN)
+
+    def test_a_bad_or_oversized_source_raises_value_error(self):
+        sale = self.paid_service()
+        for source in ("", "x" * 61):
+            with self.assertRaises(ValueError):
+                sales.refund(sale, source=source)
+        self.assertEqual(BookingRefund.objects.count(), 0)
+
+    def test_the_callers_sale_sees_the_cancelled_status_after_a_whole_refund(self):
+        sale = self.paid_service()
+        sales.refund(sale, source="cancel")
+        self.assertEqual(sale.service_request.status, ServiceRequest.CANCELLED)
+
+    def test_created_by_is_kept_only_for_staff(self):
+        sale = self.paid_service()
+        refund = sales.refund(sale, source="cancel", by=self.customer)
+        self.assertIsNone(refund.created_by)

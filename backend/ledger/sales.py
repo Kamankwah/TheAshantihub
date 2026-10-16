@@ -13,7 +13,15 @@ The key names the checkout session, so the nightly reconciliation can expect it 
 Lock order (spec W7, extended to bookings): the service request or stay booking row (tickets: the purchase's ticket
 rows, in primary-key order), then the sale row, then the ledger accounts in primary-key order in one pass
 (posting.lock). A business's Pending account is locked before its fees so far are read, as escrow.record_order_payment
-does, so a product payment and a booking payment for one business never both see the same cap remainder."""
+does, so a product payment and a booking payment for one business never both see the same cap remainder.
+
+Release journal booking-release-<sale> (kind booking_release), in pesewas, for what refunds left (base B, fee F):
+    Dr vendor pending B; Cr platform fee income F; Cr vendor available B - F.
+Refund journal booking-refund-<sale>-<source> (kind booking_refund), always to the customer's wallet:
+    before release  Dr vendor pending (amount)
+    after release   Dr vendor available (amount); Dr platform fee income / Cr vendor available (the fee share returned)
+    on fault only   Dr provider fees (the processing charge returned)
+    both            Cr customer wallet (amount + processing charge)."""
 from datetime import timedelta
 
 from django.db import transaction
@@ -23,7 +31,7 @@ from django.utils import timezone
 from . import escrow, fees, posting, settings_store
 from .models import Account, BookingRefund, BookingSale, FeeRuleSet, FulfilmentCheck, Journal
 from .money import from_pesewas, to_pesewas
-from .refunds import RefundError, fee_share
+from .refunds import RefundError, _check_amount, fee_share
 from .verification import VerificationError
 
 # Spec §1 row 11: stays count as services; tickets use the events table, whatever category the listing or event is in.
@@ -317,14 +325,6 @@ def queue_row(sale, now, hours):
         "customer_confirmed": customer_confirmed(sale), "outcome": sale.outcome, "outcome_note": sale.outcome_note,
         "dispute_id": sale.dispute_id,
     }
-from django.db.models import Exists, OuterRef, Q, Sum
-from django.utils import timezone
-
-from . import escrow, fees, posting, settings_store
-from .models import Account, BookingRefund, BookingSale, FeeRuleSet, FulfilmentCheck, Journal
-from .money import from_pesewas, to_pesewas
-from .refunds import RefundError, fee_share
-from .verification import VerificationError
 
 
 # --- refunds, always to the customer's wallet (spec §2.2 steps 3-4, §5; Plan 1b S12) -------------------------------
@@ -382,9 +382,11 @@ def refund(sale, amount_pesewas=None, *, source, by=None, refund_processing=Fals
         return None
     if not source or len(source) > 60 or len(refund_key(sale, source)) > 120:  # BookingRefund.source is 60, the key 120
         raise ValueError(f"Bad refund source {source!r}")
-    if amount_pesewas is not None and (isinstance(amount_pesewas, bool) or not isinstance(amount_pesewas, int) or amount_pesewas <= 0):
-        raise RefundError("The refund must be more than GH₵ 0.00.")
+    _check_amount(amount_pesewas)
     now = now or timezone.now()
+    from accounts.models import StaffUser
+
+    caller_sale = sale
     with transaction.atomic():
         sale = lock(sale)
         existing = BookingRefund.objects.filter(sale=sale, source=source).first()
@@ -427,8 +429,11 @@ def refund(sale, amount_pesewas=None, *, source, by=None, refund_processing=Fals
         sale.save(update_fields=["refunded_base_pesewas", "refunded_fee_pesewas", "reversed_at"])
         given = BookingRefund.objects.create(
             sale=sale, source=source, whole=whole, released=released, amount_pesewas=customer, fee_pesewas=fee,
-            processing_pesewas=processing, journal=journal, created_by=by, note=(note or "")[:300],
+            processing_pesewas=processing, journal=journal, created_by=by if isinstance(by, StaffUser) else None, note=(note or "")[:300],
         )
         if whole:
             _cancel_if_not_handed_over(sale, by, note, now)
+            for held in (sale, caller_sale):  # the cancel was an UPDATE: drop the cached rows so callers re-read the status
+                for name in ("service_request", "booking"):
+                    held._state.fields_cache.pop(name, None)
         return given
