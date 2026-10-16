@@ -21,6 +21,7 @@ from realtime.publish import force_disconnect_on_commit
 
 from otp import flags as otp_flags
 from otp import signin as otp_signin
+from otp import step_up
 from staffsecurity import signin as signin_log
 from staffsecurity.models import StaffSignInRecord
 
@@ -1307,6 +1308,12 @@ class PayoutDetailUpdateView(generics.UpdateAPIView):
     def get_object(self):
         return self.request.user.profile
 
+    def update(self, request, *args, **kwargs):
+        # Where a business is paid is a sensitive change (spec §9): a step-up code first, spent only if it saves.
+        with transaction.atomic():
+            step_up.require(request, step_up.PAYOUT_DESTINATION)
+            return super().update(request, *args, **kwargs)
+
 
 class BusinessOwnerProfileUpdateView(generics.RetrieveUpdateAPIView):
     serializer_class = BusinessOwnerProfileUpdateSerializer
@@ -1341,8 +1348,12 @@ class CustomerSecondaryEmailRequestView(generics.GenericAPIView):
 
     def post(self, request):
         serializer = self.get_serializer(data=request.data, context={"request": request})
-        serializer.is_valid(raise_exception=True)
-        customer = serializer.save()
+        with transaction.atomic():
+            # A verified recovery email becomes a way to receive sign-in codes (otp.identity.contacts): a step-up
+            # code first (spec §9), spent only if the change saves.
+            step_up.require(request, step_up.CONTACT_CHANGE)
+            serializer.is_valid(raise_exception=True)
+            customer = serializer.save()
         send_verification_code_email(customer.secondary_email, customer.secondary_email_verify_code)
         return Response({
             "secondary_email": customer.secondary_email,
@@ -1367,8 +1378,10 @@ class CustomerSecondaryPhoneRequestView(generics.GenericAPIView):
 
     def post(self, request):
         serializer = self.get_serializer(data=request.data, context={"request": request})
-        serializer.is_valid(raise_exception=True)
-        customer = serializer.save()
+        with transaction.atomic():
+            step_up.require(request, step_up.CONTACT_CHANGE)
+            serializer.is_valid(raise_exception=True)
+            customer = serializer.save()
         return Response({
             "secondary_phone": customer.secondary_phone,
             "demo_code": customer.secondary_phone_verify_code,
