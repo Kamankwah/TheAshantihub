@@ -75,8 +75,8 @@ KIND_TYPE = {kind: key for key, _l, kinds in COLLECTION_TYPES for kind in kinds}
 STATUSES = ("success", "pending", "failed", "expired")
 PAGE_SIZE = 100
 WALLET_NOT_RECORDED = {
-    "name": "Orders paid from a wallet",
-    "why": "Orders paid from an AshantiHub wallet are not collections; the money was counted when the wallet was topped up.",
+    "name": "Orders, services, stays and tickets paid from a wallet",
+    "why": "Anything paid from an AshantiHub wallet is not a collection; the money was counted when the wallet was topped up.",
 }
 COLLECTIONS_NOT_RECORDED = [
     {"name": "Delivery fees", "why": "Delivery fees are not charged yet, so no payment carries one."},
@@ -86,7 +86,7 @@ COLLECTIONS_NOT_RECORDED = [
 
 
 def _wallet_in_use():
-    """Wallet top-ups and wallet-paid orders only exist once the ledger is on (or after it was): until then the screen
+    """Wallet top-ups and wallet-paid orders, services, stays and tickets (all excluded from Collections) only exist once the ledger is on (or after it was): until then the screen
     shows no top-ups tile and no wallet note, exactly as before the wallets."""
     return escrow.enabled() or CheckoutSession.objects.filter(kind=CheckoutSession.WALLET_TOPUP).exists()
 

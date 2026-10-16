@@ -1,9 +1,10 @@
 # Wallets, Escrow, Platform Fees, Stock Offers and OTP Security — Design
 
-**Status:** Approved 2026-10-15. Stage 1 plan: docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md. Stage 2 (OTP, backend) plan: docs/superpowers/plans/2026-10-16-otp-security.md. Stage 3 plans: docs/superpowers/plans/2026-10-16-wallets-payments-3a.md (wallet payments and refunds) and docs/superpowers/plans/2026-10-16-withdrawals-3b.md (payout destinations, withdrawals, reconciliation).
-**Scope:** One system, built in the order given in §11. Stage 1 (ledger), Stage 2 (OTP, backend) and Stage 3 (wallets,
-payments, refunds, withdrawals and reconciliation, backend) are implemented behind switches that default off (branches
-feature/ledger-stage1, feature/otp-security and feature/wallets; see section 13); later stages are specs only.
+**Status:** Approved 2026-10-15. Stage 1 plan: docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md. Stage 2 (OTP, backend) plan: docs/superpowers/plans/2026-10-16-otp-security.md. Stage 3 plans: docs/superpowers/plans/2026-10-16-wallets-payments-3a.md (wallet payments and refunds) and docs/superpowers/plans/2026-10-16-withdrawals-3b.md (payout destinations, withdrawals, reconciliation). Plan 1b (services, events and stays): docs/superpowers/plans/2026-10-16-ledger-services-events-stays-1b.md.
+**Scope:** One system, built in the order given in §11. Stage 1 (ledger) with Plan 1b (services, events and stays),
+Stage 2 (OTP, backend) and Stage 3 (wallets, payments, refunds, withdrawals and reconciliation, backend) are implemented
+behind switches that default off (branches feature/ledger-stage1, feature/ledger-services-1b, feature/otp-security and
+feature/wallets; see section 13); later stages are specs only.
 **Basis:** The owner's brief, plus the decisions in §1, reconciled with the existing code in §13.
 
 ## 1. Decisions (settled in brainstorming)
@@ -139,7 +140,9 @@ No timer releases a vendor's money. For a product order:
 
 ### 4.2 Services, events and stays (owner decision 2026-10-15)
 
-Same as products: the service is done, the event has taken place or the stay has begun, the customer confirms (or Support records it on the call), and a Support verification call releases the money; a mismatch raises a 72-hour dispute. What counts as "handed over" for each kind (provider marks the service done, event date passed or ticket scanned, check-in) is settled in Plan 1b. The ledger records only product orders until then.
+Same as products: the service is done, the event has taken place or the stay has begun, the customer confirms (or Support records it on the call), and a Support verification call releases the money; a mismatch raises a 72-hour dispute. What counts as "handed over" for each kind (provider marks the service done, event date passed or ticket scanned, check-in) is settled in Plan 1b (§13 B4): the business marks the service done, the guest checks in, a ticket is scanned or
+the event's date passes. Plan 1b counts the 72 hours from that hand-over, not from purchase as §4.1 does for products;
+that reading is provisional until the owner confirms it (gate (lvii)).
 
 ### 4.3 Store pickup and the Pickup Desk
 
@@ -582,9 +585,10 @@ Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-st
 - (lviii) **Cancellation policy.** A customer's cancel of a paid stay before check-in and Support's cancel of a booking
   not yet handed over refund it in full, with no deadline or fee (the processing charge stays with the provider). Owner
   to decide.
-- (lix) **A service request paid twice** (two Hubtel checkouts started for one accepted request, both paid) records only
-  the first; the second is never recorded (no sale, no journal; the provider holds the money) and the reconciliation reports it `missing_in_ledger`. Refuse a second
-  checkout while one is open, or refund the duplicate, before switch-on.
+- (lix) **A service request paid twice** (two Hubtel checkouts started for one accepted request, both paid; or a Hubtel
+  checkout and a wallet payment on the same request) records only the first; the second is never recorded (no sale, no
+  journal; the provider holds the money, or the wallet was debited) and the reconciliation reports a Hubtel one
+  `missing_in_ledger`. Refuse a second checkout or payment while one is open, or refund the duplicate, before switch-on.
 - (lx) **Booking finalizers share the webhook failure mode (i)/(vii):** a finalizer that raises (a paid amount that is not
   the price) leaves a paid booking unrecorded with `processed=False`.
 - (lxi) **Reports.** `billing.TransactionReportView` (ix) also counts wallet-paid bookings as cash, and
@@ -621,3 +625,20 @@ Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-st
 - (lxx) **The Hubtel checkout call is made while the service request row is locked** (`ServiceRequestPayView` holds
   `select_for_update` across `booking_pay.pay`), like the order and top-up flows ((xx)): a slow Hubtel call holds
   the row. Plan 7.
+- (lxxi) **Ticket `quantity_sold` is not restored when tickets are cancelled or refunded,** so those seats cannot be
+  sold again (Support's cancel, the Accountant's per-ticket refund and a whole refund all leave it). Owner to decide
+  whether a refunded seat goes back on sale.
+- (lxxii) **SA4: a customer's stay cancel has no date bound.** It is refused only after check-in, so a guest who stayed
+  but whose owner never tapped check-in can cancel after check-out and take the refund from the business's Pending.
+  Owner to decide a cut-off (for example the check-in date), or have Support's cancel be the only path then.
+- (lxxiii) **Nothing lists sales not yet handed over.** `POST bookings/<sale id>/cancel/` takes a sale id, but Support's
+  queue shows only handed-over bookings. Plan 1F needs a lookup (by customer, business or booking) before the cancel
+  screen can find a sale.
+- (lxxiv) **No dispute path after release.** Once a booking's money is released a mismatch can no longer be logged
+  through the call (`record_verification` refuses), and customers raise disputes only on orders. Owner to decide how a
+  complaint after release is handled and recovered from the business's Available.
+- (lxxv) **Cross-reference to (lxvi):** a Hubtel success for a cancelled PENDING booking is not recorded; the fix there
+  covers it.
+- (lxxvi) **Stale copy: wallet-paid services, stays and tickets are also excluded from Collections.**
+  `insights/accounting.py` `WALLET_NOT_RECORDED` says "Orders paid from a wallet" and `_wallet_in_use`'s docstring says
+  "wallet-paid orders", but wallet-paid service requests, stays and tickets are not collections either.
