@@ -34,6 +34,14 @@ class LimitSettingsTests(TestCase):
             with self.assertRaises(settings_store.SettingError, msg=f"{key}={raw!r}"):
                 settings_store.clean(key, raw)
 
+    def test_the_daily_limit_may_not_be_below_the_per_withdrawal_limit(self):
+        from approvals.services import ApprovalError
+        for key, value in (("withdrawal_daily_limit_pesewas", 400_000), ("withdrawal_per_tx_limit_pesewas", 1_000_001)):
+            with self.subTest(key=key), self.assertRaises(ApprovalError) as raised:
+                approval_kinds.setting_validate(SimpleNamespace(payload={"key": key, "value": value}))
+            self.assertIn("daily limit", str(raised.exception))
+        approval_kinds.setting_validate(SimpleNamespace(payload={"key": "withdrawal_daily_limit_pesewas", "value": 500_000}))
+
     def test_they_change_only_through_the_money_setting_approval(self):
         client = APIClient()
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(make_staff('accountant', 'kofi@example.com'))}")
@@ -61,6 +69,18 @@ class WalletStepUpTests(TestCase):
 
     def send(self, action):
         return self.client.post("/api/otp/step-up/send/", {"action": action, "channel": "sms"}, format="json")
+
+    @override_settings(LEDGER_ENABLED=True, OTP_STEP_UP_ENFORCED=False, OTP_SIGNIN_ENFORCED=False)
+    def test_a_business_owner_cannot_ask_for_a_contact_change_code(self):
+        from accounts.models import BusinessOwner
+        owner = BusinessOwner.objects.create(full_name="Kwame Mensah", login_phone="+233201112233", password_hash="x")
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(owner, 'business_owner')}")
+        response = client.post("/api/otp/step-up/send/", {"action": "contact_change", "channel": "sms"}, format="json")
+        self.assertEqual((response.status_code, response.json()["code"]), (409, "otp_off"))
+        self.assertEqual(senders.sms_outbox, [])
+        withdrawal = client.post("/api/otp/step-up/send/", {"action": "withdrawal", "channel": "sms"}, format="json")
+        self.assertEqual(withdrawal.status_code, 200)                                          # their wallet actions still work
 
     @override_settings(LEDGER_ENABLED=True, OTP_STEP_UP_ENFORCED=False, OTP_SIGNIN_ENFORCED=False)
     def test_with_the_ledger_on_wallet_actions_get_a_code_whatever_the_otp_switches_say(self):

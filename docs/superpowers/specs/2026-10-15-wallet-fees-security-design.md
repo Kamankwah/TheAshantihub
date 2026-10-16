@@ -507,3 +507,23 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
   `payout_cooling_hours`) needs owner review.
 - (xliv) **Name oracle.** One valid step-up code allows repeated account-name lookups within its 5-minute life, capped
   only by the throttle. Consider a per-holder mismatch counter before Plan 7 makes lookups paid.
+- (xlv) **Hand-failed withdrawals and a late "paid" (before switch-on).** Staff cannot fail a withdrawal the provider
+  says is still PROCESSING (409 `provider_processing`), but once failed by hand nothing asks the provider again, and the
+  returned money can be withdrawn at once. Before switch-on: count staff-failed withdrawals toward that day's limit or
+  hold the returned amount briefly; keep asking the provider about hand-failed withdrawals for N days so a late "paid"
+  raises the case quickly; refuse new withdrawals for a holder while a late-paid case is open. Until Plan 7 a late
+  "paid" is caught only by a webhook or the next night's reconciliation.
+- (xlvi) **Name-check stopwords.** Generic words (LTD, VENTURES, ENTERPRISE, GHANA, THE, CO) count toward the two-word
+  floor of the name match; add a stopword list in `wallets/names.py` before switch-on.
+- (xlvii) **Reconciliation drops one difference when `find()` fails** (a clearing journal with no provider reference);
+  record it as its own difference instead.
+- (xlviii) **A recovery email requested while the ledger is off and confirmed after switch-on** becomes a code channel
+  without a step-up. Void unconfirmed recovery-contact requests at switch-on.
+- (xlix) **`NETWORKS` has no VODAFONE to Telecel alias** for older `payout_momo_network` rows, so `from_profile` refuses
+  them; add the alias.
+- (l) **Test and plan-text notes.** The nested-dict/frame scrubber test is weak, and the contact-change happy path does
+  not assert the token was spent. Plan text B6, E5 and the line near 428 is stale; this spec is correct.
+- (li) **Owner question: top-up money can be withdrawn immediately,** so a MoMo collection reversal after a withdrawal
+  could cost AshantiHub money. Consider a hold period on newly topped-up funds.
+- (lii) **Migrations 0003 and 0004 of `wallets` could be folded into one before any deploy** (nothing is deployed yet;
+  the 0003 file is root-owned, so fold it with the right permissions).

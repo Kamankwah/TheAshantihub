@@ -118,11 +118,12 @@ def setting_current_state(request):
 
 def setting_validate(request):
     payload = request.payload
+    starts = effective_time(payload.get("effective_from"))
     try:
-        settings_store.clean(payload.get("key"), payload.get("value"))
+        value = settings_store.clean(payload.get("key"), payload.get("value"))
+        settings_store.check_limits(payload.get("key"), value, starts)
     except settings_store.SettingError as exc:
         raise ApprovalError(str(exc)) from exc
-    effective_time(payload.get("effective_from"))
 
 
 def setting_apply(request):

@@ -48,6 +48,15 @@ def current(key, at=None):
     return definition.default if row is None else row.value
 
 
+def check_limits(key, value, at=None):
+    """The daily withdrawal limit may not be below the per-withdrawal limit (a person could never make one full-size
+    withdrawal). Checked against the other limit as it is when this one starts; raises SettingError."""
+    if key == "withdrawal_daily_limit_pesewas" and value < current("withdrawal_per_tx_limit_pesewas", at):
+        raise SettingError("The daily limit cannot be below the largest single withdrawal limit")
+    if key == "withdrawal_per_tx_limit_pesewas" and value > current("withdrawal_daily_limit_pesewas", at):
+        raise SettingError("The largest single withdrawal cannot be above the daily limit")
+
+
 def clean(key, raw):
     definition = _definition(key)
     if raw is None or (isinstance(raw, str) and not raw.strip()):

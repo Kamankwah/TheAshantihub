@@ -9,6 +9,7 @@ under a lock on the holder's own row. A destination can receive money from `usab
 cooling period. The business's registered payout details (BusinessOwnerProfile.payout_*) are left as they are;
 `from_profile` copies them into a new destination. Numbers are stored unmasked and only ever leave the server through
 mask_but_last; every local variable holding one is named `account_number`, which Sentry filters by name."""
+import logging
 import re
 from datetime import timedelta
 
@@ -25,6 +26,7 @@ from payments import providers
 from . import names
 from .models import PayoutDestination
 
+logger = logging.getLogger(__name__)
 MAX_LIVE = 5
 NETWORKS = {"MTN": "MTN", "TELECEL": "Telecel", "AIRTELTIGO": "AirtelTigo"}
 _BANK_NUMBER = re.compile(r"[0-9]{6,20}")
@@ -77,7 +79,7 @@ def clean(data, holder):
             return rail, network, normalize_gh_phone(account_number)
         except ValueError as exc:
             raise DestinationError(str(exc), "invalid", field="account_number") from None
-    if not _INSTITUTION.fullmatch(institution):
+    if not _INSTITUTION.fullmatch(institution) or re.search(r"\d(?:[\s-]?\d){3,}", institution):  # a long number would show unmasked in notices
         raise DestinationError("Name the bank.", "invalid", field="institution")
     account_number = re.sub(r"[\s-]", "", account_number)
     if not _BANK_NUMBER.fullmatch(account_number):
@@ -120,6 +122,10 @@ def check(holder, data):
         account_name = provider.lookup_account_name(rail, institution, account_number, holder_name=verified[0])
     except providers.NotConnected:
         raise DestinationError("Account names can't be checked yet, so payout destinations can't be added.", "name_check_unavailable", 409) from None
+    except Exception as exc:
+        # A timeout or a 5xx from the network: only the type is logged (the text may hold the account number).
+        logger.warning("Account name lookup failed (%s)", type(exc).__name__)
+        raise DestinationError("The account name could not be checked right now. Try again shortly.", "name_check_unreachable", 503) from None
     matched = names.matching_name(account_name, holder) if account_name else None
     if matched is None:
         # Never echo the name the network answered: it may be someone else's.

@@ -38,6 +38,11 @@ class NotConnected(ProviderError):
 
 @dataclass(frozen=True)
 class PayoutResult:
+    """What a provider says about a payout. `amount_pesewas` is the NET amount (what reached the destination, the
+    withdrawal's net after the provider's charge), not the gross the holder asked for. On a FAILED report 0 or None
+    means nothing reached the destination; a non-zero amount means money may have left and opens a case. A
+    `StatementLine` payout amount is the GROSS (the provider's charge included): do not compare the two directly."""
+
     status: str  # SUCCEEDED, FAILED or PROCESSING
     provider_reference: str = ""
     message: str = field(default="", repr=False)  # the provider's own words: never stored, shown or logged (they may hold an account number)
@@ -131,7 +136,8 @@ class SimulatedProvider(PaymentProvider):
 
     def payout(self, *, reference, rail, institution, account_number, amount_pesewas):
         answer = self.status(reference)
-        return PayoutResult(answer.status, provider_reference=answer.provider_reference, amount_pesewas=amount_pesewas)
+        reached = 0 if answer.status == FAILED else amount_pesewas  # a failed payout reached nothing (see PayoutResult)
+        return PayoutResult(answer.status, provider_reference=answer.provider_reference, amount_pesewas=reached)
 
     def status(self, reference):
         outcome = _OUTCOMES.get(settings.SIMULATED_PAYOUT_OUTCOME, PROCESSING)

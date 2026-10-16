@@ -10,6 +10,7 @@ from django.utils import timezone
 from accounts.models import BusinessOwner, BusinessOwnerProfile, Customer
 from ashantihub.sentry import EXTRA_DENYLIST
 from ledger.models import MoneySetting
+from payments import providers
 from notifications.models import Notification
 from otp import step_up
 from wallets.models import PayoutDestination
@@ -166,6 +167,21 @@ class DestinationTests(DestinationBase):
     def test_with_hubtel_names_cannot_be_checked_yet(self):
         response = self.add()
         self.assertEqual((response.status_code, response.json()["code"]), (409, "name_check_unavailable"))
+
+    def test_any_other_name_lookup_failure_answers_503_and_logs_only_the_type(self):
+        with mock.patch.object(providers.SimulatedProvider, "lookup_account_name", side_effect=TimeoutError("0241234567 secret")):
+            with self.assertLogs("wallets.destinations", level="WARNING") as logs:
+                response = self.add()
+        self.assertEqual((response.status_code, response.json()["code"]), (503, "name_check_unreachable"))
+        self.assertFalse(PayoutDestination.objects.exists())
+        self.assertNotIn("0241234567", "".join(logs.output) + response.content.decode())
+        self.assertIn("TimeoutError", "".join(logs.output))
+
+    def test_a_bank_name_with_a_long_number_in_it_is_refused(self):
+        body = {"rail": "bank", "institution": "GCB 1234567890", "account_number": "1234567890"}
+        response = self.add(body=body)
+        self.assertEqual((response.status_code, response.json()["field"]), (400, "institution"))
+        self.assertFalse(PayoutDestination.objects.exists())
 
     def test_a_suspended_account_cannot_add_one(self):
         Customer.objects.filter(pk=self.customer.pk).update(is_suspended=True)

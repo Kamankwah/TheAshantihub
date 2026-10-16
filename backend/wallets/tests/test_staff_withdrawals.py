@@ -4,6 +4,7 @@ answer or an amount case stops a hand fail) and 6 (no number in the activity log
 from datetime import timedelta
 from unittest import mock
 
+from django.conf import settings
 from django.core.cache import cache
 from django.db import connection
 from django.test import TestCase, override_settings
@@ -17,6 +18,7 @@ from activity.models import ActivityEvent
 from fraud.models import FraudFlag
 from ledger import posting
 from ledger.models import Account, Journal
+from notifications.models import Notification
 from payments import providers
 from wallets import payouts, views_staff, withdrawals
 from wallets.models import Withdrawal
@@ -51,7 +53,20 @@ class StaffWithdrawalTests(TestCase):
         return withdrawal
 
     def force_fail(self, withdrawal, reason="Hubtel says it never left"):
-        return self.client.post(f"{URL}{withdrawal.pk}/fail/", {"reason": reason}, format="json")
+        # A provider that is "pending" answers PROCESSING, and staff may not fail one it says is in progress: unless a
+        # test says otherwise this provider cannot report (NotConnected), so staff's own check stands. Only the fail
+        # request is affected: sending (which also reads status) is not.
+        real_status = providers.SimulatedProvider.status
+
+        def status(provider, reference):
+            if settings.SIMULATED_PAYOUT_OUTCOME == "pending":
+                raise providers.NotConnected("cannot report")
+            return real_status(provider, reference)
+        post = lambda: self.client.post(f"{URL}{withdrawal.pk}/fail/", {"reason": reason}, format="json")  # noqa: E731
+        if isinstance(providers.SimulatedProvider.__dict__["status"], mock.Mock):  # the test steers the answer itself
+            return post()
+        with mock.patch.object(providers.SimulatedProvider, "status", status):
+            return post()
 
     def wallet(self):
         return posting.balance_of(Account.CUSTOMER_WALLET, self.customer)
@@ -96,8 +111,39 @@ class StaffWithdrawalTests(TestCase):
     def test_holder_text_makes_no_claim_about_the_provider(self):
         self.assertEqual(
             views_staff.STAFF_FAILED_REASON,
-            "AshantiHub could not complete it, so the money is back in your balance.",
+            "AshantiHub could not complete it.",
         )
+
+    def test_the_holder_notice_reads_the_balance_sentence_once(self):
+        withdrawal = self.sent()
+        self.as_staff(self.accountant, sudo=True)
+        self.force_fail(withdrawal)
+        body = Notification.objects.filter(customer=self.customer).latest("id").body
+        self.assertEqual(body.count("back in your balance"), 1, body)
+
+    def test_the_provider_saying_processing_refuses_the_fail_and_changes_nothing(self):
+        withdrawal = self.sent()
+        self.as_staff(self.accountant, sudo=True)
+        with mock.patch.object(providers.SimulatedProvider, "status", return_value=providers.PayoutResult(providers.PROCESSING)):
+            response = self.force_fail(withdrawal)
+        self.assertEqual((response.status_code, response.json()["code"]), (409, "provider_processing"))
+        self.assertIn("still in progress", response.json()["detail"])
+        withdrawal.refresh_from_db()
+        self.assertEqual((withdrawal.status, self.wallet()), (Withdrawal.PROCESSING, 15000))
+        self.assertFalse(Journal.objects.filter(kind="withdrawal_reversed").exists())
+        self.assertFalse(ActivityEvent.objects.filter(verb="wallets.withdrawal_failed").exists())
+
+    def test_a_provider_answer_that_settles_it_is_recorded_with_the_masked_reference_only(self):
+        withdrawal = self.sent()
+        self.as_staff(self.accountant, sudo=True)
+        with override_settings(SIMULATED_PAYOUT_OUTCOME="fail"):
+            self.force_fail(withdrawal, reason="secret staff note 0241234567")
+        event = ActivityEvent.objects.get(verb="wallets.withdrawal_checked")
+        self.assertEqual(event.target_id, str(withdrawal.pk))
+        for text in (event.summary, str(event.before), str(event.after)):
+            self.assertNotIn("241234567", text)
+            self.assertNotIn("secret", text)
+        self.assertEqual(event.after["status"], "failed")
 
     def test_review_focus_failing_a_stuck_withdrawal_returns_the_money_and_logs_no_number(self):
         withdrawal = self.sent()

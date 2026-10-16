@@ -20,6 +20,7 @@ Who may ask (final review F2):
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.models import Customer
 from ledger import escrow
 
 from . import authenticator, flags, service, step_up
@@ -47,8 +48,8 @@ def _codes_off(account, action):
     """True when no step-up could be asked of this person for `action`, so no code is sent (see the module text)."""
     if flags.step_up_enforced() or flags.sign_in_enforced():
         return False
-    if action in WALLET_ACTIONS and escrow.enabled():
-        return False
+    if action in WALLET_ACTIONS and escrow.enabled() and (action != step_up.CONTACT_CHANGE or isinstance(account, Customer)):
+        return False  # a business owner has no endpoint that asks for a contact_change code, so none is sent for one
     return not (action == step_up.AUTHENTICATOR_CHANGE and authenticator.is_enabled(account))
 
 

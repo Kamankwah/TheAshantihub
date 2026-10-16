@@ -70,7 +70,7 @@ STATUS_FILTERS = {
     "open": Withdrawal.OPEN, "succeeded": (Withdrawal.SUCCEEDED,), "failed": (Withdrawal.FAILED,),
     "cancelled": (Withdrawal.CANCELLED,), "all": None,
 }
-STAFF_FAILED_REASON = "AshantiHub could not complete it, so the money is back in your balance."  # what the holder sees, never staff text
+STAFF_FAILED_REASON = "AshantiHub could not complete it."  # what the holder sees, never staff text
 
 
 def holders_of(rows):
@@ -146,10 +146,13 @@ class StaffWithdrawalFailView(APIView):
     amount_case_open); that is checked again under the row lock, and payouts.close refuses it too. The 5-minute poll
     skips any withdrawal that ever had an amount case, so once fraud staff have RESOLVED the case (confirmed or
     dismissed) this is staff's way out: it can be failed here if it is still stuck and the provider does not say it
-    paid. A provider that cannot be reached (any error but NotConnected) answers 503 provider_unreachable and changes
+    paid. One that answers PROCESSING (still in progress) is never failed by hand (409 provider_processing): nothing asks
+    the provider again after a hand fail, and the returned money could be withdrawn twice; staff try again later or ask the
+    provider. A provider that cannot be reached (any error but NotConnected) answers 503 provider_unreachable and changes
     nothing; NotConnected means "not wired to report", so staff's own check stands. A held one never sent is failed
     without asking any provider. The staff note is stored with any 6+ digit run masked. The holder sees STAFF_FAILED_REASON; the staff member's reason stays in the activity event. If the provider
-    pays after a hand fail, its late report opens a fraud case and is never posted. No provider text is kept."""
+    pays after a hand fail, nothing here notices: the late "paid" is caught only by a payout webhook or the next night's
+    reconciliation once Plan 7 exists (spec §13), and is then never posted. No provider text is kept."""
 
     activity_exempt = True  # records its own event below, and keeps the provider call outside the middleware's transaction
 
@@ -179,12 +182,25 @@ class StaffWithdrawalFailView(APIView):
                      "code": "provider_unreachable"},
                     status=status.HTTP_503_SERVICE_UNAVAILABLE,
                 )
+            if answer is not None and answer.status == providers.PROCESSING:
+                return Response(
+                    {"detail": "The provider says this payout is still in progress. Nothing was changed; try again later or ask the provider.",
+                     "code": "provider_processing"},
+                    status=status.HTTP_409_CONFLICT,
+                )
             if answer is not None and answer.status in (providers.SUCCEEDED, providers.FAILED):
                 settled = payouts.apply_result(
                     found.reference, answer.status, provider_reference=answer.provider_reference,
                     amount_pesewas=answer.amount_pesewas,
                 )
                 if settled is not None and settled.status in Withdrawal.FINAL:
+                    # Last: record() holds the activity chain lock until commit. The reference only, no number or staff text.
+                    with transaction.atomic():
+                        record(
+                            request.user, "wallets.withdrawal_checked", target=settled,
+                            summary=f"Withdrawal {settled.reference} checked with the provider by staff; its answer settled it as {settled.status}",
+                            before={"status": found.status}, after={"status": settled.status}, request=request,
+                        )
                     return Response(
                         {"detail": "The provider has answered for this withdrawal, so its answer settled it.",
                          "code": "provider_answered", "status": settled.status},
