@@ -193,6 +193,27 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   `docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` section 13.
 - **Pickup Desk** is the `pickup_desk` staff role with the single permission `pickup.confirm` (store-pickup queue and
   collection); only a Super Admin invites it.
+- **One-time codes (`otp/`).** One OTP service for every account kind: 6-digit codes kept only as a salted HMAC
+  (SHA-1, 40 hex, 32-hex salt - the attempt and lock limits, not the hash, defend the 6-digit space), 5 minutes,
+  5 tries per code (a resend keeps the count), 60 s resend wait, hourly send limits per phone/email, account and IP
+  counted from `OtpEvent` (so they hold across processes), and a sliding lock while 5 or more wrong codes (texted,
+  emailed or authenticator) fall inside the last 15 minutes; it answers the same `try_later` as a limit. Public
+  endpoints take a signed `mfa_token` (nonce + password fingerprint), never an identifier; refusals are Responses,
+  never raised - never call `otp.service.verify` inside an atomic block a refusal would roll back. Sensitive changes
+  call `otp.step_up.require(request, ACTION)` **inside** the `transaction.atomic()` that saves (a refused change keeps
+  the token); tokens are single-use, 5 minutes, bound to the action and the access token's `jti` (`X-Step-Up-Token`,
+  `403 step_up_required`). A new sensitive endpoint (password change, withdrawal, payout destination) must call it.
+  Trusted devices die with any password change (fingerprint) and are revoked on reset; the stale-device purge uses the
+  configured customer gap, not a fixed number. Login and registration views ask `otp.signin.sign_in_step()`; staff
+  authenticators (`accounts.two_factor`) are checked first. An account that owes a code but has no phone/email on file
+  gets `409 no_channel`; registration with the sign-up switch on refuses (400) up front when the submitted contact is
+  unusable. A correct SIGN_UP code does not skip an enabled authenticator (it answers `two_factor_required`). Staff
+  recovery is the `otp.recovery` approval (Support asks, Super Admin approves); it sends a recovery-specific message
+  plus a link-free notice to the account's other contacts. Three switches default off (`OTP_SIGNIN_ENFORCED`,
+  `OTP_STEP_UP_ENFORCED`, `OTP_SIGNUP_VERIFICATION_ENFORCED`); turn them on only after the frontend (Plan 2F) ships
+  **and** `OTP_SMS_PROVIDER` is a real provider (`hubtel`, not `simulated`). Texts go through `otp.senders` only
+  (`locmem` under tests: read `otp.senders.sms_outbox`). Codes and device/step-up tokens are never stored or logged in
+  clear; add any new secret field to `ashantihub/sentry.py`.
 
 ## Test-fixture gotcha
 

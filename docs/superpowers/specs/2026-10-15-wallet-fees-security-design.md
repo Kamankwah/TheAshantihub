@@ -1,6 +1,6 @@
 # Wallets, Escrow, Platform Fees, Stock Offers and OTP Security — Design
 
-**Status:** Approved 2026-10-15. Stage 1 plan: docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md.
+**Status:** Approved 2026-10-15. Stage 1 plan: docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md. Stage 2 (OTP, backend) plan: docs/superpowers/plans/2026-10-16-otp-security.md.
 **Scope:** One system, built in the order given in §11. Stage 1 implemented on branch
 feature/ledger-stage1 (see section 13); later stages not started.
 **Basis:** The owner's brief, plus the decisions in §1, reconciled with the existing code in §13.
@@ -277,3 +277,13 @@ Found while writing the Stage 2 plan (`docs/superpowers/plans/2026-10-16-otp-sec
 - **O5 SMS.** The Hubtel SMS client in `marketing/providers/hubtel_sms.py` (unverified against a live account) is reused through `OTP_SMS_PROVIDER=hubtel`; the default `simulated` sends nothing.
 - **O6 Not yet moved.** The customer secondary-contact codes (`accounts.serializers.CustomerSecondary*`) still keep their code in clear and return `demo_code` for SMS; moving them onto the OTP service changes their API and is a follow-up.
 - **O7 Audit.** OTP events go to `otp.OtpEvent`, not the hash-chained activity log (high volume, customer-side, and the lock and the hourly limits are counted from it). Staff wrong codes also reach the sign-in history; policy changes and staff-assisted recovery also reach the activity log.
+
+### Before the OTP switches are turned on (Plan 2F)
+
+`OTP_SIGNIN_ENFORCED`, `OTP_STEP_UP_ENFORCED` and `OTP_SIGNUP_VERIFICATION_ENFORCED` all default off and must stay off until every item below is done.
+
+- **Frontend screens (Plan 2F):** code entry (a customer or vendor login answers `two_factor_required` + `mfa_token`; the code goes to `/api/otp/sign-in/verify/`, not the staff two-factor URL); a trusted-device checkbox and keeping `device_token`; step-up prompts (on `step_up_required`, one retry carrying `X-Step-Up-Token`); 2FA settings for customers and vendors. The code-entry screen must also handle `two_factor_required` answered by `/api/otp/sign-in/verify/` itself (a correct SIGN_UP code does not skip an enabled authenticator) and resend `trust_device` with the authenticator step, and handle `409 no_channel`.
+- **A real SMS provider:** Hubtel SMS credentials and an Approved Sender ID, then `OTP_SMS_PROVIDER=hubtel` (the default `simulated` sends nothing).
+- **Existing accounts with no usable contact:** such an account that owes a code gets `409 no_channel` and cannot sign in. Decide the operational path (for example Support adds an email) before enforcing.
+- **Owner question:** should an opted-in authenticator be honoured even when `OTP_SIGNIN_ENFORCED` is off?
+- **Known window:** a SIGN_IN code ticket minted before authenticator setup can still finish sign-in for up to 10 minutes.
