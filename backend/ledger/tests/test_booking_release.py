@@ -3,7 +3,9 @@ each kind, the receipt confirmation, the mismatch dispute, and tickets' escrow f
 (release refused before hand-over and while a dispute is open)."""
 from datetime import timedelta
 
+from django.db import connection
 from django.test import override_settings
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from accounts.testing import make_staff
@@ -151,6 +153,27 @@ class BookingReleaseTests(BookingBase):
         with self.assertRaisesMessage(VerificationError, "A dispute is open on this booking."):
             self.call(sale, "matches", customer_confirmed_by_phone=True)
         self.assertEqual(self.balance(Account.VENDOR_PENDING, self.owner), 20000)
+
+    def test_a_resolved_dispute_refuses_a_new_mismatch_instead_of_recording_it(self):
+        sale = self.paid_service()
+        self.complete(sale)
+        sale = self.call(sale, "does_not_match", note="Half done")
+        Dispute.objects.filter(pk=sale.dispute_id).update(status=Dispute.RESOLVED)
+        with self.assertRaisesMessage(VerificationError, "The earlier dispute was resolved — ask the Support lead to log a new one."):
+            self.call(sale, "does_not_match", note="Again")
+        sale.refresh_from_db()
+        self.assertEqual((sale.outcome, sale.outcome_note, Dispute.objects.count()), ("does_not_match", "Half done", 1))
+
+    def test_the_linked_dispute_is_locked_before_the_service_request_and_the_sale(self):
+        sale = self.paid_service()
+        self.complete(sale)
+        sale = self.call(sale, "does_not_match", note="Half done")
+        with CaptureQueriesContext(connection) as queries:
+            self.call(sale, "does_not_match", note="Still")
+        locking = [q["sql"] for q in queries if "FOR UPDATE" in q["sql"]]
+        tables = ["disputes_dispute", "services_servicerequest", "ledger_bookingsale"]
+        order = [next(i for i, sql in enumerate(locking) if f'FROM "{t}"' in sql) for t in tables]
+        self.assertEqual(order, sorted(order), locking)
 
     def test_a_repeat_mismatch_appends_its_note_to_the_open_dispute(self):
         sale = self.paid_service()

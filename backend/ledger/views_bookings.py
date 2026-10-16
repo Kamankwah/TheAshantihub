@@ -63,7 +63,7 @@ class BookingVerificationView(APIView):
                 customer_confirmed_by_phone=data.get("customer_confirmed_by_phone") is True,
             )
         except VerificationError as exc:
-            if exc.message == "The ledger is off.":
+            if exc.code == "ledger_off":
                 return ledger_off()
             return Response({"detail": exc.message}, status=exc.status_code)
         return Response({
@@ -88,12 +88,12 @@ class BookingCancelView(APIView):
         if len(reason) < 3:
             return Response({"reason": "Say why it is cancelled (at least 3 characters)."}, status=400)
         sale = get_object_or_404(BookingSale.objects.select_related("customer", "business_owner"), pk=pk)
+        what = sales.description(sale)  # before the cancel: tickets left, not tickets bought
         try:
             refund = sales.cancel(sale, request.user, reason)
         except sales.CancelError as exc:
             return Response({"detail": exc.message}, status=exc.status_code)
         back = from_pesewas(refund.amount_pesewas)
-        what = sales.description(sale)
         notify_customer(
             sale.customer, "booking", "Your booking was cancelled",
             body=f"AshantiHub Support cancelled your booking ({what}). GH₵ {back} went back to your AshantiHub wallet.",

@@ -2,12 +2,15 @@
 what the call needs; the call's answers; who may see it. Review Focus 8 (switches off)."""
 from datetime import timedelta
 
+from unittest import mock
+
 from django.test import override_settings
 from django.utils import timezone
 
 from accounts.testing import make_staff
 from bookings.models import Booking
 from disputes.models import Dispute
+from events.models import Event
 from ledger.models import BookingSale
 from services.models import ServiceRequest
 
@@ -83,3 +86,43 @@ class BookingQueueApiTests(BookingBase):
         response = self.client.get(QUEUE)
         self.assertEqual((response.status_code, response.json()["code"]), (409, "ledger_off"))
         self.assertEqual(self.client.post("/api/ledger/bookings/1/verification/", {}, format="json").json()["code"], "ledger_off")
+
+    def test_the_ledger_off_inside_the_call_answers_ledger_off_by_code_not_by_message(self):
+        sale = self.paid_service()
+        self.as_staff(self.support)
+        with mock.patch("ledger.escrow.enabled", side_effect=[True, False]):      # the view's pre-check, then record_verification
+            response = self.verify(sale, outcome="unreachable")
+        self.assertEqual((response.status_code, response.json()["code"]), (409, "ledger_off"))
+
+    def test_the_queue_leaves_out_released_and_refunded_bookings_and_pages_at_twenty(self):
+        released, refunded = self.paid_service(), self.paid_service()
+        for sale in (released, refunded):
+            self.done(sale)
+        BookingSale.objects.filter(pk=released.pk).update(released_at=timezone.now())
+        BookingSale.objects.filter(pk=refunded.pk).update(reversed_at=timezone.now())
+        for _ in range(21):
+            self.done(self.paid_service("10.00"))
+        tickets = self.paid_tickets(quantity=2)
+        Event.objects.filter(pk=self.event.pk).update(event_date=timezone.now() - timedelta(hours=1))
+        self.as_staff(self.support)
+        first = self.client.get(QUEUE).json()
+        self.assertEqual((first["count"], len(first["results"]), bool(first["next"])), (22, 20, True))
+        second = self.client.get(QUEUE, {"page": 2}).json()
+        self.assertEqual(len(second["results"]), 2)
+        rows = first["results"] + second["results"]
+        listed = [row["sale_id"] for row in rows]
+        self.assertNotIn(released.pk, listed)
+        self.assertNotIn(refunded.pk, listed)
+        row = next(row for row in rows if row["sale_id"] == tickets.pk)
+        self.assertEqual((row["kind"], row["amount"], row["what"].split(" for ")[0]), ("tickets", "100.00", "2 tickets"))
+
+    def test_an_unknown_sale_is_a_404_and_the_accountant_and_anonymous_are_refused(self):
+        self.as_staff(self.support)
+        self.assertEqual(self.verify(BookingSale(pk=999999), outcome="unreachable").status_code, 404)
+        sale = self.paid_service()
+        self.as_staff(make_staff("accountant", "kofi-q@example.com"))
+        self.assertEqual(self.client.get(QUEUE).status_code, 403)
+        self.assertEqual(self.verify(sale, outcome="unreachable").status_code, 403)
+        self.client.credentials()
+        self.assertIn(self.client.get(QUEUE).status_code, (401, 403))
+        self.assertIn(self.verify(sale, outcome="unreachable").status_code, (401, 403))

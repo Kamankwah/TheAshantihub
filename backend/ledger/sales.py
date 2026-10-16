@@ -221,14 +221,15 @@ def record_verification(sale, staff, outcome, *, note="", customer_confirmed_by_
     opens a dispute due `verification_overdue_hours` after hand-over (S7) and releases nothing; "could not reach" is only
     recorded. Raises VerificationError, saving nothing, when the ledger is off or the booking cannot be verified now.
     A repeat "does not match" while the dispute is open adds its note to that dispute; if the earlier dispute was
-    rejected a new one is refused (it is reopened instead), so the sale's linked dispute is never replaced while it
-    could still be reopened. The dispute's due time is hand-over + verification_overdue_hours: provisional, owner to
+    rejected a new one is refused (it is reopened instead), and if it was resolved (final) a new one is refused too
+    (the Support lead logs it), so the sale's linked dispute is never replaced or silently ignored. The dispute row is
+    locked before the sale, as disputes resolve. The dispute's due time is hand-over + verification_overdue_hours: provisional, owner to
     confirm (spec gate (lvii)). Returns the sale."""
     from disputes.models import Dispute
 
     now = now or timezone.now()
     if not escrow.enabled():
-        raise VerificationError("The ledger is off.", 409)
+        raise VerificationError("The ledger is off.", 409, code="ledger_off")
     if outcome not in (MATCHES, DOES_NOT_MATCH, UNREACHABLE):
         raise VerificationError("Pick matches, does not match, or could not reach.", 400)
     if note is not None and not isinstance(note, str):
@@ -237,6 +238,8 @@ def record_verification(sale, staff, outcome, *, note="", customer_confirmed_by_
     if outcome == DOES_NOT_MATCH and not note:
         raise VerificationError("Say what does not match.", 400)
     with transaction.atomic():
+        if sale.dispute_id is not None:  # dispute → subject → sale, the order disputes resolve in (no deadlock with it)
+            Dispute.objects.select_for_update().get(pk=sale.dispute_id)
         sale = lock(sale)
         if sale.reversed_at is not None:
             raise VerificationError("This booking was refunded in full.")
@@ -256,6 +259,8 @@ def record_verification(sale, staff, outcome, *, note="", customer_confirmed_by_
             existing = sale.dispute
             if existing.status == Dispute.REJECTED:
                 raise VerificationError("The earlier dispute was rejected — reopen it instead of logging a new one.")
+            if existing.status == Dispute.RESOLVED:
+                raise VerificationError("The earlier dispute was resolved — ask the Support lead to log a new one.")
             if existing.status not in Dispute.FINAL_STATUSES:
                 existing.description = f"{existing.description}\n[{timezone.localtime(now):%Y-%m-%d %H:%M}] Still does not match: {note}"
                 existing.save(update_fields=["description"])
@@ -283,7 +288,7 @@ def description(sale):
         booking = sale.booking
         units = f", {booking.units} units" if booking.units != 1 else ""
         return f"{booking.listing.name}, {booking.check_in:%d %b} to {booking.check_out:%d %b}{units}"
-    quantity = int(sale.session.metadata.get("quantity") or 0)
+    quantity = tickets_of(sale).filter(refunded_at__isnull=True).count() or int(sale.session.metadata.get("quantity") or 0)
     noun = "ticket" if quantity == 1 else "tickets"
     return f"{quantity} {noun} for {sale.event.name}, {timezone.localtime(sale.event.event_date):%d %b %Y}"
 
@@ -469,7 +474,23 @@ def cancel(sale, staff, reason, now=None):
             raise CancelError("This booking's money was already released to the business. Open a dispute instead.")
         if handed_over_at(sale, now) is not None:
             raise CancelError(ALREADY_HANDED_OVER[sale.kind])
-        return refund(sale, source="cancel", by=staff, note=reason, now=now)
+        cancelling = list(tickets_of(sale).filter(refunded_at__isnull=True, delivered_at__isnull=True).select_related("ticket_type__event", "purchased_by"))
+        given = refund(sale, source="cancel", by=staff, note=reason, now=now)
+        for ticket in cancelling:  # the same REFUNDED billing.Transaction row the Accountant's per-ticket refund writes
+            _ticket_refund_row(ticket)
+        return given
+
+
+def _ticket_refund_row(ticket):
+    """Today's REFUNDED billing.Transaction for one ticket, as the Accountant's per-ticket refund has always written it."""
+    from billing.models import Transaction
+    from django.utils.crypto import get_random_string
+
+    Transaction.objects.create(
+        customer=ticket.purchased_by, amount=-ticket.price, status=Transaction.REFUNDED,
+        purpose=f"Refund for ticket {ticket.code} ('{ticket.ticket_type.event.name}')",
+        reference=f"AH-REFUND-{ticket.id}-{get_random_string(8).upper()}",
+    )
 
 
 class TicketRefundError(Exception):
@@ -484,8 +505,6 @@ def refund_ticket(sale, ticket_id, *, by, reason, now=None):
     purchase's tickets, then the sale), so it never deadlocks with a scan, the call or another ticket's refund. A scanned
     or already refunded ticket cannot be refunded (TicketRefundError); RefundError when the ledger cannot give it.
     Returns (ticket, BookingRefund)."""
-    from billing.models import Transaction
-    from django.utils.crypto import get_random_string
     from events.models import Ticket
 
     now = now or timezone.now()
@@ -499,11 +518,7 @@ def refund_ticket(sale, ticket_id, *, by, reason, now=None):
         if ticket.refunded_at is not None:
             raise TicketRefundError("This ticket has already been refunded.")
         given = refund(sale, to_pesewas(ticket.price), source=f"ticket-{ticket.pk}", by=by, note=reason, now=now)
-        Transaction.objects.create(
-            customer=ticket.purchased_by, amount=-ticket.price, status=Transaction.REFUNDED,
-            purpose=f"Refund for ticket {ticket.code} ('{ticket.ticket_type.event.name}')",
-            reference=f"AH-REFUND-{ticket.id}-{get_random_string(8).upper()}",
-        )
+        _ticket_refund_row(ticket)
         Ticket.objects.filter(pk=ticket.pk).update(refunded_at=now, refunded_by_staff=by, refund_reason=reason)
         ticket.refresh_from_db()
         return ticket, given

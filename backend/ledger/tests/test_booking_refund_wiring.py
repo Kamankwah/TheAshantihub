@@ -105,6 +105,56 @@ class BookingRefundWiringTests(BookingBase):
         self.assertNotIn("#", notice.body)
         self.assertEqual(Ticket.objects.filter(transaction=sale.session.transaction, refunded_at__isnull=False).count(), 2)
 
+    def test_support_cancels_a_stay_not_checked_in(self):
+        sale = self.paid_stay(nights=2)
+        self.as_staff(self.support)
+        response = self.support_cancel(sale, "Lodge closed")
+        self.assertEqual((response.status_code, response.json()["refunded"]), (200, "300.00"))
+        self.assertEqual(self.wallet(), 30000)
+        self.assertEqual(Booking.objects.get(pk=sale.booking_id).status, Booking.CANCELLED)
+
+    def test_the_cancel_answers_409_for_a_released_and_an_already_refunded_sale(self):
+        released, refunded = self.paid_service(), self.paid_service("50.00")
+        BookingSale.objects.filter(pk=released.pk).update(released_at=timezone.now())
+        self.as_staff(self.support)
+        response = self.support_cancel(released, "Because")
+        self.assertEqual((response.status_code, response.json()["detail"]), (409, "This booking's money was already released to the business. Open a dispute instead."))
+        self.assertEqual(self.support_cancel(refunded, "Because").status_code, 200)
+        again = self.support_cancel(refunded, "Because")
+        self.assertEqual((again.status_code, again.json()["detail"]), (409, "This booking was already refunded in full."))
+        self.assertEqual(self.wallet(), 5000)
+
+    @override_settings(LEDGER_ENABLED=False)
+    def test_the_cancel_with_the_ledger_off_answers_ledger_off(self):
+        self.as_staff(self.support)
+        response = self.support_cancel(BookingSale(pk=1), "Because")
+        self.assertEqual((response.status_code, response.json()["code"]), (409, "ledger_off"))
+
+    def test_a_stay_paid_before_the_ledger_was_on_cancels_without_touching_the_ledger(self):
+        with override_settings(LEDGER_ENABLED=False):
+            booking_id = self.book_stay(nights=1).json()["id"]
+        self.as_customer()
+        response = self.client.post(f"/api/bookings/{booking_id}/cancel/")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["status"], "cancelled")
+        self.assertNotIn("wallet_refund", response.json())
+        self.assertFalse(Account.objects.exists())
+
+    def test_support_cancelling_tickets_writes_the_same_refunded_rows_and_counts_only_the_tickets_left(self):
+        sale = self.paid_tickets(quantity=3)
+        first = Ticket.objects.filter(transaction=sale.session.transaction).order_by("pk").first()
+        self.as_staff(self.accountant, sudo=True)
+        self.assertEqual(self.client.post(
+            f"/api/events/tickets/{first.pk}/escrow/refund/", {"reason": "Cannot attend"}, format="json").status_code, 200)
+        self.as_staff(self.support)
+        self.assertEqual(self.support_cancel(sale, "Event moved").status_code, 200)
+        rows = Transaction.objects.filter(status=Transaction.REFUNDED)
+        self.assertEqual((rows.count(), set(rows.values_list("amount", flat=True))), (3, {Decimal("-50.00")}))
+        self.assertEqual(len({r.purpose for r in rows}), 3)
+        notice = Notification.objects.get(customer=self.customer, title="Your booking was cancelled")
+        self.assertIn("2 tickets for Highlife Night", notice.body)
+        self.assertEqual(self.wallet(), 15000)
+
     def test_only_support_may_cancel(self):
         sale = self.paid_service()
         self.as_staff(make_staff("pickup_desk", "desk-w@example.com"))
@@ -175,7 +225,7 @@ class TicketRefundRaceTests(TransactionTestCase):
                 sales.refund_ticket(sale, ticket_id, by=accountant, reason="Cannot attend")
                 outcomes.append("refunded")
             except Exception as exc:  # noqa: BLE001 - a failure must show in the assertion, not hang the test
-                outcomes.append(type(exc).__name__)
+                outcomes.append(repr(exc))
             finally:
                 connection.close()
 
@@ -216,7 +266,7 @@ class SameMomentRaceTests(TransactionTestCase):
         return client
 
     def run_together(self, *calls):
-        """Each call in its own thread, released at once; returns what each returned (an exception's name if it raised)."""
+        """Each call in its own thread, released at once; returns what each returned (the exception's repr if it raised)."""
         results, barrier = [None] * len(calls), threading.Barrier(len(calls))
 
         def run(index, call):
@@ -224,7 +274,7 @@ class SameMomentRaceTests(TransactionTestCase):
                 barrier.wait()
                 results[index] = call()
             except Exception as exc:  # noqa: BLE001 - a failure must show in the assertion, not hang the test
-                results[index] = type(exc).__name__
+                results[index] = repr(exc)
             finally:
                 connection.close()
 
@@ -248,7 +298,7 @@ class SameMomentRaceTests(TransactionTestCase):
             client = self.client_for(self.customer, "customer")
             return client.post(f"/api/services/requests/{request.pk}/pay/", {"payment_method": "wallet"}, format="json").status_code
 
-        self.assertEqual(sorted(self.run_together(tap, tap)), [200, 400])
+        self.assertCountEqual(self.run_together(tap, tap), [200, 400])
         self.assertEqual(CheckoutSession.objects.filter(status=CheckoutSession.SUCCESS).count(), 1)
         self.assertEqual(Transaction.objects.count(), 1)
         self.assertEqual(BookingSale.objects.filter(service_request=request).count(), 1)
@@ -272,7 +322,7 @@ class SameMomentRaceTests(TransactionTestCase):
         def cancel_call():
             return self.client_for(self.customer, "customer").post(f"/api/bookings/{booking_id}/cancel/").status_code
 
-        self.assertEqual(sorted(self.run_together(check_in_call, cancel_call)), [200, 400])
+        self.assertCountEqual(self.run_together(check_in_call, cancel_call), [200, 400])
         booking = Booking.objects.get(pk=booking_id)
         sale = BookingSale.objects.get(booking=booking)
         wallet = posting.balance_of(Account.CUSTOMER_WALLET, self.customer)
