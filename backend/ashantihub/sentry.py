@@ -17,6 +17,8 @@ EXTRA_DENYLIST = [
     # ...and the local variables that hold them inside otp (frame vars): a message body with the live code
     # (otp.senders), new recovery codes, the authenticator URI and a typed recovery code (otp.authenticator).
     "body", "codes", "uri", "recovery", "normalised",
+    # Payout destinations (wallets): a whole MoMo or bank account number in a request body or a frame.
+    "account_number",
 ]
 
 

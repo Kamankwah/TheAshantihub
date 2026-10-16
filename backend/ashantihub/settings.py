@@ -426,6 +426,9 @@ REST_FRAMEWORK = {
         # Marketing banner view/click beacons: public, count-only. Generous because many
         # phones share one mobile-carrier address; repeats are also de-duplicated per banner.
         "banner_beacon": "240/min",
+        # Adding a wallet payout destination (wallets.views_payouts.DestinationsView, POST only): each add asks the
+        # payment provider for the name on an account.
+        "wallet_destination": "20/hour",
     },
 }
 
