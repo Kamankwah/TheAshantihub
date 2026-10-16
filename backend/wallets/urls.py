@@ -9,6 +9,7 @@ urlpatterns = [
     path("staff/reconciliation/", views_staff.StaffReconciliationView.as_view(), name="wallet-staff-reconciliation"),
     path("vendor/", views_vendor.VendorOverviewView.as_view(), name="wallet-vendor"),
     path("vendor/sales/", views_vendor.VendorSalesView.as_view(), name="wallet-vendor-sales"),
+    path("vendor/daily/", views_vendor.VendorDailyView.as_view(), name="wallet-vendor-daily"),
     path("", views.WalletView.as_view(), name="wallet"),
     path("transactions/", views.TransactionsView.as_view(), name="wallet-transactions"),
     path("processing/", views.ProcessingView.as_view(), name="wallet-processing"),

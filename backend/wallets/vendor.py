@@ -9,12 +9,17 @@ owner-scoped order isolation). No customer's name, phone or address appears here
 (GET /api/orders/owner/) already carries what fulfilment needs. Money is integer pesewas inside and GH₵ strings in the
 rows. Only product orders are in the ledger today; booking sales (Plan 1b) slot in as a second source of rows with kind
 "booking" (spec §13 (lxxii))."""
+from datetime import datetime, time, timedelta
+
 from django.db.models import Count, F, Max, Q, Sum
+from django.db.models.functions import TruncDate
+from django.utils import timezone
 from django.utils.dateparse import parse_date
 
+from accounts.models import BusinessOwner
 from disputes.models import Dispute
 from ledger import fees, posting, settings_store, verification
-from ledger.models import Account, FulfilmentCheck, OrderFeeSnapshot
+from ledger.models import Account, FulfilmentCheck, JournalLine, OrderFeeSnapshot
 from ledger.money import to_pesewas
 from marketing.models_waivers import WaivedFeeCharge
 from orders.models import Order, OrderItem
@@ -182,4 +187,107 @@ def overview(owner, now=None):
         "pending": money(pending), "available": money(available), "withdrawable": money(max(available, 0)),
         "negative": available < 0, "awaiting_call": sale_groups(owner, status=AWAITING).count(),
         "fee_cap": fee_cap(owner, now),
+    }
+
+
+# --- the daily summary (Task 2) ------------------------------------------------------------------------------------
+
+OWNER_TYPE = BusinessOwner._meta.label_lower
+P, A = Account.VENDOR_PENDING, Account.VENDOR_AVAILABLE
+DR, CR = JournalLine.DEBIT, JournalLine.CREDIT
+# How each ledger line on a business's own accounts counts in its daily summary: (journal kind, account, side) ->
+# (column, sign). The release takes the item subtotal out of Pending (a debit) and credits Available with it less the
+# platform fee, so the fee is the difference. Any other line lands in "other" (credits in, debits out), so for every day
+#   sold - fees - refunded - free_delivery_promo - withdrawn + other = net_change (the change in Pending + Available).
+# Booking sales (Plan 1b) add their booking_* kinds here (spec §13 (lxxii)).
+FOLD = {
+    ("order_payment", P, CR): ("sold", 1),
+    ("order_release", P, DR): ("fees", 1),
+    ("order_release", A, CR): ("fees", -1),
+    ("order_refund", P, DR): ("refunded", 1),
+    ("order_refund", A, DR): ("refunded", 1),
+    ("order_refund", A, CR): ("refunded", -1),
+    ("order_waiver_charge", A, DR): ("free_delivery_promo", 1),
+    ("order_waiver_return", A, CR): ("free_delivery_promo", -1),
+    ("withdrawal_hold", A, DR): ("withdrawn", 1),
+    ("withdrawal_reversed", A, CR): ("withdrawn", -1),
+}
+COLUMNS = ("sold", "fees", "released", "refunded", "free_delivery_promo", "withdrawn", "other", "net_change")
+
+
+def account(owner, kind):
+    """The business's own ledger account of `kind`, or None when none was ever opened (reading never opens one)."""
+    return Account.objects.filter(kind=kind, owner_type=OWNER_TYPE, owner_id=str(owner.pk)).first()
+
+
+def date_range(params, *, default_days, max_days, today=None):
+    """(first, last) Accra days, inclusive, from ?date_from=&date_to=: by default the last `default_days` days up to
+    today; at most `max_days` days. Raises RangeError (a date outside 2020..2100 is refused by optional_dates, so the day
+    sums below never overflow)."""
+    today = today or timezone.localdate()
+    date_from, date_to = optional_dates(params)
+    date_to = date_to or today
+    date_from = date_from or date_to - timedelta(days=default_days - 1)
+    if date_from > date_to:
+        raise RangeError("date_from", "The start date is after the end date.")
+    if (date_to - date_from).days + 1 > max_days:
+        raise RangeError("date_from", f"Choose at most {max_days} days.")
+    return date_from, date_to
+
+
+def bounds(first, last):
+    """[start, end) aware datetimes covering the Accra days first..last."""
+    zone = timezone.get_current_timezone()
+    return (
+        timezone.make_aware(datetime.combine(first, time.min), zone),
+        timezone.make_aware(datetime.combine(last + timedelta(days=1), time.min), zone),
+    )
+
+
+def _blank():
+    return {"orders": 0, **{column: 0 for column in COLUMNS}}
+
+
+def _shown(row):
+    return {"orders": row["orders"], **{column: money(row[column]) for column in COLUMNS}}
+
+
+def daily(owner, first, last):
+    """The business's money for the Accra days first..last, from the journal lines on its own Pending and Available
+    accounts (never another holder's: accounts are matched by kind, owner type and id). Newest day first; days when
+    nothing moved are left out; `totals` covers the range. `orders` counts the payments into Pending; `released` is what
+    moved to Available at release (shown, not part of the identity in FOLD's note)."""
+    accounts = [found for found in (account(owner, P), account(owner, A)) if found is not None]
+    days = {}
+    if accounts:
+        start, end = bounds(first, last)
+        lines = (
+            JournalLine.objects.filter(account__in=accounts, journal__created_at__gte=start, journal__created_at__lt=end)
+            .annotate(day=TruncDate("journal__created_at"))
+            .values("day", "journal__kind", "account__kind", "side")
+            .annotate(total=Sum("amount"), journals=Count("journal", distinct=True))
+            .order_by()
+        )
+        for line in lines:
+            row = days.setdefault(line["day"], _blank())
+            key = (line["journal__kind"], line["account__kind"], line["side"])
+            signed = line["total"] if line["side"] == CR else -line["total"]
+            if key in FOLD:
+                column, sign = FOLD[key]
+                row[column] += sign * line["total"]
+            else:
+                row["other"] += signed
+            row["net_change"] += signed
+            if key == ("order_payment", P, CR):
+                row["orders"] += line["journals"]
+            if key == ("order_release", A, CR):
+                row["released"] += line["total"]
+    totals = _blank()
+    for row in days.values():
+        for name in ("orders", *COLUMNS):
+            totals[name] += row[name]
+    return {
+        "from": first, "to": last,
+        "days": [{"day": day, **_shown(days[day])} for day in sorted(days, reverse=True)],
+        "totals": _shown(totals),
     }

@@ -50,3 +50,21 @@ class VendorSalesView(APIView):
         paginator = Pagination()
         page = paginator.paginate_queryset(groups, request, view=self)
         return paginator.get_paginated_response(vendor.rows(request.user, page))
+
+
+class VendorDailyView(APIView):
+    """GET vendor/daily/?date_from=&date_to= — the business's money day by day (Accra days, newest first; the last 30
+    by default, at most 92), only days when something moved, and the range's totals: sold (item subtotals paid into
+    Pending), fees (platform fees taken at release), released (moved to Available), refunded, free_delivery_promo,
+    withdrawn, other and net_change, where sold − fees − refunded − free_delivery_promo − withdrawn + other = net_change."""
+
+    permission_classes = [IsBusinessOwner]
+
+    def get(self, request):
+        if not escrow.enabled():
+            return ledger_off()
+        try:
+            first, last = vendor.date_range(request.query_params, default_days=30, max_days=92)
+        except vendor.RangeError as exc:
+            return Response(exc.body(), status=status.HTTP_400_BAD_REQUEST)
+        return Response(vendor.daily(request.user, first, last))
