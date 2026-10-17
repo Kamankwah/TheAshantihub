@@ -343,6 +343,8 @@ class DocumentListCreateView(RiderView):
             return Response({"detail": "Enter the expiry date as YYYY-MM-DD."}, status=400)
         if expires_on is not None and expires_on < timezone.localdate():
             return Response({"detail": "That paper has already expired."}, status=400)
+        if kind == RiderDocument.GHANA_CARD and expires_on is None:
+            return Response({"detail": "Enter the expiry date on your Ghana Card (YYYY-MM-DD)."}, status=400)
         clean = files.clean_upload(upload)
         if clean is None:
             return Response({"detail": "That file is not a JPEG, PNG or PDF."}, status=400)

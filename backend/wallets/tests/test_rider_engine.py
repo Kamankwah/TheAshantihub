@@ -2,6 +2,7 @@
 balance only (never the reserve), to an account in their own name once an approved Ghana Card is on file, confirmed with
 a texted or emailed code. AshantiHub's own riders have no wallet. Review Focus 1, 4 and 6."""
 from datetime import timedelta
+from types import SimpleNamespace
 
 from django.core.cache import cache
 from django.db import transaction
@@ -9,13 +10,15 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from accounts.models import Customer, Permission, Role
 from accounts.testing import make_staff, staff_token
+from delivery import employment
 from delivery.models import Rider, RiderDocument, RiderEmploymentPeriod
 from ledger import posting, riders
 from ledger.models import Account
 from ledger.tests import rider_helpers
 from notifications.models import Notification
-from otp import senders
+from otp import senders, step_up
 from otp.tests.helpers import last_sms_code
 from wallets import destinations, names, payouts, withdrawals
 from wallets.models import Withdrawal
@@ -128,6 +131,104 @@ class RiderEngineTests(TestCase):
         self.assertEqual(held.status, Withdrawal.CANCELLED)
         self.assertEqual(posting.balance_of(Account.RIDER_BALANCE, self.staff), 900)
 
+    def test_a_card_with_no_expiry_date_does_not_count(self):
+        RiderDocument.objects.filter(rider=self.swift).update(expires_on=None)
+        self.assertFalse(employment.id_verified(self.swift))
+        self.assertEqual(names.verified_names(self.staff), [])
+
+    def test_a_lapsed_card_answers_id_required_at_withdrawal_and_a_short_name_says_ask_the_manager(self):
+        self.fund()
+        self.dest = destination(self.staff, name="Kojo Mensah")
+        RiderDocument.objects.filter(rider=self.swift).update(expires_on=timezone.localdate() - timedelta(days=1))
+        self.refused("id_required", amount=100)
+        RiderDocument.objects.filter(rider=self.swift).update(expires_on=timezone.localdate() + timedelta(days=30))
+        self.staff.full_name = "Kojo"
+        self.staff.save(update_fields=["full_name"])
+        with self.assertRaises(destinations.DestinationError) as caught:
+            destinations.check(self.staff, MOMO)
+        self.assertEqual(caught.exception.code, "name_unusable")
+        self.assertIn("delivery manager", caught.exception.message)
+        self.assertNotIn("your profile", caught.exception.message)
+
+    def test_office_staff_are_refused_at_destinations_and_withdrawals(self):
+        accountant = make_staff("accountant", "acc@example.com")
+        with self.assertRaises(destinations.DestinationError) as caught:
+            destinations.check(accountant, MOMO)
+        self.assertEqual((caught.exception.code, caught.exception.status_code), ("wallet_disabled", 409))
+        self.dest = destination(accountant, name="Esi Mensah")
+        self.refused("wallet_disabled", amount=100, holder=accountant)
+
+    def test_a_re_roled_rider_loses_the_wallet_and_a_held_withdrawal_goes_back(self):
+        self.fund()
+        self.dest = destination(self.staff, name="Kojo Mensah")
+        held = self.hold(500)
+        self.staff.role = Role.objects.get(name="accountant")
+        self.staff.save(update_fields=["role"])
+        self.refused("wallet_disabled", amount=100, request_id="req-rider-0002")
+        self.assertIsNone(payouts.claim(held.pk))
+        held.refresh_from_db()
+        self.assertEqual(held.status, Withdrawal.CANCELLED)
+        self.assertEqual(posting.balance_of(Account.RIDER_BALANCE, self.staff), 900)
+
+    def test_a_held_withdrawal_goes_back_once_if_the_rider_is_deactivated_or_the_card_lapses(self):
+        self.fund()
+        self.dest = destination(self.staff, name="Kojo Mensah")
+        first = self.hold(300)
+        self.staff.is_active = False
+        self.staff.save(update_fields=["is_active"])
+        self.assertIsNone(payouts.claim(first.pk))
+        self.assertIsNone(payouts.claim(first.pk))                                              # never twice
+        self.assertEqual(posting.balance_of(Account.RIDER_BALANCE, self.staff), 900)
+        self.staff.is_active = True
+        self.staff.save(update_fields=["is_active"])
+        second = self.hold(300, request_id="req-rider-0002")
+        RiderDocument.objects.filter(rider=self.swift).update(expires_on=timezone.localdate() - timedelta(days=1))
+        self.assertIsNone(payouts.claim(second.pk))
+        second.refresh_from_db()
+        self.assertEqual(second.status, Withdrawal.CANCELLED)
+        self.assertEqual(posting.balance_of(Account.RIDER_BALANCE, self.staff), 900)
+
+    def test_a_customer_and_a_rider_with_the_same_id_are_kept_apart(self):
+        customer = Customer.objects.create(pk=self.staff.pk, full_name="Ama Owusu", phone="+233241234500", password_hash="x")
+        theirs = destination(customer, name="Ama Owusu", number="0241234500")
+        self.dest = theirs
+        self.refused("unknown_destination", amount=100)                                         # the rider cannot use it
+        self.dest = destination(self.staff, name="Kojo Mensah")
+        self.fund()
+        mine = self.hold(100)
+        self.assertEqual(list(withdrawals.mine(customer)), [])
+        self.assertEqual(list(withdrawals.mine(self.staff)), [mine])
+        request = SimpleNamespace(META={}, auth={"jti": "j1"}, user=customer)
+        raw = step_up.issue(customer, step_up.WITHDRAWAL, request)
+        as_rider = SimpleNamespace(META={step_up.HEADER: raw}, auth={"jti": "j1"}, user=self.staff)
+        with self.assertRaises(step_up.StepUpRequired):
+            step_up.require(as_rider, step_up.WITHDRAWAL, force=True)
+
+
+@override_settings(LEDGER_ENABLED=True, SIMULATED_PAYOUT_OUTCOME="pending")
+class RiderSelfDealingTests(TestCase):
+    def test_a_rider_holding_wallets_manage_cannot_fail_their_own_withdrawal(self):
+        cache.clear()
+        swift = rider_helpers.rider()
+        rider_helpers.ghana_card(swift)
+        staff = swift.staff
+        staff.extra_permissions.add(Permission.objects.get(codename="wallets.manage"))
+        balance, held = riders.accounts_of(swift)
+        posting.post(key="fund-self", kind="test_fund", lines=[
+            posting.debit(posting.account_for(Account.PROVIDER_CLEARING), 1000), posting.credit(balance, 1000),
+        ])
+        dest = destination(staff, name="Kojo Mensah")
+        with transaction.atomic():
+            w = withdrawals.request(staff, destination_id=dest.pk, amount_pesewas=500, request_id="req-self-0001")
+        Withdrawal.objects.filter(pk=w.pk).update(created_at=timezone.now() - timedelta(minutes=20))
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(staff, sudo=True)}")
+        response = client.post(f"/api/wallet/staff/withdrawals/{w.pk}/fail/", {"reason": "mine"}, format="json")
+        self.assertEqual((response.status_code, response.json()["code"]), (403, "own_withdrawal"))
+        w.refresh_from_db()
+        self.assertEqual(w.status, Withdrawal.PENDING)
+        self.assertEqual(posting.balance_of(Account.RIDER_BALANCE, staff), 500)
+
 
 @override_settings(LEDGER_ENABLED=True)
 class RiderStepUpTests(TestCase):
@@ -166,4 +267,15 @@ class RiderStepUpTests(TestCase):
         with override_settings(LEDGER_ENABLED=False):
             response = self.send("withdrawal")
         self.assertEqual((response.status_code, response.json()["code"]), (409, "otp_off"))
+        self.assertEqual(senders.sms_outbox, [])
+
+    def test_a_rider_without_the_dispatch_permission_gets_no_code(self):
+        self.swift.staff.revoked_permissions.add(Permission.objects.get(codename="delivery.dispatch"))
+        self.assertEqual(self.send("withdrawal").status_code, 403)
+        self.assertEqual(senders.sms_outbox, [])
+
+    def test_a_re_roled_third_party_rider_gets_no_code(self):
+        self.swift.staff.role = Role.objects.get(name="accountant")
+        self.swift.staff.save(update_fields=["role"])
+        self.assertEqual(self.send("withdrawal").status_code, 403)
         self.assertEqual(senders.sms_outbox, [])

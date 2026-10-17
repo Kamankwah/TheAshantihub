@@ -1,4 +1,4 @@
-"""Step-up codes for signed-in customers and business owners (otp plan Task 8).
+"""Step-up codes for signed-in customers, business owners and third-party riders (otp plan Task 8, wallets Plan 5).
 
 POST step-up/send/   {action, channel} -> {"channel", "hint", "expires_in", "resend_in"}
 POST step-up/verify/ {action, code}    -> {"step_up_token", "action", "expires_in"}
@@ -56,7 +56,10 @@ class IsCustomerOwnerOrWalletRider(BasePermission):
         if isinstance(user, StaffUser):
             from delivery import employment
 
-            return employment.wallet_rider(user) is not None
+            # the same gate as the rider wallet endpoints: the Dispatch role AND delivery.dispatch still in force
+            return (
+                employment.wallet_rider(user) is not None and "delivery.dispatch" in user.effective_permission_codenames()
+            )
         return False
 
 

@@ -4106,6 +4106,9 @@ feature/wallets and feature/dispatch-wallets-5; see section 13); later stages ar
   name at review and match it, and have a second person (or the Super Admin's employment approval) confirm both the name
   and the contacts. Any future staff-edit endpoint that changes a third-party rider's name or contacts must restart
   destination cooling and notify the old contacts, as (xxix) and (xxxiv) ask for customers and owners.
+  Also (Task 5 review, spec S5-12): a rider holding `wallets.manage`, `fraud.manage` or `orders.verify` could settle their
+  own money; only the withdrawal fail is refused so far. List `FraudFlagConfirmView`/`FraudFlagDismissView` and
+  `OrderVerificationView` as owner questions.
 - (xciii) **Owner question: a rider is paid nothing for a delivery whose order is refunded whole,** before release (the fee
   goes back to the customer, W4) or after it (the earning is taken back and the balance may go below zero), even when the
   business was at fault and the rider did the work. The alternative is for AshantiHub to pay the rider from its own

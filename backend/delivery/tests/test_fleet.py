@@ -14,6 +14,8 @@ from .base import PNG, PICKUP, DeliveryCase
 
 
 def upload(kind="ghana_card", **extra):
+    if kind == "ghana_card":  # a Ghana Card must carry its expiry date (it gates a rider's payouts)
+        extra.setdefault("expires_on", (timezone.localdate() + timedelta(days=365)).isoformat())
     return {"kind": kind, "file": SimpleUploadedFile("scan.png", PNG, "image/png"), **extra}
 
 
@@ -34,6 +36,22 @@ class PapersTests(DeliveryCase):
         self.assertEqual(reviewed.status_code, 200, reviewed.content)
         self.assertEqual(reviewed.json()["status"], "approved")
         self.assertTrue(self.rider_staff.notifications.filter(kind="delivery_document").exists())
+
+    def test_a_ghana_card_needs_its_expiry_date_to_be_uploaded_and_approved(self):
+        self.as_staff(self.rider_staff)
+        bare = {"kind": "ghana_card", "file": SimpleUploadedFile("scan.png", PNG, "image/png")}
+        self.assertEqual(self.client.post("/api/delivery/rider/documents/", bare, format="multipart").status_code, 400)
+        doc = RiderDocument.objects.create(
+            rider=self.rider_staff.rider, kind="ghana_card", file="documents/x.png", uploaded_by=self.rider_staff,
+        )
+        self.as_staff(self.manager)
+        refused = self.client.post(f"/api/delivery/documents/{doc.pk}/review/", {"decision": "approve"}, format="json")
+        self.assertEqual(refused.status_code, 400)
+        ok = self.client.post(
+            f"/api/delivery/documents/{doc.pk}/review/",
+            {"decision": "approve", "expires_on": (timezone.localdate() + timedelta(days=30)).isoformat()}, format="json",
+        )
+        self.assertEqual(ok.status_code, 200, ok.content)
 
     def test_a_scan_is_served_only_through_the_authenticated_view(self):
         self.as_staff(self.rider_staff)

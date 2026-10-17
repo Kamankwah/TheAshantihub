@@ -112,6 +112,18 @@ class StaffWithdrawalsView(APIView):
         return paginator.get_paginated_response([staff_row(withdrawal, holders) for withdrawal in page])
 
 
+def own_withdrawal(user, withdrawal):
+    """A staff member who is also a third-party rider holder never settles their own withdrawal (self-dealing)."""
+    return withdrawal.holder_type == "staff" and withdrawal.holder_id == user.pk
+
+
+def own_withdrawal_response():
+    return Response(
+        {"detail": "You cannot fail your own withdrawal. Ask another member of staff.", "code": "own_withdrawal"},
+        status=status.HTTP_403_FORBIDDEN,
+    )
+
+
 def not_stuck_response():
     return Response(
         {"detail": "Only a withdrawal stuck (sent 30+ minutes ago with no answer, or held and never sent for 10+ minutes) "
@@ -138,7 +150,8 @@ def amount_case_open(withdrawal):
 
 
 class StaffWithdrawalFailView(APIView):
-    """POST staff/withdrawals/<id>/fail/ {reason} — fail a withdrawal stuck with the provider (sent 30+ minutes ago with
+    """POST staff/withdrawals/<id>/fail/ {reason} — never your own withdrawal (a third-party rider holding wallets.manage:
+    403 own_withdrawal, checked before the provider is asked and again under the row lock). Fail a withdrawal stuck with the provider (sent 30+ minutes ago with
     no answer, or held and never sent for 10+ minutes) and return the money. wallets.manage and the password again.
     The provider is asked first, outside any transaction: if it has answered (paid or failed), that answer settles it
     instead (409 provider_answered), so money it did pay never comes back to be withdrawn twice. A withdrawal with an
@@ -167,6 +180,8 @@ class StaffWithdrawalFailView(APIView):
         if not reason:
             return Response({"reason": "Say why you are failing it."}, status=status.HTTP_400_BAD_REQUEST)
         found = get_object_or_404(Withdrawal, pk=pk)
+        if own_withdrawal(request.user, found):  # before any provider call
+            return own_withdrawal_response()
         if not payouts.stuck(found):  # first, so a not-stuck one costs no provider call and changes nothing
             return not_stuck_response()
         if found.status == Withdrawal.PROCESSING:
@@ -213,6 +228,8 @@ class StaffWithdrawalFailView(APIView):
         )
         with transaction.atomic():
             withdrawal = get_object_or_404(Withdrawal.objects.select_for_update(), pk=pk)
+            if own_withdrawal(request.user, withdrawal):
+                return own_withdrawal_response()
             if not payouts.stuck(withdrawal):
                 return not_stuck_response()
             if amount_case_open(withdrawal):  # inside the lock: a case the poll opened a moment ago is not missed

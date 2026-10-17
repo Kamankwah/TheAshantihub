@@ -71,11 +71,11 @@ def wallet_rider(staff):
 
 
 def id_verified(rider, today=None):
-    """An approved Ghana Card in date is on file (the Delivery Manager reviews riders' papers). The name on the rider's
+    """An approved Ghana Card with an expiry date, in date, is on file (a card with no expiry date does not count) (the Delivery Manager reviews riders' papers). The name on the rider's
     staff account is then their verified name for payout destinations (wallets.names)."""
     today = today or timezone.localdate()
-    return rider.documents.filter(kind=RiderDocument.GHANA_CARD, status=RiderDocument.APPROVED).filter(
-        Q(expires_on__isnull=True) | Q(expires_on__gte=today)
+    return rider.documents.filter(
+        kind=RiderDocument.GHANA_CARD, status=RiderDocument.APPROVED, expires_on__isnull=False, expires_on__gte=today,
     ).exists()
 
 

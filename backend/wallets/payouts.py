@@ -55,7 +55,8 @@ def _holder_model(withdrawal):
 
 
 def holder_of(withdrawal):
-    """The customer or business owner the withdrawal belongs to, or None when that account is gone."""
+    """The customer, business owner or (third-party rider) staff member the withdrawal belongs to, or None when that
+    account is gone."""
     return _holder_model(withdrawal).objects.filter(pk=withdrawal.holder_id).first()
 
 
@@ -85,7 +86,8 @@ def _tell(withdrawal, title, body):
 
 def claim(withdrawal_pk, now=None):
     """PENDING → PROCESSING under the row lock (and the destination's). Returns the withdrawal if this caller won it,
-    else None. Re-checks what request() checked: the holder is not suspended (and exists), the destination is not
+    else None. Re-checks what request() checked: the holder is not suspended or deactivated (and exists; a staff holder must still be a
+    third-party rider with an approved, in-date Ghana Card, which names.matching_name checks), the destination is not
     removed and is past its cooling period, and its name still matches the holder's verified name (which includes
     business KYC). If any fails the money goes back (CANCELLED) and None is returned. Raises RuntimeError inside an
     open transaction (durable)."""

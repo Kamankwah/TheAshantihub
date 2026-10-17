@@ -188,6 +188,8 @@ class DocumentReviewView(FleetView):
                         return Response({"detail": "Enter the expiry date as YYYY-MM-DD."}, status=400)
                 if doc.expires_on is not None and doc.expires_on < timezone.localdate():
                     return Response({"detail": "That paper has already expired."}, status=400)
+                if doc.kind == RiderDocument.GHANA_CARD and doc.expires_on is None:
+                    return Response({"detail": "A Ghana Card needs its expiry date before it is approved."}, status=400)
                 doc.status = RiderDocument.APPROVED
                 doc.reject_reason = ""
                 # An older approved paper of this kind is replaced by the new one.

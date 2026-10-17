@@ -1,4 +1,4 @@
-"""Payout destinations (spec §8): a MoMo number or bank account a customer or business owner may withdraw to.
+"""Payout destinations (spec §8): a MoMo number or bank account a customer, business owner or third-party rider may withdraw to.
 
 Adding one is two calls. `check` does everything that needs no lock (the holder may add one, the details are sound, the
 provider's name on the account matches a verified name in wallets.names) and runs outside any transaction, because for
@@ -126,6 +126,12 @@ def check(holder, data):
         raise problem
     verified = names.verified_names(holder)
     if not any(names.usable(name) for name in verified):
+        if isinstance(holder, StaffUser):  # a rider cannot edit their staff name
+            raise DestinationError(
+                "The name on your staff account is too short to check against a bank or mobile money account. "
+                "Ask your delivery manager to put your full name, at least two words, on it.", "name_unusable", 400,
+                field="full_name",
+            )
         raise DestinationError(
             "The name on your profile is too short to check against a bank or mobile money account. "
             "Put your full name, at least two words, on your profile first.", "name_unusable", 400, field="full_name",

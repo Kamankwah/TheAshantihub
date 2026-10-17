@@ -110,6 +110,11 @@ def request(holder, *, destination_id, amount_pesewas, request_id, now=None):
             "A new payout destination can't receive money yet.", "destination_cooling", 409,
             usable_from=destination.usable_from.isoformat(),
         )
+    if isinstance(holder, StaffUser) and not names.verified_names(holder):  # the Ghana Card lapsed or was withdrawn
+        raise WithdrawalError(
+            "Your Ghana Card must be approved, and in date, before money can be paid out to you. Ask your delivery manager.",
+            "id_required", 409,
+        )
     if names.matching_name(destination.account_name, holder) is None:
         raise WithdrawalError("That destination no longer matches the name we have verified for you. Add it again.", "name_mismatch", 409)
     provider = providers.get_provider()

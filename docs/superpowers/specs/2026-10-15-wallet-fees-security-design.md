@@ -573,3 +573,10 @@ Found while writing `docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md` (Â
 - **S5-11 Review notes (Task 2).** Until Plan 5 Task 4, a whole refund after release takes the delivery fee from shared
   platform delivery income, not from the rider who was paid it. A rider moved off the Dispatch role has a wallet nobody can
   open until Task 6 decides who pays it out. Rider earnings never touch provider clearing (R13).
+- **S5-12 Self-dealing (Task 5 review).** A third-party rider who is also given `wallets.manage` is refused (403
+  `own_withdrawal`) when failing their own withdrawal, before the provider is asked and again under the row lock. Owner
+  question, same family, not yet closed: a rider holding `fraud.manage` could dismiss or confirm the amount case on their
+  own withdrawal (`fraud.views.FraudFlagConfirmView`, `FraudFlagDismissView`), and a rider holding `orders.verify` could
+  release their own deliveries (`ledger.views.OrderVerificationView`); consider refusing self-dealing in those views too.
+  A Ghana Card with no expiry date does not count as verified (`delivery.employment.id_verified`); rider upload and the
+  Delivery Manager's approval now require the expiry date for that paper.
