@@ -607,6 +607,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "catalogue.tasks.check_stock_alerts",
         "schedule": crontab(minute=35),  # hourly, at twenty-five to: a no-op while STOCK_ALERTS_ENABLED is off
     },
+    "catalogue-propose-matches": {
+        "task": "catalogue.tasks.propose_matches",
+        "schedule": crontab(hour=3, minute=10),  # nightly 03:10 Accra: a no-op while CATALOGUE_MATCHER_ENABLED is off
+    },
 }
 
 # Production sets this True so the nightly activity check emails its seal to
@@ -625,6 +629,11 @@ DELIVERY_FEE_ENABLED = env.bool("DELIVERY_FEE_ENABLED", default=False)
 # the hourly job measures and sends nothing. The "needs restocking" list does not depend on it. On the first run after it
 # is turned on, every offer already low is told once.
 STOCK_ALERTS_ENABLED = env.bool("STOCK_ALERTS_ENABLED", default=False)
+
+# The nightly barcode matcher (catalogue plan 6): files grouping requests for listings that share a barcode with a
+# catalogue entry (listings that gain a barcode, or are created or published after the entry exists, are caught here).
+# Off until the owner decides; the manual `manage.py propose_catalogue_matches --apply` works regardless.
+CATALOGUE_MATCHER_ENABLED = env.bool("CATALOGUE_MATCHER_ENABLED", default=False)
 
 # Search and the related list stop showing counted goods at 0 stock (catalogue plan 6; spec §1 row 15, §10 "zero stock
 # hides the offer"). Off until the Plan 6F screens tell a business to leave the count empty when it does not count stock;

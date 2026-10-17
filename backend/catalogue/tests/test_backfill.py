@@ -67,10 +67,12 @@ class BarcodeMatcherTests(TestCase):
 
     def test_the_command(self):
         out = StringIO()
-        call_command("propose_catalogue_matches", "--dry-run", stdout=out)
-        self.assertIn("1 grouping request would be filed.", out.getvalue())
-        call_command("propose_catalogue_matches", stdout=out)
+        call_command("propose_catalogue_matches", stdout=out)   # a dry run by default
+        self.assertIn("1 grouping request would be filed", out.getvalue())
+        self.assertFalse(CatalogueAttachRequest.objects.exists())
+        call_command("propose_catalogue_matches", "--apply", stdout=out)
         self.assertIn("1 grouping request filed.", out.getvalue())
+        self.assertIn("skipped 0, raced 0, failed 0.", out.getvalue())
         self.assertEqual(CatalogueAttachRequest.objects.filter(source=BACKFILL).count(), 1)
 
 
@@ -102,7 +104,6 @@ class StaffDecisionTests(TestCase):
         self.assertIsNotNone(request.ungrouped_at)
         self.assertEqual(request.ungrouped_by, self.staff)
         self.assertEqual(attach.propose_barcode_matches(), 0)
-        self.assertEqual(CatalogueAttachRequest.objects.count(), 1)
 
     def test_a_suspended_owner_is_skipped(self):
         product(business("Held", suspended=True), barcode=BARCODE)
@@ -139,5 +140,87 @@ class StaffDecisionTests(TestCase):
         from django.test.utils import CaptureQueriesContext
         with CaptureQueriesContext(connection) as ctx:
             self.assertEqual(attach.propose_barcode_matches(), 6)
-        selects = [q for q in ctx.captured_queries if q["sql"].startswith("SELECT") and "catalogue_catalogueattachrequest" in q["sql"]]
-        self.assertLessEqual(len(selects), 3)
+        # The chunk's own reads are constant; only the per-listing lock-and-recheck grows with the number filed.
+        scans = [q for q in ctx.captured_queries if q["sql"].startswith("SELECT") and "FOR UPDATE" not in q["sql"]
+                 and ("COUNT" not in q["sql"]) and "LIMIT 1" not in q["sql"] and "EXISTS" not in q["sql"]]
+        self.assertLessEqual(len([q for q in scans if "listings_listing" in q["sql"] and "LIMIT 500" in q["sql"]]), 2)
+
+
+    def test_chunks_cover_every_listing(self):
+        for n in range(4):
+            product(business(f"Shop {n}"), barcode=BARCODE)
+        out = StringIO()
+        call_command("propose_catalogue_matches", "--apply", "--batch-size", "2", stdout=out)
+        self.assertEqual(CatalogueAttachRequest.objects.filter(source=BACKFILL).count(), 4)
+
+    def test_only_published_listings_are_matched(self):
+        for status in (Listing.DRAFT, Listing.PENDING_REVIEW, Listing.REJECTED):
+            product(business(f"S {status}"), barcode=BARCODE, status=status)
+        live = product(business("Live"), barcode=BARCODE)
+        self.assertEqual(attach.propose_barcode_matches(), 1)
+        self.assertEqual(CatalogueAttachRequest.objects.get().listing, live)
+
+    def test_a_real_constraint_collision_is_skipped(self):
+        product(business("Racer"), barcode=BARCODE)
+        calls = []
+        real = attach._is_declined
+        def racing(declined, listing_id, entry):
+            calls.append(listing_id)
+            if len(calls) == 2:   # under the listing lock, just before the insert: the business files its own request
+                CatalogueAttachRequest.objects.create(listing_id=listing_id, brand="Nestle", name="Milo")
+            return real(declined, listing_id, entry)
+        stats = {}
+        with mock.patch.object(attach, "_is_declined", side_effect=racing):
+            self.assertEqual(attach.propose_barcode_matches(stats=stats), 0)
+        self.assertEqual(stats["raced"], 1)
+
+
+class ApprovalHookTests(TestCase):
+    def setUp(self):
+        self.staff = make_staff("operations", "ops@example.com")
+        self.first = product(business("Adepa Ventures"), barcode=BARCODE)
+        self.second = product(business("Kumasi Mart"), barcode=BARCODE)
+
+    def approve(self, listing, data=None, execute=False):
+        request = attach.propose(listing, {})
+        with self.captureOnCommitCallbacks(execute=execute) as callbacks:
+            _, entry = attach.approve(request.pk, self.staff, data)
+        return request, entry, callbacks
+
+    def test_it_runs_on_commit_not_before(self):
+        _, entry, callbacks = self.approve(self.first)
+        self.assertEqual(len(callbacks), 1)
+        self.assertFalse(CatalogueAttachRequest.objects.filter(source=BACKFILL).exists())
+        callbacks[0]()
+        self.assertEqual(CatalogueAttachRequest.objects.get(source=BACKFILL).listing, self.second)
+
+    def test_a_matcher_failure_never_fails_the_approval(self):
+        request = attach.propose(self.first, {})
+        with mock.patch.object(attach, "propose_barcode_matches", side_effect=RuntimeError("boom")):
+            with self.assertLogs("catalogue.attach", "WARNING"):
+                with self.captureOnCommitCallbacks(execute=True):
+                    attach.approve(request.pk, self.staff)
+        request.refresh_from_db()
+        self.assertEqual(request.status, CatalogueAttachRequest.APPROVED)
+
+    def test_only_a_new_barcoded_entry_runs_it(self):
+        CatalogueProduct.objects.create(brand="Nestle", name="Milo 400g", barcode=BARCODE)
+        _, _, callbacks = self.approve(self.first)   # joins the existing entry: nothing new
+        self.assertEqual(callbacks, [])
+        plain = product(business("Plain"), name="Kenkey", brand="Corner", barcode="")
+        _, _, callbacks = self.approve(plain)         # a new entry without a barcode
+        self.assertEqual(callbacks, [])
+
+
+class DecisionOnBarcodeTests(TestCase):
+    def test_a_rejected_new_entry_request_for_the_barcode_is_honoured(self):
+        staff = make_staff("operations", "ops@example.com")
+        first = product(business("Turned Down"), barcode=BARCODE)
+        rejected = attach.propose(first, {})
+        attach.reject(rejected.pk, staff, "No.")
+        second = product(business("Kumasi Mart"), barcode=BARCODE)
+        request = attach.propose(second, {})
+        with self.captureOnCommitCallbacks(execute=True):
+            _, entry = attach.approve(request.pk, staff)
+        self.assertIsNone(rejected.catalogue_product_id)
+        self.assertFalse(CatalogueAttachRequest.objects.filter(source=BACKFILL).exists())

@@ -11,8 +11,10 @@ grouped without a staff decision.
   new entry needs a brand or the listing's barcode; a store's own code (catalogue.identity.is_store_code) never counts.
 * One request waits per listing: the check runs under the listing's row lock and a database constraint backs it.
 * Lock order: a request row before its listing row (approve, reject, re-review); propose locks only the listing.
-* The barcode matcher (Task 8) files requests without the listing lock, so `propose` and `re_review` catch the
-  constraint's IntegrityError and answer 409 request_pending.
+* The barcode matcher (Task 8) locks the listing row first, as `propose` does, files its request in a tiny transaction
+  of its own and re-checks the listing under the lock. `re_review` locks request then listing and the matcher only inserts
+  a new request row, so they cannot deadlock; the constraint's IntegrityError is still caught everywhere as a last
+  resort (`propose` and `re_review` answer 409 request_pending, the matcher skips the listing).
 * A business may withdraw only a request it filed itself; a barcode match AshantiHub filed (source=backfill) is decided
   by staff alone (owner-confirmed: a business cannot opt out of one)."""
 import logging
@@ -268,7 +270,7 @@ def approve(request_id, staff, data=None):
             # each one; nothing is grouped here). Only after the whole approval has committed: filing a request
             # key-share-locks that listing, which must never wait on a checkout or another approval while this one
             # still holds its own listing row.
-            transaction.on_commit(lambda: propose_barcode_matches(product))
+            transaction.on_commit(lambda: _match_after_commit(product), robust=True)
     notify_business_owner(
         listing.business_owner, GROUPED, "Listing grouped with other sellers",
         body=f"Your listing “{listing.name}” is now part of the catalogue entry {describe(request)}.",
@@ -430,50 +432,98 @@ def staff_row(request, found=None):
 # --- The barcode matcher (backfill; never groups) --------------------------------------------------------------------
 
 TURNED_DOWN = (CatalogueAttachRequest.REJECTED, CatalogueAttachRequest.WITHDRAWN)
+BATCH_SIZE = 500
 
 
-def propose_barcode_matches(product=None, *, dry_run=False):
-    """File a backfill request for every ungrouped product or food listing whose barcode equals an entry's (every
-    barcoded entry, or just `product`). Skipped: a store's own code, a suspended owner, a listing with a request
-    waiting, and a listing whose request for that entry was rejected or withdrawn or whose grouping staff undid. Never
-    groups anything. Returns how many were filed (or would be, with dry_run); tells listings.moderate holders once when
-    any were filed. Takes no listing lock, so it can lose a race with propose or re_review (IntegrityError on the one-
-    pending constraint) or, rarely, deadlock (OperationalError): that listing is skipped, never raised."""
+def _declined(listing_ids):
+    """{listing id: [(entry id, barcode)]} for requests staff or the business turned down (rejected or withdrawn) or whose
+    grouping staff undid, for one chunk of listings in one query."""
+    found = {}
+    rows = (
+        CatalogueAttachRequest.objects.filter(listing_id__in=listing_ids)
+        .filter(Q(status__in=TURNED_DOWN) | Q(ungrouped_at__isnull=False))
+        .values_list("listing_id", "catalogue_product_id", "barcode")
+    )
+    for listing_id, entry_id, barcode in rows:
+        found.setdefault(listing_id, []).append((entry_id, barcode))
+    return found
+
+
+def _is_declined(declined, listing_id, entry):
+    """A decision on this entry, or on this barcode (a new-entry request names no entry yet), is honoured."""
+    return any(
+        entry_id == entry.pk or (barcode and barcode == entry.barcode)
+        for entry_id, barcode in declined.get(listing_id, ())
+    )
+
+
+def _file_match(listing_id, entry):
+    """Lock the listing first (the order `propose` uses), re-check it, then file the request in a tiny transaction of its
+    own. Returns "filed" or "skipped" (it changed, or a decision stands); raises IntegrityError/OperationalError."""
+    with transaction.atomic():
+        listing = (
+            Listing.objects.select_for_update(of=("self",)).select_related("category", "business_owner")
+            .filter(pk=listing_id).first()
+        )
+        if (
+            listing is None or listing.catalogue_product_id is not None or listing.status != Listing.PUBLISHED
+            or not groupable(listing) or listing.business_owner.is_suspended or listing.barcode != entry.barcode
+            or CatalogueAttachRequest.objects.filter(listing=listing, status=CatalogueAttachRequest.PENDING).exists()
+            or _is_declined(_declined([listing.pk]), listing.pk, entry)
+        ):
+            return "skipped"
+        CatalogueAttachRequest.objects.create(
+            listing=listing, catalogue_product=entry, barcode=listing.barcode, source=CatalogueAttachRequest.BACKFILL,
+        )
+    return "filed"
+
+
+def propose_barcode_matches(product=None, *, dry_run=False, batch_size=BATCH_SIZE, stats=None):
+    """File a backfill request for every ungrouped, published product or food listing whose barcode equals an entry's
+    (every barcoded entry, or just `product`). Skipped: a store's own code, a suspended owner, a listing with a request
+    waiting, and a listing with a rejected or withdrawn request, or a grouping staff undid, for that entry or that
+    barcode. Never groups anything. Works in pk-ordered chunks of `batch_size` listings, each with fresh queries. Each
+    request is filed under the listing's row lock in a tiny transaction of its own (as `propose` does); a lost race
+    (IntegrityError on the one-pending constraint) or a rare deadlock (OperationalError) skips that listing, never
+    raises. Returns how many were filed (or would be, with dry_run); `stats` (a dict) receives filed/skipped/raced/failed
+    counts; tells listings.moderate holders once when any were filed."""
+    stats = {} if stats is None else stats
+    stats.update(filed=0, skipped=0, raced=0, failed=0)
     entries = CatalogueProduct.objects.exclude(barcode="")
     if product is not None:
         entries = entries.filter(pk=product.pk)
-    by_barcode = {entry.barcode: entry for entry in entries if not identity.is_store_code(entry.barcode)}
-    if not by_barcode:
-        return 0
-    candidates = list(
-        Listing.objects.filter(barcode__in=sorted(by_barcode), catalogue_product__isnull=True)
-        .filter(guard.deliverable_q(), business_owner__is_suspended=False)
-        .exclude(catalogue_requests__status=CatalogueAttachRequest.PENDING)
-        .only("pk", "barcode").order_by("pk")
-    )
-    declined = set(
-        CatalogueAttachRequest.objects.filter(listing_id__in=[c.pk for c in candidates])
-        .filter(Q(status__in=TURNED_DOWN) | Q(ungrouped_at__isnull=False))
-        .values_list("listing_id", "catalogue_product_id")
-    )
-    filed = 0
-    for listing in candidates:
-        entry = by_barcode[listing.barcode]
-        if (listing.pk, entry.pk) in declined:
-            continue
-        if not dry_run:
-            try:
-                with transaction.atomic():
-                    CatalogueAttachRequest.objects.create(
-                        listing=listing, catalogue_product=entry, barcode=listing.barcode,
-                        source=CatalogueAttachRequest.BACKFILL,
-                    )
-            except IntegrityError:
-                continue  # the business asked for this listing meanwhile: one request waits per listing
-            except OperationalError as exc:  # a rare deadlock with another writer on this listing: skip, the next run retries
-                logger.warning("catalogue barcode match skipped for listing %s: %s", listing.pk, type(exc).__name__)
+    last = 0
+    while True:
+        chunk = list(
+            Listing.objects.filter(
+                pk__gt=last, barcode__in=entries.values("barcode"), catalogue_product__isnull=True,
+                status=Listing.PUBLISHED, business_owner__is_suspended=False,
+            )
+            .filter(guard.deliverable_q())
+            .exclude(catalogue_requests__status=CatalogueAttachRequest.PENDING)
+            .only("pk", "barcode").order_by("pk")[:batch_size]
+        )
+        if not chunk:
+            break
+        last = chunk[-1].pk
+        by_barcode = {e.barcode: e for e in entries.filter(barcode__in={c.barcode for c in chunk})}
+        declined = _declined([c.pk for c in chunk])
+        for listing in chunk:
+            entry = by_barcode.get(listing.barcode)
+            if entry is None or identity.is_store_code(entry.barcode) or _is_declined(declined, listing.pk, entry):
+                stats["skipped"] += 1
                 continue
-        filed += 1
+            if dry_run:
+                stats["filed"] += 1
+                continue
+            try:
+                stats[_file_match(listing.pk, entry)] += 1
+            except IntegrityError:
+                stats["raced"] += 1  # the business asked for this listing meanwhile: one request waits per listing
+            except OperationalError as exc:  # a rare deadlock with another writer: skip, the next run retries
+                stats["failed"] += 1
+                logger.warning("catalogue barcode match skipped for listing %s: %s", listing.pk, type(exc).__name__)
+    filed = stats["filed"]
     if filed and not dry_run:
         try:
             notify_staff_role(
@@ -484,3 +534,11 @@ def propose_barcode_matches(product=None, *, dry_run=False):
         except Exception as exc:  # the requests are committed; a notice failure must not fail the run
             logger.warning("catalogue barcode match notice failed: %s", type(exc).__name__)
     return filed
+
+
+def _match_after_commit(product):
+    """The on-commit hook of `approve`: never lets a matcher failure reach the approval (which has committed)."""
+    try:
+        propose_barcode_matches(product)
+    except Exception as exc:
+        logger.warning("catalogue barcode matching after approval failed: %s", type(exc).__name__)
