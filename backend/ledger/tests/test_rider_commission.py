@@ -2,14 +2,16 @@
 to platform commission income exactly once, with the day's deliveries, gross, commission and net recorded; a missed
 night is caught up. Review Focus 3."""
 import threading
+import time
+from unittest import mock
 from datetime import timedelta
 
 from django.conf import settings
-from django.db import connection
+from django.db import connection, transaction
 from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
 
-from delivery.models import RiderCommissionPosting, RiderEarning
+from delivery.models import Rider, RiderCommissionPosting, RiderEarning
 from ledger import escrow, posting, riders, tasks
 from ledger.models import Account, FulfilmentCheck, MoneySetting
 
@@ -92,35 +94,174 @@ class EndOfDayTests(RefundBase):
         self.assertEqual(tasks.post_rider_commission(), 1)
         self.assertEqual(posting.balance_of(Account.RIDER_RESERVE, swift.staff), 0)
 
+    def test_a_reversed_earning_is_never_posted(self):
+        swift = rider_helpers.rider()
+        earning = self.delivered(swift, self.yesterday)
+        RiderEarning.objects.filter(pk=earning.pk).update(reversed_at=timezone.now())
+        self.assertEqual(riders.post_commission(today=self.today), 0)
+        # a refund that reversed it after the job listed the day: post_day itself must skip it under the lock
+        self.assertIsNone(riders.post_day(swift.pk, earning.earned_on))
+        self.assertFalse(RiderCommissionPosting.objects.exists())
+        self.assertEqual(self.balance(Account.PLATFORM_COMMISSION_INCOME), 0)
 
+    def test_a_late_credit_for_an_already_posted_day_gets_its_own_row_and_key(self):
+        swift = rider_helpers.rider()
+        self.delivered(swift, self.yesterday)
+        self.assertEqual(riders.post_commission(today=self.today), 1)
+        self.delivered(swift, self.yesterday, fee="20.00")
+        self.assertEqual(riders.post_commission(today=self.today), 1)
+        rows = list(RiderCommissionPosting.objects.order_by("pk"))
+        self.assertEqual([row.day for row in rows], [self.yesterday.date()] * 2)
+        self.assertEqual([row.commission_pesewas for row in rows], [100, 200])
+        self.assertNotEqual(rows[0].journal.key, rows[1].journal.key)
+        self.assertEqual(self.balance(Account.PLATFORM_COMMISSION_INCOME), 300)
+
+    def test_the_accra_day_boundary(self):
+        swift = rider_helpers.rider()
+        midnight = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+        last_second = rider_helpers.earning(swift, gross=1000, at=midnight - timedelta(seconds=1))
+        first_second = rider_helpers.earning(swift, gross=1000, at=midnight)
+        self.assertEqual((last_second.earned_on, first_second.earned_on), (midnight.date() - timedelta(days=1), midnight.date()))
+        self.assertEqual(riders.post_commission(today=midnight.date()), 1)
+        self.assertEqual(RiderCommissionPosting.objects.get().day, midnight.date() - timedelta(days=1))
+        tomorrow = midnight + timedelta(days=1, hours=1)
+        self.assertEqual(riders.post_commission(today=tomorrow.date(), now=tomorrow), 1)
+
+    def test_one_failing_rider_day_does_not_stop_the_others_but_fails_the_job(self):
+        first, second = rider_helpers.rider("a@example.com"), rider_helpers.rider(
+            "b@example.com", name="Yaw Boateng", phone="+233244000003", company="Fast Riders")
+        self.delivered(first, self.yesterday)
+        self.delivered(second, self.yesterday)
+        real = riders.post_day
+
+        def flaky(rider_id, day, now=None):
+            if rider_id == first.pk:
+                raise RuntimeError("the ledger refused")
+            return real(rider_id, day, now)
+
+        with mock.patch.object(riders, "post_day", flaky), self.assertLogs("ledger.riders", "ERROR"):
+            with self.assertRaises(RuntimeError) as caught:
+                riders.post_commission(today=self.today)
+        self.assertIn("1 rider-day", str(caught.exception))
+        self.assertEqual(list(RiderCommissionPosting.objects.values_list("rider_id", flat=True)), [second.pk])
+        self.assertEqual(self.balance(Account.RIDER_RESERVE, first.staff), 100)
+
+    def test_post_day_refuses_today_and_the_future(self):
+        swift = rider_helpers.rider()
+        self.delivered(swift, timezone.now())
+        for day in (self.today, self.today + timedelta(days=1)):
+            with self.assertRaises(ValueError):
+                riders.post_day(swift.pk, day)
+        self.assertFalse(RiderCommissionPosting.objects.exists())
+
+    def test_the_memo_says_delivery_or_deliveries(self):
+        swift = rider_helpers.rider()
+        self.delivered(swift, self.yesterday)
+        riders.post_commission(today=self.today)
+        self.assertEqual(RiderCommissionPosting.objects.get().journal.memo, f"Commission on 1 delivery of {self.yesterday:%Y-%m-%d}")
+
+
+@override_settings(LEDGER_ENABLED=True)
 class ConcurrentEndOfDayTests(TransactionTestCase):
+    """The end-of-day posting takes the rider row first (rider row -> earning rows -> accounts), because its commit checks
+    the foreign key to the rider, which waits for a FOR UPDATE holder, while release and the switch back take the rider
+    row and then want the reserve. Deterministic: one session holds the rider row, the posting is shown waiting in its
+    SELECT on the rider (not in its COMMIT), then the holder takes the reserve and commits."""
+
     serialized_rollback = True
 
-    def test_review_focus_two_runs_at_once_post_once(self):
+    @staticmethod
+    def a_session_is_waiting_in_a_select_on_the_rider_row(timeout=6.0):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT pg_stat_clear_snapshot()")
+                cursor.execute("SELECT query FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'")
+                if any(query.lstrip().upper().startswith("SELECT") and "delivery_rider" in query for (query,) in cursor.fetchall()):
+                    return True
+            time.sleep(0.05)
+        return False
+
+    def start(self, *targets):
+        errors = []
+
+        def wrap(target):
+            def run():
+                try:
+                    target()
+                except Exception as exc:  # reported below, never swallowed
+                    errors.append(exc)
+                finally:
+                    connection.close()
+            return run
+
+        threads = [threading.Thread(target=wrap(target)) for target in targets]
+        for thread in threads:
+            thread.start()
+        return threads, errors
+
+    def finish(self, threads):
+        for thread in threads:
+            thread.join(timeout=15)
+            self.assertFalse(thread.is_alive(), "a racing thread hung")
+
+    def test_review_focus_the_posting_waits_for_the_rider_row_before_the_accounts(self):
         swift = rider_helpers.rider()
         yesterday = timezone.now() - timedelta(days=1)
         for gross in (1000, 2000):
             rider_helpers.earning(swift, gross=gross, at=yesterday)
         day = timezone.localdate(yesterday)
-        results, errors, barrier = [], [], threading.Barrier(2)
+        reserve = riders.accounts_of(swift)[1]
+        holding, may_take_reserve, results = threading.Event(), threading.Event(), []
 
-        def run():
-            try:
-                barrier.wait()
-                results.append(riders.post_day(swift.pk, day))
-            except Exception as exc:  # reported below, never swallowed
-                errors.append(exc)
-            finally:
-                connection.close()
+        def release_like_holder():
+            with transaction.atomic():
+                Rider.objects.select_for_update(of=("self",)).get(pk=swift.pk)
+                holding.set()
+                may_take_reserve.wait(timeout=15)
+                posting.lock(reserve)
 
-        threads = [threading.Thread(target=run) for _ in range(2)]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join(timeout=10)
-            self.assertFalse(thread.is_alive(), "a racing thread hung")
+        def end_of_day():
+            holding.wait(timeout=15)
+            results.append(riders.post_day(swift.pk, day))
+
+        (holder, poster), errors = self.start(release_like_holder, end_of_day)
+        holding.wait(timeout=15)
+        self.assertTrue(self.a_session_is_waiting_in_a_select_on_the_rider_row(), "the posting did not wait for the rider row up front")
+        may_take_reserve.set()
+        self.finish([holder, poster])
         self.assertEqual(errors, [])
         self.assertEqual(sum(1 for result in results if result is not None), 1)
         self.assertEqual(RiderCommissionPosting.objects.count(), 1)
         self.assertEqual(posting.balance_of(Account.RIDER_RESERVE, swift.staff), 0)
+        self.assertEqual(posting.balance_of(Account.PLATFORM_COMMISSION_INCOME), 300)
+
+    def test_review_focus_two_runs_at_once_post_once(self):
+        """Run B waits behind run A's rider lock, then finds nothing left to post."""
+        swift = rider_helpers.rider()
+        yesterday = timezone.now() - timedelta(days=1)
+        for gross in (1000, 2000):
+            rider_helpers.earning(swift, gross=gross, at=yesterday)
+        day = timezone.localdate(yesterday)
+        holding, may_finish, results = threading.Event(), threading.Event(), []
+
+        def run_a():
+            with transaction.atomic():
+                Rider.objects.select_for_update(of=("self",)).get(pk=swift.pk)
+                holding.set()
+                may_finish.wait(timeout=15)
+                results.append(riders.post_day(swift.pk, day))
+
+        def run_b():
+            holding.wait(timeout=15)
+            results.append(riders.post_day(swift.pk, day))
+
+        (a, b), errors = self.start(run_a, run_b)
+        holding.wait(timeout=15)
+        self.assertTrue(self.a_session_is_waiting_in_a_select_on_the_rider_row())
+        may_finish.set()
+        self.finish([a, b])
+        self.assertEqual(errors, [])
+        self.assertEqual(sum(1 for result in results if result is not None), 1)
+        self.assertEqual(RiderCommissionPosting.objects.count(), 1)
         self.assertEqual(posting.balance_of(Account.PLATFORM_COMMISSION_INCOME), 300)

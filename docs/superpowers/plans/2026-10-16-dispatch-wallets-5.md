@@ -37,7 +37,7 @@
 
 - Money is integer pesewas, converted only through `ledger.money`; a balance changes only through `ledger.posting.post`; journals and lines are never edited (a correction is a new reversing journal).
 - `LEDGER_ENABLED` (default off) gates everything: with it off no rider is credited, the end-of-day job is a no-op, and every new endpoint answers `409 {"code": "ledger_off"}`. Rider wallet endpoints then answer `409 {"code": "wallet_disabled"}` for AshantiHub's own riders.
-- **Lock order:** the order row, its fee snapshots, then the rider row (release) or the earning row (refund), then every ledger account in one sorted pass (`posting.lock`), including the accounts of every later posting in the same transaction. The end-of-day job locks the day's earning rows, then the accounts. `select_for_update(of=("self",))` whenever a query joins (never lock a `StaffUser` or `BusinessOwner` row by accident, except `wallets.destinations.save`'s deliberate no-key lock on the holder row, which for a rider is the `StaffUser` row).
+- **Lock order:** the order row, its fee snapshots, then the rider row (release) or the earning row (refund), then every ledger account in one sorted pass (`posting.lock`), including the accounts of every later posting in the same transaction. The end-of-day job locks the rider row first (its commit-time foreign key check from `RiderCommissionPosting.rider` waits for a `FOR UPDATE` holder, and a release or switch back holds the rider row then wants the reserve), then the day's earning rows, then the accounts. A refund locks the earning row, so it must NOT insert any row with a foreign key to `Rider` (a notice keyed on Rider, say) after that, or the cycle returns. `select_for_update(of=("self",))` whenever a query joins (never lock a `StaffUser` or `BusinessOwner` row by accident, except `wallets.destinations.save`'s deliberate no-key lock on the holder row, which for a rider is the `StaffUser` row).
 - New journal keys and kinds: `order-rider-<order>` (`rider_earning`), `order-rider-reversal-<order>` (`rider_earning_reversal`), `rider-commission-<staff pk>-<YYYY-MM-DD>-<first earning pk>` (`rider_commission`).
 - The commission rate is the existing money setting `rider_commission_bp` (default 1000 = 10%), changed only through the `ledger.setting` approval.
 - Payout account and MoMo numbers leave the server only through `accounts.serializers.mask_but_last`; never in a log line, an activity event, a fraud case or a notice. Rider wallet write views are `activity_exempt`.
@@ -1972,6 +1972,8 @@ EOF
 ---
 
 ### Task 4: Refunds — a whole refund after release takes the delivery back from the rider
+
+> **Note (Task 3 review).** The refund locks the earning row, so after that it must NOT insert any row with a foreign key to `Rider` (a notice keyed on Rider, say): the end-of-day job takes the rider row first and its commit waits on a `FOR UPDATE` holder of that row, so a refund holding the earning row and then touching the rider would bring back the cycle.
 
 > **Note (Task 2 review).** Until this task lands, a whole refund after release takes the delivery fee back from shared platform delivery income, not from the rider who was paid it (Task 2 already moved the fee to the rider). Do not turn the ledger on for riders before this task is merged.
 
@@ -3995,7 +3997,7 @@ with
   refund never touches it. The 00:20 job (`ledger.tasks.post_rider_commission`) posts each earlier day's reserve to
   platform commission income once (earning rows locked; missed nights caught up). **Lock order:** the order row, its fee
   snapshots, then the rider row (release) or the earning row (refund), then accounts in one sorted pass; the end-of-day
-  job takes the earning rows, then the accounts. A rider's accounts are held by their staff account, so the Stage 3b
+  job takes the rider row, then the earning rows, then the accounts. A rider's accounts are held by their staff account, so the Stage 3b
   destinations and withdrawals serve riders (`holder_type` "staff"; verified name = staff name with an approved, in-date
   Ghana Card; step-up codes for `withdrawal` / `payout_destination` only). Rider wallet writes are `activity_exempt`
   (as staff writes they would run inside the middleware's transaction and store the account number) and record their

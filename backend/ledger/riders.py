@@ -14,8 +14,10 @@ the rider became third-party pay no rider: the fee stays platform delivery incom
 staff account (otp.identity.ref gives ("staff", pk)), so the Stage 3b withdrawal engine pays them out.
 
 Lock order (spec W7, extended): the order row, its fee snapshots, the rider row (release) or the earning row (refund),
-then every ledger account in one sorted pass (posting.lock). The end-of-day job locks the day's earning rows, then the
-accounts."""
+then every ledger account in one sorted pass (posting.lock). The end-of-day job locks the rider row first, then the day's
+earning rows, then the accounts: its commit checks the foreign key to the rider, which waits for a FOR UPDATE holder, so
+taking the accounts first would cycle with a release or a switch back (rider row, then reserve). A refund locks the
+earning row and so must never insert a row with a foreign key to the rider (a notice keyed on Rider, say) afterwards."""
 import logging
 
 from django.db import transaction
@@ -150,7 +152,12 @@ def post_day(rider_id, day, now=None):
     first and filtered again under the lock, so a second run (or a refund reversing one) never posts a reserve twice.
     Returns the posting, or None when nothing is left to post."""
     now = now or timezone.now()
+    if day >= timezone.localdate(now):
+        raise ValueError(f"The day {day:%Y-%m-%d} is not over yet; only earlier days are posted")
     with transaction.atomic():
+        # The rider row first (rider row -> earning rows -> accounts): the commit-time foreign key check from the posting
+        # row waits for a FOR UPDATE holder, who may already hold the reserve (a release) and want it next.
+        rider = Rider.objects.select_related("staff").select_for_update(of=("self",)).get(pk=rider_id)
         earnings = list(
             RiderEarning.objects.select_for_update(of=("self",))
             .filter(rider_id=rider_id, earned_on=day, commission_posting__isnull=True, reversed_at__isnull=True)
@@ -158,7 +165,6 @@ def post_day(rider_id, day, now=None):
         )
         if not earnings:
             return None
-        rider = Rider.objects.select_related("staff").get(pk=rider_id)
         gross = sum(earning.gross_pesewas for earning in earnings)
         commission = sum(earning.reserve_pesewas for earning in earnings)
         journal = None
@@ -170,7 +176,7 @@ def post_day(rider_id, day, now=None):
                     posting.credit(posting.account_for(Account.PLATFORM_COMMISSION_INCOME), commission),
                 ],
                 reference_type="accounts.staffuser", reference_id=str(rider.staff_id),
-                memo=f"Commission on {len(earnings)} deliveries of {day:%Y-%m-%d}",
+                memo=f"Commission on {len(earnings)} {'delivery' if len(earnings) == 1 else 'deliveries'} of {day:%Y-%m-%d}",
             )
         row = RiderCommissionPosting.objects.create(
             rider=rider, day=day, deliveries=len(earnings), gross_pesewas=gross, commission_pesewas=commission,
@@ -183,7 +189,8 @@ def post_day(rider_id, day, now=None):
 def post_commission(today=None, now=None):
     """The end-of-day job: post every rider's held commission of each day before `today` (Accra), oldest first, so a
     missed night is caught up by the next run. A no-op while the ledger is off. One rider-day that fails is logged and
-    skipped, so it never stops the others. Returns how many postings were made."""
+    skipped, so it never stops the others, and then fails the job with a summary so its health shows DOWN. Returns how many
+    postings were made."""
     from . import escrow
 
     if not escrow.enabled():
@@ -194,11 +201,14 @@ def post_commission(today=None, now=None):
         RiderEarning.objects.filter(commission_posting__isnull=True, reversed_at__isnull=True, earned_on__lt=today)
         .order_by("earned_on", "rider_id").values_list("rider_id", "earned_on").distinct()
     )
-    done = 0
+    done, failed = 0, 0
     for rider_id, day in groups:
         try:
             if post_day(rider_id, day, now) is not None:
                 done += 1
         except Exception:  # one rider-day the ledger refuses must not stop every other rider's posting
             logger.exception("Rider commission posting failed for rider %s on %s", rider_id, day)
+            failed += 1
+    if failed:      # after every other rider-day was posted: the job shows DOWN until the failures are looked at
+        raise RuntimeError(f"Rider commission posting failed for {failed} rider-day(s); {done} posted")
     return done
