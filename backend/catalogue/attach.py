@@ -17,10 +17,11 @@ grouped without a staff decision.
   by staff alone (owner-confirmed: a business cannot opt out of one)."""
 import logging
 
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from activity import services as activity
 from cart import guard
 from listings.models import Listing
 from notifications.services import notify_business_owner, notify_staff_role
@@ -55,6 +56,23 @@ def grouping_barcode(listing):
     return "" if identity.is_store_code(listing.barcode) else listing.barcode
 
 
+def _entry_id(raw):
+    """The catalogue entry id a body names; ints and plain digit strings only (never bool, float, huge or odd input).
+    Raises CatalogueError unknown_product."""
+    if isinstance(raw, str) and raw.strip().isascii() and raw.strip().isdigit() and len(raw.strip()) <= 18:
+        return int(raw.strip())
+    if isinstance(raw, int) and not isinstance(raw, bool) and 0 < raw < 2**62:
+        return raw
+    raise CatalogueError(UNKNOWN_PRODUCT, "unknown_product")
+
+
+def _entry(raw):
+    try:
+        return CatalogueProduct.objects.get(pk=_entry_id(raw))
+    except CatalogueProduct.DoesNotExist:
+        raise CatalogueError(UNKNOWN_PRODUCT, "unknown_product") from None
+
+
 def _text(data, key, default, length):
     value = data.get(key)
     return str(default if value is None else value).strip()[:length]
@@ -83,13 +101,7 @@ def propose(listing, data):
         barcode = grouping_barcode(listing)
         product, brand, name = None, "", ""
         if data.get("catalogue_product") not in (None, ""):
-            raw = data["catalogue_product"]
-            try:
-                if isinstance(raw, bool):
-                    raise ValueError(raw)
-                product = CatalogueProduct.objects.get(pk=int(raw))
-            except (CatalogueProduct.DoesNotExist, TypeError, ValueError, OverflowError):
-                raise CatalogueError(UNKNOWN_PRODUCT, "unknown_product") from None
+            product = _entry(data["catalogue_product"])
             if product.barcode and barcode and product.barcode != barcode:
                 raise CatalogueError(BARCODE_MISMATCH, "barcode_mismatch", 409)
         else:
@@ -168,6 +180,9 @@ NOT_REJECTED = "Only a rejected request can be sent back for re-review."
 NOT_GROUPED_MESSAGE = "This listing is not grouped."
 LISTING_NOT_FOUND = "Listing not found."
 MATCH_LIMIT = 5
+OWNER_SUSPENDED = "This business is suspended, so its listing cannot be grouped."
+BARCODE_CHANGED = "The listing's barcode changed after it asked. Name the catalogue product to join, or reject."
+MATCH_EXISTS = "A catalogue entry with this name already exists. Join it (catalogue_product) or send new=true."
 
 
 def _locked_request(request_id):
@@ -178,16 +193,15 @@ def _locked_request(request_id):
 
 
 def _product_for(request, listing, staff, data):
-    """The entry the listing joins, and whether it was made now: the one staff name, else the one asked for, else the
-    one already holding the listing's barcode, else a new one from the request (staff may correct its brand and name).
-    The listing's barcode is read now, not from the request: it may have changed since."""
+    """The entry the listing joins, and whether it was made now: the one staff name, else the one already named by the
+    request, else the one holding the listing's barcode, else a new one from the request (staff may correct its brand
+    and name). The listing's barcode is read now (approve refuses a change unless staff name the entry). A new entry
+    whose normalised name already exists is refused (409 match_exists) unless staff send new=true; creation is
+    serialised per name by an advisory lock so two approvals cannot both pass the check."""
     barcode = grouping_barcode(listing)
     product = request.catalogue_product
     if data.get("catalogue_product") not in (None, ""):
-        try:
-            product = CatalogueProduct.objects.get(pk=int(data["catalogue_product"]))
-        except (CatalogueProduct.DoesNotExist, TypeError, ValueError):
-            raise CatalogueError(UNKNOWN_PRODUCT, "unknown_product") from None
+        product = _entry(data["catalogue_product"])
     if product is None and barcode:
         product = CatalogueProduct.objects.filter(barcode=barcode).first()
     if product is not None:
@@ -200,12 +214,29 @@ def _product_for(request, listing, staff, data):
         raise CatalogueError(NEEDS_NAME, "name_required")
     if not brand and not barcode:
         raise CatalogueError(NEEDS_BRAND, "brand_or_barcode_required")
+    key = identity.normalise_name(brand, name)
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", ["catalogue:" + key])
+    if data.get("new") is not True:
+        found = list(CatalogueProduct.objects.filter(normalised_name=key).order_by("pk")[:MATCH_LIMIT])
+        if found:
+            raise CatalogueError(MATCH_EXISTS, "match_exists", 409, {"matches": [product_row(p) for p in found]})
     if barcode:
         # get_or_create: two approvals racing on one new barcode make one entry (the unique constraint decides).
         return CatalogueProduct.objects.get_or_create(
             barcode=barcode, defaults={"brand": brand, "name": name, "created_by": staff},
         )
     return CatalogueProduct.objects.create(brand=brand, name=name, created_by=staff), True
+
+
+def _check_open(listing):
+    """Under the listing lock: a listing staff may still group (not grouped, still goods, owner not suspended)."""
+    if listing.catalogue_product_id is not None:
+        raise CatalogueError(ALREADY_GROUPED, "already_grouped", 409)
+    if not groupable(listing):
+        raise CatalogueError(NOT_GROUPABLE, "not_groupable", 409)
+    if listing.business_owner.is_suspended:
+        raise CatalogueError(OWNER_SUSPENDED, "account_suspended", 409)
 
 
 def approve(request_id, staff, data=None):
@@ -220,10 +251,9 @@ def approve(request_id, staff, data=None):
             Listing.objects.select_for_update(of=("self",)).select_related("category", "business_owner")
             .get(pk=request.listing_id)
         )
-        if listing.catalogue_product_id is not None:
-            raise CatalogueError(ALREADY_GROUPED, "already_grouped", 409)
-        if not groupable(listing):
-            raise CatalogueError(NOT_GROUPABLE, "not_groupable", 409)
+        _check_open(listing)
+        if data.get("catalogue_product") in (None, "") and grouping_barcode(listing) != request.barcode:
+            raise CatalogueError(BARCODE_CHANGED, "barcode_changed", 409)
         product, created = _product_for(request, listing, staff, data)
         listing.catalogue_product = product
         listing.save(update_fields=["catalogue_product"])
@@ -235,8 +265,7 @@ def approve(request_id, staff, data=None):
         request.save(update_fields=["catalogue_product", "status", "rejection_reason", "reviewed_by", "reviewed_at"])
     notify_business_owner(
         listing.business_owner, GROUPED, "Listing grouped with other sellers",
-        body=f"“{listing.name}” now shows with other businesses' offers of {describe(request)}. Customers compare offers "
-             "by price.",
+        body=f"Your listing “{listing.name}” is now part of the catalogue entry {describe(request)}.",
         link="/business-dashboard", icon="🏷️",
     )
     return request, product
@@ -257,6 +286,8 @@ def reject(request_id, staff, reason):
         request.reviewed_at = timezone.now()
         request.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
     listing = request.listing
+    if request.source == CatalogueAttachRequest.BACKFILL:
+        return request  # AshantiHub's own barcode match: the business never asked, so it is not told it was turned down
     notify_business_owner(
         listing.business_owner, NOT_GROUPED, "Grouping not approved",
         body=f"“{listing.name}” stays on its own: {request.rejection_reason}", link="/business-dashboard", icon="⚠️",
@@ -271,7 +302,11 @@ def re_review(request_id):
         request = _locked_request(request_id)
         if request.status != CatalogueAttachRequest.REJECTED:
             raise CatalogueError(NOT_REJECTED, "not_rejected")
-        Listing.objects.select_for_update(of=("self",)).get(pk=request.listing_id)
+        listing = (
+            Listing.objects.select_for_update(of=("self",)).select_related("category", "business_owner")
+            .get(pk=request.listing_id)
+        )
+        _check_open(listing)
         if CatalogueAttachRequest.objects.filter(
             listing_id=request.listing_id, status=CatalogueAttachRequest.PENDING,
         ).exists():
@@ -293,7 +328,7 @@ def re_review(request_id):
     return request
 
 
-def detach(listing_id, reason):
+def detach(listing_id, reason, staff=None):
     """Ungroup a listing (staff only); the entry stays for the other offers. Raises CatalogueError."""
     reason = (reason or "").strip()
     if not reason:
@@ -310,6 +345,11 @@ def detach(listing_id, reason):
             raise CatalogueError(NOT_GROUPED_MESSAGE, "not_grouped", 409)
         listing.catalogue_product = None
         listing.save(update_fields=["catalogue_product"])
+        if staff is not None:
+            activity.record(
+                staff, "catalogue-staff-detach", target=listing, method="POST", summary=reason[:300],
+                before={"catalogue_product": product.pk}, after={"catalogue_product": None},
+            )
     notify_business_owner(
         listing.business_owner, UNGROUPED, "Listing ungrouped",
         body=f"“{listing.name}” no longer shows with other sellers of {product}: {reason[:500]}",
@@ -367,6 +407,7 @@ def staff_row(request, found=None):
             "status": listing.status,
             "price_amount": None if listing.price_amount is None else str(listing.price_amount),
             "business_name": listing.business_owner.display_name,
+            "business_suspended": listing.business_owner.is_suspended,
             "grouped_with": product_row(listing.catalogue_product),
         },
         "matches": (

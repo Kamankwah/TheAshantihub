@@ -12,6 +12,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import HasRolePermission
+from listings.models import Listing
 
 from . import attach
 from .errors import CatalogueError
@@ -39,12 +40,16 @@ def _reason(request):
 
 
 class ModeratorView(APIView):
+    queryset = CatalogueAttachRequest.objects.all()  # the audit middleware reads the target type from here
+
     def get_permissions(self):
         return [HasRolePermission(PERMISSION)]
 
 
 class RequestQueueView(generics.ListAPIView):
     """GET staff/requests/pending/?status=pending|approved|rejected&page=N."""
+
+    queryset = CatalogueAttachRequest.objects.all()
 
     pagination_class = Pagination
 
@@ -111,14 +116,16 @@ class RequestReReviewView(ModeratorView):
 
 
 class ListingDetachView(ModeratorView):
-    """POST staff/listings/<listing_id>/detach/ {reason} — ungroup a listing; the business is told why."""
+    """POST staff/listings/<pk>/detach/ {reason} — ungroup a listing; the business is told why."""
 
-    def post(self, request, listing_id):
+    queryset = Listing.objects.all()
+
+    def post(self, request, pk):
         reason = _reason(request)
         if not reason:
             return Response({"reason": attach.REASON_REQUIRED}, status=400)
         try:
-            listing = attach.detach(listing_id, reason)
+            listing = attach.detach(pk, reason, request.user)
         except CatalogueError as exc:
             return Response(exc.body(), status=exc.status_code)
         return Response({"listing": listing.pk, "catalogue_product": None})

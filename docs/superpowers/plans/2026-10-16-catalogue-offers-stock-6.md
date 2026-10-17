@@ -3503,6 +3503,8 @@ EOF
 
 ### Task 8: The barcode matcher — backfill command and new barcoded entries (requests only, never grouping)
 
+> TODO (Task 3 review): staff ungrouping a listing leaves its request APPROVED, so the matcher would re-file it. Record `ungrouped_at`/`ungrouped_by` on the request (or a state) in `detach`, and make the matcher skip listings staff ungrouped.
+
 **Files:**
 - Create: `backend/catalogue/management/__init__.py`, `backend/catalogue/management/commands/__init__.py`, `backend/catalogue/management/commands/propose_catalogue_matches.py`, `backend/catalogue/tests/test_backfill.py`
 - Modify: `backend/catalogue/attach.py` (`approve`; append the matcher)

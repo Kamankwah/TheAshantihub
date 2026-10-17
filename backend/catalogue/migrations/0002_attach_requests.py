@@ -22,7 +22,7 @@ class Migration(migrations.Migration):
                 ('barcode', models.CharField(blank=True, default='', max_length=14)),
                 ('source', models.CharField(choices=[('vendor', 'Asked by the business'), ('backfill', 'Matched by barcode')], default='vendor', max_length=10)),
                 ('status', models.CharField(choices=[('pending', 'Pending'), ('approved', 'Approved'), ('rejected', 'Rejected'), ('withdrawn', 'Withdrawn')], default='pending', max_length=10)),
-                ('rejection_reason', models.CharField(blank=True, default='', max_length=500)),
+                ('rejection_reason', models.CharField(blank=True, max_length=500, null=True)),
                 ('reviewed_at', models.DateTimeField(blank=True, null=True)),
                 ('withdrawn_at', models.DateTimeField(blank=True, null=True)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
