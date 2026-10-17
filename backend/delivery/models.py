@@ -4,8 +4,10 @@ steps, and (later packages) offers, rules, the rate card and cash. ``orders.Deli
 where it is; it gains the step stamps and codes in ``orders`` and its events live here.
 
 A rider is a ``StaffUser`` with the ``dispatch`` role plus one ``Rider`` row. Nothing here moves money:
-the rate card is a configuration, cash handovers are an operational count, and there is no payout,
-payroll or ledger model (owner decision, Super Admin brief)."""
+the rate card is a configuration and cash handovers are an operational count. A third-party rider's
+earnings (``RiderEarning``, ``RiderCommissionPosting``; wallets Plan 5) are records the ledger writes
+(``ledger.riders``); AshantiHub's own riders have no payout, payroll or ledger model (owner decision,
+Super Admin brief)."""
 import datetime
 
 from django.conf import settings
@@ -488,3 +490,66 @@ class RiderEmploymentPeriod(models.Model):
 
     def __str__(self):
         return f"{self.rider_id}: {self.started_at:%Y-%m-%d} to {self.ended_at or 'now'}"
+
+
+# ── Third-party riders' money (wallets Plan 5; written by ledger.riders) ────────────────────────
+class RiderCommissionPosting(models.Model):
+    """One end-of-day posting of a third-party rider's commission reserve to AshantiHub (spec §2.2 step 6): the deliveries
+    of `day` (Accra) it covered and their gross, commission and net, in pesewas. `journal` is null when the commission
+    was 0 (a 0% rate). Never edited. A day normally has one row per rider; a delivery credited after that day's run gets a
+    row of its own."""
+
+    rider = models.ForeignKey(Rider, on_delete=models.PROTECT, related_name="commission_postings")
+    day = models.DateField()
+    deliveries = models.PositiveIntegerField()
+    gross_pesewas = models.BigIntegerField()
+    commission_pesewas = models.BigIntegerField()
+    net_pesewas = models.BigIntegerField()
+    journal = models.OneToOneField(
+        "ledger.Journal", null=True, blank=True, on_delete=models.PROTECT, related_name="rider_commission_posting",
+    )
+    posted_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["-day", "-id"]
+        indexes = [models.Index(fields=["rider", "-day"]), models.Index(fields=["day"])]
+
+
+class RiderEarning(models.Model):
+    """What a third-party rider earned for one order (spec §2.2 step 2(c), §7): the delivery fee AshantiHub took at the
+    order's release (`gross_pesewas`: the fee the customer paid plus a fee the business covered with its free-delivery
+    promo), split at `commission_bp` (the rate in force when the order was paid) into `reserve_pesewas`, held until the
+    end of `earned_on` (Accra), and `net_pesewas`, withdrawable at once. Written in the release's transaction (journal
+    order-rider-<order>); afterwards only the end-of-day posting (`commission_posting`) and a reversal on a whole refund
+    after release (`reversed_at`, `reversal_journal`) are written to it."""
+
+    order = models.OneToOneField("orders.Order", on_delete=models.PROTECT, related_name="rider_earning")
+    rider = models.ForeignKey(Rider, on_delete=models.PROTECT, related_name="earnings")
+    gross_pesewas = models.BigIntegerField()
+    commission_bp = models.PositiveIntegerField()
+    reserve_pesewas = models.BigIntegerField()
+    net_pesewas = models.BigIntegerField()
+    earned_at = models.DateTimeField()
+    earned_on = models.DateField()
+    journal = models.OneToOneField("ledger.Journal", on_delete=models.PROTECT, related_name="rider_earning")
+    commission_posting = models.ForeignKey(
+        RiderCommissionPosting, null=True, blank=True, on_delete=models.PROTECT, related_name="earnings",
+    )
+    reversed_at = models.DateTimeField(null=True, blank=True)
+    reversal_journal = models.OneToOneField(
+        "ledger.Journal", null=True, blank=True, on_delete=models.PROTECT, related_name="rider_earning_reversal",
+    )
+
+    class Meta:
+        ordering = ["-earned_at", "-id"]
+        indexes = [models.Index(fields=["rider", "earned_on"]), models.Index(fields=["earned_on", "commission_posting"])]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(gross_pesewas__gt=0, reserve_pesewas__gte=0, net_pesewas__gte=0),
+                name="delivery_rider_earning_amounts",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(gross_pesewas=models.F("reserve_pesewas") + models.F("net_pesewas")),
+                name="delivery_rider_earning_adds_up",
+            ),
+        ]

@@ -13,12 +13,13 @@ vendor's Available. It is idempotent on its journal key and refuses (returns Non
 refund waiting for approval is open, and for an order no longer paid (cancelled). It pays only what refunds left (ledger.refunds):
 each snapshot's base and fee less what was refunded, and the delivery fee the order's Delivery payable still holds. A business
 that waived the delivery fee through its free-delivery promo pays it from its Available right after (charge_waiver, kind
-order_waiver_charge); a whole refund gives it back (return_waiver)."""
+order_waiver_charge); a whole refund gives it back (return_waiver). A third-party rider who delivered the order is then
+paid what platform delivery income took for it, in the same transaction (ledger.riders.credit_delivery)."""
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from . import fees, posting, settings_store
+from . import fees, posting, riders, settings_store
 from .models import Account, FulfilmentCheck, Journal, JournalLine, OrderFeeSnapshot
 from .money import to_pesewas
 
@@ -145,6 +146,10 @@ def release_verified(order, now=None):
         )
         if not Journal.objects.filter(key=pay_key(order)).exists():
             return None
+        # A third-party rider who delivered the order is paid at this release (ledger.riders, wallets Plan 5). Their row is
+        # locked now - after the order and its snapshots, before any account - so a switch of the rider back to AshantiHub's
+        # own (delivery.employment) waits for this release instead of closing a wallet it is about to pay.
+        rider = riders.rider_for_release(order)
         # No snapshot left (a scoped refund took every item) is not the end: the delivery fee is still held in the
         # order's Delivery payable until the order is released or refunded whole, and is released below. A wholly
         # refunded order holds nothing, so the posting is empty and this returns None.
@@ -157,7 +162,8 @@ def release_verified(order, now=None):
 
         # Every account this transaction can post to, locked in one sorted pass (spec W7) before anything is decided
         # from a balance: the Delivery payable's is read from the locked row, and the promo charge's accounts (the
-        # second posting, charge_waiver) are taken now so it never takes a new lock while the release's are held.
+        # second posting, charge_waiver) and a third-party rider's (the third, riders.credit_delivery) are taken now so
+        # neither takes a new lock while the release's are held.
         if to_pesewas(order.delivery_fee or 0) > 0:
             delivery_account = posting.account_for(Account.DELIVERY_PAYABLE, order)
         else:  # no fee: look the account up (a refund may have opened none either) but never create an empty one
@@ -167,7 +173,10 @@ def release_verified(order, now=None):
         delivery_income = posting.account_for(Account.PLATFORM_DELIVERY_INCOME)
         pendings = {v: posting.account_for(Account.VENDOR_PENDING, by_vendor[v]["owner"]) for v in by_vendor}
         availables = {v: posting.account_for(Account.VENDOR_AVAILABLE, by_vendor[v]["owner"]) for v in by_vendor}
-        locked = posting.lock(income, delivery_account, delivery_income, *pendings.values(), *availables.values(), *waiver_accounts(order))
+        locked = posting.lock(
+            income, delivery_account, delivery_income, *pendings.values(), *availables.values(), *waiver_accounts(order),
+            *riders.release_accounts(rider),
+        )
 
         # The owner's order: AshantiHub first (fee, delivery), then each vendor, then any third-party rider (Stage 5).
         debits, credits = [], []
@@ -195,6 +204,9 @@ def release_verified(order, now=None):
         )
         OrderFeeSnapshot.objects.filter(pk__in=[s.pk for s in snapshots]).update(released_at=now)
         charge_waiver(order)
+        # The delivery fee platform delivery income just took (release and promo charge) goes to a third-party rider: 90%
+        # withdrawable, 10% held until the end of the day (spec §2.2 step 2(c)). Plan 4's vendor texts, if merged, follow.
+        riders.credit_delivery(order, rider, now)
         return journal
 
 
