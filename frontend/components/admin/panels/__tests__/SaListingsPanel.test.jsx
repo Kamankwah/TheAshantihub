@@ -15,12 +15,13 @@ const ROWS = [
 const COUNTS = { live: 1, waiting: 1, oldest_waiting_at: '2026-10-01T00:00:00Z', hidden_unpaid: null, hidden_unpaid_businesses: null, hidden_suspended: 1, hidden_suspended_businesses: 1, rejected_this_month: 1, pause_enabled: false }
 
 function setup(counts = COUNTS) {
-  const seen = { urls: [], rejects: [] }
+  const seen = { urls: [], rejects: [], approvals: [] }
   server.use(
     http.get(`${API}/api/marketplace/listings/`, ({ request }) => { seen.urls.push(request.url); return HttpResponse.json(page(ROWS)) }),
     http.get(`${API}/api/marketplace/listings/counts/`, () => HttpResponse.json(counts)),
     http.get(`${API}/api/listings/categories/`, () => HttpResponse.json([{ id: 5, label: 'Fashion' }])),
     http.get(`${API}/api/marketplace/listings/1/history/`, () => HttpResponse.json({ id: 1, name: 'Handwoven kente stole', business_name: 'Akosua Ntoma Kente', events: [{ at: '2026-10-02T00:00:00Z', text: 'Approved', who: 'Ama Boateng' }, { at: '2026-10-01T00:00:00Z', text: 'Added by the owner', who: 'Akosua' }] })),
+    http.post(`${API}/api/listings/moderation/:id/approve/`, ({ params }) => { seen.approvals.push(params.id); return HttpResponse.json({ id: Number(params.id), status: 'published' }) }),
     http.post(`${API}/api/listings/moderation/:id/reject/`, async ({ request, params }) => { seen.rejects.push({ id: params.id, ...(await request.json()) }); return HttpResponse.json({ id: 1 }) }),
   )
   return seen
@@ -36,6 +37,25 @@ describe('SaListingsPanel', () => {
     expect(within(old).getByText('Blurry photo')).toBeInTheDocument()
     expect(within(old).getByText(/Ama Boateng/)).toBeInTheDocument()
     expect(within(within(table).getByText('Graduation stole').closest('tr')).getByText(/Efua Mensah \(scout, for the owner\)/)).toBeInTheDocument()
+  })
+
+  it('lets a Super Admin approve a listing that is waiting, and only those', async () => {
+    const seen = setup()
+    renderPanel(<SaListingsPanel auth={SA} />)
+    const table = await screen.findByRole('table', { name: 'Listings' })
+    expect(within(table).queryByRole('button', { name: 'Approve Handwoven kente stole' })).not.toBeInTheDocument()
+    expect(within(table).queryByRole('button', { name: 'Approve Old stole' })).not.toBeInTheDocument()
+    fireEvent.click(within(table).getByRole('button', { name: 'Approve Graduation stole' }))
+    await waitFor(() => expect(seen.approvals).toEqual(['2']))
+    expect(await screen.findByText('Published “Graduation stole”.')).toBeInTheDocument()
+  })
+
+  it('shows why an approval was refused', async () => {
+    setup()
+    server.use(http.post(`${API}/api/listings/moderation/:id/approve/`, () => HttpResponse.json({ detail: 'Cannot publish a listing whose owner is not KYC-verified.' }, { status: 400 })))
+    renderPanel(<SaListingsPanel auth={SA} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve Graduation stole' }))
+    expect(await screen.findByText(/not KYC-verified/)).toBeInTheDocument()
   })
 
   it('shows the unpaid tile only while the pause is on', async () => {
