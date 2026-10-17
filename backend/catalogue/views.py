@@ -12,6 +12,7 @@ from listings.visibility import hidden_business_q
 
 from . import attach, offers
 from .errors import CatalogueError
+from .models import CatalogueProduct
 
 
 def _own_listing(request, listing_id):
@@ -80,3 +81,47 @@ class OtherSellersView(APIView):
             pk=listing_id,
         )
         return Response(offers.other_sellers(listing, request.query_params))
+
+
+def _suspended_refusal(request):
+    if request.user.is_suspended:
+        return Response(CatalogueError(LOOKUP_SUSPENDED, "account_suspended", 403).body(), status=403)
+    return None
+
+
+LOOKUP_SUSPENDED = "Your account is suspended, so it cannot look up other businesses' offers."
+
+
+class ProductSearchView(APIView):
+    """GET products/?q=words or ?barcode=digits — catalogue products, how many live offers each has, and the lowest live
+    price (null when nobody offers it now). Business owners only; suspended owners are refused."""
+
+    permission_classes = [IsAuthenticated, IsBusinessOwner]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "catalogue_lookup"
+
+    def get(self, request):
+        refused = _suspended_refusal(request)
+        if refused is not None:
+            return refused
+        try:
+            results = offers.search(request.query_params)
+        except CatalogueError as exc:
+            return Response(exc.body(), status=exc.status_code)
+        return Response({"results": results})
+
+
+class ProductOffersView(APIView):
+    """GET products/<id>/offers/ — other businesses' live offers of one product, cheapest first. Read-only; business
+    owners only; suspended owners are refused."""
+
+    permission_classes = [IsAuthenticated, IsBusinessOwner]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "catalogue_lookup"
+
+    def get(self, request, pk):
+        refused = _suspended_refusal(request)
+        if refused is not None:
+            return refused
+        product = generics.get_object_or_404(CatalogueProduct, pk=pk)
+        return Response(offers.sourcing(product, request.user))

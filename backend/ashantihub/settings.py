@@ -400,6 +400,7 @@ REST_FRAMEWORK = {
         "login": "5/min",
         "catalogue_request": "20/hour",
         "catalogue_withdraw": "40/hour",
+        "catalogue_lookup": "120/hour",
         "two_factor": "10/min",
         # One-time codes (otp app): a per-process burst guard. The real hourly limits per phone/email, account
         # and IP are counted from otp.OtpEvent rows so they hold across server processes (otp/service.py).

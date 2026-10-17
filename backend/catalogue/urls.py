@@ -13,4 +13,6 @@ urlpatterns = [
     path("staff/requests/<int:pk>/re-review/", views_staff.RequestReReviewView.as_view(), name="catalogue-staff-re-review"),
     path("staff/listings/<int:pk>/detach/", views_staff.ListingDetachView.as_view(), name="catalogue-staff-detach"),
     path("listings/<int:listing_id>/other-sellers/", views.OtherSellersView.as_view(), name="catalogue-other-sellers"),
+    path("products/", views.ProductSearchView.as_view(), name="catalogue-products"),
+    path("products/<int:pk>/offers/", views.ProductOffersView.as_view(), name="catalogue-product-offers"),
 ]

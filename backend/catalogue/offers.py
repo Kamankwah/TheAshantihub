@@ -9,7 +9,7 @@ stock, cart line, fee and pickup); nothing here adds anything to a cart.
 * An offer row never carries a phone number, email, address, map pin or the listing's contact_phone: businesses are
   never contacted directly (CLAUDE.md). The business shows by its display name only. A stock the business does not
   count is null, never a guess."""
-from django.db.models import Q
+from django.db.models import Count, Min, Q
 
 from accounts.models import BusinessOwner
 from cart.guard import deliverable_q
@@ -18,7 +18,9 @@ from field.services import haversine_m
 from listings.models import Listing
 from listings.visibility import hidden_business_q
 
-from .models import product_row
+from . import identity
+from .errors import CatalogueError
+from .models import CatalogueProduct, product_row
 
 PRICE, AVAILABILITY = "price", "availability"
 MAX_OFFERS = 50  # a hard cap on the offers read for one product
@@ -39,9 +41,14 @@ def live_q(prefix=""):
     )
 
 
-def live_offers(product_id):
+def live_offers(product_id, exclude_owner_id=None):
+    """Live offers of one product, cheapest first, capped at MAX_OFFERS. `exclude_owner_id` leaves one business out
+    before the cap, so its own listings never crowd other businesses' offers out."""
+    queryset = Listing.objects.filter(live_q(), catalogue_product_id=product_id)
+    if exclude_owner_id is not None:
+        queryset = queryset.exclude(business_owner_id=exclude_owner_id)
     return (
-        Listing.objects.filter(live_q(), catalogue_product_id=product_id)
+        queryset
         .select_related("business_owner__profile", "zone")
         .order_by("price_amount", "pk")[:MAX_OFFERS]
     )
@@ -110,4 +117,53 @@ def other_sellers(listing, params):
         "featured_offer_id": None if best is None else best.pk,
         "ordering": ordering,
         "offers": [offer_row(offer) for offer in ordered(offers, ordering, position) if offer.pk != listing.pk],
+    }
+
+
+# --- A business's lookup (read-only) ---------------------------------------------------------------------------------
+
+QUERY_REQUIRED = "Type at least two letters of the product's name, or its barcode."
+SEARCH_LIMIT = 20
+MAX_WORDS = 8  # more words than this are ignored: a lookup is never a long scan
+
+
+def search(params):
+    """GET products/: catalogue entries by barcode (any spelling) or by every word of ?q= (normalised), with how many
+    live offers each has now and the lowest live price (null when nobody offers it now). Raises CatalogueError."""
+    raw_barcode = str(params.get("barcode") or "").strip()
+    if raw_barcode:
+        try:
+            key = identity.clean_barcode(raw_barcode)
+        except identity.BarcodeError as exc:
+            raise CatalogueError(str(exc), "invalid_barcode") from None
+        queryset = CatalogueProduct.objects.filter(barcode=key)
+    else:
+        words = identity.normalise_name(str(params.get("q") or "")[:300]).split()[:MAX_WORDS]
+        if len("".join(words)) < 2:
+            raise CatalogueError(QUERY_REQUIRED, "query_required")
+        queryset = CatalogueProduct.objects.all()
+        for word in words:
+            queryset = queryset.filter(normalised_name__contains=word)
+    live = live_q("offers__")
+    rows = queryset.annotate(
+        offer_count=Count("offers", filter=live, distinct=True),
+        lowest_price=Min("offers__price_amount", filter=live),
+    ).order_by("normalised_name", "pk")[:SEARCH_LIMIT]
+    return [
+        {**product_row(row), "offer_count": row.offer_count,
+         "lowest_price": None if row.lowest_price is None else str(row.lowest_price)}
+        for row in rows
+    ]
+
+
+def sourcing(product, owner):
+    """GET products/<id>/offers/: other businesses' live offers of `product`, cheapest first, and the owner's own
+    listings grouped with it. Read-only: the rows carry no contact details and nothing here orders anything."""
+    mine = list(
+        Listing.objects.filter(catalogue_product=product, business_owner=owner).order_by("pk").values_list("pk", flat=True)
+    )
+    others = live_offers(product.pk, exclude_owner_id=owner.pk)
+    return {
+        "catalogue_product": product_row(product), "your_listings": mine,
+        "offers": [offer_row(offer) for offer in ordered(others)],
     }
