@@ -152,6 +152,23 @@ class DisputeResolveView(APIView):
                 except refunds.RefundError as exc:
                     transaction.set_rollback(True)
                     return Response({"refund_amount": exc.message}, status=exc.status_code)
+            elif dispute.refund_amount:
+                # A booking's mismatch dispute (ledger Plan 1b S13): the same rule, through ledger.sales. Lock order:
+                # this dispute row, then the booking (sales.lock), then its accounts.
+                from ledger import refunds, sales
+                from ledger.models import BookingSale
+                from ledger.money import to_pesewas
+
+                sale = BookingSale.objects.filter(dispute=dispute).first()
+                if sale is not None:
+                    try:
+                        refund = sales.refund(
+                            sale, to_pesewas(dispute.refund_amount), source=f"dispute-{dispute.pk}", by=request.user,
+                            refund_processing=data.get("refund_processing", False), note=f"Dispute #{dispute.pk}",
+                        )
+                    except refunds.RefundError as exc:
+                        transaction.set_rollback(True)
+                        return Response({"refund_amount": exc.message}, status=exc.status_code)
             # A full refund of the order also reverses the delivery fee its business covered through a
             # free-delivery promo; a partial one leaves that charge standing.
             if dispute.order_id and dispute.refund_amount and dispute.refund_amount >= dispute.order.total_amount:
