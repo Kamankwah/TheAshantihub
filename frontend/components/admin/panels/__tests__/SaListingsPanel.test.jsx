@@ -21,6 +21,14 @@ function setup(counts = COUNTS) {
     http.get(`${API}/api/marketplace/listings/counts/`, () => HttpResponse.json(counts)),
     http.get(`${API}/api/listings/categories/`, () => HttpResponse.json([{ id: 5, label: 'Fashion' }])),
     http.get(`${API}/api/marketplace/listings/1/history/`, () => HttpResponse.json({ id: 1, name: 'Handwoven kente stole', business_name: 'Akosua Ntoma Kente', events: [{ at: '2026-10-02T00:00:00Z', text: 'Approved', who: 'Ama Boateng' }, { at: '2026-10-01T00:00:00Z', text: 'Added by the owner', who: 'Akosua' }] })),
+    http.get(`${API}/api/listings/moderation/2/`, () => HttpResponse.json({
+      id: 2, name: 'Graduation stole', description: 'Hand-woven for graduates.', price_amount: '450.00', price_unit: 'per item', tag: 'New',
+      contact_phone: '+233200000101', category: { id: 5, label: 'Fashion', kind: 'product' }, zone: { id: 1, name: 'Manhyia' },
+      main_photo: null, photos: [{ id: 9, image: 'http://localhost:8000/media/p1.jpg', order: 0 }], specs: [{ label: 'Material', value: 'Silk' }],
+      brand: 'Bonwire', condition: 'new', dimensions: '2m', weight: '300g', stock_quantity: 12,
+      has_warranty: true, warranty_details: '6 month seam warranty', has_expiry: false, expiry_date: null, return_policy: 'Returns within 7 days',
+      service_duration: '', whats_included: '', requirements: '', revisions: '', delivery_time: '', open_fraud_cases: 0,
+    })),
     http.post(`${API}/api/listings/moderation/:id/approve/`, ({ params }) => { seen.approvals.push(params.id); return HttpResponse.json({ id: Number(params.id), status: 'published' }) }),
     http.post(`${API}/api/listings/moderation/:id/reject/`, async ({ request, params }) => { seen.rejects.push({ id: params.id, ...(await request.json()) }); return HttpResponse.json({ id: 1 }) }),
   )
@@ -39,22 +47,40 @@ describe('SaListingsPanel', () => {
     expect(within(within(table).getByText('Graduation stole').closest('tr')).getByText(/Efua Mensah \(scout, for the owner\)/)).toBeInTheDocument()
   })
 
-  it('lets a Super Admin approve a listing that is waiting, and only those', async () => {
+  it('shows everything the owner submitted before a Super Admin approves, and only for waiting listings', async () => {
     const seen = setup()
     renderPanel(<SaListingsPanel auth={SA} />)
     const table = await screen.findByRole('table', { name: 'Listings' })
-    expect(within(table).queryByRole('button', { name: 'Approve Handwoven kente stole' })).not.toBeInTheDocument()
-    expect(within(table).queryByRole('button', { name: 'Approve Old stole' })).not.toBeInTheDocument()
-    fireEvent.click(within(table).getByRole('button', { name: 'Approve Graduation stole' }))
+    expect(within(table).queryByRole('button', { name: /View or approve Handwoven kente stole/ })).not.toBeInTheDocument()
+    expect(within(table).queryByRole('button', { name: /View or approve Old stole/ })).not.toBeInTheDocument()
+    fireEvent.click(within(table).getByRole('button', { name: 'View or approve Graduation stole' }))
+    const sheet = await screen.findByRole('region', { name: 'Review Graduation stole' })
+    expect(await within(sheet).findByText('Hand-woven for graduates.')).toBeInTheDocument()
+    expect(within(sheet).getByRole('img', { name: 'Graduation stole picture 1' })).toHaveAttribute('src', 'http://localhost:8000/media/p1.jpg')
+    for (const text of ['Bonwire', 'Returns within 7 days', '6 month seam warranty', 'Silk', '+233200000101', 'Manhyia']) expect(within(sheet).getByText(text)).toBeInTheDocument()
+    expect(seen.approvals).toEqual([])
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Approve Graduation stole' }))
     await waitFor(() => expect(seen.approvals).toEqual(['2']))
     expect(await screen.findByText('Published “Graduation stole”.')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Review Graduation stole' })).not.toBeInTheDocument()
+  })
+
+  it('says so when no picture was uploaded', async () => {
+    setup()
+    server.use(http.get(`${API}/api/listings/moderation/2/`, () => HttpResponse.json({ id: 2, name: 'Graduation stole', description: 'D', price_amount: '1.00', category: { label: 'Fashion', kind: 'product' }, zone: { name: 'Manhyia' }, main_photo: null, photos: [], specs: [] })))
+    renderPanel(<SaListingsPanel auth={SA} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'View or approve Graduation stole' }))
+    expect(await screen.findByText('No picture was uploaded.')).toBeInTheDocument()
   })
 
   it('shows why an approval was refused', async () => {
     setup()
     server.use(http.post(`${API}/api/listings/moderation/:id/approve/`, () => HttpResponse.json({ detail: 'Cannot publish a listing whose owner is not KYC-verified.' }, { status: 400 })))
     renderPanel(<SaListingsPanel auth={SA} />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Approve Graduation stole' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'View or approve Graduation stole' }))
+    const approveBtn = await screen.findByRole('button', { name: 'Approve Graduation stole' })
+    await waitFor(() => expect(approveBtn).toBeEnabled())
+    fireEvent.click(approveBtn)
     expect(await screen.findByText(/not KYC-verified/)).toBeInTheDocument()
   })
 

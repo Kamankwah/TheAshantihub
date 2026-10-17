@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiPost } from "../../../apiClient.js";
-import { useListingHistory, useSaListingCounts, useSaListings } from "../../../hooks/useMarketplace.js";
+import { useListingForReview, useListingHistory, useSaListingCounts, useSaListings } from "../../../hooks/useMarketplace.js";
 import { useCategories } from "../../../hooks/useCategories.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D } from "../theme.js";
@@ -40,6 +40,56 @@ function History({ listing, onClose }) {
       {isLoading && <div style={dim}>Loading…</div>}
       {isError && <div role="alert" style={errorStyle}>Could not load the history.</div>}
       {data?.events.map((e, i) => <div key={i} style={{ fontSize: "0.8rem", color: D.text }}><span style={dim}>{dateTime(e.at)}</span>{` · ${e.text} · ${e.who || "—"}`}</div>)}
+    </section>
+  );
+}
+
+const yesNo = (v) => (v === true ? "Yes" : v === false ? "No" : "—");
+
+// Everything the owner was asked when listing, so a Super Admin can judge it
+// before publishing: pictures, price, the product/service answers.
+function ReviewSheet({ listing, canModerate, approving, onApprove, onClose }) {
+  const { data: d, isLoading, isError } = useListingForReview(listing.id);
+  const pictures = d ? [d.main_photo, ...(d.photos || []).map((p) => p.image)].filter(Boolean) : [];
+  const rows = d ? [
+    ["Category", d.category?.label], ["Zone", d.zone?.name],
+    ["Price", d.price_amount != null ? `${money(d.price_amount)}${d.price_unit ? ` / ${d.price_unit}` : ""}` : null],
+    ["Tag", d.tag], ["Contact phone", d.contact_phone],
+    ...(d.category?.kind === "product" ? [
+      ["Brand", d.brand], ["Condition", d.condition], ["Dimensions", d.dimensions], ["Weight", d.weight],
+      ["Stock", d.stock_quantity], ["Warranty", yesNo(d.has_warranty)], ["Warranty details", d.has_warranty ? d.warranty_details : null],
+      ["Can expire", yesNo(d.has_expiry)], ["Expiry date", d.has_expiry ? d.expiry_date : null], ["Return policy", d.return_policy],
+    ] : [
+      ["Duration", d.service_duration], ["What's included", d.whats_included], ["Requirements", d.requirements],
+      ["Revisions", d.revisions], ["Delivery time", d.delivery_time],
+    ]),
+  ].filter(([, v]) => v !== null && v !== undefined && v !== "") : [];
+  return (
+    <section aria-label={`Review ${listing.name}`} style={card}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+        <h3 style={h3}>{listing.name}</h3>
+        <button type="button" onClick={onClose} style={button(D.panelBg, D.text)}>Close</button>
+      </div>
+      <div style={dim}>{listing.business_name}</div>
+      {isLoading && <div style={dim}>Loading…</div>}
+      {isError && <div role="alert" style={errorStyle}>Could not load this listing.</div>}
+      {d && (
+        <>
+          {pictures.length > 0
+            ? <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{pictures.map((src, i) => <a key={i} href={src} target="_blank" rel="noopener noreferrer"><img src={src} alt={`${d.name} picture ${i + 1}`} style={{ width: 120, height: 120, objectFit: "cover", borderRadius: 8, border: `1px solid ${D.divider}` }} /></a>)}</div>
+            : <div style={dim}>No picture was uploaded.</div>}
+          {d.description && <div style={{ fontSize: "0.82rem", color: D.text, lineHeight: 1.6 }}>{d.description}</div>}
+          <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "max-content 1fr", gap: "4px 14px", fontSize: "0.8rem", color: D.text }}>
+            {rows.map(([k, v]) => <div key={k} style={{ display: "contents" }}><dt style={dim}>{k}</dt><dd style={{ margin: 0 }}>{String(v)}</dd></div>)}
+            {(d.specs || []).map((s, i) => <div key={`s${i}`} style={{ display: "contents" }}><dt style={dim}>{s.label}</dt><dd style={{ margin: 0 }}>{s.value}</dd></div>)}
+          </dl>
+          {d.open_fraud_cases > 0 && <div role="alert" style={callout(D.red)}>{`This business has ${d.open_fraud_cases} open fraud ${d.open_fraud_cases === 1 ? "case" : "cases"}.`}</div>}
+        </>
+      )}
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+        <button type="button" onClick={onClose} style={button(D.panelBg, D.text)}>Not now</button>
+        {canModerate && listing.status === "pending_review" && <button type="button" disabled={approving || !d} onClick={() => onApprove(listing)} style={button(D.green, "#fff", approving || !d)}>{`Approve ${listing.name}`}</button>}
+      </div>
     </section>
   );
 }
@@ -84,6 +134,7 @@ export default function SaListingsPanel({ auth, onOpenBusiness }) {
   const [history, setHistory] = useState(null);
   const [takingDown, setTakingDown] = useState(null);
   const [notice, setNotice] = useState(null);
+  const [reviewing, setReviewing] = useState(null);
   const [approvingId, setApprovingId] = useState(null);
   const [approveError, setApproveError] = useState(null);
   const [exportError, setExportError] = useState(null);
@@ -101,6 +152,7 @@ export default function SaListingsPanel({ auth, onOpenBusiness }) {
     try {
       await apiPost(`/api/listings/moderation/${l.id}/approve/`, {});
       setNotice(`Published “${l.name}”.`);
+      setReviewing(null);
       queryClient.invalidateQueries({ queryKey: ["sa-listings"] });
       queryClient.invalidateQueries({ queryKey: ["moderation-queue"] });
     } catch (err) {
@@ -140,6 +192,7 @@ export default function SaListingsPanel({ auth, onOpenBusiness }) {
       {notice && <div role="status" style={callout(D.green)}>{notice}</div>}
       {approveError && <div role="alert" style={callout(D.red)}>{approveError}</div>}
       {takingDown && <TakeDown listing={takingDown} onCancel={() => setTakingDown(null)} onDone={(m) => { setTakingDown(null); setNotice(m); queryClient.invalidateQueries({ queryKey: ["sa-listings"] }); queryClient.invalidateQueries({ queryKey: ["moderation-queue"] }); }} />}
+      {reviewing && <ReviewSheet listing={reviewing} canModerate={canModerate} approving={approvingId === reviewing.id} onApprove={approve} onClose={() => setReviewing(null)} />}
       {history && <History listing={history} onClose={() => setHistory(null)} />}
       <div style={card}>
         <LoadState query={list} what="the listings" />
@@ -165,7 +218,7 @@ export default function SaListingsPanel({ auth, onOpenBusiness }) {
                       <td style={td}>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button type="button" aria-label={`History of ${l.name}`} onClick={() => setHistory(l)} style={button(D.panelBg, D.text)}>History</button>
-                          {canModerate && l.status === "pending_review" && <button type="button" aria-label={`Approve ${l.name}`} disabled={approvingId === l.id} onClick={() => approve(l)} style={button(D.green, "#fff", approvingId === l.id)}>Approve</button>}
+                          {canModerate && l.status === "pending_review" && <button type="button" aria-label={`View or approve ${l.name}`} onClick={() => { setNotice(null); setApproveError(null); setReviewing(l); }} style={button(D.green, "#fff")}>View / Approve</button>}
                           {canModerate && l.status === "published" && <button type="button" aria-label={`Take down ${l.name}`} onClick={() => { setNotice(null); setTakingDown(l); }} style={button(D.panelBg, D.red)}>Take down</button>}
                         </div>
                       </td>

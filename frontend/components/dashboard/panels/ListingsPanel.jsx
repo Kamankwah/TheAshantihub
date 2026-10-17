@@ -312,7 +312,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
           const fd = new FormData();
           fd.append("image", createPhoto);
           fd.append("order", "0");
-          await apiPostForm(`/api/listings/${created.id}/photos/`, fd);
+          await apiPostForm(`/api/listings/mine/${created.id}/photos/`, fd);
         } catch {
           setActionError("Your listing was created, but the photo failed to upload — you can add it again later.");
         }
