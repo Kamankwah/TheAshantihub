@@ -1,11 +1,14 @@
 # Wallets, Escrow, Platform Fees, Stock Offers and OTP Security — Design
 
-**Status:** Approved 2026-10-15. Stage 1 plan: docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md. Stage 2 (OTP, backend) plan: docs/superpowers/plans/2026-10-16-otp-security.md. Stage 3 plans: docs/superpowers/plans/2026-10-16-wallets-payments-3a.md (wallet payments and refunds) and docs/superpowers/plans/2026-10-16-withdrawals-3b.md (payout destinations, withdrawals, reconciliation). Plan 1b (services, events and stays): docs/superpowers/plans/2026-10-16-ledger-services-events-stays-1b.md. Stage 4 (vendor dashboard and texts, backend) plan: docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md.
+**Status:** Approved 2026-10-15. Stage 1 plan: docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md. Stage 2 (OTP, backend) plan: docs/superpowers/plans/2026-10-16-otp-security.md. Stage 3 plans: docs/superpowers/plans/2026-10-16-wallets-payments-3a.md (wallet payments and refunds) and docs/superpowers/plans/2026-10-16-withdrawals-3b.md (payout destinations, withdrawals, reconciliation). Plan 1b (services, events and stays): docs/superpowers/plans/2026-10-16-ledger-services-events-stays-1b.md. Stage 4 (vendor dashboard and texts, backend) plan: docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md. Stage 6 (catalogue, offers and stock alerts, backend) plan: docs/superpowers/plans/2026-10-16-catalogue-offers-stock-6.md.
 **Scope:** One system, built in the order given in §11. Stage 1 (ledger) with Plan 1b (services, events and stays),
 Stage 2 (OTP, backend), Stage 3 (wallets, payments, refunds, withdrawals and reconciliation, backend) and Stage 4 backend
 (the vendor money API and business texts, Plan 4) are implemented behind switches that default off (branches
 feature/ledger-stage1, feature/ledger-services-1b, feature/otp-security, feature/wallets and feature/vendor-side-4; see
-section 13); later stages are specs only.
+section 13); Stage 6 backend (catalogue entries, offers, other sellers, stock cover and low-stock alerts; branch
+feature/catalogue-offers-6) is implemented behind three switches that default off: `STOCK_ALERTS_ENABLED` (the alerts),
+`SOLD_OUT_HIDDEN_ENABLED` (sold-out hiding) and `CATALOGUE_MATCHER_ENABLED` (the barcode matcher: the nightly job and
+approve's on-commit run); later stages are specs only.
 **Basis:** The owner's brief, plus the decisions in §1, reconciled with the existing code in §13.
 
 ## 1. Decisions (settled in brainstorming)
@@ -535,6 +538,147 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
   the 0003 file is root-owned, so fold it with the right permissions).
 - (liii) **Parked:** the daily/per-withdrawal limit check can race with a concurrent proposal and ignores future-dated rows.
 
+### Stage 6 (catalogue, offers and stock alerts, backend) reconciliation (2026-10-16)
+
+Found while writing `docs/superpowers/plans/2026-10-16-catalogue-offers-stock-6.md` (§0 there; its C1–C18). The items
+below are numbered K1–K8 so they do not clash with those. "Stock offers and alerts" is §10 of this spec.
+
+- **K1 The offer is the Listing.** A listing already is the priced, stocked, carted and ordered unit (`CartItem`,
+  `OrderItem` with PROTECT, the fee snapshots, the stock reserved at checkout), so it stays the offer and gains an
+  optional `catalogue_product` (null = stands alone: unbranded goods, services, stays, and every listing made before
+  Stage 6) and a `barcode`. No listing, cart or checkout response changes shape; the owner listing forms gain `barcode`.
+- **K2 Catalogue entries** (`catalogue.CatalogueProduct`: brand, name, normalised name, barcode) are made only when staff
+  approve a business's grouping request; a barcode belongs to one entry, and an entry needs a brand or a barcode.
+- **K3 Barcodes** are compared as 14-digit GTINs with the check digit verified (an 8-digit code starting 0 or 1 that
+  checks as a UPC-E is read as its UPC-A); a store's own code (GS1
+  restricted-circulation prefixes) may sit on a listing but never groups. Names are compared normalised, exact only.
+- **K4 Grouping** is asked for by the business on its own product or food listing (services, stays and events never)
+  and decided by staff with `listings.moderate` through the moderated-queue contract; only staff ungroup. The barcode
+  matcher (`manage.py propose_catalogue_matches`, and every newly approved barcoded entry) only files requests; nothing
+  is grouped automatically.
+- **K5 Other sellers** (`GET /api/catalogue/listings/<id>/other-sellers/`) lists the live offers of the same entry,
+  cheapest (or most available) first, with the featured offer of §10; no contact details. A sold-out offer (counted goods at 0)
+  drops out of search and related lists once `SOLD_OUT_HIDDEN_ENABLED` is on (default off); its own page stays reachable. Businesses may look a product up (`/api/catalogue/products/`),
+  read-only.
+- **K6 Days of cover** = stock ÷ the sales rate over a governed window (default 28 days), counted over the days the offer
+  was on sale. Low: the business's own line if set, else fewer than 7 days of cover, else (no sales) 5 units or fewer;
+  sold out at 0. The three numbers are governed settings (`ledger.setting`: Accounting proposes, Super Admin approves).
+- **K7 Alerts** are told once per crossing (a conditional update per offer), re-armed only by a restock, one in-app
+  notice per business per hourly run and kind, behind `STOCK_ALERTS_ENABLED` (default off). Texts and emails "by
+  preference" (§10) wait for Stage 4's outbox.
+- **K8 Not changed:** the stock reservation at checkout (a correctness core). The timed release of an abandoned Hubtel
+  checkout's reservation ("for a short window", §10) is a gate item before Plan 7.
+
+### Before stock alerts are switched on and the catalogue screens ship (Stage 6)
+
+`STOCK_ALERTS_ENABLED`, `SOLD_OUT_HIDDEN_ENABLED` and `CATALOGUE_MATCHER_ENABLED` all default off. The catalogue
+endpoints answer as soon as this is deployed, but nothing is grouped until staff approve a request, the matcher files
+nothing until `CATALOGUE_MATCHER_ENABLED` is on, and sold-out listings leave search (§10) only once
+`SOLD_OUT_HIDDEN_ENABLED` is on (gate (cx)); the order to switch them on is in (cxxi).
+
+- (ci) **Frontend (Plan 6F).** The listing form's barcode field (show the 14-digit key without its leading zeros) and
+  "group with a catalogue product" (look it up at `/api/catalogue/products/`, ask, see the request, withdraw it);
+  "Needs restocking" and the per-offer line (replace the hard-coded `stock_quantity <= 3` badge in
+  `frontend/components/dashboard/panels/OwnerListingCard.jsx` with the server's `low` / `sold_out`); the product page's
+  "Other sellers" panel with the featured offer and the shortfall prompt (each offer added by the customer, never
+  automatically); the staff catalogue queue and ungroup action (add a `catalogue` row to `realtime`
+  `QUEUE_INVALIDATIONS` so it refreshes live, and a staff `catalogue` tab: the `catalogue_needs_review` notices link to
+  it); the business's lookup screen (product search and the sourcing offers return `truncated: true` when the cap of
+  20 products or 50 offers cut the list: say so and ask for a narrower search). Until then no business can ask and nothing is grouped. Also for 6F: each Other
+  sellers "add" must respect the cart guard (`cart.guard.blocked_reason`: 4 shops, 2 food places, 3 km; the API does not
+  say whether the customer's cart can take an offer); a sold-out listing's own page still lets a customer add it (the
+  cart does not check stock; checkout answers "Only 0 left"), so the product page should disable Add at 0; the staff
+  Marketplace screen counts a sold-out listing as live (`marketplace/listings.py:59`) while customers cannot find it;
+  promos are on, and Other sellers and the featured offer order by `price_amount`, not `marketing.checkout`'s live
+  flash-sale price, so "cheapest first" can be wrong during a flash sale: order by the price the customer would pay
+  before the panel ships. The shortfall prompt invites carts holding several offers of one product, which raises the
+  odds of the pre-existing checkout lock-order deadlock (spec (xvii)): fix that first.
+- (cii) **Texts and emails "by preference" (§10).** Stock alerts are in-app only. Once Stage 4's outbox
+  (`wallets.vendor_texts.queue`, `VendorPreference`) is on `righteoushack`, queue a stock text from
+  `catalogue.alerts.tell` (a new `VendorText` kind, a key per offer and alert time, a GSM-7 body naming offers only),
+  honour the business's preference, and decide email.
+- (ciii) **The reservation window (§10 "for a short window").** An abandoned Hubtel checkout (no webhook ever arrives)
+  keeps its stock reserved for good: only `_fail_order_checkout` gives it back. It also makes the offer look low or
+  sold out to the alerts and hides it from search. Add a timed release of PENDING order sessions (with the lock order of
+  (xv) and (xvii)) before Plan 7 turns Hubtel on.
+- (civ) **Owner stock writes do not lock the listing row (pre-existing).** `ListingRestockView` reads and saves
+  `stock_quantity` without `select_for_update`, so a restock racing a checkout can lose the checkout's decrement (an
+  oversell) or the restock. Before Stage 6 the owner edit forms (`ListingManageView`, `OwnerListingUpdateView`) saved
+  every column, so any PATCH, even a price change, wrote back the stock it had read; Stage 6 saves only the sent fields
+  (`listings.serializers.save_sent_fields`), but a PATCH that sends `stock_quantity` still races. Lock the row for the
+  read-modify-write; the alerts' re-arm rule reads the same number.
+- (cv) **The public listing serializer still carries `contact_phone` (pre-existing).** `PublicListingSerializer`
+  exposes the listing's `contact_phone` to anyone, against "businesses cannot be contacted directly". The catalogue rows
+  leave it out; decide whether to drop it from the public shape (check the frontend first). The same serializer also exposes
+  `business_owner.full_name` (`BusinessOwnerMiniSerializer`): the owner's personal name on every public listing detail.
+  The offer rows show the business name only; decide about the owner's name with the same check.
+- (cvi) **The first switch-on tells every offer already low,** one notice per business and kind. Run it once on staging
+  with realistic data and read the notices before production.
+- (cvii) **Catalogue entries cannot be edited, merged or retired.** A duplicate entry for one unbarcoded product, or a
+  typo in an entry's name, can only be worked around by ungrouping and asking again. A barcoded listing can also join a
+  brand-only entry that staff named, and a later approval for the same barcode then makes a second, barcoded entry,
+  splitting one product in two. Add a staff edit and merge (with the activity log) before grouping is used at volume.
+- (cviii) **Grouping is one person's decision.** One `listings.moderate` holder groups or ungroups a business's
+  listing with no second check. Revisit if grouping ever affects fees, ranking or promotions.
+- (cix) **Hourly cost.** The job measures every counted, published product each hour (one sales query and one bulk
+  insert per 500 offers). Watch its duration on System health; if it grows, measure only offers whose stock changed or
+  that sold since the last run. A restock followed by a sell-down within the same hour is never told, because a run
+  re-arms an offer only when it sees it not low and above the stock it was told at; consider re-arming in
+  `ListingRestockView`.
+- (cx) **Sold-out hiding is off until the screens say how to use it.** Turn `SOLD_OUT_HIDDEN_ENABLED` on with the Plan
+  6F screens, which must tell a business to leave the count empty if it does not count stock: with the switch on, a
+  made-to-order product kept at 0 disappears from search. Counted goods only; a service or stay at 0 is never hidden. Also, with the switch on, a sold-out listing with a running
+  paid Promotion drops out of search while the promotion keeps running (and keeps being charged for); decide whether to
+  pause, extend or warn before it goes on.
+- (cxi) **Owner questions (G1–G12 in the plan):** the 7-day, 5-unit and 28-day defaults and their edges (fewer than 7
+  days; 5 or fewer units) and the single-sale edge of the units fallback (G1), staff-only ungrouping (owner-confirmed on
+  2026-10-16: a business also cannot withdraw a barcode match AshantiHub filed), whether the matcher should also file
+  exact brand-and-name matches for branded listings without a barcode (they are grouped today only if their business
+  asks), businesses seeing each other's prices and counts, the featured-offer tie rule, sold-out hiding.
+- (cxii) **A lost notice is not retried.** If the in-app notice fails to save while its state moved
+  (`notifications.services` never raises), that crossing is not told again until the next restock. A run that dies
+  part-way is not this case: the run is one transaction, so the next run tells those offers. Acceptable in-app;
+  revisit with texts (cii).
+- (cxiii) **An owner's barcode edit can race a staff approve.** The owner listing update saves the barcode without
+  taking the lock `attach.approve` holds (request row, then listing row). Lock the listing in the owner update and
+  revalidate the barcode (store code, grouped listing, duplicate) after the lock, so an approve in flight cannot group a
+  listing whose barcode has just changed.
+- (cxiv) **Lock order and the residual deadlock window.** `approve` and `re_review` lock the request row, then the
+  listing row; `reject` locks only the request; `detach` locks its approved request rows first, then the listing (the
+  same order, so none of them can deadlock). `propose` and the barcode matcher lock the listing and then only insert a
+  new request row. A lost race is caught (IntegrityError on the one-pending constraint; the matcher also skips on
+  OperationalError), but `propose` for a business's own request can still raise an `OperationalError` (a lock wait or
+  deadlock lost to another transaction): handle it there and answer a retryable error instead of a 500.
+- (cxv) **Staff actions do not refresh live (realtime).** The catalogue approve, reject and detach actions are not in
+  `QUEUE_INVALIDATIONS`, so a second staff member's queue does not update until it is reloaded. Add them with the staff
+  `catalogue` tab in Plan 6F (see (ci)).
+- (cxvi) **No price floor on `Listing.price_amount`.** A zero or negative price is excluded from the offers (they need a
+  price above 0) but the listing still sells. Add a validation floor to the listing forms and model, and check existing
+  rows, before offers are ranked by price at volume.
+- (cxvii) **Unverified sellers are shown, marked `verified: false`.** Other-sellers rows include businesses whose KYC is
+  not verified, honestly marked; the featured offer prefers verified ones. Owner confirmation is needed on whether
+  unverified sellers should be shown at all, shown lower, or hidden.
+- (cxviii) **Detach writes two audit events.** `attach.detach` records the generic moderation event and the explicit
+  catalogue record, so the activity log shows an ungroup twice. Harmless; collapse them when the staff screen reads the
+  log.
+- (cxix) **A restock above the alerted stock that is still low does not re-arm.** Restocking from 1 to 4 (line 5) leaves
+  the low alert told at 1 and unarmed: an offer is re-armed only once it is no longer low. Re-arm in `ListingRestockView`
+  (and the owner edit that sets `stock_quantity`) when stock rises above the alerted stock.
+- (cxx) **The matcher on approve runs synchronously.** `approve` queues the barcode matcher with
+  `transaction.on_commit`, which runs inline in the staff request. Move it to a Celery job (as the nightly
+  `propose_matches`) once an approved barcode can match many listings.
+- (cxxi) **Three switches, all default off, switched on in this order.** `CATALOGUE_MATCHER_ENABLED` (gates both the
+  nightly job and approve's on-commit run; files requests only), then `STOCK_ALERTS_ENABLED`, then
+  `SOLD_OUT_HIDDEN_ENABLED` (last, with the Plan 6F screens, see (cx)). `STOCK_ALERTS_ENABLED` needs the Plan 6F "Needs
+  restocking" panel first (the low-stock notice only says "Open your listings to restock" because the screen it would
+  name does not exist yet) and (cvi) rehearsed on staging.
+- (cxxii) **State rows are inserted before the run's transaction.** `catalogue.alerts.run` creates a `StockAlertState`
+  row for each new offer in autocommit first, so the run's one transaction only updates state rows (a mass insert with a
+  foreign key to `listings_listing` would key-share-lock those listings until commit, against checkout's `FOR UPDATE`).
+  A run that dies leaves empty state rows behind; they are inert and the next run uses them.
+- (cxxiii) **A listing must be published to be grouped.** `propose`, `approve` and `re_review` answer 409
+  `not_published` for a draft, pending or rejected listing (one unpublished after it asked cannot be approved until it is
+  published again).
 ### Stage 1b (services, events and stays) reconciliation (2026-10-16)
 
 Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-stays-1b.md` (§0 there; its S1–S18; the items below are numbered B1–B10 so they do not clash with those):

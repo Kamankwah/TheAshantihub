@@ -148,13 +148,21 @@ def setting_diff(request):
 
 
 WALLET_SETTING_KEYS = ("withdrawal_per_tx_limit_pesewas", "withdrawal_daily_limit_pesewas", "payout_cooling_hours")
+# Low-stock alerts (catalogue plan 6): they never touch an order or any money.
+STOCK_SETTING_KEYS = (settings_store.STOCK_COVER_DAYS, settings_store.STOCK_FALLBACK_UNITS, settings_store.STOCK_WINDOW_DAYS)
 
 
 def setting_consequences(request):
-    """What the approver is told the change touches: withdrawal settings never touch an order (wallets plan 3b)."""
-    if request.payload.get("key") in WALLET_SETTING_KEYS:
+    """What the approver is told the change touches: withdrawal settings never touch an order (wallets plan 3b), and
+    stock settings neither (catalogue plan 6)."""
+    key = request.payload.get("key")
+    if key in WALLET_SETTING_KEYS:
         return ["Applies to withdrawals asked for, and payout destinations added, after it starts. Destinations already "
                 "added keep the waiting time they were given."]
+    if key in STOCK_SETTING_KEYS:
+        return ["Applies from when it starts to the \"needs restocking\" lists and, when low-stock alerts are switched on, to "
+                "the alerts. Offers where the business set its own low-stock line keep that line. Offers already told "
+                "they are low are not told again until they are restocked."]
     return ["Applies only to orders paid after it starts."]
 
 

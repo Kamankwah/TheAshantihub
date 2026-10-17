@@ -130,6 +130,14 @@ class Listing(models.Model):
     dimensions = models.CharField(max_length=100, blank=True)
     weight = models.CharField(max_length=50, blank=True)
     stock_quantity = models.PositiveIntegerField(null=True, blank=True)
+    # Catalogue plan 6 (spec §1 rows 7-8, §10): the product's barcode as its 14-digit GTIN (catalogue.identity), "" when
+    # none; and the shared catalogue entry this offer belongs to, set only when staff approve a grouping request
+    # (catalogue.attach). Null: the listing stands alone (unbranded goods, services, stays, and every listing made before
+    # plan 6). Neither is in the public serializers.
+    barcode = models.CharField(max_length=14, blank=True, default="")
+    catalogue_product = models.ForeignKey(
+        "catalogue.CatalogueProduct", on_delete=models.SET_NULL, null=True, blank=True, related_name="offers",
+    )
 
     # ── Service decision fields ─────────────────────────────────────────────
     # Fiverr-style gig framing: what the buyer gets, what the seller needs
@@ -147,6 +155,12 @@ class Listing(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            # Only barcoded rows: most listings have none, and the matcher and the grouping check look up by code.
+            models.Index(fields=["barcode"], name="listing_barcode_idx", condition=~models.Q(barcode="")),
+        ]
 
     def __str__(self):
         return self.name
