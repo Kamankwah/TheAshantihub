@@ -16,7 +16,7 @@ from rest_framework.views import APIView
 from accounts.permissions import HasRolePermission
 from orders.models import DeliveryAssignment
 
-from . import files, payloads, services
+from . import employment, files, payloads, services
 from .models import DeliveryCall, DeliveryPhoto, Rider, RiderDocument, RiderIssue
 
 PERMISSION = "delivery.dispatch"
@@ -81,6 +81,8 @@ class MeView(RiderView):
                 "home_zone": rider.home_zone.name if rider.home_zone_id else None, "job_hold": rider.job_hold,
                 "suspended": request.user.is_suspended, "suspension_reason": request.user.suspension_reason if request.user.is_suspended else None,
                 "manager": {"id": manager.pk, "full_name": manager.full_name, "phone": manager.phone} if manager else None,
+                # Who the rider works for (wallets Plan 5): only a third-party rider has a wallet (rider/wallet/*).
+                "employment": rider.employment, "wallet": employment.is_third_party(rider),
             },
             "shift": payloads.shift_block(shift, now),
             "papers": {"required": list(services.REQUIRED_DOCUMENTS), "missing": missing, "can_start_shift": not missing},

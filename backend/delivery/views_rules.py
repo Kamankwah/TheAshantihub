@@ -12,7 +12,7 @@ from approvals import services as approvals
 from approvals.models import ApprovalRequest
 from routing import service as routing_service
 
-from . import config, rates, services
+from . import config, employment, rates, services
 from .models import AutoAssignRules, ConfigVersion, RateCard, TimeLimits, VEHICLE_TYPES
 
 PERMISSION = "delivery.rates"
@@ -162,7 +162,7 @@ class RiderEarnedView(APIView):
         weeks = max(1, min(int(request.query_params.get("weeks", 2) or 2), 12))
         since = timezone.now() - timedelta(days=7 * weeks)
         rows = (
-            DeliveryAssignment.objects.filter(delivered_at__gte=since, dispatch__isnull=False)
+            employment.payroll_jobs(DeliveryAssignment.objects.filter(delivered_at__gte=since, dispatch__isnull=False))
             .values("dispatch_id", "dispatch__full_name")
             .annotate(jobs=Count("id"), with_pay=Count("rider_pay"), earned=Sum("rider_pay"))
             .order_by("dispatch__full_name")
@@ -189,5 +189,5 @@ class RiderEarningsLinesView(APIView):
 
         weeks = max(1, min(int(request.query_params.get("weeks", 2) or 2), 12))
         since = timezone.now() - timedelta(days=7 * weeks)
-        jobs = DeliveryAssignment.objects.filter(dispatch_id=staff_id, delivered_at__gte=since).order_by("-delivered_at")
+        jobs = employment.payroll_jobs(DeliveryAssignment.objects.filter(dispatch_id=staff_id, delivered_at__gte=since)).order_by("-delivered_at")
         return Response({"results": [{"assignment_id": j.pk, "order_id": j.order_id, "delivered_at": j.delivered_at, "pay": str(j.rider_pay) if j.rider_pay is not None else None, "breakdown": j.rider_pay_breakdown, "wait_pay_held": j.wait_pay_held} for j in jobs]})
