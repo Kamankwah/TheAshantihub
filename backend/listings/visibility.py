@@ -10,7 +10,7 @@ unsuspending or paying brings everything back at once.
 
 Used by PublicListingListView, PublicListingDetailView, RelatedListingsView,
 events.views._live_events_queryset, adding to a cart, catalogue.offers (other sellers),
-catalogue.views.OtherSellersView and catalogue.alerts.
+and catalogue.views.OtherSellersView.
 """
 from django.conf import settings
 from django.db.models import Q

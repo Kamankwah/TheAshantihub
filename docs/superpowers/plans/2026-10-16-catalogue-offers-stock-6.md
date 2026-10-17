@@ -81,6 +81,8 @@ Claude-Session: https://claude.ai/code/session_01HDHNosHkqu4Wwocp7a2c8j
 - **G10** Businesses may see other businesses' prices and counted stock for the same product (both are already public).
 - **G11** Stock alerts stay off (`STOCK_ALERTS_ENABLED`) until the Plan 6F screens ship; at switch-on every offer already low is told once.
 - **G12** Suspended businesses get no stock alerts and their offers never show to customers.
+- **G13** (owner question) Unverified (not KYC-verified) businesses stay listed among other sellers, as in public search, with `verified: false`; only the featured offer requires a KYC-verified business. Confirm this, or hide unverified rows.
+- **G14** Other-sellers rows show the profile business name only (null when blank, never the owner's personal name), never include the asking listing's own business, and read at most 50 offers. Tie-break distance uses a listing's own public lat/lng only, never the staff-only business pin. Gate for Task 9's spec §13 items: `Listing.price_amount` has no floor (a 0 or negative price is possible); offers require price above 0 here, but a model/serializer floor is still owed. Frontend hand-off (Plan 6F): round or format `price_amount` for display.
 
 ## File Structure
 
