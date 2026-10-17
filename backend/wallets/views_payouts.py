@@ -3,7 +3,9 @@ Adding or removing a destination and asking for a withdrawal need a step-up code
 is on, whatever OTP_STEP_UP_ENFORCED says (force=True; spec §8 and §11: OTP must precede any wallet going live). The
 code is spent inside the transaction that saves, so a refused request keeps it for the retry. No provider call runs
 inside a transaction: the account-name lookup comes before it, the payout after it. The holder gets an in-app notice
-of every destination added or removed (no number in it). Every endpoint answers 409 ledger_off while the ledger is off."""
+of every destination added or removed (no number in it). Every endpoint answers 409 ledger_off while the ledger is off.
+Third-party riders use these same views at /api/delivery/rider/wallet/ (wallets.views_rider_wallet), which record their
+own activity event through the `saved()` hook, inside the transaction that saves."""
 import logging
 
 from django.db import transaction
@@ -12,9 +14,9 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import Customer
+from accounts.models import Customer, StaffUser
 from ledger import escrow, settings_store
-from notifications.services import notify_business_owner, notify_customer
+from notifications.services import notify_business_owner, notify_customer, notify_staff
 from otp import step_up
 from otp.views_authenticator import IsCustomerOrOwner
 
@@ -31,6 +33,8 @@ def _tell_holder(holder, title, body):
     """An in-app notice about where the holder's money can go. Never a number: rail and institution only."""
     if isinstance(holder, Customer):
         notify_customer(holder, "payout_destination", title, body=body, link="/my-account", icon="🏦")
+    elif isinstance(holder, StaffUser):  # a third-party rider (wallets Plan 5)
+        notify_staff(holder, "payout_destination", title, body=body, link="/staff", icon="🏦")
     else:
         notify_business_owner(holder, "payout_destination", title, body=body, link="/business", icon="🏦")
 
@@ -39,7 +43,15 @@ def _described(destination):
     return f"A {destination.get_rail_display().lower()} ({destination.institution}) payout destination"
 
 
-class DestinationsView(APIView):
+class SavedHook:
+    """`saved(request, event, obj)` runs last inside the transaction that saved a destination or a withdrawal. A no-op
+    here; the third-party rider views record their own activity event in it (wallets Plan 5)."""
+
+    def saved(self, request, event, obj):
+        return None
+
+
+class DestinationsView(SavedHook, APIView):
     """GET destinations/ — the holder's live payout destinations (numbers masked) and the cooling period in force.
     POST destinations/ {rail, institution, account_number} or {from_profile: true} + X-Step-Up-Token — add one. A
     request without a code is refused before the provider is asked for the account's name, and adds are throttled
@@ -71,6 +83,7 @@ class DestinationsView(APIView):
             with transaction.atomic():
                 step_up.require(request, step_up.PAYOUT_DESTINATION, force=True)
                 destination = destinations.save(request.user, checked)
+                self.saved(request, "destination_added", destination)
         except destinations.DestinationError as exc:
             return Response(exc.body(), status=exc.status_code)
         _tell_holder(
@@ -81,7 +94,7 @@ class DestinationsView(APIView):
         return Response(destinations.row(destination), status=status.HTTP_201_CREATED)
 
 
-class DestinationRemoveView(APIView):
+class DestinationRemoveView(SavedHook, APIView):
     """POST destinations/<id>/remove/ + X-Step-Up-Token — stop paying to it."""
 
     permission_classes = [IsCustomerOrOwner]
@@ -93,13 +106,14 @@ class DestinationRemoveView(APIView):
             with transaction.atomic():
                 step_up.require(request, step_up.PAYOUT_DESTINATION, force=True)
                 destination = destinations.remove(request.user, pk)
+                self.saved(request, "destination_removed", destination)
         except destinations.DestinationError as exc:
             return Response(exc.body(), status=exc.status_code)
         _tell_holder(request.user, "A payout destination was removed", f"{_described(destination)} was removed. {IF_NOT_YOU}")
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class WithdrawalsView(APIView):
+class WithdrawalsView(SavedHook, APIView):
     """GET withdrawals/ — the holder's withdrawals, newest first (20 a page).
     POST withdrawals/ {destination, amount, request_id} + X-Step-Up-Token — withdraw to one of the holder's payout
     destinations. A retry with the same request_id, destination and amount answers the withdrawal already made (200)
@@ -142,6 +156,7 @@ class WithdrawalsView(APIView):
                 withdrawal = withdrawals.request(
                     request.user, destination_id=data.get("destination"), amount_pesewas=amount, request_id=request_id,
                 )
+                self.saved(request, "withdrawal_requested", withdrawal)
         except (step_up.StepUpRequired, withdrawals.WithdrawalError) as exc:
             # A concurrent duplicate may have committed (and spent the code) meanwhile: answer it as a retry would.
             found = withdrawals.existing(request.user, request_id)
@@ -159,7 +174,7 @@ class WithdrawalsView(APIView):
         return Response(withdrawals.row(sent), status=status.HTTP_201_CREATED)
 
 
-class WithdrawalCancelView(APIView):
+class WithdrawalCancelView(SavedHook, APIView):
     """POST withdrawals/<id>/cancel/ — take back a withdrawal not sent yet; the money returns to the holder's balance."""
 
     permission_classes = [IsCustomerOrOwner]
@@ -168,7 +183,9 @@ class WithdrawalCancelView(APIView):
         if not escrow.enabled():
             return ledger_off()
         try:
-            withdrawal = withdrawals.cancel(request.user, pk)
+            with transaction.atomic():
+                withdrawal = withdrawals.cancel(request.user, pk)
+                self.saved(request, "withdrawal_cancelled", withdrawal)
         except withdrawals.WithdrawalError as exc:
             return Response(exc.body(), status=exc.status_code)
         return Response(withdrawals.row(withdrawal))

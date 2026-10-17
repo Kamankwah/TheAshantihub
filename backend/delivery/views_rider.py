@@ -16,7 +16,9 @@ from rest_framework.views import APIView
 from accounts.permissions import HasRolePermission
 from orders.models import DeliveryAssignment
 
-from . import files, payloads, services
+from ledger import escrow
+
+from . import employment, files, payloads, services
 from .models import DeliveryCall, DeliveryPhoto, Rider, RiderDocument, RiderIssue
 
 PERMISSION = "delivery.dispatch"
@@ -81,6 +83,8 @@ class MeView(RiderView):
                 "home_zone": rider.home_zone.name if rider.home_zone_id else None, "job_hold": rider.job_hold,
                 "suspended": request.user.is_suspended, "suspension_reason": request.user.suspension_reason if request.user.is_suspended else None,
                 "manager": {"id": manager.pk, "full_name": manager.full_name, "phone": manager.phone} if manager else None,
+                # Who the rider works for (wallets Plan 5): only a third-party rider has a wallet (rider/wallet/*).
+                "employment": rider.employment, "wallet": employment.wallet_rider(request.user) is not None,
             },
             "shift": payloads.shift_block(shift, now),
             "papers": {"required": list(services.REQUIRED_DOCUMENTS), "missing": missing, "can_start_shift": not missing},
@@ -343,6 +347,8 @@ class DocumentListCreateView(RiderView):
             return Response({"detail": "Enter the expiry date as YYYY-MM-DD."}, status=400)
         if expires_on is not None and expires_on < timezone.localdate():
             return Response({"detail": "That paper has already expired."}, status=400)
+        if kind == RiderDocument.GHANA_CARD and expires_on is None and escrow.enabled():  # needed for payouts (ledger on)
+            return Response({"detail": "Enter the expiry date on your Ghana Card (YYYY-MM-DD)."}, status=400)
         clean = files.clean_upload(upload)
         if clean is None:
             return Response({"detail": "That file is not a JPEG, PNG or PDF."}, status=400)

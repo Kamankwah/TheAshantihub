@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from approvals.models import ApprovalRequest
 from orders.models import DeliveryAssignment
 
-from . import cash, config
+from . import cash, config, employment
 from .models import CashHandover, RateCard
 from .views_rider import RiderView
 
@@ -32,7 +32,7 @@ class EarningsView(RiderView):
 
     def get(self, request):
         period, start = _period(request)
-        jobs = DeliveryAssignment.objects.filter(dispatch=request.user, delivered_at__date__gte=start).order_by("-delivered_at")
+        jobs = employment.payroll_jobs(DeliveryAssignment.objects.filter(dispatch=request.user, delivered_at__date__gte=start)).order_by("-delivered_at")
         failed = DeliveryAssignment.objects.filter(dispatch=request.user, failed_at__date__gte=start).count()
         rows = []
         for j in jobs:

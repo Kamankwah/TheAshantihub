@@ -4,8 +4,10 @@ steps, and (later packages) offers, rules, the rate card and cash. ``orders.Deli
 where it is; it gains the step stamps and codes in ``orders`` and its events live here.
 
 A rider is a ``StaffUser`` with the ``dispatch`` role plus one ``Rider`` row. Nothing here moves money:
-the rate card is a configuration, cash handovers are an operational count, and there is no payout,
-payroll or ledger model (owner decision, Super Admin brief)."""
+the rate card is a configuration and cash handovers are an operational count. A third-party rider's
+earnings (``RiderEarning``, ``RiderCommissionPosting``; wallets Plan 5) are records the ledger writes
+(``ledger.riders``); AshantiHub's own riders have no payout, payroll or ledger model (owner decision,
+Super Admin brief)."""
 import datetime
 
 from django.conf import settings
@@ -45,6 +47,8 @@ class Rider(models.Model):
 
     MANUAL, DOCUMENTS = "manual", "documents"
     SUSPENSION_SOURCE_CHOICES = [("", "Not suspended"), (MANUAL, "Suspended by a manager"), (DOCUMENTS, "A required paper expired")]
+    ASHANTIHUB, THIRD_PARTY = "ashantihub", "third_party"
+    EMPLOYMENT_CHOICES = [(ASHANTIHUB, "AshantiHub's own rider"), (THIRD_PARTY, "Third-party rider (from a rider company)")]
 
     staff = models.OneToOneField("accounts.StaffUser", on_delete=models.CASCADE, related_name="rider")
     vehicle_type = models.CharField(max_length=10, choices=VEHICLE_TYPES, default=MOTORBIKE)
@@ -57,6 +61,12 @@ class Rider(models.Model):
     job_hold = models.BooleanField(default=False)
     job_hold_reason = models.CharField(max_length=300, blank=True)
     suspension_source = models.CharField(max_length=10, choices=SUSPENSION_SOURCE_CHOICES, blank=True, default="")
+    # Who the rider works for (spec §1 rows 4-5, §7; wallets Plan 5). Changed only through the delivery.rider_employment
+    # approval (delivery.employment). A third-party rider is paid the delivery fee of each order they deliver inside
+    # an employment period (RiderEmploymentPeriod), at release, into a wallet (ledger.riders); AshantiHub's own riders have no wallet.
+    employment = models.CharField(max_length=12, choices=EMPLOYMENT_CHOICES, default=ASHANTIHUB)
+    company_name = models.CharField(max_length=120, blank=True, default="")
+    third_party_since = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -460,3 +470,86 @@ class Shift(models.Model):
     class Meta:
         ordering = ["starts_at", "id"]
         indexes = [models.Index(fields=["starts_at"])]
+
+
+class RiderEmploymentPeriod(models.Model):
+    """One stretch during which a rider was a third-party rider (opened when the delivery.rider_employment approval makes
+    them one, closed when it switches them back; `ended_at` null while it runs). Who a delivery's money belongs to is
+    decided from these periods by the delivery's time, never from the rider's current flag, so a later switch back (or
+    forward again) cannot re-label history: payroll still leaves out the days a rider was third-party and the wallet
+    still pays them. `Rider.third_party_since` is the start of the open period."""
+
+    rider = models.ForeignKey(Rider, on_delete=models.CASCADE, related_name="employment_periods")
+    started_at = models.DateTimeField()
+    ended_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["started_at"]
+        indexes = [models.Index(fields=["rider", "started_at"])]
+        constraints = [models.UniqueConstraint(fields=["rider"], condition=models.Q(ended_at__isnull=True), name="one_open_employment_period")]
+
+    def __str__(self):
+        return f"{self.rider_id}: {self.started_at:%Y-%m-%d} to {self.ended_at or 'now'}"
+
+
+# ── Third-party riders' money (wallets Plan 5; written by ledger.riders) ────────────────────────
+class RiderCommissionPosting(models.Model):
+    """One end-of-day posting of a third-party rider's commission reserve to AshantiHub (spec §2.2 step 6): the deliveries
+    of `day` (Accra) it covered and their gross, commission and net, in pesewas. `journal` is null when the commission
+    was 0 (a 0% rate). Never edited. A day normally has one row per rider; a delivery credited after that day's run gets a
+    row of its own."""
+
+    rider = models.ForeignKey(Rider, on_delete=models.PROTECT, related_name="commission_postings")
+    day = models.DateField()
+    deliveries = models.PositiveIntegerField()
+    gross_pesewas = models.BigIntegerField()
+    commission_pesewas = models.BigIntegerField()
+    net_pesewas = models.BigIntegerField()
+    journal = models.OneToOneField(
+        "ledger.Journal", null=True, blank=True, on_delete=models.PROTECT, related_name="rider_commission_posting",
+    )
+    posted_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["-day", "-id"]
+        indexes = [models.Index(fields=["rider", "-day"]), models.Index(fields=["day"])]
+
+
+class RiderEarning(models.Model):
+    """What a third-party rider earned for one order (spec §2.2 step 2(c), §7): the delivery fee AshantiHub took at the
+    order's release (`gross_pesewas`: the fee the customer paid plus a fee the business covered with its free-delivery
+    promo), split at `commission_bp` (the rate in force when the order was paid) into `reserve_pesewas`, held until the
+    end of `earned_on` (Accra), and `net_pesewas`, withdrawable at once. Written in the release's transaction (journal
+    order-rider-<order>); afterwards only the end-of-day posting (`commission_posting`) and a reversal on a whole refund
+    after release (`reversed_at`, `reversal_journal`) are written to it."""
+
+    order = models.OneToOneField("orders.Order", on_delete=models.PROTECT, related_name="rider_earning")
+    rider = models.ForeignKey(Rider, on_delete=models.PROTECT, related_name="earnings")
+    gross_pesewas = models.BigIntegerField()
+    commission_bp = models.PositiveIntegerField()
+    reserve_pesewas = models.BigIntegerField()
+    net_pesewas = models.BigIntegerField()
+    earned_at = models.DateTimeField()
+    earned_on = models.DateField()
+    journal = models.OneToOneField("ledger.Journal", on_delete=models.PROTECT, related_name="rider_earning")
+    commission_posting = models.ForeignKey(
+        RiderCommissionPosting, null=True, blank=True, on_delete=models.PROTECT, related_name="earnings",
+    )
+    reversed_at = models.DateTimeField(null=True, blank=True)
+    reversal_journal = models.OneToOneField(
+        "ledger.Journal", null=True, blank=True, on_delete=models.PROTECT, related_name="rider_earning_reversal",
+    )
+
+    class Meta:
+        ordering = ["-earned_at", "-id"]
+        indexes = [models.Index(fields=["rider", "earned_on"]), models.Index(fields=["earned_on", "commission_posting"])]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(gross_pesewas__gt=0, reserve_pesewas__gte=0, net_pesewas__gte=0),
+                name="delivery_rider_earning_amounts",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(gross_pesewas=models.F("reserve_pesewas") + models.F("net_pesewas")),
+                name="delivery_rider_earning_adds_up",
+            ),
+        ]

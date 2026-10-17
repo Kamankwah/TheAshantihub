@@ -25,12 +25,12 @@ from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 
-from accounts.models import BusinessOwner, Customer
+from accounts.models import BusinessOwner, Customer, StaffUser
 from fraud import services as fraud
 from fraud.models import FraudFlag
 from ledger import posting
 from ledger.models import Account
-from notifications.services import notify_business_owner, notify_customer
+from notifications.services import notify_business_owner, notify_customer, notify_staff_on_commit
 from payments import providers
 
 from . import names
@@ -47,12 +47,16 @@ FAILED_REASON = "The provider could not pay it."  # what the holder sees, never 
 UNAVAILABLE_REASON = "Payouts are not available right now, so nothing was sent."
 
 
+HOLDER_MODELS = {"customer": Customer, "business_owner": BusinessOwner, "staff": StaffUser}  # staff: a third-party rider
+
+
 def _holder_model(withdrawal):
-    return Customer if withdrawal.holder_type == "customer" else BusinessOwner
+    return HOLDER_MODELS.get(withdrawal.holder_type, BusinessOwner)
 
 
 def holder_of(withdrawal):
-    """The customer or business owner the withdrawal belongs to, or None when that account is gone."""
+    """The customer, business owner or (third-party rider) staff member the withdrawal belongs to, or None when that
+    account is gone."""
     return _holder_model(withdrawal).objects.filter(pk=withdrawal.holder_id).first()
 
 
@@ -70,17 +74,25 @@ def _case_owner(withdrawal):
     return holder_of(withdrawal) if withdrawal.holder_type == "business_owner" else None
 
 
+def _case_staff(withdrawal):
+    """The third-party rider a withdrawal case is about (a staff holder's withdrawal), else None, so the fraud queue ties it to them."""
+    return holder_of(withdrawal) if withdrawal.holder_type == "staff" else None
+
+
 def _tell(withdrawal, title, body):
     holder = holder_of(withdrawal)
     if isinstance(holder, Customer):
         notify_customer(holder, "withdrawal", title, body=body, link="/my-account", icon="💸")
+    elif isinstance(holder, StaffUser):
+        notify_staff_on_commit(holder, "withdrawal", title, body=body, link="/staff", icon="💸")  # not inside the money transaction
     elif holder is not None:
         notify_business_owner(holder, "withdrawal", title, body=body, link="/business", icon="💸")
 
 
 def claim(withdrawal_pk, now=None):
     """PENDING → PROCESSING under the row lock (and the destination's). Returns the withdrawal if this caller won it,
-    else None. Re-checks what request() checked: the holder is not suspended (and exists), the destination is not
+    else None. Re-checks what request() checked: the holder is not suspended or deactivated (and exists; a staff holder must still be a
+    third-party rider with an approved, in-date Ghana Card, which names.matching_name checks), the destination is not
     removed and is past its cooling period, and its name still matches the holder's verified name (which includes
     business KYC). If any fails the money goes back (CANCELLED) and None is returned. Raises RuntimeError inside an
     open transaction (durable)."""
@@ -94,8 +106,9 @@ def claim(withdrawal_pk, now=None):
         destination = PayoutDestination.objects.select_for_update().get(pk=withdrawal.destination_id)
         # A held withdrawal may be sent minutes later by the poll: everything request() checked is checked again.
         if (
-            holder is None or holder.is_suspended or destination.removed_at is not None or destination.usable_from > now
-            or names.matching_name(destination.account_name, holder) is None
+            holder is None or holder.is_suspended or not getattr(holder, "is_active", True)
+            or destination.removed_at is not None or destination.usable_from > now
+            or names.matching_name(destination.account_name, holder) is None  # a rider no longer third-party has no name
         ):
             close(withdrawal, Withdrawal.CANCELLED, "Stopped before it was sent: the account or the destination changed.", now)
             return None
@@ -169,14 +182,14 @@ def apply_result(reference, status, *, provider_reference="", amount_pesewas=Non
                     detail=(f"The provider reported withdrawal {withdrawal.reference} paid, but it was already "
                             f"{withdrawal.get_status_display().lower()} and GH₵ {money(withdrawal.amount_pesewas)} went back to the "
                             "holder. Nothing was posted. Check with the provider."),
-                    dedupe_key=f"withdrawal-late-paid-{withdrawal.reference}", related_business_owner=_case_owner(withdrawal),
+                    dedupe_key=f"withdrawal-late-paid-{withdrawal.reference}", related_business_owner=_case_owner(withdrawal), staff_subject=_case_staff(withdrawal),
                 )
             elif status == providers.FAILED and withdrawal.status == Withdrawal.SUCCEEDED:
                 fraud.raise_flag(
                     FraudFlag.OTHER, title=f"Withdrawal {withdrawal.reference} reported failed after it was paid",
                     detail=(f"The provider reported withdrawal {withdrawal.reference} failed, but it was already paid and "
                             "posted. Nothing was returned to the holder. Check with the provider whether the money came back."),
-                    dedupe_key=f"withdrawal-late-failed-{withdrawal.reference}", related_business_owner=_case_owner(withdrawal),
+                    dedupe_key=f"withdrawal-late-failed-{withdrawal.reference}", related_business_owner=_case_owner(withdrawal), staff_subject=_case_staff(withdrawal),
                 )
             return withdrawal
         if withdrawal.status == Withdrawal.PENDING:
@@ -185,7 +198,7 @@ def apply_result(reference, status, *, provider_reference="", amount_pesewas=Non
                 FraudFlag.OTHER, title=f"Withdrawal {withdrawal.reference} reported before it was sent",
                 detail=(f"A {status} report arrived for withdrawal {withdrawal.reference}, which was never sent to the "
                         "provider. Nothing was posted. Check with the provider."),
-                dedupe_key=f"withdrawal-unsent-report-{withdrawal.reference}", related_business_owner=_case_owner(withdrawal),
+                dedupe_key=f"withdrawal-unsent-report-{withdrawal.reference}", related_business_owner=_case_owner(withdrawal), staff_subject=_case_staff(withdrawal),
             )
             return withdrawal
         if FraudFlag.objects.filter(dedupe_key=f"withdrawal-amount-{withdrawal.reference}", status=FraudFlag.OPEN).exists():
@@ -194,7 +207,7 @@ def apply_result(reference, status, *, provider_reference="", amount_pesewas=Non
             fraud.raise_flag(
                 FraudFlag.OTHER, title=f"Withdrawal {withdrawal.reference}: a paid report without an amount",
                 detail=f"A paid report for GH₵ {money(withdrawal.net_pesewas)} arrived without the amount it paid. Not applied.",
-                dedupe_key=f"withdrawal-amount-{withdrawal.reference}", related_business_owner=_case_owner(withdrawal),
+                dedupe_key=f"withdrawal-amount-{withdrawal.reference}", related_business_owner=_case_owner(withdrawal), staff_subject=_case_staff(withdrawal),
             )
             return withdrawal
         if status == providers.SUCCEEDED:
@@ -207,7 +220,7 @@ def apply_result(reference, status, *, provider_reference="", amount_pesewas=Non
                 FraudFlag.OTHER, title=f"Withdrawal {withdrawal.reference}: the provider reported a different amount",
                 detail=(f"Sent GH₵ {money(withdrawal.net_pesewas)}; the provider's {said} report carried GH₵ {money(amount_pesewas)}"
                         + (" (money may have left although it says failed)" if status == providers.FAILED else "") + ". Not applied."),
-                dedupe_key=f"withdrawal-amount-{withdrawal.reference}", related_business_owner=_case_owner(withdrawal),
+                dedupe_key=f"withdrawal-amount-{withdrawal.reference}", related_business_owner=_case_owner(withdrawal), staff_subject=_case_staff(withdrawal),
             )
             return withdrawal
         if provider_reference and not withdrawal.provider_reference:

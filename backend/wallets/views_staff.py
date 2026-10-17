@@ -1,5 +1,6 @@
 """Staff reads of holders' money (wallets.view: Accountant, Super Admin). Never an account or MoMo number. Answers
-409 ledger_off while the ledger is off. Plan 3b adds withdrawals and the reconciliation runs here."""
+409 ledger_off while the ledger is off. Plan 3b adds withdrawals and the reconciliation runs here; Plan 5 adds
+third-party riders (their accounts are held by their staff account, holder_type "staff")."""
 import logging
 import re
 
@@ -10,7 +11,8 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import BusinessOwner, Customer
+from accounts.models import BusinessOwner, Customer, StaffUser
+from delivery.models import Rider
 from accounts.permissions import HasRolePermission, RequiresSudo
 from activity.services import record
 from fraud.models import FraudFlag
@@ -27,9 +29,30 @@ logger = logging.getLogger(__name__)
 VIEW, MANAGE = "wallets.view", "wallets.manage"
 
 
+def rider_rows(page, ids):
+    """Third-party riders' balance and reserve (accounts held by their staff account), with the rider company."""
+    found = {rider.staff_id: rider for rider in Rider.objects.filter(staff_id__in=ids).select_related("staff")}
+    reserve = {
+        account.owner_id: account.balance
+        for account in Account.objects.filter(
+            kind=Account.RIDER_RESERVE, owner_type=StaffUser._meta.label_lower, owner_id__in=[a.owner_id for a in page],
+        )
+    }
+    rows = []
+    for account in page:
+        rider = found.get(int(account.owner_id))
+        rows.append({
+            "holder_id": int(account.owner_id), "rider_id": rider.pk if rider else None,
+            "name": rider.staff.full_name if rider else "", "company_name": rider.company_name if rider else "",
+            "employment": rider.employment if rider else "", "balance": money(account.balance),
+            "reserve": money(reserve.get(account.owner_id, 0)),
+        })
+    return rows
+
+
 class StaffWalletsView(APIView):
-    """GET staff/wallets/?kind=customer|vendor — customers' wallets, or vendors' Pending and Available (every vendor
-    with a sale has a Pending account), largest first, 20 a page."""
+    """GET staff/wallets/?kind=customer|vendor|rider — customers' wallets, vendors' Pending and Available (every vendor
+    with a sale has a Pending account), or third-party riders' balance and reserve, largest first, 20 a page."""
 
     def get_permissions(self):
         return [HasRolePermission(VIEW)]
@@ -38,10 +61,12 @@ class StaffWalletsView(APIView):
         if not escrow.enabled():
             return ledger_off()
         kind = request.query_params.get("kind") or "customer"
-        if kind not in ("customer", "vendor"):
-            return Response({"kind": "Choose customer or vendor."}, status=status.HTTP_400_BAD_REQUEST)
+        if kind not in ("customer", "vendor", "rider"):
+            return Response({"kind": "Choose customer, vendor or rider."}, status=status.HTTP_400_BAD_REQUEST)
         if kind == "customer":
             accounts = Account.objects.filter(kind=Account.CUSTOMER_WALLET, owner_type=Customer._meta.label_lower)
+        elif kind == "rider":
+            accounts = Account.objects.filter(kind=Account.RIDER_BALANCE, owner_type=StaffUser._meta.label_lower)
         else:
             accounts = Account.objects.filter(kind=Account.VENDOR_PENDING, owner_type=BusinessOwner._meta.label_lower)
         paginator = Pagination()
@@ -50,6 +75,8 @@ class StaffWalletsView(APIView):
         if kind == "customer":
             names = dict(Customer.objects.filter(pk__in=ids).values_list("pk", "full_name"))
             rows = [{"holder_id": int(a.owner_id), "name": names.get(int(a.owner_id), ""), "balance": money(a.balance)} for a in page]
+        elif kind == "rider":
+            rows = rider_rows(page, ids)
         else:
             owners = {owner.pk: owner for owner in BusinessOwner.objects.filter(pk__in=ids).select_related("profile")}
             available = {
@@ -77,7 +104,9 @@ def holders_of(rows):
     """{(holder_type, holder_id): name} for these withdrawals, in two queries."""
     customer_ids = {w.holder_id for w in rows if w.holder_type == "customer"}
     owner_ids = {w.holder_id for w in rows if w.holder_type == "business_owner"}
+    staff_ids = {w.holder_id for w in rows if w.holder_type == "staff"}  # third-party riders
     names = {("customer", pk): name for pk, name in Customer.objects.filter(pk__in=customer_ids).values_list("pk", "full_name")}
+    names.update({("staff", pk): name for pk, name in StaffUser.objects.filter(pk__in=staff_ids).values_list("pk", "full_name")})
     for owner in BusinessOwner.objects.filter(pk__in=owner_ids).select_related("profile"):
         names[("business_owner", owner.pk)] = owner.display_name
     return names
@@ -112,6 +141,18 @@ class StaffWithdrawalsView(APIView):
         return paginator.get_paginated_response([staff_row(withdrawal, holders) for withdrawal in page])
 
 
+def own_withdrawal(user, withdrawal):
+    """A staff member who is also a third-party rider holder never settles their own withdrawal (self-dealing)."""
+    return withdrawal.holder_type == "staff" and withdrawal.holder_id == user.pk
+
+
+def own_withdrawal_response():
+    return Response(
+        {"detail": "You cannot fail your own withdrawal. Ask another member of staff.", "code": "own_withdrawal"},
+        status=status.HTTP_403_FORBIDDEN,
+    )
+
+
 def not_stuck_response():
     return Response(
         {"detail": "Only a withdrawal stuck (sent 30+ minutes ago with no answer, or held and never sent for 10+ minutes) "
@@ -138,7 +179,8 @@ def amount_case_open(withdrawal):
 
 
 class StaffWithdrawalFailView(APIView):
-    """POST staff/withdrawals/<id>/fail/ {reason} — fail a withdrawal stuck with the provider (sent 30+ minutes ago with
+    """POST staff/withdrawals/<id>/fail/ {reason} — never your own withdrawal (a third-party rider holding wallets.manage:
+    403 own_withdrawal, checked before the provider is asked and again under the row lock). Fail a withdrawal stuck with the provider (sent 30+ minutes ago with
     no answer, or held and never sent for 10+ minutes) and return the money. wallets.manage and the password again.
     The provider is asked first, outside any transaction: if it has answered (paid or failed), that answer settles it
     instead (409 provider_answered), so money it did pay never comes back to be withdrawn twice. A withdrawal with an
@@ -167,6 +209,8 @@ class StaffWithdrawalFailView(APIView):
         if not reason:
             return Response({"reason": "Say why you are failing it."}, status=status.HTTP_400_BAD_REQUEST)
         found = get_object_or_404(Withdrawal, pk=pk)
+        if own_withdrawal(request.user, found):  # before any provider call
+            return own_withdrawal_response()
         if not payouts.stuck(found):  # first, so a not-stuck one costs no provider call and changes nothing
             return not_stuck_response()
         if found.status == Withdrawal.PROCESSING:
@@ -213,6 +257,8 @@ class StaffWithdrawalFailView(APIView):
         )
         with transaction.atomic():
             withdrawal = get_object_or_404(Withdrawal.objects.select_for_update(), pk=pk)
+            if own_withdrawal(request.user, withdrawal):
+                return own_withdrawal_response()
             if not payouts.stuck(withdrawal):
                 return not_stuck_response()
             if amount_case_open(withdrawal):  # inside the lock: a case the poll opened a moment ago is not missed

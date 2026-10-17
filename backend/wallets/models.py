@@ -11,7 +11,7 @@ class PayoutDestination(models.Model):
     MOMO, BANK = "momo", "bank"
     RAIL_CHOICES = [(MOMO, "Mobile money"), (BANK, "Bank account")]
 
-    holder_type = models.CharField(max_length=20)            # "customer" or "business_owner" (otp.identity.ref)
+    holder_type = models.CharField(max_length=20)            # "customer", "business_owner" or "staff" (a third-party rider; otp.identity.ref)
     holder_id = models.PositiveBigIntegerField()
     rail = models.CharField(max_length=4, choices=RAIL_CHOICES)
     institution = models.CharField(max_length=60)            # the MoMo network or the bank
@@ -60,9 +60,9 @@ class Withdrawal(models.Model):
     COUNTED = (PENDING, PROCESSING, SUCCEEDED)  # what counts against the daily limit
 
     reference = models.CharField(max_length=20, unique=True, default=_withdrawal_reference)
-    holder_type = models.CharField(max_length=20)            # "customer" or "business_owner" (otp.identity.ref)
+    holder_type = models.CharField(max_length=20)            # "customer", "business_owner" or "staff" (a third-party rider; otp.identity.ref)
     holder_id = models.PositiveBigIntegerField()
-    source_kind = models.CharField(max_length=32)            # the ledger account it came from: customer_wallet or vendor_available
+    source_kind = models.CharField(max_length=32)            # the ledger account it came from: customer_wallet, vendor_available or rider_balance
     destination = models.ForeignKey(PayoutDestination, on_delete=models.PROTECT, related_name="withdrawals")
     request_id = models.CharField(max_length=64)             # the client's idempotency key, unique per holder
     amount_pesewas = models.BigIntegerField()

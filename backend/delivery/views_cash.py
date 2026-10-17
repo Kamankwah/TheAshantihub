@@ -58,7 +58,7 @@ class CashView(APIView):
             return Response({"detail": "Enter an amount from 0 to 100000.", "field": "counted"}, status=400)
         note = str(request.data.get("note", "")).strip()[:300]
         with transaction.atomic():
-            rider = Rider.objects.select_for_update().select_related("staff").get(pk=rider.pk)
+            rider = Rider.objects.select_for_update(of=("self",)).select_related("staff").get(pk=rider.pk)
             expected = cash.held(rider.staff_id, rider.pk)
             if expected == 0:
                 return Response({"detail": "This rider holds no cash from deliveries, so there is nothing to hand in.", "code": "nothing_owed"}, status=409)
