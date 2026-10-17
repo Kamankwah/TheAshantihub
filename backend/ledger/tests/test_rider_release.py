@@ -2,11 +2,13 @@
 fee AshantiHub took for the order, 90% to their balance and 10% held in the reserve, at the rate in force when the order
 was paid. Review Focus 2 and 4."""
 import threading
+import time
 from datetime import timedelta
 from decimal import Decimal
 
-from django.db import connection
+from django.db import connection, transaction
 from django.test import SimpleTestCase, TransactionTestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -74,6 +76,7 @@ class RiderReleaseTests(RefundBase):
         rider_helpers.delivered_by(failed, swift, status=DeliveryAssignment.FAILED)
         self.release(failed)
         self.assertFalse(RiderEarning.objects.exists())
+        self.assertFalse(Account.objects.filter(kind__in=[Account.RIDER_BALANCE, Account.RIDER_RESERVE]).exists())   # no wallet opened
         self.assertEqual(self.balance(Account.PLATFORM_DELIVERY_INCOME), 1000)
 
     def test_review_focus_the_rate_is_the_one_in_force_when_the_order_was_paid(self):
@@ -124,6 +127,49 @@ class RiderReleaseTests(RefundBase):
         self.assertEqual(self.balance(Account.RIDER_BALANCE, swift.staff), 900)                 # one order, one fee, never reduced
         self.assertEqual(self.balance(Account.RIDER_RESERVE, swift.staff), 100)
 
+    def test_a_fee_the_customer_paid_and_a_promo_fee_on_the_same_order_are_one_gross(self):
+        swift = rider_helpers.rider()
+        order = self.delivered_order(swift, delivery="10.00", price="120.00")
+        rider_helpers.waived(order, self.kofi)                                                  # 15.00 more, charged to the business
+        self.release(order)
+        earning = RiderEarning.objects.get(order=order)
+        self.assertEqual((earning.gross_pesewas, earning.reserve_pesewas, earning.net_pesewas), (2500, 250, 2250))
+        self.assertEqual(self.balance(Account.PLATFORM_DELIVERY_INCOME), 0)
+
+    def test_an_order_paid_before_the_ledger_was_on_pays_no_rider(self):
+        swift = rider_helpers.rider()
+        order = self.order([(self.listing(self.kofi, "60.00"), 1)], delivery="10.00")           # no order-pay journal
+        rider_helpers.delivered_by(order, swift)
+        FulfilmentCheck.objects.create(order=order, outcome=FulfilmentCheck.MATCHES)
+        self.assertIsNone(escrow.release_verified(order))
+        self.assertFalse(RiderEarning.objects.exists())
+        self.assertFalse(Account.objects.filter(kind__in=[Account.RIDER_BALANCE, Account.RIDER_RESERVE]).exists())
+
+    def test_a_delivery_with_no_rider_row_or_no_rider_at_all_pays_no_one(self):
+        ghost = rider_helpers.rider("ghost@example.com", name="Kwame Ghost", phone="+233244000009")
+        order = self.delivered_order(ghost)
+        Rider.objects.filter(pk=ghost.pk).delete()                                              # dispatch staff, no Rider row
+        self.assertIsNone(riders.third_party_rider(order))
+        none = self.delivered_order(rider_helpers.rider())
+        DeliveryAssignment.objects.filter(order=none).update(dispatch=None)                    # nobody recorded
+        self.assertIsNone(riders.third_party_rider(none))
+        self.assertIsNone(riders.rider_for_release(none))
+        self.release(order)
+        self.release(none)
+        self.assertFalse(RiderEarning.objects.exists())
+        self.assertEqual(self.balance(Account.PLATFORM_DELIVERY_INCOME), 2000)
+
+    def test_an_ashantihub_riders_release_does_not_lock_the_rider_row(self):
+        own = rider_helpers.rider(third_party=False)
+        order = self.delivered_order(own)
+        with CaptureQueriesContext(connection) as queries, transaction.atomic():
+            self.assertIsNone(riders.rider_for_release(order))
+        self.assertFalse([q for q in queries.captured_queries if "FOR UPDATE" in q["sql"] and "delivery_rider" in q["sql"]])
+        third = self.delivered_order(rider_helpers.rider("rider3@example.com", name="Yaw Mensah", phone="+233244000004"))
+        with CaptureQueriesContext(connection) as queries, transaction.atomic():
+            self.assertIsNotNone(riders.rider_for_release(third))
+        self.assertTrue([q for q in queries.captured_queries if "FOR UPDATE" in q["sql"] and "delivery_rider" in q["sql"]])
+
     def test_releasing_twice_pays_the_rider_once(self):
         swift = rider_helpers.rider()
         order = self.delivered_order(swift)
@@ -153,65 +199,136 @@ class RiderReleaseTests(RefundBase):
 @override_settings(LEDGER_ENABLED=True)
 class ConcurrentReleaseSwitchBackTests(TransactionTestCase):
     """The reason release takes the rider row lock (R3): a release and the switch back to AshantiHub's own, at the same
-    moment, never leave an AshantiHub rider holding a wallet's money."""
+    moment, never leave an AshantiHub rider holding a wallet's money. Both tests are deterministic: one side holds a lock
+    while the other is shown waiting, so removing the lock from either side fails them (checked by removing it)."""
 
     serialized_rollback = True
 
-    def test_review_focus_a_release_and_a_switch_back_never_close_a_paid_wallet(self):
+    def setUp(self):
         customer = Customer.objects.create(full_name="Ama", phone="+233200990001", password_hash="x")
         owner = BusinessOwner.objects.create(full_name="Kofi", login_phone="+233207990001", password_hash="x")
         listing = Listing.objects.create(
             business_owner=owner, category=Category.objects.get(slug="shops"), zone=Zone.objects.get(name="Manhyia"),
             name="Kente", description="D.", contact_phone=owner.login_phone, price_amount=Decimal("60.00"), status=Listing.PUBLISHED,
         )
-        order = Order.objects.create(customer=customer, status=Order.PAID, total_amount=Decimal("70.00"), delivery_fee=Decimal("10.00"))
-        OrderItem.objects.create(order=order, listing=listing, quantity=1, unit_price=Decimal("60.00"), line_total=Decimal("60.00"))
-        swift = rider_helpers.rider()
-        support, super_admin = make_staff("support", "support@example.com"), make_staff("super_admin", "sa@example.com")
+        self.order = Order.objects.create(customer=customer, status=Order.PAID, total_amount=Decimal("70.00"), delivery_fee=Decimal("10.00"))
+        OrderItem.objects.create(order=self.order, listing=listing, quantity=1, unit_price=Decimal("60.00"), line_total=Decimal("60.00"))
+        self.swift = rider_helpers.rider()
+        self.support, self.super_admin = make_staff("support", "support@example.com"), make_staff("super_admin", "sa@example.com")
         manager = make_staff("delivery_manager", "dm@example.com")
-        # The manager stages the switch back while nothing is open yet (no delivery exists), so it can be proposed. Then the
-        # order is paid and delivered, and the Super Admin's approval races Support's call.
-        request = approvals.submit(
+        # The manager stages the switch back while nothing is open yet (no delivery exists), so it can be proposed.
+        self.request = approvals.submit(
             manager, "delivery.rider_employment", title="Back to AshantiHub",
-            payload={"rider_id": swift.pk, "employment": Rider.ASHANTIHUB, "company_name": ""}, target=swift,
+            payload={"rider_id": self.swift.pk, "employment": Rider.ASHANTIHUB, "company_name": ""}, target=self.swift,
         )
-        escrow.record_order_payment(order)
-        rider_helpers.delivered_by(order, swift)
-        errors, barrier = [], threading.Barrier(2)
+        escrow.record_order_payment(self.order)
+        rider_helpers.delivered_by(self.order, self.swift)
 
-        def release():
-            try:
-                barrier.wait()
-                verification.record(order, support, FulfilmentCheck.MATCHES)
-            except Exception as exc:                                     # noqa: BLE001 - collected and asserted below
-                errors.append(exc)
-            finally:
-                connection.close()
+    def run_threads(self, *targets):
+        errors = []
 
-        def switch_back():
-            try:
-                barrier.wait()
-                approvals.approve(request.pk, super_admin)
-            except approvals.ApprovalError as exc:
-                errors.append(exc)
-            finally:
-                connection.close()
+        def wrap(target):
+            def run():
+                try:
+                    target()
+                except Exception as exc:                                  # noqa: BLE001 - collected and asserted by the test
+                    errors.append(exc)
+                finally:
+                    connection.close()
+            return run
 
-        threads = [threading.Thread(target=release), threading.Thread(target=switch_back)]
+        threads = [threading.Thread(target=wrap(target)) for target in targets]
         for thread in threads:
             thread.start()
+        return threads, errors
+
+    def finish(self, threads):
         for thread in threads:
             thread.join(timeout=15)
             self.assertFalse(thread.is_alive(), "a racing thread hung")
-        self.assertTrue(all(isinstance(error, approvals.ApprovalError) for error in errors), errors)   # only a refusal, never a crash
-        swift.refresh_from_db()
-        balance = posting.balance_of(Account.RIDER_BALANCE, swift.staff)
-        if swift.employment == Rider.THIRD_PARTY:                        # the switch back was refused: the rider was paid
-            self.assertEqual((len(errors), balance, posting.balance_of(Account.RIDER_RESERVE, swift.staff)), (1, 900, 100))
-        else:                                                            # it applied first: AshantiHub's own, so no wallet, fee kept
-            self.assertEqual((balance, RiderEarning.objects.count()), (0, 0))
-            self.assertEqual(posting.balance_of(Account.PLATFORM_DELIVERY_INCOME), 1000)
-        self.assertFalse(swift.employment == Rider.ASHANTIHUB and balance != 0)
+
+    @staticmethod
+    def a_session_is_waiting_for_the_rider_row(timeout=6.0):
+        """Poll Postgres until a session waits on a row lock *in its SELECT ... FOR UPDATE on the rider* (the release, held
+        back at the start by riders.third_party_rider(lock=True)), or `timeout`. A session waiting in its COMMIT does not
+        count: that is only the deferred foreign key from the earning to the rider, which waits for a FOR UPDATE holder
+        anyway but only after the release has already taken its account locks (the deadlock the early lock prevents)."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT pg_stat_clear_snapshot()")          # inside an open transaction the view would stay stale
+                cursor.execute("SELECT query FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'")
+                # pg_stat_activity cuts long statements, so match the start: a waiting SELECT on the rider, not a waiting COMMIT
+                if any(query.lstrip().upper().startswith("SELECT") and "delivery_rider" in query for (query,) in cursor.fetchall()):
+                    return True
+            time.sleep(0.05)
+        return False
+
+    def assert_paid_and_still_third_party(self):
+        self.swift.refresh_from_db()
+        self.assertEqual(self.swift.employment, Rider.THIRD_PARTY)
+        self.assertEqual(posting.balance_of(Account.RIDER_BALANCE, self.swift.staff), 900)
+        self.assertEqual(posting.balance_of(Account.RIDER_RESERVE, self.swift.staff), 100)
+        self.assertEqual(RiderEarning.objects.filter(order=self.order).count(), 1)
+
+    def test_review_focus_a_release_waits_for_the_rider_row_and_pays_the_rider(self):
+        """Something else holds the rider row (a switch back mid-apply): the release waits, then pays; nothing is paid early."""
+        holding, may_finish = threading.Event(), threading.Event()
+
+        def hold_the_rider_row():
+            with transaction.atomic():
+                Rider.objects.select_for_update(of=("self",)).get(pk=self.swift.pk)
+                holding.set()
+                may_finish.wait(timeout=15)
+
+        def release():
+            holding.wait(timeout=15)
+            verification.record(self.order, self.support, FulfilmentCheck.MATCHES)
+
+        (holder, releaser), errors = self.run_threads(hold_the_rider_row, release)
+        holding.wait(timeout=15)
+        self.assertTrue(self.a_session_is_waiting_for_the_rider_row(), "the release did not wait for the rider row up front")
+        self.assertTrue(releaser.is_alive())
+        self.assertFalse(RiderEarning.objects.exists())
+        may_finish.set()
+        self.finish([holder, releaser])
+        self.assertEqual(errors, [])
+        self.assert_paid_and_still_third_party()
+
+    def test_review_focus_a_switch_back_that_has_read_the_balance_cannot_close_a_wallet_a_release_is_paying(self):
+        """employment.apply holds the rider row and has read the (still empty) balance when the release arrives: the release
+        must wait for the apply to end, so the apply's decision and the money agree."""
+        from unittest import mock
+
+        from delivery import employment
+
+        real_unreleased = employment.unreleased_deliveries
+        paused, waited = threading.Event(), []
+
+        def pause_after_the_balance_read(rider):
+            paused.set()
+            # The release arrives now. With the row lock it waits here (a session waits on a lock: carry on); without it,
+            # it is paid during this pause and the wait times out.
+            waited.append(self.a_session_is_waiting_for_the_rider_row())
+            return real_unreleased(rider)
+
+        def switch_back():
+            with mock.patch.object(employment, "unreleased_deliveries", pause_after_the_balance_read):
+                try:
+                    with transaction.atomic():
+                        employment.apply(self.request)
+                except approvals.ApprovalError:
+                    pass                    # refused: the delivery's money is not released yet (the right answer)
+
+        def release():
+            paused.wait(timeout=15)
+            verification.record(self.order, self.support, FulfilmentCheck.MATCHES)
+
+        threads, errors = self.run_threads(switch_back, release)
+        self.finish(threads)
+        self.assertEqual(errors, [])
+        self.assertEqual(waited, [True], "the release did not wait for the rider row while the switch back held it")
+        self.assert_paid_and_still_third_party()
 
 
 class RiderReleaseLedgerOffTests(RefundBase):

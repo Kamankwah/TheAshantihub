@@ -178,7 +178,7 @@ def release_verified(order, now=None):
             *riders.release_accounts(rider),
         )
 
-        # The owner's order: AshantiHub first (fee, delivery), then each vendor, then any third-party rider (Stage 5).
+        # The owner's order: AshantiHub first (fee, delivery), then each vendor; a third-party rider is paid last, after the promo charge (riders.credit_delivery).
         debits, credits = [], []
         for vendor_id in sorted(by_vendor):
             entry = by_vendor[vendor_id]

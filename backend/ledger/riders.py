@@ -56,21 +56,24 @@ def third_party_rider(order, *, lock=False):
         or assignment.dispatch_id is None
     ):
         return None
-    rows = Rider.objects.select_related("staff").filter(staff_id=assignment.dispatch_id)
-    if lock:
-        rows = rows.select_for_update(of=("self",))
-    rider = rows.first()
-    if rider is None:
-        return None
+    rider = Rider.objects.select_related("staff").filter(staff_id=assignment.dispatch_id).first()
     # History reads the employment periods (delivery.RiderEmploymentPeriod), never the current flag, so a later switch
     # back or forward cannot re-label this delivery.
-    return rider if employment.third_party_at(rider, assignment.delivered_at) else None
+    if rider is None or not employment.third_party_at(rider, assignment.delivered_at):
+        return None
+    if lock:
+        # Only a third-party rider's row is locked, so an AshantiHub rider's release never queues behind a fleet edit. The
+        # period that covers the delivery can only be closed later than the delivery, so it still covers it under the lock.
+        rider = Rider.objects.select_related("staff").select_for_update(of=("self",)).get(pk=rider.pk)
+    return rider
 
 
 def rider_for_release(order):
     """The third-party rider to pay at this order's release, their row locked, or None. Only when there is something to
     pay them: a delivery fee still held in the order's Delivery payable, or a free-delivery promo charge the business owes
-    (so no empty rider account is ever opened). Call inside the release's transaction, after the order row and its fee
+    (so an order with neither opens no rider account). One exception: a release that then finds nothing at all to post
+    (an owed promo charge on an order with no item and no fee left to release) returns before posting, having opened the
+    rider's two accounts empty; they hold nothing and nothing reads them as money. Call inside the release's transaction, after the order row and its fee
     snapshots (the caller holds the order row, so the payable cannot change meanwhile)."""
     from marketing.models_waivers import WaivedFeeCharge
 

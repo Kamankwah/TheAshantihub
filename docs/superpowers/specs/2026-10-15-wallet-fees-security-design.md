@@ -570,3 +570,6 @@ Found while writing `docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md` (Â
 - **S5-10 Payroll overlap.** Payroll leaves out only the in-period deliveries whose order has an `order-pay-<id>` journal
   (what a release can pay), so with the ledger off, or for orders paid before it was switched on, payroll still pays them.
   Switching back is also refused while the rider has a delivery in progress.
+- **S5-11 Review notes (Task 2).** Until Plan 5 Task 4, a whole refund after release takes the delivery fee from shared
+  platform delivery income, not from the rider who was paid it. A rider moved off the Dispatch role has a wallet nobody can
+  open until Task 6 decides who pays it out. Rider earnings never touch provider clearing (R13).

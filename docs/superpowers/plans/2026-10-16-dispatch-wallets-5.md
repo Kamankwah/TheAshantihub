@@ -1973,6 +1973,8 @@ EOF
 
 ### Task 4: Refunds — a whole refund after release takes the delivery back from the rider
 
+> **Note (Task 2 review).** Until this task lands, a whole refund after release takes the delivery fee back from shared platform delivery income, not from the rider who was paid it (Task 2 already moved the fee to the rider). Do not turn the ledger on for riders before this task is merged.
+
 **Files:**
 - Modify: `backend/ledger/riders.py` (`reversal_key`, `earning_to_reverse`, `reversal_accounts`, `reverse_earning`), `backend/ledger/refunds.py` (imports, module docstring, `_free_promo`, `_post`)
 - Create: `backend/ledger/tests/test_rider_refunds.py`
@@ -2884,6 +2886,8 @@ EOF
 ---
 
 ### Task 6: The rider's own wallet API
+
+> **Note (Task 2 review).** A rider moved off the Dispatch role keeps a wallet that nobody can open (the wallet API resolves the rider through `wallet_rider`, which requires the dispatch role). Decide here whether such a wallet is paid out by staff or the role change is refused while money is open.
 
 **Files:**
 - Modify: `backend/wallets/views_payouts.py` (`SavedHook`, the four holder views, `_tell_holder`, imports, docstring), `backend/delivery/urls.py` (rider wallet routes), `backend/delivery/views_rider.py` (`MeView`, imports), `backend/delivery/views_rules.py` (`RiderEarnedView`, `RiderEarningsLinesView`: payroll leaves out third-party deliveries), `backend/delivery/views_rider_money.py` (`EarningsView`)

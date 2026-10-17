@@ -53,18 +53,20 @@ def waived(order, owner, amount="15.00"):
 
 def earning(rider_row, *, gross, at, bp=1000):
     """A delivery already paid to the rider as a release leaves it (journal order-rider-<order>, the earning row), on an
-    order with no money of its own: for the end-of-day, wallet and staff tests."""
+    order with no money of its own: for the end-of-day, wallet and staff tests. It debits platform delivery income, as the
+    real release does; rider earnings never touch provider clearing (R13), so reconciliation tests are not polluted."""
     customer = Customer.objects.get_or_create(phone="+233200770001", defaults={"full_name": "Esi Mensah", "password_hash": "x"})[0]
     order = Order.objects.create(customer=customer, status=Order.PAID, total_amount=Decimal("0.00"), delivery_method=Order.DOOR_TO_DOOR)
     reserve, net = riders.split(gross, bp)
     balance, held = riders.accounts_of(rider_row)
-    lines = [posting.debit(posting.account_for(Account.PROVIDER_CLEARING), gross)]
+    lines = [posting.debit(posting.account_for(Account.PLATFORM_DELIVERY_INCOME), gross)]
     if net:
         lines.append(posting.credit(balance, net))
     if reserve:
         lines.append(posting.credit(held, reserve))
     journal = posting.post(
         key=riders.earning_key(order), kind="rider_earning", lines=lines, reference_type="orders.order", reference_id=str(order.pk),
+        allow_negative=(Account.PLATFORM_DELIVERY_INCOME,),     # the fixture has no release behind it to have filled the account
     )
     return RiderEarning.objects.create(
         order=order, rider=rider_row, gross_pesewas=gross, commission_bp=bp, reserve_pesewas=reserve, net_pesewas=net,
