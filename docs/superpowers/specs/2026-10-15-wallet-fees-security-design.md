@@ -1,10 +1,11 @@
 # Wallets, Escrow, Platform Fees, Stock Offers and OTP Security — Design
 
-**Status:** Approved 2026-10-15. Stage 1 plan: docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md. Stage 2 (OTP, backend) plan: docs/superpowers/plans/2026-10-16-otp-security.md. Stage 3 plans: docs/superpowers/plans/2026-10-16-wallets-payments-3a.md (wallet payments and refunds) and docs/superpowers/plans/2026-10-16-withdrawals-3b.md (payout destinations, withdrawals, reconciliation). Plan 1b (services, events and stays): docs/superpowers/plans/2026-10-16-ledger-services-events-stays-1b.md.
+**Status:** Approved 2026-10-15. Stage 1 plan: docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md. Stage 2 (OTP, backend) plan: docs/superpowers/plans/2026-10-16-otp-security.md. Stage 3 plans: docs/superpowers/plans/2026-10-16-wallets-payments-3a.md (wallet payments and refunds) and docs/superpowers/plans/2026-10-16-withdrawals-3b.md (payout destinations, withdrawals, reconciliation). Plan 1b (services, events and stays): docs/superpowers/plans/2026-10-16-ledger-services-events-stays-1b.md. Stage 4 (vendor dashboard and texts, backend) plan: docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md.
 **Scope:** One system, built in the order given in §11. Stage 1 (ledger) with Plan 1b (services, events and stays),
-Stage 2 (OTP, backend) and Stage 3 (wallets, payments, refunds, withdrawals and reconciliation, backend) are implemented
-behind switches that default off (branches feature/ledger-stage1, feature/ledger-services-1b, feature/otp-security and
-feature/wallets; see section 13); later stages are specs only.
+Stage 2 (OTP, backend), Stage 3 (wallets, payments, refunds, withdrawals and reconciliation, backend) and Stage 4 backend
+(the vendor money API and business texts, Plan 4) are implemented behind switches that default off (branches
+feature/ledger-stage1, feature/ledger-services-1b, feature/otp-security, feature/wallets and feature/vendor-side-4; see
+section 13); later stages are specs only.
 **Basis:** The owner's brief, plus the decisions in §1, reconciled with the existing code in §13.
 
 ## 1. Decisions (settled in brainstorming)
@@ -650,3 +651,82 @@ Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-st
 - (lxxvii) **`ServicesPanel.jsx` (about lines 77-78) sends the raw number input** as the quote price. The always-on price
   check (gate (lxvii)) answers 400 `price`, which the panel shows as a generic error: the frontend must surface it
   before this ships to production.
+
+### Stage 4 (vendor dashboard and texts, backend) reconciliation (2026-10-16)
+
+Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§0 there; its V1–V16):
+
+- **V1 Sections.** The vendor dashboard and texts are §6; §9 contributes its SMS-spend alert.
+- **V2 Where it lives.** `wallets/vendor.py` (read model), `wallets/vendor_texts.py` (text outbox), `/api/wallet/vendor/`;
+  `wallets.VendorText` and `wallets.VendorPreference`. Hooks: `orders.alerts` (paid) and `escrow.release_verified` (release).
+- **V3 Figures.** Sale rows from the business's own fee snapshots and owed promo; the daily summary from journal lines on
+  its own Pending and Available; balances from the accounts. Never today's fee rules.
+- **V4 Status.** `awaiting_call` (labelled waiting for delivery or collection, waiting for Support's call, or on hold while
+  a dispute is open or a delivery-case refund waits for approval), `released`, `refunded`; the export says Pending /
+  Available / Refunded and Withdrawn / in progress / Returned for withdrawals.
+- **V5-V6 Privacy and who sees fees.** No customer name, phone or address in any vendor row, summary, export or text; the
+  export has no free text. Fees are shown to business owners only (a customer, whatever their id, and staff get 403).
+- **V7-V9 Texts.** One per paid order and business, per release and business, per digest day; queued inside the money
+  transaction (never raises), sent after commit through `otp.senders`, leased, tried at most 5 times (retries after 5 min,
+  15 min, 1 h, 4 h), `no_phone` when the login phone is not a confirmed Ghana mobile (`otp.VerifiedContact`). Never an
+  `OtpEvent` (the code send limits count those); counted by the `otp.spend` alert, which now watches all SMS spend and
+  gives the code count and the business-text count separately. GSM-7 plain text with "GHS", at most 306 characters. No
+  throttle or quiet hours.
+- **V10 In-app copy.** The paid order's "New order" notice carries the fee and amount due; release and digest copies are
+  `vendor_money` notices. Kept when a text fails.
+- **V11 Digest.** Opt-in per business, 07:00 Accra for the day before, only when money moved.
+- **V12, V15 Not built.** No low-balance, negative-Available, refund or withdrawal text (the spec names none); no staff
+  outbox screen; Plan 1b's booking sales are in the balances and the fee cap but not in the sale rows, statement, daily
+  columns or texts (gate (lxxxiii)).
+- **V13 Fee transparency.** Approved tiers in force and the next approved change with its start (never a waiting
+  proposal), `charged` true for products, services and events (Plan 1b charges booking sales), the fee base explained,
+  the cap used and left (booking fees included, `fees.charged_to_date`), a server quote.
+- **V14 Export.** A synchronous CSV of sales and withdrawals, at most 366 days, no free text.
+- **V16 Ledger off.** Every vendor endpoint answers `409 ledger_off`; nothing is texted; the digest job is a no-op.
+
+### Before LEDGER_ENABLED is turned on — Stage 4 additions
+
+- (lxxviii) **Business texts need a real SMS provider.** They go through `otp.senders` (`OTP_SMS_PROVIDER`): with
+  `simulated` nothing is sent and the texts screen says "Not sent: texts are simulated"; the Hubtel SMS client is
+  unverified (the OTP gate items apply).
+- (lxxix) **Text cost and the spend alert.** Every paid order texts each business in it, and every release texts it
+  again (two texts per business per order, plus opted-in digests). The daily SMS-spend alert (`otp_sms_daily_alert`,
+  default 500) now counts these with the code texts; set it from the expected order volume. Nothing is ever blocked. The
+  alert fires once a day: on a day business texts reach the threshold first, a later surge of code requests raises no second
+  alert. Before switch-on, decide a separate code-only threshold (or a second alert) for §9's abuse signal. A two-part text
+  (a promo, or a release with a promo, up to 306 characters) counts as one text in the alert; count parts if cost matters.
+- (lxxx) **Sender ID and content.** Hubtel needs an Approved Sender ID; confirm whether transactional texts need
+  template approval with the networks.
+- (lxxxi) **Owner question: texts on refunds, a negative Available, withdrawals, or a low balance.** The spec names none,
+  so none is sent (3b's in-app withdrawal notices stay).
+- (lxxxii) **Businesses whose login phone is not a confirmed Ghana mobile get no texts** (`no_phone`, in-app copy kept, the
+  texts screen says why). A phone is confirmed when a code sent to it was accepted (`otp.VerifiedContact`). This is stricter than
+  today's lock notices, which text every contact on the account (the open must-fix above: lock notices should be
+  VerifiedContact-only too); registration neither normalises nor verifies phones, so a business that never signed in with a
+  code gets none. There is no staff list of them yet; Support should check before switch-on.
+- (lxxxiii) **The vendor money screens do not show booking sales yet: fix before the ledger is on.** Plan 1b records
+  service, stay and ticket sales (`ledger.BookingSale`), so from the day the ledger is on a booking's money sits in the
+  business's Pending and then Available, and its fee counts toward the lifetime cap (`fees.charged_to_date`), and the fee
+  page marks services and events `charged`. But the vendor sale rows, the overview's `awaiting_call` count, the
+  statement export and the paid / release texts come from `OrderFeeSnapshot` only, and the `booking_payment`,
+  `booking_release` and `booking_refund` journal lines land in the daily summary's `other` column. So Pending and
+  Available include money the business cannot find in any row, and a booking sale is never texted. A follow-up (Plan 4F
+  or a Plan 4b) must add `BookingSale` as a second row source (`kind: "booking"`) to `vendor.sale_groups` / `rows` /
+  `statement` and the `awaiting_call` count, the three booking kinds to `vendor.FOLD`, and booking paid / release texts
+  to `vendor_texts`, before `LEDGER_ENABLED` is turned on.
+- (lxxxiv) **Retention.** `VendorText` rows (amounts and order numbers only) are kept indefinitely; decide a purge beside
+  `otp.retention`.
+- (lxxxv) **Frontend (Plan 4F):** the overview with the cap meter, sales with filters, the daily summary, the export,
+  the fee page and the texts settings.
+- (lxxxvi) **At-least-once texts.** A worker that dies between the claim and the provider's answer leaves the text to be
+  tried again after 10 minutes; with a real provider the business may get it twice.
+- (lxxxvii) **Owner question: a suspended business still gets money texts** (its money still moves).
+- (lxxxviii) **Owner question: the digest loop has no cap or time budget.** `queue_digests` visits every opted-in business in
+  one run, one at a time; at a large number of opted-in businesses the 07:00 run could take long. Decide a batch size or
+  a time budget before switch-on.
+- (lxxxix) **A missed 07:00 run is not caught up.** The job digests "yesterday" only; if the worker or beat is down at
+  07:00 that day's digest is never sent (a manual `queue_digests(day)` can send it).
+- (xc) **A dedicated `texts` Celery queue and worker before real SMS goes live.** Business texts share the default
+  queue with other jobs; a slow provider can hold a worker for up to the send budget (75 s) per run. A circuit breaker
+  (3 failures in a row opens it for 120 s, across workers) and the beat entry's 280 s expiry limit the harm, but route
+  `wallets.tasks.send_vendor_text` and `send_due_vendor_texts` to their own queue and worker first.

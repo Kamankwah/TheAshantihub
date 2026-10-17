@@ -122,3 +122,56 @@ class ReconciliationRun(models.Model):
 
     def __str__(self):
         return f"Reconciliation {self.day}: {self.status}"
+
+
+class VendorText(models.Model):
+    """A text to a business about its money (spec §6; vendor plan 4): one per paid order and business, one per release
+    and business, one daily digest. Queued in the transaction that moved the money (so it exists only if that committed),
+    sent after commit through otp.senders and retried by wallets.tasks.send_due_vendor_texts. Holds no customer's name,
+    phone or address and never the business's whole number (`to_hint` is masked). `notification` is the in-app copy,
+    kept even when the text could not be sent."""
+
+    ORDER_PAID, ORDER_RELEASED, DAILY_DIGEST = "order_paid", "order_released", "daily_digest"
+    KIND_CHOICES = [(ORDER_PAID, "Order paid"), (ORDER_RELEASED, "Order released"), (DAILY_DIGEST, "Daily digest")]
+    QUEUED, SENT, FAILED, NO_PHONE = "queued", "sent", "failed", "no_phone"
+    STATUS_CHOICES = [(QUEUED, "Waiting to send"), (SENT, "Sent"), (FAILED, "Could not be sent"), (NO_PHONE, "No number to text")]
+
+    key = models.CharField(max_length=80, unique=True)       # paid-<order>-<owner>, released-<order>-<owner>, digest-<owner>-<day>
+    business_owner = models.ForeignKey("accounts.BusinessOwner", on_delete=models.CASCADE, related_name="vendor_texts")
+    kind = models.CharField(max_length=16, choices=KIND_CHOICES)
+    order = models.ForeignKey("orders.Order", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    day = models.DateField(null=True, blank=True)
+    body = models.CharField(max_length=320)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=QUEUED)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    next_attempt_at = models.DateTimeField()
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    provider = models.CharField(max_length=20, blank=True, default="")
+    provider_ref = models.CharField(max_length=64, blank=True, default="")
+    to_hint = models.CharField(max_length=20, blank=True, default="")   # "020 *** 0001": never the whole number
+    notification = models.ForeignKey("notifications.Notification", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["status", "next_attempt_at"]),
+            models.Index(fields=["business_owner", "created_at"]),
+            models.Index(fields=["status", "sent_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.kind} text to business {self.business_owner_id}: {self.status}"
+
+
+class VendorPreference(models.Model):
+    """What a business chose about its money texts. Order and release texts always go (spec §6: "SMS on every paid
+    order"); the daily digest is optional and off until the business turns it on."""
+
+    business_owner = models.OneToOneField("accounts.BusinessOwner", on_delete=models.CASCADE, related_name="vendor_preference")
+    daily_digest = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Texts for business {self.business_owner_id}: digest {'on' if self.daily_digest else 'off'}"

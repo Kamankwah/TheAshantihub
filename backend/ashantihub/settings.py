@@ -392,6 +392,7 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "accounts.authentication.exception_handler",
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.ScopedRateThrottle"],
     "DEFAULT_THROTTLE_RATES": {
+        "vendor_statement_export": "6/min",
         "customer_register": "5/min",
         "business_owner_register": "5/min",
         "staff_activate": "5/min",
@@ -598,6 +599,15 @@ CELERY_BEAT_SCHEDULE = {
     "wallets-reconcile": {
         "task": "wallets.tasks.reconcile_yesterday",
         "schedule": crontab(hour=2, minute=30),  # the day before; read-only; a no-op while the ledger is off
+    },
+    "wallets-send-vendor-texts": {
+        "task": "wallets.tasks.send_due_vendor_texts",
+        "schedule": 300.0,  # every 5 minutes: business money texts not sent yet (spec §6: queued, retried)
+        "options": {"expires": 280},  # a run that waited in the queue past the next beat is dropped, not stacked
+    },
+    "wallets-vendor-digests": {
+        "task": "wallets.tasks.queue_vendor_digests",
+        "schedule": crontab(hour=7, minute=0),  # yesterday's digest for businesses that asked; a no-op while the ledger is off
     },
 }
 

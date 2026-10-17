@@ -195,6 +195,11 @@ def release_verified(order, now=None):
         )
         OrderFeeSnapshot.objects.filter(pk__in=[s.pk for s in snapshots]).update(released_at=now)
         charge_waiver(order)
+        # Each business paid gets its release text and in-app copy (spec §6), queued in this transaction and sent after it
+        # commits. It reads the journals just written, takes no new row lock beyond foreign-key key-share locks, and never raises (vendor plan 4).
+        from wallets import vendor_texts
+
+        vendor_texts.order_released(order, journal)
         return journal
 
 

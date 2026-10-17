@@ -19,6 +19,13 @@ EXTRA_DENYLIST = [
     "body", "codes", "uri", "recovery", "normalised",
     # Payout destinations (wallets): a whole MoMo or bank account number in a request body or a frame.
     "account_number",
+    # Business money texts (wallets.vendor_texts): the business's whole number in a frame. `to` is deliberately NOT
+    # listed: the daily summary's response uses a "to" key (the range end), and scrubbing it would hide a harmless date.
+    "phone",
+    # Query parameters, in case a failing query's values (the same whole number, as a lookup value) are attached under a
+    # key of this name. Not verified: that `params` is the key Sentry's SQL integration uses is an assumption, so this
+    # is a best-effort guard, not a guarantee.
+    "params",
 ]
 
 
