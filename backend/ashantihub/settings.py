@@ -603,6 +603,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "wallets.tasks.reconcile_yesterday",
         "schedule": crontab(hour=2, minute=30),  # the day before; read-only; a no-op while the ledger is off
     },
+    "catalogue-stock-alerts": {
+        "task": "catalogue.tasks.check_stock_alerts",
+        "schedule": crontab(minute=35),  # hourly, at twenty-five to: a no-op while STOCK_ALERTS_ENABLED is off
+    },
 }
 
 # Production sets this True so the nightly activity check emails its seal to
@@ -616,6 +620,16 @@ PRIVATE_MEDIA_ROOT = BASE_DIR / "private"
 # Charge the delivery fee at checkout from the live rate card (delivery.RateCard). Off until the owner
 # decides: with it off, checkout is exactly as before and nothing is added to an order's total.
 DELIVERY_FEE_ENABLED = env.bool("DELIVERY_FEE_ENABLED", default=False)
+
+# Low-stock and sold-out alerts to businesses (catalogue plan 6; spec §1 row 15). Off until the owner decides: with it off
+# the hourly job measures and sends nothing. The "needs restocking" list does not depend on it. On the first run after it
+# is turned on, every offer already low is told once.
+STOCK_ALERTS_ENABLED = env.bool("STOCK_ALERTS_ENABLED", default=False)
+
+# Search and the related list stop showing counted goods at 0 stock (catalogue plan 6; spec §1 row 15, §10 "zero stock
+# hides the offer"). Off until the Plan 6F screens tell a business to leave the count empty when it does not count stock;
+# the listing's own page and the other-sellers list are not affected by it (see listings.visibility.sold_out_q).
+SOLD_OUT_HIDDEN_ENABLED = env.bool("SOLD_OUT_HIDDEN_ENABLED", default=False)
 
 # One-time codes and 2-step sign-in for everyone (otp app; spec §9, plan docs/superpowers/plans/2026-10-16-otp-security.md).
 # All three default OFF: with them off, sign-in, sign-up and every sensitive endpoint behave exactly as before. Turn
