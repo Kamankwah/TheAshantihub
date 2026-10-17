@@ -184,7 +184,7 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   endpoint answers `409 wallet_disabled`) or third-party, changed only through the `delivery.rider_employment` approval
   (Delivery Manager proposes, Super Admin approves; switching back is refused while money, a withdrawal or a
   delivered-but-unreleased order is open). Behind `LEDGER_ENABLED`, a third-party rider is paid only at release
-  (Support's "matches"), never at the door: `riders.credit_delivery`, last in `escrow.release_verified`'s transaction,
+  (Support's "matches"), never at the door: `riders.credit_delivery`, last in `escrow.release_verified`'s transaction (after `charge_waiver`; Plan 4's texts follow it when #153 merges),
   moves what platform delivery income took for the order (fee plus promo charge) to the rider (`order-rider-<order>`: 90%
   Rider balance, 10% reserve at the `rider_commission_bp` in force when the order was paid). A whole refund after release
   reverses it first (`riders.reverse_earning`, passed the refund's own time; `riders.check_reversal` refuses a reversal
@@ -192,7 +192,10 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   `rider_earning_reversed` notice); a partial refund never touches it. The 00:20 job (`ledger.tasks.post_rider_commission`)
   posts each earlier day's reserve to platform commission income once (earning rows locked; missed nights caught up).
   **Lock order:** the order row, its fee snapshots, then the rider row (release) or the earning row (refund), then
-  accounts in one sorted pass; the end-of-day job takes the rider row, then the earning rows, then the accounts. A
+  accounts in one sorted pass; the end-of-day job takes the rider row, then the earning rows, then the accounts; the
+  employment `apply` and `block_leaving` take the rider row, then accounts; a destination add takes the staff row FOR NO
+  KEY UPDATE; no rider notice is created inside those transactions (`notify_staff_on_commit`), and every other
+  `select_for_update` reaching a rider takes `of=("self",)` so the staff row stays unlocked. A
   rider's accounts are held by their staff account, so the Stage 3b destinations and withdrawals serve riders
   (`holder_type` "staff"; verified name = staff name with an approved, in-date Ghana Card that has an expiry date;
   step-up codes for `withdrawal` / `payout_destination` only). Rider wallet writes are `activity_exempt` (as staff writes

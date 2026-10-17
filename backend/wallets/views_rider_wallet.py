@@ -153,7 +153,7 @@ class StaffRiderWalletView(APIView):
         if not escrow.enabled():
             return ledger_off()
         rider = get_object_or_404(Rider.objects.select_related("staff"), pk=pk)
-        if employment.wallet_rider(rider.staff) is None:
+        if not rider_wallet.has_money_record(rider):
             return Response({"detail": employment.WALLET_DISABLED, "code": "wallet_disabled"}, status=status.HTTP_409_CONFLICT)
         withdrawals = Withdrawal.objects.filter(holder_type="staff", holder_id=rider.staff_id).select_related("destination")
         return Response({

@@ -1042,6 +1042,12 @@ class StaffPermissionsView(APIView):
             )
 
         with transaction.atomic():
+            if "delivery.dispatch" in revoke_codes:     # a third-party rider's wallet opens only through it
+                from delivery import employment  # lazy: delivery imports accounts at load
+
+                blocked = employment.block_leaving(staff)
+                if blocked:
+                    return Response({"detail": blocked, "code": "third_party_rider"}, status=409)
             staff.extra_permissions.set(grant_perms)
             staff.revoked_permissions.set(revoke_perms)
         # Their socket's permission and team groups are now wrong: reconnect.

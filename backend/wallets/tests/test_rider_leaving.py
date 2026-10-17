@@ -41,3 +41,11 @@ class LeavingAThirdPartyRiderTests(TestCase):
         self.assertEqual(self.role(self.own).status_code, 200)
         other = rider_helpers.rider("own2@example.com", third_party=False, phone="+233244000008")
         self.assertEqual(self.deactivate(other).status_code, 200)
+
+    def test_a_third_party_rider_keeps_the_dispatch_permission(self):
+        url = f"/api/accounts/staff/{self.swift.staff.pk}/permissions/"
+        refused = self.client.post(url, {"grant": [], "revoke": ["delivery.dispatch"]}, format="json")
+        self.assertEqual((refused.status_code, refused.json()["code"]), (409, "third_party_rider"))
+        self.assertEqual(self.client.post(url, {"grant": [], "revoke": ["delivery.dispatch"]}, format="json").status_code, 409)
+        own = self.client.post(f"/api/accounts/staff/{self.own.staff.pk}/permissions/", {"grant": [], "revoke": ["delivery.dispatch"]}, format="json")
+        self.assertEqual(own.status_code, 200, own.content)

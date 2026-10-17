@@ -3,6 +3,7 @@ from datetime import timedelta
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core import mail
+from django.test import override_settings
 from django.utils import timezone
 
 from accounts.models import StaffUser
@@ -37,6 +38,16 @@ class PapersTests(DeliveryCase):
         self.assertEqual(reviewed.json()["status"], "approved")
         self.assertTrue(self.rider_staff.notifications.filter(kind="delivery_document").exists())
 
+    def test_with_the_ledger_off_a_ghana_card_needs_no_expiry_date(self):
+        self.as_staff(self.rider_staff)
+        bare = {"kind": "ghana_card", "file": SimpleUploadedFile("scan.png", PNG, "image/png")}
+        created = self.client.post("/api/delivery/rider/documents/", bare, format="multipart")
+        self.assertEqual(created.status_code, 201, created.content)
+        self.as_staff(self.manager)
+        ok = self.client.post(f"/api/delivery/documents/{created.json()['id']}/review/", {"decision": "approve"}, format="json")
+        self.assertEqual(ok.status_code, 200, ok.content)
+
+    @override_settings(LEDGER_ENABLED=True)
     def test_a_ghana_card_needs_its_expiry_date_to_be_uploaded_and_approved(self):
         self.as_staff(self.rider_staff)
         bare = {"kind": "ghana_card", "file": SimpleUploadedFile("scan.png", PNG, "image/png")}

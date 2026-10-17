@@ -47,7 +47,7 @@ statement and flags differences.
 | Vendor Pending | Vendor | Sale amount awaiting completion; not withdrawable |
 | Vendor Available | Vendor | Released money; withdrawable; may go negative after a late refund |
 | Delivery payable | Internal | The order's delivery fee until paid out |
-| Rider balance | Third-party rider | Withdrawable share (90%) |
+| Rider balance | Third-party rider | Withdrawable share (90%); may go negative after a refund takes a delivery back |
 | Rider commission reserve | Internal/rider (read-only) | 10% reserve, not withdrawable |
 | Platform fee / delivery / commission income | AshantiHub | Platform earnings |
 | Provider clearing, provider fees | Internal | The Hubtel side of every cash movement |
@@ -280,7 +280,7 @@ Found while writing the Stage 2 plan (`docs/superpowers/plans/2026-10-16-otp-sec
 - **O1 Where it lives.** A new `otp` app; rows name `(account_type, account_id)` because the three account kinds are separate tables. Staff keep their authenticator in `accounts.two_factor`; customers and business owners get `otp.AccountAuthenticator`.
 - **O2 Sign-up.** The account row is created first; registration answers a code challenge instead of a token, and the token comes after the code. Customers and vendors who never confirmed a contact confirm once at their next sign-in. For staff the emailed invite link is the check.
 - **O3 Policy numbers** (customer gap 30 days, SMS alert 500/day) live on `staffsecurity.SecurityPolicy`, changed by a Super Admin with the password re-entered, not through the money-settings maker-checker.
-- **O4 Step-up.** Customers and vendors confirm with a texted or emailed code (an authenticator code is not accepted for step-up); staff keep password re-entry (`RequiresSudo`). Applied now to payout details, adding a recovery email/phone, and authenticator changes. There is no change-password or change-primary-contact endpoint yet; `password_change` and `withdrawal` are defined for when they exist (Stage 3).
+- **O4 Step-up.** Customers and vendors confirm with a texted or emailed code (an authenticator code is not accepted for step-up); staff keep password re-entry (`RequiresSudo`), except third-party riders, who confirm withdrawals and payout destinations with a texted or emailed code like customers (Plan 5). Applied now to payout details, adding a recovery email/phone, and authenticator changes. There is no change-password or change-primary-contact endpoint yet; `password_change` and `withdrawal` are defined for when they exist (Stage 3).
 - **O5 SMS.** The Hubtel SMS client in `marketing/providers/hubtel_sms.py` (unverified against a live account) is reused through `OTP_SMS_PROVIDER=hubtel`; the default `simulated` sends nothing.
 - **O6 Not yet moved.** The customer secondary-contact codes (`accounts.serializers.CustomerSecondary*`) still keep their code in clear and return `demo_code` for SMS; moving them onto the OTP service changes their API and is a follow-up. Until then a secondary phone is never a code channel (`otp.identity.contacts()` ignores it, however `secondary_phone_verified` reads); a verified secondary email still is (its code is emailed).
 - **O7 Audit.** OTP events go to `otp.OtpEvent`, not the hash-chained activity log (high volume, customer-side, and the lock and the hourly limits are counted from it). Staff wrong codes also reach the sign-in history; policy changes and staff-assisted recovery also reach the activity log.
@@ -576,7 +576,8 @@ Found while writing `docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md` (Â
   (what a release can pay), so with the ledger off, or for orders paid before it was switched on, payroll still pays them.
   Switching back is also refused while the rider has a delivery in progress.
 - **S5-11 Review notes (Task 2).** Until Plan 5 Task 4, a whole refund after release takes the delivery fee from shared
-  platform delivery income, not from the rider who was paid it. (A rider moved off the Dispatch role is now refused, Task 6.) Rider earnings never touch provider clearing (R13).
+  platform delivery income, not from the rider who was paid it; from Task 4 the earning is taken back from the rider
+  first. (A rider moved off the Dispatch role is refused, Task 6.) Rider earnings never touch provider clearing (R13).
 - **S5-12 Self-dealing (Task 5 review).** A third-party rider who is also given `wallets.manage` is refused (403
   `own_withdrawal`) when failing their own withdrawal, before the provider is asked and again under the row lock. Owner
   question, same family, not yet closed: a rider holding `fraud.manage` could dismiss or confirm the amount case on their
@@ -630,7 +631,14 @@ Found while writing `docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md` (Â
   database change, or a future endpoint that forgets `block_leaving`) would leave the `RiderEmploymentPeriod` open and
   the wallet unreachable, and **suspending** a third-party rider (also a paper-expiry auto-suspension) strands their
   wallet, as a suspended staff member can neither sign in nor withdraw until reinstated. Before switch-on, flag a
-  suspension with money open, or provide a maker-checker staff payout to a verified destination.
+  suspension with money open, or provide a maker-checker staff payout to a verified destination. Revoking
+  `delivery.dispatch` from a third-party rider individually is refused (409 `third_party_rider`, `StaffPermissionsView`),
+  but **editing the Dispatch role's permissions** (people role editor) still removes it for every rider and strands every
+  third-party wallet; refuse that edit while any third-party rider exists, before switch-on. `block_leaving` and
+  `delivery_in_progress` apply with the ledger off too (a third-party rider cannot be re-roled or deactivated even then).
+  A flagged rider gets `409 otp_off` for step-up codes with the ledger off. The Ghana Card expiry date is required at upload
+  and approval only while the ledger is on; `id_verified` (the money gate) always needs it, so cards approved before
+  switch-on without one must be re-reviewed.
 - (xcv) **The end-of-day commission job is a no-op while the ledger is off** (like (xxxix)). The switch is one-way ((x)),
   so a reserve is stranded only if the ledger is switched off, which it must never be. A missed night is caught up by the
   next run (built).
@@ -655,3 +663,6 @@ Found while writing `docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md` (Â
   customer never pays the rider. Their switch back to AshantiHub's own is blocked meanwhile (R3, `deliveries`). Decide
   whether the delivery fee should be released to the rider at delivery (or after the customer's own confirmation)
   separately from the vendor's money. The spec's "90% withdrawable immediately" holds from release, not from delivery.
+- **Note (Plan 5 final review): throttle buckets are shared across account types.** The OTP / step-up throttles key on the bare pk, so a
+  Customer, an Owner and a StaffUser with the same pk share a bucket; key on `otp.identity.ref` (type, pk) later. Not a
+  money risk, a nuisance (one lock can block another type's codes).

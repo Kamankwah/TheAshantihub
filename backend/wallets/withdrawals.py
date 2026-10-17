@@ -3,7 +3,7 @@ transit inside the caller's transaction (the one that also spends the step-up co
 settles it. The checks, in order: the holder is not suspended; the destination is theirs, live, past its cooling period
 and still matches their verified name; the provider can pay out; the amount is above the provider's charge and within
 the per-withdrawal limit; then, with the holder's balance and the in-transit account locked together in primary-key
-order (posting.lock), the balance covers it (a vendor's negative Available blocks any withdrawal) and today's
+order (posting.lock), the balance covers it (a negative vendor Available or rider balance blocks any withdrawal) and today's
 withdrawals stay within the daily limit. Customers withdraw their wallet, vendors their Available, third-party riders
 their balance (never the commission reserve; wallets Plan 5); a negative Available or rider balance blocks any
 withdrawal."""

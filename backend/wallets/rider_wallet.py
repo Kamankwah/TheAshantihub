@@ -41,6 +41,18 @@ def summary(rider):
     }
 
 
+def has_money_record(rider):
+    """True when the rider has (or had) a wallet to read: a third-party rider, or a switched-back one with rider accounts
+    or earnings left. An AshantiHub rider who never had one has nothing to show."""
+    return (
+        rider.employment == rider.THIRD_PARTY
+        or RiderEarning.objects.filter(rider=rider).exists()
+        or Account.objects.filter(
+            kind__in=tuple(ACCOUNT_NAMES), owner_type=StaffUser._meta.label_lower, owner_id=str(rider.staff_id),
+        ).exists()
+    )
+
+
 def earnings(rider, day=None):
     rows = RiderEarning.objects.filter(rider=rider).select_related("order__delivery_assignment")
     if day is not None:

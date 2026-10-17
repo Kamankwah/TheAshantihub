@@ -17,7 +17,9 @@ Lock order (spec W7, extended): the order row, its fee snapshots, the rider row 
 then every ledger account in one sorted pass (posting.lock). The end-of-day job locks the rider row first, then the day's
 earning rows, then the accounts: its commit checks the foreign key to the rider, which waits for a FOR UPDATE holder, so
 taking the accounts first would cycle with a release or a switch back (rider row, then reserve). A refund locks the
-earning row and so must never insert a row with a foreign key to the rider (a notice keyed on Rider, say) afterwards."""
+earning row and so must never insert a row with a foreign key to the rider or to their StaffUser (a notice keyed on the
+staff account, say) afterwards inside that transaction: the rider's notices are sent on commit, and every other
+select_for_update that reaches the rider's rows takes `of=("self",)` so the staff row is not locked with it."""
 import logging
 
 from django.db import transaction
@@ -265,9 +267,9 @@ def reverse_earning(earning, now=None):
     # Tell the rider: money left their balance (possibly below zero, which blocks withdrawals). This runs inside the refund's
     # transaction; notify only creates a row. The day's RiderCommissionPosting row is never edited (records are append-only);
     # the rider's days and the Accountant's commission report show the commission given back from the reversed earnings.
-    from notifications.services import notify_staff
+    from notifications.services import notify_staff_on_commit
 
-    notify_staff(
+    notify_staff_on_commit(
         earning.rider.staff, REVERSAL_NOTICE_KIND, "A delivery was taken back",
         body=_reversal_text(earning, posting.balance_of(Account.RIDER_BALANCE, earning.rider.staff)),
         link="/staff", icon="↩️",
@@ -296,7 +298,7 @@ def _reversal_text(earning, balance):
 
 
 def check_reversal(earning, delivery_returned):
-    """Raise ValueError unless the earning being taken back equals what the refund then returns out of platform delivery
+    """Raise RefundError (409) unless the earning being taken back equals what the refund then returns out of platform delivery
     income: the delivery fee it gives back plus the free-delivery promo charge it returns to the business. Otherwise
     platform delivery income would be left over or short."""
     from . import escrow
@@ -304,7 +306,9 @@ def check_reversal(earning, delivery_returned):
     promo = JournalLine.objects.filter(journal__key=escrow.waiver_key(earning.order), side=JournalLine.DEBIT).aggregate(
         total=Sum("amount"))["total"] or 0
     if earning.gross_pesewas != delivery_returned + promo:
-        raise ValueError(
+        from .refunds import RefundError
+
+        raise RefundError(
             f"Order #{earning.order_id}: the rider was paid {earning.gross_pesewas} pesewas, but this refund returns "
-            f"{delivery_returned} of delivery fee and {promo} of promo charge"
+            f"{delivery_returned} of delivery fee and {promo} of promo charge. Ask a developer to check the order.", 409,
         )

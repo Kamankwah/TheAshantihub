@@ -17,6 +17,8 @@ from accounts.serializers import invite_state
 from accounts import sessions
 from notifications.services import notify_staff
 
+from ledger import escrow
+
 from . import employment, files, fleet, payloads, services
 from .models import DeliveryZone, Rider, RiderDocument, Vehicle, VehicleHandover, VEHICLE_TYPES
 
@@ -118,7 +120,7 @@ class RiderReinstateView(FleetView):
         return [HasRolePermission(PERMISSION), RequiresSudo()]
 
     def post(self, request, pk):
-        rider = get_object_or_404(Rider.objects.select_for_update().select_related("staff"), pk=pk)
+        rider = get_object_or_404(Rider.objects.select_for_update(of=("self",)).select_related("staff"), pk=pk)
         staff = rider.staff
         if not staff.is_suspended:
             return Response({"detail": "This rider is not suspended."}, status=409)
@@ -188,7 +190,7 @@ class DocumentReviewView(FleetView):
                         return Response({"detail": "Enter the expiry date as YYYY-MM-DD."}, status=400)
                 if doc.expires_on is not None and doc.expires_on < timezone.localdate():
                     return Response({"detail": "That paper has already expired."}, status=400)
-                if doc.kind == RiderDocument.GHANA_CARD and doc.expires_on is None:
+                if doc.kind == RiderDocument.GHANA_CARD and doc.expires_on is None and escrow.enabled():  # needed for payouts (ledger on)
                     return Response({"detail": "A Ghana Card needs its expiry date before it is approved."}, status=400)
                 doc.status = RiderDocument.APPROVED
                 doc.reject_reason = ""
@@ -298,7 +300,7 @@ class VehicleAssignView(FleetView):
                 return Response({"detail": "A retired vehicle cannot be handed out."}, status=409)
             new = None
             if request.data.get("rider"):
-                new = get_object_or_404(Rider.objects.select_for_update().select_related("staff"), pk=request.data["rider"])
+                new = get_object_or_404(Rider.objects.select_for_update(of=("self",)).select_related("staff"), pk=request.data["rider"])
             old = vehicle.current_riders.first()
             if old and new and old.pk == new.pk:
                 return Response(fleet.vehicle_row(vehicle))

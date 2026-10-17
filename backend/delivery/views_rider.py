@@ -16,6 +16,8 @@ from rest_framework.views import APIView
 from accounts.permissions import HasRolePermission
 from orders.models import DeliveryAssignment
 
+from ledger import escrow
+
 from . import employment, files, payloads, services
 from .models import DeliveryCall, DeliveryPhoto, Rider, RiderDocument, RiderIssue
 
@@ -345,7 +347,7 @@ class DocumentListCreateView(RiderView):
             return Response({"detail": "Enter the expiry date as YYYY-MM-DD."}, status=400)
         if expires_on is not None and expires_on < timezone.localdate():
             return Response({"detail": "That paper has already expired."}, status=400)
-        if kind == RiderDocument.GHANA_CARD and expires_on is None:
+        if kind == RiderDocument.GHANA_CARD and expires_on is None and escrow.enabled():  # needed for payouts (ledger on)
             return Response({"detail": "Enter the expiry date on your Ghana Card (YYYY-MM-DD)."}, status=400)
         clean = files.clean_upload(upload)
         if clean is None:

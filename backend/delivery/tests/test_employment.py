@@ -133,6 +133,20 @@ class EmploymentTests(DeliveryCase):
         self.assertEqual((response.status_code, response.json()["open"]), (409, ["deliveries"]))
 
     @override_settings(LEDGER_ENABLED=True)
+    def test_a_release_that_posts_nothing_does_not_block_switching_back_forever(self):
+        self.make_third_party()
+        order = self.make_order()
+        escrow.record_order_payment(order)
+        DeliveryAssignment.objects.create(
+            order=order, dispatch=self.rider_staff, status=DeliveryAssignment.DELIVERED, delivered_at=timezone.now(),
+        )
+        from ledger.models import Account, OrderFeeSnapshot
+
+        OrderFeeSnapshot.objects.filter(order=order).update(released_at=timezone.now())   # nothing is left to release
+        Account.objects.filter(kind=Account.DELIVERY_PAYABLE, owner_id=str(order.pk)).update(net_credit=0)
+        self.assertEqual(list(employment.unreleased_deliveries(self.rider)), [])
+
+    @override_settings(LEDGER_ENABLED=True)
     def test_switching_back_once_settled_closes_the_wallet(self):
         self.make_third_party()
         response = self.propose(self.super_admin(), {"employment": "ashantihub"})
@@ -241,6 +255,10 @@ class EmploymentTests(DeliveryCase):
         posting.post(key=escrow.release_key(Order.objects.get(pk=inside)), kind="test_release", lines=[        # Support released it
             posting.debit(posting.account_for(Account.PROVIDER_CLEARING), 1), posting.credit(posting.account_for(Account.PLATFORM_DELIVERY_INCOME), 1),
         ])
+        from ledger.models import OrderFeeSnapshot
+
+        OrderFeeSnapshot.objects.filter(order_id=inside).update(released_at=now)
+        Account.objects.filter(kind=Account.DELIVERY_PAYABLE, owner_id=str(inside)).update(net_credit=0)
         response = self.propose(self.super_admin(), {"employment": "ashantihub"})
         self.assertEqual(response.json()["status"], ApprovalRequest.APPROVED, response.content)
         closed = self.rider.employment_periods.get()

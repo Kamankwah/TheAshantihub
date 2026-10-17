@@ -47,6 +47,21 @@ def notify_staff(staff, kind, title, body="", link="", icon=""):
     return _create({"staff": staff}, kind, title, body, link, icon)
 
 
+def notify_staff_on_commit(staff, kind, title, body="", link="", icon=""):
+    """notify_staff once the surrounding transaction commits (at once outside one). A notice row has a foreign key to the
+    staff account, whose share lock must not be taken inside a money transaction after the activity chain lock; a failure
+    is logged (by type) and never undoes the money. Returns nothing."""
+    from django.db import transaction
+
+    def send():
+        try:
+            notify_staff(staff, kind, title, body=body, link=link, icon=icon)
+        except Exception as exc:  # a lost notice must not fail or undo anything
+            logger.warning("Staff notice %r not sent: %s", title, type(exc).__name__)
+
+    transaction.on_commit(send)
+
+
 def notify_staff_role(permission_codename, kind, title, body="", link="", icon=""):
     """Fan out one Notification to every active staffer whose effective permissions hold
     `permission_codename` — e.g. everyone who can approve KYC when a new

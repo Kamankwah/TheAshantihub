@@ -96,7 +96,8 @@ class RiderEngineTests(TestCase):
         self.refused("insufficient_funds", amount=1000)
         held = self.hold(900)
         self.assertEqual(held.source_kind, Account.RIDER_BALANCE)
-        self.assertEqual(payouts.submit(held.pk).status, Withdrawal.SUCCEEDED)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(payouts.submit(held.pk).status, Withdrawal.SUCCEEDED)
         self.assertEqual(posting.balance_of(Account.RIDER_BALANCE, self.staff), 0)
         self.assertEqual(posting.balance_of(Account.RIDER_RESERVE, self.staff), 100)            # AshantiHub's, taken at day end
         self.assertTrue(Notification.objects.filter(staff=self.staff, kind="withdrawal").exists())
@@ -203,6 +204,28 @@ class RiderEngineTests(TestCase):
         as_rider = SimpleNamespace(META={step_up.HEADER: raw}, auth={"jti": "j1"}, user=self.staff)
         with self.assertRaises(step_up.StepUpRequired):
             step_up.require(as_rider, step_up.WITHDRAWAL, force=True)
+
+
+@override_settings(LEDGER_ENABLED=True)
+class RiderCaseTests(TestCase):
+    def test_a_fraud_case_about_a_riders_withdrawal_names_the_rider(self):
+        from fraud.models import FraudFlag
+        from wallets.tests.helpers import destination as make_destination
+
+        swift = rider_helpers.rider()
+        rider_helpers.ghana_card(swift)
+        rider_helpers.earning(swift, gross=2000, at=timezone.now() - timedelta(days=1))
+        to = make_destination(swift.staff, name="Kojo Mensah")
+        with transaction.atomic():
+            held = withdrawals.request(swift.staff, destination_id=to.pk, amount_pesewas=500, request_id="req-case-0001")
+        with override_settings(SIMULATED_PAYOUT_OUTCOME="pending"):
+            sent = payouts.submit(held.pk)
+        from payments import providers
+
+        payouts.apply_result(sent.reference, providers.SUCCEEDED, amount_pesewas=100)
+        flag = FraudFlag.objects.get(dedupe_key=f"withdrawal-amount-{sent.reference}")
+        self.assertEqual(flag.staff_subject, swift.staff)
+        self.assertIsNone(flag.related_business_owner)
 
 
 @override_settings(LEDGER_ENABLED=True, SIMULATED_PAYOUT_OUTCOME="pending")

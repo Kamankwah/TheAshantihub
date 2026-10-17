@@ -65,7 +65,8 @@ class RiderRefundTests(RefundBase):
     def test_review_focus_a_whole_refund_after_release_takes_the_delivery_back_from_the_rider(self):
         order = self.delivered_order()
         self.release(order)
-        refund = refunds.refund_order(order, source="dispute-1")
+        with self.captureOnCommitCallbacks(execute=True):
+            refund = refunds.refund_order(order, source="dispute-1")
         self.assertTrue(refund.whole)
         self.assertEqual(self.wallet(), 7000)
         self.assertEqual(self.rider_balances(), (0, 0))
@@ -143,7 +144,8 @@ class RiderRefundTests(RefundBase):
         order = self.delivered_order(delivery="0.00", price="120.00")
         rider_helpers.waived(order, self.kofi)
         self.release(order)
-        refunds.refund_order(order, source="dispute-1")                                      # whole: reverses the earning
+        with self.captureOnCommitCallbacks(execute=True):
+            refunds.refund_order(order, source="dispute-1")                                      # whole: reverses the earning
         self.assertIsNone(refunds.refund_order(order, source="dispute-2"))                   # nothing left: via _free_promo
         self.assertEqual(self.rider_balances(), (0, 0))
         self.assertEqual(Journal.objects.filter(key=f"order-rider-reversal-{order.pk}").count(), 1)
@@ -183,19 +185,32 @@ class RiderRefundTests(RefundBase):
         posting.post(key="spent", kind="test", lines=[
             posting.debit(balance, 900), posting.credit(posting.account_for(Account.WITHDRAWAL_IN_TRANSIT), 900),
         ])
-        refunds.refund_order(order, source="dispute-1")
+        with self.captureOnCommitCallbacks(execute=True):
+            refunds.refund_order(order, source="dispute-1")
         notice = Notification.objects.get(staff=self.swift.staff, title="A delivery was taken back")
         self.assertEqual(notice.kind, riders.REVERSAL_NOTICE_KIND)
         self.assertNotEqual(notice.kind, "withdrawal")
         self.assertIn("below zero", notice.body)
         self.assertIn("cannot withdraw", notice.body)
 
+    def test_the_notice_is_sent_after_the_refund_commits_not_inside_it(self):
+        order = self.delivered_order()
+        self.release(order)
+        notices = Notification.objects.filter(staff=self.swift.staff, title="A delivery was taken back")
+        with self.captureOnCommitCallbacks(execute=False) as callbacks:
+            refunds.refund_order(order, source="dispute-1")
+            self.assertEqual(notices.count(), 0)
+        self.assertEqual(len(callbacks), 1)
+        callbacks[0]()
+        self.assertEqual(notices.count(), 1)
+
     def test_a_full_commission_rate_does_not_say_nothing_came_back(self):
         order = self.delivered_order()
         with mock.patch.object(riders.settings_store, "current", return_value=10000):
             self.release(order)
         self.assertEqual(self.rider_balances(), (0, 1000))
-        refunds.refund_order(order, source="dispute-1")
+        with self.captureOnCommitCallbacks(execute=True):
+            refunds.refund_order(order, source="dispute-1")
         body = Notification.objects.get(staff=self.swift.staff, title="A delivery was taken back").body
         self.assertNotIn("GH₵ 0.00", body)
         self.assertNotIn("below zero", body)
@@ -205,7 +220,7 @@ class RiderRefundTests(RefundBase):
         order = self.delivered_order()
         self.release(order)
         Order.objects.filter(pk=order.pk).update(delivery_fee=Decimal("11.00"))    # the order now says more than was paid
-        with self.assertRaises(ValueError):
+        with self.assertRaises(refunds.RefundError):
             refunds.refund_order(order, source="dispute-1")
         self.assertEqual(self.wallet(), 0)
 

@@ -156,3 +156,18 @@ class StaffRiderWalletTests(TestCase):
         rider_helpers.earning(other, gross=1000, at=self.yesterday)
         riders.post_commission(today=timezone.localdate())
         self.assertEqual(count(), one)
+
+
+@override_settings(LEDGER_ENABLED=True)
+class SwitchedBackRiderReadTests(TestCase):
+    def test_a_switched_back_rider_with_money_left_can_still_be_read(self):
+        from delivery.models import Rider
+
+        swift = rider_helpers.rider()
+        rider_helpers.earning(swift, gross=1000, at=timezone.now() - timedelta(days=1))
+        Rider.objects.filter(pk=swift.pk).update(employment=Rider.ASHANTIHUB)
+        staff = make_staff("accountant", "acc2@example.com")
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(staff)}")
+        response = client.get(f"/api/delivery/riders/{swift.pk}/wallet/")
+        self.assertEqual((response.status_code, response.json()["balance"]), (200, "9.00"))

@@ -230,6 +230,7 @@ def _free_promo(order, extra, now=None):
     earning = riders.earning_to_reverse(order) if released else None
     posting.lock(*escrow.waiver_return_accounts(order), *extra, *riders.reversal_accounts(earning))
     if earning is not None:
+        riders.check_reversal(earning, 0)         # nothing is left to give back but the promo charge
         riders.reverse_earning(earning, now)
     escrow.return_waiver(order)
     reverse_for_order(order, "order_refunded")

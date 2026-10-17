@@ -20,7 +20,7 @@ from approvals import services as approvals
 from approvals.models import ApprovalRequest
 from approvals.services import MakerCannotDecide
 from approvals.registry import ApprovalKind
-from ledger.models import Journal
+from ledger.models import Account, Journal, OrderFeeSnapshot
 from orders.models import DeliveryAssignment, Order
 
 from .models import Rider, RiderDocument, RiderEarning, RiderEmploymentPeriod
@@ -117,9 +117,15 @@ def unreleased_deliveries(rider):
         ).filter(_in_a_period())
         .exclude(status=DeliveryAssignment.FAILED).exclude(order__refunds__whole=True)
     )
-    return jobs.filter(Exists(Journal.objects.filter(key=OuterRef("pay_key")))).exclude(
-        Exists(Journal.objects.filter(key=OuterRef("release_key")))
+    # "Something left to release" is the test Support's queue uses (ledger.verification.awaiting): a snapshot neither
+    # released nor reversed, or a delivery fee still held. A release that posts nothing then never blocks a switch back.
+    left = Exists(OrderFeeSnapshot.objects.filter(order_id=OuterRef("order_id"), released_at__isnull=True, reversed_at__isnull=True)) | Exists(
+        Account.objects.filter(
+            kind=Account.DELIVERY_PAYABLE, owner_type="orders.order", net_credit__gt=0,
+            owner_id=Cast(OuterRef("order_id"), CharField()),
+        )
     )
+    return jobs.filter(Exists(Journal.objects.filter(key=OuterRef("pay_key")))).filter(left)
 
 
 def payroll_jobs(jobs):
