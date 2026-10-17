@@ -82,7 +82,7 @@ class MeView(RiderView):
                 "suspended": request.user.is_suspended, "suspension_reason": request.user.suspension_reason if request.user.is_suspended else None,
                 "manager": {"id": manager.pk, "full_name": manager.full_name, "phone": manager.phone} if manager else None,
                 # Who the rider works for (wallets Plan 5): only a third-party rider has a wallet (rider/wallet/*).
-                "employment": rider.employment, "wallet": employment.is_third_party(rider),
+                "employment": rider.employment, "wallet": employment.wallet_rider(request.user) is not None,
             },
             "shift": payloads.shift_block(shift, now),
             "papers": {"required": list(services.REQUIRED_DOCUMENTS), "missing": missing, "can_start_shift": not missing},

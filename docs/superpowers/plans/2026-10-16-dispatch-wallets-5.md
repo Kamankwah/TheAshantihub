@@ -3975,6 +3975,7 @@ EOF
 
 **Interfaces:**
 - Consumes: everything above. Produces: no code.
+- Task 6 rulings to carry into the spec §13 gates: a third-party rider cannot change role or be deactivated until switched back (`employment.block_leaving`); owner questions: log only the reference on rider withdrawal events (amounts are readable without `wallets.view`), and `rider/earnings/` still shows the rate card (frontend branches on `rider/me.wallet`).
 
 - [ ] **Step 1: Correctness core** — in `backend/CLAUDE.md` replace
 

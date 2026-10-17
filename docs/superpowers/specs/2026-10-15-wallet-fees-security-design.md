@@ -563,16 +563,19 @@ Found while writing `docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md` (Â
   back) decide who a delivery's money belongs to by its time, so payroll and the wallet never depend on the current flag.
 - **Owner note.** A delivered order that Support never releases blocks switching its rider back to AshantiHub's own
   forever; there is no way out yet (a Support release or a refund is the only exit).
-- **Owner note.** Re-roling a third-party rider away from Dispatch leaves their employment period open (the wallet is off
-  because the role is gone, but the money and the period stay until someone settles them).
+- **Decision (Task 6).** A third-party rider cannot be moved off the Dispatch role or deactivated while still third-party
+  (409 `third_party_rider`, `delivery.employment.block_leaving`, under the rider row's lock): switch them back to
+  AshantiHub's own first, which checks their money. So no wallet is left that nobody can open.
+- **Owner note (Task 6).** A rider's withdrawal activity events carry the amount and are readable by Operations and line
+  managers who lack `wallets.view`; decide whether to log only the reference. `rider/earnings/` still shows the rate card
+  for a third-party rider; the frontend must branch on `rider/me` `wallet`.
 - **Owner note.** A whole refund after a rider has been switched back to AshantiHub's own can leave a negative wallet
   balance that nothing collects yet.
 - **S5-10 Payroll overlap.** Payroll leaves out only the in-period deliveries whose order has an `order-pay-<id>` journal
   (what a release can pay), so with the ledger off, or for orders paid before it was switched on, payroll still pays them.
   Switching back is also refused while the rider has a delivery in progress.
 - **S5-11 Review notes (Task 2).** Until Plan 5 Task 4, a whole refund after release takes the delivery fee from shared
-  platform delivery income, not from the rider who was paid it. A rider moved off the Dispatch role has a wallet nobody can
-  open until Task 6 decides who pays it out. Rider earnings never touch provider clearing (R13).
+  platform delivery income, not from the rider who was paid it. (A rider moved off the Dispatch role is now refused, Task 6.) Rider earnings never touch provider clearing (R13).
 - **S5-12 Self-dealing (Task 5 review).** A third-party rider who is also given `wallets.manage` is refused (403
   `own_withdrawal`) when failing their own withdrawal, before the provider is asked and again under the row lock. Owner
   question, same family, not yet closed: a rider holding `fraud.manage` could dismiss or confirm the amount case on their

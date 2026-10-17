@@ -23,7 +23,7 @@ from approvals.registry import ApprovalKind
 from ledger.models import Journal
 from orders.models import DeliveryAssignment, Order
 
-from .models import Rider, RiderDocument, RiderEmploymentPeriod
+from .models import Rider, RiderDocument, RiderEarning, RiderEmploymentPeriod
 
 KIND = "delivery.rider_employment"
 WALLET_DISABLED = "Wallets are for third-party riders. AshantiHub's own riders are paid through payroll."
@@ -68,6 +68,19 @@ def wallet_rider(staff):
     return Rider.objects.select_related("staff").filter(
         staff_id=staff.pk, staff__role__name="dispatch", employment=Rider.THIRD_PARTY, third_party_since__isnull=False,
     ).first()
+
+
+LEAVING_THIRD_PARTY = (
+    "Switch this rider back to AshantiHub's own first (Delivery Manager, rider employment); that checks their money first."
+)
+
+
+def block_leaving(staff):
+    """The message that stops `staff` leaving the Dispatch role or being deactivated, or None. A third-party rider's wallet
+    opens only through the Dispatch role, so they must be switched back to AshantiHub's own (which checks their money) first.
+    Locks the Rider row (the lock a release and the switch take), so call it inside the transaction that changes the person."""
+    rider = Rider.objects.select_for_update(of=("self",)).filter(staff_id=staff.pk).first()
+    return LEAVING_THIRD_PARTY if is_third_party(rider) else None
 
 
 def id_verified(rider, today=None):
@@ -117,7 +130,7 @@ def payroll_jobs(jobs):
     would pay the rider. Used by the payroll screens (delivery.views_rules RiderEarnedView / RiderEarningsLinesView) and the
     rider app's rider/earnings/ figures."""
     walleted = _with_keys(jobs.filter(_in_a_period())).filter(Exists(Journal.objects.filter(key=OuterRef("pay_key"))))
-    return jobs.exclude(pk__in=walleted.values("pk"))
+    return jobs.exclude(pk__in=walleted.values("pk")).exclude(Exists(RiderEarning.objects.filter(order_id=OuterRef("order_id"))))
 
 
 def money_open(rider, lock=False):

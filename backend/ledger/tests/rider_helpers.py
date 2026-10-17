@@ -58,6 +58,11 @@ def earning(rider_row, *, gross, at, bp=1000):
     customer = Customer.objects.get_or_create(phone="+233200770001", defaults={"full_name": "Esi Mensah", "password_hash": "x"})[0]
     order = Order.objects.create(customer=customer, status=Order.PAID, total_amount=Decimal("0.00"), delivery_method=Order.DOOR_TO_DOOR)
     reserve, net = riders.split(gross, bp)
+    posting.post(                       # the payment journal a real order has (payroll_jobs and unreleased_deliveries read it); a pesewa between neutral accounts
+        key=f"order-pay-{order.pk}", kind="order_payment", reference_type="orders.order", reference_id=str(order.pk),
+        lines=[posting.debit(posting.account_for(Account.PLATFORM_PROMO_SUBSIDY), 1), posting.credit(posting.account_for(Account.PLATFORM_FEE_INCOME), 1)],
+        allow_negative=(Account.PLATFORM_PROMO_SUBSIDY,),
+    )
     balance, held = riders.accounts_of(rider_row)
     lines = [posting.debit(posting.account_for(Account.PLATFORM_DELIVERY_INCOME), gross)]
     if net:

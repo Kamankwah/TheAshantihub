@@ -5,8 +5,9 @@ import json
 from datetime import timedelta
 from decimal import Decimal
 
-from django.db import transaction
+from django.db import connection, transaction
 from django.test import TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from accounts.testing import make_staff
@@ -16,7 +17,8 @@ from ledger import posting, riders
 from ledger.models import Account
 from ledger.tests import rider_helpers
 from notifications.models import Notification
-from orders.models import DeliveryAssignment
+from accounts.models import Customer
+from orders.models import DeliveryAssignment, Order
 from wallets import withdrawals
 from wallets.models import PayoutDestination
 
@@ -110,11 +112,8 @@ class RiderWalletApiTests(TestCase):
     def test_payroll_figures_leave_out_a_third_party_riders_deliveries(self):
         own = rider_helpers.rider("own@example.com", third_party=False, phone="+233244000009")
         for row, pay in ((self.swift, "12.00"), (own, "8.00")):
-            order = rider_helpers.earning(row, gross=1000, at=timezone.now()).order
-            if row == self.swift:                                                           # payroll skips what a release pays: the order-pay journal
-                posting.post(key=f"order-pay-{order.pk}", kind="order_payment", lines=[
-                    posting.debit(posting.account_for(Account.PROVIDER_CLEARING), 100),
-                    posting.credit(posting.account_for(Account.PLATFORM_DELIVERY_INCOME), 100)], allow_negative=(Account.PROVIDER_CLEARING,))
+            order = (rider_helpers.earning(row, gross=1000, at=timezone.now()).order if row == self.swift
+                     else Order.objects.create(customer=Customer.objects.first(), status=Order.PAID, total_amount=Decimal("0.00")))
             job = rider_helpers.delivered_by(order, row)
             DeliveryAssignment.objects.filter(pk=job.pk).update(rider_pay=Decimal(pay))
         manager = Holder(make_staff("delivery_manager", "dm@example.com"), "staff")
@@ -171,8 +170,6 @@ class RiderWalletEdgeTests(TestCase):
         self.me = Holder(self.swift.staff, "staff")
 
     def test_a_negative_balance_is_shown_honestly_and_cannot_be_withdrawn(self):
-        from ledger import posting
-        from ledger.models import Account
         balance, _held = riders.accounts_of(self.swift)
         posting.post(key="test-owe", kind="test_fund", lines=[
             posting.debit(balance, 300), posting.credit(posting.account_for(Account.PLATFORM_DELIVERY_INCOME), 300),
@@ -182,7 +179,7 @@ class RiderWalletEdgeTests(TestCase):
         refused = self.me.post(
             BASE + "withdrawals/", {"destination": to.pk, "amount": "1.00", "request_id": "req-neg-0001"}, action="withdrawal",
         )
-        self.assertGreaterEqual(refused.status_code, 400)
+        self.assertEqual((refused.status_code, refused.json()["code"]), (409, "negative_balance"))
         self.assertEqual(self.me.get(BASE).json()["balance"], "-3.00")
 
     def test_empty_wallet_has_honest_empty_lists(self):
@@ -199,8 +196,6 @@ class RiderWalletEdgeTests(TestCase):
         self.assertEqual({path: self._count(path) for path in before}, before)
 
     def _count(self, path):
-        from django.db import connection
-        from django.test.utils import CaptureQueriesContext
         with CaptureQueriesContext(connection) as ctx:
             self.me.get(BASE + path)
         return len(ctx)
@@ -212,3 +207,20 @@ class RiderWalletEdgeTests(TestCase):
             set(row), {"id", "order", "delivered_at", "earned_at", "earned_on", "gross", "commission_bp", "commission", "you_got",
                        "status", "status_label", "reversed_at"},
         )
+
+    def test_every_rider_write_view_is_activity_exempt(self):
+        from wallets import views_rider_wallet as v
+        for view in (v.RiderDestinationsView, v.RiderDestinationRemoveView, v.RiderWithdrawalsView, v.RiderWithdrawalCancelView):
+            self.assertTrue(view.activity_exempt, view.__name__)
+
+    def test_the_account_name_lookup_runs_outside_any_transaction(self):
+        from unittest import mock
+        from wallets import destinations
+        real, depth = destinations.check, []
+        def spy(*args, **kwargs):
+            depth.append(len(connection.savepoint_ids))
+            return real(*args, **kwargs)
+        baseline = len(connection.savepoint_ids)
+        with mock.patch.object(destinations, "check", spy):
+            self.assertEqual(self.me.post(BASE + "destinations/", MOMO, action="payout_destination").status_code, 201)
+        self.assertEqual(depth, [baseline])

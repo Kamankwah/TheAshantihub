@@ -972,8 +972,13 @@ class StaffDeactivateView(APIView):
         if managed:
             noun = "business" if managed == 1 else "businesses"
             return Response({"detail": f"Reassign {staff.full_name}'s {managed} {noun} first."}, status=400)
-        staff.is_active = False
-        staff.save(update_fields=["is_active"])
+        from delivery import employment  # lazy: delivery imports accounts at load
+        with transaction.atomic():
+            blocked = employment.block_leaving(staff)
+            if blocked:
+                return Response({"detail": blocked, "code": "third_party_rider"}, status=409)
+            staff.is_active = False
+            staff.save(update_fields=["is_active"])
         sessions.revoke_all(staff, StaffSession.DEACTIVATED)
         return Response(StaffListSerializer(staff).data)
 
