@@ -134,7 +134,7 @@ class Listing(models.Model):
     # none; and the shared catalogue entry this offer belongs to, set only when staff approve a grouping request
     # (catalogue.attach). Null: the listing stands alone (unbranded goods, services, stays, and every listing made before
     # plan 6). Neither is in the public serializers.
-    barcode = models.CharField(max_length=14, blank=True, default="", db_index=True)
+    barcode = models.CharField(max_length=14, blank=True, default="")
     catalogue_product = models.ForeignKey(
         "catalogue.CatalogueProduct", on_delete=models.SET_NULL, null=True, blank=True, related_name="offers",
     )
@@ -155,6 +155,12 @@ class Listing(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            # Only barcoded rows: most listings have none, and the matcher and the grouping check look up by code.
+            models.Index(fields=["barcode"], name="listing_barcode_idx", condition=~models.Q(barcode="")),
+        ]
 
     def __str__(self):
         return self.name

@@ -13,7 +13,7 @@ from catalogue.models import CatalogueAttachRequest, CatalogueProduct
 from catalogue.errors import CatalogueError
 from catalogue.tests.helpers import BARCODE, OTHER_BARCODE, as_account, as_staff, business, product, service
 from activity.models import ActivityEvent
-from listings.models import Category
+from listings.models import Category, Listing
 from notifications.models import Notification
 
 QUEUE = "/api/catalogue/staff/requests/pending/"
@@ -167,6 +167,18 @@ class DecisionTests(TestCase):
             (self.request.status, self.request.rejection_reason, self.request.reviewed_by, self.request.reviewed_at),
             (CatalogueAttachRequest.PENDING, None, None, None),
         )
+
+    def test_approve_and_re_review_refuse_a_listing_that_is_no_longer_published(self):
+        request = CatalogueAttachRequest.objects.filter(status=CatalogueAttachRequest.PENDING).first() or None
+        self.assertIsNotNone(request)
+        Listing.objects.filter(pk=request.listing_id).update(status=Listing.DRAFT)
+        with self.assertRaises(CatalogueError) as caught:
+            attach.approve(request.pk, self.staff)
+        self.assertEqual((caught.exception.code, caught.exception.status_code), ("not_published", 409))
+        attach.reject(request.pk, self.staff, "Later.")
+        with self.assertRaises(CatalogueError) as caught:
+            attach.re_review(request.pk)
+        self.assertEqual(caught.exception.code, "not_published")
 
     def test_review_focus_re_review_with_another_request_waiting_is_409(self):
         attach.reject(self.request.pk, self.staff, "Blurry.")

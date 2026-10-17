@@ -5,7 +5,7 @@ from unittest import mock
 
 from django.core.management import call_command
 from django.db import IntegrityError, OperationalError
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from accounts.testing import make_staff
 from catalogue import attach
@@ -76,6 +76,7 @@ class BarcodeMatcherTests(TestCase):
         self.assertEqual(CatalogueAttachRequest.objects.filter(source=BACKFILL).count(), 1)
 
 
+@override_settings(CATALOGUE_MATCHER_ENABLED=True)
 class ApprovalMatchesTests(TestCase):
     def test_a_new_barcoded_product_files_requests_for_its_other_listings(self):
         staff = make_staff("operations", "ops@example.com")
@@ -175,6 +176,7 @@ class StaffDecisionTests(TestCase):
         self.assertEqual(stats["raced"], 1)
 
 
+@override_settings(CATALOGUE_MATCHER_ENABLED=True)
 class ApprovalHookTests(TestCase):
     def setUp(self):
         self.staff = make_staff("operations", "ops@example.com")
@@ -192,6 +194,16 @@ class ApprovalHookTests(TestCase):
         self.assertEqual(len(callbacks), 1)
         self.assertFalse(CatalogueAttachRequest.objects.filter(source=BACKFILL).exists())
         callbacks[0]()
+        self.assertEqual(CatalogueAttachRequest.objects.get(source=BACKFILL).listing, self.second)
+
+    @override_settings(CATALOGUE_MATCHER_ENABLED=False)
+    def test_the_switch_off_files_nothing_on_approve(self):
+        _, entry, callbacks = self.approve(self.first, execute=True)
+        self.assertEqual(entry.barcode, BARCODE)                                    # a new barcoded entry was made
+        self.assertFalse(CatalogueAttachRequest.objects.filter(source=BACKFILL).exists())
+
+    def test_the_switch_on_files_the_other_listing_on_approve(self):
+        self.approve(self.first, execute=True)
         self.assertEqual(CatalogueAttachRequest.objects.get(source=BACKFILL).listing, self.second)
 
     def test_a_matcher_failure_never_fails_the_approval(self):
@@ -212,6 +224,7 @@ class ApprovalHookTests(TestCase):
         self.assertEqual(callbacks, [])
 
 
+@override_settings(CATALOGUE_MATCHER_ENABLED=True)
 class DecisionOnBarcodeTests(TestCase):
     def test_a_rejected_new_entry_request_for_the_barcode_is_honoured(self):
         staff = make_staff("operations", "ops@example.com")

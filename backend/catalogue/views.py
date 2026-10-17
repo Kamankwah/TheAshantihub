@@ -105,10 +105,10 @@ class ProductSearchView(APIView):
         if refused is not None:
             return refused
         try:
-            results = offers.search(request.query_params)
+            results, truncated = offers.search(request.query_params)
         except CatalogueError as exc:
             return Response(exc.body(), status=exc.status_code)
-        return Response({"results": results})
+        return Response({"results": results, "truncated": truncated})
 
 
 class ProductOffersView(APIView):

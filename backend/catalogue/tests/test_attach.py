@@ -11,6 +11,7 @@ from accounts.testing import make_staff
 from catalogue import attach
 from catalogue.models import CatalogueAttachRequest, CatalogueProduct
 from catalogue.tests.helpers import BARCODE, OTHER_BARCODE, STORE_CODE, as_account, business, buyer, product, service, stay
+from listings.models import Listing
 from notifications.models import Notification
 
 
@@ -119,9 +120,16 @@ class ProposeTests(TestCase):
             response = self.propose()
         self.assertEqual((response.status_code, response.json()["code"]), (409, "request_pending"))
 
-    def test_a_non_object_body_is_400_not_500(self):
+    def test_a_non_object_body_is_treated_as_empty_and_files_the_default_request(self):
         response = self.client.post(f"/api/catalogue/mine/{self.listing.pk}/requests/", [1, 2], format="json")
         self.assertEqual(response.status_code, 201, response.content)   # treated as an empty body
+
+    def test_only_a_published_listing_can_ask(self):
+        for status in (Listing.DRAFT, Listing.PENDING_REVIEW, Listing.REJECTED):
+            Listing.objects.filter(pk=self.listing.pk).update(status=status)
+            response = self.propose()
+            self.assertEqual((response.status_code, response.json()["code"]), (409, "not_published"), status)
+        self.assertFalse(CatalogueAttachRequest.objects.exists())
 
     def test_odd_product_values_are_400(self):
         for value in (True, 10**30, "1e3", "abc", [1]):

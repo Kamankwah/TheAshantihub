@@ -57,7 +57,7 @@ class SearchTests(TestCase):
 
     def test_no_match_is_an_honest_empty_list(self):
         response = self.search("?q=zzzzz")
-        self.assertEqual((response.status_code, response.json()), (200, {"results": []}))
+        self.assertEqual((response.status_code, response.json()), (200, {"results": [], "truncated": False}))
 
     def test_a_service_listing_is_not_an_offer(self):
         listing = service(business("Salon"))
@@ -69,6 +69,14 @@ class SearchTests(TestCase):
         for n in range(30):
             CatalogueProduct.objects.create(brand="Bulk", name=f"Item {n}")
         self.assertEqual(len(self.search("?q=bulk").json()["results"]), 20)
+
+    def test_a_capped_list_says_it_was_cut(self):
+        for n in range(20):
+            CatalogueProduct.objects.create(brand="Bulk", name=f"Item {n}")
+        self.assertFalse(self.search("?q=bulk").json()["truncated"])                 # exactly the cap: nothing cut
+        CatalogueProduct.objects.create(brand="Bulk", name="Item 21")
+        body = self.search("?q=bulk").json()
+        self.assertEqual((len(body["results"]), body["truncated"]), (20, True))
 
     def test_query_count_does_not_grow_with_results(self):
         few = self.queries("?q=bulk")                                              # no match yet
@@ -152,6 +160,14 @@ class SourcingOffersTests(TestCase):
             product(self.owner, price="1.00", catalogue_product=self.milo)
         body = self.client.get(f"/api/catalogue/products/{self.milo.pk}/offers/").json()
         self.assertEqual(len(body["offers"]), 2)
+
+    def test_a_capped_offer_list_says_it_was_cut(self):
+        url = f"/api/catalogue/products/{self.milo.pk}/offers/"
+        self.assertFalse(self.client.get(url).json()["truncated"])
+        for n in range(50):
+            product(business(f"Many {n}"), price="30.00", catalogue_product=self.milo)
+        body = self.client.get(url).json()
+        self.assertEqual((len(body["offers"]), body["truncated"]), (50, True))
 
     def test_query_count_is_flat(self):
         url = f"/api/catalogue/products/{self.milo.pk}/offers/"

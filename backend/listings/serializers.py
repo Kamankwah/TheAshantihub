@@ -170,6 +170,7 @@ NOT_GOODS_MESSAGE = "Only goods carry a barcode. Leave it blank for a service, s
 def clean_listing_barcode(value, instance=None, category=None):
     """A listing's barcode as its 14-digit GTIN (catalogue plan 6; spaces and hyphens may be typed). A grouped listing
     keeps its own barcode or takes its catalogue product's; it cannot change to another."""
+    from cart import guard
     from catalogue.identity import BarcodeError, clean_barcode
 
     try:
@@ -177,7 +178,7 @@ def clean_listing_barcode(value, instance=None, category=None):
     except BarcodeError as exc:
         raise serializers.ValidationError(str(exc)) from None
     category = category or getattr(instance, "category", None)
-    if key and category is not None and (category.kind != Category.PRODUCT or category.is_accommodation):
+    if key and category is not None and guard.kind_of_category(category) not in guard.DELIVERABLE:
         raise serializers.ValidationError(NOT_GOODS_MESSAGE)
     product = getattr(instance, "catalogue_product", None)
     if product is not None and product.barcode and key not in (product.barcode, instance.barcode):

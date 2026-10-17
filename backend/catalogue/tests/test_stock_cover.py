@@ -42,6 +42,8 @@ class StockSettingsTests(TestCase):
         response = client.post("/api/ledger/settings/", {"key": stock.COVER_DAYS, "value": 10}, format="json")
         self.assertEqual(response.status_code, 201, response.content)
         self.assertEqual(settings_store.current(stock.COVER_DAYS), 7)                    # waits for a Super Admin
+        from approvals.models import ApprovalRequest
+        self.assertTrue(ApprovalRequest.objects.get().title.startswith("Stock setting: "))
 
     def test_the_approval_says_what_a_stock_setting_applies_to(self):
         said = approval_kinds.setting_consequences(SimpleNamespace(payload={"key": stock.FALLBACK_UNITS}))

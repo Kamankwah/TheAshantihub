@@ -10,15 +10,17 @@ grouped without a staff decision.
 * A request names an existing entry, or describes a new one by brand and name (each defaults to the listing's own). A
   new entry needs a brand or the listing's barcode; a store's own code (catalogue.identity.is_store_code) never counts.
 * One request waits per listing: the check runs under the listing's row lock and a database constraint backs it.
-* Lock order: a request row before its listing row (approve, reject, re-review); propose locks only the listing.
-* The barcode matcher (Task 8) locks the listing row first, as `propose` does, files its request in a tiny transaction
-  of its own and re-checks the listing under the lock. `re_review` locks request then listing and the matcher only inserts
-  a new request row, so they cannot deadlock; the constraint's IntegrityError is still caught everywhere as a last
-  resort (`propose` and `re_review` answer 409 request_pending, the matcher skips the listing).
+* Lock order: approve and re_review lock the request row, then the listing row; reject locks only the request row;
+  detach locks its approved request rows first, then the listing (the same order). `propose` and the barcode matcher
+  lock the listing row and then only INSERT a new request row (nothing waits on a request row they hold), so they cannot
+  deadlock with the others. The matcher files its request in a tiny transaction of its own and re-checks the listing
+  under the lock; the constraint's IntegrityError is still caught everywhere as a last resort (`propose` and
+  `re_review` answer 409 request_pending, the matcher skips the listing).
 * A business may withdraw only a request it filed itself; a barcode match AshantiHub filed (source=backfill) is decided
   by staff alone (owner-confirmed: a business cannot opt out of one)."""
 import logging
 
+from django.conf import settings
 from django.db import IntegrityError, OperationalError, connection, transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -35,6 +37,7 @@ from .models import CatalogueAttachRequest, CatalogueProduct, product_row
 NEEDS_REVIEW = "catalogue_needs_review"
 NOT_GROUPABLE = "Only products can be grouped with other businesses' offers. Services, stays and events always stand alone."
 ALREADY_GROUPED = "This listing is already grouped with a catalogue product."
+NOT_PUBLISHED = "Only a published listing can be grouped. Publish it first."
 REQUEST_PENDING = "A grouping request for this listing is already waiting for AshantiHub."
 NEEDS_BRAND = "Give the product's brand, or add the barcode printed on the pack to the listing. Unbranded goods stand alone."
 NEEDS_NAME = "Give the product's name."
@@ -96,6 +99,8 @@ def propose(listing, data):
             raise CatalogueError(ACCOUNT_SUSPENDED, "account_suspended", 403)
         if not groupable(listing):
             raise CatalogueError(NOT_GROUPABLE, "not_groupable")
+        if listing.status != Listing.PUBLISHED:
+            raise CatalogueError(NOT_PUBLISHED, "not_published", 409)
         if listing.catalogue_product_id is not None:
             raise CatalogueError(ALREADY_GROUPED, "already_grouped", 409)
         if CatalogueAttachRequest.objects.filter(listing=listing, status=CatalogueAttachRequest.PENDING).exists():
@@ -119,7 +124,7 @@ def propose(listing, data):
                     listing=listing, catalogue_product=product, brand=brand, name=name, barcode=barcode,
                 )
         except IntegrityError:
-            # The barcode matcher (it takes no listing lock) filed one meanwhile: one request waits per listing.
+            # The constraint backs the one-waiting-per-listing check: a request filed meanwhile loses here.
             raise CatalogueError(REQUEST_PENDING, "request_pending", 409) from None
     try:
         notify_staff_role(
@@ -237,6 +242,8 @@ def _check_open(listing):
         raise CatalogueError(ALREADY_GROUPED, "already_grouped", 409)
     if not groupable(listing):
         raise CatalogueError(NOT_GROUPABLE, "not_groupable", 409)
+    if listing.status != Listing.PUBLISHED:
+        raise CatalogueError(NOT_PUBLISHED, "not_published", 409)
     if listing.business_owner.is_suspended:
         raise CatalogueError(OWNER_SUSPENDED, "account_suspended", 409)
 
@@ -327,7 +334,7 @@ def re_review(request_id):
             with transaction.atomic():
                 request.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
         except IntegrityError:
-            # The barcode matcher (it takes no listing lock) filed one meanwhile: one request waits per listing.
+            # The constraint backs the one-waiting-per-listing check: a request filed meanwhile loses here.
             raise CatalogueError(REQUEST_PENDING, "request_pending", 409) from None
     notify_staff_role(
         "listings.moderate", NEEDS_REVIEW, "Catalogue grouping re-opened",
@@ -337,11 +344,16 @@ def re_review(request_id):
 
 
 def detach(listing_id, reason, staff=None):
-    """Ungroup a listing (staff only); the entry stays for the other offers. Raises CatalogueError."""
+    """Ungroup a listing (staff only); the entry stays for the other offers. Locks its approved request rows, then the
+    listing (as approve does). Raises CatalogueError."""
     reason = (reason or "").strip()
     if not reason:
         raise CatalogueError(REASON_REQUIRED, "reason_required")
     with transaction.atomic():
+        # Request rows first, then the listing: the order approve and re_review use, so none of them can deadlock.
+        list(CatalogueAttachRequest.objects.select_for_update(of=("self",)).filter(
+            listing_id=listing_id, status=CatalogueAttachRequest.APPROVED, ungrouped_at__isnull=True,
+        ).order_by("pk").values_list("pk", flat=True))
         listing = (
             Listing.objects.select_for_update(of=("self",)).select_related("catalogue_product", "business_owner")
             .filter(pk=listing_id).first()
@@ -537,7 +549,10 @@ def propose_barcode_matches(product=None, *, dry_run=False, batch_size=BATCH_SIZ
 
 
 def _match_after_commit(product):
-    """The on-commit hook of `approve`: never lets a matcher failure reach the approval (which has committed)."""
+    """The on-commit hook of `approve`: a no-op while CATALOGUE_MATCHER_ENABLED is off, and never lets a matcher failure
+    reach the approval (which has committed)."""
+    if not settings.CATALOGUE_MATCHER_ENABLED:
+        return
     try:
         propose_barcode_matches(product)
     except Exception as exc:

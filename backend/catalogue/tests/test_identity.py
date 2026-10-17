@@ -182,6 +182,13 @@ class ListingBarcodeTests(TestCase):
                 self.assertEqual(
                     self.client.patch(f"/api/listings/mine/{listing.pk}/manage/", {"barcode": ""}, format="json").status_code, 200)
 
+    def test_a_food_listing_can_carry_a_barcode(self):
+        food = product(self.owner, "Bottled water", category="food")                 # kind=service, is_food
+        response = self.client.patch(f"/api/listings/mine/{food.pk}/manage/", {"barcode": BARCODE}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        food.refresh_from_db()
+        self.assertEqual(food.barcode, BARCODE)
+
     def test_the_public_listing_shape_is_unchanged(self):
         self.client.credentials()
         body = self.client.get(f"/api/listings/{self.listing.pk}/").json()

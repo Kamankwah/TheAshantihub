@@ -271,19 +271,18 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
     secret field or local-variable name to `ashantihub/sentry.py`.
 - **Catalogue, offers and stock alerts (`catalogue/`, Stage 6).** A `Listing` is the offer. `Listing.catalogue_product`
   (null = stands alone) is set only by `catalogue.attach.approve` (staff with `listings.moderate`, moderated-queue
-  contract, request row then listing row locked) and cleared only by `attach.detach` (which writes two audit events, the generic one and the explicit record); nothing groups automatically (the
+  contract: approve and re-review lock the request row then the listing row; reject only the request; detach locks its approved request rows first, then the listing; propose and the matcher lock the listing and only insert) and cleared only by `attach.detach` (which writes two audit events, the generic one and the explicit record); nothing groups automatically (the
   barcode matcher, `propose_catalogue_matches`, only files requests). Services, stays and events never group
   (`cart.guard.DELIVERABLE`). Barcodes are stored as 14-digit GTINs through `catalogue.identity.clean_barcode`, and a
   store's own code never groups. Offer rows (`catalogue.offers.offer_row`) never carry a phone, email, address, pin or
   `contact_phone`; an uncounted stock is null. Days of cover and the low line live in `catalogue.stock` (three governed
   settings in `ledger.settings_store`); alerts move `StockAlertState` with conditional UPDATEs (once per crossing,
-  re-armed only by a restock or a new own line), in-app only, behind `STOCK_ALERTS_ENABLED` (default off). Search and
+  re-armed only by a restock or a new own line), in-app only, behind `STOCK_ALERTS_ENABLED` (default off; state rows are inserted before the run's transaction). The barcode matcher (nightly job and approve's on-commit run) is behind `CATALOGUE_MATCHER_ENABLED` (default off). Only published listings group (409 `not_published`). Search and
   related lists hide counted goods at `stock_quantity=0` only while `SOLD_OUT_HIDDEN_ENABLED` is on (default off); the detail
   page never does. The owner listing forms save only the fields sent (`listings.serializers.save_sent_fields`). The
   featured-offer tie uses the straight-line pin distance only to order, never shown (as `delivery.dispatching.rank`). The checkout stock reservation above is unchanged.
   Known edges, all in the spec's §13: the owner barcode edit does not yet lock and revalidate against a racing approve
-  (cxiii); the matcher, `propose` and `re_review` lock listing first then request (a business `propose` can still meet an
-  `OperationalError`, cxiv); `Listing.price_amount` has no floor (cxvi); the matcher runs synchronously on approve (cxx).
+  (cxiii); a business `propose` can still meet an `OperationalError` (cxiv); `Listing.price_amount` has no floor (cxvi); the matcher runs synchronously on approve (cxx).
   Follow-ups before the alerts go on or the screens ship are in the spec's §13 (ci) onward.
 
 ## Test-fixture gotcha

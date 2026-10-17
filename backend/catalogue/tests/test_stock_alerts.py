@@ -114,6 +114,21 @@ class AlertTests(TestCase):
         self.assertEqual(len(many), len(few))
         self.assertFalse([q for q in many.captured_queries if q["sql"].lstrip().upper().startswith(("INSERT", "UPDATE"))])
 
+    def test_state_rows_are_inserted_before_the_runs_transaction_opens(self):
+        product(self.owner, "Milo", stock=3)
+        with CaptureQueriesContext(connection) as ctx:
+            alerts.run()
+        sqls = [q["sql"] for q in ctx.captured_queries]
+        insert = next(i for i, sql in enumerate(sqls) if sql.startswith("INSERT") and "catalogue_stockalertstate" in sql)
+        savepoint = next(i for i, sql in enumerate(sqls) if sql.startswith("SAVEPOINT"))
+        self.assertLess(insert, savepoint)                                          # the run's atomic block comes after
+
+    def test_the_low_notice_names_no_screen_that_may_not_exist(self):
+        product(self.owner, "Milo", stock=3)
+        alerts.run()
+        [notice] = self.notices(alerts.LOW)
+        self.assertEqual(notice.body, "“Milo” is running low. Open your listings to restock.")
+
     def test_one_notice_per_business_naming_its_offers(self):
         for n in range(7):
             product(self.owner, f"Item {n}", stock=1)

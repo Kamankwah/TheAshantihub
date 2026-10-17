@@ -41,7 +41,7 @@ def live_q(prefix=""):
     )
 
 
-def live_offers(product_id, exclude_owner_id=None):
+def live_offers(product_id, exclude_owner_id=None, limit=MAX_OFFERS):
     """Live offers of one product, cheapest first, capped at MAX_OFFERS. `exclude_owner_id` leaves one business out
     before the cap, so its own listings never crowd other businesses' offers out."""
     queryset = Listing.objects.filter(live_q(), catalogue_product_id=product_id)
@@ -50,7 +50,7 @@ def live_offers(product_id, exclude_owner_id=None):
     return (
         queryset
         .select_related("business_owner__profile", "zone")
-        .order_by("price_amount", "pk")[:MAX_OFFERS]
+        .order_by("price_amount", "pk")[:limit]
     )
 
 
@@ -129,7 +129,9 @@ MAX_WORDS = 8  # more words than this are ignored: a lookup is never a long scan
 
 def search(params):
     """GET products/: catalogue entries by barcode (any spelling) or by every word of ?q= (normalised), with how many
-    live offers each has now and the lowest live price (null when nobody offers it now). Raises CatalogueError."""
+    live offers each has now and the lowest live price (null when nobody offers it now), and whether more matched than the
+    cap of SEARCH_LIMIT shows (the screen should ask for a narrower search). Returns (rows, truncated). Raises
+    CatalogueError."""
     raw_barcode = str(params.get("barcode") or "").strip()
     if raw_barcode:
         try:
@@ -148,12 +150,13 @@ def search(params):
     rows = queryset.annotate(
         offer_count=Count("offers", filter=live, distinct=True),
         lowest_price=Min("offers__price_amount", filter=live),
-    ).order_by("normalised_name", "pk")[:SEARCH_LIMIT]
+    ).order_by("normalised_name", "pk")[:SEARCH_LIMIT + 1]
+    rows = list(rows)
     return [
         {**product_row(row), "offer_count": row.offer_count,
          "lowest_price": None if row.lowest_price is None else str(row.lowest_price)}
-        for row in rows
-    ]
+        for row in rows[:SEARCH_LIMIT]
+    ], len(rows) > SEARCH_LIMIT
 
 
 def sourcing(product, owner):
@@ -162,8 +165,9 @@ def sourcing(product, owner):
     mine = list(
         Listing.objects.filter(catalogue_product=product, business_owner=owner).order_by("pk").values_list("pk", flat=True)
     )
-    others = live_offers(product.pk, exclude_owner_id=owner.pk)
+    others = list(live_offers(product.pk, exclude_owner_id=owner.pk, limit=MAX_OFFERS + 1))
     return {
         "catalogue_product": product_row(product), "your_listings": mine,
-        "offers": [offer_row(offer) for offer in ordered(others)],
+        "offers": [offer_row(offer) for offer in ordered(others[:MAX_OFFERS])],
+        "truncated": len(others) > MAX_OFFERS,
     }

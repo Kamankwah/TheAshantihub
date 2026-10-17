@@ -59,7 +59,7 @@ def tell(owner, kind, names):
         icon = "📭"
     else:
         title = "Running low" if one else f"{len(names)} products running low"
-        body = f"{_names(names)} {'is' if one else 'are'} running low. See Needs restocking on your dashboard."
+        body = f"{_names(names)} {'is' if one else 'are'} running low. Open your listings to restock."
         icon = "📦"
     return notify_business_owner(owner, kind, title, body=body, link="/business-dashboard", icon=icon)
 
@@ -103,6 +103,8 @@ def run(now=None):
     current = stock.limits_at(now)
     ids = list(stock.tracked(Listing.objects.exclude(hidden_business_q())).order_by("pk").values_list("pk", flat=True))
     notices = {}
+    for start in range(0, len(ids), CHUNK):
+        _ensure_states(ids[start:start + CHUNK])    # in autocommit, before the run's transaction opens
     with transaction.atomic():
         for start in range(0, len(ids), CHUNK):
             _run_chunk(ids[start:start + CHUNK], current, now, notices)
@@ -111,14 +113,21 @@ def run(now=None):
     return sum(len(names) for _, names in notices.values())
 
 
+def _ensure_states(ids):
+    """A state row for every offer in `ids`, inserted only for the ones missing (a steady hour inserts nothing). Run
+    outside the run's transaction, so that transaction only UPDATEs state rows: inserting hundreds of rows with a foreign
+    key to listings in it would key-share-lock those listings until commit, against checkout's FOR UPDATE."""
+    have = set(StockAlertState.objects.filter(listing_id__in=ids).values_list("listing_id", flat=True))
+    missing = [pk for pk in ids if pk not in have]
+    if missing:
+        StockAlertState.objects.bulk_create([StockAlertState(listing_id=pk) for pk in missing], ignore_conflicts=True)
+
+
 def _run_chunk(ids, current, now, notices):
     """Measure one chunk of offers and collect the notices they earn, by (business, kind), into `notices`."""
     listings = list(stock.tracked(Listing.objects.filter(pk__in=ids)).select_related("business_owner").order_by("pk"))
     states = {state.listing_id: state for state in StockAlertState.objects.filter(listing_id__in=ids)}
-    missing = [pk for pk in ids if pk not in states]
-    if missing:                                                    # only new offers insert; a steady hour inserts nothing
-        StockAlertState.objects.bulk_create([StockAlertState(listing_id=pk) for pk in missing], ignore_conflicts=True)
-        states.update({state.listing_id: state for state in StockAlertState.objects.filter(listing_id__in=missing)})
+    listings = [listing for listing in listings if listing.pk in states]
     lines = {pk: state.threshold_units for pk, state in states.items() if state.threshold_units is not None}
     covers = stock.measure_many(listings, now, current, lines)
     for listing in listings:
