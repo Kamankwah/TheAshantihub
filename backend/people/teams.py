@@ -166,7 +166,11 @@ class ChangeRoleView(APIView):
             return Response({"detail": f"Remove {staff.full_name}'s individual permissions first; the co-signer holds nothing beyond its role."}, status=400)
         kept = staff.extra_permissions.count() + staff.revoked_permissions.count()
         old = staff.role
+        from delivery import employment  # lazy: delivery imports accounts at load
         with transaction.atomic():
+            blocked = employment.block_leaving(staff) if old.name == Role.DISPATCH else None
+            if blocked:
+                return Response({"detail": blocked, "code": "third_party_rider"}, status=409)
             staff.role = role
             staff.save(update_fields=["role"])
             if old.name == Role.COSIGNER:

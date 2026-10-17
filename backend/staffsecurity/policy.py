@@ -58,7 +58,7 @@ OTP_DEFAULTS = {"otp_customer_gap_days": 30, "otp_sms_daily_alert": 500}
 OTP_LIMITS = {"otp_customer_gap_days": (1, 365), "otp_sms_daily_alert": (1, 1000000)}
 OTP_LABELS = {
     "otp_customer_gap_days": "Days a trusted customer device skips the sign-in code",
-    "otp_sms_daily_alert": "Code texts a day before Super Admin is alerted",
+    "otp_sms_daily_alert": "Texts a day (codes and business money texts) before Super Admin is alerted",
 }
 
 

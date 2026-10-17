@@ -17,7 +17,9 @@ from accounts.serializers import invite_state
 from accounts import sessions
 from notifications.services import notify_staff
 
-from . import files, fleet, payloads, services
+from ledger import escrow
+
+from . import employment, files, fleet, payloads, services
 from .models import DeliveryZone, Rider, RiderDocument, Vehicle, VehicleHandover, VEHICLE_TYPES
 
 PERMISSION = "delivery.fleet"
@@ -88,6 +90,27 @@ class RiderJobHoldView(FleetView):
         return Response({"id": rider.pk, "job_hold": rider.job_hold, "job_hold_reason": rider.job_hold_reason})
 
 
+class RiderEmploymentView(FleetView):
+    """POST riders/<id>/employment/ {"employment": "ashantihub"|"third_party", "company_name", "note"} — propose who the
+    rider works for (wallets Plan 5). A Super Admin approves it with the password (their own change applies at once).
+    201 {approval_id, status, employment}; 409 no_change / already_pending / rider_money_open (+ open)."""
+
+    def post(self, request, pk):
+        rider = get_object_or_404(Rider.objects.select_related("staff"), pk=pk)
+        data = request.data if isinstance(request.data, dict) else {}
+        if request.user.role.name == Role.SUPER_ADMIN:
+            sessions.require_sudo(request)          # a Super Admin's own change applies at once: the password, as for approval
+        try:
+            approval = employment.propose(request.user, rider, data, note=data.get("note", ""), request=request)
+        except employment.EmploymentError as exc:
+            return Response(exc.body(), status=exc.status_code)
+        rider.refresh_from_db()
+        return Response(
+            {"approval_id": approval.pk, "status": approval.status, "employment": employment.row(rider)},
+            status=status.HTTP_201_CREATED,
+        )
+
+
 class RiderReinstateView(FleetView):
     """POST riders/<id>/reinstate/ — lift a suspension caused by an expired paper, once every required
     paper is approved and in date. A suspension a manager made by hand is lifted with the staff unsuspend
@@ -97,7 +120,7 @@ class RiderReinstateView(FleetView):
         return [HasRolePermission(PERMISSION), RequiresSudo()]
 
     def post(self, request, pk):
-        rider = get_object_or_404(Rider.objects.select_for_update().select_related("staff"), pk=pk)
+        rider = get_object_or_404(Rider.objects.select_for_update(of=("self",)).select_related("staff"), pk=pk)
         staff = rider.staff
         if not staff.is_suspended:
             return Response({"detail": "This rider is not suspended."}, status=409)
@@ -167,6 +190,8 @@ class DocumentReviewView(FleetView):
                         return Response({"detail": "Enter the expiry date as YYYY-MM-DD."}, status=400)
                 if doc.expires_on is not None and doc.expires_on < timezone.localdate():
                     return Response({"detail": "That paper has already expired."}, status=400)
+                if doc.kind == RiderDocument.GHANA_CARD and doc.expires_on is None and escrow.enabled():  # needed for payouts (ledger on)
+                    return Response({"detail": "A Ghana Card needs its expiry date before it is approved."}, status=400)
                 doc.status = RiderDocument.APPROVED
                 doc.reject_reason = ""
                 # An older approved paper of this kind is replaced by the new one.
@@ -275,7 +300,7 @@ class VehicleAssignView(FleetView):
                 return Response({"detail": "A retired vehicle cannot be handed out."}, status=409)
             new = None
             if request.data.get("rider"):
-                new = get_object_or_404(Rider.objects.select_for_update().select_related("staff"), pk=request.data["rider"])
+                new = get_object_or_404(Rider.objects.select_for_update(of=("self",)).select_related("staff"), pk=request.data["rider"])
             old = vehicle.current_riders.first()
             if old and new and old.pk == new.pk:
                 return Response(fleet.vehicle_row(vehicle))

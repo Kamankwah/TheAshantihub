@@ -11,7 +11,7 @@ from approvals.models import ApprovalRequest
 from orders.models import Order
 
 from . import escrow, fees, settings_store, verification
-from .approval_kinds import CATEGORY_LABELS, FEE_RULES_KEY, SETTING_KEY, bands_as_dicts, effective_time
+from .approval_kinds import CATEGORY_LABELS, FEE_RULES_KEY, SETTING_KEY, STOCK_SETTING_KEYS, bands_as_dicts, effective_time
 from .models import FeeRuleSet, Journal, MoneySetting
 
 VIEW, MANAGE = "fees.view", "fees.manage"
@@ -111,7 +111,7 @@ class MoneySettingsView(APIView):
             return Response({"detail": "A change to this setting is already waiting for approval."}, status=status.HTTP_409_CONFLICT)
         label = settings_store.DEFINITIONS[key].label
         return _submit(
-            request, SETTING_KEY, title=f"Money setting: {label}",
+            request, SETTING_KEY, title=f"{'Stock' if key in STOCK_SETTING_KEYS else 'Money'} setting: {label}",
             target_type="ledger.moneysetting", target_id=key, target_label=label,
             payload={"key": key, "value": data.get("value"), "effective_from": data.get("effective_from")},
             maker_note=str(data.get("note") or ""),

@@ -9,7 +9,8 @@ Both are query-time filters: nothing is unpublished or deleted, so
 unsuspending or paying brings everything back at once.
 
 Used by PublicListingListView, PublicListingDetailView, RelatedListingsView,
-events.views._live_events_queryset and adding to a cart.
+events.views._live_events_queryset, adding to a cart, catalogue.offers (other sellers),
+and catalogue.views.OtherSellersView.
 """
 from django.conf import settings
 from django.db.models import Q
@@ -25,3 +26,16 @@ def hidden_business_q(prefix="business_owner__"):
     if settings.SUBSCRIPTION_PAUSE_ENABLED:
         hidden |= Q(**{f"{prefix}subscription__paused_at__isnull": False})
     return hidden
+
+
+def sold_out_q(prefix=""):
+    """A Q matching counted goods with nothing left (catalogue plan 6; spec §1 row 15, §10 "zero stock hides the
+    offer"). Public search and the related list leave them out while settings.SOLD_OUT_HIDDEN_ENABLED is on (env,
+    default off until the Plan 6F screens tell a business to leave the count empty when it does not count stock).
+    Matches nothing while it is off, and never a service, stay or event: only products and food are offers with a stock
+    count."""
+    if not settings.SOLD_OUT_HIDDEN_ENABLED:
+        return Q(pk__in=[])
+    from cart.guard import deliverable_q  # cart.guard imports this module
+
+    return Q(**{f"{prefix}stock_quantity": 0}) & deliverable_q(prefix)

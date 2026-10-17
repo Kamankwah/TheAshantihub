@@ -23,6 +23,8 @@ from notifications.services import (
     notify_customer,
     notify_staff_role,
 )
+from ledger import posting
+from payments import booking_pay
 from payments.models import CheckoutSession
 from payments.services import process_payment
 
@@ -836,11 +838,11 @@ class TicketPurchaseView(APIView):
     select_for_update()-then-check-then-create oversell-prevention pattern
     (locked on EventTicketType rather than Event, since the thing being
     contended over is ticket inventory, not RSVP capacity), and is routed
-    through payments.services.process_payment() (docs/HUBTEL_INTEGRATION.md,
-    plan Workstream E) rather than writing a billing.Transaction directly.
+    through payments.booking_pay.pay(), which wraps payments.services.process_payment()
+    (docs/HUBTEL_INTEGRATION.md, plan Workstream E, and the ledger's processing charge) rather than writing a billing.Transaction directly.
 
     Inventory (`quantity_sold`) is reserved **optimistically, under this same
-    lock, before process_payment() is ever called** — in simulated mode this
+    lock, before the payment is ever started** — in simulated mode this
     is no different from before (the reservation and the Transaction are
     both committed together, synchronously). In Hubtel mode it means a
     ticket is provisionally "sold" the moment checkout starts, not once
@@ -864,61 +866,71 @@ class TicketPurchaseView(APIView):
         input_serializer = TicketPurchaseInputSerializer(data=request.data)
         input_serializer.is_valid(raise_exception=True)
         quantity = input_serializer.validated_data["quantity"]
+        try:
+            method = booking_pay.method_from(request.data)
+        except booking_pay.Refused as exc:
+            return Response(exc.body, status=exc.status_code)
 
         event = generics.get_object_or_404(_live_events_queryset(), pk=pk)
-
-        with db_transaction.atomic():
-            try:
-                ticket_type = EventTicketType.objects.select_for_update().get(
-                    pk=input_serializer.validated_data["ticket_type"].pk,
-                    event=event,
-                    is_active=True,
-                )
-            except EventTicketType.DoesNotExist:
-                return Response({"detail": "Ticket type not found for this event."}, status=404)
-
-            if (
-                ticket_type.quantity_total is not None
-                and ticket_type.quantity_sold + quantity > ticket_type.quantity_total
-            ):
-                return Response({"detail": "Not enough tickets remaining."}, status=400)
-
-            # Reserve inventory now, under this lock, regardless of provider
-            # — see docstring above for why this can't wait for webhook
-            # confirmation.
-            ticket_type.quantity_sold += quantity
-            ticket_type.save(update_fields=["quantity_sold"])
-
-            result = process_payment(
-                kind=CheckoutSession.TICKET_PURCHASE,
-                amount=ticket_type.price * quantity,
-                purpose=f"{quantity}x '{ticket_type.name}' ticket(s) for '{event.name}'",
-                customer=request.user,
-                metadata={
-                    "event_id": event.id,
-                    "ticket_type_id": ticket_type.id,
-                    "quantity": quantity,
-                    "customer_id": request.user.id,
-                    "delivery_method": ticket_type.delivery_method,
-                    "unit_price": str(ticket_type.price),
-                },
+        # Tickets for an event a customer organised stay outside the ledger (Plan 1b S10): no business holds them, so
+        # nothing could take the money from a wallet.
+        in_ledger = event.submitted_by_business_id is not None
+        if method == booking_pay.WALLET and not in_ledger:
+            return Response(
+                {"detail": "Tickets for this event can only be paid by mobile money.", "code": "wallet_not_accepted"},
+                status=409,
             )
 
-            if result["mode"] == "redirect":
-                return Response(
-                    {
-                        "mode": "redirect",
-                        "checkout_url": result["checkout_url"],
-                        "reference": result["reference"],
+        try:
+            with db_transaction.atomic():
+                try:
+                    ticket_type = EventTicketType.objects.select_for_update().get(
+                        pk=input_serializer.validated_data["ticket_type"].pk,
+                        event=event,
+                        is_active=True,
+                    )
+                except EventTicketType.DoesNotExist:
+                    return Response({"detail": "Ticket type not found for this event."}, status=404)
+
+                if (
+                    ticket_type.quantity_total is not None
+                    and ticket_type.quantity_sold + quantity > ticket_type.quantity_total
+                ):
+                    return Response({"detail": "Not enough tickets remaining."}, status=400)
+
+                # Reserve inventory now, under this lock, regardless of provider
+                # — see docstring above for why this can't wait for webhook
+                # confirmation.
+                ticket_type.quantity_sold += quantity
+                ticket_type.save(update_fields=["quantity_sold"])
+
+                result, processing = booking_pay.pay(
+                    kind=CheckoutSession.TICKET_PURCHASE,
+                    amount=ticket_type.price * quantity,
+                    purpose=f"{quantity}x '{ticket_type.name}' ticket(s) for '{event.name}'",
+                    customer=request.user,
+                    metadata={
+                        "event_id": event.id,
+                        "ticket_type_id": ticket_type.id,
+                        "quantity": quantity,
+                        "customer_id": request.user.id,
+                        "delivery_method": ticket_type.delivery_method,
+                        "unit_price": str(ticket_type.price),
                     },
-                    status=200,
+                    method=method,
+                    in_ledger=in_ledger,
                 )
 
-            # Immediate/simulated mode — process_payment() already ran
-            # payments.services._finalize_ticket_purchase, which created the
-            # Ticket row(s) and recorded their ids on the session's metadata.
-            ticket_ids = result["session"].metadata.get("ticket_ids", [])
-            tickets = Ticket.objects.filter(id__in=ticket_ids)
+                if result["mode"] == "redirect":
+                    return Response(booking_pay.redirect_body(result, processing, in_ledger=in_ledger), status=200)
+
+                # Immediate/simulated mode — process_payment() already ran
+                # payments.services._finalize_ticket_purchase, which created the
+                # Ticket row(s) and recorded their ids on the session's metadata.
+                ticket_ids = result["session"].metadata.get("ticket_ids", [])
+                tickets = Ticket.objects.filter(id__in=ticket_ids)
+        except posting.InsufficientFunds as exc:
+            return booking_pay.too_low(exc)  # the reservation rolled back with the payment
 
         return Response(
             TicketSerializer(tickets, many=True, context={"request": request}).data, status=201
@@ -928,6 +940,21 @@ class TicketPurchaseView(APIView):
 def _checkin_serializer_for(user):
     """Staff see the ticket buyer's phone; an event's organizer never does."""
     return StaffTicketCheckinListSerializer if isinstance(user, StaffUser) else TicketCheckinListSerializer
+
+
+LEDGER_RELEASES = "With the ledger on, this ticket's money is released by Support's call to the customer."
+
+
+def _ledger_sale(ticket):
+    """The ledger's booking sale this ticket was bought in (ledger Plan 1b), or None: the ledger is off, the purchase
+    was made before it was on, or the event's organiser is a customer. Only a ticket in a sale has its money in the
+    ledger, and then its escrow flag follows the sale (ledger.sales.release)."""
+    from ledger import escrow
+    from ledger.models import BookingSale
+
+    if not escrow.enabled():
+        return None
+    return BookingSale.objects.filter(session__transaction_id=ticket.transaction_id).first()
 
 
 class EventCheckinListView(generics.ListAPIView):
@@ -957,7 +984,9 @@ class EventCheckinView(APIView):
     non-exceptional path by which escrow is released: a held, undelivered,
     non-refunded ticket is marked delivered and auto-released in the same
     write (escrow_released_by_staff stays null, distinguishing an
-    auto-release from a manual EscrowReleaseView override).
+    auto-release from a manual EscrowReleaseView override). With the ledger
+    on and the ticket in a booking sale, the scan only marks it delivered and
+    leaves it held: it counts as hand-over, and Support's call releases it.
     """
 
     permission_classes = [IsAuthenticated, IsEventOwnerOrCanApproveEvents]
@@ -967,25 +996,30 @@ class EventCheckinView(APIView):
         self.check_object_permissions(request, event)
 
         code = (request.data.get("code") or "").strip()
-        ticket = generics.get_object_or_404(Ticket, code=code, ticket_type__event=event)
-
-        if ticket.delivered_at is not None:
-            return Response({"detail": "This ticket has already been checked in."}, status=400)
-        if ticket.refunded_at is not None:
-            return Response(
-                {"detail": "This ticket was refunded and cannot be checked in."}, status=400
+        with db_transaction.atomic():
+            # Locked, so a scan and a refund of the same ticket never cross (ledger Plan 1b S15).
+            ticket = generics.get_object_or_404(
+                Ticket.objects.select_for_update(of=("self",)), code=code, ticket_type__event=event,
             )
 
-        ticket.delivered_at = timezone.now()
-        ticket.delivered_by_staff = request.user if isinstance(request.user, StaffUser) else None
-        update_fields = ["delivered_at", "delivered_by_staff"]
+            if ticket.delivered_at is not None:
+                return Response({"detail": "This ticket has already been checked in."}, status=400)
+            if ticket.refunded_at is not None:
+                return Response(
+                    {"detail": "This ticket was refunded and cannot be checked in."}, status=400
+                )
 
-        if ticket.escrow_status == Ticket.HELD:
-            ticket.escrow_status = Ticket.RELEASED
-            ticket.escrow_released_at = timezone.now()
-            update_fields += ["escrow_status", "escrow_released_at"]
+            ticket.delivered_at = timezone.now()
+            ticket.delivered_by_staff = request.user if isinstance(request.user, StaffUser) else None
+            update_fields = ["delivered_at", "delivered_by_staff"]
 
-        ticket.save(update_fields=update_fields)
+            # With the ledger on, a ticket bought in a booking sale is released by Support's call, not by the scan.
+            if ticket.escrow_status == Ticket.HELD and _ledger_sale(ticket) is None:
+                ticket.escrow_status = Ticket.RELEASED
+                ticket.escrow_released_at = timezone.now()
+                update_fields += ["escrow_status", "escrow_released_at"]
+
+            ticket.save(update_fields=update_fields)
         return Response(_checkin_serializer_for(request.user)(ticket).data)
 
 
@@ -1077,7 +1111,8 @@ class EscrowReleaseView(APIView):
     `escrow.release` manually releases a held ticket's payment before/
     without a normal check-in (exception path — e.g. a physical-delivery
     ticket where check-in doesn't apply). Body may carry an optional
-    `note` recorded as escrow_override_note.
+    `note` recorded as escrow_override_note. A ticket in a ledger booking sale
+    answers 409 {"code": "ledger_on"}: Support's call releases it.
     """
 
     def get_permissions(self):
@@ -1088,6 +1123,8 @@ class EscrowReleaseView(APIView):
         note = _required_note(request.data.get("note"))
         if note is None:
             return Response({"note": "Write a note of at least 3 characters: every release is explained."}, status=400)
+        if _ledger_sale(generics.get_object_or_404(Ticket, pk=ticket_id)) is not None:
+            return Response({"detail": LEDGER_RELEASES, "code": "ledger_on"}, status=409)
         with db_transaction.atomic():
             ticket = generics.get_object_or_404(Ticket.objects.select_for_update(), pk=ticket_id)
 
@@ -1114,7 +1151,8 @@ class EscrowHoldView(APIView):
     `escrow.release` reverses an escrow release back to held (exception
     path — e.g. a dispute raised after an already-checked-in ticket was
     released). Deliberately leaves delivered_at untouched: "held" is purely
-    an escrow-ledger state here, not an undo of check-in itself.
+    an escrow-ledger state here, not an undo of check-in itself. A ticket in a
+    ledger booking sale answers 409 {"code": "ledger_on"}.
     """
 
     def get_permissions(self):
@@ -1124,6 +1162,8 @@ class EscrowHoldView(APIView):
         note = _required_note(request.data.get("note"))
         if note is None:
             return Response({"note": "Write a note of at least 3 characters: every hold is explained."}, status=400)
+        if _ledger_sale(generics.get_object_or_404(Ticket, pk=ticket_id)) is not None:
+            return Response({"detail": LEDGER_RELEASES, "code": "ledger_on"}, status=409)
         with db_transaction.atomic():
             ticket = generics.get_object_or_404(Ticket.objects.select_for_update(), pk=ticket_id)
 
@@ -1153,6 +1193,10 @@ class EscrowRefundView(APIView):
     a negative-amount Transaction as the refund's ledger record, mirroring
     how every other financial action in this app books a Transaction
     rather than mutating one in place.
+
+    With the ledger on (the ticket has a BookingSale) the price goes back to the buyer's AshantiHub wallet instead,
+    through ledger.sales.refund_ticket: one BookingRefund per ticket, plus the same REFUNDED Transaction; the response
+    adds `wallet_refund`.
     """
 
     def get_permissions(self):
@@ -1162,6 +1206,26 @@ class EscrowRefundView(APIView):
         reason = _required_note(request.data.get("reason"))
         if reason is None:
             return Response({"reason": "Write a reason of at least 3 characters: every refund is explained."}, status=400)
+        sale = _ledger_sale(generics.get_object_or_404(Ticket, pk=ticket_id))
+        if sale is not None:
+            # With the ledger on, the ticket's price goes back to the buyer's AshantiHub wallet (ledger Plan 1b S9).
+            from ledger import sales
+            from ledger.money import from_pesewas
+            from ledger.refunds import RefundError
+
+            try:
+                ticket, given = sales.refund_ticket(sale, ticket_id, by=request.user, reason=reason)
+            except sales.TicketRefundError as exc:
+                return Response({"detail": exc.message}, status=400)
+            except RefundError as exc:
+                return Response({"detail": exc.message}, status=exc.status_code)
+            back = from_pesewas(given.amount_pesewas)
+            notify_customer(
+                ticket.purchased_by, "booking", "Your ticket was refunded",
+                body=f"GH₵ {back} for your ticket to “{ticket.ticket_type.event.name}” went back to your AshantiHub wallet.",
+                link="/my-account", icon="🎟️",
+            )
+            return Response({**TicketEscrowLedgerSerializer(ticket).data, "wallet_refund": str(back)})
         with db_transaction.atomic():
             ticket = generics.get_object_or_404(Ticket.objects.select_for_update(), pk=ticket_id)
 

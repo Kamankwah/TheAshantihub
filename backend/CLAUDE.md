@@ -179,6 +179,35 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
 
 - **Distances come from `routing.service`.** Never call `delivery.services.distance_estimate_km` for a figure shown to a user; use `routing.service.leg`/`legs_from`/`legs_between`, which return the road route or the labelled estimate (`basis`). Only `routing/client.py` talks to OSRM and converts lat/lng to lng/lat. The one exception until stage 2: `delivery.dispatching.rank` (the Dispatch queue ranking and its radius check) still uses the straight-line estimate and says so in its `distance_basis`. The service area is `routing.region.in_service_area` (an approximate rectangle, see its docstring).
 - **Multi-stop delivery.** Stop codes and wrong tries live on `PickupStop`; stop 1 is mirrored into the assignment's legacy fields (deliveries assigned before the release keep one stop and the old code). `stops.stops_of` never writes; write paths call `ensure_stops` first and must not prefetch `stops` on a locked row. Skip evidence (rider pin, time, note) lives on the append-only `skipped_stop` `DeliveryEvent` rows and survives a reset; a job with every shop skipped fails as `all_stops_skipped` and is requeued by resetting the same OneToOne row.
+- **Third-party riders (`delivery/employment.py`, `ledger/riders.py`, `wallets/rider_wallet.py`, Plan 5).** A rider is
+  AshantiHub's own (`Rider.employment="ashantihub"`, the default: no wallet, every `/api/delivery/rider/wallet/*`
+  endpoint answers `409 wallet_disabled`) or third-party, changed only through the `delivery.rider_employment` approval
+  (Delivery Manager proposes, Super Admin approves; switching back is refused while money, a withdrawal or a
+  delivered-but-unreleased order is open). Behind `LEDGER_ENABLED`, a third-party rider is paid only at release
+  (Support's "matches"), never at the door: `riders.credit_delivery`, in `escrow.release_verified`'s transaction (after `charge_waiver`; Plan 4's business texts follow it),
+  moves what platform delivery income took for the order (fee plus promo charge) to the rider (`order-rider-<order>`: 90%
+  Rider balance, 10% reserve at the `rider_commission_bp` in force when the order was paid). A whole refund after release
+  reverses it first (`riders.reverse_earning`, passed the refund's own time; `riders.check_reversal` refuses a reversal
+  that is not what the refund returns; the balance may go below zero and then blocks withdrawals, and the rider gets a
+  `rider_earning_reversed` notice); a partial refund never touches it. The 00:20 job (`ledger.tasks.post_rider_commission`)
+  posts each earlier day's reserve to platform commission income once (earning rows locked; missed nights caught up).
+  **Lock order:** the order row, its fee snapshots, then the rider row (release) or the earning row (refund), then
+  accounts in one sorted pass; the end-of-day job takes the rider row, then the earning rows, then the accounts; the
+  employment `apply` and `block_leaving` take the rider row, then accounts; a destination add takes the staff row FOR NO
+  KEY UPDATE; no rider notice is created inside those transactions (`notify_staff_on_commit`), and every other
+  `select_for_update` reaching a rider takes `of=("self",)` so the staff row stays unlocked. A
+  rider's accounts are held by their staff account, so the Stage 3b destinations and withdrawals serve riders
+  (`holder_type` "staff"; verified name = staff name with an approved, in-date Ghana Card that has an expiry date;
+  step-up codes for `withdrawal` / `payout_destination` only). Rider wallet writes are `activity_exempt` (as staff writes
+  they would run inside the middleware's transaction and store the account number) and record their own event, without
+  the number, through `views_payouts`' `saved()` hook. Nobody changes their own employment (`own_rider` 403, a Super Admin
+  included) and only a Dispatch rider can be third-party; `wallet_rider()` also checks the Dispatch role. A third-party
+  rider cannot leave Dispatch or be deactivated while third-party (`employment.block_leaving`, 409). Payroll
+  (`RiderEarnedView`, `rider/earnings/`) leaves out a third-party rider's deliveries (`employment.payroll_jobs`), so
+  Accounting cannot pay them twice. A day's `RiderCommissionPosting` is never edited: commission given back by a later
+  full refund shows as `given_back` beside it (per posting row, one helper: `rider_wallet.given_back`). Staff read riders'
+  money under `wallets.view` (`views_rider_wallet.StaffRider*`, `views_staff.rider_rows`); the single-rider read adds their
+  withdrawals and answers `409 wallet_disabled` for an AshantiHub-own rider.
 - **The ledger (`ledger/`) is append-only and integer-pesewa.** A balance changes only inside `ledger.posting.post`
   (balanced, idempotent on its key, accounts locked in primary-key order); Postgres triggers refuse `UPDATE`/`DELETE`
   on journals and lines, so a correction is a new reversing journal. Convert money only through `ledger.money`. Fees
@@ -221,8 +250,8 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   or phone calls it with `force=escrow.enabled()`: while the ledger is on they always need a code, and the step-up
   endpoints send codes for those three actions. `wallets.withdrawals.request` locks the destination, then the source
   and in-transit accounts together (`posting.lock`), then checks balance and limits (governed
-  `withdrawal_per_tx_limit_pesewas` / `withdrawal_daily_limit_pesewas`, per holder account); a vendor's negative
-  Available blocks it. Every hold and settlement locks the one `withdrawal_in_transit` account, so withdrawals
+  `withdrawal_per_tx_limit_pesewas` / `withdrawal_daily_limit_pesewas`, per holder account); a negative vendor
+  Available or rider balance blocks it. Every hold and settlement locks the one `withdrawal_in_transit` account, so withdrawals
   serialise (throughput only). A withdrawal is claimed before the provider is called (sent once; returned instead if
   the holder was suspended or the destination removed) and ends only through `wallets.payouts.apply_result` / `close`
   (row lock, per-reference journal keys, a final status never changes, the amount the provider reports must equal what
@@ -232,6 +261,23 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   withdrawal asks the provider first and is refused (409 `provider_processing`) while it says processing or anything
   unmapped, never with an open amount case, and the holder sees only AshantiHub's fixed
   reason. The nightly `wallets.reconciliation` is read-only and compares by provider reference.
+- **Services, stays and event tickets in the ledger (`ledger/sales.py`, Plan 1b).** Behind `LEDGER_ENABLED` like the
+  rest. A paid service request, stay or ticket purchase is one `ledger.BookingSale` (its subject; its fee snapshot from
+  the services table — stays count as services — or the events table; Support's call), recorded by the payment
+  finalizers (`booking-pay-<session reference>`: Dr provider clearing or customer wallet, Cr vendor Pending). The
+  lifetime cap counts sales and order snapshots together (`fees.charged_to_date`), read after the business's Pending is
+  locked. Handed over = service marked done, guest checked in, a ticket scanned or the event's date passed; release only
+  on Support's "matches" (`sales.record_verification`, `/api/ledger/bookings/`), with the 72-hour window counted from
+  hand-over (provisional until the owner confirms it: spec gate (lvii)). Tickets for a customer-organised event stay outside the ledger (MoMo only). With the ledger on a ticket's
+  escrow flag follows its sale: a scan no longer releases it, the manual release and hold answer `409 ledger_on`.
+  Refunds go to the wallet through `sales.refund` (one `BookingRefund` per sale and source; the refund that empties a
+  sale cancels a booking not yet handed over), wired into the customer's stay cancel, Support's booking cancel, the
+  Accountant's ticket refund and dispute resolution. **Lock order:** the service request or stay row (tickets: the
+  purchase's tickets in primary-key order), then the sale, then accounts in one sorted pass (`sales.lock(sale)`); the
+  hand-over steps (service done, check-in, ticket scan) lock their own row. `record_verification` locks the linked
+  dispute first (dispute, then subject, then sale, as disputes resolve). The three pay endpoints take
+  `payment_method` and add "payment processing" on MoMo through `payments/booking_pay.py`; a service request's price
+  must be above GH₵ 0.00 with at most two decimals (this check is always on, ledger on or off: spec §13 (lxvii)).
 - **Pickup Desk** is the `pickup_desk` staff role with the single permission `pickup.confirm` (store-pickup queue and
   collection); only a Super Admin invites it.
 - **One-time codes (`otp/`).** One OTP service for every account kind: 6-digit codes kept only as a salted HMAC
@@ -259,8 +305,9 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   - **Step-up.** Sensitive changes call `otp.step_up.require(request, ACTION)` **inside** the `transaction.atomic()`
     that saves (a refused change keeps the token); tokens are single-use, 5 minutes, bound to the action and the
     access token's `jti` (`X-Step-Up-Token`, `403 step_up_required`). A new sensitive endpoint (password change,
-    withdrawal, payout destination) must call it. Only customers and owners may ask for step-up codes (staff use
-    sudo), and the endpoints answer `409 otp_off` unless a code could be owed.
+    withdrawal, payout destination) must call it. Only customers, owners and third-party riders (riders: withdrawal and
+    payout_destination only, while the ledger is on) may ask for step-up codes (other staff use sudo), and the
+    endpoints answer `409 otp_off` unless a code could be owed.
   - **Recovery and rollout.** Staff recovery is the `otp.recovery` approval (Support asks, Super Admin approves; no
     text while `OTP_SMS_PROVIDER` is `simulated`); it sends a recovery-specific message plus a link-free notice to the
     account's other contacts. Three switches default off (`OTP_SIGNIN_ENFORCED`, `OTP_STEP_UP_ENFORCED`,
@@ -269,6 +316,39 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
     the `otp.E001` system check. Texts go through `otp.senders` only (`locmem` under tests: read
     `otp.senders.sms_outbox`). Codes and device/step-up tokens are never stored or logged in clear; add any new
     secret field or local-variable name to `ashantihub/sentry.py`.
+- **Catalogue, offers and stock alerts (`catalogue/`, Stage 6).** A `Listing` is the offer. `Listing.catalogue_product`
+  (null = stands alone) is set only by `catalogue.attach.approve` (staff with `listings.moderate`, moderated-queue
+  contract: approve and re-review lock the request row then the listing row; reject only the request; detach locks its approved request rows first, then the listing; propose and the matcher lock the listing and only insert) and cleared only by `attach.detach` (which writes two audit events, the generic one and the explicit record); nothing groups automatically (the
+  barcode matcher, `propose_catalogue_matches`, only files requests). Services, stays and events never group
+  (`cart.guard.DELIVERABLE`). Barcodes are stored as 14-digit GTINs through `catalogue.identity.clean_barcode`, and a
+  store's own code never groups. Offer rows (`catalogue.offers.offer_row`) never carry a phone, email, address, pin or
+  `contact_phone`; an uncounted stock is null. Days of cover and the low line live in `catalogue.stock` (three governed
+  settings in `ledger.settings_store`); alerts move `StockAlertState` with conditional UPDATEs (once per crossing,
+  re-armed only by a restock or a new own line), in-app only, behind `STOCK_ALERTS_ENABLED` (default off; state rows are inserted before the run's transaction). The barcode matcher (nightly job and approve's on-commit run) is behind `CATALOGUE_MATCHER_ENABLED` (default off). Only published listings group (409 `not_published`). Search and
+  related lists hide counted goods at `stock_quantity=0` only while `SOLD_OUT_HIDDEN_ENABLED` is on (default off); the detail
+  page never does. The owner listing forms save only the fields sent (`listings.serializers.save_sent_fields`). The
+  featured-offer tie uses the straight-line pin distance only to order, never shown (as `delivery.dispatching.rank`). The checkout stock reservation above is unchanged.
+  Known edges, all in the spec's §13: the owner barcode edit does not yet lock and revalidate against a racing approve
+  (cxiii); a business `propose` can still meet an `OperationalError` (cxiv); `Listing.price_amount` has no floor (cxvi); the matcher runs synchronously on approve (cxx).
+  Follow-ups before the alerts go on or the screens ship are in the spec's §13 (ci) onward.
+- **A business's money and texts (`wallets/vendor.py`, `vendor_texts.py`, Stage 4).** `/api/wallet/vendor/*` is
+  business-owner only (a customer with the same id, or staff, gets 403: platform fees never reach a customer) and answers
+  `409 ledger_off` while the ledger is off. Read-only: sale rows come from the business's own `OrderFeeSnapshot`s (never
+  today's rules), the daily summary from journal lines on its own Pending and Available accounts (`vendor.FOLD`; any
+  other line lands in `other`, so the columns always add up to the balance change), and no row, export or text holds a
+  customer's name, phone or address. Texts to a business go through `wallets.VendorText`: `vendor_texts.queue` runs
+  inside the payment (`orders.alerts`) or the release (`escrow.release_verified`, after every posting), in a savepoint,
+  and never raises; the send happens after commit through `otp.senders`, claimed with a 10-minute lease, tried at most 5 times, and only to a login phone that is an `otp.VerifiedContact` (stricter than
+  today's lock notices, which text every contact on the account: an open must-fix in spec §13, whose fix will make them
+  VerifiedContact-only too). A provider-down breaker (cache, 120 s, after 3 failures in a row) leaves texts queued. The hand-off after commit is a lambda that logs its own errors (Django's robust `on_commit` formats
+  `func.__qualname__`, which a `functools.partial` lacks).
+  A business text is **never an `OtpEvent`** (those count toward the code send limits) but is counted by the
+  `otp.spend` alert. Bodies are GSM-7 plain text with "GHS" (never "GH₵"), at most 306 characters. `phone` is in
+  `ashantihub/sentry.py`'s denylist (the whole number is a local in `vendor_texts.deliver`). **Booking sales (Plan 1b)
+  are not on these screens yet.** Their money is in Pending and Available and their fees count toward the cap (the fee
+  page marks all three categories `charged`), but the sale rows, `awaiting_call`, the statement and the texts come from
+  `OrderFeeSnapshot` only, and `booking_*` journal lines land in the daily summary's `other` column. A follow-up (Plan
+  4F or 4b) must add `BookingSale` rows, `FOLD` kinds and texts before the ledger is turned on (spec §13 (lxxxiii)).
 
 ## Test-fixture gotcha
 

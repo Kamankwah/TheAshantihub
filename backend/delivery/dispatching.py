@@ -145,7 +145,7 @@ def accept_offer(offer_id, staff):
     """Atomically: the offer must still be live and unexpired and the order still waiting. Accepting takes
     the job (assigned and accepted in one step) and stamps both events."""
     with transaction.atomic():
-        offer = Offer.objects.select_for_update().select_related("order", "rider__staff").get(pk=offer_id, rider__staff=staff)
+        offer = Offer.objects.select_for_update(of=("self", "order")).select_related("order", "rider__staff").get(pk=offer_id, rider__staff=staff)
         now = timezone.now()
         if offer.status != Offer.OFFERED:
             raise services.DeliveryError("This offer is no longer open.", 409, "offer_closed")

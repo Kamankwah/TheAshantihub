@@ -9,7 +9,7 @@ from accounts.models import StaffSession, StaffUser
 from accounts.phones import mask_phone
 from orders.models import DeliveryAssignment
 
-from . import payloads, services
+from . import employment, payloads, services
 from . import cash
 from .models import DeliveryZone, Offer, Rider, RiderDocument, ShiftSession, Vehicle
 
@@ -134,6 +134,7 @@ def profile(rider, now=None):
             {"id": s.pk, "device_label": s.device_label, "last_seen_at": s.last_seen_at, "signed_in_at": s.created_at}
             for s in sessions
         ],
+        "employment": employment.row(rider),
         "pay": None,  # no rate card or pay record yet: the screen says rider pay arrives with Accounting
         "today": today,
     }

@@ -1,5 +1,7 @@
 from django.urls import path
 
+from wallets import views_rider_wallet
+
 from . import views_cash, views_cases, views_fleet, views_live, views_queue, views_rider, views_rider_money, views_rules, views_shifts
 
 urlpatterns = [
@@ -26,6 +28,21 @@ urlpatterns = [
     path("rider/issues/", views_rider.IssueView.as_view(), name="delivery-rider-issues"),
     path("rider/earnings/", views_rider_money.EarningsView.as_view(), name="delivery-rider-earnings"),
     path("rider/cash/", views_rider_money.CashView.as_view(), name="delivery-rider-cash"),
+    # Rider wallet (third-party riders only; wallets Plan 5)
+    path("rider/wallet/", views_rider_wallet.RiderWalletView.as_view(), name="delivery-rider-wallet"),
+    path("rider/wallet/earnings/", views_rider_wallet.RiderEarningsView.as_view(), name="delivery-rider-wallet-earnings"),
+    path("rider/wallet/days/", views_rider_wallet.RiderDaysView.as_view(), name="delivery-rider-wallet-days"),
+    path("rider/wallet/statement/", views_rider_wallet.RiderStatementView.as_view(), name="delivery-rider-wallet-statement"),
+    path("rider/wallet/destinations/", views_rider_wallet.RiderDestinationsView.as_view(), name="delivery-rider-wallet-destinations"),
+    path(
+        "rider/wallet/destinations/<int:pk>/remove/", views_rider_wallet.RiderDestinationRemoveView.as_view(),
+        name="delivery-rider-wallet-destination-remove",
+    ),
+    path("rider/wallet/withdrawals/", views_rider_wallet.RiderWithdrawalsView.as_view(), name="delivery-rider-wallet-withdrawals"),
+    path(
+        "rider/wallet/withdrawals/<int:pk>/cancel/", views_rider_wallet.RiderWithdrawalCancelView.as_view(),
+        name="delivery-rider-wallet-withdrawal-cancel",
+    ),
     # ── Manager: live (delivery.manage) ────────────────────────────────────────────────────────────
     path("live/", views_live.LiveView.as_view(), name="delivery-live"),
     path("active/", views_live.ActiveView.as_view(), name="delivery-active"),
@@ -41,6 +58,9 @@ urlpatterns = [
     path("riders/<int:pk>/", views_fleet.RiderDetailView.as_view(), name="delivery-rider"),
     path("riders/<int:pk>/job-hold/", views_fleet.RiderJobHoldView.as_view(), name="delivery-rider-job-hold"),
     path("riders/<int:pk>/reinstate/", views_fleet.RiderReinstateView.as_view(), name="delivery-rider-reinstate"),
+    path("riders/<int:pk>/employment/", views_fleet.RiderEmploymentView.as_view(), name="delivery-rider-employment"),
+    path("riders/<int:pk>/wallet/", views_rider_wallet.StaffRiderWalletView.as_view(), name="delivery-rider-wallet-staff"),
+    path("rider-commission/", views_rider_wallet.StaffRiderCommissionView.as_view(), name="delivery-rider-commission"),
     path("documents/", views_fleet.DocumentsView.as_view(), name="delivery-documents"),
     path("documents/<int:pk>/review/", views_fleet.DocumentReviewView.as_view(), name="delivery-document-review"),
     path("documents/<int:pk>/remind/", views_fleet.DocumentRemindView.as_view(), name="delivery-document-remind"),

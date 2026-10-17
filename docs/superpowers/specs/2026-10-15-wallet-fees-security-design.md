@@ -1,9 +1,15 @@
 # Wallets, Escrow, Platform Fees, Stock Offers and OTP Security — Design
 
-**Status:** Approved 2026-10-15. Stage 1 plan: docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md. Stage 2 (OTP, backend) plan: docs/superpowers/plans/2026-10-16-otp-security.md. Stage 3 plans: docs/superpowers/plans/2026-10-16-wallets-payments-3a.md (wallet payments and refunds) and docs/superpowers/plans/2026-10-16-withdrawals-3b.md (payout destinations, withdrawals, reconciliation).
-**Scope:** One system, built in the order given in §11. Stage 1 (ledger), Stage 2 (OTP, backend) and Stage 3 (wallets,
-payments, refunds, withdrawals and reconciliation, backend) are implemented behind switches that default off (branches
-feature/ledger-stage1, feature/otp-security and feature/wallets; see section 13); later stages are specs only.
+**Status:** Approved 2026-10-15. Stage 1 plan: docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md. Stage 2 (OTP, backend) plan: docs/superpowers/plans/2026-10-16-otp-security.md. Stage 3 plans: docs/superpowers/plans/2026-10-16-wallets-payments-3a.md (wallet payments and refunds) and docs/superpowers/plans/2026-10-16-withdrawals-3b.md (payout destinations, withdrawals, reconciliation). Plan 1b (services, events and stays): docs/superpowers/plans/2026-10-16-ledger-services-events-stays-1b.md. Stage 4 (vendor dashboard and texts, backend) plan: docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md. Stage 5 (third-party dispatch, backend) plan: docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md. Stage 6 (catalogue, offers and stock alerts, backend) plan: docs/superpowers/plans/2026-10-16-catalogue-offers-stock-6.md.
+**Scope:** One system, built in the order given in §11. Stage 1 (ledger) with Plan 1b (services, events and stays),
+Stage 2 (OTP, backend), Stage 3 (wallets, payments, refunds, withdrawals and reconciliation, backend), Stage 4 backend
+(the vendor money API and business texts, Plan 4) and Stage 5 (third-party rider wallets and daily commission, backend)
+are implemented behind switches that default off (branches feature/ledger-stage1, feature/ledger-services-1b,
+feature/otp-security, feature/wallets, feature/vendor-side-4 and feature/dispatch-wallets-5; see section 13); Stage 6
+backend (catalogue entries, offers, other sellers, stock cover and low-stock alerts; branch
+feature/catalogue-offers-6) is implemented behind three switches that default off: `STOCK_ALERTS_ENABLED` (the alerts),
+`SOLD_OUT_HIDDEN_ENABLED` (sold-out hiding) and `CATALOGUE_MATCHER_ENABLED` (the barcode matcher: the nightly job and
+approve's on-commit run); later stages are specs only.
 **Basis:** The owner's brief, plus the decisions in §1, reconciled with the existing code in §13.
 
 ## 1. Decisions (settled in brainstorming)
@@ -46,7 +52,7 @@ statement and flags differences.
 | Vendor Pending | Vendor | Sale amount awaiting completion; not withdrawable |
 | Vendor Available | Vendor | Released money; withdrawable; may go negative after a late refund |
 | Delivery payable | Internal | The order's delivery fee until paid out |
-| Rider balance | Third-party rider | Withdrawable share (90%) |
+| Rider balance | Third-party rider | Withdrawable share (90%); may go negative after a refund takes a delivery back |
 | Rider commission reserve | Internal/rider (read-only) | 10% reserve, not withdrawable |
 | Platform fee / delivery / commission income | AshantiHub | Platform earnings |
 | Provider clearing, provider fees | Internal | The Hubtel side of every cash movement |
@@ -139,7 +145,9 @@ No timer releases a vendor's money. For a product order:
 
 ### 4.2 Services, events and stays (owner decision 2026-10-15)
 
-Same as products: the service is done, the event has taken place or the stay has begun, the customer confirms (or Support records it on the call), and a Support verification call releases the money; a mismatch raises a 72-hour dispute. What counts as "handed over" for each kind (provider marks the service done, event date passed or ticket scanned, check-in) is settled in Plan 1b. The ledger records only product orders until then.
+Same as products: the service is done, the event has taken place or the stay has begun, the customer confirms (or Support records it on the call), and a Support verification call releases the money; a mismatch raises a 72-hour dispute. What counts as "handed over" for each kind (provider marks the service done, event date passed or ticket scanned, check-in) is settled in Plan 1b (§13 B4): the business marks the service done, the guest checks in, a ticket is scanned or
+the event's date passes. Plan 1b counts the 72 hours from that hand-over, not from purchase as §4.1 does for products;
+that reading is provisional until the owner confirms it (gate (lvii)).
 
 ### 4.3 Store pickup and the Pickup Desk
 
@@ -256,6 +264,7 @@ Follow-ups found in the final review; none is reachable while the flag stays off
 - (i) **Hubtel webhook failure mode.** If `record_order_payment` raises inside `payments.views.HubtelWebhookView`, the customer has paid but the order stays PENDING, the `WebhookEvent` row stays `processed=False` with no note, and Hubtel retries forever. Wire Sentry/alerting and write a `processing_note` before turning the ledger on with `PAYMENTS_PROVIDER=hubtel`.
 - (ii) **Queues.** `awaiting()` and `pickup_queue()` are unpaginated, `awaiting()` does per-order queries, and `pickup_queue()` is not gated by the ledger flag, so every historical paid store-pickup order (no FulfilmentCheck) would show as overdue to the desk. Add pagination and a go-live cut-off before Plan 1F ships the desk screen.
 - (iii) **Concurrency test.** Add a threaded `TransactionTestCase` covering the payment/release lock graph and the lifetime-cap race.
+  When `ledger/sales.py` lands the test also needs a cross-category case: an order payment and a booking payment for the same business racing the shared lifetime cap.
 - (iv) **Legacy vendor-shop store pickups** can never be marked collected once the ledger is on (the desk handles AshantiHub-office pickups), so their money would stay in Pending. A rollout/process decision for the owner.
 - (v) **Mismatch dispute.** The dispute created by `verification.record` sets `raised_by=customer` although it is staff-logged (the convention in `disputes/models.py` is `raised_by` null plus `logged_by`), and it neither notifies the customer nor tasks the account managers. Decide before Support uses it at volume.
 
@@ -279,7 +288,7 @@ Found while writing the Stage 2 plan (`docs/superpowers/plans/2026-10-16-otp-sec
 - **O1 Where it lives.** A new `otp` app; rows name `(account_type, account_id)` because the three account kinds are separate tables. Staff keep their authenticator in `accounts.two_factor`; customers and business owners get `otp.AccountAuthenticator`.
 - **O2 Sign-up.** The account row is created first; registration answers a code challenge instead of a token, and the token comes after the code. Customers and vendors who never confirmed a contact confirm once at their next sign-in. For staff the emailed invite link is the check.
 - **O3 Policy numbers** (customer gap 30 days, SMS alert 500/day) live on `staffsecurity.SecurityPolicy`, changed by a Super Admin with the password re-entered, not through the money-settings maker-checker.
-- **O4 Step-up.** Customers and vendors confirm with a texted or emailed code (an authenticator code is not accepted for step-up); staff keep password re-entry (`RequiresSudo`). Applied now to payout details, adding a recovery email/phone, and authenticator changes. There is no change-password or change-primary-contact endpoint yet; `password_change` and `withdrawal` are defined for when they exist (Stage 3).
+- **O4 Step-up.** Customers and vendors confirm with a texted or emailed code (an authenticator code is not accepted for step-up); staff keep password re-entry (`RequiresSudo`), except third-party riders, who confirm withdrawals and payout destinations with a texted or emailed code like customers (Plan 5). Applied now to payout details, adding a recovery email/phone, and authenticator changes. There is no change-password or change-primary-contact endpoint yet; `password_change` and `withdrawal` are defined for when they exist (Stage 3).
 - **O5 SMS.** The Hubtel SMS client in `marketing/providers/hubtel_sms.py` (unverified against a live account) is reused through `OTP_SMS_PROVIDER=hubtel`; the default `simulated` sends nothing.
 - **O6 Not yet moved.** The customer secondary-contact codes (`accounts.serializers.CustomerSecondary*`) still keep their code in clear and return `demo_code` for SMS; moving them onto the OTP service changes their API and is a follow-up. Until then a secondary phone is never a code channel (`otp.identity.contacts()` ignores it, however `secondary_phone_verified` reads); a verified secondary email still is (its code is emailed).
 - **O7 Audit.** OTP events go to `otp.OtpEvent`, not the hash-chained activity log (high volume, customer-side, and the lock and the hourly limits are counted from it). Staff wrong codes also reach the sign-in history; policy changes and staff-assisted recovery also reach the activity log.
@@ -529,3 +538,475 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
 - (lii) **Migrations 0003 and 0004 of `wallets` could be folded into one before any deploy** (nothing is deployed yet;
   the 0003 file is root-owned, so fold it with the right permissions).
 - (liii) **Parked:** the daily/per-withdrawal limit check can race with a concurrent proposal and ignores future-dated rows.
+
+### Stage 5 (third-party dispatch) reconciliation (2026-10-16)
+
+Found while writing `docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md` (§0 there):
+
+- **S5-1 Third-party flag.** The code had no rider company or employment concept. `delivery.Rider` gains `employment`
+  (`ashantihub`, the default for every existing rider, or `third_party`), a free-text `company_name` and
+  `third_party_since`. No rider-company table: each rider is paid personally (§2.1, §8), so nothing keys on the company.
+- **S5-2 Who sets it.** The `delivery.rider_employment` approval: the Delivery Manager (`delivery.fleet`) proposes, a Super
+  Admin approves with the password (their own change applies at once, and needs the password too). Nobody changes their own
+  employment (`403 own_rider`), and only a Dispatch rider can be made third-party (`409 not_a_rider`). Switching back to AshantiHub's own is refused while
+  the rider holds money, has a withdrawal on its way or a delivered order waiting for Support's call.
+- **S5-3 When a rider is paid.** At release only (Support's positive call, §4.1), in the release's transaction, for a
+  door-to-door order the rider delivered after becoming third-party. The whole fee AshantiHub took at release (the
+  customer's delivery fee plus a fee the business covered with its free-delivery promo) moves from platform delivery
+  income to the rider (`order-rider-<order>`): 90% to Rider balance, 10% to the reserve. The rate-card `rider_pay` stays a
+  payroll record for AshantiHub's own riders.
+- **S5-4 Rate.** The existing `rider_commission_bp` (default 1000) as it stood when the order was paid (§3.3), kept on the
+  earning, so the end-of-day posting needs no true-up (§1 row 5).
+- **S5-5 End of day.** At 00:20 Accra each rider's reserve of every earlier day still held goes to platform commission
+  income, with the day's deliveries, gross, commission and net recorded; a missed night is caught up.
+- **S5-6 Refunds.** Before release a whole refund returns the delivery fee to the customer and the rider is never paid.
+  After release a partial refund leaves the rider paid; a whole refund takes the earning back first (the rider's balance
+  may go below zero and then blocks withdrawals; the reserve is taken back, or the commission once posted).
+- **S5-7 Wallet.** A rider's accounts are held by their staff account; the Stage 3b destinations and withdrawals serve them
+  (`holder_type` "staff") with the rider's staff name as the verified name once an approved, in-date Ghana Card is on
+  file, the same limits and cooling, and step-up codes (third-party riders, unlike office staff, may ask for
+  `withdrawal` and `payout_destination` codes). AshantiHub's own riders get `409 wallet_disabled`.
+- **S5-8 Reconciliation.** Unchanged: rider money touches provider clearing only through the withdrawal journals the
+  nightly run already compares.
+- **S5-9 History.** `delivery.RiderEmploymentPeriod` rows (opened when a rider becomes third-party, closed when switched
+  back) decide who a delivery's money belongs to by its time, so payroll and the wallet never depend on the current flag.
+- **Owner note.** A delivered order that Support never releases blocks switching its rider back to AshantiHub's own
+  forever; there is no way out yet (a Support release or a refund is the only exit).
+- **Decision (Task 6).** A third-party rider cannot be moved off the Dispatch role or deactivated while still third-party
+  (409 `third_party_rider`, `delivery.employment.block_leaving`, under the rider row's lock): switch them back to
+  AshantiHub's own first, which checks their money. So no wallet is left that nobody can open.
+- **Owner note (Task 6).** A rider's withdrawal activity events carry the amount and are readable by Operations and line
+  managers who lack `wallets.view`; decide whether to log only the reference. `rider/earnings/` still shows the rate card
+  for a third-party rider; the frontend must branch on `rider/me` `wallet`.
+- **Owner note.** A whole refund after a rider has been switched back to AshantiHub's own can leave a negative wallet
+  balance that nothing collects yet.
+- **S5-10 Payroll overlap.** Payroll leaves out only the in-period deliveries whose order has an `order-pay-<id>` journal
+  (what a release can pay), so with the ledger off, or for orders paid before it was switched on, payroll still pays them.
+  Switching back is also refused while the rider has a delivery in progress.
+- **S5-11 Review notes (Task 2).** Until Plan 5 Task 4, a whole refund after release takes the delivery fee from shared
+  platform delivery income, not from the rider who was paid it; from Task 4 the earning is taken back from the rider
+  first. (A rider moved off the Dispatch role is refused, Task 6.) Rider earnings never touch provider clearing (R13).
+- **S5-12 Self-dealing (Task 5 review).** A third-party rider who is also given `wallets.manage` is refused (403
+  `own_withdrawal`) when failing their own withdrawal, before the provider is asked and again under the row lock. Owner
+  question, same family, not yet closed: a rider holding `fraud.manage` could dismiss or confirm the amount case on their
+  own withdrawal (`fraud.views.FraudFlagConfirmView`, `FraudFlagDismissView`), and a rider holding `orders.verify` could
+  release their own deliveries (`ledger.views.OrderVerificationView`); consider refusing self-dealing in those views too.
+  A Ghana Card with no expiry date does not count as verified (`delivery.employment.id_verified`); rider upload and the
+  Delivery Manager's approval now require the expiry date for that paper.
+
+### Before LEDGER_ENABLED is turned on — Stage 5 additions
+
+- (xci) **Frontend (Plan 5F).** The rider app's wallet: the balance; the reserve as "AshantiHub's commission, taken after
+  midnight"; earnings per delivery with their status; each day's gross, commission and net; the statement; payout
+  destinations and withdrawals with the step-up prompt; `409 wallet_disabled` for AshantiHub's own riders and
+  `409 id_required` until the Ghana Card is approved. The Delivery Manager's "works for" control on the rider profile (it
+  raises an approval; `409 rider_money_open` lists what is open). The Accountant's rider wallets, rider withdrawals and
+  daily commission screens, and one rider's wallet (now with their withdrawals). `rider/earnings/` still shows the rate
+  card; the frontend branches on `rider/me.wallet`.
+- (xcii) **Rider identity rests on one person.** A third-party rider's verified name (staff `full_name`) and code channel
+  (staff `phone` / `email`) are typed by whoever invited them, usually the Delivery Manager, who also approves their Ghana
+  Card; nothing compares the card's name with `full_name`. (No staff-edit endpoint exists today: `staff.manage` has
+  manager, permissions, suspend, deactivate and invite, not rename or change phone.) Before switch-on: record the card's
+  name at review and match it, and have a second person (or the Super Admin's employment approval) confirm both the name
+  and the contacts. Any future staff-edit endpoint that changes a third-party rider's name or contacts must restart
+  destination cooling and notify the old contacts, as (xxix) and (xxxiv) ask for customers and owners. A Ghana Card with
+  no expiry date does not count as verified (`delivery.employment.id_verified`), and the upload and the approval require
+  the expiry date.
+  Also (Task 5 review, spec S5-12): a rider holding `wallets.manage`, `fraud.manage` or `orders.verify` could settle their
+  own money; only the withdrawal fail is refused so far (403 `own_withdrawal`). List `FraudFlagConfirmView` /
+  `FraudFlagDismissView` (`fraud.manage`) and `OrderVerificationView` (`orders.verify`: a rider releasing their own
+  deliveries) as owner questions: refuse self-dealing there too, or never give those permissions to a rider's role.
+  Owner question (Task 6): a rider's withdrawal activity events carry the amount and are readable by Operations and line
+  managers who lack `wallets.view`; decide whether to log only the reference. Owner question: `staff_row` returns the
+  withdrawal's `provider_reference` to every `wallets.view` holder, riders' withdrawals included.
+- (xciii) **Owner question: a rider is paid nothing for a delivery whose order is refunded whole,** before release (the fee
+  goes back to the customer, W4) or after it (the earning is taken back and the balance may go below zero), even when the
+  business was at fault and the rider did the work. The alternative is for AshantiHub to pay the rider from its own
+  income in those cases. (See also (c): the same wait applies to an unreachable customer, who never pays the rider.)
+  **Failure mode to decide:** after the day's commission was posted, a whole refund takes the commission back out of
+  platform commission income; if that account holds less than the reserve (it can, as it is also spent down by other
+  refunds), the ledger refuses the posting and with it the whole refund. Either allow the commission-income account
+  to go negative for that one posting (`allow_negative`, as the rider's balance does), or gate the refund and tell
+  Support. Not built.
+- (xciv) **A rider switched back to AshantiHub's own can still owe money later.** The switch is refused while money is
+  open, but a whole refund after release of an older third-party delivery still reverses its earning (it works on the
+  earning, not on the current flag), leaving a negative balance on a closed wallet with no way to recover it in the app
+  (payroll deduction or write-off is a process decision; the rider's account stays listed to `wallets.view` staff, though
+  their own read answers `409 wallet_disabled`).
+  A third-party rider cannot leave Dispatch or be deactivated while third-party (`employment.block_leaving`, 409
+  `third_party_rider`), so deactivation of a rider with money is blocked until they are switched back, and that check
+  refuses a switch back while money is open. What remains: a re-role or deactivation done outside that path (a direct
+  database change, or a future endpoint that forgets `block_leaving`) would leave the `RiderEmploymentPeriod` open and
+  the wallet unreachable, and **suspending** a third-party rider (also a paper-expiry auto-suspension) strands their
+  wallet, as a suspended staff member can neither sign in nor withdraw until reinstated. Before switch-on, flag a
+  suspension with money open, or provide a maker-checker staff payout to a verified destination. Revoking
+  `delivery.dispatch` from a third-party rider individually is refused (409 `third_party_rider`, `StaffPermissionsView`),
+  but **editing the Dispatch role's permissions** (people role editor) still removes it for every rider and strands every
+  third-party wallet; refuse that edit while any third-party rider exists, before switch-on. `block_leaving` and
+  `delivery_in_progress` apply with the ledger off too (a third-party rider cannot be re-roled or deactivated even then).
+  A flagged rider gets `409 otp_off` for step-up codes with the ledger off. The Ghana Card expiry date is required at upload
+  and approval only while the ledger is on; `id_verified` (the money gate) always needs it, so cards approved before
+  switch-on without one must be re-reviewed.
+- (xcv) **The end-of-day commission job is a no-op while the ledger is off** (like (xxxix)). The switch is one-way ((x)),
+  so a reserve is stranded only if the ledger is switched off, which it must never be. A missed night is caught up by the
+  next run (built).
+- (xcvi) **Accounting screens do not show rider money yet.** `insights/accounting.py` and the Accountant's dashboard count
+  neither platform commission income nor AshantiHub's liability to riders (Σ rider balance + Σ rider reserve); add both.
+  The pay screens built for payroll (`delivery/views_rules.py` `RiderEarnedView` at `payouts/`, the rider app's
+  `rider/earnings/`) show rate-card pay with "no money has moved", which is not what a third-party rider is paid.
+  **Built in Task 6:** deliveries made while the rider was third-party (`delivered_at` inside one of their
+  `RiderEmploymentPeriod` rows, past ones too) are excluded from `RiderEarnedView`, `RiderEarningsLinesView` and the
+  payroll figures (`employment.payroll_jobs`, tested), so Accounting cannot pay a third-party rider twice (wallet plus
+  payroll). What stays open is the Accounting dashboard's liability and commission lines.
+- (xcvii) **Delivery fees are off (`DELIVERY_FEE_ENABLED`, default off).** Until they are charged most orders carry no
+  delivery fee, and a third-party rider earns only fees a business covered with its free-delivery promo. Third-party
+  riders need delivery fees on (owner decision 2026-10-13).
+- (xcviii) **Owner question: rider withdrawal limits.** Riders share the customers' and vendors' governed limits
+  (GH₵ 5,000 per withdrawal, GH₵ 10,000 a day, 24-hour cooling); separate rider limits would need new settings.
+- (xcix) **Owner question: rider companies.** `Rider.company_name` is free text. If a rider company itself is to be
+  contracted, invoiced or paid (instead of each rider), a company record and company payouts are a new plan.
+- (c) **Owner question: rider pay waits for Support's verification call (RA12).** A third-party rider is credited only
+  when Support records "matches" (spec §2.2 step 2(c), §4.1), so their pay can wait up to 72 hours, or indefinitely when
+  the customer cannot be reached: "could not reach" releases nothing, nothing releases on its own, and so an unreachable
+  customer never pays the rider. Their switch back to AshantiHub's own is blocked meanwhile (R3, `deliveries`). Decide
+  whether the delivery fee should be released to the rider at delivery (or after the customer's own confirmation)
+  separately from the vendor's money. The spec's "90% withdrawable immediately" holds from release, not from delivery.
+- **Note (Plan 5 final review): throttle buckets are shared across account types.** The OTP / step-up throttles key on the bare pk, so a
+  Customer, an Owner and a StaffUser with the same pk share a bucket; key on `otp.identity.ref` (type, pk) later. Not a
+  money risk, a nuisance (one lock can block another type's codes).
+### Stage 6 (catalogue, offers and stock alerts, backend) reconciliation (2026-10-16)
+
+Found while writing `docs/superpowers/plans/2026-10-16-catalogue-offers-stock-6.md` (§0 there; its C1–C18). The items
+below are numbered K1–K8 so they do not clash with those. "Stock offers and alerts" is §10 of this spec.
+
+- **K1 The offer is the Listing.** A listing already is the priced, stocked, carted and ordered unit (`CartItem`,
+  `OrderItem` with PROTECT, the fee snapshots, the stock reserved at checkout), so it stays the offer and gains an
+  optional `catalogue_product` (null = stands alone: unbranded goods, services, stays, and every listing made before
+  Stage 6) and a `barcode`. No listing, cart or checkout response changes shape; the owner listing forms gain `barcode`.
+- **K2 Catalogue entries** (`catalogue.CatalogueProduct`: brand, name, normalised name, barcode) are made only when staff
+  approve a business's grouping request; a barcode belongs to one entry, and an entry needs a brand or a barcode.
+- **K3 Barcodes** are compared as 14-digit GTINs with the check digit verified (an 8-digit code starting 0 or 1 that
+  checks as a UPC-E is read as its UPC-A); a store's own code (GS1
+  restricted-circulation prefixes) may sit on a listing but never groups. Names are compared normalised, exact only.
+- **K4 Grouping** is asked for by the business on its own product or food listing (services, stays and events never)
+  and decided by staff with `listings.moderate` through the moderated-queue contract; only staff ungroup. The barcode
+  matcher (`manage.py propose_catalogue_matches`, and every newly approved barcoded entry) only files requests; nothing
+  is grouped automatically.
+- **K5 Other sellers** (`GET /api/catalogue/listings/<id>/other-sellers/`) lists the live offers of the same entry,
+  cheapest (or most available) first, with the featured offer of §10; no contact details. A sold-out offer (counted goods at 0)
+  drops out of search and related lists once `SOLD_OUT_HIDDEN_ENABLED` is on (default off); its own page stays reachable. Businesses may look a product up (`/api/catalogue/products/`),
+  read-only.
+- **K6 Days of cover** = stock ÷ the sales rate over a governed window (default 28 days), counted over the days the offer
+  was on sale. Low: the business's own line if set, else fewer than 7 days of cover, else (no sales) 5 units or fewer;
+  sold out at 0. The three numbers are governed settings (`ledger.setting`: Accounting proposes, Super Admin approves).
+- **K7 Alerts** are told once per crossing (a conditional update per offer), re-armed only by a restock, one in-app
+  notice per business per hourly run and kind, behind `STOCK_ALERTS_ENABLED` (default off). Texts and emails "by
+  preference" (§10) wait for Stage 4's outbox.
+- **K8 Not changed:** the stock reservation at checkout (a correctness core). The timed release of an abandoned Hubtel
+  checkout's reservation ("for a short window", §10) is a gate item before Plan 7.
+
+### Before stock alerts are switched on and the catalogue screens ship (Stage 6)
+
+`STOCK_ALERTS_ENABLED`, `SOLD_OUT_HIDDEN_ENABLED` and `CATALOGUE_MATCHER_ENABLED` all default off. The catalogue
+endpoints answer as soon as this is deployed, but nothing is grouped until staff approve a request, the matcher files
+nothing until `CATALOGUE_MATCHER_ENABLED` is on, and sold-out listings leave search (§10) only once
+`SOLD_OUT_HIDDEN_ENABLED` is on (gate (cx)); the order to switch them on is in (cxxi).
+
+- (ci) **Frontend (Plan 6F).** The listing form's barcode field (show the 14-digit key without its leading zeros) and
+  "group with a catalogue product" (look it up at `/api/catalogue/products/`, ask, see the request, withdraw it);
+  "Needs restocking" and the per-offer line (replace the hard-coded `stock_quantity <= 3` badge in
+  `frontend/components/dashboard/panels/OwnerListingCard.jsx` with the server's `low` / `sold_out`); the product page's
+  "Other sellers" panel with the featured offer and the shortfall prompt (each offer added by the customer, never
+  automatically); the staff catalogue queue and ungroup action (add a `catalogue` row to `realtime`
+  `QUEUE_INVALIDATIONS` so it refreshes live, and a staff `catalogue` tab: the `catalogue_needs_review` notices link to
+  it); the business's lookup screen (product search and the sourcing offers return `truncated: true` when the cap of
+  20 products or 50 offers cut the list: say so and ask for a narrower search). Until then no business can ask and nothing is grouped. Also for 6F: each Other
+  sellers "add" must respect the cart guard (`cart.guard.blocked_reason`: 4 shops, 2 food places, 3 km; the API does not
+  say whether the customer's cart can take an offer); a sold-out listing's own page still lets a customer add it (the
+  cart does not check stock; checkout answers "Only 0 left"), so the product page should disable Add at 0; the staff
+  Marketplace screen counts a sold-out listing as live (`marketplace/listings.py:59`) while customers cannot find it;
+  promos are on, and Other sellers and the featured offer order by `price_amount`, not `marketing.checkout`'s live
+  flash-sale price, so "cheapest first" can be wrong during a flash sale: order by the price the customer would pay
+  before the panel ships. The shortfall prompt invites carts holding several offers of one product, which raises the
+  odds of the pre-existing checkout lock-order deadlock (spec (xvii)): fix that first.
+- (cii) **Texts and emails "by preference" (§10).** Stock alerts are in-app only. Once Stage 4's outbox
+  (`wallets.vendor_texts.queue`, `VendorPreference`) is on `righteoushack`, queue a stock text from
+  `catalogue.alerts.tell` (a new `VendorText` kind, a key per offer and alert time, a GSM-7 body naming offers only),
+  honour the business's preference, and decide email.
+- (ciii) **The reservation window (§10 "for a short window").** An abandoned Hubtel checkout (no webhook ever arrives)
+  keeps its stock reserved for good: only `_fail_order_checkout` gives it back. It also makes the offer look low or
+  sold out to the alerts and hides it from search. Add a timed release of PENDING order sessions (with the lock order of
+  (xv) and (xvii)) before Plan 7 turns Hubtel on.
+- (civ) **Owner stock writes do not lock the listing row (pre-existing).** `ListingRestockView` reads and saves
+  `stock_quantity` without `select_for_update`, so a restock racing a checkout can lose the checkout's decrement (an
+  oversell) or the restock. Before Stage 6 the owner edit forms (`ListingManageView`, `OwnerListingUpdateView`) saved
+  every column, so any PATCH, even a price change, wrote back the stock it had read; Stage 6 saves only the sent fields
+  (`listings.serializers.save_sent_fields`), but a PATCH that sends `stock_quantity` still races. Lock the row for the
+  read-modify-write; the alerts' re-arm rule reads the same number.
+- (cv) **The public listing serializer still carries `contact_phone` (pre-existing).** `PublicListingSerializer`
+  exposes the listing's `contact_phone` to anyone, against "businesses cannot be contacted directly". The catalogue rows
+  leave it out; decide whether to drop it from the public shape (check the frontend first). The same serializer also exposes
+  `business_owner.full_name` (`BusinessOwnerMiniSerializer`): the owner's personal name on every public listing detail.
+  The offer rows show the business name only; decide about the owner's name with the same check.
+- (cvi) **The first switch-on tells every offer already low,** one notice per business and kind. Run it once on staging
+  with realistic data and read the notices before production.
+- (cvii) **Catalogue entries cannot be edited, merged or retired.** A duplicate entry for one unbarcoded product, or a
+  typo in an entry's name, can only be worked around by ungrouping and asking again. A barcoded listing can also join a
+  brand-only entry that staff named, and a later approval for the same barcode then makes a second, barcoded entry,
+  splitting one product in two. Add a staff edit and merge (with the activity log) before grouping is used at volume.
+- (cviii) **Grouping is one person's decision.** One `listings.moderate` holder groups or ungroups a business's
+  listing with no second check. Revisit if grouping ever affects fees, ranking or promotions.
+- (cix) **Hourly cost.** The job measures every counted, published product each hour (one sales query and one bulk
+  insert per 500 offers). Watch its duration on System health; if it grows, measure only offers whose stock changed or
+  that sold since the last run. A restock followed by a sell-down within the same hour is never told, because a run
+  re-arms an offer only when it sees it not low and above the stock it was told at; consider re-arming in
+  `ListingRestockView`.
+- (cx) **Sold-out hiding is off until the screens say how to use it.** Turn `SOLD_OUT_HIDDEN_ENABLED` on with the Plan
+  6F screens, which must tell a business to leave the count empty if it does not count stock: with the switch on, a
+  made-to-order product kept at 0 disappears from search. Counted goods only; a service or stay at 0 is never hidden. Also, with the switch on, a sold-out listing with a running
+  paid Promotion drops out of search while the promotion keeps running (and keeps being charged for); decide whether to
+  pause, extend or warn before it goes on.
+- (cxi) **Owner questions (G1–G12 in the plan):** the 7-day, 5-unit and 28-day defaults and their edges (fewer than 7
+  days; 5 or fewer units) and the single-sale edge of the units fallback (G1), staff-only ungrouping (owner-confirmed on
+  2026-10-16: a business also cannot withdraw a barcode match AshantiHub filed), whether the matcher should also file
+  exact brand-and-name matches for branded listings without a barcode (they are grouped today only if their business
+  asks), businesses seeing each other's prices and counts, the featured-offer tie rule, sold-out hiding.
+- (cxii) **A lost notice is not retried.** If the in-app notice fails to save while its state moved
+  (`notifications.services` never raises), that crossing is not told again until the next restock. A run that dies
+  part-way is not this case: the run is one transaction, so the next run tells those offers. Acceptable in-app;
+  revisit with texts (cii).
+- (cxiii) **An owner's barcode edit can race a staff approve.** The owner listing update saves the barcode without
+  taking the lock `attach.approve` holds (request row, then listing row). Lock the listing in the owner update and
+  revalidate the barcode (store code, grouped listing, duplicate) after the lock, so an approve in flight cannot group a
+  listing whose barcode has just changed.
+- (cxiv) **Lock order and the residual deadlock window.** `approve` and `re_review` lock the request row, then the
+  listing row; `reject` locks only the request; `detach` locks its approved request rows first, then the listing (the
+  same order, so none of them can deadlock). `propose` and the barcode matcher lock the listing and then only insert a
+  new request row. A lost race is caught (IntegrityError on the one-pending constraint; the matcher also skips on
+  OperationalError), but `propose` for a business's own request can still raise an `OperationalError` (a lock wait or
+  deadlock lost to another transaction): handle it there and answer a retryable error instead of a 500.
+- (cxv) **Staff actions do not refresh live (realtime).** The catalogue approve, reject and detach actions are not in
+  `QUEUE_INVALIDATIONS`, so a second staff member's queue does not update until it is reloaded. Add them with the staff
+  `catalogue` tab in Plan 6F (see (ci)).
+- (cxvi) **No price floor on `Listing.price_amount`.** A zero or negative price is excluded from the offers (they need a
+  price above 0) but the listing still sells. Add a validation floor to the listing forms and model, and check existing
+  rows, before offers are ranked by price at volume.
+- (cxvii) **Unverified sellers are shown, marked `verified: false`.** Other-sellers rows include businesses whose KYC is
+  not verified, honestly marked; the featured offer prefers verified ones. Owner confirmation is needed on whether
+  unverified sellers should be shown at all, shown lower, or hidden.
+- (cxviii) **Detach writes two audit events.** `attach.detach` records the generic moderation event and the explicit
+  catalogue record, so the activity log shows an ungroup twice. Harmless; collapse them when the staff screen reads the
+  log.
+- (cxix) **A restock above the alerted stock that is still low does not re-arm.** Restocking from 1 to 4 (line 5) leaves
+  the low alert told at 1 and unarmed: an offer is re-armed only once it is no longer low. Re-arm in `ListingRestockView`
+  (and the owner edit that sets `stock_quantity`) when stock rises above the alerted stock.
+- (cxx) **The matcher on approve runs synchronously.** `approve` queues the barcode matcher with
+  `transaction.on_commit`, which runs inline in the staff request. Move it to a Celery job (as the nightly
+  `propose_matches`) once an approved barcode can match many listings.
+- (cxxi) **Three switches, all default off, switched on in this order.** `CATALOGUE_MATCHER_ENABLED` (gates both the
+  nightly job and approve's on-commit run; files requests only), then `STOCK_ALERTS_ENABLED`, then
+  `SOLD_OUT_HIDDEN_ENABLED` (last, with the Plan 6F screens, see (cx)). `STOCK_ALERTS_ENABLED` needs the Plan 6F "Needs
+  restocking" panel first (the low-stock notice only says "Open your listings to restock" because the screen it would
+  name does not exist yet) and (cvi) rehearsed on staging.
+- (cxxii) **State rows are inserted before the run's transaction.** `catalogue.alerts.run` creates a `StockAlertState`
+  row for each new offer in autocommit first, so the run's one transaction only updates state rows (a mass insert with a
+  foreign key to `listings_listing` would key-share-lock those listings until commit, against checkout's `FOR UPDATE`).
+  A run that dies leaves empty state rows behind; they are inert and the next run uses them.
+- (cxxiii) **A listing must be published to be grouped.** `propose`, `approve` and `re_review` answer 409
+  `not_published` for a draft, pending or rejected listing (one unpublished after it asked cannot be approved until it is
+  published again).
+### Stage 1b (services, events and stays) reconciliation (2026-10-16)
+
+Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-stays-1b.md` (§0 there; its S1–S18; the items below are numbered B1–B10 so they do not clash with those):
+
+- **B1 Where it lives.** One `ledger.BookingSale` per paid service request, stay or ticket purchase (its subject, its fee
+  snapshot, Support's call) and `ledger.BookingRefund` per sale and source, in `ledger/sales.py`; Support at
+  `/api/ledger/bookings/`. `OrderFeeSnapshot`, `FulfilmentCheck` and `OrderRefund` are unchanged (their order FK is
+  required). Event listing fees (`EVENT_PAY`, `EVENT_RENEW`) are platform revenue, out of scope like subscriptions.
+- **B2 Fees.** Services and stays use the services table, tickets the events table (§1 row 11), both already seeded as
+  copies of the product tiers. The base is the server's price (agreed price, stay total, unit price × quantity), which
+  must equal what was paid less the processing charge. The lifetime cap counts booking sales and order snapshots
+  together (`fees.charged_to_date`), read after the business's Pending account is locked.
+- **B3 Journals.** `booking-pay-<session reference>`, `booking-release-<sale>`, `booking-refund-<sale>-<source>`; the
+  nightly reconciliation expects `booking-pay-` for the three kinds when the session is marked `metadata["ledger"]`.
+- **B4 Handed over (§4.2).** A service the business marked done; a stay checked in; tickets once one of the purchase is
+  scanned or the event's date has passed. Receipt is confirmed by Support on the call, or by a ticket scanned at the
+  door. Provisional, owner to confirm (gate (lvii)): for bookings the 72-hour window runs from hand-over, not from purchase as §4.1 says for products.
+- **B5 Release and disputes.** As products: Support's "matches" releases at once; "does not match" opens a dispute
+  logged the disputes way (`raised_by` null, `logged_by` the staff member), linked on the sale, which alone blocks
+  release.
+- **B6 Ticket escrow flags.** With the ledger on, a ticket's held/released flag follows its sale: a scan no longer
+  releases it, release releases the purchase's tickets, the manual release and hold answer `409 ledger_on`, and the
+  Accountant's ticket refund pays the ticket's price to the wallet.
+- **B7 Paying.** The three pay endpoints take `payment_method` and carry "payment processing" on MoMo while the ledger is
+  on, like order checkout; a wallet must cover the whole booking. Tickets for customer-organised events stay outside the
+  ledger (gate (liv)).
+- **B8 Refunds and cancellations.** To the wallet only; before release out of Pending, after release out of Available
+  with the fee back in proportion; the processing charge only on fault. The refund that empties a sale reverses it and
+  cancels a booking not yet handed over. A customer's cancel of a paid stay before check-in, and Support's cancel of any
+  booking not yet handed over, refund it whole. No-shows are not handled (gate (lv)).
+- **B9 Lock order.** Service request or stay row (tickets: the purchase's tickets in primary-key order), then the sale,
+  then accounts in one sorted pass; the hand-over steps lock their own row.
+- **B10 Price check.** A service request's price must be above GH₵ 0.00 with at most two decimals.
+
+### Before LEDGER_ENABLED is turned on — Stage 1b additions
+
+- (liv) **Customer-organised paid events are outside the ledger.** Tickets for an event a customer (not a business)
+  submitted are paid by MoMo only and never recorded; only the old ticket escrow flags track their money. Decide before
+  switch-on: require paid-event organisers to register as a business, or refuse paid ticket types on customer-submitted
+  events.
+- (lv) **No-shows are not handled.** A stay whose guest never checks in, a service the business never marks done, and
+  tickets for an event that never took place (its date passes, so it counts as handed over) keep their money in Pending
+  until Support cancels or records the call. Owner to decide a rule.
+- (lvi) **Support calls every ticket purchase** before release, even when a ticket was scanned at the door; at a large
+  event that is many calls. Owner question: should a scan release without a call? A door scan is forgeable by the organiser (the paid business holds the ticket codes), so a scan
+  shown as `customer_confirmed: true` in Support's queue must not invite a "matches" without reaching the customer.
+  Related: ticket hand-over follows the live, organiser-editable `Event.event_date` (`EventOwnerUpdateView`), so moving
+  the date drops or adds purchases to Support's queue. Owner question: refuse date edits on events that have ledger sales?
+- (lvii) **The 72-hour window for bookings runs from hand-over,** not from purchase, because a booking can be paid weeks
+  before it happens. Owner to confirm.
+- (lviii) **Cancellation policy.** A customer's cancel of a paid stay before check-in and Support's cancel of a booking
+  not yet handed over refund it in full, with no deadline or fee (the processing charge stays with the provider). Owner
+  to decide.
+- (lix) **A service request paid twice** (two Hubtel checkouts started for one accepted request, both paid; or a Hubtel
+  checkout and a wallet payment on the same request) records only the first; the second is never recorded (no sale, no
+  journal; the provider holds the money, or the wallet was debited) and the reconciliation reports a Hubtel one
+  `missing_in_ledger`. Refuse a second checkout or payment while one is open, or refund the duplicate, before switch-on.
+- (lx) **Booking finalizers share the webhook failure mode (i)/(vii):** a finalizer that raises (a paid amount that is not
+  the price) leaves a paid booking unrecorded with `processed=False`.
+- (lxi) **Reports.** `billing.TransactionReportView` (ix) also counts wallet-paid bookings as cash, and
+  `insights/sales.refunds_total` does not count `BookingRefund`. Ticket refunds still write their old REFUNDED
+  `billing.Transaction` as well; do not count them twice when (ix) is fixed. Whole refunds through a dispute, and the
+  last-ticket refund that empties a purchase, mark tickets refunded without per-ticket REFUNDED `Transaction` rows
+  (reporting only).
+- (lxii) **Stale copy with the ledger on:** `events.views.EscrowSummaryView` `not_recorded` ("Order and booking money is
+  not held in escrow yet", "No release-after-delivery rule is built") and the ticket escrow screen, whose flags now
+  follow the booking sale. Branch them on `LEDGER_ENABLED`.
+- (lxiii) **Booking disputes logged by hand** (not through the verification call) are not linked to the sale and do not
+  block its release; customers raise disputes only on orders. The mismatch dispute neither notifies the customer nor
+  tasks anyone ((v)), and a dispute's wallet refund sends no notice ((xvi)). The dispute rows carry no booking link
+  (`order` and `raised_by` are null; only the description names the booking), so the disputes screens cannot open the
+  booking or the customer.
+- (lxiv) **Frontend (Plan 1F):** Support's booking queue, the call and the cancel; `payment_method` and
+  `payment_processing` on the three pay screens; the accept screen must show the price error.
+- (lxv) **The ticket purchase's 201 is still a list,** so it carries no `payment_processing`; the screen must quote the
+  charge first (`GET /api/wallet/processing/?amount=`).
+- (lxvi) **A Hubtel success webhook for a stay the customer cancelled while its checkout was open is never recorded or
+  refunded.** The customer may cancel a PENDING booking; if they then pay at Hubtel, `_finalize_booking` returns early
+  (the booking is no longer PENDING), so the money is collected with no `BookingSale`, no journal and no refund (the
+  reconciliation reports `missing_in_ledger` once a statement exists). Before Plan 7: refuse the customer's cancel of a
+  PENDING booking whose checkout session is still PENDING, or have `_finalize_booking` record such a payment and refund it
+  whole to the wallet. Fix beside (xi), its order twin.
+- (lxvii) **The `ServicesPanel` shows a generic error for the new price validation.** `ServiceRequestRespondView` now
+  answers 400 `{"price": "Enter a price in GH₵ above 0.00, like 150.00."}`, but the frontend does not surface the
+  `price` error. This ships as soon as Plan 1b merges, with the ledger on or off: surface it before merging.
+- (lxviii) **The switch-on runbook must drain open Hubtel sessions.** A service, stay or ticket session started while
+  the ledger was off carries no charge and no `metadata["ledger"]` mark; if it is paid after switch-on its finalizer
+  records it at the full price with no processing charge, and reconciliation skips it. Let every open session resolve
+  or expire before turning the switch on.
+- (lxix) **A price near GH₵ 99,999,999.99 plus the processing charge overflows `CheckoutSession.amount`
+  (`max_digits=10`) and answers 500.** `clean_price` allows 8 integer digits. The same overflow applies to a stay's
+  `total_price` (12 digits) and to a ticket purchase (price × quantity). Cap those prices (or widen the column) so the
+  amount with its charge always fits.
+- (lxx) **The Hubtel checkout call is made while the service request row is locked** (`ServiceRequestPayView` holds
+  `select_for_update` across `booking_pay.pay`), like the order and top-up flows ((xx)): a slow Hubtel call holds
+  the row. Plan 7.
+- (lxxi) **Ticket `quantity_sold` is not restored when tickets are cancelled or refunded,** so those seats cannot be
+  sold again (Support's cancel, the Accountant's per-ticket refund and a whole refund all leave it). Owner to decide
+  whether a refunded seat goes back on sale.
+- (lxxii) **SA4: a customer's stay cancel has no date bound.** It is refused only after check-in, so a guest who stayed
+  but whose owner never tapped check-in can cancel after check-out and take the refund from the business's Pending.
+  Owner to decide a cut-off (for example the check-in date), or have Support's cancel be the only path then.
+- (lxxiii) **Nothing lists sales not yet handed over.** `POST bookings/<sale id>/cancel/` takes a sale id, but Support's
+  queue shows only handed-over bookings. Plan 1F needs a lookup (by customer, business or booking) before the cancel
+  screen can find a sale.
+- (lxxiv) **No dispute path after release.** Once a booking's money is released a mismatch can no longer be logged
+  through the call (`record_verification` refuses), and customers raise disputes only on orders. Owner to decide how a
+  complaint after release is handled and recovered from the business's Available.
+- (lxxv) **Cross-reference to (lxvi):** a Hubtel success for a cancelled PENDING booking is not recorded; the fix there
+  covers it.
+- (lxxvi) **Wallet-paid services, stays and tickets are also excluded from Collections.** The
+  `insights/accounting.py` `WALLET_NOT_RECORDED` note is now titled "Paid from a wallet" and says so, and
+  `_wallet_in_use`'s docstring names them. Done in Plan 1b; kept here so the Collections screen copy is checked.
+- (lxxvii) **`ServicesPanel.jsx` (about lines 77-78) sends the raw number input** as the quote price. The always-on price
+  check (gate (lxvii)) answers 400 `price`, which the panel shows as a generic error: the frontend must surface it
+  before this ships to production.
+
+### Stage 4 (vendor dashboard and texts, backend) reconciliation (2026-10-16)
+
+Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§0 there; its V1–V16):
+
+- **V1 Sections.** The vendor dashboard and texts are §6; §9 contributes its SMS-spend alert.
+- **V2 Where it lives.** `wallets/vendor.py` (read model), `wallets/vendor_texts.py` (text outbox), `/api/wallet/vendor/`;
+  `wallets.VendorText` and `wallets.VendorPreference`. Hooks: `orders.alerts` (paid) and `escrow.release_verified` (release).
+- **V3 Figures.** Sale rows from the business's own fee snapshots and owed promo; the daily summary from journal lines on
+  its own Pending and Available; balances from the accounts. Never today's fee rules.
+- **V4 Status.** `awaiting_call` (labelled waiting for delivery or collection, waiting for Support's call, or on hold while
+  a dispute is open or a delivery-case refund waits for approval), `released`, `refunded`; the export says Pending /
+  Available / Refunded and Withdrawn / in progress / Returned for withdrawals.
+- **V5-V6 Privacy and who sees fees.** No customer name, phone or address in any vendor row, summary, export or text; the
+  export has no free text. Fees are shown to business owners only (a customer, whatever their id, and staff get 403).
+- **V7-V9 Texts.** One per paid order and business, per release and business, per digest day; queued inside the money
+  transaction (never raises), sent after commit through `otp.senders`, leased, tried at most 5 times (retries after 5 min,
+  15 min, 1 h, 4 h), `no_phone` when the login phone is not a confirmed Ghana mobile (`otp.VerifiedContact`). Never an
+  `OtpEvent` (the code send limits count those); counted by the `otp.spend` alert, which now watches all SMS spend and
+  gives the code count and the business-text count separately. GSM-7 plain text with "GHS", at most 306 characters. No
+  throttle or quiet hours.
+- **V10 In-app copy.** The paid order's "New order" notice carries the fee and amount due; release and digest copies are
+  `vendor_money` notices. Kept when a text fails.
+- **V11 Digest.** Opt-in per business, 07:00 Accra for the day before, only when money moved.
+- **V12, V15 Not built.** No low-balance, negative-Available, refund or withdrawal text (the spec names none); no staff
+  outbox screen; Plan 1b's booking sales are in the balances and the fee cap but not in the sale rows, statement, daily
+  columns or texts (gate (lxxxiii)).
+- **V13 Fee transparency.** Approved tiers in force and the next approved change with its start (never a waiting
+  proposal), `charged` true for products, services and events (Plan 1b charges booking sales), the fee base explained,
+  the cap used and left (booking fees included, `fees.charged_to_date`), a server quote.
+- **V14 Export.** A synchronous CSV of sales and withdrawals, at most 366 days, no free text.
+- **V16 Ledger off.** Every vendor endpoint answers `409 ledger_off`; nothing is texted; the digest job is a no-op.
+
+### Before LEDGER_ENABLED is turned on — Stage 4 additions
+
+- (lxxviii) **Business texts need a real SMS provider.** They go through `otp.senders` (`OTP_SMS_PROVIDER`): with
+  `simulated` nothing is sent and the texts screen says "Not sent: texts are simulated"; the Hubtel SMS client is
+  unverified (the OTP gate items apply).
+- (lxxix) **Text cost and the spend alert.** Every paid order texts each business in it, and every release texts it
+  again (two texts per business per order, plus opted-in digests). The daily SMS-spend alert (`otp_sms_daily_alert`,
+  default 500) now counts these with the code texts; set it from the expected order volume. Nothing is ever blocked. The
+  alert fires once a day: on a day business texts reach the threshold first, a later surge of code requests raises no second
+  alert. Before switch-on, decide a separate code-only threshold (or a second alert) for §9's abuse signal. A two-part text
+  (a promo, or a release with a promo, up to 306 characters) counts as one text in the alert; count parts if cost matters.
+- (lxxx) **Sender ID and content.** Hubtel needs an Approved Sender ID; confirm whether transactional texts need
+  template approval with the networks.
+- (lxxxi) **Owner question: texts on refunds, a negative Available, withdrawals, or a low balance.** The spec names none,
+  so none is sent (3b's in-app withdrawal notices stay).
+- (lxxxii) **Businesses whose login phone is not a confirmed Ghana mobile get no texts** (`no_phone`, in-app copy kept, the
+  texts screen says why). A phone is confirmed when a code sent to it was accepted (`otp.VerifiedContact`). This is stricter than
+  today's lock notices, which text every contact on the account (the open must-fix above: lock notices should be
+  VerifiedContact-only too); registration neither normalises nor verifies phones, so a business that never signed in with a
+  code gets none. There is no staff list of them yet; Support should check before switch-on.
+- (lxxxiii) **The vendor money screens do not show booking sales yet: fix before the ledger is on.** Plan 1b records
+  service, stay and ticket sales (`ledger.BookingSale`), so from the day the ledger is on a booking's money sits in the
+  business's Pending and then Available, and its fee counts toward the lifetime cap (`fees.charged_to_date`), and the fee
+  page marks services and events `charged`. But the vendor sale rows, the overview's `awaiting_call` count, the
+  statement export and the paid / release texts come from `OrderFeeSnapshot` only, and the `booking_payment`,
+  `booking_release` and `booking_refund` journal lines land in the daily summary's `other` column. So Pending and
+  Available include money the business cannot find in any row, and a booking sale is never texted. A follow-up (Plan 4F
+  or a Plan 4b) must add `BookingSale` as a second row source (`kind: "booking"`) to `vendor.sale_groups` / `rows` /
+  `statement` and the `awaiting_call` count, the three booking kinds to `vendor.FOLD`, and booking paid / release texts
+  to `vendor_texts`, before `LEDGER_ENABLED` is turned on.
+- (lxxxiv) **Retention.** `VendorText` rows (amounts and order numbers only) are kept indefinitely; decide a purge beside
+  `otp.retention`.
+- (lxxxv) **Frontend (Plan 4F):** the overview with the cap meter, sales with filters, the daily summary, the export,
+  the fee page and the texts settings.
+- (lxxxvi) **At-least-once texts.** A worker that dies between the claim and the provider's answer leaves the text to be
+  tried again after 10 minutes; with a real provider the business may get it twice.
+- (lxxxvii) **Owner question: a suspended business still gets money texts** (its money still moves).
+- (lxxxviii) **Owner question: the digest loop has no cap or time budget.** `queue_digests` visits every opted-in business in
+  one run, one at a time; at a large number of opted-in businesses the 07:00 run could take long. Decide a batch size or
+  a time budget before switch-on.
+- (lxxxix) **A missed 07:00 run is not caught up.** The job digests "yesterday" only; if the worker or beat is down at
+  07:00 that day's digest is never sent (a manual `queue_digests(day)` can send it).
+- (xc) **A dedicated `texts` Celery queue and worker before real SMS goes live.** Business texts share the default
+  queue with other jobs; a slow provider can hold a worker for up to the send budget (75 s) per run. A circuit breaker
+  (3 failures in a row opens it for 120 s, across workers) and the beat entry's 280 s expiry limit the harm, but route
+  `wallets.tasks.send_vendor_text` and `send_due_vendor_texts` to their own queue and worker first.
