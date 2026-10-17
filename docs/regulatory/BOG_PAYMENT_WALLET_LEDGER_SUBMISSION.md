@@ -1,8 +1,9 @@
 # AshantiHub — Payments, Wallet & Ledger Engine
 ## Description of Proposed Operations, for Bank of Ghana Review
 
-**Status:** DRAFT v0.2 for AshantiHub internal review. Not yet submitted. Aligned 2026-10-16 with
-`docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` (the wallet spec).
+**Status:** DRAFT v0.3 for AshantiHub internal review. Not yet submitted. Aligned 2026-10-16 with
+`docs/superpowers/specs/2026-10-15-wallet-fees-security-design.md` (the wallet spec) and the merged
+wallet code (Stages 1 to 3, including withdrawals and reconciliation).
 **Prepared for:** Bank of Ghana, Payment Systems Department (via the payment service provider's licensing requirement)
 **Prepared by:** [[Company legal name]] ("AshantiHub")
 **Date:** [[date of submission]]
@@ -66,16 +67,26 @@ Stated plainly so BOG is not misled:
     paid order;
   - mandatory one-time-password (OTP) security, step-up tokens for sensitive actions, optional
     authenticator-app 2FA, and staff-assisted account recovery;
-  - customer and vendor wallets, payments and refunds, including the refund-after-release path.
-- **In development, not merged:** withdrawals and payout destinations (name matching, OTP
-  confirmation, cooling period, limits).
+  - customer and vendor wallets, payments and refunds, including the refund-after-release path;
+  - payout destinations (name matching, OTP confirmation, cooling period) and withdrawals, with
+    per-withdrawal and daily limits;
+  - nightly reconciliation of the ledger against the Provider's statement.
+- **Merged into our main development branch, not deployed to production.** Everything above is
+  built and reviewed but has never handled real money.
 - **Not built:** vendor SMS and statement pages, the third-party rider wallet and daily
   commission, the multi-seller catalogue, and the live payment-provider switch.
 - **Ledger coverage:** the ledger currently records **product orders only**. Services, events and
   stays follow the same release model (Section 5.3) but are not yet ledger-backed.
 - **Provider integration:** an integration with a hosted-checkout payment provider exists in code, **has never been run
   against a live or sandbox provider account** [[confirm still true at submission]], and is switched
-  off. It will not be enabled without Provider credentials and, we understand, BOG clearance.
+  off. The live connection for **payouts, withdrawal status, account-name lookup and the
+  statement is not yet built**: on live rails, adding a payout account or withdrawing would answer
+  "unavailable", and reconciliation would have no statement to compare. These are built and tested
+  only on simulated rails. The integration will not be enabled without Provider credentials and, we
+  understand, BOG clearance.
+- **Known limitations:** the *Technical and Controls Summary* (Section 12) lists, as a table, every
+  open item we know of that must be closed before any switch is turned on, including the
+  absence of a wallet balance cap and the treatment of newly topped-up funds (Section 5.4).
 - **Existing controls that carry over:** KYC and field verification of vendors, role-based staff
   permissions with server-side enforcement, staff two-factor authentication and session
   controls, a dispute-handling workflow, fraud flagging, and an audit trail for staff actions.
@@ -154,8 +165,10 @@ customer confirms (or Support records it), and a verification call releases the 
 
 ### 5.4 Customer wallet
 
-- **Top-up** from the customer's attached mobile money number, via the partner's collection.
-- **Pay** directly by mobile money or from the wallet.
+- **Top-up** through the Provider's hosted checkout by mobile money. (A stored "attached" number
+  is not yet built.) A top-up is credited only when the Provider confirms it.
+- **Pay** directly by mobile money or from the wallet. A wallet payment must cover the whole
+  order; there is no split payment.
 - **Refunds** are credited to the wallet.
 - **Withdrawal** only to a mobile money number or bank account verified in the customer's own
   name, with OTP confirmation.
@@ -163,8 +176,15 @@ customer confirms (or Support records it), and a verification call releases the 
   (shown as "payment processing"); none applies to payments from the wallet. The collection
   charge is not refunded except for platform or vendor error. The user bears any withdrawal
   charge.
-- [[Decision needed: maximum wallet balance, single-transaction limit and daily limit. BOG
-  guidance on tiered KYC limits for stored-value accounts is requested; see Q2.]]
+- **Limits today:** there is **no cap on wallet balance** and no limit on top-ups. Withdrawals are
+  limited per withdrawal and per day, both governed settings (starting values GHS 5,000 and
+  GHS 10,000 respectively [[confirm]]).
+- **Topped-up funds can currently be withdrawn at once.** A mobile-money reversal after a
+  withdrawal could therefore cost AshantiHub money, and the wallet could be used to move money that
+  never funded an order. We propose a **hold period on newly topped-up funds** [[length to be
+  decided]].
+- [[Decision needed: maximum wallet balance and top-up limits. BOG guidance on tiered KYC limits
+  for stored-value accounts is requested; see Q2.]]
 
 **Question for BOG (Q2):** Does a customer wallet funded by top-up and usable only on
 AshantiHub constitute e-money requiring a licence, even where the funds are held by the licensed
@@ -225,7 +245,7 @@ share. The rider sees the day's gross, commission and net. *(Not yet built; see 
 |---|---|
 | Ledger integrity | Double-entry; every movement balances; append-only entries; integer pesewas; unique idempotency key on every entry and provider call; atomic posting with account locking |
 | Provider webhooks | Signature-verified, idempotent on the provider reference, amount-verified against the amount requested, logged raw before processing, monotonic in status. The browser's redirect state is never a source of truth |
-| Reconciliation | Nightly automated comparison of the ledger with the partner's statement; differences flagged to Accounts [[reconciliation SLA to be agreed]] |
+| Reconciliation | Nightly, read-only comparison of the ledger with the Provider's statement by Provider reference, also checking *withdrawal in transit* against open withdrawals when no statement is available. A difference opens a fraud case for Accounts (one per day while open). A skipped check is never recorded as a match. A missed night is not yet caught up automatically [[reconciliation SLA to be agreed]] |
 | Governed settings | Fee tables, the cap, the rider commission rate, verification and pickup windows, withdrawal limits and the cooling period are changed by a maker-checker flow: Accounting proposes, Super Admin approves; each change logs who, when, old and new values and applies only to later orders. Super Admin may edit directly in an emergency, also logged |
 | Segregation of duties | Accounting cannot approve its own proposals; payout-affecting settlement of disputes needs two roles |
 | OTP | One OTP service (SMS or email): 6 digits, stored hashed, 5-minute expiry, limited attempts, resend cooldown, rate limits per user, phone and IP; no account-existence leaks |
@@ -241,8 +261,19 @@ share. The rider sees the day's gross, commission and net. *(Not yet built; see 
 ### 5.9 Payout destinations
 
 A destination is *verified* when the account name returned by the network or bank matches the
-user's verified name and the owner confirms by OTP. It then observes the cooling period before it
-can receive money. Withdrawals are charged to the user at the partner's cost.
+user's verified name (compared as a set of words) and the owner confirms by OTP. It then observes
+the cooling period (default 24 hours) before it can receive money. A destination is never edited:
+a change is a removal and a new addition, which restarts the cooling period, and every addition and
+removal notifies the holder. Withdrawals are charged to the user at the Provider's cost.
+
+For vendors the matched name is the KYC-verified owner or business name. **For customers the
+matched name is the profile name, which is self-declared**, so this check is weaker for customers
+than for vendors. We propose to require a code for a name change, restart the cooling period on a
+rename, or introduce customer KYC [[decision pending; see Q5]].
+
+Each withdrawal is sent once, is amount-checked against what the Provider reports, and a Provider
+report that contradicts our record (for example "paid" after we returned the money) opens a fraud
+case and posts nothing. Staff can fail a stuck withdrawal only after asking the Provider.
 
 ### 5.10 Reporting
 
@@ -285,3 +316,5 @@ whatever periodic returns the authorised category requires.
 - E. AML/CFT policy and compliance officer appointment [[to prepare]]
 - F. Terms & Conditions and Privacy Policy for customers and vendors [[confirm current versions]]
 - G. Business-continuity and information-security summary [[to prepare]]
+- H. Technical and Controls Summary (`TECHNICAL_AND_CONTROLS_SUMMARY`)
+- I. Terms of Service and Wallet Terms for customers and vendors (`TERMS_OF_SERVICE_AND_WALLET_TERMS`; draft, legal review required)
