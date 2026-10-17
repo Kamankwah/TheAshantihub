@@ -86,3 +86,21 @@ class CatalogueAttachRequest(models.Model):
 
     def __str__(self):
         return f"Catalogue request {self.pk} for listing {self.listing_id} ({self.status})"
+
+
+class StockAlertState(models.Model):
+    """Where one offer's low-stock and sold-out alerts stand (catalogue.alerts) and the business's own low-stock line for
+    it (catalogue.stock). One row per offer, made the first time it is measured or given a line. Moved only by
+    conditional UPDATEs, so two runs at once never tell a business twice."""
+
+    listing = models.OneToOneField("listings.Listing", on_delete=models.CASCADE, related_name="stock_alert")
+    # The business's own line in units for this offer; null = AshantiHub's default (days of cover, else units).
+    threshold_units = models.PositiveIntegerField(null=True, blank=True)
+    low_alerted_at = models.DateTimeField(null=True, blank=True)
+    # The stock when the low alert was told: the alert re-arms only once stock is back above it (a restock).
+    low_alerted_stock = models.PositiveIntegerField(null=True, blank=True)
+    sold_out_alerted_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Stock alerts for listing {self.listing_id}"

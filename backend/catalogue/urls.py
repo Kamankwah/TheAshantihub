@@ -15,4 +15,6 @@ urlpatterns = [
     path("listings/<int:listing_id>/other-sellers/", views.OtherSellersView.as_view(), name="catalogue-other-sellers"),
     path("products/", views.ProductSearchView.as_view(), name="catalogue-products"),
     path("products/<int:pk>/offers/", views.ProductOffersView.as_view(), name="catalogue-product-offers"),
+    path("stock/", views.StockView.as_view(), name="catalogue-stock"),
+    path("stock/<int:listing_id>/line/", views.StockLineView.as_view(), name="catalogue-stock-line"),
 ]

@@ -31,6 +31,11 @@ DEFINITIONS = {
     "withdrawal_per_tx_limit_pesewas": Definition("Largest single withdrawal (pesewas)", 500_000, False, 100, 10**10),
     "withdrawal_daily_limit_pesewas": Definition("Most a person may withdraw in one day, per account (pesewas)", 1_000_000, False, 100, 10**10),
     "payout_cooling_hours": Definition("Hours a new payout destination waits before it can receive money", 24, False, 1, 720),
+    # Low-stock alerts (catalogue plan 6; spec §1 row 15, §10). Not money, but governed the same way (§3.3): Accounting
+    # proposes, a Super Admin approves.
+    "low_stock_cover_days": Definition("Low stock: alert when an offer has fewer than this many days of sales left", 7, False, 1, 90),
+    "low_stock_fallback_units": Definition("Low stock with no sales in the window: alert at this many units or fewer", 5, False, 0, 100_000),
+    "stock_cover_window_days": Definition("Days of past sales used to work out days of stock left", 28, False, 7, 180),
 }
 
 

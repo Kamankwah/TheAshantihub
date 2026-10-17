@@ -10,7 +10,7 @@ from accounts.views import IsBusinessOwner
 from listings.models import Listing
 from listings.visibility import hidden_business_q
 
-from . import attach, offers
+from . import attach, offers, stock
 from .errors import CatalogueError
 from .models import CatalogueProduct
 
@@ -125,3 +125,33 @@ class ProductOffersView(APIView):
             return refused
         product = generics.get_object_or_404(CatalogueProduct, pk=pk)
         return Response(offers.sourcing(product, request.user))
+
+
+class StockView(APIView):
+    """GET stock/ — the business's offers that need restocking (sold out first), the numbers behind each, and how many
+    of its offers are counted and not counted. Works whatever STOCK_ALERTS_ENABLED says."""
+
+    permission_classes = [IsAuthenticated, IsBusinessOwner]
+
+    def get(self, request):
+        return Response(stock.needs_restocking(request.user))
+
+
+class StockLineView(APIView):
+    """PUT stock/<listing_id>/line/ {"units": n or null} — the business's own low-stock line for one offer (null: the
+    default). Changing it re-arms the low alert."""
+
+    permission_classes = [IsAuthenticated, IsBusinessOwner]
+
+    def put(self, request, listing_id):
+        listing = _own_listing(request, listing_id)
+        try:
+            units = stock.parse_line(_body(request).get("units"))
+        except ValueError:
+            return Response({"units": stock.LINE_MESSAGE}, status=400)
+        if not attach.groupable(listing):
+            return Response({"detail": stock.NOT_A_PRODUCT, "code": "not_a_product"}, status=400)
+        if listing.stock_quantity is None:
+            return Response({"detail": stock.NOT_COUNTED, "code": "not_counted"}, status=409)
+        stock.set_own_line(listing, units)
+        return Response({"listing_id": listing.pk, "line": units, "cover": stock.row(listing, stock.cover_of(listing))})
