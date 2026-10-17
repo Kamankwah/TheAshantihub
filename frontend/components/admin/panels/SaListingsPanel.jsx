@@ -21,7 +21,7 @@ const STATE = {
 };
 const TYPE = { product: "Product", service: "Service", booking: "Booking" };
 const RULES = [
-  "An owner's new listing waits for Operations before it goes on the site.",
+  "An owner's new listing waits for Operations or a Super Admin before it goes on the site.",
   "A listing a scout adds for a business is checked through the scout's approval request; that approval is its moderation.",
   "The owner is told about every change a scout makes and can undo it within 7 days.",
   "A hidden listing is never deleted; it comes back when the business is reinstated.",
@@ -84,6 +84,8 @@ export default function SaListingsPanel({ auth, onOpenBusiness }) {
   const [history, setHistory] = useState(null);
   const [takingDown, setTakingDown] = useState(null);
   const [notice, setNotice] = useState(null);
+  const [approvingId, setApprovingId] = useState(null);
+  const [approveError, setApproveError] = useState(null);
   const [exportError, setExportError] = useState(null);
   const q = useDebounced(search.trim());
   const params = { ...filters, q };
@@ -92,6 +94,21 @@ export default function SaListingsPanel({ auth, onOpenBusiness }) {
   const { data: categories } = useCategories();
   const rows = list.data?.results || [];
   const canModerate = Boolean(auth?.hasPermission?.("listings.moderate"));
+
+  const approve = async (l) => {
+    if (approvingId) return;
+    setApprovingId(l.id); setApproveError(null); setNotice(null);
+    try {
+      await apiPost(`/api/listings/moderation/${l.id}/approve/`, {});
+      setNotice(`Published “${l.name}”.`);
+      queryClient.invalidateQueries({ queryKey: ["sa-listings"] });
+      queryClient.invalidateQueries({ queryKey: ["moderation-queue"] });
+    } catch (err) {
+      setApproveError(apiErrorMessage(err, "Could not approve this listing."));
+    } finally {
+      setApprovingId(null);
+    }
+  };
 
   const change = (key, value) => { setFilters((f) => ({ ...f, [key]: value })); setPage(1); };
   const filterDefs = [
@@ -121,6 +138,7 @@ export default function SaListingsPanel({ auth, onOpenBusiness }) {
         <FilterBar filters={filterDefs} values={filters} onChange={change} search={search} onSearch={(v) => { setSearch(v); setPage(1); }} searchLabel="Listing or business" />
       </div>
       {notice && <div role="status" style={callout(D.green)}>{notice}</div>}
+      {approveError && <div role="alert" style={callout(D.red)}>{approveError}</div>}
       {takingDown && <TakeDown listing={takingDown} onCancel={() => setTakingDown(null)} onDone={(m) => { setTakingDown(null); setNotice(m); queryClient.invalidateQueries({ queryKey: ["sa-listings"] }); queryClient.invalidateQueries({ queryKey: ["moderation-queue"] }); }} />}
       {history && <History listing={history} onClose={() => setHistory(null)} />}
       <div style={card}>
@@ -147,6 +165,7 @@ export default function SaListingsPanel({ auth, onOpenBusiness }) {
                       <td style={td}>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button type="button" aria-label={`History of ${l.name}`} onClick={() => setHistory(l)} style={button(D.panelBg, D.text)}>History</button>
+                          {canModerate && l.status === "pending_review" && <button type="button" aria-label={`Approve ${l.name}`} disabled={approvingId === l.id} onClick={() => approve(l)} style={button(D.green, "#fff", approvingId === l.id)}>Approve</button>}
                           {canModerate && l.status === "published" && <button type="button" aria-label={`Take down ${l.name}`} onClick={() => { setNotice(null); setTakingDown(l); }} style={button(D.panelBg, D.red)}>Take down</button>}
                         </div>
                       </td>
