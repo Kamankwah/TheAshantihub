@@ -1,15 +1,16 @@
 """Catalogue API for businesses and customers (catalogue plan 6). Every business endpoint reads the listing through
 `business_owner=request.user`, so another business's listing is a 404 and nothing changes."""
 from rest_framework import generics
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from accounts.views import IsBusinessOwner
 from listings.models import Listing
+from listings.visibility import hidden_business_q
 
-from . import attach
+from . import attach, offers
 from .errors import CatalogueError
 
 
@@ -64,3 +65,18 @@ class MineWithdrawView(APIView):
         except CatalogueError as exc:
             return Response(exc.body(), status=exc.status_code)
         return Response(attach.request_row(withdrawn))
+
+
+class OtherSellersView(APIView):
+    """GET listings/<listing_id>/other-sellers/?ordering=price|availability&lat=&lng= — public: the other businesses'
+    live offers of the same catalogue product, and the featured offer. An ungrouped listing answers an empty list; a
+    listing customers cannot see is a 404."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, listing_id):
+        listing = generics.get_object_or_404(
+            Listing.objects.filter(status=Listing.PUBLISHED).exclude(hidden_business_q()).select_related("catalogue_product"),
+            pk=listing_id,
+        )
+        return Response(offers.other_sellers(listing, request.query_params))

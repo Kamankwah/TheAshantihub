@@ -49,7 +49,7 @@ from .serializers import (
     PublicListingSerializer,
     ZoneSerializer,
 )
-from .visibility import hidden_business_q
+from .visibility import hidden_business_q, sold_out_q
 
 
 def _with_rating_annotations(queryset):
@@ -307,10 +307,15 @@ class PublicListingListView(generics.ListAPIView):
     def get_queryset(self):
         # Suspended and paused businesses' listings drop out of public browse
         # (listings.visibility) — enforced here rather than at suspend/pause
-        # time, so unsuspending or paying reverses it at once.
+        # time, so unsuspending or paying reverses it at once. While
+        # SOLD_OUT_HIDDEN_ENABLED is on, counted goods with nothing left drop
+        # out too (spec §1 row 15, catalogue plan 6); an uncounted one
+        # (stock_quantity null) and any service or stay stay, and the
+        # listing's own page still opens.
         queryset = (
             Listing.objects.filter(status=Listing.PUBLISHED)
             .exclude(hidden_business_q())
+            .exclude(sold_out_q())
             .select_related("category", "zone", "business_owner__profile")
             .prefetch_related("photos")
             .order_by("-created_at")
@@ -450,6 +455,7 @@ class RelatedListingsView(generics.ListAPIView):
         queryset = (
             Listing.objects.filter(status=Listing.PUBLISHED)
             .exclude(hidden_business_q())
+            .exclude(sold_out_q())  # sold out: hidden like search while the switch is on (catalogue plan 6)
             .filter(Q(category=anchor.category) | Q(zone=anchor.zone))
             .exclude(pk=anchor.pk)
             .order_by("-created_at")

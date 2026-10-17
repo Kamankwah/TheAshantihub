@@ -12,4 +12,5 @@ urlpatterns = [
     path("staff/requests/<int:pk>/reject/", views_staff.RequestRejectView.as_view(), name="catalogue-staff-reject"),
     path("staff/requests/<int:pk>/re-review/", views_staff.RequestReReviewView.as_view(), name="catalogue-staff-re-review"),
     path("staff/listings/<int:pk>/detach/", views_staff.ListingDetachView.as_view(), name="catalogue-staff-detach"),
+    path("listings/<int:listing_id>/other-sellers/", views.OtherSellersView.as_view(), name="catalogue-other-sellers"),
 ]
