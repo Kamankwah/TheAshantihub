@@ -1,9 +1,10 @@
 # Wallets, Escrow, Platform Fees, Stock Offers and OTP Security — Design
 
-**Status:** Approved 2026-10-15. Stage 1 plan: docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md. Stage 2 (OTP, backend) plan: docs/superpowers/plans/2026-10-16-otp-security.md. Stage 3 plans: docs/superpowers/plans/2026-10-16-wallets-payments-3a.md (wallet payments and refunds) and docs/superpowers/plans/2026-10-16-withdrawals-3b.md (payout destinations, withdrawals, reconciliation).
-**Scope:** One system, built in the order given in §11. Stage 1 (ledger), Stage 2 (OTP, backend) and Stage 3 (wallets,
-payments, refunds, withdrawals and reconciliation, backend) are implemented behind switches that default off (branches
-feature/ledger-stage1, feature/otp-security and feature/wallets; see section 13); later stages are specs only.
+**Status:** Approved 2026-10-15. Stage 1 plan: docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md. Stage 2 (OTP, backend) plan: docs/superpowers/plans/2026-10-16-otp-security.md. Stage 3 plans: docs/superpowers/plans/2026-10-16-wallets-payments-3a.md (wallet payments and refunds) and docs/superpowers/plans/2026-10-16-withdrawals-3b.md (payout destinations, withdrawals, reconciliation). Stage 5 (third-party dispatch, backend) plan: docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md.
+**Scope:** One system, built in the order given in §11. Stage 1 (ledger), Stage 2 (OTP, backend), Stage 3 (wallets,
+payments, refunds, withdrawals and reconciliation, backend) and Stage 5 (third-party rider wallets and daily commission,
+backend) are implemented behind switches that default off (branches feature/ledger-stage1, feature/otp-security,
+feature/wallets and feature/dispatch-wallets-5; see section 13); later stages are specs only.
 **Basis:** The owner's brief, plus the decisions in §1, reconciled with the existing code in §13.
 
 ## 1. Decisions (settled in brainstorming)
@@ -583,3 +584,74 @@ Found while writing `docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md` (�
   release their own deliveries (`ledger.views.OrderVerificationView`); consider refusing self-dealing in those views too.
   A Ghana Card with no expiry date does not count as verified (`delivery.employment.id_verified`); rider upload and the
   Delivery Manager's approval now require the expiry date for that paper.
+
+### Before LEDGER_ENABLED is turned on — Stage 5 additions
+
+- (xci) **Frontend (Plan 5F).** The rider app's wallet: the balance; the reserve as "AshantiHub's commission, taken after
+  midnight"; earnings per delivery with their status; each day's gross, commission and net; the statement; payout
+  destinations and withdrawals with the step-up prompt; `409 wallet_disabled` for AshantiHub's own riders and
+  `409 id_required` until the Ghana Card is approved. The Delivery Manager's "works for" control on the rider profile (it
+  raises an approval; `409 rider_money_open` lists what is open). The Accountant's rider wallets, rider withdrawals and
+  daily commission screens, and one rider's wallet (now with their withdrawals). `rider/earnings/` still shows the rate
+  card; the frontend branches on `rider/me.wallet`.
+- (xcii) **Rider identity rests on one person.** A third-party rider's verified name (staff `full_name`) and code channel
+  (staff `phone` / `email`) are typed by whoever invited them, usually the Delivery Manager, who also approves their Ghana
+  Card; nothing compares the card's name with `full_name`. (No staff-edit endpoint exists today: `staff.manage` has
+  manager, permissions, suspend, deactivate and invite, not rename or change phone.) Before switch-on: record the card's
+  name at review and match it, and have a second person (or the Super Admin's employment approval) confirm both the name
+  and the contacts. Any future staff-edit endpoint that changes a third-party rider's name or contacts must restart
+  destination cooling and notify the old contacts, as (xxix) and (xxxiv) ask for customers and owners. A Ghana Card with
+  no expiry date does not count as verified (`delivery.employment.id_verified`), and the upload and the approval require
+  the expiry date.
+  Also (Task 5 review, spec S5-12): a rider holding `wallets.manage`, `fraud.manage` or `orders.verify` could settle their
+  own money; only the withdrawal fail is refused so far (403 `own_withdrawal`). List `FraudFlagConfirmView` /
+  `FraudFlagDismissView` (`fraud.manage`) and `OrderVerificationView` (`orders.verify`: a rider releasing their own
+  deliveries) as owner questions: refuse self-dealing there too, or never give those permissions to a rider's role.
+  Owner question (Task 6): a rider's withdrawal activity events carry the amount and are readable by Operations and line
+  managers who lack `wallets.view`; decide whether to log only the reference. Owner question: `staff_row` returns the
+  withdrawal's `provider_reference` to every `wallets.view` holder, riders' withdrawals included.
+- (xciii) **Owner question: a rider is paid nothing for a delivery whose order is refunded whole,** before release (the fee
+  goes back to the customer, W4) or after it (the earning is taken back and the balance may go below zero), even when the
+  business was at fault and the rider did the work. The alternative is for AshantiHub to pay the rider from its own
+  income in those cases. (See also (c): the same wait applies to an unreachable customer, who never pays the rider.)
+  **Failure mode to decide:** after the day's commission was posted, a whole refund takes the commission back out of
+  platform commission income; if that account holds less than the reserve (it can, as it is also spent down by other
+  refunds), the ledger refuses the posting and with it the whole refund. Either allow the commission-income account
+  to go negative for that one posting (`allow_negative`, as the rider's balance does), or gate the refund and tell
+  Support. Not built.
+- (xciv) **A rider switched back to AshantiHub's own can still owe money later.** The switch is refused while money is
+  open, but a whole refund after release of an older third-party delivery still reverses its earning (it works on the
+  earning, not on the current flag), leaving a negative balance on a closed wallet with no way to recover it in the app
+  (payroll deduction or write-off is a process decision; the rider's account stays listed to `wallets.view` staff, though
+  their own read answers `409 wallet_disabled`).
+  A third-party rider cannot leave Dispatch or be deactivated while third-party (`employment.block_leaving`, 409
+  `third_party_rider`), so deactivation of a rider with money is blocked until they are switched back, and that check
+  refuses a switch back while money is open. What remains: a re-role or deactivation done outside that path (a direct
+  database change, or a future endpoint that forgets `block_leaving`) would leave the `RiderEmploymentPeriod` open and
+  the wallet unreachable, and **suspending** a third-party rider (also a paper-expiry auto-suspension) strands their
+  wallet, as a suspended staff member can neither sign in nor withdraw until reinstated. Before switch-on, flag a
+  suspension with money open, or provide a maker-checker staff payout to a verified destination.
+- (xcv) **The end-of-day commission job is a no-op while the ledger is off** (like (xxxix)). The switch is one-way ((x)),
+  so a reserve is stranded only if the ledger is switched off, which it must never be. A missed night is caught up by the
+  next run (built).
+- (xcvi) **Accounting screens do not show rider money yet.** `insights/accounting.py` and the Accountant's dashboard count
+  neither platform commission income nor AshantiHub's liability to riders (Σ rider balance + Σ rider reserve); add both.
+  The pay screens built for payroll (`delivery/views_rules.py` `RiderEarnedView` at `payouts/`, the rider app's
+  `rider/earnings/`) show rate-card pay with "no money has moved", which is not what a third-party rider is paid.
+  **Built in Task 6:** deliveries made while the rider was third-party (`delivered_at` inside one of their
+  `RiderEmploymentPeriod` rows, past ones too) are excluded from `RiderEarnedView`, `RiderEarningsLinesView` and the
+  payroll figures (`employment.payroll_jobs`, tested), so Accounting cannot pay a third-party rider twice (wallet plus
+  payroll). What stays open is the Accounting dashboard's liability and commission lines.
+- (xcvii) **Delivery fees are off (`DELIVERY_FEE_ENABLED`, default off).** Until they are charged most orders carry no
+  delivery fee, and a third-party rider earns only fees a business covered with its free-delivery promo. Third-party
+  riders need delivery fees on (owner decision 2026-10-13).
+- (xcviii) **Owner question: rider withdrawal limits.** Riders share the customers' and vendors' governed limits
+  (GH₵ 5,000 per withdrawal, GH₵ 10,000 a day, 24-hour cooling); separate rider limits would need new settings.
+- (xcix) **Owner question: rider companies.** `Rider.company_name` is free text. If a rider company itself is to be
+  contracted, invoiced or paid (instead of each rider), a company record and company payouts are a new plan.
+- (c) **Owner question: rider pay waits for Support's verification call (RA12).** A third-party rider is credited only
+  when Support records "matches" (spec §2.2 step 2(c), §4.1), so their pay can wait up to 72 hours, or indefinitely when
+  the customer cannot be reached: "could not reach" releases nothing, nothing releases on its own, and so an unreachable
+  customer never pays the rider. Their switch back to AshantiHub's own is blocked meanwhile (R3, `deliveries`). Decide
+  whether the delivery fee should be released to the rider at delivery (or after the customer's own confirmation)
+  separately from the vendor's money. The spec's "90% withdrawable immediately" holds from release, not from delivery.

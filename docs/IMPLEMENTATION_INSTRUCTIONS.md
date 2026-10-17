@@ -96,6 +96,6 @@ Stage 1 (`docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md`, spec `do
 | **2** OTP and security | One OTP service, step-up tokens, trusted devices, customer and vendor 2FA. Must precede any wallet going live. Backend: docs/superpowers/plans/2026-10-16-otp-security.md, behind three switches that default off; the screens are Plan 2F. |
 | **3** Wallets and payments | Customer wallet, top-up, refunds, withdrawals, payout destinations, provider interface and simulated provider, reconciliation. Needs Plan 2. Backend: 3a docs/superpowers/plans/2026-10-16-wallets-payments-3a.md (provider interface, top-up, paying from the wallet, refunds) then 3b docs/superpowers/plans/2026-10-16-withdrawals-3b.md (payout destinations, withdrawals, reconciliation), both built, behind `LEDGER_ENABLED` (default off); the screens are Plan 3F. |
 | **4** Vendor dashboard and SMS | Statements, per-order SMS, digest, cap meter. |
-| **5** Third-party dispatch | `Rider` employment flag, rider wallet, 90/10 split on release, end-of-day commission job. |
+| **5** Third-party dispatch | `Rider` employment flag, rider wallet, 90/10 split on release, end-of-day commission job. Backend: docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md, built behind `LEDGER_ENABLED` (default off); the screens are Plan 5F. |
 | **6** Offers and stock | Catalogue entries, offers, "other sellers", stock reservation upgrade, low-stock alerts. |
 | **7** Hubtel live switch | Credentials, webhook verification against sandbox, regulatory clearance. |

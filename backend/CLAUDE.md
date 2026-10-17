@@ -179,6 +179,32 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
 
 - **Distances come from `routing.service`.** Never call `delivery.services.distance_estimate_km` for a figure shown to a user; use `routing.service.leg`/`legs_from`/`legs_between`, which return the road route or the labelled estimate (`basis`). Only `routing/client.py` talks to OSRM and converts lat/lng to lng/lat. The one exception until stage 2: `delivery.dispatching.rank` (the Dispatch queue ranking and its radius check) still uses the straight-line estimate and says so in its `distance_basis`. The service area is `routing.region.in_service_area` (an approximate rectangle, see its docstring).
 - **Multi-stop delivery.** Stop codes and wrong tries live on `PickupStop`; stop 1 is mirrored into the assignment's legacy fields (deliveries assigned before the release keep one stop and the old code). `stops.stops_of` never writes; write paths call `ensure_stops` first and must not prefetch `stops` on a locked row. Skip evidence (rider pin, time, note) lives on the append-only `skipped_stop` `DeliveryEvent` rows and survives a reset; a job with every shop skipped fails as `all_stops_skipped` and is requeued by resetting the same OneToOne row.
+- **Third-party riders (`delivery/employment.py`, `ledger/riders.py`, `wallets/rider_wallet.py`, Plan 5).** A rider is
+  AshantiHub's own (`Rider.employment="ashantihub"`, the default: no wallet, every `/api/delivery/rider/wallet/*`
+  endpoint answers `409 wallet_disabled`) or third-party, changed only through the `delivery.rider_employment` approval
+  (Delivery Manager proposes, Super Admin approves; switching back is refused while money, a withdrawal or a
+  delivered-but-unreleased order is open). Behind `LEDGER_ENABLED`, a third-party rider is paid only at release
+  (Support's "matches"), never at the door: `riders.credit_delivery`, last in `escrow.release_verified`'s transaction,
+  moves what platform delivery income took for the order (fee plus promo charge) to the rider (`order-rider-<order>`: 90%
+  Rider balance, 10% reserve at the `rider_commission_bp` in force when the order was paid). A whole refund after release
+  reverses it first (`riders.reverse_earning`, passed the refund's own time; `riders.check_reversal` refuses a reversal
+  that is not what the refund returns; the balance may go below zero and then blocks withdrawals, and the rider gets a
+  `rider_earning_reversed` notice); a partial refund never touches it. The 00:20 job (`ledger.tasks.post_rider_commission`)
+  posts each earlier day's reserve to platform commission income once (earning rows locked; missed nights caught up).
+  **Lock order:** the order row, its fee snapshots, then the rider row (release) or the earning row (refund), then
+  accounts in one sorted pass; the end-of-day job takes the rider row, then the earning rows, then the accounts. A
+  rider's accounts are held by their staff account, so the Stage 3b destinations and withdrawals serve riders
+  (`holder_type` "staff"; verified name = staff name with an approved, in-date Ghana Card that has an expiry date;
+  step-up codes for `withdrawal` / `payout_destination` only). Rider wallet writes are `activity_exempt` (as staff writes
+  they would run inside the middleware's transaction and store the account number) and record their own event, without
+  the number, through `views_payouts`' `saved()` hook. Nobody changes their own employment (`own_rider` 403, a Super Admin
+  included) and only a Dispatch rider can be third-party; `wallet_rider()` also checks the Dispatch role. A third-party
+  rider cannot leave Dispatch or be deactivated while third-party (`employment.block_leaving`, 409). Payroll
+  (`RiderEarnedView`, `rider/earnings/`) leaves out a third-party rider's deliveries (`employment.payroll_jobs`), so
+  Accounting cannot pay them twice. A day's `RiderCommissionPosting` is never edited: commission given back by a later
+  full refund shows as `given_back` beside it (per posting row, one helper: `rider_wallet.given_back`). Staff read riders'
+  money under `wallets.view` (`views_rider_wallet.StaffRider*`, `views_staff.rider_rows`); the single-rider read adds their
+  withdrawals and answers `409 wallet_disabled` for an AshantiHub-own rider.
 - **The ledger (`ledger/`) is append-only and integer-pesewa.** A balance changes only inside `ledger.posting.post`
   (balanced, idempotent on its key, accounts locked in primary-key order); Postgres triggers refuse `UPDATE`/`DELETE`
   on journals and lines, so a correction is a new reversing journal. Convert money only through `ledger.money`. Fees
@@ -221,8 +247,8 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   or phone calls it with `force=escrow.enabled()`: while the ledger is on they always need a code, and the step-up
   endpoints send codes for those three actions. `wallets.withdrawals.request` locks the destination, then the source
   and in-transit accounts together (`posting.lock`), then checks balance and limits (governed
-  `withdrawal_per_tx_limit_pesewas` / `withdrawal_daily_limit_pesewas`, per holder account); a vendor's negative
-  Available blocks it. Every hold and settlement locks the one `withdrawal_in_transit` account, so withdrawals
+  `withdrawal_per_tx_limit_pesewas` / `withdrawal_daily_limit_pesewas`, per holder account); a negative vendor
+  Available or rider balance blocks it. Every hold and settlement locks the one `withdrawal_in_transit` account, so withdrawals
   serialise (throughput only). A withdrawal is claimed before the provider is called (sent once; returned instead if
   the holder was suspended or the destination removed) and ends only through `wallets.payouts.apply_result` / `close`
   (row lock, per-reference journal keys, a final status never changes, the amount the provider reports must equal what
@@ -259,8 +285,9 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   - **Step-up.** Sensitive changes call `otp.step_up.require(request, ACTION)` **inside** the `transaction.atomic()`
     that saves (a refused change keeps the token); tokens are single-use, 5 minutes, bound to the action and the
     access token's `jti` (`X-Step-Up-Token`, `403 step_up_required`). A new sensitive endpoint (password change,
-    withdrawal, payout destination) must call it. Only customers and owners may ask for step-up codes (staff use
-    sudo), and the endpoints answer `409 otp_off` unless a code could be owed.
+    withdrawal, payout destination) must call it. Only customers, owners and third-party riders (riders: withdrawal and
+    payout_destination only, while the ledger is on) may ask for step-up codes (other staff use sudo), and the
+    endpoints answer `409 otp_off` unless a code could be owed.
   - **Recovery and rollout.** Staff recovery is the `otp.recovery` approval (Support asks, Super Admin approves; no
     text while `OTP_SMS_PROVIDER` is `simulated`); it sends a recovery-specific message plus a link-free notice to the
     account's other contacts. Three switches default off (`OTP_SIGNIN_ENFORCED`, `OTP_STEP_UP_ENFORCED`,
