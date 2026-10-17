@@ -33,8 +33,8 @@ def sold_out_q(prefix=""):
     offer"). Public search and the related list leave them out while settings.SOLD_OUT_HIDDEN_ENABLED is on (env,
     default off until the Plan 6F screens tell a business to leave the count empty when it does not count stock).
     Matches nothing while it is off, and never a service, stay or event: only products and food are offers with a stock
-    count. (Read with getattr: the setting itself is added with the alert switch in Task 7.)"""
-    if not getattr(settings, "SOLD_OUT_HIDDEN_ENABLED", False):
+    count."""
+    if not settings.SOLD_OUT_HIDDEN_ENABLED:
         return Q(pk__in=[])
     from cart.guard import deliverable_q  # cart.guard imports this module
 

@@ -5,6 +5,8 @@ from datetime import timedelta
 from unittest import mock
 
 from django.conf import settings
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
@@ -72,6 +74,46 @@ class AlertTests(TestCase):
         self.assertEqual(alerts.move_state(stale, cover, now), alerts.LOW)
         self.assertIsNone(alerts.move_state(stale, cover, now))                    # the conditional update finds it moved
 
+    def test_two_runs_at_once_tell_a_sold_out_offer_once(self):
+        listing = product(self.owner, "Milo", stock=0)
+        StockAlertState.objects.create(listing=listing)
+        stale = StockAlertState.objects.get(listing=listing)
+        cover, now = stock.cover_of(listing), timezone.now()
+        self.assertEqual(alerts.move_state(stale, cover, now), alerts.SOLD_OUT)
+        self.assertIsNone(alerts.move_state(stale, cover, now))
+
+    def test_sold_out_then_a_full_restock_re_arms_low_and_low_is_told_again(self):
+        listing = product(self.owner, "Milo", stock=3)
+        self.assertEqual(alerts.run(), 1)                                          # low at 3
+        set_stock(listing, 0)
+        self.assertEqual(alerts.run(), 1)                                          # sold out
+        set_stock(listing, 10)
+        self.assertEqual(alerts.run(), 0)                                          # restocked: both re-armed
+        set_stock(listing, 3)
+        self.assertEqual(alerts.run(), 1)                                          # low told again
+        self.assertEqual((len(self.notices(alerts.LOW)), len(self.notices(alerts.SOLD_OUT))), (2, 1))
+
+    def test_a_business_with_a_sold_out_and_a_low_offer_gets_exactly_two_notices(self):
+        product(self.owner, "Empty", stock=0)
+        product(self.owner, "Nearly", stock=2)
+        self.assertEqual(alerts.run(), 2)
+        self.assertEqual((len(self.notices(alerts.LOW)), len(self.notices(alerts.SOLD_OUT))), (1, 1))
+        self.assertEqual(Notification.objects.filter(business_owner=self.owner).count(), 2)
+
+    def test_a_steady_hour_costs_the_same_queries_however_many_offers(self):
+        for n in range(3):
+            product(self.owner, f"Fine {n}", stock=50)
+        alerts.run()                                                               # creates the state rows
+        with CaptureQueriesContext(connection) as few:
+            alerts.run()
+        for n in range(3):
+            product(self.owner, f"More {n}", stock=50)
+        alerts.run()
+        with CaptureQueriesContext(connection) as many:
+            alerts.run()
+        self.assertEqual(len(many), len(few))
+        self.assertFalse([q for q in many.captured_queries if q["sql"].lstrip().upper().startswith(("INSERT", "UPDATE"))])
+
     def test_one_notice_per_business_naming_its_offers(self):
         for n in range(7):
             product(self.owner, f"Item {n}", stock=1)
@@ -117,6 +159,19 @@ class AlertTests(TestCase):
         self.assertIsNone(alerts.move_state(stale, stock.cover_of(listing), timezone.now()))
         self.assertIsNone(StockAlertState.objects.get(listing=listing).low_alerted_at)
 
+    def test_a_line_saved_mid_run_is_told_against_the_new_line_next_run(self):
+        listing = product(self.owner, "Milo", stock=4)
+        StockAlertState.objects.create(listing=listing)
+        stale = StockAlertState.objects.get(listing=listing)
+        old_cover = stock.measure_many([listing], lines={})[listing.pk]            # measured against the default line 5
+        self.assertTrue(old_cover.low)
+        stock.set_own_line(listing, 2)                                             # saved mid-run: 4 > 2, not low
+        self.assertIsNone(alerts.move_state(stale, old_cover, timezone.now()))     # nothing recorded against the old line
+        self.assertIsNone(alerts.move_state(stale, stock.measure_many([listing])[listing.pk], timezone.now()))
+        self.assertEqual(alerts.run(), 0)
+        set_stock(listing, 2)
+        self.assertEqual(alerts.run(), 1)                                          # 2 <= 2: told against the new line
+
     def test_offers_that_are_never_measured(self):
         product(business("Suspended", suspended=True), stock=0)
         product(self.owner, "Draft", stock=0, status=Listing.DRAFT)
@@ -138,7 +193,7 @@ class JobTests(TestCase):
     def test_the_hourly_job_is_scheduled(self):
         entry = settings.CELERY_BEAT_SCHEDULE["catalogue-stock-alerts"]
         self.assertEqual(entry["task"], "catalogue.tasks.check_stock_alerts")
-        self.assertEqual(str(entry["schedule"]._orig_minute), "35")
+        self.assertEqual((str(entry["schedule"]._orig_minute), str(entry["schedule"]._orig_hour)), ("35", "*"))
 
     @override_settings(STOCK_ALERTS_ENABLED=True)
     def test_the_task_runs_the_check(self):

@@ -139,7 +139,7 @@ def search(params):
         queryset = CatalogueProduct.objects.filter(barcode=key)
     else:
         words = identity.normalise_name(str(params.get("q") or "")[:300]).split()[:MAX_WORDS]
-        if len("".join(words)) < 2:
+        if not any(len(word) >= 2 for word in words):
             raise CatalogueError(QUERY_REQUIRED, "query_required")
         queryset = CatalogueProduct.objects.all()
         for word in words:

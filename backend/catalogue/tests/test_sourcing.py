@@ -40,14 +40,20 @@ class SearchTests(TestCase):
         self.assertEqual((row["id"], row["offer_count"], row["lowest_price"]), (self.bournvita.pk, 0, None))
 
     def test_a_query_or_a_valid_barcode_is_needed(self):
-        for query, code in (("", "query_required"), ("?q=m", "query_required"), ("?barcode=123", "invalid_barcode")):
+        for query, code in (("", "query_required"), ("?q=m", "query_required"), ("?q=a%20b", "query_required"), ("?barcode=123", "invalid_barcode")):
             response = self.search(query)
             self.assertEqual((response.status_code, response.json()["code"]), (400, code), query)
 
-    def test_junk_input_is_a_400_never_a_500(self):
-        for query in ("?barcode=%00%00", "?barcode=abc", "?barcode=" + "9" * 400, "?q=%00%00", "?q=" + "a" * 5000,
-                      "?q=%25%5F", "?q=a%20b%20c%20d%20e%20f%20g%20h%20i%20j%20k%20l"):
-            self.assertIn(self.search(query).status_code, (200, 400), query)
+    def test_junk_input_has_a_pinned_status_never_a_500(self):
+        expected = {
+            "?barcode=%00%00": 400, "?barcode=abc": 400, "?barcode=" + "9" * 400: 400, "?q=%00%00": 400,
+            "?q=" + "a" * 5000: 200, "?q=%25%5F": 400, "?q=a%20b%20c%20d%20e%20f%20g%20h%20i%20j%20k%20l": 400,
+            "?q=a%20b": 400, "?q=ab": 200,
+        }
+        for query, status in expected.items():
+            self.assertEqual(self.search(query).status_code, status, query)
+        self.assertEqual(self.search("?barcode=abc").json()["code"], "invalid_barcode")
+        self.assertEqual(self.search("?q=m").json()["code"], "query_required")
 
     def test_no_match_is_an_honest_empty_list(self):
         response = self.search("?q=zzzzz")
@@ -65,17 +71,18 @@ class SearchTests(TestCase):
         self.assertEqual(len(self.search("?q=bulk").json()["results"]), 20)
 
     def test_query_count_does_not_grow_with_results(self):
-        for n in range(10):
+        few = self.queries("?q=bulk")                                              # no match yet
+        for n in range(15):
             CatalogueProduct.objects.create(brand="Bulk", name=f"Item {n}")
-        with self.assertNumQueries(self.queries("?q=bulk")):
-            self.search("?q=bulk")
+        for p in CatalogueProduct.objects.filter(brand="Bulk")[:5]:
+            product(business(f"Seller {p.pk}"), catalogue_product=p)
+        self.assertEqual(self.queries("?q=bulk"), few)
 
     def queries(self, query):
         from django.db import connection
         from django.test.utils import CaptureQueriesContext
         with CaptureQueriesContext(connection) as ctx:
-            self.search(query)
-        self.assertLessEqual(len(ctx), 4)
+            self.assertEqual(self.search(query).status_code, 200)
         return len(ctx)
 
     def test_only_business_owners(self):

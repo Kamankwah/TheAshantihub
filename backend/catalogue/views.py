@@ -83,13 +83,13 @@ class OtherSellersView(APIView):
         return Response(offers.other_sellers(listing, request.query_params))
 
 
+LOOKUP_SUSPENDED = "Your account is suspended, so it cannot look up other businesses' offers."
+
+
 def _suspended_refusal(request):
     if request.user.is_suspended:
         return Response(CatalogueError(LOOKUP_SUSPENDED, "account_suspended", 403).body(), status=403)
     return None
-
-
-LOOKUP_SUSPENDED = "Your account is suspended, so it cannot look up other businesses' offers."
 
 
 class ProductSearchView(APIView):

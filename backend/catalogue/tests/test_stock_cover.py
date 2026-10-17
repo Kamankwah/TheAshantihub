@@ -20,6 +20,9 @@ from listings.models import Listing
 from orders.models import Order
 
 
+CEILING = 8                                                                          # queries for the stock list
+
+
 class StockSettingsTests(TestCase):
     def test_defaults_and_bounds(self):
         self.assertEqual(
@@ -141,16 +144,18 @@ class CoverEdgeTests(TestCase):
         self.assertEqual((cover.units_sold, cover.days_on_sale), (28, 28))
 
     def test_the_decision_uses_elapsed_seconds_not_whole_days(self):
-        listing = go_live(product(self.owner, stock=7), 60)
+        listing = go_live(product(self.owner, stock=15), 60)
         now = timezone.now()
         Listing.objects.filter(pk=listing.pk).update(reviewed_at=now - timedelta(days=1, hours=23))
         listing.refresh_from_db()
         sell(listing, 1, days_ago=1)
-        # 1 sold over 1.96 days: 7 in stock is 13.7 days of cover, not low; whole-day rounding would not change this,
-        # so also check a boundary: 4 sold over 1.96 days leaves 3.4 days at stock 7 -> low
         sell(listing, 3, days_ago=1)
-        self.assertTrue(stock.cover_of(listing, now).low)
-        self.assertEqual(stock.cover_of(listing, now).days_on_sale, 1)
+        # 4 sold over 1.96 days with 15 left: 7.35 days of cover, so not low. Rounded down to whole days (1 day) it
+        # would be 3.75 days: low. Only the exact seconds give the right answer.
+        cover = stock.cover_of(listing, now)
+        self.assertEqual(cover.days_on_sale, 1)
+        self.assertFalse(cover.low)
+        self.assertEqual(cover.days_of_cover, Decimal("7.3"))
 
     def test_an_uncounted_listing_has_no_cover(self):
         self.assertIsNone(stock.cover_of(product(self.owner, stock=None)))
@@ -210,6 +215,7 @@ class NeedsRestockingTests(TestCase):
         with CaptureQueriesContext(connection) as many:
             self.client.get("/api/catalogue/stock/")
         self.assertEqual(len(many), len(few))
+        self.assertLessEqual(len(few), CEILING)
 
     def test_a_service_with_a_stock_count_is_not_an_offer(self):
         counted = service(self.owner, "Counted service")
