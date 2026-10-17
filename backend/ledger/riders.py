@@ -212,3 +212,66 @@ def post_commission(today=None, now=None):
     if failed:      # after every other rider-day was posted: the job shows DOWN until the failures are looked at
         raise RuntimeError(f"Rider commission posting failed for {failed} rider-day(s); {done} posted")
     return done
+
+
+# --- refunds (spec §2.2 step 6: "A reversed delivery reverses its share of the reserve") --------------------------------
+
+def reversal_key(order):
+    return f"order-rider-reversal-{order.pk}"
+
+
+def earning_to_reverse(order):
+    """The order's rider earning not yet reversed, its row locked (after the order row and its fee snapshots, before any
+    account), or None."""
+    return (
+        RiderEarning.objects.select_for_update(of=("self",)).select_related("rider__staff", "order")
+        .filter(order_id=order.pk, reversed_at__isnull=True).first()
+    )
+
+
+def reversal_accounts(earning):
+    """(rider balance, where the reserve is taken from, platform delivery income) for reverse_earning, for the caller's
+    up-front lock; () without an earning. The reserve comes back from the rider's reserve, or from platform commission
+    income once the day's commission was posted."""
+    if earning is None:
+        return ()
+    balance, held = accounts_of(earning.rider)
+    taker = posting.account_for(Account.PLATFORM_COMMISSION_INCOME) if earning.commission_posting_id else held
+    return balance, taker, posting.account_for(Account.PLATFORM_DELIVERY_INCOME)
+
+
+def reverse_earning(earning, now=None):
+    """The whole order is refunded after release, delivery fee included, so the rider's pay for it comes back first:
+    Dr rider balance (the net; it may go below zero, recovered from later deliveries, and blocks withdrawals meanwhile),
+    Dr the reserve (or platform commission income once posted: AshantiHub gives its commission back), Cr platform
+    delivery income, from which the refund then returns the fee. Call with the earning locked (earning_to_reverse) and
+    reversal_accounts(earning) in the caller's one up-front lock. Idempotent on its key."""
+    now = now or timezone.now()
+    balance, taker, delivery_income = reversal_accounts(earning)
+    debits = []
+    if earning.net_pesewas:
+        debits.append(posting.debit(balance, earning.net_pesewas))
+    if earning.reserve_pesewas:
+        debits.append(posting.debit(taker, earning.reserve_pesewas))
+    journal = posting.post(
+        key=reversal_key(earning.order), kind="rider_earning_reversal",
+        lines=[*debits, posting.credit(delivery_income, earning.gross_pesewas)],
+        reference_type="orders.order", reference_id=str(earning.order_id),
+        memo=f"Order #{earning.order_id} refunded in full: its delivery fee taken back from the rider",
+        allow_negative={Account.RIDER_BALANCE},
+    )
+    earning.reversed_at, earning.reversal_journal = now, journal
+    earning.save(update_fields=["reversed_at", "reversal_journal"])
+    # Tell the rider: money left their balance (possibly below zero, which blocks withdrawals). This runs inside the refund's
+    # transaction; notify only creates a row. The day's RiderCommissionPosting row is never edited (records are append-only);
+    # the rider's days and the Accountant's commission report show the commission given back from the reversed earnings.
+    from notifications.services import notify_staff
+
+    from .money import from_pesewas
+
+    notify_staff(
+        earning.rider.staff, "withdrawal", "A delivery was taken back",
+        body=f"Order #{earning.order_id} was refunded in full, so GH₵ {from_pesewas(earning.net_pesewas)} came back out of your balance.",
+        link="/staff", icon="↩️",
+    )
+    return journal

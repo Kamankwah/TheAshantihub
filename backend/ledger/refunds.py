@@ -16,6 +16,10 @@ A refund always goes to the customer's AshantiHub wallet and is recorded as an `
   leaves it held until the order is released (escrow.release_verified then releases the Delivery payable balance) or
   refunded whole. The refund that empties the order ("whole") also returns the rest of any coupon to AshantiHub (Cr promo
   subsidy), so the customer never gets back more than they paid.
+* A third-party rider paid the delivery fee at release (ledger.riders) gives it back when the whole order is refunded
+  after release, before the refund journal takes the fee from platform delivery income (riders.reverse_earning; the
+  same when an emptied promo order's promo goes back to the business). A partial refund never touches the rider (it
+  never returns the delivery fee); before release the rider was never paid.
 * The provider's collection charge ("payment processing") is not refunded, except when staff say AshantiHub or a vendor
   was at fault (`refund_processing=True`): AshantiHub then bears it (Dr provider fees, Cr wallet). A partial refund
   gives back only its share of the charge (its share of the order total, half up, never more than is left); the refund
@@ -31,7 +35,7 @@ from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 
-from . import escrow, posting
+from . import escrow, posting, riders
 from .models import Account, Journal, OrderFeeSnapshot, OrderRefund
 from .money import from_pesewas, to_pesewas
 
@@ -216,16 +220,26 @@ def _delivery_made(order):
 
 
 def _free_promo(order, extra):
-    """Give a charged free-delivery promo back and reverse an owed one (locks first: spec W7)."""
+    """Give a charged free-delivery promo back and reverse an owed one (locks first: spec W7). After release, a
+    third-party rider who was paid the promo's fee gives it back first, so platform delivery income holds what
+    return_waiver takes (lock order: the earning row, then the accounts)."""
     from marketing.waivers import reverse_for_order
 
-    posting.lock(*escrow.waiver_return_accounts(order), *extra)
+    released = Journal.objects.filter(key=escrow.release_key(order)).exists()
+    earning = riders.earning_to_reverse(order) if released else None
+    posting.lock(*escrow.waiver_return_accounts(order), *extra, *riders.reversal_accounts(earning))
+    if earning is not None:
+        riders.reverse_earning(earning)
     escrow.return_waiver(order)
     reverse_for_order(order, "order_refunded")
 
 
 def _post(order, snapshots, shares, *, customer, delivery, subsidy, processing, whole, source, by, note, now, extra_locks=()):
     released = Journal.objects.filter(key=escrow.release_key(order)).exists()
+    # A whole refund after release takes the delivery fee back from platform delivery income; a third-party rider who
+    # was paid it gives it back first. Their earning row is locked here: after the order row and its snapshots, before
+    # any account (wallets Plan 5).
+    earning = riders.earning_to_reverse(order) if whole and released else None
     by_vendor, allocation = {}, []
     for snap in snapshots:
         base = shares.get(snap.pk, 0)
@@ -273,7 +287,9 @@ def _post(order, snapshots, shares, *, customer, delivery, subsidy, processing, 
         credits.append(posting.credit(posting.account_for(Account.CUSTOMER_WALLET, order.customer), customer + processing))
     # Every account this transaction posts to, in one sorted pass before the first posting (spec W7); `extra_locks`
     # are the accounts a later posting in the same transaction touches (Task 6: the promo return).
-    posting.lock(*(line.account for line in debits + credits), *extra_locks)
+    posting.lock(*(line.account for line in debits + credits), *extra_locks, *riders.reversal_accounts(earning))
+    if earning is not None:
+        riders.reverse_earning(earning, now)                     # first: the refund below takes the fee back from there
     journal = None
     if len(debits) + len(credits) >= 2:
         journal = posting.post(
