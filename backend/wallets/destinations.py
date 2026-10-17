@@ -16,7 +16,7 @@ from datetime import timedelta
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from accounts.models import BusinessOwner, BusinessOwnerProfile
+from accounts.models import BusinessOwner, BusinessOwnerProfile, StaffUser
 from accounts.phones import normalize_gh_phone
 from accounts.serializers import mask_but_last
 from ledger import settings_store
@@ -87,10 +87,29 @@ def clean(data, holder):
     return rail, institution, account_number
 
 
+def _rider_problem(staff):
+    """A staff account may hold destinations only as an active third-party rider with an approved, in-date Ghana Card
+    (wallets Plan 5)."""
+    from delivery import employment
+
+    if not staff.is_active:
+        return DestinationError("This account is suspended.", "suspended", 403)
+    if employment.wallet_rider(staff) is None:
+        return DestinationError(employment.WALLET_DISABLED, "wallet_disabled", 409)
+    if not names.verified_names(staff):
+        return DestinationError(
+            "Your Ghana Card must be approved, and in date, before money can be paid out to you. Ask your delivery manager.",
+            "id_required", 409,
+        )
+    return None
+
+
 def _holder_problem(holder):
     """The DestinationError that stops this holder adding a destination now, or None."""
     if getattr(holder, "is_suspended", False):
         return DestinationError("This account is suspended.", "suspended", 403)
+    if isinstance(holder, StaffUser):
+        return _rider_problem(holder)
     if not names.verified_names(holder):
         if isinstance(holder, BusinessOwner):
             return DestinationError("Your business must pass KYC before money can be paid out to it.", "kyc_required", 409)

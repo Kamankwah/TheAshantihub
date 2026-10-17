@@ -25,12 +25,12 @@ from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 
-from accounts.models import BusinessOwner, Customer
+from accounts.models import BusinessOwner, Customer, StaffUser
 from fraud import services as fraud
 from fraud.models import FraudFlag
 from ledger import posting
 from ledger.models import Account
-from notifications.services import notify_business_owner, notify_customer
+from notifications.services import notify_business_owner, notify_customer, notify_staff
 from payments import providers
 
 from . import names
@@ -47,8 +47,11 @@ FAILED_REASON = "The provider could not pay it."  # what the holder sees, never 
 UNAVAILABLE_REASON = "Payouts are not available right now, so nothing was sent."
 
 
+HOLDER_MODELS = {"customer": Customer, "business_owner": BusinessOwner, "staff": StaffUser}  # staff: a third-party rider
+
+
 def _holder_model(withdrawal):
-    return Customer if withdrawal.holder_type == "customer" else BusinessOwner
+    return HOLDER_MODELS.get(withdrawal.holder_type, BusinessOwner)
 
 
 def holder_of(withdrawal):
@@ -74,6 +77,8 @@ def _tell(withdrawal, title, body):
     holder = holder_of(withdrawal)
     if isinstance(holder, Customer):
         notify_customer(holder, "withdrawal", title, body=body, link="/my-account", icon="💸")
+    elif isinstance(holder, StaffUser):
+        notify_staff(holder, "withdrawal", title, body=body, link="/staff", icon="💸")
     elif holder is not None:
         notify_business_owner(holder, "withdrawal", title, body=body, link="/business", icon="💸")
 
@@ -94,8 +99,9 @@ def claim(withdrawal_pk, now=None):
         destination = PayoutDestination.objects.select_for_update().get(pk=withdrawal.destination_id)
         # A held withdrawal may be sent minutes later by the poll: everything request() checked is checked again.
         if (
-            holder is None or holder.is_suspended or destination.removed_at is not None or destination.usable_from > now
-            or names.matching_name(destination.account_name, holder) is None
+            holder is None or holder.is_suspended or not getattr(holder, "is_active", True)
+            or destination.removed_at is not None or destination.usable_from > now
+            or names.matching_name(destination.account_name, holder) is None  # a rider no longer third-party has no name
         ):
             close(withdrawal, Withdrawal.CANCELLED, "Stopped before it was sent: the account or the destination changed.", now)
             return None

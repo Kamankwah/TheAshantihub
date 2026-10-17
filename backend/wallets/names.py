@@ -5,7 +5,9 @@ the account's name must contain every word of the verified name (so it may carry
 name lacks, never the reverse), and the verified name needs at least two words of two letters or more.
 
 A customer's profile name is self-declared (there is no customer KYC) and can be changed without a code, so for
-customers this stops typing mistakes, not a determined holder (a recorded deviation: spec §13 (xxix))."""
+customers this stops typing mistakes, not a determined holder (a recorded deviation: spec §13 (xxix)). A third-party
+rider's verified name is the name on their staff account, once the Delivery Manager has approved an in-date Ghana Card
+(wallets Plan 5; nothing yet compares the card's name with it: spec §13 (xcii))."""
 import re
 import unicodedata
 
@@ -30,8 +32,17 @@ def usable(verified_name):
 
 
 def verified_names(holder):
-    """The names a destination may match, or [] when there is none yet (a vendor not KYC-verified, a blank profile)."""
-    from accounts.models import BusinessOwner, Customer
+    """The names a destination may match, or [] when there is none yet (a vendor not KYC-verified, a blank profile, a
+    rider without an approved Ghana Card, AshantiHub's own riders and office staff)."""
+    from accounts.models import BusinessOwner, Customer, StaffUser
+
+    if isinstance(holder, StaffUser):
+        from delivery import employment
+
+        rider = employment.wallet_rider(holder)
+        if rider is None or not employment.id_verified(rider) or not (holder.full_name or "").strip():
+            return []
+        return [holder.full_name]
 
     if isinstance(holder, Customer):
         return [holder.full_name] if (holder.full_name or "").strip() else []
