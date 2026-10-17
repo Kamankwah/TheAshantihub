@@ -66,14 +66,15 @@ def earning_row(earning):
     }
 
 
-def given_back(day_filter):
-    """{day: pesewas of commission AshantiHub gave back} for deliveries taken back (a whole refund) after their day's
-    commission was posted. A RiderCommissionPosting row is never edited, so the views add this beside it. `day_filter` is
-    a RiderEarning filter (a rider, or every rider) already narrowed to the days shown."""
-    return dict(
-        RiderEarning.objects.filter(reversed_at__isnull=False, commission_posting__isnull=False, **day_filter)
-        .values("commission_posting__day").annotate(total=Sum("reserve_pesewas")).values_list("commission_posting__day", "total")
+def given_back(earning_filter):
+    """{posting id: (day, pesewas of commission AshantiHub gave back)} for deliveries taken back (a whole refund) after
+    their day's commission was posted, counted per RiderCommissionPosting row. A posting row is never edited, so the
+    views add this beside it. `earning_filter` is a RiderEarning filter (a rider, or a day) narrowing what is counted."""
+    rows = (
+        RiderEarning.objects.filter(reversed_at__isnull=False, commission_posting__isnull=False, **earning_filter)
+        .values("commission_posting_id", "commission_posting__day").annotate(total=Sum("reserve_pesewas"))
     )
+    return {row["commission_posting_id"]: (row["commission_posting__day"], row["total"]) for row in rows}
 
 
 def days(rider, limit=30):
@@ -84,7 +85,9 @@ def days(rider, limit=30):
         .annotate(deliveries=Sum("deliveries"), gross=Sum("gross_pesewas"), commission=Sum("commission_pesewas"), net=Sum("net_pesewas"))
         .order_by("-day")[:limit]
     )
-    back = given_back({"rider": rider, "commission_posting__day__in": [row["day"] for row in rows]})
+    back = {}
+    for day, total in given_back({"rider": rider, "commission_posting__day__in": [row["day"] for row in rows]}).values():
+        back[day] = back.get(day, 0) + total
     return [
         {"day": row["day"], "deliveries": row["deliveries"], "gross": money(row["gross"]), "commission": money(row["commission"]),
          "net": money(row["net"]), "given_back": money(back.get(row["day"], 0))}

@@ -267,11 +267,44 @@ def reverse_earning(earning, now=None):
     # the rider's days and the Accountant's commission report show the commission given back from the reversed earnings.
     from notifications.services import notify_staff
 
-    from .money import from_pesewas
-
     notify_staff(
-        earning.rider.staff, "withdrawal", "A delivery was taken back",
-        body=f"Order #{earning.order_id} was refunded in full, so GH₵ {from_pesewas(earning.net_pesewas)} came back out of your balance.",
+        earning.rider.staff, REVERSAL_NOTICE_KIND, "A delivery was taken back",
+        body=_reversal_text(earning, posting.balance_of(Account.RIDER_BALANCE, earning.rider.staff)),
         link="/staff", icon="↩️",
     )
     return journal
+
+
+REVERSAL_NOTICE_KIND = "rider_earning_reversed"
+
+
+def _reversal_text(earning, balance):
+    """What the rider is told: what came out of their balance (nothing to say when the rate was 100%) and, when the
+    balance is now below zero, that withdrawals wait until later deliveries bring it back."""
+    from .money import from_pesewas
+
+    if earning.net_pesewas:
+        text = f"Order #{earning.order_id} was refunded in full, so GH₵ {from_pesewas(earning.net_pesewas)} came back out of your balance."
+    else:
+        text = f"Order #{earning.order_id} was refunded in full, so its delivery fee was taken back (it had left nothing in your balance)."
+    if balance < 0:
+        text += (
+            f" Your balance is now GH₵ -{from_pesewas(-balance)}, below zero. You cannot withdraw until your later "
+            "deliveries bring it back to zero or more."
+        )
+    return text
+
+
+def check_reversal(earning, delivery_returned):
+    """Raise ValueError unless the earning being taken back equals what the refund then returns out of platform delivery
+    income: the delivery fee it gives back plus the free-delivery promo charge it returns to the business. Otherwise
+    platform delivery income would be left over or short."""
+    from . import escrow
+
+    promo = JournalLine.objects.filter(journal__key=escrow.waiver_key(earning.order), side=JournalLine.DEBIT).aggregate(
+        total=Sum("amount"))["total"] or 0
+    if earning.gross_pesewas != delivery_returned + promo:
+        raise ValueError(
+            f"Order #{earning.order_id}: the rider was paid {earning.gross_pesewas} pesewas, but this refund returns "
+            f"{delivery_returned} of delivery fee and {promo} of promo charge"
+        )

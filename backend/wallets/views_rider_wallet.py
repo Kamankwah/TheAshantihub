@@ -20,11 +20,11 @@ from rest_framework.views import APIView
 from accounts.permissions import HasRolePermission
 from activity.services import record
 from delivery import employment
-from delivery.models import Rider, RiderCommissionPosting, RiderEarning
+from delivery.models import Rider, RiderCommissionPosting
 from ledger import escrow
 
-from . import rider_wallet, views_payouts
-from .models import PayoutDestination
+from . import rider_wallet, views_payouts, views_staff
+from .models import PayoutDestination, Withdrawal
 from .services import money
 from .views import OFF, Pagination, ledger_off
 
@@ -143,7 +143,8 @@ STAFF_PERMISSION = "wallets.view"
 
 
 class StaffRiderWalletView(APIView):
-    """GET riders/<id>/wallet/ — one rider's balance, reserve, last 20 earnings and last 30 posted days (wallets.view)."""
+    """GET riders/<id>/wallet/ — one rider's balance, reserve, last 20 earnings, last 30 posted days and last 20 withdrawals (destinations masked), 409
+    wallet_disabled for AshantiHub's own riders (wallets.view)."""
 
     def get_permissions(self):
         return [HasRolePermission(STAFF_PERMISSION)]
@@ -152,6 +153,9 @@ class StaffRiderWalletView(APIView):
         if not escrow.enabled():
             return ledger_off()
         rider = get_object_or_404(Rider.objects.select_related("staff"), pk=pk)
+        if employment.wallet_rider(rider.staff) is None:
+            return Response({"detail": employment.WALLET_DISABLED, "code": "wallet_disabled"}, status=status.HTTP_409_CONFLICT)
+        withdrawals = Withdrawal.objects.filter(holder_type="staff", holder_id=rider.staff_id).select_related("destination")
         return Response({
             "rider": {
                 "id": rider.pk, "staff_id": rider.staff_id, "name": rider.staff.full_name, "employment": rider.employment,
@@ -160,6 +164,10 @@ class StaffRiderWalletView(APIView):
             **rider_wallet.summary(rider),
             "earnings": [rider_wallet.earning_row(earning) for earning in rider_wallet.earnings(rider)[:20]],
             "days": rider_wallet.days(rider),
+            "withdrawals": [
+                views_staff.staff_row(withdrawal, {("staff", rider.staff_id): rider.staff.full_name})
+                for withdrawal in withdrawals.order_by("-created_at", "-id")[:20]
+            ],
         })
 
 
@@ -182,17 +190,14 @@ class StaffRiderCommissionView(APIView):
             deliveries=Sum("deliveries"), gross=Sum("gross_pesewas"), commission=Sum("commission_pesewas"), net=Sum("net_pesewas"),
         )
         # A posting row is never edited: commission given back for a delivery refunded in full afterwards is shown beside it.
-        back = dict(
-            RiderEarning.objects.filter(reversed_at__isnull=False, commission_posting__day=day)
-            .values("rider_id").annotate(total=Sum("reserve_pesewas")).values_list("rider_id", "total")
-        )
+        back = {posting_id: total for posting_id, (_, total) in rider_wallet.given_back({"commission_posting__day": day}).items()}
         return Response({
             "day": day,
             "results": [
                 {
                     "rider_id": row.rider_id, "name": row.rider.staff.full_name, "company_name": row.rider.company_name,
                     "deliveries": row.deliveries, "gross": money(row.gross_pesewas), "commission": money(row.commission_pesewas),
-                    "net": money(row.net_pesewas), "given_back": money(back.get(row.rider_id, 0)), "posted_at": row.posted_at,
+                    "net": money(row.net_pesewas), "given_back": money(back.get(row.pk, 0)), "posted_at": row.posted_at,
                 }
                 for row in rows
             ],

@@ -27,8 +27,9 @@ A refund always goes to the customer's AshantiHub wallet and is recorded as an `
 
 Callers: Support's cancel (orders.support), the uncollected-pickup job (ledger.verification), dispute resolution
 (disputes.views) and the delivery-case refund approval (delivery.config). Lock order: the order row, its fee
-snapshots, then every account the transaction posts to, in one sorted pass before the first posting (`_post` locks them;
-`extra_locks` carries the accounts of a later posting, such as the promo return)."""
+snapshots, then the rider's earning row (only a whole refund after release, or a promo return, of a third-party rider's
+delivery: ledger.riders), then every account the transaction posts to, in one sorted pass before the first posting
+(`_post` locks them; `extra_locks` carries the accounts of a later posting, such as the promo return)."""
 from dataclasses import dataclass
 
 from django.db import transaction
@@ -154,7 +155,7 @@ def refund_order(order, amount_pesewas=None, *, source, by=None, owner_ids=None,
         whole = owner_ids is None and (amount_pesewas is None or amount_pesewas == remaining.customer)
         if whole:
             if not (remaining.customer or remaining.delivery or remaining.subsidy or items_room or processing):
-                _free_promo(order, [])  # nothing left to refund, but the business must not stay charged for the promo
+                _free_promo(order, [], now)  # nothing left to refund, but the business must not stay charged for the promo
                 return None
             customer, delivery, subsidy, shares = remaining.customer, remaining.delivery, remaining.subsidy, dict(rooms)
         else:
@@ -219,7 +220,7 @@ def _delivery_made(order):
     return verification.handed_over(order, FulfilmentCheck.objects.filter(order=order).first() or FulfilmentCheck(order=order))
 
 
-def _free_promo(order, extra):
+def _free_promo(order, extra, now=None):
     """Give a charged free-delivery promo back and reverse an owed one (locks first: spec W7). After release, a
     third-party rider who was paid the promo's fee gives it back first, so platform delivery income holds what
     return_waiver takes (lock order: the earning row, then the accounts)."""
@@ -229,7 +230,7 @@ def _free_promo(order, extra):
     earning = riders.earning_to_reverse(order) if released else None
     posting.lock(*escrow.waiver_return_accounts(order), *extra, *riders.reversal_accounts(earning))
     if earning is not None:
-        riders.reverse_earning(earning)
+        riders.reverse_earning(earning, now)
     escrow.return_waiver(order)
     reverse_for_order(order, "order_refunded")
 
@@ -289,6 +290,7 @@ def _post(order, snapshots, shares, *, customer, delivery, subsidy, processing, 
     # are the accounts a later posting in the same transaction touches (Task 6: the promo return).
     posting.lock(*(line.account for line in debits + credits), *extra_locks, *riders.reversal_accounts(earning))
     if earning is not None:
+        riders.check_reversal(earning, delivery)                 # what comes back from the rider must be what is returned
         riders.reverse_earning(earning, now)                     # first: the refund below takes the fee back from there
     journal = None
     if len(debits) + len(credits) >= 2:

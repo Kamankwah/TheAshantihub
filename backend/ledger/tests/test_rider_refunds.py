@@ -12,9 +12,9 @@ from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
 
 from accounts.models import BusinessOwner, Customer
-from delivery.models import RiderEarning
+from delivery.models import Rider, RiderEarning
 from ledger import escrow, posting, refunds, riders
-from ledger.models import Account, FulfilmentCheck
+from ledger.models import Account, FulfilmentCheck, Journal
 from listings.models import Category, Listing, Zone
 from notifications.models import Notification
 from orders.models import Order, OrderItem
@@ -138,6 +138,76 @@ class RiderRefundTests(RefundBase):
         refunds.refund_order(order, source="dispute-1")
         self.assertEqual(self.rider_balances(), (0, 0))
         self.assertEqual(self.wallet(), 7000)
+
+    def test_two_different_sources_take_the_delivery_back_once(self):
+        order = self.delivered_order(delivery="0.00", price="120.00")
+        rider_helpers.waived(order, self.kofi)
+        self.release(order)
+        refunds.refund_order(order, source="dispute-1")                                      # whole: reverses the earning
+        self.assertIsNone(refunds.refund_order(order, source="dispute-2"))                   # nothing left: via _free_promo
+        self.assertEqual(self.rider_balances(), (0, 0))
+        self.assertEqual(Journal.objects.filter(key=f"order-rider-reversal-{order.pk}").count(), 1)
+        self.assertEqual(Notification.objects.filter(staff=self.swift.staff, title="A delivery was taken back").count(), 1)
+
+    def test_the_refunds_own_time_is_the_reversal_time(self):
+        order = self.delivered_order()
+        self.release(order)
+        when = timezone.now() + timedelta(hours=3)
+        refunds.refund_order(order, source="dispute-1", now=when)
+        self.assertEqual(RiderEarning.objects.get(order=order).reversed_at, when)
+
+    def test_a_rider_switched_back_after_release_still_gives_the_delivery_back(self):
+        order = self.delivered_order()
+        self.release(order)
+        Rider.objects.filter(pk=self.swift.pk).update(employment=Rider.ASHANTIHUB)
+        refunds.refund_order(order, source="dispute-1")
+        self.assertEqual(self.rider_balances(), (0, 0))
+        self.assertEqual(self.balance(Account.PLATFORM_DELIVERY_INCOME), 0)
+        self.assertIsNotNone(RiderEarning.objects.get(order=order).reversed_at)
+
+    def test_every_item_refunded_after_release_then_the_fee_refunded_takes_the_delivery_back(self):
+        order = self.delivered_order()
+        self.release(order)
+        refunds.refund_order(order, source="dispute-1", owner_ids={self.kofi.pk})            # every item; the fee stays
+        self.assertEqual(self.rider_balances(), (900, 100))
+        refund = refunds.refund_order(order, source="dispute-2")                              # the rest: the delivery fee
+        self.assertTrue(refund.whole)
+        self.assertEqual(self.rider_balances(), (0, 0))
+        self.assertEqual(self.balance(Account.PLATFORM_DELIVERY_INCOME), 0)
+        self.assertEqual(self.wallet(), 7000)
+
+    def test_the_notice_has_its_own_kind_and_says_when_withdrawals_wait(self):
+        order = self.delivered_order()
+        self.release(order)
+        balance, _ = riders.accounts_of(self.swift)
+        posting.post(key="spent", kind="test", lines=[
+            posting.debit(balance, 900), posting.credit(posting.account_for(Account.WITHDRAWAL_IN_TRANSIT), 900),
+        ])
+        refunds.refund_order(order, source="dispute-1")
+        notice = Notification.objects.get(staff=self.swift.staff, title="A delivery was taken back")
+        self.assertEqual(notice.kind, riders.REVERSAL_NOTICE_KIND)
+        self.assertNotEqual(notice.kind, "withdrawal")
+        self.assertIn("below zero", notice.body)
+        self.assertIn("cannot withdraw", notice.body)
+
+    def test_a_full_commission_rate_does_not_say_nothing_came_back(self):
+        order = self.delivered_order()
+        with mock.patch.object(riders.settings_store, "current", return_value=10000):
+            self.release(order)
+        self.assertEqual(self.rider_balances(), (0, 1000))
+        refunds.refund_order(order, source="dispute-1")
+        body = Notification.objects.get(staff=self.swift.staff, title="A delivery was taken back").body
+        self.assertNotIn("GH₵ 0.00", body)
+        self.assertNotIn("below zero", body)
+        self.assertEqual(self.rider_balances(), (0, 0))
+
+    def test_a_reversal_that_does_not_match_what_the_refund_returns_is_refused(self):
+        order = self.delivered_order()
+        self.release(order)
+        Order.objects.filter(pk=order.pk).update(delivery_fee=Decimal("11.00"))    # the order now says more than was paid
+        with self.assertRaises(ValueError):
+            refunds.refund_order(order, source="dispute-1")
+        self.assertEqual(self.wallet(), 0)
 
 
 class ConcurrentRiderRefundTests(TransactionTestCase):
