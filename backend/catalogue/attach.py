@@ -17,7 +17,7 @@ grouped without a staff decision.
   by staff alone (owner-confirmed: a business cannot opt out of one)."""
 import logging
 
-from django.db import IntegrityError, connection, transaction
+from django.db import IntegrityError, OperationalError, connection, transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -263,6 +263,12 @@ def approve(request_id, staff, data=None):
         request.reviewed_by = staff
         request.reviewed_at = timezone.now()
         request.save(update_fields=["catalogue_product", "status", "rejection_reason", "reviewed_by", "reviewed_at"])
+        if created and product.barcode:
+            # A new barcoded entry: other ungrouped listings carrying that barcode get a request to review (staff decide
+            # each one; nothing is grouped here). Only after the whole approval has committed: filing a request
+            # key-share-locks that listing, which must never wait on a checkout or another approval while this one
+            # still holds its own listing row.
+            transaction.on_commit(lambda: propose_barcode_matches(product))
     notify_business_owner(
         listing.business_owner, GROUPED, "Listing grouped with other sellers",
         body=f"Your listing “{listing.name}” is now part of the catalogue entry {describe(request)}.",
@@ -345,6 +351,10 @@ def detach(listing_id, reason, staff=None):
             raise CatalogueError(NOT_GROUPED_MESSAGE, "not_grouped", 409)
         listing.catalogue_product = None
         listing.save(update_fields=["catalogue_product"])
+        # Remember that staff took it out, so the barcode matcher does not file it for this entry again.
+        CatalogueAttachRequest.objects.filter(
+            listing=listing, catalogue_product=product, status=CatalogueAttachRequest.APPROVED, ungrouped_at__isnull=True,
+        ).update(ungrouped_at=timezone.now(), ungrouped_by=staff)
         if staff is not None:
             activity.record(
                 staff, "catalogue-staff-detach", target=listing, method="POST", summary=reason[:300],
@@ -415,3 +425,62 @@ def staff_row(request, found=None):
             if request.status == CatalogueAttachRequest.PENDING else []
         ),
     }
+
+
+# --- The barcode matcher (backfill; never groups) --------------------------------------------------------------------
+
+TURNED_DOWN = (CatalogueAttachRequest.REJECTED, CatalogueAttachRequest.WITHDRAWN)
+
+
+def propose_barcode_matches(product=None, *, dry_run=False):
+    """File a backfill request for every ungrouped product or food listing whose barcode equals an entry's (every
+    barcoded entry, or just `product`). Skipped: a store's own code, a suspended owner, a listing with a request
+    waiting, and a listing whose request for that entry was rejected or withdrawn or whose grouping staff undid. Never
+    groups anything. Returns how many were filed (or would be, with dry_run); tells listings.moderate holders once when
+    any were filed. Takes no listing lock, so it can lose a race with propose or re_review (IntegrityError on the one-
+    pending constraint) or, rarely, deadlock (OperationalError): that listing is skipped, never raised."""
+    entries = CatalogueProduct.objects.exclude(barcode="")
+    if product is not None:
+        entries = entries.filter(pk=product.pk)
+    by_barcode = {entry.barcode: entry for entry in entries if not identity.is_store_code(entry.barcode)}
+    if not by_barcode:
+        return 0
+    candidates = list(
+        Listing.objects.filter(barcode__in=sorted(by_barcode), catalogue_product__isnull=True)
+        .filter(guard.deliverable_q(), business_owner__is_suspended=False)
+        .exclude(catalogue_requests__status=CatalogueAttachRequest.PENDING)
+        .only("pk", "barcode").order_by("pk")
+    )
+    declined = set(
+        CatalogueAttachRequest.objects.filter(listing_id__in=[c.pk for c in candidates])
+        .filter(Q(status__in=TURNED_DOWN) | Q(ungrouped_at__isnull=False))
+        .values_list("listing_id", "catalogue_product_id")
+    )
+    filed = 0
+    for listing in candidates:
+        entry = by_barcode[listing.barcode]
+        if (listing.pk, entry.pk) in declined:
+            continue
+        if not dry_run:
+            try:
+                with transaction.atomic():
+                    CatalogueAttachRequest.objects.create(
+                        listing=listing, catalogue_product=entry, barcode=listing.barcode,
+                        source=CatalogueAttachRequest.BACKFILL,
+                    )
+            except IntegrityError:
+                continue  # the business asked for this listing meanwhile: one request waits per listing
+            except OperationalError as exc:  # a rare deadlock with another writer on this listing: skip, the next run retries
+                logger.warning("catalogue barcode match skipped for listing %s: %s", listing.pk, type(exc).__name__)
+                continue
+        filed += 1
+    if filed and not dry_run:
+        try:
+            notify_staff_role(
+                "listings.moderate", NEEDS_REVIEW, "Barcode matches to review",
+                body=f"{filed} listing{'' if filed == 1 else 's'} share a barcode with a catalogue product.",
+                link="catalogue", icon="🏷️",
+            )
+        except Exception as exc:  # the requests are committed; a notice failure must not fail the run
+            logger.warning("catalogue barcode match notice failed: %s", type(exc).__name__)
+    return filed

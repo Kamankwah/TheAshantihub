@@ -74,6 +74,12 @@ class CatalogueAttachRequest(models.Model):
     )
     reviewed_at = models.DateTimeField(null=True, blank=True)
     withdrawn_at = models.DateTimeField(null=True, blank=True)
+    # Set when staff ungroup the listing this request grouped: the request stays approved, and the barcode matcher
+    # must not file the same listing for the same entry again.
+    ungrouped_at = models.DateTimeField(null=True, blank=True)
+    ungrouped_by = models.ForeignKey(
+        "accounts.StaffUser", on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
