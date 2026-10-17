@@ -1,3 +1,7 @@
+import re
+from decimal import Decimal
+
+from django.db import transaction as db_transaction
 from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
@@ -5,12 +9,28 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.views import IsBusinessOwner, IsCustomer
+from ledger import posting
 from notifications.services import notify_business_owner, notify_customer
+from payments import booking_pay
 from payments.models import CheckoutSession
-from payments.services import process_payment
 
 from .models import ServiceRequest
 from .serializers import ServiceRequestCreateSerializer, ServiceRequestSerializer
+
+PRICE_PATTERN = re.compile(r"[0-9]{1,8}(\.[0-9]{1,2})?", re.ASCII)
+PRICE_HINT = "Enter a price in GH₵ above 0.00, like 150.00."
+
+
+def clean_price(raw):
+    """The agreed price as a Decimal from what the business typed ("150", "150.5", 150.25), or None when it is not a
+    price: above GH₵ 0.00, at most two decimal places, plain digits (no "1e3", "NaN" or minus sign; ledger Plan 1b S16)."""
+    if raw is None or isinstance(raw, bool):
+        return None
+    text = str(raw).strip()
+    if not PRICE_PATTERN.fullmatch(text):
+        return None
+    value = Decimal(text)
+    return value if value > 0 else None
 
 
 class ServiceRequestCreateView(generics.CreateAPIView):
@@ -73,15 +93,24 @@ class ServiceRequestRespondView(APIView):
     permission_classes = [IsAuthenticated, IsBusinessOwner]
 
     def post(self, request, pk):
-        sr = generics.get_object_or_404(ServiceRequest, pk=pk, business_owner=request.user)
+        generics.get_object_or_404(ServiceRequest, pk=pk, business_owner=request.user)
+        with db_transaction.atomic():
+            # Locked and re-checked, so two taps on Accept cannot rewrite the agreed price after the first one.
+            sr = ServiceRequest.objects.select_for_update().select_related("listing", "customer").get(pk=pk)
+            return self._respond(request, sr)
+
+    def _respond(self, request, sr):
         if sr.status != ServiceRequest.REQUESTED:
             return Response({"detail": "This request has already been responded to."}, status=400)
 
         action = request.data.get("action")
         if action == "accept":
-            price = request.data.get("price")
-            if price in (None, ""):
+            raw = request.data.get("price")
+            if raw in (None, ""):
                 return Response({"price": "A price is required to accept."}, status=400)
+            price = clean_price(raw)
+            if price is None:
+                return Response({"price": PRICE_HINT}, status=400)
             sr.status = ServiceRequest.ACCEPTED
             sr.agreed_price = price
             sr.responded_at = timezone.now()
@@ -107,9 +136,11 @@ class ServiceRequestRespondView(APIView):
 
 
 class ServiceRequestPayView(APIView):
-    """POST /api/services/requests/{id}/pay/ — the customer pays for an
-    accepted request, which moves it to in_progress. Routes through
-    process_payment (simulated mode finalizes synchronously).
+    """POST /api/services/requests/{id}/pay/ {payment_method?} — the customer pays for an accepted request, which moves
+    it to in_progress. Routes through payments.booking_pay (simulated mode finalizes synchronously): by mobile money
+    (the default; with the ledger on it carries "payment processing") or, with the ledger on, from the AshantiHub
+    wallet, which must cover the whole price. The payment is one transaction, so a refused one leaves the request
+    accepted and nothing else behind.
     """
 
     permission_classes = [IsAuthenticated, IsCustomer]
@@ -118,21 +149,32 @@ class ServiceRequestPayView(APIView):
         sr = generics.get_object_or_404(ServiceRequest, pk=pk, customer=request.user)
         if sr.status != ServiceRequest.ACCEPTED:
             return Response({"detail": "Only an accepted request can be paid for."}, status=400)
+        try:
+            method = booking_pay.method_from(request.data)
+        except booking_pay.Refused as exc:
+            return Response(exc.body, status=exc.status_code)
 
-        result = process_payment(
-            kind=CheckoutSession.SERVICE_REQUEST,
-            amount=sr.agreed_price,
-            purpose=f"Service: {sr.listing.name}",
-            customer=request.user,
-            metadata={"service_request_id": sr.id},
-        )
+        try:
+            with db_transaction.atomic():
+                # Locked and re-checked, so two taps on Pay never start two payments for one request (Plan 1b S15);
+                # the finalizer locks the same row again. A second Hubtel checkout is still possible: gate (lix).
+                sr = ServiceRequest.objects.select_for_update().get(pk=sr.pk)
+                if sr.status != ServiceRequest.ACCEPTED:
+                    return Response({"detail": "Only an accepted request can be paid for."}, status=400)
+                result, processing = booking_pay.pay(
+                    kind=CheckoutSession.SERVICE_REQUEST,
+                    amount=sr.agreed_price,
+                    purpose=f"Service: {sr.listing.name}",
+                    customer=request.user,
+                    metadata={"service_request_id": sr.id},
+                    method=method,
+                )
+        except posting.InsufficientFunds as exc:
+            return booking_pay.too_low(exc)
         if result["mode"] == "redirect":
-            return Response(
-                {"mode": "redirect", "checkout_url": result["checkout_url"], "reference": result["reference"]},
-                status=status.HTTP_200_OK,
-            )
+            return Response(booking_pay.redirect_body(result, processing), status=status.HTTP_200_OK)
         sr.refresh_from_db()
-        return Response(ServiceRequestSerializer(sr).data)
+        return Response(booking_pay.with_terms(ServiceRequestSerializer(sr).data, processing, method=method))
 
 
 class ServiceRequestProgressView(APIView):
@@ -164,12 +206,14 @@ class ServiceRequestCompleteView(APIView):
     permission_classes = [IsAuthenticated, IsBusinessOwner]
 
     def post(self, request, pk):
-        sr = generics.get_object_or_404(ServiceRequest, pk=pk, business_owner=request.user)
-        if sr.status != ServiceRequest.IN_PROGRESS:
-            return Response({"detail": "Only an in-progress job can be completed."}, status=400)
-        sr.status = ServiceRequest.COMPLETED
-        sr.completed_at = timezone.now()
-        sr.save(update_fields=["status", "completed_at"])
+        with db_transaction.atomic():
+            # Locked, so marking the job done and a cancel (with its refund) never cross (ledger Plan 1b S15).
+            sr = generics.get_object_or_404(ServiceRequest.objects.select_for_update(), pk=pk, business_owner=request.user)
+            if sr.status != ServiceRequest.IN_PROGRESS:
+                return Response({"detail": "Only an in-progress job can be completed."}, status=400)
+            sr.status = ServiceRequest.COMPLETED
+            sr.completed_at = timezone.now()
+            sr.save(update_fields=["status", "completed_at"])
         notify_customer(
             sr.customer, "service_request", "Service completed",
             body=f"“{sr.listing.name}” has been marked complete.",

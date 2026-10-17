@@ -3,7 +3,7 @@ flags differences"). Read-only: it never posts or corrects anything. For a day i
 
 * every collection or payout on the provider's statement has its journal, for the same amount (missing_in_ledger,
   amount_differs), skipping what the ledger was never asked to record: payments made while it was off (no
-  metadata["ledger"]), kinds it does not record yet (subscriptions, tickets, bookings...) and GH₵ 0.00 payments;
+  metadata["ledger"]), kinds it does not record (subscriptions, event listing fees...) and GH₵ 0.00 payments;
 * every journal of the day that moved provider clearing names a movement the provider confirms, on any day
   (missing_on_statement; so a payment confirmed a second before midnight is not a false alarm);
 
@@ -21,7 +21,7 @@ from django.utils import timezone
 
 from fraud import services as fraud
 from fraud.models import FraudFlag
-from ledger import escrow, posting
+from ledger import escrow, posting, sales
 from ledger.models import Account, JournalLine
 from notifications.services import notify_staff_role
 from payments import providers
@@ -33,7 +33,9 @@ from .services import topup_key
 from .withdrawals import paid_key
 
 logger = logging.getLogger(__name__)
-LEDGER_KINDS = (CheckoutSession.ORDER_CHECKOUT, CheckoutSession.WALLET_TOPUP)
+# Services, stays and ticket purchases are recorded since ledger Plan 1b (booking-pay-<reference>).
+BOOKING_KINDS = (CheckoutSession.SERVICE_REQUEST, CheckoutSession.BOOKING, CheckoutSession.TICKET_PURCHASE)
+LEDGER_KINDS = (CheckoutSession.ORDER_CHECKOUT, CheckoutSession.WALLET_TOPUP, *BOOKING_KINDS)
 
 
 def _difference(reference, kind, problem, ledger, statement):
@@ -54,6 +56,8 @@ def expected_key(line):
         return None, None
     if session.kind == CheckoutSession.WALLET_TOPUP:
         return topup_key(session.reference), None
+    if session.kind in BOOKING_KINDS:
+        return sales.pay_key(session), None
     return escrow.pay_key(Order(pk=session.metadata.get("order_id"))), None
 
 
@@ -61,6 +65,8 @@ def provider_reference(journal):
     """The provider reference a journal that moved provider clearing stands for, or None."""
     if journal.key.startswith(("wallet-topup-", "withdrawal-paid-")):
         return journal.reference_id
+    if journal.key.startswith("booking-pay-"):
+        return journal.key[len("booking-pay-"):]
     if journal.key.startswith("order-pay-") and journal.reference_id.isdigit():
         session = CheckoutSession.objects.filter(
             kind=CheckoutSession.ORDER_CHECKOUT, metadata__order_id=int(journal.reference_id), status=CheckoutSession.SUCCESS,

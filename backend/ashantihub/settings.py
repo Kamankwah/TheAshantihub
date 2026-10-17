@@ -90,6 +90,7 @@ INSTALLED_APPS = [
     "contact",
     "accounts",
     "listings",
+    "catalogue",
     "billing",
     "credit",
     "cart",
@@ -392,11 +393,15 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "accounts.authentication.exception_handler",
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.ScopedRateThrottle"],
     "DEFAULT_THROTTLE_RATES": {
+        "vendor_statement_export": "6/min",
         "customer_register": "5/min",
         "business_owner_register": "5/min",
         "staff_activate": "5/min",
         "staff_activate_opened": "30/min",
         "login": "5/min",
+        "catalogue_request": "20/hour",
+        "catalogue_withdraw": "40/hour",
+        "catalogue_lookup": "120/hour",
         "two_factor": "10/min",
         # One-time codes (otp app): a per-process burst guard. The real hourly limits per phone/email, account
         # and IP are counted from otp.OtpEvent rows so they hold across server processes (otp/service.py).
@@ -603,6 +608,23 @@ CELERY_BEAT_SCHEDULE = {
         "task": "wallets.tasks.reconcile_yesterday",
         "schedule": crontab(hour=2, minute=30),  # the day before; read-only; a no-op while the ledger is off
     },
+    "catalogue-stock-alerts": {
+        "task": "catalogue.tasks.check_stock_alerts",
+        "schedule": crontab(minute=35),  # hourly, at twenty-five to: a no-op while STOCK_ALERTS_ENABLED is off
+    },
+    "catalogue-propose-matches": {
+        "task": "catalogue.tasks.propose_matches",
+        "schedule": crontab(hour=3, minute=10),  # nightly 03:10 Accra: a no-op while CATALOGUE_MATCHER_ENABLED is off
+    },
+    "wallets-send-vendor-texts": {
+        "task": "wallets.tasks.send_due_vendor_texts",
+        "schedule": 300.0,  # every 5 minutes: business money texts not sent yet (spec §6: queued, retried)
+        "options": {"expires": 280},  # a run that waited in the queue past the next beat is dropped, not stacked
+    },
+    "wallets-vendor-digests": {
+        "task": "wallets.tasks.queue_vendor_digests",
+        "schedule": crontab(hour=7, minute=0),  # yesterday's digest for businesses that asked; a no-op while the ledger is off
+    },
 }
 
 # Production sets this True so the nightly activity check emails its seal to
@@ -616,6 +638,21 @@ PRIVATE_MEDIA_ROOT = BASE_DIR / "private"
 # Charge the delivery fee at checkout from the live rate card (delivery.RateCard). Off until the owner
 # decides: with it off, checkout is exactly as before and nothing is added to an order's total.
 DELIVERY_FEE_ENABLED = env.bool("DELIVERY_FEE_ENABLED", default=False)
+
+# Low-stock and sold-out alerts to businesses (catalogue plan 6; spec §1 row 15). Off until the owner decides: with it off
+# the hourly job measures and sends nothing. The "needs restocking" list does not depend on it. On the first run after it
+# is turned on, every offer already low is told once.
+STOCK_ALERTS_ENABLED = env.bool("STOCK_ALERTS_ENABLED", default=False)
+
+# The nightly barcode matcher (catalogue plan 6): files grouping requests for listings that share a barcode with a
+# catalogue entry (listings that gain a barcode, or are created or published after the entry exists, are caught here).
+# Off until the owner decides; the manual `manage.py propose_catalogue_matches --apply` works regardless.
+CATALOGUE_MATCHER_ENABLED = env.bool("CATALOGUE_MATCHER_ENABLED", default=False)
+
+# Search and the related list stop showing counted goods at 0 stock (catalogue plan 6; spec §1 row 15, §10 "zero stock
+# hides the offer"). Off until the Plan 6F screens tell a business to leave the count empty when it does not count stock;
+# the listing's own page and the other-sellers list are not affected by it (see listings.visibility.sold_out_q).
+SOLD_OUT_HIDDEN_ENABLED = env.bool("SOLD_OUT_HIDDEN_ENABLED", default=False)
 
 # One-time codes and 2-step sign-in for everyone (otp app; spec §9, plan docs/superpowers/plans/2026-10-16-otp-security.md).
 # All three default OFF: with them off, sign-in, sign-up and every sensitive endpoint behave exactly as before. Turn

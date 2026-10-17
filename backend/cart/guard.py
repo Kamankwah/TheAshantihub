@@ -54,7 +54,11 @@ class GuardError(Exception):
 def kind_of(listing):
     """What a listing is to the cart: "stay" (accommodation), "food" (an is_food category), "product", "event" or
     "service". Reads listing.category."""
-    category = listing.category
+    return kind_of_category(listing.category)
+
+
+def kind_of_category(category):
+    """`kind_of` for a Category (a listing's, or one a form is about to give it)."""
     if category.is_accommodation:
         return STAY
     if category.is_food:

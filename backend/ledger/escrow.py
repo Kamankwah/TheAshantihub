@@ -205,8 +205,13 @@ def release_verified(order, now=None):
         OrderFeeSnapshot.objects.filter(pk__in=[s.pk for s in snapshots]).update(released_at=now)
         charge_waiver(order)
         # The delivery fee platform delivery income just took (release and promo charge) goes to a third-party rider: 90%
-        # withdrawable, 10% held until the end of the day (spec §2.2 step 2(c)). Plan 4's vendor texts, if merged, follow.
+        # withdrawable, 10% held until the end of the day (spec §2.2 step 2(c)).
         riders.credit_delivery(order, rider, now)
+        # Each business paid gets its release text and in-app copy (spec §6), queued in this transaction and sent after it
+        # commits. It reads the journals just written, takes no new row lock beyond foreign-key key-share locks, and never raises (vendor plan 4).
+        from wallets import vendor_texts
+
+        vendor_texts.order_released(order, journal)
         return journal
 
 
