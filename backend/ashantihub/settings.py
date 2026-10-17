@@ -591,6 +591,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "ledger.tasks.refund_uncollected_pickups",
         "schedule": crontab(minute=25),  # hourly, at twenty-five past: a no-op while the ledger is off
     },
+    "ledger-post-rider-commission": {
+        "task": "ledger.tasks.post_rider_commission",
+        "schedule": crontab(hour=0, minute=20),  # earlier days' rider commission (Accra); a no-op while the ledger is off
+    },
     "wallets-poll-withdrawals": {
         "task": "wallets.tasks.poll_withdrawals",
         "schedule": 300.0,  # every 5 minutes: a no-op while the ledger is off
