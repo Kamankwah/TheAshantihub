@@ -1,5 +1,6 @@
 """Staff reads of holders' money (wallets.view: Accountant, Super Admin). Never an account or MoMo number. Answers
-409 ledger_off while the ledger is off. Plan 3b adds withdrawals and the reconciliation runs here."""
+409 ledger_off while the ledger is off. Plan 3b adds withdrawals and the reconciliation runs here; Plan 5 adds
+third-party riders (their accounts are held by their staff account, holder_type "staff")."""
 import logging
 import re
 
@@ -10,7 +11,8 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import BusinessOwner, Customer
+from accounts.models import BusinessOwner, Customer, StaffUser
+from delivery.models import Rider
 from accounts.permissions import HasRolePermission, RequiresSudo
 from activity.services import record
 from fraud.models import FraudFlag
@@ -27,9 +29,30 @@ logger = logging.getLogger(__name__)
 VIEW, MANAGE = "wallets.view", "wallets.manage"
 
 
+def rider_rows(page, ids):
+    """Third-party riders' balance and reserve (accounts held by their staff account), with the rider company."""
+    found = {rider.staff_id: rider for rider in Rider.objects.filter(staff_id__in=ids).select_related("staff")}
+    reserve = {
+        account.owner_id: account.balance
+        for account in Account.objects.filter(
+            kind=Account.RIDER_RESERVE, owner_type=StaffUser._meta.label_lower, owner_id__in=[a.owner_id for a in page],
+        )
+    }
+    rows = []
+    for account in page:
+        rider = found.get(int(account.owner_id))
+        rows.append({
+            "holder_id": int(account.owner_id), "rider_id": rider.pk if rider else None,
+            "name": rider.staff.full_name if rider else "", "company_name": rider.company_name if rider else "",
+            "employment": rider.employment if rider else "", "balance": money(account.balance),
+            "reserve": money(reserve.get(account.owner_id, 0)),
+        })
+    return rows
+
+
 class StaffWalletsView(APIView):
-    """GET staff/wallets/?kind=customer|vendor — customers' wallets, or vendors' Pending and Available (every vendor
-    with a sale has a Pending account), largest first, 20 a page."""
+    """GET staff/wallets/?kind=customer|vendor|rider — customers' wallets, vendors' Pending and Available (every vendor
+    with a sale has a Pending account), or third-party riders' balance and reserve, largest first, 20 a page."""
 
     def get_permissions(self):
         return [HasRolePermission(VIEW)]
@@ -38,10 +61,12 @@ class StaffWalletsView(APIView):
         if not escrow.enabled():
             return ledger_off()
         kind = request.query_params.get("kind") or "customer"
-        if kind not in ("customer", "vendor"):
-            return Response({"kind": "Choose customer or vendor."}, status=status.HTTP_400_BAD_REQUEST)
+        if kind not in ("customer", "vendor", "rider"):
+            return Response({"kind": "Choose customer, vendor or rider."}, status=status.HTTP_400_BAD_REQUEST)
         if kind == "customer":
             accounts = Account.objects.filter(kind=Account.CUSTOMER_WALLET, owner_type=Customer._meta.label_lower)
+        elif kind == "rider":
+            accounts = Account.objects.filter(kind=Account.RIDER_BALANCE, owner_type=StaffUser._meta.label_lower)
         else:
             accounts = Account.objects.filter(kind=Account.VENDOR_PENDING, owner_type=BusinessOwner._meta.label_lower)
         paginator = Pagination()
@@ -50,6 +75,8 @@ class StaffWalletsView(APIView):
         if kind == "customer":
             names = dict(Customer.objects.filter(pk__in=ids).values_list("pk", "full_name"))
             rows = [{"holder_id": int(a.owner_id), "name": names.get(int(a.owner_id), ""), "balance": money(a.balance)} for a in page]
+        elif kind == "rider":
+            rows = rider_rows(page, ids)
         else:
             owners = {owner.pk: owner for owner in BusinessOwner.objects.filter(pk__in=ids).select_related("profile")}
             available = {
@@ -77,7 +104,9 @@ def holders_of(rows):
     """{(holder_type, holder_id): name} for these withdrawals, in two queries."""
     customer_ids = {w.holder_id for w in rows if w.holder_type == "customer"}
     owner_ids = {w.holder_id for w in rows if w.holder_type == "business_owner"}
+    staff_ids = {w.holder_id for w in rows if w.holder_type == "staff"}  # third-party riders
     names = {("customer", pk): name for pk, name in Customer.objects.filter(pk__in=customer_ids).values_list("pk", "full_name")}
+    names.update({("staff", pk): name for pk, name in StaffUser.objects.filter(pk__in=staff_ids).values_list("pk", "full_name")})
     for owner in BusinessOwner.objects.filter(pk__in=owner_ids).select_related("profile"):
         names[("business_owner", owner.pk)] = owner.display_name
     return names

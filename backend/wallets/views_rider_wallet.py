@@ -8,8 +8,11 @@ Riders are staff accounts, so their writes would pass through the staff activity
 transaction and stores the request body: these views are activity_exempt (the body holds an account number, and the
 account-name lookup and the payout must run outside any transaction) and record their own event, without the number,
 through the `saved()` hook inside the transaction that saves."""
-from datetime import date
+from datetime import date, timedelta
 
+from django.db.models import Sum
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import exceptions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -17,12 +20,13 @@ from rest_framework.views import APIView
 from accounts.permissions import HasRolePermission
 from activity.services import record
 from delivery import employment
+from delivery.models import Rider, RiderCommissionPosting, RiderEarning
 from ledger import escrow
 
 from . import rider_wallet, views_payouts
 from .models import PayoutDestination
 from .services import money
-from .views import OFF, Pagination
+from .views import OFF, Pagination, ledger_off
 
 RIDER_PERMISSION = "delivery.dispatch"
 BAD_DAY = "Use a date like 2026-10-16."
@@ -131,3 +135,70 @@ class RiderWithdrawalsView(RiderWalletMixin, views_payouts.WithdrawalsView):
 
 class RiderWithdrawalCancelView(RiderWalletMixin, views_payouts.WithdrawalCancelView):
     """POST rider/wallet/withdrawals/<id>/cancel/ — as /api/wallet/withdrawals/<id>/cancel/."""
+
+
+# --- staff reads (wallets.view: Accountant, Super Admin) ------------------------------------------------------------
+
+STAFF_PERMISSION = "wallets.view"
+
+
+class StaffRiderWalletView(APIView):
+    """GET riders/<id>/wallet/ — one rider's balance, reserve, last 20 earnings and last 30 posted days (wallets.view)."""
+
+    def get_permissions(self):
+        return [HasRolePermission(STAFF_PERMISSION)]
+
+    def get(self, request, pk):
+        if not escrow.enabled():
+            return ledger_off()
+        rider = get_object_or_404(Rider.objects.select_related("staff"), pk=pk)
+        return Response({
+            "rider": {
+                "id": rider.pk, "staff_id": rider.staff_id, "name": rider.staff.full_name, "employment": rider.employment,
+                "company_name": rider.company_name, "third_party_since": rider.third_party_since,
+            },
+            **rider_wallet.summary(rider),
+            "earnings": [rider_wallet.earning_row(earning) for earning in rider_wallet.earnings(rider)[:20]],
+            "days": rider_wallet.days(rider),
+        })
+
+
+class StaffRiderCommissionView(APIView):
+    """GET rider-commission/?day=YYYY-MM-DD — every rider's commission posted for that day (default yesterday, Accra),
+    with the day's totals (wallets.view)."""
+
+    def get_permissions(self):
+        return [HasRolePermission(STAFF_PERMISSION)]
+
+    def get(self, request):
+        if not escrow.enabled():
+            return ledger_off()
+        try:
+            day = parse_day(request.query_params.get("day")) or timezone.localdate() - timedelta(days=1)
+        except ValueError:
+            return Response({"day": BAD_DAY}, status=status.HTTP_400_BAD_REQUEST)
+        rows = RiderCommissionPosting.objects.filter(day=day).select_related("rider__staff").order_by("rider__staff__full_name", "pk")
+        totals = rows.aggregate(
+            deliveries=Sum("deliveries"), gross=Sum("gross_pesewas"), commission=Sum("commission_pesewas"), net=Sum("net_pesewas"),
+        )
+        # A posting row is never edited: commission given back for a delivery refunded in full afterwards is shown beside it.
+        back = dict(
+            RiderEarning.objects.filter(reversed_at__isnull=False, commission_posting__day=day)
+            .values("rider_id").annotate(total=Sum("reserve_pesewas")).values_list("rider_id", "total")
+        )
+        return Response({
+            "day": day,
+            "results": [
+                {
+                    "rider_id": row.rider_id, "name": row.rider.staff.full_name, "company_name": row.rider.company_name,
+                    "deliveries": row.deliveries, "gross": money(row.gross_pesewas), "commission": money(row.commission_pesewas),
+                    "net": money(row.net_pesewas), "given_back": money(back.get(row.rider_id, 0)), "posted_at": row.posted_at,
+                }
+                for row in rows
+            ],
+            "totals": {
+                "deliveries": totals["deliveries"] or 0, "gross": money(totals["gross"] or 0),
+                "commission": money(totals["commission"] or 0), "net": money(totals["net"] or 0),
+                "given_back": money(sum(back.values())),
+            },
+        })

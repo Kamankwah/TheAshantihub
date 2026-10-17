@@ -58,7 +58,7 @@ class StaffWalletsTests(StaffWalletsBase):
 
     def test_an_unknown_kind_is_refused(self):
         self.as_staff(self.accountant)
-        self.assertEqual(self.client.get(URL, {"kind": "rider"}).status_code, 400)
+        self.assertEqual(self.client.get(URL, {"kind": "drivers"}).status_code, 400)                # riders exist since Plan 5
 
     def test_only_wallets_view_holders_may_look(self):
         self.as_staff(self.support)
