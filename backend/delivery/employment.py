@@ -2,13 +2,13 @@
 
 AshantiHub's own rider (`Rider.ASHANTIHUB`, the default for every rider): no wallet, every delivery fee they carry is
 AshantiHub's income, and their pay stays with payroll (the rate card's `rider_pay` record). A third-party rider
-(`Rider.THIRD_PARTY`, from a rider company, not an AshantiHub employee): the delivery fee of each order they deliver from
-`third_party_since` on is paid into their wallet when the order's money is released (ledger.riders), less AshantiHub's
-commission.
+(`Rider.THIRD_PARTY`, from a rider company, not an AshantiHub employee): the delivery fee of each order they deliver while
+they are third-party (inside one of their `RiderEmploymentPeriod` rows) is paid into their wallet when the order's money
+is released (ledger.riders), less AshantiHub's commission.
 
 The flag decides whether a delivery fee becomes AshantiHub's income or a third party's withdrawable money, so it changes
 only through the `delivery.rider_employment` approval: a Delivery Manager (delivery.fleet) proposes, a Super Admin
-approves with the password (a Super Admin's own change applies at once). Switching a rider back to AshantiHub's own is
+approves with the password (a Super Admin's own change applies at once and needs the password too). Switching a rider back to AshantiHub's own is
 refused while they still have money with AshantiHub, a withdrawal on its way, or a delivered order whose money Support has
 not released yet (`money_open`). That is checked when proposed, when approved, and again under the rider row's lock when
 applied; a release takes the same lock before paying a rider (ledger.riders.rider_for_release)."""
@@ -31,6 +31,7 @@ OPEN_LABELS = {
     "balance": "money in their wallet (to withdraw, or owed after a refund)",
     "reserve": "commission held until the end of the day",
     "withdrawal": "a withdrawal on its way",
+    "delivery_in_progress": "a delivery in progress",
     "deliveries": "delivered orders waiting for Support's call",
 }
 
@@ -78,21 +79,30 @@ def id_verified(rider, today=None):
     ).exists()
 
 
+def _in_a_period():
+    """Exists() over the assignment's rider's employment periods that contain its delivered_at (start inclusive, end
+    exclusive). All periods count, past ones included."""
+    return Exists(RiderEmploymentPeriod.objects.filter(
+        rider__staff_id=OuterRef("dispatch_id"), started_at__lte=OuterRef("delivered_at"),
+    ).filter(Q(ended_at__isnull=True) | Q(ended_at__gt=OuterRef("delivered_at"))))
+
+
+def _with_keys(jobs):
+    return jobs.annotate(
+        pay_key=Concat(Value("order-pay-"), Cast("order_id", CharField())),
+        release_key=Concat(Value("order-release-"), Cast("order_id", CharField())),
+    )
+
+
 def unreleased_deliveries(rider):
-    """Door-to-door orders this rider delivered as a third-party rider whose payment the ledger recorded and whose money
-    is not released yet (Support's call is still to come), and not refunded whole. None for AshantiHub's own riders."""
-    if not is_third_party(rider):
-        return DeliveryAssignment.objects.none()
-    jobs = (
+    """Door-to-door orders this rider delivered while third-party (in ANY of their employment periods, so a switch back
+    cannot hide one) whose payment the ledger recorded and whose money is not released yet (Support's call is still to
+    come), and not refunded whole."""
+    jobs = _with_keys(
         DeliveryAssignment.objects.filter(
-            dispatch_id=rider.staff_id, delivered_at__gte=rider.third_party_since,   # the open period's start
-            order__status=Order.PAID, order__delivery_method=Order.DOOR_TO_DOOR,
-        )
+            dispatch_id=rider.staff_id, order__status=Order.PAID, order__delivery_method=Order.DOOR_TO_DOOR,
+        ).filter(_in_a_period())
         .exclude(status=DeliveryAssignment.FAILED).exclude(order__refunds__whole=True)
-        .annotate(
-            pay_key=Concat(Value("order-pay-"), Cast("order_id", CharField())),
-            release_key=Concat(Value("order-release-"), Cast("order_id", CharField())),
-        )
     )
     return jobs.filter(Exists(Journal.objects.filter(key=OuterRef("pay_key")))).exclude(
         Exists(Journal.objects.filter(key=OuterRef("release_key")))
@@ -100,15 +110,14 @@ def unreleased_deliveries(rider):
 
 
 def payroll_jobs(jobs):
-    """`jobs` (a DeliveryAssignment queryset) without the deliveries made while the rider was a third-party rider (their
-    delivered_at inside one of their RiderEmploymentPeriod rows, past ones included): those are paid into the rider's
-    wallet at release, so a payroll figure that counted them would let Accounting pay the same delivery twice. Used by the
-    payroll screens (delivery.views_rules RiderEarnedView / RiderEarningsLinesView) and the rider app's rider/earnings/
-    figures."""
-    inside = RiderEmploymentPeriod.objects.filter(
-        rider__staff_id=OuterRef("dispatch_id"), started_at__lte=OuterRef("delivered_at"),
-    ).filter(Q(ended_at__isnull=True) | Q(ended_at__gt=OuterRef("delivered_at")))
-    return jobs.exclude(Exists(inside))
+    """`jobs` (a DeliveryAssignment queryset) without the deliveries the rider's wallet will be paid for: delivered while
+    the rider was third-party (inside one of their RiderEmploymentPeriod rows, past ones included) AND whose order has an
+    `order-pay-<order id>` journal (exactly what a release can pay). A delivery with no payment journal (the ledger off, or
+    an order paid before it was switched on) is never paid into a wallet, so payroll keeps counting it: otherwise nobody
+    would pay the rider. Used by the payroll screens (delivery.views_rules RiderEarnedView / RiderEarningsLinesView) and the
+    rider app's rider/earnings/ figures."""
+    walleted = _with_keys(jobs.filter(_in_a_period())).filter(Exists(Journal.objects.filter(key=OuterRef("pay_key"))))
+    return jobs.exclude(pk__in=walleted.values("pk"))
 
 
 def money_open(rider, lock=False):
@@ -136,6 +145,8 @@ def money_open(rider, lock=False):
     holder_type, holder_id = ref(staff)
     if Withdrawal.objects.filter(holder_type=holder_type, holder_id=holder_id, status__in=Withdrawal.OPEN).exists():
         found.append("withdrawal")
+    if DeliveryAssignment.objects.filter(dispatch_id=rider.staff_id, status__in=DeliveryAssignment.ACTIVE_STATUSES).exists():
+        found.append("delivery_in_progress")        # an unlocked read: locking assignments would cycle with deliver -> order
     if unreleased_deliveries(rider).exists():
         found.append("deliveries")
     return found
@@ -236,12 +247,13 @@ def validate(request):
 
 def apply(request):
     """Inside the decision's transaction: lock the rider row, check again (a release locks it before paying a rider), set
-    the flag. Becoming third-party starts `third_party_since` now (deliveries before it stay AshantiHub's); a new company
-    name keeps it; going back clears it."""
+    the flag. Becoming third-party opens an employment period and sets `third_party_since` (the open period's start);
+    a new company name changes neither; going back closes the period and clears `third_party_since`."""
     from activity.services import record
 
     decider = request.decided_by or request.maker
     rider = Rider.objects.select_for_update(of=("self",)).select_related("staff").get(pk=request.payload["rider_id"])
+    now = timezone.now()          # right after the rider lock, before the checks: a delivery finished later is after this moment
     if decider.pk == rider.staff_id:
         raise MakerCannotDecide("You can't change who you work for.")
     try:
@@ -250,7 +262,6 @@ def apply(request):
     except EmploymentError as exc:
         raise approvals.ApprovalError(exc.message) from exc
     before = {"employment": rider.employment, "company_name": rider.company_name}
-    now = timezone.now()
     if employment == Rider.THIRD_PARTY and rider.employment != Rider.THIRD_PARTY:
         rider.third_party_since = now
         RiderEmploymentPeriod.objects.create(rider=rider, started_at=now)
@@ -285,14 +296,14 @@ def consequences(request):
         if not escrow.enabled():
             return ["Marks this rider as a third-party rider. The wallet system is switched off, so this has no money effect "
                     "yet; once it is on, each delivery they make from approval is paid into their wallet less AshantiHub's "
-                    "commission, and deliveries made before approval stay AshantiHub's."]
+                    "commission, and deliveries made before approval, or on orders paid before then, stay with payroll."]
         from ledger import settings_store
 
         rate = settings_store.current("rider_commission_bp") / 100
         return [
             "From approval, each delivery this rider makes is paid into their AshantiHub wallet when Support confirms the "
             f"order with the customer: the delivery fee less AshantiHub's commission ({rate:g}% now, held until the end of "
-            "the day). Deliveries made before approval stay AshantiHub's. They can withdraw to an account in their own "
+            "the day). Deliveries made before approval, and orders paid before the wallet system was switched on, stay with payroll. They can withdraw to an account in their own "
             "name once their Ghana Card is approved."
         ]
     if not escrow.enabled():

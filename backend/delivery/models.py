@@ -60,8 +60,8 @@ class Rider(models.Model):
     job_hold_reason = models.CharField(max_length=300, blank=True)
     suspension_source = models.CharField(max_length=10, choices=SUSPENSION_SOURCE_CHOICES, blank=True, default="")
     # Who the rider works for (spec §1 rows 4-5, §7; wallets Plan 5). Changed only through the delivery.rider_employment
-    # approval (delivery.employment). A third-party rider is paid the delivery fee of each order they deliver from
-    # `third_party_since` on, at release, into a wallet (ledger.riders); AshantiHub's own riders have no wallet.
+    # approval (delivery.employment). A third-party rider is paid the delivery fee of each order they deliver inside
+    # an employment period (RiderEmploymentPeriod), at release, into a wallet (ledger.riders); AshantiHub's own riders have no wallet.
     employment = models.CharField(max_length=12, choices=EMPLOYMENT_CHOICES, default=ASHANTIHUB)
     company_name = models.CharField(max_length=120, blank=True, default="")
     third_party_since = models.DateTimeField(null=True, blank=True)

@@ -563,3 +563,10 @@ Found while writing `docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md` (Â
   back) decide who a delivery's money belongs to by its time, so payroll and the wallet never depend on the current flag.
 - **Owner note.** A delivered order that Support never releases blocks switching its rider back to AshantiHub's own
   forever; there is no way out yet (a Support release or a refund is the only exit).
+- **Owner note.** Re-roling a third-party rider away from Dispatch leaves their employment period open (the wallet is off
+  because the role is gone, but the money and the period stay until someone settles them).
+- **Owner note.** A whole refund after a rider has been switched back to AshantiHub's own can leave a negative wallet
+  balance that nothing collects yet.
+- **S5-10 Payroll overlap.** Payroll leaves out only the in-period deliveries whose order has an `order-pay-<id>` journal
+  (what a release can pay), so with the ledger off, or for orders paid before it was switched on, payroll still pays them.
+  Switching back is also refused while the rider has a delivery in progress.

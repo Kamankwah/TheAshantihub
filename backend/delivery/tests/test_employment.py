@@ -18,7 +18,7 @@ from delivery import employment
 from delivery.models import Rider, RiderEmploymentPeriod
 from ledger import escrow, posting
 from ledger.models import Account
-from orders.models import DeliveryAssignment
+from orders.models import DeliveryAssignment, Order
 
 from .base import DeliveryCase
 
@@ -85,6 +85,7 @@ class EmploymentTests(DeliveryCase):
         self.assertEqual((again.status_code, again.json()["code"]), (409, "already_pending"))
 
     def test_a_rider_cannot_change_their_own_employment(self):
+        # a rider lacks delivery.fleet, so the permission refuses first (own_rider is tested for a Super Admin below)
         self.assertEqual(self.propose(self.rider_staff, {"employment": "third_party", "company_name": "Me Ltd"}).status_code, 403)
 
     def test_a_super_admin_cannot_make_themselves_third_party(self):
@@ -105,7 +106,7 @@ class EmploymentTests(DeliveryCase):
         self.assertTrue(kind.requires_sudo)
         said = kind.consequences(SimpleNamespace(payload={"employment": "third_party"}))[0]
         self.assertIn("10%", said)
-        self.assertIn("before approval stay AshantiHub's", said)
+        self.assertIn("stay with payroll", said)
         self.assertIn("payroll", kind.consequences(SimpleNamespace(payload={"employment": "ashantihub"}))[0])
 
     @override_settings(LEDGER_ENABLED=True)
@@ -214,33 +215,106 @@ class EmploymentTests(DeliveryCase):
         self.rider.refresh_from_db()
         self.assertEqual(self.rider.employment, Rider.THIRD_PARTY)
 
+    def delivered(self, delivered_at, *, paid=True, status=None, dispatch=None):
+        order = self.make_order()
+        if paid:
+            escrow.record_order_payment(order)
+        DeliveryAssignment.objects.create(
+            order=order, dispatch=dispatch or self.rider_staff, status=status or DeliveryAssignment.DELIVERED, delivered_at=delivered_at,
+        )
+        return order.pk
+
+    def payroll(self):
+        return sorted(employment.payroll_jobs(DeliveryAssignment.objects.filter(dispatch=self.rider_staff)).values_list("order_id", flat=True))
+
     @override_settings(LEDGER_ENABLED=True)
     def test_history_is_kept_in_periods_so_payroll_still_leaves_out_third_party_days(self):
         now = timezone.now()
-        orders = []
-        for days in (5, 15, 25):                                        # delivered 5, 15 and 25 days ago
-            order = self.make_order()
-            DeliveryAssignment.objects.create(
-                order=order, dispatch=self.rider_staff, status=DeliveryAssignment.DELIVERED, delivered_at=now - timedelta(days=days),
-            )
-            orders.append(order.pk)
+        old, inside = self.delivered(now - timedelta(days=25)), self.delivered(now - timedelta(days=15))
         self.rider.employment, self.rider.company_name = Rider.THIRD_PARTY, "Swift"
         self.rider.third_party_since = now - timedelta(days=20)
         self.rider.save(update_fields=["employment", "company_name", "third_party_since"])
         RiderEmploymentPeriod.objects.create(rider=self.rider, started_at=now - timedelta(days=20))
-        response = self.propose(self.super_admin(), {"employment": "ashantihub"})          # switched back (10 days ago in effect: now)
+        # the day-15 order is still waiting for Support: switching back is refused until it is released or refunded
+        refused = self.propose(self.super_admin(), {"employment": "ashantihub"})
+        self.assertEqual((refused.status_code, refused.json()["open"]), (409, ["deliveries"]))
+        posting.post(key=escrow.release_key(Order.objects.get(pk=inside)), kind="test_release", lines=[        # Support released it
+            posting.debit(posting.account_for(Account.PROVIDER_CLEARING), 1), posting.credit(posting.account_for(Account.PLATFORM_DELIVERY_INCOME), 1),
+        ])
+        response = self.propose(self.super_admin(), {"employment": "ashantihub"})
         self.assertEqual(response.json()["status"], ApprovalRequest.APPROVED, response.content)
-        RiderEmploymentPeriod.objects.filter(rider=self.rider).update(ended_at=now - timedelta(days=10))
-        kept = employment.payroll_jobs(DeliveryAssignment.objects.filter(dispatch=self.rider_staff))
-        self.assertEqual(sorted(kept.values_list("order_id", flat=True)), sorted([orders[0], orders[2]]))   # the day-15 delivery is excluded
+        closed = self.rider.employment_periods.get()
+        self.assertIsNotNone(closed.ended_at)                              # apply() closed it
+        after_gap = self.delivered(closed.ended_at + timedelta(hours=1))
+        self.assertEqual(self.payroll(), sorted([old, after_gap]))         # the day-15 delivery stays out of payroll
         self.assertTrue(employment.third_party_at(self.rider, now - timedelta(days=15)))
-        self.assertFalse(employment.third_party_at(self.rider, now - timedelta(days=5)))
-        again = self.propose(self.super_admin(), {"employment": "third_party", "company_name": "Other"})   # switching again later
+        self.assertFalse(employment.third_party_at(self.rider, closed.ended_at + timedelta(hours=1)))
+        with mock.patch.object(employment, "timezone", SimpleNamespace(now=lambda: closed.ended_at + timedelta(hours=2), localdate=timezone.localdate)):
+            again = self.propose(self.super_admin(), {"employment": "third_party", "company_name": "Other"})
         self.assertEqual(again.json()["status"], ApprovalRequest.APPROVED, again.content)
         self.assertEqual(self.rider.employment_periods.count(), 2)
         self.assertEqual(self.rider.employment_periods.filter(ended_at__isnull=True).count(), 1)
-        kept = employment.payroll_jobs(DeliveryAssignment.objects.filter(dispatch=self.rider_staff))
-        self.assertEqual(sorted(kept.values_list("order_id", flat=True)), sorted([orders[0], orders[2]]))   # both periods kept
+        later = self.delivered(closed.ended_at + timedelta(hours=3))
+        self.assertEqual(self.payroll(), sorted([old, after_gap]))         # both periods kept, the later one excluded too
+        self.assertNotIn(later, self.payroll())
+
+    @override_settings(LEDGER_ENABLED=True)
+    def test_the_decision_uses_the_locked_balance_not_an_unlocked_read(self):
+        self.make_third_party()
+        account = posting.account_for(Account.RIDER_BALANCE, self.rider_staff)          # an empty account: balance_of says 0
+        self.assertEqual(posting.balance_of(Account.RIDER_BALANCE, self.rider_staff), 0)
+        locked = {account.pk: SimpleNamespace(pk=account.pk, balance=777)}               # the fresh, locked row says otherwise
+        with mock.patch("ledger.posting.lock", return_value=locked):
+            self.assertEqual(employment.money_open(self.rider, lock=True), ["balance"])
+            self.assertEqual(employment.money_open(self.rider), [])
+
+    @override_settings(LEDGER_ENABLED=True)
+    def test_period_boundaries_start_inclusive_end_exclusive(self):
+        start = timezone.now() - timedelta(days=10)
+        end = start + timedelta(days=4)
+        RiderEmploymentPeriod.objects.create(rider=self.rider, started_at=start, ended_at=end)
+        at_start, at_end = self.delivered(start), self.delivered(end)
+        self.assertEqual(self.payroll(), [at_end])
+        self.assertTrue(employment.third_party_at(self.rider, start))
+        self.assertFalse(employment.third_party_at(self.rider, end))
+
+    @override_settings(LEDGER_ENABLED=True)
+    def test_payroll_keeps_deliveries_the_wallet_will_never_pay(self):
+        now = timezone.now()
+        RiderEmploymentPeriod.objects.create(rider=self.rider, started_at=now - timedelta(days=10))
+        unpaid = self.delivered(now - timedelta(days=2), paid=False)       # paid before the ledger was switched on
+        paid = self.delivered(now - timedelta(days=1))
+        self.assertEqual(self.payroll(), [unpaid])
+        self.assertNotIn(paid, self.payroll())
+
+    def test_with_the_ledger_off_payroll_counts_every_delivery(self):
+        now = timezone.now()
+        RiderEmploymentPeriod.objects.create(rider=self.rider, started_at=now - timedelta(days=10))
+        order = self.delivered(now - timedelta(days=1), paid=False)
+        self.assertEqual(self.payroll(), [order])
+
+    @override_settings(LEDGER_ENABLED=True)
+    def test_a_delivery_in_progress_blocks_switching_back(self):
+        self.make_third_party()
+        self.delivered(None, paid=False, status=DeliveryAssignment.PICKED_UP)
+        response = self.propose(self.super_admin(), {"employment": "ashantihub"})
+        self.assertEqual((response.status_code, response.json()["open"]), (409, ["delivery_in_progress"]))
+
+    @override_settings(LEDGER_ENABLED=True)
+    def test_a_delivery_from_a_closed_earlier_period_still_blocks_switching_back(self):
+        now = timezone.now()
+        RiderEmploymentPeriod.objects.create(rider=self.rider, started_at=now - timedelta(days=20), ended_at=now - timedelta(days=10))
+        self.delivered(now - timedelta(days=15))
+        self.make_third_party()                                            # a second, open period
+        self.assertEqual(employment.money_open(self.rider), ["deliveries"])
+
+    def test_a_company_name_only_change_opens_no_period(self):
+        self.make_third_party()
+        response = self.propose(self.super_admin(), {"employment": "third_party", "company_name": "Other Riders"})
+        self.assertEqual(response.json()["status"], ApprovalRequest.APPROVED, response.content)
+        self.assertEqual(self.rider.employment_periods.count(), 1)
+        self.rider.refresh_from_db()
+        self.assertEqual(self.rider.company_name, "Other Riders")
 
     def test_the_wallet_flag_needs_the_dispatch_role(self):
         self.make_third_party()

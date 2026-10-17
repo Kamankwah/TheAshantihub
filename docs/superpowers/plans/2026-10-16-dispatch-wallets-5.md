@@ -19,7 +19,7 @@
 | # | Question | Decision | Why (grounded in the code) |
 |---|---|---|---|
 | R1 | The third-party flag (none exists today) | `delivery.Rider` gains `employment` (`ashantihub` — the default, so every existing rider is unchanged — or `third_party`), a free-text `company_name` (required for third-party) and `third_party_since` (when the current third-party engagement started; null for AshantiHub's own). **No `RiderCompany` table.** | Surveyed: `delivery/models.py` has `Rider` (one row per Dispatch `StaffUser`, made by `delivery.signals`), `Vehicle.owner_kind` and nothing about who employs a rider; its docstring says "no payout, payroll or ledger model". `docs/IMPLEMENTATION_INSTRUCTIONS.md` row 5 names a "`Rider` employment flag". The spec pays the rider personally (§2.1 Rider balance per rider; §8 destinations name-matched to the holder), so nothing in the money keys on the company; a company record is only needed if a company itself is contracted or paid (owner question, gate (xcix)). |
-| R2 | Who changes it | A new approval kind `delivery.rider_employment` (`delivery/employment.py`): a Delivery Manager (`delivery.fleet`) proposes at `POST /api/delivery/riders/<id>/employment/`, a Super Admin approves with the password (`requires_sudo`); a Super Admin's own proposal for another rider applies at once (so it is not password-gated, like the other `requires_sudo` kinds a Super Admin proposes). Nobody may change their own employment (`own_rider` 403, a Super Admin included) and only a Dispatch role holder can be third-party (`not_a_rider` 409). One pending request per rider (best effort: the approval re-checks at decision time). | The flag routes delivery fees from AshantiHub's income to a third party's withdrawable money: a money decision (spec §1 row 16; backend/CLAUDE.md "Approvals: the maker never decides"). Every other fleet edit (`RiderDetailView.patch`, `RiderJobHoldView`) is one Delivery Manager alone, which must not hold here. |
+| R2 | Who changes it | A new approval kind `delivery.rider_employment` (`delivery/employment.py`): a Delivery Manager (`delivery.fleet`) proposes at `POST /api/delivery/riders/<id>/employment/`, a Super Admin approves with the password (`requires_sudo`); a Super Admin's own proposal for another rider applies at once and now needs the password too (`sessions.require_sudo`, as for the recovery kind). Nobody may change their own employment (`own_rider` 403, a Super Admin included) and only a Dispatch role holder can be third-party (`not_a_rider` 409). One pending request per rider (best effort: the approval re-checks at decision time). | The flag routes delivery fees from AshantiHub's income to a third party's withdrawable money: a money decision (spec §1 row 16; backend/CLAUDE.md "Approvals: the maker never decides"). Every other fleet edit (`RiderDetailView.patch`, `RiderJobHoldView`) is one Delivery Manager alone, which must not hold here. |
 | R3 | Switching back to AshantiHub's own | Refused (`409 rider_money_open`, with `open`: `balance`, `reserve`, `withdrawal`, `deliveries`) while the rider's balance is not zero, a reserve is still held, a withdrawal is open, or a door-to-door order they delivered as third-party is paid in the ledger but not yet released (and not refunded whole). Checked when proposed, again when approved (`validate`), and again in `apply` under the rider row's lock; a release takes the same row lock before paying a rider. | "AshantiHub-own riders have wallets disabled": a wallet must never close with money in it, and a delivery made as third-party must not silently become AshantiHub's income. |
 | R4 | When the rider is credited | **At release only**: Support's positive verification call (`ledger.verification.record` → `escrow.release_verified`), in the release's own transaction, never at the doorstep or on a timer. The rider is the assignment's `dispatch` when the order is door to door, the assignment is not `FAILED`, `delivered_at` is set, and that rider was third-party at `delivered_at` (inside one of their `RiderEmploymentPeriod` rows; a later switch back does not change it). | Spec §2.2 step 2(c) puts the rider's 90/10 inside the release, and §4.1 releases only on the call. `orders.DeliveryAssignment` is one-to-one with the order and a re-dispatch replaces `dispatch` on the same row (`delivery.services.assign` refuses once delivered), so the row names the rider who delivered; a failed attempt earns nothing (its fee goes to whoever delivers). `escrow.release_verified` already says "then any third-party rider (Stage 5)". The wait for Support's call is an owner question (gate (c), RA12). |
 | R5 | What the rider is paid, and how it is posted | The whole delivery fee AshantiHub took at release: what the release credited to platform delivery income (the Delivery payable) plus the business's free-delivery promo charge (`charge_waiver`). One journal right after both, same transaction: `order-rider-<order>` (kind `rider_earning`): Dr platform delivery income gross, Cr rider balance net, Cr rider reserve reserve. Recorded on a `delivery.RiderEarning` row. The rate-card `DeliveryAssignment.rider_pay` is not what a third-party rider is paid; it stays a payroll record for AshantiHub's own riders. | §1 row 4: the fee "goes wholly to the rider (third party)". Posting through platform delivery income leaves `release_verified`, `charge_waiver` and every Stage 3a refund path as they are (a refund after release already takes the fee back from platform delivery income); both journals commit together, so §2.2's "one atomic release" holds. |
@@ -121,10 +121,10 @@ API added or changed:
 **Interfaces:**
 - Consumes: `approvals.services.submit(maker, kind_key, *, title, payload, target=None, maker_note="", request=None)`, `approvals.services.approve(approval_id, staff, note="", http_request=None)`, `approvals.registry.ApprovalKind`, `ledger.posting.balance_of`, `wallets.models.Withdrawal.OPEN`, `otp.identity.ref`, `activity.services.record`.
 - Produces:
-  - `Rider.ASHANTIHUB = "ashantihub"`, `Rider.THIRD_PARTY = "third_party"`, `Rider.EMPLOYMENT_CHOICES`; fields `Rider.employment`, `Rider.company_name`, `Rider.third_party_since`
+  - `Rider.ASHANTIHUB = "ashantihub"`, `Rider.THIRD_PARTY = "third_party"`, `Rider.EMPLOYMENT_CHOICES`; fields `Rider.employment`, `Rider.company_name`, `Rider.third_party_since`, and the model `delivery.RiderEmploymentPeriod` (`rider`, `started_at`, `ended_at`; related name `employment_periods`)
   - `delivery.employment.KIND = "delivery.rider_employment"`, `WALLET_DISABLED` (str), `OPEN_LABELS` (dict)
   - `EmploymentError(message, code, status_code=400, field=None, **extra)` with `.body()`
-  - `is_third_party(rider) -> bool`, `wallet_rider(staff) -> Rider | None`, `id_verified(rider, today=None) -> bool`, `unreleased_deliveries(rider) -> QuerySet[DeliveryAssignment]`, `payroll_jobs(jobs) -> QuerySet[DeliveryAssignment]`, `money_open(rider) -> list[str]`, `clean(data) -> (employment, company_name)`, `check(rider, employment, company, maker=None)`, `pending_for(rider) -> ApprovalRequest | None`, `propose(maker, rider, data, *, note="", request=None) -> ApprovalRequest`, `row(rider) -> dict`, `EMPLOYMENT_KIND` (registered in `DeliveryConfig.ready`)
+  - `is_third_party(rider) -> bool`, `wallet_rider(staff) -> Rider | None`, `id_verified(rider, today=None) -> bool`, `unreleased_deliveries(rider) -> QuerySet[DeliveryAssignment]`, `payroll_jobs(jobs) -> QuerySet[DeliveryAssignment]`, `third_party_at(rider, when) -> bool`, `money_open(rider, lock=False) -> list[str]`, `clean(data) -> (employment, company_name)`, `check(rider, employment, company, maker=None, lock=False)`, `pending_for(rider) -> ApprovalRequest | None`, `propose(maker, rider, data, *, note="", request=None) -> ApprovalRequest`, `row(rider) -> dict`, `EMPLOYMENT_KIND` (registered in `DeliveryConfig.ready`)
   - `POST /api/delivery/riders/<id>/employment/`; `fleet.profile(rider)["employment"]`
 
 - [ ] **Step 1: Write the failing test** — `backend/delivery/tests/test_employment.py`
@@ -134,7 +134,9 @@ API added or changed:
 through the delivery.rider_employment approval, and never switched back while money is open. Review Focus 4."""
 from datetime import timedelta
 from types import SimpleNamespace
+from unittest import mock
 
+from django.db import transaction
 from django.test import override_settings
 from django.utils import timezone
 
@@ -143,11 +145,12 @@ from accounts.testing import make_staff
 from approvals import registry
 from approvals import services as approvals
 from approvals.models import ApprovalRequest
+from approvals.services import MakerCannotDecide
 from delivery import employment
-from delivery.models import Rider
+from delivery.models import Rider, RiderEmploymentPeriod
 from ledger import escrow, posting
 from ledger.models import Account
-from orders.models import DeliveryAssignment
+from orders.models import DeliveryAssignment, Order
 
 from .base import DeliveryCase
 
@@ -158,13 +161,15 @@ class EmploymentTests(DeliveryCase):
     def super_admin(self):
         return StaffUser.objects.filter(email="sa@example.com").first() or make_staff("super_admin", "sa@example.com")
 
-    def propose(self, staff, body):
-        return self.as_staff(staff).post(URL.format(self.rider.pk), body, format="json")
+    def propose(self, staff, body, rider=None):
+        sudo = staff.role.name == "super_admin"                       # a Super Admin's own change needs the password
+        return self.as_staff(staff, sudo=sudo).post(URL.format((rider or self.rider).pk), body, format="json")
 
     def make_third_party(self):
         self.rider.employment, self.rider.company_name = Rider.THIRD_PARTY, "Swift Riders Ltd"
         self.rider.third_party_since = timezone.now() - timedelta(days=3)
         self.rider.save(update_fields=["employment", "company_name", "third_party_since"])
+        RiderEmploymentPeriod.objects.create(rider=self.rider, started_at=self.rider.third_party_since)
 
     def fund_rider(self, pesewas, key="fund-rider"):
         posting.post(key=key, kind="test_fund", lines=[
@@ -186,7 +191,7 @@ class EmploymentTests(DeliveryCase):
         self.assertEqual(response.json()["employment"]["pending"]["company_name"], "Swift Riders Ltd")
         self.rider.refresh_from_db()
         self.assertEqual(self.rider.employment, Rider.ASHANTIHUB)                         # nothing changes until approved
-        with self.assertRaises(approvals.ApprovalError):
+        with self.assertRaises(MakerCannotDecide):
             approvals.approve(response.json()["approval_id"], self.manager)               # the maker never decides
         approvals.approve(response.json()["approval_id"], self.super_admin())
         self.rider.refresh_from_db()
@@ -212,26 +217,28 @@ class EmploymentTests(DeliveryCase):
         self.assertEqual((again.status_code, again.json()["code"]), (409, "already_pending"))
 
     def test_a_rider_cannot_change_their_own_employment(self):
+        # a rider lacks delivery.fleet, so the permission refuses first (own_rider is tested for a Super Admin below)
         self.assertEqual(self.propose(self.rider_staff, {"employment": "third_party", "company_name": "Me Ltd"}).status_code, 403)
 
     def test_a_super_admin_cannot_make_themselves_third_party(self):
         sa = self.super_admin()
         own = Rider.objects.get_or_create(staff=sa)[0]                    # any Dispatch holder gets a Rider row; a Super Admin holds every permission
         body = {"employment": "third_party", "company_name": "Me Ltd"}
-        mine = self.as_staff(sa).post(URL.format(own.pk), body, format="json")
+        mine = self.as_staff(sa, sudo=True).post(URL.format(own.pk), body, format="json")
         self.assertEqual((mine.status_code, mine.json()["code"]), (403, "own_rider"))
         other = StaffUser.objects.filter(email="sa2@example.com").first() or make_staff("super_admin", "sa2@example.com")
-        not_a_rider = self.as_staff(other).post(URL.format(own.pk), body, format="json")   # the row's owner is no Dispatch rider
+        not_a_rider = self.as_staff(other, sudo=True).post(URL.format(own.pk), body, format="json")   # the row's owner is no Dispatch rider
         self.assertEqual((not_a_rider.status_code, not_a_rider.json()["code"]), (409, "not_a_rider"))
         own.refresh_from_db()
         self.assertEqual(own.employment, Rider.ASHANTIHUB)
 
+    @override_settings(LEDGER_ENABLED=True)
     def test_the_approval_needs_the_password_and_says_what_it_does(self):
         kind = registry.get_kind(employment.KIND)
         self.assertTrue(kind.requires_sudo)
         said = kind.consequences(SimpleNamespace(payload={"employment": "third_party"}))[0]
         self.assertIn("10%", said)
-        self.assertIn("before approval stay AshantiHub's", said)
+        self.assertIn("stay with payroll", said)
         self.assertIn("payroll", kind.consequences(SimpleNamespace(payload={"employment": "ashantihub"}))[0])
 
     @override_settings(LEDGER_ENABLED=True)
@@ -277,6 +284,177 @@ class EmploymentTests(DeliveryCase):
         self.rider.refresh_from_db()
         self.assertEqual(self.rider.employment, Rider.THIRD_PARTY)
         self.assertEqual(ApprovalRequest.objects.get(pk=response.json()["approval_id"]).status, ApprovalRequest.PENDING)
+
+    def test_a_super_admins_own_proposal_needs_the_password(self):
+        sa = self.super_admin()
+        response = self.as_staff(sa).post(URL.format(self.rider.pk), {"employment": "third_party", "company_name": "Swift"}, format="json")
+        self.assertEqual((response.status_code, response.json()["code"]), (403, "sudo_required"))
+        self.rider.refresh_from_db()
+        self.assertEqual(self.rider.employment, Rider.ASHANTIHUB)
+
+    def test_another_delivery_manager_cannot_approve_and_the_http_approval_asks_for_the_password(self):
+        response = self.propose(self.manager, {"employment": "third_party", "company_name": "Swift"})
+        peer = make_staff("delivery_manager", "dm2@example.com", phone="+233244000009")
+        with self.assertRaises(approvals.ApprovalError):
+            approvals.approve(response.json()["approval_id"], peer)
+        url = f"/api/approvals/{response.json()['approval_id']}/approve/"
+        answer = self.as_staff(self.super_admin()).post(url, {}, format="json")
+        self.assertEqual((answer.status_code, answer.json().get("code")), (403, "sudo_required"))
+        self.assertEqual(self.as_staff(self.super_admin(), sudo=True).post(url, {}, format="json").status_code, 200)
+
+    def test_the_rider_cannot_decide_their_own_change(self):
+        response = self.propose(self.manager, {"employment": "third_party", "company_name": "Swift"})
+        request = ApprovalRequest.objects.get(pk=response.json()["approval_id"])
+        request.decided_by = self.rider_staff
+        with self.assertRaises(MakerCannotDecide), transaction.atomic():
+            employment.apply(request)
+
+    def test_not_a_rider_at_decision_time(self):
+        response = self.propose(self.manager, {"employment": "third_party", "company_name": "Swift"})
+        self.rider_staff.role = make_staff("scout", "scout@example.com").role
+        self.rider_staff.save(update_fields=["role"])
+        with self.assertRaises(approvals.ApprovalError):
+            approvals.approve(response.json()["approval_id"], self.super_admin())
+
+    @override_settings(LEDGER_ENABLED=True)
+    def test_the_reserve_and_an_open_withdrawal_each_block_switching_back(self):
+        self.make_third_party()
+        posting.post(key="fund-reserve", kind="test_fund", lines=[
+            posting.debit(posting.account_for(Account.PROVIDER_CLEARING), 100),
+            posting.credit(posting.account_for(Account.RIDER_RESERVE, self.rider_staff), 100),
+        ])
+        self.assertEqual(employment.money_open(self.rider), ["reserve"])
+        from otp.identity import ref
+        from wallets.models import Withdrawal
+
+        holder_type, holder_id = ref(self.rider_staff)
+        with mock.patch.object(Withdrawal.objects, "filter") as fake:
+            fake.return_value.exists.return_value = True
+            self.assertEqual(employment.money_open(self.rider), ["reserve", "withdrawal"])
+            fake.assert_called_once_with(holder_type=holder_type, holder_id=holder_id, status__in=Withdrawal.OPEN)
+
+    @override_settings(LEDGER_ENABLED=True)
+    def test_apply_decides_on_locked_balances_so_money_posted_after_the_proposal_refuses(self):
+        self.make_third_party()
+        response = self.propose(self.manager, {"employment": "ashantihub"})
+        self.fund_rider(300)                                          # e.g. a withdrawal returned between propose and apply
+        request = ApprovalRequest.objects.get(pk=response.json()["approval_id"])
+        request.decided_by = self.super_admin()
+        with mock.patch("ledger.posting.lock", wraps=posting.lock) as locked:
+            with self.assertRaises(approvals.ApprovalError), transaction.atomic():
+                employment.apply(request)
+        locked.assert_called_once()
+        self.rider.refresh_from_db()
+        self.assertEqual(self.rider.employment, Rider.THIRD_PARTY)
+
+    def delivered(self, delivered_at, *, paid=True, status=None, dispatch=None):
+        order = self.make_order()
+        if paid:
+            escrow.record_order_payment(order)
+        DeliveryAssignment.objects.create(
+            order=order, dispatch=dispatch or self.rider_staff, status=status or DeliveryAssignment.DELIVERED, delivered_at=delivered_at,
+        )
+        return order.pk
+
+    def payroll(self):
+        return sorted(employment.payroll_jobs(DeliveryAssignment.objects.filter(dispatch=self.rider_staff)).values_list("order_id", flat=True))
+
+    @override_settings(LEDGER_ENABLED=True)
+    def test_history_is_kept_in_periods_so_payroll_still_leaves_out_third_party_days(self):
+        now = timezone.now()
+        old, inside = self.delivered(now - timedelta(days=25)), self.delivered(now - timedelta(days=15))
+        self.rider.employment, self.rider.company_name = Rider.THIRD_PARTY, "Swift"
+        self.rider.third_party_since = now - timedelta(days=20)
+        self.rider.save(update_fields=["employment", "company_name", "third_party_since"])
+        RiderEmploymentPeriod.objects.create(rider=self.rider, started_at=now - timedelta(days=20))
+        # the day-15 order is still waiting for Support: switching back is refused until it is released or refunded
+        refused = self.propose(self.super_admin(), {"employment": "ashantihub"})
+        self.assertEqual((refused.status_code, refused.json()["open"]), (409, ["deliveries"]))
+        posting.post(key=escrow.release_key(Order.objects.get(pk=inside)), kind="test_release", lines=[        # Support released it
+            posting.debit(posting.account_for(Account.PROVIDER_CLEARING), 1), posting.credit(posting.account_for(Account.PLATFORM_DELIVERY_INCOME), 1),
+        ])
+        response = self.propose(self.super_admin(), {"employment": "ashantihub"})
+        self.assertEqual(response.json()["status"], ApprovalRequest.APPROVED, response.content)
+        closed = self.rider.employment_periods.get()
+        self.assertIsNotNone(closed.ended_at)                              # apply() closed it
+        after_gap = self.delivered(closed.ended_at + timedelta(hours=1))
+        self.assertEqual(self.payroll(), sorted([old, after_gap]))         # the day-15 delivery stays out of payroll
+        self.assertTrue(employment.third_party_at(self.rider, now - timedelta(days=15)))
+        self.assertFalse(employment.third_party_at(self.rider, closed.ended_at + timedelta(hours=1)))
+        with mock.patch.object(employment, "timezone", SimpleNamespace(now=lambda: closed.ended_at + timedelta(hours=2), localdate=timezone.localdate)):
+            again = self.propose(self.super_admin(), {"employment": "third_party", "company_name": "Other"})
+        self.assertEqual(again.json()["status"], ApprovalRequest.APPROVED, again.content)
+        self.assertEqual(self.rider.employment_periods.count(), 2)
+        self.assertEqual(self.rider.employment_periods.filter(ended_at__isnull=True).count(), 1)
+        later = self.delivered(closed.ended_at + timedelta(hours=3))
+        self.assertEqual(self.payroll(), sorted([old, after_gap]))         # both periods kept, the later one excluded too
+        self.assertNotIn(later, self.payroll())
+
+    @override_settings(LEDGER_ENABLED=True)
+    def test_the_decision_uses_the_locked_balance_not_an_unlocked_read(self):
+        self.make_third_party()
+        account = posting.account_for(Account.RIDER_BALANCE, self.rider_staff)          # an empty account: balance_of says 0
+        self.assertEqual(posting.balance_of(Account.RIDER_BALANCE, self.rider_staff), 0)
+        locked = {account.pk: SimpleNamespace(pk=account.pk, balance=777)}               # the fresh, locked row says otherwise
+        with mock.patch("ledger.posting.lock", return_value=locked):
+            self.assertEqual(employment.money_open(self.rider, lock=True), ["balance"])
+            self.assertEqual(employment.money_open(self.rider), [])
+
+    @override_settings(LEDGER_ENABLED=True)
+    def test_period_boundaries_start_inclusive_end_exclusive(self):
+        start = timezone.now() - timedelta(days=10)
+        end = start + timedelta(days=4)
+        RiderEmploymentPeriod.objects.create(rider=self.rider, started_at=start, ended_at=end)
+        at_start, at_end = self.delivered(start), self.delivered(end)
+        self.assertEqual(self.payroll(), [at_end])
+        self.assertTrue(employment.third_party_at(self.rider, start))
+        self.assertFalse(employment.third_party_at(self.rider, end))
+
+    @override_settings(LEDGER_ENABLED=True)
+    def test_payroll_keeps_deliveries_the_wallet_will_never_pay(self):
+        now = timezone.now()
+        RiderEmploymentPeriod.objects.create(rider=self.rider, started_at=now - timedelta(days=10))
+        unpaid = self.delivered(now - timedelta(days=2), paid=False)       # paid before the ledger was switched on
+        paid = self.delivered(now - timedelta(days=1))
+        self.assertEqual(self.payroll(), [unpaid])
+        self.assertNotIn(paid, self.payroll())
+
+    def test_with_the_ledger_off_payroll_counts_every_delivery(self):
+        now = timezone.now()
+        RiderEmploymentPeriod.objects.create(rider=self.rider, started_at=now - timedelta(days=10))
+        order = self.delivered(now - timedelta(days=1), paid=False)
+        self.assertEqual(self.payroll(), [order])
+
+    @override_settings(LEDGER_ENABLED=True)
+    def test_a_delivery_in_progress_blocks_switching_back(self):
+        self.make_third_party()
+        self.delivered(None, paid=False, status=DeliveryAssignment.PICKED_UP)
+        response = self.propose(self.super_admin(), {"employment": "ashantihub"})
+        self.assertEqual((response.status_code, response.json()["open"]), (409, ["delivery_in_progress"]))
+
+    @override_settings(LEDGER_ENABLED=True)
+    def test_a_delivery_from_a_closed_earlier_period_still_blocks_switching_back(self):
+        now = timezone.now()
+        RiderEmploymentPeriod.objects.create(rider=self.rider, started_at=now - timedelta(days=20), ended_at=now - timedelta(days=10))
+        self.delivered(now - timedelta(days=15))
+        self.make_third_party()                                            # a second, open period
+        self.assertEqual(employment.money_open(self.rider), ["deliveries"])
+
+    def test_a_company_name_only_change_opens_no_period(self):
+        self.make_third_party()
+        response = self.propose(self.super_admin(), {"employment": "third_party", "company_name": "Other Riders"})
+        self.assertEqual(response.json()["status"], ApprovalRequest.APPROVED, response.content)
+        self.assertEqual(self.rider.employment_periods.count(), 1)
+        self.rider.refresh_from_db()
+        self.assertEqual(self.rider.company_name, "Other Riders")
+
+    def test_the_wallet_flag_needs_the_dispatch_role(self):
+        self.make_third_party()
+        self.assertTrue(employment.row(self.rider)["wallet"])
+        self.rider_staff.role = make_staff("scout", "scout2@example.com").role
+        self.rider_staff.save(update_fields=["role"])
+        self.rider.refresh_from_db()
+        self.assertFalse(employment.row(self.rider)["wallet"])
 ```
 
 - [ ] **Step 2: Run it to see it fail**
@@ -323,7 +501,7 @@ with
 - [ ] **Step 4: Generate the migration**
 
 Run: `docker compose -p disp1 run --rm --user "$(id -u):$(id -g)" web python manage.py makemigrations delivery --name rider_employment`
-Expected: `delivery/migrations/0007_rider_employment.py` with `Add field company_name to rider`, `Add field employment to rider`, `Add field third_party_since to rider` (and nothing else).
+Expected: `delivery/migrations/0007_rider_employment.py` with `Add field company_name to rider`, `Add field employment to rider`, `Add field third_party_since to rider` and `Create model RiderEmploymentPeriod` (and nothing else). The model sits after `Rider` in `delivery/models.py` (see the committed code: `rider` FK with `related_name="employment_periods"`, `started_at`, `ended_at` null, one open period per rider by a unique constraint). The periods, not the flag, decide who a delivery's money belongs to.
 
 - [ ] **Step 5: The flag and its approval** — create `backend/delivery/employment.py`
 
@@ -332,27 +510,28 @@ Expected: `delivery/migrations/0007_rider_employment.py` with `Add field company
 
 AshantiHub's own rider (`Rider.ASHANTIHUB`, the default for every rider): no wallet, every delivery fee they carry is
 AshantiHub's income, and their pay stays with payroll (the rate card's `rider_pay` record). A third-party rider
-(`Rider.THIRD_PARTY`, from a rider company, not an AshantiHub employee): the delivery fee of each order they deliver from
-`third_party_since` on is paid into their wallet when the order's money is released (ledger.riders), less AshantiHub's
-commission.
+(`Rider.THIRD_PARTY`, from a rider company, not an AshantiHub employee): the delivery fee of each order they deliver while
+they are third-party (inside one of their `RiderEmploymentPeriod` rows) is paid into their wallet when the order's money
+is released (ledger.riders), less AshantiHub's commission.
 
 The flag decides whether a delivery fee becomes AshantiHub's income or a third party's withdrawable money, so it changes
 only through the `delivery.rider_employment` approval: a Delivery Manager (delivery.fleet) proposes, a Super Admin
-approves with the password (a Super Admin's own change applies at once). Switching a rider back to AshantiHub's own is
+approves with the password (a Super Admin's own change applies at once and needs the password too). Switching a rider back to AshantiHub's own is
 refused while they still have money with AshantiHub, a withdrawal on its way, or a delivered order whose money Support has
 not released yet (`money_open`). That is checked when proposed, when approved, and again under the rider row's lock when
 applied; a release takes the same lock before paying a rider (ledger.riders.rider_for_release)."""
-from django.db.models import CharField, Exists, F, OuterRef, Q, Value
+from django.db.models import CharField, Exists, OuterRef, Q, Value
 from django.db.models.functions import Cast, Concat
 from django.utils import timezone
 
 from approvals import services as approvals
 from approvals.models import ApprovalRequest
+from approvals.services import MakerCannotDecide
 from approvals.registry import ApprovalKind
 from ledger.models import Journal
 from orders.models import DeliveryAssignment, Order
 
-from .models import Rider, RiderDocument
+from .models import Rider, RiderDocument, RiderEmploymentPeriod
 
 KIND = "delivery.rider_employment"
 WALLET_DISABLED = "Wallets are for third-party riders. AshantiHub's own riders are paid through payroll."
@@ -360,6 +539,7 @@ OPEN_LABELS = {
     "balance": "money in their wallet (to withdraw, or owed after a refund)",
     "reserve": "commission held until the end of the day",
     "withdrawal": "a withdrawal on its way",
+    "delivery_in_progress": "a delivery in progress",
     "deliveries": "delivered orders waiting for Support's call",
 }
 
@@ -378,6 +558,14 @@ class EmploymentError(Exception):
 
 def is_third_party(rider):
     return rider is not None and rider.employment == Rider.THIRD_PARTY and rider.third_party_since is not None
+
+
+def third_party_at(rider, when):
+    """True when `rider` was a third-party rider at `when` (inside one of their employment periods, the start inclusive and
+    the end exclusive). History reads the periods, never the current flag."""
+    if rider is None or when is None:
+        return False
+    return rider.employment_periods.filter(started_at__lte=when).filter(Q(ended_at__isnull=True) | Q(ended_at__gt=when)).exists()
 
 
 def wallet_rider(staff):
@@ -399,21 +587,30 @@ def id_verified(rider, today=None):
     ).exists()
 
 
+def _in_a_period():
+    """Exists() over the assignment's rider's employment periods that contain its delivered_at (start inclusive, end
+    exclusive). All periods count, past ones included."""
+    return Exists(RiderEmploymentPeriod.objects.filter(
+        rider__staff_id=OuterRef("dispatch_id"), started_at__lte=OuterRef("delivered_at"),
+    ).filter(Q(ended_at__isnull=True) | Q(ended_at__gt=OuterRef("delivered_at"))))
+
+
+def _with_keys(jobs):
+    return jobs.annotate(
+        pay_key=Concat(Value("order-pay-"), Cast("order_id", CharField())),
+        release_key=Concat(Value("order-release-"), Cast("order_id", CharField())),
+    )
+
+
 def unreleased_deliveries(rider):
-    """Door-to-door orders this rider delivered as a third-party rider whose payment the ledger recorded and whose money
-    is not released yet (Support's call is still to come), and not refunded whole. None for AshantiHub's own riders."""
-    if not is_third_party(rider):
-        return DeliveryAssignment.objects.none()
-    jobs = (
+    """Door-to-door orders this rider delivered while third-party (in ANY of their employment periods, so a switch back
+    cannot hide one) whose payment the ledger recorded and whose money is not released yet (Support's call is still to
+    come), and not refunded whole."""
+    jobs = _with_keys(
         DeliveryAssignment.objects.filter(
-            dispatch_id=rider.staff_id, delivered_at__gte=rider.third_party_since,
-            order__status=Order.PAID, order__delivery_method=Order.DOOR_TO_DOOR,
-        )
+            dispatch_id=rider.staff_id, order__status=Order.PAID, order__delivery_method=Order.DOOR_TO_DOOR,
+        ).filter(_in_a_period())
         .exclude(status=DeliveryAssignment.FAILED).exclude(order__refunds__whole=True)
-        .annotate(
-            pay_key=Concat(Value("order-pay-"), Cast("order_id", CharField())),
-            release_key=Concat(Value("order-release-"), Cast("order_id", CharField())),
-        )
     )
     return jobs.filter(Exists(Journal.objects.filter(key=OuterRef("pay_key")))).exclude(
         Exists(Journal.objects.filter(key=OuterRef("release_key")))
@@ -421,30 +618,43 @@ def unreleased_deliveries(rider):
 
 
 def payroll_jobs(jobs):
-    """`jobs` (a DeliveryAssignment queryset) without the deliveries made as a third-party rider (delivered_at on or after
-    their Rider.third_party_since): those are paid into the rider's wallet at release, so a payroll figure that counted them
-    would let Accounting pay the same delivery twice. Used by the payroll screens (delivery.views_rules RiderEarnedView /
-    RiderEarningsLinesView) and the rider app's rider/earnings/ figures."""
-    return jobs.exclude(
-        dispatch__rider__third_party_since__isnull=False, delivered_at__gte=F("dispatch__rider__third_party_since"),
-    )
+    """`jobs` (a DeliveryAssignment queryset) without the deliveries the rider's wallet will be paid for: delivered while
+    the rider was third-party (inside one of their RiderEmploymentPeriod rows, past ones included) AND whose order has an
+    `order-pay-<order id>` journal (exactly what a release can pay). A delivery with no payment journal (the ledger off, or
+    an order paid before it was switched on) is never paid into a wallet, so payroll keeps counting it: otherwise nobody
+    would pay the rider. Used by the payroll screens (delivery.views_rules RiderEarnedView / RiderEarningsLinesView) and the
+    rider app's rider/earnings/ figures."""
+    walleted = _with_keys(jobs.filter(_in_a_period())).filter(Exists(Journal.objects.filter(key=OuterRef("pay_key"))))
+    return jobs.exclude(pk__in=walleted.values("pk"))
 
 
-def money_open(rider):
-    """What stops this rider's wallet closing now, as OPEN_LABELS keys in a fixed order ([] when nothing does)."""
+def money_open(rider, lock=False):
+    """What stops this rider's wallet closing now, as OPEN_LABELS keys in a fixed order ([] when nothing does). With
+    `lock` (inside the decision's transaction, after the rider row's lock: rider row, then accounts, the global order) the
+    rider's existing balance and reserve accounts are locked and the decision is made on those locked balances."""
     from ledger import posting
     from ledger.models import Account
     from otp.identity import ref
     from wallets.models import Withdrawal
 
     staff, found = rider.staff, []
-    if posting.balance_of(Account.RIDER_BALANCE, staff) != 0:
+    if lock:
+        held = list(Account.objects.filter(
+            kind__in=(Account.RIDER_BALANCE, Account.RIDER_RESERVE), owner_type=staff._meta.label_lower, owner_id=str(staff.pk),
+        ))
+        locked = posting.lock(*held)
+        balance = {account.kind: locked[account.pk].balance for account in held}
+    else:
+        balance = {kind: posting.balance_of(kind, staff) for kind in (Account.RIDER_BALANCE, Account.RIDER_RESERVE)}
+    if balance.get(Account.RIDER_BALANCE, 0) != 0:
         found.append("balance")
-    if posting.balance_of(Account.RIDER_RESERVE, staff) != 0:
+    if balance.get(Account.RIDER_RESERVE, 0) != 0:
         found.append("reserve")
     holder_type, holder_id = ref(staff)
     if Withdrawal.objects.filter(holder_type=holder_type, holder_id=holder_id, status__in=Withdrawal.OPEN).exists():
         found.append("withdrawal")
+    if DeliveryAssignment.objects.filter(dispatch_id=rider.staff_id, status__in=DeliveryAssignment.ACTIVE_STATUSES).exists():
+        found.append("delivery_in_progress")        # an unlocked read: locking assignments would cycle with deliver -> order
     if unreleased_deliveries(rider).exists():
         found.append("deliveries")
     return found
@@ -463,7 +673,7 @@ def clean(data):
     return employment, company
 
 
-def check(rider, employment, company, maker=None):
+def check(rider, employment, company, maker=None, lock=False):
     """Raise EmploymentError when this change cannot be made now. `maker` is the staff member who proposed it: nobody
     changes who they themselves work for (a Super Admin holds every permission, and their own change applies at once, so
     without this rule they could route delivery fees into their own wallet)."""
@@ -474,7 +684,7 @@ def check(rider, employment, company, maker=None):
     if rider.employment == employment and rider.company_name == company:
         raise EmploymentError("Nothing would change.", "no_change", 409)
     if employment == Rider.ASHANTIHUB and rider.employment == Rider.THIRD_PARTY:
-        found = money_open(rider)
+        found = money_open(rider, lock=lock)
         if found:
             raise EmploymentError(
                 "This rider still has " + "; ".join(OPEN_LABELS[key] for key in found) + ". Settle that first.",
@@ -515,7 +725,7 @@ def row(rider):
     pending = pending_for(rider)
     return {
         "employment": rider.employment, "employment_label": rider.get_employment_display(),
-        "company_name": rider.company_name, "third_party_since": rider.third_party_since, "wallet": is_third_party(rider),
+        "company_name": rider.company_name, "third_party_since": rider.third_party_since, "wallet": is_third_party(rider) and getattr(rider.staff.role, "name", "") == "dispatch",
         "pending": None if pending is None else {
             "approval_id": pending.pk, "employment": pending.payload.get("employment"),
             "company_name": pending.payload.get("company_name"), "proposed_by": pending.maker.full_name,
@@ -545,22 +755,27 @@ def validate(request):
 
 def apply(request):
     """Inside the decision's transaction: lock the rider row, check again (a release locks it before paying a rider), set
-    the flag. Becoming third-party starts `third_party_since` now (deliveries before it stay AshantiHub's); a new company
-    name keeps it; going back clears it."""
+    the flag. Becoming third-party opens an employment period and sets `third_party_since` (the open period's start);
+    a new company name changes neither; going back closes the period and clears `third_party_since`."""
     from activity.services import record
 
     decider = request.decided_by or request.maker
     rider = Rider.objects.select_for_update(of=("self",)).select_related("staff").get(pk=request.payload["rider_id"])
+    now = timezone.now()          # right after the rider lock, before the checks: a delivery finished later is after this moment
+    if decider.pk == rider.staff_id:
+        raise MakerCannotDecide("You can't change who you work for.")
     try:
         employment, company = clean(request.payload)
-        check(rider, employment, company, request.maker)
+        check(rider, employment, company, request.maker, lock=True)
     except EmploymentError as exc:
         raise approvals.ApprovalError(exc.message) from exc
     before = {"employment": rider.employment, "company_name": rider.company_name}
     if employment == Rider.THIRD_PARTY and rider.employment != Rider.THIRD_PARTY:
-        rider.third_party_since = timezone.now()
+        rider.third_party_since = now
+        RiderEmploymentPeriod.objects.create(rider=rider, started_at=now)
     elif employment == Rider.ASHANTIHUB:
         rider.third_party_since = None
+        rider.employment_periods.filter(ended_at__isnull=True).update(ended_at=now)
     rider.employment, rider.company_name = employment, company
     rider.save(update_fields=["employment", "company_name", "third_party_since"])
     # Last: record() holds the activity chain lock until commit.
@@ -580,20 +795,32 @@ def render_diff(request):
 
 
 def consequences(request):
+    from ledger import escrow
+
+    before = getattr(request, "before", None) or {}
     if request.payload.get("employment") == Rider.THIRD_PARTY:
+        if before.get("employment") == Rider.THIRD_PARTY:
+            return ["Only the rider company's name changes. The rider stays a third-party rider and nothing else changes."]
+        if not escrow.enabled():
+            return ["Marks this rider as a third-party rider. The wallet system is switched off, so this has no money effect "
+                    "yet; once it is on, each delivery they make from approval is paid into their wallet less AshantiHub's "
+                    "commission, and deliveries made before approval, or on orders paid before then, stay with payroll."]
         from ledger import settings_store
 
         rate = settings_store.current("rider_commission_bp") / 100
         return [
             "From approval, each delivery this rider makes is paid into their AshantiHub wallet when Support confirms the "
             f"order with the customer: the delivery fee less AshantiHub's commission ({rate:g}% now, held until the end of "
-            "the day). Deliveries made before approval stay AshantiHub's. They can withdraw to an account in their own "
+            "the day). Deliveries made before approval, and orders paid before the wallet system was switched on, stay with payroll. They can withdraw to an account in their own "
             "name once their Ghana Card is approved."
         ]
+    if not escrow.enabled():
+        return ["Marks this rider as AshantiHub's own rider again. The wallet system is switched off, so this has no money "
+                "effect yet; their pay returns to payroll."]
     return [
-        "From approval, this rider's deliveries are AshantiHub's: delivery fees stay with AshantiHub and their pay stays "
-        "with payroll. Their wallet closes. This is refused while they still have money with AshantiHub or a delivered "
-        "order waiting for Support's call."
+        "From approval, this rider's deliveries are AshantiHub's: delivery fees stay with AshantiHub and their pay returns "
+        "to payroll. Their wallet closes. This is refused while they still have money with AshantiHub, a withdrawal on its "
+        "way, or a delivered order waiting for Support's call."
     ]
 
 
@@ -762,7 +989,7 @@ from django.utils import timezone
 
 from accounts.models import Customer
 from accounts.testing import make_staff
-from delivery.models import Rider, RiderDocument, RiderEarning
+from delivery.models import Rider, RiderDocument, RiderEarning, RiderEmploymentPeriod
 from ledger import posting, riders
 from ledger.models import Account
 from marketing.models_waivers import DeliveryWaiver, WaivedFeeCharge
@@ -1197,6 +1424,7 @@ accounts."""
 from django.db.models import Sum
 from django.utils import timezone
 
+from delivery import employment
 from delivery.models import Rider, RiderEarning
 from orders.models import DeliveryAssignment, Order
 
@@ -2160,7 +2388,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.testing import make_staff, staff_token
-from delivery.models import Rider, RiderDocument
+from delivery.models import Rider, RiderDocument, RiderEmploymentPeriod
 from ledger import posting, riders
 from ledger.models import Account
 from ledger.tests import rider_helpers
@@ -3968,7 +4196,7 @@ Expected: `No changes detected`.
 
 **Placeholder scan:** every code step carries complete code and every test step complete test code; every edit quotes the exact text it replaces; no "TBD", "similar to" or undefined names.
 
-**Name consistency:** `Rider.ASHANTIHUB/THIRD_PARTY/EMPLOYMENT_CHOICES`, `employment/company_name/third_party_since` (1–7); `delivery.employment.KIND`, `WALLET_DISABLED`, `OPEN_LABELS`, `EmploymentError`, `is_third_party`, `wallet_rider`, `id_verified`, `unreleased_deliveries`, `payroll_jobs`, `money_open`, `clean`, `check(rider, employment, company, maker=None)`, `pending_for`, `propose`, `row`, `EMPLOYMENT_KIND` (1, 5, 6); `RiderEarning` (`gross_pesewas`, `commission_bp`, `reserve_pesewas`, `net_pesewas`, `earned_at`, `earned_on`, `journal`, `commission_posting`, `reversed_at`, `reversal_journal`) and `RiderCommissionPosting` (`rider`, `day`, `deliveries`, `gross_pesewas`, `commission_pesewas`, `net_pesewas`, `journal`, `posted_at`) (2–7); `ledger.riders.COMMISSION_SETTING`, `earning_key`, `split`, `accounts_of`, `third_party_rider`, `rider_for_release`, `release_accounts`, `credit_delivery(order, rider, now=None)` (2), `commission_key`, `post_day(rider_id, day, now=None)`, `post_commission(today=None, now=None)` (3), `reversal_key`, `earning_to_reverse`, `reversal_accounts`, `reverse_earning(earning, now=None)` (4); `ledger.tasks.post_rider_commission` (3); `withdrawals.NEGATIVE`, `payouts.HOLDER_MODELS`, `otp.views_step_up.RIDER_ACTIONS`, `IsCustomerOwnerOrWalletRider` (5); `views_payouts.SavedHook.saved(request, event, obj)` with events `destination_added`, `destination_removed`, `withdrawal_requested`, `withdrawal_cancelled` (6); `rider_wallet.summary/earnings/status_of/earning_row/given_back/days/statement_lines/line_row` (6, 7); `views_rider_wallet.LedgerOff`, `WalletDisabled`, `parse_day`, `BAD_DAY`, `RiderWalletMixin` and the eight rider views (6), `StaffRiderWalletView`, `StaffRiderCommissionView` (7); `views_staff.rider_rows` (7); test helpers `rider_helpers.rider/delivered_by/waived/earning/ghana_card` (2–7). From Stage 3: `posting.post(..., allow_negative=...)`, `lock`, `account_for`, `balance_of`; `escrow.pay_key/release_key/waiver_key/waiver_return_accounts/return_waiver`; `wallets.tests.helpers.Holder/destination`; `views.ledger_off/OFF/Pagination`; `services.money`.
+**Name consistency:** `Rider.ASHANTIHUB/THIRD_PARTY/EMPLOYMENT_CHOICES`, `employment/company_name/third_party_since` and `RiderEmploymentPeriod` (`rider`, `started_at`, `ended_at`, related name `employment_periods`) with `employment.third_party_at` (1–7); `delivery.employment.KIND`, `WALLET_DISABLED`, `OPEN_LABELS`, `EmploymentError`, `is_third_party`, `wallet_rider`, `id_verified`, `unreleased_deliveries`, `payroll_jobs`, `money_open`, `clean`, `check(rider, employment, company, maker=None, lock=False)`, `pending_for`, `propose`, `row`, `EMPLOYMENT_KIND` (1, 5, 6); `RiderEarning` (`gross_pesewas`, `commission_bp`, `reserve_pesewas`, `net_pesewas`, `earned_at`, `earned_on`, `journal`, `commission_posting`, `reversed_at`, `reversal_journal`) and `RiderCommissionPosting` (`rider`, `day`, `deliveries`, `gross_pesewas`, `commission_pesewas`, `net_pesewas`, `journal`, `posted_at`) (2–7); `ledger.riders.COMMISSION_SETTING`, `earning_key`, `split`, `accounts_of`, `third_party_rider`, `rider_for_release`, `release_accounts`, `credit_delivery(order, rider, now=None)` (2), `commission_key`, `post_day(rider_id, day, now=None)`, `post_commission(today=None, now=None)` (3), `reversal_key`, `earning_to_reverse`, `reversal_accounts`, `reverse_earning(earning, now=None)` (4); `ledger.tasks.post_rider_commission` (3); `withdrawals.NEGATIVE`, `payouts.HOLDER_MODELS`, `otp.views_step_up.RIDER_ACTIONS`, `IsCustomerOwnerOrWalletRider` (5); `views_payouts.SavedHook.saved(request, event, obj)` with events `destination_added`, `destination_removed`, `withdrawal_requested`, `withdrawal_cancelled` (6); `rider_wallet.summary/earnings/status_of/earning_row/given_back/days/statement_lines/line_row` (6, 7); `views_rider_wallet.LedgerOff`, `WalletDisabled`, `parse_day`, `BAD_DAY`, `RiderWalletMixin` and the eight rider views (6), `StaffRiderWalletView`, `StaffRiderCommissionView` (7); `views_staff.rider_rows` (7); test helpers `rider_helpers.rider/delivered_by/waived/earning/ghana_card` (2–7). From Stage 3: `posting.post(..., allow_negative=...)`, `lock`, `account_for`, `balance_of`; `escrow.pay_key/release_key/waiver_key/waiver_return_accounts/return_waiver`; `wallets.tests.helpers.Holder/destination`; `views.ledger_off/OFF/Pagination`; `services.money`.
 
 **Test counts:** Task 1 — 11 (`test_employment`); Task 2 — 14 (`test_rider_release`: 11 + 1 ledger-off + 1 split + 1 threaded `ConcurrentReleaseSwitchBackTests`); Task 3 — 6 (`test_rider_commission`: 5 + 1 threaded); Task 4 — 10 (`test_rider_refunds`: 9 + 1 threaded); Task 5 — 11 (`test_rider_engine`: 8 + 3); Task 6 — 10 (`test_rider_api`); Task 7 — 5 (`test_rider_staff`) and one changed (`test_staff_wallets`). 67 new tests in all.
 
