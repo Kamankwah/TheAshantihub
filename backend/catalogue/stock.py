@@ -1,26 +1,32 @@
 """Days of stock left and the low-stock line (catalogue plan 6; spec §1 row 15, §10).
 
 * Sales are the units on paid order lines (Order.PAID; a cancelled or unpaid order is not a sale) placed inside the
-  window (the governed `stock_cover_window_days`, default 28), spread over the whole days the offer has been on sale
-  inside that window (since its approval, Listing.reviewed_at, else its creation, or since its first counted sale if
-  that is earlier: a re-approval moves reviewed_at forward but earlier sales still count; at least 1). A new offer is
-  not diluted by days it did not exist.
+  window (the governed `stock_cover_window_days`, default 28). `placed_at` is the clock because stock is reserved at
+  checkout. Refunds: a whole refund before handover cancels the order (so it is excluded); a partial refund, or one
+  after handover, leaves the order PAID and the units still count.
+* Days on sale: the elapsed time since the offer was approved (Listing.reviewed_at, else its creation), pulled back to
+  its earliest PAID sale EVER (even one before the window: that sale proves the offer was live then, so a re-approval,
+  which moves reviewed_at forward, never compresses the window), clamped to between one day and the window. The
+  decision uses elapsed seconds; the whole days shown are for display. A new offer is not diluted by days it did not
+  exist.
 * An offer is low when the business set its own line for it (StockAlertState.threshold_units) and stock is at or below
   it; otherwise, with sales in the window, when it has fewer than `low_stock_cover_days` (default 7) days of sales left;
   otherwise (no sales in the window) when stock is at or below `low_stock_fallback_units` (default 5). Sold out is 0,
   which is always low.
 * Only counted offers (stock_quantity set) of products and food (cart.guard DELIVERABLE) are measured: an uncounted
-  stock has no cover and is never guessed.
-* Integer arithmetic decides (stock x days on sale < cover days x units sold); `days_of_cover` (one decimal, half up)
-  is only for display."""
+  stock has no cover and is never guessed (`measure` answers None for one).
+* Exact integer arithmetic decides (stock x elapsed seconds < cover days x units sold x 86,400); `days_of_cover` (one
+  decimal, rounded DOWN so a row is flagged low exactly when the shown number is under the cover days) is only for
+  display."""
 import re
 from dataclasses import dataclass
 from datetime import timedelta
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_DOWN, Decimal
 from typing import Optional
 
-from django.db.models import Min, Sum
+from django.db.models import Min, Q, Sum
 from django.utils import timezone
+from rest_framework.pagination import PageNumberPagination
 
 from cart import guard
 from ledger import settings_store
@@ -29,7 +35,9 @@ from orders.models import Order, OrderItem
 
 from .models import StockAlertState
 
-COVER_DAYS, FALLBACK_UNITS, WINDOW_DAYS = "low_stock_cover_days", "low_stock_fallback_units", "stock_cover_window_days"
+COVER_DAYS, FALLBACK_UNITS, WINDOW_DAYS = (
+    settings_store.STOCK_COVER_DAYS, settings_store.STOCK_FALLBACK_UNITS, settings_store.STOCK_WINDOW_DAYS,
+)
 SALES, FALLBACK, OWN = "sales", "fallback", "own_threshold"
 MAX_LINE = 100_000
 LINE_MESSAGE = f"Enter a whole number of units from 0 to {MAX_LINE:,}, or leave it empty to use AshantiHub's default."
@@ -71,27 +79,33 @@ def tracked(queryset):
     return queryset.filter(status=Listing.PUBLISHED, stock_quantity__isnull=False).filter(guard.deliverable_q())
 
 
-def days_on_sale(listing, window_days, now, first_sale=None):
-    """Whole days on sale inside the window: since approval (else creation), or since its first counted sale if that is
-    earlier (a re-approval moves reviewed_at forward, but earlier sales still count); at least 1."""
+def seconds_on_sale(listing, window_days, now, first_sale=None):
+    """Elapsed seconds on sale: since approval (else creation), pulled back to the earliest paid sale ever, clamped to
+    [one day, the window]."""
     since = listing.reviewed_at or listing.created_at
     if first_sale is not None and (since is None or first_sale < since):
         since = first_sale
-    days = int((now - since).total_seconds() // DAY_SECONDS) if since else window_days
-    return max(1, min(window_days, days))
+    seconds = int((now - since).total_seconds()) if since else window_days * DAY_SECONDS
+    return max(DAY_SECONDS, min(window_days * DAY_SECONDS, seconds))
+
+
+def days_on_sale(listing, window_days, now, first_sale=None):
+    """Whole days on sale (display), from seconds_on_sale; at least 1."""
+    return seconds_on_sale(listing, window_days, now, first_sale) // DAY_SECONDS
 
 
 def units_sold(listing_ids, window_days, now):
-    """{listing id: (units, first sale time)} on paid order lines placed inside the window; a listing with none is absent."""
+    """{listing id: (units inside the window, time of the earliest paid sale ever)} in one grouped query; a listing with
+    no paid sale at all is absent, one with only old sales has 0 units."""
     rows = (
-        OrderItem.objects.filter(
-            listing_id__in=listing_ids, order__status=Order.PAID,
-            order__placed_at__gte=now - timedelta(days=window_days),
-        )
+        OrderItem.objects.filter(listing_id__in=listing_ids, order__status=Order.PAID)
         .values("listing_id")
-        .annotate(units=Sum("quantity"), first=Min("order__placed_at"))
+        .annotate(
+            units=Sum("quantity", filter=Q(order__placed_at__gte=now - timedelta(days=window_days))),
+            first=Min("order__placed_at"),
+        )
     )
-    return {row["listing_id"]: (row["units"], row["first"]) for row in rows}
+    return {row["listing_id"]: (row["units"] or 0, row["first"]) for row in rows}
 
 
 def measure(listing, sold, limits, *, own_line=None, now=None, first_sale=None):
@@ -99,14 +113,17 @@ def measure(listing, sold, limits, *, own_line=None, now=None, first_sale=None):
     was placed, so days on sale never start after a sale it counts)."""
     now = now or timezone.now()
     stock = listing.stock_quantity
-    on_sale = days_on_sale(listing, limits.window_days, now, first_sale)
+    if stock is None:
+        return None
+    seconds = seconds_on_sale(listing, limits.window_days, now, first_sale)
+    on_sale = seconds // DAY_SECONDS
     cover = None
     if sold:
-        cover = (Decimal(stock * on_sale) / Decimal(sold)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+        cover = (Decimal(stock * seconds) / Decimal(sold * DAY_SECONDS)).quantize(Decimal("0.1"), rounding=ROUND_DOWN)
     if own_line is not None:
         basis, line, low = OWN, own_line, stock <= own_line
     elif sold:
-        basis, line, low = SALES, None, stock * on_sale < limits.cover_days * sold
+        basis, line, low = SALES, None, stock * seconds < limits.cover_days * sold * DAY_SECONDS
     else:
         basis, line, low = FALLBACK, limits.fallback_units, stock <= limits.fallback_units
     return Cover(stock, sold, on_sale, cover, basis, line, low or stock == 0, stock == 0)
@@ -137,6 +154,7 @@ def measure_many(listings, now=None, limits=None, lines=None):
 
 
 def cover_of(listing, now=None):
+    """The Cover of one listing, or None when its stock is not counted."""
     return measure_many([listing], now)[listing.pk]
 
 
@@ -149,18 +167,25 @@ def row(listing, cover):
     }
 
 
+class StockPagination(PageNumberPagination):
+    page_size = 20
+
+
 def needs_restocking(owner, now=None):
-    """GET stock/: the owner's low offers (sold out first, then fewest days left, then least stock), the numbers behind
-    each, how many of its offers are counted and not counted, and the defaults in force."""
+    """GET stock/: the owner's low offers (sold out first, then fewest days left, offers with no days figure last, then
+    id), the numbers behind each, how many of its offers are counted and not counted, and the defaults in force. The
+    view pages `results` (20 a page)."""
     now = now or timezone.now()
     current = limits_at(now)
     mine = Listing.objects.filter(business_owner=owner)
-    listings = list(tracked(mine).order_by("pk"))
+    listings = list(
+        tracked(mine).only("id", "name", "stock_quantity", "reviewed_at", "created_at").order_by("pk")
+    )
     covers = measure_many(listings, now, current)
     low = sorted(
         ((listing, covers[listing.pk]) for listing in listings if covers[listing.pk].low),
         key=lambda pair: (
-            not pair[1].sold_out, pair[1].days_of_cover is None, pair[1].days_of_cover or 0, pair[1].stock, pair[0].pk,
+            not pair[1].sold_out, pair[1].days_of_cover is None, pair[1].days_of_cover or 0, pair[0].pk,
         ),
     )
     untracked = mine.filter(status=Listing.PUBLISHED, stock_quantity__isnull=True).filter(guard.deliverable_q()).count()

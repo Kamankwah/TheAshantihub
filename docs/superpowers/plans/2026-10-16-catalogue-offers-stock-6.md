@@ -114,7 +114,7 @@ API added or changed:
 | `GET /api/catalogue/listings/<listing_id>/other-sellers/?ordering=price\|availability&lat=&lng=` | anyone | → `{catalogue_product, featured_offer_id, ordering, offers: [{listing_id, name, price_amount, price_unit, condition, business_name, verified, zone, available_quantity}]}`; 404 for a listing customers cannot see |
 | `GET /api/catalogue/products/?q=` or `?barcode=` | business owner | → `{results: [{id, brand, name, barcode, offer_count, lowest_price}]}`; 400 `query_required` / `invalid_barcode` |
 | `GET /api/catalogue/products/<id>/offers/` | business owner | → `{catalogue_product, your_listings, offers}`; 404 |
-| `GET /api/catalogue/stock/` | business owner | → `{results: [{listing_id, name, stock, units_sold, days_on_sale, days_of_cover, basis, line, low, sold_out}], tracked_offers, untracked_offers, settings}` |
+| `GET /api/catalogue/stock/?page=` | business owner | paginated (page size 20; sold out first, then fewest days of cover, then id) → `{count, next, previous, results: [{listing_id, name, stock, units_sold, days_on_sale, days_of_cover, basis, line, low, sold_out}], tracked_offers, untracked_offers, settings}` |
 | `PUT /api/catalogue/stock/<listing_id>/line/` | business owner | `{units: n \| null}` → 200 `{listing_id, line, cover}`; 400 `{"units": ...}` / `not_a_product`; 409 `not_counted`; 404 |
 | `PATCH /api/listings/mine/<id>/manage/`, `POST`/`PATCH /api/listings/mine/...` | changed (additive) | accept and return `barcode` (any spelling in, 14-digit key out); 400 on a bad check digit or on changing a grouped listing to another barcode; the forms save only the fields sent |
 | `GET /api/listings/`, `GET /api/listings/<id>/related/` | changed | while `SOLD_OUT_HIDDEN_ENABLED` is on (default off), a product or food listing with `stock_quantity` 0 does not appear; with it off nothing changes; the detail always answers |
@@ -3145,6 +3145,8 @@ EOF
 ---
 
 ### Task 7: Low-stock and sold-out alerts, once per crossing, hourly, behind `STOCK_ALERTS_ENABLED`
+
+> Task 6 review note: the alert's conditional UPDATE must also match the `threshold_units` the run measured against (`WHERE threshold_units IS NOT DISTINCT FROM <measured line>`), so an own-line change made mid-run does not swallow the re-armed alert. `stock.measure` also answers `None` for an uncounted listing; `alerts.run` only measures `tracked(...)` rows.
 
 **Files:**
 - Create: `backend/catalogue/alerts.py`, `backend/catalogue/tasks.py`, `backend/catalogue/tests/test_stock_alerts.py`

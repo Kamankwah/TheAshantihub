@@ -21,6 +21,11 @@ class Definition:
     maximum: int
 
 
+# The three low-stock numbers (catalogue plan 6): named once here; catalogue.stock and approval_kinds use these names.
+STOCK_COVER_DAYS, STOCK_FALLBACK_UNITS, STOCK_WINDOW_DAYS = (
+    "low_stock_cover_days", "low_stock_fallback_units", "stock_cover_window_days",
+)
+
 DEFINITIONS = {
     "fee_cap_pesewas": Definition("Lifetime platform-fee cap per vendor (pesewas; blank = no cap)", None, True, 1, 10**12),
     "verification_overdue_hours": Definition("Hours after purchase by which an order must be verified or disputed", 72, False, 1, 720),
@@ -33,9 +38,9 @@ DEFINITIONS = {
     "payout_cooling_hours": Definition("Hours a new payout destination waits before it can receive money", 24, False, 1, 720),
     # Low-stock alerts (catalogue plan 6; spec §1 row 15, §10). Not money, but governed the same way (§3.3): Accounting
     # proposes, a Super Admin approves.
-    "low_stock_cover_days": Definition("Low stock: alert when an offer has fewer than this many days of sales left", 7, False, 1, 90),
-    "low_stock_fallback_units": Definition("Low stock with no sales in the window: alert at this many units or fewer", 5, False, 0, 100_000),
-    "stock_cover_window_days": Definition("Days of past sales used to work out days of stock left", 28, False, 7, 180),
+    STOCK_COVER_DAYS: Definition("Low stock: alert when an offer has fewer than this many days of sales left", 7, False, 1, 90),
+    STOCK_FALLBACK_UNITS: Definition("Low stock with no sales in the window: alert at this many units or fewer", 5, False, 0, 100_000),
+    STOCK_WINDOW_DAYS: Definition("Days of past sales used to work out days of stock left", 28, False, 7, 180),
 }
 
 

@@ -115,6 +115,63 @@ class CoverTests(TestCase):
         self.assertEqual((cover.line, cover.low), (10, True))
 
 
+class CoverEdgeTests(TestCase):
+    def setUp(self):
+        self.owner = business()
+
+    def test_the_shown_days_are_rounded_down_so_a_low_row_never_shows_the_limit(self):
+        for stock_left, sold in ((35, 141), (69, 277)):                                    # 6.95..6.99 days
+            with self.subTest(stock=stock_left):
+                listing = go_live(product(self.owner, stock=stock_left), 60)
+                sell(listing, sold, days_ago=27)
+                Listing.objects.filter(pk=listing.pk).update(created_at=timezone.now() - timedelta(days=28),
+                                                             reviewed_at=timezone.now() - timedelta(days=28))
+                listing.refresh_from_db()
+                cover = stock.cover_of(listing)
+                self.assertTrue(cover.low)
+                self.assertEqual(cover.days_of_cover, Decimal("6.9"))
+
+    def test_a_sale_before_the_window_proves_the_offer_was_live(self):
+        listing = go_live(product(self.owner, stock=3), 60)
+        Listing.objects.filter(pk=listing.pk).update(reviewed_at=timezone.now() - timedelta(days=1))
+        listing.refresh_from_db()
+        sell(listing, 40, days_ago=50)                                                     # before the window
+        sell(listing, 28, days_ago=1)
+        cover = stock.cover_of(listing)
+        self.assertEqual((cover.units_sold, cover.days_on_sale), (28, 28))
+
+    def test_the_decision_uses_elapsed_seconds_not_whole_days(self):
+        listing = go_live(product(self.owner, stock=7), 60)
+        now = timezone.now()
+        Listing.objects.filter(pk=listing.pk).update(reviewed_at=now - timedelta(days=1, hours=23))
+        listing.refresh_from_db()
+        sell(listing, 1, days_ago=1)
+        # 1 sold over 1.96 days: 7 in stock is 13.7 days of cover, not low; whole-day rounding would not change this,
+        # so also check a boundary: 4 sold over 1.96 days leaves 3.4 days at stock 7 -> low
+        sell(listing, 3, days_ago=1)
+        self.assertTrue(stock.cover_of(listing, now).low)
+        self.assertEqual(stock.cover_of(listing, now).days_on_sale, 1)
+
+    def test_an_uncounted_listing_has_no_cover(self):
+        self.assertIsNone(stock.cover_of(product(self.owner, stock=None)))
+
+    def test_one_order_with_several_lines_and_other_listings_lines(self):
+        from orders.models import OrderItem
+        listing = go_live(product(self.owner, stock=100), 60)
+        other = product(self.owner, "Other", stock=100)
+        order = sell(listing, 2, days_ago=3)
+        OrderItem.objects.create(order=order, listing=listing, quantity=3, unit_price=1, line_total=3)
+        OrderItem.objects.create(order=order, listing=other, quantity=50, unit_price=1, line_total=50)
+        self.assertEqual(stock.cover_of(listing).units_sold, 5)
+
+    def test_a_setting_that_starts_in_the_future_does_not_apply_yet(self):
+        MoneySetting.objects.create(key=stock.FALLBACK_UNITS, value=50, effective_from=timezone.now() + timedelta(days=2))
+        self.assertEqual(stock.cover_of(product(self.owner, stock=8)).line, 5)
+
+    def test_the_approval_keys_are_the_three_stock_settings(self):
+        self.assertEqual(set(approval_kinds.STOCK_SETTING_KEYS), {stock.COVER_DAYS, stock.FALLBACK_UNITS, stock.WINDOW_DAYS})
+
+
 class NeedsRestockingTests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -154,6 +211,35 @@ class NeedsRestockingTests(TestCase):
             self.client.get("/api/catalogue/stock/")
         self.assertEqual(len(many), len(few))
 
+    def test_a_service_with_a_stock_count_is_not_an_offer(self):
+        counted = service(self.owner, "Counted service")
+        Listing.objects.filter(pk=counted.pk).update(stock_quantity=1)
+        body = self.client.get("/api/catalogue/stock/").json()
+        self.assertNotIn(counted.pk, [row["listing_id"] for row in body["results"]])
+        self.assertEqual(body["tracked_offers"], 3)
+
+    def test_sales_based_rows_are_fewest_days_first_then_by_id_and_paged(self):
+        a = go_live(product(self.owner, "A", stock=6), 60)
+        sell(a, 28, days_ago=10)                                                           # 6 days
+        b = go_live(product(self.owner, "B", stock=3), 60)
+        sell(b, 28, days_ago=10)                                                           # 3 days
+        ids = [row["listing_id"] for row in self.client.get("/api/catalogue/stock/").json()["results"]]
+        self.assertEqual(ids, [self.empty.pk, b.pk, a.pk, self.low.pk])
+        for n in range(22):
+            product(self.owner, f"Few {n}", stock=1)
+        body = self.client.get("/api/catalogue/stock/").json()
+        self.assertEqual((len(body["results"]), body["count"]), (20, 26))
+        self.assertIsNotNone(body["next"])
+        self.assertEqual(len(self.client.get("/api/catalogue/stock/?page=2").json()["results"]), 6)
+
+    def test_staff_and_a_customer_with_the_owners_id_are_refused(self):
+        as_staff(self.client, "accountant", "kofi2@example.com")
+        self.assertEqual(self.client.get("/api/catalogue/stock/").status_code, 403)
+        from accounts.models import Customer
+        customer = Customer.objects.create(id=self.owner.pk, full_name="Same Id", phone="+233249999999", password_hash="x")
+        as_account(self.client, customer, "customer")
+        self.assertEqual(self.client.get("/api/catalogue/stock/").status_code, 403)
+
     def test_only_business_owners(self):
         as_account(self.client, buyer(), "customer")
         self.assertEqual(self.client.get("/api/catalogue/stock/").status_code, 403)
@@ -168,6 +254,12 @@ class OwnLineTests(TestCase):
 
     def put(self, listing, units):
         return self.client.put(f"/api/catalogue/stock/{listing.pk}/line/", {"units": units}, format="json")
+
+    def test_a_body_without_units_is_refused_and_null_clears(self):
+        for body in ({}, {"unit": 5}, [5], "5"):
+            response = self.client.put(f"/api/catalogue/stock/{self.listing.pk}/line/", body, format="json")
+            self.assertEqual((response.status_code, response.json()), (400, {"units": stock.LINE_MESSAGE}), body)
+        self.assertEqual(self.put(self.listing, None).status_code, 200)
 
     def test_a_business_sets_and_clears_its_own_line(self):
         response = self.put(self.listing, 25)

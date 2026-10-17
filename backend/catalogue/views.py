@@ -134,7 +134,12 @@ class StockView(APIView):
     permission_classes = [IsAuthenticated, IsBusinessOwner]
 
     def get(self, request):
-        return Response(stock.needs_restocking(request.user))
+        data = stock.needs_restocking(request.user)
+        paginator = stock.StockPagination()
+        page = paginator.paginate_queryset(data.pop("results"), request, view=self)
+        response = paginator.get_paginated_response(page)
+        response.data.update(data)
+        return response
 
 
 class StockLineView(APIView):
@@ -145,8 +150,11 @@ class StockLineView(APIView):
 
     def put(self, request, listing_id):
         listing = _own_listing(request, listing_id)
+        body = _body(request)
         try:
-            units = stock.parse_line(_body(request).get("units"))
+            if "units" not in body:
+                raise ValueError("units")
+            units = stock.parse_line(body["units"])
         except ValueError:
             return Response({"units": stock.LINE_MESSAGE}, status=400)
         if not attach.groupable(listing):
