@@ -31,6 +31,12 @@ class SentryScrubberTests(SimpleTestCase):
         claim = event["extra"]["claim"]
         self.assertEqual({key: shown(value) for key, value in claim.items()}, {"raw": "[Filtered]", "claim_link": "[Filtered]"})
 
+    def test_database_query_parameters_are_scrubbed(self):
+        """A failing query ships its parameters (a whole phone number in a lookup)."""
+        event = {"extra": {"sql": "SELECT 1", "params": ["+233201110001"]}}
+        event_scrubber().scrub_event(event)
+        self.assertEqual(shown(event["extra"]["params"]), "[Filtered]")
+
 
 def shown(value):
     """What Sentry would send: a scrubbed value is an AnnotatedValue."""

@@ -138,6 +138,9 @@ def _finalize_ticket_purchase(session):
     process_payment() is ever called — this finalizer only ever creates
     tickets, it never touches quantity_sold. See _fail_ticket_purchase below
     for the rollback path when a session instead fails/expires.
+
+    With the ledger on it also records the purchase's ledger.BookingSale (ledger.sales.record_payment), and can refuse
+    (raise) when the paid amount is not the price, rolling the payment back.
     """
     from events.models import Ticket
 
@@ -164,6 +167,22 @@ def _finalize_ticket_purchase(session):
     ]
     session.metadata = {**meta, "ticket_ids": [t.id for t in tickets]}
     session.save(update_fields=["metadata", "updated_at"])
+
+    from ledger import escrow, sales
+    from ledger.models import BookingSale
+
+    if not escrow.enabled():
+        return  # with the ledger off this finalizer is exactly as before (no event lookup either)
+    from events.models import Event
+
+    event = Event.objects.select_related("submitted_by_business").get(pk=meta["event_id"])
+    if event.submitted_by_business_id is not None:  # a customer-organised event has no business to hold money for (Plan 1b S10)
+        sales.record_payment(session, BookingSale.TICKETS, event, event.submitted_by_business)
+    elif session.provider == CheckoutSession.WALLET:
+        # Nothing would debit the wallet, so the tickets would be free: refuse, which rolls the purchase back.
+        from ledger.posting import PostingError
+
+        raise PostingError(f"Tickets {session.reference}: no business organises event {event.pk}, so the wallet cannot pay")
 
 
 def _fail_ticket_purchase(session):
@@ -288,6 +307,11 @@ def _finalize_service_request(session):
     service_request.paid_at = timezone.now()
     service_request.save(update_fields=["status", "paid_at"])
 
+    from ledger import sales
+    from ledger.models import BookingSale
+
+    sales.record_payment(session, BookingSale.SERVICE, service_request, service_request.business_owner)
+
 
 def _finalize_booking(session):
     """Confirms a pending accommodation booking once payment lands (Wave H3)."""
@@ -300,6 +324,11 @@ def _finalize_booking(session):
     booking.status = Booking.CONFIRMED
     booking.paid_at = timezone.now()
     booking.save(update_fields=["status", "paid_at"])
+
+    from ledger import sales
+    from ledger.models import BookingSale
+
+    sales.record_payment(session, BookingSale.STAY, booking, booking.business_owner)
 
 
 FINALIZERS = {
@@ -317,6 +346,12 @@ FAILURE_HANDLERS = {
     CheckoutSession.TICKET_PURCHASE: _fail_ticket_purchase,
     CheckoutSession.ORDER_CHECKOUT: _fail_order_checkout,
 }
+
+# What a customer may pay from their AshantiHub wallet: orders (wallets plan 3a) and, since ledger Plan 1b, services,
+# stays and event tickets. Everything else (subscriptions, event listing fees, top-ups) goes through the provider.
+WALLET_KINDS = (
+    CheckoutSession.ORDER_CHECKOUT, CheckoutSession.SERVICE_REQUEST, CheckoutSession.BOOKING, CheckoutSession.TICKET_PURCHASE,
+)
 
 
 def finalize_success(session):
@@ -355,12 +390,13 @@ def process_payment(*, kind, amount, purpose, business_owner=None, customer=None
     `processing_fee` is the provider's collection charge already included in `amount` (kept on the session; 0 by
     default). `wallet=True` pays a customer's order from their AshantiHub wallet: the session's provider is "wallet",
     it is immediate whatever PAYMENTS_PROVIDER says, and the order finalizer debits the wallet instead of provider
-    clearing (ledger.posting.InsufficientFunds when the balance is too low, which rolls the caller's transaction back).
+    clearing; wallet payment also pays service requests, stays and ticket purchases (WALLET_KINDS), not only orders
+    (ledger.posting.InsufficientFunds when the balance is too low, which rolls the caller's transaction back).
     """
     if bool(business_owner) == bool(customer):
         raise ValueError("process_payment requires exactly one of business_owner or customer")
-    if wallet and (customer is None or kind != CheckoutSession.ORDER_CHECKOUT):
-        raise ValueError("Only a customer's order can be paid from the wallet")
+    if wallet and (customer is None or kind not in WALLET_KINDS):
+        raise ValueError("Only a customer's order or booking can be paid from the wallet")
     if wallet:
         from ledger import escrow
 

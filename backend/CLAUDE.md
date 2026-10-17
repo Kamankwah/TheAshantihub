@@ -232,6 +232,23 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   withdrawal asks the provider first and is refused (409 `provider_processing`) while it says processing or anything
   unmapped, never with an open amount case, and the holder sees only AshantiHub's fixed
   reason. The nightly `wallets.reconciliation` is read-only and compares by provider reference.
+- **Services, stays and event tickets in the ledger (`ledger/sales.py`, Plan 1b).** Behind `LEDGER_ENABLED` like the
+  rest. A paid service request, stay or ticket purchase is one `ledger.BookingSale` (its subject; its fee snapshot from
+  the services table — stays count as services — or the events table; Support's call), recorded by the payment
+  finalizers (`booking-pay-<session reference>`: Dr provider clearing or customer wallet, Cr vendor Pending). The
+  lifetime cap counts sales and order snapshots together (`fees.charged_to_date`), read after the business's Pending is
+  locked. Handed over = service marked done, guest checked in, a ticket scanned or the event's date passed; release only
+  on Support's "matches" (`sales.record_verification`, `/api/ledger/bookings/`), with the 72-hour window counted from
+  hand-over (provisional until the owner confirms it: spec gate (lvii)). Tickets for a customer-organised event stay outside the ledger (MoMo only). With the ledger on a ticket's
+  escrow flag follows its sale: a scan no longer releases it, the manual release and hold answer `409 ledger_on`.
+  Refunds go to the wallet through `sales.refund` (one `BookingRefund` per sale and source; the refund that empties a
+  sale cancels a booking not yet handed over), wired into the customer's stay cancel, Support's booking cancel, the
+  Accountant's ticket refund and dispute resolution. **Lock order:** the service request or stay row (tickets: the
+  purchase's tickets in primary-key order), then the sale, then accounts in one sorted pass (`sales.lock(sale)`); the
+  hand-over steps (service done, check-in, ticket scan) lock their own row. `record_verification` locks the linked
+  dispute first (dispute, then subject, then sale, as disputes resolve). The three pay endpoints take
+  `payment_method` and add "payment processing" on MoMo through `payments/booking_pay.py`; a service request's price
+  must be above GH₵ 0.00 with at most two decimals (this check is always on, ledger on or off: spec §13 (lxvii)).
 - **Pickup Desk** is the `pickup_desk` staff role with the single permission `pickup.confirm` (store-pickup queue and
   collection); only a Super Admin invites it.
 - **One-time codes (`otp/`).** One OTP service for every account kind: 6-digit codes kept only as a salted HMAC
@@ -284,6 +301,24 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   Known edges, all in the spec's §13: the owner barcode edit does not yet lock and revalidate against a racing approve
   (cxiii); a business `propose` can still meet an `OperationalError` (cxiv); `Listing.price_amount` has no floor (cxvi); the matcher runs synchronously on approve (cxx).
   Follow-ups before the alerts go on or the screens ship are in the spec's §13 (ci) onward.
+- **A business's money and texts (`wallets/vendor.py`, `vendor_texts.py`, Stage 4).** `/api/wallet/vendor/*` is
+  business-owner only (a customer with the same id, or staff, gets 403: platform fees never reach a customer) and answers
+  `409 ledger_off` while the ledger is off. Read-only: sale rows come from the business's own `OrderFeeSnapshot`s (never
+  today's rules), the daily summary from journal lines on its own Pending and Available accounts (`vendor.FOLD`; any
+  other line lands in `other`, so the columns always add up to the balance change), and no row, export or text holds a
+  customer's name, phone or address. Texts to a business go through `wallets.VendorText`: `vendor_texts.queue` runs
+  inside the payment (`orders.alerts`) or the release (`escrow.release_verified`, after every posting), in a savepoint,
+  and never raises; the send happens after commit through `otp.senders`, claimed with a 10-minute lease, tried at most 5 times, and only to a login phone that is an `otp.VerifiedContact` (stricter than
+  today's lock notices, which text every contact on the account: an open must-fix in spec §13, whose fix will make them
+  VerifiedContact-only too). A provider-down breaker (cache, 120 s, after 3 failures in a row) leaves texts queued. The hand-off after commit is a lambda that logs its own errors (Django's robust `on_commit` formats
+  `func.__qualname__`, which a `functools.partial` lacks).
+  A business text is **never an `OtpEvent`** (those count toward the code send limits) but is counted by the
+  `otp.spend` alert. Bodies are GSM-7 plain text with "GHS" (never "GH₵"), at most 306 characters. `phone` is in
+  `ashantihub/sentry.py`'s denylist (the whole number is a local in `vendor_texts.deliver`). **Booking sales (Plan 1b)
+  are not on these screens yet.** Their money is in Pending and Available and their fees count toward the cap (the fee
+  page marks all three categories `charged`), but the sale rows, `awaiting_call`, the statement and the texts come from
+  `OrderFeeSnapshot` only, and `booking_*` journal lines land in the daily summary's `other` column. A follow-up (Plan
+  4F or 4b) must add `BookingSale` rows, `FOLD` kinds and texts before the ledger is turned on (spec §13 (lxxxiii)).
 
 ## Test-fixture gotcha
 
