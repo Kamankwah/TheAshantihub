@@ -29,8 +29,7 @@ STOCK_COVER_DAYS, STOCK_FALLBACK_UNITS, STOCK_WINDOW_DAYS = (
 DEFINITIONS = {
     "fee_cap_pesewas": Definition("Lifetime platform-fee cap per vendor (pesewas; blank = no cap)", None, True, 1, 10**12),
     "verification_overdue_hours": Definition(
-        "Hours after purchase (orders) or after hand-over (services, stays, tickets) by which a sale must be verified or disputed",
-        72, False, 1, 720,
+        "Hours after purchase by which an ORDER (products) must be verified by Support or disputed", 72, False, 1, 720,
     ),
     "pickup_window_hours": Definition("Hours after purchase within which a store-pickup order is collected", 24, False, 1, 168),
     "rider_commission_bp": Definition("Third-party rider commission (basis points; 1000 = 10%)", 1000, False, 0, 10000),
@@ -39,6 +38,17 @@ DEFINITIONS = {
     "withdrawal_per_tx_limit_pesewas": Definition("Largest single withdrawal (pesewas)", 500_000, False, 100, 10**10),
     "withdrawal_daily_limit_pesewas": Definition("Most a person may withdraw in one day, per account (pesewas)", 1_000_000, False, 100, 10**10),
     "payout_cooling_hours": Definition("Hours a new payout destination waits before it can receive money", 24, False, 1, 720),
+    # Wallet rulings (plan 7A, owner decisions 2026-10-18). A top-up waits at least an hour before it can be withdrawn.
+    "wallet_topup_hold_minutes": Definition("Minutes a wallet top-up must wait before it can be withdrawn", 60, False, 60, 10080),
+    "otp_daily_failure_cap": Definition("Wrong sign-in or step-up codes allowed per account per day before it is locked until tomorrow", 20, False, 5, 200),
+    # Texts to businesses (plan 7D).
+    "vendor_low_balance_pesewas": Definition("Text a business when its Available balance falls to this amount or below (pesewas)", 10_000, False, 0, 10**10),
+    "digest_batch_size": Definition("Businesses handled per batch when the daily money digest is texted", 200, False, 10, 5000),
+    "digest_time_budget_seconds": Definition("Most seconds one digest batch may run before it hands over to the next", 600, False, 30, 3600),
+    # When bookings release (plan 7E): services, stays and tickets follow their own milestone, not the product rule above.
+    "service_auto_accept_hours": Definition("Hours after a service is marked done before it is accepted automatically (the customer may accept sooner)", 48, False, 1, 720),
+    "stay_issue_window_hours": Definition("Hours after a stay's check-in time in which the guest can report a problem; money releases when it ends", 24, False, 1, 168),
+    "event_release_delay_hours": Definition("Hours after an event ends before its ticket money is released", 48, False, 1, 720),
     # Low-stock alerts (catalogue plan 6; spec §1 row 15, §10). Not money, but governed the same way (§3.3): Accounting
     # proposes, a Super Admin approves.
     STOCK_COVER_DAYS: Definition("Low stock: alert when an offer has fewer than this many days of sales left", 7, False, 1, 90),
