@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement the owner's rulings on manual release, event door scans, top-up holds, stuck withdrawals, staff edits of payout details and OTP guessing.
+**Goal:** Implement the owner's rulings on manual release, event release timing and door scans, top-up holds, stuck withdrawals, staff edits of payout details and OTP guessing.
 
 **Architecture:** All changes extend existing modules: `ledger/escrow.py` and `events/views.py` (release), `wallets/withdrawals.py` and `wallets/views_staff.py` (withdrawals), `wallets/destinations.py` (payout details), `otp/service.py` (guess cap), using the `approvals` engine (`ApprovalKind(requires_sudo=True, …)`) for every maker-checker step and `settings_store` keys from Plan 7A T1.
 
@@ -23,8 +23,9 @@
 - Staff A proposes "fail with evidence" and approves their own request: refused.
 - Provider flips to PAID after a hand-fail was proposed but before approval: approval re-asks the provider and refuses.
 - Top-up credited at 10:00 withdrawn at 10:59: refused with the time it frees up; at 11:00: allowed; a withdrawal larger than the non-held balance is refused though total balance covers it.
-- Scan of a refunded or already-scanned ticket: no second release, no second text.
+- Scan of a refunded or already-scanned ticket: no second text.
 - Organiser scans a ticket for a customer who never came: customer's dispute is answered against the event company's account, not AshantiHub (see T2).
+- Event postponed after tickets sold: release moves with the new date; event cancelled: all tickets refunded.
 - 21st wrong OTP code in one Accra day with correct password: refused and the account stays locked until the next day even if the 15-minute window passed.
 
 ---
@@ -43,22 +44,24 @@
 - [ ] **Step 4: Run** `... test ledger events` — Expected: PASS.
 - [ ] **Step 5: Commit** `feat(ledger): manual release requires password re-entry`
 
-### Task 2: Door scan releases event money and tells the customer
+### Task 2: Event money releases two days after the event; the door scan notifies and records evidence
 
 **Files:**
-- Modify: `backend/events/views.py:981-1030` (`EventCheckinView`), `backend/ledger/sales.py` (booking-sale ticket handover/release rules around lines 118-150, 309-320), `backend/ledger/escrow.py` (release for a ticket sale), notifications (`notifications` app, SMS via the existing sender used by `wallets/vendor_texts.py`)
+- Modify: `backend/events/views.py:981-1030` (`EventCheckinView`), `backend/ledger/sales.py` (ticket sales: release time = event end + `event_release_delay_hours`; replaces the "first scan or event date" rule at ~133-150 and 309-320), `backend/ledger/verification.py` / `ledger/tasks.py` (the timer job that releases due ticket sales), notifications (idempotent text queue as in `wallets/vendor_texts.py`)
 - Create: `backend/events/scan_notice.py`
-- Test: `backend/events/tests/test_checkin_release.py`
+- Test: `backend/events/tests/test_checkin_notice.py`, `backend/ledger/tests/test_event_release_timer.py`
 
 **Interfaces:**
-- Produces: `scan_notice.send(ticket) -> None` queues an SMS (and email when the holder has one) via the idempotent text queue keyed `ticket-scan-{ticket.pk}`: "Your ticket for {event} was scanned at the event at {time}. If this was not you, contact AshantiHub Support within {verification_overdue_hours} hours."
-- Behaviour change: with the ledger on, a scan of a held ticket in a booking sale releases that ticket's share of the sale (same as the ledger-off path already does) in the scan transaction. Record `Ticket.delivered_by_staff` (existing) and the scanner id; the release stores a `liable_party="event_organiser"` note on the journal memo so a later dispute over a scanned ticket is refunded from the organiser's account (existing `refunds` path for vendor-funded refunds), not platform funds.
+- Consumes `settings_store.current("event_release_delay_hours", now)` (default 48, Plan 7A T1); the event's end time (use `event_end` if present, else the end of `event_date` in Accra).
+- Produces `sales.ticket_release_at(sale) -> datetime`; an hourly job `release_due_ticket_sales(now)` releasing every ticket sale whose time has passed, not refunded and not under dispute. A scan no longer releases or holds anything: it sets `delivered_at` as now and calls `scan_notice.send(ticket)` (idempotent text and email keyed `ticket-scan-{ticket.pk}`: "Your ticket for {event} was scanned at {time}. If this was not you, contact AshantiHub Support before {release_at}.").
+- Evidence: a scanned ticket's `delivered_at`/`delivered_by_staff` stay on record; a dispute of a scanned ticket cannot be resolved as "customer did not attend" and any refund after scan is funded from the organiser's account (existing vendor-funded refund path), never platform funds.
+- A cancelled event refunds every unrefunded ticket in full from the organiser (existing refund path); event date edits stay allowed and move `ticket_release_at` with them.
 
-- [ ] **Step 1: Failing tests:** `test_scan_releases_ticket_share_with_ledger_on`, `test_scan_queues_one_notice`, `test_rescan_does_not_release_or_text_again`, `test_refunded_ticket_scan_refused`, `test_dispute_after_scan_refunds_from_organiser` (asserts journal lines debit the organiser's vendor account, platform account unchanged).
+- [ ] **Step 1: Failing tests:** `test_release_two_days_after_event_end`, `test_not_released_before_delay`, `test_date_change_moves_release`, `test_scan_does_not_release`, `test_scan_queues_one_notice`, `test_rescan_no_second_notice`, `test_refunded_ticket_scan_refused`, `test_dispute_after_scan_refunds_from_organiser`, `test_disputed_sale_not_released_by_timer`, `test_cancelled_event_refunds_all`.
 - [ ] **Step 2: Run** — Expected: FAIL.
-- [ ] **Step 3: Implement.** Remove the `_ledger_sale(ticket) is None` guard (line ~1017) in favour of the ledger release; keep one transaction with the existing row lock; send the notice via `transaction.on_commit`.
-- [ ] **Step 4: Run** `... test events ledger` — Expected: PASS (update the older tests that asserted "scan leaves it held").
-- [ ] **Step 5: Commit** `feat(events,ledger): door scan releases ticket money and texts the customer`
+- [ ] **Step 3: Implement.** Keep one transaction and the existing row lock in check-in; send notices via `transaction.on_commit`; register the hourly job in beat.
+- [ ] **Step 4: Run** `... test events ledger` — Expected: PASS (update older tests that asserted scan releases or holds).
+- [ ] **Step 5: Commit** `feat(events,ledger): release ticket money two days after the event; scan notifies and records evidence`
 
 ### Task 3: Top-up hold before withdrawal
 

@@ -41,7 +41,11 @@
   `wallet_topup_hold_minutes` 60 / 60 / 10080 — minutes a top-up stays unwithdrawable (read by 7C T3);
   `vendor_low_balance_pesewas` 10_000 / 0 / 10**10 — Available at or below this triggers the low-balance text (read by 7D T3);
   `digest_batch_size` 200 / 10 / 5000 and `digest_time_budget_seconds` 600 / 30 / 3600 (read by 7D T4);
-  `otp_daily_failure_cap` 20 / 5 / 200 — wrong codes per account per Accra day (read by 7C T5).
+  `otp_daily_failure_cap` 20 / 5 / 200 — wrong codes per account per Accra day (read by 7C T6);
+  `service_auto_accept_hours` 48 / 1 / 720 — hours after a vendor marks a service delivered before it is accepted automatically (7E);
+  `stay_issue_window_hours` 24 / 1 / 168 — hours after check-in time in which a guest can report a problem; money releases when it ends (7E);
+  `event_release_delay_hours` 48 / 1 / 720 — hours after an event ends before ticket money releases (7C T2).
+  `verification_overdue_hours` (72) now applies to **products only**; relabel its `Definition` text accordingly and stop reading it for services, stays and tickets (7E T1 switches those callers: `ledger/sales.py:272`, `ledger/views_bookings.py:42`, `ledger/verification.py:83,109`).
 
 - [ ] **Step 1: Write failing tests** `test_new_keys_have_defaults_and_bounds`: for each key assert `current(key) == default`, `clean(key, min-1)` raises `SettingError`, `clean(key, max+1)` raises, `clean(key, "60")` returns 60. `test_topup_hold_cannot_go_below_sixty`: `clean("wallet_topup_hold_minutes", 59)` raises.
 - [ ] **Step 2: Run** `... test ledger.tests.test_settings_store` — Expected: FAIL (`Unknown money setting`).
