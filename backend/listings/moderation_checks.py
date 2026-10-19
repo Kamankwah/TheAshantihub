@@ -101,9 +101,10 @@ def hero_checks(submission):
     now = timezone.now()
     caption = submission.caption or ""
     dated = submission.starts_at is not None  # a slide with its own dates (free slider)
-    checks = [_kyc_check(owner), _subscription_check(owner)]
-    if not dated:
+    checks = [_kyc_check(owner)]
+    if not dated:  # dated slides are free: no photo-match, subscription or slot checks
         checks.insert(0, _photo_check(submission))
+        checks.append(_subscription_check(owner))
 
     length = len(caption)
     checks.append(_check(

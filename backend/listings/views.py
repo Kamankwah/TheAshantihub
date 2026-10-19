@@ -1029,7 +1029,7 @@ class HeroMineView(APIView):
     def get(self, request):
         now = timezone.now()
         submission = (
-            HeroMediaSubmission.objects.filter(business_owner=request.user)
+            HeroMediaSubmission.objects.filter(business_owner=request.user, starts_at__isnull=True)
             .filter(
                 Q(status=HeroMediaSubmission.PENDING)
                 | Q(status=HeroMediaSubmission.APPROVED, expires_at__gt=now)
@@ -1039,7 +1039,7 @@ class HeroMineView(APIView):
         )
         if submission is None:
             submission = (
-                HeroMediaSubmission.objects.filter(business_owner=request.user)
+                HeroMediaSubmission.objects.filter(business_owner=request.user, starts_at__isnull=True)
                 .order_by("-submitted_at")
                 .first()
             )
@@ -1197,7 +1197,11 @@ class HeroReReviewView(APIView):
         submission.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
         notify_staff_role(
             "hero_media.approve", "hero_needs_approval", "Hero submission re-opened",
-            body=f"{submission.business_owner.full_name if submission.business_owner_id else 'A staff-made'}'s hero submission has been re-opened and needs review again.",
+            body=(
+                f"{submission.business_owner.full_name}'s hero submission has been re-opened and needs review again."
+                if submission.business_owner_id
+                else "A staff-made hero slide has been re-opened and needs review again."
+            ),
             link="hero", icon="🌟",
         )
         return Response({"id": submission.id, "status": submission.status})
@@ -1252,6 +1256,8 @@ class HeroExtendView(APIView):
         # resubmitted/re-approved rather than "revived" via extension —
         # mirrors ListingSubmitView's DRAFT/REJECTED-only guard in spirit
         # (a narrow, explicit allowed-state check rather than a silent no-op).
+        if submission.starts_at is not None:
+            return Response({"detail": "This slide is free and runs on the dates you chose, so it can't be extended."}, status=400)
         if submission.status != HeroMediaSubmission.APPROVED:
             return Response(
                 {"detail": "Only an approved hero submission can be extended."}, status=400

@@ -289,3 +289,46 @@ class RulesUnitTests(TestCase):
         hero_rules.validate_window(now, now + timedelta(days=30), now=now)
         with self.assertRaisesMessage(ValidationError, "A hero slide can run for at most 30 days."):
             hero_rules.validate_window(now, now + timedelta(days=30, seconds=1), now=now)
+
+
+class LegacyFlowIsolationTests(HeroSlideBase):
+    def test_mine_ignores_dated_slides(self):
+        self.live_slide()
+        self.as_owner()
+        self.assertEqual(self.client.get("/api/hero/mine/").json(), {})
+        old = self.live_slide(starts_at=None, ends_at=None)
+        self.assertEqual(self.client.get("/api/hero/mine/").json()["id"], old.pk)
+
+    def test_dated_slide_cannot_be_extended(self):
+        row = self.live_slide()
+        self.as_owner()
+        r = self.client.post(f"/api/hero/{row.pk}/extend/", {"days": 3}, format="json")
+        self.assertEqual(r.status_code, 400, r.content)
+
+    def test_dated_slide_has_no_subscription_check(self):
+        from listings.moderation_checks import hero_checks
+
+        keys = [c["key"] for c in hero_checks(self.live_slide(status="pending"))]
+        self.assertNotIn("subscription", keys)
+        self.assertNotIn("hero_slots", keys)
+
+
+class SizeCapTests(HeroSlideBase):
+    def test_video_over_25mb_rejected(self):
+        from accounts.validators import HERO_VIDEO_MAX_BYTES, validate_video_content_type
+        from django.core.exceptions import ValidationError
+
+        self.assertEqual(HERO_VIDEO_MAX_BYTES, 25 * 1024 * 1024)
+        big = SimpleUploadedFile("a.mp4", MP4, content_type="video/mp4")
+        big.size = HERO_VIDEO_MAX_BYTES + 1
+        with self.assertRaisesMessage(ValidationError, "25 MB"):
+            validate_video_content_type(big)
+
+    def test_image_over_5mb_rejected(self):
+        from listings.serializers import HeroSlideInputSerializer
+
+        img = _image()
+        img.size = 6 * 1024 * 1024
+        ser = HeroSlideInputSerializer(data={"media_type": "image", "media": img, **_window()})
+        self.assertFalse(ser.is_valid())
+        self.assertIn("5 MB", str(ser.errors))

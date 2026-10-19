@@ -593,6 +593,10 @@ class HeroSlideInputSerializer(serializers.Serializer):
         from . import hero_rules
         from .moderation_checks import CONTACT_DETAILS_MESSAGE, contact_details_in
 
+        media = data.get("media")
+        if media is not None and media.size > 5 * 1024 * 1024:
+            raise serializers.ValidationError({"media": "The photo must be 5 MB or smaller."})
+
         def fail(field, exc):
             raise serializers.ValidationError({field: exc.messages[0]})
 
