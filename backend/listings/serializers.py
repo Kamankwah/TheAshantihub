@@ -406,10 +406,12 @@ class ModerationListingSerializer(serializers.ModelSerializer):
         fields = [
             "id", "business_owner", "business_owner_name", "name", "description", "category",
             "zone", "price_amount", "price_unit", "tag", "contact_phone", "lat", "lng",
-            "main_photo", "photos", "specs", "service_duration",
+            "main_photo", "photos", "specs", "service_duration", *LISTING_DECISION_FIELDS,
             "status", "rejection_reason", "created_at",
             "reviewed_by_name", "reviewed_at", "open_fraud_cases", "subscription_overdue",
         ]
+        # Read-only on this staff view; a reviewer sees every answer the owner gave.
+        read_only_fields = LISTING_DECISION_FIELDS
 
     def get_open_fraud_cases(self, obj):
         from fraud.models import FraudFlag

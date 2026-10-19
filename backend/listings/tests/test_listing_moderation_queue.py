@@ -160,3 +160,34 @@ class ListingModerationChipTests(ListingModerationQueueTests):
         self.assertEqual(
             self.client.get("/api/listings/moderation/stats/").json(), {"week_published": 1, "week_rejected": 1},
         )
+
+
+class ModerationDetailShowsOwnerAnswersTests(TestCase):
+    """A reviewer sees everything the owner was asked, not just name and price."""
+
+    def test_detail_includes_the_product_answers(self):
+        staff = StaffUser.objects.create(
+            full_name="Super", email="sa-detail@example.com", password_hash="x",
+            role=Role.objects.get(name="super_admin"),
+        )
+        owner = BusinessOwner.objects.create(
+            full_name="Trader", login_phone="+233207550009", password_hash="x",
+            kyc_status=BusinessOwner.VERIFIED,
+        )
+        listing = Listing.objects.create(
+            business_owner=owner, category=Category.objects.get(slug="shops"),
+            zone=Zone.objects.get(name="Manhyia"), name="Detergent", description="D.",
+            contact_phone="+233207550009", status=Listing.PENDING_REVIEW,
+            price_amount="45.00", brand="Harpic", condition="new", stock_quantity=12,
+            has_warranty=True, warranty_details="1 year", has_expiry=True,
+            expiry_date="2027-01-31", return_policy="7 days", dimensions="1L", weight="1kg",
+        )
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(staff, 'staff')}")
+        data = client.get(f"/api/listings/moderation/{listing.id}/").json()
+        self.assertEqual(data["brand"], "Harpic")
+        self.assertEqual(data["return_policy"], "7 days")
+        self.assertTrue(data["has_warranty"])
+        self.assertEqual(data["warranty_details"], "1 year")
+        self.assertEqual(data["expiry_date"], "2027-01-31")
+        self.assertEqual(data["stock_quantity"], 12)

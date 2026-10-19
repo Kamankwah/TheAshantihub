@@ -58,6 +58,14 @@ export function useCustomer(id) {
 // GET /api/marketplace/listings/?q=&status=&type=&added_by=&category=&page=
 export const useSaListings = list('sa-listings', '/api/marketplace/listings/')
 export const useSaListingCounts = counts('sa-listings', '/api/marketplace/listings/counts/')
+// GET /api/listings/moderation/{id}/ — everything the owner submitted, for the review sheet.
+export function useListingForReview(id) {
+  return useQuery({
+    queryKey: ['sa-listings', 'review', String(id)],
+    queryFn: () => apiFetch(`/api/listings/moderation/${id}/`),
+    enabled: id != null,
+  })
+}
 export function useListingHistory(id) {
   return useQuery({
     queryKey: ['sa-listings', 'history', String(id)],
