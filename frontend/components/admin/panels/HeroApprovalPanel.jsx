@@ -4,6 +4,8 @@ import { useHeroModerationQueue } from "../../../hooks/useHeroModerationQueue.js
 import { shortDay } from "../../../lib/timeAgo.js";
 import { D } from "../theme.js";
 import { dim } from "./panelStyles.js";
+import HeroSlideForm from "../../dashboard/HeroSlideForm.jsx";
+import { HeroSlidePreview, MAX_DAYS_NOTE, slideMaker, slideWindow } from "../../dashboard/HeroSlideParts.jsx";
 import HeroApprovalMarketing from "./marketing/HeroApprovalMarketing.jsx";
 import ModerationQueueTabs, {
   ApprovedByLine,
@@ -15,11 +17,13 @@ import ModerationQueueTabs, {
 // (staff moderation-queue restructuring, items 1 & 3).
 export default function HeroApprovalPanel({ auth }) {
   // Marketing works this queue with the checklist layout (canvas 14); other roles keep the plain tabs.
-  if (auth?.user?.role === "marketing") return <HeroApprovalMarketing />;
-  return <PlainHeroApproval />;
+  if (auth?.user?.role === "marketing") return <HeroApprovalMarketing auth={auth} />;
+  return <PlainHeroApproval auth={auth} />;
 }
 
-function PlainHeroApproval() {
+function PlainHeroApproval({ auth }) {
+  const canCreate = Boolean(auth?.hasPermission?.("hero_media.approve"));
+  const [creating, setCreating] = useState(false);
   const [tab, setTab] = useState("pending");
   const pending = useHeroModerationQueue({ status: "pending" });
   const approved = useHeroModerationQueue({ status: "approved" });
@@ -57,15 +61,13 @@ function PlainHeroApproval() {
   const renderRow = (s, state) => (
     <div style={{ padding: "12px 0", borderBottom: `1px solid ${D.divider}` }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", gap: 10 }}>
-          {s.media_type === "video" ? (
-            <video src={s.media} muted style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 10, background: "#000", flexShrink: 0 }} />
-          ) : (
-            <img src={s.media} alt={s.caption || ""} style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 10, flexShrink: 0 }} />
-          )}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <HeroSlidePreview slide={s} size={80} embed={Boolean(s.youtube_id)} maxWidth={240} />
           <div>
-            <div style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>{s.business_owner_name}</div>
-            <div style={{ color: D.textDim, fontSize: "0.72rem", margin: "3px 0", maxWidth: 320 }}>"{s.caption}"</div>
+            <div style={{ color: D.text, fontWeight: 700, fontSize: "0.82rem" }}>{slideMaker(s)}</div>
+            {s.title && <div style={{ color: D.text, fontSize: "0.75rem", fontWeight: 700 }}>{s.title}</div>}
+            {s.caption && <div style={{ color: D.textDim, fontSize: "0.72rem", margin: "3px 0", maxWidth: 320 }}>"{s.caption}"</div>}
+            <div style={{ color: D.textDim, fontSize: "0.68rem" }}>{slideWindow(s)}. {MAX_DAYS_NOTE}</div>
             <div style={{ color: D.textDim, fontSize: "0.65rem" }}>Submitted {s.submitted_at?.slice(0, 10)}{state === "pending" ? " · joins the homepage hero once approved" : ""}</div>
             {state === "approved" && <ApprovedByLine name={s.reviewed_by_name} at={s.reviewed_at} />}
             {state === "rejected" && <RejectedReason reason={s.rejection_reason} />}
@@ -93,6 +95,12 @@ function PlainHeroApproval() {
   return (
     <>
       {actionError && <div style={{ color: D.red, fontSize: "0.8rem", marginBottom: 10 }}>{actionError}</div>}
+      {canCreate && (
+        <div style={{ marginBottom: 12 }}>
+          <button type="button" onClick={() => setCreating((v) => !v)} aria-expanded={creating} style={{ background: D.panelBg2, color: D.text, border: `1px solid ${D.divider}`, borderRadius: 20, padding: "6px 14px", fontSize: "0.74rem", fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>{creating ? "Close" : "New slide"}</button>
+          {creating && <div style={{ marginTop: 10 }}><HeroSlideForm mode="staff" onDone={refetchAll} /></div>}
+        </div>
+      )}
       <ModerationQueueTabs
         tab={tab}
         onTab={setTab}
@@ -102,7 +110,7 @@ function PlainHeroApproval() {
       />
       {last && (
         <div style={{ ...dim, marginTop: 8 }}>
-          {`Last decided: ${last.business_owner_name} “${last.caption}” — ${last.status === "approved" ? "approved" : "rejected"} by ${last.reviewed_by_name}${last.reviewed_by_role ? ` (${last.reviewed_by_role})` : ""} · ${shortDay(last.reviewed_at)}.`}
+          {`Last decided: ${slideMaker(last)} “${last.caption}” — ${last.status === "approved" ? "approved" : "rejected"} by ${last.reviewed_by_name}${last.reviewed_by_role ? ` (${last.reviewed_by_role})` : ""} · ${shortDay(last.reviewed_at)}.`}
         </div>
       )}
     </>

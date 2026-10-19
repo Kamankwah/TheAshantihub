@@ -213,11 +213,13 @@ export async function apiPatchForm(path, formData) {
   return handleResponse(response, path)
 }
 
-export async function apiDelete(path) {
+// `body` is optional: a few endpoints (the opening test-account allowlist) name what to delete in a JSON body.
+export async function apiDelete(path, body) {
   refuseWhileViewing(path)
   const response = await send(path, () => ({
     method: 'DELETE',
-    headers: authHeaders(path),
+    headers: body === undefined ? authHeaders(path) : { 'Content-Type': 'application/json', ...authHeaders(path) },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   }))
   return handleResponse(response, path)
 }

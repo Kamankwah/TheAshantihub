@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from accounts.phones import normalize_gh_phone
+
 from .models import Conversation, Message
 
 
@@ -8,6 +10,13 @@ def is_public_message(message):
     notes and timeline events are staff-only: EVERY non-staff serializer goes
     through this filter (the note-leak contract; see tests/test_note_leak.py)."""
     return message.kind == Message.MESSAGE and not message.is_internal
+
+
+def contact_of(conversation):
+    """The chat-assistant visitor's contact details, or None. Staff payloads only."""
+    if not (conversation.contact_email or conversation.contact_phone or conversation.contact_name):
+        return None
+    return {"name": conversation.contact_name, "email": conversation.contact_email, "phone": conversation.contact_phone}
 
 
 class MessageSerializer(serializers.ModelSerializer):
@@ -68,6 +77,15 @@ class StaffConversationDetailSerializer(ConversationSerializer):
     Subclasses the customer shape only to share its metadata fields; `messages`
     is overridden, so this must never be used on a non-staff endpoint."""
 
+    contact = serializers.SerializerMethodField()
+
+    class Meta(ConversationSerializer.Meta):
+        fields = ConversationSerializer.Meta.fields + ["contact"]
+        read_only_fields = fields
+
+    def get_contact(self, obj):
+        return contact_of(obj)
+
     def get_messages(self, obj):
         return StaffMessageSerializer(obj.messages.all(), many=True).data
 
@@ -86,8 +104,29 @@ class ConversationCreateSerializer(serializers.Serializer):
     about_listing = serializers.IntegerField(required=False, allow_null=True)
     about_order = serializers.IntegerField(required=False, allow_null=True)
     source = serializers.ChoiceField(
-        choices=["app", "listing_page", "order_page", "business_dashboard", "guest_chat"], required=False, default="app",
+        choices=["app", "listing_page", "order_page", "business_dashboard", "guest_chat", "chatbot"],
+        required=False, default="app",
     )
+    # Chat assistant intake (source == "chatbot"): all three required then, ignored for any other source.
+    contact_name = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
+    # 254: the model column's length, so an over-long address is a 400, not a database error (500).
+    contact_email = serializers.EmailField(max_length=254, required=False, allow_blank=True, default="")
+    contact_phone = serializers.CharField(max_length=30, required=False, allow_blank=True, default="")
+
+    def validate(self, attrs):
+        if attrs["source"] != "chatbot":
+            attrs["contact_name"] = attrs["contact_email"] = attrs["contact_phone"] = ""
+            return attrs
+        attrs["contact_name"] = attrs["contact_name"].strip()
+        attrs["contact_email"] = attrs["contact_email"].strip()
+        errors = {f: ["This field is required."] for f in ("contact_name", "contact_email", "contact_phone") if not attrs[f].strip()}
+        if errors:
+            raise serializers.ValidationError(errors)
+        try:
+            attrs["contact_phone"] = normalize_gh_phone(attrs["contact_phone"])
+        except ValueError as error:
+            raise serializers.ValidationError({"contact_phone": [str(error)]})
+        return attrs
 
 
 class MessageCreateSerializer(serializers.Serializer):

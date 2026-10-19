@@ -3,6 +3,7 @@ import { apiPost } from "../../../../apiClient.js";
 import { apiErrorMessage } from "../../../../lib/apiErrorMessage.js";
 import { useFeaturedCandidates, useFeaturedGrid } from "../../../../hooks/useMarketingBanners.js";
 import { D } from "../../theme.js";
+import SponsoredProducts from "./SponsoredProducts.jsx";
 import { Honest, Loading, PageHead, Section, button, chip, dim, errorStyle, figures, inputStyle, labelStyle, linkStyle, money, page, scroll, table, td, th } from "./mkParts.jsx";
 
 // ─── 13 Featured listings ────────────────────────────────────────────────────
@@ -173,6 +174,7 @@ export default function FeaturedListingsPanel({ auth }) {
           <div style={dim}>A held business does not show on the site while the hold lasts.</div>
         </Section>
       </div>
+      {auth?.hasPermission?.("deals.manage") && <SponsoredProducts />}
     </div>
   );
 }

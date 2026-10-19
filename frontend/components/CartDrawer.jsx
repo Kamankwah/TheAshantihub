@@ -9,6 +9,7 @@ import { apiPatch, apiPost, apiDelete } from "../apiClient.js";
 import { apiErrorMessage } from "../lib/apiErrorMessage.js";
 import { quoteCart, usePublicPromos } from "../hooks/usePublicPromos.js";
 import { useStaffGate } from "../hooks/useStaffGate.js";
+import { useCanBuy } from "../hooks/useCanBuy.js";
 import LocationPicker from "./LocationPicker.jsx";
 import StaffGateNotice from "./StaffGateNotice.jsx";
 
@@ -70,6 +71,9 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   // defence-in-depth layer so checkout itself refuses a staff session with
   // the shared staff notice.
   const staffGate = useStaffGate(user);
+  // Before the marketplace opens the cart still shows, but checkout is greyed
+  // with "Opens <D Mon>" unless this account may buy (see useCanBuy).
+  const { canBuy, label: opensLabel } = useCanBuy();
 
   const items = cart?.items || [];
 
@@ -125,7 +129,8 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   // button stays off until the limits have actually been read (a customer only; staff are gated separately).
   const guardUnchecked = user?.accountType === "customer" && (guardPending || guardError);
   const deliveryLimitBlock = !!guardBlock && guardBlock.code !== "not_deliverable";
-  const payReady = doorToDoorReady && !guardBlock && !guardUnchecked;
+  // canBuy too: if the opening moves while the confirm step is open, paying stops.
+  const payReady = canBuy && doorToDoorReady && !guardBlock && !guardUnchecked;
   const shownTotal = delivery?.fee != null && itemsTotal != null ? (parseFloat(itemsTotal) + parseFloat(delivery.fee)).toFixed(2) : itemsTotal;
   const [couponError, setCouponError] = useState("");
 
@@ -311,9 +316,10 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
                 </div>
                 <PromoBlock />
                 <button
-                  onClick={() => { if (staffGate.blocked()) return; setStep("confirm"); }}
-                  style={{ width: "100%", background: C.gold, color: C.darkBrown, border: "none", borderRadius: 24, padding: "11px", fontWeight: 900, fontSize: "0.82rem", cursor: "pointer", fontFamily: "inherit" }}
-                >Checkout →</button>
+                  disabled={!canBuy}
+                  onClick={() => { if (!canBuy || staffGate.blocked()) return; setStep("confirm"); }}
+                  style={{ width: "100%", background: canBuy ? C.gold : "#ccc", color: canBuy ? C.darkBrown : "#555", border: "none", borderRadius: 24, padding: "11px", fontWeight: 900, fontSize: "0.82rem", cursor: canBuy ? "pointer" : "not-allowed", fontFamily: "inherit" }}
+                >{canBuy ? "Checkout →" : opensLabel}</button>
                 {staffGate.shownFor && <StaffGateNotice style={{ marginTop: 10 }} />}
               </div>
             )}

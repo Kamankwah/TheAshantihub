@@ -159,6 +159,34 @@
   }
 }
 
+/* ── Public-site theme variables (the header's light/dark toggle) ─────────────
+   The public surfaces are inline-styled off `C` (theme.js), which a CSS class
+   cannot reach. Only the header (Navbar) and the StorefrontHome wrapper read
+   these --ah-* variables, so the toggle restyles them; the app root and the
+   other public pages stay cream (their dark-brown text would go dark-on-dark). useTheme() sets
+   `data-theme` on <html>; Navbar also carries its own `data-theme` from its
+   `theme` prop. Values are `C` colours (keep in sync by hand). Dashboards do
+   not read these and stay always-light (DESIGN.md). */
+:root,
+[data-theme="light"] {
+  --ah-canvas: #FDF6E3;                 /* C.cream */
+  --ah-surface: #FFFFFF;                /* C.white */
+  --ah-ink: #2C1810;                    /* C.darkBrown */
+  --ah-ink-dim: rgba(44, 24, 16, 0.62);
+  --ah-header-bg: linear-gradient(135deg, #2C1810 0%, #1A1A1A 50%, #000080 100%); /* darkBrown → black → kente3 */
+  --ah-header-edge: transparent;
+}
+
+:root[data-theme="dark"],
+[data-theme="dark"] {
+  --ah-canvas: #160E08;                 /* C.void */
+  --ah-surface: #2C1810;                /* C.darkBrown */
+  --ah-ink: #F5DEB3;                    /* C.lightGold */
+  --ah-ink-dim: rgba(245, 222, 179, 0.72);
+  --ah-header-bg: linear-gradient(135deg, #160E08 0%, #2C1810 100%); /* void → darkBrown */
+  --ah-header-edge: rgba(212, 160, 23, 0.25); /* C.gold, low */
+}
+
 /* ── Business Command Center scope ──────────────────────────────────────────
    Light "artisan" palette for the business-owner dashboard
    (frontend/components/dashboard/*), sourced from the app's own `C` palette

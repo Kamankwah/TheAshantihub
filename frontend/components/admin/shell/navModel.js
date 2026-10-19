@@ -173,6 +173,8 @@ export const NAV_ITEMS = [
   { id: "tax-tables", icon: "📑", label: "Tax tables", show: saOnly },
   { id: "integrations", icon: "🔌", label: "Integrations", show: saOnly },
   { id: "system-health", icon: "🩺", label: "System health", show: saOnly },
+  // The marketplace opening time, delay and pre-opening test accounts. Super Admin's alone (opening.manage).
+  { id: "opening", icon: "⏳", label: "Marketplace opening", show: (auth) => saOnly(auth) && auth.hasPermission("opening.manage") },
   // Accounting canvas screens (see acctOnly above).
   { id: "acct-journal", icon: "📒", label: "Journal", show: acctOnly },
   { id: "acct-chart", icon: "🗃️", label: "Chart of accounts", show: acctOnly },
@@ -219,12 +221,12 @@ const ROLE_MENUS = {
     ["home", "Home", ["approvals"]],
     ["people", "People", ["staff", "teams-reporting", "invites", "roles-permissions", "sessions", "leave"]],
     ["teams", "Teams (step in)", ["step-in-operations", "step-in-support", "step-in-delivery", "step-in-marketing", "step-in-accounting"]],
-    ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "delivery", "events-moderation", "disputes"]],
+    ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "delivery", "events-moderation", "hero", "disputes"]],
     ["money", "Money", ["transactions", "payouts-payroll", "commissions", "refunds", "reconciliation"]],
     ["insights", "Insights", ["analytics", "growth-funnel", "team-reports", "scheduled-exports"]],
     ["security-audit", "Security & audit", ["activity", "sign-in-history", "fraud-cases", "data-exports-log", "security"]],
     ["communication", "Communication", ["notification-center", "staff-announcements"]],
-    ["settings", "Settings", ["approval-rules", "money-rules", "commission-policy", "delivery-pricing", "subscription-plans-approval", "targets", "tax-tables", "categories-zones", "integrations", "system-health"]],
+    ["settings", "Settings", ["approval-rules", "money-rules", "commission-policy", "delivery-pricing", "subscription-plans-approval", "targets", "tax-tables", "categories-zones", "integrations", "system-health", "opening"]],
   ],
   // Operations, exactly as the approved canvas draws it (Overview is pinned
   // above the groups). Users, Scout Assignments, Register a business, Field
@@ -353,7 +355,7 @@ const ROLE_LABELS = {
   super_admin: {
     approvals: "My approvals", staff: "Staff directory", sessions: "Sessions & devices", leave: "Leave & holidays",
     "all-portfolios": "Businesses", users: "Customers", moderation: "Listings & services", delivery: "Orders & deliveries",
-    "events-moderation": "Events & tickets", disputes: "Disputes & returns", transactions: "Revenue & sales",
+    "events-moderation": "Events & tickets", hero: "Homepage slider", disputes: "Disputes & returns", transactions: "Revenue & sales",
     "team-reports": "Reports hub", activity: "Audit log", "fraud-cases": "Fraud & anomaly alerts", security: "Security settings",
     "subscription-plans-approval": "Plans & prices", targets: "Target limits", "categories-zones": "Categories & zones",
   },

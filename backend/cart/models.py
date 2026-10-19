@@ -21,7 +21,7 @@ class CartItem(models.Model):
     cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name="items")
     listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="cart_items")
     quantity = models.PositiveIntegerField(default=1)
-    # Copied from listing.price_amount at add-time so a later price change on
+    # Copied from listing.effective_price (sale price when a real discount) at add-time so a later price change on
     # the listing doesn't retroactively alter an existing cart line.
     unit_price_snapshot = models.DecimalField(max_digits=10, decimal_places=2)
     added_at = models.DateTimeField(auto_now_add=True)

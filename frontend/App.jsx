@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCategories } from "./hooks/useCategories.js";
 import { useZones } from "./hooks/useZones.js";
 import { useListings } from "./hooks/useListings.js";
+import { useCanBuy } from "./hooks/useCanBuy.js";
 import CartTieredResults from "./components/CartTieredResults.jsx";
 import { useListing } from "./hooks/useListing.js";
 import { useEvents } from "./hooks/useEvents.js";
@@ -30,22 +31,24 @@ import { useMyTickets } from "./hooks/useMyTickets.js";
 import { useMyCustomerProfile } from "./hooks/useMyCustomerProfile.js";
 import { useSiteSettings } from "./hooks/useSiteSettings.js";
 import { apiFetch, apiPost, apiPatch, getStoredAuth } from "./apiClient.js";
-import { C, CURRENCIES } from "./theme.js";
+import { C } from "./theme.js";
 import Flag from "./components/Flag.jsx";
 import { formatAccraDayTime } from "./lib/accraTime.js";
 import OrderTrackingMap from "./components/OrderTrackingMap.jsx";
 import DeliveryCodeBox from "./components/DeliveryCodeBox.jsx";
 import Navbar from "./components/Navbar.jsx";
-import Hero from "./components/Hero.jsx";
+import StorefrontHome from "./components/storefront/StorefrontHome.jsx";
+import StorefrontHeader from "./components/storefront/StorefrontHeader.jsx";
+import NotifyStopPage from "./components/storefront/NotifyStopPage.jsx";
 import HeroCarousel from "./components/HeroCarousel.jsx";
 import SiteBanner from "./components/SiteBanner.jsx";
 import FeaturedRow from "./components/FeaturedRow.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 import ListingDetailPage from "./components/ListingDetailPage.jsx";
 import ChatLauncher from "./components/ChatLauncher.jsx";
+import ChatIntake from "./components/storefront/ChatIntake.jsx";
 import { Footer2 } from "./components/ui/footer-2.tsx";
 import { BusinessCtaBand } from "./components/ui/business-cta-band.tsx";
-import { HomeCtaBand } from "./components/ui/home-cta-band.tsx";
 import { EventsCtaBand } from "./components/ui/events-cta-band.tsx";
 import { AboutCtaBand } from "./components/ui/about-cta-band.tsx";
 import { ContactCtaBand } from "./components/ui/contact-cta-band.tsx";
@@ -61,6 +64,7 @@ import UnsubscribePage from "./components/UnsubscribePage.jsx";
 import TrackedLinkPage from "./components/TrackedLinkPage.jsx";
 import CartDrawer from "./components/CartDrawer.jsx";
 import FlashPriceTag from "./components/FlashPriceTag.jsx";
+import PriceLine from "./components/PriceLine.jsx";
 import EventHeroCarousel from "./components/EventHeroCarousel.jsx";
 import EventCard, { formatEventDate } from "./components/EventCard.jsx";
 import EventDetailPage from "./components/EventDetailPage.jsx";
@@ -1028,13 +1032,6 @@ export function Card({item,accentColor,user,favourites,onFavourite,currency,onMe
   // grid, not just on the detail page.
   const cardPhoto = item.main_photo || item.photos?.[0]?.image || null;
 
-  const displayPrice = () => {
-    const amount = parseFloat(item.price_amount)||0;
-    if(currency==="GHS")return `GHS ${item.price_amount}${item.price_unit||""}`;
-    const rate = CURRENCIES[currency];
-    return `${currency} ${(amount*rate).toFixed(0)}${item.price_unit||""}`;
-  };
-
   return <>
     {showReviews&&<ReviewsModal item={item} user={user} onClose={()=>setShowReviews(false)}/>}
     <div style={{background:"rgba(255,255,255,0.04)",backdropFilter:"blur(6px)",borderRadius:16,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.3)",border:`1.5px solid ${accentColor}55`,transition:"transform 0.2s"}}
@@ -1097,7 +1094,8 @@ export function Card({item,accentColor,user,favourites,onFavourite,currency,onMe
         <div style={{color:"rgba(255,255,255,0.75)",fontSize:"0.75rem",marginBottom:10,lineHeight:1.4}}>{item.description}</div>
         <FlashPriceTag listingId={item.id}/>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-          <span style={{fontWeight:800,color:accentColor,fontSize:"0.8rem"}}>{displayPrice()}</span>
+          {/* effective_price (sale while live), only was_price struck through — the DealsRow rule. */}
+          <PriceLine item={item} currency={currency} tone="dark" size="0.8rem"/>
           <div style={{display:"flex",gap:5}}>
             {/* Businesses can no longer be contacted directly (fraud-prevention —
                 docs/UI_MODERNIZATION_ROADMAP.md Phase F): this opens MessagingCenter
@@ -2028,10 +2026,13 @@ const SR_STATUS_META = {
   cancelled: { label: "Cancelled", color: D.textFaint },
 };
 
-function ServiceRequestsTab({ PaymentComponent }) {
+export function ServiceRequestsTab({ PaymentComponent }) {
   const { data, isLoading, isError, refetch } = useMyServiceRequests();
   const [payingFor, setPayingFor] = useState(null); // the request being paid
   const [payError, setPayError] = useState(null);
+  // Before the marketplace opens, Pay is greyed with "Opens <D Mon>" unless
+  // this account may buy (ruling R35, same rule as every buy surface).
+  const { canBuy, label: opensLabel } = useCanBuy();
 
   const requests = data || [];
   if (isLoading) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>Loading…</div>;
@@ -2041,7 +2042,12 @@ function ServiceRequestsTab({ PaymentComponent }) {
   const onPaid = async () => {
     setPayError(null);
     try { await apiPost(`/api/services/requests/${payingFor.id}/pay/`, {}); setPayingFor(null); refetch(); }
-    catch { setPayError("Payment went through but we couldn't start the job — please contact support."); }
+    catch (err) {
+      // The server refuses a shopper's buy before opening (403 code not_open) —
+      // show its own message rather than claiming the payment went through.
+      if (err?.status===403 && err?.body?.code==="not_open") { setPayingFor(null); setPayError(err.body.detail || "The marketplace is not open yet."); }
+      else setPayError("Payment went through but we couldn't start the job — please contact support.");
+    }
   };
 
   return <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -2063,7 +2069,7 @@ function ServiceRequestsTab({ PaymentComponent }) {
           <ServiceAcceptBar request={sr} onChanged={refetch} />
           {sr.status==="accepted" && <BookingTermsNote kind="service" tone="light" />}
           {sr.status==="accepted" && (
-            <button onClick={()=>setPayingFor(sr)} style={{marginTop:10,background:D.green,color:"#fff",border:"none",borderRadius:20,padding:"8px 16px",fontWeight:800,fontSize:"0.76rem",cursor:"pointer",fontFamily:"inherit"}}>💳 Pay GHS {sr.agreed_price} to start</button>
+            <button onClick={()=>{ if (canBuy) setPayingFor(sr); }} disabled={!canBuy} aria-disabled={!canBuy} style={{marginTop:10,background:canBuy?D.green:D.divider,color:canBuy?"#fff":D.textDim,border:"none",borderRadius:20,padding:"8px 16px",fontWeight:800,fontSize:"0.76rem",cursor:canBuy?"pointer":"not-allowed",fontFamily:"inherit"}}>{canBuy ? <>💳 Pay GHS {sr.agreed_price} to start</> : opensLabel}</button>
           )}
         </div>
       );
@@ -2656,6 +2662,8 @@ export default function AshantiHub() {
   // The stop link in a marketing message (Marketing consent): a standalone page keyed by a signed token.
   const unsubscribeMatch = useMatch("/unsubscribe/:token");
   const trackedLinkMatch = useMatch("/r/:token");
+  // The opt-out link in the opening message (notify-me): a standalone page keyed by a signed token.
+  const notifyStopMatch = useMatch("/notify/stop/:token");
   // Staff dashboard panels are URL-addressable (/staff/kyc, /staff/users, …)
   // so Android's back gesture steps through panels inside the installed app
   // and manifest shortcuts can deep-link. /staff/activate and /staff/install
@@ -2688,22 +2696,18 @@ export default function AshantiHub() {
     const path = PAGE_TO_PATH[id] ?? "/";
     if (location.pathname !== path) navigate(path);
   };
-  const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch && !unsubscribeMatch && !trackedLinkMatch && !onStaffDashboardPath;
+  const show404 = !KNOWN_PATHS.has(location.pathname) && !businessDetailMatch && !eventDetailMatch && !unsubscribeMatch && !trackedLinkMatch && !notifyStopMatch && !onStaffDashboardPath;
   const [authModal,setAuthModal]=useState(null);
   const auth=useAuth();
   const queryClient=useQueryClient();
   const user=auth.user ? {fullName:auth.user.full_name,accountType:auth.user.account_type,id:auth.user.id,registrationStep:auth.user.registration_step,kycStatus:auth.user.kyc_status,kycRejectionReason:auth.user.kyc_rejection_reason,avatar:auth.user.avatar,email:auth.user.email,phone:auth.user.phone} : null;
-  // Site-wide light/dark toggle (docs/UI_MODERNIZATION_ROADMAP.md Phase E) —
-  // same useTheme() hook StaffDashboard already uses internally, but lifted
-  // here so the customer-facing Navbar can offer the same control. The
-  // `dark` class on <html> is what Tailwind's `dark:` variants (and the CSS
-  // variable swap in index.css's `.dark` block) key off of; this only
-  // affects Tailwind-built surfaces (currently the footer) — the legacy
-  // inline-style `C`-palette surfaces are unaffected by design.
+  // Site-wide light/dark toggle, shown in the public Navbar. useTheme()
+  // follows the device until the user toggles, and sets `data-theme` + the
+  // `dark` class on <html>: the class drives the Tailwind/shadcn tokens, and
+  // `data-theme` drives the --ah-* variables (index.css) that only the header
+  // and the StorefrontHome wrapper read. The app root stays cream: the other
+  // public pages are inline-`C` dark-brown text and must not go dark under it.
   const {theme,toggleTheme} = useTheme();
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-  }, [theme]);
   const [legalDoc,setLegalDoc]=useState(null);
   // showBizDash/showPayments/showCredit — same "derive from the URL, wrap the
   // setter in a navigate() closure" pattern as `page`/`setPage` above, so
@@ -2837,6 +2841,23 @@ export default function AshantiHub() {
     return ()=>clearTimeout(t);
   },[eventSearchInput]);
 
+  // The marketplace home's header search and department links land on the
+  // browse pages with the choice in the URL: /business?category=<slug>&q=<text>
+  // and /events?category=<slug>. Read once per arrival into the page's own
+  // filter state (the URL is not kept in sync after that).
+  useEffect(()=>{
+    const params=new URLSearchParams(location.search);
+    const category=params.get("category")||undefined;
+    const q=params.get("q");
+    if(location.pathname==="/business"&&(category||q!==null)){
+      setFilters(f=>({...f,category}));
+      if(q!==null) setSearchInput(q);
+    }
+    if(location.pathname==="/events"&&category){
+      setEventFilters(f=>({...f,category}));
+    }
+  },[location.pathname,location.search]);
+
   const {
     data: eventsData,
     isLoading: eventsLoading,
@@ -2932,6 +2953,7 @@ export default function AshantiHub() {
   const [cookieConsent,setCookieConsent]=useState(()=>readCookieConsent()==="accepted");
   const [cookieDismissed,setCookieDismissed]=useState(()=>readCookieConsent()!==null);
   const [showMessaging,setShowMessaging]=useState(false);
+  const [showIntake,setShowIntake]=useState(false);
   const [messagingBusiness,setMessagingBusiness]=useState(null);
   const [isLoading,setIsLoading]=useState(true);
   const T = TRANSLATIONS[lang];
@@ -3117,6 +3139,7 @@ export default function AshantiHub() {
   if(page==="business-claim") return <BusinessClaimPage onSignIn={()=>{setAuthModal("login");setPage("home");}}/>;
   if(trackedLinkMatch) return <TrackedLinkPage token={trackedLinkMatch.params.token} onGo={(path)=>navigate(path,{replace:true})}/>;
   if(unsubscribeMatch) return <UnsubscribePage token={unsubscribeMatch.params.token} onHome={()=>navigate("/")}/>;
+  if(notifyStopMatch) return <NotifyStopPage token={notifyStopMatch.params.token} onHome={()=>navigate("/")}/>;
   if(isLoading) return <LoadingScreen/>;
   if(show404) return <NotFoundPage onHome={()=>setPage("home")} user={user}/>;
 
@@ -3156,11 +3179,14 @@ export default function AshantiHub() {
       <OfflineBanner/>
       {shownAuthModal&&<AuthModal key={shownAuthModal} authState={shownAuthModal} auth={auth} onClose={()=>setAuthModal(null)} onSuccess={handleAuthSuccess} onGoToMarketplace={leaveStaffSignInForMarketplace}/>}
       {showMessaging&&<MessagingCenter user={user} onClose={()=>{setShowMessaging(false);setMessagingBusiness(null);}} initialBusiness={messagingBusiness}/>}
+      {showIntake&&<ChatIntake user={user} onClose={()=>setShowIntake(false)} onContinue={()=>{setShowIntake(false);setShowMessaging(true);}}/>}
       {showNotifs&&<NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
       {showFavs&&<FavsDrawer/>}
       {showCart&&isCustomer&&<CartDrawer user={user} currency={currency} onClose={()=>setShowCart(false)} PaymentComponent={MoMoPayment}/>}
       {/* Referral feature hidden until it's built properly (see note below). */}
-      <Navbar
+      {/* On "/" the marketplace home's own StorefrontHeader replaces this bar
+          (it is passed to StorefrontHome below); every other page keeps it. */}
+      {page!=="home"&&<Navbar
         page={page} setPage={setPage}
         lang={lang} setLang={setLang}
         user={user} auth={auth}
@@ -3176,7 +3202,7 @@ export default function AshantiHub() {
         theme={theme} toggleTheme={toggleTheme}
         T={T}
         onSignOut={staffSession ? staffSignOut : undefined}
-      />
+      />}
 
       {/* A staff session can't register a business — same notice the
           "Register Your Business" CTAs show, for a direct /register visit. */}
@@ -3186,23 +3212,38 @@ export default function AshantiHub() {
         </div>
       )}
 
+      {/* "/" is the marketplace home (StorefrontHome): the opening countdown
+          until opening day, its own header, then the hero slider, flash
+          strip, deals, most visited categories and the call to action. The
+          old Hero landing, featured row, home banners and CTA band are
+          retired from home; /business stays the browse page. */}
       {page==="home"&&(
-        <>
-          <SiteBanner slot="home_hero" onNavigate={navigate}/>
-          <Hero
-            T={T}
-            user={user}
-            setAuthModal={setAuthModal}
-            setPage={setPage}
-          />
-          <FeaturedRow onOpen={(id)=>setSelectedListingId(id)}/>
-          <SiteBanner slot="home_strip" onNavigate={navigate}/>
-
-          {/* Referral program hidden for now — not yet implemented (no real
-              referral tracking/credit). Re-enable once it's built properly. */}
-
-          <HomeCtaBand/>
-        </>
+        <StorefrontHome
+          header={
+            <StorefrontHeader
+              user={user}
+              onSignOut={staffSession ? staffSignOut : () => auth.logout()}
+              setAuthModal={setAuthModal}
+              setShowAccount={setShowAccount}
+              setShowBizDash={setShowBizDash}
+              setShowPayments={setShowPayments}
+              setShowCart={setShowCart}
+              setShowFavs={setShowFavs}
+              setShowNotifs={setShowNotifs}
+              cartCount={cartItemCount}
+              wishlistCount={favourites.length}
+              notifCount={unreadNotifs}
+              theme={theme} toggleTheme={toggleTheme}
+              onNavigate={navigate}
+              onLogoClick={()=>{handleLogoClick();setPage("home");}}
+            />
+          }
+          user={user}
+          onNavigate={navigate}
+          onOpenListing={(id)=>setSelectedListingId(id)}
+          onSignIn={()=>setAuthModal("login")}
+          onSell={openRegister}
+        />
       )}
 
       {/* Business page — the marketplace browsing experience (search, category
@@ -3554,15 +3595,16 @@ export default function AshantiHub() {
         />
       )}
 
-      {/* Footer — every page except the redesigned full-viewport home landing page */}
-      {page!=="home"&&<Footer2 setPage={(id)=>id==="register"?openRegister():setPage(id)} setShowBizDash={setShowBizDash} setLegalDoc={setLegalDoc}/>}
+      {/* Footer — every public page, home included: Support, About us, Contact + legal */}
+      <Footer2 setPage={setPage} setLegalDoc={setLegalDoc} onSupport={()=>setShowIntake(true)}/>
 
-      {/* Floating chat launcher — opens MessagingCenter (real, DB-backed
-          backend.messaging support chat) as its default small bottom-right
-          widget (embedded=false). */}
+      {/* Floating chat launcher — opens the Support intake (name, email, phone,
+          issue -> a messaging.Conversation for AshantiHub Support, never a
+          business); after sending, "Open my conversation" continues in
+          MessagingCenter. */}
       <ChatLauncher
         unreadMessages={unreadMessages}
-        onOpen={() => setShowMessaging(true)}
+        onOpen={() => setShowIntake(true)}
         bottom={(cookieDismissed ? 24 : 100) + 64}
       />
 

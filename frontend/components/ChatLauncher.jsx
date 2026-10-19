@@ -2,9 +2,9 @@ import { C } from "../theme.js";
 import usePrefersReducedMotion from "../hooks/usePrefersReducedMotion.js";
 
 // ─── ChatLauncher ──────────────────────────────────────────────────────────
-// Floating chat-bubble button opening MessagingCenter (real, DB-backed
-// support chat — backend.messaging) — App.jsx passes setShowMessaging as
-// onOpen. Sits above the pre-existing floating WhatsApp button (see App.jsx
+// Floating chat-bubble button opening the Support intake (ChatIntake, which
+// hands the visitor's message to AshantiHub Support via backend.messaging) —
+// App.jsx passes the intake opener as onOpen. Sits above the pre-existing floating WhatsApp button (see App.jsx
 // `bottom` prop).
 
 export default function ChatLauncher({ unreadMessages = 0, onOpen, bottom = 24 }) {

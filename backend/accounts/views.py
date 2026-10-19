@@ -47,6 +47,7 @@ from .permissions import (
     can_lead_team,
     can_manage_staff,
 )
+from storefront import opening
 from .phones import filter_by_phone, phone_key
 from .serializers import (
     BusinessHoursSerializer,
@@ -119,6 +120,7 @@ def me(request):
         )
         data["email"] = request.user.email
         data["phone"] = request.user.phone
+    data["can_buy"] = opening.can_buy(request.user)  # a Customer before opening is False; everyone else True
     return Response(data)
 
 

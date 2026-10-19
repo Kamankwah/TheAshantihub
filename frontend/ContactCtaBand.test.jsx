@@ -1,9 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen } from '@testing-library/react'
-import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { ContactCtaBand } from './components/ui/contact-cta-band.tsx'
-import { server } from './mocks/server.js'
 
 function MockWhatsAppButton({ phone, name }) {
   const msg = encodeURIComponent(`Hello! I found ${name} on AshantiHub and I'd like to enquire.`)
@@ -53,24 +51,8 @@ describe('ContactCtaBand', () => {
     expect(link).toHaveAttribute('href', expect.stringContaining('https://wa.me/233244000000'))
   })
 
-  it('renders the contact_email from useSiteSettings as a mailto link when present', async () => {
-    server.use(
-      http.get('http://localhost:8000/api/core/site-settings/', () => HttpResponse.json({
-        contact_email: 'hello@ashantihub.com', contact_phone: '', contact_address: '',
-        facebook_url: '', instagram_url: '', linkedin_url: '', twitter_url: '',
-      })),
-    )
-    renderBand()
-
-    const link = await screen.findByText('hello@ashantihub.com')
-    expect(link).toHaveAttribute('href', 'mailto:hello@ashantihub.com')
-  })
-
-  it('renders no email chip when contact_email is empty (the default handler)', async () => {
-    renderBand({ user: { name: 'Ama' } })
-    expect(await screen.findByText('WhatsApp')).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /@/ })).not.toBeInTheDocument()
-  })
+  // Task 11: the contact_email chip was removed (no contact details on the
+  // Contact page), so its two tests were dropped.
 
   it('shows Create Free Account when signed out and calls onCreateAccount when clicked', () => {
     const onCreateAccount = vi.fn()

@@ -29,9 +29,30 @@ class Category(models.Model):
     # RateCard.max_food_shops food places and collects them last (spec 2026-10-14). Set on the "food" and "beverages"
     # categories by migration 0020; `kind` stays as it was.
     is_food = models.BooleanField(default=False)
+    # The shopper department tree (Plan M1). A product department is a top-level product category
+    # (`is_department`); its children are sub-categories, and the product categories that pre-date the tree
+    # sit under the department they were mapped to (listings migration 0023). Service, stay and event categories
+    # stay top-level. `sort_order` is the seed order within a parent.
+    parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="children")
+    sort_order = models.PositiveIntegerField(default=0)
+
+    @property
+    def is_department(self):
+        return self.parent_id is None and self.kind == self.PRODUCT
 
     def __str__(self):
         return self.label
+
+
+class CategoryVisit(models.Model):
+    """How many times shoppers opened a category on one day (Accra); feeds listings.visits.most_visited."""
+
+    category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name="visits")
+    day = models.DateField()
+    count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["category", "day"], name="uniq_category_visit_day")]
 
 
 class Zone(models.Model):
@@ -69,6 +90,13 @@ class Listing(models.Model):
     name = models.CharField(max_length=150)
     description = models.TextField()
     price_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    # A live discount (Plan M1 Deals): goes live at once, valid only below price_amount (see listings.pricing).
+    sale_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    # Flagged by marketing/operations/super admin (`deals.manage`): appears in Deals even without a discount.
+    sponsored = models.BooleanField(default=False)
+    sponsored_by = models.ForeignKey(
+        "accounts.StaffUser", on_delete=models.SET_NULL, null=True, blank=True, related_name="sponsored_listings",
+    )
     price_unit = models.CharField(max_length=30, null=True, blank=True)
     tag = models.CharField(max_length=50, null=True, blank=True)
     contact_phone = models.CharField(max_length=20)
@@ -171,6 +199,52 @@ class Listing(models.Model):
     def __str__(self):
         return self.name
 
+    _UNKNOWN = object()
+
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        instance = super().from_db(db, field_names, values)
+        # What the row held when loaded, to tell a price change from a plain save without a query.
+        instance._loaded_price = instance.__dict__.get("price_amount", cls._UNKNOWN)
+        return instance
+
+    @property
+    def effective_price(self):
+        """The one price read: the sale price while it is a real discount, otherwise `price_amount`."""
+        from . import pricing
+
+        return pricing.effective_price(self)
+
+    def save(self, *args, **kwargs):
+        from . import pricing
+
+        update_fields = kwargs.get("update_fields")
+        adding = self._state.adding
+        touches_price = update_fields is None or "price_amount" in update_fields
+        loaded = getattr(self, "_loaded_price", self._UNKNOWN)
+        changed = adding or loaded is self._UNKNOWN or pricing.dec(loaded) != pricing.dec(self.price_amount)
+        super().save(*args, **kwargs)
+        if touches_price and changed:
+            pricing.record_price(self)
+        if touches_price:
+            self._loaded_price = self.price_amount
+
+
+class ListingPriceHistory(models.Model):
+    """One regular price a listing held, from `started_at` until `ended_at` (null while it is the current one).
+    Recorded from the day Task 6 shipped; it backs the 7-day "was" price rule (listings.pricing)."""
+
+    listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="price_history")
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    started_at = models.DateTimeField(default=timezone.now)
+    ended_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["listing", "ended_at"], name="listing_price_open_idx")]
+
+    def __str__(self):
+        return f"{self.listing_id}: {self.price} from {self.started_at:%Y-%m-%d}"
+
 
 class ListingPhoto(models.Model):
     listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="photos")
@@ -210,8 +284,12 @@ class HeroMediaSubmission(models.Model):
         (REJECTED, "Rejected"),
     ]
 
+    # Null for a slide Marketing made itself (created_by_staff is set then).
     business_owner = models.ForeignKey(
-        BusinessOwner, on_delete=models.CASCADE, related_name="hero_media_submissions"
+        BusinessOwner, on_delete=models.CASCADE, related_name="hero_media_submissions", null=True, blank=True,
+    )
+    created_by_staff = models.ForeignKey(
+        "accounts.StaffUser", on_delete=models.SET_NULL, null=True, blank=True, related_name="hero_slides_created",
     )
     # The listing this hero media promotes (derived from the submitted
     # ListingPhoto's listing). Lets the public hero slider deep-link a "Buy Now"/
@@ -226,11 +304,21 @@ class HeroMediaSubmission(models.Model):
     # (jpeg/png only, sniffed via python-magic) — there is no video validator
     # in the codebase yet, so `media_type=video` submissions are accepted at
     # the model/choices level but not yet content-validated as video files.
+    # Image slides carry `media`; video slides carry an uploaded `video_file` (mp4/webm) or a
+    # normalised `youtube_url`. The views validate through listings.hero_rules.
     media = models.ImageField(
-        upload_to="hero_media/", validators=[validate_image_content_type]
+        upload_to="hero_media/", validators=[validate_image_content_type], null=True, blank=True,
     )
+    video_file = models.FileField(upload_to="hero_media/video/", null=True, blank=True)
+    youtube_url = models.URLField(blank=True)
     media_type = models.CharField(max_length=10, choices=MEDIA_TYPE_CHOICES, default=IMAGE)
+    title = models.CharField(max_length=140, blank=True)
     caption = models.CharField(max_length=140)
+    # A page on this site, never a full address (hero_rules.clean_link_path).
+    link_path = models.CharField(max_length=200, blank=True)
+    # The run dates the business picks (at most 30 days). Null on rows from before slides had dates.
+    starts_at = models.DateTimeField(null=True, blank=True)
+    ends_at = models.DateTimeField(null=True, blank=True)
 
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
     rejection_reason = models.CharField(max_length=500, null=True, blank=True)
@@ -262,7 +350,14 @@ class HeroMediaSubmission(models.Model):
         ordering = ["-submitted_at"]
 
     def __str__(self):
-        return f"Hero submission {self.id} for {self.business_owner.full_name} ({self.status})"
+        who = self.business_owner.full_name if self.business_owner_id else "AshantiHub"
+        return f"Hero submission {self.id} for {who} ({self.status})"
+
+    @property
+    def youtube_id(self):
+        from .hero_rules import youtube_id
+
+        return youtube_id(self.youtube_url) if self.youtube_url else None
 
 
 class Promotion(models.Model):

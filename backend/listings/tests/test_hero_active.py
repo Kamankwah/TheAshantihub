@@ -75,9 +75,11 @@ class HeroActiveListViewTests(TestCase):
     def test_response_includes_expected_public_fields(self):
         response = self.client.get("/api/hero/active/")
         item = response.json()[0]
-        for field in ("id", "media", "media_type", "caption", "business_name", "approved_at", "expires_at"):
+        for field in ("id", "media", "media_type", "caption", "approved_at", "expires_at"):
             self.assertIn(field, item)
-        self.assertEqual(item["business_name"], self.owner.full_name)
+        # The owner's personal full name is not public: no slider reads it, so the feed does not carry it.
+        self.assertNotIn("business_name", item)
+        self.assertNotIn(self.owner.full_name, response.content.decode())
 
     def test_most_recently_approved_first(self):
         newer = HeroMediaSubmission.objects.create(
