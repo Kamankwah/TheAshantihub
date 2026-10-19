@@ -139,6 +139,6 @@ export default function HeroSlider({ onNavigate, autoplayMs = AUTOPLAY_MS }) {
 
 const arrowStyle = {
   position: "absolute", top: "50%", transform: "translateY(-50%)", width: 44, height: 64, borderRadius: 10,
-  border: "none", background: "rgba(255,255,255,0.85)", color: C.darkBrown, fontSize: 28, lineHeight: 1,
+  border: "none", background: C.surface, color: C.ink, fontSize: 28, lineHeight: 1,
   cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
 };

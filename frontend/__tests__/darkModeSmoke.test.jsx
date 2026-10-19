@@ -6,6 +6,9 @@ import { server } from '../mocks/server.js'
 import BusinessCommandCenter from '../components/dashboard/BusinessCommandCenter.jsx'
 import { StaffDashboard } from '../App.jsx'
 import { setStoredAuth } from '../apiClient.js'
+import { fullHome } from '../mocks/storefront.js'
+import StorefrontHeader from '../components/storefront/StorefrontHeader.jsx'
+import StorefrontHome from '../components/storefront/StorefrontHome.jsx'
 
 // Per-area smoke tests: render a key page with <html data-theme="dark"> and
 // assert nothing on it is a light-only inline surface or light-only text.
@@ -142,5 +145,23 @@ describe('dark mode smoke: staff shell', () => {
     expect(usesThemeTokens()).toBe(true)
     expect(lightOnlyStyles()).toEqual([])
     setStoredAuth(null)
+  })
+})
+
+describe('dark mode smoke: home', () => {
+  it('the marketplace home renders with theme tokens and no light-only surfaces', async () => {
+    server.use(...fullHome())
+    const header = (
+      <StorefrontHeader
+        user={null} setAuthModal={vi.fn()} setShowAccount={vi.fn()} setShowBizDash={vi.fn()} setShowPayments={vi.fn()}
+        setShowCart={vi.fn()} setShowFavs={vi.fn()} setShowNotifs={vi.fn()} onSignOut={vi.fn()} cartCount={0}
+        wishlistCount={0} notifCount={0} theme="dark" toggleTheme={vi.fn()} onNavigate={vi.fn()} onLogoClick={vi.fn()}
+      />
+    )
+    withClient(<StorefrontHome header={header} user={null} onNavigate={vi.fn()} onOpenListing={vi.fn()} onSignIn={vi.fn()} onSell={vi.fn()} />)
+    await screen.findByRole('heading', { name: "Today's deals" })
+    await screen.findByRole('heading', { name: 'Most visited categories' })
+    expect(screen.getByTestId('storefront-home').getAttribute('style')).toContain('var(--ah-canvas')
+    expect(lightOnlyStyles()).toEqual([])
   })
 })

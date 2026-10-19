@@ -20,7 +20,7 @@ import { BODY_FONT } from "./storefrontType.js";
 // toggle restyles this surface; the fallbacks are the light `C` values.
 export default function StorefrontHome({ header, user, onNavigate, onOpenListing, onSignIn, onSell, children }) {
   return (
-    <div data-testid="storefront-home" style={{ background: `var(--ah-canvas, ${C.cream})`, color: `var(--ah-ink, ${C.darkBrown})`, fontFamily: BODY_FONT, overflowX: "clip" }}>
+    <div data-testid="storefront-home" style={{ background: C.canvas, color: C.ink, fontFamily: BODY_FONT, overflowX: "clip" }}>
       <CountdownTakeover />
       {header}
       <main>
