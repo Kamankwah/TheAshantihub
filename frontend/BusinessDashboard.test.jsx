@@ -498,6 +498,28 @@ describe('BusinessDashboard Listings & Prices — create a new listing', () => {
     }))
   })
 
+  it('uploads the chosen photo to the owner photo route after the listing is created', async () => {
+    mockDashboardData()
+    let photoPosts = 0
+    server.use(
+      http.post('http://localhost:8000/api/listings/mine/', async ({ request }) => HttpResponse.json({ id: 44, ...(await request.json()), status: 'draft' }, { status: 201 })),
+      // The real route is mine/<id>/photos/ — the bare /api/listings/<id>/photos/ 404s in production.
+      http.post('http://localhost:8000/api/listings/mine/44/photos/', () => { photoPosts += 1; return HttpResponse.json({ id: 1, image: 'x.jpg', order: 0 }, { status: 201 }) }),
+    )
+    renderWithQueryClient(<BusinessDashboard onExit={vi.fn()} auth={makeAuth()} user={{ fullName: 'Abena', accountType: 'business_owner', kycStatus: 'verified' }} />)
+    await openCreateForm()
+    fillCommonFields({ categoryId: 1 })
+    fireEvent.change(screen.getByPlaceholderText('What the customer gets — e.g. transport, materials, consultation'), { target: { value: 'Transport.' } })
+    fireEvent.change(screen.getByPlaceholderText('What you need from the customer before you can start'), { target: { value: 'Shoes.' } })
+    fireEvent.change(screen.getByPlaceholderText('e.g. 2 hours'), { target: { value: '3 hours' } })
+    fireEvent.change(screen.getByPlaceholderText('e.g. 3-5 business days'), { target: { value: '2 days' } })
+    const fileInput = document.querySelector('input[type="file"]')
+    fireEvent.change(fileInput, { target: { files: [new File(['x'], 'p.png', { type: 'image/png' })] } })
+    fireEvent.click(screen.getByText('✓ Create Listing'))
+    await waitFor(() => expect(photoPosts).toBe(1))
+    expect(screen.queryByText(/the photo failed to upload/)).not.toBeInTheDocument()
+  })
+
   it('surfaces the server field error when the create is rejected', async () => {
     mockDashboardData()
     server.use(
