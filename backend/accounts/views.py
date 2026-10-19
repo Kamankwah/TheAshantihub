@@ -26,7 +26,7 @@ from otp import step_up
 from staffsecurity import signin as signin_log
 from staffsecurity.models import StaffSignInRecord
 
-from . import claims, kyc, sessions, two_factor
+from . import claims, hours, kyc, sessions, two_factor
 from .authentication import issue_token
 from .emails import send_staff_invite_email, send_two_factor_changed_email, send_verification_code_email
 from .models import (
@@ -49,6 +49,8 @@ from .permissions import (
 )
 from .phones import filter_by_phone, phone_key
 from .serializers import (
+    BusinessHoursSerializer,
+    hours_payload,
     INVITE_TOKEN_LIFETIME,
     invite_state,
     BusinessOwnerKYCDetailSerializer,
@@ -1403,6 +1405,35 @@ class BusinessOwnerProfileUpdateView(generics.RetrieveUpdateAPIView):
         return self.request.user.profile
 
 
+class BusinessHoursView(APIView):
+    """GET/PUT /api/accounts/business/hours/ — the signed-in business's own weekly opening hours.
+    PUT replaces the whole week; a rule broken answers 400 {"detail": ...} in plain words."""
+
+    permission_classes = [IsBusinessOwner]
+
+    def _body(self, owner):
+        return {"days": hours_payload(owner), "has_hours": hours.has_hours(owner)}
+
+    def get(self, request):
+        return Response(self._body(request.user))
+
+    def put(self, request):
+        serializer = BusinessHoursSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({"detail": _first_message(serializer.errors)}, status=400)
+        try:
+            hours.set_week(request.user, serializer.validated_data["days"])
+        except hours.HoursError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response(self._body(request.user))
+
+
+def _first_message(errors):
+    while isinstance(errors, (dict, list)) and errors:
+        errors = next(iter(errors.values())) if isinstance(errors, dict) else errors[0]
+    return str(errors)
+
+
 class CustomerProfileUpdateView(generics.RetrieveUpdateAPIView):
     serializer_class = CustomerProfileSerializer
     permission_classes = [IsCustomer]
@@ -1489,6 +1520,11 @@ class TermsAcceptView(APIView):
         if owner.compute_registration_step() != "terms":
             return Response(
                 {"registration_step": "Business and payment information must be complete before accepting terms."},
+                status=400,
+            )
+        if not hours.has_hours(owner):
+            return Response(
+                {"code": "hours_required", "detail": "Enter your weekly opening hours before you submit."},
                 status=400,
             )
         profile = owner.profile

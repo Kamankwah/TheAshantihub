@@ -236,6 +236,15 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
               </>
             ) : (
               <>
+                {profile?.has_hours === false && (
+                  <section aria-label="Opening hours not set" style={{ ...glassCard, padding: "14px 16px", marginBottom: 16, borderLeft: `4px solid ${D.amber}`, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+                      <div style={{ fontWeight: 800, color: D.text, fontSize: "0.86rem" }}>Hours not set</div>
+                      <div style={{ color: D.textDim, fontSize: "0.78rem", marginTop: 2 }}>Add your weekly opening hours so an order placed while you are closed is held until you open.</div>
+                    </div>
+                    <button onClick={() => setShowProfile(true)} style={{ background: D.gold, color: "#1a1205", border: "none", borderRadius: 20, padding: "8px 16px", fontWeight: 800, fontSize: "0.74rem", cursor: "pointer", fontFamily: "inherit" }}>Set opening hours</button>
+                  </section>
+                )}
                 <RenewBanner subscription={subscription} onRenew={() => selectTab("subscription")} />
                 <ManagerChangesCard />
                 {tab === "analytics" && <AnalyticsPanel user={user} onNavigate={selectTab} />}
