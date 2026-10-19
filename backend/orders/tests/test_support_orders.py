@@ -65,6 +65,15 @@ class SupportOrderTests(TestCase):
         self.assertEqual([e["key"] for e in data["timeline"]], ["placed", "assigned"])
         self.assertIn("Delivery", data["delivery_note"])
         self.assertEqual(data["actions"], ["running_late", "cancelled_by_customer"])
+        self.assertIsNone(data["refundable"])                     # the ledger is off: no figure is invented
+
+    @override_settings(LEDGER_ENABLED=True)
+    def test_detail_carries_what_can_still_be_refunded(self):
+        from ledger import escrow
+
+        escrow.record_order_payment(self.order)
+        self.auth(self.support)
+        self.assertEqual(self.client.get(f"/api/orders/support/{self.order.pk}/").json()["refundable"], "420.00")
 
     def test_the_payments_banner_comes_from_the_provider_setting(self):
         self.auth(self.support)

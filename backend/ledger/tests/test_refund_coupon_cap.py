@@ -205,3 +205,39 @@ class RefundCouponCapTests(RefundBase):
         unpaid = self.order([(self.listing(self.kofi, "10.00"), 1)])
         self.assertIsNone(refunds.refundable(unpaid))
         self.assertFalse(RiderEarning.objects.exists())
+
+    def test_refundable_for_a_shop_scope_is_capped_room(self):
+        esi = self.owner("Esi")
+        order = self.door(discount="50.00", lines=[(self.listing(self.kofi, "60.00"), 1), (self.listing(esi, "40.00"), 1)])
+        self.assertEqual(refunds.refundable(order, owner_ids={self.kofi.pk}), 5000)    # min(60.00, partial 50.00)
+        self.assertEqual(refunds.refundable(order, owner_ids={esi.pk}), 4000)
+        self.assertEqual(refunds.refundable(order), 6500)
+
+    def test_scoped_refund_blocked_by_the_fee_reserve_says_so(self):
+        order = self.door(price="20.00", discount="30.00", picked_up=True)    # N 5.00, fee 15.00 kept
+        with self.assertRaises(refunds.RefundError) as caught:
+            refunds.refund_order(order, source="dispute-1", owner_ids={self.kofi.pk})
+        self.assertEqual(
+            caught.exception.message,
+            "No partial refund can be given on this order: after the coupon, what the customer paid is held back for the "
+            "delivery fee. Only a whole-order refund is possible.",
+        )
+
+    def test_items_message_names_the_fee_correctly_before_and_after_pickup(self):
+        # After a pickup `customer` never exceeds the items left, so the over-total check fires first in practice; the
+        # wording is still checked for both cases directly so a later change cannot make it promise a kept fee back.
+        held = refunds.Left(customer=7000, delivery=1000, subsidy=0, processing=0, partial=6000, shortfall=0)
+        kept = refunds.Left(customer=7000, delivery=0, subsidy=0, processing=0, partial=6000, shortfall=0)
+        with self.assertRaises(refunds.RefundError) as before:
+            refunds._partial_limits(6500, held, 6000, False)
+        self.assertEqual(
+            before.exception.message,
+            "The items left are worth GH₵ 60.00. The delivery fee comes back only with the whole order: GH₵ 70.00.",
+        )
+        with self.assertRaises(refunds.RefundError) as after:
+            refunds._partial_limits(6500, kept, 6000, False)
+        self.assertEqual(
+            after.exception.message,
+            "The items left are worth GH₵ 60.00. The delivery fee is not refunded (it is kept for the rider or there is "
+            "none): a whole-order refund gives GH₵ 70.00.",
+        )

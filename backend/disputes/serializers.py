@@ -39,14 +39,16 @@ class DisputeSerializer(serializers.ModelSerializer):
         return obj.order.status if obj.order_id else None
 
     def get_order_refundable_amount(self, obj):
-        """What can still be refunded to the customer (ledger.refunds.refundable: what they paid net of the coupon, less a
-        delivery fee kept for the rider, less earlier refunds), or None while the ledger is off or without a ledger order."""
+        """What can still be refunded to the customer for this case (ledger.refunds.refundable: what they paid net of the
+        coupon, less a delivery fee kept for the rider, less earlier refunds; for a skipped-stop case, the room on that
+        shop's lines capped the same way, as DisputeResolveView refunds it), or None while the ledger is off or without a
+        ledger order."""
         if not obj.order_id:
             return None
         from ledger.money import from_pesewas
-        from ledger.refunds import refundable
+        from ledger.refunds import refundable, scope_for_dispute
 
-        amount = refundable(obj.order)
+        amount = refundable(obj.order, owner_ids=scope_for_dispute(obj))   # a skipped-stop case refunds only its shops
         return str(from_pesewas(amount)) if amount is not None else None
 
 

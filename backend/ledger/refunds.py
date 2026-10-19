@@ -115,12 +115,25 @@ def left(order, *, kept=None):
     )
 
 
-def refundable(order):
-    """What can still be refunded to the customer on this order, in pesewas: what a whole refund would give now. None while
-    the ledger is off or for an order whose payment was never recorded in it. An unlocked read, for display only."""
+def refundable(order, owner_ids=None):
+    """What can still be refunded to the customer on this order, in pesewas: what a whole refund would give now, or with
+    `owner_ids` (a shop-scoped case: scope_for_dispute) what a scoped refund with no amount would give, the room left on
+    those shops' lines capped by `Left.partial`. None while the ledger is off or for an order whose payment was never
+    recorded in it. An unlocked read, for display only."""
     if not escrow.enabled() or not Journal.objects.filter(key=escrow.pay_key(order)).exists():
         return None
-    return left(order).customer
+    remaining = left(order)
+    if owner_ids is None:
+        return remaining.customer
+    return min(_items_room(order, owner_ids), remaining.partial)
+
+
+def _items_room(order, owner_ids):
+    """The item money not yet refunded on the order's lines (those vendors' lines only when `owner_ids` is given)."""
+    snaps = OrderFeeSnapshot.objects.filter(order=order, reversed_at__isnull=True)
+    if owner_ids is not None:
+        snaps = snaps.filter(business_owner_id__in=owner_ids)
+    return sum(s.base_pesewas - s.refunded_base_pesewas for s in snaps)
 
 
 def _partial_limits(customer, remaining, items_room, scoped):
@@ -131,9 +144,12 @@ def _partial_limits(customer, remaining, items_room, scoped):
     if scoped and customer > items_room:
         raise RefundError(f"Only GH₵ {from_pesewas(items_room)} of those items can still be refunded.")
     if not scoped and customer > items_room:
+        fee = (
+            "The delivery fee comes back only with the whole order:" if remaining.delivery
+            else "The delivery fee is not refunded (it is kept for the rider or there is none): a whole-order refund gives"
+        )
         raise RefundError(
-            f"The items left are worth GH₵ {from_pesewas(items_room)}. The delivery fee comes back only with the "
-            f"whole order: GH₵ {from_pesewas(remaining.customer)}."
+            f"The items left are worth GH₵ {from_pesewas(items_room)}. {fee} GH₵ {from_pesewas(remaining.customer)}."
         )
     if customer > remaining.partial:
         raise RefundError(
@@ -228,6 +244,11 @@ def refund_order(order, amount_pesewas=None, *, source, by=None, owner_ids=None,
             # (the vendor debit equals the customer credit; the unrefunded coupon share returns with the whole refund).
             customer = min(items_room, remaining.partial) if amount_pesewas is None else amount_pesewas
             _partial_limits(customer, remaining, items_room, owner_ids is not None)
+            if customer <= 0 and items_room > 0 and remaining.partial <= 0:
+                raise RefundError(
+                    "No partial refund can be given on this order: after the coupon, what the customer paid is held back "
+                    "for the delivery fee. Only a whole-order refund is possible."
+                )
             if customer <= 0:
                 raise RefundError("Nothing is left to refund on those items.")
             delivery, subsidy, shortfall, shares = 0, 0, 0, allocate(customer, rooms)
@@ -398,8 +419,5 @@ def check(order, amount_pesewas, *, owner_ids=None):
     remaining = left(order)
     if owner_ids is None and amount_pesewas == remaining.customer:
         return                                              # a whole refund: refund_order gives it
-    snaps = OrderFeeSnapshot.objects.filter(order=order, reversed_at__isnull=True)
-    if owner_ids is not None:
-        snaps = snaps.filter(business_owner_id__in=owner_ids)
-    items_room = sum(s.base_pesewas - s.refunded_base_pesewas for s in snaps)
+    items_room = _items_room(order, owner_ids)
     _partial_limits(amount_pesewas, remaining, items_room, owner_ids is not None)
