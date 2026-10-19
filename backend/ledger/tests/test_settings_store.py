@@ -48,3 +48,38 @@ class CleanTests(SimpleTestCase):
                          ("fee_cap_pesewas", 0), ("pickup_window_hours", "abc"), ("pickup_window_hours", 1.5), ("pickup_window_hours", True)]:
             with self.assertRaises(store.SettingError, msg=f"{key}={raw!r}"):
                 store.clean(key, raw)
+
+
+class WalletRulingsSettingsTests(SimpleTestCase):
+    """Plan 7A T1: the numbers the owner left open are governed settings with a default and bounds."""
+
+    KEYS = {
+        # key: (default, minimum, maximum)
+        "wallet_topup_hold_minutes": (60, 60, 10080),
+        "vendor_low_balance_pesewas": (10_000, 0, 10**10),
+        "digest_batch_size": (200, 10, 5000),
+        "digest_time_budget_seconds": (600, 30, 3600),
+        "otp_daily_failure_cap": (20, 5, 200),
+        "service_auto_accept_hours": (48, 1, 720),
+        "stay_issue_window_hours": (24, 1, 168),
+        "event_release_delay_hours": (48, 1, 720),
+    }
+
+    def test_defaults_and_bounds(self):
+        for key, (default, low, high) in self.KEYS.items():
+            with self.subTest(key=key):
+                self.assertEqual(store.DEFINITIONS[key].default, default)
+                self.assertEqual(store.clean(key, str(low)), low)
+                self.assertEqual(store.clean(key, high), high)
+                with self.assertRaises(store.SettingError):
+                    store.clean(key, low - 1)
+                with self.assertRaises(store.SettingError):
+                    store.clean(key, high + 1)
+
+    def test_topup_hold_cannot_go_below_sixty_minutes(self):
+        with self.assertRaises(store.SettingError):
+            store.clean("wallet_topup_hold_minutes", 59)
+
+    def test_the_overdue_label_now_says_products_only(self):
+        self.assertIn("product", store.DEFINITIONS["verification_overdue_hours"].label.lower())
+        self.assertNotIn("hand-over", store.DEFINITIONS["verification_overdue_hours"].label)

@@ -147,7 +147,12 @@ def setting_diff(request):
     return [{"field": definition.label, "before": None if before is None else str(before), "after": "blank" if request.payload.get("value") in (None, "") else str(request.payload["value"])}]
 
 
-WALLET_SETTING_KEYS = ("withdrawal_per_tx_limit_pesewas", "withdrawal_daily_limit_pesewas", "payout_cooling_hours")
+WALLET_SETTING_KEYS = (
+    "withdrawal_per_tx_limit_pesewas", "withdrawal_daily_limit_pesewas", "payout_cooling_hours", "wallet_topup_hold_minutes",
+)
+# Plan 7A: bookings release on their own milestone; texts and sign-in codes never touch an order's money.
+BOOKING_SETTING_KEYS = ("service_auto_accept_hours", "stay_issue_window_hours", "event_release_delay_hours")
+TEXT_SETTING_KEYS = ("vendor_low_balance_pesewas", "digest_batch_size", "digest_time_budget_seconds")
 # Low-stock alerts (catalogue plan 6): they never touch an order or any money.
 STOCK_SETTING_KEYS = (settings_store.STOCK_COVER_DAYS, settings_store.STOCK_FALLBACK_UNITS, settings_store.STOCK_WINDOW_DAYS)
 
@@ -163,6 +168,12 @@ def setting_consequences(request):
         return ["Applies from when it starts to the \"needs restocking\" lists and, when low-stock alerts are switched on, to "
                 "the alerts. Offers where the business set its own low-stock line keep that line. Offers already told "
                 "they are low are not told again until they are restocked."]
+    if key in BOOKING_SETTING_KEYS:
+        return ["Applies to every booking, service or ticket sale not yet released, including ones already paid."]
+    if key in TEXT_SETTING_KEYS:
+        return ["Changes which texts businesses receive and how the daily digest is sent. It moves no money."]
+    if key == "otp_daily_failure_cap":
+        return ["Applies to wrong codes counted from today. An account already over the new limit stays locked until tomorrow."]
     return ["Applies only to orders paid after it starts."]
 
 

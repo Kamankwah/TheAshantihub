@@ -204,3 +204,15 @@ class SettingsTests(GovernanceBase):
         self.assertEqual(keys["verification_overdue_hours"], 72)
         self.assertIn("fee_cap_pesewas", keys)
         self.assertIsNone(keys["fee_cap_pesewas"])
+
+    def test_get_flags_defaults_and_lists_a_scheduled_change(self):
+        now = timezone.now()
+        MoneySetting.objects.create(key="pickup_window_hours", value=36, effective_from=now - timedelta(hours=1))
+        MoneySetting.objects.create(key="pickup_window_hours", value=12, effective_from=now + timedelta(days=2))
+        self.as_staff(self.accountant)
+        rows = {row["key"]: row for row in self.client.get("/api/ledger/settings/").json()["settings"]}
+        self.assertFalse(rows["pickup_window_hours"]["is_default"])
+        self.assertEqual(rows["pickup_window_hours"]["value"], 36)
+        self.assertEqual([s["value"] for s in rows["pickup_window_hours"]["scheduled"]], [12])
+        self.assertTrue(rows["verification_overdue_hours"]["is_default"])
+        self.assertEqual(rows["verification_overdue_hours"]["scheduled"], [])
