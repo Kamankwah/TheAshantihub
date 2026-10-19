@@ -9,6 +9,7 @@ from unittest import mock
 
 from django.db import connection, transaction
 from django.test import TransactionTestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from accounts.models import BusinessOwner, Customer
@@ -68,6 +69,24 @@ class RiderRefundPayTests(RefundBase):
         self.assertEqual((refund.delivery_pesewas, refund.delivery_kept_pesewas), (0, 1500))
         self.assertEqual(self.rider_balances(), (1350, 150))
         self.assert_balanced()
+
+    def test_cancel_locks_order_then_snapshots_then_assignment(self):
+        from orders import locks
+        from orders.support import SupportOrderStatusView
+
+        order = self.picked()
+        calls = []
+        real_assignment = locks.lock_assignment
+        real_order = locks.lock_order
+        with mock.patch.object(locks, "lock_order", side_effect=lambda pk: calls.append("order") or real_order(pk)), \
+                mock.patch.object(locks, "lock_assignment", side_effect=lambda o, **k: calls.append("assignment") or real_assignment(o, **k)), \
+                CaptureQueriesContext(connection) as queries:
+            SupportOrderStatusView._cancel(order)
+        sql = [q["sql"] for q in queries if "FOR UPDATE" in q["sql"]]
+        first_snapshot = next(i for i, q in enumerate(sql) if "orderfeesnapshot" in q.lower())
+        first_assignment = next(i for i, q in enumerate(sql) if "deliveryassignment" in q.lower())
+        self.assertEqual(calls[:2], ["order", "assignment"])
+        self.assertLess(first_snapshot, first_assignment)
 
     def test_cancel_before_pickup_withdraws_assignment_and_returns_fee(self):
         from orders.support import SupportOrderStatusView

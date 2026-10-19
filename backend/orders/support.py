@@ -250,19 +250,23 @@ class SupportOrderStatusView(APIView):
         picked up is withdrawn. With the ledger on, a paid order's money goes back to
         the customer's AshantiHub wallet in full (ledger.refunds; the payment-processing
         charge stays with the provider, because the customer asked to cancel). Returns
-        that OrderRefund, or None (ledger off, not paid, or paid before the ledger was on)."""
+        that OrderRefund, or None (ledger off, not paid, or paid before the ledger was on).
+        Must run inside a transaction: it takes the order, fee-snapshot and assignment row locks."""
         from django.utils import timezone
 
         from delivery.models import DeliveryEvent
         from ledger import riders
+        from ledger.models import OrderFeeSnapshot
 
         from . import locks
 
+        # Canonical lock order (orders/locks.py): order row, fee snapshots, then the assignment; refund_order follows.
+        locked = locks.lock_order(order.pk)
+        list(OrderFeeSnapshot.objects.select_for_update(of=("self",)).filter(order=order, reversed_at__isnull=True).order_by("pk"))
         return_stock(order)
-        # The assignment goes through the canonical lock (order row first). After a pickup the row is the evidence
+        # The assignment goes through the canonical lock. After a pickup the row is the evidence
         # ledger.riders.pickup_made / delivery_earned read, so it is kept and failed, never deleted: the rider is paid
         # and the delivery fee is not returned. Before a pickup it is withdrawn, as always.
-        locked = locks.lock_order(order.pk)
         assignment = locks.lock_assignment(locked)
         if assignment is not None:
             if riders.pickup_made(order) is None:
