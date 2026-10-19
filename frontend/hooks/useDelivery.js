@@ -19,6 +19,9 @@ const get = (key, path, { poll = 0, enabled = true } = {}) => useQuery({
 export const useDeliveryLive = () => get(['delivery-live'], '/api/delivery/live/', { poll: 30000 })
 // GET /api/delivery/queue/ — waiting orders, most urgent first, with the engine's pick.
 export const useDeliveryDispatchQueue = () => get(['delivery-queue', 'list'], '/api/delivery/queue/', { poll: 30000 })
+// GET /api/delivery/scheduled/?page= — paid orders held until their vendors open, soonest first. PAGINATED
+// ({count, next, previous, results}): read `data?.results`, not `data`. Same live-update key as the server's early-send row.
+export const useDeliveryScheduled = (page = 1) => get(['delivery-scheduled', page], `/api/delivery/scheduled/${qs({ page: page > 1 ? page : '' })}`, { poll: 60000 })
 // GET /api/delivery/queue/<order>/ranking/ — score breakdown for one order.
 export const useQueueRanking = (orderId) => get(['delivery-queue', 'ranking', orderId], `/api/delivery/queue/${orderId}/ranking/`, { enabled: orderId != null })
 // GET /api/delivery/active/?filter=

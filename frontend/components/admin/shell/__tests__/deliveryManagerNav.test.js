@@ -7,7 +7,7 @@ describe('the Delivery Manager menu (canvas 2026-10-07, 20 screens)', () => {
   const groups = buildNavGroups(manager())
   it('has the canvas groups and items in order, and nothing else', () => {
     expect(groups.map((g) => [g.label, g.items.map((i) => i.label)])).toEqual([
-      ['Live', ['Dispatch queue', 'Active deliveries']],
+      ['Live', ['Dispatch queue', 'Scheduled', 'Active deliveries']],
       ['Issues', ['Disputes & returns']],
       ['Fleet', ['Riders & drivers', 'Documents', 'Vehicles', 'Invite a rider']],
       ['Planning', ['Shifts', 'Zones']],
@@ -42,6 +42,6 @@ describe('the Delivery Manager menu (canvas 2026-10-07, 20 screens)', () => {
     expect(BADGE_KEY_BY_TAB).toMatchObject({ 'dm-queue': 'delivery_queue', 'dm-cases': 'delivery_cases', 'dm-documents': 'delivery_documents', 'dm-cash': 'delivery_cash' })
     const badge = makeBadgeFor({ delivery_queue: 4, delivery_cases: 5 }, 'delivery_manager')
     expect([badge('dm-queue'), badge('dm-cases'), badge('dm-shifts')]).toEqual([4, 5, 0])
-    expect(NAV_ITEMS.filter((i) => i.id.startsWith('dm-'))).toHaveLength(14)
+    expect(NAV_ITEMS.filter((i) => i.id.startsWith('dm-'))).toHaveLength(15)
   })
 })

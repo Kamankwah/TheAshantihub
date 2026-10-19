@@ -5,6 +5,7 @@ from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import serializers
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -137,6 +138,21 @@ class SendEarlyView(ManageView):
         except services.DeliveryError as exc:
             return Response(exc.body(), status=exc.status_code)
         return Response({"order_id": order.pk, "ready_not_before": order.ready_not_before})
+
+
+class ScheduledPagination(PageNumberPagination):
+    page_size = 20
+
+
+class ScheduledView(ManageView):
+    """GET scheduled/ — paginated ({count, next, previous, results}) paid orders held until their vendors open, soonest
+    opening first. The same queryset as the queue's scheduled_count (board.scheduled_orders)."""
+
+    def get(self, request):
+        now = timezone.now()
+        paginator = ScheduledPagination()
+        page = paginator.paginate_queryset(board.scheduled_orders(), request, view=self)
+        return paginator.get_paginated_response([board.scheduled_row(o, now) for o in page])
 
 
 class SwitchView(APIView):

@@ -77,6 +77,7 @@ import { AutoAssignRulesPanel, DeliveryPricingPanel, TimeLimitsPanel } from "./p
 import ActiveDeliveries from "./panels/delivery/ActiveDeliveriesPanel.jsx";
 import DisputesCases from "./panels/delivery/DisputesCasesPanel.jsx";
 import DispatchQueuePanel from "./panels/delivery/DispatchQueuePanel.jsx";
+import ScheduledPanel from "./panels/delivery/ScheduledPanel.jsx";
 import LiveOperationsPanel from "./panels/delivery/LiveOperationsPanel.jsx";
 import MessagingPanel from "./panels/MessagingPanel.jsx";
 import PromotionsPanel from "./panels/PromotionsPanel.jsx";
@@ -510,6 +511,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "dr-documents" && <RiderDocumentsScreen />}
           {activeTab === "dr-menu" && <RiderMenuScreen auth={auth} onSelect={selectTab} onSignOut={signOut} />}
           {activeTab === "dm-queue" && <DispatchQueuePanel auth={auth} onNavigate={selectTab} />}
+          {activeTab === "dm-scheduled" && <ScheduledPanel />}
           {activeTab === "dm-active" && <ActiveDeliveries detailId={detail} onOpenDetail={(id) => (id == null ? openDetail(null) : openAt("dm-active", id))} onOpenCase={(id) => openAt("dm-cases", id)} />}
           {activeTab === "dm-cases" && <DisputesCases detailId={detail} onOpenDetail={(id) => (id == null ? openDetail(null) : openAt("dm-cases", id))} onOpenDelivery={(id) => openAt("dm-active", id)} />}
           {activeTab === "dm-riders" && <Riders detailId={detail} onOpenDetail={(id) => (id == null ? openDetail(null) : openAt("dm-riders", id))} onOpenDelivery={(id) => openAt("dm-active", id)} onNavigate={selectTab} />}

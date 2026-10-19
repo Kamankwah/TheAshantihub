@@ -83,6 +83,7 @@ urlpatterns = [
     path("queue/<int:order_id>/force-assign/", views_queue.ForceAssignView.as_view(), name="delivery-queue-force-assign"),
     path("queue/<int:order_id>/schedule/", views_queue.ScheduleView.as_view(), name="delivery-queue-schedule"),
     path("queue/<int:order_id>/map/", views_queue.QueueMapView.as_view(), name="delivery-queue-map"),
+    path("scheduled/", views_queue.ScheduledView.as_view(), name="delivery-scheduled"),
     path("orders/<int:order_id>/send-early/", views_queue.SendEarlyView.as_view(), name="delivery-send-early"),
     path("auto-assign/switch/", views_queue.SwitchView.as_view(), name="delivery-auto-assign-switch"),
     # ── Settings: rules, limits, rate card (delivery.rates) ────────────────────────────────────────
