@@ -8,4 +8,5 @@ urlpatterns = [
     path("test-accounts/", views.TestAccountsView.as_view(), name="storefront-test-accounts"),
     path("notify-me/", views.NotifyMeView.as_view(), name="storefront-notify-me"),
     path("notify-me/stop/", views.NotifyStopView.as_view(), name="storefront-notify-stop"),
+    path("search/", views.SearchView.as_view(), name="storefront-search"),
 ]

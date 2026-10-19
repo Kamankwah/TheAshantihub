@@ -8,7 +8,7 @@ from rest_framework.views import APIView
 from accounts.models import Customer
 from accounts.permissions import HasRolePermission, RequiresSudo
 
-from . import notify, opening
+from . import notify, opening, search
 from .models import TestAccount
 
 MANAGE = "opening.manage"
@@ -104,3 +104,26 @@ class NotifyStopView(APIView):
         data = request.data if isinstance(request.data, dict) else {}
         notify.opt_out(data.get("token"))
         return Response({"status": "stopped"})
+
+
+class SearchView(APIView):
+    """Public search across products, services, stays and events. ?q= (2+ characters), ?category=<slug|id> (the node and
+    its descendants), ?kind=products|services|stays|events (singular accepted; anything else is a 400), ?limit= (per
+    group, at most 20)."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_scope = "storefront_search"
+
+    def get(self, request):
+        params = request.query_params
+        raw_kind = (params.get("kind") or "").strip().lower()
+        kind = search.KINDS.get(raw_kind) if raw_kind else None
+        if raw_kind and kind is None:
+            return Response({"kind": "Use products, services, stays or events."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            limit = int(params.get("limit", search.MAX_LIMIT))
+        except (TypeError, ValueError):
+            limit = search.MAX_LIMIT
+        body = search.run(params.get("q"), department=params.get("category") or None, kind=kind, limit=limit, request=request)
+        return Response(body)
