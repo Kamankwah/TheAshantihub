@@ -281,7 +281,15 @@ def waiver_accounts(order):
     charge = WaivedFeeCharge.objects.filter(order=order, status=WaivedFeeCharge.OWED).select_related("business_owner").first()
     if charge is None or to_pesewas(charge.amount) <= 0:
         return ()
-    return (posting.account_for(Account.VENDOR_AVAILABLE, charge.business_owner), posting.account_for(Account.PLATFORM_DELIVERY_INCOME))
+    return (_waiver_funder_account(charge), posting.account_for(Account.PLATFORM_DELIVERY_INCOME))
+
+
+def _waiver_funder_account(charge):
+    """The account that pays a promo-covered fee: the promo subsidy for an AshantiHub-funded promo (funded_by copied onto
+    the charge at checkout), else the business's Available."""
+    if charge.funded_by == "platform":
+        return posting.account_for(Account.PLATFORM_PROMO_SUBSIDY)
+    return posting.account_for(Account.VENDOR_AVAILABLE, charge.business_owner)
 
 
 def waiver_return_accounts(order):
@@ -303,8 +311,8 @@ def has_pending_refund(order):
 
 
 def charge_waiver(order):
-    """A business that waived the delivery fee through its free-delivery promo pays it at release: Dr its Available
-    (which may go negative), Cr platform delivery income. Only a charge still owed is taken (a cancel or a whole refund
+    """The funder of a free-delivery promo pays the fee at release (or at the whole refund that settles it): Dr the business's
+    Available (which may go negative) or, for an AshantiHub-funded promo, the promo subsidy account; Cr platform delivery income. Only a charge still owed is taken (a cancel or a whole refund
     reverses it first); idempotent on the key. The customer never paid it, so no refund ever returns it to them."""
     from marketing.models_waivers import WaivedFeeCharge
 
@@ -317,10 +325,11 @@ def charge_waiver(order):
     return posting.post(
         key=waiver_key(order), kind="order_waiver_charge",
         lines=[
-            posting.debit(posting.account_for(Account.VENDOR_AVAILABLE, charge.business_owner), amount),
+            posting.debit(_waiver_funder_account(charge), amount),
             posting.credit(posting.account_for(Account.PLATFORM_DELIVERY_INCOME), amount),
         ],
-        reference_type="orders.order", reference_id=str(order.pk), memo=f"Free-delivery promo on order #{order.pk}, paid by the business",
+        reference_type="orders.order", reference_id=str(order.pk),
+        memo=f"Free-delivery promo on order #{order.pk}, paid by {'AshantiHub' if charge.funded_by == 'platform' else 'the business'}",
     )
 
 

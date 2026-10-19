@@ -52,14 +52,14 @@ def stop_collected(order, owner, at=None, *, status=PickupStop.COLLECTED):
     )
 
 
-def waived(order, owner, amount="15.00"):
+def waived(order, owner, amount="15.00", funded_by="business"):
     """The business covered the order's delivery fee with its free-delivery promo (charged to it at release)."""
     now = timezone.now()
     waiver = DeliveryWaiver.objects.create(
         business_owner=owner, name="Free delivery week", starts_at=now - timedelta(days=1), ends_at=now + timedelta(days=1),
-        status=DeliveryWaiver.ACTIVE,
+        status=DeliveryWaiver.ACTIVE, funded_by=funded_by,
     )
-    return WaivedFeeCharge.objects.create(order=order, waiver=waiver, business_owner=owner, amount=Decimal(amount))
+    return WaivedFeeCharge.objects.create(order=order, waiver=waiver, business_owner=owner, amount=Decimal(amount), funded_by=funded_by)
 
 
 def earning(rider_row, *, gross, at, bp=1000):

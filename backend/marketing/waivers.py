@@ -59,7 +59,9 @@ def _guard(owner):
 
 def record_charge(order, waiver, amount):
     """The business's cover of a waived fee as an auditable row tied to the order and the promo. Call in the checkout transaction."""
-    return WaivedFeeCharge.objects.create(order=order, waiver=waiver, business_owner=waiver.business_owner, amount=cents(amount))
+    return WaivedFeeCharge.objects.create(order=order, waiver=waiver, business_owner=waiver.business_owner, amount=cents(amount),
+        funded_by=waiver.funded_by,
+    )
 
 
 def reverse_for_order(order, reason):
