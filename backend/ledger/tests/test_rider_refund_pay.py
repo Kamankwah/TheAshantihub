@@ -203,6 +203,20 @@ class RiderRefundPayTests(RefundBase):
         self.assertEqual(self.balance(Account.PLATFORM_PROMO_SUBSIDY), 0)
         self.assert_balanced()
 
+    def test_partial_refund_then_whole_refund_keeps_fee_and_pays_rider_once(self):
+        esi = self.owner("Esi")
+        order = self.paid([(self.listing(self.kofi, "60.00"), 1), (self.listing(esi, "40.00"), 1)], delivery="15.00")
+        rider_helpers.delivered_by(order, self.swift, status=DeliveryAssignment.PICKED_UP)
+        rider_helpers.stop_collected(order, self.kofi)
+        refunds.refund_order(order, 3000, source="dispute-1")                        # a plain partial amount: nothing settles
+        self.assertEqual(self.rider_balances(), (0, 0))
+        refund = refunds.refund_order(order, source="dispute-2")
+        self.assertTrue(refund.whole)
+        self.assertEqual(self.wallet(), 10000)                                       # all goods back, the fee kept
+        self.assertEqual(self.rider_balances(), (1350, 150))
+        self.assertEqual(RiderEarning.objects.filter(order=order).count(), 1)
+        self.assert_balanced()
+
     def test_promo_order_all_items_refunded_by_shop_then_whole_refund_settles_and_pays_the_rider(self):
         order = self.assigned(status=DeliveryAssignment.PICKED_UP, picked_up=True, price="120.00", delivery="0.00")
         rider_helpers.waived(order, self.kofi)
@@ -228,7 +242,11 @@ class RiderRefundPayTests(RefundBase):
 @override_settings(LEDGER_ENABLED=True)
 class PickupRaceTests(TransactionTestCase):
     """A pickup confirmed while a refund starts: the refund locks the delivery assignment row before it decides whether the
-    fee was earned, so it waits for the pickup and then sees it (the rider is paid, the customer is not given the fee)."""
+    fee was earned, so it waits for the pickup and then sees it (the rider is paid, the customer is not given the fee).
+
+    Scope: this models only the assignment-row ordering. The real pickup path (delivery/views_rider.py, then
+    DeliveryAssignment.sync_order) also saves the ORDER row after locking the assignment, the opposite order to
+    refund_order (order row, then assignment row): an open deadlock item, recorded in the spec as (xciii-open)."""
 
     serialized_rollback = True
 

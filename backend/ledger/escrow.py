@@ -331,7 +331,7 @@ def charge_waiver(order):
             posting.credit(posting.account_for(Account.PLATFORM_DELIVERY_INCOME), amount),
         ],
         reference_type="orders.order", reference_id=str(order.pk),
-        memo=f"Free-delivery promo on order #{order.pk}, paid by {'AshantiHub' if charge.funded_by == 'platform' else 'the business'}",
+        memo=f"Free-delivery promo on order #{order.pk}, paid by {'AshantiHub' if charge.funded_by == DeliveryWaiver.FUNDER_PLATFORM else 'the business'}",
     )
 
 
