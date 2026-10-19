@@ -6,22 +6,22 @@ import SponsoredToggle, { isProductListing } from "../SponsoredToggle.jsx";
 import { Honest, Section, dim, inputStyle, labelStyle } from "./mkParts.jsx";
 
 // Sponsored products (deals.manage): flag a product so it shows in the storefront Deals row without a discount.
-// The current Deals row (live products with a real discount, plus sponsored ones) shows what is sponsored now;
-// search finds any other live product to flag. The server decides what counts as live.
+// "Sponsored now" reads the flag itself (GET /api/listings/sponsored/), not the Deals feed, so a flagged product
+// beyond the feed's 48 rows, or one not live (and so not in Deals), still shows its true state; `live` says which.
+// Search finds any other live product to flag. The server decides what counts as live.
 export default function SponsoredProducts() {
   const queryClient = useQueryClient();
   const [q, setQ] = useState("");
   const term = q.trim();
-  const deals = useQuery({ queryKey: ["marketing-sponsored-deals"], queryFn: () => apiFetch("/api/storefront/deals/?limit=48") });
+  const sponsored = useQuery({ queryKey: ["marketing-sponsored-list"], queryFn: () => apiFetch("/api/listings/sponsored/") });
   const found = useQuery({
     queryKey: ["marketing-sponsored-search", term],
     enabled: term.length >= 2,
     queryFn: () => apiFetch(`/api/storefront/search/?q=${encodeURIComponent(term)}&kind=products&limit=10`),
   });
-  const dealRows = Array.isArray(deals.data) ? deals.data : [];
-  const sponsoredNow = new Map(dealRows.filter((d) => d.sponsored).map((d) => [d.id, d]));
+  const sponsoredNow = new Map((Array.isArray(sponsored.data) ? sponsored.data : []).map((d) => [d.id, d]));
   const results = (found.data?.products || []).filter(isProductListing);
-  const changed = () => { deals.refetch(); queryClient.invalidateQueries({ queryKey: ["marketing-sponsored-search"] }); };
+  const changed = () => { sponsored.refetch(); queryClient.invalidateQueries({ queryKey: ["marketing-sponsored-search"] }); };
 
   return (
     <Section id="ft-sponsored" title="Sponsored products">
@@ -30,11 +30,13 @@ export default function SponsoredProducts() {
         {[...sponsoredNow.values()].map((d) => (
           <li key={d.id} style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: "0.82rem", color: D.text }}>
             <strong>{d.name}</strong><span style={dim}>{d.category_label}</span>
+            {!d.live && <span style={dim}>Not live, so not in Deals</span>}
             <SponsoredToggle id={d.id} name={d.name} sponsored onChanged={changed} />
           </li>
         ))}
       </ul>
-      {deals.data && sponsoredNow.size === 0 && <Honest>No product is sponsored right now.</Honest>}
+      {sponsored.isError && <Honest>Could not load the sponsored products.</Honest>}
+      {sponsored.data && sponsoredNow.size === 0 && <Honest>No product is sponsored right now.</Honest>}
       <label style={labelStyle}>Find a product to sponsor
         <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Product name" style={inputStyle} />
       </label>

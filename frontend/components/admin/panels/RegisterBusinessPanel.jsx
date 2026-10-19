@@ -4,6 +4,7 @@ import { apiPost, apiPostForm } from "../../../apiClient.js";
 import { useDevicePosition } from "../../../hooks/useDevicePosition.js";
 import { useProspects } from "../../../hooks/useProspects.js";
 import { useRegistrationOptions } from "../../../hooks/useRegistrationOptions.js";
+import { CategoryOptions } from "../../../lib/categoryOptions.jsx";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import LocationPicker from "../../LocationPicker.jsx";
 import { D, glassCard } from "../theme.js";
@@ -514,7 +515,7 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
             <Field label="Category" hint={categoryHint}>
               <select value={form.business_category} onChange={update("business_category")} disabled={!form.business_kind} style={input}>
                 <option value="">{form.business_kind ? "Choose a category" : "Choose the kind first"}</option>
-                {options.categories.map((c) => <option key={c.id} value={String(c.id)}>{c.label}</option>)}
+                <CategoryOptions categories={options.categories} />
               </select>
             </Field>
             <div style={actions}>

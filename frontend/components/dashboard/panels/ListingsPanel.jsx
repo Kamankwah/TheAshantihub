@@ -5,6 +5,7 @@ import { useMyListings } from "../../../hooks/useMyListings.js";
 import { useMyHeroSubmission } from "../../../hooks/useMyHeroSubmission.js";
 import HeroSlideForm from "../HeroSlideForm.jsx";
 import { useCategories } from "../../../hooks/useCategories.js";
+import { CategoryOptions } from "../../../lib/categoryOptions.jsx";
 import { useZones } from "../../../hooks/useZones.js";
 import { D, glassCard, LISTING_STATUS_META, HERO_STATUS_META } from "../theme.js";
 
@@ -456,7 +457,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
               <label style={labelStyle}>Category *</label>
               <select value={createForm.category} onChange={e => updateCreate("category", e.target.value)} style={inputStyle}>
                 <option value="">Choose a category…</option>
-                {listableCategories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.label} ({c.kind})</option>)}
+                <CategoryOptions categories={listableCategories} all={categories} />
               </select>
             </div>
             <div>

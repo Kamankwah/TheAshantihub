@@ -39,7 +39,9 @@ export const handlers = [
   http.post('http://localhost:8000/api/listings/categories/:id/visit/', () => new HttpResponse(null, { status: 204 })),
   http.get('http://localhost:8000/api/storefront/search/', () => HttpResponse.json({ products: [], services: [], stays: [], events: [] })),
   http.get('http://localhost:8000/api/storefront/deals/', () => HttpResponse.json([])),
-  http.get('http://localhost:8000/api/storefront/home/', () => HttpResponse.json({ most_visited: [] })),
+  // Marketing's Sponsored products list (deals.manage): nothing flagged.
+  http.get('http://localhost:8000/api/listings/sponsored/', () => HttpResponse.json([])),
+  http.get('http://localhost:8000/api/storefront/home/', () => HttpResponse.json({ most_visited: [], ranked: false })),
   http.get('http://localhost:8000/api/marketing/banners/', () => HttpResponse.json({ banners: [] })),
   // Marketing consent card (customer Settings, business Profile & Settings): nothing ticked, no wording.
   http.get('http://localhost:8000/api/marketing/consent/me/', () => {

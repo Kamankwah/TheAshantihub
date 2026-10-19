@@ -683,3 +683,22 @@ describe('ListingDetailPage — before the marketplace opens', () => {
     } finally { setStoredAuth(null) }
   })
 })
+
+describe('ListingDetailPage price', () => {
+  it('shows effective_price and strikes through only was_price', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json({ ...LISTING, sale_price: '400.00', effective_price: '400.00', was_price: '450.00' })))
+    const { container } = renderPage()
+    await screen.findByText('Royal Ashanti Lodge')
+    expect(screen.getByText('GHS 400.00/night')).toBeInTheDocument()
+    const struck = [...container.querySelectorAll('s')]
+    expect(struck.map((s) => s.textContent)).toEqual(['Was GHS 450.00'])
+  })
+
+  it('does not strike through price_amount when the sale has no honest was price', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json({ ...LISTING, sale_price: '400.00', effective_price: '400.00', was_price: null })))
+    const { container } = renderPage()
+    await screen.findByText('Royal Ashanti Lodge')
+    expect(screen.getByText('GHS 400.00/night')).toBeInTheDocument()
+    expect(container.querySelector('s')).toBeNull()
+  })
+})

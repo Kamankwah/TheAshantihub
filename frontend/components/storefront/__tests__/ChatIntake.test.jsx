@@ -119,3 +119,29 @@ describe('ChatIntake', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Enter a valid email address.')
   })
 })
+
+describe('ChatIntake — returning guests', () => {
+  beforeEach(() => localStorage.clear())
+
+  it('offers "View my messages" to a guest whose browser token already holds conversations', async () => {
+    let askedWith = null
+    server.use(http.get(URL, ({ request }) => {
+      askedWith = new globalThis.URL(request.url).searchParams.get('guest_token')
+      return HttpResponse.json([{ id: 3, subject: 'Chat assistant', messages: [] }])
+    }))
+    const onContinue = vi.fn()
+    renderIntake({ onContinue })
+    fireEvent.click(await screen.findByRole('button', { name: 'View my messages' }))
+    expect(onContinue).toHaveBeenCalled()
+    expect(askedWith).toBe(localStorage.getItem('ashantihub.guest_token'))
+  })
+
+  it('does not offer it to a first-time guest with no conversations', async () => {
+    let asked = false
+    server.use(http.get(URL, () => { asked = true; return HttpResponse.json([]) }))
+    renderIntake()
+    await waitFor(() => expect(asked).toBe(true))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(screen.queryByRole('button', { name: 'View my messages' })).not.toBeInTheDocument()
+  })
+})

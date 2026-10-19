@@ -76,20 +76,40 @@ describe('FeaturedListingsPanel', () => {
     server.use(
       http.get(`${API}/api/marketing/featured/grid/`, () => HttpResponse.json(grid(rows))),
       http.get(`${API}/api/marketing/featured/candidates/`, () => HttpResponse.json(candidates)),
-      http.get(`${API}/api/storefront/deals/`, () => HttpResponse.json([{ id: 7, name: 'Sponsored bag', category_label: 'Bags', sponsored: true }, { id: 8, name: 'Discounted shoe', category_label: 'Shoes', sponsored: false }])),
+      http.get(`${API}/api/listings/sponsored/`, () => HttpResponse.json([{ id: 7, name: 'Sponsored bag', category_label: 'Bags', live: true }])),
       http.get(`${API}/api/storefront/search/`, () => HttpResponse.json({ products: [{ id: 5, kind: 'product', name: 'Kente stole', category_label: 'Fashion' }], services: [{ id: 6, kind: 'service', name: 'Kente sewing', category_label: 'Tailoring' }] })),
       http.post(`${API}/api/listings/:id/sponsored/`, async ({ request, params }) => { seen.push({ id: params.id, ...(await request.json()) }); return HttpResponse.json({}) }),
     )
     renderMk(FeaturedListingsPanel, { permissions: ['deals.manage'] })
     const now = await screen.findByRole('list', { name: 'Sponsored now' })
     expect(await within(now).findByText('Sponsored bag')).toBeInTheDocument()
-    expect(within(now).queryByText('Discounted shoe')).toBeNull()
     fireEvent.change(screen.getByLabelText('Find a product to sponsor'), { target: { value: 'kente' } })
     fireEvent.click(await screen.findByRole('button', { name: 'Mark Kente stole as sponsored' }))
     await waitFor(() => expect(seen).toEqual([{ id: '5', sponsored: true }]))
     fireEvent.click(within(now).getByRole('button', { name: 'Remove sponsored from Sponsored bag' }))
     await waitFor(() => expect(seen).toContainEqual({ id: '7', sponsored: false }))
     expect(screen.queryByText('Kente sewing')).toBeNull()
+  })
+
+  it('reads "sponsored now" from the flag, not the first 48 deals: a product outside Deals shows its true state', async () => {
+    let dealsAsked = false
+    server.use(
+      http.get(`${API}/api/marketing/featured/grid/`, () => HttpResponse.json(grid(rows))),
+      http.get(`${API}/api/marketing/featured/candidates/`, () => HttpResponse.json(candidates)),
+      http.get(`${API}/api/storefront/deals/`, () => { dealsAsked = true; return HttpResponse.json([]) }),
+      // Row 60 in age and not live: never in a 48-row Deals page, still flagged.
+      http.get(`${API}/api/listings/sponsored/`, () => HttpResponse.json([{ id: 60, name: 'Old clay pot', category_label: 'Home', live: false }])),
+      http.get(`${API}/api/storefront/search/`, () => HttpResponse.json({ products: [{ id: 60, kind: 'product', name: 'Old clay pot', category_label: 'Home' }], services: [] })),
+    )
+    renderMk(FeaturedListingsPanel, { permissions: ['deals.manage'] })
+    const now = await screen.findByRole('list', { name: 'Sponsored now' })
+    expect(await within(now).findByText('Old clay pot')).toBeInTheDocument()
+    expect(within(now).getByText('Not live, so not in Deals')).toBeInTheDocument()
+    expect(screen.queryByText('No product is sponsored right now.')).toBeNull()
+    fireEvent.change(screen.getByLabelText('Find a product to sponsor'), { target: { value: 'clay' } })
+    const results = await screen.findByRole('list', { name: 'Search results' })
+    expect(await within(results).findByRole('button', { name: 'Remove sponsored from Old clay pot' })).toBeInTheDocument()
+    expect(dealsAsked).toBe(false)
   })
 
   it('shows no sponsored section without deals.manage', async () => {

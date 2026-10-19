@@ -9,6 +9,9 @@ import { BODY_FONT, SECTION, SECTION_TITLE } from "./storefrontType.js";
 // visits, in seed order until there is enough data, and only departments that
 // have something in them (the server filters). A click counts one visit (the
 // beacon) and opens the department. Hidden when the feed is empty or failing.
+// The heading says "Most visited categories" only when the feed reports
+// `ranked: true` (the order really comes from visits); on the seed-order
+// fallback it says "Shop by department", so nothing claims a ranking it lacks.
 export default function MostVisitedCategories({ onNavigate }) {
   const { data, isError } = useHomeFeed();
   const rows = !isError && Array.isArray(data?.most_visited) ? data.most_visited : [];
@@ -21,7 +24,7 @@ export default function MostVisitedCategories({ onNavigate }) {
 
   return (
     <section aria-labelledby="ah-visited-title" style={{ ...SECTION, paddingTop: 28 }}>
-      <h2 id="ah-visited-title" style={SECTION_TITLE}>Most visited categories</h2>
+      <h2 id="ah-visited-title" style={SECTION_TITLE}>{data?.ranked === true ? "Most visited categories" : "Shop by department"}</h2>
       <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12 }}>
         {rows.map((row) => (
           <li key={row.id}>

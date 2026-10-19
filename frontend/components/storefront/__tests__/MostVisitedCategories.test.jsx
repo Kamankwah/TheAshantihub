@@ -15,7 +15,7 @@ describe('MostVisitedCategories', () => {
   it('click_sends_visit_beacon_and_navigates', async () => {
     const visited = []
     server.use(
-      json(HOME_FEED_URL, { most_visited: MOST_VISITED }),
+      json(HOME_FEED_URL, { most_visited: MOST_VISITED, ranked: true }),
       http.post(VISIT_URL, ({ params }) => { visited.push(params.id); return new HttpResponse(null, { status: 204 }) }),
     )
     const onNavigate = vi.fn()
@@ -24,6 +24,13 @@ describe('MostVisitedCategories', () => {
     fireEvent.click(screen.getByRole('button', { name: /Books/ }))
     expect(onNavigate).toHaveBeenCalledWith('/business?category=books')
     await waitFor(() => expect(visited).toEqual(['20']))
+  })
+
+  it('says "Shop by department", not "most visited", on the seed-order fallback', async () => {
+    server.use(json(HOME_FEED_URL, { most_visited: MOST_VISITED, ranked: false }))
+    renderWithClient(<MostVisitedCategories onNavigate={() => {}} />)
+    expect(await screen.findByRole('heading', { name: 'Shop by department' })).toBeInTheDocument()
+    expect(screen.queryByText('Most visited categories')).not.toBeInTheDocument()
   })
 
   it('hides itself when the feed is empty', async () => {

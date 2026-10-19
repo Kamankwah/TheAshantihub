@@ -11,6 +11,7 @@ import { useListingQuestions } from "../hooks/useListingQuestions.js";
 import { useOwnerReviews } from "../hooks/useOwnerReviews.js";
 import { useSiteSettings } from "../hooks/useSiteSettings.js";
 import { useStaffGate } from "../hooks/useStaffGate.js";
+import PriceLine, { listingPriceAmounts } from "./PriceLine.jsx";
 import { useCanBuy } from "../hooks/useCanBuy.js";
 import ScrollSpyTabs from "./ScrollSpyTabs.jsx";
 import StaffGateNotice from "./StaffGateNotice.jsx";
@@ -137,11 +138,6 @@ export default function ListingDetailPage({
   const isBusinessAccount = !!user && !staffGate.isStaff && user.accountType !== "customer";
   const tabs = isService ? SERVICE_TABS : PRODUCT_TABS;
 
-  const displayPrice = () => {
-    if (item.price_amount == null) return null;
-    return `GHS ${item.price_amount}${item.price_unit || ""}`;
-  };
-
   const renderSection = (tabId) => {
     switch (tabId) {
       case "overview":
@@ -232,8 +228,9 @@ export default function ListingDetailPage({
               {item.tag}
             </span>
           )}
-          {displayPrice() && (
-            <div style={{ color: accentColor, fontWeight: 900, fontSize: "1.15rem", marginBottom: 14 }}>{displayPrice()}</div>
+          {/* effective_price (sale while live), only was_price struck through — the DealsRow rule. */}
+          {listingPriceAmounts(item).current != null && (
+            <div style={{ marginBottom: 14 }}><PriceLine item={item} tone="dark" size="1.15rem" /></div>
           )}
           <FlashPriceTag listingId={item.id} />
 

@@ -53,7 +53,7 @@ export function fullHome() {
     json(TREE_URL, TREE),
     json(HERO_URL, HERO_SLIDES),
     json(DEALS_URL, DEALS),
-    json(HOME_FEED_URL, { most_visited: MOST_VISITED }),
+    json(HOME_FEED_URL, { most_visited: MOST_VISITED, ranked: true }),
     flashBanner(),
   ]
 }

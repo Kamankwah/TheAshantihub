@@ -24,6 +24,10 @@ import { BODY_FONT, HEADING_FONT, TABULAR } from "./storefrontType.js";
 // - Wishlist stays live before opening. Cart (customers and signed-out
 //   visitors; business owners and staff have no cart) is greyed with the
 //   useCanBuy label ("Opens 6 Nov") until the shopper can buy.
+// - Phones (≤760px): the actions take the row beside the logo and wrap onto a
+//   second line rather than spill past the screen; the "Hello, <name>" line is
+//   cut with an ellipsis, and the cart's "Cart" word is dropped (the closed
+//   "Opens <D Mon>" label always stays visible).
 // Everything App owns is threaded in as props; this file never imports App.
 const MOBILE = 760;
 
@@ -110,7 +114,7 @@ export default function StorefrontHeader({
               onSignOut={onSignOut}
               triggerStyle={{ ...textButton, alignItems: "flex-start" }}
             >
-              <span style={smallLine}>Hello, {firstName || "there"}</span>
+              <span className="ah-sf-hello" style={smallLine}>Hello, {firstName || "there"}</span>
               <span className="ah-sf-label" style={boldLine}>Account ▾</span>
             </AccountMenu>
           ) : (
@@ -139,7 +143,7 @@ export default function StorefrontHeader({
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="9" cy="20" r="1.4" /><circle cx="18" cy="20" r="1.4" /><path d="M2 3h3l2.6 12.2a1.5 1.5 0 0 0 1.5 1.2h8.7a1.5 1.5 0 0 0 1.5-1.1L21 8H6" /></svg>
                 {canBuy && <span style={{ ...boldLine, color: C.gold, ...TABULAR }}>{cartCount}</span>}
               </span>
-              <span style={smallLine}>{canBuy ? "Cart" : closedLabel}</span>
+              <span className={canBuy ? "ah-sf-label" : undefined} style={smallLine}>{canBuy ? "Cart" : closedLabel}</span>
             </button>
           )}
         </div>
@@ -160,7 +164,10 @@ export default function StorefrontHeader({
       <style>{`
         .ah-sf-strip button:hover, .ah-sf-actions button:hover:not(:disabled) { box-shadow: inset 0 0 0 1px ${C.gold}88; }
         @media (max-width: ${MOBILE}px) {
-          .ah-sf-bar { grid-template-columns: minmax(0,1fr) auto !important; grid-template-areas: "logo actions" "search search" "deliver deliver" !important; padding: 8px 12px !important; }
+          .ah-sf-bar { grid-template-columns: auto minmax(0,1fr) !important; grid-template-areas: "logo actions" "search search" "deliver deliver" !important; padding: 8px 12px !important; column-gap: 8px !important; }
+          .ah-sf-actions { flex-wrap: wrap; justify-content: flex-end; gap: 2px !important; min-width: 0; }
+          .ah-sf-actions > button, .ah-sf-actions > div > button[aria-label="Account menu"] { padding-left: 6px !important; padding-right: 6px !important; }
+          .ah-sf-hello { display: block; max-width: 76px; overflow: hidden; text-overflow: ellipsis; }
           .ah-sf-deliver { max-width: none !important; }
           .ah-sf-label, .ah-sf-wordmark { display: none !important; }
         }

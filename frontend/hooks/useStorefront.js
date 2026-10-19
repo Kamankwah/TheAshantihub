@@ -42,7 +42,8 @@ export function useDeals() {
   })
 }
 
-// GET /api/storefront/home/ → {most_visited: [{id, slug, label, icon}]}.
+// GET /api/storefront/home/ → {most_visited: [{id, slug, label, icon}], ranked}
+// (`ranked` false while the list is the seed-order fallback).
 export function useHomeFeed() {
   return useQuery({
     queryKey: ['storefront-home'],

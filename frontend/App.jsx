@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCategories } from "./hooks/useCategories.js";
 import { useZones } from "./hooks/useZones.js";
 import { useListings } from "./hooks/useListings.js";
+import { useCanBuy } from "./hooks/useCanBuy.js";
 import CartTieredResults from "./components/CartTieredResults.jsx";
 import { useListing } from "./hooks/useListing.js";
 import { useEvents } from "./hooks/useEvents.js";
@@ -30,7 +31,7 @@ import { useMyTickets } from "./hooks/useMyTickets.js";
 import { useMyCustomerProfile } from "./hooks/useMyCustomerProfile.js";
 import { useSiteSettings } from "./hooks/useSiteSettings.js";
 import { apiFetch, apiPost, apiPatch, getStoredAuth } from "./apiClient.js";
-import { C, CURRENCIES } from "./theme.js";
+import { C } from "./theme.js";
 import Flag from "./components/Flag.jsx";
 import OrderTrackingMap from "./components/OrderTrackingMap.jsx";
 import DeliveryCodeBox from "./components/DeliveryCodeBox.jsx";
@@ -62,6 +63,7 @@ import UnsubscribePage from "./components/UnsubscribePage.jsx";
 import TrackedLinkPage from "./components/TrackedLinkPage.jsx";
 import CartDrawer from "./components/CartDrawer.jsx";
 import FlashPriceTag from "./components/FlashPriceTag.jsx";
+import PriceLine from "./components/PriceLine.jsx";
 import EventHeroCarousel from "./components/EventHeroCarousel.jsx";
 import EventCard, { formatEventDate } from "./components/EventCard.jsx";
 import EventDetailPage from "./components/EventDetailPage.jsx";
@@ -1029,13 +1031,6 @@ export function Card({item,accentColor,user,favourites,onFavourite,currency,onMe
   // grid, not just on the detail page.
   const cardPhoto = item.main_photo || item.photos?.[0]?.image || null;
 
-  const displayPrice = () => {
-    const amount = parseFloat(item.price_amount)||0;
-    if(currency==="GHS")return `GHS ${item.price_amount}${item.price_unit||""}`;
-    const rate = CURRENCIES[currency];
-    return `${currency} ${(amount*rate).toFixed(0)}${item.price_unit||""}`;
-  };
-
   return <>
     {showReviews&&<ReviewsModal item={item} user={user} onClose={()=>setShowReviews(false)}/>}
     <div style={{background:"rgba(255,255,255,0.04)",backdropFilter:"blur(6px)",borderRadius:16,overflow:"hidden",boxShadow:"0 4px 20px rgba(0,0,0,0.3)",border:`1.5px solid ${accentColor}55`,transition:"transform 0.2s"}}
@@ -1098,7 +1093,8 @@ export function Card({item,accentColor,user,favourites,onFavourite,currency,onMe
         <div style={{color:"rgba(255,255,255,0.75)",fontSize:"0.75rem",marginBottom:10,lineHeight:1.4}}>{item.description}</div>
         <FlashPriceTag listingId={item.id}/>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-          <span style={{fontWeight:800,color:accentColor,fontSize:"0.8rem"}}>{displayPrice()}</span>
+          {/* effective_price (sale while live), only was_price struck through — the DealsRow rule. */}
+          <PriceLine item={item} currency={currency} tone="dark" size="0.8rem"/>
           <div style={{display:"flex",gap:5}}>
             {/* Businesses can no longer be contacted directly (fraud-prevention —
                 docs/UI_MODERNIZATION_ROADMAP.md Phase F): this opens MessagingCenter
@@ -2029,10 +2025,13 @@ const SR_STATUS_META = {
   cancelled: { label: "Cancelled", color: D.textFaint },
 };
 
-function ServiceRequestsTab({ PaymentComponent }) {
+export function ServiceRequestsTab({ PaymentComponent }) {
   const { data, isLoading, isError, refetch } = useMyServiceRequests();
   const [payingFor, setPayingFor] = useState(null); // the request being paid
   const [payError, setPayError] = useState(null);
+  // Before the marketplace opens, Pay is greyed with "Opens <D Mon>" unless
+  // this account may buy (ruling R35, same rule as every buy surface).
+  const { canBuy, label: opensLabel } = useCanBuy();
 
   const requests = data || [];
   if (isLoading) return <div style={{color:D.textDim,fontSize:"0.8rem"}}>Loading…</div>;
@@ -2042,7 +2041,12 @@ function ServiceRequestsTab({ PaymentComponent }) {
   const onPaid = async () => {
     setPayError(null);
     try { await apiPost(`/api/services/requests/${payingFor.id}/pay/`, {}); setPayingFor(null); refetch(); }
-    catch { setPayError("Payment went through but we couldn't start the job — please contact support."); }
+    catch (err) {
+      // The server refuses a shopper's buy before opening (403 code not_open) —
+      // show its own message rather than claiming the payment went through.
+      if (err?.status===403 && err?.body?.code==="not_open") { setPayingFor(null); setPayError(err.body.detail || "The marketplace is not open yet."); }
+      else setPayError("Payment went through but we couldn't start the job — please contact support.");
+    }
   };
 
   return <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -2064,7 +2068,7 @@ function ServiceRequestsTab({ PaymentComponent }) {
           <ServiceAcceptBar request={sr} onChanged={refetch} />
           {sr.status==="accepted" && <BookingTermsNote kind="service" tone="light" />}
           {sr.status==="accepted" && (
-            <button onClick={()=>setPayingFor(sr)} style={{marginTop:10,background:D.green,color:"#fff",border:"none",borderRadius:20,padding:"8px 16px",fontWeight:800,fontSize:"0.76rem",cursor:"pointer",fontFamily:"inherit"}}>💳 Pay GHS {sr.agreed_price} to start</button>
+            <button onClick={()=>{ if (canBuy) setPayingFor(sr); }} disabled={!canBuy} aria-disabled={!canBuy} style={{marginTop:10,background:canBuy?D.green:D.divider,color:canBuy?"#fff":D.textDim,border:"none",borderRadius:20,padding:"8px 16px",fontWeight:800,fontSize:"0.76rem",cursor:canBuy?"pointer":"not-allowed",fontFamily:"inherit"}}>{canBuy ? <>💳 Pay GHS {sr.agreed_price} to start</> : opensLabel}</button>
           )}
         </div>
       );

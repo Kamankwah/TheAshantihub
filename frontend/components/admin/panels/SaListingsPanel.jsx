@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { apiPost } from "../../../apiClient.js";
 import { useListingForReview, useListingHistory, useSaListingCounts, useSaListings } from "../../../hooks/useMarketplace.js";
 import { useCategories } from "../../../hooks/useCategories.js";
+import { categoryPathLabel } from "../../../lib/categoryOptions.jsx";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D } from "../theme.js";
 import { button, callout, dim, field } from "./panelStyles.js";
@@ -169,7 +170,7 @@ export default function SaListingsPanel({ auth, onOpenBusiness }) {
     { key: "type", label: "Type", options: [["", "All types"], ["product", "Product"], ["service", "Service"], ["booking", "Booking"]] },
     { key: "status", label: "Status", options: [["", "Any"], ["live", "Live"], ["waiting", "Waiting"], ["hidden", "Hidden"], ["rejected", "Rejected"], ["draft", "Draft"]] },
     { key: "added_by", label: "Added by", options: [["", "Anyone"], ["owner", "Owner"], ["scout", "Scout for the owner"]] },
-    { key: "category", label: "Category", options: [["", "All"], ...(Array.isArray(categories) ? categories : []).map((c) => [String(c.id), c.label])] },
+    { key: "category", label: "Category", options: [["", "All"], ...(Array.isArray(categories) ? categories : []).map((c) => [String(c.id), categoryPathLabel(c, categories)])] },
   ];
   const monthName = new Date().toLocaleDateString("en-GH", { month: "long" });
   const tiles = counts ? [

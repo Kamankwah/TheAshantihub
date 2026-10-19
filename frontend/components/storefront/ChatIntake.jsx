@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { C } from "../../theme.js";
 import { useChatIntake } from "../../hooks/useChatIntake.js";
+import { getGuestToken, useMyConversations } from "../../hooks/useMyConversations.js";
 import { BODY_FONT, HEADING_FONT } from "./storefrontType.js";
 
 // Chat intake: name -> email -> phone -> welcome + issue -> confirmation. It
@@ -28,6 +29,11 @@ const ghost = { ...btn, background: "transparent", border: `1px solid ${C.gold}`
 
 export default function ChatIntake({ user, onClose, onContinue, bottom = 92 }) {
   const signedIn = Boolean(user) && user.accountType !== "staff";
+  // A returning guest (this browser's guest token already holds conversations,
+  // read or unread) can open their thread too, not only a signed-in account.
+  // Same query key as App's badge call and MessagingCenter, so it is shared.
+  const { data: guestConversations } = useMyConversations(!user, user ? null : getGuestToken());
+  const returningGuest = !user && Array.isArray(guestConversations) && guestConversations.length > 0;
   const queryClient = useQueryClient();
   const { submit, error: serverError, busy } = useChatIntake({ signedIn });
   const [step, setStep] = useState("name");
@@ -121,7 +127,7 @@ export default function ChatIntake({ user, onClose, onContinue, bottom = 92 }) {
             </div>
           </form>
         )}
-        {!done && onContinue && signedIn && (
+        {!done && onContinue && (signedIn || returningGuest) && (
           <button type="button" onClick={onContinue} style={{ ...ghost, border: "none", marginTop: 8, padding: "6px 0", minHeight: 44 }}>View my messages</button>
         )}
       </div>
