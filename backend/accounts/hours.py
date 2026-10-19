@@ -17,7 +17,11 @@ DEFAULT_CLOSES = datetime.time(20, 0)
 
 
 class HoursError(ValueError):
-    pass
+    """A broken hours rule. `weekday` (0 = Monday) names the failing day when one day is at fault."""
+
+    def __init__(self, message, weekday=None):
+        super().__init__(message)
+        self.weekday = weekday
 
 
 def _to_time(value, label):
@@ -42,9 +46,12 @@ def validate_week(days):
         if day.get("closed"):
             seen[weekday] = (True, None, None)
             continue
-        opens, closes = _to_time(day.get("opens"), "Opening time"), _to_time(day.get("closes"), "Closing time")
+        try:
+            opens, closes = _to_time(day.get("opens"), "Opening time"), _to_time(day.get("closes"), "Closing time")
+        except HoursError as exc:
+            raise HoursError(str(exc), weekday=weekday)
         if opens >= closes:
-            raise HoursError("Opening time must be before closing time on the same day.")
+            raise HoursError("Opening time must be before closing time on the same day.", weekday=weekday)
         seen[weekday] = (False, opens, closes)
     if len(seen) != 7:
         raise HoursError("Hours are needed for all seven days of the week.")

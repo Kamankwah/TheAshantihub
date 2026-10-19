@@ -79,6 +79,7 @@ function BusinessCard({ business: b, onOpen }) {
         <Fact label="Last contact" value={lastContactText(b.last_contact)} />
       </div>
       {b.needs_claim && <span style={{ ...chip(D.amber), alignSelf: "flex-start" }}>🔒 Owner hasn't set a login yet</span>}
+      {b.has_hours === false && <span style={{ ...chip(D.amber), alignSelf: "flex-start" }}>Hours not set</span>}
       <button type="button" aria-label={`Open ${b.business_name}`} onClick={(e) => { e.stopPropagation(); onOpen(b.id); }} style={{ ...button(D.panelBg, D.text), alignSelf: "flex-start" }}>Open ›</button>
     </article>
   );
@@ -88,8 +89,9 @@ function MyPortfolio({ onOpen }) {
   const [health, setHealth] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [noHours, setNoHours] = useState(false);
   const q = useDebounced(search.trim());
-  const { data, isLoading, isError } = usePortfolio({ scope: "mine", health, q, page });
+  const { data, isLoading, isError } = usePortfolio({ scope: "mine", health, q, page, flag: noHours ? "no_hours" : "" });
   const rows = data?.results || [];
   const summary = data?.summary;
 
@@ -110,6 +112,7 @@ function MyPortfolio({ onOpen }) {
               {summary ? `${label} · ${summary[key] ?? 0}` : label}
             </button>
           ))}
+          <button type="button" aria-pressed={noHours} onClick={() => { setNoHours((v) => !v); setPage(1); }} style={pill(noHours)}>Hours not set</button>
         </div>
         <div style={dim}>At risk and needs attention first.</div>
       </div>
@@ -117,7 +120,7 @@ function MyPortfolio({ onOpen }) {
       {isError && <div role="alert" style={errorStyle}>Could not load your businesses.</div>}
       {!isLoading && !isError && rows.length === 0 && (
         <div style={{ ...card, ...dim }}>
-          {q || health ? "No business matches." : "You don't manage any businesses yet. Businesses you register appear here as soon as you submit them."}
+          {q || health || noHours ? "No business matches." : "You don't manage any businesses yet. Businesses you register appear here as soon as you submit them."}
         </div>
       )}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(300px, 100%), 1fr))", gap: 12 }}>
@@ -143,7 +146,7 @@ const td = { padding: "8px", verticalAlign: "top", borderTop: `1px solid ${D.div
 function AllPortfolios({ auth, onOpen, initialScout = null }) {
   const queryClient = useQueryClient();
   const [scope, setScope] = useState(initialScout != null ? "all" : defaultScope(auth));
-  const [filters, setFilters] = useState({ scout: initialScout != null ? String(initialScout) : "", health: "", subscription: "", zone: "", unassigned: false });
+  const [filters, setFilters] = useState({ scout: initialScout != null ? String(initialScout) : "", health: "", subscription: "", zone: "", unassigned: false, flag: "" });
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState([]); // [{id, business_name}]
@@ -207,6 +210,9 @@ function AllPortfolios({ auth, onOpen, initialScout = null }) {
           <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: "0.78rem", color: D.text, fontWeight: 700 }}>
             <input type="checkbox" checked={filters.unassigned} onChange={setFilter("unassigned")} />No account manager only
           </label>
+          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: "0.78rem", color: D.text, fontWeight: 700 }}>
+            <input type="checkbox" checked={filters.flag === "no_hours"} onChange={(e) => { setFilters((f) => ({ ...f, flag: e.target.checked ? "no_hours" : "" })); setPage(1); }} />Hours not set only
+          </label>
         </div>
       </div>
 
@@ -245,6 +251,7 @@ function AllPortfolios({ auth, onOpen, initialScout = null }) {
                       <HealthChip rating={b.health?.rating} />
                       <div style={dim}>{b.health?.reasons?.[0] || ""}</div>
                       {flagCount(b.open_fraud_flags) > 0 && <span style={chip(D.red)}>🚩 Fraud case open</span>}
+                      {b.has_hours === false && <span style={chip(D.amber)}>Hours not set</span>}
                     </td>
                     <td style={td}>{subscriptionText(b.subscription, b.kyc_status)}</td>
                     <td style={td}>{listingsLiveText(b)}</td>
