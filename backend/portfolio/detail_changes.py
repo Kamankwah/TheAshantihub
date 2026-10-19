@@ -602,9 +602,10 @@ def _verifiers(change):
 
 def approval_apply(approval):
     """Write the new value, restart the payout cooling period, close the request as approved, show the owner the change
-    (an AppliedChange row and a notice), tell the old phone or email, and record business.detail_changed last."""
-    from otp import notices
-    from otp.models import EMAIL, SMS
+    (an AppliedChange row and a notice), end the trusted devices and tell the old phone or email (sign-in contacts
+    only), and record business.detail_changed last."""
+    from otp import devices, notices
+    from otp.models import EMAIL, SMS, TrustedDevice
     from wallets.holder_details import restart_cooling
 
     from .models import AppliedChange
@@ -639,6 +640,11 @@ def approval_apply(approval):
         icon="🪪",
     )
     channel = {"login_phone": SMS, "email": EMAIL}.get(field)
+    devices_ended = 0
+    if channel:
+        # A new sign-in contact ends every trusted device, as a staff-assisted recovery does (otp.approval_kinds): the
+        # next sign-in asks for a code on the new contact. Owner JWTs are stateless and cannot be revoked here.
+        devices_ended = devices.revoke_all(owner, TrustedDevice.STAFF_RECOVERY, now=now)
     if channel and before:
         # After commit, so the old contact never hears of a change that rolled back; the raw value stays in this
         # closure and the delivery path only.
@@ -649,7 +655,7 @@ def approval_apply(approval):
         summary=f"Changed the business's {label} after an on-site check and two people's approval",
         before={field: shown(field, before)},
         after={field: shown(field, new_value), "request_id": change.pk, "approval_id": approval.pk,
-               "proposed_by": approval.maker_id, "destinations_cooling": cooling},
+               "proposed_by": approval.maker_id, "destinations_cooling": cooling, "trusted_devices_ended": devices_ended},
     )
 
 

@@ -332,3 +332,39 @@ class TaskSevenMinorTests(DetailChangeApprovalBase):
         done = Task.objects.get(owner=self.other_scout)
         self.assertEqual(done.status, Task.DONE)
         self.assertIsNotNone(done.done_at)
+
+
+class TrustedDeviceTests(DetailChangeApprovalBase):
+    def _device(self):
+        from otp import devices
+        from otp.models import TrustedDevice
+
+        devices.trust(self.owner, None)
+        return TrustedDevice.objects.get(account_type="business_owner", account_id=self.owner.pk)
+
+    def test_sign_in_contact_change_ends_trusted_devices(self):
+        from otp.models import TrustedDevice
+
+        for field, value in (("login_phone", NEW_PHONE), ("email", "abena.new@example.com")):
+            with self.subTest(field=field):
+                TrustedDevice.objects.all().delete()
+                Request.objects.filter(business_owner=self.owner).delete()
+                self.change = Request.objects.create(
+                    business_owner=self.owner, field=field, new_value=value, reason="New contact for the shop.",
+                )
+                device = self._device()
+                scout = self.scout if field == "login_phone" else self.other_scout
+                self.assertEqual(self.approve(self.verified(scout=scout)).status_code, 200)
+                device.refresh_from_db()
+                self.assertIsNotNone(device.revoked_at)
+                self.assertEqual(device.revoked_reason, TrustedDevice.STAFF_RECOVERY)
+                event = ActivityEvent.objects.filter(verb="business.detail_changed").latest("id")
+                self.assertEqual(event.after["trusted_devices_ended"], 1)
+
+    def test_name_change_keeps_trusted_devices(self):
+        self.change.field, self.change.new_value = "full_name", "Abena Serwaa Owusu"
+        self.change.save(update_fields=["field", "new_value"])
+        device = self._device()
+        self.assertEqual(self.approve(self.verified()).status_code, 200)
+        device.refresh_from_db()
+        self.assertIsNone(device.revoked_at)
