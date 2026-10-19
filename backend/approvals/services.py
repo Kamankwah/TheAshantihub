@@ -76,6 +76,11 @@ class UnknownKind(ApprovalError):
     pass
 
 
+def logged_payload(kind, approval):
+    """The payload as the append-only activity log and the inbox show it: the kind's masked copy when it has one."""
+    return approval.payload if kind.public_payload is None else _normalise(kind.public_payload(approval))
+
+
 def _normalise(value):
     return json.loads(json.dumps(value, default=str, sort_keys=True))
 
@@ -333,14 +338,14 @@ def _submit(maker, kind, now, title, payload, target_type, target_id, target_lab
                     body=approval.target_label, link=_link(approval), icon="🗳️",
                 )
             record(maker, "approval.applied_directly", target=approval,
-                   after={"kind": kind.key, "payload": approval.payload}, request=request)
+                   after={"kind": kind.key, "payload": logged_payload(kind, approval)}, request=request)
             return approval
         stage, staff = chain_for(approval)[0]
         _enter_stage(approval, stage, staff, now)
         approval.save()
         _notify_approvers(approval, "approval_waiting", f"Waiting for you: {approval.title}")
         record(maker, "approval.requested", target=approval,
-               after={"kind": kind.key, "payload": approval.payload}, request=request)
+               after={"kind": kind.key, "payload": logged_payload(kind, approval)}, request=request)
     return approval
 
 

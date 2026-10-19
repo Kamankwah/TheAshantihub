@@ -10,6 +10,8 @@ class WalletsConfig(AppConfig):
         from approvals import registry
 
         from .approval_kinds import WITHDRAWAL_RESOLUTION
+        from .holder_details import HOLDER_DETAILS_EDIT
 
-        if registry.get_kind(WITHDRAWAL_RESOLUTION.key) is None:
-            registry.register(WITHDRAWAL_RESOLUTION)
+        for kind in (WITHDRAWAL_RESOLUTION, HOLDER_DETAILS_EDIT):
+            if registry.get_kind(kind.key) is None:
+                registry.register(kind)
