@@ -216,3 +216,35 @@ class SettingsTests(GovernanceBase):
         self.assertEqual([s["value"] for s in rows["pickup_window_hours"]["scheduled"]], [12])
         self.assertTrue(rows["verification_overdue_hours"]["is_default"])
         self.assertEqual(rows["verification_overdue_hours"]["scheduled"], [])
+
+
+class RiderSettingGovernanceTests(GovernanceBase):
+    def test_rider_setting_consequence_text(self):
+        from types import SimpleNamespace
+
+        from ledger import approval_kinds
+
+        said = approval_kinds.setting_consequences(SimpleNamespace(payload={"key": "rider_withdrawals_per_day"}))
+        self.assertEqual(said, ["Applies to riders' withdrawals asked for after it starts. Withdrawals already made today still count."])
+        self.assertEqual(approval_kinds.RIDER_SETTING_KEYS, ("rider_withdrawals_per_day",))
+        self.assertEqual(
+            approval_kinds.setting_consequences(SimpleNamespace(payload={"key": "rider_commission_bp"})),
+            ["Applies only to orders paid after it starts."],
+        )
+
+    def test_rider_setting_needs_super_admin_and_sudo(self):
+        self.as_staff(self.accountant)
+        queued = self.client.post("/api/ledger/settings/", {"key": "rider_withdrawals_per_day", "value": 5}, format="json")
+        self.assertEqual(queued.status_code, 201, queued.content)
+        self.assertEqual(settings_store.current("rider_withdrawals_per_day"), 3)                 # waits for a Super Admin
+        approval_id = queued.json()["approval_id"]
+        self.as_staff(self.accountant, sudo=True)
+        self.assertEqual(self.client.post(f"/api/approvals/{approval_id}/approve/", {}, format="json").status_code, 403)  # not theirs to decide
+        self.as_staff(self.boss)                                                                  # a Super Admin without sudo
+        refused = self.client.post(f"/api/approvals/{approval_id}/approve/", {}, format="json")
+        self.assertEqual((refused.status_code, refused.json().get("code")), (403, "sudo_required"))
+        self.assertEqual(settings_store.current("rider_withdrawals_per_day"), 3)
+        self.as_staff(self.boss, sudo=True)
+        done = self.client.post(f"/api/approvals/{approval_id}/approve/", {}, format="json")
+        self.assertEqual(done.status_code, 200, done.content)
+        self.assertEqual(settings_store.current("rider_withdrawals_per_day"), 5)

@@ -5,7 +5,7 @@ released: Support's positive verification call (ledger.verification.record -> es
 doorstep and never on a timer. In the release's own transaction, after the release journal and the business's
 free-delivery promo charge, one journal `order-rider-<order>` (kind rider_earning) moves what those two credited to
 platform delivery income on to the rider:
-    Dr platform delivery income   gross (the fee the customer paid, plus a fee the business covered with its promo)
+    Dr platform delivery income   gross (the fee the customer paid, plus a fee the promo's funder covered)
     Cr rider balance              net = gross - reserve (withdrawable at once)
     Cr rider reserve              reserve = gross x rate, half up (AshantiHub's commission, held until the end of the day)
 The rate is `rider_commission_bp` as it stood when the order was paid (spec §3.3), kept on the RiderEarning row, so the
@@ -13,27 +13,27 @@ end-of-day posting needs no true-up. AshantiHub's own riders, store pickups, fai
 the rider became third-party pay no rider: the fee stays platform delivery income. A rider's accounts are held by their
 staff account (otp.identity.ref gives ("staff", pk)), so the Stage 3b withdrawal engine pays them out.
 
-A whole refund before release pays a rider who had already picked the goods up (credit_on_refund, journal
-`rider-refund-<order>`): the net of the same split of the delivery fee, out of the order's Delivery payable, recorded as a
-RiderEarning with no reserve and commission_bp 0; the commission part goes back to the customer. A rider only assigned,
-or an AshantiHub rider, is paid nothing.
+Once the rider has PICKED UP at least one stop of a door-to-door delivery (any collected PickupStop, else the assignment's
+`picked_up_at`; pickup_made), the delivery fee belongs to the rider whether or not the delivery completed, and no refund of
+goods ever returns it (delivery_kept). A whole refund before release settles it there and then, since the release will never
+run (escrow.settle_delivery: the held fee moves to platform delivery income, then credit_delivery pays a third-party rider
+exactly as a release does). A rider only assigned, with nothing collected, is paid nothing and the customer gets the fee
+back; an AshantiHub rider's fee stays platform delivery income.
 
 Lock order (spec W7, extended): the order row, its fee snapshots, the rider row (release), the delivery assignment row then
-the rider row (a refund before release) or the earning row (a refund after release),
+the rider row (a whole refund before release: rider_for_settle),
 then every ledger account in one sorted pass (posting.lock). The end-of-day job locks the rider row first, then the day's
 earning rows, then the accounts: its commit checks the foreign key to the rider, which waits for a FOR UPDATE holder, so
-taking the accounts first would cycle with a release or a switch back (rider row, then reserve). A refund locks the
-earning row and so must never insert a row with a foreign key to the rider or to their StaffUser (a notice keyed on the
-staff account, say) afterwards inside that transaction: the rider's notices are sent on commit, and every other
+taking the accounts first would cycle with a release or a switch back (rider row, then reserve). Every
 select_for_update that reaches the rider's rows takes `of=("self",)` so the staff row is not locked with it."""
 import logging
 
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Min, Sum
 from django.utils import timezone
 
 from delivery import employment
-from delivery.models import Rider, RiderCommissionPosting, RiderEarning
+from delivery.models import PickupStop, Rider, RiderCommissionPosting, RiderEarning
 from orders.models import DeliveryAssignment, Order
 
 from . import posting, settings_store
@@ -84,7 +84,7 @@ def third_party_rider(order, *, lock=False):
 
 def rider_for_release(order):
     """The third-party rider to pay at this order's release, their row locked, or None. Only when there is something to
-    pay them: a delivery fee still held in the order's Delivery payable, or a free-delivery promo charge the business owes
+    pay them: a delivery fee still held in the order's Delivery payable, or a free-delivery promo charge its funder owes
     (so an order with neither opens no rider account). One exception: a release that then finds nothing at all to post
     (an owed promo charge on an order with no item and no fee left to release) returns before posting, having opened the
     rider's two accounts empty; they hold nothing and nothing reads them as money. Call inside the release's transaction, after the order row and its fee
@@ -105,11 +105,11 @@ def release_accounts(rider):
 
 
 def _taken_as_delivery_income(order):
-    """What this order's release and its free-delivery promo charge credited to platform delivery income."""
+    """What this order's release (or early settlement) and its free-delivery promo charge credited to platform delivery income."""
     from . import escrow
 
     total = JournalLine.objects.filter(
-        journal__key__in=(escrow.release_key(order), escrow.waiver_key(order)), side=JournalLine.CREDIT,
+        journal__key__in=(escrow.release_key(order), escrow.settle_key(order), escrow.waiver_key(order)), side=JournalLine.CREDIT,
         account__kind=Account.PLATFORM_DELIVERY_INCOME,
     ).aggregate(total=Sum("amount"))["total"]
     return total or 0
@@ -147,76 +147,58 @@ def credit_delivery(order, rider, now=None):
     )
 
 
-# --- a refund before release (Plan 7D: a trip made is paid even when the order is refunded) -----------------------------
+# --- the delivery fee belongs to the rider once a pickup is done (Plan 7F-D) ----------------------------------------------
 
-def refund_key(order):
-    return f"rider-refund-{order.pk}"
-
-
-def _picked_up(order, assignment):
-    return (
-        order.delivery_method == Order.DOOR_TO_DOOR and assignment is not None and assignment.dispatch_id is not None
-        and assignment.picked_up_at is not None and assignment.status != DeliveryAssignment.FAILED
-    )
-
-
-def rider_picked_up(order):
-    """True once a door-to-door order's delivery job shows the rider collected the goods and did not fail the delivery
-    (`picked_up_at` is stamped when they confirm pickup at the business). Assigned, accepted or at-pickup is not a trip."""
-    return _picked_up(order, DeliveryAssignment.objects.filter(order_id=order.pk).first())
+def pickup_made(order):
+    """When the rider first collected goods for this door-to-door order, or None: the earliest `collected_at` of its
+    COLLECTED pickup stops, else the assignment's `picked_up_at`. Does not look at the assignment's status: a delivery that
+    failed after a pickup still counts."""
+    if order.delivery_method != Order.DOOR_TO_DOOR:
+        return None
+    assignment = DeliveryAssignment.objects.filter(order_id=order.pk).first()
+    if assignment is None:
+        return None
+    first = PickupStop.objects.filter(
+        assignment_id=assignment.pk, status=PickupStop.COLLECTED, collected_at__isnull=False,
+    ).aggregate(first=Min("collected_at"))["first"]
+    return first or assignment.picked_up_at
 
 
-def refund_trip(order, delivery_pesewas):
-    """(rider, net) to pay for a trip made before this whole refund of `order`'s `delivery_pesewas` of delivery fee, or
-    None: nothing to pay, not picked up, AshantiHub's own rider (or one who was not third-party when they picked up), or
-    already paid. The delivery assignment row is locked first (so a pickup confirmed meanwhile waits for the refund, or the
-    refund sees it), then the rider's row. `net` is what the rider would net from that fee under the commission rate in
-    force when the order was paid (`split`); the commission part goes back to the customer with the rest of the fee. Call
-    inside the refund's transaction after the order row and its fee snapshots."""
+def delivery_earned(order):
+    """True once the delivery fee has been earned: a pickup was made, a rider was already paid for the order, or the order
+    was released with a delivered assignment. Once true it stays true."""
     from . import escrow
 
-    if delivery_pesewas <= 0 or order.delivery_method != Order.DOOR_TO_DOOR:
+    if pickup_made(order) is not None or RiderEarning.objects.filter(order_id=order.pk).exists():
+        return True
+    if not Journal.objects.filter(key=escrow.release_key(order)).exists():
+        return False
+    return DeliveryAssignment.objects.filter(order_id=order.pk, delivered_at__isnull=False).exists()
+
+
+def delivery_kept(order):
+    """Pesewas of the order's delivery fee that a refund can never return: all of it once the delivery is earned."""
+    from .money import to_pesewas
+
+    return to_pesewas(order.delivery_fee or 0) if delivery_earned(order) else 0
+
+
+def rider_for_settle(order):
+    """The third-party rider to pay when a whole refund settles this order's delivery before release, or None (no
+    pickup, AshantiHub's own rider, or one who was not third-party when they picked up). The delivery assignment row is
+    locked first (refunds.refund_order already holds it from before it decided whether the fee was earned, so a pickup
+    confirmed meanwhile either finished before that decision or waits for the refund), then the rider's row; call inside the
+    refund's transaction after the order row and its fee snapshots."""
+    if order.delivery_method != Order.DOOR_TO_DOOR:
         return None
     assignment = DeliveryAssignment.objects.select_for_update(of=("self",)).filter(order_id=order.pk).first()
-    if not _picked_up(order, assignment):
-        return None
-    if Journal.objects.filter(key=refund_key(order)).exists() or RiderEarning.objects.filter(order_id=order.pk).exists():
+    picked = pickup_made(order)
+    if assignment is None or assignment.dispatch_id is None or picked is None:
         return None
     rider = Rider.objects.select_related("staff").filter(staff_id=assignment.dispatch_id).first()
-    if rider is None or not employment.third_party_at(rider, assignment.picked_up_at):
+    if rider is None or not employment.third_party_at(rider, picked):
         return None
-    rider = Rider.objects.select_related("staff").select_for_update(of=("self",)).get(pk=rider.pk)
-    paid_at = Journal.objects.get(key=escrow.pay_key(order)).created_at
-    _reserve, net = split(delivery_pesewas, settings_store.current(COMMISSION_SETTING, paid_at))
-    return (rider, net) if net > 0 else None
-
-
-def refund_accounts(trip, order):
-    """The accounts credit_on_refund posts to (for the refund's up-front lock); () without a trip."""
-    return (accounts_of(trip[0])[0], posting.account_for(Account.DELIVERY_PAYABLE, order)) if trip is not None else ()
-
-
-def credit_on_refund(order, now, *, trip):
-    """Pay the third-party rider the share of the delivery fee a whole refund before release owes them for a trip made
-    (Dr the order's Delivery payable, Cr rider balance, journal `rider-refund-<order>`) and record a RiderEarning with no
-    reserve and `commission_bp` 0: AshantiHub's commission part of the fee goes back to the customer, so no commission is
-    ever held or posted on it, and the earning's gross is what the rider was paid. Returns the pesewas paid. Only
-    refunds._post calls this, in the refund's transaction, with `trip` from refund_trip (its rows locked) and
-    refund_accounts(trip, order) in the up-front account lock. Idempotent on its key."""
-    rider, net = trip
-    if Journal.objects.filter(key=refund_key(order)).exists():
-        return 0
-    journal = posting.post(
-        key=refund_key(order), kind="rider_earning",
-        lines=[posting.debit(posting.account_for(Account.DELIVERY_PAYABLE, order), net), posting.credit(accounts_of(rider)[0], net)],
-        reference_type="orders.order", reference_id=str(order.pk),
-        memo=f"Order #{order.pk} refunded after the rider picked it up: the rider is paid for the trip",
-    )
-    RiderEarning.objects.create(
-        order=order, rider=rider, gross_pesewas=net, commission_bp=0, reserve_pesewas=0, net_pesewas=net,
-        earned_at=now, earned_on=timezone.localdate(now), journal=journal,
-    )
-    return net
+    return Rider.objects.select_related("staff").select_for_update(of=("self",)).get(pk=rider.pk)
 
 
 # --- end of day (spec §2.2 step 6) ------------------------------------------------------------------------------------
@@ -226,10 +208,10 @@ def commission_key(rider, day, first_earning_pk):
 
 
 def post_day(rider_id, day, now=None):
-    """Post one rider's commission held for `day`: the reserve of every earning of that day not yet posted or reversed goes
+    """Post one rider's commission held for `day`: the reserve of every earning of that day not yet posted goes
     to platform commission income (Dr rider reserve, Cr platform commission income; no journal when it is 0), and the
     day's deliveries, gross, commission and net are recorded on a RiderCommissionPosting. The earning rows are locked
-    first and filtered again under the lock, so a second run (or a refund reversing one) never posts a reserve twice.
+    first and filtered again under the lock, so a second run never posts a reserve twice.
     Returns the posting, or None when nothing is left to post."""
     now = now or timezone.now()
     if day >= timezone.localdate(now):
@@ -292,101 +274,3 @@ def post_commission(today=None, now=None):
     if failed:      # after every other rider-day was posted: the job shows DOWN until the failures are looked at
         raise RuntimeError(f"Rider commission posting failed for {failed} rider-day(s); {done} posted")
     return done
-
-
-# --- refunds (spec §2.2 step 6: "A reversed delivery reverses its share of the reserve") --------------------------------
-
-def reversal_key(order):
-    return f"order-rider-reversal-{order.pk}"
-
-
-def earning_to_reverse(order):
-    """The order's rider earning not yet reversed, its row locked (after the order row and its fee snapshots, before any
-    account), or None."""
-    return (
-        RiderEarning.objects.select_for_update(of=("self",)).select_related("rider__staff", "order")
-        .filter(order_id=order.pk, reversed_at__isnull=True).first()
-    )
-
-
-def reversal_accounts(earning):
-    """(rider balance, where the reserve is taken from, platform delivery income) for reverse_earning, for the caller's
-    up-front lock; () without an earning. The reserve comes back from the rider's reserve, or from platform commission
-    income once the day's commission was posted."""
-    if earning is None:
-        return ()
-    balance, held = accounts_of(earning.rider)
-    taker = posting.account_for(Account.PLATFORM_COMMISSION_INCOME) if earning.commission_posting_id else held
-    return balance, taker, posting.account_for(Account.PLATFORM_DELIVERY_INCOME)
-
-
-def reverse_earning(earning, now=None):
-    """The whole order is refunded after release, delivery fee included, so the rider's pay for it comes back first:
-    Dr rider balance (the net; it may go below zero, recovered from later deliveries, and blocks withdrawals meanwhile),
-    Dr the reserve (or platform commission income once posted: AshantiHub gives its commission back), Cr platform
-    delivery income, from which the refund then returns the fee. Call with the earning locked (earning_to_reverse) and
-    reversal_accounts(earning) in the caller's one up-front lock. Idempotent on its key."""
-    now = now or timezone.now()
-    balance, taker, delivery_income = reversal_accounts(earning)
-    debits = []
-    if earning.net_pesewas:
-        debits.append(posting.debit(balance, earning.net_pesewas))
-    if earning.reserve_pesewas:
-        debits.append(posting.debit(taker, earning.reserve_pesewas))
-    journal = posting.post(
-        key=reversal_key(earning.order), kind="rider_earning_reversal",
-        lines=[*debits, posting.credit(delivery_income, earning.gross_pesewas)],
-        reference_type="orders.order", reference_id=str(earning.order_id),
-        memo=f"Order #{earning.order_id} refunded in full: its delivery fee taken back from the rider",
-        allow_negative={Account.RIDER_BALANCE},
-    )
-    earning.reversed_at, earning.reversal_journal = now, journal
-    earning.save(update_fields=["reversed_at", "reversal_journal"])
-    # Tell the rider: money left their balance (possibly below zero, which blocks withdrawals). This runs inside the refund's
-    # transaction; notify only creates a row. The day's RiderCommissionPosting row is never edited (records are append-only);
-    # the rider's days and the Accountant's commission report show the commission given back from the reversed earnings.
-    from notifications.services import notify_staff_on_commit
-
-    notify_staff_on_commit(
-        earning.rider.staff, REVERSAL_NOTICE_KIND, "A delivery was taken back",
-        body=_reversal_text(earning, posting.balance_of(Account.RIDER_BALANCE, earning.rider.staff)),
-        link="/staff", icon="↩️",
-    )
-    return journal
-
-
-REVERSAL_NOTICE_KIND = "rider_earning_reversed"
-
-
-def _reversal_text(earning, balance):
-    """What the rider is told: what came out of their balance (nothing to say when the rate was 100%) and, when the
-    balance is now below zero, that withdrawals wait until later deliveries bring it back."""
-    from .money import from_pesewas
-
-    if earning.net_pesewas:
-        text = f"Order #{earning.order_id} was refunded in full, so GH₵ {from_pesewas(earning.net_pesewas)} came back out of your balance."
-    else:
-        text = f"Order #{earning.order_id} was refunded in full, so its delivery fee was taken back (it had left nothing in your balance)."
-    if balance < 0:
-        text += (
-            f" Your balance is now GH₵ -{from_pesewas(-balance)}, below zero. You cannot withdraw until your later "
-            "deliveries bring it back to zero or more."
-        )
-    return text
-
-
-def check_reversal(earning, delivery_returned):
-    """Raise RefundError (409) unless the earning being taken back equals what the refund then returns out of platform delivery
-    income: the delivery fee it gives back plus the free-delivery promo charge it returns to the business. Otherwise
-    platform delivery income would be left over or short."""
-    from . import escrow
-
-    promo = JournalLine.objects.filter(journal__key=escrow.waiver_key(earning.order), side=JournalLine.DEBIT).aggregate(
-        total=Sum("amount"))["total"] or 0
-    if earning.gross_pesewas != delivery_returned + promo:
-        from .refunds import RefundError
-
-        raise RefundError(
-            f"Order #{earning.order_id}: the rider was paid {earning.gross_pesewas} pesewas, but this refund returns "
-            f"{delivery_returned} of delivery fee and {promo} of promo charge. Ask a developer to check the order.", 409,
-        )

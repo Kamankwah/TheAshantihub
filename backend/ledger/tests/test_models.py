@@ -1,7 +1,7 @@
 from django.db import DatabaseError, connection, transaction
 from django.test import TestCase
 
-from ledger.models import Account, Journal, JournalLine
+from ledger.models import Account, Journal, JournalLine, OrderRefund
 
 
 class AccountBalanceTests(TestCase):
@@ -47,3 +47,10 @@ class AppendOnlyTests(TestCase):
     def test_a_line_must_have_a_positive_amount(self):
         with self.assertRaises(Exception), transaction.atomic():
             JournalLine.objects.create(journal=self.journal, account=self.account, side=JournalLine.CREDIT, amount=0)
+
+
+class OrderRefundTests(TestCase):
+    def test_wallet_pesewas_is_credit_after_kept_fee(self):
+        refund = OrderRefund(amount_pesewas=11500, processing_pesewas=200, delivery_kept_pesewas=1500)
+        self.assertEqual(refund.wallet_pesewas, 10200)
+        self.assertEqual(OrderRefund(amount_pesewas=500, delivery_kept_pesewas=1500).wallet_pesewas, 0)    # a coupon left less than the fee

@@ -24,7 +24,7 @@ from disputes.models import Dispute
 from ledger import fees, posting, settings_store, verification
 from ledger.models import Account, FeeRuleSet, FulfilmentCheck, JournalLine, OrderFeeSnapshot
 from ledger.money import to_pesewas
-from marketing.models_waivers import WaivedFeeCharge
+from marketing.models_waivers import DeliveryWaiver, WaivedFeeCharge
 from orders.models import Order, OrderItem
 from otp.identity import ref
 
@@ -128,10 +128,12 @@ def rows(owner, groups):
             {"name": item.listing.name, "quantity": item.quantity, "line_total": money(to_pesewas(item.line_total))}
         )
     # The business's free-delivery promo on the order: owed until release, charged from Available then, reversed (and
-    # given back) on a whole refund (ledger.escrow.charge_waiver / return_waiver), so OWED is what it pays.
+    # given back) on a whole refund (ledger.escrow.charge_waiver / return_waiver), so OWED is what it pays. An
+    # AshantiHub-funded promo costs the business nothing, so it is left out.
     promos = {
         charge.order_id: to_pesewas(charge.amount)
-        for charge in WaivedFeeCharge.objects.filter(order_id__in=ids, business_owner=owner, status=WaivedFeeCharge.OWED)
+        for charge in WaivedFeeCharge.objects.filter(order_id__in=ids, business_owner=owner, funded_by=DeliveryWaiver.FUNDER_BUSINESS,
+            status=WaivedFeeCharge.OWED)
     }
     held = set(
         Dispute.objects.filter(order_id__in=ids).exclude(status__in=Dispute.FINAL_STATUSES).values_list("order_id", flat=True)

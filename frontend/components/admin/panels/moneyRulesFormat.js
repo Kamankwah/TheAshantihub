@@ -48,7 +48,7 @@ export const GROUPS = [
   ["Fees", ["fee_cap_pesewas"]],
   ["When money is released", ["verification_overdue_hours", "pickup_window_hours", "service_auto_accept_hours", "stay_issue_window_hours", "event_release_delay_hours"]],
   ["Withdrawals and top-ups", ["withdrawal_per_tx_limit_pesewas", "withdrawal_daily_limit_pesewas", "payout_cooling_hours", "wallet_topup_hold_minutes"]],
-  ["Riders", ["rider_commission_bp"]],
+  ["Riders", ["rider_commission_bp", "rider_withdrawals_per_day"]],
   ["Texts to businesses", ["vendor_low_balance_pesewas", "digest_batch_size", "digest_time_budget_seconds"]],
   ["Low-stock alerts", ["low_stock_cover_days", "low_stock_fallback_units", "stock_cover_window_days"]],
   ["Sign-in security", ["otp_daily_failure_cap"]],
