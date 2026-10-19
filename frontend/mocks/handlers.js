@@ -60,6 +60,8 @@ export const handlers = [
   http.get('http://localhost:8000/api/hero/active/', () => {
     return HttpResponse.json([])
   }),
+  // The business's own dated hero slides (HeroSlideForm in the Business tab) — none by default.
+  http.get('http://localhost:8000/api/hero/mine/slides/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/listings/categories/', () => {
     return HttpResponse.json([
       { id: 1, slug: 'hotels', icon: '🏨', label: 'Hotels', color: '#000080', kind: 'service' },

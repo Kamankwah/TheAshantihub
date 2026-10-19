@@ -13,7 +13,7 @@ export default function HeroEventsPanel({ auth }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={dim}>Marketing works these queues too. Whoever decides first is recorded, and the other side sees it.</div>
-      {canHero && <section aria-label="Hero submissions"><HeroApprovalPanel /></section>}
+      {canHero && <section aria-label="Hero submissions"><HeroApprovalPanel auth={auth} /></section>}
       {canEvents && <section aria-label="Events moderation"><EventsModerationPanel /></section>}
       {!canHero && !canEvents && <div style={{ color: D.textDim, fontSize: "0.8rem" }}>You don't hold approval rights for hero submissions or events.</div>}
     </div>

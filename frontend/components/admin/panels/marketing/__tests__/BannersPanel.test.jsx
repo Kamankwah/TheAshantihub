@@ -94,4 +94,38 @@ describe('BannersPanel', () => {
     expect(body.get('slot')).toBe('home_strip')
     expect(body.get('image').name).toBe('p.jpg')
   })
+  it('creates a flash banner from a message and a countdown end, then publishes it at once', async () => {
+    const seen = { create: null, publish: 0 }
+    server.use(
+      http.get(`${API}/api/marketing/site-banners/`, () => HttpResponse.json(list([]))),
+      http.post(`${API}/api/marketing/site-banners/`, async ({ request }) => { seen.create = await request.json(); return HttpResponse.json({ id: 21 }, { status: 201 }) }),
+      http.post(`${API}/api/marketing/site-banners/21/publish/`, () => { seen.publish += 1; return HttpResponse.json({ id: 21, state: 'approved' }) }),
+    )
+    renderMk(BannersPanel, { permissions: PERM })
+    fireEvent.click(await screen.findByRole('button', { name: 'Flash banner' }))
+    const form = screen.getByRole('form', { name: 'Flash banner' })
+    fireEvent.change(within(form).getByLabelText('Title'), { target: { value: 'Weekend sale' } })
+    fireEvent.change(within(form).getByLabelText(/Message/), { target: { value: 'Everything Ghana-made, 10% off' } })
+    fireEvent.change(within(form).getByLabelText('Starts'), { target: { value: '2026-11-06T06:00' } })
+    fireEvent.change(within(form).getByLabelText(/Countdown ends/), { target: { value: '2026-11-08T18:00' } })
+    fireEvent.click(within(form).getByRole('button', { name: 'Publish flash banner' }))
+    expect(await screen.findByRole('status')).toHaveTextContent(/live/i)
+    expect(seen.create).toMatchObject({ slot: 'flash', title: 'Weekend sale', message: 'Everything Ghana-made, 10% off' })
+    expect(seen.create.countdown_ends_at).toMatch(/^2026-11-08T/)
+    expect(seen.publish).toBe(1)
+  })
+
+  it('offers Publish now on a flash draft only, and no flash button without site_promo.manage', async () => {
+    server.use(http.get(`${API}/api/marketing/site-banners/`, () => HttpResponse.json(list([
+      banner({ id: 5, title: 'Flash draft', slot: 'flash', slot_label: 'Flash banner', state: 'draft', phase: '' }),
+      banner({ id: 6, title: 'Strip draft', state: 'draft', phase: '' }),
+    ]))))
+    const { unmount } = renderMk(BannersPanel, { permissions: PERM })
+    expect(within((await screen.findByText('Flash draft')).closest('tr')).getByRole('button', { name: 'Publish now' })).toBeInTheDocument()
+    expect(within(screen.getByText('Strip draft').closest('tr')).queryByRole('button', { name: 'Publish now' })).toBeNull()
+    unmount()
+    renderMk(BannersPanel, { permissions: [] })
+    await screen.findByText('Flash draft')
+    expect(screen.queryByRole('button', { name: 'Flash banner' })).toBeNull()
+  })
 })

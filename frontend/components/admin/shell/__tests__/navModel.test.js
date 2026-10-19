@@ -90,7 +90,7 @@ describe('My Work group', () => {
 })
 
 // Super Admin screens that are built (no longer placeholders) but still no other role's.
-const SA_BUILT = ['step-in-operations', 'step-in-support', 'step-in-delivery', 'step-in-marketing', 'step-in-accounting', 'teams-reporting', 'roles-permissions', 'commissions', 'refunds', 'growth-funnel', 'scheduled-exports', 'approval-rules', 'money-rules', 'payouts-payroll', 'reconciliation', 'delivery-pricing', 'tax-tables', 'integrations', 'system-health', 'sign-in-history', 'staff-announcements', 'data-exports-log', 'notification-center']
+const SA_BUILT = ['step-in-operations', 'step-in-support', 'step-in-delivery', 'step-in-marketing', 'step-in-accounting', 'teams-reporting', 'roles-permissions', 'commissions', 'refunds', 'growth-funnel', 'scheduled-exports', 'approval-rules', 'money-rules', 'payouts-payroll', 'reconciliation', 'delivery-pricing', 'tax-tables', 'integrations', 'system-health', 'sign-in-history', 'staff-announcements', 'data-exports-log', 'notification-center', 'opening']
 const SA_ONLY = NAV_ITEMS.filter((i) => i.placeholder === 'super_admin').map((i) => i.id).concat('invites', SA_BUILT)
 // 'leave' is also Super Admin's (the canvas's Leave & holidays), but no other role's.
 // The Accounting canvas screens (2026-10-07): the Accountant's alone, except Commissions, Refunds and
@@ -454,6 +454,18 @@ describe('Operations menu (canvas 2026-10-12)', () => {
   })
 })
 
+describe('Marketplace opening item', () => {
+  const ids = (role, perms) => buildNavGroups({ user: { role }, hasPermission: (c) => perms.includes(c) }).flatMap((g) => g.items.map((i) => i.id))
+  it('opening_only_in_super_admin_menu', () => {
+    expect(ids('super_admin', ['opening.manage'])).toContain('opening')
+    expect(buildNavGroups({ user: { role: 'super_admin' }, hasPermission: () => true }).find((g) => g.id === 'settings').items.map((i) => i.id)).toContain('opening')
+    for (const role of ['operations', 'marketing', 'support', 'accountant', 'scout', 'delivery_manager', 'dispatch', 'cosigner', 'not-a-role']) {
+      expect(ids(role, ['opening.manage'])).not.toContain('opening')
+    }
+    expect(ids('super_admin', [])).not.toContain('opening')
+  })
+})
+
 describe('Super Admin menu (canvases 2026-10-07)', () => {
   const auth = { user: { role: 'super_admin' }, hasPermission: () => true }
   const groups = buildNavGroups(auth)
@@ -468,7 +480,7 @@ describe('Super Admin menu (canvases 2026-10-07)', () => {
       ['Insights', ['Analytics', 'Growth funnel', 'Reports hub', 'Scheduled exports']],
       ['Security & audit', ['Audit log', 'Sign-in history', 'Fraud & anomaly alerts', 'Data exports log', 'Security settings']],
       ['Communication', ['Notification center', 'Staff announcements']],
-      ['Settings', ['Approval rules & timers', 'Money rules', 'Commission policy', 'Delivery pricing', 'Plans & prices', 'Target limits', 'Tax tables', 'Categories & zones', 'Integrations', 'System health']],
+      ['Settings', ['Approval rules & timers', 'Money rules', 'Commission policy', 'Delivery pricing', 'Plans & prices', 'Target limits', 'Tax tables', 'Categories & zones', 'Integrations', 'System health', 'Marketplace opening']],
     ])
   })
 

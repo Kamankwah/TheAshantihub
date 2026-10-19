@@ -172,6 +172,33 @@ describe('Reviews moderation (Operations canvas)', () => {
   })
 })
 
+describe('Sponsored toggle on the Operations listings panel', () => {
+  const item = (o = {}) => ({
+    id: 1, business_owner_name: 'Akosua Ntoma Kente', name: 'Kente stole', category: { id: 1, label: 'Fashion', kind: 'product' }, zone: { name: 'Adum' },
+    price_amount: '450.00', contact_phone: '', specs: [], photos: [], status: 'published', sponsored: false, open_fraud_cases: 0, subscription_overdue: null, ...o,
+  })
+  const serve = (rows) => server.use(
+    http.get(`${API}/api/listings/moderation/pending/`, ({ request }) => HttpResponse.json(new URL(request.url).searchParams.get('status') === 'approved' ? rows : [])),
+    http.get(`${API}/api/listings/moderation/stats/`, () => HttpResponse.json({})),
+  )
+  it('flags a published product for deals.manage holders only, never a service', async () => {
+    const seen = []
+    serve([item(), item({ id: 2, name: 'Braiding', category: { id: 2, label: 'Hair', kind: 'service' } })])
+    server.use(http.post(`${API}/api/listings/:id/sponsored/`, async ({ request, params }) => { seen.push({ id: params.id, ...(await request.json()) }); return HttpResponse.json({ id: 1, sponsored: true }) }))
+    const { unmount } = wrap(<ListingsModerationPanel auth={auth('deals.manage')} />)
+    fireEvent.click(await screen.findByRole('button', { name: /^(Approved|Published)/ }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Mark Kente stole as sponsored' }))
+    await waitFor(() => expect(seen).toEqual([{ id: '1', sponsored: true }]))
+    expect(screen.queryByRole('button', { name: /Braiding as sponsored/ })).toBeNull()
+    unmount()
+    serve([item()])
+    wrap(<ListingsModerationPanel auth={auth()} />)
+    fireEvent.click(await screen.findByRole('button', { name: /^(Approved|Published)/ }))
+    await screen.findByText('Kente stole')
+    expect(screen.queryByRole('button', { name: /as sponsored/ })).toBeNull()
+  })
+})
+
 describe('Hero & events (one screen)', () => {
   const hero = (o = {}) => ({
     id: 1, business_owner_name: 'Akosua Ntoma Kente', media: 'http://x/a.jpg', media_type: 'image', caption: 'New Sika Futuro kente',

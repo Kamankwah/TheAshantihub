@@ -173,6 +173,8 @@ export const NAV_ITEMS = [
   { id: "tax-tables", icon: "📑", label: "Tax tables", show: saOnly },
   { id: "integrations", icon: "🔌", label: "Integrations", show: saOnly },
   { id: "system-health", icon: "🩺", label: "System health", show: saOnly },
+  // The marketplace opening time, delay and pre-opening test accounts. Super Admin's alone (opening.manage).
+  { id: "opening", icon: "⏳", label: "Marketplace opening", show: (auth) => saOnly(auth) && auth.hasPermission("opening.manage") },
   // Accounting canvas screens (see acctOnly above).
   { id: "acct-journal", icon: "📒", label: "Journal", show: acctOnly },
   { id: "acct-chart", icon: "🗃️", label: "Chart of accounts", show: acctOnly },
@@ -224,7 +226,7 @@ const ROLE_MENUS = {
     ["insights", "Insights", ["analytics", "growth-funnel", "team-reports", "scheduled-exports"]],
     ["security-audit", "Security & audit", ["activity", "sign-in-history", "fraud-cases", "data-exports-log", "security"]],
     ["communication", "Communication", ["notification-center", "staff-announcements"]],
-    ["settings", "Settings", ["approval-rules", "money-rules", "commission-policy", "delivery-pricing", "subscription-plans-approval", "targets", "tax-tables", "categories-zones", "integrations", "system-health"]],
+    ["settings", "Settings", ["approval-rules", "money-rules", "commission-policy", "delivery-pricing", "subscription-plans-approval", "targets", "tax-tables", "categories-zones", "integrations", "system-health", "opening"]],
   ],
   // Operations, exactly as the approved canvas draws it (Overview is pinned
   // above the groups). Users, Scout Assignments, Register a business, Field

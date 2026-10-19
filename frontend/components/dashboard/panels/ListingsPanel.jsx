@@ -3,6 +3,7 @@ import CancellationPolicyField from "../../CancellationPolicyField.jsx";
 import { apiPost, apiPatch, apiPostForm } from "../../../apiClient.js";
 import { useMyListings } from "../../../hooks/useMyListings.js";
 import { useMyHeroSubmission } from "../../../hooks/useMyHeroSubmission.js";
+import HeroSlideForm from "../HeroSlideForm.jsx";
 import { useCategories } from "../../../hooks/useCategories.js";
 import { useZones } from "../../../hooks/useZones.js";
 import { D, glassCard, LISTING_STATUS_META, HERO_STATUS_META } from "../theme.js";
@@ -253,6 +254,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
   const [createPhoto, setCreatePhoto] = useState(null);
   const [createError, setCreateError] = useState(null);
   const [creating, setCreating] = useState(false);
+  const [showSlides, setShowSlides] = useState(false);
   const [heroSubmitPhoto, setHeroSubmitPhoto] = useState(null);
   const [heroCaption, setHeroCaption] = useState("");
   const [heroActionError, setHeroActionError] = useState(null);
@@ -521,6 +523,12 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
           </div>
         </div>
       )}
+
+      {/* Dated, free homepage-slider slides (image, video or YouTube link). The one-photo Hero Spotlight below is the older flow and stays for existing submissions. */}
+      <div style={{ ...glassCard, padding: "12px 16px", marginBottom: 14 }}>
+        <button type="button" onClick={() => setShowSlides((v) => !v)} aria-expanded={showSlides} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontWeight: 800, fontSize: "0.82rem", color: D.text, fontFamily: "inherit" }}>🌟 Homepage slider slides {showSlides ? "▲" : "▼"}</button>
+        {showSlides && <div style={{ marginTop: 10 }}><HeroSlideForm mode="business" /></div>}
+      </div>
 
       {/* Discoverability: when the owner has no hero submission yet, explain the
           feature so it's obvious how to get featured (they were previously left
