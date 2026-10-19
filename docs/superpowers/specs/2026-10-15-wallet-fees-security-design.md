@@ -162,9 +162,10 @@ release). Products are unchanged (§4.1: Support's call, 72 hours from purchase)
 
 2026-10-19 owner ruling, event cancellation: an event can be cancelled by its organiser (`POST events/mine/<id>/cancel/`,
 reason of 5-300 characters, refused once the event date has passed) or by Operations (`events/moderation/<id>/cancel/`,
-sudo). Every ticket is refunded in full, price plus the processing charge, from AshantiHub's own account (the
-organiser-funded refund), a cancelled event takes no new sales, renewals or edits, buyers and the organiser are told,
-and a nightly job finishes any refund left over. Built in 7F-C Tasks 1-2. 2026-10-19 owner ruling, door scans: a scan
+sudo). Every ticket is refunded in full, price plus the processing charge. The ticket price comes out of the
+organiser's Pending or Available (Available may go negative after release); AshantiHub bears only the processing
+charge (Dr provider fees). A cancelled event takes no new sales, renewals or edits, buyers and the organiser are told,
+and an hourly job (beat, minute 50) finishes any refund left over. Built in 7F-C Tasks 1-2. 2026-10-19 owner ruling, door scans: a scan
 never releases money, with the ledger on or off; a ticket with no `BookingSale` (a legacy ticket) stays held until
 Accounting releases it by hand, and the scan only records evidence and tells the customer. Built in 7F-C Task 3.
 
@@ -605,15 +606,20 @@ Built in `docs/superpowers/plans/2026-10-19-wallet-rulings-7f-c-followups.md` (b
 
 - (7F-C-a) **Frontend contracts (rulings R1, R8; 7F-C Task 10).** The staff-edit screen reads `approval_id` from a 201
   (the change waits for a second person), staff sudo and the fail-with-evidence 201 are contract-tested, and the owner
-  profile has a "request a name or contact change" form (`DetailChangeRequest`). **Not built:** a step-up prompt;
-  see the open question below.
+  profile has a "request a name or contact change" form (`DetailChangeRequest`). **Not built:** a step-up prompt, and
+  no staff screens exist yet for Operations to assign a scout to a detail-change request, for a scout to check in for
+  a `change_verification` visit and record the outcome, or for staff to cancel an event (the endpoints exist). The
+  owner form is live and not tied to the ledger switch, so filed requests sit at REQUESTED until those screens exist;
+  with the ledger on the owner cannot file at all (no step-up prompt UI). Owner question: hide the owner form until
+  the staff screens exist?
 - (7F-C-b) **Owner questions still open after 7F-C** (record the answer here and close):
   1. R3's field list: the owner may request `full_name`, `login_phone` and `email`; `business_name` was left out.
      Should it be added?
   2. The unclaimed-business path: an unclaimed owner cannot file a request (409); a scout's hand-over claim still sets
      an unclaimed owner's email once (`accounts/claims.py`). What is the rule?
-  3. The processing charge on an event cancellation: tickets are refunded price plus processing, funded by AshantiHub
-     from the organiser's account. Is refunding the processing charge right?
+  3. The processing charge on an event cancellation: the ticket price is refunded out of the organiser's
+     Pending or Available (Available may go negative), and AshantiHub bears the processing charge. Is that the right
+     split?
   4. An organiser cannot cancel after the event date has passed (Task 2 ruling). Should Operations alone be able to?
   5. A new sign-in contact revokes trusted devices but not already-issued JWTs (stateless). Build token revocation?
   6. An applied detail change has no owner undo. Should one exist (and for how long)?
@@ -623,11 +629,26 @@ Built in `docs/superpowers/plans/2026-10-19-wallet-rulings-7f-c-followups.md` (b
      "event_cancelled"`, webhook answers 200) with no ticket and no staff queue; the customer's money is refunded by
      hand from the webhook note. Add a queue?
   9. The staff-name door is open (see (xxxiv)).
+  10. Filing a detail change sends nothing to the current contact (the old contact is told only after apply), and
+      with the ledger and OTP switches off no step-up is needed, so a stolen session meets only the scout visit. Tell
+      the current contact at filing?
+  11. The Operations member who assigned the scout is not excluded from deciding the approval, so one Operations
+      person plus a scout they picked can complete a change.
+  12. The maker scout can cancel the approval alone.
+  13. A staff-approved `holder_details` contact change does not end trusted devices, while `detail_change` does.
 - (7F-C-c) **Still open from 7C, not fixed in 7F-C:** staff authenticator guesses are not counted toward the daily
   cap (the race of l.333) and a trusted-device sign-in bypasses it; the provider is asked twice per withdrawal
   approval while locks are held; the scan-notice retry sweep; real concurrency tests (the lock-order tests assert query
-  order and captured on-commit callbacks); renewal after a cancel is unrefunded; a partly refunded sale can loop in the
-  cancel sweep; the in-ledger filter ignores `LEDGER_ENABLED`.
+  order and captured on-commit callbacks); renewal after a cancel is unrefunded. Done: a partly refunded sale no longer loops in the cancel
+  sweep (the refund is capped at min(price, room), Task 2).
+- (7F-C-d) **Open before the switch is turned on:** (a) a ticket sold while the ledger was on and cancelled after it
+  is switched off is refunded outside the ledger (`events.cancellation._sale_of` returns None when off): its money
+  stays in organiser Pending and the buyer is told Support will refund; the fix is to find the sale regardless of the
+  switch and leave the ticket for the sweep while off (this also covers the `in_ledger` / `unreleased_legacy` filters
+  ignoring `LEDGER_ENABLED`). (b) A failing approvals hook is swallowed (`approvals/services.py` ~274-283), which can
+  leave a detail-change request VERIFIED forever with no staff action to close it. (c) `ledger.sales.record_verification`
+  "matches" has no cancelled-event guard. (d) Tickets released under the old scan rule on an event cancelled now:
+  AshantiHub refunds the buyer by hand while the organiser keeps the payout.
 
 ### Stage 5 (third-party dispatch) reconciliation (2026-10-16)
 

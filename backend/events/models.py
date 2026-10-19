@@ -439,9 +439,9 @@ class Ticket(models.Model):
     escrow_status = models.CharField(max_length=10, choices=ESCROW_STATUS_CHOICES, default=HELD)
     escrow_held_at = models.DateTimeField(auto_now_add=True)
     escrow_released_at = models.DateTimeField(null=True, blank=True)
-    # Null when the release happened automatically via check-in rather than
-    # a staff override (see EventCheckinView) — a non-null value here means
-    # an accountant manually intervened.
+    # Null when the release was automatic (the release timer); a check-in never
+    # releases (see EventCheckinView). A non-null value here means an
+    # accountant manually intervened.
     escrow_released_by_staff = models.ForeignKey(
         StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="escrow_overrides",

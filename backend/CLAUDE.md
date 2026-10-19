@@ -286,9 +286,10 @@ Every moderated queue (`BusinessOwner`, `Listing`, `HeroMediaSubmission`, `Event
   `in_ledger`, the summary's `legacy_held`).
   **Event cancellation (`events/cancellation.py`):** `cancel_event` marks the event `CANCELLED` (one record: first
   reason, time and staff win), then refunds each ticket in its own transaction, in full (price plus its processing
-  share) from AshantiHub's own account through `sales.refund`; the organiser is not charged. The organiser
+  share) through `sales.refund`: the ticket price comes out of the organiser's Pending or Available (Available may go
+  negative after release) and AshantiHub bears only the processing charge. The organiser
   (`events/mine/<pk>/cancel/`, refused once the event date has passed) or Operations (`events/moderation/<pk>/cancel/`,
-  sudo) cancels; a beat job (`ledger.tasks.finish_cancelled_event_refunds`) finishes leftovers. A cancelled event takes
+  sudo) cancels; an hourly beat job (`ledger.tasks.finish_cancelled_event_refunds`) finishes leftovers. A cancelled event takes
   no ticket sale, edit, approval, rejection or renewal; a Hubtel payment confirmed after the cancel marks its session
   FAILED (`not_applied="event_cancelled"`) and is refunded by hand; `release_due` skips its sales.
   Refunds go to the wallet through `sales.refund` (one `BookingRefund` per sale and source; the refund that empties a
