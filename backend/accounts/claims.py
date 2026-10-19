@@ -44,7 +44,7 @@ INVALID = "This link isn't valid. Check you opened the whole link, or ask your a
 TERMS_REQUIRED = "Accept the Business Agreement to continue."
 EMAIL_TAKEN = "That email already belongs to another account."
 HOURS_REQUIRED = (
-    "This business hasn't entered its opening hours yet. Ask your account manager to add them, then try again."
+    "This business's opening hours are missing. AshantiHub support must add them before you can claim it."
 )
 STAFF_EMAIL = "That email belongs to a staff member — use your own email."
 

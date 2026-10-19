@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useDeliveryScheduled } from "../../../../hooks/useDelivery.js";
 import { D } from "../../theme.js";
@@ -16,6 +16,8 @@ export default function ScheduledPanel() {
   const [pageNo, setPageNo] = useState(1);
   const scheduled = useDeliveryScheduled(pageNo);
   const queryClient = useQueryClient();
+  // Releasing the last order on page N leaves it empty and the server answers 404 for it: fall back to the first page.
+  useEffect(() => { if (scheduled.isError && pageNo > 1) setPageNo(1); }, [scheduled.isError, pageNo]);
   const data = scheduled.data;
   const rows = data?.results || [];
   const refresh = () => ["delivery-scheduled", "delivery-queue", "delivery-live"].forEach((key) => queryClient.invalidateQueries({ queryKey: [key] }));

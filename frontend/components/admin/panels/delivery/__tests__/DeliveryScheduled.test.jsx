@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { server } from '../../../../../mocks/server.js'
@@ -23,5 +23,25 @@ describe('Scheduled tab', () => {
     expect(screen.getByText('no opening time to show')).toBeInTheDocument()
     expect(screen.getByText(/Kofi Foods:/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Send now' })).toBeInTheDocument()
+  })
+})
+
+describe('Scheduled tab paging', () => {
+  it('falls back to page 1 when the page it is on no longer exists', async () => {
+    const row = { order_id: 51, placed_at: new Date().toISOString(), ready_not_before: new Date(Date.now() + 3600e3).toISOString(), customer_name: 'Yaw', delivery_address: '', vendors: [] }
+    const pages = []
+    server.use(http.get(`${API}/api/delivery/scheduled/`, ({ request }) => {
+      const page = new URL(request.url).searchParams.get('page')
+      pages.push(page)
+      if (page === '2') return HttpResponse.json({ detail: 'Invalid page.' }, { status: 404 })
+      return HttpResponse.json({ count: 11, next: 'x', previous: null, results: [row] })
+    }))
+    wrap(<ScheduledPanel />)
+    await screen.findByText('#51')
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await waitFor(() => expect(pages).toContain('2'))
+    expect(await screen.findByText('#51')).toBeInTheDocument()
+    expect(screen.getByText('Page 1')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled()
   })
 })

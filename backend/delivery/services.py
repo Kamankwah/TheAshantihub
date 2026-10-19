@@ -203,6 +203,7 @@ def send_early(order_id, staff, reason, *, request=None):
     reason = (reason or "").strip()
     if len(reason) < 3:
         raise DeliveryError("Give a reason of at least 3 characters.", 400, "reason_required")
+    reason = reason[:200]
     with transaction.atomic():
         order = Order.objects.select_for_update(of=("self",)).get(pk=order_id)
         if order.status != Order.PAID or order.delivery_method != Order.DOOR_TO_DOOR or order.refunds.filter(whole=True).exists():

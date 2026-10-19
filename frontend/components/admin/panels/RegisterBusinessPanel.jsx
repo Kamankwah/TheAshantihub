@@ -170,7 +170,13 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
   const draftKey = draftKeyFor(auth?.user?.id);
   const scoutFirstName = firstName(auth?.user?.full_name) || "your scout";
   const [restored] = useState(() => readDraft(draftKey));
-  const [form, setForm] = useState(() => ({ ...BLANK, ...(restored?.form || {}) }));
+  const [form, setForm] = useState(() => {
+    const draft = { ...BLANK, ...(restored?.form || {}) };
+    const week = draft.hours;
+    // A draft from an older build (or a damaged one) may not hold a well-formed week: drop it rather than crash.
+    if (!(Array.isArray(week) && week.length === 7 && week.every((d) => d && typeof d === "object" && Number.isInteger(Number(d.weekday))))) draft.hours = null;
+    return draft;
+  });
   const [step, setStep] = useState(() => Math.min(Math.max(Number(restored?.step) || 0, 0), 2));
   const [savedAt, setSavedAt] = useState(() => restored?.saved_at || null);
   const [retakePhotos, setRetakePhotos] = useState(() => Boolean(restored));
@@ -405,7 +411,7 @@ export default function RegisterBusinessPanel({ auth, detailId = null, onOpenDet
         setActionError("That prospect is no longer on your list, so this registration is no longer linked to one. Nothing else changed. Submit again to register it as a new business.");
       } else if (err.body?.code === "hours_required" || err.body?.code === "hours_invalid") {
         dirty.current = true;
-        setForm((f) => ({ ...f, hours: null }));
+        setEditingHours(true); // keep what was entered and reopen the editor so it can be corrected
         setStep(0);
         setStepError(err.body.detail || "Enter the weekly opening hours.");
       } else if (err.body?.code === "duplicate") {

@@ -42,6 +42,12 @@ class EarlySendTests(EngineCase):
         self.assertGreater(order.ready_not_before, timezone.now())
         self.assertFalse(ActivityEvent.objects.filter(verb="delivery.early_send").exists())
 
+    def test_long_reason_is_trimmed_to_200(self):
+        order = self.held()
+        self.assertEqual(self.send(order, "  " + "x" * 500 + "  ").status_code, 200)
+        event = ActivityEvent.objects.get(verb="delivery.early_send")
+        self.assertEqual(event.after["reason"], "x" * 200)
+
     def test_not_held_order_409(self):
         res = self.send(self.make_order())
         self.assertEqual(res.status_code, 409)

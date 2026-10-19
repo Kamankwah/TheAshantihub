@@ -66,5 +66,7 @@ class HourlessOwnersTests(TestCase):
         response = phone.post("/api/accounts/business-owners/claim/", body, format="json")
         self.assertEqual(response.status_code, 400, response.content)
         self.assertEqual(response.json()["code"], "hours_required")
+        self.assertEqual(response.json()["detail"], claims.HOURS_REQUIRED)
+        self.assertNotIn("account manager", claims.HOURS_REQUIRED)
         owner.refresh_from_db()
         self.assertIsNone(owner.claimed_at)

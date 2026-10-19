@@ -633,8 +633,6 @@ class AssignDispatchView(APIView):
         if dispatch.role.name != "dispatch":
             return Response({"dispatch": "That staff member is not a dispatch."}, status=400)
 
-        from delivery import services as delivery_services
-
         try:
             assignment = delivery_services.assign(order, dispatch, request.user, mode=DeliveryAssignment.MANUAL)
         except delivery_services.DeliveryError as exc:
