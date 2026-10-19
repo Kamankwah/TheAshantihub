@@ -3,7 +3,7 @@ import { useOwnerOrders } from "../../../hooks/useOwnerOrders.js";
 import { useOwnerOrderTracking } from "../../../hooks/useTracking.js";
 import TrackMap from "../../maps/TrackMap.jsx";
 import EtaLine from "../../maps/EtaLine.jsx";
-import { D, glassCard } from "../theme.js";
+import { D, glassCard, tint } from "../theme.js";
 
 // ─── Deliveries panel — the owner's fulfilment view (pre-prod bug fix 5) ──────
 // Wired to the real owner-orders spine (Wave F/G). GET /api/orders/owner/
@@ -141,7 +141,7 @@ function OrderRow({ order }) {
                   </div>
                   <div style={{ fontSize: "0.56rem", fontWeight: 700, color: done ? c : D.textFaint, textAlign: "center" }}>{STATUS_META[key].label}</div>
                 </div>
-                {i < PIPELINE.length - 1 && <div style={{ flex: 1, height: 2, minWidth: 8, background: stepIndex > i ? STATUS_META[key].color + "88" : D.divider, borderRadius: 2 }} />}
+                {i < PIPELINE.length - 1 && <div style={{ flex: 1, height: 2, minWidth: 8, background: stepIndex > i ? tint(STATUS_META[key].color, "88") : D.divider, borderRadius: 2 }} />}
               </div>
             );
           })}

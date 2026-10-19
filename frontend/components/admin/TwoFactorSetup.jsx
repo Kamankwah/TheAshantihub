@@ -3,6 +3,7 @@ import QRCode from "qrcode";
 import { saveBlob } from "../../lib/saveBlob.js";
 import { button, codeField } from "./panels/panelStyles.js";
 import { D } from "./theme.js";
+import { C } from "../../theme.js";
 
 const mono = "'JetBrains Mono', ui-monospace, monospace";
 const text = { color: D.text, fontSize: "0.8rem", lineHeight: 1.5 };
@@ -26,7 +27,7 @@ export function TwoFactorSetup({ secret, otpauthUri, onConfirm, busy, error }) {
   return (
     <form onSubmit={(e) => { e.preventDefault(); if (ready && !busy) onConfirm(bareCode(code)); }} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={text}>Open an authenticator app (Google Authenticator, Microsoft Authenticator or similar) and scan this code.</div>
-      {qr && <img src={qr} alt="QR code for your authenticator app" width={168} height={168} style={{ background: D.panelBg, borderRadius: 8, alignSelf: "flex-start" }} />}
+      {qr && <img src={qr} alt="QR code for your authenticator app" width={168} height={168} data-paper="" style={{ background: C.paper, borderRadius: 8, alignSelf: "flex-start" }} />}
       <div style={text}>
         Can't scan it? Type this key into the app.
         <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>

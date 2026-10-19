@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
+import { C } from "../theme.js";
 
 // ─── TicketQr ───────────────────────────────────────────────────────────────
 // A ticket's code as a QR image, for the organiser to scan at the gate
@@ -26,7 +27,9 @@ export default function TicketQr({ code, size = 120 }) {
       alt={`QR code for ticket ${code}`}
       width={size}
       height={size}
-      style={{ display: "block", background: "#fff", borderRadius: 8, padding: 4 }}
+      data-paper=""
+      // Always white, in dark mode too: scanners need dark modules on a light quiet zone.
+      style={{ display: "block", background: C.paper, borderRadius: 8, padding: 4 }}
     />
   );
 }

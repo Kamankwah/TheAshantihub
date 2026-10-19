@@ -20,14 +20,30 @@ function deviceQuery() {
   }
 }
 
-// Light/dark theme for the public site.
+function applyTheme(theme) {
+  const html = document.documentElement
+  html.dataset.theme = theme
+  html.classList.toggle('dark', theme === 'dark')
+}
+
+// Called once from main.jsx before React renders, so the first paint is
+// already in the right theme (no light flash on a dark device).
+export function applyInitialTheme() {
+  try {
+    applyTheme(readStored() ?? (deviceQuery()?.matches ? 'dark' : 'light'))
+  } catch {
+    // No DOM (never in the app); the hook applies it on mount anyway.
+  }
+}
+
+// Light/dark theme for every page (public site, account, business dashboard,
+// staff shell).
 // - Nothing stored (a first visit): follow the device's colour-scheme setting,
 //   and keep following it while the page is open, until the user toggles.
 // - Only an explicit toggle is stored; from then on the stored choice wins.
 // - The theme is applied to <html> as `data-theme` (read by the --ah-* CSS
-//   variables in index.css that the inline-styled header/home consume) and as
-//   the `dark` class (Tailwind's dark variant and the shadcn `.dark` tokens).
-// Dashboards keep their own always-light token scope (.command-center).
+//   variables in index.css that C's theme tokens and `D` resolve through) and
+//   as the `dark` class (Tailwind's dark variant and the shadcn `.dark` tokens).
 export function useTheme() {
   const [stored, setStored] = useState(readStored)
   const [device, setDevice] = useState(() => (deviceQuery()?.matches ? 'dark' : 'light'))
@@ -49,9 +65,7 @@ export function useTheme() {
   const theme = stored ?? device
 
   useEffect(() => {
-    const html = document.documentElement
-    html.dataset.theme = theme
-    html.classList.toggle('dark', theme === 'dark')
+    applyTheme(theme)
   }, [theme])
 
   const toggleTheme = useCallback(() => {
