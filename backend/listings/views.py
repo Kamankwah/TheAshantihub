@@ -169,8 +169,11 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
         category = self.get_object()
         listing_count = category.listings.count()
         event_count = category.events.count()
-        if listing_count or event_count:
+        child_count = category.children.count()
+        if listing_count or event_count or child_count:
             parts = []
+            if child_count:
+                parts.append(f"{child_count} {'sub-category' if child_count == 1 else 'sub-categories'}")
             if listing_count:
                 parts.append(f"{listing_count} {'listing' if listing_count == 1 else 'listings'}")
             if event_count:

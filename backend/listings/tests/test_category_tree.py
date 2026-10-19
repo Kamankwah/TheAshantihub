@@ -95,7 +95,7 @@ class ShopperTreeTests(Base):
 
     def test_service_stay_and_event_nodes_show_when_populated(self):
         self.listing("tours")
-        stay = Category.objects.create(slug="lodges", icon="x", label="Lodges", color="#000", kind="service", is_accommodation=True)
+        Category.objects.create(slug="lodges", icon="x", label="Lodges", color="#000", kind="service", is_accommodation=True)
         self.listing("lodges")
         now = timezone.now()
         Event.objects.create(
@@ -107,7 +107,18 @@ class ShopperTreeTests(Base):
         self.assertEqual(set(nodes), {"tours", "lodges", "festivals"})
         self.assertTrue(nodes["lodges"]["is_accommodation"])
         self.assertEqual(nodes["festivals"]["kind"], "event")
-        self.assertFalse(stay.pk is None)
+
+    def test_suspended_business_event_does_not_light_up_its_category(self):
+        suspended = BusinessOwner.objects.create(
+            full_name="S2", login_phone="+233207551003", password_hash="x", is_suspended=True,
+        )
+        now = timezone.now()
+        Event.objects.create(
+            category=Category.objects.get(slug="durbar"), zone=self.zone, submitted_by_business=suspended,
+            name="Hidden", description="D.", address="Kumasi", event_date=now + timedelta(days=9),
+            visibility_days=14, status=Event.APPROVED, paid_at=now, expires_at=now + timedelta(days=14),
+        )
+        self.assertNotIn("durbar", slugs(self.tree()))
 
     @override_settings(SOLD_OUT_HIDDEN_ENABLED=True)
     def test_shopper_tree_ignores_suspended_business_and_sold_out(self):

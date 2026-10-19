@@ -47,8 +47,8 @@ def _used(apps, category):
         return True
     try:
         Event = apps.get_model("events", "Event")
-    except LookupError:
-        return False
+    except LookupError:  # cannot tell whether events use it: fail closed and keep the row
+        return True
     return Event.objects.filter(category=category).exists()
 
 
