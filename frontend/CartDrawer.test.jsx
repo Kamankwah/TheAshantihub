@@ -516,3 +516,51 @@ describe('CartDrawer and the delivery limits', () => {
     })
   })
 })
+
+describe('CartDrawer and the after-hours delivery notice', () => {
+  const preview = (body) => http.get('http://localhost:8000/api/orders/delivery-preview/', () => HttpResponse.json(body))
+  // 2026-10-20 is a Tuesday; Accra is UTC+0, so 08:00Z reads "Tue 08:00".
+  const DEFERRED = { delivery_from: '2026-10-20T08:00:00Z', delivered_from: '2026-10-20T08:00:00Z', deferred: true }
+  const openDoorToDoor = async () => {
+    fireEvent.click(await screen.findByRole('button', { name: 'Checkout →' }))
+    fireEvent.click(screen.getByText('🚚 Door-to-door'))
+  }
+
+  it('says the shop is closed and when delivery starts (business hours)', async () => {
+    server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)), preview({ ...DEFERRED, source: 'business_hours' }))
+    renderDrawer()
+    await openDoorToDoor()
+    expect(await screen.findByTestId('cart-after-hours')).toHaveTextContent('Shop is closed now. Delivery starts Tue 08:00.')
+  })
+
+  it('never says the shop is closed when only platform hours defer it', async () => {
+    server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)), preview({ ...DEFERRED, source: 'platform' }))
+    renderDrawer()
+    await openDoorToDoor()
+    const note = await screen.findByTestId('cart-after-hours')
+    expect(note).toHaveTextContent('Delivery starts Tue 08:00.')
+    expect(note).not.toHaveTextContent(/closed/i)
+  })
+
+  it('shows no notice when the shop is open', async () => {
+    server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)), preview({ delivery_from: null, delivered_from: null, deferred: false, source: null }))
+    renderDrawer()
+    await openDoorToDoor()
+    expect(screen.queryByTestId('cart-after-hours')).not.toBeInTheDocument()
+  })
+
+  it('shows the notice with promotions off, and nothing when the preview fails or for store pickup', async () => {
+    server.use(http.get('http://localhost:8000/api/cart/', () => HttpResponse.json(CART_WITH_ITEM)), preview({ ...DEFERRED, source: 'business_hours' }))
+    const { unmount } = renderDrawer()
+    fireEvent.click(await screen.findByRole('button', { name: 'Checkout →' }))
+    expect(screen.queryByTestId('cart-after-hours')).not.toBeInTheDocument() // store pickup is the default
+    fireEvent.click(screen.getByText('🚚 Door-to-door'))
+    expect(await screen.findByTestId('cart-after-hours')).toBeInTheDocument()
+    unmount()
+    server.use(http.get('http://localhost:8000/api/orders/delivery-preview/', () => HttpResponse.json({ detail: 'x' }, { status: 500 })))
+    renderDrawer()
+    await openDoorToDoor()
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.queryByTestId('cart-after-hours')).not.toBeInTheDocument()
+  })
+})

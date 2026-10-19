@@ -305,6 +305,34 @@ describe('UserPanel', () => {
     })
   })
 
+  describe('Orders & Delivery tab — scheduled start', () => {
+    const order = (extra) => ({
+      id: 7, status: 'paid', placed_at: '2026-10-19T22:00:00Z', total_amount: '90.00', delivery_method: 'door_to_door', delivery_status: 'processing',
+      items: [{ id: 1, listing_name: 'Shea butter', quantity: 1, line_total: '90.00' }], ...extra,
+    })
+    const show = async (o) => {
+      server.use(http.get('http://localhost:8000/api/orders/', () => HttpResponse.json([o])))
+      renderPanel()
+      fireEvent.click(screen.getAllByText('Orders & Delivery')[0])
+      await screen.findByText('Shea butter × 1')
+    }
+
+    it('says when delivery is scheduled to start while ready_not_before is in the future', async () => {
+      await show(order({ ready_not_before: '2099-10-20T08:00:00Z' }))
+      expect(screen.getByTestId('order-scheduled-start')).toHaveTextContent(/Delivery scheduled to start \w{3} 08:00/)
+    })
+
+    it('shows nothing once the time has passed, when unset, or once delivered', async () => {
+      await show(order({ ready_not_before: '2020-10-20T08:00:00Z' }))
+      expect(screen.queryByTestId('order-scheduled-start')).not.toBeInTheDocument()
+    })
+
+    it('shows nothing for a delivered order', async () => {
+      await show(order({ ready_not_before: '2099-10-20T08:00:00Z', delivery_assignment_status: 'delivered' }))
+      expect(screen.queryByTestId('order-scheduled-start')).not.toBeInTheDocument()
+    })
+  })
+
   describe('My Requests tab — terms before paying a quote', () => {
     it('shows when it can be cancelled and when the business is paid above the Pay button', async () => {
       server.use(http.get('http://localhost:8000/api/services/requests/mine/', () => HttpResponse.json([
