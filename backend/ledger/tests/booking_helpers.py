@@ -12,7 +12,7 @@ from accounts.models import BusinessOwner, Customer
 from accounts.testing import staff_token
 from events.models import Event, EventTicketType
 from ledger import posting
-from ledger.models import Account, BookingSale
+from ledger.models import Account, BookingSale, FeeBand, FeeRuleSet
 from listings.models import Category, Listing, Zone
 from services.models import ServiceRequest
 
@@ -25,9 +25,25 @@ def fund(customer, pesewas, key):
     ])
 
 
+def product_ladder_for_all_categories():
+    """Services and events have their own suggested ladders (migration 0009); these tests are about the booking
+    mechanics, so pin both to the product ladder and keep their expected amounts simple."""
+    product = FeeRuleSet.objects.filter(category="product").order_by("-effective_from", "-id").first()
+    for category in ("service", "event"):
+        newest = FeeRuleSet.objects.filter(category=category).order_by("-effective_from").first()
+        start = min(timezone.now(), newest.effective_from + timedelta(milliseconds=1)) if newest else timezone.now()
+        rule_set = FeeRuleSet.objects.create(category=category, effective_from=start)
+        for band in product.bands.all():
+            FeeBand.objects.create(
+                rule_set=rule_set, lower_pesewas=band.lower_pesewas, upper_pesewas=band.upper_pesewas,
+                percent_bp=band.percent_bp, flat_pesewas=band.flat_pesewas,
+            )
+
+
 class BookingBase(TestCase):
     def setUp(self):
         cache.clear()
+        product_ladder_for_all_categories()
         self.client = APIClient()
         self.customer = Customer.objects.create(full_name="Ama Owusu", phone="+233200770001", password_hash="x")
         self.owner = BusinessOwner.objects.create(full_name="Kwame Mensah", login_phone="+233207770001", password_hash="x")

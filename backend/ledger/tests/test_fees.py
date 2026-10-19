@@ -100,12 +100,15 @@ class ValidateBandsTests(SimpleTestCase):
 
 
 class SeededDefaultsTests(TestCase):
-    def test_each_category_has_the_brief_tiers_in_force(self):
-        for category in ("product", "service", "event"):
-            rule_set = fees.rule_set_in_force(category)
-            self.assertIsNotNone(rule_set, category)
-            self.assertEqual(fees.band_fee(list(rule_set.bands.all()), 10000), 500, category)
-            self.assertEqual(fees.band_fee(list(rule_set.bands.all()), 5000000), 50000, category)
+    def test_products_have_the_brief_tiers_in_force(self):
+        rule_set = fees.rule_set_in_force("product")
+        self.assertEqual(fees.band_fee(list(rule_set.bands.all()), 10000), 500)
+        self.assertEqual(fees.band_fee(list(rule_set.bands.all()), 5000000), 50000)
+
+    def test_services_and_events_have_a_ladder_in_force_too(self):
+        # Their suggested figures are pinned in test_suggested_fees; here only that none is missing.
+        for category in ("service", "event"):
+            self.assertIsNotNone(fees.rule_set_in_force(category), category)
 
     def test_the_latest_rule_set_in_force_wins_and_a_future_one_waits(self):
         from datetime import timedelta

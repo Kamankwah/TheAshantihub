@@ -57,13 +57,16 @@ class RecordBookingPaymentTests(BookingBase):
             check_out=today + timedelta(days=3), nightly_rate=Decimal("150.00"), total_price=Decimal("300.00"),
             status=Booking.CONFIRMED,
         )
+        # This test is about which fee table each kind uses, so drop the setUp pin and use the suggested ladders.
+        for category in (FeeRuleSet.SERVICE, FeeRuleSet.EVENT):
+            FeeRuleSet.objects.filter(category=category).order_by("-effective_from").first().delete()
         stay = sales.record_payment(self.session(CheckoutSession.BOOKING, "300.00", booking_id=booking.pk), BookingSale.STAY, booking, self.owner)
         tickets = sales.record_payment(
             self.session(CheckoutSession.TICKET_PURCHASE, "100.00", unit_price="50.00", quantity=2),
             BookingSale.TICKETS, self.event, self.owner,
         )
-        self.assertEqual((stay.category, stay.base_pesewas, stay.charged_pesewas), (FeeRuleSet.SERVICE, 30000, 500))
-        self.assertEqual((tickets.category, tickets.base_pesewas, tickets.charged_pesewas), (FeeRuleSet.EVENT, 10000, 300))
+        self.assertEqual((stay.category, stay.base_pesewas, stay.charged_pesewas), (FeeRuleSet.SERVICE, 30000, 600))
+        self.assertEqual((tickets.category, tickets.base_pesewas, tickets.charged_pesewas), (FeeRuleSet.EVENT, 10000, 250))
         self.assertEqual((stay.booking, tickets.event), (booking, self.event))
         self.assertEqual(self.balance(Account.VENDOR_PENDING, self.owner), 40000)
 
@@ -201,5 +204,6 @@ class CapRaceTests(TransactionTestCase):
             self.assertFalse(thread.is_alive(), "a racing payment hung")
         self.assertEqual(outcomes, ["paid", "paid"])
         charged = sorted([OrderFeeSnapshot.objects.get().charged_pesewas, BookingSale.objects.get().charged_pesewas])
-        self.assertEqual(charged, [100, 500])                       # whichever came second got only the GH₵ 1.00 left
+        # Whichever paid second got only what the GH₵ 6.00 cap had left; the order is a race, the total is not.
+        self.assertEqual(sum(charged), 600)
         self.assertEqual(fees.charged_to_date(owner), 600)
