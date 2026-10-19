@@ -111,3 +111,68 @@ class ReleaseAtTests(BookingBase):
         sale = self.done(sale, timezone.now() - timedelta(days=9))
         with override_settings(LEDGER_ENABLED=False):
             self.assertEqual(sales.release_due(), 0)
+
+
+@override_settings(LEDGER_ENABLED=True)
+class FinalReviewTests(BookingBase):
+    def mismatch(self, sale, dispute_status):
+        dispute = Dispute.objects.create(
+            order=None, raised_by=None, logged_by=make_staff("support", "fr7e@example.com"), reason=Dispute.QUALITY_ISSUE,
+            status=dispute_status, description="Does not match.",
+        )
+        BookingSale.objects.filter(pk=sale.pk).update(outcome=sales.DOES_NOT_MATCH, dispute=dispute)
+        return dispute
+
+    def test_a_mismatch_whose_dispute_was_rejected_releases_by_the_timer(self):
+        sale = self.paid_stay()
+        self.mismatch(sale, Dispute.REJECTED)
+        self.assertEqual(sales.release_due(sales.release_at(sale) + timedelta(minutes=1)), 1)
+        sale.refresh_from_db()
+        self.assertIsNotNone(sale.released_at)
+        self.assertEqual(self.balance(Account.VENDOR_PENDING, self.owner), 0)
+
+    def test_a_mismatch_with_the_dispute_open_is_not_released(self):
+        sale = self.paid_stay()
+        self.mismatch(sale, Dispute.OPEN)
+        self.assertEqual(sales.release_due(sales.release_at(sale) + timedelta(minutes=1)), 0)
+        sale.refresh_from_db()
+        self.assertIsNone(sale.released_at)
+
+    def test_a_mismatch_resolved_with_a_partial_refund_releases_the_remainder_once(self):
+        sale = self.paid_stay(nights=2)                                       # 30000
+        self.mismatch(sale, Dispute.RESOLVED)
+        sales.refund(sale, 10000, source="dispute-1")
+        later = sales.release_at(sale) + timedelta(minutes=1)
+        self.assertEqual(sales.release_due(later), 1)
+        self.assertEqual(sales.release_due(later + timedelta(hours=2)), 0)
+        self.assertEqual(Journal.objects.filter(key=sales.release_key(sale)).count(), 1)
+        self.assertEqual(self.balance(Account.VENDOR_PENDING, self.owner), 0)
+        self.assertEqual(self.balance(Account.CUSTOMER_WALLET, self.customer), 10000)
+        for journal in Journal.objects.all():
+            lines = journal.lines.all()
+            self.assertEqual(sum(l.amount for l in lines if l.side == "debit"), sum(l.amount for l in lines if l.side == "credit"))
+        released = Journal.objects.get(key=sales.release_key(sale))
+        self.assertEqual(sum(l.amount for l in released.lines.all() if l.side == "debit"), 20000)
+
+    def test_accept_is_409_when_nothing_was_released(self):
+        sale = self.paid_service("200.00")
+        ServiceRequest.objects.filter(pk=sale.service_request_id).update(status=ServiceRequest.COMPLETED, completed_at=timezone.now())
+        BookingSale.objects.filter(pk=sale.pk).update(outcome=sales.DOES_NOT_MATCH)      # a negative call, no dispute linked
+        self.as_customer()
+        response = self.client.post(f"/api/services/requests/{sale.service_request_id}/accept/", {}, format="json")
+        self.assertEqual(response.status_code, 409, response.content)
+        self.assertEqual(self.balance(Account.VENDOR_AVAILABLE, self.owner), 0)
+
+    def test_tickets_of_an_unapproved_event_are_not_released_until_approved(self):
+        sale = self.paid_tickets()
+        due = sales.release_at(sale) + timedelta(minutes=1)
+        for status in (Event.PENDING, Event.REJECTED):
+            Event.objects.filter(pk=sale.event_id).update(status=status)
+            self.assertEqual(sales.release_due(due), 0)
+        Event.objects.filter(pk=sale.event_id).update(status=Event.APPROVED)
+        self.assertEqual(sales.release_due(due), 1)
+
+    def test_tickets_of_an_expired_listing_still_release(self):
+        sale = self.paid_tickets()
+        Event.objects.filter(pk=sale.event_id).update(status=Event.EXPIRED)
+        self.assertEqual(sales.release_due(sales.release_at(sale) + timedelta(minutes=1)), 1)

@@ -185,11 +185,14 @@ def release_due(now=None):
     open dispute and no negative call from Support. Each release is recorded as a "matches" outcome with no staff member
     and says it was automatic. Returns how many were released; a no-op while the ledger is off. A sale that cannot be
     released now (a dispute is open) is left for a later run."""
+    from events.models import Event
+
     if not escrow.enabled():
         return 0
     now = now or timezone.now()
     candidates = (
-        BookingSale.objects.filter(released_at__isnull=True, reversed_at__isnull=True, outcome__in=["", UNREACHABLE])
+        BookingSale.objects.filter(released_at__isnull=True, reversed_at__isnull=True)
+        .filter(Q(outcome__in=["", UNREACHABLE]) | Q(outcome=DOES_NOT_MATCH, dispute__isnull=False))
         .select_related("service_request", "booking", "event")
     )
     released = 0
@@ -197,6 +200,8 @@ def release_due(now=None):
         due = release_at(candidate, now)
         if due is None or due > now:
             continue
+        if candidate.kind == BookingSale.TICKETS and candidate.event.status in (Event.PENDING, Event.REJECTED):
+            continue  # an event sent back for review or rejected is not paid out; one merely past its listing window is
         try:
             with transaction.atomic():
                 sale = lock(candidate)
@@ -214,8 +219,10 @@ def _release_on_clock(sale, now, note):
     """Inside `lock(sale)`: record a "matches" outcome by no staff member and release. False when it is already released,
     refunded in full or has a negative call; raises _NotReleasable (rolling back the caller's atomic block) when a
     dispute is open."""
-    if sale.released_at is not None or sale.reversed_at is not None or sale.outcome not in ("", UNREACHABLE):
+    if sale.released_at is not None or sale.reversed_at is not None:
         return False
+    if sale.outcome not in ("", UNREACHABLE) and not (sale.outcome == DOES_NOT_MATCH and sale.dispute_id is not None):
+        return False  # a negative call stands until its dispute is closed (has_open_dispute then decides in release)
     sale.outcome, sale.outcome_at, sale.outcome_by, sale.outcome_note = MATCHES, now, None, note
     sale.save(update_fields=["outcome", "outcome_at", "outcome_by", "outcome_note"])
     if release(sale, now) is None:
@@ -254,9 +261,10 @@ def accept(sale, customer, now=None):
         sale.save(update_fields=["customer_accepted_at"])
         try:
             with transaction.atomic():
-                _release_on_clock(sale, now, "Accepted by the customer in the app.")
+                if not _release_on_clock(sale, now, "Accepted by the customer in the app."):
+                    raise _NotReleasable
         except _NotReleasable:
-            raise AcceptError("This could not be released now. Try again shortly.") from None
+            raise AcceptError("This could not be released now: a problem is open or Support has a negative call on it.") from None
         return sale
 
 
