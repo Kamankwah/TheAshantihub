@@ -226,7 +226,8 @@ From the last table of each wallet plan (`2026-10-15-ledger-fees-foundation.md`,
 ## Task 10: Checkout page
 
 **Files:**
-- Create: `frontend/components/shop/CheckoutPage.jsx`, `frontend/components/shop/PaymentMethodPicker.jsx`, `frontend/components/shop/ProcessingLine.jsx`, `frontend/hooks/useWalletProcessing.js`, `frontend/components/__tests__/CheckoutPage.test.jsx`
+- Create: `frontend/components/shop/CheckoutPage.jsx`, `frontend/components/__tests__/CheckoutPage.test.jsx`
+- Import (built by wallet Plan 3F Tasks 1-6, which merges first; see docs/superpowers/plans/2026-10-19-wallet-frontend-3f-wallet-screens.md, "Division with marketplace Plan 4"): `PaymentMethodPicker`, `ProcessingLine`, `useWalletProcessing`. Step 0: stop if they are absent.
 - Modify: `frontend/App.jsx` (`checkout: "/checkout"`; passes `PaymentComponent={MoMoPayment}`), `frontend/components/CartDrawer.jsx` (delete its checkout step, address state and quote logic — they now live here)
 
 **Interfaces:**
@@ -235,7 +236,7 @@ From the last table of each wallet plan (`2026-10-15-ledger-fees-foundation.md`,
 
 - [ ] **Step 1: Write the failing tests.** `CheckoutPage.test.jsx`: `test_door_to_door_needs_a_valid_ghanapost_code_and_a_landmark_before_the_button_enables`, `test_pickup_needs_no_address`, `test_default_address_is_preselected`, `test_default_to_this_address_calls_set_default`, `test_wallet_option_shows_balance_and_is_disabled_when_short_or_ledger_off`, `test_processing_line_comes_from_the_server_for_momo_only`, `test_total_is_items_plus_delivery_plus_processing_minus_discount`, `test_wallet_order_posts_payment_method_wallet_with_gps_and_landmark`, `test_momo_order_opens_the_payment_component_then_posts`, `test_redirect_answer_navigates_to_checkout_url`, `test_201_navigates_to_verify_with_the_order_id`, `test_server_refusal_keeps_the_cart_and_shows_the_detail`, `test_double_click_posts_once`, `test_disabled_before_opening_with_opens_6_nov`, `test_staff_session_gets_the_staff_notice`, `test_out_of_area_pin_disables_the_button`, `test_no_card_digits_or_gift_card_fields_anywhere`.
 - [ ] **Step 2: Run to see them fail** — `cd frontend && npx vitest run components/__tests__/CheckoutPage.test.jsx`.
-- [ ] **Step 3: Implement.** `LocationPicker` is globally stubbed in jsdom; the pin is verified manually in a browser.
+- [ ] **Step 3: Implement** by composing 3F's `PaymentMethodPicker` and `ProcessingLine` (do not rebuild them). `LocationPicker` is globally stubbed in jsdom; the pin is verified manually in a browser.
 - [ ] **Step 4: Run to pass**, then the full suite (`CartDrawer.test.jsx` updated in Task 8 must still pass).
 - [ ] **Step 5: Commit** — `feat(checkout): secure checkout with a required GhanaPost address and wallet or mobile money`.
 
@@ -296,11 +297,12 @@ From the last table of each wallet plan (`2026-10-15-ledger-fees-foundation.md`,
 ## Task 14: Shopper wallet — Overview, Transactions and top-up
 
 **Files:**
-- Create: `frontend/hooks/useWallet.js`, `frontend/hooks/useWalletTransactions.js`, `frontend/hooks/useTopUp.js`, `frontend/components/account/wallet/WalletTabs.jsx`, `frontend/components/account/wallet/WalletOverview.jsx`, `frontend/components/account/wallet/WalletTransactions.jsx`, `frontend/components/account/wallet/TopUpDialog.jsx`, `frontend/components/account/wallet/walletErrors.js`, `frontend/components/__tests__/WalletOverview.test.jsx`, `frontend/components/__tests__/WalletTransactions.test.jsx`
-- Modify: `frontend/mocks/handlers.js` (defaults for `/api/wallet/*`: ledger on, balance `"0.00"`, empty lists)
+- Create: `frontend/components/account/wallet/WalletTabs.jsx`, `frontend/components/account/wallet/WalletOverview.jsx`, `frontend/components/account/wallet/WalletTransactions.jsx`, `frontend/components/account/wallet/TopUpDialog.jsx` (a thin dialog around 3F's `TopUpForm`), `frontend/components/__tests__/WalletOverview.test.jsx`, `frontend/components/__tests__/WalletTransactions.test.jsx`
+- Import from wallet Plan 3F Tasks 1-3 (merges first): `useWallet`, `useWalletTransactions`, `walletErrors.js` (`walletMessage`), `BalanceSummary`, `TransactionsList`, `RefundNotice`, `TopUpForm`, `ProcessingLine`. Step 0: stop if absent. There is no `useTopUp` hook: a mutation is a handler (`frontend/CLAUDE.md`), so `TopUpForm` posts itself.
+- Modify: `frontend/mocks/handlers.js` only if 3F has not already added the defaults for `/api/wallet/*`
 
 **Interfaces:**
-- Hooks are **holder-agnostic** (`useWallet()` returns the server summary as is; a vendor shape is passed through untouched) so 3F/4F/5F can reuse them. `useWalletTransactions(page)` reads the DRF envelope (`data.results`, `next`) — note the paginated-hook rule in `frontend/CLAUDE.md`.
+- Hooks (3F's) are **holder-agnostic** (`useWallet()` returns the server summary as is; a vendor shape is passed through untouched) so 3F/4F/5F can reuse them. `useWalletTransactions(page)` reads the DRF envelope (`data.results`, `next`) — note the paginated-hook rule in `frontend/CLAUDE.md`.
 - `walletErrors.js`: `walletMessage(error) -> {text, kind}` — `409 ledger_off` → "Wallets aren't switched on yet." (kind `off`); otherwise the server's `detail`; never a client-made reason.
 - `WalletTabs` — the underlined tab bar **Overview · Wallet · Transactions · Settings** at `/my-account/payments/<tab>` with the breadcrumb "Your Account › Your Payments › …".
 - `WalletOverview` — a balance card "AshantiHub wallet · GHS {balance}" with **Top up** and **Withdraw** (the latter jumps to the Wallet tab's withdraw form), and **Recent activity** (the last 5 transactions, "See all" → Transactions). No gift-card, rewards or offers blocks.
@@ -309,15 +311,16 @@ From the last table of each wallet plan (`2026-10-15-ledger-fees-foundation.md`,
 
 - [ ] **Step 1: Write the failing tests.** `WalletOverview.test.jsx`: `test_shows_the_balance_from_the_server_with_two_decimals`, `test_ledger_off_shows_the_not_switched_on_state_on_every_wallet_tab`, `test_top_up_shows_the_processing_line_before_paying`, `test_top_up_rejects_bad_amounts_without_a_request` (`"", "0", "1.234", "abc", "-5"`), `test_immediate_top_up_refreshes_the_balance`, `test_redirect_top_up_navigates_to_checkout_url`, `test_server_refusal_text_is_shown_verbatim`, `test_no_gift_card_points_or_offer_blocks`, `test_recent_activity_shows_five_rows_and_see_all`. `WalletTransactions.test.jsx`: `test_in_and_out_rows_carry_a_sign_and_an_arrow_not_just_colour`, `test_order_rows_link_to_the_order`, `test_load_more_follows_next_and_appends`, `test_empty_state_text`, `test_ledger_off_state`.
 - [ ] **Step 2: Run to see them fail** — `cd frontend && npx vitest run components/__tests__/WalletOverview.test.jsx components/__tests__/WalletTransactions.test.jsx`.
-- [ ] **Step 3: Implement.**
+- [ ] **Step 3: Implement** by composing 3F's components inside the marketplace tabs and breadcrumb; do not re-implement the hooks or the top-up form.
 - [ ] **Step 4: Run to pass**, then the full suite.
 - [ ] **Step 5: Commit** — `feat(wallet): shopper wallet overview, transactions and top-up`.
 
 ## Task 15: Shopper wallet — Wallet tab (payout numbers, withdrawals) and Settings
 
 **Files:**
-- Create: `frontend/hooks/useWalletDestinations.js`, `frontend/hooks/useWithdrawals.js`, `frontend/components/account/wallet/DestinationsList.jsx`, `frontend/components/account/wallet/AddDestinationForm.jsx`, `frontend/components/account/wallet/WithdrawForm.jsx`, `frontend/components/account/wallet/WithdrawalHistory.jsx`, `frontend/components/account/wallet/WalletSettings.jsx`, `frontend/components/__tests__/WalletAccounts.test.jsx`, `frontend/components/__tests__/WalletSettings.test.jsx`
-- Step 0 (dependency check): confirm Plan 2F's step-up prompt exists (grep `step_up_required` in `frontend/apiClient.js` / `frontend/components`). If it does not, **stop**: 2F's step-up piece ships first (Dependencies).
+- Create: `frontend/components/account/wallet/WalletSettings.jsx`, `frontend/components/__tests__/WalletAccounts.test.jsx`, `frontend/components/__tests__/WalletSettings.test.jsx`
+- Import from wallet Plan 3F Tasks 4-5 (merges first): `useWalletDestinations`, `useWithdrawals`, `DestinationsList`, `AddDestinationForm`, `WithdrawForm`, `WithdrawalHistory`. This task composes them in the Wallet tab and builds only the Settings tab; the tests below that exercise those components' internals live in 3F, keep here only the tab-level ones (composition, masked-only, ledger-off state).
+- Step 0 (dependency check): confirm 3F Tasks 4-5 are merged, and confirm Plan 2F's step-up prompt exists (grep `step_up_required` in `frontend/apiClient.js` / `frontend/components`). If it does not, **stop**: 2F's step-up piece ships first (Dependencies).
 
 **Interfaces:**
 - `useWalletDestinations()` → `{results, cooling_hours}` (masked as the server sends; the page never has an unmasked number to show). `useWithdrawals()` is the DRF envelope (`data.results`, `next`).
