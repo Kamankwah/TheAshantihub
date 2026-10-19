@@ -14,7 +14,8 @@ refund waiting for approval is open, and for an order no longer paid (cancelled)
 each snapshot's base and fee less what was refunded, and the delivery fee the order's Delivery payable still holds. A business
 that waived the delivery fee through its free-delivery promo pays it from its Available right after (charge_waiver, kind
 order_waiver_charge); a whole refund gives it back (return_waiver). A third-party rider who delivered the order is then
-paid what platform delivery income took for it, in the same transaction (ledger.riders.credit_delivery)."""
+paid what platform delivery income took for it, in the same transaction (ledger.riders.credit_delivery). A whole refund after
+the rider picked up settles the delivery the same way before release (settle_delivery): the fee belongs to the rider."""
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
@@ -213,6 +214,54 @@ def release_verified(order, now=None):
 
         vendor_texts.order_released(order, journal)
         return journal
+
+
+# --- the delivery fee settled early (a whole refund after a pickup, before release) ----------------------------------
+
+def settle_key(order):
+    return f"order-delivery-settle-{order.pk}"
+
+
+def settle_accounts(order, rider):
+    """The accounts settle_delivery posts to, for the refund's up-front lock: the order's Delivery payable (looked up, never
+    created empty), platform delivery income, the free-delivery promo charge's accounts and the rider's balance and reserve."""
+    if to_pesewas(order.delivery_fee or 0) > 0:
+        payable = posting.account_for(Account.DELIVERY_PAYABLE, order)
+    else:
+        payable = Account.objects.filter(kind=Account.DELIVERY_PAYABLE, owner_type="orders.order", owner_id=str(order.pk)).first()
+    return (payable, posting.account_for(Account.PLATFORM_DELIVERY_INCOME), *waiver_accounts(order), *riders.release_accounts(rider))
+
+
+_UNSET = object()
+
+
+def settle_delivery(order, now=None, *, rider=_UNSET):
+    """The delivery fee has been earned (a pickup was made) but the order will never be released because it is being
+    refunded whole: do here what the release would have done for delivery. Dr the order's Delivery payable (whatever it
+    holds), Cr platform delivery income (journal `order-delivery-settle-<order>`); then the business's free-delivery promo
+    charge (charge_waiver); then a third-party rider whose employment covered the pickup is paid exactly as a release
+    pays them (riders.credit_delivery). An AshantiHub rider, or none, leaves the fee as platform delivery income.
+
+    Only for an unreleased order whose delivery is earned (riders.delivery_earned); idempotent on its key and on the
+    RiderEarning. Call inside the refund's transaction with `rider` from riders.rider_for_settle (its rows locked) and
+    settle_accounts(order, rider) in the up-front lock (when `rider` is not given, it is looked up and locked here).
+    Returns the RiderEarning, or None."""
+    if not enabled() or Journal.objects.filter(key=release_key(order)).exists() or not riders.delivery_earned(order):
+        return None
+    now = now or timezone.now()
+    if rider is _UNSET:
+        rider = riders.rider_for_settle(order)
+    payable = Account.objects.filter(kind=Account.DELIVERY_PAYABLE, owner_type="orders.order", owner_id=str(order.pk)).first()
+    held = posting.lock(payable)[payable.pk].balance if payable is not None else 0     # already locked by the caller
+    if held > 0:
+        posting.post(
+            key=settle_key(order), kind="order_delivery_settle",
+            lines=[posting.debit(payable, held), posting.credit(posting.account_for(Account.PLATFORM_DELIVERY_INCOME), held)],
+            reference_type="orders.order", reference_id=str(order.pk),
+            memo=f"Delivery of order #{order.pk} earned by the pickup, settled at the refund",
+        )
+    charge_waiver(order)
+    return riders.credit_delivery(order, rider, now)
 
 
 # --- the business's free-delivery promo (marketing.WaivedFeeCharge; spec §13 Stage 3 carry-forward) -----------------

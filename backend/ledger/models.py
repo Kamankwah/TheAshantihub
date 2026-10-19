@@ -224,8 +224,8 @@ class OrderRefund(models.Model):
     per (order, source): the source names what asked for it ("cancel", "pickup_expired", "dispute-<id>"), so the same
     request can never refund twice. Pesewas: `amount_pesewas` is order money returned to the customer (items_pesewas +
     delivery_pesewas − subsidy_pesewas); `processing_pesewas` is a collection charge AshantiHub gave back on its own or
-    a vendor's error; `rider_pesewas` is the part of the delivery fee a third-party rider was paid for a trip made before a whole
-    refund (`wallet_pesewas` is the credit the customer got). `allocation` lists what each fee snapshot gave. `journal` is null only when nothing had to move."""
+    a vendor's error; `delivery_kept_pesewas` is the delivery fee kept from the customer because the rider had picked up (it belongs to
+    the rider and is never refunded; `wallet_pesewas` is the credit the customer got). `allocation` lists what each fee snapshot gave. `journal` is null only when nothing had to move."""
 
     order = models.ForeignKey("orders.Order", on_delete=models.PROTECT, related_name="refunds")
     source = models.CharField(max_length=60)
@@ -235,7 +235,7 @@ class OrderRefund(models.Model):
     delivery_pesewas = models.BigIntegerField(default=0)
     subsidy_pesewas = models.BigIntegerField(default=0)
     processing_pesewas = models.BigIntegerField(default=0)
-    rider_pesewas = models.BigIntegerField(default=0)    # paid to a third-party rider out of delivery_pesewas, for a trip made before this refund
+    delivery_kept_pesewas = models.BigIntegerField(default=0)    # the delivery fee kept from the customer because the rider had picked up
     allocation = models.JSONField(default=list, blank=True)
     journal = models.OneToOneField(Journal, null=True, blank=True, on_delete=models.PROTECT, related_name="refund")
     created_by = models.ForeignKey("accounts.StaffUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
@@ -249,8 +249,8 @@ class OrderRefund(models.Model):
     @property
     def wallet_pesewas(self):
         """What actually went into the customer's wallet: the order money returned plus any processing charge given back,
-        less the rider's share of the delivery fee (never below zero). Show this, not `amount_pesewas`, to the customer."""
-        return max(0, self.amount_pesewas + self.processing_pesewas - self.rider_pesewas)
+        less the delivery fee kept for the rider (never below zero). Show this, not `amount_pesewas`, to the customer."""
+        return max(0, self.amount_pesewas + self.processing_pesewas - self.delivery_kept_pesewas)
 
     def __str__(self):
         return f"Refund {self.source} on order {self.order_id}"

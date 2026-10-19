@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from accounts.models import Customer
 from accounts.testing import make_staff
-from delivery.models import Rider, RiderDocument, RiderEarning, RiderEmploymentPeriod
+from delivery.models import PickupStop, Rider, RiderDocument, RiderEarning, RiderEmploymentPeriod
 from ledger import posting, riders
 from ledger.models import Account
 from marketing.models_waivers import DeliveryWaiver, WaivedFeeCharge
@@ -38,6 +38,17 @@ def delivered_by(order, rider_row, *, at=None, status=DeliveryAssignment.CONFIRM
     return DeliveryAssignment.objects.create(
         order=order, dispatch=rider_row.staff, status=status, delivered_at=None if failed else at,
         confirmed_at=at if status == DeliveryAssignment.CONFIRMED else None, failed_at=at if failed else None,
+    )
+
+
+def stop_collected(order, owner, at=None, *, status=PickupStop.COLLECTED):
+    """One pickup stop of the order's delivery at `owner`'s shop, collected at `at` (now by default) unless `status` says
+    otherwise (a skipped or waiting stop has no collection time). The order must already have its assignment."""
+    assignment = DeliveryAssignment.objects.get(order=order)
+    collected = status == PickupStop.COLLECTED
+    return PickupStop.objects.create(
+        assignment=assignment, sequence=assignment.stops.count() + 1, business_owner=owner, status=status,
+        collected_at=(at or timezone.now()) if collected else None,
     )
 
 
