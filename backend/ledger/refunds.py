@@ -242,6 +242,10 @@ def _post(order, snapshots, shares, *, customer, delivery, subsidy, processing, 
     # was paid it gives it back first. Their earning row is locked here: after the order row and its snapshots, before
     # any account (wallets Plan 5).
     earning = riders.earning_to_reverse(order) if whole and released else None
+    # A whole refund before release of an order whose third-party rider already picked the goods up pays them for the
+    # trip out of the delivery fee; the customer gets the rest (their row is locked here, with the earning's place).
+    trip = riders.refund_trip(order, delivery) if whole and not released else None
+    rider_share = trip[1] if trip is not None else 0
     by_vendor, allocation = {}, []
     for snap in snapshots:
         base = shares.get(snap.pk, 0)
@@ -275,21 +279,25 @@ def _post(order, snapshots, shares, *, customer, delivery, subsidy, processing, 
         if entry["fee"]:
             debits.append(posting.debit(posting.account_for(Account.PLATFORM_FEE_INCOME), entry["fee"]))
             credits.append(posting.credit(posting.account_for(Account.VENDOR_AVAILABLE, entry["owner"]), entry["fee"]))
-    if delivery:
+    if delivery - rider_share:
         holder = (
             posting.account_for(Account.PLATFORM_DELIVERY_INCOME) if released
             else posting.account_for(Account.DELIVERY_PAYABLE, order)
         )
-        debits.append(posting.debit(holder, delivery))
+        debits.append(posting.debit(holder, delivery - rider_share))   # the rider's share leaves the payable in its own journal
     if processing:
         debits.append(posting.debit(posting.account_for(Account.PROVIDER_FEES), processing))
     if subsidy:
         credits.append(posting.credit(posting.account_for(Account.PLATFORM_PROMO_SUBSIDY), subsidy))
-    if customer + processing:
-        credits.append(posting.credit(posting.account_for(Account.CUSTOMER_WALLET, order.customer), customer + processing))
+    if customer + processing - rider_share:
+        credits.append(posting.credit(
+            posting.account_for(Account.CUSTOMER_WALLET, order.customer), customer + processing - rider_share,
+        ))
     # Every account this transaction posts to, in one sorted pass before the first posting (spec W7); `extra_locks`
     # are the accounts a later posting in the same transaction touches (Task 6: the promo return).
-    posting.lock(*(line.account for line in debits + credits), *extra_locks, *riders.reversal_accounts(earning))
+    posting.lock(*(line.account for line in debits + credits), *extra_locks, *riders.reversal_accounts(earning), *riders.refund_accounts(trip, order))
+    if trip is not None:
+        riders.credit_on_refund(order, now, trip=trip)           # first: the refund below debits only what is left of the fee
     if earning is not None:
         riders.check_reversal(earning, delivery)                 # what comes back from the rider must be what is returned
         riders.reverse_earning(earning, now)                     # first: the refund below takes the fee back from there

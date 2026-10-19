@@ -141,6 +141,84 @@ def credit_delivery(order, rider, now=None):
     )
 
 
+# --- a refund before release (Plan 7D: a trip made is paid even when the order is refunded) -----------------------------
+
+def refund_key(order):
+    return f"rider-refund-{order.pk}"
+
+
+def rider_picked_up(order):
+    """True once a door-to-door order's delivery job shows the rider collected the goods and did not fail the delivery
+    (`picked_up_at` is stamped when they confirm pickup at the business). Assigned, accepted or at-pickup is not a trip."""
+    if order.delivery_method != Order.DOOR_TO_DOOR:
+        return False
+    assignment = DeliveryAssignment.objects.filter(order_id=order.pk).first()
+    return (
+        assignment is not None and assignment.dispatch_id is not None and assignment.picked_up_at is not None
+        and assignment.status != DeliveryAssignment.FAILED
+    )
+
+
+def refund_trip(order, delivery_pesewas):
+    """(rider, net, reserve, bp) to pay for a trip made before this whole refund of `order`'s `delivery_pesewas` of delivery
+    fee, the rider's row locked, or None: nothing to pay, not picked up, AshantiHub's own rider (or one who was not
+    third-party when they picked up), or already paid. The rider's share is what they would net from that fee under the
+    commission rate in force when the order was paid (`split`); the commission part goes back to the customer with the
+    rest of the fee. Call inside the refund's transaction after the order row and its fee snapshots."""
+    from . import escrow
+
+    if delivery_pesewas <= 0 or not rider_picked_up(order):
+        return None
+    if Journal.objects.filter(key=refund_key(order)).exists() or RiderEarning.objects.filter(order_id=order.pk).exists():
+        return None
+    assignment = DeliveryAssignment.objects.get(order_id=order.pk)
+    rider = Rider.objects.select_related("staff").filter(staff_id=assignment.dispatch_id).first()
+    if rider is None or not employment.third_party_at(rider, assignment.picked_up_at):
+        return None
+    rider = Rider.objects.select_related("staff").select_for_update(of=("self",)).get(pk=rider.pk)
+    paid_at = Journal.objects.get(key=escrow.pay_key(order)).created_at
+    bp = settings_store.current(COMMISSION_SETTING, paid_at)
+    reserve, net = split(delivery_pesewas, bp)
+    return (rider, net, reserve, bp) if net > 0 else None
+
+
+def refund_accounts(trip, order):
+    """The accounts credit_on_refund posts to (for the refund's up-front lock); () without a trip."""
+    return (accounts_of(trip[0])[0], posting.account_for(Account.DELIVERY_PAYABLE, order)) if trip is not None else ()
+
+
+def credit_on_refund(order, now=None, *, trip=None, delivery_pesewas=None):
+    """Pay the third-party rider the share of the delivery fee a whole refund before release owes them for a trip made
+    (Dr the order's Delivery payable, Cr rider balance, journal `rider-refund-<order>`, and a RiderEarning with no
+    reserve: AshantiHub's commission goes back to the customer). Returns the pesewas paid; 0 when there is no trip to pay
+    or it was already paid. Idempotent. Call from refund_order's transaction with `trip` (refund_trip) already locked."""
+    from . import escrow
+
+    if not escrow.enabled():
+        return 0
+    if trip is None:
+        if delivery_pesewas is None:
+            from .money import to_pesewas
+
+            delivery_pesewas = to_pesewas(order.delivery_fee or 0)
+        trip = refund_trip(order, delivery_pesewas)
+    if trip is None:
+        return 0
+    rider, net, _reserve, bp = trip
+    now = now or timezone.now()
+    journal = posting.post(
+        key=refund_key(order), kind="rider_earning",
+        lines=[posting.debit(posting.account_for(Account.DELIVERY_PAYABLE, order), net), posting.credit(accounts_of(rider)[0], net)],
+        reference_type="orders.order", reference_id=str(order.pk),
+        memo=f"Order #{order.pk} refunded after the rider picked it up: the rider is paid for the trip",
+    )
+    RiderEarning.objects.create(
+        order=order, rider=rider, gross_pesewas=net, commission_bp=bp, reserve_pesewas=0, net_pesewas=net,
+        earned_at=now, earned_on=timezone.localdate(now), journal=journal,
+    )
+    return net
+
+
 # --- end of day (spec §2.2 step 6) ------------------------------------------------------------------------------------
 
 def commission_key(rider, day, first_earning_pk):
