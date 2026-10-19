@@ -234,6 +234,13 @@ def _lock_target_key(target_type, target_id):
             )
 
 
+def lock_target(target_type, target_id):
+    """The same per-target advisory lock, for a caller that locks a target's own row before submitting: take this FIRST
+    (approve() holds approval row -> this lock -> the target's rows). Re-taking it in the same transaction, as submit()
+    may, is safe: Postgres advisory transaction locks are re-entrant for the session that holds them."""
+    _lock_target_key(target_type, str(target_id))
+
+
 def _lock_target(approval):
     _lock_target_key(approval.target_type, approval.target_id)
 

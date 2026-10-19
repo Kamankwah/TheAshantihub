@@ -530,7 +530,8 @@ def scout_row(change):
 # scout (submit_for_approval), so the engine never lets them decide it; apply also refuses anyone who verified the
 # change on site (the assigned scout or the visit's scout) should they be among the deciders. Lock order inside the
 # decision: the approval row, the target advisory lock (approvals.services), the owner row, then the request row (the
-# same owner-then-request order request_change uses); record() last.
+# same owner-then-request order request_change uses); record() last. Every kind that locks its target row before submitting
+# (wallets.holder_details.ask, the withdrawal resolve door) takes that same advisory lock first, so all paths agree.
 
 APPLIED_TITLE = "Your {label} was changed"
 NOT_APPROVED_TITLE = "Your {label} change was not approved"

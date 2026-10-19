@@ -107,7 +107,9 @@ def ask(maker, holder, column, value, request=None):
     if (getattr(holder, column) or "") == (new_value or ""):
         raise Refused("That is already the current value.", "no_change", status_code=400)
     with transaction.atomic():
-        # The holder row is the lock: two requests for the same column queue here, so the second sees the first.
+        # Lock order, as in a decision (approvals.services): the target's advisory lock, then the holder row; two requests
+        # for the same column queue here, so the second sees the first. submit() may take the advisory lock again: fine.
+        approvals.lock_target(holder._meta.label_lower, holder.pk)
         type(holder).objects.select_for_update().get(pk=holder.pk)
         if pending(holder, column):
             raise Refused(

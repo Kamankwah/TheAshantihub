@@ -6,9 +6,8 @@ from datetime import timedelta
 from unittest import mock
 
 from django.core.cache import cache
-from django.db import transaction
+from django.db import connection, transaction
 from django.test.utils import CaptureQueriesContext
-from django.db import connection
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -187,8 +186,10 @@ class StaffDestinationEditTests(TestCase):
         with transaction.atomic(), CaptureQueriesContext(connection) as queries:
             holder_details.ask(self.kofi, self.customer, "phone", NEW_PHONE)
         sql = [query["sql"] for query in queries]
+        advisory = next(i for i, text in enumerate(sql) if "pg_advisory_xact_lock" in text)
         lock = next(i for i, text in enumerate(sql) if "FOR UPDATE" in text and "accounts_customer" in text)
         check = next(i for i, text in enumerate(sql) if "approvals_approvalrequest" in text and "SELECT" in text)
+        self.assertLess(advisory, lock)  # advisory target lock first, as approve() takes them
         self.assertLess(lock, check)
         with self.assertRaises(holder_details.Refused) as second:
             holder_details.ask(self.yaw, self.customer, "phone", "+233200000001")

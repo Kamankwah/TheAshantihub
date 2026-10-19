@@ -7,7 +7,9 @@ from datetime import timedelta
 from unittest import mock
 
 from django.core.cache import cache
+from django.db import connection
 from django.test import TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -91,16 +93,14 @@ class WithdrawalResolutionTests(TestCase):
         self.assertIn("cosign_threshold", text)
 
     def test_the_resolve_door_locks_the_withdrawal_before_the_duplicate_check(self):
-        from django.db import connection
-        from django.test.utils import CaptureQueriesContext
-
         withdrawal = self.sent()
         with provider_not_wired(), CaptureQueriesContext(connection) as queries:
             self.assertEqual(self.propose(withdrawal).status_code, 201)
         sql = [query["sql"] for query in queries]
-        lock = next(i for i, text in enumerate(sql) if "FOR UPDATE" in text and "wallets_withdrawal" in text and i > 0)
-        pending = next(i for i, text in enumerate(sql) if "approvals_approvalrequest" in text and "SELECT" in text and i > lock - 1)
-        self.assertLessEqual(lock, pending)
+        advisory = next(i for i, text in enumerate(sql) if "pg_advisory_xact_lock" in text)
+        lock = next(i for i, text in enumerate(sql) if "FOR UPDATE" in text and "wallets_withdrawal" in text and i > advisory)
+        self.assertLess(advisory, lock)  # advisory target lock, then the row, as a decision takes them
+        self.assertFalse(any("approvals_approvalrequest" in text and "SELECT" in text for text in sql[:lock]))
         with provider_not_wired():
             again = self.propose(withdrawal, staff=self.yaw)
         self.assertEqual((again.status_code, again.json()["code"]), (409, "resolution_pending"))

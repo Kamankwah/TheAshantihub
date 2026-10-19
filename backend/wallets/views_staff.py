@@ -228,7 +228,9 @@ class StaffWithdrawalResolveView(APIView):
             return refused(exc)
         try:
             with transaction.atomic():
-                Withdrawal.objects.select_for_update().get(pk=found.pk)  # two requests queue here; the second sees the first
+                # Lock order, as in a decision: the target's advisory lock, then the withdrawal row. Two requests queue here.
+                approvals.lock_target(Withdrawal._meta.label_lower, found.pk)
+                Withdrawal.objects.select_for_update().get(pk=found.pk)
                 if ApprovalRequest.objects.filter(
                     kind=resolution.KEY, target_type=Withdrawal._meta.label_lower, target_id=str(found.pk),
                     status=ApprovalRequest.PENDING,
