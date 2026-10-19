@@ -54,6 +54,45 @@ class RiderRefundPayTests(RefundBase):
             credit = sum(l.amount for l in lines if l.side == JournalLine.CREDIT)
             self.assertEqual(debit, credit, journal.key)
 
+    def test_cancel_after_pickup_keeps_assignment_row_and_pays_rider(self):
+        from delivery.models import DeliveryEvent
+        from orders.support import SupportOrderStatusView
+
+        order = self.picked()
+        refund = SupportOrderStatusView._cancel(order)
+        assignment = DeliveryAssignment.objects.get(order=order)
+        self.assertEqual((assignment.status, assignment.failed_reason), (DeliveryAssignment.FAILED, "order_cancelled"))
+        self.assertIsNotNone(assignment.failed_at)
+        self.assertTrue(DeliveryEvent.objects.filter(assignment=assignment, note__icontains="cancelled by Support").exists())
+        self.assertEqual(self.wallet(), 10000)
+        self.assertEqual((refund.delivery_pesewas, refund.delivery_kept_pesewas), (0, 1500))
+        self.assertEqual(self.rider_balances(), (1350, 150))
+        self.assert_balanced()
+
+    def test_cancel_before_pickup_withdraws_assignment_and_returns_fee(self):
+        from orders.support import SupportOrderStatusView
+
+        order = self.assigned()
+        refund = SupportOrderStatusView._cancel(order)
+        self.assertFalse(DeliveryAssignment.objects.filter(order=order).exists())
+        self.assertEqual(self.wallet(), 11500)
+        self.assertEqual((refund.delivery_pesewas, refund.delivery_kept_pesewas), (1500, 0))
+        self.assertEqual(self.rider_balances(), (0, 0))
+        self.assert_balanced()
+
+    def test_cancel_after_pickup_in_house_rider_fee_stays_platform_income(self):
+        from orders.support import SupportOrderStatusView
+
+        in_house = rider_helpers.rider("inhouse@example.com", name="Ama Boateng", phone="+233244000003", third_party=False)
+        order = self.assigned(in_house, status=DeliveryAssignment.PICKED_UP, picked_up=True)
+        refund = SupportOrderStatusView._cancel(order)
+        self.assertTrue(DeliveryAssignment.objects.filter(order=order, status=DeliveryAssignment.FAILED).exists())
+        self.assertEqual(self.wallet(), 10000)
+        self.assertEqual(refund.delivery_kept_pesewas, 1500)
+        self.assertEqual(self.rider_balances(in_house), (0, 0))
+        self.assertEqual(self.balance(Account.PLATFORM_DELIVERY_INCOME), 1500)
+        self.assert_balanced()
+
     def test_whole_refund_after_pickup_keeps_fee_for_rider(self):
         order = self.picked()
         refund = refunds.refund_order(order, source="dispute-1")

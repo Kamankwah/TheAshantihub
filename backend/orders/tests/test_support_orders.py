@@ -163,6 +163,15 @@ class SupportOrderTests(TestCase):
         self.order.refresh_from_db()
         self.assertEqual(self.order.status, Order.PAID)
 
+    def test_support_screen_still_refuses_cancel_after_pickup(self):
+        DeliveryAssignment.objects.create(order=self.order, status=DeliveryAssignment.PICKED_UP, picked_up_at=timezone.now())
+        self.order.delivery_status = Order.OUT_FOR_DELIVERY
+        self.order.save()
+        self.auth(self.support)
+        response = self.post(status="cancelled_by_customer", reason="x")
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(DeliveryAssignment.objects.get(order=self.order).status, DeliveryAssignment.PICKED_UP)
+
     def test_a_delivered_order_accepts_neither_action(self):
         self.order.delivery_status = Order.DELIVERED
         self.order.save()

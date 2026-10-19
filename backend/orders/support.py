@@ -251,10 +251,32 @@ class SupportOrderStatusView(APIView):
         the customer's AshantiHub wallet in full (ledger.refunds; the payment-processing
         charge stays with the provider, because the customer asked to cancel). Returns
         that OrderRefund, or None (ledger off, not paid, or paid before the ledger was on)."""
+        from django.utils import timezone
+
+        from delivery.models import DeliveryEvent
+        from ledger import riders
+
+        from . import locks
+
         return_stock(order)
-        assignment = getattr(order, "delivery_assignment", None)
+        # The assignment goes through the canonical lock (order row first). After a pickup the row is the evidence
+        # ledger.riders.pickup_made / delivery_earned read, so it is kept and failed, never deleted: the rider is paid
+        # and the delivery fee is not returned. Before a pickup it is withdrawn, as always.
+        locked = locks.lock_order(order.pk)
+        assignment = locks.lock_assignment(locked)
         if assignment is not None:
-            assignment.delete()
+            if riders.pickup_made(order) is None:
+                assignment.delete()
+            else:
+                now = timezone.now()
+                assignment.status = DeliveryAssignment.FAILED
+                assignment.failed_reason = "order_cancelled"
+                assignment.failed_at = now
+                assignment.save(update_fields=["status", "failed_reason", "failed_at"])
+                DeliveryEvent.objects.create(
+                    assignment=assignment, step=DeliveryEvent.CANT_DELIVER, at=now, by=staff,
+                    note="Order cancelled by Support after pickup",
+                )
         order.status = Order.CANCELLED
         order.save(update_fields=["status"])
         from marketing.waivers import reverse_for_order
