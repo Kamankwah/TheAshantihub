@@ -672,6 +672,8 @@ def cancel_by_customer(sale, now=None):
     cancelled or refunded in full, released, handed over or past its release milestone (that is a dispute, not a cancel),
     with a dispute open, or when the policy gives nothing back now. Returns the BookingRefund."""
     now = now or timezone.now()
+    if not escrow.enabled():
+        raise CancelError("The ledger is off.")
     with transaction.atomic():
         sale = lock(sale)
         if sale.policy_snapshot is None:
@@ -679,8 +681,10 @@ def cancel_by_customer(sale, now=None):
         if sale.reversed_at is not None or BookingRefund.objects.filter(sale=sale, source=CUSTOMER_SOURCE).exists():
             raise CancelError("This booking was already cancelled.")
         due = release_at(sale, now)
-        if sale.released_at is not None or handed_over_at(sale, now) is not None or (due is not None and due <= now):
+        if handed_over_at(sale, now) is not None:
             raise CancelError(ALREADY_HANDED_OVER[sale.kind])
+        if sale.released_at is not None or (due is not None and due <= now):
+            raise CancelError("This booking is past its cancellation window. Open a dispute instead.")
         if has_open_dispute(sale):
             raise CancelError("A problem is open on this booking. Support will settle it first.")
         share = cancellation.refund_share(sale.policy_snapshot, _policy_start(sale), now)

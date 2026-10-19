@@ -188,3 +188,45 @@ class CancelBySaleTests(BookingBase):
         other = Customer.objects.create(full_name="Kojo", phone="+233200770009", password_hash="x")
         self.as_customer(other)
         self.assertEqual(self.client.post(f"/api/events/tickets/purchases/{sale.pk}/cancel/").status_code, 404)
+
+
+@override_settings(LEDGER_ENABLED=True)
+class LedgerOffAndMilestoneTests(BookingBase):
+    def wallet(self):
+        return self.balance(Account.CUSTOMER_WALLET, self.customer)
+
+    def test_stay_door_with_the_ledger_off_is_409_and_writes_nothing(self):
+        sale = self.paid_stay(starts_in=10)
+        with override_settings(LEDGER_ENABLED=False):
+            self.as_customer()
+            response = self.client.post(f"/api/bookings/{sale.booking_id}/cancel/")
+        self.assertEqual(response.status_code, 409, response.content)
+        self.assertEqual(Booking.objects.get(pk=sale.booking_id).status, Booking.CONFIRMED)
+        self.assertEqual(self.wallet(), 0)
+
+    def test_service_door_with_the_ledger_off_is_409_and_writes_nothing(self):
+        sale = self.paid_service("200.00")
+        with override_settings(LEDGER_ENABLED=False):
+            self.as_customer()
+            response = self.client.post(f"/api/services/requests/{sale.service_request_id}/cancel/")
+        self.assertEqual(response.status_code, 409, response.content)
+        self.assertEqual(ServiceRequest.objects.get(pk=sale.service_request_id).status, ServiceRequest.IN_PROGRESS)
+        self.assertEqual(self.wallet(), 0)
+
+    def test_ticket_door_with_the_ledger_off_is_409_and_writes_nothing(self):
+        Event.objects.filter(pk=self.event.pk).update(refund_until_days_before=3)
+        sale = self.paid_tickets(1)
+        with override_settings(LEDGER_ENABLED=False):
+            self.as_customer()
+            response = self.client.post(f"/api/events/tickets/purchases/{sale.pk}/cancel/")
+        self.assertEqual(response.status_code, 409, response.content)
+        self.assertEqual(Ticket.objects.filter(refunded_at__isnull=False).count(), 0)
+        self.assertEqual(self.wallet(), 0)
+
+    def test_a_no_show_stay_past_its_milestone_gets_a_window_message_not_checked_in(self):
+        sale = self.paid_stay(starts_in=1)
+        after = sales.release_at(sale) + timedelta(minutes=1)
+        with self.assertRaises(sales.CancelError) as ctx:
+            sales.cancel_by_customer(sale, after)
+        self.assertNotIn("checked in", ctx.exception.message)
+        self.assertIn("past its cancellation window", ctx.exception.message)

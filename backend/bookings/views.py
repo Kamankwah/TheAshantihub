@@ -11,7 +11,7 @@ from rest_framework.views import APIView
 from accounts.views import IsBusinessOwner, IsCustomer
 from listings.models import Listing
 from notifications.services import notify_business_owner, notify_customer
-from ledger import escrow, posting, sales
+from ledger import posting, sales
 from ledger.models import BookingSale
 from ledger.money import from_pesewas
 from payments import booking_pay
@@ -160,7 +160,7 @@ class BookingCancelView(APIView):
             booking = generics.get_object_or_404(Booking.objects.select_for_update(), pk=pk, customer=request.user)
             if booking.status not in (Booking.PENDING, Booking.CONFIRMED):
                 return Response({"detail": "This booking can no longer be cancelled."}, status=400)
-            sale = BookingSale.objects.filter(booking=booking).first() if escrow.enabled() else None
+            sale = BookingSale.objects.filter(booking=booking).first()
             if sale is not None:
                 # A paid stay follows the cancellation policy it was paid under; a refusal rolls nothing back (no writes).
                 try:
