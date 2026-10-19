@@ -102,3 +102,7 @@ KINDS.append(COUPON_KIND)
 from .approval_kinds_campaigns import CAMPAIGN_KIND  # noqa: E402
 
 KINDS.append(CAMPAIGN_KIND)
+
+from .approval_kinds_waivers import DELIVERY_PROMO_FUNDING  # noqa: E402
+
+KINDS.append(DELIVERY_PROMO_FUNDING)

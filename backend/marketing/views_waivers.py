@@ -96,6 +96,26 @@ class StaffDeliveryPromosView(APIView):
         return Response(_one(w.pk), status=201)
 
 
+class StaffPlatformDeliveryPromoView(APIView):
+    """POST creates an AshantiHub-funded promo for one business. It always waits for Operations or a Super Admin
+    (approvals engine); a Super Admin's own applies at once."""
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasRolePermission("delivery_promo.fund")]
+
+    def post(self, request):
+        raw = request.data.get("business_owner")
+        owner = BusinessOwner.objects.filter(pk=raw).first() if isinstance(raw, int) and not isinstance(raw, bool) else None
+        if owner is None:
+            return Response({"detail": "Choose a business."}, status=400)
+        try:
+            w, approval = waivers.create_platform_funded(request.user, owner, request.data, request=request)
+        except waivers.WaiverError as exc:
+            return _err(exc)
+        body = _one(w.pk)
+        return Response({**body, "approval": {"id": approval.pk, "status": approval.status}}, status=201)
+
+
 class StaffDeliveryPromoActionView(APIView):
     """POST <pk>/<approve|reject|re-review|end>/."""
 

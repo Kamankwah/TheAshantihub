@@ -1034,3 +1034,12 @@ Found while writing `docs/superpowers/plans/2026-10-16-vendor-side-sms-4.md` (§
   queue with other jobs; a slow provider can hold a worker for up to the send budget (75 s) per run. A circuit breaker
   (3 failures in a row opens it for 120 s, across workers) and the beat entry's 280 s expiry limit the harm, but route
   `wallets.tasks.send_vendor_text` and `send_due_vendor_texts` to their own queue and worker first.
+- (cxxiv) **Ruling R2 (owner, round 3 follow-up): AshantiHub-funded free-delivery promos.** Marketing creates them (new
+  permission `delivery_promo.fund`, held by Marketing and Super Admin); every one needs approval from Operations or a Super
+  Admin through the approvals engine (kind `marketing.delivery_promo_funding`, pool permission `delivery_promo.approve`
+  seeded to `operations` and `super_admin`, chain pool then Super Admin, password again to approve); the maker never
+  approves their own, a Super Admin's own applies at once, and there is no threshold shortcut. A required budget cap
+  bounds the spend: `live_waivers` stops waiving once the owed charges reach the cap (derived, not a status change); the
+  cap is soft by at most the fees of orders in flight at the same instant. A promo covers one named business's items.
+  Coupons, campaigns, banners and the send policy stay Super Admin only; the owner-submitted promo review by
+  `site_promo.manage` staff is business-funded only.
