@@ -66,12 +66,14 @@ function ListingForm({ business, meta, onBack, onSent, leadName }) {
 
   const owner = firstName(business.owner_name);
   const backLabel = `Back to ${business.business_name}`;
+  // Only a stay has a policy to choose (a service has no start time, so it is cancelled in full until it is done).
+  const isStay = isService && Boolean((meta.categories || []).find((c) => String(c.id) === category)?.is_accommodation);
   const priceOk = price !== "" && Number.isFinite(Number(price)) && Number(price) >= 0;
   const productAnswered = isService || Boolean(
     warranty !== null && (!warranty || warrantyDetails.trim()) && expiry !== null && (!expiry || expiryDate) && returnPolicy.trim(),
   );
   const reasonGiven = note.trim().length > 0;
-  const ready = Boolean(photos.length > 0 && name.trim() && category && zone && priceOk && description.trim() && productAnswered && (!isService || cancellationPolicy) && reasonGiven) && !busy;
+  const ready = Boolean(photos.length > 0 && name.trim() && category && zone && priceOk && description.trim() && productAnswered && (!isStay || cancellationPolicy) && reasonGiven) && !busy;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -82,7 +84,7 @@ function ListingForm({ business, meta, onBack, onSent, leadName }) {
       name: name.trim(), category: Number(category), zone: Number(zone), description: description.trim(),
       price_amount: Number(price).toFixed(2),
       ...(isService
-        ? { price_unit: priceUnit.trim() || null, service_duration: duration.trim(), cancellation_policy: cancellationPolicy }
+        ? { price_unit: priceUnit.trim() || null, service_duration: duration.trim(), ...(isStay ? { cancellation_policy: cancellationPolicy } : {}) }
         : {
           stock_quantity: stock === "" ? null : Number(stock),
           has_warranty: warranty, warranty_details: warranty ? warrantyDetails.trim() : "",
@@ -151,9 +153,10 @@ function ListingForm({ business, meta, onBack, onSent, leadName }) {
         )}
       </div>
       <label style={labelStyle}>Description<textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} style={field} /></label>
-      {isService && (
+      {isStay && (
         <CancellationPolicyField label="Cancellation policy" value={cancellationPolicy} onChange={setCancellationPolicy} labelStyle={labelStyle} inputStyle={field} hintStyle={dim} />
       )}
+      {isService && !isStay && <div style={dim}>Customers can cancel a service for a full refund until you mark the job done.</div>}
       {!isService && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <YesNo legend="Comes with a warranty?" name="warranty" value={warranty} onChange={setWarranty} />
@@ -179,7 +182,7 @@ function ListingForm({ business, meta, onBack, onSent, leadName }) {
         ? `${firstName(leadName)}'s approval is this listing's moderation. It goes live when ${leadName} approves it. ${owner} is told and can undo it for 7 days.`
         : `Your Operations lead's approval is this listing's moderation: it goes live when they approve it. ${owner} is told and can undo it for 7 days.`}</div>
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
-      {!ready && !busy && <div style={dim}>{`Take at least one photo, fill in every field${isService ? " (including the cancellation policy)" : " (including the three questions)"} and say why, to send it.`}</div>}
+      {!ready && !busy && <div style={dim}>{`Take at least one photo, fill in every field${isStay ? " (including the cancellation policy)" : isService ? "" : " (including the three questions)"} and say why, to send it.`}</div>}
       <button type="submit" disabled={!ready} style={{ ...button(D.gold, D.text, !ready), alignSelf: "flex-start" }}>{leadName ? `Send to ${leadName}` : "Send for approval"}</button>
     </form>
   );

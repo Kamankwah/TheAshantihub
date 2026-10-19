@@ -97,6 +97,13 @@ describe('EventSubmissionPanel', () => {
     expect(bodies[0].refund_until_days_before).toBe(3)
   })
 
+  it('does not accept 0 days (a refund the server would refuse at the start)', async () => {
+    server.use(http.get('http://localhost:8000/api/events/mine/', () => HttpResponse.json([])))
+    renderPanel()
+    fireEvent.click(screen.getByText('📅 Submit an Event'))
+    expect(screen.getByLabelText('Refund tickets until this many days before (optional)')).toHaveAttribute('min', '1')
+  })
+
   it('sends no refund window when it is left blank', async () => {
     let sent = null
     server.use(

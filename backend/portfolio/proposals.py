@@ -886,7 +886,7 @@ def listing_form_meta(owner):
     kinds = [kind] if kind in (Category.PRODUCT, Category.SERVICE) else [Category.PRODUCT, Category.SERVICE]
     return {
         "categories": [
-            {"id": category.id, "name": category.label}
+            {"id": category.id, "name": category.label, "is_accommodation": category.is_accommodation}
             for category in Category.objects.filter(kind__in=kinds).order_by("label")
         ],
         "zones": [{"id": zone.id, "name": zone.name} for zone in Zone.objects.order_by("name")],

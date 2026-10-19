@@ -7,7 +7,7 @@ import { formatAccra, hoursText, refundLines, stayStart } from "../lib/bookingTe
 // Shown before a customer pays for a service, a stay or a ticket (ledger Plan 7E): when they can still cancel and for
 // how much, and when the money is paid to the business. Everything comes from real data: the listing's cancellation
 // policy (tiers from /api/ledger/booking-terms/), the stay's check-in date at the check-in time, the event date, and the
-// governed release hours. A product shows nothing; so does a screen whose terms have not loaded (no placeholder numbers).
+// governed release hours. A product shows nothing; so does a screen whose terms have not loaded, and so does every screen while the ledger is off (no refund or timed release runs then) (no placeholder numbers).
 //   kind        "service" | "stay" | "ticket" | anything else (renders nothing)
 //   policy      the listing's cancellation_policy (service and stay)
 //   start       Date: stay check-in instant (use `stayStart`) or the event's date
@@ -15,7 +15,7 @@ import { formatAccra, hoursText, refundLines, stayStart } from "../lib/bookingTe
 //   tone        "dark" for the dark listing/event pages, "light" for the account panels
 export default function BookingTermsNote({ kind, policy, start, refundDays, tone = "dark", now }) {
   const terms = useBookingTerms();
-  if (!["service", "stay", "ticket"].includes(kind) || !terms.data) return null;
+  if (!["service", "stay", "ticket"].includes(kind) || !terms.data || terms.data.enabled === false) return null;
   const t = terms.data;
   const at = now || new Date();
   const text = tone === "dark" ? "rgba(255,255,255,0.78)" : D.textDim;

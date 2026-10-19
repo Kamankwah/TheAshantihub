@@ -203,7 +203,8 @@ function DecisionFields({ kind, isAccommodation, form, update }) {
   if (kind === "service") {
     return (
       <>
-        <CancellationPolicyField value={form.cancellation_policy} onChange={v => update("cancellation_policy", v)} labelStyle={labelStyle} inputStyle={inputStyle} hintStyle={policyHint} />
+        {/* A service has no scheduled start, so no policy tiers apply: it is cancelled in full until the job is done. */}
+        <div style={{ ...policyHint, marginBottom: 10 }}>Customers can cancel a service for a full refund until you mark the job done.</div>
         <div style={{ marginBottom: 10 }}>
           <label style={labelStyle}>Service duration (e.g. '1 hour', '2-3 days')</label>
           <input value={form.service_duration || ""} placeholder="e.g. 2 hours" onChange={e => update("service_duration", e.target.value)} style={inputStyle} />
@@ -297,7 +298,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
   const canSubmitCreate = Boolean(
     createForm.category && createForm.zone && createForm.name.trim() &&
     createForm.description.trim() && productAnswersComplete &&
-    (createKind !== "service" || createForm.cancellation_policy),
+    (!createIsAccommodation || createForm.cancellation_policy),
   );
 
   const submitCreate = async () => {
@@ -311,6 +312,8 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
         price_unit: createForm.price_unit, tag: createForm.tag.trim() || null,
         specs: createForm.specs,
         ...decisionFieldsBody(createForm),
+        // Only a stay carries a policy; a stale choice from another category is never sent.
+        ...(createIsAccommodation ? {} : { cancellation_policy: undefined }),
       });
       if (createPhoto) {
         // Photo goes to the existing gallery endpoint (same "JSON create,
@@ -341,6 +344,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
         name: editForm.name, price_amount: editForm.price_amount, price_unit: editForm.price_unit,
         specs: editForm.specs,
         ...decisionFieldsBody(editForm),
+        ...(categoryIsAccommodationById(editForm.category_id) ? {} : { cancellation_policy: undefined }),
       });
       setEditingId(null); toast(); refetchListings();
     } catch (err) {
@@ -643,7 +647,7 @@ export default function ListingsPanel({ user, PaymentComponent, showToast, busin
                     {canEdit && <button onClick={() => { setEditingId(item.id); setEditForm({
                       name: item.name, price_amount: item.price_amount, price_unit: item.price_unit,
                       specs: item.specs || [], service_duration: item.service_duration || "",
-                      cancellation_policy: categoryKindById(item.category) === "service" ? item.cancellation_policy || "" : "",
+                      cancellation_policy: categoryIsAccommodationById(item.category) ? item.cancellation_policy || "" : "", category_id: item.category,
                       whats_included: item.whats_included || "", requirements: item.requirements || "",
                       revisions: item.revisions || "", delivery_time: item.delivery_time || "",
                       // Tri-state selects seeded to the stored boolean — an

@@ -607,6 +607,18 @@ describe('ListingDetailPage — policy and timing shown before paying (plan 7E)'
     expect(screen.getByText(/accepted automatically 48 hours after the business marks it done/)).toBeInTheDocument()
   })
 
+  it('a stay shows nothing about cancellation or payout while the ledger is off', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/listings/3/', () => HttpResponse.json(STAY)),
+      http.get('http://localhost:8000/api/ledger/booking-terms/', () => HttpResponse.json({ enabled: false, policies: {} })),
+    )
+    renderPage({ id: 3, user: CUSTOMER })
+    await screen.findByText('Book your stay')
+    fireEvent.change(screen.getByLabelText('Check-in'), { target: { value: '2030-06-10' } })
+    await new Promise((r) => setTimeout(r, 80))
+    expect(screen.queryByTestId('booking-terms')).not.toBeInTheDocument()
+  })
+
   it('a product shows no policy or release timing', async () => {
     server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json({ ...LISTING, category: { ...LISTING.category, kind: 'product' } })))
     renderPage({ user: CUSTOMER })

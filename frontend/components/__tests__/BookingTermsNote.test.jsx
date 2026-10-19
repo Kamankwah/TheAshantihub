@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
+import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
+import { server } from '../../mocks/server.js'
 import BookingTermsNote from '../BookingTermsNote.jsx'
 
 const mount = (ui) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>)
@@ -46,5 +48,15 @@ describe('BookingTermsNote', () => {
   it('tickets with a refund window show the exact cut-off', async () => {
     mount(<BookingTermsNote kind="ticket" refundDays={3} start={new Date('2026-10-20T18:00:00Z')} now={NOW} />)
     expect(await screen.findByText('Free cancellation until Sat 17 Oct, 18:00')).toBeInTheDocument()
+  })
+
+  it('says nothing while the ledger is off (no refund or timed release runs)', async () => {
+    server.use(http.get('http://localhost:8000/api/ledger/booking-terms/', () => HttpResponse.json({ enabled: false, policies: {} })))
+    const { container } = mount(<BookingTermsNote kind="stay" policy="flexible" start={new Date('2026-10-10T14:00:00Z')} now={NOW} />)
+    await new Promise((r) => setTimeout(r, 80))
+    expect(container).toBeEmptyDOMElement()
+    const tickets = mount(<BookingTermsNote kind="ticket" refundDays={null} start={new Date('2026-10-20T18:00:00Z')} now={NOW} />)
+    await new Promise((r) => setTimeout(r, 80))
+    expect(tickets.container.querySelector('[data-testid="booking-terms"]')).toBeNull()
   })
 })

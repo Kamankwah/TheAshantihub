@@ -12,7 +12,7 @@ export const handlers = [
   // What a customer is told before paying (cancellation policies and release hours): the server's defaults.
   http.get('http://localhost:8000/api/ledger/booking-terms/', () => {
     return HttpResponse.json({
-      service_auto_accept_hours: 48, stay_issue_window_hours: 24, event_release_delay_hours: 48, stay_check_in_time: '14:00',
+      enabled: true, service_auto_accept_hours: 48, stay_issue_window_hours: 24, event_release_delay_hours: 48, stay_check_in_time: '14:00',
       policies: {
         flexible: { label: 'Flexible', tiers: [[24, 10000]], text: 'Full refund until 24 hours before the start.' },
         moderate: { label: 'Moderate', tiers: [[120, 10000], [24, 5000]], text: 'Full refund until 5 days before the start, half until 24 hours before.' },

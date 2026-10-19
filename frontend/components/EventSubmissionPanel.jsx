@@ -374,7 +374,7 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
               </select>
 
               <label htmlFor="event-refund-days" style={labelStyle}>Refund tickets until this many days before (optional)</label>
-              <input id="event-refund-days" type="number" min={0} max={365} step={1} value={form.refund_until_days_before} onChange={setField("refund_until_days_before")} style={inputStyle} />
+              <input id="event-refund-days" type="number" min={1} max={365} step={1} value={form.refund_until_days_before} onChange={setField("refund_until_days_before")} style={inputStyle} />
               <div style={{ color: "rgba(255,255,255,0.6)", fontSize: "0.68rem", marginTop: 4 }}>
                 Buyers are told this before they pay. Leave blank and tickets are not refundable after purchase (only if the event is cancelled).
               </div>
@@ -501,7 +501,7 @@ export default function EventSubmissionPanel({ user, categories, zones, PaymentC
                 <textarea value={editForm.description || ""} onChange={(e) => setEditForm((s) => ({ ...s, description: e.target.value }))} placeholder="Description" rows={2} style={{ ...inputStyle, marginBottom: 8, resize: "vertical" }} />
                 <input type="datetime-local" value={editForm.event_date || ""} onChange={(e) => setEditForm((s) => ({ ...s, event_date: e.target.value }))} style={{ ...inputStyle, marginBottom: 8 }} />
                 <div style={{ color: C.lightGold, fontSize: "0.68rem", marginBottom: 4 }}>Refund tickets until this many days before (blank: no refunds after purchase)</div>
-                <input type="number" min={0} max={365} step={1} aria-label="Refund tickets until this many days before" value={editForm.refund_until_days_before ?? ""} onChange={(e) => setEditForm((s) => ({ ...s, refund_until_days_before: e.target.value }))} style={{ ...inputStyle, marginBottom: 8 }} />
+                <input type="number" min={1} max={365} step={1} aria-label="Refund tickets until this many days before" value={editForm.refund_until_days_before ?? ""} onChange={(e) => setEditForm((s) => ({ ...s, refund_until_days_before: e.target.value }))} style={{ ...inputStyle, marginBottom: 8 }} />
                 <div style={{ color: C.lightGold, fontSize: "0.68rem", marginBottom: 4 }}>Add a photo (optional)</div>
                 <input type="file" accept="image/*,video/*" onChange={(e) => setEditFile(e.target.files?.[0] || null)} style={{ color: "white", fontSize: "0.72rem", marginBottom: 8 }} />
                 {editError && <div style={{ color: "#ffb4b4", fontSize: "0.72rem", marginBottom: 8 }}>{editError}</div>}

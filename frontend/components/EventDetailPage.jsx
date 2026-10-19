@@ -466,6 +466,10 @@ function EventTicketsSection({ eventId, hasTickets, eventDate, refundDays, user,
         </div>
       )}
       {payError && <div style={{ marginBottom: 12, color: "#ffb4b4", fontSize: "0.76rem" }}>{payError}</div>}
+      {/* The refund and payout terms are the event's, not each ticket type's: shown once, above the list, to someone who can buy. */}
+      {ticketTypes.length > 0 && user && (isCustomer || staffGate.isStaff) && (
+        <BookingTermsNote kind="ticket" start={eventDate ? new Date(eventDate) : null} refundDays={refundDays ?? null} />
+      )}
 
       {ticketTypes.map((tt) => {
         const soldOut = tt.quantity_remaining != null && tt.quantity_remaining <= 0;
@@ -493,8 +497,6 @@ function EventTicketsSection({ eventId, hasTickets, eventDate, refundDays, user,
                 ) : !isCustomer && !staffGate.isStaff ? (
                   <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.76rem" }}>Only customer accounts can buy tickets.</div>
                 ) : (
-                  <>
-                  <BookingTermsNote kind="ticket" start={eventDate ? new Date(eventDate) : null} refundDays={refundDays ?? null} />
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <input
                       type="number"
@@ -512,7 +514,6 @@ function EventTicketsSection({ eventId, hasTickets, eventDate, refundDays, user,
                       Buy
                     </button>
                   </div>
-                  </>
                 )}
                 {staffGate.shownFor === tt.id && <StaffGateNotice style={{ marginTop: 10 }} />}
               </div>

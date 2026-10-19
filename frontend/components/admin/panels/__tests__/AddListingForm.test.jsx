@@ -12,7 +12,7 @@ vi.mock('../../../../hooks/useDevicePosition.js', () => ({
 }))
 
 const API = 'http://localhost:8000'
-const META = { categories: [{ id: 2, name: 'Fabrics & clothing' }, { id: 5, name: 'Kente & crafts' }], zones: [{ id: 3, name: 'Bantama' }], required_answers: {} }
+const META = { categories: [{ id: 2, name: 'Fabrics & clothing' }, { id: 5, name: 'Kente & crafts', is_accommodation: false }, { id: 6, name: 'Guest houses', is_accommodation: true }], zones: [{ id: 3, name: 'Bantama' }], required_answers: {} }
 const business = (overrides = {}) => ({
   id: 12, business_name: 'Adwoa Fabrics', owner_name: 'Adwoa Frimpong', zone: { id: 3, name: 'Bantama' },
   kyc_status: 'verified', business_kind: 'product', listings: [], can_manage: true, ...overrides,
@@ -136,22 +136,27 @@ describe('AddListingForm', () => {
     expect(screen.queryByLabelText('In stock')).not.toBeInTheDocument()
   })
 
-  it('requires a cancellation policy for a service, sends it, and offers none for a product', async () => {
-    let body = null
-    serve(business({ business_kind: 'service' }))
-    stagePhotos([])
-    server.use(http.post(`${API}/api/portfolio/businesses/12/listings/`, async ({ request }) => {
-      body = await request.json()
-      return HttpResponse.json({ approval_id: 33, approver_name: 'Ama Boateng', status: 'pending' }, { status: 201 })
-    }))
-    renderForm()
+  async function fillService(categoryId) {
     fireEvent.change(await screen.findByLabelText(/Take photo/), { target: { files: [shot()] } })
     await screen.findByRole('img', { name: 'Photo 1' })
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Kente weaving class' } })
-    fireEvent.change(screen.getByLabelText('Category'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Category'), { target: { value: categoryId } })
     fireEvent.change(screen.getByLabelText('Price (GH₵)'), { target: { value: '120' } })
     fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Two hours at the loom' } })
     fireEvent.change(screen.getByLabelText('Why add it (Operations sees this)'), { target: { value: 'Owner asked me' } })
+  }
+  const serveCreate = (capture) => server.use(http.post(`${API}/api/portfolio/businesses/12/listings/`, async ({ request }) => {
+    capture(await request.json())
+    return HttpResponse.json({ approval_id: 33, approver_name: 'Ama Boateng', status: 'pending' }, { status: 201 })
+  }))
+
+  it('requires a cancellation policy for a stay, and sends it', async () => {
+    let body = null
+    serve(business({ business_kind: 'service' }))
+    stagePhotos([])
+    serveCreate((b) => { body = b })
+    renderForm()
+    await fillService('6')
     expect(screen.getByRole('button', { name: 'Send for approval' })).toBeDisabled()
     await screen.findByRole('option', { name: /^Strict:/ })
     fireEvent.change(screen.getByLabelText('Cancellation policy'), { target: { value: 'strict' } })
@@ -159,6 +164,21 @@ describe('AddListingForm', () => {
     expect(screen.getByRole('button', { name: 'Send for approval' })).toBeEnabled()
     fireEvent.click(screen.getByRole('button', { name: 'Send for approval' }))
     await waitFor(() => expect(body?.listing).toMatchObject({ name: 'Kente weaving class', cancellation_policy: 'strict' }))
+  })
+
+  it('has no policy to choose for an ordinary service, only the line saying how it is cancelled', async () => {
+    let body = null
+    serve(business({ business_kind: 'service' }))
+    stagePhotos([])
+    serveCreate((b) => { body = b })
+    renderForm()
+    await fillService('5')
+    expect(screen.queryByLabelText('Cancellation policy')).not.toBeInTheDocument()
+    expect(screen.getByText('Customers can cancel a service for a full refund until you mark the job done.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send for approval' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Send for approval' }))
+    await waitFor(() => expect(body?.listing?.name).toBe('Kente weaving class'))
+    expect(body.listing).not.toHaveProperty('cancellation_policy')
   })
 
   it('offers no cancellation policy for a product', async () => {

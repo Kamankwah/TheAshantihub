@@ -425,6 +425,25 @@ describe('EventDetailPage — refund terms shown before buying a ticket (plan 7E
     expect(screen.getByText(/The organiser is paid 48 hours after the event day ends/)).toBeInTheDocument()
   })
 
+  it('shows the terms once above the list, however many ticket types there are', async () => {
+    serveEvent({ refund_until_days_before: 3 })
+    server.use(http.get('http://localhost:8000/api/events/1/ticket-types/', () => HttpResponse.json([
+      ...TICKET_TYPES, { id: 8, name: 'VIP', description: '', price: '80.00', delivery_method: 'digital', quantity_remaining: 5 },
+    ])))
+    renderPage({ user: CUSTOMER })
+    await screen.findByText('VIP')
+    expect(await screen.findAllByText('Free cancellation until Fri 7 Jun, 18:00')).toHaveLength(1)
+  })
+
+  it('says nothing about refunds while the ledger is off', async () => {
+    serveEvent({ refund_until_days_before: 3 })
+    server.use(http.get('http://localhost:8000/api/ledger/booking-terms/', () => HttpResponse.json({ enabled: false, policies: {} })))
+    renderPage({ user: CUSTOMER })
+    await screen.findByText('General Admission')
+    await new Promise((r) => setTimeout(r, 80))
+    expect(screen.queryByTestId('booking-terms')).not.toBeInTheDocument()
+  })
+
   it('shows the exact cut-off when the organiser offers refunds until N days before', async () => {
     serveEvent({ refund_until_days_before: 3 })
     renderPage({ user: CUSTOMER })

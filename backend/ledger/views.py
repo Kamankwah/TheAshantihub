@@ -188,21 +188,28 @@ class PickupCollectedView(APIView):
 
 
 class BookingTermsView(APIView):
-    """GET booking-terms/ — public. What a customer is told before paying for a service, stay or ticket: the hours that
-    govern when the money is released (read at this moment from the money settings), the stay check-in time, and the
-    vendor-choosable cancellation policies, so no screen carries its own copy of these numbers."""
+    """GET booking-terms/ — public. What a customer is told before paying for a stay or ticket: the hours that govern
+    when the money is released (read at this moment from the money settings), the stay check-in time, and the
+    cancellation policies a vendor can choose from, so no screen carries its own copy of these numbers.
+    With the ledger off no sale is recorded, nothing refunds itself and nothing releases on a timer, so `enabled` is
+    false and the hours are left out (customer screens then say nothing); the policies are still listed because choosing
+    one only stores a choice."""
 
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
+        policies = {
+            name: {"label": cancellation.POLICIES[name]["label"], "tiers": cancellation.POLICIES[name]["tiers"], "text": cancellation.POLICIES[name]["text"]}
+            for name, _ in cancellation.CHOICES
+        }
+        if not escrow.enabled():
+            return Response({"enabled": False, "policies": policies})
         now = timezone.now()
         return Response({
+            "enabled": True,
             "service_auto_accept_hours": settings_store.current("service_auto_accept_hours", now),
             "stay_issue_window_hours": settings_store.current("stay_issue_window_hours", now),
             "event_release_delay_hours": settings_store.current("event_release_delay_hours", now),
             "stay_check_in_time": sales.STAY_CHECK_IN_TIME.strftime("%H:%M"),
-            "policies": {
-                name: {"label": cancellation.POLICIES[name]["label"], "tiers": cancellation.POLICIES[name]["tiers"], "text": cancellation.POLICIES[name]["text"]}
-                for name, _ in cancellation.CHOICES
-            },
+            "policies": policies,
         })
