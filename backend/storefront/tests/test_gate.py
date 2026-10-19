@@ -16,7 +16,8 @@ from listings.models import Category, Listing, Zone
 from orders.models import Order
 from orders.tests.test_checkout import CheckoutTestsBase
 from storefront.models import TestAccount
-from storefront.testing import open_marketplace
+from storefront import opening
+from storefront.testing import close_marketplace, open_marketplace
 
 GATE_ON = override_settings(MARKETPLACE_GATE_ENABLED=True)
 
@@ -25,18 +26,26 @@ def assert_not_open(test, response):
     test.assertEqual(response.status_code, 403, response.content)
     body = response.json()
     test.assertEqual(body["code"], "not_open")
-    test.assertEqual(body["detail"], "The marketplace opens on 6 Nov 2026 at 06:00.")
-    test.assertEqual(body["opens_at"][:16], "2026-11-06T06:00")
+    test.assertEqual(body["detail"], opening.opening_message(opening.opens_at()))
+    test.assertEqual(body["opens_at"], opening.opens_at().isoformat())
 
 
 @GATE_ON
 class CheckoutGateTests(CheckoutTestsBase):
+    def setUp(self):
+        super().setUp()
+        close_marketplace()
+
     def test_customer_checkout_refused_before_opening(self):
+        self.listing_a.stock_quantity = 5
+        self.listing_a.save(update_fields=["stock_quantity"])
         self._auth(self.customer)
         self.assertEqual(self._add_to_cart(self.listing_a, 2).status_code, 201)  # cart add is browse state
         response = self.client.post("/api/orders/checkout/")
         assert_not_open(self, response)
         self.assertFalse(Order.objects.exists())
+        self.listing_a.refresh_from_db()
+        self.assertEqual(self.listing_a.stock_quantity, 5)  # no stock decrement
         self.assertTrue(CartItem.objects.filter(cart__customer=self.customer).exists())
 
     def test_cart_add_still_allowed_before_opening(self):
@@ -65,8 +74,6 @@ class CheckoutGateTests(CheckoutTestsBase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(self.owner, 'business_owner')}")
         response = self.client.post("/api/orders/checkout/")
         self.assertNotIn("not_open", response.content.decode())
-        from storefront import opening
-
         staff = make_staff("support", "esi-gate@example.com")
         self.assertTrue(opening.can_buy(self.owner))
         self.assertTrue(opening.can_buy(staff))
@@ -74,6 +81,10 @@ class CheckoutGateTests(CheckoutTestsBase):
 
 @GATE_ON
 class BookingGateTests(BookingTestsBase):
+    def setUp(self):
+        super().setUp()
+        close_marketplace()
+
     def test_customer_booking_refused_before_opening(self):
         response = self._book(self.customer, self._d(1), self._d(3))
         assert_not_open(self, response)
@@ -88,6 +99,7 @@ class BookingGateTests(BookingTestsBase):
 class TicketGateTests(CheckoutTestsBase):
     def setUp(self):
         super().setUp()
+        close_marketplace()
         self.event = Event.objects.create(
             category=Category.objects.get(slug="festivals"), zone=Zone.objects.get(name="Manhyia"),
             submitted_by_customer=self.other_customer, name="Akwasidae", description="D.", address="Manhyia",
@@ -120,6 +132,10 @@ class TicketGateTests(CheckoutTestsBase):
 
 @GATE_ON
 class ServicePayGateTests(CheckoutTestsBase):
+    def setUp(self):
+        super().setUp()
+        close_marketplace()
+
     def test_service_request_pay_refused_before_opening(self):
         # The gate runs before the object lookup, so even an unknown id answers not_open.
         self._auth(self.customer)
@@ -127,6 +143,10 @@ class ServicePayGateTests(CheckoutTestsBase):
 
 
 class MeCanBuyTests(CheckoutTestsBase):
+    def setUp(self):
+        super().setUp()
+        close_marketplace()
+
     def _me(self, account, kind):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {issue_token(account, kind)}")
         return self.client.get("/api/accounts/me/").json()

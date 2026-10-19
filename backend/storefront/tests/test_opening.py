@@ -10,6 +10,7 @@ from accounts.testing import make_staff, staff_token
 from activity.models import ActivityEvent
 from storefront import opening
 from storefront.models import OpeningTime, TestAccount
+from storefront.testing import close_marketplace
 
 UTC = dt_timezone.utc
 OPENING = datetime(2026, 11, 6, 6, 0, 0, tzinfo=UTC)
@@ -118,6 +119,7 @@ class OpeningApiTests(TestCase):
         self.client = APIClient()
         self.admin = make_staff("super_admin", "root@example.com")
         self.marketing = make_staff("marketing", "mk@example.com")
+        close_marketplace(days=60)  # the delay API judges by the real clock, so the opening must be ahead of it
 
     def as_staff(self, staff, sudo=False):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(staff, sudo=sudo)}")
