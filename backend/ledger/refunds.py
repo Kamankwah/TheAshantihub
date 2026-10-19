@@ -39,8 +39,8 @@ A refund always goes to the customer's AshantiHub wallet and is recorded as an `
   that empties the order gives back whatever is left of it.
 
 Callers: Support's cancel (orders.support), the uncollected-pickup job (ledger.verification), dispute resolution
-(disputes.views) and the delivery-case refund approval (delivery.config). Lock order: the order row, its fee
-snapshots, then the delivery assignment row and the rider's row (a whole refund before release of a picked-up order:
+(disputes.views) and the delivery-case refund approval (delivery.config). Lock order (the canonical one, orders/locks.py):
+the order row, its fee snapshots, then the delivery assignment row and the rider's row (a whole refund before release of a picked-up order:
 ledger.riders.rider_for_settle), then every account the transaction posts to, in one sorted pass before the first posting
 (`_post` locks them; `extra_locks` carries the accounts of a later posting, such as the promo return)."""
 from dataclasses import dataclass
@@ -193,7 +193,7 @@ def refund_order(order, amount_pesewas=None, *, source, by=None, owner_ids=None,
     coupon. Returns the OrderRefund (the existing one when this source already refunded), or None while the ledger is
     off, when the order's payment was never recorded in the ledger (paid before it was on), or when nothing is left.
     Raises RefundError, writing nothing, for an amount it cannot give."""
-    from orders.models import DeliveryAssignment, Order
+    from orders import locks
 
     if not escrow.enabled():
         return None
@@ -202,7 +202,7 @@ def refund_order(order, amount_pesewas=None, *, source, by=None, owner_ids=None,
     _check_amount(amount_pesewas)
     now = now or timezone.now()
     with transaction.atomic():
-        order = Order.objects.select_for_update(of=("self",)).get(pk=order.pk)
+        order = locks.lock_order(order.pk)
         existing = OrderRefund.objects.filter(order=order, source=source).first()
         if existing is not None:
             return existing
@@ -212,10 +212,10 @@ def refund_order(order, amount_pesewas=None, *, source, by=None, owner_ids=None,
             OrderFeeSnapshot.objects.select_for_update(of=("self",))
             .filter(order=order, reversed_at__isnull=True).select_related("business_owner").order_by("pk")
         )
-        # The delivery assignment row next (ledger.riders lock order), before anything reads whether a pickup was made: a
-        # pickup confirmation locks this row, so it either finished before this point or waits for the refund. The fee
-        # kept for the rider is read once, here, and passed on.
-        DeliveryAssignment.objects.select_for_update(of=("self",)).filter(order_id=order.pk).first()
+        # The delivery assignment row next (the canonical order, orders/locks.py), before anything reads whether a pickup
+        # was made: a pickup confirmation locks the order row and then this row, so it either finished before this
+        # refund took the order row or waits for the refund. The fee kept for the rider is read once, here, and passed on.
+        locks.lock_assignment(order)
         earned = riders.delivery_earned(order)
         kept_fee = riders.delivery_kept(order) if earned else 0
         remaining = left(order, kept=kept_fee)

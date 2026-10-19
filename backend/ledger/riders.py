@@ -20,9 +20,9 @@ run (escrow.settle_delivery: the held fee moves to platform delivery income, the
 exactly as a release does). A rider only assigned, with nothing collected, is paid nothing and the customer gets the fee
 back; an AshantiHub rider's fee stays platform delivery income.
 
-Lock order (spec W7, extended): the order row, its fee snapshots, the rider row (release), the delivery assignment row then
-the rider row (a whole refund before release: rider_for_settle),
-then every ledger account in one sorted pass (posting.lock). The end-of-day job locks the rider row first, then the day's
+Lock order (spec W7, extended; the canonical order is in orders/locks.py): the order row, its fee snapshots, the rider
+row (release), the delivery assignment row then the rider row (a whole refund before release: rider_for_settle), then
+every ledger account in one sorted pass (posting.lock). The end-of-day job locks the rider row first, then the day's
 earning rows, then the accounts: its commit checks the foreign key to the rider, which waits for a FOR UPDATE holder, so
 taking the accounts first would cycle with a release or a switch back (rider row, then reserve). Every
 select_for_update that reaches the rider's rows takes `of=("self",)` so the staff row is not locked with it."""
@@ -189,9 +189,11 @@ def rider_for_settle(order):
     locked first (refunds.refund_order already holds it from before it decided whether the fee was earned, so a pickup
     confirmed meanwhile either finished before that decision or waits for the refund), then the rider's row; call inside the
     refund's transaction after the order row and its fee snapshots."""
+    from orders import locks
+
     if order.delivery_method != Order.DOOR_TO_DOOR:
         return None
-    assignment = DeliveryAssignment.objects.select_for_update(of=("self",)).filter(order_id=order.pk).first()
+    assignment = locks.lock_assignment(order)       # `order` is the refund's locked row (orders.locks.lock_order)
     picked = pickup_made(order)
     if assignment is None or assignment.dispatch_id is None or picked is None:
         return None

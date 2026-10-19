@@ -20,6 +20,7 @@ from delivery.models import Rider, RiderEarning
 from ledger import escrow, posting, refunds, riders, settings_store, verification
 from ledger.models import Account, FulfilmentCheck, Journal, MoneySetting
 from listings.models import Category, Listing, Zone
+from orders import locks
 from orders.models import DeliveryAssignment, Order, OrderItem
 
 from . import rider_helpers
@@ -108,7 +109,8 @@ class RiderReleaseTests(RefundBase):
         order = self.delivered_order(first)
         DeliveryAssignment.objects.filter(order=order).update(status=DeliveryAssignment.FAILED, delivered_at=None, failed_at=timezone.now())
         manager = make_staff("delivery_manager", "dm@example.com")
-        delivery_services.assign(order, second.staff, manager, mode=DeliveryAssignment.MANUAL)   # the same row, a new rider
+        with transaction.atomic():                                  # callers lock the order row first (orders/locks.py)
+            delivery_services.assign(locks.lock_order(order.pk), second.staff, manager, mode=DeliveryAssignment.MANUAL)   # the same row, a new rider
         DeliveryAssignment.objects.filter(order=order).update(
             status=DeliveryAssignment.CONFIRMED, delivered_at=timezone.now(), confirmed_at=timezone.now(), failed_at=None,
         )

@@ -5,6 +5,7 @@ import threading
 import time
 from datetime import timedelta
 from decimal import Decimal
+from unittest import mock
 
 from django.db import connection, transaction
 from django.test import TransactionTestCase, override_settings
@@ -241,16 +242,16 @@ class RiderRefundPayTests(RefundBase):
 
 @override_settings(LEDGER_ENABLED=True)
 class PickupRaceTests(TransactionTestCase):
-    """A pickup confirmed while a refund starts: the refund locks the delivery assignment row before it decides whether the
-    fee was earned, so it waits for the pickup and then sees it (the rider is paid, the customer is not given the fee).
-
-    Scope: this models only the assignment-row ordering. The real pickup path (delivery/views_rider.py, then
-    DeliveryAssignment.sync_order) also saves the ORDER row after locking the assignment, the opposite order to
-    refund_order (order row, then assignment row): an open deadlock item, recorded in the spec as (xciii-open)."""
+    """A pickup confirmed while a refund starts: the pickup locks the order row and then the delivery assignment row
+    (orders.locks.lock_job, the canonical order), and the refund takes the order row first, so the refund waits for the
+    pickup and then sees it (the rider is paid, the customer is not given the fee). The pickup also saves the order row
+    (DeliveryAssignment.sync_order), as the real step does; the full rider and dispatch paths race in test_lock_order."""
 
     serialized_rollback = True
 
-    def test_a_refund_waits_for_the_pickup_holding_the_assignment_row_then_pays_the_rider(self):
+    def test_a_refund_waits_for_the_pickup_holding_the_order_row_then_pays_the_rider(self):
+        from orders import locks
+
         customer = Customer.objects.create(full_name="Ama", phone="+233200990003", password_hash="x")
         kofi = BusinessOwner.objects.create(full_name="Kofi", login_phone="+233207990003", password_hash="x")
         listing = Listing.objects.create(
@@ -264,17 +265,27 @@ class PickupRaceTests(TransactionTestCase):
         OrderItem.objects.create(order=order, listing=listing, quantity=1, unit_price=listing.price_amount, line_total=listing.price_amount)
         escrow.record_order_payment(order)
         swift = rider_helpers.rider()
-        rider_helpers.delivered_by(order, swift, status=DeliveryAssignment.ACCEPTED)
+        assignment = rider_helpers.delivered_by(order, swift, status=DeliveryAssignment.ACCEPTED)
         DeliveryAssignment.objects.filter(order=order).update(delivered_at=None, confirmed_at=None)
-        locked, go, errors = threading.Event(), threading.Event(), []
+        locked, refund_started, errors, times = threading.Event(), threading.Event(), [], {}
+        original_pay_key = escrow.pay_key
 
-        def pickup():                       # what the rider's pickup confirmation does: lock the row, stamp it, commit
+        def pay_key_seam(row):              # refund_order reads it right after its order-row lock
+            if threading.current_thread() is threads[1] and "refund_past_order" not in times:
+                times["refund_past_order"] = time.monotonic()
+            return original_pay_key(row)
+
+        def pickup():                       # what the rider's pickup confirmation does: lock, stamp, sync the order, commit
             try:
                 with transaction.atomic():
-                    DeliveryAssignment.objects.select_for_update().get(order=order)
+                    job = locks.lock_job(assignment.pk, dispatch_id=swift.staff_id)
                     locked.set()
-                    go.wait(timeout=15)
-                    DeliveryAssignment.objects.filter(order=order).update(picked_up_at=timezone.now(), status=DeliveryAssignment.PICKED_UP)
+                    refund_started.wait(timeout=15)
+                    time.sleep(0.3)         # the refund is now waiting for the order row
+                    job.status, job.picked_up_at = DeliveryAssignment.PICKED_UP, timezone.now()
+                    job.save(update_fields=["status", "picked_up_at"])
+                    job.sync_order()
+                    times["pickup_done"] = time.monotonic()
             except Exception as exc:  # reported below, never swallowed
                 errors.append(exc)
             finally:
@@ -283,6 +294,7 @@ class PickupRaceTests(TransactionTestCase):
         def refund():
             try:
                 locked.wait(timeout=15)
+                refund_started.set()
                 refunds.refund_order(order, source="dispute-1")
             except Exception as exc:
                 errors.append(exc)
@@ -290,23 +302,14 @@ class PickupRaceTests(TransactionTestCase):
                 connection.close()
 
         threads = [threading.Thread(target=pickup), threading.Thread(target=refund)]
-        for thread in threads:
-            thread.start()
-        locked.wait(timeout=15)
-        waiting = False
-        deadline = time.monotonic() + 6
-        while time.monotonic() < deadline and not waiting:
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT pg_stat_clear_snapshot()")
-                cursor.execute("SELECT query FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'")
-                waiting = any("orders_deliveryassignment" in query for (query,) in cursor.fetchall())
-            time.sleep(0.05)
-        go.set()
-        for thread in threads:
-            thread.join(timeout=15)
-            self.assertFalse(thread.is_alive(), "a racing thread hung")
-        self.assertTrue(waiting, "the refund did not wait for the delivery assignment row")
+        with mock.patch.object(escrow, "pay_key", side_effect=pay_key_seam):
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=15)
+                self.assertFalse(thread.is_alive(), "a racing thread hung")
         self.assertEqual(errors, [])
+        self.assertLess(times["pickup_done"], times["refund_past_order"])     # the refund waited for the pickup's commit
         self.assertEqual(posting.balance_of(Account.CUSTOMER_WALLET, customer), 10000)     # the fee is the rider's
         self.assertEqual(posting.balance_of(Account.RIDER_BALANCE, swift.staff), 1350)
         self.assertEqual(posting.balance_of(Account.RIDER_RESERVE, swift.staff), 150)

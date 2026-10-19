@@ -189,13 +189,15 @@ def not_due_error(order):
 def assign(order, rider_staff, assigned_by, *, mode):
     """Give a paid door-to-door order to a rider (one assignment per order). Creates the four-digit
     codes the first time and stamps an ``assigned`` event. Re-assigning before the rider has picked up
-    swaps the rider and starts the job again; once the goods are picked up it is refused."""
+    swaps the rider and starts the job again; once the goods are picked up it is refused. `order` must be
+    locked by the caller (orders.locks.lock_order: the order row before its assignment)."""
+    from orders import locks
     from orders.models import DeliveryAssignment
 
     now = timezone.now()
     if order.ready_not_before is not None and order.ready_not_before > now:
         raise not_due_error(order)
-    existing = DeliveryAssignment.objects.select_for_update().filter(order=order).first()
+    existing = locks.lock_assignment(order)
     previous_reason = existing.failed_reason if existing is not None else ""
     failed = existing is not None and existing.status == DeliveryAssignment.FAILED  # read before the reset below changes it
     if existing is not None and existing.status not in (

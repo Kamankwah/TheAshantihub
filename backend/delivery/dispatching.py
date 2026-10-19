@@ -16,6 +16,7 @@ from django.utils import timezone
 
 from field.services import haversine_m
 from notifications.services import notify_staff
+from orders import locks
 from orders.models import DeliveryAssignment, Order
 from routing import service as routing_service
 
@@ -158,7 +159,7 @@ def accept_offer(offer_id, staff):
             offer.status, offer.responded_at = Offer.EXPIRED, now
             offer.save(update_fields=["status", "responded_at"])
             raise services.DeliveryError("This offer timed out.", 409, "offer_expired")
-        order = Order.objects.select_for_update().get(pk=offer.order_id)
+        order = locks.lock_order(offer.order_id)
         held = DeliveryAssignment.objects.filter(order=order).exclude(status=DeliveryAssignment.FAILED).exists()
         if held or order.status != Order.PAID:
             offer.status, offer.responded_at = Offer.WITHDRAWN, now
@@ -191,7 +192,7 @@ def expire_offers(now=None):
 
 def force_assign(order, rider, by, *, mode=DeliveryAssignment.FORCED):
     with transaction.atomic():
-        order = Order.objects.select_for_update().get(pk=order.pk)
+        order = locks.lock_order(order.pk)
         existing = live_offer(order)
         if existing is not None:
             existing.status, existing.responded_at = Offer.WITHDRAWN, timezone.now()
