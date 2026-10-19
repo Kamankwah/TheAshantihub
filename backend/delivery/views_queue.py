@@ -127,6 +127,18 @@ class ScheduleView(ManageView):
         return Response({"held_until": when})
 
 
+class SendEarlyView(ManageView):
+    """POST orders/<order_id>/send-early/ {reason} — release a held order before its vendors open (delivery.manage)."""
+
+    def post(self, request, order_id):
+        get_object_or_404(Order, pk=order_id)
+        try:
+            order = services.send_early(order_id, request.user, request.data.get("reason"), request=request)
+        except services.DeliveryError as exc:
+            return Response(exc.body(), status=exc.status_code)
+        return Response({"order_id": order.pk, "ready_not_before": order.ready_not_before})
+
+
 class SwitchView(APIView):
     """POST auto-assign/switch/ {on} — turn the engine on or off. Applies at once, is logged by the activity log, and
     tells every Super Admin (permission ``delivery.rates``)."""

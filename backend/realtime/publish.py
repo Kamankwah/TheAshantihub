@@ -56,6 +56,11 @@ QUEUE_INVALIDATIONS = [
         ("delivery-queue",),
     ),
     (
+        ("delivery.early_send",),
+        ("delivery.manage",),
+        ("delivery-queue", "delivery-live"),
+    ),
+    (
         ("kyc-", "business.", "portfolio.", "subscription."),
         ("portfolio.manage", "businesses.manage_portfolio"),
         ("portfolio", "portfolio-business", "subscriptions-due", "staff-badges"),

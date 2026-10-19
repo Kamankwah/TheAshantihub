@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { apiFetch, apiPost } from "../../../apiClient.js";
 import { useDeliveryManagerOrders } from "../../../hooks/useDeliveryManagerOrders.js";
 import { D, glassCard } from "../theme.js";
+import SendNow, { isHeld } from "./delivery/SendNow.jsx";
+import { dayTime } from "./delivery/deliveryParts.jsx";
 
 // Delivery Manager (punch-list item 11, delivery.manage): sees paid
 // door-to-door orders and assigns a dispatch to each. Store-pickup orders
@@ -43,6 +45,13 @@ function OrderCard({ order, dispatches, onDone }) {
           </div>
         ))}
       </div>
+
+      {isHeld(order.ready_not_before) && (
+        <div style={{ color: D.amber, fontSize: "0.74rem", marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+          <span>Held until the shop opens ({dayTime(order.ready_not_before)}). A rider cannot be assigned before then.</span>
+          <SendNow orderId={order.id} readyNotBefore={order.ready_not_before} onDone={onDone} />
+        </div>
+      )}
 
       {actionError && <div style={{ color: D.red, fontSize: "0.74rem", marginTop: 6 }}>{actionError}</div>}
 
