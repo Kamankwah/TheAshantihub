@@ -153,6 +153,8 @@ WALLET_SETTING_KEYS = (
 # Plan 7A: bookings release on their own milestone; texts and sign-in codes never touch an order's money.
 BOOKING_SETTING_KEYS = ("service_auto_accept_hours", "stay_issue_window_hours", "event_release_delay_hours")
 TEXT_SETTING_KEYS = ("vendor_low_balance_pesewas", "digest_batch_size", "digest_time_budget_seconds")
+# Rider withdrawals a day (plan 7F-D): only counts riders' requests, so an order's money is untouched.
+RIDER_SETTING_KEYS = ("rider_withdrawals_per_day",)
 # Low-stock alerts (catalogue plan 6): they never touch an order or any money.
 STOCK_SETTING_KEYS = (settings_store.STOCK_COVER_DAYS, settings_store.STOCK_FALLBACK_UNITS, settings_store.STOCK_WINDOW_DAYS)
 
@@ -164,6 +166,8 @@ def setting_consequences(request):
     if key in WALLET_SETTING_KEYS:
         return ["Applies to withdrawals asked for, and payout destinations added, after it starts. Destinations already "
                 "added keep the waiting time they were given."]
+    if key in RIDER_SETTING_KEYS:
+        return ["Applies to riders' withdrawals asked for after it starts. Withdrawals already made today still count."]
     if key in STOCK_SETTING_KEYS:
         return ["Applies from when it starts to the \"needs restocking\" lists and, when low-stock alerts are switched on, to "
                 "the alerts. Offers where the business set its own low-stock line keep that line. Offers already told "

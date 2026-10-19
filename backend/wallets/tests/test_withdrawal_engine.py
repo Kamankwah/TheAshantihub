@@ -13,6 +13,7 @@ from accounts.models import BusinessOwner, Customer
 from fraud.models import FraudFlag
 from ledger import posting
 from ledger.models import Account, Journal, MoneySetting
+from ledger.tests import rider_helpers
 from notifications.models import Notification
 from payments import providers
 from wallets import payouts, tasks, withdrawals
@@ -527,3 +528,145 @@ class ConcurrentWithdrawalTests(TransactionTestCase):
         self.assertEqual(calls, [held.reference])
         self.assertEqual(in_atomic, [False])                                                   # never sent inside a transaction
         self.assertEqual(Journal.objects.filter(kind="withdrawal_paid").count(), 1)
+
+
+@override_settings(LEDGER_ENABLED=True)
+class RiderDailyCountTests(TestCase):
+    def setUp(self):
+        self.swift = rider_helpers.rider()
+        rider_helpers.ghana_card(self.swift)
+        self.staff = self.swift.staff
+        rider_helpers.earning(self.swift, gross=50000, at=timezone.now())
+        self.dest = destination(self.staff, name="Kojo Mensah")
+        PayoutDestination.objects.filter(pk=self.dest.pk).update(usable_from=timezone.now() - timedelta(days=3))  # past its cooling period at any "now" below
+        self.n = 0
+
+    def withdraw(self, now=None, holder=None, dest=None, amount=100):
+        self.n += 1
+        with transaction.atomic():
+            return withdrawals.request(
+                holder or self.staff, destination_id=(dest or self.dest).pk, amount_pesewas=amount,
+                request_id=f"req-rider-{self.n:06d}", now=now,
+            )
+
+    def noon(self):
+        return timezone.localtime(timezone.now()).replace(hour=6, minute=0, second=0, microsecond=0)
+
+    def refused(self, **kwargs):
+        with self.assertRaises(withdrawals.WithdrawalError) as caught:
+            self.withdraw(**kwargs)
+        return caught.exception
+
+    def test_rider_fourth_withdrawal_refused_with_code_and_reset_time(self):
+        now = self.noon()
+        for _ in range(3):
+            self.withdraw(now)
+        before = (Withdrawal.objects.count(), Journal.objects.count())
+        error = self.refused(now=now)
+        self.assertEqual((error.code, error.status_code), ("daily_count_limit", 409))
+        self.assertEqual(
+            error.message,
+            "You can make 3 withdrawals a day, and you have made 3 today. You can withdraw again from 00:00 (Accra) tomorrow.",
+        )
+        self.assertEqual(error.body()["limit"], 3)
+        self.assertEqual(error.body()["resets_at"], withdrawals.next_reset(now).isoformat())
+        self.assertEqual(withdrawals.next_reset(now), withdrawals.start_of_day(now) + timedelta(days=1))
+        self.assertEqual(timezone.localtime(withdrawals.next_reset(now)).hour, 0)
+        self.assertEqual((Withdrawal.objects.count(), Journal.objects.count()), before)       # nothing written
+
+    def test_the_message_is_singular_for_a_limit_of_one(self):
+        now = self.noon()
+        MoneySetting.objects.create(key="rider_withdrawals_per_day", value=1, effective_from=now - timedelta(days=1))
+        self.withdraw(now)
+        self.assertIn("You can make 1 withdrawal a day, and you have made 1 today.", self.refused(now=now).message)
+
+    def test_cancelled_withdrawal_frees_a_slot(self):
+        now = self.noon()
+        held = [self.withdraw(now) for _ in range(3)]
+        self.assertEqual(self.refused(now=now).code, "daily_count_limit")
+        Withdrawal.objects.filter(pk=held[0].pk).update(status=Withdrawal.CANCELLED)
+        Withdrawal.objects.filter(pk=held[1].pk).update(status=Withdrawal.FAILED)
+        self.withdraw(now)
+        self.withdraw(now)
+        self.assertEqual(self.refused(now=now).code, "daily_count_limit")
+
+    def test_count_resets_at_midnight_accra(self):
+        late = timezone.localtime(timezone.now()).replace(hour=23, minute=59, second=0, microsecond=0)
+        for _ in range(3):
+            row = self.withdraw(late)
+            Withdrawal.objects.filter(pk=row.pk).update(created_at=late)
+        self.assertEqual(self.refused(now=late).code, "daily_count_limit")
+        after = late + timedelta(minutes=2)                                                    # 00:01 the next day
+        self.assertEqual((after.hour, after.minute), (0, 1))
+        self.withdraw(after)
+
+    def test_setting_change_applies_from_its_start(self):
+        now = self.noon()
+        for _ in range(3):
+            self.withdraw(now)
+        MoneySetting.objects.create(key="rider_withdrawals_per_day", value=5, effective_from=now + timedelta(hours=1))
+        self.assertEqual(self.refused(now=now).code, "daily_count_limit")                      # not yet
+        self.withdraw(now + timedelta(hours=2))                                                # in force: a 4th is allowed
+        MoneySetting.objects.create(key="rider_withdrawals_per_day", value=2, effective_from=now + timedelta(hours=3))
+        self.assertEqual(self.refused(now=now + timedelta(hours=4)).code, "daily_count_limit")  # made-today still counts
+
+    def test_customer_and_vendor_not_capped_by_rider_setting(self):
+        now = self.noon()
+        MoneySetting.objects.create(key="rider_withdrawals_per_day", value=1, effective_from=now - timedelta(days=1))
+        customer = Customer.objects.create(full_name="Ama Owusu", phone="+233241234567", password_hash="x")
+        fund(Account.CUSTOMER_WALLET, customer, 20000, "fund-c")
+        to = destination(customer)
+        owner = BusinessOwner.objects.create(
+            full_name="Kwame Mensah", login_phone="+233201112233", password_hash="x", kyc_status=BusinessOwner.VERIFIED,
+        )
+        fund(Account.VENDOR_AVAILABLE, owner, 20000, "fund-v")
+        to_kwame = destination(owner, number="+233201112233", name="Kwame Mensah")
+        PayoutDestination.objects.filter(pk__in=[to.pk, to_kwame.pk]).update(usable_from=timezone.now() - timedelta(days=3))
+        for holder, dest in ((customer, to), (owner, to_kwame)):
+            for _ in range(3):
+                self.withdraw(now, holder=holder, dest=dest)
+            self.assertEqual(mine_count(holder), 3)
+
+
+def mine_count(holder):
+    return withdrawals.mine(holder).count()
+
+
+@override_settings(LEDGER_ENABLED=True)
+class RiderDailyCountRaceTests(TransactionTestCase):
+    serialized_rollback = True
+
+    def setUp(self):
+        self.swift = rider_helpers.rider()
+        rider_helpers.ghana_card(self.swift)
+        self.staff = self.swift.staff
+        rider_helpers.earning(self.swift, gross=50000, at=timezone.now())
+        self.to = [destination(self.staff, name="Kojo Mensah"), destination(self.staff, name="Kojo Mensah", number="+233241234599")]
+        MoneySetting.objects.create(key="rider_withdrawals_per_day", value=2, effective_from=timezone.now() - timedelta(days=1))
+        for i in range(1):
+            with transaction.atomic():
+                withdrawals.request(self.staff, destination_id=self.to[0].pk, amount_pesewas=100, request_id=f"req-pre-{i:06d}")
+
+    def test_two_concurrent_requests_take_one_last_slot(self):
+        results, barrier = [], threading.Barrier(2)
+
+        def run(i):
+            try:
+                barrier.wait()
+                with transaction.atomic():
+                    results.append(withdrawals.request(
+                        self.staff, destination_id=self.to[i].pk, amount_pesewas=100, request_id=f"req-race-{i:06d}",
+                    ).status)
+            except withdrawals.WithdrawalError as exc:
+                results.append(exc.code)
+            finally:
+                connection.close()
+
+        threads = [threading.Thread(target=run, args=(i,)) for i in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+            self.assertFalse(thread.is_alive(), "a racing thread hung")
+        self.assertEqual(sorted(results), ["daily_count_limit", Withdrawal.PENDING])
+        self.assertEqual(Withdrawal.objects.count(), 2)
