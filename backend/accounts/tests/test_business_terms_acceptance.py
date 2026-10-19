@@ -2,6 +2,7 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from accounts import hours
 from accounts.authentication import issue_token
 from accounts.models import BusinessOwner, BusinessOwnerProfile, Customer
 from billing.models import Subscription, SubscriptionPlan
@@ -51,6 +52,7 @@ class TermsAcceptanceTests(TestCase):
         )
         owner.profile.business_kind = "product"
         owner.profile.save(update_fields=["business_kind"])
+        hours.set_week(owner, [{"weekday": d, "closed": False, "opens": "09:00", "closes": "17:00"} for d in range(7)])
         client = self._client_for(owner)
         response = client.post("/api/accounts/business-owners/me/terms/")
         self.assertEqual(response.status_code, 200, response.content)

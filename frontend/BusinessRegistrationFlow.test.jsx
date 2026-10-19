@@ -18,9 +18,13 @@ const PLANS = [
   { id: 3, tier: 'service', name: 'Service', kind: 'service', monthly_price: '150.00', features: [], is_recommended: false, max_active_listings: null, hero_days: 14, boost_credits_per_month: 2 },
 ]
 
+const WEEK = Array.from({ length: 7 }, (_, weekday) => ({ weekday, closed: false, opens: '09:00', closes: '17:00' }))
+
 beforeEach(() => {
   server.use(
     http.get('http://localhost:8000/api/billing/plans/', () => HttpResponse.json(PLANS)),
+    // By default the owner already has hours; the opening-hours tests below override this.
+    http.get('http://localhost:8000/api/accounts/business/hours/', () => HttpResponse.json({ days: WEEK, has_hours: true })),
   )
 })
 
@@ -201,9 +205,9 @@ describe('BusinessRegistrationFlow', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Business Agreement' })).toBeInTheDocument())
   })
 
-  it('terms step requires the checkbox before Submit for Verification is enabled', () => {
+  it('terms step requires the checkbox before Submit for Verification is enabled', async () => {
     renderFlow(<BusinessRegistrationFlow user={{fullName:'Abena'}} auth={makeAuth()} initialStep="terms" setPage={vi.fn()} setShowBizDash={vi.fn()} />)
-    expect(screen.getByRole('button', { name: 'Submit for Verification' })).toBeDisabled()
+    expect(await screen.findByRole('button', { name: 'Submit for Verification' })).toBeDisabled()
     fireEvent.click(screen.getByLabelText(/I have read and agree/i))
     expect(screen.getByRole('button', { name: 'Submit for Verification' })).not.toBeDisabled()
   })
@@ -214,7 +218,7 @@ describe('BusinessRegistrationFlow', () => {
     const setPage = vi.fn()
     renderFlow(<BusinessRegistrationFlow user={{fullName:'Abena'}} auth={auth} initialStep="terms" setPage={setPage} setShowBizDash={setShowBizDash} />)
 
-    fireEvent.click(screen.getByLabelText(/I have read and agree/i))
+    fireEvent.click(await screen.findByLabelText(/I have read and agree/i))
     fireEvent.click(screen.getByRole('button', { name: 'Submit for Verification' }))
 
     await waitFor(() => expect(auth.acceptBusinessTerms).toHaveBeenCalled())
@@ -249,5 +253,52 @@ describe('BusinessRegistrationFlow', () => {
     renderFlow(<BusinessRegistrationFlow user={null} auth={makeAuth()} setPage={setPage} setShowBizDash={vi.fn()} />)
     fireEvent.click(screen.getByText('← Home'))
     expect(setPage).toHaveBeenCalledWith('home')
+  })
+
+  describe('opening hours (terms step)', () => {
+    const fill = (day, opens, closes) => {
+      fireEvent.change(screen.getByLabelText(`${day} opens`), { target: { value: opens } })
+      fireEvent.change(screen.getByLabelText(`${day} closes`), { target: { value: closes } })
+    }
+
+    it('registration blocks Next until hours entered, then saves them and shows the agreement', async () => {
+      let saved = null
+      server.use(
+        http.get('http://localhost:8000/api/accounts/business/hours/', () => (
+          saved ? HttpResponse.json({ days: saved, has_hours: true }) : HttpResponse.json({ days: [], has_hours: false })
+        )),
+        http.put('http://localhost:8000/api/accounts/business/hours/', async ({ request }) => {
+          saved = (await request.json()).days
+          return HttpResponse.json({ days: saved, has_hours: true })
+        }),
+      )
+      renderFlow(<BusinessRegistrationFlow user={{fullName:'Abena'}} auth={makeAuth()} initialStep="terms" setPage={vi.fn()} setShowBizDash={vi.fn()} />)
+
+      const next = await screen.findByRole('button', { name: 'Next' })
+      expect(next).toBeDisabled()
+      expect(screen.queryByRole('heading', { name: 'Business Agreement' })).not.toBeInTheDocument()
+
+      fill('Monday', '09:00', '17:00')
+      fireEvent.click(screen.getByRole('button', { name: 'Copy Monday to weekdays' }))
+      expect(screen.getByLabelText('Friday closes')).toHaveValue('17:00')
+      expect(next).toBeDisabled() // Saturday and Sunday are still blank
+      fireEvent.click(screen.getByLabelText('Saturday closed'))
+      fireEvent.click(screen.getByLabelText('Sunday closed'))
+      expect(next).not.toBeDisabled()
+
+      fireEvent.click(next)
+      await waitFor(() => expect(screen.getByRole('heading', { name: 'Business Agreement' })).toBeInTheDocument())
+      expect(saved).toHaveLength(7)
+      expect(saved[0]).toEqual({ weekday: 0, closed: false, opens: '09:00', closes: '17:00' })
+      expect(saved[5]).toEqual({ weekday: 5, closed: true, opens: null, closes: null })
+    })
+
+    it('refuses an opening time that is not before closing time', async () => {
+      server.use(http.get('http://localhost:8000/api/accounts/business/hours/', () => HttpResponse.json({ days: [], has_hours: false })))
+      renderFlow(<BusinessRegistrationFlow user={{fullName:'Abena'}} auth={makeAuth()} initialStep="terms" setPage={vi.fn()} setShowBizDash={vi.fn()} />)
+      await screen.findByRole('button', { name: 'Next' })
+      fill('Monday', '18:00', '09:00')
+      expect(screen.getByRole('alert')).toHaveTextContent(/Monday: opening time must be before closing time/)
+    })
   })
 })

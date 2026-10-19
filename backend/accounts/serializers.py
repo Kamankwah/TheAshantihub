@@ -498,15 +498,70 @@ class PayoutDetailSerializer(serializers.ModelSerializer):
         return instance
 
 
+def hours_payload(owner):
+    """The owner's weekly hours as the API shows them: [] (never invented) until they have entered some."""
+    from .models import BusinessHours
+
+    return [
+        {
+            "weekday": row.weekday, "closed": row.closed,
+            "opens": row.opens.strftime("%H:%M") if row.opens else None,
+            "closes": row.closes.strftime("%H:%M") if row.closes else None,
+        }
+        for row in BusinessHours.objects.filter(business_owner=owner).order_by("weekday")
+    ]
+
+
+def _strict_bool(value):
+    """`closed` as a real bool: the string "false" and 0 must not read as truthy-closed."""
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, (int, float)) and value in (0, 1):
+        return bool(value)
+    if isinstance(value, str) and value.strip().lower() in ("true", "false", "1", "0"):
+        return value.strip().lower() in ("true", "1")
+    raise serializers.ValidationError("closed must be true or false.")
+
+
+class BusinessHoursSerializer(serializers.Serializer):
+    """PUT body {days: [{weekday, closed, opens, closes}]}; the rules live in accounts.hours.set_week."""
+
+    days = serializers.ListField(child=serializers.DictField(), allow_empty=False)
+
+    def validate_days(self, days):
+        cleaned = []
+        for day in days:
+            day = dict(day)
+            try:
+                day["closed"] = _strict_bool(day.get("closed"))
+            except serializers.ValidationError:
+                raise serializers.ValidationError("Each day's closed must be true or false.")
+            cleaned.append(day)
+        return cleaned
+
+
 class BusinessOwnerProfileUpdateSerializer(serializers.ModelSerializer):
+    hours = serializers.SerializerMethodField()
+    has_hours = serializers.SerializerMethodField()
+
+    def get_hours(self, obj):
+        return hours_payload(obj.business_owner)
+
+    def get_has_hours(self, obj):
+        from .hours import has_hours
+
+        return has_hours(obj.business_owner)
+
     class Meta:
         model = BusinessOwnerProfile
         fields = [
             "ghana_card_number", "ghana_card_front_image", "ghana_card_back_image",
             "gps_address", "business_contact_phone", "is_formal",
-            "business_reg_certificate", "tin", "business_kind",
+            "business_reg_certificate", "tin", "business_kind", "hours", "has_hours",
         ]
-        extra_kwargs = {field: {"required": False} for field in fields}
+        extra_kwargs = {field: {"required": False} for field in fields if field not in ("hours", "has_hours")}
         # business_kind is set at trial-start (billing.StartTrialSerializer) or, while
         # subscriptions are off, by billing.BusinessKindView, and
         # drives listing-category / subscription-plan gating on the frontend; it

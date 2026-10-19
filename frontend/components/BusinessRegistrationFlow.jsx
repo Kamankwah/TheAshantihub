@@ -1,5 +1,8 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { C } from "../theme.js";
+import { apiFetch, apiPut } from "../apiClient.js";
+import BusinessHoursEditor from "./BusinessHoursEditor.jsx";
 import { useSubscriptionPlans } from "../hooks/useSubscriptionPlans.js";
 import { BUSINESS_TERMS_COPY } from "./businessTerms.js";
 
@@ -70,8 +73,29 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
   const [payoutBankName, setPayoutBankName] = useState("");
   const [defaultPayoutMethod, setDefaultPayoutMethod] = useState("momo");
 
-  // Step 5 — Terms
+  // Step 5 — Opening hours, then Terms. The server refuses to take the
+  // submission without hours (400 hours_required), so the terms form only
+  // appears once the week is saved.
   const [agreed, setAgreed] = useState(false);
+  const hoursQuery = useQuery({
+    queryKey: ["business-hours"],
+    queryFn: () => apiFetch("/api/accounts/business/hours/"),
+    enabled: step === "terms",
+  });
+  const hoursSaved = hoursQuery.data?.has_hours === true;
+
+  const handleHoursSave = async (days) => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await apiPut("/api/accounts/business/hours/", { days });
+      await hoursQuery.refetch();
+    } catch (err) {
+      setError(err?.body?.detail || "Could not save your opening hours. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handlePersonalInfoSubmit = async (e) => {
     e.preventDefault();
@@ -193,7 +217,8 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
       setPage("home");
       setShowBizDash(true);
     } catch (err) {
-      setError("Could not record your acceptance. Please try again.");
+      setError(err?.body?.code === "hours_required" ? err.body.detail : "Could not record your acceptance. Please try again.");
+      if (err?.body?.code === "hours_required") hoursQuery.refetch();
     } finally {
       setSubmitting(false);
     }
@@ -377,7 +402,16 @@ export default function BusinessRegistrationFlow({ user, auth, initialStep, pref
           </form>
         )}
 
-        {step==="terms" && (
+        {step==="terms" && !hoursSaved && (
+          <div>
+            <h2 style={{color:C.darkBrown,fontSize:"1.05rem",margin:"0 0 14px"}}>When are you open?</h2>
+            {hoursQuery.isLoading
+              ? <div style={{fontSize:"0.8rem",color:"#666"}}>Loading…</div>
+              : <BusinessHoursEditor initialDays={hoursQuery.data?.days} onSave={handleHoursSave} saving={submitting} saveLabel="Next"/>}
+          </div>
+        )}
+
+        {step==="terms" && hoursSaved && (
           <form onSubmit={handleTermsSubmit}>
             <h2 style={{color:C.darkBrown,fontSize:"1.05rem",margin:"0 0 14px"}}>Business Agreement</h2>
             <div style={{background:"#f9f9f9",borderRadius:10,padding:"14px",fontSize:"0.74rem",color:"#444",lineHeight:1.6,whiteSpace:"pre-line",marginBottom:14,maxHeight:260,overflowY:"auto"}}>

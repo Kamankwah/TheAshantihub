@@ -110,6 +110,9 @@ export const handlers = [
     active: false, limits: { source: 'defaults', version: null, max_shops_per_delivery: 4, max_food_shops: 2, near_shop_radius_km: '3.00', detour_limit_pct: 40 },
     shops: [], food_shops: 0, at_shop_limit: false, at_food_limit: false, checkout: { any: null, door_to_door: null },
   })),
+  http.get('http://localhost:8000/api/orders/delivery-preview/', () => HttpResponse.json({
+    delivery_from: null, delivered_from: null, deferred: false, source: null,
+  })),
   http.get('http://localhost:8000/api/cart/', () => {
     return HttpResponse.json({ id: 1, items: [], total: '0.00', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' })
   }),

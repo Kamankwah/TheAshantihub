@@ -48,6 +48,18 @@ function renderReview(props = {}) {
 const serve = (body) => server.use(http.get(`${API}/api/portfolio/businesses/41/review/`, () => HttpResponse.json(body)))
 
 describe('BusinessKycReview', () => {
+  it('shows the structured weekly hours, or Hours not set, never a false Not given', async () => {
+    serve(sheet({ business: { ...sheet().business, hours: [0,1,2,3,4].map((d) => ({ weekday: d, closed: false, opens: '08:00', closes: '18:00' })).concat([{ weekday: 5, closed: false, opens: '09:00', closes: '14:00' }, { weekday: 6, closed: true, opens: null, closes: null }]) } }))
+    renderReview()
+    expect(await screen.findByText('Mon-Fri 08:00-18:00, Sat 09:00-14:00, Sun closed')).toBeInTheDocument()
+  })
+
+  it('says Hours not set (with the old text, labelled) when there are no structured hours', async () => {
+    serve(sheet({ business: { ...sheet().business, hours: [] } }))
+    renderReview()
+    expect(await screen.findByText('Hours not set (old text: Mon–Sat, 7:00–20:00)')).toBeInTheDocument()
+  })
+
   it('shows the owner, business, photos, location, checks and consent record', async () => {
     serve(sheet())
     renderReview()

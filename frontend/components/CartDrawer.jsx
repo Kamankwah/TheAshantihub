@@ -3,6 +3,8 @@ import { C, CURRENCIES } from "../theme.js";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCart } from "../hooks/useCart.js";
 import { useCartGuard } from "../hooks/useCartGuard.js";
+import { useDeliveryPreview } from "../hooks/useDeliveryPreview.js";
+import { formatAccraDayTime } from "../lib/accraTime.js";
 import { apiPatch, apiPost, apiDelete } from "../apiClient.js";
 import { apiErrorMessage } from "../lib/apiErrorMessage.js";
 import { quoteCart, usePublicPromos } from "../hooks/usePublicPromos.js";
@@ -88,6 +90,10 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
   const [quoteFailed, setQuoteFailed] = useState(false);
   const pinKey = `${deliveryMethod}:${deliveryLat}:${deliveryLng}`;
   const cartSignature = items.map((i) => `${i.id}:${i.quantity}`).join(",");
+  // After-hours notice: independent of promotions (its own endpoint). Shown only for a rider delivery the server says is
+  // deferred; nothing while loading or if the read fails. Platform hours are never presented as the shop's own.
+  const { data: preview } = useDeliveryPreview("door_to_door", { enabled: user?.accountType === "customer" && deliveryMethod === "door_to_door" && items.length > 0, cartKey: cartSignature });
+  const deferredFrom = deliveryMethod === "door_to_door" && preview?.deferred ? formatAccraDayTime(preview.delivery_from) : null;
   useEffect(() => {
     if (!promosOn || items.length === 0) { setQuote(null); return; }
     let live = true;
@@ -396,6 +402,7 @@ export default function CartDrawer({ onClose, user, currency = "GHS", PaymentCom
               </div>
             )}
 
+            {deferredFrom && <div data-testid="cart-after-hours" style={{ background: "#fff7e6", color: "#7a4b00", borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>{preview.source === "business_hours" ? `Shop is closed now. Delivery starts ${deferredFrom}.` : `Delivery starts ${deferredFrom}.`}</div>}
             {promosOn && pinChosen && quoteFailed && <div data-testid="cart-delivery-unchecked" style={{ fontSize: "0.72rem", color: "#555", marginBottom: 12 }}>We couldn't check delivery to this location yet. Try again.</div>}
             {guardBlock && <div data-testid="cart-guard-block" role="alert" style={{ background: "#fee2e2", color: "#dc2626", borderRadius: 10, padding: "8px 12px", fontSize: "0.72rem", marginBottom: 12 }}>{guardBlock.detail}{deliveryLimitBlock && <div>Store pickup is still available.</div>}</div>}
             {guardUnchecked && !guardBlock && <div data-testid="cart-guard-unchecked" style={{ fontSize: "0.72rem", color: "#555", marginBottom: 12 }}>{guardError ? "We couldn't check your delivery limits yet. Try again shortly." : "Checking your delivery limits…"}</div>}

@@ -38,6 +38,18 @@ function setup(over = {}) {
 const mount = () => renderPanel(<SaBusinessDetail businessId={12} auth={SA} onBack={() => {}} />)
 
 describe('SaBusinessDetail', () => {
+  it('shows the structured weekly hours, or Hours not set with the old text labelled', async () => {
+    setup({ hours: [0, 1, 2, 3, 4, 5, 6].map((d) => ({ weekday: d, closed: d === 6, opens: d === 6 ? null : '08:00', closes: d === 6 ? null : '18:00' })) })
+    mount()
+    expect(await screen.findByText('Mon-Sat 08:00-18:00, Sun closed')).toBeInTheDocument()
+  })
+
+  it('says Hours not set when the business has none', async () => {
+    setup({ hours: [], opening_hours: 'Mon-Sat 8-6' })
+    mount()
+    expect(await screen.findByText('Hours not set (old text: Mon-Sat 8-6)')).toBeInTheDocument()
+  })
+
   it('shows the header, the real figures and no settlement or held-money tile', async () => {
     setup()
     mount()
