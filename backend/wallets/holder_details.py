@@ -15,6 +15,7 @@ value unmasked, because applying needs it; the request title, notes, diff and ac
 from datetime import timedelta
 
 from django.utils import timezone
+from django.utils.crypto import salted_hmac
 
 from accounts.claims import mask_email
 from accounts.models import BusinessOwner, Customer, StaffUser
@@ -129,10 +130,17 @@ def _holder(payload, lock=False):
     return rows.get(pk=payload.get("holder_id"))  # DoesNotExist: the engine answers "stale"
 
 
+def digest(holder, column):
+    """A keyed digest of the raw value: the stale check must see a change the masked display hides (two emails or phones
+    can mask alike), and `before` is shown in the inbox, so the raw value never goes in it."""
+    holder_type, holder_id = ref(holder)
+    return salted_hmac("wallets.holder_details", f"{holder_type}:{holder_id}:{column}:{getattr(holder, column) or ''}").hexdigest()
+
+
 def current_state(request):
     holder = _holder(request.payload)
     column = request.payload["attribute"]
-    return {"value": shown(column, getattr(holder, column))}
+    return {"value": shown(column, getattr(holder, column)), "digest": digest(holder, column)}
 
 
 def _check(request, holder):
@@ -166,6 +174,8 @@ def apply(request):
     if isinstance(holder, StaffUser) and any(person is not None and person.pk == holder.pk for person in people):
         raise Refused("You cannot change your own staff name. Ask another member of staff.", "own_details", status_code=403)
     column, new_value = _check(request, holder)  # again, on the locked row
+    if (request.before or {}).get("digest") != digest(holder, column):  # the holder changed it since the request was made
+        raise Refused("This changed since it was requested. Ask for a fresh request.", "stale", status_code=409)
     before = getattr(holder, column)
     setattr(holder, column, new_value)
     holder.save(update_fields=[column])

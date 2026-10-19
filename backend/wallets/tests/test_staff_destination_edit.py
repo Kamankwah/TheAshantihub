@@ -151,6 +151,23 @@ class StaffDestinationEditTests(TestCase):
         owner.refresh_from_db()
         self.assertEqual(owner.full_name, "Kwame K Trader")
 
+    def test_newer_holder_edit_of_same_masked_email_makes_request_stale(self):
+        Customer.objects.filter(pk=self.customer.pk).update(email="ama@x.com")
+        approval_id = self.patch({"email": "staff.set@x.com"}).json()["approval_id"]
+        Customer.objects.filter(pk=self.customer.pk).update(email="am.new@x.com")  # masks the same: am\u2022\u2022\u2022@x.com
+        detail = self.client_for(self.yaw).get(f"/api/approvals/{approval_id}/").json()
+        self.assertTrue(detail["stale"])
+        self.assertGreaterEqual(self.approve(approval_id).status_code, 400)
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.email, "am.new@x.com")
+
+    def test_newer_holder_edit_of_same_masked_phone_makes_request_stale(self):
+        approval_id = self.patch({"phone": NEW_PHONE}).json()["approval_id"]
+        Customer.objects.filter(pk=self.customer.pk).update(phone="+233245554567")  # same first 3 and last 4 shown
+        self.assertGreaterEqual(self.approve(approval_id).status_code, 400)
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.phone, "+233245554567")
+
     def test_holder_own_edit_unchanged(self):
         from .helpers import Holder
 
