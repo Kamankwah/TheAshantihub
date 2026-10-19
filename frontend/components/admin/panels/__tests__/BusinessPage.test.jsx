@@ -69,6 +69,18 @@ function renderPage(props = {}) {
 }
 
 describe('BusinessPage', () => {
+  it('shows the structured weekly hours, or Hours not set', async () => {
+    serve(business({ hours: [0,1,2,3,4].map((d) => ({ weekday: d, closed: false, opens: '08:00', closes: '18:00' })).concat([{ weekday: 5, closed: false, opens: '09:00', closes: '14:00' }, { weekday: 6, closed: true, opens: null, closes: null }]) }))
+    renderPage()
+    expect(await screen.findByText('Mon-Fri 08:00-18:00, Sat 09:00-14:00, Sun closed')).toBeInTheDocument()
+  })
+
+  it('says Hours not set, with the old text labelled, when no structured hours exist', async () => {
+    serve(business({ hours: [] }))
+    renderPage()
+    expect(await screen.findByText('Hours not set (old text: Mon–Sat 08:00–18:00)')).toBeInTheDocument()
+  })
+
   it('shows health, the overdue clock and the no-cash rule', async () => {
     serve()
     renderPage()

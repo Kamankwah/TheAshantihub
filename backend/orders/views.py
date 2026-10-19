@@ -31,6 +31,7 @@ from ledger.money import from_pesewas, to_pesewas
 from payments.providers import get_provider
 from payments.services import process_payment
 
+from . import hold
 from .models import DeliveryAssignment, Order, OrderItem
 from .serializers import (
     DeliveryOrderSerializer,
@@ -49,6 +50,18 @@ MOMO, WALLET = "momo", "wallet"
 PAYMENT_METHODS = (MOMO, WALLET)
 WALLET_OFF = "Paying from your AshantiHub wallet isn't switched on yet."
 WALLET_TOO_LOW = "Your AshantiHub wallet doesn't hold enough for this order."
+
+
+class DeliveryPreviewView(APIView):
+    """GET /api/orders/delivery-preview/?fulfilment=door_to_door — read from the caller's cart, independent of promotions:
+    when delivery would wait for a closed vendor to open ({delivery_from, delivered_from, deferred, source})."""
+
+    permission_classes = [IsAuthenticated, IsCustomer]
+
+    def get(self, request):
+        cart = Cart.objects.filter(customer=request.user).first()
+        items = list(cart.items.select_related("listing")) if cart is not None else []
+        return Response(hold.quote(items, request.query_params.get("fulfilment") or Order.DOOR_TO_DOOR))
 
 
 class OrderCheckoutView(APIView):
@@ -185,7 +198,7 @@ class OrderCheckoutView(APIView):
                 charged, fee_quote = waivers.apply_to_fee(waiver, fee_quote)
                 total += charged
             order = Order.objects.create(
-                customer=request.user, status=Order.PENDING, total_amount=total,
+                customer=request.user, status=Order.PENDING, total_amount=total, ready_not_before=hold.for_items(items),
                 delivery_fee=charged if fee_quote else None, delivery_fee_breakdown=fee_quote, rate_card=fee_card, route_plan=plan,
                 **(promo.order_extras() if promo else {}),
                 delivery_method=delivery_method,
@@ -612,6 +625,10 @@ class AssignDispatchView(APIView):
                 {"detail": "Only a paid door-to-door order can be assigned a dispatch."},
                 status=400,
             )
+        if order.ready_not_before is not None and order.ready_not_before > timezone.now():
+            from delivery import services as delivery_services
+
+            return Response(delivery_services.not_due_error(order).body(), status=409)
         dispatch = generics.get_object_or_404(StaffUser, pk=request.data.get("dispatch"))
         if dispatch.role.name != "dispatch":
             return Response({"dispatch": "That staff member is not a dispatch."}, status=400)

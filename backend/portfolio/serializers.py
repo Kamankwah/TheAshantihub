@@ -10,6 +10,7 @@ from rest_framework import serializers
 from accounts.gps import validate_ashanti_gps
 from accounts.kyc import address_correction
 from accounts.models import BusinessOwner, BusinessOwnerProfile, StaffUser
+from accounts.serializers import hours_payload
 from accounts.phones import mask_phone, normalize_gh_phone
 from accounts.validators import validate_image_content_type
 from approvals.models import ApprovalRequest
@@ -256,7 +257,8 @@ def business_detail(row, request):
         "location_set_by": getattr(profile, "location_set_by", ""),
         "business_contact_phone": getattr(profile, "business_contact_phone", None),
         "business_description": getattr(profile, "business_description", ""),
-        "opening_hours": getattr(profile, "opening_hours", ""),
+        "opening_hours": getattr(profile, "opening_hours", ""),  # the old free text; may be empty
+        "hours": hours_payload(owner),
         "signboard_photo": _portfolio_file_url(request, getattr(profile, "signboard_photo", None)),
         "email": owner.email,
         "registered_by": _portfolio_person(owner.registered_by),
@@ -363,7 +365,8 @@ def business_review_sheet(owner, request):
             "business_kind": getattr(profile, "business_kind", None),
             "category": _portfolio_named(getattr(profile, "business_category", None), "label"),
             "zone": _portfolio_named(getattr(profile, "zone", None)),
-            "opening_hours": getattr(profile, "opening_hours", ""),
+            "opening_hours": getattr(profile, "opening_hours", ""),  # the old free text; may be empty
+            "hours": hours_payload(owner),
             "is_formal": bool(getattr(profile, "is_formal", False)),
             "tin_given": bool(getattr(profile, "tin", None)),
         },

@@ -32,6 +32,7 @@ import { useSiteSettings } from "./hooks/useSiteSettings.js";
 import { apiFetch, apiPost, apiPatch, getStoredAuth } from "./apiClient.js";
 import { C, CURRENCIES } from "./theme.js";
 import Flag from "./components/Flag.jsx";
+import { formatAccraDayTime } from "./lib/accraTime.js";
 import OrderTrackingMap from "./components/OrderTrackingMap.jsx";
 import DeliveryCodeBox from "./components/DeliveryCodeBox.jsx";
 import Navbar from "./components/Navbar.jsx";
@@ -2161,6 +2162,9 @@ function OrdersDeliveryTab({ searchQuery }) {
           <div style={{marginTop:4,color:D.textDim,fontSize:"0.72rem"}}>
             {o.delivery_method==="door_to_door" ? `🚚 Door-to-door${o.delivery_address ? ` — ${o.delivery_address}` : ""}` : "🏬 Store pickup"}
           </div>
+        )}
+        {o.status==="paid" && o.delivery_method==="door_to_door" && o.ready_not_before && new Date(o.ready_not_before) > new Date() && !["delivered","confirmed"].includes(o.delivery_assignment_status) && o.delivery_status!=="delivered" && formatAccraDayTime(o.ready_not_before) && (
+          <div data-testid="order-scheduled-start" style={{marginTop:6,color:D.textDim,fontSize:"0.72rem",fontWeight:700}}>Delivery scheduled to start {formatAccraDayTime(o.ready_not_before)}</div>
         )}
         {o.status==="paid" && o.delivery_method==="door_to_door" && <DeliveryStepper status={o.delivery_status}/>}
         {o.status==="paid" && o.delivery_method==="door_to_door" && <OrderTrackingMap orderId={o.id} assignmentStatus={o.delivery_assignment_status ?? null} deliveryStatus={o.delivery_status} stops={o.delivery_stops ?? null}/>}

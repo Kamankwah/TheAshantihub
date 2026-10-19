@@ -22,3 +22,11 @@ def run_engine():
     from . import dispatching
 
     return dispatching.run_engine()
+
+
+@shared_task
+def release_deferred_orders():
+    """Every 5 minutes: count (and log) held orders now due. The 10-second engine does the actual offering."""
+    from . import dispatching
+
+    return dispatching.release_deferred()

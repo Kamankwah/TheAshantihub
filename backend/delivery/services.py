@@ -179,6 +179,13 @@ def _code_matches(expected, given):
 
 
 # ── Assigning ──────────────────────────────────────────────────────────────────────────────────
+def not_due_error(order):
+    from accounts.hours import ACCRA
+
+    when = order.ready_not_before.astimezone(ACCRA).strftime("%a %d %b, %H:%M")
+    return DeliveryError(f"The business opens {when}; this delivery is held until then and cannot be assigned yet.", 409, "not_due")
+
+
 def assign(order, rider_staff, assigned_by, *, mode):
     """Give a paid door-to-door order to a rider (one assignment per order). Creates the four-digit
     codes the first time and stamps an ``assigned`` event. Re-assigning before the rider has picked up
@@ -186,6 +193,8 @@ def assign(order, rider_staff, assigned_by, *, mode):
     from orders.models import DeliveryAssignment
 
     now = timezone.now()
+    if order.ready_not_before is not None and order.ready_not_before > now:
+        raise not_due_error(order)
     existing = DeliveryAssignment.objects.select_for_update().filter(order=order).first()
     previous_reason = existing.failed_reason if existing is not None else ""
     failed = existing is not None and existing.status == DeliveryAssignment.FAILED  # read before the reset below changes it
