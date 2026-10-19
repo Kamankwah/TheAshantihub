@@ -83,14 +83,14 @@ class BookingReleaseTests(BookingBase):
         self.call(sale, "matches", customer_confirmed_by_phone=True)
         self.assertEqual(self.balance(Account.VENDOR_AVAILABLE, self.owner), 4950)
 
-    def test_review_focus_a_mismatch_opens_a_dispute_due_72_hours_after_hand_over_and_releases_nothing(self):
+    def test_review_focus_a_mismatch_opens_a_dispute_due_at_the_automatic_release_time_and_releases_nothing(self):
         sale = self.paid_service()
         done = timezone.now() - timedelta(hours=2)
         self.complete(sale, at=done)
         sale = self.call(sale, "does_not_match", note="Only half the rooms were cleaned")
         dispute = sale.dispute
         self.assertEqual((dispute.status, dispute.order, dispute.raised_by, dispute.logged_by), (Dispute.OPEN, None, None, self.support))
-        self.assertEqual(dispute.answer_due_at, done + timedelta(hours=72))
+        self.assertEqual(dispute.answer_due_at, done + timedelta(hours=48))   # Plan 7E: Support answers before it would release
         self.assertIn("Only half the rooms were cleaned", dispute.description)
         self.assertEqual(self.balance(Account.VENDOR_PENDING, self.owner), 20000)
         with self.assertRaisesMessage(VerificationError, "A dispute is open on this booking."):
@@ -206,18 +206,18 @@ class BookingReleaseTests(BookingBase):
         with override_settings(LEDGER_ENABLED=False), self.assertRaisesMessage(VerificationError, "The ledger is off."):
             self.call(sale, "unreachable")
 
-    def test_a_ticket_dispute_is_due_72_hours_after_the_first_scan(self):
+    def test_a_ticket_dispute_is_due_at_the_ticket_release_time(self):
         sale = self.paid_tickets(quantity=2)
         ticket = self.scan(Ticket.objects.filter(transaction=sale.session.transaction).order_by("pk").first())
         sale = self.call(sale, "does_not_match", note="Wrong event")
-        self.assertEqual(sale.dispute.answer_due_at, ticket.delivered_at + timedelta(hours=72))
+        self.assertEqual(sale.dispute.answer_due_at, sales.release_at(sale))
 
-    def test_a_ticket_dispute_without_a_scan_is_due_72_hours_after_the_event_date(self):
+    def test_a_ticket_dispute_without_a_scan_is_due_at_the_ticket_release_time(self):
         sale = self.paid_tickets(quantity=1)
         date = timezone.now() - timedelta(hours=5)
         Event.objects.filter(pk=self.event.pk).update(event_date=date)
         sale = self.call(sale, "does_not_match", note="Cancelled on the day")
-        self.assertEqual(sale.dispute.answer_due_at, date + timedelta(hours=72))
+        self.assertEqual(sale.dispute.answer_due_at, sales.release_at(sale))
 
     @override_settings(LEDGER_ENABLED=False)
     def test_a_scan_still_releases_the_flag_with_the_ledger_off(self):

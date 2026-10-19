@@ -23,7 +23,9 @@ from notifications.services import (
     notify_customer,
     notify_staff_role,
 )
-from ledger import posting
+from ledger import posting, sales
+from ledger.models import BookingSale
+from ledger.money import from_pesewas
 from payments import booking_pay
 from payments.models import CheckoutSession
 from payments.services import process_payment
@@ -1264,3 +1266,20 @@ class MyTicketsListView(generics.ListAPIView):
 
     def get_queryset(self):
         return Ticket.objects.filter(purchased_by=self.request.user).order_by("-created_at")
+
+
+class TicketPurchaseCancelView(APIView):
+    """POST /api/events/tickets/purchases/{sale id}/cancel/ — the customer cancels a whole ticket purchase under the
+    organiser's policy: no refunds unless the organiser set `refund_until_days_before`, then in full until then (409
+    otherwise, and once the event has passed or a ticket was scanned)."""
+
+    permission_classes = [IsAuthenticated, IsCustomer]
+
+    def post(self, request, pk):
+        sale = generics.get_object_or_404(BookingSale, pk=pk, customer=request.user, kind=BookingSale.TICKETS)
+        try:
+            given = sales.cancel_by_customer(sale)
+        except sales.CancelError as exc:
+            return Response({"detail": exc.message}, status=exc.status_code)
+        sales.tell_cancelled(sale, given)
+        return Response({"cancelled": True, "wallet_refund": str(from_pesewas(given.amount_pesewas))})

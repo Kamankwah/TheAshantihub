@@ -584,3 +584,46 @@ describe('ListingDetailPage and the delivery cart', () => {
     expect(screen.queryByText('Delivery limit reached')).not.toBeInTheDocument()
   })
 })
+
+describe('ListingDetailPage — policy and timing shown before paying (plan 7E)', () => {
+  const CUSTOMER = { id: 5, fullName: 'Kofi', accountType: 'customer' }
+  const STAY = { ...LISTING, id: 3, cancellation_policy: 'moderate', category: { ...LISTING.category, kind: 'service', is_accommodation: true } }
+
+  it('a stay shows the exact cancellation times and when the host is paid once dates are chosen', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/3/', () => HttpResponse.json(STAY)))
+    renderPage({ id: 3, user: CUSTOMER })
+    await screen.findByText('Book your stay')
+    expect(screen.queryByTestId('booking-terms')).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Check-in'), { target: { value: '2030-06-10' } })
+    expect(await screen.findByText('Free cancellation until Wed 5 Jun, 14:00')).toBeInTheDocument()
+    expect(screen.getByText('50% refund until Sun 9 Jun, 14:00')).toBeInTheDocument()
+    expect(screen.getByText(/The host is paid 24 hours after check-in time, on Tue 11 Jun, 14:00/)).toBeInTheDocument()
+  })
+
+  it('a service shows when it can be cancelled and when the business is paid', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/2/', () => HttpResponse.json({ ...SERVICE_LISTING, cancellation_policy: 'strict' })))
+    renderPage({ id: 2, user: CUSTOMER })
+    expect(await screen.findByText(/any time before the business marks the job done/)).toBeInTheDocument()
+    expect(screen.getByText(/accepted automatically 48 hours after the business marks it done/)).toBeInTheDocument()
+  })
+
+  it('a stay shows nothing about cancellation or payout while the ledger is off', async () => {
+    server.use(
+      http.get('http://localhost:8000/api/listings/3/', () => HttpResponse.json(STAY)),
+      http.get('http://localhost:8000/api/ledger/booking-terms/', () => HttpResponse.json({ enabled: false, policies: {} })),
+    )
+    renderPage({ id: 3, user: CUSTOMER })
+    await screen.findByText('Book your stay')
+    fireEvent.change(screen.getByLabelText('Check-in'), { target: { value: '2030-06-10' } })
+    await new Promise((r) => setTimeout(r, 80))
+    expect(screen.queryByTestId('booking-terms')).not.toBeInTheDocument()
+  })
+
+  it('a product shows no policy or release timing', async () => {
+    server.use(http.get('http://localhost:8000/api/listings/1/', () => HttpResponse.json({ ...LISTING, category: { ...LISTING.category, kind: 'product' } })))
+    renderPage({ user: CUSTOMER })
+    await screen.findByText('Royal Ashanti Lodge')
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.queryByTestId('booking-terms')).not.toBeInTheDocument()
+  })
+})

@@ -96,7 +96,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
         fields = [
             "id", "name", "description", "category", "zone", "address", "lat", "lng",
             "event_date", "going_count", "access_level", "media", "avg_rating",
-            "review_count", "organizer", "has_tickets",
+            "review_count", "organizer", "has_tickets", "refund_until_days_before",
         ]
 
     def get_avg_rating(self, obj):
@@ -138,7 +138,7 @@ class EventOwnerSerializer(serializers.ModelSerializer):
         fields = [
             "id", "name", "description", "category", "zone", "address", "lat", "lng",
             "event_date", "visibility_days", "status", "rejection_reason", "access_level",
-            "access_code", "paid_at", "expires_at", "going_count", "media", "created_at",
+            "access_code", "paid_at", "expires_at", "going_count", "media", "created_at", "refund_until_days_before",
         ]
         read_only_fields = fields
 
@@ -188,7 +188,7 @@ class EventSubmitSerializer(serializers.ModelSerializer):
         model = Event
         fields = [
             "category", "zone", "name", "description", "address", "lat", "lng",
-            "event_date", "visibility_days", "access_level",
+            "event_date", "visibility_days", "access_level", "refund_until_days_before",
         ]
         extra_kwargs = {"access_level": {"required": False}}
 
@@ -216,7 +216,7 @@ class EventEditSerializer(serializers.ModelSerializer):
         model = Event
         fields = [
             "category", "zone", "name", "description", "address", "lat", "lng",
-            "event_date", "access_level",
+            "event_date", "access_level", "refund_until_days_before",
         ]
         extra_kwargs = {f: {"required": False} for f in fields}
 

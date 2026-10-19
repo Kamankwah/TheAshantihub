@@ -119,8 +119,8 @@ class BookingBase(TestCase):
         assert response.status_code == 200, response.content
         return BookingSale.objects.get(service_request=sr)
 
-    def paid_stay(self, nights=2):
-        response = self.book_stay(nights)
+    def paid_stay(self, nights=2, starts_in=1):
+        response = self.book_stay(nights, starts_in=starts_in)
         assert response.status_code == 201, response.content
         return BookingSale.objects.get(booking_id=response.json()["id"])
 

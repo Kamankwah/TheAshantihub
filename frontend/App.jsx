@@ -20,6 +20,8 @@ import { useCart } from "./hooks/useCart.js";
 import { useListingReviews } from "./hooks/useListingReviews.js";
 import { useReviewEligibility } from "./hooks/useReviewEligibility.js";
 import { useOrders } from "./hooks/useOrders.js";
+import ServiceAcceptBar from "./components/ServiceAcceptBar.jsx";
+import BookingTermsNote from "./components/BookingTermsNote.jsx";
 import { useMyServiceRequests } from "./hooks/useMyServiceRequests.js";
 import { useMyBookings } from "./hooks/useMyBookings.js";
 import { useMyConversations, getGuestToken } from "./hooks/useMyConversations.js";
@@ -2057,6 +2059,8 @@ function ServiceRequestsTab({ PaymentComponent }) {
             {sr.progress_note && sr.status==="in_progress" && <> · Update: {sr.progress_note}</>}
             {sr.decline_reason && <> · {sr.decline_reason}</>}
           </div>
+          <ServiceAcceptBar request={sr} onChanged={refetch} />
+          {sr.status==="accepted" && <BookingTermsNote kind="service" tone="light" />}
           {sr.status==="accepted" && (
             <button onClick={()=>setPayingFor(sr)} style={{marginTop:10,background:D.green,color:"#fff",border:"none",borderRadius:20,padding:"8px 16px",fontWeight:800,fontSize:"0.76rem",cursor:"pointer",fontFamily:"inherit"}}>💳 Pay GHS {sr.agreed_price} to start</button>
           )}

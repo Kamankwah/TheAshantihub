@@ -121,7 +121,9 @@ MoMo/top-up, a "payment processing" line.
 Fee tables, the cap, the rider commission rate, the verification-overdue and pickup windows, withdrawal
 limits and the cooling period share one flow: super admin or accounts propose, the other
 approves; each change logs who/when/old/new and takes effect only for orders paid after its
-effective time. Super admin may edit directly in an emergency (logged).
+effective time. Super admin may edit directly in an emergency (logged). Added 2026-10-18: `service_auto_accept_hours` (48),
+`stay_issue_window_hours` (24) and `event_release_delay_hours` (48) for the booking milestones (§4.2); the verification-overdue
+window now covers products only.
 
 ### 3.4 Subscriptions
 
@@ -143,11 +145,27 @@ No timer releases a vendor's money. For a product order:
    - **Could not reach** → recorded; the order stays on Support's list and is flagged overdue 72 hours after purchase. Nothing releases on its own.
 4. An **open dispute** blocks release.
 
-### 4.2 Services, events and stays (owner decision 2026-10-15)
+### 4.2 Services, events and stays (owner decision 2026-10-15; amended 2026-10-18)
 
-Same as products: the service is done, the event has taken place or the stay has begun, the customer confirms (or Support records it on the call), and a Support verification call releases the money; a mismatch raises a 72-hour dispute. What counts as "handed over" for each kind (provider marks the service done, event date passed or ticket scanned, check-in) is settled in Plan 1b (§13 B4): the business marks the service done, the guest checks in, a ticket is scanned or
-the event's date passes. Plan 1b counts the 72 hours from that hand-over, not from purchase as §4.1 does for products;
-that reading is provisional until the owner confirms it (gate (lvii)).
+**Amended 2026-10-18.** The owner adopted the marketplace "milestone" model: money for these three kinds is released by a
+timer on the kind's own milestone, with no Support call needed (Support's verification call stays available as an early
+release). Products are unchanged (§4.1: Support's call, 72 hours from purchase).
+
+| Kind | Money releases | Setting (default) |
+|---|---|---|
+| Service | when the customer accepts in the app, or automatically this long after the business marks it done | `service_auto_accept_hours` (48) |
+| Stay | this long after the scheduled check-in time (14:00 Accra), whether or not the guest arrived | `stay_issue_window_hours` (24) |
+| Event tickets | this long after the end of the event's day (an event carries no end time); a door scan only tells the customer and records evidence, the organiser is liable for its scans | `event_release_delay_hours` (48) |
+
+An open dispute stops the timer until it closes. A customer can report a problem before release (it opens a dispute and
+tells Support). Before the milestone a cancel follows the vendor's cancellation policy, snapshotted on the sale at payment:
+flexible (full refund until 24 h before the start), moderate (full until 5 days, 50% until 24 h), strict (50% until 7
+days, none after). A service has no start time, so the customer cancels it in full until the business marks it done;
+tickets default to no refunds after purchase except a cancelled event, with an optional refund window per event. Sales
+paid before the policies existed keep Support-only cancellation. After the milestone it is a dispute, not a cancel.
+`verification_overdue_hours` (72) now applies to products only.
+
+Built in Plan 7E (docs/superpowers/plans/2026-10-18-wallet-rulings-7e-milestone-release-and-cancellation-policies.md).
 
 ### 4.3 Store pickup and the Pickup Desk
 
@@ -863,7 +881,7 @@ Found while writing `docs/superpowers/plans/2026-10-16-ledger-services-events-st
   shown as `customer_confirmed: true` in Support's queue must not invite a "matches" without reaching the customer.
   Related: ticket hand-over follows the live, organiser-editable `Event.event_date` (`EventOwnerUpdateView`), so moving
   the date drops or adds purchases to Support's queue. Owner question: refuse date edits on events that have ledger sales?
-- (lvii) **The 72-hour window for bookings runs from hand-over,** not from purchase, because a booking can be paid weeks
+- (lvii) **DECIDED 2026-10-18: bookings release on their own milestone (§4.2), not on a 72-hour window.** Original text, superseded: **The 72-hour window for bookings runs from hand-over,** not from purchase, because a booking can be paid weeks
   before it happens. Owner to confirm.
 - (lviii) **Cancellation policy.** A customer's cancel of a paid stay before check-in and Support's cancel of a booking
   not yet handed over refund it in full, with no deadline or fee (the processing charge stays with the provider). Owner
