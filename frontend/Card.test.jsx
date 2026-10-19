@@ -14,7 +14,6 @@ const REAL_SHAPED_LISTING = {
   price_amount: '450.00',
   price_unit: '/night',
   tag: 'Featured',
-  contact_phone: '+233244000001',
   lat: '6.688500',
   lng: '-1.624400',
   main_photo: 'http://localhost:8000/media/listing_photos/main/lodge.jpg',

@@ -76,6 +76,8 @@ class BusinessOwnerMiniSerializer(serializers.ModelSerializer):
 
 
 class PublicListingSerializer(serializers.ModelSerializer):
+    # No contact_phone (or any phone) here: businesses are never contacted directly, so a public response must not
+    # let anyone recover a business number. Owner and staff serializers keep it.
     category = CategorySerializer(read_only=True)
     zone = ZoneSerializer(read_only=True)
     photos = ListingPhotoSerializer(many=True, read_only=True)
@@ -101,7 +103,7 @@ class PublicListingSerializer(serializers.ModelSerializer):
         model = Listing
         fields = [
             "id", "name", "description", "category", "zone", "price_amount", "price_unit",
-            "tag", "contact_phone", "lat", "lng", "main_photo", "photos", "created_at",
+            "tag", "lat", "lng", "main_photo", "photos", "created_at",
             "is_promoted", "specs", "service_duration", "avg_rating", "review_count",
             "sale_price", "was_price", "effective_price",
             "business_owner", *LISTING_DECISION_FIELDS, "cancellation_policy",
