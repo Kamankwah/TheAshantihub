@@ -43,3 +43,36 @@ class DeferredDispatchTests(EngineCase):
         from datetime import time
         limits = mock.Mock(opens_at=time(0, 0), closes_at=time(23, 59, 59), promise_standard_min=90, promise_express_min=45)
         self.assertEqual(dispatching.deadline_for(order, limits=limits), order.ready_not_before + timedelta(minutes=90))
+
+
+class LegacyAssignAndCountTests(EngineCase):
+    def assign_via_api(self, order):
+        self.as_staff(self.manager)
+        return self.client.post(f"/api/orders/{order.id}/assign-dispatch/", {"dispatch": self.rider_staff.id}, format="json")
+
+    def test_legacy_assign_refused_until_due_then_allowed(self):
+        order = self.make_order(ready_not_before=timezone.now() + timedelta(minutes=60))
+        r = self.assign_via_api(order)
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn("opens", r.json()["detail"].lower())
+        order.__class__.objects.filter(pk=order.pk).update(ready_not_before=timezone.now() - timedelta(minutes=1))  # now due
+        order.refresh_from_db()
+        self.assertEqual(self.assign_via_api(order).status_code, 200)
+
+    def test_manager_order_list_exposes_ready_not_before(self):
+        order = self.make_order(ready_not_before=timezone.now() + timedelta(minutes=60))
+        self.as_staff(self.manager)
+        rows = self.client.get("/api/orders/delivery/").json()
+        rows = rows["results"] if isinstance(rows, dict) else rows
+        self.assertIsNotNone([r for r in rows if r["id"] == order.pk][0]["ready_not_before"])
+
+    def test_scheduled_count_in_queue_and_board(self):
+        self.make_order(ready_not_before=timezone.now() + timedelta(minutes=60))
+        self.make_order(ready_not_before=timezone.now() + timedelta(minutes=90))
+        self.make_order()
+        self.as_staff(self.manager)
+        queue = self.client.get("/api/delivery/queue/").json()
+        self.assertEqual(queue["scheduled_count"], 2)
+        self.assertEqual(queue["total"], 1)
+        from delivery import board
+        self.assertEqual(board.live()["kpis"]["scheduled_count"], 2)

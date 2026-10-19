@@ -87,3 +87,64 @@ class AfterHoursStampTests(CheckoutTestsBase):
             r = self.client.post("/api/marketing/cart/quote/", {"delivery_method": "door_to_door"}, format="json")
         self.assertFalse(r.data["deferred"])
         self.assertIsNone(r.data["delivery_from"])
+
+
+class AfterHoursBoundaryAndPreviewTests(AfterHoursStampTests):
+    def preview(self, now, method="door_to_door"):
+        cart, _ = Cart.objects.get_or_create(customer=self.customer)
+        if not cart.items.exists():
+            CartItem.objects.create(cart=cart, listing=self.listing_a, quantity=1, unit_price_snapshot="150.00")
+        with mock.patch("django.utils.timezone.now", return_value=now):
+            return self.client.get(f"/api/orders/delivery-preview/?fulfilment={method}")
+
+    def test_exactly_at_opening_not_stamped(self):
+        order, _ = self.checkout(accra(19, 9))
+        self.assertIsNone(order.ready_not_before)
+
+    def test_exactly_at_closing_stamped_to_next_opening(self):
+        order, _ = self.checkout(accra(19, 17))
+        self.assertEqual(order.ready_not_before, accra(20, 9))
+
+    def test_hourless_business_after_platform_close_held_on_fallback(self):
+        order, _ = self.checkout(accra(19, 21), [self.listing_c])
+        self.assertEqual(order.ready_not_before, accra(20, 7))
+        cart, _ = Cart.objects.get_or_create(customer=self.customer)
+        CartItem.objects.create(cart=cart, listing=self.listing_c, quantity=1, unit_price_snapshot="10.00")
+        with mock.patch("django.utils.timezone.now", return_value=accra(19, 21)):
+            r = self.client.get("/api/orders/delivery-preview/?fulfilment=door_to_door")
+        self.assertEqual(r.data["source"], "platform")
+        self.assertTrue(r.data["deferred"])
+
+    def test_preview_works_with_promos_off(self):
+        r = self.preview(accra(19, 20))
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertTrue(r.data["deferred"])
+        self.assertEqual(r.data["delivery_from"], "2026-10-20T09:00:00+00:00")
+        self.assertEqual(r.data["delivered_from"], r.data["delivery_from"])
+        self.assertEqual(r.data["source"], "business_hours")
+
+    def test_preview_not_deferred_when_open_or_pickup(self):
+        r = self.preview(accra(19, 12))
+        self.assertFalse(r.data["deferred"])
+        self.assertIsNone(r.data["delivery_from"])
+        self.assertFalse(self.preview(accra(19, 20), "store_pickup").data["deferred"])
+
+    def test_source_follows_the_vendor_that_sets_the_latest_time(self):
+        # owner opens 09:00 tomorrow; owner2 has no hours (platform 07:00): owner sets the latest -> business_hours
+        cart, _ = Cart.objects.get_or_create(customer=self.customer)
+        CartItem.objects.create(cart=cart, listing=self.listing_a, quantity=1, unit_price_snapshot="150.00")
+        CartItem.objects.create(cart=cart, listing=self.listing_c, quantity=1, unit_price_snapshot="10.00")
+        r = self.preview(accra(19, 21))
+        self.assertEqual(r.data["source"], "business_hours")
+        # reverse: owner opens at 06:00 (earlier than platform 07:00) -> the hourless vendor sets it
+        hours.set_week(self.owner, [{**d, "opens": "06:00", "closes": "17:00"} for d in DAYS])
+        r = self.preview(accra(19, 21))
+        self.assertEqual(r.data["source"], "platform")
+        self.assertEqual(r.data["delivery_from"], "2026-10-20T07:00:00+00:00")
+
+    def test_quote_carries_source(self):
+        with override_settings(MARKETING_PROMOS_ENABLED=True), mock.patch("django.utils.timezone.now", return_value=accra(19, 20)):
+            cart, _ = Cart.objects.get_or_create(customer=self.customer)
+            CartItem.objects.create(cart=cart, listing=self.listing_a, quantity=1, unit_price_snapshot="150.00")
+            r = self.client.post("/api/marketing/cart/quote/", {"delivery_method": "door_to_door"}, format="json")
+        self.assertEqual(r.data["source"], "business_hours")

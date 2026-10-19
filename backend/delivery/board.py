@@ -55,6 +55,15 @@ def waiting_orders():
     )
 
 
+def scheduled_count():
+    """Paid door-to-door orders held until their vendor opens (not yet due), so the manager knows they exist."""
+    return (
+        Order.objects.filter(status=Order.PAID, delivery_method=Order.DOOR_TO_DOOR, ready_not_before__gt=timezone.now())
+        .exclude(delivery_status=Order.DELIVERED).exclude(refunds__whole=True)
+        .filter(Q(delivery_assignment__isnull=True) | Q(delivery_assignment__status=DeliveryAssignment.FAILED)).count()
+    )
+
+
 def _route(order, assignment=None, point=None):
     """Where the job runs from and to. A waiting order reads its plan's first shop (the dispatch point); a job a rider
     holds reads its saved stops (the one being worked, else the first), so a job from before multi-stop delivery shows
@@ -232,7 +241,7 @@ def live(now=None):
     return {
         "now": now,
         "kpis": {
-            "on_the_road": len(act), "waiting": waiting_total, "late_now": len(late_now),
+            "on_the_road": len(act), "waiting": waiting_total, "scheduled_count": scheduled_count(), "late_now": len(late_now),
             "delivered_today": delivered.count(),
             "on_time_today": {"on_time": with_deadline.filter(delivered_at__lte=F("deadline_at")).count(), "of": with_deadline.count()},
             "riders": status_counts,

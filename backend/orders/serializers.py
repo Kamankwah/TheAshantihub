@@ -277,7 +277,7 @@ class DeliveryOrderSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             "id", "customer_name", "status", "delivery_status", "placed_at",
-            "items", "total_amount", "delivery_assignment", *DELIVERY_FIELDS,
+            "items", "total_amount", "delivery_assignment", "ready_not_before", *DELIVERY_FIELDS,
         ]
         read_only_fields = fields
 
