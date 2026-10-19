@@ -223,12 +223,14 @@ class SignUpCodeDoesNotSkipAuthenticatorTests(TestCase):
         self.assertIn("token", response.json())
 
     @override_settings(OTP_SIGNUP_VERIFICATION_ENFORCED=True)
-    def test_with_sign_in_codes_off_the_sign_up_code_signs_in_as_before(self):
+    def test_with_sign_in_codes_off_the_authenticator_is_still_asked_after_the_sign_up_code(self):
+        # Owner ruling 2026-10-18: an opted-in authenticator is honoured even with OTP_SIGNIN_ENFORCED off.
         owner = make_owner()
         self.enrol(owner, "business_owner")
         ticket, code = self.sign_up_ticket("/api/accounts/business-owners/login/", "+233201112233")
         response = APIClient().post("/api/otp/sign-in/verify/", {"mfa_token": ticket, "code": code}, format="json")
-        self.assertIn("token", response.json())
+        self.assertNotIn("token", response.json())
+        self.assertEqual(set(response.json()), {"two_factor_required", "mfa_token"})
 
     @override_settings(OTP_SIGNIN_ENFORCED=True, OTP_SIGNUP_VERIFICATION_ENFORCED=True)
     def test_a_changed_verified_contact_does_not_open_a_way_round_the_authenticator(self):

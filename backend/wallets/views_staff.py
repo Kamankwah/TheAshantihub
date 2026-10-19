@@ -2,11 +2,9 @@
 409 ledger_off while the ledger is off. Plan 3b adds withdrawals and the reconciliation runs here; Plan 5 adds
 third-party riders (their accounts are held by their staff account, holder_type "staff")."""
 import logging
-import re
 
 from django.db import transaction
 from django.shortcuts import get_object_or_404
-from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -15,12 +13,14 @@ from accounts.models import BusinessOwner, Customer, StaffUser
 from delivery.models import Rider
 from accounts.permissions import HasRolePermission, RequiresSudo
 from activity.services import record
-from fraud.models import FraudFlag
+from approvals import services as approvals
+from approvals.models import ApprovalRequest
 from ledger import escrow
 from ledger.models import Account
-from payments import providers
 
+from . import approval_kinds as resolution
 from . import payouts, withdrawals
+from .approval_kinds import STAFF_FAILED_REASON, amount_case_open, mask_numbers, own_withdrawal  # noqa: F401 (kept importable here)
 from .models import Withdrawal
 from .services import money
 from .views import Pagination, ledger_off
@@ -97,7 +97,6 @@ STATUS_FILTERS = {
     "open": Withdrawal.OPEN, "succeeded": (Withdrawal.SUCCEEDED,), "failed": (Withdrawal.FAILED,),
     "cancelled": (Withdrawal.CANCELLED,), "all": None,
 }
-STAFF_FAILED_REASON = "AshantiHub could not complete it."  # what the holder sees, never staff text
 
 
 def holders_of(rows):
@@ -141,62 +140,42 @@ class StaffWithdrawalsView(APIView):
         return paginator.get_paginated_response([staff_row(withdrawal, holders) for withdrawal in page])
 
 
-def own_withdrawal(user, withdrawal):
-    """A staff member who is also a third-party rider holder never settles their own withdrawal (self-dealing)."""
-    return withdrawal.holder_type == "staff" and withdrawal.holder_id == user.pk
-
-
 def own_withdrawal_response():
     return Response(
-        {"detail": "You cannot fail your own withdrawal. Ask another member of staff.", "code": "own_withdrawal"},
+        {"detail": "You cannot resolve your own withdrawal. Ask another member of staff.", "code": "own_withdrawal"},
         status=status.HTTP_403_FORBIDDEN,
     )
 
 
-def not_stuck_response():
-    return Response(
-        {"detail": "Only a withdrawal stuck (sent 30+ minutes ago with no answer, or held and never sent for 10+ minutes) "
-                   "can be failed by hand.", "code": "not_stuck"},
-        status=status.HTTP_409_CONFLICT,
-    )
+def refused(exc):
+    body = {"detail": exc.message}
+    if exc.code:
+        body["code"] = exc.code
+    return Response(body, status=exc.status_code)
 
 
-_NUMBER = re.compile(r"\d(?:[\s-]?\d){5,}")
+class StaffWithdrawalResolveView(APIView):
+    """POST staff/withdrawals/<id>/resolve/ {outcome: "failed" | "paid", evidence} — ask for a stuck withdrawal (sent 30+
+    minutes ago with no answer, or held and never sent for 10+ minutes) to be ended by hand. wallets.manage and the
+    password again. It never ends it: it submits a wallets.withdrawal_resolution request (wallets/approval_kinds.py)
+    that another holder of wallets.manage (or a Super Admin) approves with the password again; a Super Admin's own
+    request waits for someone else too. Answers 201 {approval_id, status, withdrawal}.
 
+    Evidence (a provider reference, what the provider's statement shows) is mandatory, 10+ characters (400
+    evidence_required), and is kept with any 6+ digit run masked. Never your own withdrawal (a third-party rider holding
+    wallets.manage: 403 own_withdrawal, before the provider is asked; the approval refuses it too). Not stuck: 409
+    not_stuck, before any provider call. An OPEN amount case (the provider said it paid a different amount, so money did
+    leave): 409 amount_case_open. One request at a time per withdrawal: 409 resolution_pending.
 
-def mask_numbers(text):
-    """A staff note lives in the append-only activity log for good: any run of 6+ digits (spaces or dashes between them
-    allowed, as a phone or MoMo number is written) keeps only its last 3 digits."""
-    def hide(match):
-        digits = re.sub(r"\D", "", match.group())
-        return "*" * (len(digits) - 3) + digits[-3:]
-    return _NUMBER.sub(hide, text)
+    The provider is asked first, outside any transaction, as the old fail door did: if it has answered (paid or failed),
+    that answer settles it instead (409 provider_answered) and no request is made, so money it did pay never comes back to
+    be withdrawn twice. While it answers PROCESSING (or anything unmapped) "failed" is refused (409 provider_processing)
+    and "paid" may be asked for on evidence. A provider that cannot be reached answers 503 provider_unreachable and
+    changes nothing; NotConnected means "not wired to report", so staff's evidence stands. A held one never sent is not
+    asked about, and can only be failed. The provider is asked again at approval (see the kind). No provider text is kept."""
 
-
-def amount_case_open(withdrawal):
-    """The provider reported a different amount for it (so money may have left) and fraud staff have not resolved the case."""
-    return FraudFlag.objects.filter(dedupe_key=payouts.amount_case_key(withdrawal), status=FraudFlag.OPEN).exists()
-
-
-class StaffWithdrawalFailView(APIView):
-    """POST staff/withdrawals/<id>/fail/ {reason} — never your own withdrawal (a third-party rider holding wallets.manage:
-    403 own_withdrawal, checked before the provider is asked and again under the row lock). Fail a withdrawal stuck with the provider (sent 30+ minutes ago with
-    no answer, or held and never sent for 10+ minutes) and return the money. wallets.manage and the password again.
-    The provider is asked first, outside any transaction: if it has answered (paid or failed), that answer settles it
-    instead (409 provider_answered), so money it did pay never comes back to be withdrawn twice. A withdrawal with an
-    OPEN amount case (the provider said it paid a different amount, so money did leave) is never failed by hand (409
-    amount_case_open); that is checked again under the row lock, and payouts.close refuses it too. The 5-minute poll
-    skips any withdrawal that ever had an amount case, so once fraud staff have RESOLVED the case (confirmed or
-    dismissed) this is staff's way out: it can be failed here if it is still stuck and the provider does not say it
-    paid. One that answers PROCESSING (still in progress) is never failed by hand (409 provider_processing): nothing asks
-    the provider again after a hand fail, and the returned money could be withdrawn twice; staff try again later or ask the
-    provider. A provider that cannot be reached (any error but NotConnected) answers 503 provider_unreachable and changes
-    nothing; NotConnected means "not wired to report", so staff's own check stands. A held one never sent is failed
-    without asking any provider. The staff note is stored with any 6+ digit run masked. The holder sees STAFF_FAILED_REASON; the staff member's reason stays in the activity event. If the provider
-    pays after a hand fail, nothing here notices: the late "paid" is caught only by a payout webhook or the next night's
-    reconciliation once Plan 7 exists (spec §13), and is then never posted. No provider text is kept."""
-
-    activity_exempt = True  # records its own event below, and keeps the provider call outside the middleware's transaction
+    activity_exempt = True  # approvals.submit records the request; keeps the provider call outside the middleware's transaction
+    outcome = None  # the fail/ door fixes it
 
     def get_permissions(self):
         return [HasRolePermission(MANAGE), RequiresSudo()]
@@ -205,76 +184,76 @@ class StaffWithdrawalFailView(APIView):
         if not escrow.enabled():
             return ledger_off()
         data = request.data if isinstance(request.data, dict) else {}
-        reason = str(data.get("reason") or "").strip()
-        if not reason:
-            return Response({"reason": "Say why you are failing it."}, status=status.HTTP_400_BAD_REQUEST)
+        outcome = self.outcome or data.get("outcome")
+        if outcome not in resolution.OUTCOMES:
+            return Response({"outcome": resolution.OUTCOME_MESSAGE}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            evidence = resolution.clean_evidence(data.get("evidence") or data.get("reason"))
+        except resolution.Refused as exc:
+            return Response({"evidence": exc.message, "code": exc.code}, status=exc.status_code)
         found = get_object_or_404(Withdrawal, pk=pk)
         if own_withdrawal(request.user, found):  # before any provider call
             return own_withdrawal_response()
-        if not payouts.stuck(found):  # first, so a not-stuck one costs no provider call and changes nothing
-            return not_stuck_response()
-        if found.status == Withdrawal.PROCESSING:
-            try:
-                answer = providers.get_provider(found.provider).status(found.reference)  # outside any transaction
-            except providers.NotConnected:
-                answer = None  # a provider not wired to report (Hubtel until Plan 7): staff checked with it themselves
-            except Exception as exc:
-                # A timeout or a 5xx says nothing about the payout: change nothing, staff retry. Only the type is logged.
-                logger.warning("Provider status for %s unreachable (%s)", found.reference, type(exc).__name__)
+        try:
+            resolution.gate(found)  # first, so a not-stuck one costs no provider call and changes nothing
+            answer = resolution.ask_provider(found)  # outside any transaction
+        except resolution.Refused as exc:
+            return refused(exc)
+        if resolution.final(answer):
+            settled = payouts.apply_result(
+                found.reference, answer.status, provider_reference=answer.provider_reference, amount_pesewas=answer.amount_pesewas,
+            )
+            if settled is not None and settled.status in Withdrawal.FINAL:
+                # Last: record() holds the activity chain lock until commit. The reference only, no number or staff text.
+                with transaction.atomic():
+                    record(
+                        request.user, "wallets.withdrawal_checked", target=settled,
+                        summary=f"Withdrawal {settled.reference} checked with the provider by staff; its answer settled it as {settled.status}",
+                        before={"status": found.status}, after={"status": settled.status}, request=request,
+                    )
                 return Response(
-                    {"detail": "The provider could not be reached to check this withdrawal. Nothing was changed; try again shortly.",
-                     "code": "provider_unreachable"},
-                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
-                )
-            if answer is not None and answer.status not in (providers.SUCCEEDED, providers.FAILED):  # fail closed: PROCESSING or anything unmapped
-                return Response(
-                    {"detail": "The provider says this payout is still in progress. Nothing was changed; try again later or ask the provider.",
-                     "code": "provider_processing"},
+                    {"detail": "The provider has answered for this withdrawal, so its answer settled it.",
+                     "code": "provider_answered", "status": settled.status},
                     status=status.HTTP_409_CONFLICT,
                 )
-            if answer is not None:
-                settled = payouts.apply_result(
-                    found.reference, answer.status, provider_reference=answer.provider_reference,
-                    amount_pesewas=answer.amount_pesewas,
-                )
-                if settled is not None and settled.status in Withdrawal.FINAL:
-                    # Last: record() holds the activity chain lock until commit. The reference only, no number or staff text.
-                    with transaction.atomic():
-                        record(
-                            request.user, "wallets.withdrawal_checked", target=settled,
-                            summary=f"Withdrawal {settled.reference} checked with the provider by staff; its answer settled it as {settled.status}",
-                            before={"status": found.status}, after={"status": settled.status}, request=request,
-                        )
-                    return Response(
-                        {"detail": "The provider has answered for this withdrawal, so its answer settled it.",
-                         "code": "provider_answered", "status": settled.status},
-                        status=status.HTTP_409_CONFLICT,
-                    )
-        case_open = Response(
-            {"detail": "A payout report for this withdrawal needs a person to review it first. Resolve that case, then try again.",
-             "code": "amount_case_open"},
-            status=status.HTTP_409_CONFLICT,
-        )
-        with transaction.atomic():
-            withdrawal = get_object_or_404(Withdrawal.objects.select_for_update(), pk=pk)
-            if own_withdrawal(request.user, withdrawal):
-                return own_withdrawal_response()
-            if not payouts.stuck(withdrawal):
-                return not_stuck_response()
-            if amount_case_open(withdrawal):  # inside the lock: a case the poll opened a moment ago is not missed
-                return case_open
-            before = withdrawal.status
-            payouts.close(withdrawal, Withdrawal.FAILED, STAFF_FAILED_REASON, timezone.now())
-            if withdrawal.status == Withdrawal.PROCESSING:  # close refused (a case opened); never claim it failed
-                return case_open
-            # Last: record() holds the activity chain lock until commit. No account number, ever; the staff reason is
-            # kept here and never shown to the holder.
-            record(
-                request.user, "wallets.withdrawal_failed", target=withdrawal,
-                summary=f"Withdrawal {withdrawal.reference} failed by staff; GH₵ {money(withdrawal.amount_pesewas)} returned",
-                before={"status": before}, after={"status": withdrawal.status, "reason": mask_numbers(reason)[:300]}, request=request,
+            found.refresh_from_db()
+            try:
+                resolution.gate(found)  # its report opened an amount case: staff review that first
+            except resolution.Refused as exc:
+                return refused(exc)
+        try:
+            resolution.check(found, outcome, answer)
+        except resolution.Refused as exc:
+            return refused(exc)
+        if ApprovalRequest.objects.filter(
+            kind=resolution.KEY, target_type=Withdrawal._meta.label_lower, target_id=str(found.pk), status=ApprovalRequest.PENDING,
+        ).exists():
+            return Response(
+                {"detail": "A request to resolve this withdrawal is already waiting for approval.", "code": "resolution_pending"},
+                status=status.HTTP_409_CONFLICT,
             )
-        return Response(staff_row(withdrawal, holders_of([withdrawal])))
+        try:
+            approval = approvals.submit(
+                request.user, resolution.KEY,
+                title=f"Withdrawal {found.reference}: settle as {outcome} (GH₵ {money(found.amount_pesewas)})",
+                payload={"withdrawal_id": found.pk, "outcome": outcome, "evidence": evidence},
+                target=found, maker_note=evidence, request=request,
+            )
+        except approvals.ApprovalError as exc:
+            return refused(exc)
+        found.refresh_from_db()
+        return Response(
+            {"approval_id": approval.pk, "status": approval.status, "withdrawal": staff_row(found, holders_of([found]))},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class StaffWithdrawalFailView(StaffWithdrawalResolveView):
+    """POST staff/withdrawals/<id>/fail/ {reason | evidence} — the older door, kept for its callers: it no longer fails
+    anything itself. It submits the same two-person request with outcome "failed", for every amount (see
+    StaffWithdrawalResolveView); the reason is the evidence, 10+ characters."""
+
+    outcome = resolution.FAILED
 
 
 class StaffReconciliationView(APIView):

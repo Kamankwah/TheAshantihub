@@ -320,8 +320,8 @@ Found while writing the Stage 2 plan (`docs/superpowers/plans/2026-10-16-otp-sec
 - **Hubtel SMS client unverified:** `marketing/providers/hubtel_sms.py` has never sent through a live account; prove one real OTP text first.
 - **Existing accounts with only a foreign phone (or no usable contact):** they get `409 no_channel` and cannot sign in; Support must add an email first (the operational path is not built).
 - **Last contact removed by a staff edit is not re-checked:** a profile or staff edit can leave an account with no usable contact; re-validate before enforcing.
-- **Owner question, long-horizon guessing:** the 15-minute lock still lets someone holding the password try ~20 wrong codes an hour indefinitely; decide a daily cap before enabling.
-- **Owner question:** should an opted-in authenticator be honoured even when `OTP_SIGNIN_ENFORCED` is off?
+- **Owner question, long-horizon guessing:** the 15-minute lock still lets someone holding the password try ~20 wrong codes an hour indefinitely; decide a daily cap before enabling. **Built (7C Task 6):** `otp_daily_failure_cap` (governed setting) locks an account for the rest of the Accra day.
+- **Owner question:** should an opted-in authenticator be honoured even when `OTP_SIGNIN_ENFORCED` is off? **Built (7C Task 6):** yes, sign-in asks for an enabled authenticator regardless of the flag; texted/emailed codes stay tied to it.
 - **Devices trusted before authenticator setup keep skipping it** (up to the customer gap); offer "sign out other devices" (revoke trusted devices) when an authenticator is turned on.
 - **Per-IP hourly limit 60 is a guess** (carrier NAT); tune it with real traffic data.
 - **Phones are not normalised at registration**, so several accounts can name one number and share its 20-codes-an-hour ceiling; normalise registration phones (and lower-case emails).
@@ -512,13 +512,23 @@ Found while writing `docs/superpowers/plans/2026-10-16-withdrawals-3b.md` (§0 t
   no sudo, and send no notice; the portfolio `business.update` approval can change a KYC-verified owner's name with no
   re-KYC. While the ledger is on these need sudo and maker-checker, the old contacts must be notified, and a contact or
   name change must restart the cooling period or block withdrawals.
+  **Built (7C Task 5):** while the ledger is on, those two PATCH doors need sudo and submit `wallets.holder_details_edit`
+  (two_people; one approval from another `users.manage` holder or a Super Admin applies it). Applying revalidates, restarts
+  `payout_cooling_hours` on the holder's destinations and logs the change masked; a stale check uses a keyed digest. Not
+  built: notices to the old contacts, the portfolio `business.update` route (parked), and a staff-name edit door.
 - (xxxv) **Owner question: a second approver (maker-checker) for failing a stuck withdrawal by hand** is undecided (plan
-  B6). Today `wallets.manage` plus sudo and a password suffice, after the provider is asked.
+  B6). **Built (7C Task 4) on the owner's ruling, awaiting owner confirmation:** see (xxxvi). Before: `wallets.manage` plus
+  sudo and a password sufficed, after the provider was asked.
 - (xxxvi) **Amount cases and the staff fail action.** A CONFIRMED amount case is treated like a dismissed one. Staff fail
   is REFUSED (409 `provider_processing`) while the provider says PROCESSING or answers any unmapped status; an
   unreachable provider answers 503 and changes nothing. A payout the provider keeps reporting as PROCESSING, or with a
   different amount, therefore cannot be ended in the app: a maker-checker "settle as paid / fail with provider evidence"
-  action is required before switch-on. Owner to confirm.
+  action is required before switch-on. **Built (7C Task 4), awaiting owner confirmation:** `wallets.withdrawal_resolution`
+  (two_people, sudo; `POST staff/withdrawals/<id>/resolve/`, and the fail door asks with outcome failed). The provider is
+  asked again at approval: PROCESSING (or unmapped) blocks "failed" (409 `provider_processing`); "paid" with evidence is
+  allowed; a provider not wired to report (NotConnected) lets the evidence stand; an opposite final answer is 409
+  `provider_changed`. Open: a payout stuck at PROCESSING whose money was never sent can only be settled as "paid", which
+  records a payment that did not happen; the owner should confirm that is acceptable or choose another way out.
 - (xxxvii) **The simulated statement is built from AshantiHub's own records,** so reconciliation can only prove sessions
   and journals agree. Plan 7 must supply: a Hubtel status client that raises a distinct "unreachable" exception (see
   (xxvii-b)), real `find()`, `pending_payouts()` and `statement()` implementations, and a flag on any reference that

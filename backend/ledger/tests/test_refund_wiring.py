@@ -70,7 +70,7 @@ class SupportCancelTests(WiringBase):
         kofi = self.owner("Kofi")
         order = self.paid([(self.listing(kofi, "60.00"), 2)], delivery="10.00")
         self.with_processing(order)
-        self.as_staff(self.support)
+        self.as_staff(self.support, sudo=True)
         response = self.cancel(order)
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.json()["status"], Order.CANCELLED)
@@ -127,12 +127,12 @@ class DisputeRefundTests(WiringBase):
         DeliveryAssignment.objects.create(
             order=order, status=DeliveryAssignment.CONFIRMED, delivered_at=timezone.now(), confirmed_at=timezone.now(),
         )
-        self.as_staff(self.support)
+        self.as_staff(self.support, sudo=True)
         self.assertEqual(self.verify(order, "does_not_match", note="Different colour").status_code, 200)
         dispute = Dispute.objects.get(order=order)
         self.as_staff(self.accountant, sudo=True)
         self.assertEqual(self.resolve(dispute, refund_amount="60.00").status_code, 200)
-        self.as_staff(self.support)
+        self.as_staff(self.support, sudo=True)
         response = self.verify(order, "matches")
         self.assertEqual(response.status_code, 200, response.content)
         self.assertTrue(response.json()["released"])
@@ -216,7 +216,7 @@ class LedgerOffWiringTests(WiringBase):
     def test_review_focus_with_the_ledger_off_cancel_dispute_and_approval_move_nothing(self):
         kofi = self.owner("Kofi")
         order = self.order([(self.listing(kofi, "60.00"), 1)])
-        self.as_staff(self.support)
+        self.as_staff(self.support, sudo=True)
         self.assertEqual(self.cancel(order).status_code, 200)
         notice = Notification.objects.filter(customer=self.customer).latest("id")
         self.assertEqual(notice.body, f"Your order #{order.pk} was cancelled at your request. Contact AshantiHub Support with any question.")

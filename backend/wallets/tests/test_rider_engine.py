@@ -246,7 +246,7 @@ class RiderSelfDealingTests(TestCase):
         Withdrawal.objects.filter(pk=w.pk).update(created_at=timezone.now() - timedelta(minutes=20))
         client = APIClient()
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {staff_token(staff, sudo=True)}")
-        response = client.post(f"/api/wallet/staff/withdrawals/{w.pk}/fail/", {"reason": "mine"}, format="json")
+        response = client.post(f"/api/wallet/staff/withdrawals/{w.pk}/fail/", {"reason": "my own payout never arrived"}, format="json")
         self.assertEqual((response.status_code, response.json()["code"]), (403, "own_withdrawal"))
         w.refresh_from_db()
         self.assertEqual(w.status, Withdrawal.PENDING)
