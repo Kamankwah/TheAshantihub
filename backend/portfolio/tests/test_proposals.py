@@ -263,6 +263,15 @@ class ProposeListingApiTests(ChangeTestBase):
         self.assertFalse(Listing.objects.filter(business_owner=self.owner).exists())
         self.assertEqual(ActivityEvent.objects.order_by("-id").first().verb, "business.change_proposed")
 
+    def test_the_chosen_cancellation_policy_travels_with_the_proposal(self):
+        main = self.staged()
+        self.as_staff(self.scout)
+        response = self.post({**product_body(), "cancellation_policy": "strict"}, main=main.pk)
+        self.assertEqual(response.status_code, 201, response.content)
+        approval = ApprovalRequest.objects.get(pk=response.json()["approval_id"])
+        self.assertEqual(approval.payload["listing"]["cancellation_policy"], "strict")
+        self.assertEqual(self.post({**product_body(), "cancellation_policy": "lenient"}, main=main.pk).status_code, 400)
+
     def test_the_business_needs_approved_kyc(self):
         BusinessOwner.objects.filter(pk=self.owner.pk).update(kyc_status=BusinessOwner.PENDING)
         self.as_staff(self.scout)

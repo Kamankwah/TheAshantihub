@@ -409,3 +409,25 @@ describe('EventDetailPage — staff session is view-only', () => {
     expect(purchasePosts).toBe(0)
   })
 })
+
+describe('EventDetailPage — refund terms shown before buying a ticket (plan 7E)', () => {
+  const CUSTOMER = { id: 5, fullName: 'Kofi', accountType: 'customer' }
+  const TICKET_TYPES = [{ id: 7, name: 'General Admission', description: '', price: '25.00', delivery_method: 'digital', quantity_remaining: 10 }]
+  const serveEvent = (extra) => server.use(
+    http.get('http://localhost:8000/api/events/1/', () => HttpResponse.json({ ...PUBLIC_DETAIL, has_tickets: true, event_date: '2030-06-10T18:00:00Z', ...extra })),
+    http.get('http://localhost:8000/api/events/1/ticket-types/', () => HttpResponse.json(TICKET_TYPES)),
+  )
+
+  it('says there is no refund after purchase when the organiser offers none, and when the organiser is paid', async () => {
+    serveEvent({ refund_until_days_before: null })
+    renderPage({ user: CUSTOMER })
+    expect(await screen.findByText('No refund after purchase')).toBeInTheDocument()
+    expect(screen.getByText(/The organiser is paid 48 hours after the event day ends/)).toBeInTheDocument()
+  })
+
+  it('shows the exact cut-off when the organiser offers refunds until N days before', async () => {
+    serveEvent({ refund_until_days_before: 3 })
+    renderPage({ user: CUSTOMER })
+    expect(await screen.findByText('Free cancellation until Fri 7 Jun, 18:00')).toBeInTheDocument()
+  })
+})

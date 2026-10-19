@@ -4,6 +4,7 @@ from . import views, views_bookings
 
 urlpatterns = [
     path("fees/", views.FeeRulesView.as_view(), name="ledger-fees"),
+    path("booking-terms/", views.BookingTermsView.as_view(), name="ledger-booking-terms"),
     path("settings/", views.MoneySettingsView.as_view(), name="ledger-settings"),
     path("orders/awaiting-verification/", views.AwaitingVerificationView.as_view(), name="ledger-awaiting-verification"),
     path("orders/<int:pk>/verification/", views.OrderVerificationView.as_view(), name="ledger-order-verification"),

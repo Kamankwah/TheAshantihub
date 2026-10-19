@@ -93,7 +93,7 @@ SUMMARY_WORDS = {
 
 PROPOSED_LISTING_FIELDS = (
     "category", "zone", "name", "description", "price_amount", "price_unit", "tag", "contact_phone",
-    "lat", "lng", "specs", "service_duration", "units_total", *LISTING_DECISION_FIELDS,
+    "lat", "lng", "specs", "service_duration", "units_total", *LISTING_DECISION_FIELDS, "cancellation_policy",
 )
 LISTING_LABELS = (
     ("name", "Name"), ("category", "Category"), ("zone", "Area"), ("description", "Description"),
@@ -103,7 +103,7 @@ LISTING_LABELS = (
     ("has_expiry", "Can expire"), ("expiry_date", "Expiry date"), ("return_policy", "Return policy"),
     ("service_duration", "How long it takes"), ("whats_included", "What's included"),
     ("requirements", "What the customer provides"), ("revisions", "Revisions"), ("delivery_time", "Delivery time"),
-    ("units_total", "Rooms or units"), ("specs", "Specs"), ("lat", "Pin latitude"), ("lng", "Pin longitude"),
+    ("units_total", "Rooms or units"), ("cancellation_policy", "Cancellation policy"), ("specs", "Specs"), ("lat", "Pin latitude"), ("lng", "Pin longitude"),
 )
 
 NOT_ACCOUNT_MANAGER = "Only the business's account manager can propose changes."

@@ -136,6 +136,38 @@ describe('AddListingForm', () => {
     expect(screen.queryByLabelText('In stock')).not.toBeInTheDocument()
   })
 
+  it('requires a cancellation policy for a service, sends it, and offers none for a product', async () => {
+    let body = null
+    serve(business({ business_kind: 'service' }))
+    stagePhotos([])
+    server.use(http.post(`${API}/api/portfolio/businesses/12/listings/`, async ({ request }) => {
+      body = await request.json()
+      return HttpResponse.json({ approval_id: 33, approver_name: 'Ama Boateng', status: 'pending' }, { status: 201 })
+    }))
+    renderForm()
+    fireEvent.change(await screen.findByLabelText(/Take photo/), { target: { files: [shot()] } })
+    await screen.findByRole('img', { name: 'Photo 1' })
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Kente weaving class' } })
+    fireEvent.change(screen.getByLabelText('Category'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Price (GH₵)'), { target: { value: '120' } })
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Two hours at the loom' } })
+    fireEvent.change(screen.getByLabelText('Why add it (Operations sees this)'), { target: { value: 'Owner asked me' } })
+    expect(screen.getByRole('button', { name: 'Send for approval' })).toBeDisabled()
+    await screen.findByRole('option', { name: /^Strict:/ })
+    fireEvent.change(screen.getByLabelText('Cancellation policy'), { target: { value: 'strict' } })
+    expect(screen.getByText('Customers see this before they pay: Half refunded until 7 days before the start, nothing after.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send for approval' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Send for approval' }))
+    await waitFor(() => expect(body?.listing).toMatchObject({ name: 'Kente weaving class', cancellation_policy: 'strict' }))
+  })
+
+  it('offers no cancellation policy for a product', async () => {
+    serve()
+    renderForm()
+    await screen.findByLabelText('In stock')
+    expect(screen.queryByLabelText('Cancellation policy')).not.toBeInTheDocument()
+  })
+
   it('says the product went live at once when a super admin proposed it', async () => {
     serve()
     stagePhotos([])
