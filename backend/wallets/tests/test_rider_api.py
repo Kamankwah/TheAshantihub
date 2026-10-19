@@ -105,7 +105,7 @@ class RiderWalletApiTests(TestCase):
         self.credited(1000, at=yesterday)
         taken_back = self.credited(2000, at=yesterday)
         riders.post_commission(today=timezone.localdate())
-        RiderEarning.objects.filter(pk=taken_back.pk).update(reversed_at=timezone.now())     # what riders.reverse_earning records
+        RiderEarning.objects.filter(pk=taken_back.pk).update(reversed_at=timezone.now())     # a legacy reversed row (nothing sets reversed_at any more)
         day = self.me.get(BASE + "days/").json()["results"][0]
         self.assertEqual((day["commission"], day["given_back"]), ("3.00", "2.00"))            # the day's record is never edited
 
@@ -160,6 +160,25 @@ class RiderWalletApiTests(TestCase):
         cancelled = Holder(fast.staff, "staff").post(BASE + f"withdrawals/{held.pk}/cancel/")
         self.assertEqual((cancelled.status_code, cancelled.json()["status"]), (200, "cancelled"))
         self.assertTrue(ActivityEvent.objects.filter(verb="wallets.rider_withdrawal_cancelled").exists())
+
+
+@override_settings(LEDGER_ENABLED=True)
+class RiderDailyCountApiTests(TestCase):
+    def test_api_returns_409_with_code_and_resets_at(self):
+        swift = rider_helpers.rider()
+        rider_helpers.ghana_card(swift)
+        rider_helpers.earning(swift, gross=50000, at=timezone.now())
+        me = Holder(swift.staff, "staff")
+        to = destination(swift.staff, name="Kojo Mensah")
+        for i in range(3):
+            made = me.post(BASE + "withdrawals/", {"destination": to.pk, "amount": "1.00", "request_id": f"req-cap-{i:06d}"}, action="withdrawal")
+            self.assertEqual(made.status_code, 201, made.content)
+        refused = me.post(BASE + "withdrawals/", {"destination": to.pk, "amount": "1.00", "request_id": "req-cap-000009"}, action="withdrawal")
+        body = refused.json()
+        self.assertEqual((refused.status_code, body["code"], body["limit"]), (409, "daily_count_limit", 3))
+        self.assertEqual(body["resets_at"], withdrawals.next_reset(timezone.now()).isoformat())
+        self.assertIn("00:00 (Accra)", body["detail"])
+        self.assertEqual(len(me.get(BASE + "withdrawals/").json()["results"]), 3)
 
 
 @override_settings(LEDGER_ENABLED=True)
