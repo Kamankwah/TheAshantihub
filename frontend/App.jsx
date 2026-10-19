@@ -44,6 +44,7 @@ import FeaturedRow from "./components/FeaturedRow.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 import ListingDetailPage from "./components/ListingDetailPage.jsx";
 import ChatLauncher from "./components/ChatLauncher.jsx";
+import ChatIntake from "./components/storefront/ChatIntake.jsx";
 import { Footer2 } from "./components/ui/footer-2.tsx";
 import { BusinessCtaBand } from "./components/ui/business-cta-band.tsx";
 import { EventsCtaBand } from "./components/ui/events-cta-band.tsx";
@@ -2944,6 +2945,7 @@ export default function AshantiHub() {
   const [cookieConsent,setCookieConsent]=useState(()=>readCookieConsent()==="accepted");
   const [cookieDismissed,setCookieDismissed]=useState(()=>readCookieConsent()!==null);
   const [showMessaging,setShowMessaging]=useState(false);
+  const [showIntake,setShowIntake]=useState(false);
   const [messagingBusiness,setMessagingBusiness]=useState(null);
   const [isLoading,setIsLoading]=useState(true);
   const T = TRANSLATIONS[lang];
@@ -3169,6 +3171,7 @@ export default function AshantiHub() {
       <OfflineBanner/>
       {shownAuthModal&&<AuthModal key={shownAuthModal} authState={shownAuthModal} auth={auth} onClose={()=>setAuthModal(null)} onSuccess={handleAuthSuccess} onGoToMarketplace={leaveStaffSignInForMarketplace}/>}
       {showMessaging&&<MessagingCenter user={user} onClose={()=>{setShowMessaging(false);setMessagingBusiness(null);}} initialBusiness={messagingBusiness}/>}
+      {showIntake&&<ChatIntake user={user} onClose={()=>setShowIntake(false)} onContinue={()=>{setShowIntake(false);setShowMessaging(true);}}/>}
       {showNotifs&&<NotificationsPanel user={user} onClose={()=>setShowNotifs(false)}/>}
       {showFavs&&<FavsDrawer/>}
       {showCart&&isCustomer&&<CartDrawer user={user} currency={currency} onClose={()=>setShowCart(false)} PaymentComponent={MoMoPayment}/>}
@@ -3584,15 +3587,16 @@ export default function AshantiHub() {
         />
       )}
 
-      {/* Footer — every page except the redesigned full-viewport home landing page */}
-      {page!=="home"&&<Footer2 setPage={(id)=>id==="register"?openRegister():setPage(id)} setShowBizDash={setShowBizDash} setLegalDoc={setLegalDoc}/>}
+      {/* Footer — every public page, home included: Support, About us, Contact + legal */}
+      <Footer2 setPage={setPage} setLegalDoc={setLegalDoc} onSupport={()=>setShowIntake(true)}/>
 
-      {/* Floating chat launcher — opens MessagingCenter (real, DB-backed
-          backend.messaging support chat) as its default small bottom-right
-          widget (embedded=false). */}
+      {/* Floating chat launcher — opens the Support intake (name, email, phone,
+          issue -> a messaging.Conversation for AshantiHub Support, never a
+          business); after sending, "Open my conversation" continues in
+          MessagingCenter. */}
       <ChatLauncher
         unreadMessages={unreadMessages}
-        onOpen={() => setShowMessaging(true)}
+        onOpen={() => setShowIntake(true)}
         bottom={(cookieDismissed ? 24 : 100) + 64}
       />
 
