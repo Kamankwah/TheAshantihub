@@ -22,7 +22,7 @@ Refund journal booking-refund-<sale>-<source> (kind booking_refund), always to t
     after release   Dr vendor available (amount); Dr platform fee income / Cr vendor available (the fee share returned)
     on fault only   Dr provider fees (the processing charge returned)
     both            Cr customer wallet (amount + processing charge)."""
-from datetime import timedelta
+from datetime import datetime, time, timedelta, timezone as dt_timezone
 
 from django.db import transaction
 from django.db.models import Exists, OuterRef, Q, Sum
@@ -143,6 +143,149 @@ def handed_over_at(sale, now=None):
     if first_scan is not None:
         return first_scan
     return sale.event.event_date if sale.event.event_date <= now else None
+
+
+STAY_CHECK_IN_TIME = time(14, 0)  # Accra time; no listing carries its own check-in time yet
+
+
+def release_at(sale, now=None):
+    """When a booking's money releases by itself (Plan 7E), or None while its milestone has not happened. Accra time is
+    UTC all year. Service: the customer's accept, else the business marking it done plus `service_auto_accept_hours`.
+    Stay: the scheduled check-in time plus `stay_issue_window_hours` (a no-show is released the same way). Tickets: the
+    end of the event's day plus `event_release_delay_hours` (an event carries no end time). The settings are read at
+    `now`, so a change applies to every sale not yet released."""
+    now = now or timezone.now()
+    if sale.kind == BookingSale.SERVICE:
+        done = sale.service_request.completed_at
+        if done is None:
+            return None
+        auto = done + timedelta(hours=settings_store.current("service_auto_accept_hours", now))
+        accepted = sale.customer_accepted_at
+        return min(auto, accepted) if accepted is not None else auto
+    if sale.kind == BookingSale.STAY:
+        start = datetime.combine(sale.booking.check_in, STAY_CHECK_IN_TIME, tzinfo=dt_timezone.utc)
+        return start + timedelta(hours=settings_store.current("stay_issue_window_hours", now))
+    event_day = sale.event.event_date.astimezone(dt_timezone.utc).date()
+    day_end = datetime.combine(event_day + timedelta(days=1), time(0, 0), tzinfo=dt_timezone.utc)
+    return day_end + timedelta(hours=settings_store.current("event_release_delay_hours", now))
+
+
+def release_due(now=None):
+    """The hourly job: release every booking whose `release_at` has passed, not released or refunded in full, with no
+    open dispute and no negative call from Support. Each release is recorded as a "matches" outcome with no staff member
+    and says it was automatic. Returns how many were released; a no-op while the ledger is off. A sale that cannot be
+    released now (a dispute is open) is left for a later run."""
+    if not escrow.enabled():
+        return 0
+    now = now or timezone.now()
+    candidates = (
+        BookingSale.objects.filter(released_at__isnull=True, reversed_at__isnull=True, outcome__in=["", UNREACHABLE])
+        .select_related("service_request", "booking", "event")
+    )
+    released = 0
+    for candidate in candidates:
+        due = release_at(candidate, now)
+        if due is None or due > now:
+            continue
+        try:
+            with transaction.atomic():
+                sale = lock(candidate)
+                due = release_at(sale, now)
+                if due is None or due > now:
+                    continue
+                if _release_on_clock(sale, now, f"Released automatically at {timezone.localtime(now):%Y-%m-%d %H:%M}."):
+                    released += 1
+        except _NotReleasable:
+            continue
+    return released
+
+
+def _release_on_clock(sale, now, note):
+    """Inside `lock(sale)`: record a "matches" outcome by no staff member and release. False when it is already released,
+    refunded in full or has a negative call; raises _NotReleasable (rolling back the caller's atomic block) when a
+    dispute is open."""
+    if sale.released_at is not None or sale.reversed_at is not None or sale.outcome not in ("", UNREACHABLE):
+        return False
+    sale.outcome, sale.outcome_at, sale.outcome_by, sale.outcome_note = MATCHES, now, None, note
+    sale.save(update_fields=["outcome", "outcome_at", "outcome_by", "outcome_note"])
+    if release(sale, now) is None:
+        raise _NotReleasable
+    return True
+
+
+class _NotReleasable(Exception):
+    """A due sale could not be released now (a dispute is open): the attempt is rolled back."""
+
+
+class AcceptError(Exception):
+    def __init__(self, message, status_code=409):
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
+
+
+def accept(sale, customer, now=None):
+    """The customer accepts a delivered service in the app (Plan 7E): it releases at once. 403 for another customer, 409
+    before the business marked it done, once released or refunded, or while a problem is open. Returns the sale."""
+    now = now or timezone.now()
+    if not escrow.enabled():
+        raise AcceptError("The ledger is off.")
+    with transaction.atomic():
+        sale = lock(sale)
+        if sale.customer_id != customer.pk or sale.kind != BookingSale.SERVICE:
+            raise AcceptError("This is not your service.", 403)
+        if sale.released_at is not None or sale.reversed_at is not None:
+            raise AcceptError("This has already been settled.")
+        if sale.service_request.completed_at is None:
+            raise AcceptError("The business has not marked this service done yet.")
+        if has_open_dispute(sale):
+            raise AcceptError("A problem is open on this service. Support will settle it first.")
+        sale.customer_accepted_at = sale.customer_accepted_at or now
+        sale.save(update_fields=["customer_accepted_at"])
+        try:
+            with transaction.atomic():
+                _release_on_clock(sale, now, "Accepted by the customer in the app.")
+        except _NotReleasable:
+            raise AcceptError("This could not be released now. Try again shortly.") from None
+        return sale
+
+
+def report_problem(sale, customer, reason, now=None):
+    """The customer reports a problem with a service, stay or tickets before the money is released (Plan 7E): a dispute
+    that stops the automatic release, and Support is told. 403 for another customer; 409 once released or refunded in
+    full, or when an earlier dispute was already settled; a problem already open takes the new words as a note.
+    Returns the sale."""
+    from disputes.models import Dispute
+
+    now = now or timezone.now()
+    reason = (reason or "").strip()[:500]
+    if len(reason) < 5:
+        raise AcceptError("Say what went wrong (at least 5 characters).", 400)
+    if not escrow.enabled():
+        raise AcceptError("The ledger is off.")
+    with transaction.atomic():
+        if sale.dispute_id is not None:
+            Dispute.objects.select_for_update().get(pk=sale.dispute_id)
+        sale = lock(sale)
+        if sale.customer_id != customer.pk:
+            raise AcceptError("This is not your booking.", 403)
+        if sale.released_at is not None or sale.reversed_at is not None:
+            raise AcceptError("This has already been settled. Contact Support if something is wrong.")
+        if sale.dispute_id is not None:
+            existing = sale.dispute
+            if existing.status in Dispute.FINAL_STATUSES:
+                raise AcceptError("A problem on this booking was already settled.")
+            existing.description = f"{existing.description}\n[{timezone.localtime(now):%Y-%m-%d %H:%M}] Customer: {reason}"
+            existing.save(update_fields=["description"])
+            return sale
+        auto_at = release_at(sale, now)
+        answer_due = auto_at if auto_at is not None and auto_at > now else now + timedelta(hours=24)
+        sale.dispute = Dispute.objects.create(
+            order=None, raised_by=customer, reason=Dispute.QUALITY_ISSUE, status=Dispute.OPEN,
+            description=f"{sale.label().capitalize()}: {reason}", answer_due_at=answer_due,
+        )
+        sale.save(update_fields=["dispute"])
+    return sale
 
 
 def customer_confirmed(sale):
@@ -269,11 +412,13 @@ def record_verification(sale, staff, outcome, *, note="", customer_confirmed_by_
                 existing.description = f"{existing.description}\n[{timezone.localtime(now):%Y-%m-%d %H:%M}] Still does not match: {note}"
                 existing.save(update_fields=["description"])
         elif outcome == DOES_NOT_MATCH:
-            hours = settings_store.current("verification_overdue_hours", now)
+            # Support has until the automatic release time to answer, or a day when that has gone by (Plan 7E ruling).
+            auto_at = release_at(sale, now)
+            answer_due = auto_at if auto_at is not None and auto_at > now else now + timedelta(hours=24)
             # Logged by staff on the customer's behalf: raised_by stays null (the disputes convention, S8).
             sale.dispute = Dispute.objects.create(
                 order=None, raised_by=None, logged_by=staff, reason=Dispute.QUALITY_ISSUE, status=Dispute.OPEN,
-                description=f"{sale.label().capitalize()} does not match: {note}", answer_due_at=handed + timedelta(hours=hours),  # provisional, owner to confirm (gate (lvii))
+                description=f"{sale.label().capitalize()} does not match: {note}", answer_due_at=answer_due,
             )
         sale.outcome, sale.outcome_note, sale.outcome_at, sale.outcome_by = outcome, note, now, staff
         sale.save(update_fields=["phone_confirmed_at", "outcome", "outcome_note", "outcome_at", "outcome_by", "dispute"])
@@ -333,11 +478,11 @@ def awaiting(now=None):
     )
 
 
-def queue_row(sale, now, hours):
-    """One row of Support's list. `due_by` and `overdue` count `hours` (verification_overdue_hours) from hand-over (S7).
-    Carries the customer's phone: only for the orders.verify screen."""
+def queue_row(sale, now):
+    """One row of Support's list. `due_by` is when the booking releases by itself (Plan 7E), `overdue` once that time has
+    passed and it still has not. Carries the customer's phone: only for the orders.verify screen."""
     handed = handed_over_at(sale, now)
-    due = handed + timedelta(hours=hours) if handed is not None else None
+    due = release_at(sale, now)
     return {
         "sale_id": sale.pk, "kind": sale.kind, "label": sale.label(), "what": description(sale), "paid_at": sale.paid_at,
         "handed_over_at": handed, "due_by": due, "overdue": due is not None and now > due,
