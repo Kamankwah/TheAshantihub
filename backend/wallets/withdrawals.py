@@ -172,6 +172,13 @@ def cancel(holder, withdrawal_id, now=None):
         return close(withdrawal, Withdrawal.CANCELLED, "Cancelled by you.", now)
 
 
+def event_amount(withdrawal):
+    """The amount fields every withdrawal activity event carries (owner ruling: events show the amount). Never the payout
+    number: the destination is not read here."""
+    shown = money(withdrawal.amount_pesewas)
+    return {"amount": shown, "amount_label": f"GH₵ {shown}"}
+
+
 def row(withdrawal):
     """What the holder (and staff) see: amounts in GH₵, the destination masked."""
     return {

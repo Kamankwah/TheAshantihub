@@ -23,7 +23,7 @@ from delivery import employment
 from delivery.models import Rider, RiderCommissionPosting
 from ledger import escrow
 
-from . import rider_wallet, views_payouts, views_staff
+from . import rider_wallet, views_payouts, views_staff, withdrawals as withdrawal_engine
 from .models import PayoutDestination, Withdrawal
 from .services import money
 from .views import OFF, Pagination, ledger_off
@@ -78,7 +78,7 @@ class RiderWalletMixin:
         else:
             done = "asked for" if event == "withdrawal_requested" else "cancelled"
             summary = f"Withdrawal {obj.reference} of GH₵ {money(obj.amount_pesewas)} {done}"
-            after = {"reference": obj.reference, "amount": money(obj.amount_pesewas), "status": obj.status}
+            after = {"reference": obj.reference, **withdrawal_engine.event_amount(obj), "status": obj.status}
         # Last in the transaction that saved it: record() holds the activity chain lock until commit. Never the number.
         record(request.user, f"wallets.rider_{event}", target=obj, summary=summary, after=after, request=request)
 

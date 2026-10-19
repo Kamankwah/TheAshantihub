@@ -243,7 +243,8 @@ class StaffWithdrawalFailView(APIView):
                         record(
                             request.user, "wallets.withdrawal_checked", target=settled,
                             summary=f"Withdrawal {settled.reference} checked with the provider by staff; its answer settled it as {settled.status}",
-                            before={"status": found.status}, after={"status": settled.status}, request=request,
+                            before={"status": found.status}, after={"status": settled.status, **withdrawals.event_amount(settled)},
+                            request=request,
                         )
                     return Response(
                         {"detail": "The provider has answered for this withdrawal, so its answer settled it.",
@@ -272,7 +273,8 @@ class StaffWithdrawalFailView(APIView):
             record(
                 request.user, "wallets.withdrawal_failed", target=withdrawal,
                 summary=f"Withdrawal {withdrawal.reference} failed by staff; GH₵ {money(withdrawal.amount_pesewas)} returned",
-                before={"status": before}, after={"status": withdrawal.status, "reason": mask_numbers(reason)[:300]}, request=request,
+                before={"status": before}, after={"status": withdrawal.status, **withdrawals.event_amount(withdrawal), "reason": mask_numbers(reason)[:300]},
+                request=request,
             )
         return Response(staff_row(withdrawal, holders_of([withdrawal])))
 
