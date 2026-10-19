@@ -213,13 +213,14 @@ def send_early(order_id, staff, reason, *, request=None):
         before = order.ready_not_before
         order.ready_not_before = now
         order.save(update_fields=["ready_not_before"])
-        record(
-            staff, "delivery.early_send", target=order, request=request, method="POST",
-            summary=f"Sent early: {reason}"[:300], before={"ready_not_before": before.isoformat()}, after={"ready_not_before": now.isoformat(), "reason": reason},
-        )
         notify_customer(
             order.customer, "order_status", "Your order is being sent now",
             body=f"Order #{order.id} is being sent now.", link="/my-account", icon="🚚",
+        )
+        # record() takes the global activity advisory lock until commit, so it is the last call in the transaction.
+        record(
+            staff, "delivery.early_send", target=order, request=request, method="POST",
+            summary=f"Sent early: {reason}"[:300], before={"ready_not_before": before.isoformat()}, after={"ready_not_before": now.isoformat(), "reason": reason},
         )
     return order
 

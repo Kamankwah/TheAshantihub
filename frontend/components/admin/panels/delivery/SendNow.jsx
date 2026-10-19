@@ -28,6 +28,7 @@ export default function SendNow({ orderId, readyNotBefore, onDone }) {
       setReason("");
       onDone?.();
     } catch (err) {
+      if (err?.status === 409) onDone?.(); // no longer held (or not sendable): refresh the card with what the server now says
       setError(apiErrorMessage(err, "Could not send this order early."));
     } finally {
       setBusy(false);

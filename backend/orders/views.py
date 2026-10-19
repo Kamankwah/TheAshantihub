@@ -625,9 +625,9 @@ class AssignDispatchView(APIView):
                 {"detail": "Only a paid door-to-door order can be assigned a dispatch."},
                 status=400,
             )
-        if order.ready_not_before is not None and order.ready_not_before > timezone.now():
-            from delivery import services as delivery_services
+        from delivery import services as delivery_services
 
+        if delivery_services.is_held(order):
             return Response(delivery_services.not_due_error(order).body(), status=409)
         dispatch = generics.get_object_or_404(StaffUser, pk=request.data.get("dispatch"))
         if dispatch.role.name != "dispatch":

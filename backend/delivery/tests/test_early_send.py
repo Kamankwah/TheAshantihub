@@ -57,15 +57,27 @@ class EarlySendTests(EngineCase):
         self.assertEqual(ActivityEvent.objects.filter(verb="delivery.early_send").count(), 1)
         self.assertEqual(self.notices(order), 1)
 
+    def assert_refused(self, order):
+        res = self.send(order)
+        self.assertEqual(res.status_code, 409)
+        self.assertEqual(res.data["code"], "not_sendable")
+        order.refresh_from_db()
+        self.assertGreater(order.ready_not_before, timezone.now())
+        self.assertFalse(ActivityEvent.objects.filter(verb="delivery.early_send").exists())
+        self.assertEqual(self.notices(order), 0)
+
     def test_cancelled_or_refunded_order_refused(self):
         cancelled = self.held()
         Order.objects.filter(pk=cancelled.pk).update(status=Order.CANCELLED)
-        self.assertEqual(self.send(cancelled).status_code, 409)
+        self.assert_refused(cancelled)
         refunded = self.held()
         OrderRefund.objects.create(order=refunded, source="cancel", whole=True, amount_pesewas=10000)
-        self.assertEqual(self.send(refunded).status_code, 409)
-        refunded.refresh_from_db()
-        self.assertGreater(refunded.ready_not_before, timezone.now())
+        self.assert_refused(refunded)
+
+    def test_partial_refund_still_allows_send_early(self):
+        order = self.held()
+        OrderRefund.objects.create(order=order, source="dispute-1", whole=False, amount_pesewas=1000)
+        self.assertEqual(self.send(order).status_code, 200)
 
     def test_assign_after_send_early_works(self):
         order = self.held()

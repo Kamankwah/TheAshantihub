@@ -58,7 +58,7 @@ QUEUE_INVALIDATIONS = [
     (
         ("delivery.early_send",),
         ("delivery.manage",),
-        ("delivery-queue", "delivery-live"),
+        ("delivery-queue", "delivery-live", "delivery-manager-orders"),
     ),
     (
         ("kyc-", "business.", "portfolio.", "subscription."),
