@@ -3,7 +3,10 @@ import { apiFetch, apiPost } from "../../../apiClient.js";
 import { useStaffMessagingQueue } from "../../../hooks/useStaffMessagingQueue.js";
 import { D, glassCard } from "../theme.js";
 
-const SENDER_LABEL = { customer: "Customer", business_owner: "Business Owner", staff: "Staff" };
+// A chat-assistant visitor's contact details: AshantiHub staff may call, text
+// or email them (the reply box below stays as the in-app route).
+const contactLink = { color: D.gold, border: `1px solid ${D.cardBorder}`, borderRadius: 20, padding: "3px 12px", fontSize: "0.7rem", fontWeight: 700, textDecoration: "none" };
+const SENDER_LABEL = { guest: "Visitor", customer: "Customer", business_owner: "Business Owner", staff: "Staff" };
 
 // Staff support-ticket view (messaging app, messaging.manage permission).
 // The list (useStaffMessagingQueue, paginated — data?.results, same gotcha
@@ -84,6 +87,15 @@ export default function MessagingPanel() {
               {threadLoading && <div style={{ color: D.textDim, fontSize: "0.75rem" }}>Loading thread…</div>}
               {thread && (
                 <>
+                  {thread.contact && (
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+                      <span style={{ color: D.text, fontWeight: 700, fontSize: "0.78rem" }}>{thread.contact.name}</span>
+                      {thread.contact.phone && <a href={`tel:${thread.contact.phone}`} style={contactLink}>Call</a>}
+                      {thread.contact.phone && <a href={`sms:${thread.contact.phone}`} style={contactLink}>Text</a>}
+                      {thread.contact.email && <a href={`mailto:${thread.contact.email}`} style={contactLink}>Email</a>}
+                      <span style={{ color: D.textFaint, fontSize: "0.65rem" }}>{[thread.contact.phone, thread.contact.email].filter(Boolean).join(" · ")}</span>
+                    </div>
+                  )}
                   <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
                     {thread.messages?.map(msg => (
                       <div key={msg.id} style={{ fontSize: "0.75rem" }}>

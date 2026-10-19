@@ -146,3 +146,21 @@ class OrderHistoryTests(CheckoutTestsBase):
         self.client.credentials()
         response = self.client.get("/api/orders/")
         self.assertEqual(response.status_code, 401)
+
+
+class SalePriceCheckoutTests(CheckoutTestsBase):
+    def test_checkout_charges_sale_price(self):
+        from storefront.testing import open_marketplace
+
+        open_marketplace()
+        self.listing_a.sale_price = "120.00"
+        self.listing_a.save()
+        self._auth(self.customer)
+        self.assertEqual(self._add_to_cart(self.listing_a, 2).status_code, 201)
+        response = self.client.post("/api/orders/checkout/")
+        self.assertEqual(response.status_code, 201, response.content)
+        order = Order.objects.get()
+        line = OrderItem.objects.get(order=order)
+        self.assertEqual(str(line.unit_price), "120.00")
+        self.assertEqual(str(line.line_total), "240.00")
+        self.assertEqual(str(order.total_amount), "240.00")

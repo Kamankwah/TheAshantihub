@@ -1,6 +1,6 @@
 # Marketplace Rebrand and Opening — Design
 
-Date: 2026-10-19. Status: awaiting owner approval. Source: owner interview (this session) and the screenshots in `docs/` (`screenshot_amazon_home.png`, `Screenshot_amazon_*`, `Screenshot_main_product_page_*`, `Screenshot_product_preview_*`, `Screenshot_shopping_cart*`, `Screenshot_checkout`, `Screenshot_payment_verification screen`, `Screenshot_user_account_*`). Visual language stays `DESIGN.md` (gold, cream, brown, Fraunces / Plus Jakarta Sans); only the layout and behaviour follow Amazon.
+Date: 2026-10-19. Status: Plan 1 built on branch `feature/marketplace-1-storefront`, not deployed, awaiting staging (gate flag `MARKETPLACE_GATE_ENABLED` off by default); later plans not started. Source: owner interview (this session) and the screenshots in `docs/` (`screenshot_amazon_home.png`, `Screenshot_amazon_*`, `Screenshot_main_product_page_*`, `Screenshot_product_preview_*`, `Screenshot_shopping_cart*`, `Screenshot_checkout`, `Screenshot_payment_verification screen`, `Screenshot_user_account_*`). Visual language stays `DESIGN.md` (gold, cream, brown, Fraunces / Plus Jakarta Sans); only the layout and behaviour follow Amazon.
 
 ## Intent
 

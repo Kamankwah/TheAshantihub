@@ -136,4 +136,26 @@ describe('SaListingsPanel', () => {
     expect(screen.queryByRole('button', { name: 'Take down Old stole' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Take down Graduation stole' })).not.toBeInTheDocument()
   })
+  it('lets a deals.manage holder flag a product as sponsored, and offers nothing for services or without the permission', async () => {
+    const seen = []
+    setup()
+    server.use(
+      http.get(`${API}/api/marketplace/listings/`, () => HttpResponse.json(page([
+        { ...base, id: 1, name: 'Handwoven kente stole', status: 'published', state: 'live', state_note: '', sponsored: false },
+        { ...base, id: 6, name: 'Hair braiding', type: 'service', status: 'published', state: 'live', state_note: '', sponsored: false },
+        { ...base, id: 7, name: 'Sponsored bag', status: 'published', state: 'live', state_note: '', sponsored: true },
+      ]))),
+      http.post(`${API}/api/listings/:id/sponsored/`, async ({ request, params }) => { seen.push({ id: params.id, ...(await request.json()) }); return HttpResponse.json({ id: 1, sponsored: true }) }),
+    )
+    const { unmount } = renderPanel(<SaListingsPanel auth={SA} />)
+    const table = await screen.findByRole('table', { name: 'Listings' })
+    fireEvent.click(within(table).getByRole('button', { name: 'Mark Handwoven kente stole as sponsored' }))
+    await waitFor(() => expect(seen).toEqual([{ id: '1', sponsored: true }]))
+    expect(within(table).getByRole('button', { name: 'Remove sponsored from Sponsored bag' })).toBeInTheDocument()
+    expect(within(table).queryByRole('button', { name: /Hair braiding as sponsored/ })).toBeNull()
+    unmount()
+    renderPanel(<SaListingsPanel auth={{ ...SA, hasPermission: (c) => c !== 'deals.manage' }} />)
+    await screen.findByRole('table', { name: 'Listings' })
+    expect(screen.queryByRole('button', { name: /as sponsored/ })).toBeNull()
+  })
 })

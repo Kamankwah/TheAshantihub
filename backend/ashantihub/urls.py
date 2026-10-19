@@ -46,6 +46,7 @@ urlpatterns = [
     path("api/announcements/", include("announcements.urls")),
     path("api/realtime/", include("realtime.urls")),
     path("api/delivery/", include("delivery.urls")),
+    path("api/storefront/", include("storefront.urls")),
 ]
 
 if settings.DEBUG:

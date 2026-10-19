@@ -9,7 +9,9 @@ import { sendBannerBeacon, usePublicBanners } from "../hooks/useMarketingBanners
 // link is followed. Both are count-only beacons that never block the page. The link is an
 // internal path handed to `onNavigate` (props are threaded from App; this file never imports it).
 // A banner about one paying business says "Sponsored" and never wears the verified mark.
-const HEIGHT = { home_hero: 340, home_strip: 150, category_top: 150, events_top: 150 };
+// `flash` is Marketing's one-line flash banner; the marketplace home shows it
+// as text (storefront/FlashStrip), and only an image flash banner would come here.
+const HEIGHT = { home_hero: 340, home_strip: 150, category_top: 150, events_top: 150, flash: 56 };
 
 function BannerBody({ banner, slot, onNavigate }) {
   const ref = useRef(null);

@@ -3,6 +3,8 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 import { server } from './mocks/server.js'
+import { gatedOpening } from './mocks/opening.js'
+import { setStoredAuth } from './apiClient.js'
 import CartDrawer from './components/CartDrawer.jsx'
 
 // Same stub as test/setup.js plus a second pin, so a test can move the pin from one point to another.

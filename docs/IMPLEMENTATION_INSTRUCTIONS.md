@@ -99,3 +99,7 @@ Stage 1 (`docs/superpowers/plans/2026-10-15-ledger-fees-foundation.md`, spec `do
 | **5** Third-party dispatch | `Rider` employment flag, rider wallet, 90/10 split on release, end-of-day commission job. Backend: docs/superpowers/plans/2026-10-16-dispatch-wallets-5.md, built behind `LEDGER_ENABLED` (default off); the screens are Plan 5F. |
 | **6** Offers and stock | Catalogue entries, offers, "other sellers", stock reservation upgrade, low-stock alerts. Backend: docs/superpowers/plans/2026-10-16-catalogue-offers-stock-6.md, built (grouping by staff approval, other sellers, the business's product lookup, days of cover, alerts behind `STOCK_ALERTS_ENABLED`, sold-out hiding behind `SOLD_OUT_HIDDEN_ENABLED` and the barcode matcher behind `CATALOGUE_MATCHER_ENABLED`, all three default off); the reservation upgrade is a gate before Plan 7 (spec §13 (ciii)); the screens are Plan 6F. |
 | **7** Hubtel live switch | Credentials, webhook verification against sandbox, regulatory clearance. |
+
+## 7. Marketplace rebrand
+
+Plan 1 (opening and storefront: `docs/superpowers/plans/2026-10-19-marketplace-1-opening-storefront.md`, spec `docs/superpowers/specs/2026-10-19-marketplace-rebrand-design.md`) is built on branch `feature/marketplace-1-storefront` and **not deployed**. The whole opening gate sits behind `MARKETPLACE_GATE_ENABLED` (default off): until it is set there is no countdown, no purchase block and no opening texts. Plans 2 onward are not started.

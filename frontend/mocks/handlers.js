@@ -20,6 +20,29 @@ export const handlers = [
       },
     })
   }),
+  // Marketplace opening (storefront). Default = the gate switched off (ruling
+  // R1): open, so no countdown and every buy button stays live. A test that
+  // needs the gate uses server.use(gatedOpening(...)) from mocks/opening.js.
+  http.get('http://localhost:8000/api/storefront/opening/', () => HttpResponse.json({
+    opens_at: '2026-11-06T06:00:00Z', server_now: new Date().toISOString(), is_open: true, gate_enabled: false,
+  })),
+  // Notify me: always "saved" (400 only for neither field, as the server answers).
+  http.post('http://localhost:8000/api/storefront/notify-me/', async ({ request }) => {
+    const body = await request.json().catch(() => ({}))
+    if (!body?.phone && !body?.email) return HttpResponse.json({ detail: 'Give a phone number or an email address.' }, { status: 400 })
+    return HttpResponse.json({ status: 'saved' })
+  }),
+  http.post('http://localhost:8000/api/storefront/notify-me/stop/', () => HttpResponse.json({ status: 'stopped' })),
+  // Marketplace home feeds (Task 10): nothing live by default, so every home
+  // section hides itself. Tests fill them with mocks/storefront.js.
+  http.get('http://localhost:8000/api/listings/categories/tree/', () => HttpResponse.json([])),
+  http.post('http://localhost:8000/api/listings/categories/:id/visit/', () => new HttpResponse(null, { status: 204 })),
+  http.get('http://localhost:8000/api/storefront/search/', () => HttpResponse.json({ products: [], services: [], stays: [], events: [] })),
+  http.get('http://localhost:8000/api/storefront/deals/', () => HttpResponse.json([])),
+  // Marketing's Sponsored products list (deals.manage): nothing flagged.
+  http.get('http://localhost:8000/api/listings/sponsored/', () => HttpResponse.json([])),
+  http.get('http://localhost:8000/api/storefront/home/', () => HttpResponse.json({ most_visited: [], ranked: false })),
+  http.get('http://localhost:8000/api/marketing/banners/', () => HttpResponse.json({ banners: [] })),
   // Marketing consent card (customer Settings, business Profile & Settings): nothing ticked, no wording.
   http.get('http://localhost:8000/api/marketing/consent/me/', () => {
     return HttpResponse.json({ channels: Object.fromEntries(['sms', 'whatsapp', 'email', 'inapp'].map((k) => [k, { label: k, status: null, at: null, wording: `Send me offers by ${k}.`, wording_label: '' }])) })
@@ -39,6 +62,8 @@ export const handlers = [
   http.get('http://localhost:8000/api/hero/active/', () => {
     return HttpResponse.json([])
   }),
+  // The business's own dated hero slides (HeroSlideForm in the Business tab) — none by default.
+  http.get('http://localhost:8000/api/hero/mine/slides/', () => HttpResponse.json([])),
   http.get('http://localhost:8000/api/listings/categories/', () => {
     return HttpResponse.json([
       { id: 1, slug: 'hotels', icon: '🏨', label: 'Hotels', color: '#000080', kind: 'service' },

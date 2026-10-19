@@ -89,6 +89,21 @@ class OtherSellersTests(TestCase):
         with self.assertNumQueries(2):
             self.body(query="?lat=6.6885&lng=-1.6244")
 
+    def test_query_count_stays_flat_with_offers_on_sale(self):
+        # effective_price reads the listing's category when a sale price is set; live_offers must select it.
+        for listing in (self.cheap, self.plenty):
+            listing.sale_price = "20.00"
+            listing.save(update_fields=["sale_price"])
+        self.client.get(sellers_url(self.mine))
+        with self.assertNumQueries(2):
+            self.body()
+        for i in range(5):
+            extra = product(business(f"Sale {i}"), price="27.00", catalogue_product=self.entry)
+            extra.sale_price = "21.00"
+            extra.save(update_fields=["sale_price"])
+        with self.assertNumQueries(2):
+            self.body()
+
 
 class FeaturedOfferTests(TestCase):
     def setUp(self):

@@ -16,6 +16,7 @@ from cart.guard import deliverable_q
 from delivery.services import valid_point
 from field.services import haversine_m
 from listings.models import Listing
+from listings.pricing import effective_price_expr
 from listings.visibility import hidden_business_q
 
 from . import identity
@@ -49,8 +50,8 @@ def live_offers(product_id, exclude_owner_id=None, limit=MAX_OFFERS):
         queryset = queryset.exclude(business_owner_id=exclude_owner_id)
     return (
         queryset
-        .select_related("business_owner__profile", "zone")
-        .order_by("price_amount", "pk")[:limit]
+        .select_related("business_owner__profile", "zone", "category")  # effective_price reads the category
+        .order_by(effective_price_expr(), "pk")[:limit]
     )
 
 
@@ -72,16 +73,16 @@ def featured(offers, position=None):
     verified = [offer for offer in offers if offer.business_owner.kyc_status == BusinessOwner.VERIFIED]
     if not verified:
         return None
-    return min(verified, key=lambda offer: (offer.price_amount, *_tie(offer, position)))
+    return min(verified, key=lambda offer: (offer.effective_price, *_tie(offer, position)))
 
 
 def ordered(offers, ordering=PRICE, position=None):
     """Cheapest first, or most available first (an uncounted stock after every counted one); ties as in `featured`."""
     if ordering == AVAILABILITY:
         return sorted(offers, key=lambda offer: (
-            offer.stock_quantity is None, -(offer.stock_quantity or 0), offer.price_amount, *_tie(offer, position),
+            offer.stock_quantity is None, -(offer.stock_quantity or 0), offer.effective_price, *_tie(offer, position),
         ))
-    return sorted(offers, key=lambda offer: (offer.price_amount, *_tie(offer, position)))
+    return sorted(offers, key=lambda offer: (offer.effective_price, *_tie(offer, position)))
 
 
 def _business_name(owner):
@@ -92,7 +93,7 @@ def _business_name(owner):
 
 def offer_row(listing):
     return {
-        "listing_id": listing.pk, "name": listing.name, "price_amount": str(listing.price_amount),
+        "listing_id": listing.pk, "name": listing.name, "price_amount": str(listing.effective_price),
         "price_unit": listing.price_unit, "condition": listing.condition,
         "business_name": _business_name(listing.business_owner),
         "verified": listing.business_owner.kyc_status == BusinessOwner.VERIFIED,
@@ -149,7 +150,7 @@ def search(params):
     live = live_q("offers__")
     rows = queryset.annotate(
         offer_count=Count("offers", filter=live, distinct=True),
-        lowest_price=Min("offers__price_amount", filter=live),
+        lowest_price=Min(effective_price_expr("offers__"), filter=live),
     ).order_by("normalised_name", "pk")[:SEARCH_LIMIT + 1]
     rows = list(rows)
     return [

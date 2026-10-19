@@ -11,6 +11,7 @@ import TicketQr from "./TicketQr.jsx";
 import StaffGateNotice from "./StaffGateNotice.jsx";
 import BookingTermsNote from "./BookingTermsNote.jsx";
 import { useStaffGate } from "../hooks/useStaffGate.js";
+import { useCanBuy } from "../hooks/useCanBuy.js";
 
 // ─── EventDetailPage ────────────────────────────────────────────────────────
 // Event detail page for the Events tab (docs/BUSINESS_EVENTS_ROADMAP.md
@@ -406,6 +407,9 @@ function EventTicketsSection({ eventId, hasTickets, eventDate, refundDays, user,
   // (view-only marketplace); Buy shows the shared staff notice under that
   // ticket type instead of opening payment.
   const staffGate = useStaffGate(user);
+  // Before the marketplace opens, ticket Buy is greyed with "Opens <D Mon>"
+  // unless this account may buy (see useCanBuy).
+  const { canBuy, label: opensLabel } = useCanBuy();
 
   const isCustomer = user?.accountType === "customer";
 
@@ -508,10 +512,11 @@ function EventTicketsSection({ eventId, hasTickets, eventDate, refundDays, user,
                       style={{ width: 60, padding: "8px 10px", borderRadius: 10, border: "1.5px solid rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.08)", color: "white", fontFamily: "inherit", fontSize: "0.8rem" }}
                     />
                     <button
-                      onClick={() => { if (staffGate.blocked(tt.id)) return; openPay(tt); }}
-                      style={{ background: C.gold, color: C.darkBrown, border: "none", borderRadius: 20, padding: "9px 18px", fontWeight: 900, fontSize: "0.78rem", cursor: "pointer", fontFamily: "inherit" }}
+                      disabled={!canBuy}
+                      onClick={() => { if (!canBuy || staffGate.blocked(tt.id)) return; openPay(tt); }}
+                      style={{ background: canBuy ? C.gold : "rgba(255,255,255,0.08)", color: canBuy ? C.darkBrown : "rgba(255,255,255,0.45)", border: canBuy ? "none" : "1px solid rgba(255,255,255,0.15)", borderRadius: 20, padding: "9px 18px", fontWeight: 900, fontSize: "0.78rem", cursor: canBuy ? "pointer" : "not-allowed", fontFamily: "inherit" }}
                     >
-                      Buy
+                      {canBuy ? "Buy" : opensLabel}
                     </button>
                   </div>
                 )}

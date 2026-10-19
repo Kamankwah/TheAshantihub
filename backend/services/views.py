@@ -13,6 +13,7 @@ from ledger import posting, sales
 from ledger.money import from_pesewas
 from notifications.services import notify_business_owner, notify_customer, notify_staff_role
 from payments import booking_pay
+from storefront.permissions import MarketplaceOpen
 from payments.models import CheckoutSession
 
 from .models import ServiceRequest
@@ -144,7 +145,7 @@ class ServiceRequestPayView(APIView):
     accepted and nothing else behind.
     """
 
-    permission_classes = [IsAuthenticated, IsCustomer]
+    permission_classes = [IsAuthenticated, IsCustomer, MarketplaceOpen]
 
     def post(self, request, pk):
         sr = generics.get_object_or_404(ServiceRequest, pk=pk, customer=request.user)

@@ -46,6 +46,7 @@ import UsersPanel from "./panels/UsersPanel.jsx";
 import CategoriesZonesPanel from "./panels/CategoriesZonesPanel.jsx";
 import ZonesPanel from "./panels/ZonesPanel.jsx";
 import SiteSettingsPanel from "./panels/SiteSettingsPanel.jsx";
+import OpeningPanel from "./panels/OpeningPanel.jsx";
 import StaffManagementPanel from "./panels/StaffManagementPanel.jsx";
 import StaffDirectoryPanel from "./panels/StaffDirectoryPanel.jsx";
 import SaTeamsPanel from "./panels/SaTeamsPanel.jsx";
@@ -481,7 +482,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
               ? <OperationsOverviewPanel auth={auth} onNavigate={selectTab} onOpenApproval={openApproval} onOpenBusiness={openBusiness} />
               : <OverviewPanel auth={auth} roleColor={roleColor} onNavigate={selectTab} />)}
           {activeTab === "kyc" && <KYCQueuePanel auth={auth} />}
-          {activeTab === "moderation" && (role === "super_admin" ? <SaListingsPanel auth={auth} onOpenBusiness={openBusiness} /> : <ListingsModerationPanel />)}
+          {activeTab === "moderation" && (role === "super_admin" ? <SaListingsPanel auth={auth} onOpenBusiness={openBusiness} /> : <ListingsModerationPanel auth={auth} />)}
           {activeTab === "hero" && <HeroApprovalPanel auth={auth} />}
           {activeTab === "events-moderation" && (role === "super_admin" ? <SaEventsPanel /> : <EventsModerationPanel auth={auth} />)}
           {activeTab === "event-pricing" && <EventPricingPanel auth={auth} />}
@@ -572,6 +573,7 @@ function StaffShell({ auth, onExit, onViewSite, activeTab: activeTabProp, active
           {activeTab === "tax-tables" && <TaxTablesPanel onNavigate={selectTab} />}
           {activeTab === "integrations" && <IntegrationsPanel />}
           {activeTab === "system-health" && <SystemHealthPanel />}
+          {activeTab === "opening" && <OpeningPanel auth={auth} />}
           {activeTab === "visits" && <VisitsPanel auth={auth} detailId={detail} onOpenDetail={openDetail} leadName={leadName} />}
           {activeTab === "reports" && <ReportsPanel auth={auth} />}
           {activeTab === "team-reports" && (role === "super_admin" ? <ReportsHubPanel /> : <TeamReportsPanel auth={auth} />)}

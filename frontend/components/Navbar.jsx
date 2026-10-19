@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { C } from "../theme.js";
 import { isStaffSession } from "../lib/staffSession.js";
 import logoIcon from "../assets/logo/logo-icon.png";
+import AccountMenu from "./AccountMenu.jsx";
 
 // ─── Navbar ────────────────────────────────────────────────────────────────
 // Three-group layout: logo pinned far left, page nav centered, utility
@@ -10,7 +11,7 @@ import logoIcon from "../assets/logo/logo-icon.png";
 // currency (formerly in the "More" popover) are dropped from the navbar
 // entirely per the redesign brief; Messages stays reachable via the floating
 // ChatLauncher, Saved/Payments no longer have a navbar entry point.
-// Transparent glass look over the home Hero; per-nav-item hover shows a gold
+// Solid on every page (colours from --ah-header-*); per-nav-item hover shows a gold
 // glow border (no ambient whole-bar hover effect) via .ah-nav-item:hover.
 //
 // Signed-in state: Sign In/Create Account are fully replaced by a single
@@ -39,7 +40,6 @@ import logoIcon from "../assets/logo/logo-icon.png";
 // block); >=1200px is the full header. The row needs ~1,150px uncompacted.
 const NAV_BREAKPOINT = 1024;
 const COMPACT_MAX = 1199;
-const SOLIDIFY_SCROLL_Y = 60;
 
 const NAV_ITEMS = [
   { id: "home", label: "Home" },
@@ -68,9 +68,6 @@ export default function Navbar({
   onSignOut,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const profileRef = useRef(null);
 
   const isBusiness = user?.accountType === "business_owner";
   // Cart (docs/BUSINESS_EVENTS_ROADMAP.md Phase 4) is a Customer-only
@@ -81,24 +78,11 @@ export default function Navbar({
   const isStaff = isStaffSession(user);
   const accountLabel = isBusiness ? "Business Owner" : isStaff ? "Staff · view only" : "Customer";
   const signOut = onSignOut ?? (() => auth.logout());
-  const act = (fn) => (...args) => { fn(...args); setMenuOpen(false); setProfileOpen(false); };
+  const act = (fn) => (...args) => { fn(...args); setMenuOpen(false); };
   const goToDashboard = () => (isBusiness ? setShowBizDash(true) : setShowAccount(true));
 
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > SOLIDIFY_SCROLL_Y);
-    window.addEventListener("scroll", onScroll, { passive: true });
-    onScroll();
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
-  useEffect(() => {
-    if (!profileOpen) return;
-    const onClick = (e) => { if (profileRef.current && !profileRef.current.contains(e.target)) setProfileOpen(false); };
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [profileOpen]);
-
-  const transparent = page === "home" && !scrolled;
+  // Always solid: the translucent look over the old full-viewport Hero was
+  // retired with the Hero (the marketplace home sits on the cream canvas).
 
   const onLogoClick = () => {
     handleLogoClick();
@@ -184,35 +168,21 @@ export default function Navbar({
           </>
         ) : (
           <>
-            <div ref={profileRef} style={{position:"relative"}}>
-              <button
-                onClick={() => setProfileOpen(o => !o)}
-                aria-label="Account menu"
-                aria-expanded={profileOpen}
-                style={{background:C.darkBrown,color:C.gold,border:`1.5px solid ${C.gold}88`,borderRadius:"50%",width:38,height:38,padding:0,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.9rem",fontWeight:900,flexShrink:0}}
-              >
-                {user.avatar
-                  ? <img src={user.avatar} alt="" style={{width:"100%",height:"100%",borderRadius:"50%",objectFit:"cover"}}/>
-                  : (user.fullName?.[0]?.toUpperCase() || "U")}
-              </button>
-              {profileOpen && (
-                <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,background:"white",borderRadius:14,boxShadow:"0 10px 40px rgba(0,0,0,0.25)",padding:10,display:"flex",flexDirection:"column",gap:6,minWidth:210,zIndex:200}}>
-                  <div style={{padding:"4px 8px 8px",borderBottom:"1px solid #f0f0f0",marginBottom:2}}>
-                    <div style={{fontWeight:800,color:C.darkBrown,fontSize:"0.82rem"}}>{user.fullName}</div>
-                    <div style={{color:"#999",fontSize:"0.68rem"}}>{accountLabel}</div>
-                  </div>
-                  {isBusiness ? (
-                    <>
-                      <button onClick={act(() => setShowBizDash(true))} style={menuItemStyle}>🏪 Business Dashboard</button>
-                      <button onClick={act(() => setShowPayments(true))} style={menuItemStyle}>💳 Payments</button>
-                    </>
-                  ) : !isStaff ? (
-                    <button onClick={act(() => setShowAccount(true))} style={menuItemStyle}>👤 My Account</button>
-                  ) : null}
-                  <button onClick={act(signOut)} style={{...menuItemStyle,color:"#dc2626"}}>⏻ Sign Out</button>
-                </div>
-              )}
-            </div>
+            <AccountMenu
+              user={user}
+              accountLabel={accountLabel}
+              isBusiness={isBusiness}
+              isStaff={isStaff}
+              onBizDash={() => setShowBizDash(true)}
+              onPayments={() => setShowPayments(true)}
+              onAccount={() => setShowAccount(true)}
+              onSignOut={signOut}
+              triggerStyle={{background:C.darkBrown,color:C.gold,border:`1.5px solid ${C.gold}88`,borderRadius:"50%",width:38,height:38,padding:0,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:"0.9rem",fontWeight:900,flexShrink:0}}
+            >
+              {user.avatar
+                ? <img src={user.avatar} alt="" style={{width:"100%",height:"100%",borderRadius:"50%",objectFit:"cover"}}/>
+                : (user.fullName?.[0]?.toUpperCase() || "U")}
+            </AccountMenu>
           </>
         )
       ) : (
@@ -225,14 +195,14 @@ export default function Navbar({
   );
 
   return (
-    <div style={{
-      background: transparent ? "rgba(12,8,4,0.32)" : `linear-gradient(135deg,${C.darkBrown} 0%,${C.black} 50%,${C.kente3} 100%)`,
-      backdropFilter: transparent ? "blur(14px)" : "none",
-      WebkitBackdropFilter: transparent ? "blur(14px)" : "none",
-      borderBottom: transparent ? "1px solid rgba(255,255,255,0.08)" : "none",
+    // `data-theme` (from the theme prop) selects the --ah-header-* variables
+    // in index.css, so the toggle restyles the header; the fallback is the
+    // light gradient.
+    <div data-theme={theme === "dark" ? "dark" : "light"} style={{
+      background: `var(--ah-header-bg, linear-gradient(135deg,${C.darkBrown} 0%,${C.black} 50%,${C.kente3} 100%))`,
+      borderBottom: "1px solid var(--ah-header-edge, transparent)",
       padding: "0 20px", position: "sticky", top: "var(--ah-top-offset, 0px)", zIndex: 100,
       boxShadow: "0 2px 20px rgba(0,0,0,0.4)",
-      transition: "background 0.3s ease, backdrop-filter 0.3s ease",
     }}>
       <div style={{position:"absolute",top:0,left:0,right:0,height:4,background:`linear-gradient(90deg,${C.ghRed} 33%,${C.ghGold} 33%,${C.ghGold} 66%,${C.ghGreen} 66%)`}}/>
       <div style={{maxWidth:1200,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:72,paddingTop:4,gap:16}}>
@@ -306,17 +276,4 @@ const utilityBtnStyle = {
   display: "flex",
   alignItems: "center",
   gap: 6,
-};
-
-const menuItemStyle = {
-  background: "#f6f6f6",
-  color: C.darkBrown,
-  border: "1px solid #e5e5e5",
-  borderRadius: 12,
-  padding: "8px 12px",
-  fontSize: "0.78rem",
-  fontWeight: 700,
-  cursor: "pointer",
-  textAlign: "left",
-  fontFamily: "inherit",
 };

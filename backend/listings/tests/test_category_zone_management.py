@@ -104,6 +104,16 @@ class CategoryZoneManagementTests(TestCase):
         self.assertIn("1 listing", response.json()["detail"])
         self.assertTrue(Category.objects.filter(id=category.id).exists())
 
+    def test_delete_category_with_children_is_blocked(self):
+        department = Category.objects.get(slug="electronics")
+        count = department.children.count()
+        self.assertGreater(count, 0)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('marketing', 8)}")
+        response = self.client.delete(f"/api/listings/categories/{department.id}/")
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn(f"{count} sub-categories", response.json()["detail"])
+        self.assertTrue(Category.objects.filter(id=department.id).exists())
+
     def test_admin_can_create_zone(self):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self._staff('operations', 2)}")
         response = self.client.post("/api/listings/zones/", {"name": "New Zone"}, format="json")

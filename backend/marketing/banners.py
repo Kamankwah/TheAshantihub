@@ -19,6 +19,7 @@ SLOT_INFO = {
     Banner.HOME_STRIP: {"label": "Home · middle strip", "size": "1600 × 300"},
     Banner.CATEGORY_TOP: {"label": "Category · top", "size": "1200 × 300"},
     Banner.EVENTS_TOP: {"label": "Events · top", "size": "1200 × 300"},
+    Banner.FLASH: {"label": "Flash banner", "size": "text strip"},
 }
 
 PATH_RE = re.compile(r"^/[A-Za-z0-9\-._~/%?=&#+]*$")
@@ -65,10 +66,14 @@ def public_row(banner, request=None):
     url = banner.image.url if banner.image else ""
     if request is not None and url:
         url = request.build_absolute_uri(url)
-    return {
+    row = {
         "id": banner.pk, "slot": banner.slot, "title": banner.title, "alt_text": banner.alt_text,
         "image": url, "link_path": banner.link_path, "sponsored": banner.sponsored,
     }
+    if banner.slot == Banner.FLASH:
+        row["message"] = banner.message
+        row["countdown_ends_at"] = banner.countdown_ends_at
+    return row
 
 
 def ctr(views, clicks):
@@ -84,6 +89,7 @@ def staff_row(banner, request=None, now=None):
         "id": banner.pk, "slot": banner.slot, "slot_label": SLOT_INFO[banner.slot]["label"],
         "category": {"id": banner.category_id, "slug": banner.category.slug, "label": banner.category.label} if banner.category_id else None,
         "title": banner.title, "alt_text": banner.alt_text, "image": url, "link_path": banner.link_path,
+        "message": banner.message, "countdown_ends_at": banner.countdown_ends_at,
         "sponsored": banner.sponsored, "internal_note": banner.internal_note,
         "starts_at": banner.starts_at, "ends_at": banner.ends_at,
         "state": banner.state, "phase": banner.phase(now),
@@ -101,13 +107,44 @@ def _locked(pk):
         raise BannerError("That banner no longer exists.", 404) from exc
 
 
+def _check_flash(banner):
+    if not (banner.message or "").strip():
+        raise BannerError("Write the flash banner's message first.")
+    if banner.countdown_ends_at is not None and banner.countdown_ends_at <= banner.starts_at:
+        raise BannerError("The countdown must end after the banner starts.")
+
+
+def publish_direct(banner_id, staff):
+    """A flash banner goes live without Super Admin approval: Marketing owns it (site_promo.manage).
+    Every other slot still goes through submit() and the `marketing.banner` approval."""
+    if "site_promo.manage" not in staff.effective_permission_codenames():
+        raise BannerError("You can't publish banners.", 403)
+    with transaction.atomic():
+        banner = _locked(banner_id)
+        if banner.slot != Banner.FLASH:
+            raise BannerError("Only a flash banner can be published directly. Send other banners for approval.", 400)
+        if banner.state not in (Banner.DRAFT, Banner.REJECTED, Banner.TAKEN_DOWN):
+            raise BannerError("Only a draft or taken-down banner can be published.", 409)
+        _check_flash(banner)
+        check_window(banner.starts_at, banner.ends_at)
+        banner.state = Banner.APPROVED
+        banner.return_note = ""
+        banner.approval = None
+        banner.approved_by = staff
+        banner.approved_at = timezone.now()
+        banner.save(update_fields=["state", "return_note", "approval", "approved_by", "approved_at", "updated_at"])
+    return banner
+
+
 def submit(banner_id, staff, request=None):
     """Draft or returned banner -> sent for approval. A Super Admin's own banner goes live at once."""
     with transaction.atomic():
         banner = _locked(banner_id)
         if banner.state not in (Banner.DRAFT, Banner.REJECTED, Banner.TAKEN_DOWN):
             raise BannerError("Only a draft, returned or taken-down banner can be sent for approval.", 409)
-        if not banner.image:
+        if banner.slot == Banner.FLASH:
+            _check_flash(banner)
+        elif not banner.image:
             raise BannerError("Add the banner photo first.")
         if banner.slot == Banner.CATEGORY_TOP and banner.category_id is None:
             raise BannerError("Choose the category for a category banner.")

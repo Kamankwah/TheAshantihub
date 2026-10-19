@@ -7,6 +7,7 @@ urlpatterns = [
     path("site-banners/", v.BannerListCreateView.as_view(), name="marketing-site-banners"),
     path("site-banners/<int:pk>/", v.BannerDetailView.as_view(), name="marketing-site-banner"),
     path("site-banners/<int:pk>/submit/", v.BannerActionView.as_view(action="submit"), name="marketing-banner-submit"),
+    path("site-banners/<int:pk>/publish/", v.BannerActionView.as_view(action="publish"), name="marketing-banner-publish"),
     path("site-banners/<int:pk>/withdraw/", v.BannerActionView.as_view(action="withdraw"), name="marketing-banner-withdraw"),
     path("site-banners/<int:pk>/take-down/", v.BannerActionView.as_view(action="take-down"), name="marketing-banner-take-down"),
     path("site-banners/<int:pk>/reschedule/", v.BannerActionView.as_view(action="reschedule"), name="marketing-banner-reschedule"),

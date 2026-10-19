@@ -4,6 +4,8 @@ import { useHeroModerationQueue } from "../../../../hooks/useHeroModerationQueue
 import { useHeroMyDecisions } from "../../../../hooks/useMarketingModeration.js";
 import { apiErrorMessage } from "../../../../lib/apiErrorMessage.js";
 import { D } from "../../theme.js";
+import HeroSlideForm from "../../../dashboard/HeroSlideForm.jsx";
+import { HeroSlidePreview, MAX_DAYS_NOTE, slideMaker, slideWindow } from "../../../dashboard/HeroSlideParts.jsx";
 import { CheckList, Honest, Loading, PageHead, QueueSwitch, Section, ageWord, button, card, dim, errorStyle, inputStyle, labelStyle, page } from "./mkParts.jsx";
 
 // ─── 14 Hero approval (Marketing face of HeroApprovalPanel) ──────────────────
@@ -14,7 +16,9 @@ const REASONS = ["Contact details in the caption", "Photo is not of this busines
 const dayWord = (iso) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "");
 const rowsOf = (q) => (Array.isArray(q.data) ? q.data : q.data?.results || []);
 
-export default function HeroApprovalMarketing() {
+export default function HeroApprovalMarketing({ auth }) {
+  const canCreate = Boolean(auth?.hasPermission?.("hero_media.approve"));
+  const [creating, setCreating] = useState(false);
   const [tab, setTab] = useState("pending");
   const pending = useHeroModerationQueue({ status: "pending" });
   const approved = useHeroModerationQueue({ status: "approved" });
@@ -49,9 +53,11 @@ export default function HeroApprovalMarketing() {
   return (
     <div style={page}>
       <PageHead title="Hero approval">
+        {canCreate && <button type="button" onClick={() => setCreating((v) => !v)} aria-expanded={creating} style={button(D.gold, D.text)}>{creating ? "Close" : "New slide"}</button>}
         <QueueSwitch value={tab} onChange={setTab} options={[["pending", `Waiting ${count(pending)}`.trim()], ["approved", "Approved"], ["rejected", "Rejected"]]} />
       </PageHead>
-      <div style={dim}>Businesses submit one of their own listing photos with a caption for the home page slider. It goes live when approved and stays for the days their plan gives. Oldest first.</div>
+      <div style={dim}>Businesses send a slide for the home page slider: a picture, a video or a YouTube link, with the dates they want. A slide goes live on its start date once approved and runs at most 30 days. Oldest first.</div>
+      {creating && canCreate && <Section id="hero-new" title="New day-one slide"><HeroSlideForm mode="staff" onDone={refetchAll} /></Section>}
       {actionError && <div role="alert" style={errorStyle}>{actionError}</div>}
       {loading ? <Loading error={queries[tab].isError} onRetry={queries[tab].refetch} what="hero submissions" /> : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))", gap: 14, alignItems: "start" }}>
@@ -63,13 +69,14 @@ export default function HeroApprovalMarketing() {
                 const on = selected?.id === h.id;
                 return (
                   <div role="listitem" key={h.id}>
-                    <button type="button" onClick={() => setSelectedId(h.id)} aria-pressed={on} aria-label={`${h.business_owner_name}, ${h.listing_name || "listing"}`}
+                    <button type="button" onClick={() => setSelectedId(h.id)} aria-pressed={on} aria-label={`${slideMaker(h)}, ${h.listing_name || "slide"}`}
                       style={{ display: "flex", gap: 10, textAlign: "left", width: "100%", background: D.panelBg, border: on ? `2px solid ${D.text}` : `1px solid ${D.cardBorder}`, borderRadius: 12, padding: 10, cursor: "pointer", fontFamily: "inherit", color: D.text }}>
-                      <img src={h.media} alt="" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, flexShrink: 0, background: D.panelBg2 }} />
+                      <HeroSlidePreview slide={h} size={64} />
                       <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                        <b style={{ fontSize: "0.85rem" }}>{h.business_owner_name}</b>
+                        <b style={{ fontSize: "0.85rem" }}>{slideMaker(h)}</b>
                         <span style={dim}>{h.listing_name}</span>
-                        <span style={{ fontSize: "0.78rem" }}>“{h.caption}”</span>
+                        {h.caption && <span style={{ fontSize: "0.78rem" }}>“{h.caption}”</span>}
+                        <span style={dim}>{slideWindow(h)}</span>
                         {tab === "pending" && <span style={{ fontSize: "0.72rem", fontWeight: 800, color: flagged ? "#A30000" : "#00500A" }}>{flagged ? `Needs attention: ${flagged.label}` : "All checks pass"}</span>}
                         <span style={dim}>Submitted {dayWord(h.submitted_at)}{tab === "pending" ? ` · waiting ${ageWord(h.submitted_at)}` : ""}</span>
                       </span>
@@ -84,7 +91,7 @@ export default function HeroApprovalMarketing() {
               <ul aria-labelledby="hero-recent" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
                 {(recent.data || []).map((r) => (
                   <li key={r.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: "0.78rem", color: D.text }}>
-                    <span><b>{r.business_owner_name}</b> {"·"} “{r.caption}” {"·"} by you, {dayWord(r.reviewed_at)}</span>
+                    <span><b>{slideMaker(r)}</b> {"·"} “{r.caption}” {"·"} by you, {dayWord(r.reviewed_at)}</span>
                     <span style={{ fontWeight: 800, color: r.status === "approved" ? "#00500A" : "#A30000" }}>{r.status === "approved" ? "Approved" : "Rejected"}</span>
                   </li>
                 ))}
@@ -96,13 +103,13 @@ export default function HeroApprovalMarketing() {
             {!selected ? <Honest>Pick a submission to see its photo and checks.</Honest> : (
               <>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                  <h2 id="hero-detail" style={{ margin: 0, fontSize: "1rem", color: D.text }}>{selected.business_owner_name}{selected.listing_name ? ` · ${selected.listing_name}` : ""}</h2>
+                  <h2 id="hero-detail" style={{ margin: 0, fontSize: "1rem", color: D.text }}>{slideMaker(selected)}{selected.listing_name ? ` · ${selected.listing_name}` : ""}</h2>
                   {tab === "pending" && <span style={dim}>Waiting {ageWord(selected.submitted_at)}</span>}
                 </div>
-                {selected.media_type === "video"
-                  ? <video src={selected.media} muted controls style={{ width: "100%", maxHeight: 300, borderRadius: 12, background: "#000" }} />
-                  : <img src={selected.media} alt={selected.caption || "Submitted hero photo"} style={{ width: "100%", maxHeight: 300, objectFit: "cover", borderRadius: 12 }} />}
-                <div style={{ fontSize: "0.85rem", color: D.text }}><b>Caption:</b> “{selected.caption}”</div>
+                <HeroSlidePreview slide={selected} embed />
+                <div style={dim}>{slideWindow(selected)}. {MAX_DAYS_NOTE}</div>
+                {selected.title && <div style={{ fontSize: "0.85rem", color: D.text }}><b>Title:</b> {selected.title}</div>}
+                {selected.caption && <div style={{ fontSize: "0.85rem", color: D.text }}><b>Caption:</b> “{selected.caption}”</div>}
                 {tab === "pending" && <CheckList checks={selected.checks || []} label="Hero checks" />}
                 {tab === "approved" && <div style={dim}>Approved by {selected.reviewed_by_name || "staff"}{selected.expires_at ? `, live until ${dayWord(selected.expires_at)}` : ""}.</div>}
                 {tab === "rejected" && <div style={dim}>Rejected{selected.rejection_reason ? `: ${selected.rejection_reason}` : ""}.</div>}

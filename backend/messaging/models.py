@@ -46,7 +46,7 @@ class Conversation(models.Model):
     SOURCE_CHOICES = [
         ("app", "The app"), ("listing_page", "A listing page"), ("order_page", "An order page"),
         ("business_dashboard", "The business dashboard"), ("guest_chat", "Guest chat"),
-        ("staff_started", "Started by Support"),
+        ("staff_started", "Started by Support"), ("chatbot", "Chat assistant"),
     ]
     assignee = models.ForeignKey(
         StaffUser, on_delete=models.SET_NULL, null=True, blank=True, related_name="assigned_conversations"
@@ -67,6 +67,11 @@ class Conversation(models.Model):
         "self", on_delete=models.SET_NULL, null=True, blank=True, related_name="follow_ups"
     )
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default="app")
+    # The chat assistant's intake: who the visitor says they are, so Support can call, text or email back.
+    # Staff-only; empty for every other source. Never serialized to a customer, owner or guest.
+    contact_name = models.CharField(max_length=120, blank=True)
+    contact_email = models.EmailField(blank=True)
+    contact_phone = models.CharField(max_length=30, blank=True)
     tags = models.ManyToManyField("ConversationTag", blank=True, related_name="conversations")
     snoozed_until = models.DateTimeField(null=True, blank=True)
     snoozed_by = models.ForeignKey(

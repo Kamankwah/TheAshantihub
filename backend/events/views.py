@@ -27,6 +27,7 @@ from ledger import posting, sales
 from ledger.models import BookingSale
 from ledger.money import from_pesewas
 from payments import booking_pay
+from storefront.permissions import MarketplaceOpen
 from payments.models import CheckoutSession
 from payments.services import process_payment
 
@@ -863,7 +864,7 @@ class TicketPurchaseView(APIView):
     manually releases/refunds it.
     """
 
-    permission_classes = [IsAuthenticated, IsCustomer]
+    permission_classes = [IsAuthenticated, IsCustomer, MarketplaceOpen]
 
     def post(self, request, pk):
         input_serializer = TicketPurchaseInputSerializer(data=request.data)

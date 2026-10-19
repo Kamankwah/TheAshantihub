@@ -29,6 +29,7 @@ from .moderation_checks import (
     open_fraud_flag,
     open_fraud_flags,
 )
+from .category_tree import build_tree
 from .models import Category, HeroMediaSubmission, Listing, ListingPhoto, Promotion, Zone
 from .permissions import IsHeroMediaOwner, IsListingOwner, IsListingPhotoOwner
 from .serializers import (
@@ -38,6 +39,7 @@ from .serializers import (
     HeroActiveSerializer,
     HeroMediaModerationSerializer,
     HeroMediaStaffSerializer,
+    HeroSlideInputSerializer,
     HeroSubmitSerializer,
     ListingPhotoSerializer,
     ModerationListingSerializer,
@@ -49,7 +51,9 @@ from .serializers import (
     PublicListingSerializer,
     ZoneSerializer,
 )
+from .pricing import effective_price_expr
 from .visibility import hidden_business_q, sold_out_q
+from .visits import record_visit
 
 
 def _with_rating_annotations(queryset):
@@ -120,6 +124,32 @@ class CategoryListView(generics.ListCreateAPIView):
         return [AllowAny()]
 
 
+class CategoryTreeView(APIView):
+    """GET categories/tree/: public. The shopper view lists only nodes with a live listing or event in them or below
+    them. ?full=1 is the whole tree for a business creating a listing, and needs a signed-in business owner or staff."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        from accounts.models import StaffUser
+
+        full = request.query_params.get("full") in ("1", "true")
+        if full and not isinstance(request.user, (BusinessOwner, StaffUser)):
+            return Response({"detail": "The full category tree is for businesses and staff."}, status=403)
+        return Response(build_tree(full=full))
+
+
+class CategoryVisitView(APIView):
+    """POST categories/<id>/visit/: public beacon, one visit counted per call, answers 204."""
+
+    permission_classes = [AllowAny]
+    throttle_scope = "category_visit"
+
+    def post(self, request, pk):
+        record_visit(generics.get_object_or_404(Category, pk=pk))
+        return Response(status=204)
+
+
 class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
     """GET is public; PATCH/DELETE require categories.manage (roadmap: the
     staff Categories panel's edit + delete actions). DELETE is guarded
@@ -141,8 +171,11 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
         category = self.get_object()
         listing_count = category.listings.count()
         event_count = category.events.count()
-        if listing_count or event_count:
+        child_count = category.children.count()
+        if listing_count or event_count or child_count:
             parts = []
+            if child_count:
+                parts.append(f"{child_count} {'sub-category' if child_count == 1 else 'sub-categories'}")
             if listing_count:
                 parts.append(f"{listing_count} {'listing' if listing_count == 1 else 'listings'}")
             if event_count:
@@ -323,19 +356,23 @@ class PublicListingListView(generics.ListAPIView):
 
         category_slug = self.request.query_params.get("category")
         if category_slug:
-            queryset = queryset.filter(category__slug=category_slug)
+            # A department includes its sub-categories (the home's department links land here).
+            from storefront.search import category_ids
+
+            queryset = queryset.filter(category_id__in=category_ids(category_slug))
 
         zone_name = self.request.query_params.get("zone")
         if zone_name:
             queryset = queryset.filter(zone__name=zone_name)
 
+        queryset = queryset.annotate(price_effective=effective_price_expr())
         min_price = self.request.query_params.get("min_price")
         if min_price:
-            queryset = queryset.filter(price_amount__gte=min_price)
+            queryset = queryset.filter(price_effective__gte=min_price)
 
         max_price = self.request.query_params.get("max_price")
         if max_price:
-            queryset = queryset.filter(price_amount__lte=max_price)
+            queryset = queryset.filter(price_effective__lte=max_price)
 
         kind = self.request.query_params.get("kind")
         if kind:
@@ -419,6 +456,10 @@ class PublicListingListView(generics.ListAPIView):
         # query param's effect.
         queryset = super().filter_queryset(queryset)
         existing_order = queryset.query.order_by or ("-created_at",)
+        # Price ordering and filters use the price the customer pays (sale price while a real discount).
+        existing_order = tuple(
+            {"price_amount": "price_effective", "-price_amount": "-price_effective"}.get(term, term) for term in existing_order
+        )
         if self._cart_guard() is not None:
             return queryset.order_by("cart_tier", F("cart_km").asc(nulls_last=True), "-is_promoted", *existing_order)
         return queryset.order_by("-is_promoted", *existing_order)
@@ -489,6 +530,44 @@ class ListingManageView(generics.UpdateAPIView):
     serializer_class = OwnerListingManageSerializer
     permission_classes = [IsAuthenticated, IsListingOwner]
     http_method_names = ["patch"]
+
+
+class ListingSponsoredView(APIView):
+    """POST /api/listings/<id>/sponsored/ {"sponsored": bool} - flag or unflag a listing as sponsored so it appears
+    in Deals without a discount (Plan M1). Marketing, operations and super admin (`deals.manage`)."""
+
+    def get_permissions(self):
+        return [HasRolePermission("deals.manage")]
+
+    def post(self, request, pk):
+        flag = request.data.get("sponsored") if isinstance(request.data, dict) else None
+        if not isinstance(flag, bool):
+            return Response({"sponsored": "Send true or false."}, status=400)
+        listing = generics.get_object_or_404(Listing, pk=pk)
+        listing.sponsored = flag
+        listing.sponsored_by = request.user if flag else None
+        listing.save(update_fields=["sponsored", "sponsored_by", "updated_at"])
+        return Response({"id": listing.pk, "sponsored": listing.sponsored})
+
+
+class SponsoredListView(APIView):
+    """GET /api/listings/sponsored/ - every listing flagged sponsored now, newest change first, for the Marketing
+    Sponsored products screen (`deals.manage`). Read straight from the flag, not from the Deals feed, so a flagged
+    listing beyond the feed's limit (or one not showing there because it is not live) still reads as sponsored.
+    `live`: whether it shows in Deals now (published, priced, in stock, goods or food, business not hidden)."""
+
+    def get_permissions(self):
+        return [HasRolePermission("deals.manage")]
+
+    def get(self, request):
+        from catalogue.offers import live_q
+
+        live_ids = set(Listing.objects.filter(live_q(), sponsored=True).values_list("pk", flat=True))
+        rows = Listing.objects.filter(sponsored=True).select_related("category").order_by("-updated_at", "-pk")
+        return Response([
+            {"id": item.pk, "name": item.name, "category_label": item.category.label, "live": item.pk in live_ids}
+            for item in rows
+        ])
 
 
 class ListingRestockView(APIView):
@@ -818,6 +897,8 @@ class HeroSubmitView(APIView):
     permission_classes = [IsAuthenticated, IsBusinessOwner, IsListingPhotoOwner]
 
     def post(self, request):
+        if "listing_photo" not in request.data:
+            return self._submit_slide(request)
         serializer = HeroSubmitSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -828,7 +909,8 @@ class HeroSubmitView(APIView):
 
         now = timezone.now()
         # Outstanding = pending, or approved-and-not-yet-expired.
-        outstanding = HeroMediaSubmission.objects.filter(business_owner=request.user).filter(
+        # Slides with their own dates (the free slider) are not counted against the plan.
+        outstanding = HeroMediaSubmission.objects.filter(business_owner=request.user, starts_at__isnull=True).filter(
             Q(status=HeroMediaSubmission.PENDING)
             | Q(status=HeroMediaSubmission.APPROVED, expires_at__gt=now)
         )
@@ -874,6 +956,78 @@ class HeroSubmitView(APIView):
         )
         return Response(HeroMediaModerationSerializer(submission).data, status=201)
 
+    def _submit_slide(self, request):
+        """The free slider: an image, an uploaded mp4/webm or a YouTube link, with the dates the
+        business chooses (at most 30 days). No plan slot limit. Waits for Marketing."""
+        slide = create_hero_slide(request, owner=request.user)
+        if isinstance(slide, Response):
+            return slide
+        notify_staff_role(
+            "hero_media.approve", "hero_needs_approval", "New hero submission",
+            body=f"{request.user.full_name} submitted a hero slide for review.",
+            link="hero", icon="🌟",
+        )
+        return Response(HeroMediaModerationSerializer(slide, context={"request": request}).data, status=201)
+
+
+def create_hero_slide(request, *, owner=None, staff=None):
+    """Validate and store one slide. A business one stays pending; a staff one (Marketing, who hold
+    hero_media.approve) is stored approved, reviewed by its maker, with no business behind it.
+    Returns the row, or a 400 Response."""
+    serializer = HeroSlideInputSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=400)
+    data = serializer.validated_data
+    listing = None
+    if data.get("listing"):
+        listing = Listing.objects.filter(pk=data["listing"]).first()
+        if listing is None or (owner is not None and listing.business_owner_id != owner.pk):
+            return Response({"listing": "Choose one of your own listings."}, status=400)
+    now = timezone.now()
+    slide = HeroMediaSubmission(
+        business_owner=owner, created_by_staff=staff, listing=listing, media_type=data["media_type"],
+        title=data.get("title", ""), caption=data.get("caption", ""), link_path=data["link_path"],
+        starts_at=data["starts_at"], ends_at=data["ends_at"], youtube_url=data["youtube_url"],
+    )
+    if data["media"]:
+        slide.media = data["media"]
+    if data["video_file"]:
+        slide.video_file = data["video_file"]
+    if staff is not None:
+        slide.status = HeroMediaSubmission.APPROVED
+        slide.approved_at = now
+        slide.expires_at = data["ends_at"]
+        slide.reviewed_by = staff
+        slide.reviewed_at = now
+    slide.save()
+    return slide
+
+
+class HeroStaffCreateView(APIView):
+    """POST /api/hero/staff/ — Marketing (or Operations, Super Admin: anyone holding hero_media.approve)
+    adds a slide directly: stored approved with the creator as reviewer, no business, same
+    media and date rules as a business submission."""
+
+    def get_permissions(self):
+        return [HasRolePermission("hero_media.approve")]
+
+    def post(self, request):
+        slide = create_hero_slide(request, staff=request.user)
+        if isinstance(slide, Response):
+            return slide
+        return Response(HeroMediaModerationSerializer(slide, context={"request": request}).data, status=201)
+
+
+class HeroMineListView(APIView):
+    """GET /api/hero/mine/slides/ — every slide the calling business has submitted (dated ones),
+    newest first, with its status and rejection reason."""
+
+    permission_classes = [IsAuthenticated, IsBusinessOwner]
+
+    def get(self, request):
+        rows = HeroMediaSubmission.objects.filter(business_owner=request.user, starts_at__isnull=False).order_by("-submitted_at", "-id")
+        return Response(HeroMediaModerationSerializer(rows, many=True, context={"request": request}).data)
+
 
 class HeroMineView(APIView):
     """GET /api/hero/mine/ — the calling business owner's most relevant
@@ -898,7 +1052,7 @@ class HeroMineView(APIView):
     def get(self, request):
         now = timezone.now()
         submission = (
-            HeroMediaSubmission.objects.filter(business_owner=request.user)
+            HeroMediaSubmission.objects.filter(business_owner=request.user, starts_at__isnull=True)
             .filter(
                 Q(status=HeroMediaSubmission.PENDING)
                 | Q(status=HeroMediaSubmission.APPROVED, expires_at__gt=now)
@@ -908,7 +1062,7 @@ class HeroMineView(APIView):
         )
         if submission is None:
             submission = (
-                HeroMediaSubmission.objects.filter(business_owner=request.user)
+                HeroMediaSubmission.objects.filter(business_owner=request.user, starts_at__isnull=True)
                 .order_by("-submitted_at")
                 .first()
             )
@@ -967,11 +1121,16 @@ class HeroApproveView(APIView):
                 status=400,
             )
         now = timezone.now()
-        hero_days = _hero_days_for(submission.business_owner)
+        if submission.ends_at is not None:
+            if submission.ends_at <= now:
+                return Response({"detail": "This slide's dates have already ended. Ask the business to submit new dates."}, status=400)
+            expires_at = submission.ends_at
+        else:
+            expires_at = now + timedelta(days=_hero_days_for(submission.business_owner))
         submission.status = HeroMediaSubmission.APPROVED
         submission.rejection_reason = None
         submission.approved_at = now
-        submission.expires_at = now + timedelta(days=hero_days)
+        submission.expires_at = expires_at
         submission.reviewed_by = request.user
         submission.reviewed_at = now
         submission.save(
@@ -980,11 +1139,12 @@ class HeroApproveView(APIView):
                 "reviewed_by", "reviewed_at",
             ]
         )
-        notify_business_owner(
-            submission.business_owner, "hero_approved", "Hero media approved",
-            body="Your hero submission is now featured on the Business homepage.",
-            link="/business-dashboard", icon="🌟",
-        )
+        if submission.business_owner_id:
+            notify_business_owner(
+                submission.business_owner, "hero_approved", "Hero media approved",
+                body="Your hero submission is now featured on the Business homepage.",
+                link="/business-dashboard", icon="🌟",
+            )
         return Response(
             {"id": submission.id, "status": submission.status, "expires_at": submission.expires_at}
         )
@@ -1004,11 +1164,12 @@ class HeroRejectView(APIView):
         submission.reviewed_by = request.user
         submission.reviewed_at = timezone.now()
         submission.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
-        notify_business_owner(
-            submission.business_owner, "hero_rejected", "Hero media not approved",
-            body=f"Your hero submission was rejected: {reason}",
-            link="/business-dashboard", icon="⚠️",
-        )
+        if submission.business_owner_id:
+            notify_business_owner(
+                submission.business_owner, "hero_rejected", "Hero media not approved",
+                body=f"Your hero submission was rejected: {reason}",
+                link="/business-dashboard", icon="⚠️",
+            )
         return Response({"id": submission.id, "status": submission.status})
 
 
@@ -1059,25 +1220,37 @@ class HeroReReviewView(APIView):
         submission.save(update_fields=["status", "rejection_reason", "reviewed_by", "reviewed_at"])
         notify_staff_role(
             "hero_media.approve", "hero_needs_approval", "Hero submission re-opened",
-            body=f"{submission.business_owner.full_name}'s hero submission has been re-opened and needs review again.",
+            body=(
+                f"{submission.business_owner.full_name}'s hero submission has been re-opened and needs review again."
+                if submission.business_owner_id
+                else "A staff-made hero slide has been re-opened and needs review again."
+            ),
             link="hero", icon="🌟",
         )
         return Response({"id": submission.id, "status": submission.status})
 
 
 class HeroActiveListView(generics.ListAPIView):
-    """GET /api/hero/active/ — public, unauthenticated feed for the hero
-    slider: approved submissions that haven't expired yet, most-recently-
-    approved first.
+    """GET /api/hero/active/ — public, unauthenticated feed for the hero slider: approved slides
+    inside their dates (starts_at <= now < ends_at), earliest start first. Rows from before slides
+    had dates (no starts_at) stay until their old expires_at and follow the dated ones, newest
+    approval first. Not paginated: there is no limit on slides.
     """
 
     serializer_class = HeroActiveSerializer
     permission_classes = [AllowAny]
+    pagination_class = None
 
     def get_queryset(self):
-        return HeroMediaSubmission.objects.filter(
-            status=HeroMediaSubmission.APPROVED, expires_at__gt=timezone.now()
-        ).order_by("-approved_at")
+        now = timezone.now()
+        dated = Q(starts_at__lte=now, ends_at__gt=now)
+        legacy = Q(starts_at__isnull=True, expires_at__gt=now)
+        return (
+            HeroMediaSubmission.objects.filter(status=HeroMediaSubmission.APPROVED)
+            .filter(dated | legacy)
+            .select_related("listing__category", "business_owner")
+            .order_by(F("starts_at").asc(nulls_last=True), "-approved_at", "id")
+        )
 
 
 class HeroExtendSerializer(serializers.Serializer):
@@ -1106,6 +1279,8 @@ class HeroExtendView(APIView):
         # resubmitted/re-approved rather than "revived" via extension —
         # mirrors ListingSubmitView's DRAFT/REJECTED-only guard in spirit
         # (a narrow, explicit allowed-state check rather than a silent no-op).
+        if submission.starts_at is not None:
+            return Response({"detail": "This slide is free and runs on the dates you chose, so it can't be extended."}, status=400)
         if submission.status != HeroMediaSubmission.APPROVED:
             return Response(
                 {"detail": "Only an approved hero submission can be extended."}, status=400

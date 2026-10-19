@@ -187,3 +187,51 @@ class CartItemUpdateDeleteTests(CartTestsBase):
         self.client.credentials()
         response = self.client.patch(f"/api/cart/items/{self.item.id}/", {"quantity": 1}, format="json")
         self.assertEqual(response.status_code, 401)
+
+
+class CartSnapshotRefreshTests(CartTestsBase):
+    """Ruling R33: a line's unit_price_snapshot follows the listing's current effective_price whenever the line is
+    added again or its quantity changes."""
+
+    def setUp(self):
+        super().setUp()
+        self._auth(self.customer)
+
+    def _start_sale(self, price):
+        self.published_listing.sale_price = price
+        self.published_listing.save(update_fields=["sale_price"])
+
+    def _end_sale(self):
+        self.published_listing.sale_price = None
+        self.published_listing.save(update_fields=["sale_price"])
+
+    def _item(self):
+        return CartItem.objects.get(cart__customer=self.customer)
+
+    def test_add_during_sale_snapshots_the_sale_price(self):
+        self._start_sale("120.00")
+        self.client.post("/api/cart/items/", {"listing": self.published_listing.id, "quantity": 1}, format="json")
+        self.assertEqual(str(self._item().unit_price_snapshot), "120.00")
+
+    def test_sale_ends_then_quantity_raised_snapshots_the_regular_price(self):
+        self._start_sale("120.00")
+        self.client.post("/api/cart/items/", {"listing": self.published_listing.id, "quantity": 1}, format="json")
+        self._end_sale()
+        response = self.client.patch(f"/api/cart/items/{self._item().id}/", {"quantity": 3}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        item = self._item()
+        self.assertEqual((item.quantity, str(item.unit_price_snapshot)), (3, "150.00"))
+
+    def test_sale_ends_then_added_again_snapshots_the_regular_price(self):
+        self._start_sale("120.00")
+        self.client.post("/api/cart/items/", {"listing": self.published_listing.id, "quantity": 1}, format="json")
+        self._end_sale()
+        self.client.post("/api/cart/items/", {"listing": self.published_listing.id, "quantity": 1}, format="json")
+        item = self._item()
+        self.assertEqual((item.quantity, str(item.unit_price_snapshot)), (2, "150.00"))
+
+    def test_sale_starts_then_quantity_changed_snapshots_the_sale_price(self):
+        self.client.post("/api/cart/items/", {"listing": self.published_listing.id, "quantity": 2}, format="json")
+        self._start_sale("99.00")
+        self.client.patch(f"/api/cart/items/{self._item().id}/", {"quantity": 1}, format="json")
+        self.assertEqual(str(self._item().unit_price_snapshot), "99.00")
