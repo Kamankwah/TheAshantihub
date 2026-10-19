@@ -54,7 +54,7 @@ class OrderSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             "id", "status", "delivery_status", "total_amount", "placed_at", "items",
-            "delivery_assignment_status", "delivery_code", "delivery_stops", "delivery_fee", *DELIVERY_FIELDS,
+            "delivery_assignment_status", "delivery_code", "delivery_stops", "delivery_fee", "ready_not_before", *DELIVERY_FIELDS,
         ]
 
     def get_delivery_assignment_status(self, obj):

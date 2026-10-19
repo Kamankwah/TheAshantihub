@@ -31,6 +31,7 @@ from ledger.money import from_pesewas, to_pesewas
 from payments.providers import get_provider
 from payments.services import process_payment
 
+from . import hold
 from .models import DeliveryAssignment, Order, OrderItem
 from .serializers import (
     DeliveryOrderSerializer,
@@ -185,7 +186,7 @@ class OrderCheckoutView(APIView):
                 charged, fee_quote = waivers.apply_to_fee(waiver, fee_quote)
                 total += charged
             order = Order.objects.create(
-                customer=request.user, status=Order.PENDING, total_amount=total,
+                customer=request.user, status=Order.PENDING, total_amount=total, ready_not_before=hold.for_items(items),
                 delivery_fee=charged if fee_quote else None, delivery_fee_breakdown=fee_quote, rate_card=fee_card, route_plan=plan,
                 **(promo.order_extras() if promo else {}),
                 delivery_method=delivery_method,

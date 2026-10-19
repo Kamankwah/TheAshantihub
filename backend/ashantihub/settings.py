@@ -584,6 +584,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "delivery.tasks.run_engine",
         "schedule": 10.0,  # offers time out and the auto-assign switch is honoured every 10 seconds
     },
+    "delivery-release-deferred": {
+        "task": "delivery.tasks.release_deferred_orders",
+        "schedule": 300.0,  # every 5 minutes: orders held until their vendor opened that are now due
+    },
     "delivery-purge-pings": {
         "task": "delivery.tasks.purge_old_pings",
         "schedule": crontab(hour=3, minute=50),

@@ -14,6 +14,7 @@ from accounts.permissions import HasRolePermission
 from accounts.views import IsBusinessOwner, IsCustomer
 from cart.models import Cart
 from listings.models import Listing
+from orders import hold
 from orders.models import Order, OrderItem
 
 from . import code_guard
@@ -456,10 +457,12 @@ class CartQuoteView(APIView):
     permission_classes = [IsAuthenticated, IsCustomer]
 
     def post(self, request):
-        if not enabled():
-            return Response({"enabled": False})
         cart = Cart.objects.filter(customer=request.user).first()
         items = list(cart.items.select_related("listing")) if cart else []
+        # When delivery would wait for a closed vendor to open (orders.hold): ISO time with the Accra offset, else null.
+        held = hold.quote(items, request.data.get("delivery_method"))
+        if not enabled():
+            return Response({"enabled": False})  # exactly this while promotions are off (a regression test pins it)
         typed = promo_checkout.normalise_code(request.data.get("coupon_code"))
         if typed and code_guard.blocked(request):
             return Response({"detail": code_guard.TOO_MANY}, status=429)
@@ -473,7 +476,7 @@ class CartQuoteView(APIView):
             data = promo_checkout.quote_data(priced)
             data["coupon_error"] = exc.message
             data["delivery"] = _delivery_quote(request, items)
-            return Response(data)
+            return Response({**data, **held})
         data = promo_checkout.quote_data(priced)
         data["delivery"] = _delivery_quote(request, items)
-        return Response(data)
+        return Response({**data, **held})

@@ -40,9 +40,11 @@ def routing_block(*, estimate_figures=False):
 
 
 def waiting_orders():
-    """Paid door-to-door orders no rider holds: never assigned, or the last attempt failed. Oldest first."""
+    """Paid door-to-door orders no rider holds: never assigned, or the last attempt failed. Oldest first. An order held
+    until its vendor opens (ready_not_before in the future) is not waiting yet: no queue, offer or engine pass sees it."""
     return (
         Order.objects.filter(status=Order.PAID, delivery_method=Order.DOOR_TO_DOOR)
+        .filter(Q(ready_not_before__isnull=True) | Q(ready_not_before__lte=timezone.now()))
         .exclude(delivery_status=Order.DELIVERED)
         .exclude(refunds__whole=True)  # a wholly refunded order must never be sent out (ledger.refunds.is_wholly_refunded)
         .filter(Q(delivery_assignment__isnull=True) | Q(delivery_assignment__status=DeliveryAssignment.FAILED))

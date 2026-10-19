@@ -38,6 +38,8 @@ def deadline_for(order, *, express=False, limits=None):
         start = opens
     else:
         start = placed
+    if order.ready_not_before is not None and order.ready_not_before > start:
+        start = order.ready_not_before  # a vendor was closed at purchase: the promise runs from their opening
     minutes = limits.promise_express_min if express else limits.promise_standard_min
     return start + timedelta(minutes=minutes)
 
@@ -237,3 +239,14 @@ def run_engine(now=None):
             make_offer(order, rider, source=Offer.AUTO, score=best, rules=rules, now=now)
             out["offered"] += 1
     return out
+
+
+def release_deferred(now=None):
+    """Orders held until their vendor opened whose time has now come and that nobody has picked up: run the normal
+    dispatch pass once (offers, or force-assign when time is short). Idempotent: orders with a live offer or a rider
+    are skipped by the pass itself, and an already-released order simply no longer qualifies. Returns how many were due."""
+    now = now or timezone.now()
+    due = board.waiting_orders().filter(ready_not_before__isnull=False, ready_not_before__lte=now).exclude(offers__status=Offer.OFFERED).count()
+    if due:
+        run_engine(now)
+    return due
