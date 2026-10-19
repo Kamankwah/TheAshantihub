@@ -21,6 +21,7 @@ from listings.models import Listing
 from disputes.serializers import DisputeSerializer
 from notifications.services import notify_customer
 from payments.models import CheckoutSession
+from storefront.permissions import MarketplaceOpen
 from marketing import checkout as promo_checkout
 from marketing import code_guard
 from marketing import promos
@@ -71,7 +72,7 @@ class OrderCheckoutView(APIView):
     (see payments.services._finalize_order_checkout).
     """
 
-    permission_classes = [IsAuthenticated, IsCustomer]
+    permission_classes = [IsAuthenticated, IsCustomer, MarketplaceOpen]
 
     def post(self, request):
         cart = Cart.objects.filter(customer=request.user).first()
