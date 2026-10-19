@@ -2695,8 +2695,9 @@ export default function AshantiHub() {
   // Site-wide light/dark toggle, shown in the public Navbar. useTheme()
   // follows the device until the user toggles, and sets `data-theme` + the
   // `dark` class on <html>: the class drives the Tailwind/shadcn tokens, and
-  // `data-theme` drives the --ah-* variables (index.css) that the header and
-  // the app root/home wrappers read, so inline-`C` public surfaces follow too.
+  // `data-theme` drives the --ah-* variables (index.css) that only the header
+  // and the StorefrontHome wrapper read. The app root stays cream: the other
+  // public pages are inline-`C` dark-brown text and must not go dark under it.
   const {theme,toggleTheme} = useTheme();
   const [legalDoc,setLegalDoc]=useState(null);
   // showBizDash/showPayments/showCredit — same "derive from the URL, wrap the
@@ -3143,7 +3144,7 @@ export default function AshantiHub() {
   const showStaffBar = staffSession && !onStaffDashboardPath;
 
   return (
-    <div style={{fontFamily:"'Georgia',serif",background:`var(--ah-canvas, ${C.cream})`,minHeight:"100vh",
+    <div style={{fontFamily:"'Georgia',serif",background:C.cream,minHeight:"100vh",
       ...(showStaffBar ? {"--ah-top-offset":`${STAFF_VIEW_ONLY_BAR_HEIGHT}px`,paddingTop:STAFF_VIEW_ONLY_BAR_HEIGHT} : {})}}>
       {showStaffBar&&<StaffViewOnlyBar onBackToDashboard={()=>navigate("/staff")} onSignOut={staffSignOut}/>}
       {appStaffGate.shownFor&&<StaffGateNotice floating onDismiss={appStaffGate.dismiss}/>}

@@ -881,3 +881,32 @@ describe('AshantiHub routing — /business/claim', () => {
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/'))
   }, 8000)
 })
+
+// The theme variables are scoped to the header and the marketplace home: the
+// other public pages are inline dark-brown text on cream and must not go dark.
+describe('AshantiHub — dark theme scope', () => {
+  afterEach(() => {
+    localStorage.removeItem('ashantihub.theme')
+    document.documentElement.classList.remove('dark')
+    delete document.documentElement.dataset.theme
+  })
+
+  it('keeps the app root cream on /business in dark mode', async () => {
+    localStorage.setItem('ashantihub.theme', 'dark')
+    const { container } = renderAtPath('/business')
+    await screen.findByText(/business contact is handled by AshantiHub Support/i, {}, { timeout: 3000 })
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    const rootStyle = container.firstChild.getAttribute('style')
+    expect(rootStyle).not.toContain('--ah-canvas')
+    expect(container.firstChild.style.background).toBe('rgb(253, 246, 227)')
+  }, 8000)
+
+  it('the marketplace home wrapper does follow the theme', async () => {
+    localStorage.setItem('ashantihub.theme', 'dark')
+    const { container } = renderAtPath('/')
+    const home = await screen.findByTestId('storefront-home', {}, { timeout: 3000 })
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    expect(home.getAttribute('style')).toContain('var(--ah-canvas')
+    expect(container.firstChild.getAttribute('style')).not.toContain('--ah-canvas')
+  }, 8000)
+})

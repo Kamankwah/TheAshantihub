@@ -161,8 +161,9 @@
 
 /* ── Public-site theme variables (the header's light/dark toggle) ─────────────
    The public surfaces are inline-styled off `C` (theme.js), which a CSS class
-   cannot reach. The header (Navbar) and the marketplace home wrappers instead
-   read these --ah-* variables, so the toggle restyles them. useTheme() sets
+   cannot reach. Only the header (Navbar) and the StorefrontHome wrapper read
+   these --ah-* variables, so the toggle restyles them; the app root and the
+   other public pages stay cream (their dark-brown text would go dark-on-dark). useTheme() sets
    `data-theme` on <html>; Navbar also carries its own `data-theme` from its
    `theme` prop. Values are `C` colours (keep in sync by hand). Dashboards do
    not read these and stay always-light (DESIGN.md). */

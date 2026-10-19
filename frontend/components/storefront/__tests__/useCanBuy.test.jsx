@@ -31,6 +31,26 @@ describe('useCanBuy', () => {
     expect(askedMe).toBe(false)
   })
 
+  it('can buy while the opening answer is still loading (the server is the backstop)', async () => {
+    let release
+    server.use(http.get('http://localhost:8000/api/storefront/opening/', () => new Promise((r) => { release = r })))
+    const { result } = renderHook(() => useCanBuy(), { wrapper })
+    await new Promise((r) => setTimeout(r, 50))
+    expect(result.current.canBuy).toBe(true)
+    expect(result.current.label).toBeNull()
+    release(HttpResponse.json({ opens_at: FUTURE, server_now: BEFORE, is_open: true, gate_enabled: false }))
+  })
+
+  it('can buy when the opening request fails (R1: never a fake closed state)', async () => {
+    let asked = false
+    server.use(http.get('http://localhost:8000/api/storefront/opening/', () => { asked = true; return new HttpResponse(null, { status: 500 }) }))
+    const { result } = renderHook(() => useCanBuy(), { wrapper })
+    await waitFor(() => expect(asked).toBe(true))
+    await new Promise((r) => setTimeout(r, 50))
+    expect(result.current.canBuy).toBe(true)
+    expect(result.current.label).toBeNull()
+  })
+
   it('a signed-out visitor cannot buy before opening, labelled from opens_at', async () => {
     server.use(gatedOpening({ opensAt: FUTURE, serverNow: BEFORE }))
     const { result } = renderHook(() => useCanBuy(), { wrapper })
