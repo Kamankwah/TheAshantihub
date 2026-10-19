@@ -1675,7 +1675,7 @@ function StaffNotificationsSlot({ user }) {
     <button type="button" onClick={()=>setOpen(v=>!v)} aria-haspopup="dialog" aria-expanded={open} aria-label={unread>0?`Notifications (${unread} unread)`:"Notifications"} title="Notifications"
       style={{position:"relative",background:"none",border:`1px solid ${D.divider}`,borderRadius:10,minWidth:34,height:34,cursor:"pointer",fontSize:"0.9rem",color:D.text,fontFamily:"inherit"}}>
       🔔
-      {unread>0&&<span aria-hidden="true" style={{position:"absolute",top:-6,right:-6,background:D.red,color:D.panelBg,borderRadius:20,padding:"1px 5px",fontSize:"0.6rem",fontWeight:800}}>{unread}</span>}
+      {unread>0&&<span aria-hidden="true" style={{position:"absolute",top:-6,right:-6,background:D.red,color:D.cream,borderRadius:20,padding:"1px 5px",fontSize:"0.6rem",fontWeight:800}}>{unread}</span>}
     </button>
     {open&&<NotificationsPanel user={user} onClose={()=>setOpen(false)}/>}
   </>;
@@ -3125,7 +3125,7 @@ export default function AshantiHub() {
   if(showBizDash||showPayments||showCredit) return <BusinessCommandCenter
     initialTab={showPayments?"payments":showCredit?"credit":"analytics"}
     onExit={()=>{setShowBizDash(false);setShowPayments(false);setShowCredit(false);}}
-    user={user} auth={auth} PaymentComponent={MoMoPayment}/>;
+    user={user} auth={auth} PaymentComponent={MoMoPayment} theme={theme} toggleTheme={toggleTheme}/>;
   // Staff onboarding + account-recovery work — two more standalone early
   // returns, same convention as showAccount/showBizDash above.
   if(page==="staff-activate") return <StaffActivatePage auth={auth} onSuccess={handleAuthSuccess}/>;

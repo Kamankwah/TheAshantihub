@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import Flag from "../Flag.jsx";
+import ThemeToggle from "../ThemeToggle.jsx";
 import BusinessRegistrationFlow from "../BusinessRegistrationFlow.jsx";
 import { useBusinessProfile } from "../../hooks/useBusinessProfile.js";
 import { useMySubscription } from "../../hooks/useMySubscription.js";
-import { D, glassCard } from "./theme.js";
+import { D, glassCard, tint } from "./theme.js";
 import AnalyticsPanel from "./panels/AnalyticsPanel.jsx";
 import ListingsPanel from "./panels/ListingsPanel.jsx";
 import ProductsPanel from "./panels/ProductsPanel.jsx";
@@ -20,8 +21,8 @@ import RenewBanner from "./RenewBanner.jsx";
 import ManagerChangesCard from "./ManagerChangesCard.jsx";
 
 // ─── Business Command Center ─────────────────────────────────────────────────
-// The unified "mission-control" dashboard for a business owner, rebuilt onto a
-// light "artisan" theme (see theme.js) with a persistent sidebar-nav shell
+// The unified "mission-control" dashboard for a business owner, rebuilt onto
+// the "artisan" theme (see theme.js; follows the site's light/dark toggle) with a persistent sidebar-nav shell
 // (docs/superpowers/specs business-dashboard-rebuild) replacing the old
 // sticky-top-tab-bar layout. Replaces the three separate full-screen
 // dashboards (BusinessDashboard / PaymentDashboard / CreditDashboard) with one
@@ -64,7 +65,7 @@ function buildTabs(businessKind) {
   return [...TABS.slice(0, 2), ...managementTabs, ...TABS.slice(2)];
 }
 
-export default function BusinessCommandCenter({ initialTab = "analytics", onExit, user, auth, PaymentComponent }) {
+export default function BusinessCommandCenter({ initialTab = "analytics", onExit, user, auth, PaymentComponent, theme, toggleTheme }) {
   const [tab, setTab] = useState(TABS.some(t => t.id === initialTab) ? initialTab : "analytics");
   const [saved, setSaved] = useState(false);
   const [resubmitting, setResubmitting] = useState(false);
@@ -137,7 +138,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
 
         {/* Sidebar */}
         <aside className={`cc-sidebar${mobileNavOpen ? " cc-sidebar-open" : ""}`} style={{
-          width: 236, flexShrink: 0, background: "#1F140C", color: D.pageBg,
+          width: 236, flexShrink: 0, background: "#1F140C", color: D.cream,
           display: "flex", flexDirection: "column", position: "sticky", top: 0, height: "100vh", overflowY: "auto",
         }}>
           <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(90deg,#CC0000 33%,#D4A017 33%,#D4A017 66%,#006400 66%)" }} />
@@ -170,7 +171,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
           </nav>
 
           <div style={{ padding: 14, borderTop: "1px solid rgba(253,246,227,0.12)" }}>
-            <div style={{ color: D.pageBg, fontWeight: 700, fontSize: "0.75rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginBottom: 8 }}>{user?.fullName || "Your Business"}</div>
+            <div style={{ color: D.cream, fontWeight: 700, fontSize: "0.75rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginBottom: 8 }}>{user?.fullName || "Your Business"}</div>
             <button onClick={onExit} style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(253,246,227,0.18)", color: "rgba(253,246,227,0.75)", borderRadius: 20, padding: "8px 13px", fontSize: "0.72rem", cursor: "pointer", fontFamily: "inherit" }}>← Exit</button>
           </div>
         </aside>
@@ -178,12 +179,14 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
         {/* Main column */}
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
           {/* Top bar */}
-          <div style={{ background: "rgba(253,246,227,0.9)", backdropFilter: "blur(6px)", borderBottom: `1px solid ${D.divider}`, padding: "0 18px", position: "sticky", top: 0, zIndex: 100, display: "flex", alignItems: "center", height: 56, gap: 12 }}>
+          <div style={{ background: tint(D.pageBg, "e6"), backdropFilter: "blur(6px)", borderBottom: `1px solid ${D.divider}`, padding: "0 18px", position: "sticky", top: 0, zIndex: 100, display: "flex", alignItems: "center", height: 56, gap: 12 }}>
             <button onClick={() => setMobileNavOpen(true)} className="cc-hamburger" aria-label="Open menu" style={{ background: "none", border: `1.5px solid ${D.cardBorderStrong}`, color: D.text, borderRadius: 8, width: 34, height: 34, cursor: "pointer", fontSize: "1rem" }}>☰</button>
             <div style={{ fontWeight: 900, color: D.text, fontSize: "0.98rem" }}>{showProfile ? "Profile & Settings" : activeLabel}</div>
 
+            <ThemeToggle theme={theme} onToggle={toggleTheme} style={{ marginLeft: "auto" }} />
+
             {/* Avatar dropdown — back to the main site / profile / sign out */}
-            <div ref={profileMenuRef} style={{ position: "relative", marginLeft: "auto" }}>
+            <div ref={profileMenuRef} style={{ position: "relative", marginLeft: toggleTheme ? 0 : "auto" }}>
               <button
                 onClick={() => setProfileMenuOpen(o => !o)}
                 aria-label="Account menu"
@@ -195,7 +198,7 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
                   : (user?.fullName?.[0]?.toUpperCase() || "B")}
               </button>
               {profileMenuOpen && (
-                <div style={{ position: "absolute", top: "calc(100% + 8px)", right: 0, background: "#fff", borderRadius: 14, boxShadow: "0 10px 40px rgba(44,24,16,0.25)", padding: 10, display: "flex", flexDirection: "column", gap: 6, minWidth: 210, zIndex: 200 }}>
+                <div style={{ position: "absolute", top: "calc(100% + 8px)", right: 0, background: D.panelBg, borderRadius: 14, boxShadow: "0 10px 40px rgba(44,24,16,0.25)", padding: 10, display: "flex", flexDirection: "column", gap: 6, minWidth: 210, zIndex: 200 }}>
                   <div style={{ padding: "4px 8px 8px", borderBottom: `1px solid ${D.divider}`, marginBottom: 2 }}>
                     <div style={{ fontWeight: 800, color: D.text, fontSize: "0.82rem" }}>{user?.fullName || "Your Business"}</div>
                     <div style={{ color: D.textFaint, fontSize: "0.68rem" }}>Business Owner</div>
@@ -280,9 +283,9 @@ export default function BusinessCommandCenter({ initialTab = "analytics", onExit
 }
 
 const profileMenuItemStyle = {
-  background: "#f6f6f6",
+  background: D.panelBg2,
   color: D.text,
-  border: "1px solid #e5e5e5",
+  border: `1px solid ${D.divider}`,
   borderRadius: 12,
   padding: "8px 12px",
   fontSize: "0.78rem",

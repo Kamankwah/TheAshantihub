@@ -102,7 +102,7 @@ function OrderRow({ order }) {
             {order.placed_at?.slice(0, 10)} · {doorToDoor ? "🛵 Door-to-door" : "🏬 Store pickup"} · GHS {order.owner_subtotal}
           </div>
         </div>
-        <span style={{ background: `${meta.color}22`, color: meta.color, borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>{meta.icon} {meta.label}</span>
+        <span style={{ background: tint(meta.color, "22"), color: meta.color, borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>{meta.icon} {meta.label}</span>
       </div>
 
       <div style={{ color: D.textFaint, fontSize: "0.72rem", marginTop: 8 }}>
@@ -136,7 +136,7 @@ function OrderRow({ order }) {
             return (
               <div key={key} style={{ display: "flex", alignItems: "center", gap: 4, flex: "1 1 auto", minWidth: 0 }}>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, minWidth: 62 }}>
-                  <div style={{ width: 30, height: 30, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem", background: done ? `${c}1e` : `${D.divider}22`, border: `1.5px solid ${done ? `${c}88` : D.divider}`, opacity: done ? 1 : 0.5 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem", background: done ? tint(c, "1e") : tint(D.divider, "22"), border: `1.5px solid ${done ? tint(c, "88") : D.divider}`, opacity: done ? 1 : 0.5 }}>
                     {STATUS_META[key].icon}
                   </div>
                   <div style={{ fontSize: "0.56rem", fontWeight: 700, color: done ? c : D.textFaint, textAlign: "center" }}>{STATUS_META[key].label}</div>

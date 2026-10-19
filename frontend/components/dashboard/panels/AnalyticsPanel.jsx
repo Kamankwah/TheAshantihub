@@ -5,7 +5,7 @@ import { useMySubscription } from "../../../hooks/useMySubscription.js";
 import { useMyHeroSubmission } from "../../../hooks/useMyHeroSubmission.js";
 import { useOwnerReviews } from "../../../hooks/useOwnerReviews.js";
 import { useBusinessProfile } from "../../../hooks/useBusinessProfile.js";
-import { D, glassCard, LISTING_STATUS_META, CREDIT_FACTOR_META, getScoreColor, ghs } from "../theme.js";
+import { D, glassCard, LISTING_STATUS_META, CREDIT_FACTOR_META, getScoreColor, ghs, tint } from "../theme.js";
 import KpiCard from "../charts/KpiCard.jsx";
 import ChartFrame from "../charts/ChartFrame.jsx";
 import SpendAreaChart from "../charts/SpendAreaChart.jsx";
@@ -191,7 +191,7 @@ export default function AnalyticsPanel({ user, onNavigate }) {
                       <div style={{ height: "100%", width: item.status === "published" ? "100%" : item.status === "pending_review" ? "60%" : "25%", background: statusMeta.color, borderRadius: 10 }} />
                     </div>
                   </div>
-                  <span style={{ background: `${statusMeta.color}20`, color: statusMeta.color, borderRadius: 20, padding: "3px 9px", fontSize: "0.6rem", fontWeight: 800, whiteSpace: "nowrap" }}>{statusMeta.label}</span>
+                  <span style={{ background: tint(statusMeta.color, "20"), color: statusMeta.color, borderRadius: 20, padding: "3px 9px", fontSize: "0.6rem", fontWeight: 800, whiteSpace: "nowrap" }}>{statusMeta.label}</span>
                 </div>
               );
             })}

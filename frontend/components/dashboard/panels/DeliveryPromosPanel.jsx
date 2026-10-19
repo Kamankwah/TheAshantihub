@@ -2,7 +2,7 @@ import { useState } from "react";
 import { createOwnerDeliveryPromo, ownerDeliveryPromoAction, useOwnerDeliveryPromos } from "../../../hooks/useDeliveryPromos.js";
 import { useMyListings } from "../../../hooks/useMyListings.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
-import { D, glassCard } from "../theme.js";
+import { D, glassCard, tint } from "../theme.js";
 
 // ─── Free-delivery promos — a business waives the delivery fee on its own items ───
 // Every call is scoped server-side to the signed-in business: it can only name its own listings and only
@@ -121,7 +121,7 @@ export default function DeliveryPromosPanel() {
           <div key={p.id} style={{ ...glassCard, padding: 16, marginBottom: 10 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
               <div style={{ color: D.text, fontWeight: 800, fontSize: "0.9rem" }}>{p.name}</div>
-              <span style={{ background: `${color}22`, color, borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>{label}{p.live ? " · running now" : ""}</span>
+              <span style={{ background: tint(color, "22"), color, borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>{label}{p.live ? " · running now" : ""}</span>
             </div>
             <div style={{ color: D.textDim, fontSize: "0.72rem", marginTop: 4 }}>{when(p.starts_at)} to {when(p.ends_at)}</div>
             <div style={{ color: D.textFaint, fontSize: "0.72rem", marginTop: 4 }}>{p.all_items ? "All your items" : p.listings.map((l) => l.name).join(", ")}</div>

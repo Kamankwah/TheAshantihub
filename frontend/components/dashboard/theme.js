@@ -50,6 +50,11 @@ export const D = {
   purple: "#6B4E8E", // new — no purple exists in C; used only for chart/usage-meter variety
   kente1: C.kente1, kente2: C.kente2, kente3: C.kente3,
   whatsapp: C.whatsapp,
+  // fixed text colours for a fixed fill — unlike text/pageBg they do not flip
+  // in dark mode: darkBrown on gold/amber buttons, cream on the dark sidebar
+  // and solid green/red buttons
+  darkBrown: C.darkBrown,
+  cream: C.cream,
   // tinted status wells with their readable text colour
   okBg: C.okBg, okInk: C.okInk,
   errBg: C.errBg, errInk: C.errInk,

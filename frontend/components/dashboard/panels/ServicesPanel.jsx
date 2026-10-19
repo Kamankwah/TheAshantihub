@@ -3,7 +3,7 @@ import { apiPost } from "../../../apiClient.js";
 import { useIncomingServiceRequests } from "../../../hooks/useIncomingServiceRequests.js";
 import { useMyListings } from "../../../hooks/useMyListings.js";
 import { useCategories } from "../../../hooks/useCategories.js";
-import { D, glassCard, sectionTitle } from "../theme.js";
+import { D, glassCard, sectionTitle, tint } from "../theme.js";
 import OwnerListingCard from "./OwnerListingCard.jsx";
 
 // Services management (business item 2 / Wave H2): a service business's
@@ -44,7 +44,7 @@ function RequestCard({ sr, onChanged }) {
           <div style={{ color: D.text, fontWeight: 800, fontSize: "0.9rem" }}>{sr.listing_name}</div>
           <div style={{ color: D.textDim, fontSize: "0.72rem", marginTop: 2 }}>From {sr.customer_name} · {sr.created_at?.slice(0, 10)}</div>
         </div>
-        <span style={{ background: `${meta.color}22`, color: meta.color, borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>{meta.label}</span>
+        <span style={{ background: tint(meta.color, "22"), color: meta.color, borderRadius: 20, padding: "3px 11px", fontSize: "0.66rem", fontWeight: 800 }}>{meta.label}</span>
       </div>
 
       <div style={{ color: D.text, fontSize: "0.78rem", margin: "8px 0" }}>"{sr.message}"</div>
@@ -61,7 +61,7 @@ function RequestCard({ sr, onChanged }) {
         {sr.status === "requested" && (
           <>
             <button onClick={() => setMode(mode === "accept" ? null : "accept")} style={{ ...btn, background: D.green, color: "#fff" }}>✓ Accept & quote</button>
-            <button onClick={() => setMode(mode === "decline" ? null : "decline")} style={{ ...btn, background: `${D.red}22`, color: D.red }}>✕ Decline</button>
+            <button onClick={() => setMode(mode === "decline" ? null : "decline")} style={{ ...btn, background: tint(D.red, "22"), color: D.red }}>✕ Decline</button>
           </>
         )}
         {sr.status === "in_progress" && (

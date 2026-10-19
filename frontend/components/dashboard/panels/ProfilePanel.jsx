@@ -1,5 +1,5 @@
 import { useBusinessProfile } from "../../../hooks/useBusinessProfile.js";
-import { D, glassCard } from "../theme.js";
+import { D, glassCard, tint } from "../theme.js";
 import MarketingConsentCard from "../../MarketingConsentCard.jsx";
 
 // "Profile & Settings" — reachable from the header's avatar dropdown. Read-only:
@@ -31,7 +31,7 @@ export default function ProfilePanel({ user }) {
         </div>
         <div>
           <div style={{ fontWeight: 900, fontSize: "1.05rem", color: D.text }}>{user?.fullName || "Your Business"}</div>
-          <span style={{ background: `${D.green}20`, color: D.green, borderRadius: 20, padding: "2px 10px", fontSize: "0.66rem", fontWeight: 800 }}>✓ KYC Verified</span>
+          <span style={{ background: tint(D.green, "20"), color: D.green, borderRadius: 20, padding: "2px 10px", fontSize: "0.66rem", fontWeight: 800 }}>✓ KYC Verified</span>
         </div>
       </div>
 
