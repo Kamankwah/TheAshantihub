@@ -4,6 +4,10 @@ import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D } from "../theme.js";
 import { button, chip } from "./panelStyles.js";
 
+// The one rule for "this is a product (goods/food) listing", whichever row shape a panel holds:
+// moderation rows carry category.kind, Super Admin rows carry type, storefront search rows carry kind.
+export const isProductListing = (l) => (l?.category?.kind ?? l?.type ?? l?.kind) === "product";
+
 // Flags a published product as sponsored so it appears in the storefront Deals row without a discount
 // (POST /api/listings/<id>/sponsored/, deals.manage: marketing, operations, super admin). Shown only to holders
 // of deals.manage and only for goods/food listings; the caller decides both and calls `onChanged` to refetch.

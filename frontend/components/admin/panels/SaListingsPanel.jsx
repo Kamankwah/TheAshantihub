@@ -6,7 +6,7 @@ import { useCategories } from "../../../hooks/useCategories.js";
 import { apiErrorMessage } from "../../../lib/apiErrorMessage.js";
 import { D } from "../theme.js";
 import { button, callout, dim, field } from "./panelStyles.js";
-import SponsoredToggle from "./SponsoredToggle.jsx";
+import SponsoredToggle, { isProductListing } from "./SponsoredToggle.jsx";
 import { Chip, ExportButton, FilterBar, KpiStrip, LoadState, Pager, ScreenHeader, col, dateOnly, dateTime, showing, tableStyle, td, th } from "./marketplaceParts.jsx";
 import { card, errorStyle, h3, labelStyle, money, useDebounced } from "./portfolioParts.jsx";
 
@@ -221,7 +221,7 @@ export default function SaListingsPanel({ auth, onOpenBusiness }) {
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button type="button" aria-label={`History of ${l.name}`} onClick={() => setHistory(l)} style={button(D.panelBg, D.text)}>History</button>
                           {canModerate && l.status === "pending_review" && <button type="button" aria-label={`View or approve ${l.name}`} onClick={() => { setNotice(null); setApproveError(null); setReviewing(l); }} style={button(D.green, "#fff")}>View / Approve</button>}
-                          {canSponsor && l.type === "product" && l.status === "published" && <SponsoredToggle id={l.id} name={l.name} sponsored={Boolean(l.sponsored)} onChanged={() => queryClient.invalidateQueries({ queryKey: ["sa-listings"] })} />}
+                          {canSponsor && isProductListing(l) && l.status === "published" && <SponsoredToggle id={l.id} name={l.name} sponsored={Boolean(l.sponsored)} onChanged={() => queryClient.invalidateQueries({ queryKey: ["sa-listings"] })} />}
                           {canModerate && l.status === "published" && <button type="button" aria-label={`Take down ${l.name}`} onClick={() => { setNotice(null); setTakingDown(l); }} style={button(D.panelBg, D.red)}>Take down</button>}
                         </div>
                       </td>

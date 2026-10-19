@@ -221,7 +221,7 @@ const ROLE_MENUS = {
     ["home", "Home", ["approvals"]],
     ["people", "People", ["staff", "teams-reporting", "invites", "roles-permissions", "sessions", "leave"]],
     ["teams", "Teams (step in)", ["step-in-operations", "step-in-support", "step-in-delivery", "step-in-marketing", "step-in-accounting"]],
-    ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "delivery", "events-moderation", "disputes"]],
+    ["marketplace", "Marketplace", ["all-portfolios", "users", "moderation", "delivery", "events-moderation", "hero", "disputes"]],
     ["money", "Money", ["transactions", "payouts-payroll", "commissions", "refunds", "reconciliation"]],
     ["insights", "Insights", ["analytics", "growth-funnel", "team-reports", "scheduled-exports"]],
     ["security-audit", "Security & audit", ["activity", "sign-in-history", "fraud-cases", "data-exports-log", "security"]],
@@ -355,7 +355,7 @@ const ROLE_LABELS = {
   super_admin: {
     approvals: "My approvals", staff: "Staff directory", sessions: "Sessions & devices", leave: "Leave & holidays",
     "all-portfolios": "Businesses", users: "Customers", moderation: "Listings & services", delivery: "Orders & deliveries",
-    "events-moderation": "Events & tickets", disputes: "Disputes & returns", transactions: "Revenue & sales",
+    "events-moderation": "Events & tickets", hero: "Homepage slider", disputes: "Disputes & returns", transactions: "Revenue & sales",
     "team-reports": "Reports hub", activity: "Audit log", "fraud-cases": "Fraud & anomaly alerts", security: "Security settings",
     "subscription-plans-approval": "Plans & prices", targets: "Target limits", "categories-zones": "Categories & zones",
   },

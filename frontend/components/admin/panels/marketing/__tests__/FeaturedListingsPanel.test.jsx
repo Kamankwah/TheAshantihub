@@ -70,4 +70,32 @@ describe('FeaturedListingsPanel', () => {
     expect(screen.queryByRole('button', { name: /^Release/ })).toBeNull()
     expect(screen.queryByRole('form', { name: 'Book a slot' })).toBeNull()
   })
+
+  it('lets Marketing (deals.manage) sponsor a searched product and un-sponsor one, products only', async () => {
+    const seen = []
+    server.use(
+      http.get(`${API}/api/marketing/featured/grid/`, () => HttpResponse.json(grid(rows))),
+      http.get(`${API}/api/marketing/featured/candidates/`, () => HttpResponse.json(candidates)),
+      http.get(`${API}/api/storefront/deals/`, () => HttpResponse.json([{ id: 7, name: 'Sponsored bag', category_label: 'Bags', sponsored: true }, { id: 8, name: 'Discounted shoe', category_label: 'Shoes', sponsored: false }])),
+      http.get(`${API}/api/storefront/search/`, () => HttpResponse.json({ products: [{ id: 5, kind: 'product', name: 'Kente stole', category_label: 'Fashion' }], services: [{ id: 6, kind: 'service', name: 'Kente sewing', category_label: 'Tailoring' }] })),
+      http.post(`${API}/api/listings/:id/sponsored/`, async ({ request, params }) => { seen.push({ id: params.id, ...(await request.json()) }); return HttpResponse.json({}) }),
+    )
+    renderMk(FeaturedListingsPanel, { permissions: ['deals.manage'] })
+    const now = await screen.findByRole('list', { name: 'Sponsored now' })
+    expect(await within(now).findByText('Sponsored bag')).toBeInTheDocument()
+    expect(within(now).queryByText('Discounted shoe')).toBeNull()
+    fireEvent.change(screen.getByLabelText('Find a product to sponsor'), { target: { value: 'kente' } })
+    fireEvent.click(await screen.findByRole('button', { name: 'Mark Kente stole as sponsored' }))
+    await waitFor(() => expect(seen).toEqual([{ id: '5', sponsored: true }]))
+    fireEvent.click(within(now).getByRole('button', { name: 'Remove sponsored from Sponsored bag' }))
+    await waitFor(() => expect(seen).toContainEqual({ id: '7', sponsored: false }))
+    expect(screen.queryByText('Kente sewing')).toBeNull()
+  })
+
+  it('shows no sponsored section without deals.manage', async () => {
+    server.use(http.get(`${API}/api/marketing/featured/grid/`, () => HttpResponse.json(grid(rows))), http.get(`${API}/api/marketing/featured/candidates/`, () => HttpResponse.json(candidates)))
+    renderMk(FeaturedListingsPanel, { permissions: PERM })
+    await screen.findByText(/Home featured row/)
+    expect(screen.queryByText('Sponsored products')).toBeNull()
+  })
 })

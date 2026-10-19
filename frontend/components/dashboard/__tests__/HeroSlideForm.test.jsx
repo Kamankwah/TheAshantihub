@@ -20,8 +20,8 @@ const serve = (slides = []) => server.use(
 )
 const pickKind = (name) => fireEvent.click(screen.getByRole('radio', { name }))
 const dates = (start, end) => {
-  fireEvent.change(screen.getByLabelText('Starts'), { target: { value: start } })
-  fireEvent.change(screen.getByLabelText('Ends'), { target: { value: end } })
+  fireEvent.change(screen.getByLabelText(/^Starts/), { target: { value: start } })
+  fireEvent.change(screen.getByLabelText(/^Ends/), { target: { value: end } })
 }
 let appendSpy
 afterEach(() => appendSpy?.mockRestore())

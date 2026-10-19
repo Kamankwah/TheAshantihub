@@ -12,6 +12,8 @@ import { HeroSlidePreview, MAX_DAYS_NOTE, slideWindow } from "./HeroSlideParts.j
 // Exactly one picture or video source: an image upload, an uploaded video, or a YouTube link.
 const MB = 1024 * 1024;
 const DAY_MS = 24 * 60 * 60 * 1000;
+// The date inputs are Accra time (GMT, no daylight saving), the zone slides are shown in, so a typed time is the same UTC clock reading.
+const toUtc = (local) => `${local.length === 16 ? `${local}:00` : local}Z`;
 const BOTH_OR_NEITHER = "Give either a video file or a YouTube link, not both and not neither.";
 
 const inputStyle = {
@@ -55,8 +57,8 @@ export default function HeroSlideForm({ mode = "business", onDone }) {
     if (kind === "image" && !image) return "An image slide needs a picture.";
     if (kind === "video" && Boolean(videoFile) === Boolean(youtube.trim())) return BOTH_OR_NEITHER;
     if (!starts || !ends) return "Choose when the slide starts and ends.";
-    const from = new Date(starts).getTime();
-    const to = new Date(ends).getTime();
+    const from = Date.parse(toUtc(starts));
+    const to = Date.parse(toUtc(ends));
     if (to <= from) return "The end must be after the start.";
     if (to - from > 30 * DAY_MS) return MAX_DAYS_NOTE;
     return "";
@@ -77,8 +79,8 @@ export default function HeroSlideForm({ mode = "business", onDone }) {
     if (title.trim()) body.append("title", title.trim());
     if (caption.trim()) body.append("caption", caption.trim());
     if (listing) body.append("listing", String(listing).trim());
-    body.append("starts_at", new Date(starts).toISOString());
-    body.append("ends_at", new Date(ends).toISOString());
+    body.append("starts_at", toUtc(starts));
+    body.append("ends_at", toUtc(ends));
     setBusy(true);
     try {
       await apiPostForm(staff ? "/api/hero/staff/" : "/api/hero/submit/", body);
@@ -150,8 +152,8 @@ export default function HeroSlideForm({ mode = "business", onDone }) {
           </label>
         )}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-          <label style={labelStyle}>Starts<input type="datetime-local" value={starts} onChange={(e) => { setStarts(e.target.value); setError(""); }} style={inputStyle} /></label>
-          <label style={labelStyle}>Ends<input type="datetime-local" value={ends} onChange={(e) => { setEnds(e.target.value); setError(""); }} style={inputStyle} /></label>
+          <label style={labelStyle}>Starts (Accra time, GMT)<input type="datetime-local" value={starts} onChange={(e) => { setStarts(e.target.value); setError(""); }} style={inputStyle} /></label>
+          <label style={labelStyle}>Ends (Accra time, GMT)<input type="datetime-local" value={ends} onChange={(e) => { setEnds(e.target.value); setError(""); }} style={inputStyle} /></label>
         </div>
         {error && <div role="alert" style={{ color: D.red, fontSize: "0.74rem", fontWeight: 700 }}>{error}</div>}
         {notice && <div role="status" style={{ color: D.green, fontSize: "0.74rem", fontWeight: 700 }}>{notice}</div>}

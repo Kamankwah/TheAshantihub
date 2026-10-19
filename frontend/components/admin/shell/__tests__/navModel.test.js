@@ -475,7 +475,7 @@ describe('Super Admin menu (canvases 2026-10-07)', () => {
       ['Home', ['My approvals']],
       ['People', ['Staff directory', 'Teams & reporting lines', 'Invites', 'Roles & permissions', 'Sessions & devices', 'Leave & holidays']],
       ['Teams (step in)', ['Operations & scouts', 'Support', 'Delivery & dispatch', 'Marketing', 'Accounting']],
-      ['Marketplace', ['Businesses', 'Customers', 'Listings & services', 'Orders & deliveries', 'Events & tickets', 'Disputes & returns']],
+      ['Marketplace', ['Businesses', 'Customers', 'Listings & services', 'Orders & deliveries', 'Events & tickets', 'Homepage slider', 'Disputes & returns']],
       ['Money', ['Revenue & sales', 'Payouts & payroll', 'Commissions', 'Refunds', 'Reconciliation']],
       ['Insights', ['Analytics', 'Growth funnel', 'Reports hub', 'Scheduled exports']],
       ['Security & audit', ['Audit log', 'Sign-in history', 'Fraud & anomaly alerts', 'Data exports log', 'Security settings']],
@@ -487,7 +487,7 @@ describe('Super Admin menu (canvases 2026-10-07)', () => {
   it('is exhaustive: no More tools, and dropped screens keep their permission', () => {
     expect(groups.some((g) => g.id === 'more')).toBe(false)
     const ids = groups.flatMap((g) => g.items.map((i) => i.id))
-    for (const gone of ['kyc', 'hero', 'reviews', 'escrow', 'credit', 'messaging', 'tasks', 'calls', 'reports', 'at-risk', 'register-business', 'scout-assignments', 'site-settings']) expect(ids).not.toContain(gone)
+    for (const gone of ['kyc', 'reviews', 'escrow', 'credit', 'messaging', 'tasks', 'calls', 'reports', 'at-risk', 'register-business', 'scout-assignments', 'site-settings']) expect(ids).not.toContain(gone)
     expect(NAV_ITEMS.find((i) => i.id === 'kyc').show(auth)).toBe(true) // the permission and panel are untouched
   })
 

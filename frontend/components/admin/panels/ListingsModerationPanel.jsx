@@ -4,7 +4,7 @@ import { useModerationQueue } from "../../../hooks/useModerationQueue.js";
 import { useListingsStats } from "../../../hooks/useQueueStats.js";
 import { D } from "../theme.js";
 import { chip, dim } from "./panelStyles.js";
-import SponsoredToggle from "./SponsoredToggle.jsx";
+import SponsoredToggle, { isProductListing } from "./SponsoredToggle.jsx";
 import ModerationQueueTabs, {
   ApprovedByLine,
   RejectedReason,
@@ -92,7 +92,7 @@ export default function ListingsModerationPanel({ auth }) {
                 <button onClick={() => setRejectingId(l.id)} style={{ background: "rgba(248,113,113,0.14)", color: D.red, border: "none", borderRadius: 20, padding: "5px 12px", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>✕ Reject</button>
               </>
             )}
-            {state === "approved" && canSponsor && l.category?.kind === "product" && <SponsoredToggle id={l.id} name={l.name} sponsored={Boolean(l.sponsored)} onChanged={refetchAll} />}
+            {state === "approved" && canSponsor && isProductListing(l) && <SponsoredToggle id={l.id} name={l.name} sponsored={Boolean(l.sponsored)} onChanged={refetchAll} />}
             {state === "rejected" && <ReviewAgainButton onClick={() => reReview(l.id)} />}
           </div>
         </div>
