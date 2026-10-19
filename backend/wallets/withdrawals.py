@@ -155,6 +155,9 @@ def request(holder, *, destination_id, amount_pesewas, request_id, now=None):
         lines=[posting.debit(source, amount_pesewas), posting.credit(transit, amount_pesewas)],
         reference_type="wallets.withdrawal", reference_id=withdrawal.reference, memo=f"Withdrawal {withdrawal.reference}",
     )
+    from .vendor_texts import withdrawal_text
+
+    withdrawal_text(withdrawal, "requested")  # a business is texted (never raises; none while suspended)
     return withdrawal
 
 

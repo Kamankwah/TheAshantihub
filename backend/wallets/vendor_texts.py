@@ -30,7 +30,7 @@ from django.utils import timezone
 
 from accounts.models import BusinessOwner
 from accounts.phones import mask_phone
-from ledger import escrow, posting
+from ledger import escrow, posting, settings_store
 from ledger.models import Account, Journal, JournalLine, OrderFeeSnapshot
 from ledger.money import to_pesewas
 from marketing.models_waivers import WaivedFeeCharge
@@ -222,6 +222,7 @@ def row(text):
 
 VENDOR_MONEY = "vendor_money"  # the in-app kind of a release or digest text's copy (Notification kinds are free slugs)
 OWNER_TYPE = BusinessOwner._meta.label_lower
+OWNER_KEY = "business_owner"  # otp.identity.ref / Withdrawal.holder_type of a business
 
 
 @dataclass(frozen=True)
@@ -350,6 +351,8 @@ def order_released(order, journal):
             continue
         if VendorText.objects.filter(key=released_key(order, owner)).exists():
             continue  # already texted (and noticed): a re-run adds neither
+        # A suspended business keeps its in-app notice but gets no text, now or later: nothing is queued, so lifting the
+        # suspension backfills nothing.
         if share["base"] <= 0:
             body = promo_only_text(order, share["promo"])
         else:
@@ -357,9 +360,113 @@ def order_released(order, journal):
         notice = notify_business_owner(
             owner, VENDOR_MONEY, f"Order #{order.pk} released", body=body, link="/business-dashboard", icon="💰",
         )
+        if owner.is_suspended:
+            continue
         if queue(owner, VendorText.ORDER_RELEASED, released_key(order, owner), body, order=order, notification=notice) is not None:
             queued += 1
     return queued
+
+
+# --- refunds, withdrawals and balance warnings (wallet rulings 7D, Task 3) --------------------------------------------
+# Every builder returns at once for a suspended business: no money text, no row (so nothing is waiting to be sent if the
+# suspension is lifted). A builder never raises: it runs inside the money transaction. No payout number is ever in a body.
+
+def refund_key(order, owner):
+    return f"refund-{order.pk}-{owner.pk}"
+
+
+def refund_text(order, owner, amount, where=""):
+    """The business's share of a refund on a paid order (`amount` pesewas, the fee given back already taken off), with its
+    in-app copy (kept for a suspended business). One per order and business."""
+    try:
+        if amount <= 0 or VendorText.objects.filter(key=refund_key(order, owner)).exists():
+            return None
+        body = f"AshantiHub: order #{order.pk} was refunded to the customer. GHS {money(amount)} came off your {where or 'balance'}."
+        with transaction.atomic():
+            notice = notify_business_owner(
+                owner, VENDOR_MONEY, f"Order #{order.pk} refunded", body=body, link="/business-dashboard", icon="💰",
+            )
+        if owner.is_suspended:
+            return None
+        return queue(owner, VendorText.REFUND, refund_key(order, owner), body, order=order, notification=notice)
+    except Exception as exc:  # noqa: BLE001 - a text never stops a refund
+        logger.error("Refund text not queued: %s", type(exc).__name__)
+        return None
+
+
+WITHDRAWAL_STATES = ("requested", "paid", "failed")
+
+
+def withdrawal_text(withdrawal, state):
+    """A withdrawal's step ("requested", "paid", "failed") texted to the business that holds it, once per step. The in-app
+    notice is the payouts module's own. The body names no destination."""
+    try:
+        if state not in WITHDRAWAL_STATES or withdrawal.holder_type != OWNER_KEY:
+            return None
+        owner = BusinessOwner.objects.filter(pk=withdrawal.holder_id).first()
+        if owner is None or owner.is_suspended:
+            return None
+        if state == "requested":
+            body = f"AshantiHub: withdrawal of GHS {money(withdrawal.amount_pesewas)} requested. We will text you when it is paid."
+        elif state == "paid":
+            body = f"AshantiHub: withdrawal paid. GHS {money(withdrawal.net_pesewas)} was sent to your payout account."
+        else:
+            body = f"AshantiHub: withdrawal of GHS {money(withdrawal.amount_pesewas)} did not go through. The money is back in your balance."
+        return queue(owner, VendorText.WITHDRAWAL, f"withdrawal-{withdrawal.pk}-{state}", body)
+    except Exception as exc:  # noqa: BLE001 - a text never stops a payout
+        logger.error("Withdrawal text not queued: %s", type(exc).__name__)
+        return None
+
+
+def balance_text(owner, available, kind):
+    """Warn a business its Available balance (`available` pesewas) is below zero (kind "negative") or at or under the low
+    setting (kind "low"). At most one per kind per Accra day (the key holds the day). Text only: the balance is on screen."""
+    try:
+        if kind not in ("negative", "low") or owner.is_suspended:
+            return None
+        if kind == "negative":
+            body = (
+                f"AshantiHub: your Available balance is below zero (GHS {money(available)}). Withdrawals are paused; "
+                "your next sales will clear it."
+            )
+        else:
+            body = f"AshantiHub: your Available balance is low: GHS {money(available)}."
+        return queue(
+            owner, VendorText.BALANCE_NEGATIVE if kind == "negative" else VendorText.BALANCE_LOW,
+            f"balance-{owner.pk}-{kind}-{timezone.localdate()}", body, day=timezone.localdate(),
+        )
+    except Exception as exc:  # noqa: BLE001 - a text never stops a posting
+        logger.error("Balance text not queued: %s", type(exc).__name__)
+        return None
+
+
+def after_posting(accounts, before):
+    """Called by ledger.posting.post with the accounts it just changed and their balances before: texts a business whose
+    Available balance has just crossed below zero, or down to the low setting from above it. A balance already there is
+    not texted again by every later debit. Never raises."""
+    try:
+        with transaction.atomic():  # a savepoint: nothing here can break the posting's transaction
+            _warn_balances(accounts, before)
+    except Exception as exc:  # noqa: BLE001 - a text never stops a posting
+        logger.error("Balance texts not worked out: %s", type(exc).__name__)
+
+
+def _warn_balances(accounts, before):
+    threshold = None
+    for account in accounts:
+        if account.kind != Account.VENDOR_AVAILABLE or account.owner_type != OWNER_TYPE:
+            continue
+        was, now = before[account.pk], account.balance
+        if now >= was:
+            continue
+        if threshold is None:
+            threshold = settings_store.current("vendor_low_balance_pesewas")
+        kind = "negative" if now < 0 <= was else "low" if 0 <= now <= threshold < was else None
+        if kind is None:
+            continue
+        owner = BusinessOwner.objects.filter(pk=int(account.owner_id)).first()
+        if owner is not None:
+            balance_text(owner, now, kind)
 
 
 # --- the optional daily digest (Task 7) ----------------------------------------------------------------------------

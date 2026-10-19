@@ -316,12 +316,20 @@ def _post(order, snapshots, shares, *, customer, delivery, subsidy, processing, 
             reference_type="orders.order", reference_id=str(order.pk), memo=f"Refund for order #{order.pk} ({source})",
         )
     items = sum(entry["pending"] + entry["available"] for entry in by_vendor.values())
-    return OrderRefund.objects.create(
+    refund = OrderRefund.objects.create(
         order=order, source=source, whole=whole, amount_pesewas=customer, items_pesewas=items, delivery_pesewas=delivery,
         rider_pesewas=rider_share,
         subsidy_pesewas=subsidy, processing_pesewas=processing, allocation=allocation, journal=journal, created_by=by,
         note=(note or "")[:300],
     )
+    from wallets import vendor_texts
+
+    for entry in by_vendor.values():  # each business is told what came off its balance (text and in-app copy; never raises)
+        vendor_texts.refund_text(
+            order, entry["owner"], entry["pending"] + entry["available"] - entry["fee"],
+            "Available balance" if entry["available"] else "Pending balance",
+        )
+    return refund
 
 
 def scope_for_dispute(dispute):
