@@ -76,6 +76,12 @@ class CaptureTests(NotifyBase):
         self.assertEqual(response.json(), {"status": "saved"})
         self.assertEqual(NotifyRequest.objects.count(), 2)
 
+    def test_unmatched_phone_does_not_attach_to_an_email_only_row(self):
+        self.post(email="a@example.com")
+        row = notify.subscribe(phone="0244123456")
+        self.assertEqual(NotifyRequest.objects.count(), 2)
+        self.assertEqual(row.phone_key, "244123456")
+
     def test_new_field_is_attached_to_existing_row(self):
         self.post(phone="0244123456")
         self.post(phone="0244123456", email="a@example.com")
@@ -127,6 +133,42 @@ class SendTests(NotifyBase):
         self.assertTrue(text.body.isascii())
         self.assertIn(f"https://www.example.com/notify/stop/{row.token}", text.body)
         self.assertIn("open", text.body.lower())
+
+    @override_settings(FRONTEND_BASE_URL="https://staging.theashantihub.com")
+    def test_text_fits_160_for_the_longest_host(self):
+        notify.subscribe(phone="0244123456")
+        notify.send_batch(now=self.after)
+        self.assertLessEqual(len(senders.sms_outbox[0].body), 160)
+        self.assertIn("https://staging.theashantihub.com/notify/stop/", senders.sms_outbox[0].body)
+
+    def test_a_claim_taken_over_mid_batch_is_not_sent_by_the_first_worker(self):
+        first = notify.subscribe(phone="0244123456")
+        second = notify.subscribe(phone="0200000001")
+        real = notify._still_mine
+        calls = []
+
+        def steal_then_check(pk, channel, claim, require_open=True):
+            if not calls:  # another worker reclaims the second row after the first row was handled
+                calls.append(1)
+                NotifyRequest.objects.filter(pk=second.pk).update(sms_claimed_at=claim + timedelta(minutes=11))
+            return real(pk, channel, claim, require_open)
+
+        with mock.patch("storefront.notify._still_mine", side_effect=steal_then_check):
+            self.assertEqual(notify.send_batch(now=self.after), 1)
+        self.assertEqual([t.to for t in senders.sms_outbox], ["+233244123456"])
+        second.refresh_from_db()
+        self.assertIsNone(second.sms_sent_at)
+        self.assertEqual(second.sms_claimed_at, self.after + timedelta(minutes=11))  # the release did not clear the thief's claim
+
+    def test_a_batch_past_half_the_lease_stops_and_releases_the_rest(self):
+        notify.subscribe(phone="0244123456")
+        notify.subscribe(phone="0200000001")
+        clock = iter([0, 0, 400, 400, 400, 400])
+        with mock.patch("storefront.notify.time.monotonic", side_effect=lambda: next(clock)):
+            self.assertEqual(notify.send_batch(now=self.after), 1)
+        self.assertEqual(len(senders.sms_outbox), 1)
+        self.assertEqual(NotifyRequest.objects.filter(sms_claimed_at__isnull=False, sms_sent_at__isnull=True).count(), 0)
+        self.assertEqual(notify.send_batch(now=self.after), 1)
 
     def test_email_carries_the_stop_link(self):
         row = notify.subscribe(email="a@example.com")

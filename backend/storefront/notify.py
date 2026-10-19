@@ -3,6 +3,7 @@ is batched and exactly-once per channel: rows are claimed (a lease) in a short t
 called outside any transaction, then the row is stamped sent - or the claim is released so a later tick retries."""
 import logging
 import secrets
+import time
 from datetime import timedelta
 
 from django.conf import settings
@@ -81,7 +82,12 @@ def subscribe(phone=None, email=None):
             except IntegrityError:
                 continue
         return row
-    return NotifyRequest.objects.filter(Q(phone_key=key) | Q(email_lower=email_lower)).first()
+    match = Q()
+    if key:
+        match |= Q(phone_key=key)
+    if email_lower:
+        match |= Q(email_lower=email_lower)
+    return NotifyRequest.objects.filter(match).first()
 
 
 def opt_out(token):
@@ -93,7 +99,7 @@ def opt_out(token):
 
 
 def sms_body(token):
-    return f"AshantiHub marketplace is now open! Shop at {settings.FRONTEND_BASE_URL.rstrip('/')} Stop texts: {stop_link(token)}"
+    return f"AshantiHub marketplace is now open! Shop now. Stop texts: {stop_link(token)}"
 
 
 def email_parts(token):
@@ -141,25 +147,52 @@ def _deliver(send):
         return False
 
 
+def _still_mine(pk, channel, claim, require_open=True):
+    """Atomically re-check that this batch still owns the channel's claim (no one reclaimed it, nothing sent
+    yet, not opted out). A no-op write whose row count is the answer, so there is no check-then-act gap."""
+    rows = NotifyRequest.objects.filter(pk=pk, **{f"{channel}_claimed_at": claim, f"{channel}_sent_at__isnull": True})
+    if require_open:
+        rows = rows.filter(opted_out_at__isnull=True)
+    return rows.update(**{f"{channel}_claimed_at": claim}) == 1
+
+
+def _finish(pk, channel, claim, ok):
+    """Stamp sent on success or release the claim on failure - only if the claim is still this batch's."""
+    rows = NotifyRequest.objects.filter(pk=pk, **{f"{channel}_claimed_at": claim})
+    rows.update(**({f"{channel}_sent_at": timezone.now()} if ok else {f"{channel}_claimed_at": None}))
+
+
+def _send_channel(pk, channel, claim, send):
+    if not _still_mine(pk, channel, claim):
+        return False
+    ok = _deliver(send)
+    _finish(pk, channel, claim, ok)
+    return ok
+
+
 def send_batch(now=None, limit=NOTIFY_BATCH):
     """Send the opening notices to up to `limit` people; returns how many received at least one. Sends only when
-    the gate is on and the opening time has been reached."""
+    the gate is on and the opening time has been reached. Before every send the batch re-checks it still owns the
+    claim; past half the lease it stops and releases what is left, so a slow provider cannot cause a double send."""
     now = now or timezone.now()
     if not (opening.gate_enabled() and now >= opening.opens_at()):
         return 0
+    started = time.monotonic()
+    claimed = _claim(now, limit)
     delivered = 0
-    for pk, token, phone, email in _claim(now, limit):
+    for index, (pk, token, phone, email) in enumerate(claimed):
+        if time.monotonic() - started > LEASE.total_seconds() / 2:
+            for rpk, _, rphone, remail in claimed[index:]:
+                if rphone:
+                    _finish(rpk, "sms", now, False)
+                if remail:
+                    _finish(rpk, "email", now, False)
+            break
         ok_any = False
         if phone:
-            ok = _deliver(lambda: send_sms(phone, sms_body(token)))
-            NotifyRequest.objects.filter(pk=pk).update(
-                **({"sms_sent_at": timezone.now()} if ok else {"sms_claimed_at": None}))
-            ok_any = ok_any or ok
+            ok_any = _send_channel(pk, "sms", now, lambda: send_sms(phone, sms_body(token))) or ok_any
         if email:
             subject, body = email_parts(token)
-            ok = _deliver(lambda: send_email(email, subject, body))
-            NotifyRequest.objects.filter(pk=pk).update(
-                **({"email_sent_at": timezone.now()} if ok else {"email_claimed_at": None}))
-            ok_any = ok_any or ok
+            ok_any = _send_channel(pk, "email", now, lambda: send_email(email, subject, body)) or ok_any
         delivered += ok_any
     return delivered
