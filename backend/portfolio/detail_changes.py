@@ -9,6 +9,8 @@ step-up code the view asks for is always required while the ledger is on.
 The request row keeps the new value unmasked, because applying needs it. It never goes into a log line, a notice, an
 approval title or an activity body: those carry the field name and `shown()` (contacts masked) only. A business cannot
 verify its own request: nothing here moves a request past `requested` except withdrawing it."""
+import re
+
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
@@ -29,6 +31,8 @@ EMAIL_MAX = 254
 REASON_MAX = 300
 OPERATIONS_PERMISSION = "portfolio.manage"
 
+_EMAIL_IN_TEXT = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")
+
 UNKNOWN_FIELD = "Choose the name, sign-in phone or email."
 MASKED = "That is a masked value; type the full one."
 NO_CHANGE = "That is already your current value."
@@ -37,6 +41,11 @@ NOT_CLAIMED = "Set up your sign-in first: this business's details are changed by
 CHANGE_PENDING = "A change to this detail is already in progress. Withdraw it first to ask for a different one."
 RECOVERY_PHONE = "That number is a recovery phone on another account — ask Support."
 RECOVERY_EMAIL = "That email is a recovery email on another account — ask Support."
+# What the business itself is told for every "already used" refusal: one message and one code, so it cannot probe
+# whether a number or email belongs to another business, a staff member or a customer. Staff (the approval's recheck)
+# get the detailed reason through clean(..., detailed=True).
+UNAVAILABLE = "That phone number or email cannot be used. Contact AshantiHub Support."
+REASON_TOO_LONG = f"Keep the reason to {REASON_MAX} characters or fewer."
 NOT_FOUND = "We couldn't find that request."
 NOT_WITHDRAWABLE = "This request can no longer be withdrawn."
 
@@ -107,10 +116,11 @@ def _recovery_clash(field, value):
     return None
 
 
-def clean(owner, field, value):
+def clean(owner, field, value, *, detailed=False):
     """The value to store for `field`, or DetailChangeError (400). Names follow the scout form's 150-character rule,
     phones are stored +233..., emails lower-cased. Refused: a masked value, no change, a value another business, a
-    staff member or a customer's recovery contact already uses."""
+    staff member or a customer's recovery contact already uses. Those last three answer one generic message (code
+    "taken") unless `detailed` is set, which only a staff-side caller (the approval's recheck) may pass."""
     if field not in PROTECTED_FIELDS:
         raise DetailChangeError(UNKNOWN_FIELD, "invalid_field")
     if any(mark in str(value or "") for mark in "*•"):
@@ -121,11 +131,9 @@ def clean(owner, field, value):
     from .proposals import contact_duplicate_errors
 
     errors = contact_duplicate_errors(owner, {field: cleaned})
-    if errors.get(field):
-        raise DetailChangeError(str(errors[field][0]), "taken")
-    clash = _recovery_clash(field, cleaned)
-    if clash:
-        raise DetailChangeError(clash, "taken")
+    reason = str(errors[field][0]) if errors.get(field) else _recovery_clash(field, cleaned)
+    if reason:
+        raise DetailChangeError(reason if detailed else UNAVAILABLE, "taken")
     return cleaned
 
 
@@ -133,10 +141,13 @@ def _reason(value):
     text = ("" if value is None else str(value)).strip()
     if not text:
         raise DetailChangeError(REASON_REQUIRED, "reason_required")
+    if len(text) > REASON_MAX:
+        raise DetailChangeError(REASON_TOO_LONG, "reason_too_long")
     from wallets.approval_kinds import mask_numbers
 
-    # Staff read it on the request and the approval: a number typed into it is masked like any staff-facing text.
-    return mask_numbers(text)[:REASON_MAX]
+    # Staff read it on the request and the approval: a number or email typed into it is masked like any staff-facing
+    # text. A very short email can mask a little longer than it was, so the column's limit is applied after masking.
+    return mask_numbers(_EMAIL_IN_TEXT.sub(lambda match: mask_email(match.group()), text))[:REASON_MAX]
 
 
 def _live(owner, field):

@@ -80,6 +80,10 @@ class BusinessHealthSnapshot(models.Model):
         ]
 
 
+# The statuses of a request still in progress (one per business and field): module-level so Meta can use it.
+DETAIL_CHANGE_LIVE_STATUSES = ("requested", "assigned", "verified")
+
+
 class BusinessDetailChangeRequest(models.Model):
     """A business asking to change its owner's name, sign-in phone or email (plan 7F-C, ruling R3). The business files
     it itself (portfolio.detail_changes); Operations assigns a scout who is not its registrar or account manager; the
@@ -94,7 +98,7 @@ class BusinessDetailChangeRequest(models.Model):
         (REQUESTED, "Requested"), (ASSIGNED, "Scout assigned"), (VERIFIED, "Verified on site"),
         (NOT_VERIFIED, "Not verified"), (APPROVED, "Approved"), (REJECTED, "Rejected"), (WITHDRAWN, "Withdrawn"),
     ]
-    LIVE_STATUSES = (REQUESTED, ASSIGNED, VERIFIED)
+    LIVE_STATUSES = DETAIL_CHANGE_LIVE_STATUSES
     WITHDRAWABLE_STATUSES = (REQUESTED, ASSIGNED)
 
     business_owner = models.ForeignKey(BusinessOwner, on_delete=models.CASCADE, related_name="detail_change_requests")
@@ -119,7 +123,7 @@ class BusinessDetailChangeRequest(models.Model):
         ordering = ["-requested_at", "-id"]
         constraints = [
             models.UniqueConstraint(
-                fields=["business_owner", "field"], condition=Q(status__in=("requested", "assigned", "verified")),
+                fields=["business_owner", "field"], condition=Q(status__in=DETAIL_CHANGE_LIVE_STATUSES),
                 name="one_live_detail_change_per_field",
             ),
         ]

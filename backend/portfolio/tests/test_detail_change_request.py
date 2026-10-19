@@ -11,6 +11,7 @@ from accounts.testing import make_staff, staff_token
 from activity.models import ActivityEvent
 from notifications.models import Notification
 from otp import step_up
+from portfolio import detail_changes
 from portfolio.models import BusinessDetailChangeRequest as Request
 from portfolio.tests.change_fixtures import make_business
 from wallets.tests.helpers import Holder
@@ -117,7 +118,7 @@ class DetailChangeRequestTests(TestCase):
             response = self.file(field, value)
             self.assertEqual(response.status_code, 400, field)
             self.assertEqual(response.data["code"], "taken")
-            self.assertIn("staff", response.data["detail"])
+            self.assertEqual(response.data["detail"], detail_changes.UNAVAILABLE)  # never says "staff" to a business
 
     def test_customer_recovery_contact_refused(self):
         Customer.objects.create(
@@ -132,6 +133,50 @@ class DetailChangeRequestTests(TestCase):
         # an unverified recovery contact is only typed text: it blocks nothing
         Customer.objects.update(secondary_phone_verified=False)
         self.assertEqual(self.file().status_code, 201)
+
+    def test_every_taken_refusal_looks_the_same_to_the_business(self):
+        other = make_business(self.scout, phone="+233209998887", name="Other Shop", gps="AK-039-5029")
+        other.profile.payout_momo_number = "+233209998886"
+        other.profile.save(update_fields=["payout_momo_number"])
+        Customer.objects.create(
+            full_name="Yaw Boateng", email="yaw@example.com", phone="+233271234567", password_hash="x",
+            secondary_phone="0207654321", secondary_phone_verified=True,
+            secondary_email="spare@example.com", secondary_email_verified=True,
+        )
+        bodies = []
+        for field, value in (
+            ("login_phone", "0209998887"),  # another business's sign-in phone
+            ("login_phone", "0209998886"),  # another business's MoMo payout number
+            ("login_phone", "0501112224"),  # a staff phone
+            ("login_phone", NEW_PHONE),  # a customer's verified recovery phone
+            ("email", "ops.lead@example.com"),  # a staff email
+            ("email", "spare@example.com"),  # a customer's verified recovery email
+        ):
+            response = self.file(field, value)
+            self.assertEqual(response.status_code, 400, value)
+            bodies.append(response.content)
+        self.assertEqual(len(set(bodies)), 1, bodies)
+        self.assertEqual(json.loads(bodies[0]), {"detail": detail_changes.UNAVAILABLE, "code": "taken"})
+
+    def test_staff_recheck_keeps_the_detailed_reason(self):
+        for field, value, word in (("login_phone", "0501112224", "staff"), ("email", "ops.lead@example.com", "staff")):
+            with self.assertRaises(detail_changes.DetailChangeError) as caught:
+                detail_changes.clean(self.owner, field, value, detailed=True)
+            self.assertIn(word, caught.exception.message)
+
+    def test_reason_too_long_refused_and_contacts_in_it_masked(self):
+        response = self.file(reason="x" * 301)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data["code"], "reason_too_long")
+        self.assertFalse(Request.objects.exists())
+        self.assertEqual(self.file(reason="x" * 300).status_code, 201)
+        self.assertEqual(
+            self.file("email", "fresh@example.com", reason="Old mail abena.owusu@example.com, call 0244100200").status_code, 201,
+        )
+        stored = Request.objects.get(field="email").reason
+        self.assertNotIn("abena.owusu@", stored)
+        self.assertNotIn("0244100200", stored)
+        self.assertIn("ab•••@example.com", stored)
 
     def test_masked_value_refused(self):
         for field, value in (("login_phone", "020 *** 4321"), ("email", "ne•••@example.com"), ("full_name", "Ab*na")):
